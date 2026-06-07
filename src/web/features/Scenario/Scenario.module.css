@@ -1,0 +1,183 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  border-bottom: 1px solid var(--card-border);
+  padding-bottom: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.icon {
+  color: var(--primary-light);
+}
+
+.title {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--foreground);
+}
+
+.presetSection {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.helpText {
+  font-size: 0.75rem;
+  color: var(--foreground-muted);
+  font-weight: 400;
+  margin-left: 0.5rem;
+}
+
+.presetButtons {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.presetBtn {
+  width: 100%;
+  padding: 0.65rem 1rem;
+  font-family: var(--font-main);
+  font-size: 0.85rem;
+  font-weight: 600;
+  border-radius: 10px;
+  cursor: pointer;
+  border: 1px solid var(--card-border);
+  background: rgba(255, 255, 255, 0.02);
+  color: var(--foreground-muted);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  text-align: center;
+}
+
+.presetBtn:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.15);
+  color: var(--foreground);
+  transform: translateY(-1px);
+}
+
+.btnConservative:active, .btnConservative:hover, .btnConservative.active {
+  border-color: var(--success);
+  background: rgba(16, 185, 129, 0.12);
+  color: var(--success);
+  box-shadow: 0 0 10px 0 rgba(16, 185, 129, 0.2);
+}
+
+.btnBase:active, .btnBase:hover, .btnBase.active {
+  border-color: var(--primary);
+  background: rgba(99, 102, 241, 0.12);
+  color: var(--primary-light);
+  box-shadow: 0 0 10px 0 rgba(99, 102, 241, 0.2);
+}
+
+.btnAggressive:active, .btnAggressive:hover, .btnAggressive.active {
+  border-color: var(--secondary);
+  background: rgba(168, 85, 247, 0.12);
+  color: var(--secondary-light);
+  box-shadow: 0 0 10px 0 rgba(168, 85, 247, 0.2);
+}
+
+.exchangeScenarioWrapper {
+  display: flex;
+  flex-direction: column;
+}
+
+.exchangeRateDetails {
+  margin-top: -0.5rem;
+  margin-bottom: 0.75rem;
+  font-size: 0.825rem;
+  color: var(--foreground-muted);
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding-left: 0.25rem;
+}
+
+.rateInfoRow {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.rateLabel {
+  color: var(--foreground-muted);
+}
+
+.appliedRateValue {
+  color: var(--primary-light);
+  font-weight: 600;
+}
+
+.scenarioBadge {
+  padding: 0.15rem 0.4rem;
+  border-radius: 6px;
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+.badgeUp {
+  background: rgba(239, 68, 68, 0.12);
+  color: #f87171;
+  border: 1px solid rgba(239, 68, 68, 0.2);
+}
+
+.badgeDown {
+  background: rgba(59, 130, 246, 0.12);
+  color: #60a5fa;
+  border: 1px solid rgba(59, 130, 246, 0.2);
+}
+
+.fetchingStatus {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: var(--primary-light);
+  font-size: 0.75rem;
+}
+
+.spinner {
+  animation: spin 1.5s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.successStatus {
+  color: var(--success);
+  font-size: 0.75rem;
+}
+
+.errorStatus {
+  color: var(--danger);
+  font-size: 0.75rem;
+}
+
+.exchangeRateWrapper {
+  display: flex;
+  flex-direction: column;
+}
+
+.fetchButton {
+  width: 100%;
+  margin-top: -0.5rem;
+  display: flex;
+  gap: 0.4rem;
+  justify-content: center;
+  align-items: center;
+}

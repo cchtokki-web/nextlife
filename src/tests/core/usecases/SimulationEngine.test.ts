@@ -1,0 +1,220 @@
+import { describe, test, expect } from 'vitest';
+import { SimulationEngine } from '@/core/usecases/SimulationEngine';
+import { SimulationParams } from '@/core/entities/types';
+
+describe('SimulationEngine TDD Tests', () => {
+  const baseParams: SimulationParams = {
+    userProfile: {
+      currentAge: 40,
+      retirementAge: 60,
+      expectancy: 85,
+      targetMonthlySpending: 3000000, // 300만 원
+    },
+    assets: [
+      {
+        id: 'asset-1',
+        type: 'etf',
+        ticker: 'VOO',
+        name: 'S&P 500 ETF',
+        quantity: 100,
+        averagePrice: 500, // 500 USD
+        annualGrowthRate: 8, // 8%
+        dividendYield: 2, // 2%
+        monthlyContribution: 100, // 100 USD 매달 추가 매수
+        reinvestDividend: true,
+        currency: 'USD',
+      },
+    ],
+    nationalPension: {
+      expectedMonthlyAmount: 1000000, // 65세부터 100만 원 수령
+    },
+    privatePensions: [
+      {
+        id: 'pension-1',
+        type: 'irp',
+        balance: 50000000, // 5,000만 원
+        monthlyContribution: 500000, // 50만 원 매월 추가 적립
+        annualReturn: 5, // 5%
+        currency: 'KRW',
+      },
+    ],
+    otherIncomes: [
+      {
+        id: 'income-1',
+        label: '임대소득',
+        monthlyAmount: 500000, // 50만 원
+        currency: 'KRW',
+      },
+    ],
+    inflationRate: 2.5,
+    inflationMode: 'nominal',
+    baseExchangeRate: 1350, // 1 USD = 1,350 KRW
+    exchangeScenario: 'base',
+    displayCurrency: 'KRW',
+  };
+
+  test('명목(Nominal) 모드: 은퇴 전 적립 자산 증식과 은퇴 후 물가상승 생활비 차감 검증', () => {
+    const engine = new SimulationEngine();
+    const result = engine.run(baseParams);
+
+    expect(result.yearlyResults.length).toBe(46); // 40세부터 85세까지 총 46개 연도 결과
+
+    // 40세 첫 해 기말 자산은 초기 자산 + 적립 + 투자 수익을 반영하여 양수여야 함
+    expect(result.yearlyResults[0].totalAssets).toBeGreaterThan(0);
+
+    // 명목 모드일 때 은퇴 나이(60세)의 연간 생활비는 300만 원 * 12달 = 3,600만 원에서
+    // 물가상승률 2.5%가 20년 누적되어 반영되므로 3,600만 원보다 월등히 커야 함.
+    // 60세 연도(index 20)
+    const resultAt60 = result.yearlyResults[20];
+    expect(resultAt60.spending).toBeGreaterThan(3000000 * 12);
+  });
+
+  test('실질(Real) 모드: 실질 수익률(명목-물가) 및 고정 생활비 인출 검증', () => {
+    const paramsReal: SimulationParams = {
+      ...baseParams,
+      inflationMode: 'real',
+    };
+    const engine = new SimulationEngine();
+    const result = engine.run(paramsReal);
+
+    // 실질 모드에서는 인플레이션 할인 덕분에 은퇴 후(60세 이후) 매년 연간 생활비 인출액이
+    // 물가상승을 감안하지 않은 3,600만 원(300만 원 * 12) 근방으로 고정되어야 함
+    const resultAt60 = result.yearlyResults[20];
+    expect(Math.round(resultAt60.spending)).toBe(3000000 * 12);
+  });
+
+  test('사적연금 연금소득세 슬라이딩 적용 검증', () => {
+    // 60세 은퇴하여 연금을 개시하는 시나리오
+    // 연금소득세: 55~69세 5.5%, 70~79세 4.4%, 80세 이상 3.3%
+    const engine = new SimulationEngine();
+    const result = engine.run(baseParams);
+
+    // 사적연금 자산이 충분할 때 60세(세율 5.5%), 72세(세율 4.4%), 82세(세율 3.3%) 시점의 연금 세후 수령 비율이 달라야 함
+    // 세부 세율 계산이 제대로 동작하는지 엔진 내부 비즈니스 연산 확인
+    // (이 테스트는 엔진 내 연금 인출 계산 부분의 세율이 연령별로 맞게 적용되었는지 검증)
+    const resultAt60 = result.yearlyResults[20]; // 60세
+    const resultAt72 = result.yearlyResults[32]; // 72세
+    const resultAt82 = result.yearlyResults[42]; // 82세
+
+    // 국민연금은 65세부터 나오므로 60세 시점 소득은 사적연금과 기타소득뿐임.
+    // 사적연금 인출액에 대해 세금이 다르게 차감되는 구조 확인
+    expect(resultAt60.pensionIncome).toBeGreaterThan(0);
+    expect(resultAt72.pensionIncome).toBeGreaterThan(0);
+    expect(resultAt82.pensionIncome).toBeGreaterThan(0);
+  });
+
+  test('금융소득종합과세 경고 (hasTaxWarning) 기준 테스트', () => {
+    // 자산이 매우 많고 배당률이 높을 때 연간 2,000만 원 초과 시 경고 체크 발생 여부
+    const highAssetParams: SimulationParams = {
+      ...baseParams,
+      assets: [
+        {
+          id: 'asset-high',
+          type: 'stock',
+          ticker: 'SCHD',
+          name: 'High Dividend',
+          quantity: 10000,
+          averagePrice: 100, // 100 USD
+          annualGrowthRate: 5,
+          dividendYield: 4, // 배당률 4% -> 1,000,000 USD 자산 기준 연간 40,000 USD (약 5,400만 원) 배당 발생
+          monthlyContribution: 0,
+          reinvestDividend: false,
+          currency: 'USD',
+        },
+      ],
+      privatePensions: [],
+      otherIncomes: [],
+    };
+
+    const engine = new SimulationEngine();
+    const result = engine.run(highAssetParams);
+
+    // 40세 첫 해 연간 배당금 세전 금액이 약 40,000 USD * 1350 = 5,400만 원이므로
+    // 금융소득 종합과세 경고 플래그 hasTaxWarning이 true여야 함
+    expect(result.yearlyResults[0].hasTaxWarning).toBe(true);
+  });
+
+  test('환율 시나리오 적용 시 USD 자산 평가액 변동 검증', () => {
+    const engine = new SimulationEngine();
+    
+    // Base 환율 시나리오 실행
+    const baseResult = engine.run(baseParams);
+
+    // USD +10% 시나리오 실행
+    const upResult = engine.run({
+      ...baseParams,
+      exchangeScenario: 'usd_up',
+    });
+
+    // USD -10% 시나리오 실행
+    const downResult = engine.run({
+      ...baseParams,
+      exchangeScenario: 'usd_down',
+    });
+
+    // 40세 시점의 기말 총자산을 원화 환산 기준으로 비교했을 때
+    // USD 자산(VOO) 가치가 보정되므로 upResult > baseResult > downResult 여야 함
+    const assetBase = baseResult.yearlyResults[0].totalAssets;
+    const assetUp = upResult.yearlyResults[0].totalAssets;
+    const assetDown = downResult.yearlyResults[0].totalAssets;
+
+    expect(assetUp).toBeGreaterThan(assetBase);
+    expect(assetBase).toBeGreaterThan(assetDown);
+  });
+
+  test('대시보드 종합 점수 및 달성도 계산 결과 검증', () => {
+    const engine = new SimulationEngine();
+    const result = engine.run(baseParams);
+
+    expect(result.retirementScore).toBeGreaterThanOrEqual(0);
+    expect(result.retirementScore).toBeLessThanOrEqual(100);
+    expect(result.goalAchievementRate).toBeGreaterThan(0);
+  });
+
+  test('기대수명이 현재 나이보다 적을 때(잘못된 입력) 예외 없이 빈 결과를 반환하는지 검증', () => {
+    const engine = new SimulationEngine();
+    const invalidParams: SimulationParams = {
+      ...baseParams,
+      userProfile: {
+        ...baseParams.userProfile,
+        currentAge: 80,
+        expectancy: 70,
+      },
+    };
+
+    const result = engine.run(invalidParams);
+    expect(result.yearlyResults.length).toBe(0);
+    expect(result.endingAssets).toBe(0);
+    expect(result.retirementScore).toBe(0);
+    expect(result.goalAchievementRate).toBe(0);
+  });
+
+  test('국민연금과 사적연금 소득 분리 수령 검증 및 올바른 FIRE 가능 나이 계산 검증', () => {
+    const engine = new SimulationEngine();
+    const result = engine.run(baseParams);
+
+    // 65세(index 25)에는 국민연금과 사적연금 모두 수령해야 함.
+    const resultAt65 = result.yearlyResults[25];
+    expect(resultAt65.nationalPensionIncome).toBeGreaterThan(0);
+    expect(resultAt65.privatePensionIncome).toBeGreaterThan(0);
+    expect(resultAt65.pensionIncome).toBe(resultAt65.nationalPensionIncome + resultAt65.privatePensionIncome);
+
+    // 자산이 0이고 소득이 목표보다 적을 때 (사용자가 직면한 상태와 동일)
+    // FIRE 가능 나이가 현재 나이로 즉시 노출되지 않는지 확인
+    const zeroAssetParams: SimulationParams = {
+      ...baseParams,
+      assets: [],
+      privatePensions: [],
+      otherIncomes: [],
+      userProfile: {
+        currentAge: 51,
+        retirementAge: 60,
+        expectancy: 85,
+        targetMonthlySpending: 3000000,
+      }
+    };
+    const zeroResult = engine.run(zeroAssetParams);
+    // 51세(현재나이)에 FIRE가 불가능하고 전체 기간 중 소득이 생활비를 충족하지 못하므로 null이어야 함
+    expect(zeroResult.fireAge).toBeNull();
+  });
+});

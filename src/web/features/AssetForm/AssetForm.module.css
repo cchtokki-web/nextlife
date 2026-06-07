@@ -1,0 +1,330 @@
+.formContainer {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.tabList {
+  display: flex;
+  gap: 0.5rem;
+  border-bottom: 1px solid var(--card-border);
+  padding-bottom: 0.5rem;
+  overflow-x: auto;
+}
+
+.tabButton {
+  background: transparent;
+  border: none;
+  color: var(--foreground-muted);
+  font-family: var(--font-display);
+  font-size: 0.95rem;
+  font-weight: 600;
+  padding: 0.5rem 1rem;
+  cursor: pointer;
+  border-radius: 8px;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.tabButtonActive {
+  color: var(--primary-light);
+  background: rgba(99, 102, 241, 0.1);
+  box-shadow: 0 0 10px 0 rgba(99, 102, 241, 0.05);
+}
+
+.tabContent {
+  animation: fadeIn 0.4s ease;
+}
+
+.assetCard {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--card-border);
+  border-radius: 12px;
+  padding: 1.25rem;
+  margin-bottom: 1rem;
+  position: relative;
+  transition: border-color 0.2s ease;
+}
+
+.assetCard:hover {
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.cardHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.cardTitle {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--primary-light);
+}
+
+.deleteButton {
+  background: transparent;
+  border: none;
+  color: #EF4444;
+  cursor: pointer;
+  padding: 0.25rem;
+  border-radius: 6px;
+  transition: background 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.deleteButton:hover {
+  background: rgba(239, 68, 68, 0.1);
+}
+
+.addButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.75rem;
+  border: 1px dashed var(--card-border);
+  border-radius: 12px;
+  background: transparent;
+  color: var(--foreground-muted);
+  cursor: pointer;
+  font-family: var(--font-main);
+  font-weight: 600;
+  transition: all 0.2s ease;
+}
+
+.addButton:hover {
+  color: var(--foreground);
+  border-color: var(--primary);
+  background: rgba(99, 102, 241, 0.03);
+}
+
+.sectionHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.sectionTitle {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--foreground);
+}
+
+.numberBadge {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--foreground);
+  font-size: 0.8rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 12px;
+  margin-left: 0.5rem;
+}
+
+.pensionLinkContainer {
+  margin-top: 0.75rem;
+  display: flex;
+  justify-content: flex-start;
+  align-items: center;
+}
+
+.pensionLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: var(--primary-light);
+  font-size: 0.85rem;
+  font-weight: 500;
+  text-decoration: none;
+  transition: all 0.2s ease;
+  padding: 0.35rem 0.65rem;
+  background: rgba(99, 102, 241, 0.05);
+  border: 1px solid rgba(99, 102, 241, 0.15);
+  border-radius: 6px;
+}
+
+.pensionLink:hover {
+  color: var(--foreground);
+  background: rgba(99, 102, 241, 0.15);
+  border-color: rgba(99, 102, 241, 0.3);
+  transform: translateY(-1px);
+}
+
+.clickableHeader {
+  cursor: pointer;
+  user-select: none;
+}
+
+.clickableHeader:hover .cardTitle {
+  color: var(--primary-light);
+}
+
+.headerTitleArea {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.chevronIcon {
+  display: flex;
+  align-items: center;
+  color: var(--foreground-muted);
+  transition: transform 0.2s ease, color 0.2s ease;
+}
+
+.clickableHeader:hover .chevronIcon {
+  color: var(--primary-light);
+}
+
+.headerActionArea {
+  display: flex;
+  align-items: center;
+}
+
+.summaryContainer {
+  display: flex;
+  gap: 1.5rem;
+  background: rgba(255, 255, 255, 0.015);
+  border: 1px solid rgba(255, 255, 255, 0.03);
+  padding: 0.6rem 0.9rem;
+  border-radius: 8px;
+  margin-top: -0.25rem;
+  margin-bottom: 0rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.summaryContainer:hover {
+  background: rgba(255, 255, 255, 0.035);
+  border-color: rgba(255, 255, 255, 0.06);
+}
+
+.summaryContainer.expanded {
+  margin-bottom: 1.25rem;
+}
+
+.summaryItem {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.summaryLabel {
+  font-size: 0.85rem;
+  color: var(--foreground-muted);
+}
+
+.summaryValue {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--primary-light);
+}
+
+.cardDetails {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  animation: slideDown 0.2s ease-out forwards;
+}
+
+.assetCardExpanded {
+  border-color: var(--card-border-active);
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.priceInputWrapper {
+  display: flex;
+  width: 100%;
+  gap: 0.5rem;
+}
+
+.priceInputGrow {
+  flex: 1;
+}
+
+.priceFetchButton {
+  margin-top: 29px;
+  margin-bottom: 1.25rem;
+  height: 45px;
+  width: 45px;
+  min-width: 45px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+}
+
+@keyframes spinner {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.spinner {
+  animation: spinner 0.8s linear infinite;
+}
+
+.autocompleteWrapper {
+  position: relative;
+  width: 100%;
+}
+
+.autocompleteDropdown {
+  position: absolute;
+  top: calc(100% - 1.25rem);
+  left: 0;
+  right: 0;
+  background: rgba(30, 30, 40, 0.98);
+  border: 1px solid var(--card-border);
+  border-radius: 8px;
+  max-height: 250px;
+  overflow-y: auto;
+  z-index: 50;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(10px);
+}
+
+.autocompleteItem {
+  padding: 0.75rem 1rem;
+  cursor: pointer;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  display: flex;
+  flex-direction: column;
+  transition: background 0.2s;
+}
+
+.autocompleteItem:last-child {
+  border-bottom: none;
+}
+
+.autocompleteItem:hover {
+  background: rgba(99, 102, 241, 0.15);
+}
+
+.autocompleteItemTitle {
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: var(--primary-light);
+}
+
+.autocompleteItemSub {
+  font-size: 0.8rem;
+  color: var(--foreground-muted);
+  margin-top: 0.2rem;
+}
+

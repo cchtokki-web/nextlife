@@ -1,0 +1,193 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap');
+
+:root {
+  /* HSL Color System */
+  --bg-hue: 222;
+  --bg-saturation: 47%;
+  --bg-lightness: 6%;
+  
+  --background: hsl(var(--bg-hue), var(--bg-saturation), var(--bg-lightness));
+  --foreground: #F9FAFB;
+  --foreground-muted: #9CA3AF;
+  
+  /* Glassmorphism background and borders */
+  --card-bg: rgba(17, 24, 39, 0.55);
+  --card-bg-hover: rgba(23, 37, 84, 0.65);
+  --card-border: rgba(255, 255, 255, 0.08);
+  --card-border-active: rgba(99, 102, 241, 0.4);
+  
+  /* Primary & Accent Colors (Neon & Vibrant) */
+  --primary: #6366F1;       /* Indigo */
+  --primary-light: #818CF8;
+  --primary-glow: rgba(99, 102, 241, 0.15);
+  
+  --secondary: #A855F7;     /* Purple */
+  --secondary-light: #C084FC;
+  --secondary-glow: rgba(168, 85, 247, 0.15);
+  
+  --accent: #06B6D4;        /* Cyan */
+  --accent-glow: rgba(6, 182, 212, 0.15);
+  
+  --success: #10B981;       /* Emerald */
+  --success-glow: rgba(16, 185, 129, 0.1);
+  
+  --warning: #F59E0B;       /* Amber */
+  --warning-glow: rgba(245, 158, 11, 0.1);
+  
+  --danger: #EF4444;        /* Red */
+  --danger-glow: rgba(239, 68, 68, 0.15);
+
+  --font-main: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  --font-display: 'Outfit', sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+  padding: 0;
+  margin: 0;
+}
+
+html, body {
+  width: 100%;
+  min-height: 100vh;
+  background-color: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-main);
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+
+body {
+  /* Define default dynamic variables */
+  --glow-1: rgba(99, 102, 241, 0.14);
+  --glow-2: rgba(168, 85, 247, 0.12);
+  --glow-3: rgba(6, 182, 212, 0.08);
+
+  /* Radiant background glows for premium look */
+  background-image: 
+    radial-gradient(circle at 12% 15%, var(--glow-1) 0%, transparent 50%),
+    radial-gradient(circle at 88% 85%, var(--glow-2) 0%, transparent 50%),
+    radial-gradient(circle at 50% 50%, var(--glow-3) 0%, transparent 65%);
+  background-attachment: fixed;
+  display: flex;
+  flex-direction: column;
+  transition: all 0.5s ease-in-out;
+}
+
+/* Dynamic Accent Colors & Background Glows per Preset */
+body[data-preset="conservative"] {
+  --glow-1: rgba(16, 185, 129, 0.14);
+  --glow-2: rgba(52, 211, 153, 0.10);
+  --glow-3: rgba(6, 182, 212, 0.06);
+  
+  --primary: #10B981;
+  --primary-light: #34D399;
+  --primary-glow: rgba(16, 185, 129, 0.15);
+  --secondary-light: #059669;
+  --accent: #0D9488;
+  --card-border-active: rgba(16, 185, 129, 0.45);
+  --card-border: rgba(16, 185, 129, 0.10);
+}
+
+body[data-preset="base"] {
+  --glow-1: rgba(99, 102, 241, 0.14);
+  --glow-2: rgba(168, 85, 247, 0.12);
+  --glow-3: rgba(6, 182, 212, 0.08);
+  
+  --primary: #6366F1;
+  --primary-light: #818CF8;
+  --primary-glow: rgba(99, 102, 241, 0.15);
+  --secondary-light: #C084FC;
+  --accent: #22D3EE;
+  --card-border-active: rgba(99, 102, 241, 0.45);
+  --card-border: rgba(99, 102, 241, 0.10);
+}
+
+body[data-preset="aggressive"] {
+  --glow-1: rgba(168, 85, 247, 0.14);
+  --glow-2: rgba(236, 72, 153, 0.11);
+  --glow-3: rgba(99, 102, 241, 0.07);
+  
+  --primary: #A855F7;
+  --primary-light: #C084FC;
+  --primary-glow: rgba(16, 185, 129, 0.15);
+  --secondary-light: #F472B6;
+  --accent: #EC4899;
+  --card-border-active: rgba(168, 85, 247, 0.45);
+  --card-border: rgba(168, 85, 247, 0.10);
+}
+
+body[data-preset="custom"] {
+  --glow-1: rgba(107, 114, 128, 0.08);
+  --glow-2: rgba(99, 102, 241, 0.06);
+  --glow-3: rgba(255, 255, 255, 0.01);
+  
+  --primary: #6366F1;
+  --primary-light: #818CF8;
+  --primary-glow: rgba(99, 102, 241, 0.15);
+  --secondary-light: #C084FC;
+  --accent: #22D3EE;
+  --card-border-active: rgba(99, 102, 241, 0.4);
+  --card-border: rgba(255, 255, 255, 0.08);
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+/* Glassmorphism Base Class */
+.glass {
+  background: var(--card-bg);
+  backdrop-filter: blur(16px) saturate(180%);
+  -webkit-backdrop-filter: blur(16px) saturate(180%);
+  border: 1px solid var(--card-border);
+  border-radius: 20px;
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.glass-interactive:hover {
+  background: var(--card-bg-hover);
+  border-color: rgba(255, 255, 255, 0.15);
+  box-shadow: 0 12px 40px 0 rgba(99, 102, 241, 0.15);
+  transform: translateY(-2px);
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.01);
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+/* Micro-animations */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* General Layout helpers */
+.container {
+  width: 100%;
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 2rem 1.5rem;
+}
