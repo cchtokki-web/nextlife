@@ -28,9 +28,13 @@ export type PrivatePensionType = 'irp' | 'savings' | 'retirement';
 export interface PrivatePension {
   id: string;
   type: PrivatePensionType;
+  investmentType?: 'custom' | 'deposit' | 'etf';
+  ticker?: string;
+  name?: string;
   balance: number;
   monthlyContribution: number;
-  annualReturn: number; // % 단위
+  annualReturn: number; // % 단위 (ETF인 경우 연 성장률로 사용)
+  dividendYield?: number; // % 단위 (ETF인 경우 연 배당률)
   currency: AssetCurrency;
 }
 
@@ -45,6 +49,8 @@ export interface OtherIncome {
   currency: AssetCurrency;
 }
 
+export type SpendingStrategy = 'target' | 'dividend_only' | 'max_sustainable';
+
 export interface SimulationParams {
   userProfile: UserProfile;
   assets: InvestmentAsset[];
@@ -57,6 +63,7 @@ export interface SimulationParams {
   exchangeScenario: 'base' | 'usd_up' | 'usd_down'; // +10%, -10% 보정
   displayCurrency: AssetCurrency; // 최종 결과 표기용 통화 ('KRW' | 'USD')
   yieldPreset?: 'conservative' | 'base' | 'aggressive' | 'custom';
+  spendingStrategy?: SpendingStrategy; // 목표 생활비 달성 전략
 }
 
 export interface SimulationYearlyResult {
@@ -81,5 +88,16 @@ export interface SimulationResult {
   depletionAge: number | null; // 자산 고갈 나이 (0 이하가 되는 시점)
   endingAssets: number; // 기대수명(사망) 시점 잔여 자산
   retirementScore: number; // 0 ~ 100 점
+  retirementGrade: string; // 점수 등급 (매우 안정, 안정, 보통, 주의, 위험)
   goalAchievementRate: number; // 은퇴 후 예상 월소득 / 목표 월소득 비율 (%)
+  calculatedTargetSpending?: number; // 역산된 목표 생활비 (max_sustainable 모드 등에서 사용)
+}
+
+export interface ScenarioModel {
+  id: string;
+  name: string;
+  isDefault: boolean;
+  data: SimulationParams;
+  createdAt: string;
+  updatedAt: string;
 }

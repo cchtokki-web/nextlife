@@ -41,16 +41,31 @@ interface AssetFormSectionProps {
 
 type TabType = 'profile' | 'stocks' | 'pensions' | 'other';
 
-export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params, onChangeParams }) => {
+export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawParams, onChangeParams }) => {
+  const params: SimulationParams = {
+    ...rawParams,
+    userProfile: rawParams?.userProfile || { currentAge: 35, retirementAge: 60, expectancy: 90, targetMonthlySpending: 3000000 },
+    assets: rawParams?.assets || [],
+    nationalPension: rawParams?.nationalPension || { expectedMonthlyAmount: 0 },
+    privatePensions: rawParams?.privatePensions || [],
+    otherIncomes: rawParams?.otherIncomes || [],
+    inflationRate: rawParams?.inflationRate ?? 2,
+    inflationMode: rawParams?.inflationMode || 'real',
+    baseExchangeRate: rawParams?.baseExchangeRate ?? 1350,
+    displayCurrency: rawParams?.displayCurrency || 'KRW',
+    spendingStrategy: rawParams?.spendingStrategy || 'target',
+  };
   const [activeTab, setActiveTab] = useState<TabType>('profile');
   const [expandedAssets, setExpandedAssets] = useState<Record<string, boolean>>({});
   const [expandedPensions, setExpandedPensions] = useState<Record<string, boolean>>({});
   const [fetchingPriceMap, setFetchingPriceMap] = useState<Record<string, boolean>>({});
+  const [fetchingInfoMap, setFetchingInfoMap] = useState<Record<string, boolean>>({});
   const [focusedAssetId, setFocusedAssetId] = useState<string | null>(null);
   const [realtimeSuggestions, setRealtimeSuggestions] = useState<Record<string, any[]>>({});
   const [isSearching, setIsSearching] = useState<Record<string, boolean>>({});
 
   const searchTimeoutRef = useRef<Record<string, NodeJS.Timeout>>({});
+  const isSelectingRef = useRef<Record<string, boolean>>({});
 
   const fetchRealtimeSuggestions = useCallback(async (id: string, query: string) => {
     if (!query || query.length < 1) {
@@ -104,6 +119,65 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params, onCh
       console.error(err);
     } finally {
       setFetchingPriceMap((prev) => ({ ...prev, [id]: false }));
+    }
+  };
+
+  const fetchAssetInfo = async (id: string, ticker: string) => {
+    if (!ticker || ticker === 'NEW') return;
+    setFetchingInfoMap((prev) => ({ ...prev, [id]: true }));
+    try {
+      const res = await fetch(`/api/stock-info?ticker=${encodeURIComponent(ticker)}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.annualGrowthRate !== undefined || data.dividendYield !== undefined) {
+          (onChangeParams as any)((prevParams: SimulationParams) => {
+            const updated = prevParams.assets.map((asset) => {
+              if (asset.id === id) {
+                return {
+                  ...asset,
+                  ...(data.annualGrowthRate !== undefined && { annualGrowthRate: data.annualGrowthRate }),
+                  ...(data.dividendYield !== undefined && { dividendYield: data.dividendYield }),
+                };
+              }
+              return asset;
+            });
+            return { ...prevParams, assets: updated, yieldPreset: 'custom' };
+          });
+        }
+      }
+    } catch (err) {
+      console.error('Failed to fetch asset info:', err);
+    } finally {
+      setFetchingInfoMap((prev) => ({ ...prev, [id]: false }));
+    }
+  };
+
+  const fetchPensionInfo = async (id: string, ticker: string) => {
+    if (!ticker) return;
+    setFetchingInfoMap((prev) => ({ ...prev, [id]: true }));
+    try {
+      const res = await fetch(`/api/stock-info?ticker=${encodeURIComponent(ticker)}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.annualGrowthRate !== undefined || data.dividendYield !== undefined) {
+          const annualGrowthRate = data.annualGrowthRate || 0;
+          const dividendYield = data.dividendYield || 0;
+          
+          (onChangeParams as any)((prevParams: SimulationParams) => {
+            const updated = prevParams.privatePensions.map((p) => {
+              if (p.id === id) {
+                return { ...p, annualReturn: annualGrowthRate, dividendYield };
+              }
+              return p;
+            });
+            return { ...prevParams, privatePensions: updated, yieldPreset: 'custom' };
+          });
+        }
+      }
+    } catch (err) {
+      console.error('Failed to fetch pension info:', err);
+    } finally {
+      setFetchingInfoMap((prev) => ({ ...prev, [id]: false }));
     }
   };
 
@@ -171,48 +245,50 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params, onCh
 
 
   const handleUpdateAsset = (id: string, updates: Partial<InvestmentAsset> | keyof InvestmentAsset, value?: any) => {
-    const updated = params.assets.map((asset) => {
-      if (asset.id === id) {
-        if (typeof updates === 'string') {
-          const key = updates as keyof InvestmentAsset;
-          if (key === 'currency') {
-            const prevCurrency = asset.currency;
-            const nextCurrency = value as AssetCurrency;
-            if (prevCurrency !== nextCurrency) {
-              let averagePrice = asset.averagePrice;
-              let monthlyContribution = asset.monthlyContribution;
-              let contributionAmount = asset.contributionAmount ?? asset.monthlyContribution;
-              if (prevCurrency === 'USD' && nextCurrency === 'KRW') {
-                averagePrice = Math.round(averagePrice * params.baseExchangeRate);
-                monthlyContribution = Math.round(monthlyContribution * params.baseExchangeRate);
-                contributionAmount = Math.round(contributionAmount * params.baseExchangeRate);
-              } else if (prevCurrency === 'KRW' && nextCurrency === 'USD') {
-                averagePrice = Math.round((averagePrice / params.baseExchangeRate) * 100) / 100;
-                monthlyContribution = Math.round((monthlyContribution / params.baseExchangeRate) * 100) / 100;
-                contributionAmount = Math.round((contributionAmount / params.baseExchangeRate) * 100) / 100;
+    (onChangeParams as any)((prevParams: SimulationParams) => {
+      const updated = prevParams.assets.map((asset) => {
+        if (asset.id === id) {
+          if (typeof updates === 'string') {
+            const key = updates as keyof InvestmentAsset;
+            if (key === 'currency') {
+              const prevCurrency = asset.currency;
+              const nextCurrency = value as AssetCurrency;
+              if (prevCurrency !== nextCurrency) {
+                let averagePrice = asset.averagePrice;
+                let monthlyContribution = asset.monthlyContribution;
+                let contributionAmount = asset.contributionAmount ?? asset.monthlyContribution;
+                if (prevCurrency === 'USD' && nextCurrency === 'KRW') {
+                  averagePrice = Math.round(averagePrice * prevParams.baseExchangeRate);
+                  monthlyContribution = Math.round(monthlyContribution * prevParams.baseExchangeRate);
+                  contributionAmount = Math.round(contributionAmount * prevParams.baseExchangeRate);
+                } else if (prevCurrency === 'KRW' && nextCurrency === 'USD') {
+                  averagePrice = Math.round((averagePrice / prevParams.baseExchangeRate) * 100) / 100;
+                  monthlyContribution = Math.round((monthlyContribution / prevParams.baseExchangeRate) * 100) / 100;
+                  contributionAmount = Math.round((contributionAmount / prevParams.baseExchangeRate) * 100) / 100;
+                }
+                return {
+                  ...asset,
+                  currency: nextCurrency,
+                  averagePrice,
+                  monthlyContribution,
+                  contributionAmount,
+                  contributionPeriod: asset.contributionPeriod ?? 'monthly',
+                };
               }
-              return {
-                ...asset,
-                currency: nextCurrency,
-                averagePrice,
-                monthlyContribution,
-                contributionAmount,
-                contributionPeriod: asset.contributionPeriod ?? 'monthly',
-              };
             }
+            return { ...asset, [key]: value };
+          } else {
+            return { ...asset, ...updates };
           }
-          return { ...asset, [key]: value };
-        } else {
-          return { ...asset, ...updates };
         }
-      }
-      return asset;
+        return asset;
+      });
+      const isGrowthRateChanged = typeof updates === 'string'
+        ? updates === 'annualGrowthRate'
+        : 'annualGrowthRate' in updates;
+      const presetUpdate = isGrowthRateChanged ? { yieldPreset: 'custom' as const } : {};
+      return { ...prevParams, assets: updated, ...presetUpdate };
     });
-    const isGrowthRateChanged = typeof updates === 'string'
-      ? updates === 'annualGrowthRate'
-      : 'annualGrowthRate' in updates;
-    const presetUpdate = isGrowthRateChanged ? { yieldPreset: 'custom' as const } : {};
-    onChangeParams({ ...params, assets: updated, ...presetUpdate });
   };
 
   const handleDeleteAsset = (id: string) => {
@@ -228,6 +304,7 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params, onCh
     const newPension: PrivatePension = {
       id: `pension-${Date.now()}`,
       type: 'irp',
+      investmentType: 'custom',
       balance: 0,
       monthlyContribution: 0,
       annualReturn: 5,
@@ -240,31 +317,41 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params, onCh
     });
   };
 
-  const handleUpdatePrivatePension = (id: string, key: keyof PrivatePension, value: any) => {
-    const updated = params.privatePensions.map((p) => {
-      if (p.id === id) {
-        if (key === 'currency') {
-          const prevCurrency = p.currency;
-          const nextCurrency = value as AssetCurrency;
-          if (prevCurrency !== nextCurrency) {
-            let balance = p.balance;
-            let monthlyContribution = p.monthlyContribution;
-            if (prevCurrency === 'USD' && nextCurrency === 'KRW') {
-              balance = Math.round(balance * params.baseExchangeRate);
-              monthlyContribution = Math.round(monthlyContribution * params.baseExchangeRate);
-            } else if (prevCurrency === 'KRW' && nextCurrency === 'USD') {
-              balance = Math.round((balance / params.baseExchangeRate) * 100) / 100;
-              monthlyContribution = Math.round((monthlyContribution / params.baseExchangeRate) * 100) / 100;
+  const handleUpdatePrivatePension = (id: string, updates: Partial<PrivatePension> | keyof PrivatePension, value?: any) => {
+    (onChangeParams as any)((prevParams: SimulationParams) => {
+      const updated = prevParams.privatePensions.map((p) => {
+        if (p.id === id) {
+          if (typeof updates === 'string') {
+            const key = updates as keyof PrivatePension;
+            if (key === 'currency') {
+              const prevCurrency = p.currency;
+              const nextCurrency = value as AssetCurrency;
+              if (prevCurrency !== nextCurrency) {
+                let balance = p.balance;
+                let monthlyContribution = p.monthlyContribution;
+                if (prevCurrency === 'USD' && nextCurrency === 'KRW') {
+                  balance = Math.round(balance * prevParams.baseExchangeRate);
+                  monthlyContribution = Math.round(monthlyContribution * prevParams.baseExchangeRate);
+                } else if (prevCurrency === 'KRW' && nextCurrency === 'USD') {
+                  balance = Math.round((balance / prevParams.baseExchangeRate) * 100) / 100;
+                  monthlyContribution = Math.round((monthlyContribution / prevParams.baseExchangeRate) * 100) / 100;
+                }
+                return { ...p, currency: nextCurrency, balance, monthlyContribution };
+              }
             }
-            return { ...p, currency: nextCurrency, balance, monthlyContribution };
+            return { ...p, [key]: value };
+          } else {
+            return { ...p, ...updates };
           }
         }
-        return { ...p, [key]: value };
-      }
-      return p;
+        return p;
+      });
+      const isReturnChanged = typeof updates === 'string'
+        ? updates === 'annualReturn'
+        : 'annualReturn' in updates;
+      const presetUpdate = isReturnChanged ? { yieldPreset: 'custom' as const } : {};
+      return { ...prevParams, privatePensions: updated, ...presetUpdate };
     });
-    const presetUpdate = key === 'annualReturn' ? { yieldPreset: 'custom' as const } : {};
-    onChangeParams({ ...params, privatePensions: updated, ...presetUpdate });
   };
 
   const handleDeletePrivatePension = (id: string) => {
@@ -319,34 +406,39 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params, onCh
     });
   };
 
+  const handleTabClick = (tab: TabType, e: React.MouseEvent<HTMLButtonElement>) => {
+    setActiveTab(tab);
+    e.currentTarget.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+  };
+
   return (
     <div className={styles.formContainer}>
       {/* Tab Menu */}
       <div className={styles.tabList}>
         <button
           className={`${styles.tabButton} ${activeTab === 'profile' ? styles.tabButtonActive : ''}`}
-          onClick={() => setActiveTab('profile')}
+          onClick={(e) => handleTabClick('profile', e)}
         >
           <User size={16} style={{ marginRight: '0.4rem', verticalAlign: 'middle' }} />
           기본 인적사항
         </button>
         <button
           className={`${styles.tabButton} ${activeTab === 'stocks' ? styles.tabButtonActive : ''}`}
-          onClick={() => setActiveTab('stocks')}
+          onClick={(e) => handleTabClick('stocks', e)}
         >
           <Landmark size={16} style={{ marginRight: '0.4rem', verticalAlign: 'middle' }} />
           주식 & ETF <span className={styles.numberBadge}>{params.assets.length}</span>
         </button>
         <button
           className={`${styles.tabButton} ${activeTab === 'pensions' ? styles.tabButtonActive : ''}`}
-          onClick={() => setActiveTab('pensions')}
+          onClick={(e) => handleTabClick('pensions', e)}
         >
           <PiggyBank size={16} style={{ marginRight: '0.4rem', verticalAlign: 'middle' }} />
           연금 자산 <span className={styles.numberBadge}>{params.privatePensions.length + 1}</span>
         </button>
         <button
           className={`${styles.tabButton} ${activeTab === 'other' ? styles.tabButtonActive : ''}`}
-          onClick={() => setActiveTab('other')}
+          onClick={(e) => handleTabClick('other', e)}
         >
           <DollarSign size={16} style={{ marginRight: '0.4rem', verticalAlign: 'middle' }} />
           기타 소득 <span className={styles.numberBadge}>{params.otherIncomes.length}</span>
@@ -379,20 +471,32 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params, onCh
               onChange={(e) => handleProfileChange('expectancy', Number(e.target.value))}
               suffixText="세"
             />
-            <InputField
-              label="은퇴 후 목표 월 생활비"
-              labelSecondary="(선택 통화 기준)"
-              type="text"
-              value={params.userProfile.targetMonthlySpending === 0 ? '0' : params.userProfile.targetMonthlySpending.toLocaleString()}
-              onChange={(e) => {
-                const rawValue = e.target.value.replace(/,/g, '');
-                const numValue = rawValue === '' ? 0 : Number(rawValue);
-                if (!isNaN(numValue)) {
-                  handleProfileChange('targetMonthlySpending', numValue);
-                }
-              }}
-              suffixText={params.displayCurrency === 'KRW' ? '원' : params.displayCurrency}
+            <SelectField
+              label="은퇴 생활비 전략"
+              value={params.spendingStrategy || 'target'}
+              onChange={(e) => onChangeParams({ ...params, spendingStrategy: e.target.value as any })}
+              options={[
+                { value: 'target', label: '고정 목표 생활비 직접 입력' },
+                { value: 'dividend_only', label: '배당금 100% 소비 모드 (원금 보존)' },
+                { value: 'max_sustainable', label: '최대 고정 생활비 자동 역산 (자산 전액 사용)' },
+              ]}
             />
+            {(!params.spendingStrategy || params.spendingStrategy === 'target') && (
+              <InputField
+                label="은퇴 후 목표 월 생활비"
+                labelSecondary="(선택 통화 기준)"
+                type="text"
+                value={params.userProfile.targetMonthlySpending === 0 ? '0' : params.userProfile.targetMonthlySpending.toLocaleString()}
+                onChange={(e) => {
+                  const rawValue = e.target.value.replace(/,/g, '');
+                  const numValue = rawValue === '' ? 0 : Number(rawValue);
+                  if (!isNaN(numValue)) {
+                    handleProfileChange('targetMonthlySpending', numValue);
+                  }
+                }}
+                suffixText={params.displayCurrency === 'KRW' ? '원' : params.displayCurrency}
+              />
+            )}
           </div>
         )}
 
@@ -414,7 +518,11 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params, onCh
               };
 
               return (
-                <div key={asset.id} className={`${styles.assetCard} ${isExpanded ? styles.assetCardExpanded : ''}`}>
+                <div 
+                  key={asset.id} 
+                  className={`${styles.assetCard} ${isExpanded ? styles.assetCardExpanded : ''}`}
+                  style={{ zIndex: focusedAssetId === asset.id ? 50 : 1 }}
+                >
                   <div
                     className={`${styles.cardHeader} ${styles.clickableHeader}`}
                     onClick={() => toggleExpand(asset.id)}
@@ -458,8 +566,10 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params, onCh
                           type="text"
                           value={asset.name}
                           onChange={(e) => {
+                            if (isSelectingRef.current[asset.id]) return;
                             const val = e.target.value;
                             handleUpdateAsset(asset.id, 'name', val);
+                            setFocusedAssetId(asset.id);
                             if (searchTimeoutRef.current[asset.id]) {
                               clearTimeout(searchTimeoutRef.current[asset.id]);
                             }
@@ -468,7 +578,7 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params, onCh
                             }, 300);
                           }}
                           onFocus={() => setFocusedAssetId(asset.id)}
-                          onBlur={() => setTimeout(() => setFocusedAssetId(null), 200)}
+                          onBlur={() => setTimeout(() => setFocusedAssetId(null), 500)}
                         />
                         {focusedAssetId === asset.id && asset.name && (
                           (() => {
@@ -499,7 +609,11 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params, onCh
                                     key={pa.ticker}
                                     className={styles.autocompleteItem}
                                     onMouseDown={(e) => {
+                                      e.preventDefault(); // Prevent input from losing focus on desktop
+                                    }}
+                                    onClick={(e) => {
                                       e.preventDefault();
+                                      isSelectingRef.current[asset.id] = true;
                                       handleUpdateAsset(asset.id, {
                                         name: pa.name,
                                         ticker: pa.ticker,
@@ -509,6 +623,8 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params, onCh
                                         dividendYield: pa.dividendYield,
                                       });
                                       setFocusedAssetId(null);
+                                      fetchAssetInfo(asset.id, pa.ticker);
+                                      setTimeout(() => { isSelectingRef.current[asset.id] = false; }, 200);
                                     }}
                                   >
                                     <span className={styles.autocompleteItemTitle}>{pa.name}</span>
@@ -571,22 +687,54 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params, onCh
                           />
                         </button>
                       </div>
-                      <InputField
-                        label="연 성장률"
-                        type="number"
-                        step="0.1"
-                        value={asset.annualGrowthRate}
-                        onChange={(e) => handleUpdateAsset(asset.id, 'annualGrowthRate', Number(e.target.value))}
-                        suffixText="%"
-                      />
-                      <InputField
-                        label="연 배당률"
-                        type="number"
-                        step="0.1"
-                        value={asset.dividendYield}
-                        onChange={(e) => handleUpdateAsset(asset.id, 'dividendYield', Number(e.target.value))}
-                        suffixText="%"
-                      />
+                      <div className={styles.priceInputWrapper}>
+                        <div className={styles.priceInputGrow}>
+                          <InputField
+                            label="연 성장률"
+                            type="number"
+                            step="0.1"
+                            value={asset.annualGrowthRate}
+                            onChange={(e) => handleUpdateAsset(asset.id, 'annualGrowthRate', Number(e.target.value))}
+                            suffixText="%"
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          className={`${compStyles.button} ${compStyles.buttonSecondary} ${styles.priceFetchButton}`}
+                          onClick={() => fetchAssetInfo(asset.id, asset.ticker)}
+                          disabled={fetchingInfoMap[asset.id] || asset.ticker === 'NEW'}
+                          title="실시간 성장률/배당률 조회"
+                        >
+                          <RefreshCw
+                            size={14}
+                            className={fetchingInfoMap[asset.id] ? styles.spinner : ''}
+                          />
+                        </button>
+                      </div>
+                      <div className={styles.priceInputWrapper}>
+                        <div className={styles.priceInputGrow}>
+                          <InputField
+                            label="연 배당률"
+                            type="number"
+                            step="0.1"
+                            value={asset.dividendYield}
+                            onChange={(e) => handleUpdateAsset(asset.id, 'dividendYield', Number(e.target.value))}
+                            suffixText="%"
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          className={`${compStyles.button} ${compStyles.buttonSecondary} ${styles.priceFetchButton}`}
+                          onClick={() => fetchAssetInfo(asset.id, asset.ticker)}
+                          disabled={fetchingInfoMap[asset.id] || asset.ticker === 'NEW'}
+                          title="실시간 성장률/배당률 조회"
+                        >
+                          <RefreshCw
+                            size={14}
+                            className={fetchingInfoMap[asset.id] ? styles.spinner : ''}
+                          />
+                        </button>
+                      </div>
                       <SelectField
                         label="적립 주기"
                         value={asset.contributionPeriod || 'monthly'}
@@ -707,6 +855,9 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params, onCh
               <div className={styles.cardHeader}>
                 <span className={styles.cardTitle}>국민연금 (만 65세 수령 시작)</span>
               </div>
+              <p style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)', marginBottom: '1rem', marginTop: '-0.5rem' }}>
+                * 수령액은 매년 설정된 물가상승률과 동일하게 인상되어 적용됩니다.
+              </p>
               <div className={compStyles.grid}>
                   <InputField
                     label="예상 월 수령액"
@@ -756,7 +907,11 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params, onCh
               };
 
               return (
-              <div key={pension.id} className={`${styles.assetCard} ${isExpanded ? styles.assetCardExpanded : ''}`}>
+              <div 
+                key={pension.id} 
+                className={`${styles.assetCard} ${isExpanded ? styles.assetCardExpanded : ''}`}
+                style={{ zIndex: focusedAssetId === pension.id ? 50 : 1 }}
+              >
                 <div 
                   className={`${styles.cardHeader} ${styles.clickableHeader}`}
                   onClick={() => togglePensionExpand(pension.id)}
@@ -803,6 +958,105 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params, onCh
                     ]}
                   />
                   <SelectField
+                    label="투자 방식"
+                    value={pension.investmentType || 'custom'}
+                    onChange={(e) => handleUpdatePrivatePension(pension.id, 'investmentType', e.target.value)}
+                    options={[
+                      { value: 'custom', label: '직접입력 (기본)' },
+                      { value: 'deposit', label: '예금 (Deposit)' },
+                      { value: 'etf', label: 'ETF' },
+                    ]}
+                  />
+                  {pension.investmentType === 'etf' && (
+                    <div className={styles.autocompleteWrapper}>
+                      <InputField
+                        label="종목명"
+                        type="text"
+                        value={pension.name || ''}
+                        onChange={(e) => {
+                          if (isSelectingRef.current[pension.id]) return;
+                          const val = e.target.value;
+                          handleUpdatePrivatePension(pension.id, 'name', val);
+                          setFocusedAssetId(pension.id);
+                          if (searchTimeoutRef.current[pension.id]) {
+                            clearTimeout(searchTimeoutRef.current[pension.id]);
+                          }
+                          searchTimeoutRef.current[pension.id] = setTimeout(() => {
+                            fetchRealtimeSuggestions(pension.id, val);
+                          }, 300);
+                        }}
+                        onFocus={() => setFocusedAssetId(pension.id)}
+                        onBlur={() => setTimeout(() => setFocusedAssetId(null), 200)}
+                      />
+                      {focusedAssetId === pension.id && pension.name && (
+                        (() => {
+                          const matchingPredefined = predefinedAssets.filter(pa => 
+                            pa.name.toLowerCase().includes(pension.name!.toLowerCase()) ||
+                            pa.ticker.toLowerCase().includes(pension.name!.toLowerCase())
+                          );
+                          const rsList = realtimeSuggestions[pension.id] || [];
+                          const predefinedTickers = new Set(matchingPredefined.map(p => p.ticker));
+                          const additionalRealtime = rsList
+                            .filter((rs: any) => !predefinedTickers.has(rs.ticker))
+                            .map((rs: any) => ({
+                              ...rs,
+                              annualGrowthRate: rs.type === 'etf' ? 7.0 : 6.0,
+                              dividendYield: rs.type === 'etf' ? 1.5 : 1.0,
+                            }));
+                          const combined = [...matchingPredefined, ...additionalRealtime].slice(0, 8);
+                          const searching = isSearching[pension.id];
+                          if (combined.length === 0 && !searching) return null;
+                          return (
+                            <div className={styles.autocompleteDropdown}>
+                              {combined.map(pa => (
+                                <div
+                                  key={pa.ticker}
+                                  className={styles.autocompleteItem}
+                                  onMouseDown={(e) => {
+                                    e.preventDefault();
+                                    isSelectingRef.current[pension.id] = true;
+                                    handleUpdatePrivatePension(pension.id, {
+                                      name: pa.name,
+                                      ticker: pa.ticker,
+                                      currency: pa.currency,
+                                      annualReturn: Math.round((pa.annualGrowthRate + pa.dividendYield) * 10) / 10,
+                                    });
+                                    setFocusedAssetId(null);
+                                    fetchPensionInfo(pension.id, pa.ticker);
+                                    setTimeout(() => { isSelectingRef.current[pension.id] = false; }, 200);
+                                  }}
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    isSelectingRef.current[pension.id] = true;
+                                    handleUpdatePrivatePension(pension.id, {
+                                      name: pa.name,
+                                      ticker: pa.ticker,
+                                      currency: pa.currency,
+                                      annualReturn: Math.round((pa.annualGrowthRate + pa.dividendYield) * 10) / 10,
+                                    });
+                                    setFocusedAssetId(null);
+                                    fetchPensionInfo(pension.id, pa.ticker);
+                                    setTimeout(() => { isSelectingRef.current[pension.id] = false; }, 200);
+                                  }}
+                                >
+                                  <span className={styles.autocompleteItemTitle}>{pa.name}</span>
+                                  <span className={styles.autocompleteItemSub}>
+                                    {pa.ticker} • {pa.currency === 'USD' ? '미국 주식/ETF' : '국내 주식/ETF'}
+                                  </span>
+                                </div>
+                              ))}
+                              {searching && (
+                                <div className={styles.autocompleteItem} style={{ cursor: 'default' }}>
+                                  <span className={styles.autocompleteItemSub}>실시간 검색 중...</span>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })()
+                      )}
+                    </div>
+                  )}
+                  <SelectField
                     label="통화(Currency)"
                     value={pension.currency}
                     onChange={(e) => handleUpdatePrivatePension(pension.id, 'currency', e.target.value)}
@@ -812,7 +1066,7 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params, onCh
                     ]}
                   />
                   <InputField
-                    label="현재 적립 잔액"
+                    label="현재 적립 잔액 (평가 금액)"
                     type="text"
                     value={pension.balance === 0 ? '0' : pension.balance.toLocaleString()}
                     onChange={(e) => {
@@ -849,14 +1103,67 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params, onCh
                     }}
                     suffixText={pension.currency === 'KRW' ? '원' : pension.currency}
                   />
-                  <InputField
-                    label="연 기대 수익률"
-                    type="number"
-                    step="0.1"
-                    value={pension.annualReturn}
-                    onChange={(e) => handleUpdatePrivatePension(pension.id, 'annualReturn', Number(e.target.value))}
-                    suffixText="%"
-                  />
+                  {pension.investmentType === 'etf' ? (
+                    <>
+                      <div className={styles.priceInputWrapper}>
+                        <div className={styles.priceInputGrow}>
+                          <InputField
+                            label="연 주가 상승률"
+                            type="number"
+                            step="0.1"
+                            value={pension.annualReturn}
+                            onChange={(e) => handleUpdatePrivatePension(pension.id, 'annualReturn', Number(e.target.value))}
+                            suffixText="%"
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          className={`${compStyles.button} ${compStyles.buttonSecondary} ${styles.priceFetchButton}`}
+                          onClick={() => fetchPensionInfo(pension.id, pension.ticker!)}
+                          disabled={fetchingInfoMap[pension.id] || !pension.ticker}
+                          title="실시간 수익률 조회"
+                        >
+                          <RefreshCw
+                            size={14}
+                            className={fetchingInfoMap[pension.id] ? styles.spinner : ''}
+                          />
+                        </button>
+                      </div>
+                      <div className={styles.priceInputWrapper}>
+                        <div className={styles.priceInputGrow}>
+                          <InputField
+                            label="연 기대 배당률"
+                            type="number"
+                            step="0.1"
+                            value={pension.dividendYield || 0}
+                            onChange={(e) => handleUpdatePrivatePension(pension.id, 'dividendYield', Number(e.target.value))}
+                            suffixText="%"
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          className={`${compStyles.button} ${compStyles.buttonSecondary} ${styles.priceFetchButton}`}
+                          onClick={() => fetchPensionInfo(pension.id, pension.ticker!)}
+                          disabled={fetchingInfoMap[pension.id] || !pension.ticker}
+                          title="실시간 수익률/배당률 조회"
+                        >
+                          <RefreshCw
+                            size={14}
+                            className={fetchingInfoMap[pension.id] ? styles.spinner : ''}
+                          />
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    <InputField
+                      label={pension.investmentType === 'deposit' ? '연 이자율 (금리)' : '연 주가 상승률'}
+                      type="number"
+                      step="0.1"
+                      value={pension.annualReturn}
+                      onChange={(e) => handleUpdatePrivatePension(pension.id, 'annualReturn', Number(e.target.value))}
+                      suffixText="%"
+                    />
+                  )}
                 </div>
                 )}
               </div>

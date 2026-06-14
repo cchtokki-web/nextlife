@@ -255,4 +255,22 @@ export const predefinedAssets: PredefinedAsset[] = [
     annualGrowthRate: 4.0,
     dividendYield: 5.5,
   },
+
+  // 사적연금 (Private Pension)
+  {
+    ticker: 'PENSION_DEP',
+    name: '사적연금(예금)',
+    type: 'etf',
+    currency: 'KRW',
+    annualGrowthRate: 3.0,
+    dividendYield: 0.0,
+  },
+  {
+    ticker: 'PENSION_ETF',
+    name: '사적연금(ETF)',
+    type: 'etf',
+    currency: 'KRW',
+    annualGrowthRate: 7.0,
+    dividendYield: 1.5,
+  },
 ];
