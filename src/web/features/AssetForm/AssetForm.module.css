@@ -4,6 +4,17 @@
   gap: 1.5rem;
 }
 
+.icon {
+  color: var(--primary-light);
+}
+
+.title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--foreground);
+}
+
+
 .tabList {
   display: flex;
   gap: 0.5rem;
@@ -58,9 +69,12 @@
 }
 
 .cardTitle {
-  font-size: 1rem;
+  font-size: 0.9rem;
   font-weight: 600;
   color: var(--primary-light);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .deleteButton {
@@ -114,6 +128,8 @@
   font-size: 1.1rem;
   font-weight: 700;
   color: var(--foreground);
+  margin-bottom: 0.5rem;
+  display: block;
 }
 
 .numberBadge {
@@ -167,6 +183,8 @@
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  min-width: 0;
+  flex: 1;
 }
 
 .chevronIcon {
@@ -187,10 +205,11 @@
 
 .summaryContainer {
   display: flex;
-  gap: 1.5rem;
+  flex-wrap: wrap;
+  gap: 1.25rem;
   background: rgba(255, 255, 255, 0.015);
   border: 1px solid rgba(255, 255, 255, 0.03);
-  padding: 0.6rem 0.9rem;
+  padding: 0.8rem 1rem;
   border-radius: 8px;
   margin-top: -0.25rem;
   margin-bottom: 0rem;
@@ -211,6 +230,7 @@
   display: flex;
   align-items: center;
   gap: 0.4rem;
+  white-space: nowrap;
 }
 
 .summaryLabel {
@@ -253,15 +273,16 @@
 }
 
 .priceInputGrow {
+  min-width: 0;
   flex: 1;
 }
 
 .priceFetchButton {
-  margin-top: 29px;
+  margin-top: 25px;
   margin-bottom: 1.25rem;
-  height: 45px;
-  width: 45px;
-  min-width: 45px;
+  height: 42px;
+  width: 42px;
+  min-width: 42px;
   padding: 0;
   display: flex;
   align-items: center;
@@ -286,7 +307,7 @@
 
 .autocompleteDropdown {
   position: absolute;
-  top: calc(100% - 1.25rem);
+  top: calc(100% + 4px);
   left: 0;
   right: 0;
   background: rgba(30, 30, 40, 0.98);
@@ -318,13 +339,19 @@
 
 .autocompleteItemTitle {
   font-weight: 600;
-  font-size: 0.95rem;
+  font-size: 0.85rem;
   color: var(--primary-light);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .autocompleteItemSub {
   font-size: 0.8rem;
   color: var(--foreground-muted);
   margin-top: 0.2rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 

@@ -86,7 +86,7 @@ export const SimulationSettings: React.FC<{ scenarioState: any }> = ({ scenarioS
       <div 
         className={styles.header}
         onClick={() => setIsExpanded(!isExpanded)}
-        style={{ cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+        style={{ cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: isExpanded ? '1rem' : '0' }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
           <Sliders size={18} className={styles.icon} />
@@ -96,7 +96,7 @@ export const SimulationSettings: React.FC<{ scenarioState: any }> = ({ scenarioS
       </div>
 
       {isExpanded && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', marginTop: '1rem' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', marginTop: '0.5rem' }}>
           
           {/* Yield Scenario Presets */}
           <div className={styles.presetSection}>
@@ -158,9 +158,9 @@ export const SimulationSettings: React.FC<{ scenarioState: any }> = ({ scenarioS
                 className={`${compStyles.button} ${compStyles.buttonSecondary} ${styles.fetchButton}`}
                 onClick={fetchExchangeRate}
                 disabled={isFetching}
+                title="현재 환율 적용"
               >
-                <RefreshCw size={14} className={isFetching ? styles.spinner : ''} />
-                <span>현재 환율 적용</span>
+                <RefreshCw size={18} className={isFetching ? styles.spinner : ''} />
               </button>
             </div>
             <SelectField

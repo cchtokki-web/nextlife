@@ -411,16 +411,32 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
     e.currentTarget.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
   };
 
+  const [isSectionExpanded, setIsSectionExpanded] = useState(true);
+
   return (
     <div className={styles.formContainer}>
-      {/* Tab Menu */}
-      <div className={styles.tabList}>
+      <div 
+        className={styles.header}
+        onClick={() => setIsSectionExpanded(!isSectionExpanded)}
+        style={{ cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: isSectionExpanded ? '1rem' : '0' }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <User size={18} className={styles.icon} />
+          <span className={styles.title}>인적사항 및 자산 입력</span>
+        </div>
+        {isSectionExpanded ? <ChevronUp size={18} className={styles.icon} /> : <ChevronDown size={18} className={styles.icon} />}
+      </div>
+
+      {isSectionExpanded && (
+        <>
+          {/* Tab Menu */}
+          <div className={styles.tabList}>
         <button
           className={`${styles.tabButton} ${activeTab === 'profile' ? styles.tabButtonActive : ''}`}
           onClick={(e) => handleTabClick('profile', e)}
         >
           <User size={16} style={{ marginRight: '0.4rem', verticalAlign: 'middle' }} />
-          기본 인적사항
+          인적사항
         </button>
         <button
           className={`${styles.tabButton} ${activeTab === 'stocks' ? styles.tabButtonActive : ''}`}
@@ -650,6 +666,16 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                         options={[
                           { value: 'KRW', label: 'KRW (원)' },
                           { value: 'USD', label: 'USD ($)' },
+                        ]}
+                      />
+                      <SelectField
+                        label="과세 체계"
+                        value={asset.assetMarket || (asset.currency === 'USD' ? 'US_ETF' : 'KR_ETF')}
+                        onChange={(e) => handleUpdateAsset(asset.id, 'assetMarket', e.target.value)}
+                        options={[
+                          { value: 'US_ETF', label: '해외(미국) 주식/ETF' },
+                          { value: 'KR_ETF', label: '국내 상장 주식/ETF' },
+                          { value: 'OTHER', label: '기타 자산 (비과세 등)' },
                         ]}
                       />
                       <InputField
@@ -1223,6 +1249,8 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
           </div>
         )}
       </div>
+      </>
+      )}
     </div>
   );
 };
