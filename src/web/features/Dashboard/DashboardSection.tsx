@@ -7,8 +7,10 @@ import styles from './Dashboard.module.css';
 import { AlertTriangle, TrendingDown, Target, Zap, ShieldAlert, Award } from 'lucide-react';
 import {
   ResponsiveContainer,
+  ComposedChart,
   AreaChart,
   Area,
+  Line,
   XAxis,
   YAxis,
   Tooltip,
@@ -21,9 +23,35 @@ import {
 interface DashboardSectionProps {
   params: SimulationParams;
   result: SimulationResult;
+  compareResults?: { id: string, name: string, result: SimulationResult }[];
 }
 
-export const DashboardSection: React.FC<DashboardSectionProps> = ({ params, result }) => {
+export const DashboardSection: React.FC<DashboardSectionProps> = ({ params: rawParams, result, compareResults = [] }) => {
+  const [hiddenKeys, setHiddenKeys] = React.useState<Record<string, boolean>>({});
+
+  const handleLegendClick = (e: any) => {
+    const dataKey = e.dataKey;
+    if (dataKey) {
+      setHiddenKeys((prev) => ({
+        ...prev,
+        [dataKey]: !prev[dataKey]
+      }));
+    }
+  };
+
+  const params: SimulationParams = {
+    ...rawParams,
+    userProfile: rawParams?.userProfile || { currentAge: 35, retirementAge: 60, expectancy: 90, targetMonthlySpending: 3000000 },
+    assets: rawParams?.assets || [],
+    nationalPension: rawParams?.nationalPension || { expectedMonthlyAmount: 0 },
+    privatePensions: rawParams?.privatePensions || [],
+    otherIncomes: rawParams?.otherIncomes || [],
+    inflationRate: rawParams?.inflationRate ?? 2,
+    inflationMode: rawParams?.inflationMode || 'real',
+    baseExchangeRate: rawParams?.baseExchangeRate ?? 1350,
+    displayCurrency: rawParams?.displayCurrency || 'KRW',
+    spendingStrategy: rawParams?.spendingStrategy || 'target',
+  };
   const { yearlyResults, fireAge, depletionAge, endingAssets, retirementScore, goalAchievementRate } = result;
   const currency = params.displayCurrency;
 
@@ -83,15 +111,24 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({ params, resu
   };
 
   // Check if any year has tax warning
-  const hasGlobalTaxWarning = yearlyResults.some((r) => r.hasTaxWarning);
+  const taxWarningYears = yearlyResults.filter((r) => r.hasTaxWarning);
+  const hasGlobalTaxWarning = taxWarningYears.length > 0;
+  let taxWarningPeriodText: React.ReactNode = null;
+  if (hasGlobalTaxWarning) {
+    const first = taxWarningYears[0];
+    const last = taxWarningYears[taxWarningYears.length - 1];
+    if (first.year === last.year) {
+      taxWarningPeriodText = <span><strong>{first.year}년({first.age}세)</strong>에</span>;
+    } else {
+      taxWarningPeriodText = <span><strong>{first.year}년({first.age}세) ~ {last.year}년({last.age}세)</strong> 동안</span>;
+    }
+  }
 
-  // Filter pension income breakdown (only retirement years starting age 65)
+  // Income breakdown (cover the entire period to align with Asset Projection chart)
   const pensionChartData = yearlyResults
-    .filter((r) => r.age >= params.userProfile.retirementAge)
     .map((r) => {
-      // 월간 기준 소득원들을 연간 소득원으로 변환하여 막대그래프에 표출
       return {
-        age: `${r.age}세`,
+        age: r.age,
         국민연금: Math.round(r.nationalPensionIncome),
         사적연금: Math.round(r.privatePensionIncome),
         배당소득: Math.round(r.dividendIncome),
@@ -99,28 +136,67 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({ params, resu
       };
     });
 
-  // Assets Line chart data formatting
-  const assetChartData = yearlyResults.map((r) => ({
-    age: r.age,
-    ageLabel: `${r.age}세`,
-    자산총액: Math.max(0, Math.round(r.totalAssets)),
-    주식자산: Math.max(0, Math.round(r.stockAssets)),
-    연금자산: Math.max(0, Math.round(r.pensionAssets)),
-  }));
+  // Assets Line chart data formatting (Merge base with compare scenarios)
+  const assetChartData = yearlyResults.map((r) => {
+    const dataPoint: any = {
+      age: r.age,
+      ageLabel: `${r.age}세`,
+      자산총액: Math.max(0, Math.round(r.totalAssets)),
+      주식자산: Math.max(0, Math.round(r.stockAssets)),
+      연금자산: Math.max(0, Math.round(r.pensionAssets)),
+      월생활비: Math.max(0, Math.round(r.spending / 12)),
+    };
+
+    compareResults.forEach((comp) => {
+      const compYear = comp.result.yearlyResults.find(yr => yr.age === r.age);
+      if (compYear) {
+        dataPoint[`compare_${comp.id}`] = Math.max(0, Math.round(compYear.totalAssets));
+      }
+    });
+
+    return dataPoint;
+  });
+
+  // Colors for comparison lines
+  const compareColors = ['#10B981', '#F59E0B', '#EF4444', '#8B5CF6'];
 
   // Score Circle coordinates
   const radius = 50;
   const strokeWidth = 8;
   const normalizedRadius = radius - strokeWidth * 2;
   const circumference = normalizedRadius * 2 * Math.PI;
-  const strokeDashoffset = circumference - (retirementScore / 100) * circumference;
+  const strokeDashoffset = circumference - (result.retirementScore / 100) * circumference;
 
   // Goal circle Dash offset
-  const minGoalRate = Math.min(100, goalAchievementRate);
+  const minGoalRate = Math.min(100, result.goalAchievementRate);
   const goalDashoffset = circumference - (minGoalRate / 100) * circumference;
 
   return (
     <div className={styles.container}>
+      {/* Strategy Indicator Banner */}
+      {params.spendingStrategy === 'max_sustainable' && result.calculatedTargetSpending !== undefined && (
+        <div className={styles.warningCard} style={{ background: 'rgba(16, 185, 129, 0.1)', borderColor: 'rgba(16, 185, 129, 0.3)', marginBottom: '1.5rem' }}>
+          <Award size={22} className={styles.warningIcon} color="var(--success)" />
+          <div className={styles.warningContent}>
+            <span className={styles.warningTitle} style={{ color: 'var(--success)' }}>최대 고정 생활비 산출 완료</span>
+            <span className={styles.warningText}>
+              시뮬레이션 결과, 고갈 없이 유지 가능한 <strong>최대 월 생활비는 {formatValue(result.calculatedTargetSpending)}</strong>입니다. 모든 차트는 이 금액을 목표로 다시 그려졌습니다.
+            </span>
+          </div>
+        </div>
+      )}
+      {params.spendingStrategy === 'dividend_only' && (
+        <div className={styles.warningCard} style={{ background: 'rgba(59, 130, 246, 0.1)', borderColor: 'rgba(59, 130, 246, 0.3)', marginBottom: '1.5rem' }}>
+          <Zap size={22} className={styles.warningIcon} color="#3B82F6" />
+          <div className={styles.warningContent}>
+            <span className={styles.warningTitle} style={{ color: '#3B82F6' }}>배당금 100% 소비 모드 적용 중</span>
+            <span className={styles.warningText}>
+              은퇴 후 매월 발생하는 배당금 및 연금(이자)만 100% 소비하며, 원금은 전혀 매도하지 않도록 시뮬레이션 되었습니다.
+            </span>
+          </div>
+        </div>
+      )}
+
       {/* 1. Top Metrics Row */}
       <div className={styles.metricsGrid}>
         
@@ -154,12 +230,15 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({ params, resu
               </defs>
             </svg>
             <div className={styles.scoreValue}>
-              {retirementScore}
+              {result.retirementScore}
               <span className={styles.scoreValueUnit}>점</span>
             </div>
           </div>
-          <span className={styles.metricSubText} style={{ marginTop: '0.75rem' }}>
-            {depletionAge ? `${depletionAge}세 자산 고갈 위험` : '기대수명 내 고갈 위험 없음'}
+          <span className={styles.metricSubText} style={{ marginTop: '0.75rem', fontWeight: 600 }}>
+            {result.retirementGrade} 등급
+          </span>
+          <span className={styles.metricSubText} style={{ marginTop: '0.25rem' }}>
+            {result.depletionAge ? `${result.depletionAge}세 자산 고갈 예상` : '기대수명 내 고갈 위험 없음'}
           </span>
         </GlassCard>
 
@@ -239,7 +318,7 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({ params, resu
           <div className={styles.warningContent}>
             <span className={styles.warningTitle}>금융소득종합과세 위험 노출</span>
             <span className={styles.warningText}>
-              시뮬레이션 도중 연간 금융소득(세전 배당소득 + 사적연금 인출액 합산)이 2,000만 원을 초과하는 연도가 존재합니다. 종합소득세 과세 대상이 되어 추가적인 세율이 부과될 수 있으니 IRP 추가 세액공제 한도 확인 및 자산 인출 분산 전략을 계획하시기 바랍니다.
+              {taxWarningPeriodText} <strong>연간 금융소득 2,000만 원을 초과</strong>하여 종합소득세 과세 대상이 될 수 있습니다. 세액공제 한도 확인 및 인출 전략 점검을 권장합니다.
             </span>
           </div>
         </div>
@@ -248,7 +327,12 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({ params, resu
       {/* 3. Asset Projection Line Chart */}
       <GlassCard className={styles.chartCard}>
         <div className={styles.chartHeader}>
-          <span className={styles.chartTitle}>자산 추이 시뮬레이션 (현재 ~ {params.userProfile.expectancy}세)</span>
+          <span className={styles.chartTitle}>
+            자산 추이 시뮬레이션 (현재 ~ {params.userProfile.expectancy}세)
+            <span style={{ fontSize: '0.85em', color: 'var(--foreground-muted)', marginLeft: '8px', fontWeight: 'normal' }}>
+              ({params.inflationMode === 'nominal' ? '명목가치' : '실질가치'} 기준)
+            </span>
+          </span>
           {depletionAge ? (
             <span className={styles.depletionAlertBadge}>
               <TrendingDown size={12} style={{ marginRight: '0.25rem', verticalAlign: 'middle' }} />
@@ -260,13 +344,132 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({ params, resu
         </div>
         <div className={styles.chartContainer}>
           <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={assetChartData} margin={{ top: 10, right: 15, left: 10, bottom: 10 }}>
+            <ComposedChart data={assetChartData} margin={{ top: 10, right: 15, left: 10, bottom: 10 }}>
               <defs>
                 <linearGradient id="totalAssetColor" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor="var(--primary)" stopOpacity={0.4} />
                   <stop offset="95%" stopColor="var(--primary)" stopOpacity={0.0} />
                 </linearGradient>
               </defs>
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255, 255, 255, 0.05)" />
+              <XAxis
+                dataKey="age"
+                stroke="var(--foreground-muted)"
+                style={{ fontSize: '0.75rem' }}
+                tickFormatter={(v) => `${v}세`}
+                minTickGap={15}
+              />
+              <YAxis
+                yAxisId="left"
+                stroke="var(--foreground-muted)"
+                style={{ fontSize: '0.75rem' }}
+                width={65}
+                tickFormatter={(v) => formatShortValue(v)}
+              />
+              <YAxis
+                yAxisId="right"
+                orientation="right"
+                stroke="#F59E0B"
+                style={{ fontSize: '0.75rem' }}
+                width={60}
+                tickFormatter={(v) => formatShortValue(v)}
+              />
+              <Tooltip
+                contentStyle={{
+                  background: 'rgba(17, 24, 39, 0.85)',
+                  border: '1px solid var(--card-border)',
+                  borderRadius: '12px',
+                  color: 'white',
+                  fontFamily: 'var(--font-main)',
+                  fontSize: '0.8rem',
+                }}
+                formatter={(value: any) => [formatValue(Number(value)), '']}
+                labelFormatter={(label) => `${label}세`}
+              />
+              <Legend 
+                verticalAlign="top" 
+                height={36} 
+                wrapperStyle={{ fontSize: '0.8rem', color: 'var(--foreground-muted)', cursor: 'pointer' }} 
+                onClick={handleLegendClick}
+              />
+              
+              <Area
+                yAxisId="left"
+                name="총 자산액 (현재)"
+                type="monotone"
+                dataKey="자산총액"
+                stroke="var(--primary)"
+                fillOpacity={1}
+                fill="url(#totalAssetColor)"
+                strokeWidth={3}
+                hide={!!hiddenKeys['자산총액']}
+              />
+              
+              {/* Compare Scenarios Lines */}
+              {compareResults.map((comp, idx) => (
+                <Line
+                  key={comp.id}
+                  yAxisId="left"
+                  name={`${comp.name} (비교)`}
+                  type="monotone"
+                  dataKey={`compare_${comp.id}`}
+                  stroke={compareColors[idx % compareColors.length]}
+                  strokeWidth={2}
+                  dot={false}
+                  hide={!!hiddenKeys[`compare_${comp.id}`]}
+                />
+              ))}
+
+              <Area
+                yAxisId="left"
+                name="주식/ETF 자산"
+                type="monotone"
+                dataKey="주식자산"
+                stroke="var(--accent)"
+                fill="transparent"
+                strokeDasharray="4 4"
+                strokeWidth={1.5}
+                hide={!!hiddenKeys['주식자산']}
+              />
+              <Area
+                yAxisId="left"
+                name="연금 자산"
+                type="monotone"
+                dataKey="연금자산"
+                stroke="var(--secondary)"
+                fill="transparent"
+                strokeDasharray="4 4"
+                strokeWidth={1.5}
+                hide={!!hiddenKeys['연금자산']}
+              />
+              <Line
+                yAxisId="right"
+                name="월 생활비"
+                type="monotone"
+                dataKey="월생활비"
+                stroke="#F59E0B"
+                strokeWidth={2}
+                dot={false}
+                hide={!!hiddenKeys['월생활비']}
+              />
+            </ComposedChart>
+          </ResponsiveContainer>
+        </div>
+      </GlassCard>
+
+      {/* 4. Income Breakdown Stacked Bar Chart */}
+      <GlassCard className={styles.chartCard}>
+        <div className={styles.chartHeader}>
+          <span className={styles.chartTitle}>
+            연령별 소득원 구성 (현재 ~ {params.userProfile.expectancy}세)
+            <span style={{ fontSize: '0.85em', color: 'var(--foreground-muted)', marginLeft: '8px', fontWeight: 'normal' }}>
+              ({params.inflationMode === 'nominal' ? '명목가치' : '실질가치'} 기준)
+            </span>
+          </span>
+        </div>
+        <div className={styles.chartContainer}>
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={pensionChartData} margin={{ top: 10, right: 75, left: 10, bottom: 10 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(255, 255, 255, 0.05)" />
               <XAxis
                 dataKey="age"
@@ -291,74 +494,18 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({ params, resu
                   fontSize: '0.8rem',
                 }}
                 formatter={(value: any) => [formatValue(Number(value)), '']}
-                labelFormatter={(label) => `${label}세`}
-              />
-              <Legend verticalAlign="top" height={36} wrapperStyle={{ fontSize: '0.8rem', color: 'var(--foreground-muted)' }} />
-              <Area
-                name="총 자산액"
-                type="monotone"
-                dataKey="자산총액"
-                stroke="var(--primary)"
-                fillOpacity={1}
-                fill="url(#totalAssetColor)"
-                strokeWidth={2}
-              />
-              <Area
-                name="주식/ETF 자산"
-                type="monotone"
-                dataKey="주식자산"
-                stroke="var(--accent)"
-                fill="transparent"
-                strokeDasharray="4 4"
-                strokeWidth={1.5}
-              />
-              <Area
-                name="연금 자산"
-                type="monotone"
-                dataKey="연금자산"
-                stroke="var(--secondary)"
-                fill="transparent"
-                strokeDasharray="4 4"
-                strokeWidth={1.5}
-              />
-            </AreaChart>
-          </ResponsiveContainer>
-        </div>
-      </GlassCard>
-
-      {/* 4. Income Breakdown Stacked Bar Chart */}
-      <GlassCard className={styles.chartCard}>
-        <div className={styles.chartHeader}>
-          <span className={styles.chartTitle}>은퇴기 연령별 소득원 구성 (만 {params.userProfile.retirementAge}세 ~ {params.userProfile.expectancy}세)</span>
-        </div>
-        <div className={styles.chartContainer}>
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={pensionChartData} margin={{ top: 10, right: 15, left: 10, bottom: 10 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255, 255, 255, 0.05)" />
-              <XAxis dataKey="age" stroke="var(--foreground-muted)" style={{ fontSize: '0.75rem' }} interval={0} />
-              <YAxis
-                stroke="var(--foreground-muted)"
-                style={{ fontSize: '0.75rem' }}
-                width={65}
-                tickFormatter={(v) => formatShortValue(v)}
-              />
-              <Tooltip
-                contentStyle={{
-                  background: 'rgba(17, 24, 39, 0.85)',
-                  border: '1px solid var(--card-border)',
-                  borderRadius: '12px',
-                  color: 'white',
-                  fontFamily: 'var(--font-main)',
-                  fontSize: '0.8rem',
-                }}
-                formatter={(value: any) => [formatValue(Number(value)), '']}
                 labelFormatter={(label) => label.toString().includes('세') ? label : `${label}세`}
               />
-              <Legend verticalAlign="top" height={36} wrapperStyle={{ fontSize: '0.8rem' }} />
-              <Bar name="국민연금" dataKey="국민연금" stackId="a" fill="#10B981" />
-              <Bar name="사적연금" dataKey="사적연금" stackId="a" fill="#A855F7" />
-              <Bar name="배당소득" dataKey="배당소득" stackId="a" fill="#3B82F6" />
-              <Bar name="기타소득" dataKey="기타소득" stackId="a" fill="#F59E0B" />
+              <Legend 
+                verticalAlign="top" 
+                height={36} 
+                wrapperStyle={{ fontSize: '0.8rem', cursor: 'pointer' }} 
+                onClick={handleLegendClick}
+              />
+              <Bar name="국민연금" dataKey="국민연금" stackId="a" fill="#10B981" hide={!!hiddenKeys['국민연금']} />
+              <Bar name="사적연금" dataKey="사적연금" stackId="a" fill="#A855F7" hide={!!hiddenKeys['사적연금']} />
+              <Bar name="배당소득" dataKey="배당소득" stackId="a" fill="#3B82F6" hide={!!hiddenKeys['배당소득']} />
+              <Bar name="기타소득" dataKey="기타소득" stackId="a" fill="#F59E0B" hide={!!hiddenKeys['기타소득']} />
             </BarChart>
           </ResponsiveContainer>
         </div>
