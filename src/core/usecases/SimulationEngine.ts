@@ -9,17 +9,86 @@ import {
 
 export class SimulationEngine {
   run(params: SimulationParams): SimulationResult {
+    const strategy = params.spendingStrategy || 'target';
+
+    if (strategy === 'max_sustainable') {
+      return this.findMaxSustainable(params);
+    }
+
+    return this.runSingle(params);
+  }
+
+  private findMaxSustainable(params: SimulationParams): SimulationResult {
+    let low = 0;
+    let high = 50000000; // 5천만원/월
+    let bestResult: SimulationResult | null = null;
+    let bestTarget = 0;
+
+    for (let i = 0; i < 40; i++) {
+      const mid = (low + high) / 2;
+      const trialParams = {
+        ...params,
+        userProfile: {
+          ...params.userProfile,
+          targetMonthlySpending: mid,
+        },
+      };
+      
+      const result = this.runSingle(trialParams);
+      
+      // 고갈되지 않으면 (혹은 매우 미미하게 고갈되면)
+      if (result.depletionAge === null || result.endingAssets > 0) {
+        bestResult = result;
+        bestTarget = mid;
+        low = mid;
+      } else {
+        high = mid;
+      }
+    }
+
+    // 만약 한 번도 성공하지 못했다면 (모든 범위에서 고갈) 가장 작은 값으로
+    if (!bestResult) {
+      const trialParams = {
+        ...params,
+        userProfile: {
+          ...params.userProfile,
+          targetMonthlySpending: 0,
+        },
+      };
+      bestResult = this.runSingle(trialParams);
+    }
+    
+    // bestResult 객체에 최대 가능 생활비 정보가 들어있음을 UI에 전달하기 위해 
+    // targetMonthlySpending 값을 업데이트해서 넘길 필요는 없지만, UI에서 알 수 있어야 함.
+    // 임시로 userProfile을 변경하진 않으므로 결과는 bestResult를 그대로 반환.
+    // 단, SimulationResult에 maxSustainableSpending 필드를 추가하거나 Dashboard에서 spending을 보면 됨.
+    return { ...bestResult, calculatedTargetSpending: bestTarget };
+  }
+
+  runSingle(params: SimulationParams): SimulationResult {
+    if (!params || !params.userProfile) {
+      return {
+        yearlyResults: [],
+        fireAge: null,
+        depletionAge: null,
+        endingAssets: 0,
+        retirementScore: 0,
+        retirementGrade: '위험',
+        goalAchievementRate: 0,
+      };
+    }
+
     const {
       userProfile,
-      assets,
-      nationalPension,
-      privatePensions,
-      otherIncomes,
-      inflationRate,
-      inflationMode,
-      baseExchangeRate,
-      exchangeScenario,
-      displayCurrency,
+      assets = [],
+      nationalPension = { expectedMonthlyAmount: 0 },
+      privatePensions = [],
+      otherIncomes = [],
+      inflationRate = 2,
+      inflationMode = 'real',
+      baseExchangeRate = 1350,
+      exchangeScenario = 'base',
+      displayCurrency = 'KRW',
     } = params;
 
     // 1. 환율 설정
@@ -42,7 +111,7 @@ export class SimulationEngine {
     interface ActiveAsset extends InvestmentAsset {
       currentValue: number; // 자체 통화 기준 자산 가치
     }
-    const activeAssets: ActiveAsset[] = assets.map((asset) => ({
+    const activeAssets: ActiveAsset[] = (assets || []).map((asset) => ({
       ...asset,
       currentValue: asset.quantity * asset.averagePrice,
     }));
@@ -51,7 +120,7 @@ export class SimulationEngine {
     interface ActivePension extends PrivatePension {
       currentBalance: number; // 자체 통화 기준 연금 잔액
     }
-    const activePensions: ActivePension[] = privatePensions.map((p) => ({
+    const activePensions: ActivePension[] = (privatePensions || []).map((p) => ({
       ...p,
       currentBalance: p.balance,
     }));
@@ -67,6 +136,7 @@ export class SimulationEngine {
         depletionAge: null,
         endingAssets: 0,
         retirementScore: 0,
+        retirementGrade: '위험',
         goalAchievementRate: 0,
       };
     }
@@ -100,11 +170,15 @@ export class SimulationEngine {
         // 월 목표 생활비 (표기 통화 기준) - 은퇴 후에만 발생
         let monthlyTargetSpending = 0;
         if (isRetired) {
-          monthlyTargetSpending = userProfile.targetMonthlySpending;
-          if (inflationMode === 'nominal') {
-            monthlyTargetSpending = userProfile.targetMonthlySpending * Math.pow(1 + infRateAnnual, y);
+          if (params.spendingStrategy === 'dividend_only') {
+             // Will be updated later in the month loop to equal total income
+             monthlyTargetSpending = 0; 
+          } else {
+             monthlyTargetSpending = userProfile.targetMonthlySpending;
+             if (inflationMode === 'nominal') {
+               monthlyTargetSpending = userProfile.targetMonthlySpending * Math.pow(1 + infRateAnnual, y);
+             }
           }
-          annualSpending += monthlyTargetSpending;
         }
 
         // 1) 투자자산 월 복리 성장 및 배당금 계산
@@ -156,10 +230,15 @@ export class SimulationEngine {
         activePensions.forEach((pension) => {
           if (pension.currentBalance < 0) pension.currentBalance = 0;
 
+          let totalReturnAnnual = pension.annualReturn;
+          if (pension.investmentType === 'etf' && pension.dividendYield) {
+            totalReturnAnnual += pension.dividendYield;
+          }
+
           // 연간 수익률 설정 (실질 모드일 경우 인플레이션 차감)
           const returnRateAnnual = inflationMode === 'real'
-            ? (pension.annualReturn - inflationRate) / 100
-            : pension.annualReturn / 100;
+            ? (totalReturnAnnual - inflationRate) / 100
+            : totalReturnAnnual / 100;
           const returnRateMonthly = Math.pow(Math.max(0, 1 + returnRateAnnual), 1 / 12) - 1;
 
           // 연금 잔액 성장
@@ -171,9 +250,23 @@ export class SimulationEngine {
 
           // 은퇴 후 연금 수령
           if (isRetired && pension.currentBalance > 0) {
-            // 기대수명까지 남은 개월 수 계산
-            const remainingMonths = Math.max(1, (endAge - currentAge) * 12 + (12 - m));
-            const drawAmountRaw = pension.currentBalance / remainingMonths;
+            let drawAmountRaw = 0;
+            const isYieldOnly = params.spendingStrategy === 'dividend_only' || params.spendingStrategy === 'max_sustainable';
+            if (isYieldOnly) {
+              // 배당금(이자)만 꺼내 쓰기
+              // 이 달에 발생한 수익(growth)만큼만 인출 (원금 보존)
+              // growth는 inflationMode에 따라 실질수익률로 계산된 값이므로,
+              // 실제 명목 이자를 모두 쓰고 싶다면 명목 이자율을 적용할 수도 있음.
+              // 여기서는 앞서 계산된 'growth'를 그대로 인출액으로 사용
+              drawAmountRaw = growth > 0 ? growth : 0;
+              // 자산 가치 상승을 상쇄시킴 (성장한 만큼 빼므로 잔액은 원래대로)
+              pension.currentBalance -= drawAmountRaw; 
+            } else {
+              // 기대수명까지 남은 개월 수 계산
+              const remainingMonths = Math.max(1, (endAge - currentAge) * 12 + (12 - m));
+              drawAmountRaw = pension.currentBalance / remainingMonths;
+              pension.currentBalance -= drawAmountRaw;
+            }
 
             // 연령대별 슬라이딩 연금소득세율 적용
             let taxRate = 0.055; // 55~69세: 5.5%
@@ -184,7 +277,7 @@ export class SimulationEngine {
             }
 
             const drawAmountNet = drawAmountRaw * (1 - taxRate);
-            pension.currentBalance -= drawAmountRaw;
+            // pension.currentBalance -= drawAmountRaw; is handled above
 
             // 종합과세용 세전 사적연금 인출액 누적 (KRW 환산)
             const drawRawKRW = convertValue(drawAmountRaw, pension.currency, 'KRW');
@@ -213,7 +306,7 @@ export class SimulationEngine {
 
         // 4) 기타 소득 수취
         let monthlyOtherIncomeTotalDisplay = 0;
-        otherIncomes.forEach((income) => {
+        (otherIncomes || []).forEach((income) => {
           let amount = income.monthlyAmount;
           if (inflationMode === 'nominal') {
             amount = income.monthlyAmount * Math.pow(1 + infRateAnnual, y);
@@ -226,7 +319,15 @@ export class SimulationEngine {
 
         // 5) 가처분 소득으로 생활비 충당
         const monthlyTotalIncome = monthlyDividendIncomeNetDisplay + monthlyPensionTotalNetDisplay + monthlyOtherIncomeTotalDisplay;
-        const shortfall = monthlyTargetSpending - monthlyTotalIncome;
+        
+        let actualMonthlySpending = monthlyTargetSpending;
+
+        if (isRetired && params.spendingStrategy === 'dividend_only') {
+          // 배당금 100% 소비 모드: 발생한 모든 소득을 그 달의 생활비로 씀
+          actualMonthlySpending = monthlyTotalIncome;
+        }
+
+        const shortfall = actualMonthlySpending - monthlyTotalIncome;
 
         if (shortfall < 0) {
           // 소득이 넘치는 경우 첫 번째 투자자산에 적립 재투자
@@ -277,7 +378,13 @@ export class SimulationEngine {
               }
             }
           }
+          
+          if (remainingShortfall > 0) {
+            actualMonthlySpending -= remainingShortfall;
+          }
         }
+        
+        annualSpending += actualMonthlySpending;
       } // 월 루프 종료
 
       // 6) 기말 자산 합산 (표기 통화 기준)
@@ -330,36 +437,89 @@ export class SimulationEngine {
       }
     } // 연도 루프 종료
 
-    // 은퇴 점수 (Retirement Score) 계산 (0~100)
-    // 공식: (기대 수명 시 잔여 자산이 존재하면 100점, 고갈 시 은퇴 나이부터 고갈 나이까지의 생존 비율로 산출)
-    let retirementScore = 100;
-    if (depletionAge !== null) {
-      if (depletionAge <= userProfile.retirementAge) {
-        retirementScore = 0;
-      } else {
-        const retirementSpan = endAge - userProfile.retirementAge;
-        const survivalSpan = depletionAge - userProfile.retirementAge;
-        retirementScore = Math.min(100, Math.max(0, Math.round((survivalSpan / retirementSpan) * 100)));
-      }
-    }
-
     // 목표 달성률 (Goal Achievement Rate) (%)
     // 공식: 은퇴기 평균 예상 월소득 / 은퇴기 목표 월소득
     const retirementYearsResults = yearlyResults.filter((r) => r.age >= userProfile.retirementAge);
     let avgRetirementMonthlyIncome = 0;
     let avgRetirementMonthlySpending = 0;
+    let avgTargetMonthlySpending = 0;
+    let avgPensionIncome = 0;
+    
     if (retirementYearsResults.length > 0) {
       const totalIncomeSum = retirementYearsResults.reduce((sum, r) => sum + r.totalIncome, 0);
       const totalSpendingSum = retirementYearsResults.reduce((sum, r) => sum + r.spending, 0);
+      const totalPensionSum = retirementYearsResults.reduce((sum, r) => sum + r.pensionIncome, 0);
+      
+      let totalTargetSum = 0;
+      retirementYearsResults.forEach(r => {
+          const y = r.age - startAge;
+          let annualTarget = userProfile.targetMonthlySpending * 12;
+          if (inflationMode === 'nominal') {
+              annualTarget = annualTarget * Math.pow(1 + inflationRate / 100, y);
+          }
+          totalTargetSum += annualTarget;
+      });
+
       avgRetirementMonthlyIncome = totalIncomeSum / retirementYearsResults.length / 12;
       avgRetirementMonthlySpending = totalSpendingSum / retirementYearsResults.length / 12;
+      avgTargetMonthlySpending = totalTargetSum / retirementYearsResults.length / 12;
+      avgPensionIncome = totalPensionSum / retirementYearsResults.length / 12;
     }
 
-    const goalAchievementRate = avgRetirementMonthlySpending > 0
-      ? Math.min(200, Math.max(0, Math.round((avgRetirementMonthlyIncome / avgRetirementMonthlySpending) * 100)))
+    const goalAchievementRate = avgTargetMonthlySpending > 0
+      ? Math.min(200, Math.max(0, Math.round((avgRetirementMonthlyIncome / avgTargetMonthlySpending) * 100)))
       : 0;
 
     const endingAssets = yearlyResults.length > 0 ? yearlyResults[yearlyResults.length - 1].totalAssets : 0;
+
+    // 은퇴 준비도 점수 산출
+    // 1. 자산 규모 (25%): 은퇴 시점 자산이 파이어족 목표 자산(연 생활비 25배) 대비 어느 정도인지
+    const retirementStartResult = yearlyResults.find(r => r.age === userProfile.retirementAge);
+    const retirementAssets = retirementStartResult ? retirementStartResult.totalAssets : 0;
+    
+    const yearsToRetirement = Math.max(0, userProfile.retirementAge - userProfile.currentAge);
+    const targetMonthlyAtRetirement = params.inflationMode === 'nominal' 
+      ? userProfile.targetMonthlySpending * Math.pow(1 + params.inflationRate / 100, yearsToRetirement)
+      : userProfile.targetMonthlySpending;
+    const targetAssets = targetMonthlyAtRetirement * 12 * 25;
+    
+    const assetScoreRaw = targetAssets > 0 ? (retirementAssets / targetAssets) * 100 : 100;
+    const assetScore = Math.min(25, (assetScoreRaw * 0.25));
+
+    // 2. 현금흐름 (25%): 은퇴 후 목표 생활비 달성률
+    const cashFlowScore = Math.min(25, (goalAchievementRate * 0.25));
+
+    // 3. 연금 (20%): 은퇴 후 평균 생활비 중 연금 소득이 차지하는 비중
+    const pensionRatio = avgRetirementMonthlySpending > 0 ? (avgPensionIncome / avgRetirementMonthlySpending) * 100 : 100;
+    const pensionScore = Math.min(20, (pensionRatio * 0.20));
+
+    // 4. 장수 리스크 (15%): 자산 고갈 연령과 기대수명 비교
+    let longevityScoreRaw = 100;
+    if (depletionAge !== null) {
+      if (depletionAge <= userProfile.retirementAge) {
+        longevityScoreRaw = 0;
+      } else {
+        const retirementSpan = endAge - userProfile.retirementAge;
+        const survivalSpan = depletionAge - userProfile.retirementAge;
+        longevityScoreRaw = Math.min(100, Math.max(0, (survivalSpan / retirementSpan) * 100));
+      }
+    }
+    const longevityScore = longevityScoreRaw * 0.15;
+
+    // 5. 인플레이션 대응 (15%): 은퇴 시점 자산 중 주식/ETF 등 투자 자산의 비중 (40% 이상이면 만점)
+    const retirementStockAssets = retirementStartResult ? retirementStartResult.stockAssets : 0;
+    const stockRatio = retirementAssets > 0 ? (retirementStockAssets / retirementAssets) * 100 : 0;
+    const inflationScoreRaw = Math.min(100, (stockRatio / 40) * 100);
+    const inflationScore = inflationScoreRaw * 0.15;
+
+    // 최종 점수 및 등급 산출
+    const retirementScore = Math.round(assetScore + cashFlowScore + pensionScore + longevityScore + inflationScore);
+    
+    let retirementGrade = '위험';
+    if (retirementScore >= 90) retirementGrade = '매우 안정';
+    else if (retirementScore >= 80) retirementGrade = '안정';
+    else if (retirementScore >= 70) retirementGrade = '보통';
+    else if (retirementScore >= 60) retirementGrade = '주의';
 
     return {
       yearlyResults,
@@ -367,6 +527,7 @@ export class SimulationEngine {
       depletionAge,
       endingAssets,
       retirementScore,
+      retirementGrade,
       goalAchievementRate,
     };
   }
