@@ -5,6 +5,7 @@ import { useSession } from 'next-auth/react';
 import { SimulationEngine } from '../core/usecases/SimulationEngine';
 import { initialParams } from '../infrastructure/storage/localStore';
 import { AssetFormSection } from '../web/features/AssetForm/AssetFormSection';
+import { TaxSettingsSection } from '../web/features/AssetForm/TaxSettingsSection';
 import { ScenarioManager } from '../web/features/Scenario/ScenarioManager';
 import { SimulationSettings } from '../web/features/Scenario/SimulationSettings';
 import { DashboardSection } from '../web/features/Dashboard/DashboardSection';
@@ -28,6 +29,7 @@ export default function Home() {
 
   const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(true);
   const [engine] = useState(() => new SimulationEngine());
+  const [hoveredBtn, setHoveredBtn] = useState<string | null>(null);
 
   // Dynamically update document body preset attribute for dynamic styling/glows
   useEffect(() => {
@@ -123,7 +125,7 @@ export default function Home() {
     md += `### 사적연금 (퇴직연금/개인연금)\n`;
     if (privatePensions && privatePensions.length > 0) {
       privatePensions.forEach(p => {
-        md += `- **${p.name}** (${p.type === 'irp' ? 'IRP' : p.type === 'pension_savings' ? '연금저축' : '기타'}): 현재 잔액 ${p.balance.toLocaleString()} ${p.currency}, 매월 ${p.monthlyContribution.toLocaleString()} ${p.currency} 납입, 예상 연 수익률 ${p.annualReturn}%\n`;
+        md += `- **${p.name}** (${p.type === 'irp' ? 'IRP' : p.type === 'savings' ? '연금저축' : '기타'}): 현재 잔액 ${p.balance.toLocaleString()} ${p.currency}, 매월 ${p.monthlyContribution.toLocaleString()} ${p.currency} 납입, 예상 연 수익률 ${p.annualReturn}%\n`;
       });
     } else {
       md += `- 등록된 사적연금 없음\n`;
@@ -139,7 +141,7 @@ export default function Home() {
     md += `\n### 기타 소득\n`;
     if (otherIncomes && otherIncomes.length > 0) {
       otherIncomes.forEach(i => {
-        md += `- **${i.name}**: 매월 ${i.monthlyAmount.toLocaleString()} ${i.currency}\n`;
+        md += `- **${i.label}**: 매월 ${i.monthlyAmount.toLocaleString()} ${i.currency}\n`;
       });
     } else {
       md += `- 등록된 기타 소득 없음\n`;
@@ -188,30 +190,22 @@ export default function Home() {
           </p>
           <div style={{ display: 'flex', gap: '0.5rem', marginLeft: 'auto' }}>
             <button 
-              onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-              style={{ 
+              onClick={() => setIsSidebarOpen(prev => !prev)}
+              onMouseEnter={() => setHoveredBtn('settings')}
+              onMouseLeave={() => setHoveredBtn(null)}
+              style={{
                 display: 'flex', 
                 alignItems: 'center', 
                 gap: '0.5rem', 
                 padding: '0.6rem 1.2rem', 
-                background: 'var(--card-bg)', 
-                border: '1px solid var(--card-border)', 
+                background: hoveredBtn === 'settings' ? 'rgba(255, 255, 255, 0.05)' : 'var(--card-bg)', 
+                border: `1px solid ${hoveredBtn === 'settings' ? 'var(--primary)' : 'var(--card-border)'}`, 
                 borderRadius: '12px', 
-                color: isSidebarOpen ? 'var(--primary)' : 'var(--foreground-muted)', 
+                color: hoveredBtn === 'settings' ? 'var(--primary)' : (isSidebarOpen ? 'var(--primary)' : 'var(--foreground-muted)'), 
                 cursor: 'pointer', 
                 fontSize: '0.85rem', 
                 fontWeight: 600, 
                 transition: 'all 0.2s ease',
-              }}
-              onMouseOver={(e) => {
-                e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
-                e.currentTarget.style.borderColor = 'var(--primary)';
-                e.currentTarget.style.color = 'var(--primary)';
-              }}
-              onMouseOut={(e) => {
-                e.currentTarget.style.background = 'var(--card-bg)';
-                e.currentTarget.style.borderColor = 'var(--card-border)';
-                e.currentTarget.style.color = isSidebarOpen ? 'var(--primary)' : 'var(--foreground-muted)';
               }}
             >
               {isSidebarOpen ? <PanelLeftClose size={16} /> : <PanelLeftOpen size={16} />}
@@ -219,13 +213,15 @@ export default function Home() {
             </button>
             <button 
               onClick={handleReset}
-              style={{ 
+              onMouseEnter={() => setHoveredBtn('reset')}
+              onMouseLeave={() => setHoveredBtn(null)}
+              style={{
                 display: 'flex', 
                 alignItems: 'center', 
                 gap: '0.5rem', 
                 padding: '0.6rem 1.2rem', 
-                background: 'var(--card-bg)', 
-                border: '1px solid var(--card-border)', 
+                background: hoveredBtn === 'reset' ? 'rgba(255, 77, 79, 0.1)' : 'var(--card-bg)', 
+                border: `1px solid ${hoveredBtn === 'reset' ? 'var(--danger, #ff4d4f)' : 'var(--card-border)'}`, 
                 borderRadius: '12px', 
                 color: 'var(--danger, #ff4d4f)', 
                 cursor: 'pointer', 
@@ -233,55 +229,39 @@ export default function Home() {
                 fontWeight: 600, 
                 transition: 'all 0.2s ease',
               }}
-              onMouseOver={(e) => {
-                e.currentTarget.style.background = 'rgba(255, 77, 79, 0.1)';
-                e.currentTarget.style.borderColor = 'var(--danger, #ff4d4f)';
-              }}
-              onMouseOut={(e) => {
-                e.currentTarget.style.background = 'var(--card-bg)';
-                e.currentTarget.style.borderColor = 'var(--card-border)';
-              }}
             >
               <RotateCcw size={16} />
               초기화
             </button>
             <button 
               onClick={handleDownload}
-              style={{ 
+              onMouseEnter={() => setHoveredBtn('download')}
+              onMouseLeave={() => setHoveredBtn(null)}
+              style={{
                 display: 'flex', 
                 alignItems: 'center', 
                 gap: '0.5rem', 
                 padding: '0.6rem 1.2rem', 
-                background: 'var(--card-bg)', 
-                border: '1px solid var(--card-border)', 
+                background: hoveredBtn === 'download' ? 'rgba(255, 255, 255, 0.05)' : 'var(--card-bg)', 
+                border: `1px solid ${hoveredBtn === 'download' ? 'var(--primary)' : 'var(--card-border)'}`, 
                 borderRadius: '12px', 
-                color: 'var(--foreground-muted)', 
+                color: hoveredBtn === 'download' ? 'var(--primary)' : 'var(--foreground-muted)', 
                 cursor: 'pointer', 
                 fontSize: '0.85rem', 
                 fontWeight: 600, 
                 transition: 'all 0.2s ease',
               }}
-            onMouseOver={(e) => {
-              e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
-              e.currentTarget.style.borderColor = 'var(--primary)';
-              e.currentTarget.style.color = 'var(--primary)';
-            }}
-            onMouseOut={(e) => {
-              e.currentTarget.style.background = 'var(--card-bg)';
-              e.currentTarget.style.borderColor = 'var(--card-border)';
-              e.currentTarget.style.color = 'var(--foreground-muted)';
-            }}
-          >
-            <Download size={16} />
-            데이터 다운로드
-          </button>
+            >
+              <Download size={16} />
+              데이터 다운로드
+            </button>
           </div>
         </div>
       </header>
 
       {/* 2. Content Layout */}
       <div style={{ position: 'relative' }}>
-        <div className={`${styles.layoutGrid} ${!isSidebarOpen ? styles.layoutGridCollapsed : ''}`}>
+        <div className={styles.layoutGrid}>
           
           {/* Left Side: User Inputs & Scenarios */}
           <section className={`${styles.leftColumn} ${!isSidebarOpen ? styles.leftColumnHidden : ''}`}>
@@ -291,14 +271,19 @@ export default function Home() {
               <ScenarioManager scenarioState={scenarioState} />
             </GlassCard>
 
+            {/* Inputs Section */}
+            <GlassCard>
+              <AssetFormSection params={activeParams} onChangeParams={handleUpdateActiveParams} />
+            </GlassCard>
+
             {/* Simulation Settings Section */}
             <GlassCard>
               <SimulationSettings scenarioState={scenarioState} />
             </GlassCard>
 
-            {/* Inputs Section */}
+            {/* Tax Settings Section */}
             <GlassCard>
-              <AssetFormSection params={activeParams} onChangeParams={handleUpdateActiveParams} />
+              <TaxSettingsSection params={activeParams} onChangeParams={handleUpdateActiveParams} />
             </GlassCard>
           </section>
 

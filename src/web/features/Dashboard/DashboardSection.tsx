@@ -3,8 +3,9 @@
 import React from 'react';
 import { SimulationParams, SimulationResult } from '../../../core/entities/types';
 import GlassCard from '../../components/GlassCard';
+import { YearlyChart } from './YearlyChart';
 import styles from './Dashboard.module.css';
-import { AlertTriangle, TrendingDown, Target, Zap, ShieldAlert, Award } from 'lucide-react';
+import { AlertTriangle, TrendingDown, Target, Zap, Award, Calculator } from 'lucide-react';
 import {
   ResponsiveContainer,
   ComposedChart,
@@ -110,18 +111,19 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({ params: rawP
     }
   };
 
-  // Check if any year has tax warning
-  const taxWarningYears = yearlyResults.filter((r) => r.hasTaxWarning);
-  const hasGlobalTaxWarning = taxWarningYears.length > 0;
-  let taxWarningPeriodText: React.ReactNode = null;
-  if (hasGlobalTaxWarning) {
-    const first = taxWarningYears[0];
-    const last = taxWarningYears[taxWarningYears.length - 1];
-    if (first.year === last.year) {
-      taxWarningPeriodText = <span><strong>{first.year}년({first.age}세)</strong>에</span>;
-    } else {
-      taxWarningPeriodText = <span><strong>{first.year}년({first.age}세) ~ {last.year}년({last.age}세)</strong> 동안</span>;
-    }
+
+  // Retirement averages for Tax Comparison
+  const retirementYearsResults = yearlyResults.filter(r => r.age >= params.userProfile.retirementAge);
+  let avgPreTaxIncome = 0;
+  let avgTotalTax = 0;
+  let avgHealthInsurance = 0;
+  let avgNetIncome = 0;
+  
+  if (retirementYearsResults.length > 0) {
+    avgPreTaxIncome = retirementYearsResults.reduce((sum, r) => sum + r.preTaxTotalIncome, 0) / retirementYearsResults.length;
+    avgTotalTax = retirementYearsResults.reduce((sum, r) => sum + (r.dividendTaxPaid + r.pensionTaxPaid + r.nationalPensionTaxPaid + r.comprehensiveTaxPaid), 0) / retirementYearsResults.length;
+    avgHealthInsurance = retirementYearsResults.reduce((sum, r) => sum + r.healthInsurancePaid, 0) / retirementYearsResults.length;
+    avgNetIncome = retirementYearsResults.reduce((sum, r) => sum + r.totalIncome, 0) / retirementYearsResults.length;
   }
 
   // Income breakdown (cover the entire period to align with Asset Projection chart)
@@ -311,18 +313,32 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({ params: rawP
 
       </div>
 
-      {/* 2. Global Tax Warning Alert */}
-      {hasGlobalTaxWarning && (
-        <div className={styles.warningCard}>
-          <ShieldAlert size={22} className={styles.warningIcon} />
-          <div className={styles.warningContent}>
-            <span className={styles.warningTitle}>금융소득종합과세 위험 노출</span>
-            <span className={styles.warningText}>
-              {taxWarningPeriodText} <strong>연간 금융소득 2,000만 원을 초과</strong>하여 종합소득세 과세 대상이 될 수 있습니다. 세액공제 한도 확인 및 인출 전략 점검을 권장합니다.
-            </span>
+      {/* 2. Tax Comparison Card (Retirement Period Average) */}
+      <GlassCard className={styles.chartCard} style={{ padding: '1.5rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', marginBottom: '1rem' }}>
+          <Calculator size={20} color="var(--primary)" style={{ marginRight: '0.5rem' }} />
+          <span className={styles.chartTitle} style={{ margin: 0 }}>은퇴기(은퇴 연령 ~ 기대 수명) 평균 세금 및 건강보험료 분석</span>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '1rem', textAlign: 'center' }}>
+          <div style={{ padding: '1rem', background: 'rgba(255,255,255,0.03)', borderRadius: '12px' }}>
+            <div style={{ fontSize: '0.85rem', color: 'var(--foreground-muted)', marginBottom: '0.5rem' }}>연 평균 세전 소득</div>
+            <div style={{ fontSize: '1.2rem', fontWeight: 700, color: 'white' }}>{formatValue(avgPreTaxIncome)}</div>
+          </div>
+          <div style={{ padding: '1rem', background: 'rgba(239, 68, 68, 0.05)', border: '1px solid rgba(239, 68, 68, 0.2)', borderRadius: '12px' }}>
+            <div style={{ fontSize: '0.85rem', color: '#FCA5A5', marginBottom: '0.5rem' }}>연 평균 세금 차감</div>
+            <div style={{ fontSize: '1.2rem', fontWeight: 700, color: '#EF4444' }}>- {formatValue(avgTotalTax)}</div>
+          </div>
+          <div style={{ padding: '1rem', background: 'rgba(245, 158, 11, 0.05)', border: '1px solid rgba(245, 158, 11, 0.2)', borderRadius: '12px' }}>
+            <div style={{ fontSize: '0.85rem', color: '#FCD34D', marginBottom: '0.5rem' }}>건보료 추가 차감</div>
+            <div style={{ fontSize: '1.2rem', fontWeight: 700, color: '#F59E0B' }}>- {formatValue(avgHealthInsurance)}</div>
+          </div>
+          <div style={{ padding: '1rem', background: 'rgba(16, 185, 129, 0.05)', border: '1px solid rgba(16, 185, 129, 0.2)', borderRadius: '12px' }}>
+            <div style={{ fontSize: '0.85rem', color: '#6EE7B7', marginBottom: '0.5rem' }}>연 평균 세후 실수령액</div>
+            <div style={{ fontSize: '1.2rem', fontWeight: 700, color: '#10B981' }}>{formatValue(avgNetIncome)}</div>
           </div>
         </div>
-      )}
+      </GlassCard>
+
 
       {/* 3. Asset Projection Line Chart */}
       <GlassCard className={styles.chartCard}>
@@ -510,6 +526,9 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({ params: rawP
           </ResponsiveContainer>
         </div>
       </GlassCard>
+
+      {/* 5. Yearly Detailed Chart */}
+      <YearlyChart params={params} result={result} />
 
     </div>
   );
