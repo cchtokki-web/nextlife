@@ -5,6 +5,7 @@ import {
   InvestmentAsset,
   PrivatePension,
   AssetCurrency,
+  TaxSettings,
 } from '../entities/types';
 
 export class SimulationEngine {
@@ -24,7 +25,7 @@ export class SimulationEngine {
     let bestResult: SimulationResult | null = null;
     let bestTarget = 0;
 
-    for (let i = 0; i < 40; i++) {
+    for (let i = 0; i < 30; i++) {
       const mid = (low + high) / 2;
       const trialParams = {
         ...params,
@@ -89,7 +90,17 @@ export class SimulationEngine {
       baseExchangeRate = 1350,
       exchangeScenario = 'base',
       displayCurrency = 'KRW',
+      taxSettings,
     } = params;
+
+    const currentTaxSettings: TaxSettings = taxSettings || {
+      enableComprehensiveTax: true,
+      enableHealthInsurance: true,
+      usDividendTaxRate: 15,
+      domesticDividendTaxRate: 15.4,
+      comprehensiveTaxRate: 15,
+      healthInsuranceRate: 5,
+    };
 
     // 1. 환율 설정
     let exchangeRate = baseExchangeRate;
@@ -108,22 +119,58 @@ export class SimulationEngine {
 
     // 2. 자산 상태 복제 및 초기 가치(자체 통화 기준) 설정
     // 투자 자산: quantity * averagePrice로 초기 가치 구성
+    const infRateAnnual = inflationRate / 100;
+    const infRateMonthly = Math.pow(1 + infRateAnnual, 1 / 12) - 1;
+
     interface ActiveAsset extends InvestmentAsset {
       currentValue: number; // 자체 통화 기준 자산 가치
+      growthRateMonthly: number;
+      divRateMonthly: number;
+      taxRate: number;
     }
-    const activeAssets: ActiveAsset[] = (assets || []).map((asset) => ({
-      ...asset,
-      currentValue: asset.quantity * asset.averagePrice,
-    }));
+    const activeAssets: ActiveAsset[] = (assets || []).map((asset) => {
+      const growthRateAnnual = inflationMode === 'real'
+        ? (asset.annualGrowthRate - inflationRate) / 100
+        : asset.annualGrowthRate / 100;
+      const growthRateMonthly = Math.pow(Math.max(0, 1 + growthRateAnnual), 1 / 12) - 1;
+      
+      const divRateMonthly = (asset.dividendYield / 100) / 12;
+      
+      let taxRate = 0;
+      const market = asset.assetMarket || (asset.currency === 'USD' ? 'US_ETF' : 'KR_ETF');
+      if (market === 'US_ETF') taxRate = currentTaxSettings.usDividendTaxRate / 100;
+      else if (market === 'KR_ETF') taxRate = currentTaxSettings.domesticDividendTaxRate / 100;
+
+      return {
+        ...asset,
+        currentValue: asset.quantity * asset.averagePrice,
+        growthRateMonthly,
+        divRateMonthly,
+        taxRate,
+      };
+    });
 
     // 사적 연금
     interface ActivePension extends PrivatePension {
       currentBalance: number; // 자체 통화 기준 연금 잔액
+      returnRateMonthly: number;
     }
-    const activePensions: ActivePension[] = (privatePensions || []).map((p) => ({
-      ...p,
-      currentBalance: p.balance,
-    }));
+    const activePensions: ActivePension[] = (privatePensions || []).map((p) => {
+      let totalReturnAnnual = p.annualReturn;
+      if (p.investmentType === 'etf' && p.dividendYield) {
+        totalReturnAnnual += p.dividendYield;
+      }
+      const returnRateAnnual = inflationMode === 'real'
+        ? (totalReturnAnnual - inflationRate) / 100
+        : totalReturnAnnual / 100;
+      const returnRateMonthly = Math.pow(Math.max(0, 1 + returnRateAnnual), 1 / 12) - 1;
+
+      return {
+        ...p,
+        currentBalance: p.balance,
+        returnRateMonthly,
+      };
+    });
 
     const startAge = userProfile.currentAge;
     const endAge = userProfile.expectancy;
@@ -158,48 +205,68 @@ export class SimulationEngine {
       let annualOtherIncome = 0;
       let annualSpending = 0;
 
+      let annualDividendTaxPaid = 0;
+      let annualPensionTaxPaid = 0;
+      let annualNationalPensionTaxPaid = 0;
+      let annualPreTaxTotalIncome = 0;
+
       // 금융소득종합과세 판정용 세전 금융소득 (KRW 기준)
       let annualRawFinancialIncomeKRW = 0;
 
+      // --- 연 단위 불변값 사전 계산 ---
+      let monthlyTargetSpending = 0;
+      if (isRetired) {
+        if (params.spendingStrategy !== 'dividend_only') {
+          monthlyTargetSpending = inflationMode === 'nominal'
+            ? userProfile.targetMonthlySpending * Math.pow(1 + infRateAnnual, y)
+            : userProfile.targetMonthlySpending;
+        }
+      }
+
+      let monthlyNationalPensionDisplay = 0;
+      let monthlyNatTaxDisplay = 0;
+      let monthlyNatPreTaxTotalDisplay = 0;
+      if (currentAge >= 65) {
+        let natAmountRaw = inflationMode === 'nominal'
+          ? nationalPension.expectedMonthlyAmount * Math.pow(1 + infRateAnnual, y)
+          : nationalPension.expectedMonthlyAmount;
+        
+        const natTaxRate = 0.02; // 2%
+        const natTax = natAmountRaw * natTaxRate;
+        const natAmountNet = natAmountRaw - natTax;
+        
+        monthlyNationalPensionDisplay = convertValue(natAmountNet, 'KRW', displayCurrency);
+        monthlyNatTaxDisplay = convertValue(natTax, 'KRW', displayCurrency);
+        monthlyNatPreTaxTotalDisplay = convertValue(natAmountRaw, 'KRW', displayCurrency);
+      }
+
+      let monthlyOtherIncomeTotalDisplay = 0;
+      let monthlyOtherPreTaxTotalDisplay = 0;
+      (otherIncomes || []).forEach((income) => {
+        let amount = inflationMode === 'nominal'
+          ? income.monthlyAmount * Math.pow(1 + infRateAnnual, y)
+          : income.monthlyAmount;
+        const amountDisplay = convertValue(amount, income.currency, displayCurrency);
+        monthlyOtherIncomeTotalDisplay += amountDisplay;
+        monthlyOtherPreTaxTotalDisplay += amountDisplay;
+      });
+      // --------------------------------
+
       // 월 단위 시뮬레이션 (12개월)
       for (let m = 0; m < 12; m++) {
-        // 인플레이션 월 복리 및 연도별 인플레이션 배율
-        const infRateAnnual = inflationRate / 100;
-        const infRateMonthly = Math.pow(1 + infRateAnnual, 1 / 12) - 1;
-
-        // 월 목표 생활비 (표기 통화 기준) - 은퇴 후에만 발생
-        let monthlyTargetSpending = 0;
-        if (isRetired) {
-          if (params.spendingStrategy === 'dividend_only') {
-             // Will be updated later in the month loop to equal total income
-             monthlyTargetSpending = 0; 
-          } else {
-             monthlyTargetSpending = userProfile.targetMonthlySpending;
-             if (inflationMode === 'nominal') {
-               monthlyTargetSpending = userProfile.targetMonthlySpending * Math.pow(1 + infRateAnnual, y);
-             }
-          }
-        }
-
         // 1) 투자자산 월 복리 성장 및 배당금 계산
         let monthlyDividendIncomeNetDisplay = 0;
 
         activeAssets.forEach((asset) => {
           if (asset.currentValue < 0) asset.currentValue = 0;
 
-          // 연간 성장률 설정 (실질 모드일 경우 인플레이션 차감)
-          const growthRateAnnual = inflationMode === 'real'
-            ? (asset.annualGrowthRate - inflationRate) / 100
-            : asset.annualGrowthRate / 100;
-          const growthRateMonthly = Math.pow(Math.max(0, 1 + growthRateAnnual), 1 / 12) - 1;
-
           // 자산 가치 상승
-          const growth = asset.currentValue * growthRateMonthly;
+          const growth = asset.currentValue * asset.growthRateMonthly;
           
           // 월간 배당 계산
-          const divRateMonthly = (asset.dividendYield / 100) / 12;
-          const dividendRaw = asset.currentValue * divRateMonthly;
-          const dividendNet = dividendRaw * (1 - 0.154); // 배당세 15.4% 차감
+          const dividendRaw = asset.currentValue * asset.divRateMonthly;
+          const dividendTax = dividendRaw * asset.taxRate;
+          const dividendNet = dividendRaw - dividendTax;
 
           // 종합과세용 세전 배당 누적 (KRW 환산)
           const divRawKRW = convertValue(dividendRaw, asset.currency, 'KRW');
@@ -218,7 +285,10 @@ export class SimulationEngine {
           } else {
             // 은퇴 후이거나 배당 재투자 꺼진 경우 현금 소득으로 수령
             const divNetDisplay = convertValue(dividendNet, asset.currency, displayCurrency);
+            const divTaxDisplay = convertValue(dividendTax, asset.currency, displayCurrency);
             monthlyDividendIncomeNetDisplay += divNetDisplay;
+            annualDividendTaxPaid += divTaxDisplay;
+            annualPreTaxTotalIncome += convertValue(dividendRaw, asset.currency, displayCurrency);
           }
         });
 
@@ -230,19 +300,8 @@ export class SimulationEngine {
         activePensions.forEach((pension) => {
           if (pension.currentBalance < 0) pension.currentBalance = 0;
 
-          let totalReturnAnnual = pension.annualReturn;
-          if (pension.investmentType === 'etf' && pension.dividendYield) {
-            totalReturnAnnual += pension.dividendYield;
-          }
-
-          // 연간 수익률 설정 (실질 모드일 경우 인플레이션 차감)
-          const returnRateAnnual = inflationMode === 'real'
-            ? (totalReturnAnnual - inflationRate) / 100
-            : totalReturnAnnual / 100;
-          const returnRateMonthly = Math.pow(Math.max(0, 1 + returnRateAnnual), 1 / 12) - 1;
-
           // 연금 잔액 성장
-          const growth = pension.currentBalance * returnRateMonthly;
+          const growth = pension.currentBalance * pension.returnRateMonthly;
           // 월 적립금 적용 (은퇴 전일 때만)
           const contribution = isRetired ? 0 : pension.monthlyContribution;
 
@@ -253,13 +312,7 @@ export class SimulationEngine {
             let drawAmountRaw = 0;
             const isYieldOnly = params.spendingStrategy === 'dividend_only' || params.spendingStrategy === 'max_sustainable';
             if (isYieldOnly) {
-              // 배당금(이자)만 꺼내 쓰기
-              // 이 달에 발생한 수익(growth)만큼만 인출 (원금 보존)
-              // growth는 inflationMode에 따라 실질수익률로 계산된 값이므로,
-              // 실제 명목 이자를 모두 쓰고 싶다면 명목 이자율을 적용할 수도 있음.
-              // 여기서는 앞서 계산된 'growth'를 그대로 인출액으로 사용
               drawAmountRaw = growth > 0 ? growth : 0;
-              // 자산 가치 상승을 상쇄시킴 (성장한 만큼 빼므로 잔액은 원래대로)
               pension.currentBalance -= drawAmountRaw; 
             } else {
               // 기대수명까지 남은 개월 수 계산
@@ -276,46 +329,33 @@ export class SimulationEngine {
               taxRate = 0.033; // 80세 이상: 3.3%
             }
 
-            const drawAmountNet = drawAmountRaw * (1 - taxRate);
-            // pension.currentBalance -= drawAmountRaw; is handled above
+            const drawAmountTax = drawAmountRaw * taxRate;
+            const drawAmountNet = drawAmountRaw - drawAmountTax;
 
             // 종합과세용 세전 사적연금 인출액 누적 (KRW 환산)
             const drawRawKRW = convertValue(drawAmountRaw, pension.currency, 'KRW');
             annualRawFinancialIncomeKRW += drawRawKRW;
 
             const drawNetDisplay = convertValue(drawAmountNet, pension.currency, displayCurrency);
+            const drawTaxDisplay = convertValue(drawAmountTax, pension.currency, displayCurrency);
             monthlyPensionIncomeNetDisplay += drawNetDisplay;
+            annualPensionTaxPaid += drawTaxDisplay;
+            annualPreTaxTotalIncome += convertValue(drawAmountRaw, pension.currency, displayCurrency);
           }
         });
 
         annualPrivatePensionIncome += monthlyPensionIncomeNetDisplay;
 
         // 3) 국민연금 수령 (나이 65세 이상)
-        let monthlyNationalPensionDisplay = 0;
-        if (currentAge >= 65) {
-          let natAmount = nationalPension.expectedMonthlyAmount;
-          if (inflationMode === 'nominal') {
-            natAmount = nationalPension.expectedMonthlyAmount * Math.pow(1 + infRateAnnual, y);
-          }
-          monthlyNationalPensionDisplay = convertValue(natAmount, 'KRW', displayCurrency);
-        }
-
         annualNationalPensionIncome += monthlyNationalPensionDisplay;
+        annualNationalPensionTaxPaid += monthlyNatTaxDisplay;
+        annualPreTaxTotalIncome += monthlyNatPreTaxTotalDisplay;
 
         const monthlyPensionTotalNetDisplay = monthlyPensionIncomeNetDisplay + monthlyNationalPensionDisplay;
 
         // 4) 기타 소득 수취
-        let monthlyOtherIncomeTotalDisplay = 0;
-        (otherIncomes || []).forEach((income) => {
-          let amount = income.monthlyAmount;
-          if (inflationMode === 'nominal') {
-            amount = income.monthlyAmount * Math.pow(1 + infRateAnnual, y);
-          }
-          const amountDisplay = convertValue(amount, income.currency, displayCurrency);
-          monthlyOtherIncomeTotalDisplay += amountDisplay;
-        });
-
         annualOtherIncome += monthlyOtherIncomeTotalDisplay;
+        annualPreTaxTotalIncome += monthlyOtherPreTaxTotalDisplay;
 
         // 5) 가처분 소득으로 생활비 충당
         const monthlyTotalIncome = monthlyDividendIncomeNetDisplay + monthlyPensionTotalNetDisplay + monthlyOtherIncomeTotalDisplay;
@@ -387,7 +427,34 @@ export class SimulationEngine {
         annualSpending += actualMonthlySpending;
       } // 월 루프 종료
 
-      // 6) 기말 자산 합산 (표기 통화 기준)
+      // 6) 연말 정산 (종합과세 및 건보료 차감)
+      let annualComprehensiveTaxPaidDisplay = 0;
+      let annualHealthInsurancePaidDisplay = 0;
+
+      if (currentTaxSettings.enableComprehensiveTax && annualRawFinancialIncomeKRW > 20000000) {
+        const excessKRW = annualRawFinancialIncomeKRW - 20000000;
+        
+        const compTaxKRW = excessKRW * (currentTaxSettings.comprehensiveTaxRate / 100);
+        annualComprehensiveTaxPaidDisplay = convertValue(compTaxKRW, 'KRW', displayCurrency);
+
+        if (currentTaxSettings.enableHealthInsurance) {
+          const healthTaxKRW = excessKRW * (currentTaxSettings.healthInsuranceRate / 100);
+          annualHealthInsurancePaidDisplay = convertValue(healthTaxKRW, 'KRW', displayCurrency);
+        }
+        
+        // 자산에서 연말 세금 차감 (가장 큰 자산부터 매도하는 단순화 로직)
+        let remainingTax = annualComprehensiveTaxPaidDisplay + annualHealthInsurancePaidDisplay;
+        for (const asset of activeAssets) {
+            const assetValueDisplay = convertValue(asset.currentValue, asset.currency, displayCurrency);
+            const deduct = Math.min(remainingTax, assetValueDisplay);
+            const deductAssetCurrency = convertValue(deduct, displayCurrency, asset.currency);
+            asset.currentValue -= deductAssetCurrency;
+            remainingTax -= deduct;
+            if (remainingTax <= 0) break;
+        }
+      }
+
+      // 7) 기말 자산 합산 (표기 통화 기준)
       let stockAssetsDisplay = 0;
       activeAssets.forEach((asset) => {
         stockAssetsDisplay += convertValue(asset.currentValue, asset.currency, displayCurrency);
@@ -414,9 +481,15 @@ export class SimulationEngine {
         privatePensionIncome: annualPrivatePensionIncome,
         pensionIncome: annualNationalPensionIncome + annualPrivatePensionIncome,
         otherIncome: annualOtherIncome,
-        totalIncome: annualDividendIncome + (annualNationalPensionIncome + annualPrivatePensionIncome) + annualOtherIncome,
+        totalIncome: annualDividendIncome + (annualNationalPensionIncome + annualPrivatePensionIncome) + annualOtherIncome - annualComprehensiveTaxPaidDisplay - annualHealthInsurancePaidDisplay,
         spending: annualSpending,
         hasTaxWarning,
+        preTaxTotalIncome: annualPreTaxTotalIncome,
+        dividendTaxPaid: annualDividendTaxPaid,
+        pensionTaxPaid: annualPensionTaxPaid,
+        nationalPensionTaxPaid: annualNationalPensionTaxPaid,
+        comprehensiveTaxPaid: annualComprehensiveTaxPaidDisplay,
+        healthInsurancePaid: annualHealthInsurancePaidDisplay,
       });
 
       // 자산 고갈 여부 확인 (최초로 0 이하가 된 나이 기록)
@@ -431,7 +504,7 @@ export class SimulationEngine {
         ? userProfile.targetMonthlySpending * 12 * Math.pow(1 + inflationRate / 100, y)
         : userProfile.targetMonthlySpending * 12;
 
-      const totalIncome = annualDividendIncome + (annualNationalPensionIncome + annualPrivatePensionIncome) + annualOtherIncome;
+      const totalIncome = annualDividendIncome + (annualNationalPensionIncome + annualPrivatePensionIncome) + annualOtherIncome - annualComprehensiveTaxPaidDisplay - annualHealthInsurancePaidDisplay;
       if (totalIncome >= targetSpendingForFIRE && fireAge === null) {
         fireAge = currentAge;
       }

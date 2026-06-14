@@ -7,6 +7,8 @@ export interface UserProfile {
 
 export type AssetCurrency = 'KRW' | 'USD';
 
+export type AssetMarket = 'US_ETF' | 'KR_ETF' | 'IRP' | 'PENSION' | 'OTHER';
+
 export interface InvestmentAsset {
   id: string;
   type: 'stock' | 'etf';
@@ -21,6 +23,7 @@ export interface InvestmentAsset {
   monthlyContribution: number;
   reinvestDividend: boolean;
   currency: AssetCurrency;
+  assetMarket?: AssetMarket; // 과세 체계 기준
 }
 
 export type PrivatePensionType = 'irp' | 'savings' | 'retirement';
@@ -51,6 +54,15 @@ export interface OtherIncome {
 
 export type SpendingStrategy = 'target' | 'dividend_only' | 'max_sustainable';
 
+export interface TaxSettings {
+  enableComprehensiveTax: boolean;
+  enableHealthInsurance: boolean;
+  usDividendTaxRate: number; // % (default: 15)
+  domesticDividendTaxRate: number; // % (default: 15.4)
+  comprehensiveTaxRate: number; // % (초과분 단순화 세율, default: 15)
+  healthInsuranceRate: number; // % (초과분 건보료 비율, default: 5)
+}
+
 export interface SimulationParams {
   userProfile: UserProfile;
   assets: InvestmentAsset[];
@@ -64,6 +76,7 @@ export interface SimulationParams {
   displayCurrency: AssetCurrency; // 최종 결과 표기용 통화 ('KRW' | 'USD')
   yieldPreset?: 'conservative' | 'base' | 'aggressive' | 'custom';
   spendingStrategy?: SpendingStrategy; // 목표 생활비 달성 전략
+  taxSettings?: TaxSettings; // 고급 세금 설정
 }
 
 export interface SimulationYearlyResult {
@@ -77,9 +90,19 @@ export interface SimulationYearlyResult {
   privatePensionIncome: number; // 연간 세후 사적연금 수령액
   pensionIncome: number; // 연간 세후 연금 수령액 (국민+사적)
   otherIncome: number; // 연간 세후 기타 소득
-  totalIncome: number; // 연간 총 가처분 소득
+  totalIncome: number; // 연간 총 가처분 소득 (세후)
+  
+  // 세금 및 공과금 상세 내역
+  preTaxTotalIncome: number; // 연간 세전 총소득
+  dividendTaxPaid: number; // 배당소득세 납부액
+  pensionTaxPaid: number; // 연금소득세 납부액
+  nationalPensionTaxPaid: number; // 국민연금 세금 납부액
+  healthInsurancePaid: number; // 건강보험료(추가분) 납부액
+  comprehensiveTaxPaid: number; // 금융소득종합과세(추가분) 납부액
+  
   spending: number; // 연간 총 생활비 인출
-  hasTaxWarning: boolean; // 연간 금융소득(배당세전 + 사적연금수령세전)이 2,000만원 초과 여부 (KRW 기준 판정)
+  hasTaxWarning: boolean; // 연간 금융소득이 2,000만원 초과 여부
+
 }
 
 export interface SimulationResult {
