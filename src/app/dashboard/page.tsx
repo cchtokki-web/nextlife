@@ -44,6 +44,19 @@ export default function Home() {
   // Run simulation engine for active scenario
   const result = useMemo(() => engine.run(deferredParams), [engine, deferredParams]);
 
+  // Track simulation runs with a simple debounce
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      const sessionId = sessionStorage.getItem('analytics_session_id');
+      fetch('/api/analytics', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'SIMULATION_RUN', sessionId }),
+      }).catch(err => console.error('Failed to log simulation run', err));
+    }, 3000);
+    return () => clearTimeout(timer);
+  }, [result]);
+
   // Run simulation engine for compared scenarios
   const compareResults = useMemo(() => {
     return compareScenarioIds.map(id => {

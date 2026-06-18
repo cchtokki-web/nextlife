@@ -44,3 +44,10 @@ model VerificationToken {
 
   @@unique([identifier, token])
 }
+
+model AnalyticsEvent {
+  id        String   @id @default(cuid())
+  type      String   // e.g. "VISIT", "SIMULATION_RUN"
+  sessionId String?  // To prevent duplicate counts for the same session
+  createdAt DateTime @default(now())
+}

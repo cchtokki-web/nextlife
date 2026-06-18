@@ -60,6 +60,12 @@ export function SimpleSimulator() {
 
   const handleRun = () => {
     setHasRun(true);
+    const sessionId = sessionStorage.getItem('analytics_session_id');
+    fetch('/api/analytics', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'SIMULATION_RUN', sessionId }),
+    }).catch(err => console.error('Failed to log simulation run', err));
   };
 
   const result = useMemo(() => {

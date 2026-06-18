@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import './globals.css';
 
 import AuthProvider from "@/web/components/providers/AuthProvider";
+import AnalyticsTracker from "@/web/components/AnalyticsTracker";
 
 export const metadata: Metadata = {
   title: 'NextLife - 은퇴 자산',
@@ -20,6 +21,7 @@ export default function RootLayout({
     <html lang="ko" suppressHydrationWarning>
       <body suppressHydrationWarning>
         <AuthProvider>
+          <AnalyticsTracker />
           {children}
         </AuthProvider>
       </body>
