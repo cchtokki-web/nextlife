@@ -41,7 +41,7 @@ COPY --from=builder /app/public ./public
 COPY --from=builder /app/prisma ./prisma
 
 # Copy the initial dev.db to the image
-COPY --from=builder --chown=nextjs:nodejs /app/dev.db /app/default.db
+COPY --from=builder --chown=nextjs:nodejs /app/prisma/dev.db /app/default.db
 
 # Automatically leverage output traces to reduce image size
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
