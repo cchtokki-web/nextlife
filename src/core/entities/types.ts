@@ -63,11 +63,28 @@ export interface TaxSettings {
   healthInsuranceRate: number; // % (초과분 건보료 비율, default: 5)
 }
 
+export type IsaAccountType = 'general' | 'low_income';
+
+export interface IsaAccount {
+  id: string;
+  type: IsaAccountType;
+  investmentType?: 'custom' | 'deposit' | 'etf';
+  ticker?: string;
+  name?: string;
+  balance: number;
+  monthlyContribution: number;
+  annualReturn: number; // % 단위
+  dividendYield: number; // % 단위
+  currency: AssetCurrency;
+  maturityYears: number; // 기본 3년
+}
+
 export interface SimulationParams {
   userProfile: UserProfile;
   assets: InvestmentAsset[];
   nationalPension: NationalPension;
   privatePensions: PrivatePension[];
+  isaAccounts?: IsaAccount[];
   otherIncomes: OtherIncome[];
   inflationRate: number; // % 단위, 예: 2.5
   inflationMode: 'nominal' | 'real';
