@@ -5,4 +5,12 @@ npm-debug.log
 README.md
 .next
 .git
-.env*.local
+.env*
+!*.env.example
+.DS_Store
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+docker-compose.yml
+*.py
