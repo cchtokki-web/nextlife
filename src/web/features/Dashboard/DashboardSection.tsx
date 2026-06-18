@@ -4,6 +4,10 @@ import React from 'react';
 import { SimulationParams, SimulationResult } from '../../../core/entities/types';
 import GlassCard from '../../components/GlassCard';
 import { YearlyChart } from './YearlyChart';
+import { HeroSummaryCard } from './HeroSummaryCard';
+import { CoreMetricsCards } from './CoreMetricsCards';
+import { AiAdvisorCard } from './AiAdvisorCard';
+import { ScenarioComparison, ComparisonScenario } from './ScenarioComparison';
 import styles from './Dashboard.module.css';
 import { AlertTriangle, TrendingDown, Target, Zap, Award, Calculator } from 'lucide-react';
 import {
@@ -173,6 +177,34 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({ params: rawP
   const minGoalRate = Math.min(100, result.goalAchievementRate);
   const goalDashoffset = circumference - (minGoalRate / 100) * circumference;
 
+  // New Data Extractions
+  const assetAt60 = yearlyResults.find(r => r.age === 60)?.totalAssets || 0;
+  const isMonthlyTargetPossible = result.depletionAge === null || result.depletionAge >= params.userProfile.expectancy;
+  const expectedAssetAt85 = yearlyResults.find(r => r.age === 85)?.totalAssets || 0;
+
+  const currentScenario: ComparisonScenario = {
+    id: 'current',
+    name: '현재 계획',
+    score: result.retirementScore,
+    expectedAssetAt85: expectedAssetAt85
+  };
+
+  // Mock alternative scenarios for demonstration
+  const alternativeScenarios: ComparisonScenario[] = [
+    {
+      id: 'alt1',
+      name: '매월 투자금 50만원 증가',
+      score: Math.min(100, result.retirementScore + 22),
+      expectedAssetAt85: expectedAssetAt85 + 300000000
+    },
+    {
+      id: 'alt2',
+      name: '은퇴 시기 2년 연기',
+      score: Math.min(100, result.retirementScore + 28),
+      expectedAssetAt85: expectedAssetAt85 + 400000000
+    }
+  ];
+
   return (
     <div className={styles.container}>
       {/* Strategy Indicator Banner */}
@@ -199,119 +231,28 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({ params: rawP
         </div>
       )}
 
-      {/* 1. Top Metrics Row */}
-      <div className={styles.metricsGrid}>
-        
-        {/* Score Card */}
-        <GlassCard className={styles.metricCard} glowColor="primary">
-          <span className={styles.scoreTitle}>은퇴 준비도 점수</span>
-          <div style={{ position: 'relative', width: radius * 2, height: radius * 2 }}>
-            <svg height={radius * 2} width={radius * 2} className={styles.circleSvg}>
-              <circle
-                className={styles.circleBg}
-                r={normalizedRadius}
-                cx={radius}
-                cy={radius}
-                strokeWidth={strokeWidth}
-              />
-              <circle
-                className={styles.circleBar}
-                r={normalizedRadius}
-                cx={radius}
-                cy={radius}
-                strokeWidth={strokeWidth}
-                strokeDasharray={circumference + ' ' + circumference}
-                style={{ strokeDashoffset }}
-                stroke="url(#neonIndigoPurple)"
-              />
-              <defs>
-                <linearGradient id="neonIndigoPurple" x1="0%" y1="0%" x2="100%" y2="100%">
-                  <stop offset="0%" stopColor="var(--primary)" />
-                  <stop offset="100%" stopColor="var(--secondary)" />
-                </linearGradient>
-              </defs>
-            </svg>
-            <div className={styles.scoreValue}>
-              {result.retirementScore}
-              <span className={styles.scoreValueUnit}>점</span>
-            </div>
-          </div>
-          <span className={styles.metricSubText} style={{ marginTop: '0.75rem', fontWeight: 600 }}>
-            {result.retirementGrade} 등급
-          </span>
-          <span className={styles.metricSubText} style={{ marginTop: '0.25rem' }}>
-            {result.depletionAge ? `${result.depletionAge}세 자산 고갈 예상` : '기대수명 내 고갈 위험 없음'}
-          </span>
-        </GlassCard>
+      <HeroSummaryCard score={result.retirementScore} expectancyAge={params.userProfile.expectancy} />
 
-        {/* Goal Achievement Card */}
-        <GlassCard className={styles.metricCard} glowColor="secondary">
-          <span className={styles.scoreTitle}>은퇴 소득 달성률</span>
-          <div style={{ position: 'relative', width: radius * 2, height: radius * 2 }}>
-            <svg height={radius * 2} width={radius * 2} className={styles.circleSvg}>
-              <circle
-                className={styles.circleBg}
-                r={normalizedRadius}
-                cx={radius}
-                cy={radius}
-                strokeWidth={strokeWidth}
-              />
-              <circle
-                className={styles.circleBar}
-                r={normalizedRadius}
-                cx={radius}
-                cy={radius}
-                strokeWidth={strokeWidth}
-                strokeDasharray={circumference + ' ' + circumference}
-                style={{ strokeDashoffset: goalDashoffset }}
-                stroke="url(#neonPurpleCyan)"
-              />
-              <defs>
-                <linearGradient id="neonPurpleCyan" x1="0%" y1="0%" x2="100%" y2="100%">
-                  <stop offset="0%" stopColor="var(--secondary)" />
-                  <stop offset="100%" stopColor="var(--accent)" />
-                </linearGradient>
-              </defs>
-            </svg>
-            <div className={styles.scoreValue}>
-              {goalAchievementRate}
-              <span className={styles.scoreValueUnit}>%</span>
-            </div>
-          </div>
-          <span className={styles.metricSubText} style={{ marginTop: '0.75rem' }}>
-            목표 월 생활비 대비 확보액 비율
-          </span>
-        </GlassCard>
+      <CoreMetricsCards 
+        depletionAge={result.depletionAge}
+        expectancyAge={params.userProfile.expectancy}
+        assetAt60={assetAt60}
+        monthlyTarget={params.userProfile.targetMonthlySpending}
+        isMonthlyTargetPossible={isMonthlyTargetPossible}
+        formatValue={formatValue}
+      />
 
-        {/* FIRE Age Card */}
-        <GlassCard className={styles.metricCard} interactive glowColor="accent">
-          <div style={{ background: 'rgba(6, 182, 212, 0.15)', padding: '0.5rem', borderRadius: '50%' }}>
-            <Zap size={20} color="var(--accent)" />
-          </div>
-          <span className={styles.scoreTitle} style={{ marginTop: '0.5rem' }}>FIRE 조기은퇴 가능 나이</span>
-          <span className={styles.metricValueText}>
-            {fireAge ? `${fireAge} 세` : '달성 불가능'}
-          </span>
-          <span className={styles.metricSubText}>
-            소득이 연간 생활비를 추월하는 시점
-          </span>
-        </GlassCard>
+      <AiAdvisorCard 
+        score={result.retirementScore}
+        monthlyTarget={params.userProfile.targetMonthlySpending}
+        formatValue={formatValue}
+      />
 
-        {/* Ending Assets Card */}
-        <GlassCard className={styles.metricCard}>
-          <div style={{ background: 'rgba(16, 185, 129, 0.15)', padding: '0.5rem', borderRadius: '50%' }}>
-            <Award size={20} color="var(--success)" />
-          </div>
-          <span className={styles.scoreTitle} style={{ marginTop: '0.5rem' }}>사망 시 잔여 자산</span>
-          <span className={styles.metricValueText} style={{ color: endingAssets > 0 ? 'var(--success)' : '#EF4444' }}>
-            {formatValue(endingAssets)}
-          </span>
-          <span className={styles.metricSubText}>
-            만 {params.userProfile.expectancy}세 시점 예상 잔액
-          </span>
-        </GlassCard>
-
-      </div>
+      <ScenarioComparison 
+        currentScenario={currentScenario}
+        alternativeScenarios={alternativeScenarios}
+        formatValue={formatValue}
+      />
 
       {/* 2. Tax Comparison Card (Retirement Period Average) */}
       <GlassCard className={styles.chartCard} style={{ padding: '1.5rem' }}>
