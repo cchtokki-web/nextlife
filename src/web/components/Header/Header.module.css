@@ -57,3 +57,9 @@
   border-color: var(--primary);
   color: var(--primary);
 }
+
+@media (max-width: 768px) {
+  .header {
+    justify-content: center;
+  }
+}
