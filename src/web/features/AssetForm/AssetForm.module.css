@@ -355,3 +355,6 @@
   text-overflow: ellipsis;
 }
 
+.autocompleteItemActive {
+  background: var(--card-border);
+}

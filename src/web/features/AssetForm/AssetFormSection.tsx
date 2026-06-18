@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback } from 'react';
-import { SimulationParams, InvestmentAsset, PrivatePension, OtherIncome, AssetCurrency } from '../../../core/entities/types';
+import { SimulationParams, InvestmentAsset, PrivatePension, OtherIncome, AssetCurrency, IsaAccount } from '../../../core/entities/types';
 import { InputField } from '../../components/InputField';
 import { SelectField } from '../../components/SelectField';
 import styles from './AssetForm.module.css';
@@ -39,7 +39,7 @@ interface AssetFormSectionProps {
   onChangeParams: (newParams: SimulationParams) => void;
 }
 
-type TabType = 'profile' | 'stocks' | 'pensions' | 'other';
+type TabType = 'profile' | 'stocks' | 'pensions' | 'isa' | 'other';
 
 export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawParams, onChangeParams }) => {
   const params: SimulationParams = {
@@ -48,6 +48,7 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
     assets: rawParams?.assets || [],
     nationalPension: rawParams?.nationalPension || { expectedMonthlyAmount: 0 },
     privatePensions: rawParams?.privatePensions || [],
+    isaAccounts: rawParams?.isaAccounts || [],
     otherIncomes: rawParams?.otherIncomes || [],
     inflationRate: rawParams?.inflationRate ?? 2,
     inflationMode: rawParams?.inflationMode || 'real',
@@ -58,14 +59,90 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
   const [activeTab, setActiveTab] = useState<TabType>('profile');
   const [expandedAssets, setExpandedAssets] = useState<Record<string, boolean>>({});
   const [expandedPensions, setExpandedPensions] = useState<Record<string, boolean>>({});
+  const [expandedIsa, setExpandedIsa] = useState<Record<string, boolean>>({});
   const [fetchingPriceMap, setFetchingPriceMap] = useState<Record<string, boolean>>({});
   const [fetchingInfoMap, setFetchingInfoMap] = useState<Record<string, boolean>>({});
   const [focusedAssetId, setFocusedAssetId] = useState<string | null>(null);
   const [realtimeSuggestions, setRealtimeSuggestions] = useState<Record<string, any[]>>({});
   const [isSearching, setIsSearching] = useState<Record<string, boolean>>({});
+  const [autocompleteIndex, setAutocompleteIndex] = useState<number>(-1);
 
   const searchTimeoutRef = useRef<Record<string, NodeJS.Timeout>>({});
   const isSelectingRef = useRef<Record<string, boolean>>({});
+
+  const getCombinedOptions = useCallback((id: string, name: string | undefined) => {
+    if (!name) return [];
+    const matchingPredefined = predefinedAssets.filter(pa => 
+      pa.name.toLowerCase().includes(name.toLowerCase()) ||
+      pa.ticker.toLowerCase().includes(name.toLowerCase())
+    );
+    const rsList = realtimeSuggestions[id] || [];
+    const predefinedTickers = new Set(matchingPredefined.map(p => p.ticker));
+    const additionalRealtime = rsList
+      .filter((rs: any) => !predefinedTickers.has(rs.ticker))
+      .map((rs: any) => ({
+        ...rs,
+        annualGrowthRate: rs.type === 'etf' ? 7.0 : 6.0,
+        dividendYield: rs.type === 'etf' ? 1.5 : 1.0,
+      }));
+    return [...matchingPredefined, ...additionalRealtime].slice(0, 8);
+  }, [realtimeSuggestions]);
+
+  const handleAutocompleteKeyDown = useCallback((e: React.KeyboardEvent, id: string, name: string | undefined, type: 'asset' | 'pension' | 'isa') => {
+    if (!focusedAssetId || focusedAssetId !== id || !name) return;
+    const combined = getCombinedOptions(id, name);
+    if (combined.length === 0) return;
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setAutocompleteIndex(prev => Math.min(prev + 1, combined.length - 1));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setAutocompleteIndex(prev => Math.max(prev - 1, -1));
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (autocompleteIndex >= 0 && autocompleteIndex < combined.length) {
+        const pa = combined[autocompleteIndex];
+        isSelectingRef.current[id] = true;
+        
+        if (type === 'asset') {
+          const isUsEtf = pa.type === 'etf' && pa.currency === 'USD';
+          handleUpdateAsset(id, {
+            name: isUsEtf ? pa.ticker : pa.name,
+            ticker: pa.ticker,
+            type: pa.type,
+            currency: pa.currency,
+            annualGrowthRate: pa.annualGrowthRate,
+            dividendYield: pa.dividendYield,
+          });
+          fetchAssetInfo(id, pa.ticker);
+        } else if (type === 'pension') {
+          handleUpdatePrivatePension(id, {
+            name: pa.name,
+            ticker: pa.ticker,
+            currency: pa.currency,
+            annualReturn: Math.round((pa.annualGrowthRate + pa.dividendYield) * 10) / 10,
+          });
+          fetchPensionInfo(id, pa.ticker);
+        } else if (type === 'isa') {
+          handleUpdateIsaAccount(id, {
+            name: pa.name,
+            ticker: pa.ticker,
+            currency: pa.currency,
+            annualReturn: Math.round((pa.annualGrowthRate + pa.dividendYield) * 10) / 10,
+          });
+          fetchIsaInfo(id, pa.ticker);
+        }
+        
+        setFocusedAssetId(null);
+        setAutocompleteIndex(-1);
+        setTimeout(() => { isSelectingRef.current[id] = false; }, 200);
+      }
+    } else if (e.key === 'Escape') {
+      setFocusedAssetId(null);
+      setAutocompleteIndex(-1);
+    }
+  }, [focusedAssetId, autocompleteIndex, getCombinedOptions]);
 
   const fetchRealtimeSuggestions = useCallback(async (id: string, query: string) => {
     if (!query || query.length < 1) {
@@ -181,6 +258,35 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
     }
   };
 
+  const fetchIsaInfo = async (id: string, ticker: string) => {
+    if (!ticker) return;
+    setFetchingInfoMap((prev) => ({ ...prev, [id]: true }));
+    try {
+      const res = await fetch(`/api/stock-info?ticker=${encodeURIComponent(ticker)}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.annualGrowthRate !== undefined || data.dividendYield !== undefined) {
+          const annualReturn = data.annualGrowthRate || 0;
+          const dividendYield = data.dividendYield || 0;
+          
+          (onChangeParams as any)((prevParams: SimulationParams) => {
+            const updated = (prevParams.isaAccounts || []).map((isa) => {
+              if (isa.id === id) {
+                return { ...isa, annualReturn, dividendYield };
+              }
+              return isa;
+            });
+            return { ...prevParams, isaAccounts: updated, yieldPreset: 'custom' };
+          });
+        }
+      }
+    } catch (err) {
+      console.error('Failed to fetch isa info:', err);
+    } finally {
+      setFetchingInfoMap((prev) => ({ ...prev, [id]: false }));
+    }
+  };
+
   const toggleExpand = (id: string) => {
     setExpandedAssets((prev) => ({
       ...prev,
@@ -190,6 +296,13 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
 
   const togglePensionExpand = (id: string) => {
     setExpandedPensions((prev) => ({
+      ...prev,
+      [id]: !prev[id],
+    }));
+  };
+
+  const toggleIsaExpand = (id: string) => {
+    setExpandedIsa((prev) => ({
       ...prev,
       [id]: !prev[id],
     }));
@@ -362,6 +475,48 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
     });
   };
 
+  // 4-1. ISA Account actions
+  const handleAddIsaAccount = () => {
+    const newIsa: IsaAccount = {
+      id: `isa-${Date.now()}`,
+      type: 'general',
+      investmentType: 'custom',
+      balance: 0,
+      monthlyContribution: 0,
+      annualReturn: 5,
+      dividendYield: 1.5,
+      currency: 'KRW',
+      maturityYears: 3,
+    };
+    onChangeParams({
+      ...params,
+      isaAccounts: [...(params.isaAccounts || []), newIsa],
+    });
+  };
+
+  const handleUpdateIsaAccount = (id: string, updates: Partial<IsaAccount> | keyof IsaAccount, value?: any) => {
+    (onChangeParams as any)((prevParams: SimulationParams) => {
+      const updated = (prevParams.isaAccounts || []).map((isa) => {
+        if (isa.id === id) {
+          if (typeof updates === 'string') {
+            return { ...isa, [updates]: value };
+          } else {
+            return { ...isa, ...updates };
+          }
+        }
+        return isa;
+      });
+      return { ...prevParams, isaAccounts: updated };
+    });
+  };
+
+  const handleDeleteIsaAccount = (id: string) => {
+    onChangeParams({
+      ...params,
+      isaAccounts: (params.isaAccounts || []).filter((isa) => isa.id !== id),
+    });
+  };
+
   // 5. Other Incomes actions
   const handleAddOtherIncome = () => {
     const newIncome: OtherIncome = {
@@ -377,26 +532,28 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
   };
 
   const handleUpdateOtherIncome = (id: string, key: keyof OtherIncome, value: any) => {
-    const updated = params.otherIncomes.map((income) => {
-      if (income.id === id) {
-        if (key === 'currency') {
-          const prevCurrency = income.currency;
-          const nextCurrency = value as AssetCurrency;
-          if (prevCurrency !== nextCurrency) {
-            let monthlyAmount = income.monthlyAmount;
-            if (prevCurrency === 'USD' && nextCurrency === 'KRW') {
-              monthlyAmount = Math.round(monthlyAmount * params.baseExchangeRate);
-            } else if (prevCurrency === 'KRW' && nextCurrency === 'USD') {
-              monthlyAmount = Math.round((monthlyAmount / params.baseExchangeRate) * 100) / 100;
+    (onChangeParams as any)((prevParams: SimulationParams) => {
+      const updated = prevParams.otherIncomes.map((income) => {
+        if (income.id === id) {
+          if (key === 'currency') {
+            const prevCurrency = income.currency;
+            const nextCurrency = value as AssetCurrency;
+            if (prevCurrency !== nextCurrency) {
+              let monthlyAmount = income.monthlyAmount;
+              if (prevCurrency === 'USD' && nextCurrency === 'KRW') {
+                monthlyAmount = Math.round(monthlyAmount * prevParams.baseExchangeRate);
+              } else if (prevCurrency === 'KRW' && nextCurrency === 'USD') {
+                monthlyAmount = Math.round((monthlyAmount / prevParams.baseExchangeRate) * 100) / 100;
+              }
+              return { ...income, currency: nextCurrency, monthlyAmount };
             }
-            return { ...income, currency: nextCurrency, monthlyAmount };
           }
+          return { ...income, [key]: value };
         }
-        return { ...income, [key]: value };
-      }
-      return income;
+        return income;
+      });
+      return { ...prevParams, otherIncomes: updated };
     });
-    onChangeParams({ ...params, otherIncomes: updated });
   };
 
   const handleDeleteOtherIncome = (id: string) => {
@@ -451,6 +608,13 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
         >
           <PiggyBank size={16} style={{ marginRight: '0.4rem', verticalAlign: 'middle' }} />
           연금 자산 <span className={styles.numberBadge}>{params.privatePensions.length + 1}</span>
+        </button>
+        <button
+          className={`${styles.tabButton} ${activeTab === 'isa' ? styles.tabButtonActive : ''}`}
+          onClick={(e) => handleTabClick('isa', e)}
+        >
+          <Landmark size={16} style={{ marginRight: '0.4rem', verticalAlign: 'middle' }} />
+          ISA 계좌 <span className={styles.numberBadge}>{(params.isaAccounts || []).length}</span>
         </button>
         <button
           className={`${styles.tabButton} ${activeTab === 'other' ? styles.tabButtonActive : ''}`}
@@ -586,52 +750,41 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                             const val = e.target.value;
                             handleUpdateAsset(asset.id, 'name', val);
                             setFocusedAssetId(asset.id);
+                            setAutocompleteIndex(-1);
                             if (searchTimeoutRef.current[asset.id]) {
                               clearTimeout(searchTimeoutRef.current[asset.id]);
                             }
                             searchTimeoutRef.current[asset.id] = setTimeout(() => {
                               fetchRealtimeSuggestions(asset.id, val);
-                            }, 300);
+                            }, 150);
                           }}
+                          onKeyDown={(e) => handleAutocompleteKeyDown(e, asset.id, asset.name, 'asset')}
                           onFocus={() => setFocusedAssetId(asset.id)}
                           onBlur={() => setTimeout(() => setFocusedAssetId(null), 500)}
                         />
                         {focusedAssetId === asset.id && asset.name && (
                           (() => {
-                            const matchingPredefined = predefinedAssets.filter(pa => 
-                              pa.name.toLowerCase().includes(asset.name.toLowerCase()) ||
-                              pa.ticker.toLowerCase().includes(asset.name.toLowerCase())
-                            );
-                            
-                            const rsList = realtimeSuggestions[asset.id] || [];
-                            const predefinedTickers = new Set(matchingPredefined.map(p => p.ticker));
-                            const additionalRealtime = rsList
-                              .filter((rs: any) => !predefinedTickers.has(rs.ticker))
-                              .map((rs: any) => ({
-                                ...rs,
-                                annualGrowthRate: rs.type === 'etf' ? 7.0 : 6.0,
-                                dividendYield: rs.type === 'etf' ? 1.5 : 1.0,
-                              }));
-                              
-                            const combined = [...matchingPredefined, ...additionalRealtime].slice(0, 8);
+                            const combined = getCombinedOptions(asset.id, asset.name);
                             const searching = isSearching[asset.id];
                             
                             if (combined.length === 0 && !searching) return null;
                             
                             return (
                               <div className={styles.autocompleteDropdown}>
-                                {combined.map(pa => (
+                                {combined.map((pa, i) => (
                                   <div
                                     key={pa.ticker}
-                                    className={styles.autocompleteItem}
+                                    className={`${styles.autocompleteItem} ${autocompleteIndex === i ? styles.autocompleteItemActive : ''}`}
+                                    onMouseEnter={() => setAutocompleteIndex(i)}
                                     onMouseDown={(e) => {
                                       e.preventDefault(); // Prevent input from losing focus on desktop
                                     }}
                                     onClick={(e) => {
                                       e.preventDefault();
                                       isSelectingRef.current[asset.id] = true;
+                                      const isUsEtf = pa.type === 'etf' && pa.currency === 'USD';
                                       handleUpdateAsset(asset.id, {
-                                        name: pa.name,
+                                        name: isUsEtf ? pa.ticker : pa.name,
                                         ticker: pa.ticker,
                                         type: pa.type,
                                         currency: pa.currency,
@@ -639,6 +792,7 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                                         dividendYield: pa.dividendYield,
                                       });
                                       setFocusedAssetId(null);
+                                      setAutocompleteIndex(-1);
                                       fetchAssetInfo(asset.id, pa.ticker);
                                       setTimeout(() => { isSelectingRef.current[asset.id] = false; }, 200);
                                     }}
@@ -1004,52 +1158,32 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                           const val = e.target.value;
                           handleUpdatePrivatePension(pension.id, 'name', val);
                           setFocusedAssetId(pension.id);
+                          setAutocompleteIndex(-1);
                           if (searchTimeoutRef.current[pension.id]) {
                             clearTimeout(searchTimeoutRef.current[pension.id]);
                           }
                           searchTimeoutRef.current[pension.id] = setTimeout(() => {
                             fetchRealtimeSuggestions(pension.id, val);
-                          }, 300);
+                          }, 150);
                         }}
+                        onKeyDown={(e) => handleAutocompleteKeyDown(e, pension.id, pension.name, 'pension')}
                         onFocus={() => setFocusedAssetId(pension.id)}
                         onBlur={() => setTimeout(() => setFocusedAssetId(null), 200)}
                       />
                       {focusedAssetId === pension.id && pension.name && (
                         (() => {
-                          const matchingPredefined = predefinedAssets.filter(pa => 
-                            pa.name.toLowerCase().includes(pension.name!.toLowerCase()) ||
-                            pa.ticker.toLowerCase().includes(pension.name!.toLowerCase())
-                          );
-                          const rsList = realtimeSuggestions[pension.id] || [];
-                          const predefinedTickers = new Set(matchingPredefined.map(p => p.ticker));
-                          const additionalRealtime = rsList
-                            .filter((rs: any) => !predefinedTickers.has(rs.ticker))
-                            .map((rs: any) => ({
-                              ...rs,
-                              annualGrowthRate: rs.type === 'etf' ? 7.0 : 6.0,
-                              dividendYield: rs.type === 'etf' ? 1.5 : 1.0,
-                            }));
-                          const combined = [...matchingPredefined, ...additionalRealtime].slice(0, 8);
+                          const combined = getCombinedOptions(pension.id, pension.name);
                           const searching = isSearching[pension.id];
                           if (combined.length === 0 && !searching) return null;
                           return (
                             <div className={styles.autocompleteDropdown}>
-                              {combined.map(pa => (
+                              {combined.map((pa, i) => (
                                 <div
                                   key={pa.ticker}
-                                  className={styles.autocompleteItem}
+                                  className={`${styles.autocompleteItem} ${autocompleteIndex === i ? styles.autocompleteItemActive : ''}`}
+                                  onMouseEnter={() => setAutocompleteIndex(i)}
                                   onMouseDown={(e) => {
                                     e.preventDefault();
-                                    isSelectingRef.current[pension.id] = true;
-                                    handleUpdatePrivatePension(pension.id, {
-                                      name: pa.name,
-                                      ticker: pa.ticker,
-                                      currency: pa.currency,
-                                      annualReturn: Math.round((pa.annualGrowthRate + pa.dividendYield) * 10) / 10,
-                                    });
-                                    setFocusedAssetId(null);
-                                    fetchPensionInfo(pension.id, pa.ticker);
-                                    setTimeout(() => { isSelectingRef.current[pension.id] = false; }, 200);
                                   }}
                                   onClick={(e) => {
                                     e.preventDefault();
@@ -1061,6 +1195,7 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                                       annualReturn: Math.round((pa.annualGrowthRate + pa.dividendYield) * 10) / 10,
                                     });
                                     setFocusedAssetId(null);
+                                    setAutocompleteIndex(-1);
                                     fetchPensionInfo(pension.id, pa.ticker);
                                     setTimeout(() => { isSelectingRef.current[pension.id] = false; }, 200);
                                   }}
@@ -1196,6 +1331,249 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
             )})}
             <button className={styles.addButton} onClick={handleAddPrivatePension}>
               <Plus size={16} /> 사적연금 추가
+            </button>
+          </div>
+        )}
+
+        {/* ISA Account Tab */}
+        {activeTab === 'isa' && (
+          <div>
+            {(params.isaAccounts || []).map((isa) => {
+              const isExpanded = !!expandedIsa[isa.id];
+              return (
+                <div key={isa.id} className={`${styles.assetCard} ${isExpanded ? styles.assetCardExpanded : ''}`}>
+                  <div className={`${styles.cardHeader} ${styles.clickableHeader}`} onClick={() => toggleIsaExpand(isa.id)}>
+                    <div className={styles.headerTitleArea}>
+                      <span className={styles.chevronIcon}>
+                        {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                      </span>
+                      <span className={styles.cardTitle}>중개형 ISA ({isa.type === 'general' ? '일반형' : '서민형'})</span>
+                    </div>
+                    <div className={styles.headerActionArea} onClick={(e) => e.stopPropagation()}>
+                      <button className={styles.deleteButton} onClick={() => handleDeleteIsaAccount(isa.id)}>
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className={`${styles.summaryContainer} ${isExpanded ? styles.expanded : ''}`} onClick={() => toggleIsaExpand(isa.id)}>
+                    <div className={styles.summaryItem}>
+                      <span className={styles.summaryLabel}>현재 잔액:</span>
+                      <span className={styles.summaryValue}>{isa.balance.toLocaleString()}{isa.currency === 'KRW' ? '원' : ''}</span>
+                    </div>
+                    <div className={styles.summaryItem}>
+                      <span className={styles.summaryLabel}>월 적립:</span>
+                      <span className={styles.summaryValue}>{isa.monthlyContribution.toLocaleString()}{isa.currency === 'KRW' ? '원' : ''}</span>
+                    </div>
+                  </div>
+
+                  {isExpanded && (
+                    <div className={`${styles.cardDetails} ${compStyles.grid}`}>
+                      <SelectField
+                        label="ISA 유형"
+                        value={isa.type}
+                        onChange={(e) => handleUpdateIsaAccount(isa.id, 'type', e.target.value)}
+                        options={[
+                          { value: 'general', label: '일반형 (비과세 200만원)' },
+                          { value: 'low_income', label: '서민형 (비과세 400만원)' },
+                        ]}
+                      />
+                      <SelectField
+                        label="투자 방식"
+                        value={isa.investmentType || 'custom'}
+                        onChange={(e) => handleUpdateIsaAccount(isa.id, 'investmentType', e.target.value)}
+                        options={[
+                          { value: 'custom', label: '직접입력 (기본)' },
+                          { value: 'deposit', label: '예금 (Deposit)' },
+                          { value: 'etf', label: 'ETF' },
+                        ]}
+                      />
+                      {isa.investmentType === 'etf' && (
+                        <div className={styles.autocompleteWrapper}>
+                          <InputField
+                            label="종목명"
+                            type="text"
+                            value={isa.name || ''}
+                            onChange={(e) => {
+                              if (isSelectingRef.current[isa.id]) return;
+                              const val = e.target.value;
+                              handleUpdateIsaAccount(isa.id, 'name', val);
+                              setFocusedAssetId(isa.id);
+                              setAutocompleteIndex(-1);
+                              if (searchTimeoutRef.current[isa.id]) {
+                                clearTimeout(searchTimeoutRef.current[isa.id]);
+                              }
+                              searchTimeoutRef.current[isa.id] = setTimeout(() => {
+                                fetchRealtimeSuggestions(isa.id, val);
+                              }, 150);
+                            }}
+                            onKeyDown={(e) => handleAutocompleteKeyDown(e, isa.id, isa.name, 'isa')}
+                            onFocus={() => setFocusedAssetId(isa.id)}
+                            onBlur={() => setTimeout(() => setFocusedAssetId(null), 200)}
+                          />
+                          {focusedAssetId === isa.id && isa.name && (
+                            (() => {
+                              const combined = getCombinedOptions(isa.id, isa.name);
+                              const searching = isSearching[isa.id];
+                              if (combined.length === 0 && !searching) return null;
+                              return (
+                                <div className={styles.autocompleteDropdown}>
+                                  {combined.map((pa, i) => (
+                                    <div
+                                      key={pa.ticker}
+                                      className={`${styles.autocompleteItem} ${autocompleteIndex === i ? styles.autocompleteItemActive : ''}`}
+                                      onMouseEnter={() => setAutocompleteIndex(i)}
+                                      onMouseDown={(e) => {
+                                        e.preventDefault();
+                                      }}
+                                      onClick={(e) => {
+                                        e.preventDefault();
+                                        isSelectingRef.current[isa.id] = true;
+                                        handleUpdateIsaAccount(isa.id, {
+                                          name: pa.name,
+                                          ticker: pa.ticker,
+                                          currency: pa.currency,
+                                          annualReturn: Math.round((pa.annualGrowthRate + pa.dividendYield) * 10) / 10,
+                                        });
+                                        setFocusedAssetId(null);
+                                        setAutocompleteIndex(-1);
+                                        fetchIsaInfo(isa.id, pa.ticker);
+                                        setTimeout(() => { isSelectingRef.current[isa.id] = false; }, 200);
+                                      }}
+                                    >
+                                      <span className={styles.autocompleteItemTitle}>{pa.name}</span>
+                                      <span className={styles.autocompleteItemSub}>
+                                        {pa.ticker} • {pa.currency === 'USD' ? '미국 주식/ETF' : '국내 주식/ETF'}
+                                      </span>
+                                    </div>
+                                  ))}
+                                  {searching && (
+                                    <div className={styles.autocompleteItem} style={{ cursor: 'default' }}>
+                                      <span className={styles.autocompleteItemSub}>실시간 검색 중...</span>
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })()
+                          )}
+                        </div>
+                      )}
+                      <InputField
+                        label="만기 기간 (년)"
+                        type="number"
+                        value={isa.maturityYears}
+                        onChange={(e) => handleUpdateIsaAccount(isa.id, 'maturityYears', Number(e.target.value))}
+                        suffixText="년"
+                      />
+                      <InputField
+                        label="현재 잔액"
+                        type="text"
+                        value={isa.balance === 0 ? '0' : isa.balance.toLocaleString()}
+                        onChange={(e) => {
+                          const rawValue = e.target.value.replace(/,/g, '');
+                          const numValue = rawValue === '' ? 0 : Number(rawValue);
+                          if (!isNaN(numValue)) handleUpdateIsaAccount(isa.id, 'balance', numValue);
+                        }}
+                        suffixText={isa.currency === 'KRW' ? '원' : isa.currency}
+                      />
+                      <InputField
+                        label="월 적립액"
+                        type="text"
+                        value={isa.monthlyContribution === 0 ? '0' : isa.monthlyContribution.toLocaleString()}
+                        onChange={(e) => {
+                          const rawValue = e.target.value.replace(/,/g, '');
+                          const numValue = rawValue === '' ? 0 : Number(rawValue);
+                          if (!isNaN(numValue)) handleUpdateIsaAccount(isa.id, 'monthlyContribution', numValue);
+                        }}
+                        suffixText={isa.currency === 'KRW' ? '원' : isa.currency}
+                      />
+                      {isa.investmentType === 'etf' ? (
+                        <>
+                          <div className={styles.priceInputWrapper}>
+                            <div className={styles.priceInputGrow}>
+                              <InputField
+                                label="연 주가 상승률"
+                                type="number"
+                                step="0.1"
+                                value={isa.annualReturn}
+                                onChange={(e) => handleUpdateIsaAccount(isa.id, 'annualReturn', Number(e.target.value))}
+                                suffixText="%"
+                              />
+                            </div>
+                            <button
+                              type="button"
+                              className={`${compStyles.button} ${compStyles.buttonSecondary} ${styles.priceFetchButton}`}
+                              onClick={() => fetchIsaInfo(isa.id, isa.ticker!)}
+                              disabled={fetchingInfoMap[isa.id] || !isa.ticker}
+                              title="실시간 수익률 조회"
+                            >
+                              <RefreshCw
+                                size={14}
+                                className={fetchingInfoMap[isa.id] ? styles.spinner : ''}
+                              />
+                            </button>
+                          </div>
+                          <div className={styles.priceInputWrapper}>
+                            <div className={styles.priceInputGrow}>
+                              <InputField
+                                label="연 기대 배당률"
+                                type="number"
+                                step="0.1"
+                                value={isa.dividendYield || 0}
+                                onChange={(e) => handleUpdateIsaAccount(isa.id, 'dividendYield', Number(e.target.value))}
+                                suffixText="%"
+                              />
+                            </div>
+                            <button
+                              type="button"
+                              className={`${compStyles.button} ${compStyles.buttonSecondary} ${styles.priceFetchButton}`}
+                              onClick={() => fetchIsaInfo(isa.id, isa.ticker!)}
+                              disabled={fetchingInfoMap[isa.id] || !isa.ticker}
+                              title="실시간 수익률/배당률 조회"
+                            >
+                              <RefreshCw
+                                size={14}
+                                className={fetchingInfoMap[isa.id] ? styles.spinner : ''}
+                              />
+                            </button>
+                          </div>
+                        </>
+                      ) : isa.investmentType === 'deposit' ? (
+                        <InputField
+                          label="연 이자율 (금리)"
+                          type="number"
+                          step="0.1"
+                          value={isa.annualReturn}
+                          onChange={(e) => handleUpdateIsaAccount(isa.id, 'annualReturn', Number(e.target.value))}
+                          suffixText="%"
+                        />
+                      ) : (
+                        <>
+                          <InputField
+                            label="연 기대 수익률"
+                            type="number"
+                            step="0.1"
+                            value={isa.annualReturn}
+                            onChange={(e) => handleUpdateIsaAccount(isa.id, 'annualReturn', Number(e.target.value))}
+                            suffixText="%"
+                          />
+                          <InputField
+                            label="연 기대 배당률"
+                            type="number"
+                            step="0.1"
+                            value={isa.dividendYield}
+                            onChange={(e) => handleUpdateIsaAccount(isa.id, 'dividendYield', Number(e.target.value))}
+                            suffixText="%"
+                          />
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+            <button className={styles.addButton} onClick={handleAddIsaAccount}>
+              <Plus size={16} /> ISA 계좌 추가
             </button>
           </div>
         )}

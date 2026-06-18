@@ -121,7 +121,7 @@ export const YearlyChart: React.FC<YearlyChartProps> = ({ params, result }) => {
                 fontFamily: 'var(--font-main)',
                 fontSize: '0.8rem',
               }}
-              formatter={(value: any, name: string) => [formatValue(Number(value)), name]}
+              formatter={(value: any, name: any) => [formatValue(Number(value)), name]}
               labelFormatter={(label, payload) => {
                 const year = payload && payload.length > 0 ? payload[0].payload.year : '';
                 return `${label}세 (${year}년)`;

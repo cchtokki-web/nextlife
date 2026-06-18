@@ -7,7 +7,7 @@ import { signOut, useSession } from 'next-auth/react';
 import { Settings, LogOut } from 'lucide-react';
 import styles from './Header.module.css';
 
-export function Header() {
+export function Header({ children }: { children?: React.ReactNode }) {
   const { status } = useSession();
 
   return (
@@ -19,6 +19,8 @@ export function Header() {
       
       {status === 'authenticated' && (
         <div className={styles.actions}>
+          {children}
+          {children && <div style={{ width: '1px', height: '24px', background: 'var(--card-border)', margin: '0 0.25rem' }} />}
           <Link href="/settings" className={styles.actionButton}>
             <Settings size={16} />
             <span>설정</span>

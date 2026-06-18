@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useDeferredValue } from 'react';
 import { useSession } from 'next-auth/react';
 import { SimulationEngine } from '../core/usecases/SimulationEngine';
 import { initialParams } from '../infrastructure/storage/localStore';
@@ -14,7 +14,6 @@ import { Header } from '../web/components/Header/Header';
 import styles from './page.module.css';
 import { AlertCircle, Activity, Download, RotateCcw, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { useScenarios } from '../web/features/Scenario/useScenarios';
-
 export default function Home() {
   const { status } = useSession();
   const scenarioState = useScenarios();
@@ -24,7 +23,8 @@ export default function Home() {
     activeParams, 
     handleUpdateActiveParams, 
     compareScenarioIds, 
-    isLoaded 
+    isLoaded,
+    handleCreateScenario
   } = scenarioState;
 
   const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(true);
@@ -38,8 +38,11 @@ export default function Home() {
     }
   }, [activeParams.yieldPreset]);
 
+  // Defer the parameters to unblock the main thread during rapid typing
+  const deferredParams = useDeferredValue(activeParams);
+
   // Run simulation engine for active scenario
-  const result = useMemo(() => engine.run(activeParams), [engine, activeParams]);
+  const result = useMemo(() => engine.run(deferredParams), [engine, deferredParams]);
 
   // Run simulation engine for compared scenarios
   const compareResults = useMemo(() => {
@@ -169,6 +172,10 @@ export default function Home() {
     downloadAnchorNode.remove();
   };
 
+
+
+
+
   const handleReset = () => {
     if (confirm('현재 시나리오의 입력사항이 기본값으로 초기화됩니다. 계속하시겠습니까?')) {
       handleUpdateActiveParams(initialParams);
@@ -181,36 +188,9 @@ export default function Home() {
 
   return (
     <main className={styles.main}>
-      <Header />
-      {/* 1. Sub-Header Area */}
-      <header className={styles.header}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
-          <p className={styles.tagline} style={{ margin: 0 }}>
-            사용자의 자산 데이터와 라이프 플랜을 기반으로 조기 은퇴(FIRE) 가능 여부와 노후 자산 고갈 시점을 정밀하게 실시간 계산합니다.
-          </p>
-          <div style={{ display: 'flex', gap: '0.5rem', marginLeft: 'auto' }}>
-            <button 
-              onClick={() => setIsSidebarOpen(prev => !prev)}
-              onMouseEnter={() => setHoveredBtn('settings')}
-              onMouseLeave={() => setHoveredBtn(null)}
-              style={{
-                display: 'flex', 
-                alignItems: 'center', 
-                gap: '0.5rem', 
-                padding: '0.6rem 1.2rem', 
-                background: hoveredBtn === 'settings' ? 'rgba(255, 255, 255, 0.05)' : 'var(--card-bg)', 
-                border: `1px solid ${hoveredBtn === 'settings' ? 'var(--primary)' : 'var(--card-border)'}`, 
-                borderRadius: '12px', 
-                color: hoveredBtn === 'settings' ? 'var(--primary)' : (isSidebarOpen ? 'var(--primary)' : 'var(--foreground-muted)'), 
-                cursor: 'pointer', 
-                fontSize: '0.85rem', 
-                fontWeight: 600, 
-                transition: 'all 0.2s ease',
-              }}
-            >
-              {isSidebarOpen ? <PanelLeftClose size={16} /> : <PanelLeftOpen size={16} />}
-              설정 패널
-            </button>
+      <Header>
+        <div style={{ display: 'flex', gap: '0.5rem' }}>
+
             <button 
               onClick={handleReset}
               onMouseEnter={() => setHoveredBtn('reset')}
@@ -228,6 +208,7 @@ export default function Home() {
                 fontSize: '0.85rem', 
                 fontWeight: 600, 
                 transition: 'all 0.2s ease',
+                whiteSpace: 'nowrap',
               }}
             >
               <RotateCcw size={16} />
@@ -250,14 +231,16 @@ export default function Home() {
                 fontSize: '0.85rem', 
                 fontWeight: 600, 
                 transition: 'all 0.2s ease',
+                whiteSpace: 'nowrap',
               }}
             >
               <Download size={16} />
               데이터 다운로드
             </button>
-          </div>
+
+
         </div>
-      </header>
+      </Header>
 
       {/* 2. Content Layout */}
       <div style={{ position: 'relative' }}>
@@ -265,6 +248,29 @@ export default function Home() {
           
           {/* Left Side: User Inputs & Scenarios */}
           <section className={`${styles.leftColumn} ${!isSidebarOpen ? styles.leftColumnHidden : ''}`}>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '-0.5rem' }}>
+              <button 
+                onClick={() => setIsSidebarOpen(false)}
+                style={{
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  gap: '0.5rem', 
+                  padding: '0.4rem 0.8rem', 
+                  background: 'var(--card-bg)', 
+                  border: '1px solid var(--card-border)', 
+                  borderRadius: '8px', 
+                  color: 'var(--foreground-muted)', 
+                  cursor: 'pointer', 
+                  fontSize: '0.8rem', 
+                  transition: 'all 0.2s ease',
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--primary)'; e.currentTarget.style.borderColor = 'var(--primary)'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--foreground-muted)'; e.currentTarget.style.borderColor = 'var(--card-border)'; }}
+              >
+                <PanelLeftClose size={14} />
+                패널 접기
+              </button>
+            </div>
             
             {/* Scenario Manager Section */}
             <GlassCard>
@@ -289,8 +295,34 @@ export default function Home() {
 
           {/* Right Side: Visual Dashboard */}
           <section className={styles.rightColumn}>
+            {!isSidebarOpen && (
+              <div style={{ display: 'flex' }}>
+                <button 
+                  onClick={() => setIsSidebarOpen(true)}
+                  style={{
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    gap: '0.5rem', 
+                    padding: '0.5rem 1rem', 
+                    background: 'var(--card-bg)', 
+                    border: '1px solid var(--card-border)', 
+                    borderRadius: '8px', 
+                    color: 'var(--foreground)', 
+                    cursor: 'pointer', 
+                    fontSize: '0.85rem',
+                    fontWeight: 500,
+                    transition: 'all 0.2s ease',
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--primary)'; e.currentTarget.style.borderColor = 'var(--primary)'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--foreground)'; e.currentTarget.style.borderColor = 'var(--card-border)'; }}
+                >
+                  <PanelLeftOpen size={16} />
+                  설정 패널 열기
+                </button>
+              </div>
+            )}
             <DashboardSection 
-              params={activeParams} 
+              params={deferredParams} 
               result={result} 
               compareResults={compareResults} 
             />

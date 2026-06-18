@@ -42,6 +42,14 @@ export const predefinedAssets: PredefinedAsset[] = [
     dividendYield: 1.4,
   },
   {
+    ticker: 'SPLG',
+    name: 'SPDR Portfolio S&P 500 ETF',
+    type: 'etf',
+    currency: 'USD',
+    annualGrowthRate: 8.0,
+    dividendYield: 1.4,
+  },
+  {
     ticker: 'JEPI',
     name: 'JPMorgan Equity Premium Income ETF',
     type: 'etf',
