@@ -19,6 +19,9 @@ COPY . .
 # Generate Prisma Client
 RUN npx prisma generate
 
+# Ensure SQLite database exists and schema is up to date
+RUN DATABASE_URL="file:./dev.db" npx prisma db push
+
 # Disable Next.js telemetry during the build
 ENV NEXT_TELEMETRY_DISABLED=1
 
@@ -37,6 +40,9 @@ RUN adduser --system --uid 1001 nextjs
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/prisma ./prisma
 
+# Copy the initial dev.db to the image
+COPY --from=builder --chown=nextjs:nodejs /app/dev.db /app/default.db
+
 # Automatically leverage output traces to reduce image size
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
@@ -48,4 +54,17 @@ EXPOSE 3000
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
 
-CMD ["node", "server.js"]
+USER root
+# Create entrypoint script
+RUN echo '#!/bin/sh' > /app/start.sh && \
+    echo 'mkdir -p /app/data' >> /app/start.sh && \
+    echo 'chown -R nextjs:nodejs /app/data' >> /app/start.sh && \
+    echo 'if [ ! -f /app/data/dev.db ]; then' >> /app/start.sh && \
+    echo '  echo "Initializing database..."' >> /app/start.sh && \
+    echo '  cp /app/default.db /app/data/dev.db' >> /app/start.sh && \
+    echo '  chown nextjs:nodejs /app/data/dev.db' >> /app/start.sh && \
+    echo 'fi' >> /app/start.sh && \
+    echo 'exec su nextjs -s /bin/sh -c "node server.js"' >> /app/start.sh && \
+    chmod +x /app/start.sh
+
+CMD ["/app/start.sh"]

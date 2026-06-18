@@ -11,8 +11,9 @@ services:
     restart: always
     env_file:
       - .env
-    environment:
-      - NODE_ENV=production
     volumes:
-      # Use an external DB or map volume if using sqlite
-      - ./dev.db:/app/dev.db
+      # Use a directory mount so Docker automatically creates it if missing
+      - ./data:/app/data
+    environment:
+      - DATABASE_URL=file:/app/data/dev.db
+      - NODE_ENV=production
