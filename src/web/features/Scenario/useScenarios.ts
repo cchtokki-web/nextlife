@@ -3,12 +3,56 @@ import { useSession } from 'next-auth/react';
 import { SimulationParams, ScenarioModel } from '../../../core/entities/types';
 import { loadParams, saveParams, initialParams } from '../../../infrastructure/storage/localStore';
 
+const migrateParams = (params: SimulationParams, tickers: string[]): SimulationParams => {
+  if (!params.assets) return params;
+  let changed = false;
+  const migratedAssets = params.assets.map(asset => {
+    if (asset.type === 'etf' && tickers.includes(asset.ticker) && asset.name !== asset.ticker) {
+      changed = true;
+      return { ...asset, name: asset.ticker };
+    }
+    return asset;
+  });
+  return changed ? { ...params, assets: migratedAssets } : params;
+};
+
 export function useScenarios() {
   const { status } = useSession();
   const [scenarios, setScenarios] = useState<ScenarioModel[]>([]);
   const [activeScenarioId, setActiveScenarioId] = useState<string | null>(null);
   const [compareScenarioIds, setCompareScenarioIds] = useState<string[]>([]);
   const [isLoaded, setIsLoaded] = useState(false);
+  const [etfTickers, setEtfTickers] = useState<string[]>(['VOO', 'QQQ', 'SCHD', 'SPY', 'JEPI', 'TLT', 'VNQ', 'SPLG']);
+
+  // Fetch dynamic ETF tickers from API
+  useEffect(() => {
+    fetch('/api/etfs')
+      .then(res => res.json())
+      .then(json => {
+        if (json.success && json.data) {
+          setEtfTickers(prev => Array.from(new Set([...prev, ...json.data])));
+        }
+      })
+      .catch(err => console.error('Failed to load dynamic ETF tickers:', err));
+  }, []);
+
+  // Run migration again if ETF tickers list expands
+  useEffect(() => {
+    if (isLoaded && scenarios.length > 0 && etfTickers.length > 10) {
+      let changedAny = false;
+      const updated = scenarios.map(s => {
+        const migrated = migrateParams(s.data, etfTickers);
+        if (migrated !== s.data) {
+          changedAny = true;
+          return { ...s, data: migrated };
+        }
+        return s;
+      });
+      if (changedAny) {
+        setScenarios(updated);
+      }
+    }
+  }, [etfTickers, isLoaded]); // Omitting scenarios to prevent infinite loops, only run when etfTickers load
 
   // Helper to generate a local mock scenario ID
   const generateId = () => Math.random().toString(36).substr(2, 9);
@@ -22,7 +66,7 @@ export function useScenarios() {
           id: 'local-default',
           name: '기본 시나리오',
           isDefault: true,
-          data: loaded || initialParams,
+          data: migrateParams(loaded || initialParams, etfTickers),
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         };
@@ -43,14 +87,15 @@ export function useScenarios() {
         })
         .then(({ data }) => {
           if (data && data.length > 0) {
-            setScenarios(data);
-            if (!activeScenarioId || !data.find((s: ScenarioModel) => s.id === activeScenarioId)) {
-              setActiveScenarioId(data[0].id);
+            const migratedScenarios = data.map((s: ScenarioModel) => ({ ...s, data: migrateParams(s.data, etfTickers) }));
+            setScenarios(migratedScenarios);
+            if (!activeScenarioId || !migratedScenarios.find((s: ScenarioModel) => s.id === activeScenarioId)) {
+              setActiveScenarioId(migratedScenarios[0].id);
             }
           } else {
             // No scenarios yet, create a default one based on local storage
             const loaded = loadParams();
-            handleCreateScenario('기본 시나리오', loaded || initialParams, true);
+            handleCreateScenario('기본 시나리오', migrateParams(loaded || initialParams, etfTickers), true);
           }
           setIsLoaded(true);
         })
