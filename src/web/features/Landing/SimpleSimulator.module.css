@@ -76,10 +76,22 @@
   transition: all 0.3s ease;
 }
 
-.selectBtn.active {
+.selectBtn.conservative.active {
+  background: #10B981;
+  color: white;
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);
+}
+
+.selectBtn.neutral.active {
   background: var(--primary);
   color: white;
   box-shadow: 0 4px 12px rgba(var(--primary-rgb), 0.4);
+}
+
+.selectBtn.aggressive.active {
+  background: #EF4444;
+  color: white;
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4);
 }
 
 .submitBtn {
@@ -113,6 +125,25 @@
   animation: fadeIn 0.5s ease-out forwards;
 }
 
+.strategySummary {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  padding: 1.5rem;
+  color: rgba(255, 255, 255, 0.95);
+  font-size: 1.15rem;
+  line-height: 1.6;
+  word-break: keep-all;
+  margin-bottom: 0.5rem;
+  text-align: center;
+}
+
+.strategySummary .highlight {
+  color: var(--primary);
+  font-weight: 700;
+  font-size: 1.25rem;
+}
+
 .resultsGrid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -122,7 +153,7 @@
 .resultCard {
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid var(--card-border);
-  border-radius: 12px;
+  border-radius: 16px;
   padding: 1.5rem;
   display: flex;
   flex-direction: column;
@@ -130,6 +161,18 @@
   align-items: center;
   text-align: center;
   transition: transform 0.3s ease, border-color 0.3s ease;
+}
+
+.iconWrapper {
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.05);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--primary);
+  margin-bottom: 0.5rem;
 }
 
 .resultCard:hover {
@@ -145,7 +188,7 @@
 .resultValue {
   font-size: 1.8rem;
   font-weight: 700;
-  color: var(--primary);
+  color: white;
 }
 
 .scoreValue {

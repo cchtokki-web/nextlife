@@ -6,8 +6,9 @@ import { SimpleSimulationAdapter, SimpleSimulationInput, InvestmentPropensity } 
 import { SimulationEngine } from '../../../core/usecases/SimulationEngine';
 import { motion, AnimatePresence } from 'framer-motion';
 import GlassCard from '../../components/GlassCard';
-import { HeroSummaryCard } from '../Dashboard/HeroSummaryCard';
-import { CoreMetricsCards } from '../Dashboard/CoreMetricsCards';
+import { Target, TrendingUp, Coins } from 'lucide-react';
+
+import { ScenarioComparisonCards } from '../Dashboard/ScenarioComparisonCards';
 import styles from './SimpleSimulator.module.css';
 
 export function SimpleSimulator() {
@@ -68,10 +69,17 @@ export function SimpleSimulator() {
     }).catch(err => console.error('Failed to log simulation run', err));
   };
 
-  const result = useMemo(() => {
-    if (!hasRun) return null;
+  const { result, resultPlus50 } = useMemo(() => {
+    if (!hasRun) return { result: null, resultPlus50: null };
     const params = SimpleSimulationAdapter.adapt(input);
-    return engine.run(params);
+    const paramsPlus50 = SimpleSimulationAdapter.adapt({
+      ...input,
+      monthlyInvestment: input.monthlyInvestment + 500000
+    });
+    return {
+      result: engine.run(params),
+      resultPlus50: engine.run(paramsPlus50)
+    };
   }, [hasRun, input, engine]);
 
   const getScoreColor = (score: number) => {
@@ -188,28 +196,30 @@ export function SimpleSimulator() {
                   <span className={styles.unit}>만원</span>
                 </div>
               </div>
+
+
             </div>
 
             <div className={styles.inputGroup} style={{ marginTop: '0.5rem' }}>
               <label>나의 투자 성향</label>
               <div className={styles.selectGroup}>
                 <button 
-                  className={`${styles.selectBtn} ${input.propensity === 'conservative' ? styles.active : ''}`}
+                  className={`${styles.selectBtn} ${styles.conservative} ${input.propensity === 'conservative' ? styles.active : ''}`}
                   onClick={() => handlePropensity('conservative')}
                 >
-                  안전추구 (예적금)
+                  안전추구<br />(예적금)
                 </button>
                 <button 
-                  className={`${styles.selectBtn} ${input.propensity === 'neutral' ? styles.active : ''}`}
+                  className={`${styles.selectBtn} ${styles.neutral} ${input.propensity === 'neutral' ? styles.active : ''}`}
                   onClick={() => handlePropensity('neutral')}
                 >
-                  중립 (배당ETF)
+                  중립형<br />(배당ETF)
                 </button>
                 <button 
-                  className={`${styles.selectBtn} ${input.propensity === 'aggressive' ? styles.active : ''}`}
+                  className={`${styles.selectBtn} ${styles.aggressive} ${input.propensity === 'aggressive' ? styles.active : ''}`}
                   onClick={() => handlePropensity('aggressive')}
                 >
-                  공격형 (성장ETF)
+                  공격형<br />(성장ETF)
                 </button>
               </div>
             </div>
@@ -228,6 +238,43 @@ export function SimpleSimulator() {
               transition={{ duration: 0.3 }}
             >
             <div className={styles.resultsArea} style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginTop: 0, paddingTop: 0, borderTop: 'none' }}>
+              <div className={styles.resultsGrid} style={{ marginBottom: '1rem' }}>
+                <div className={styles.resultCard}>
+                  <div className={styles.iconWrapper}>
+                    <Target size={24} />
+                  </div>
+                  <div className={styles.resultLabel}>주요 투자 종목</div>
+                  <div className={styles.resultValue} style={{ fontSize: '1.25rem', marginTop: '0.25rem' }}>
+                    {input.propensity === 'conservative' && '예금 및 우량 채권'}
+                    {input.propensity === 'neutral' && '국내 미국배당다우존스'}
+                    {input.propensity === 'aggressive' && '국내 미국나스닥100'}
+                  </div>
+                </div>
+
+                <div className={styles.resultCard}>
+                  <div className={styles.iconWrapper}>
+                    <TrendingUp size={24} />
+                  </div>
+                  <div className={styles.resultLabel}>기대 자산 성장</div>
+                  <div className={styles.resultValue} style={{ fontSize: '1.5rem', marginTop: '0.25rem' }}>
+                    {input.propensity === 'conservative' && '연 1%'}
+                    {input.propensity === 'neutral' && '연 3%'}
+                    {input.propensity === 'aggressive' && '연 8%'}
+                  </div>
+                </div>
+
+                <div className={styles.resultCard}>
+                  <div className={styles.iconWrapper}>
+                    <Coins size={24} />
+                  </div>
+                  <div className={styles.resultLabel}>기대 배당/이자 수익</div>
+                  <div className={styles.resultValue} style={{ fontSize: '1.5rem', marginTop: '0.25rem' }}>
+                    {input.propensity === 'conservative' && '연 3%'}
+                    {input.propensity === 'neutral' && '연 4%'}
+                    {input.propensity === 'aggressive' && '연 1.5%'}
+                  </div>
+                </div>
+              </div>
               <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center' }}>
                 <button 
                   onClick={() => setHasRun(false)}
@@ -237,38 +284,17 @@ export function SimpleSimulator() {
                 </button>
               </div>
 
-              <HeroSummaryCard 
-                score={Math.min(99, result.retirementScore)} 
-                expectancyAge={90} 
-                alternatives={[
-                  { label: '투자금 +50만', score: Math.min(99, result.retirementScore + 18) },
-                  { label: '62세 은퇴', score: Math.min(99, result.retirementScore + 26) },
-                  { label: '65세 은퇴', score: Math.min(99, result.retirementScore + 39) },
-                ]}
-              />
+              {resultPlus50 && (
+                <ScenarioComparisonCards 
+                  baseData={result.yearlyResults}
+                  plus50Data={resultPlus50.yearlyResults}
+                  targetAge={75}
+                  formatValue={formatResultValue}
+                />
+              )}
               
-              <div style={{ 
-                textAlign: 'center', 
-                color: 'rgba(255, 255, 255, 0.95)', 
-                fontSize: '1.25rem', 
-                fontWeight: 600,
-                background: 'rgba(255, 255, 255, 0.05)',
-                padding: '1.25rem 1rem',
-                borderRadius: '12px',
-                border: '1px solid rgba(255, 255, 255, 0.1)',
-                wordBreak: 'keep-all',
-                lineHeight: '1.5'
-              }}>
-                "매월 투자금을 50만원 늘리면 은퇴 성공 확률이 <span style={{ color: getScoreColor(Math.min(99, result.retirementScore)) }}>{Math.min(99, result.retirementScore)}%</span> ➔ <span style={{ color: getScoreColor(Math.min(99, result.retirementScore + 18)) }}>{Math.min(99, result.retirementScore + 18)}%</span>로 증가합니다."
-              </div>
-              <CoreMetricsCards 
-                depletionAge={result.depletionAge}
-                expectancyAge={90}
-                assetAt60={result.yearlyResults.find(r => r.age === 60)?.totalAssets || 0}
-                monthlyTarget={input.targetMonthlySpending}
-                isMonthlyTargetPossible={result.depletionAge === null || result.depletionAge >= 90}
-                formatValue={formatResultValue}
-              />
+
+
             </div>
           </motion.div>
           )
