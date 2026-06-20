@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import Link from 'next/link';
 import { SimpleSimulationAdapter, SimpleSimulationInput, InvestmentPropensity } from '../../../core/usecases/SimpleSimulationAdapter';
 import { SimulationEngine } from '../../../core/usecases/SimulationEngine';
@@ -23,6 +23,22 @@ export function SimpleSimulator() {
   });
 
   const [hasRun, setHasRun] = useState(false);
+
+  useEffect(() => {
+    const saved = localStorage.getItem('nextlife_simple_simulator_input');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        setInput(prev => ({ ...prev, ...parsed }));
+      } catch (e) {
+        console.error('Failed to parse saved input', e);
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem('nextlife_simple_simulator_input', JSON.stringify(input));
+  }, [input]);
 
   const engine = useMemo(() => new SimulationEngine(), []);
 
