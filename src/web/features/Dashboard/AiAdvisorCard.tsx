@@ -1,6 +1,6 @@
-import React, { useEffect, useState } from 'react';
-import { motion } from 'framer-motion';
-import { Loader2, Bot } from 'lucide-react';
+import React, { useEffect, useState, useMemo } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Loader2, Bot, RefreshCcw } from 'lucide-react';
 import styles from './Dashboard.module.css';
 
 import { UserProfile } from '../../../core/entities/types';
@@ -17,6 +17,11 @@ export const AiAdvisorCard: React.FC<AiAdvisorCardProps> = ({ score, monthlyTarg
   const [advice, setAdvice] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [triggerFetch, setTriggerFetch] = useState(0);
+  const [lastFetchKey, setLastFetchKey] = useState('');
+
+  const currentKey = useMemo(() => JSON.stringify({ score, monthlyTarget, isPro, userProfile }), [score, monthlyTarget, isPro, userProfile]);
+  const isStale = lastFetchKey !== '' && currentKey !== lastFetchKey;
   
   useEffect(() => {
     const abortController = new AbortController();
@@ -25,6 +30,7 @@ export const AiAdvisorCard: React.FC<AiAdvisorCardProps> = ({ score, monthlyTarg
       setIsLoading(true);
       setError(null);
       setAdvice('');
+      setLastFetchKey(currentKey);
 
       try {
         const response = await fetch('/api/ai-advisor', {
@@ -106,7 +112,8 @@ export const AiAdvisorCard: React.FC<AiAdvisorCardProps> = ({ score, monthlyTarg
     return () => {
       abortController.abort();
     };
-  }, [score, monthlyTarget, isPro, userProfile]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [triggerFetch]);
 
   let displayAdvice = advice;
   const emptyThoughtTag = "<|channel>thought\n<channel|>";
@@ -128,17 +135,18 @@ export const AiAdvisorCard: React.FC<AiAdvisorCardProps> = ({ score, monthlyTarg
         <div className={styles.aiIconWrapper}>
           <Bot size={24} />
         </div>
-        <div className={styles.aiContent}>
-          {error ? (
-            <p className={styles.aiText} style={{ color: 'var(--error)' }}>{error}</p>
-          ) : advice === '' && isLoading ? (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '0.5rem 0' }}>
-              <motion.div animate={{ y: [0, -6, 0] }} transition={{ repeat: Infinity, duration: 0.8 }} style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: 'var(--primary)' }} />
-              <motion.div animate={{ y: [0, -6, 0] }} transition={{ repeat: Infinity, duration: 0.8, delay: 0.15 }} style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: 'var(--primary)' }} />
-              <motion.div animate={{ y: [0, -6, 0] }} transition={{ repeat: Infinity, duration: 0.8, delay: 0.3 }} style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: 'var(--primary)' }} />
-              <span style={{ marginLeft: '12px', color: 'var(--foreground-muted)', fontSize: '0.9rem', fontWeight: 500 }}>의견을 준비하고 있습니다...</span>
-            </div>
-          ) : (
+        <div className={styles.aiContent} style={{ position: 'relative' }}>
+          <div style={{ filter: isStale ? 'blur(4px)' : 'none', transition: 'filter 0.3s ease', opacity: isStale ? 0.6 : 1 }}>
+            {error ? (
+              <p className={styles.aiText} style={{ color: 'var(--error)' }}>{error}</p>
+            ) : advice === '' && isLoading ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '0.5rem 0' }}>
+                <motion.div animate={{ y: [0, -6, 0] }} transition={{ repeat: Infinity, duration: 0.8 }} style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: 'var(--primary)' }} />
+                <motion.div animate={{ y: [0, -6, 0] }} transition={{ repeat: Infinity, duration: 0.8, delay: 0.15 }} style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: 'var(--primary)' }} />
+                <motion.div animate={{ y: [0, -6, 0] }} transition={{ repeat: Infinity, duration: 0.8, delay: 0.3 }} style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: 'var(--primary)' }} />
+                <span style={{ marginLeft: '12px', color: 'var(--foreground-muted)', fontSize: '0.9rem', fontWeight: 500 }}>의견을 준비하고 있습니다...</span>
+              </div>
+            ) : (
             <p className={styles.aiText}>
               {displayAdvice.split('\n').map((line, i) => (
                 <React.Fragment key={i}>
@@ -153,6 +161,48 @@ export const AiAdvisorCard: React.FC<AiAdvisorCardProps> = ({ score, monthlyTarg
               )}
             </p>
           )}
+          </div>
+
+          <AnimatePresence>
+            {isStale && (
+              <motion.div 
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                style={{
+                  position: 'absolute',
+                  inset: 0,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  zIndex: 10,
+                }}
+              >
+                <button
+                  onClick={() => setTriggerFetch(prev => prev + 1)}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.5rem',
+                    padding: '0.6rem 1.2rem',
+                    background: 'var(--card-bg)',
+                    color: 'var(--foreground)',
+                    border: '1px solid var(--primary)',
+                    borderRadius: '20px',
+                    fontSize: '0.9rem',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)',
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--primary)'; e.currentTarget.style.color = 'white'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--card-bg)'; e.currentTarget.style.color = 'var(--foreground)'; }}
+                >
+                  <RefreshCcw size={16} />
+                  변경된 설정으로 재요청
+                </button>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
       </div>
     </motion.div>
