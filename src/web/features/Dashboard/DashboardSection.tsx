@@ -247,6 +247,8 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({ params: rawP
         score={result.retirementScore}
         monthlyTarget={params.userProfile.targetMonthlySpending}
         formatValue={formatValue}
+        isPro={isPro}
+        userProfile={params.userProfile}
       />
 
       <ScenarioComparison 

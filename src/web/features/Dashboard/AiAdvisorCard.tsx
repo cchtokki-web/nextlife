@@ -1,32 +1,102 @@
-import React from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { Bot } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import styles from './Dashboard.module.css';
+
+import { UserProfile } from '../../../core/entities/types';
 
 interface AiAdvisorCardProps {
   score: number;
   monthlyTarget: number;
   formatValue: (val: number) => string;
+  isPro?: boolean;
+  userProfile?: UserProfile;
 }
 
-export const AiAdvisorCard: React.FC<AiAdvisorCardProps> = ({ score, monthlyTarget, formatValue }) => {
-  let advice = '';
-  if (score >= 90) {
-    advice = `현재 자산과 투자 계획으로 월 ${formatValue(monthlyTarget)} 생활이 충분히 가능합니다. 
-지금의 계획을 잘 유지하시면서, 여유 자금으로 여행이나 취미 활동을 늘려보시는 것도 좋겠습니다.`;
-  } else if (score >= 70) {
-    advice = `현재 자산과 투자 계획 기준으로는 월 ${formatValue(monthlyTarget)} 생활이 어느 정도 가능하지만,
-조금 더 안정적인 노후를 위해
-• 매월 투자금 50만원 추가 또는
-• 은퇴 시기 1~2년 연기
-중 하나를 고려해보시는 것을 추천합니다.`;
-  } else {
-    advice = `현재 상태로는 월 ${formatValue(monthlyTarget)} 생활 목표를 달성하기 어려울 수 있습니다.
-목표 달성을 위해 다음과 같은 변화가 필요합니다.
-• 매월 투자금 100만원 이상 추가
-• 은퇴 시기 3년 이상 연기
-• 또는 목표 생활비 하향 조정`;
-  }
+export const AiAdvisorCard: React.FC<AiAdvisorCardProps> = ({ score, monthlyTarget, formatValue, isPro, userProfile }) => {
+  const [advice, setAdvice] = useState('');
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  
+  const fetchedRef = useRef(false);
+
+  useEffect(() => {
+    if (fetchedRef.current) return;
+    fetchedRef.current = true;
+
+    const fetchAdvice = async () => {
+      setIsLoading(true);
+      setError(null);
+      setAdvice('');
+
+      try {
+        const response = await fetch('/api/ai-advisor', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            score,
+            monthlyTarget,
+            isPro,
+            userProfile,
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to fetch advice');
+        }
+
+        const reader = response.body?.getReader();
+        if (!reader) throw new Error('No readable stream');
+
+        const decoder = new TextDecoder('utf-8');
+        let buffer = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          
+          // Keep the last potentially incomplete line in the buffer
+          buffer = lines.pop() || '';
+          
+          for (const line of lines) {
+            if (line.trim() === '') continue;
+            try {
+              const parsed = JSON.parse(line);
+              if (parsed.response) {
+                setAdvice((prev) => prev + parsed.response);
+              }
+            } catch (e) {
+              console.warn('Failed to parse JSON line:', line);
+            }
+          }
+        }
+        
+        // Process any remaining buffer after stream ends
+        if (buffer.trim()) {
+          try {
+            const parsed = JSON.parse(buffer);
+            if (parsed.response) {
+              setAdvice((prev) => prev + parsed.response);
+            }
+          } catch (e) {
+            // Ignore
+          }
+        }
+      } catch (err: any) {
+        console.error('Error fetching AI advice:', err);
+        setError('AI 조언을 가져오는 데 실패했습니다.');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchAdvice();
+  }, [score, monthlyTarget, isPro, userProfile]);
 
   return (
     <motion.div 
@@ -37,18 +107,25 @@ export const AiAdvisorCard: React.FC<AiAdvisorCardProps> = ({ score, monthlyTarg
     >
       <h3 className={styles.sectionTitle}>🤖 AI 노후 설계사의 조언</h3>
       <div className={styles.aiCard}>
-        <div className={styles.aiIconWrapper}>
-          <Bot size={28} className={styles.aiIcon} />
-        </div>
+
         <div className={styles.aiContent}>
-          <p className={styles.aiText}>
-            {advice.split('\n').map((line, i) => (
-              <React.Fragment key={i}>
-                {line}
-                <br />
-              </React.Fragment>
-            ))}
-          </p>
+          {error ? (
+            <p className={styles.aiText} style={{ color: 'var(--error)' }}>{error}</p>
+          ) : (
+            <p className={styles.aiText}>
+              {advice.split('\n').map((line, i) => (
+                <React.Fragment key={i}>
+                  {line}
+                  <br />
+                </React.Fragment>
+              ))}
+              {isLoading && (
+                <span style={{ display: 'inline-flex', alignItems: 'center', marginLeft: '8px' }}>
+                  <Loader2 size={16} className="animate-spin" style={{ color: 'var(--primary)' }} />
+                </span>
+              )}
+            </p>
+          )}
         </div>
       </div>
     </motion.div>
