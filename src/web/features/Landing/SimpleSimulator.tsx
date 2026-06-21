@@ -2,11 +2,14 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { SimpleSimulationAdapter, SimpleSimulationInput, InvestmentPropensity } from '../../../core/usecases/SimpleSimulationAdapter';
 import { SimulationEngine } from '../../../core/usecases/SimulationEngine';
 import { motion, AnimatePresence } from 'framer-motion';
 import GlassCard from '../../components/GlassCard';
 import { Target, TrendingUp, Coins } from 'lucide-react';
+import { useSession } from 'next-auth/react';
+import { initialParams } from '../../../infrastructure/storage/localStore';
 
 import { ScenarioComparisonCards } from '../Dashboard/ScenarioComparisonCards';
 import styles from './SimpleSimulator.module.css';
@@ -23,6 +26,10 @@ export function SimpleSimulator() {
   });
 
   const [hasRun, setHasRun] = useState(false);
+  const { data: session } = useSession();
+  const isDevMode = process.env.NODE_ENV === 'development' || process.env.NEXT_PUBLIC_DEV_MODE === 'true';
+  const isKakaoUser = isDevMode || session?.user?.provider === 'kakao';
+  const router = useRouter();
 
   useEffect(() => {
     const saved = localStorage.getItem('nextlife_simple_simulator_input');
@@ -309,7 +316,67 @@ export function SimpleSimulator() {
                 />
               )}
               
-
+              {isKakaoUser && (
+                <motion.div 
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.3 }}
+                  style={{ marginTop: '1rem', padding: '1.5rem', backgroundColor: 'rgba(16, 185, 129, 0.05)', borderRadius: '16px', textAlign: 'center', border: '1px solid rgba(16, 185, 129, 0.2)' }}
+                >
+                  <p style={{ color: '#E5E7EB', marginBottom: '1rem', lineHeight: '1.6', fontSize: '0.95rem' }}>
+                    <strong style={{ color: '#10B981', fontSize: '1.05rem' }}>{session?.user?.name || '회원'}</strong>님의 자산 성향에 맞춘 상세 투자 비중과 월 배당금 예측 시뮬레이션은 회원님에게만 공개됩니다.<br/>
+                    아래 이동하기 버튼을 클릭하세요.
+                  </p>
+                  <button 
+                    onClick={async (e) => {
+                      e.preventDefault();
+                      const adapted = SimpleSimulationAdapter.adapt(input);
+                      const finalParams = {
+                        ...initialParams,
+                        userProfile: {
+                          ...initialParams.userProfile,
+                          currentAge: input.currentAge || initialParams.userProfile.currentAge,
+                          retirementAge: input.retirementAge || initialParams.userProfile.retirementAge,
+                          targetMonthlySpending: input.targetMonthlySpending || initialParams.userProfile.targetMonthlySpending,
+                        },
+                        assets: (input.currentAssets > 0 || input.monthlyInvestment > 0) ? adapted.assets : initialParams.assets,
+                        nationalPension: input.nationalPension > 0 ? adapted.nationalPension : initialParams.nationalPension,
+                        privatePensions: initialParams.privatePensions,
+                        taxSettings: adapted.taxSettings,
+                      };
+                      
+                      localStorage.setItem('nextlife_simulator_params', JSON.stringify(finalParams));
+                      
+                      if (session?.user) {
+                        try {
+                          const res = await fetch('/api/scenarios');
+                          if (res.ok) {
+                            const { data } = await res.json();
+                            const defaultScenario = data?.find((s: any) => s.isDefault) || (data && data.length > 0 ? data[0] : null);
+                            if (defaultScenario) {
+                              await fetch(`/api/scenarios/${defaultScenario.id}`, {
+                                method: 'PUT',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ data: finalParams })
+                              });
+                            }
+                          }
+                        } catch (err) {
+                          console.error('Failed to sync scenario', err);
+                        }
+                      }
+                      router.push('/simulator');
+                    }}
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: '0.6rem', backgroundColor: '#10B981', color: '#ffffff', padding: '1rem 2.5rem', borderRadius: '14px', fontWeight: 700, fontSize: '1.2rem', textDecoration: 'none', transition: 'all 0.2s', boxShadow: '0 6px 16px rgba(16, 185, 129, 0.3)', cursor: 'pointer', border: 'none' }}
+                  >
+                    이동하기
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M5 12h14"></path>
+                      <path d="M12 5l7 7-7 7"></path>
+                    </svg>
+                  </button>
+                </motion.div>
+              )}
 
             </div>
           </motion.div>

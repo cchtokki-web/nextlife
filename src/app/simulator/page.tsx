@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useMemo, useDeferredValue } from 'react';
-import { useSession } from 'next-auth/react';
+import { useSession, signOut } from 'next-auth/react';
 import { SimulationEngine } from '../../core/usecases/SimulationEngine';
 import { initialParams } from '../../infrastructure/storage/localStore';
 import { AssetFormSection } from '../../web/features/AssetForm/AssetFormSection';
@@ -12,10 +12,10 @@ import { DashboardSection } from '../../web/features/Dashboard/DashboardSection'
 import GlassCard from '../../web/components/GlassCard';
 import { Header } from '../../web/components/Header/Header';
 import styles from './page.module.css';
-import { AlertCircle, Activity, Download, RotateCcw, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { AlertCircle, Activity, Download, RotateCcw, PanelLeftClose, PanelLeftOpen, LogOut } from 'lucide-react';
 import { useScenarios } from '../../web/features/Scenario/useScenarios';
 export default function Home() {
-  const { status } = useSession();
+  const { data: session, status } = useSession();
   const scenarioState = useScenarios();
   const { 
     scenarios, 
@@ -26,6 +26,8 @@ export default function Home() {
     isLoaded,
     handleCreateScenario
   } = scenarioState;
+
+  const isPro = session?.user?.tier === 'pro';
 
   const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(true);
   const [engine] = useState(() => new SimulationEngine());
@@ -252,6 +254,29 @@ export default function Home() {
             </button>
 
 
+            <button 
+              onClick={() => signOut({ callbackUrl: '/' })}
+              onMouseEnter={() => setHoveredBtn('logout')}
+              onMouseLeave={() => setHoveredBtn(null)}
+              style={{
+                display: 'flex', 
+                alignItems: 'center', 
+                gap: '0.5rem', 
+                padding: '0.6rem 1.2rem', 
+                background: hoveredBtn === 'logout' ? 'rgba(255, 255, 255, 0.05)' : 'var(--card-bg)', 
+                border: `1px solid ${hoveredBtn === 'logout' ? 'var(--foreground)' : 'var(--card-border)'}`, 
+                borderRadius: '12px', 
+                color: hoveredBtn === 'logout' ? 'var(--foreground)' : 'var(--foreground-muted)', 
+                cursor: 'pointer', 
+                fontSize: '0.85rem', 
+                fontWeight: 600, 
+                transition: 'all 0.2s ease',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              <LogOut size={16} />
+              로그아웃
+            </button>
         </div>
       </Header>
 
@@ -301,9 +326,11 @@ export default function Home() {
             </GlassCard>
 
             {/* Tax Settings Section */}
-            <GlassCard>
-              <TaxSettingsSection params={activeParams} onChangeParams={handleUpdateActiveParams} />
-            </GlassCard>
+            {isPro && (
+              <GlassCard>
+                <TaxSettingsSection params={activeParams} onChangeParams={handleUpdateActiveParams} />
+              </GlassCard>
+            )}
           </section>
 
           {/* Right Side: Visual Dashboard */}
@@ -338,6 +365,7 @@ export default function Home() {
               params={deferredParams} 
               result={result} 
               compareResults={compareResults} 
+              isPro={isPro}
             />
           </section>
 
