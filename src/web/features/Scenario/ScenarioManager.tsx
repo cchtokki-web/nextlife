@@ -7,6 +7,7 @@ interface ScenarioItemProps {
   scenario: any;
   isActive: boolean;
   isCompared: boolean;
+  isDuplicateDisabled: boolean;
   onSelect: () => void;
   onToggleCompare: () => void;
   onRename: (newName: string) => void;
@@ -16,7 +17,7 @@ interface ScenarioItemProps {
 }
 
 const ScenarioItem: React.FC<ScenarioItemProps> = ({
-  scenario, isActive, isCompared, onSelect, onToggleCompare,
+  scenario, isActive, isCompared, isDuplicateDisabled, onSelect, onToggleCompare,
   onRename, onDuplicate, onDelete, onExport
 }) => {
   const [isRenaming, setIsRenaming] = useState(false);
@@ -81,7 +82,13 @@ const ScenarioItem: React.FC<ScenarioItemProps> = ({
           ) : (
             <>
               <button onClick={(e) => { e.stopPropagation(); setIsRenaming(true); setIsConfirmingDelete(false); }} className={`${styles.actionBtn} ${styles.iconBtn}`} title="이름 변경"><Edit2 size={16} /></button>
-              <button onClick={(e) => { e.stopPropagation(); onDuplicate(); }} className={`${styles.actionBtn} ${styles.iconBtn}`} title="복제"><Copy size={16} /></button>
+              <button 
+                onClick={(e) => { e.stopPropagation(); if (!isDuplicateDisabled) onDuplicate(); }} 
+                className={`${styles.actionBtn} ${styles.iconBtn}`} 
+                title={isDuplicateDisabled ? "최대 3개까지만 생성할 수 있습니다" : "복제"}
+                disabled={isDuplicateDisabled}
+                style={isDuplicateDisabled ? { opacity: 0.4, cursor: 'not-allowed' } : {}}
+              ><Copy size={16} /></button>
               <button onClick={(e) => { e.stopPropagation(); onExport(e); }} className={`${styles.actionBtn} ${styles.iconBtn}`} title="JSON 내보내기"><FileJson size={16} /></button>
               {!scenario.isDefault && (
                 <button onClick={(e) => { e.stopPropagation(); setIsConfirmingDelete(true); setIsRenaming(false); }} className={`${styles.actionBtn} ${styles.iconBtn} ${styles.dangerBtn}`} title="삭제"><Trash2 size={16} /></button>
@@ -111,6 +118,10 @@ export const ScenarioManager: React.FC<{ scenarioState: any }> = ({ scenarioStat
       try {
         const json = JSON.parse(event.target?.result as string);
         if (json && typeof json === 'object' && json.userProfile) {
+          if (scenarioState.scenarios.length >= 3) {
+            alert('시나리오는 최대 3개까지만 생성할 수 있습니다.');
+            return;
+          }
           const newName = file.name.replace('.json', '');
           scenarioState.handleCreateScenario(`[가져옴] ${newName}`, json);
         } else {
@@ -178,6 +189,7 @@ export const ScenarioManager: React.FC<{ scenarioState: any }> = ({ scenarioStat
                 scenario={s}
                 isActive={s.id === activeScenarioId}
                 isCompared={compareScenarioIds.includes(s.id)}
+                isDuplicateDisabled={scenarios.length >= 3}
                 onSelect={() => setActiveScenarioId(s.id)}
                 onToggleCompare={() => toggleCompareScenario(s.id)}
                 onRename={(newName) => handleRenameScenario(s.id, newName)}

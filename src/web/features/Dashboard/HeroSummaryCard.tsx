@@ -1,5 +1,6 @@
 import React from 'react';
 import { motion } from 'framer-motion';
+import { useSession } from 'next-auth/react';
 import styles from './Dashboard.module.css';
 
 interface HeroSummaryCardProps {
@@ -9,17 +10,20 @@ interface HeroSummaryCardProps {
 }
 
 export const HeroSummaryCard: React.FC<HeroSummaryCardProps> = ({ score, expectancyAge, alternatives = [] }) => {
+  const { data: session } = useSession();
+  const userNamePrefix = session?.user?.name ? `${session.user.name}님의 ` : '';
+
   let colorClass = styles.colorGreen;
-  let messageTitle = '현재 계획으로는';
+  let messageTitle = `${userNamePrefix}현재 계획으로는`;
   let messageSub = '노후 자산이 안정적으로 유지될 가능성이 높습니다.';
 
   if (score < 70) {
     colorClass = styles.colorRed;
-    messageTitle = '⚠️ 현재 계획으로는';
+    messageTitle = `⚠️ ${userNamePrefix}현재 계획으로는`;
     messageSub = '노후 생활비가 부족할 가능성이 있습니다';
   } else if (score < 90) {
     colorClass = styles.colorOrange;
-    messageTitle = '현재 계획으로는';
+    messageTitle = `${userNamePrefix}현재 계획으로는`;
     messageSub = '안정적인 노후를 위해 조금 더 준비가 필요합니다';
   }
 

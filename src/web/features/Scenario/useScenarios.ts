@@ -99,7 +99,23 @@ export function useScenarios() {
           }
           setIsLoaded(true);
         })
-        .catch(err => console.error(err));
+        .catch(err => {
+          console.error(err);
+          if (!isLoaded) {
+            const loaded = loadParams();
+            const defaultScenario: ScenarioModel = {
+              id: 'local-default',
+              name: '기본 시나리오',
+              isDefault: true,
+              data: migrateParams(loaded || initialParams, etfTickers),
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+            };
+            setScenarios([defaultScenario]);
+            setActiveScenarioId('local-default');
+            setIsLoaded(true);
+          }
+        });
     }
   }, [status]);
 
@@ -138,6 +154,11 @@ export function useScenarios() {
   }, [activeScenarioId]);
 
   const handleCreateScenario = async (name: string, data: SimulationParams, isDefault = false) => {
+    if (!isDefault && scenarios.length >= 3) {
+      alert('시나리오는 최대 3개까지만 생성할 수 있습니다.');
+      return;
+    }
+
     if (status === 'authenticated') {
       try {
         const res = await fetch('/api/scenarios', {
