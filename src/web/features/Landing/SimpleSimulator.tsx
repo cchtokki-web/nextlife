@@ -37,6 +37,8 @@ export function SimpleSimulator() {
       sessionStorage.setItem('nextlife_simple_simulator_has_run', 'true');
     }
   }, [status]);
+
+  useEffect(() => {
     const saved = localStorage.getItem('nextlife_simple_simulator_input');
     if (saved) {
       try {
