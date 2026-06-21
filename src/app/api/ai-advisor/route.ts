@@ -27,7 +27,7 @@ export async function POST(req: NextRequest) {
 ${userProfileText}
 [결과 요약]
 - 결과 점수: ${score}점 (100점 만점)
-- 목표 월 생활비: ${monthlyTarget.toLocaleString()}원
+- 목표 월 생활비: ${Math.round(monthlyTarget / 10000)}만원
 
 [가이드라인]
 90점 이상이면 현재 나이와 은퇴 나이를 고려하여 충분히 가능하다는 긍정적인 메시지를 작성하세요.

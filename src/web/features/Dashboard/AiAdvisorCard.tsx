@@ -1,6 +1,6 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Bot } from 'lucide-react';
 import styles from './Dashboard.module.css';
 
 import { UserProfile } from '../../../core/entities/types';
@@ -18,11 +18,8 @@ export const AiAdvisorCard: React.FC<AiAdvisorCardProps> = ({ score, monthlyTarg
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   
-  const fetchedRef = useRef(false);
-
   useEffect(() => {
-    if (fetchedRef.current) return;
-    fetchedRef.current = true;
+    const abortController = new AbortController();
 
     const fetchAdvice = async () => {
       setIsLoading(true);
@@ -41,6 +38,7 @@ export const AiAdvisorCard: React.FC<AiAdvisorCardProps> = ({ score, monthlyTarg
             isPro,
             userProfile,
           }),
+          signal: abortController.signal,
         });
 
         if (!response.ok) {
@@ -88,14 +86,24 @@ export const AiAdvisorCard: React.FC<AiAdvisorCardProps> = ({ score, monthlyTarg
           }
         }
       } catch (err: any) {
-        console.error('Error fetching AI advice:', err);
-        setError('AI 조언을 가져오는 데 실패했습니다.');
+        if (err.name === 'AbortError') {
+          console.log('Fetch aborted due to params change');
+        } else {
+          console.error('Error fetching AI advice:', err);
+          setError('AI 의견을 가져오는 데 실패했습니다.');
+        }
       } finally {
-        setIsLoading(false);
+        if (!abortController.signal.aborted) {
+          setIsLoading(false);
+        }
       }
     };
 
     fetchAdvice();
+
+    return () => {
+      abortController.abort();
+    };
   }, [score, monthlyTarget, isPro, userProfile]);
 
   return (
@@ -105,9 +113,11 @@ export const AiAdvisorCard: React.FC<AiAdvisorCardProps> = ({ score, monthlyTarg
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.6, delay: 0.6 }}
     >
-      <h3 className={styles.sectionTitle}>🤖 AI 노후 설계사의 조언</h3>
+      <h3 className={styles.sectionTitle}>🤖 AI 노후 설계사 의견</h3>
       <div className={styles.aiCard}>
-
+        <div className={styles.aiIconWrapper}>
+          <Bot size={24} />
+        </div>
         <div className={styles.aiContent}>
           {error ? (
             <p className={styles.aiText} style={{ color: 'var(--error)' }}>{error}</p>
@@ -116,7 +126,7 @@ export const AiAdvisorCard: React.FC<AiAdvisorCardProps> = ({ score, monthlyTarg
               <motion.div animate={{ y: [0, -6, 0] }} transition={{ repeat: Infinity, duration: 0.8 }} style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: 'var(--primary)' }} />
               <motion.div animate={{ y: [0, -6, 0] }} transition={{ repeat: Infinity, duration: 0.8, delay: 0.15 }} style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: 'var(--primary)' }} />
               <motion.div animate={{ y: [0, -6, 0] }} transition={{ repeat: Infinity, duration: 0.8, delay: 0.3 }} style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: 'var(--primary)' }} />
-              <span style={{ marginLeft: '12px', color: 'var(--foreground-muted)', fontSize: '0.9rem', fontWeight: 500 }}>조언을 준비하고 있습니다...</span>
+              <span style={{ marginLeft: '12px', color: 'var(--foreground-muted)', fontSize: '0.9rem', fontWeight: 500 }}>의견을 준비하고 있습니다...</span>
             </div>
           ) : (
             <p className={styles.aiText}>

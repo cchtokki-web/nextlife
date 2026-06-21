@@ -178,17 +178,18 @@ export class SimulationEngine {
 
     const retirementYearsResults = yearlyResults.filter((r) => r.age >= userProfile.retirementAge);
     let avgRetirementMonthlySpending = 0;
-    let avgPensionIncome = 0;
+    let avgStableIncome = 0;
     
     if (retirementYearsResults.length > 0) {
       const totalSpendingSum = retirementYearsResults.reduce((sum, r) => sum + r.spending, 0);
-      const totalPensionSum = retirementYearsResults.reduce((sum, r) => sum + r.pensionIncome, 0);
+      // Include dividend income as a stable passive income source
+      const totalStableIncomeSum = retirementYearsResults.reduce((sum, r) => sum + r.pensionIncome + r.dividendIncome, 0);
       avgRetirementMonthlySpending = totalSpendingSum / retirementYearsResults.length / 12;
-      avgPensionIncome = totalPensionSum / retirementYearsResults.length / 12;
+      avgStableIncome = totalStableIncomeSum / retirementYearsResults.length / 12;
     }
 
-    const pensionRatio = avgRetirementMonthlySpending > 0 ? (avgPensionIncome / avgRetirementMonthlySpending) * 100 : 100;
-    const pensionScore = Math.min(20, (pensionRatio * 0.20));
+    const stableIncomeRatio = avgRetirementMonthlySpending > 0 ? (avgStableIncome / avgRetirementMonthlySpending) * 100 : 100;
+    const pensionScore = Math.min(20, (stableIncomeRatio * 0.20));
 
     let longevityScoreRaw = 100;
     if (depletionAge !== null) {
@@ -202,13 +203,22 @@ export class SimulationEngine {
     }
     const longevityScore = longevityScoreRaw * 0.15;
 
-    const retirementStockAssets = retirementStartResult ? retirementStartResult.stockAssets : 0;
-    const stockRatio = retirementAssets > 0 ? (retirementStockAssets / retirementAssets) * 100 : 0;
-    const inflationScoreRaw = Math.min(100, (stockRatio / 40) * 100);
+    // Use total invested assets (stock + pension + ISA) to calculate inflation hedge score
+    const retirementInvestedAssets = retirementStartResult ? (retirementStartResult.stockAssets + retirementStartResult.pensionAssets) : 0;
+    const investedRatio = retirementAssets > 0 ? (retirementInvestedAssets / retirementAssets) * 100 : 0;
+    const inflationScoreRaw = Math.min(100, (investedRatio / 40) * 100);
     const inflationScore = inflationScoreRaw * 0.15;
 
-    const retirementScore = Math.round(assetScore + cashFlowScore + pensionScore + longevityScore + inflationScore);
+    let retirementScore = Math.round(assetScore + cashFlowScore + pensionScore + longevityScore + inflationScore);
     
+    // Logical override: If assets never deplete and cash flow covers living expenses, score must be >= 95
+    if (depletionAge === null && goalAchievementRate >= 100) {
+      retirementScore = Math.max(retirementScore, 95);
+    }
+    
+    // Ensure max score is 100
+    retirementScore = Math.min(100, retirementScore);
+
     let retirementGrade = '위험';
     if (retirementScore >= 90) retirementGrade = '매우 안정';
     else if (retirementScore >= 80) retirementGrade = '안정';
