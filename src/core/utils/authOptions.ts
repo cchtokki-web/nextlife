@@ -19,6 +19,15 @@ export const authOptions: NextAuthOptions = {
         password: { label: "비밀번호", type: "password" }
       },
       async authorize(credentials) {
+        if (process.env.NODE_ENV === "development" && credentials?.email === "dev" && credentials?.password === "dev") {
+          return {
+            id: "dev-user-id",
+            email: "dev@example.com",
+            name: "Dev User",
+            tier: "premium"
+          };
+        }
+
         if (!credentials?.email || !credentials?.password) {
           throw new Error("이메일과 비밀번호를 모두 입력해주세요.");
         }

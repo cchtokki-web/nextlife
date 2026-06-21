@@ -60,6 +60,31 @@ export default function LoginForm() {
           카카오로 3초 만에 시작하기
         </button>
       </div>
+
+      {process.env.NODE_ENV === 'development' && (
+        <div style={{ marginTop: '1rem' }}>
+          <button 
+            type="button"
+            onClick={() => signIn('credentials', { email: 'dev', password: 'dev', callbackUrl: '/' })}
+            style={{ 
+              backgroundColor: '#4A5568', 
+              color: '#FFF', 
+              padding: '1rem 1.2rem', 
+              borderRadius: '12px', 
+              fontWeight: 600, 
+              fontSize: '1.05rem', 
+              border: 'none', 
+              cursor: 'pointer', 
+              width: '100%',
+              transition: 'background-color 0.2s',
+            }}
+            onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#2D3748'}
+            onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#4A5568'}
+          >
+            👨‍💻 개발 모드: 로그인 생략
+          </button>
+        </div>
+      )}
     </div>
   );
 }
