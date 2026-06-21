@@ -27,7 +27,7 @@ export default function LoginForm() {
       <div className="mt-2" style={{ marginTop: '2rem' }}>
         <button 
           type="button"
-          onClick={() => signIn('kakao')}
+          onClick={() => signIn('kakao', { callbackUrl: '/' })}
           style={{ 
             backgroundColor: '#FEE500', 
             color: '#191919', 
