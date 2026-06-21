@@ -166,7 +166,21 @@ export const AiAdvisorCard: React.FC<AiAdvisorCardProps> = ({ score, monthlyTarg
                   <React.Fragment key={i}>
                     {parts.map((part, j) => {
                       if (part.startsWith('**') && part.endsWith('**')) {
-                        return <strong key={j} style={{ color: 'var(--foreground)' }}>{part.slice(2, -2)}</strong>;
+                        return (
+                          <strong 
+                            key={j} 
+                            style={{ 
+                              color: 'var(--primary)', 
+                              backgroundColor: 'rgba(255, 255, 255, 0.1)', 
+                              padding: '2px 6px', 
+                              borderRadius: '4px', 
+                              margin: '0 2px',
+                              fontWeight: 700 
+                            }}
+                          >
+                            {part.slice(2, -2)}
+                          </strong>
+                        );
                       }
                       return <React.Fragment key={j}>{part}</React.Fragment>;
                     })}
