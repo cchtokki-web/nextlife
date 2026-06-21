@@ -48,9 +48,8 @@ export const HeroSummaryCard: React.FC<HeroSummaryCardProps> = ({ score, expecta
         </div>
         
         <div className={styles.heroAlternativesSection}>
-          <div style={{ fontSize: '0.85rem', color: 'rgba(255, 255, 255, 0.6)', marginBottom: '0.25rem', fontWeight: 600, textAlign: 'right', letterSpacing: '-0.5px' }}>은퇴 성공 확률</div>
           <div className={styles.heroAltRow}>
-            <span className={styles.heroAltLabel}>현재 상태</span>
+            <span className={styles.heroAltLabel}>은퇴 성공 확률</span>
             <div className={styles.heroAltBarTrack}>
               <motion.div 
                 className={styles.heroAltBarFill} 
