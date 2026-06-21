@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { Calendar, Wallet, TrendingUp } from 'lucide-react';
+import { Calendar, Wallet, TrendingUp, TrendingDown } from 'lucide-react';
 import styles from './Dashboard.module.css';
 
 interface CoreMetricsCardsProps {
@@ -92,8 +92,23 @@ export const CoreMetricsCards: React.FC<CoreMetricsCardsProps> = ({
               <span>월 {formatValue(monthlyTarget)} 생활 {isMonthlyTargetPossible ? '가능' : '부족'}</span>
             </div>
             {calculatedTargetSpending !== undefined && calculatedTargetSpending > 0 && (
-              <div className={styles.coreCardListItem} style={{ marginTop: '0.4rem', color: 'var(--foreground-muted)' }}>
-                <span className={styles.checkIcon} style={{ filter: 'grayscale(0.5)' }}>💡</span>
+              <div 
+                className={styles.coreCardDesc}
+                style={{ 
+                  marginTop: '0.6rem', 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  justifyContent: 'center', 
+                  gap: '4px',
+                  color: calculatedTargetSpending >= monthlyTarget ? '#10B981' : '#EF4444',
+                  fontWeight: 500
+                }}
+              >
+                {calculatedTargetSpending >= monthlyTarget ? (
+                  <TrendingUp size={14} strokeWidth={2.5} />
+                ) : (
+                  <TrendingDown size={14} strokeWidth={2.5} />
+                )}
                 <span>최대 월 {formatValue(calculatedTargetSpending)} 생활 가능</span>
               </div>
             )}
