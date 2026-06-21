@@ -8,37 +8,6 @@ import Image from "next/image";
 import styles from "./LoginForm.module.css";
 
 export default function LoginForm() {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
-  const router = useRouter();
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError("");
-    setLoading(true);
-
-    try {
-      const res = await signIn("credentials", {
-        redirect: false,
-        email,
-        password,
-      });
-
-      if (res?.error) {
-        setError(res.error);
-      } else {
-        router.push("/");
-        router.refresh();
-      }
-    } catch (err) {
-      setError("로그인 중 오류가 발생했습니다.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
   return (
     <div className={`glass animate-fade-in ${styles.loginContainer}`}>
       <div className={styles.logoWrapper}>
@@ -55,58 +24,41 @@ export default function LoginForm() {
       <h2 className={styles.title}>로그인</h2>
       <p className={styles.subtitle}>은퇴 자산 시뮬레이터에 오신 것을 환영합니다.</p>
       
-      <div style={{ minHeight: error ? 'auto' : '0' }}>
-        {error && (
-          <div className={styles.errorMessage}>
-            {error}
-          </div>
-        )}
-      </div>
-      
-      <form onSubmit={handleSubmit} className="mt-2">
-        <div className={styles.formGroup}>
-          <label className={styles.label}>이메일</label>
-          <input
-            type="email"
-            required
-            className={styles.input}
-            placeholder="example@example.com"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-          />
-        </div>
-        
-        <div className={styles.formGroup}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <label className={styles.label}>비밀번호</label>
-            <Link href="/forgot-password" className={styles.link} style={{ fontSize: '0.85rem', marginBottom: '0.5rem' }}>
-              비밀번호 찾기
-            </Link>
-          </div>
-          <input
-            type="password"
-            required
-            className={styles.input}
-            placeholder="••••••••"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-          />
-        </div>
-        
-        <button
-          type="submit"
-          disabled={loading}
-          className={styles.submitBtn}
+      <div className="mt-2" style={{ marginTop: '2rem' }}>
+        <button 
+          type="button"
+          onClick={() => signIn('kakao')}
+          style={{ 
+            backgroundColor: '#FEE500', 
+            color: '#191919', 
+            padding: '1rem 1.2rem', 
+            borderRadius: '12px', 
+            fontWeight: 700, 
+            fontSize: '1.05rem', 
+            border: 'none', 
+            cursor: 'pointer', 
+            boxShadow: '0 4px 10px rgba(0,0,0,0.1)', 
+            display: 'flex', 
+            alignItems: 'center', 
+            justifyContent: 'center',
+            gap: '0.6rem',
+            width: '100%',
+            transition: 'transform 0.2s ease, box-shadow 0.2s ease',
+          }}
+          onMouseOver={(e) => {
+            e.currentTarget.style.transform = 'translateY(-2px)';
+            e.currentTarget.style.boxShadow = '0 6px 14px rgba(0,0,0,0.2)';
+          }}
+          onMouseOut={(e) => {
+            e.currentTarget.style.transform = 'translateY(0)';
+            e.currentTarget.style.boxShadow = '0 4px 10px rgba(0,0,0,0.1)';
+          }}
         >
-          {loading ? "인증하는 중..." : "로그인"}
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path fillRule="evenodd" clipRule="evenodd" d="M12 3C6.477 3 2 6.58 2 11C2 13.829 3.754 16.31 6.438 17.653L5.454 21.282C5.352 21.658 5.766 21.936 6.096 21.722L10.36 18.966C10.893 19.043 11.44 19.083 12 19.083C17.523 19.083 22 15.503 22 11C22 6.58 17.523 3 12 3Z" fill="currentColor"/>
+          </svg>
+          카카오로 3초 만에 시작하기
         </button>
-      </form>
-      
-      <div className={styles.footer}>
-        계정이 없으신가요?{" "}
-        <Link href="/register" className={styles.link}>
-          회원가입
-        </Link>
       </div>
     </div>
   );

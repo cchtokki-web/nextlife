@@ -1,10 +1,17 @@
 import { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
+import KakaoProvider from "next-auth/providers/kakao";
+import { PrismaAdapter } from "@next-auth/prisma-adapter";
 import bcrypt from "bcrypt";
 import { prisma } from "@/infrastructure/db/prisma";
 
 export const authOptions: NextAuthOptions = {
+  adapter: PrismaAdapter(prisma),
   providers: [
+    KakaoProvider({
+      clientId: process.env.KAKAO_CLIENT_ID || "",
+      clientSecret: process.env.KAKAO_CLIENT_SECRET || "",
+    }),
     CredentialsProvider({
       name: "이메일 로그인",
       credentials: {
@@ -38,6 +45,7 @@ export const authOptions: NextAuthOptions = {
           id: user.id,
           email: user.email,
           name: user.name,
+          tier: user.tier,
         };
       }
     })
@@ -46,15 +54,25 @@ export const authOptions: NextAuthOptions = {
     strategy: "jwt",
   },
   callbacks: {
-    async jwt({ token, user }) {
+    async jwt({ token, user, account }) {
+      if (account) {
+        token.provider = account.provider;
+      }
       if (user) {
         token.id = user.id;
+        token.tier = (user as any).tier || 'basic';
       }
       return token;
     },
     async session({ session, token }) {
       if (token && session.user) {
         session.user.id = token.id as string;
+        if (token.provider) {
+          session.user.provider = token.provider as string;
+        }
+        if (token.tier) {
+          session.user.tier = token.tier as string;
+        }
       }
       return session;
     }
