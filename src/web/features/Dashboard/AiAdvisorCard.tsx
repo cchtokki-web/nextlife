@@ -160,12 +160,20 @@ export const AiAdvisorCard: React.FC<AiAdvisorCardProps> = ({ score, monthlyTarg
               </div>
             ) : (
             <p className={styles.aiText}>
-              {displayAdvice.split('\n').map((line, i) => (
-                <React.Fragment key={i}>
-                  {line}
-                  <br />
-                </React.Fragment>
-              ))}
+              {displayAdvice.split('\n').map((line, i) => {
+                const parts = line.split(/(\*\*.*?\*\*)/g);
+                return (
+                  <React.Fragment key={i}>
+                    {parts.map((part, j) => {
+                      if (part.startsWith('**') && part.endsWith('**')) {
+                        return <strong key={j} style={{ color: 'var(--foreground)' }}>{part.slice(2, -2)}</strong>;
+                      }
+                      return <React.Fragment key={j}>{part}</React.Fragment>;
+                    })}
+                    <br />
+                  </React.Fragment>
+                );
+              })}
               {isLoading && (
                 <span style={{ display: 'inline-flex', alignItems: 'center', marginLeft: '8px' }}>
                   <Loader2 size={16} className="animate-spin" style={{ color: 'var(--primary)' }} />
