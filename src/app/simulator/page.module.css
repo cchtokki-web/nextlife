@@ -139,6 +139,8 @@
   font-size: 0.75rem;
   color: var(--foreground-muted);
   line-height: 1.6;
+  word-break: keep-all;
+  overflow-wrap: break-word;
 }
 
 .disclaimerTitle {
