@@ -42,7 +42,7 @@ export const HeroSummaryCard: React.FC<HeroSummaryCardProps> = ({ score, expecta
       <div className={styles.heroContent}>
         <div className={styles.heroTextSection}>
           <div className={styles.heroMessageArea} style={{ marginBottom: '1rem', marginTop: 0, display: 'flex', alignItems: 'baseline', flexWrap: 'wrap', gap: '8px' }}>
-            <h3 className={styles.heroMessageTitle} style={{ margin: 0 }}>{messageTitle}</h3>
+            <h3 className={styles.heroMessageTitle} style={{ margin: 0, fontWeight: 'normal' }}>{messageTitle}</h3>
             <p className={styles.heroMessageSub} style={{ margin: 0, fontSize: '1.1rem', fontWeight: 500, color: 'rgba(255, 255, 255, 0.9)' }}>{messageSub}</p>
           </div>
         </div>
