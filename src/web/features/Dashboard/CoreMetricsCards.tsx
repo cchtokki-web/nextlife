@@ -89,10 +89,6 @@ export const CoreMetricsCards: React.FC<CoreMetricsCardsProps> = ({
               </span>
               <span>월 {formatValue(monthlyTarget)} 생활 {isMonthlyTargetPossible ? '가능' : '부족'}</span>
             </div>
-            <div className={styles.coreCardListItem}>
-              <span className={styles.crossIcon}>❌</span>
-              <span>월 {formatValue(monthlyTarget + 1000000)} 생활 어려움</span>
-            </div>
           </div>
         </div>
       </motion.div>

@@ -238,7 +238,7 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({ params: rawP
         depletionAge={result.depletionAge}
         expectancyAge={params.userProfile.expectancy}
         assetAt60={assetAt60}
-        monthlyTarget={params.userProfile.targetMonthlySpending}
+        monthlyTarget={result.calculatedTargetSpending || params.userProfile.targetMonthlySpending}
         isMonthlyTargetPossible={isMonthlyTargetPossible}
         formatValue={formatValue}
       />
