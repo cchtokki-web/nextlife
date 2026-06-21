@@ -26,12 +26,17 @@ export function SimpleSimulator() {
   });
 
   const [hasRun, setHasRun] = useState(false);
-  const { data: session } = useSession();
+  const { data: session, status } = useSession();
   const isDevMode = process.env.NODE_ENV === 'development' || process.env.NEXT_PUBLIC_DEV_MODE === 'true';
   const isKakaoUser = isDevMode || session?.user?.provider === 'kakao';
   const router = useRouter();
 
   useEffect(() => {
+    if (status === 'authenticated') {
+      setHasRun(true);
+      sessionStorage.setItem('nextlife_simple_simulator_has_run', 'true');
+    }
+  }, [status]);
     const saved = localStorage.getItem('nextlife_simple_simulator_input');
     if (saved) {
       try {
@@ -40,6 +45,10 @@ export function SimpleSimulator() {
       } catch (e) {
         console.error('Failed to parse saved input', e);
       }
+    }
+    
+    if (sessionStorage.getItem('nextlife_simple_simulator_has_run') === 'true') {
+      setHasRun(true);
     }
   }, []);
 
@@ -84,6 +93,7 @@ export function SimpleSimulator() {
 
   const handleRun = () => {
     setHasRun(true);
+    sessionStorage.setItem('nextlife_simple_simulator_has_run', 'true');
     const sessionId = sessionStorage.getItem('analytics_session_id');
     fetch('/api/analytics', {
       method: 'POST',
@@ -300,7 +310,10 @@ export function SimpleSimulator() {
               </div>
               <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center' }}>
                 <button 
-                  onClick={() => setHasRun(false)}
+                  onClick={() => {
+                    setHasRun(false);
+                    sessionStorage.setItem('nextlife_simple_simulator_has_run', 'false');
+                  }}
                   style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: 'white', padding: '0.4rem 0.8rem', borderRadius: '8px', cursor: 'pointer', fontWeight: 600, fontSize: '0.9rem' }}
                 >
                   다시 계산하기
