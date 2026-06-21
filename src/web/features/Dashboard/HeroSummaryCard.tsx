@@ -6,10 +6,11 @@ import styles from './Dashboard.module.css';
 interface HeroSummaryCardProps {
   score: number; // 0 ~ 100
   expectancyAge: number;
+  depletionAge: number | null;
   alternatives?: { label: string; score: number }[];
 }
 
-export const HeroSummaryCard: React.FC<HeroSummaryCardProps> = ({ score, expectancyAge, alternatives = [] }) => {
+export const HeroSummaryCard: React.FC<HeroSummaryCardProps> = ({ score, expectancyAge, depletionAge, alternatives = [] }) => {
   const { data: session } = useSession();
   const userNamePrefix = session?.user?.name ? `${session.user.name}님의 ` : '';
 
@@ -20,7 +21,11 @@ export const HeroSummaryCard: React.FC<HeroSummaryCardProps> = ({ score, expecta
   if (score < 70) {
     colorClass = styles.colorRed;
     messageTitle = `⚠️ ${userNamePrefix}현재 계획으로는`;
-    messageSub = '노후 생활비가 부족할 가능성이 있습니다';
+    if (depletionAge === null) {
+      messageSub = '자산 고갈 위험은 없으나 배당이나 연금 등 패시브 인컴 비중이 너무 낮아 불안정한 구조입니다';
+    } else {
+      messageSub = '노후 자산 고갈 위험과 생활비 부족 가능성이 있습니다';
+    }
   } else if (score < 90) {
     colorClass = styles.colorOrange;
     messageTitle = `${userNamePrefix}현재 계획으로는`;

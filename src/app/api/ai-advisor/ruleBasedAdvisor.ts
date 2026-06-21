@@ -4,7 +4,8 @@ export function generateRuleBasedAdvice(
   score: number,
   monthlyTarget: number,
   isPro: boolean,
-  userProfile?: UserProfile
+  userProfile?: UserProfile,
+  depletionAge?: number | null
 ): string {
   // 기본값이 없을 때를 대비한 기본 프로필 설정
   const currentAge = userProfile?.currentAge || 40;
@@ -26,9 +27,17 @@ export function generateRuleBasedAdvice(
   } else if (score >= 70) {
     analysis = `시뮬레이션 결과 ${score}점으로 목표 생활비 달성이 대체로 가능하지만, 약간의 변동성에 대비할 필요가 있는 보통 수준입니다. `;
   } else if (score >= 50) {
-    analysis = `시뮬레이션 결과 ${score}점으로 목표하신 생활비를 감당하기에는 자산 고갈 위험이 있는 주의가 필요한 상태입니다. `;
+    if (depletionAge === null) {
+      analysis = `시뮬레이션 결과 ${score}점으로 자산 고갈 위험은 없지만, 배당이나 연금 등 안정적인 현금흐름이 적어 원금 매각에 크게 의존해야 하는 불안정한 구조입니다. `;
+    } else {
+      analysis = `시뮬레이션 결과 ${score}점으로 목표하신 생활비를 감당하기에는 자산 고갈 위험이 있는 주의가 필요한 상태입니다. `;
+    }
   } else {
-    analysis = `시뮬레이션 결과 ${score}점으로 현재 계획대로라면 은퇴 후 자산이 빠르게 고갈될 수 있는 위험 상태입니다. `;
+    if (depletionAge === null) {
+      analysis = `시뮬레이션 결과 ${score}점으로 자산 고갈은 면했지만, 능동적 현금흐름 부족으로 인해 언제든 생활비가 부족해질 수 있는 매우 위험한 구조입니다. `;
+    } else {
+      analysis = `시뮬레이션 결과 ${score}점으로 현재 계획대로라면 은퇴 후 자산이 빠르게 고갈될 수 있는 위험 상태입니다. `;
+    }
   }
 
   // 2. 현재 연령대에 따른 인사이트 (4가지)

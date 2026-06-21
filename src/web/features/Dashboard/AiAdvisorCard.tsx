@@ -11,9 +11,10 @@ interface AiAdvisorCardProps {
   formatValue: (val: number) => string;
   isPro?: boolean;
   userProfile?: UserProfile;
+  depletionAge: number | null;
 }
 
-export const AiAdvisorCard: React.FC<AiAdvisorCardProps> = ({ score, monthlyTarget, formatValue, isPro, userProfile }) => {
+export const AiAdvisorCard: React.FC<AiAdvisorCardProps> = ({ score, monthlyTarget, formatValue, isPro, userProfile, depletionAge }) => {
   const [advice, setAdvice] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -21,7 +22,7 @@ export const AiAdvisorCard: React.FC<AiAdvisorCardProps> = ({ score, monthlyTarg
   const [lastFetchKey, setLastFetchKey] = useState('');
   const [isRuleBased, setIsRuleBased] = useState(false);
 
-  const currentKey = useMemo(() => JSON.stringify({ score, monthlyTarget, isPro, userProfile }), [score, monthlyTarget, isPro, userProfile]);
+  const currentKey = useMemo(() => JSON.stringify({ score, monthlyTarget, isPro, userProfile, depletionAge }), [score, monthlyTarget, isPro, userProfile, depletionAge]);
   const isStale = lastFetchKey !== '' && currentKey !== lastFetchKey;
   
   useEffect(() => {
@@ -45,6 +46,7 @@ export const AiAdvisorCard: React.FC<AiAdvisorCardProps> = ({ score, monthlyTarg
             monthlyTarget,
             isPro,
             userProfile,
+            depletionAge,
           }),
           signal: abortController.signal,
         });

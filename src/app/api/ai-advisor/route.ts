@@ -5,14 +5,14 @@ export const runtime = 'edge';
 
 export async function POST(req: NextRequest) {
   try {
-    const { score, monthlyTarget, isPro, userProfile } = await req.json();
+    const { score, monthlyTarget, isPro, userProfile, depletionAge } = await req.json();
 
     const OLLAMA_ENDPOINT = process.env.OLLAMA_ENDPOINT;
     const OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'gemma4-12b';
 
     if (!OLLAMA_ENDPOINT || OLLAMA_ENDPOINT.trim() === '') {
       // Fallback to rule-based advice
-      const adviceText = generateRuleBasedAdvice(score, monthlyTarget, isPro, userProfile);
+      const adviceText = generateRuleBasedAdvice(score, monthlyTarget, isPro, userProfile, depletionAge);
       
       const encoder = new TextEncoder();
       const stream = new ReadableStream({

@@ -232,7 +232,7 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({ params: rawP
         </div>
       )}
 
-      <HeroSummaryCard score={result.retirementScore} expectancyAge={params.userProfile.expectancy} />
+      <HeroSummaryCard score={result.retirementScore} expectancyAge={params.userProfile.expectancy} depletionAge={result.depletionAge} />
 
       <CoreMetricsCards 
         depletionAge={result.depletionAge}
