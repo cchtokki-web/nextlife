@@ -238,9 +238,10 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({ params: rawP
         depletionAge={result.depletionAge}
         expectancyAge={params.userProfile.expectancy}
         assetAt60={assetAt60}
-        monthlyTarget={result.calculatedTargetSpending || params.userProfile.targetMonthlySpending}
+        monthlyTarget={params.spendingStrategy === 'max_sustainable' && result.calculatedTargetSpending ? result.calculatedTargetSpending : params.userProfile.targetMonthlySpending}
         isMonthlyTargetPossible={isMonthlyTargetPossible}
         formatValue={formatValue}
+        calculatedTargetSpending={result.calculatedTargetSpending}
       />
 
       <AiAdvisorCard 

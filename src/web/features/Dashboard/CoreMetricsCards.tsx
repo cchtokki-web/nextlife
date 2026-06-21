@@ -10,6 +10,7 @@ interface CoreMetricsCardsProps {
   monthlyTarget: number;
   isMonthlyTargetPossible: boolean;
   formatValue: (val: number) => string;
+  calculatedTargetSpending?: number;
 }
 
 export const CoreMetricsCards: React.FC<CoreMetricsCardsProps> = ({
@@ -18,7 +19,8 @@ export const CoreMetricsCards: React.FC<CoreMetricsCardsProps> = ({
   assetAt60,
   monthlyTarget,
   isMonthlyTargetPossible,
-  formatValue
+  formatValue,
+  calculatedTargetSpending
 }) => {
   const containerVariants = {
     hidden: { opacity: 0 },
@@ -89,6 +91,12 @@ export const CoreMetricsCards: React.FC<CoreMetricsCardsProps> = ({
               </span>
               <span>월 {formatValue(monthlyTarget)} 생활 {isMonthlyTargetPossible ? '가능' : '부족'}</span>
             </div>
+            {calculatedTargetSpending !== undefined && calculatedTargetSpending > 0 && (
+              <div className={styles.coreCardListItem} style={{ marginTop: '0.4rem', color: 'var(--foreground-muted)' }}>
+                <span className={styles.checkIcon} style={{ filter: 'grayscale(0.5)' }}>💡</span>
+                <span>최대 월 {formatValue(calculatedTargetSpending)} 생활 가능</span>
+              </div>
+            )}
           </div>
         </div>
       </motion.div>

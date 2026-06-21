@@ -37,7 +37,37 @@ export class SimulationEngine {
       return this.findMaxSustainable(params);
     }
 
-    return this.runSingle(params);
+    const mainResult = this.runSingle(params);
+    const maxSustainable = this.findMaxSustainableValue(params);
+    
+    return { ...mainResult, calculatedTargetSpending: maxSustainable };
+  }
+
+  private findMaxSustainableValue(params: SimulationParams): number {
+    let low = 0;
+    let high = 50000000; // 5천만원/월
+    let bestTarget = 0;
+
+    for (let i = 0; i < 30; i++) {
+      const mid = (low + high) / 2;
+      const trialParams = {
+        ...params,
+        userProfile: {
+          ...params.userProfile,
+          targetMonthlySpending: mid,
+        },
+      };
+      
+      const result = this.runSingle(trialParams);
+      
+      if (result.depletionAge === null || result.endingAssets > 0) {
+        bestTarget = mid;
+        low = mid;
+      } else {
+        high = mid;
+      }
+    }
+    return bestTarget;
   }
 
   private findMaxSustainable(params: SimulationParams): SimulationResult {
