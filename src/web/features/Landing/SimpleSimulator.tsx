@@ -354,7 +354,7 @@ export function SimpleSimulator() {
                         },
                         assets: (input.currentAssets > 0 || input.monthlyInvestment > 0) ? adapted.assets : initialParams.assets,
                         nationalPension: input.nationalPension > 0 ? adapted.nationalPension : initialParams.nationalPension,
-                        privatePensions: initialParams.privatePensions,
+                        privatePensions: [],
                         taxSettings: adapted.taxSettings,
                       };
                       
