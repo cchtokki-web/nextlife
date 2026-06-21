@@ -250,6 +250,7 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({ params: rawP
         formatValue={formatValue}
         isPro={isPro}
         userProfile={params.userProfile}
+        depletionAge={result.depletionAge}
       />
 
       <ScenarioComparison 
