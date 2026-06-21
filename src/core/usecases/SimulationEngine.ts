@@ -351,6 +351,9 @@ export class SimulationEngine {
 
           if (!isRetired && asset.reinvestDividend) {
             asset.currentValue += dividendNet;
+            annualDividendIncome += this.convertValue(dividendNet, asset.currency, displayCurrency, exchangeRate);
+            annualDividendTaxPaid += this.convertValue(dividendTax, asset.currency, displayCurrency, exchangeRate);
+            annualPreTaxTotalIncome += this.convertValue(dividendRaw, asset.currency, displayCurrency, exchangeRate);
           } else {
             monthlyDividendIncomeNetDisplay += this.convertValue(dividendNet, asset.currency, displayCurrency, exchangeRate);
             annualDividendTaxPaid += this.convertValue(dividendTax, asset.currency, displayCurrency, exchangeRate);
@@ -384,7 +387,6 @@ export class SimulationEngine {
             const drawAmountTax = drawAmountRaw * taxRate;
             const drawAmountNet = drawAmountRaw - drawAmountTax;
 
-            annualRawFinancialIncomeKRW += this.convertValue(drawAmountRaw, pension.currency, 'KRW', exchangeRate);
             monthlyPensionIncomeNetDisplay += this.convertValue(drawAmountNet, pension.currency, displayCurrency, exchangeRate);
             annualPensionTaxPaid += this.convertValue(drawAmountTax, pension.currency, displayCurrency, exchangeRate);
             annualPreTaxTotalIncome += this.convertValue(drawAmountRaw, pension.currency, displayCurrency, exchangeRate);
@@ -462,7 +464,7 @@ export class SimulationEngine {
 
       const hasTaxWarning = annualRawFinancialIncomeKRW > 20000000;
       const pensionIncome = annualNationalPensionIncome + annualPrivatePensionIncome;
-      const totalIncome = annualDividendIncome + pensionIncome + annualOtherIncome - annualComprehensiveTaxPaidDisplay - annualHealthInsurancePaidDisplay;
+      const totalIncome = annualDividendIncome + pensionIncome + annualOtherIncome;
 
       yearlyResults.push({
         age: currentAge, year: currentYear, totalAssets: totalAssetsDisplay,
