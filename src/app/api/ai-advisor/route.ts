@@ -43,14 +43,17 @@ ${userProfileText}
       systemPrompt += `\n중요 제약사항: 사용자가 Basic 버전 사용 중이므로, 답변은 반드시 8줄 미만으로 짧게 작성해야 합니다. 핵심만 간단히 말하세요.`;
     }
 
-    const response = await fetch(`${OLLAMA_ENDPOINT}/api/generate`, {
+    const response = await fetch(`${OLLAMA_ENDPOINT}/api/chat`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
         model: OLLAMA_MODEL,
-        prompt: systemPrompt,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: '내 시뮬레이션 결과에 대해 조언해줘.' }
+        ],
         stream: true,
       }),
     });

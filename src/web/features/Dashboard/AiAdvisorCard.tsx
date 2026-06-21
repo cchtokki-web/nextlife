@@ -65,8 +65,9 @@ export const AiAdvisorCard: React.FC<AiAdvisorCardProps> = ({ score, monthlyTarg
             if (line.trim() === '') continue;
             try {
               const parsed = JSON.parse(line);
-              if (parsed.response) {
-                setAdvice((prev) => prev + parsed.response);
+              const chunk = parsed.message?.content || parsed.response;
+              if (chunk) {
+                setAdvice((prev) => prev + chunk);
               }
             } catch (e) {
               console.warn('Failed to parse JSON line:', line);
@@ -78,8 +79,9 @@ export const AiAdvisorCard: React.FC<AiAdvisorCardProps> = ({ score, monthlyTarg
         if (buffer.trim()) {
           try {
             const parsed = JSON.parse(buffer);
-            if (parsed.response) {
-              setAdvice((prev) => prev + parsed.response);
+            const chunk = parsed.message?.content || parsed.response;
+            if (chunk) {
+              setAdvice((prev) => prev + chunk);
             }
           } catch (e) {
             // Ignore
@@ -106,6 +108,14 @@ export const AiAdvisorCard: React.FC<AiAdvisorCardProps> = ({ score, monthlyTarg
     };
   }, [score, monthlyTarget, isPro, userProfile]);
 
+  let displayAdvice = advice;
+  const emptyThoughtTag = "<|channel>thought\n<channel|>";
+  if (displayAdvice.startsWith(emptyThoughtTag)) {
+    displayAdvice = displayAdvice.substring(emptyThoughtTag.length);
+  } else if (emptyThoughtTag.startsWith(displayAdvice)) {
+    displayAdvice = "";
+  }
+
   return (
     <motion.div 
       className={styles.aiAdvisorContainer}
@@ -130,7 +140,7 @@ export const AiAdvisorCard: React.FC<AiAdvisorCardProps> = ({ score, monthlyTarg
             </div>
           ) : (
             <p className={styles.aiText}>
-              {advice.split('\n').map((line, i) => (
+              {displayAdvice.split('\n').map((line, i) => (
                 <React.Fragment key={i}>
                   {line}
                   <br />
