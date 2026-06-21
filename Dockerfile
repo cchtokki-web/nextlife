@@ -8,7 +8,7 @@ WORKDIR /app
 
 # Install dependencies
 COPY package.json package-lock.json* ./
-RUN npm ci
+RUN npm install
 
 # Rebuild the source code only when needed
 FROM base AS builder
@@ -56,6 +56,7 @@ ENV HOSTNAME="0.0.0.0"
 
 USER root
 # Create entrypoint script
+RUN npm install -g prisma@6.19.3
 RUN echo '#!/bin/sh' > /app/start.sh && \
     echo 'mkdir -p /app/data' >> /app/start.sh && \
     echo 'chown -R nextjs:nodejs /app/data' >> /app/start.sh && \
@@ -64,6 +65,8 @@ RUN echo '#!/bin/sh' > /app/start.sh && \
     echo '  cp /app/default.db /app/data/dev.db' >> /app/start.sh && \
     echo '  chown nextjs:nodejs /app/data/dev.db' >> /app/start.sh && \
     echo 'fi' >> /app/start.sh && \
+    echo 'echo "Checking and applying database migrations..."' >> /app/start.sh && \
+    echo 'cd /app && export DATABASE_URL="file:/app/data/dev.db" && prisma db push --accept-data-loss' >> /app/start.sh && \
     echo 'exec su nextjs -s /bin/sh -c "node server.js"' >> /app/start.sh && \
     chmod +x /app/start.sh
 

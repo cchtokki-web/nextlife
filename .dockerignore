@@ -5,7 +5,6 @@ npm-debug.log
 README.md
 .next
 .git
-.env*
 !*.env.example
 .DS_Store
 *.db
