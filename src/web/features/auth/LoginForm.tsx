@@ -65,7 +65,7 @@ export default function LoginForm() {
         <div style={{ marginTop: '1rem' }}>
           <button 
             type="button"
-            onClick={() => signIn('credentials', { email: 'dev', password: 'dev', callbackUrl: '/' })}
+            onClick={() => signIn('credentials', { email: 'dev', password: 'dev', callbackUrl: '/simulator' })}
             style={{ 
               backgroundColor: '#4A5568', 
               color: '#FFF', 

@@ -111,6 +111,13 @@ export const AiAdvisorCard: React.FC<AiAdvisorCardProps> = ({ score, monthlyTarg
         <div className={styles.aiContent}>
           {error ? (
             <p className={styles.aiText} style={{ color: 'var(--error)' }}>{error}</p>
+          ) : advice === '' && isLoading ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '0.5rem 0' }}>
+              <motion.div animate={{ y: [0, -6, 0] }} transition={{ repeat: Infinity, duration: 0.8 }} style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: 'var(--primary)' }} />
+              <motion.div animate={{ y: [0, -6, 0] }} transition={{ repeat: Infinity, duration: 0.8, delay: 0.15 }} style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: 'var(--primary)' }} />
+              <motion.div animate={{ y: [0, -6, 0] }} transition={{ repeat: Infinity, duration: 0.8, delay: 0.3 }} style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: 'var(--primary)' }} />
+              <span style={{ marginLeft: '12px', color: 'var(--foreground-muted)', fontSize: '0.9rem', fontWeight: 500 }}>조언을 준비하고 있습니다...</span>
+            </div>
           ) : (
             <p className={styles.aiText}>
               {advice.split('\n').map((line, i) => (

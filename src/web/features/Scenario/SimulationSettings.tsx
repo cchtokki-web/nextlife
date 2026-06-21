@@ -61,7 +61,7 @@ export const SimulationSettings: React.FC<{ scenarioState: any }> = ({ scenarioS
   const applyYieldPreset = (preset: 'conservative' | 'base' | 'aggressive') => {
     let stockGrowth = 7, pensionReturn = 4;
     if (preset === 'conservative') { stockGrowth = 5; pensionReturn = 3; }
-    else if (preset === 'aggressive') { stockGrowth = 10; pensionReturn = 6; }
+    else if (preset === 'aggressive') { stockGrowth = 9; pensionReturn = 6; }
 
     const updatedAssets = activeParams.assets.map((a: any) => ({ ...a, annualGrowthRate: stockGrowth }));
     const updatedPensions = activeParams.privatePensions.map((p: any) => ({ ...p, annualReturn: pensionReturn }));
@@ -120,7 +120,7 @@ export const SimulationSettings: React.FC<{ scenarioState: any }> = ({ scenarioS
                 className={`${styles.presetBtn} ${styles.btnAggressive} ${activePreset === 'aggressive' ? styles.active : ''}`}
                 onClick={() => applyYieldPreset('aggressive')}
               >
-                공격적 (주식 10%, 연금 6%)
+                공격적 (주식 9%, 연금 6%)
               </button>
             </div>
           </div>
