@@ -19,6 +19,7 @@ export const AiAdvisorCard: React.FC<AiAdvisorCardProps> = ({ score, monthlyTarg
   const [error, setError] = useState<string | null>(null);
   const [triggerFetch, setTriggerFetch] = useState(0);
   const [lastFetchKey, setLastFetchKey] = useState('');
+  const [isRuleBased, setIsRuleBased] = useState(false);
 
   const currentKey = useMemo(() => JSON.stringify({ score, monthlyTarget, isPro, userProfile }), [score, monthlyTarget, isPro, userProfile]);
   const isStale = lastFetchKey !== '' && currentKey !== lastFetchKey;
@@ -30,6 +31,7 @@ export const AiAdvisorCard: React.FC<AiAdvisorCardProps> = ({ score, monthlyTarg
       setIsLoading(true);
       setError(null);
       setAdvice('');
+      setIsRuleBased(false);
       setLastFetchKey(currentKey);
 
       try {
@@ -71,6 +73,7 @@ export const AiAdvisorCard: React.FC<AiAdvisorCardProps> = ({ score, monthlyTarg
             if (line.trim() === '') continue;
             try {
               const parsed = JSON.parse(line);
+              if (parsed.isRuleBased) setIsRuleBased(true);
               const chunk = parsed.message?.content || parsed.response;
               if (chunk) {
                 setAdvice((prev) => prev + chunk);
@@ -85,6 +88,7 @@ export const AiAdvisorCard: React.FC<AiAdvisorCardProps> = ({ score, monthlyTarg
         if (buffer.trim()) {
           try {
             const parsed = JSON.parse(buffer);
+            if (parsed.isRuleBased) setIsRuleBased(true);
             const chunk = parsed.message?.content || parsed.response;
             if (chunk) {
               setAdvice((prev) => prev + chunk);
@@ -114,6 +118,12 @@ export const AiAdvisorCard: React.FC<AiAdvisorCardProps> = ({ score, monthlyTarg
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [triggerFetch]);
+
+  useEffect(() => {
+    if (isStale && isRuleBased) {
+      setTriggerFetch(prev => prev + 1);
+    }
+  }, [isStale, isRuleBased]);
 
   let displayAdvice = advice;
   const emptyThoughtTag = "<|channel>thought\n<channel|>";
@@ -164,8 +174,8 @@ export const AiAdvisorCard: React.FC<AiAdvisorCardProps> = ({ score, monthlyTarg
           </div>
 
           <AnimatePresence>
-            {isStale && (
-              <motion.div 
+            {isStale && !isRuleBased && (
+              <motion.div  
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}

@@ -1,4 +1,5 @@
 import { NextRequest } from 'next/server';
+import { generateRuleBasedAdvice } from './ruleBasedAdvisor';
 
 export const runtime = 'edge';
 
@@ -6,8 +7,35 @@ export async function POST(req: NextRequest) {
   try {
     const { score, monthlyTarget, isPro, userProfile } = await req.json();
 
-    const OLLAMA_ENDPOINT = process.env.OLLAMA_ENDPOINT || 'http://localhost:11434';
+    const OLLAMA_ENDPOINT = process.env.OLLAMA_ENDPOINT;
     const OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'gemma4-12b';
+
+    if (!OLLAMA_ENDPOINT || OLLAMA_ENDPOINT.trim() === '') {
+      // Fallback to rule-based advice
+      const adviceText = generateRuleBasedAdvice(score, monthlyTarget, isPro, userProfile);
+      
+      const encoder = new TextEncoder();
+      const stream = new ReadableStream({
+        async start(controller) {
+          // 글자 단위 또는 청크 단위로 잘라 스트리밍 효과 구현
+          const chunks = adviceText.match(/.{1,15}/g) || [adviceText];
+          for (const chunk of chunks) {
+            const payload = JSON.stringify({ isRuleBased: true, message: { content: chunk } }) + '\n';
+            controller.enqueue(encoder.encode(payload));
+            await new Promise(r => setTimeout(r, 15)); // 짧은 지연
+          }
+          controller.close();
+        }
+      });
+
+      return new Response(stream, {
+        headers: {
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+          'Connection': 'keep-alive',
+        },
+      });
+    }
 
     const userProfileText = userProfile ? `
 [사용자 기본 정보]
