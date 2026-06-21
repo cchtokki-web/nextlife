@@ -19,7 +19,7 @@ export const authOptions: NextAuthOptions = {
         password: { label: "비밀번호", type: "password" }
       },
       async authorize(credentials) {
-        if (process.env.NODE_ENV === "development" && credentials?.email === "dev" && credentials?.password === "dev") {
+        if (process.env.NEXT_PUBLIC_DEV_MODE === "true" && credentials?.email === "dev" && credentials?.password === "dev") {
           return {
             id: "dev-user-id",
             email: "dev@example.com",
