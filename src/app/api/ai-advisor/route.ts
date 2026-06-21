@@ -52,6 +52,7 @@ export async function POST(req: NextRequest) {
 2. "결론적으로", "마무리로" 같은 형식적인 표현도 절대 사용하지 마세요.
 3. 기계적이지 않은, 이웃집 전문가가 이야기하듯 부드럽고 친절한 대화체(해요체, 합쇼체)를 사용하세요.
 4. <think> 태그나 내부 사고 과정을 절대 출력하지 마세요. 고민하는 과정 없이 곧바로 최종 답변만 출력하세요.
+5. 중요한 정보(점수, 금액, 핵심 조언 등)는 반드시 **텍스트** 처럼 마크다운 볼드체를 사용하여 강조하세요.
 
 ${userProfileText}
 [결과 요약]
@@ -71,25 +72,51 @@ ${userProfileText}
       systemPrompt += `\n중요 제약사항: 사용자가 Basic 버전 사용 중이므로, 답변은 반드시 8줄 미만으로 짧게 작성해야 합니다. 핵심만 간단히 말하세요.`;
     }
 
-    const response = await fetch(`${OLLAMA_ENDPOINT}/api/chat`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: OLLAMA_MODEL,
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: '내 시뮬레이션 결과에 대해 조언해줘.' }
-        ],
-        stream: true,
-      }),
-    });
+    let response;
+    try {
+      response = await fetch(`${OLLAMA_ENDPOINT}/api/chat`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: OLLAMA_MODEL,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: '내 시뮬레이션 결과에 대해 조언해줘.' }
+          ],
+          stream: true,
+        }),
+      });
 
-    if (!response.ok) {
-      return new Response(JSON.stringify({ error: 'Failed to connect to Ollama' }), {
-        status: response.status,
-        headers: { 'Content-Type': 'application/json' },
+      if (!response.ok) {
+        throw new Error(`Ollama returned status ${response.status}`);
+      }
+    } catch (fetchError) {
+      console.warn('Failed to connect to Ollama, falling back to rule-based advice:', fetchError);
+      
+      // Fallback to rule-based advice
+      const adviceText = generateRuleBasedAdvice(score, monthlyTarget, isPro, userProfile, depletionAge);
+      
+      const encoder = new TextEncoder();
+      const stream = new ReadableStream({
+        async start(controller) {
+          const chunks = adviceText.match(/.{1,15}/g) || [adviceText];
+          for (const chunk of chunks) {
+            const payload = JSON.stringify({ isRuleBased: true, message: { content: chunk } }) + '\n';
+            controller.enqueue(encoder.encode(payload));
+            await new Promise(r => setTimeout(r, 15));
+          }
+          controller.close();
+        }
+      });
+
+      return new Response(stream, {
+        headers: {
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+          'Connection': 'keep-alive',
+        },
       });
     }
 
