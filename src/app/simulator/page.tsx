@@ -37,14 +37,14 @@ export default function Home() {
   const handleResetAllScenarios = async () => {
     if (confirm('모든 기존 데이터를 초기화하고 새로운 보안 키로 다시 시작하시겠습니까? 이 작업은 되돌릴 수 없으며 기존 암호화된 모든 시나리오 데이터가 기본값으로 초기화됩니다.')) {
       const newKey = generateBackupKey();
-      if (session?.user?.email) {
-        const email = session.user.email;
-        localStorage.setItem(`nextlife_e2ee_key_${email}`, newKey);
-        localStorage.setItem(`nextlife_e2ee_backed_up_${email}`, 'false');
+      const userId = (session?.user as any)?.id;
+      if (userId) {
+        localStorage.setItem(`nextlife_e2ee_key_${userId}`, newKey);
+        localStorage.setItem(`nextlife_e2ee_backed_up_${userId}`, 'false');
         
         try {
           for (const s of scenarios) {
-            const encrypted = await encryptData(initialParams, newKey);
+            const encrypted = await encryptData(initialParams, newKey, userId);
             await fetch(`/api/scenarios/${s.id}`, {
               method: 'PUT',
               headers: { 'Content-Type': 'application/json' },

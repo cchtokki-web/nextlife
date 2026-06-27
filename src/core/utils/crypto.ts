@@ -1,6 +1,7 @@
 /**
  * Client-side End-to-End Encryption (E2EE) utilities using Web Crypto API.
  * Encrypts and decrypts client simulation parameters so that the server only sees ciphertext.
+ * Derives a strong 256-bit AES-GCM key from a user-friendly 6-character code using PBKDF2.
  */
 
 // Helper to convert ArrayBuffer to Hex string
@@ -23,31 +24,49 @@ export function hexToBuf(hex: string): ArrayBuffer {
   return bytes.buffer;
 }
 
-// Generate a random 256-bit key in Hex format
+// Generate a random 6-character key using readable characters (excluding ambiguous ones: 0, O, 1, I)
 export function generateBackupKey(): string {
   if (typeof window === 'undefined') return '';
-  const array = new Uint8Array(32); // 256 bits
+  const chars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
+  const array = new Uint8Array(6);
   window.crypto.getRandomValues(array);
-  return bufToHex(array.buffer);
-}
-
-// Format the key to be user-friendly (e.g. XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX)
-export function formatBackupKey(rawKey: string): string {
-  const clean = rawKey.replace(/[^0-9a-fA-F]/g, '').toLowerCase();
-  if (clean.length !== 64) return rawKey;
-  const parts = [];
-  for (let i = 0; i < clean.length; i += 8) {
-    parts.push(clean.substring(i, i + 8));
+  let result = '';
+  for (let i = 0; i < 6; i++) {
+    result += chars[array[i] % chars.length];
   }
-  return parts.join('-');
+  return result;
 }
 
-// Import a hex key string to a CryptoKey object
-async function importKey(rawHex: string): Promise<CryptoKey> {
-  const keyBuf = hexToBuf(rawHex);
-  return window.crypto.subtle.importKey(
+// Format the key to be clean uppercase (for 6 characters, formatting is simple)
+export function formatBackupKey(rawKey: string): string {
+  return rawKey.trim().toUpperCase();
+}
+
+// Derive a strong 256-bit AES-GCM key from a 6-character code using PBKDF2
+async function deriveKeyFromCode(code: string, userId: string): Promise<CryptoKey> {
+  const encoder = new TextEncoder();
+  const codeBuf = encoder.encode(code.trim().toUpperCase());
+  // Use the unique user ID as the salt to prevent precomputation attacks
+  const saltBuf = encoder.encode(userId);
+  
+  // 1. Import raw code as base key material for PBKDF2
+  const baseKey = await window.crypto.subtle.importKey(
     'raw',
-    keyBuf,
+    codeBuf,
+    { name: 'PBKDF2' },
+    false,
+    ['deriveBits', 'deriveKey']
+  );
+  
+  // 2. Derive the AES-GCM key using PBKDF2 with SHA-256
+  return window.crypto.subtle.deriveKey(
+    {
+      name: 'PBKDF2',
+      salt: saltBuf,
+      iterations: 100000,
+      hash: 'SHA-256'
+    },
+    baseKey,
     { name: 'AES-GCM', length: 256 },
     false,
     ['encrypt', 'decrypt']
@@ -60,14 +79,14 @@ export interface EncryptedData {
   isEncrypted: true;
 }
 
-// Encrypt an object using AES-GCM 256
-export async function encryptData(data: any, rawKeyHex: string): Promise<EncryptedData> {
+// Encrypt an object using AES-GCM 256 derived from the 6-character code
+export async function encryptData(data: any, code: string, userId: string): Promise<EncryptedData> {
   if (typeof window === 'undefined') {
     throw new Error('Encryption is only supported on the client-side');
   }
   
-  const key = await importKey(rawKeyHex);
-  const iv = window.crypto.getRandomValues(new Uint8Array(12)); // 96-bit IV is standard for AES-GCM
+  const key = await deriveKeyFromCode(code, userId);
+  const iv = window.crypto.getRandomValues(new Uint8Array(12)); // 96-bit IV
   
   const encoder = new TextEncoder();
   const encodedData = encoder.encode(JSON.stringify(data));
@@ -88,13 +107,13 @@ export async function encryptData(data: any, rawKeyHex: string): Promise<Encrypt
   };
 }
 
-// Decrypt an AES-GCM 256 encrypted payload
-export async function decryptData(payload: EncryptedData, rawKeyHex: string): Promise<any> {
+// Decrypt an AES-GCM 256 encrypted payload using the 6-character code
+export async function decryptData(payload: EncryptedData, code: string, userId: string): Promise<any> {
   if (typeof window === 'undefined') {
     throw new Error('Decryption is only supported on the client-side');
   }
   
-  const key = await importKey(rawKeyHex);
+  const key = await deriveKeyFromCode(code, userId);
   const ivBuf = hexToBuf(payload.iv);
   const ciphertextBuf = hexToBuf(payload.ciphertext);
   

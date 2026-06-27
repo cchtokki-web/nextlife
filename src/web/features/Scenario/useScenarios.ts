@@ -37,18 +37,14 @@ export function useScenarios() {
       const keyName = `nextlife_e2ee_key_${userId}`;
       const backupName = `nextlife_e2ee_backed_up_${userId}`;
       
-      let key = localStorage.getItem(keyName);
-      if (!key) {
-        // Automatically generate a new key if not exists
-        key = generateBackupKey();
-        localStorage.setItem(keyName, key);
-        localStorage.setItem(backupName, 'false'); // Not backed up yet
-        setIsBackupKeyBackedUp(false);
-      } else {
+      const key = localStorage.getItem(keyName);
+      if (key) {
         const backedUp = localStorage.getItem(backupName) === 'true';
         setIsBackupKeyBackedUp(backedUp);
+        setLocalKey(key);
+      } else {
+        setLocalKey(null);
       }
-      setLocalKey(key);
     } else {
       setLocalKey(null);
       setNeedsKeyRestore(false);
@@ -108,9 +104,10 @@ export function useScenarios() {
     }
   }, [status, isLoaded]);
 
-  // Fetch scenarios when logged in (depends on localKey to ensure we can decrypt)
+  // Fetch scenarios when logged in
   useEffect(() => {
-    if (status === 'authenticated' && localKey) {
+    const userId = (session?.user as any)?.id;
+    if (status === 'authenticated') {
       setIsLoaded(false);
       fetch('/api/scenarios')
         .then(res => {
@@ -124,13 +121,18 @@ export function useScenarios() {
               let hasDecryptionFailure = false;
               for (const s of data) {
                 if (isEncryptedPayload(s.data)) {
-                  try {
-                    const decryptedData = await decryptData(s.data, localKey);
-                    decryptedList.push({ ...s, data: migrateParams(decryptedData, etfTickers) });
-                  } catch (err) {
-                    console.error('Decryption failed for scenario', s.id, err);
+                  if (localKey && userId) {
+                    try {
+                      const decryptedData = await decryptData(s.data, localKey, userId);
+                      decryptedList.push({ ...s, data: migrateParams(decryptedData, etfTickers) });
+                    } catch (err) {
+                      console.error('Decryption failed for scenario', s.id, err);
+                      hasDecryptionFailure = true;
+                      decryptedList.push(s);
+                    }
+                  } else {
+                    // No key found in local storage, but database has E2EE scenarios!
                     hasDecryptionFailure = true;
-                    // Store the encrypted payload directly in the state, so if they fix the key, we can retry
                     decryptedList.push(s);
                   }
                 } else {
@@ -148,9 +150,26 @@ export function useScenarios() {
             };
             decryptAll();
           } else {
-            // No scenarios yet, create a default one based on local storage
-            const loaded = loadParams();
-            handleCreateScenario('기본 시나리오', migrateParams(loaded || initialParams, etfTickers), true);
+            // First-time user: No scenarios exist in the database!
+            // We can safely generate a brand new key for them here.
+            const userId = (session?.user as any)?.id;
+            if (userId) {
+              const keyName = `nextlife_e2ee_key_${userId}`;
+              const backupName = `nextlife_e2ee_backed_up_${userId}`;
+              
+              let generatedKey = localStorage.getItem(keyName);
+              if (!generatedKey) {
+                generatedKey = generateBackupKey();
+                localStorage.setItem(keyName, generatedKey);
+                localStorage.setItem(backupName, 'false');
+                setIsBackupKeyBackedUp(false);
+              }
+              setLocalKey(generatedKey);
+              
+              const loaded = loadParams();
+              // Pass the newly generated key directly to handleCreateScenario to avoid race conditions
+              handleCreateScenario('기본 시나리오', migrateParams(loaded || initialParams, etfTickers), true, generatedKey);
+            }
             setIsLoaded(true);
           }
         })
@@ -187,8 +206,9 @@ export function useScenarios() {
           const timeoutId = setTimeout(async () => {
             try {
               let payloadToSave: any = activeScenario.data;
-              if (localKey) {
-                payloadToSave = await encryptData(activeScenario.data, localKey);
+              const userId = (session?.user as any)?.id;
+              if (localKey && userId) {
+                payloadToSave = await encryptData(activeScenario.data, localKey, userId);
               }
               await fetch(`/api/scenarios/${activeScenarioId}`, {
                 method: 'PUT',
@@ -215,7 +235,7 @@ export function useScenarios() {
     }));
   }, [activeScenarioId]);
 
-  const handleCreateScenario = async (name: string, data: SimulationParams, isDefault = false) => {
+  const handleCreateScenario = async (name: string, data: SimulationParams, isDefault = false, overrideKey?: string) => {
     console.log('[E2EE] handleCreateScenario called:', name, 'isDefault:', isDefault, 'status:', status);
     if (!isDefault && scenarios.length >= 3) {
       alert('시나리오는 최대 3개까지만 생성할 수 있습니다.');
@@ -225,8 +245,10 @@ export function useScenarios() {
     if (status === 'authenticated') {
       try {
         let payloadToSave: any = data;
-        if (localKey) {
-          payloadToSave = await encryptData(data, localKey);
+        const keyToUse = overrideKey || localKey;
+        const userId = (session?.user as any)?.id;
+        if (keyToUse && userId) {
+          payloadToSave = await encryptData(data, keyToUse, userId);
         }
         const res = await fetch('/api/scenarios', {
           method: 'POST',
@@ -236,9 +258,10 @@ export function useScenarios() {
         const { data: newScenario } = await res.json();
         if (newScenario) {
           let decryptedData = newScenario.data;
-          if (isEncryptedPayload(newScenario.data) && localKey) {
+          const decryptionKey = overrideKey || localKey;
+          if (isEncryptedPayload(newScenario.data) && decryptionKey && userId) {
             try {
-              decryptedData = await decryptData(newScenario.data, localKey);
+              decryptedData = await decryptData(newScenario.data, decryptionKey, userId);
             } catch (err) {
               console.error('Failed to decrypt created scenario:', err);
             }
