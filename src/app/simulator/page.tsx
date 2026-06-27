@@ -14,6 +14,8 @@ import { Header } from '../../web/components/Header/Header';
 import styles from './page.module.css';
 import { AlertCircle, Activity, Download, RotateCcw, PanelLeftClose, PanelLeftOpen, LogOut } from 'lucide-react';
 import { useScenarios } from '../../web/features/Scenario/useScenarios';
+import { E2eeKeyManager } from '../../web/components/E2eeKeyManager';
+import { generateBackupKey, encryptData } from '../../core/utils/crypto';
 export default function Home() {
   const { data: session, status } = useSession();
   const scenarioState = useScenarios();
@@ -24,8 +26,40 @@ export default function Home() {
     handleUpdateActiveParams, 
     compareScenarioIds, 
     isLoaded,
-    handleCreateScenario
+    handleCreateScenario,
+    localKey,
+    needsKeyRestore,
+    isBackupKeyBackedUp,
+    handleRestoreKey,
+    handleAcknowledgeBackup
   } = scenarioState;
+
+  const handleResetAllScenarios = async () => {
+    if (confirm('모든 기존 데이터를 초기화하고 새로운 보안 키로 다시 시작하시겠습니까? 이 작업은 되돌릴 수 없으며 기존 암호화된 모든 시나리오 데이터가 기본값으로 초기화됩니다.')) {
+      const newKey = generateBackupKey();
+      if (session?.user?.email) {
+        const email = session.user.email;
+        localStorage.setItem(`nextlife_e2ee_key_${email}`, newKey);
+        localStorage.setItem(`nextlife_e2ee_backed_up_${email}`, 'false');
+        
+        try {
+          for (const s of scenarios) {
+            const encrypted = await encryptData(initialParams, newKey);
+            await fetch(`/api/scenarios/${s.id}`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ data: encrypted }),
+            });
+          }
+          alert('데이터가 성공적으로 초기화되었습니다.');
+          window.location.reload();
+        } catch (err) {
+          console.error('Failed to reset scenarios:', err);
+          alert('초기화 중 오류가 발생했습니다.');
+        }
+      }
+    }
+  };
 
   const isPro = session?.user?.tier === 'pro';
 
@@ -286,6 +320,15 @@ export default function Home() {
             </button>
         </div>
       </Header>
+
+      <E2eeKeyManager
+        localKey={localKey}
+        needsKeyRestore={needsKeyRestore}
+        isBackupKeyBackedUp={isBackupKeyBackedUp}
+        handleRestoreKey={handleRestoreKey}
+        handleAcknowledgeBackup={handleAcknowledgeBackup}
+        onResetScenarios={handleResetAllScenarios}
+      />
 
       {/* 2. Content Layout */}
       <div style={{ position: 'relative' }}>
