@@ -30,6 +30,11 @@ export function useScenarios() {
   const [needsKeyRestore, setNeedsKeyRestore] = useState(false);
   const [isBackupKeyBackedUp, setIsBackupKeyBackedUp] = useState(true);
 
+  // Cloud Save States
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'success' | 'error'>('idle');
+  const [lastSaved, setLastSaved] = useState<Date | null>(null);
+
   // Initialize/Load E2EE Key
   useEffect(() => {
     const userId = (session?.user as any)?.id;
@@ -212,6 +217,8 @@ export function useScenarios() {
         saveParams(activeScenario.data); // save to local storage as fallback
         
         if (status === 'authenticated' && !activeScenarioId.startsWith('local-')) {
+          setSaveStatus('saving');
+          setIsSaving(true);
           const timeoutId = setTimeout(async () => {
             try {
               let payloadToSave: any = activeScenario.data;
@@ -219,16 +226,29 @@ export function useScenarios() {
               if (localKey && userId) {
                 payloadToSave = await encryptData(activeScenario.data, localKey, userId);
               }
-              await fetch(`/api/scenarios/${activeScenarioId}`, {
+              const res = await fetch(`/api/scenarios/${activeScenarioId}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ data: payloadToSave }),
               });
+              if (res.ok) {
+                setSaveStatus('success');
+                setLastSaved(new Date());
+              } else {
+                setSaveStatus('error');
+              }
             } catch (err) {
               console.error('Failed to save cloud data:', err);
+              setSaveStatus('error');
+            } finally {
+              setIsSaving(false);
             }
           }, 1500);
           return () => clearTimeout(timeoutId);
+        } else {
+          // Unauthenticated or local scenario - saved to local storage instantly
+          setSaveStatus('success');
+          setLastSaved(new Date());
         }
       }
     }
@@ -427,6 +447,9 @@ export function useScenarios() {
       setIsLoaded(false); // will trigger refetching
       return true;
     },
+    isSaving,
+    saveStatus,
+    lastSaved,
     handleAcknowledgeBackup: () => {
       const userId = (session?.user as any)?.id;
       if (userId) {

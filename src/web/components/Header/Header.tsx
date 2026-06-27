@@ -1,12 +1,21 @@
 "use client";
 
 import React from 'react';
-
 import Image from 'next/image';
 import styles from './Header.module.css';
-import { Lock } from 'lucide-react';
+import { Lock, Cloud, Check, Loader2, AlertCircle } from 'lucide-react';
 
-export function Header({ children }: { children?: React.ReactNode }) {
+interface HeaderProps {
+  children?: React.ReactNode;
+  saveStatus?: 'idle' | 'saving' | 'success' | 'error';
+  isSaving?: boolean;
+  lastSaved?: Date | null;
+}
+
+export function Header({ children, saveStatus = 'idle', isSaving = false, lastSaved }: HeaderProps) {
+  const formatTime = (date: Date) => {
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  };
 
   return (
     <header className={styles.header}>
@@ -17,6 +26,28 @@ export function Header({ children }: { children?: React.ReactNode }) {
           <Lock size={12} />
           <span>E2EE 암호화 (관리자 열람 불가)</span>
         </div>
+
+        {/* Save Status Indicator */}
+        {saveStatus !== 'idle' && (
+          <div className={`${styles.saveStatusBadge} ${styles[saveStatus]}`} title={lastSaved ? `마지막 저장 시간: ${lastSaved.toLocaleString()}` : ''}>
+            {isSaving ? (
+              <>
+                <Loader2 size={12} className={styles.spin} />
+                <span>저장 중...</span>
+              </>
+            ) : saveStatus === 'success' ? (
+              <>
+                <Check size={12} />
+                <span>저장 완료{lastSaved ? ` (${formatTime(lastSaved)})` : ''}</span>
+              </>
+            ) : saveStatus === 'error' ? (
+              <>
+                <AlertCircle size={12} />
+                <span>저장 실패</span>
+              </>
+            ) : null}
+          </div>
+        )}
       </div>
       {children && (
         <div className={styles.actions}>

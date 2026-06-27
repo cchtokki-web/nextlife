@@ -31,7 +31,10 @@ export default function Home() {
     needsKeyRestore,
     isBackupKeyBackedUp,
     handleRestoreKey,
-    handleAcknowledgeBackup
+    handleAcknowledgeBackup,
+    isSaving,
+    saveStatus,
+    lastSaved
   } = scenarioState;
 
   const handleResetAllScenarios = async () => {
@@ -244,7 +247,7 @@ export default function Home() {
 
   return (
     <main className={styles.main}>
-      <Header>
+      <Header saveStatus={saveStatus} isSaving={isSaving} lastSaved={lastSaved}>
         <div className={styles.actionContainer}>
 
             <button 
