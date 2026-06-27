@@ -93,8 +93,11 @@ export async function GET(request: NextRequest) {
       dividendYield = (annualDividends / currentPrice) * 100;
     }
 
-    // Sanity checks for crazy values
-    if (cagr > 100 || cagr < -50 || isNaN(cagr)) cagr = 6.0;
+    // Sanity checks and conservative adjustments
+    // Cap long-term CAGR at 9.5% for general assets to avoid overly optimistic projections
+    if (cagr > 9.5) cagr = 9.5;
+    else if (cagr < -50 || isNaN(cagr)) cagr = 6.0;
+    
     if (dividendYield > 30 || dividendYield < 0 || isNaN(dividendYield)) dividendYield = 0;
 
     return Response.json({

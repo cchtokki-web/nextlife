@@ -60,7 +60,7 @@ export const initialParams: SimulationParams = {
   ],
   otherIncomes: [],
   inflationRate: 2.5,
-  inflationMode: 'nominal',
+  inflationMode: 'real',
   baseExchangeRate: 1350,
   exchangeScenario: 'base',
   displayCurrency: 'KRW',

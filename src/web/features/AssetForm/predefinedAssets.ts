@@ -22,7 +22,7 @@ export const predefinedAssets: PredefinedAsset[] = [
     name: 'Invesco QQQ Trust',
     type: 'etf',
     currency: 'USD',
-    annualGrowthRate: 10.0,
+    annualGrowthRate: 9.0,
     dividendYield: 0.6,
   },
   {
@@ -162,7 +162,7 @@ export const predefinedAssets: PredefinedAsset[] = [
     name: 'TIGER 미국나스닥100 (미래에셋)',
     type: 'etf',
     currency: 'KRW',
-    annualGrowthRate: 10.0,
+    annualGrowthRate: 9.0,
     dividendYield: 0.5,
   },
   {
@@ -178,7 +178,7 @@ export const predefinedAssets: PredefinedAsset[] = [
     name: 'KODEX 미국반도체MV (삼성)',
     type: 'etf',
     currency: 'KRW',
-    annualGrowthRate: 11.0,
+    annualGrowthRate: 9.5,
     dividendYield: 0.3,
   },
   {
@@ -194,7 +194,7 @@ export const predefinedAssets: PredefinedAsset[] = [
     name: 'TIGER 미국필라델피아반도체나스닥',
     type: 'etf',
     currency: 'KRW',
-    annualGrowthRate: 11.0,
+    annualGrowthRate: 9.5,
     dividendYield: 0.3,
   },
 
