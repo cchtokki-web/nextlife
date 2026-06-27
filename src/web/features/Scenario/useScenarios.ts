@@ -32,10 +32,10 @@ export function useScenarios() {
 
   // Initialize/Load E2EE Key
   useEffect(() => {
-    if (status === 'authenticated' && session?.user?.email) {
-      const email = session.user.email;
-      const keyName = `nextlife_e2ee_key_${email}`;
-      const backupName = `nextlife_e2ee_backed_up_${email}`;
+    const userId = (session?.user as any)?.id;
+    if (status === 'authenticated' && userId) {
+      const keyName = `nextlife_e2ee_key_${userId}`;
+      const backupName = `nextlife_e2ee_backed_up_${userId}`;
       
       let key = localStorage.getItem(keyName);
       if (!key) {
@@ -352,10 +352,10 @@ export function useScenarios() {
         alert('올바른 64자리 16진수 보안 백업 키가 아닙니다.');
         return false;
       }
-      if (session?.user?.email) {
-        const email = session.user.email;
-        localStorage.setItem(`nextlife_e2ee_key_${email}`, cleanKey);
-        localStorage.setItem(`nextlife_e2ee_backed_up_${email}`, 'true');
+      const userId = (session?.user as any)?.id;
+      if (userId) {
+        localStorage.setItem(`nextlife_e2ee_key_${userId}`, cleanKey);
+        localStorage.setItem(`nextlife_e2ee_backed_up_${userId}`, 'true');
         setLocalKey(cleanKey);
         setIsBackupKeyBackedUp(true);
         setNeedsKeyRestore(false);
@@ -365,8 +365,9 @@ export function useScenarios() {
       return false;
     },
     handleAcknowledgeBackup: () => {
-      if (session?.user?.email) {
-        localStorage.setItem(`nextlife_e2ee_backed_up_${session.user.email}`, 'true');
+      const userId = (session?.user as any)?.id;
+      if (userId) {
+        localStorage.setItem(`nextlife_e2ee_backed_up_${userId}`, 'true');
         setIsBackupKeyBackedUp(true);
       }
     }

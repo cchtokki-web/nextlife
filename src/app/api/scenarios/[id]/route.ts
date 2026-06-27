@@ -11,12 +11,12 @@ export async function PUT(
     const { id } = await params;
     const session = await getServerSession(authOptions);
 
-    if (!session || !session.user || !session.user.email) {
+    if (!session || !session.user || !(session.user as any).id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
+      where: { id: (session.user as any).id },
     });
 
     if (!user) {
@@ -71,12 +71,12 @@ export async function DELETE(
     const { id } = await params;
     const session = await getServerSession(authOptions);
 
-    if (!session || !session.user || !session.user.email) {
+    if (!session || !session.user || !(session.user as any).id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
+      where: { id: (session.user as any).id },
     });
 
     if (!user) {

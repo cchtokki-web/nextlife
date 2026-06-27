@@ -7,14 +7,16 @@ export async function GET(req: Request) {
   try {
     const session = await getServerSession(authOptions);
 
-    if (!session || !session.user || !session.user.email) {
+    if (!session || !session.user || !(session.user as any).id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     console.log('[API] GET scenarios session:', JSON.stringify(session));
 
+    const userId = (session.user as any).id;
+
     let user = await prisma.user.findUnique({
-      where: { email: session.user.email },
+      where: { id: userId },
       include: { scenarios: { orderBy: { createdAt: 'asc' } } },
     });
 
@@ -22,9 +24,9 @@ export async function GET(req: Request) {
       // Auto-recreate user record in the database if it is missing (e.g. database reset/clean)
       user = await prisma.user.create({
         data: {
-          id: (session.user as any).id || undefined,
-          email: session.user.email,
-          name: session.user.name,
+          id: userId,
+          email: session.user.email || null,
+          name: session.user.name || null,
           tier: (session.user as any).tier || 'basic'
         },
         include: { scenarios: { orderBy: { createdAt: 'asc' } } },
@@ -67,21 +69,23 @@ export async function POST(req: Request) {
   try {
     const session = await getServerSession(authOptions);
 
-    if (!session || !session.user || !session.user.email) {
+    if (!session || !session.user || !(session.user as any).id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    const userId = (session.user as any).id;
+
     let user = await prisma.user.findUnique({
-      where: { email: session.user.email },
+      where: { id: userId },
     });
 
     if (!user) {
       // Auto-recreate user record in the database if it is missing (e.g. database reset/clean)
       user = await prisma.user.create({
         data: {
-          id: (session.user as any).id || undefined,
-          email: session.user.email,
-          name: session.user.name,
+          id: userId,
+          email: session.user.email || null,
+          name: session.user.name || null,
           tier: (session.user as any).tier || 'basic'
         }
       });
