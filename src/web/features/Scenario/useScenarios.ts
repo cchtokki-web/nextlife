@@ -86,7 +86,7 @@ export function useScenarios() {
 
   // Initialize from local storage if not logged in
   useEffect(() => {
-    if (status === 'unauthenticated' || status === 'loading') {
+    if (status === 'unauthenticated') {
       if (!isLoaded) {
         const loaded = loadParams();
         const defaultScenario: ScenarioModel = {
