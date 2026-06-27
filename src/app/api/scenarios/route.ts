@@ -11,26 +11,24 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    console.log('[API] GET scenarios session:', JSON.stringify(session));
+
     let user = await prisma.user.findUnique({
       where: { email: session.user.email },
       include: { scenarios: { orderBy: { createdAt: 'asc' } } },
     });
 
-    if (!user && process.env.NEXT_PUBLIC_DEV_MODE === "true" && session.user.email === 'dev@example.com') {
-      // Auto-create dev user in database to support scenarios in dev mode
+    if (!user) {
+      // Auto-recreate user record in the database if it is missing (e.g. database reset/clean)
       user = await prisma.user.create({
         data: {
-          id: 'dev-user-id',
-          email: 'dev@example.com',
-          name: 'Dev User',
-          tier: 'premium'
+          id: (session.user as any).id || undefined,
+          email: session.user.email,
+          name: session.user.name,
+          tier: (session.user as any).tier || 'basic'
         },
         include: { scenarios: { orderBy: { createdAt: 'asc' } } },
       });
-    }
-
-    if (!user) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
     let scenarios = user.scenarios;
@@ -77,19 +75,16 @@ export async function POST(req: Request) {
       where: { email: session.user.email },
     });
 
-    if (!user && process.env.NEXT_PUBLIC_DEV_MODE === "true" && session.user.email === 'dev@example.com') {
+    if (!user) {
+      // Auto-recreate user record in the database if it is missing (e.g. database reset/clean)
       user = await prisma.user.create({
         data: {
-          id: 'dev-user-id',
-          email: 'dev@example.com',
-          name: 'Dev User',
-          tier: 'premium'
+          id: (session.user as any).id || undefined,
+          email: session.user.email,
+          name: session.user.name,
+          tier: (session.user as any).tier || 'basic'
         }
       });
-    }
-
-    if (!user) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
     const body = await req.json();
