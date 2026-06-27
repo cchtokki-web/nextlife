@@ -192,7 +192,9 @@ export function useScenarios() {
   const handleDuplicateScenario = (id: string) => {
     const source = scenarios.find(s => s.id === id);
     if (source) {
-      handleCreateScenario(`${source.name} (복사본)`, source.data);
+      // Deep copy to prevent reference sharing in state
+      const clonedData = JSON.parse(JSON.stringify(source.data));
+      handleCreateScenario(`${source.name} (복사본)`, clonedData);
     }
   };
 
