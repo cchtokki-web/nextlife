@@ -163,15 +163,31 @@ export const SimulationSettings: React.FC<{ scenarioState: any }> = ({ scenarioS
                 <RefreshCw size={18} className={isFetching ? styles.spinner : ''} />
               </button>
             </div>
-            <SelectField
-              label="인플레이션 반영 방식"
-              value={activeParams.inflationMode}
-              onChange={(e) => handleUpdateActiveParams({ ...activeParams, inflationMode: e.target.value as any })}
-              options={[
-                { value: 'nominal', label: '명목 가치 (수익률 유지, 생활비 증액)' },
-                { value: 'real', label: '실질 가치 (수익률 할인, 생활비 고정)' },
-              ]}
-            />
+            <div className={styles.toggleWrapper}>
+              <span className={styles.toggleLabel}>실질 수익률 적용</span>
+              <div 
+                className={styles.toggleContainer}
+                onClick={() => handleUpdateActiveParams({
+                  ...activeParams,
+                  inflationMode: activeParams.inflationMode === 'real' ? 'nominal' : 'real'
+                })}
+              >
+                <label className={styles.switch}>
+                  <input 
+                    type="checkbox" 
+                    checked={activeParams.inflationMode === 'real'} 
+                    readOnly
+                  />
+                  <span className={styles.slider}></span>
+                </label>
+                <div className={styles.toggleTextContent}>
+                  <span className={styles.toggleText}>물가상승률을 반영하여 실질 성장률로 계산</span>
+                  <span className={styles.toggleDescription}>
+                    자산 성장률에서 물가상승률({activeParams.inflationRate}%)을 차감하여 시뮬레이션을 보수적(실질 가치 기준)으로 계산합니다. (추천)
+                  </span>
+                </div>
+              </div>
+            </div>
             <InputField
               label="물가상승률 설정"
               type="number"
