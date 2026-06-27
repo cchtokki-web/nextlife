@@ -156,20 +156,18 @@ export function useScenarios() {
         })
         .catch(err => {
           console.error(err);
-          if (!isLoaded) {
-            const loaded = loadParams();
-            const defaultScenario: ScenarioModel = {
-              id: 'local-default',
-              name: '기본 시나리오',
-              isDefault: true,
-              data: migrateParams(loaded || initialParams, etfTickers),
-              createdAt: new Date().toISOString(),
-              updatedAt: new Date().toISOString(),
-            };
-            setScenarios([defaultScenario]);
-            setActiveScenarioId('local-default');
-            setIsLoaded(true);
-          }
+          const loaded = loadParams();
+          const defaultScenario: ScenarioModel = {
+            id: 'local-default',
+            name: '기본 시나리오',
+            isDefault: true,
+            data: migrateParams(loaded || initialParams, etfTickers),
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          };
+          setScenarios([defaultScenario]);
+          setActiveScenarioId('local-default');
+          setIsLoaded(true);
         });
     }
   }, [status, localKey, etfTickers]);
