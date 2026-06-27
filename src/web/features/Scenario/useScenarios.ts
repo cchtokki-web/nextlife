@@ -370,9 +370,9 @@ export function useScenarios() {
     needsKeyRestore,
     isBackupKeyBackedUp,
     handleRestoreKey: async (enteredKey: string) => {
-      const cleanKey = enteredKey.replace(/[^0-9a-fA-F]/g, '');
-      if (cleanKey.length !== 64) {
-        alert('올바른 64자리 16진수 보안 백업 키가 아닙니다.');
+      const cleanKey = enteredKey.trim().toUpperCase();
+      if (cleanKey.length !== 6) {
+        alert('올바른 6자리 보안 백업 키가 아닙니다.');
         return false;
       }
       const userId = (session?.user as any)?.id;

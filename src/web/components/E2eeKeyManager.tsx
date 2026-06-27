@@ -79,7 +79,7 @@ export const E2eeKeyManager: React.FC<E2eeKeyManagerProps> = ({
           <p style={{ fontSize: '0.9rem', lineHeight: 1.6, color: 'var(--foreground-muted, #94a3b8)', marginBottom: '1.5rem' }}>
             서버에 암호화된 시나리오가 저장되어 있으나, 현재 브라우저에 데이터를 복호화할 <strong>보안 백업 키</strong>가 존재하지 않거나 일치하지 않습니다.
             <br />
-            이전에 백업해 두신 64자리 보안 백업 키를 입력해 주세요.
+            이전에 백업해 두신 6자리 보안 백업 키를 입력해 주세요.
           </p>
 
           <form onSubmit={handleRestoreSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
@@ -87,7 +87,7 @@ export const E2eeKeyManager: React.FC<E2eeKeyManagerProps> = ({
               <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--foreground-muted)' }}>보안 백업 키 입력</label>
               <input
                 type="text"
-                placeholder="xxxx-xxxx-xxxx-... (64자리 hex)"
+                placeholder="6자리 보안 키 입력 (예: AB2CD3)"
                 value={restoreKeyInput}
                 onChange={(e) => setRestoreKeyInput(e.target.value)}
                 required
