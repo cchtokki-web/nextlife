@@ -9,6 +9,12 @@
   flex: 1;
 }
 
+@media (max-width: 768px) {
+  .main {
+    padding: 1rem 0.5rem;
+  }
+}
+
 /* Header style */
 .header {
   display: flex;
@@ -17,6 +23,24 @@
   border-bottom: 1px solid var(--card-border);
   padding-bottom: 0.5rem;
   margin-top: 0.25rem;
+}
+
+.actionContainer {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: center;
+  flex-wrap: nowrap;
+}
+
+@media (max-width: 768px) {
+  .actionContainer {
+    gap: 0.25rem;
+  }
+  .actionContainer button {
+    padding: 0.4rem 0.6rem !important;
+    font-size: 0.75rem !important;
+    gap: 0.25rem !important;
+  }
 }
 
 .headerButton {

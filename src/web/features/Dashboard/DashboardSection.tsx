@@ -116,6 +116,34 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({ params: rawP
     }
   };
 
+  const MultilineYAxisTick = (props: any) => {
+    const { x, y, payload, textAnchor, fill } = props;
+    const formatted = formatShortValue(payload.value);
+    
+    let numPart = formatted;
+    let unitPart = "";
+    
+    const krwMatch = formatted.match(/^([\d.]+)([가-힣]+)$/);
+    if (krwMatch) {
+      numPart = krwMatch[1];
+      unitPart = krwMatch[2];
+    } else {
+      const usdMatch = formatted.match(/^(\$ *[\d.]+)([A-Z]*)$/);
+      if (usdMatch) {
+        numPart = usdMatch[1];
+        unitPart = usdMatch[2];
+      }
+    }
+
+    const dx = textAnchor === 'end' ? -2 : (textAnchor === 'start' ? 2 : 0);
+
+    return (
+      <text x={x + dx} y={y} textAnchor={textAnchor} fill={fill || "var(--foreground-muted)"} fontSize="0.65rem">
+        <tspan x={x + dx} dy="-0.2em">{numPart}</tspan>
+        {unitPart && <tspan x={x + dx} dy="1.1em">{unitPart}</tspan>}
+      </text>
+    );
+  };
 
   // Retirement averages for Tax Comparison
   const retirementYearsResults = yearlyResults.filter(r => r.age >= params.userProfile.retirementAge);
@@ -306,9 +334,10 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({ params: rawP
             <span className={styles.successBadge}>안정적인 노후 자산 유지됨</span>
           )}
         </div>
-        <div className={styles.chartContainer}>
-          <ResponsiveContainer width="100%" height="100%">
-            <ComposedChart data={assetChartData} margin={{ top: 10, right: 15, left: 10, bottom: 10 }}>
+        <div className={styles.chartScrollWrapper}>
+          <div className={styles.chartContainer}>
+            <ResponsiveContainer width="100%" height="100%">
+            <ComposedChart data={assetChartData} margin={{ top: 10, right: 5, left: 0, bottom: 0 }}>
               <defs>
                 <linearGradient id="totalAssetColor" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor="var(--primary)" stopOpacity={0.4} />
@@ -322,21 +351,21 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({ params: rawP
                 style={{ fontSize: '0.75rem' }}
                 tickFormatter={(v) => `${v}세`}
                 minTickGap={15}
+                scale="point"
+                padding={{ left: 15, right: 15 }}
               />
               <YAxis
                 yAxisId="left"
                 stroke="var(--foreground-muted)"
-                style={{ fontSize: '0.75rem' }}
-                width={65}
-                tickFormatter={(v) => formatShortValue(v)}
+                width={34}
+                tick={(props) => <MultilineYAxisTick {...props} />}
               />
               <YAxis
                 yAxisId="right"
                 orientation="right"
                 stroke="#F59E0B"
-                style={{ fontSize: '0.75rem' }}
-                width={60}
-                tickFormatter={(v) => formatShortValue(v)}
+                width={38}
+                tick={(props) => <MultilineYAxisTick {...props} fill="#F59E0B" />}
               />
               <Tooltip
                 contentStyle={{
@@ -418,6 +447,7 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({ params: rawP
               />
             </ComposedChart>
           </ResponsiveContainer>
+          </div>
         </div>
       </GlassCard>
 
@@ -431,9 +461,10 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({ params: rawP
             </span>
           </span>
         </div>
-        <div className={styles.chartContainer}>
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={pensionChartData} margin={{ top: 10, right: 75, left: 10, bottom: 10 }}>
+        <div className={styles.chartScrollWrapper}>
+          <div className={styles.chartContainer}>
+            <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={pensionChartData} margin={{ top: 10, right: 43, left: 0, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(255, 255, 255, 0.05)" />
               <XAxis
                 dataKey="age"
@@ -441,12 +472,13 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({ params: rawP
                 style={{ fontSize: '0.75rem' }}
                 tickFormatter={(v) => `${v}세`}
                 minTickGap={15}
+                scale="point"
+                padding={{ left: 15, right: 15 }}
               />
               <YAxis
                 stroke="var(--foreground-muted)"
-                style={{ fontSize: '0.75rem' }}
-                width={65}
-                tickFormatter={(v) => formatShortValue(v)}
+                width={34}
+                tick={(props) => <MultilineYAxisTick {...props} />}
               />
               <Tooltip
                 contentStyle={{
@@ -472,6 +504,7 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({ params: rawP
               <Bar name="기타소득" dataKey="기타소득" stackId="a" fill="#F59E0B" hide={!!hiddenKeys['기타소득']} />
             </BarChart>
           </ResponsiveContainer>
+          </div>
         </div>
       </GlassCard>
 

@@ -60,6 +60,13 @@
 
 @media (max-width: 768px) {
   .header {
+    flex-direction: column;
+    justify-content: center;
+    gap: 1rem;
+    padding: 1rem;
+  }
+  .actions {
+    width: 100%;
     justify-content: center;
   }
 }

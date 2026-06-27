@@ -65,6 +65,8 @@ const ScenarioCard: React.FC<ScenarioCardProps> = ({ title, subtitle, highlightC
                   axisLine={false}
                   tickLine={false}
                   minTickGap={20}
+                  scale="point"
+                  padding={{ left: 15, right: 15 }}
                 />
                 <Tooltip 
                   formatter={(value: any) => [formatValue(Number(value) || 0), '자산']}

@@ -33,6 +33,13 @@ export default function Home() {
   const [engine] = useState(() => new SimulationEngine());
   const [hoveredBtn, setHoveredBtn] = useState<string | null>(null);
 
+  // Auto-collapse sidebar on mobile devices
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.innerWidth < 1024) {
+      setIsSidebarOpen(false);
+    }
+  }, []);
+
   // Dynamically update document body preset attribute for dynamic styling/glows
   useEffect(() => {
     if (typeof document !== 'undefined') {
@@ -204,7 +211,7 @@ export default function Home() {
   return (
     <main className={styles.main}>
       <Header>
-        <div style={{ display: 'flex', gap: '0.5rem' }}>
+        <div className={styles.actionContainer}>
 
             <button 
               onClick={handleReset}
@@ -306,7 +313,7 @@ export default function Home() {
                 onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--foreground-muted)'; e.currentTarget.style.borderColor = 'var(--card-border)'; }}
               >
                 <PanelLeftClose size={14} />
-                패널 접기
+                설정 패널 접기
               </button>
             </div>
             

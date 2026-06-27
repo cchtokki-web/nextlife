@@ -144,9 +144,7 @@ export const AiAdvisorCard: React.FC<AiAdvisorCardProps> = ({ score, monthlyTarg
     >
       <h3 className={styles.sectionTitle}>🤖 AI 노후 설계사 의견</h3>
       <div className={styles.aiCard}>
-        <div className={styles.aiIconWrapper}>
-          <Bot size={24} />
-        </div>
+
         <div className={styles.aiContent} style={{ position: 'relative' }}>
           <div style={{ filter: isStale ? 'blur(4px)' : 'none', transition: 'filter 0.3s ease', opacity: isStale ? 0.6 : 1 }}>
             {error ? (

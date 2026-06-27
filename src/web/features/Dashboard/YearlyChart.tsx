@@ -62,6 +62,35 @@ export const YearlyChart: React.FC<YearlyChartProps> = ({ params, result }) => {
     }
   };
 
+  const MultilineYAxisTick = (props: any) => {
+    const { x, y, payload, textAnchor, fill } = props;
+    const formatted = formatShortValue(payload.value);
+    
+    let numPart = formatted;
+    let unitPart = "";
+    
+    const krwMatch = formatted.match(/^([\d.]+)([가-힣]+)$/);
+    if (krwMatch) {
+      numPart = krwMatch[1];
+      unitPart = krwMatch[2];
+    } else {
+      const usdMatch = formatted.match(/^(\$ *[\d.]+)([A-Z]*)$/);
+      if (usdMatch) {
+        numPart = usdMatch[1];
+        unitPart = usdMatch[2];
+      }
+    }
+
+    const dx = textAnchor === 'end' ? -2 : (textAnchor === 'start' ? 2 : 0);
+
+    return (
+      <text x={x + dx} y={y} textAnchor={textAnchor} fill={fill || "var(--foreground-muted)"} fontSize="0.65rem">
+        <tspan x={x + dx} dy="-0.2em">{numPart}</tspan>
+        {unitPart && <tspan x={x + dx} dy="1.1em">{unitPart}</tspan>}
+      </text>
+    );
+  };
+
   if (!yearlyResults || yearlyResults.length === 0) return null;
 
   const chartData = yearlyResults.map((r) => ({
@@ -86,8 +115,9 @@ export const YearlyChart: React.FC<YearlyChartProps> = ({ params, result }) => {
           연도별 상세 세금 및 소득 내역
         </span>
       </div>
-      <div className={styles.chartContainer}>
-        <ResponsiveContainer width="100%" height="100%">
+      <div className={styles.chartScrollWrapper}>
+        <div className={styles.chartContainer}>
+          <ResponsiveContainer width="100%" height="100%">
           <ComposedChart data={chartData} margin={{ top: 10, right: 15, left: 10, bottom: 10 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="rgba(255, 255, 255, 0.05)" />
             <XAxis 
@@ -96,21 +126,21 @@ export const YearlyChart: React.FC<YearlyChartProps> = ({ params, result }) => {
               style={{ fontSize: '0.75rem' }}
               tickFormatter={(v) => `${v}세`}
               minTickGap={15}
+              scale="point"
+              padding={{ left: 15, right: 15 }}
             />
             <YAxis 
               yAxisId="left"
               stroke="var(--foreground-muted)"
-              style={{ fontSize: '0.75rem' }}
-              width={65}
-              tickFormatter={(v) => formatShortValue(v)}
+              width={34}
+              tick={(props) => <MultilineYAxisTick {...props} />}
             />
             <YAxis 
               yAxisId="right"
               orientation="right"
               stroke="var(--foreground-muted)"
-              style={{ fontSize: '0.75rem' }}
-              width={65}
-              tickFormatter={(v) => formatShortValue(v)}
+              width={38}
+              tick={(props) => <MultilineYAxisTick {...props} />}
             />
             <Tooltip
               contentStyle={{
@@ -151,6 +181,7 @@ export const YearlyChart: React.FC<YearlyChartProps> = ({ params, result }) => {
 
           </ComposedChart>
         </ResponsiveContainer>
+        </div>
       </div>
     </GlassCard>
   );
