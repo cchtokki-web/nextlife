@@ -119,11 +119,14 @@ export function useScenarios() {
             const decryptAll = async () => {
               const decryptedList = [];
               let hasDecryptionFailure = false;
+              const keyName = `nextlife_e2ee_key_${userId}`;
+              const activeKey = localKey || (userId ? localStorage.getItem(keyName) : null);
+
               for (const s of data) {
                 if (isEncryptedPayload(s.data)) {
-                  if (localKey && userId) {
+                  if (activeKey && userId) {
                     try {
-                      const decryptedData = await decryptData(s.data, localKey, userId);
+                      const decryptedData = await decryptData(s.data, activeKey, userId);
                       decryptedList.push({ ...s, data: migrateParams(decryptedData, etfTickers) });
                     } catch (err) {
                       console.error('Decryption failed for scenario', s.id, err);
