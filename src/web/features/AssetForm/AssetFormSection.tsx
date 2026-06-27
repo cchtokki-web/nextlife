@@ -862,7 +862,7 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                           title="실시간 단가 조회"
                         >
                           <RefreshCw
-                            size={18}
+                            size={22}
                             className={fetchingPriceMap[asset.id] ? styles.spinner : ''}
                           />
                         </button>
@@ -886,7 +886,7 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                           title="실시간 성장률/배당률 조회"
                         >
                           <RefreshCw
-                            size={18}
+                            size={22}
                             className={fetchingInfoMap[asset.id] ? styles.spinner : ''}
                           />
                         </button>
@@ -910,7 +910,7 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                           title="실시간 성장률/배당률 조회"
                         >
                           <RefreshCw
-                            size={18}
+                            size={22}
                             className={fetchingInfoMap[asset.id] ? styles.spinner : ''}
                           />
                         </button>
@@ -1285,7 +1285,7 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                           title="실시간 수익률 조회"
                         >
                           <RefreshCw
-                            size={18}
+                            size={22}
                             className={fetchingInfoMap[pension.id] ? styles.spinner : ''}
                           />
                         </button>
@@ -1309,7 +1309,7 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                           title="실시간 수익률/배당률 조회"
                         >
                           <RefreshCw
-                            size={18}
+                            size={22}
                             className={fetchingInfoMap[pension.id] ? styles.spinner : ''}
                           />
                         </button>
@@ -1508,7 +1508,7 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                               title="실시간 수익률 조회"
                             >
                               <RefreshCw
-                                size={18}
+                                size={22}
                                 className={fetchingInfoMap[isa.id] ? styles.spinner : ''}
                               />
                             </button>
@@ -1532,7 +1532,7 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                               title="실시간 수익률/배당률 조회"
                             >
                               <RefreshCw
-                                size={18}
+                                size={22}
                                 className={fetchingInfoMap[isa.id] ? styles.spinner : ''}
                               />
                             </button>
