@@ -11,10 +11,23 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const user = await prisma.user.findUnique({
+    let user = await prisma.user.findUnique({
       where: { email: session.user.email },
       include: { scenarios: { orderBy: { createdAt: 'asc' } } },
     });
+
+    if (!user && process.env.NEXT_PUBLIC_DEV_MODE === "true" && session.user.email === 'dev@example.com') {
+      // Auto-create dev user in database to support scenarios in dev mode
+      user = await prisma.user.create({
+        data: {
+          id: 'dev-user-id',
+          email: 'dev@example.com',
+          name: 'Dev User',
+          tier: 'premium'
+        },
+        include: { scenarios: { orderBy: { createdAt: 'asc' } } },
+      });
+    }
 
     if (!user) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
@@ -60,9 +73,20 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const user = await prisma.user.findUnique({
+    let user = await prisma.user.findUnique({
       where: { email: session.user.email },
     });
+
+    if (!user && process.env.NEXT_PUBLIC_DEV_MODE === "true" && session.user.email === 'dev@example.com') {
+      user = await prisma.user.create({
+        data: {
+          id: 'dev-user-id',
+          email: 'dev@example.com',
+          name: 'Dev User',
+          tier: 'premium'
+        }
+      });
+    }
 
     if (!user) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });

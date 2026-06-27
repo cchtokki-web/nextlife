@@ -216,6 +216,7 @@ export function useScenarios() {
   }, [activeScenarioId]);
 
   const handleCreateScenario = async (name: string, data: SimulationParams, isDefault = false) => {
+    console.log('[E2EE] handleCreateScenario called:', name, 'isDefault:', isDefault, 'status:', status);
     if (!isDefault && scenarios.length >= 3) {
       alert('시나리오는 최대 3개까지만 생성할 수 있습니다.');
       return;
@@ -264,7 +265,9 @@ export function useScenarios() {
   };
 
   const handleDuplicateScenario = (id: string) => {
+    console.log('[E2EE] handleDuplicateScenario called with ID:', id);
     const source = scenarios.find(s => s.id === id);
+    console.log('[E2EE] Source scenario found:', source ? source.name : 'null');
     if (source) {
       // Deep copy to prevent reference sharing in state
       const clonedData = JSON.parse(JSON.stringify(source.data));
