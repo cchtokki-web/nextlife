@@ -128,12 +128,12 @@ export function useScenarios() {
                     } catch (err) {
                       console.error('Decryption failed for scenario', s.id, err);
                       hasDecryptionFailure = true;
-                      decryptedList.push(s);
+                      decryptedList.push({ ...s, data: initialParams });
                     }
                   } else {
                     // No key found in local storage, but database has E2EE scenarios!
                     hasDecryptionFailure = true;
-                    decryptedList.push(s);
+                    decryptedList.push({ ...s, data: initialParams });
                   }
                 } else {
                   // Backwards compatibility for plain text simulation data
@@ -376,16 +376,47 @@ export function useScenarios() {
         return false;
       }
       const userId = (session?.user as any)?.id;
-      if (userId) {
-        localStorage.setItem(`nextlife_e2ee_key_${userId}`, cleanKey);
-        localStorage.setItem(`nextlife_e2ee_backed_up_${userId}`, 'true');
-        setLocalKey(cleanKey);
-        setIsBackupKeyBackedUp(true);
-        setNeedsKeyRestore(false);
-        setIsLoaded(false); // will trigger refetching
-        return true;
+      if (!userId) return false;
+
+      // Verify key correctness by attempting to decrypt the encrypted scenarios on the server
+      try {
+        const res = await fetch('/api/scenarios');
+        if (!res.ok) throw new Error('Failed to fetch scenarios');
+        const { data } = await res.json();
+        
+        if (data && data.length > 0) {
+          let hasEncrypted = false;
+          let decryptedSuccessfully = false;
+          
+          for (const s of data) {
+            if (isEncryptedPayload(s.data)) {
+              hasEncrypted = true;
+              try {
+                await decryptData(s.data, cleanKey, userId);
+                decryptedSuccessfully = true;
+              } catch (e) {
+                // Ignore failure for individual scenario, but keep tracking if any decrypt successfully
+              }
+            }
+          }
+          
+          if (hasEncrypted && !decryptedSuccessfully) {
+            // If we have encrypted payloads but none decrypted successfully, the key is incorrect.
+            return false;
+          }
+        }
+      } catch (err) {
+        console.error('Verification of restore key failed:', err);
+        return false;
       }
-      return false;
+
+      localStorage.setItem(`nextlife_e2ee_key_${userId}`, cleanKey);
+      localStorage.setItem(`nextlife_e2ee_backed_up_${userId}`, 'true');
+      setLocalKey(cleanKey);
+      setIsBackupKeyBackedUp(true);
+      setNeedsKeyRestore(false);
+      setIsLoaded(false); // will trigger refetching
+      return true;
     },
     handleAcknowledgeBackup: () => {
       const userId = (session?.user as any)?.id;
