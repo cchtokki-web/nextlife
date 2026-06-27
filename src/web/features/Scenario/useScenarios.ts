@@ -108,6 +108,12 @@ export function useScenarios() {
   useEffect(() => {
     const userId = (session?.user as any)?.id;
     if (status === 'authenticated') {
+      if (userId) {
+        const storedKey = localStorage.getItem(`nextlife_e2ee_key_${userId}`);
+        if (storedKey && !localKey) {
+          return; // Wait for localKey state to be populated by the initialization effect
+        }
+      }
       setIsLoaded(false);
       fetch('/api/scenarios')
         .then(res => {
