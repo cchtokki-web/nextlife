@@ -357,6 +357,10 @@ export class SimulationEngine {
           isa.totalInvested += contribution;
           isa.monthsSinceInception += 1;
 
+          const divDisplay = this.convertValue(dividend, isa.currency, displayCurrency, exchangeRate);
+          annualDividendIncome += divDisplay;
+          annualPreTaxTotalIncome += divDisplay;
+
           if (isa.monthsSinceInception >= isa.maturityYears * 12) {
             const totalProfit = isa.currentBalance - isa.totalInvested;
             let taxAmount = 0;
