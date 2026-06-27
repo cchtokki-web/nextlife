@@ -130,6 +130,7 @@ export const InputField = React.forwardRef<HTMLInputElement, InputFieldProps>(({
           className={`${styles.input} ${prefixText ? styles.inputWithPrefix : ''} ${
             suffixText ? styles.inputWithSuffix : ''
           } ${hasSteppers ? styles.inputWithSteppers : ''} ${className}`}
+          autoComplete="off"
           {...props}
         />
         {suffixText && (
