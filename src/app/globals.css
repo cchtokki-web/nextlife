@@ -69,21 +69,24 @@
   --glow-opacity-1: 0.14;
   --glow-opacity-2: 0.12;
   --glow-opacity-3: 0.08;
+
+  --card-box-shadow: 0 4px 20px 0 rgba(0, 0, 0, 0.3);
+  --card-box-shadow-hover: 0 10px 30px 0 rgba(99, 102, 241, 0.15);
 }
 
 :root[data-theme="light"] {
   --bg-hue: 220;
   --bg-saturation: 25%;
-  --bg-lightness: 97%;
+  --bg-lightness: 95.5%;
   
   --background: hsl(var(--bg-hue), var(--bg-saturation), var(--bg-lightness));
   --foreground: #0F172A;
   --foreground-muted: #4B5563;
   
   /* Glassmorphism background and borders */
-  --card-bg: rgba(255, 255, 255, 0.7);
-  --card-bg-hover: rgba(241, 245, 249, 0.85);
-  --card-border: rgba(148, 163, 184, 0.15);
+  --card-bg: rgba(255, 255, 255, 0.92);
+  --card-bg-hover: rgba(255, 255, 255, 0.98);
+  --card-border: rgba(148, 163, 184, 0.22);
   --card-border-hover: rgba(99, 102, 241, 0.25);
   --card-border-active: rgba(99, 102, 241, 0.55);
   --card-shadow: rgba(148, 163, 184, 0.08);
@@ -111,8 +114,8 @@
   --hero-inner-bg: rgba(255, 255, 255, 0.65);
   --hero-inner-border: rgba(99, 102, 241, 0.1);
   
-  --panel-bg: rgba(255, 255, 255, 0.55);
-  --panel-border: rgba(148, 163, 184, 0.15);
+  --panel-bg: rgba(255, 255, 255, 0.85);
+  --panel-border: rgba(148, 163, 184, 0.22);
   --panel-text: #0F172A;
   
   --table-header-bg: rgba(241, 245, 249, 0.85);
@@ -123,6 +126,9 @@
   --glow-opacity-1: 0.05;
   --glow-opacity-2: 0.04;
   --glow-opacity-3: 0.02;
+
+  --card-box-shadow: 0 4px 16px 0 rgba(99, 102, 241, 0.05), 0 2px 4px 0 rgba(99, 102, 241, 0.02);
+  --card-box-shadow-hover: 0 8px 24px 0 rgba(99, 102, 241, 0.1), 0 2px 8px 0 rgba(99, 102, 241, 0.04);
 }
 
 * {
@@ -228,14 +234,14 @@ h1, h2, h3, h4, h5, h6 {
   -webkit-backdrop-filter: blur(16px) saturate(180%);
   border: 1px solid var(--card-border);
   border-radius: 20px;
-  box-shadow: 0 8px 32px 0 var(--card-shadow);
+  box-shadow: var(--card-box-shadow);
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .glass-interactive:hover {
   background: var(--card-bg-hover);
   border-color: var(--card-border-hover);
-  box-shadow: 0 12px 40px 0 var(--card-shadow-hover);
+  box-shadow: var(--card-box-shadow-hover);
   transform: translateY(-2px);
 }
 
