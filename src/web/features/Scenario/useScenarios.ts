@@ -438,6 +438,36 @@ export function useScenarios() {
     });
   };
 
+  const handleUpdateScenarioData = useCallback(async (id: string, newData: SimulationParams) => {
+    setScenarios(prev => prev.map(s => {
+      if (s.id === id) {
+        return { ...s, data: newData };
+      }
+      return s;
+    }));
+
+    if (status === 'authenticated' && !id.startsWith('local-')) {
+      try {
+        let payloadToSave: any = newData;
+        const userId = (session?.user as any)?.id;
+        if (localKey && userId) {
+          payloadToSave = await encryptData(newData, localKey, userId);
+        }
+        await fetch(`/api/scenarios/${id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ data: payloadToSave }),
+        });
+        lastSavedParamsRef.current[id] = JSON.stringify(newData);
+      } catch (err) {
+        console.error('Failed to save imported scenario data:', err);
+      }
+    } else {
+      saveParams(newData);
+      lastSavedParamsRef.current[id] = JSON.stringify(newData);
+    }
+  }, [status, localKey, session]);
+
   return {
     scenarios,
     activeScenarioId,
@@ -446,6 +476,7 @@ export function useScenarios() {
     toggleCompareScenario,
     activeParams,
     handleUpdateActiveParams,
+    handleUpdateScenarioData,
     handleCreateScenario,
     handleDuplicateScenario,
     handleDeleteScenario,

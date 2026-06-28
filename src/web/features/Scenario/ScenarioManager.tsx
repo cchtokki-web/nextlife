@@ -14,11 +14,12 @@ interface ScenarioItemProps {
   onDuplicate: () => void;
   onDelete: () => void;
   onExport: (e: React.MouseEvent) => void;
+  onImport: (e: React.MouseEvent) => void;
 }
 
 const ScenarioItem: React.FC<ScenarioItemProps> = ({
   scenario, isActive, isCompared, isDuplicateDisabled, onSelect, onToggleCompare,
-  onRename, onDuplicate, onDelete, onExport
+  onRename, onDuplicate, onDelete, onExport, onImport
 }) => {
   const [isRenaming, setIsRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState(scenario.name);
@@ -89,7 +90,8 @@ const ScenarioItem: React.FC<ScenarioItemProps> = ({
                 disabled={isDuplicateDisabled}
                 style={isDuplicateDisabled ? { opacity: 0.4, cursor: 'not-allowed' } : {}}
               ><Copy size={16} /></button>
-              <button onClick={(e) => { e.stopPropagation(); onExport(e); }} className={`${styles.actionBtn} ${styles.iconBtn}`} title="JSON 내보내기"><FileJson size={16} /></button>
+              <button onClick={(e) => { e.stopPropagation(); onImport(e); }} className={`${styles.actionBtn} ${styles.iconBtn}`} title="불러오기"><Upload size={16} /></button>
+              <button onClick={(e) => { e.stopPropagation(); onExport(e); }} className={`${styles.actionBtn} ${styles.iconBtn}`} title="내보내기"><FileJson size={16} /></button>
               {!scenario.isDefault && (
                 <button onClick={(e) => { e.stopPropagation(); setIsConfirmingDelete(true); setIsRenaming(false); }} className={`${styles.actionBtn} ${styles.iconBtn} ${styles.dangerBtn}`} title="삭제"><Trash2 size={16} /></button>
               )}
@@ -103,27 +105,27 @@ const ScenarioItem: React.FC<ScenarioItemProps> = ({
 
 export const ScenarioManager: React.FC<{ scenarioState: any }> = ({ scenarioState }) => {
   const [isExpanded, setIsExpanded] = useState(true);
+  const [importTargetId, setImportTargetId] = useState<string | null>(null);
 
-  const handleImportJson = () => {
+  const handleImportClick = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setImportTargetId(id);
     const fileInput = document.getElementById('scenario-file-input') as HTMLInputElement;
     if (fileInput) fileInput.click();
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file) return;
+    if (!file || !importTargetId) return;
 
     const reader = new FileReader();
     reader.onload = (event) => {
       try {
         const json = JSON.parse(event.target?.result as string);
         if (json && typeof json === 'object' && json.userProfile) {
-          if (scenarioState.scenarios.length >= 3) {
-            alert('시나리오는 최대 3개까지만 생성할 수 있습니다.');
-            return;
-          }
-          const newName = file.name.replace('.json', '');
-          scenarioState.handleCreateScenario(`[가져옴] ${newName}`, json);
+          scenarioState.handleUpdateScenarioData(importTargetId, json);
+          scenarioState.setActiveScenarioId(importTargetId);
+          alert('시나리오 데이터를 성공적으로 불러왔습니다.');
         } else {
           alert('올바른 시나리오 데이터 파일이 아닙니다.');
         }
@@ -132,6 +134,7 @@ export const ScenarioManager: React.FC<{ scenarioState: any }> = ({ scenarioStat
         alert('파일을 읽는 중 오류가 발생했습니다.');
       }
       e.target.value = '';
+      setImportTargetId(null);
     };
     reader.readAsText(file);
   };
@@ -170,13 +173,6 @@ export const ScenarioManager: React.FC<{ scenarioState: any }> = ({ scenarioStat
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.5rem' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem' }}>
             <label className={compStyles.label} style={{ margin: 0 }}>내 시나리오 목록</label>
-            <button 
-              onClick={handleImportJson} 
-              style={{ background: 'none', border: 'none', color: 'var(--primary)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.8rem', padding: '0' }}
-              title="시나리오 불러오기"
-            >
-              <Upload size={14} /> <span>불러오기</span>
-            </button>
             <input 
               type="file" id="scenario-file-input" accept=".json" 
               style={{ display: 'none' }} onChange={handleFileChange} 
@@ -196,6 +192,7 @@ export const ScenarioManager: React.FC<{ scenarioState: any }> = ({ scenarioStat
                 onDuplicate={() => handleDuplicateScenario(s.id)}
                 onDelete={() => handleDeleteScenario(s.id)}
                 onExport={(e) => handleExportScenario(e, s)}
+                onImport={(e) => handleImportClick(s.id, e)}
               />
             ))}
           </div>
