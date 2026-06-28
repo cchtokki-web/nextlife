@@ -172,14 +172,14 @@ export const SimulationSettings: React.FC<{ scenarioState: any }> = ({ scenarioS
                   inflationMode: activeParams.inflationMode === 'real' ? 'nominal' : 'real'
                 })}
               >
-                <label className={styles.switch}>
+                <div className={styles.switch}>
                   <input 
                     type="checkbox" 
                     checked={activeParams.inflationMode === 'real'} 
                     readOnly
                   />
                   <span className={styles.slider}></span>
-                </label>
+                </div>
                 <div className={styles.toggleTextContent}>
                   <span className={styles.toggleText}>물가상승률을 반영하여 실질 성장률로 계산</span>
                   <span className={styles.toggleDescription}>
