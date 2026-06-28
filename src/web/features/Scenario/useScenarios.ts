@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSession } from 'next-auth/react';
 import { SimulationParams, ScenarioModel } from '../../../core/entities/types';
 import { loadParams, saveParams, initialParams } from '../../../infrastructure/storage/localStore';
@@ -24,6 +24,7 @@ export function useScenarios() {
   const [compareScenarioIds, setCompareScenarioIds] = useState<string[]>([]);
   const [isLoaded, setIsLoaded] = useState(false);
   const [etfTickers, setEtfTickers] = useState<string[]>(['VOO', 'QQQ', 'SCHD', 'SPY', 'JEPI', 'TLT', 'VNQ', 'SPLG']);
+  const lastSavedParamsRef = useRef<Record<string, string>>({});
 
   // Error & Retry States
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -98,14 +99,16 @@ export function useScenarios() {
     if (status === 'unauthenticated') {
       if (!isLoaded) {
         const loaded = loadParams();
+        const migrated = migrateParams(loaded || initialParams, etfTickers);
         const defaultScenario: ScenarioModel = {
           id: 'local-default',
           name: '기본 시나리오',
           isDefault: true,
-          data: migrateParams(loaded || initialParams, etfTickers),
+          data: migrated,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         };
+        lastSavedParamsRef.current['local-default'] = JSON.stringify(migrated);
         setScenarios([defaultScenario]);
         setActiveScenarioId('local-default');
         setIsLoaded(true);
@@ -158,20 +161,26 @@ export function useScenarios() {
                   if (activeKey && userId) {
                     try {
                       const decryptedData = await decryptData(s.data, activeKey, userId);
-                      decryptedList.push({ ...s, data: migrateParams(decryptedData, etfTickers) });
+                      const migrated = migrateParams(decryptedData, etfTickers);
+                      decryptedList.push({ ...s, data: migrated });
+                      lastSavedParamsRef.current[s.id] = JSON.stringify(migrated);
                     } catch (err) {
                       console.error('Decryption failed for scenario', s.id, err);
                       hasDecryptionFailure = true;
                       decryptedList.push({ ...s, data: initialParams });
+                      lastSavedParamsRef.current[s.id] = JSON.stringify(initialParams);
                     }
                   } else {
                     // No key found in local storage, but database has E2EE scenarios!
                     hasDecryptionFailure = true;
                     decryptedList.push({ ...s, data: initialParams });
+                    lastSavedParamsRef.current[s.id] = JSON.stringify(initialParams);
                   }
                 } else {
                   // Backwards compatibility for plain text simulation data
-                  decryptedList.push({ ...s, data: migrateParams(s.data, etfTickers) });
+                  const migrated = migrateParams(s.data, etfTickers);
+                  decryptedList.push({ ...s, data: migrated });
+                  lastSavedParamsRef.current[s.id] = JSON.stringify(migrated);
                 }
               }
               setScenarios(decryptedList);
@@ -201,8 +210,10 @@ export function useScenarios() {
               setLocalKey(generatedKey);
               
               const loaded = loadParams();
+              const migrated = migrateParams(loaded || initialParams, etfTickers);
+              lastSavedParamsRef.current['local-default'] = JSON.stringify(migrated);
               // Pass the newly generated key directly to handleCreateScenario to avoid race conditions
-              handleCreateScenario('기본 시나리오', migrateParams(loaded || initialParams, etfTickers), true, generatedKey);
+              handleCreateScenario('기본 시나리오', migrated, true, generatedKey);
             }
             setIsLoaded(true);
           }
@@ -213,7 +224,7 @@ export function useScenarios() {
           setIsLoaded(true);
         });
     }
-  }, [status, localKey, etfTickers, retryCount]);
+  }, [status, localKey, retryCount]);
 
   // Get current active params
   const activeParams = scenarios.find(s => s.id === activeScenarioId)?.data || initialParams;
@@ -225,6 +236,14 @@ export function useScenarios() {
       const activeScenario = scenarios.find(s => s.id === activeScenarioId);
       // Only auto-save if data is not locked/encrypted payload (which would trigger decryption failure)
       if (activeScenario && !isEncryptedPayload(activeScenario.data)) {
+        const currentDataStr = JSON.stringify(activeScenario.data);
+        const lastSavedDataStr = lastSavedParamsRef.current[activeScenario.id];
+
+        // Skip saving if data is identical to the last saved/loaded state
+        if (currentDataStr === lastSavedDataStr) {
+          return;
+        }
+
         saveParams(activeScenario.data); // save to local storage as fallback
         
         if (status === 'authenticated' && !activeScenarioId.startsWith('local-')) {
@@ -245,6 +264,7 @@ export function useScenarios() {
               if (res.ok) {
                 setSaveStatus('success');
                 setLastSaved(new Date());
+                lastSavedParamsRef.current[activeScenarioId] = currentDataStr;
               } else {
                 setSaveStatus('error');
               }
@@ -260,6 +280,7 @@ export function useScenarios() {
           // Unauthenticated or local scenario - saved to local storage instantly
           setSaveStatus('success');
           setLastSaved(new Date());
+          lastSavedParamsRef.current[activeScenarioId] = currentDataStr;
         }
       }
     }
@@ -306,6 +327,7 @@ export function useScenarios() {
               console.error('Failed to decrypt created scenario:', err);
             }
           }
+          lastSavedParamsRef.current[newScenario.id] = JSON.stringify(decryptedData);
           setScenarios(prev => [...prev, { ...newScenario, data: decryptedData }]);
           setActiveScenarioId(newScenario.id);
         }
