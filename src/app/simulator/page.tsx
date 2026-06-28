@@ -12,7 +12,7 @@ import { DashboardSection } from '../../web/features/Dashboard/DashboardSection'
 import GlassCard from '../../web/components/GlassCard';
 import { Header } from '../../web/components/Header/Header';
 import styles from './page.module.css';
-import { AlertCircle, Activity, Download, RotateCcw, PanelLeftClose, PanelLeftOpen, LogOut } from 'lucide-react';
+import { AlertCircle, Activity, Download, RotateCcw, PanelLeftClose, PanelLeftOpen, LogOut, FileText } from 'lucide-react';
 import { useScenarios } from '../../web/features/Scenario/useScenarios';
 import { E2eeKeyManager } from '../../web/components/E2eeKeyManager';
 import { generateBackupKey, encryptData } from '../../core/utils/crypto';
@@ -337,7 +337,7 @@ export default function Home() {
                 whiteSpace: 'nowrap',
               }}
             >
-              <Download size={16} />
+              <FileText size={16} />
               결과 다운로드
             </button>
 

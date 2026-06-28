@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import styles from './Scenario.module.css';
-import { FolderGit2, ChevronDown, ChevronUp, Copy, Trash2, Edit2, CheckSquare, Square, FileJson, Upload } from 'lucide-react';
+import { FolderGit2, ChevronDown, ChevronUp, Copy, Trash2, Edit2, CheckSquare, Square, FileJson, Upload, Download } from 'lucide-react';
 import compStyles from '../../styles/components.module.css';
 
 interface ScenarioItemProps {
@@ -91,7 +91,7 @@ const ScenarioItem: React.FC<ScenarioItemProps> = ({
                 style={isDuplicateDisabled ? { opacity: 0.4, cursor: 'not-allowed' } : {}}
               ><Copy size={16} /></button>
               <button onClick={(e) => { e.stopPropagation(); onImport(e); }} className={`${styles.actionBtn} ${styles.iconBtn}`} title="불러오기"><Upload size={16} /></button>
-              <button onClick={(e) => { e.stopPropagation(); onExport(e); }} className={`${styles.actionBtn} ${styles.iconBtn}`} title="내보내기"><FileJson size={16} /></button>
+              <button onClick={(e) => { e.stopPropagation(); onExport(e); }} className={`${styles.actionBtn} ${styles.iconBtn}`} title="내보내기"><Download size={16} /></button>
               {!scenario.isDefault && (
                 <button onClick={(e) => { e.stopPropagation(); setIsConfirmingDelete(true); setIsRenaming(false); }} className={`${styles.actionBtn} ${styles.iconBtn} ${styles.dangerBtn}`} title="삭제"><Trash2 size={16} /></button>
               )}
