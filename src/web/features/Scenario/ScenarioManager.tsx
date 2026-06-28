@@ -82,7 +82,9 @@ const ScenarioItem: React.FC<ScenarioItemProps> = ({
             </>
           ) : (
             <>
-              <button onClick={(e) => { e.stopPropagation(); setIsRenaming(true); setIsConfirmingDelete(false); }} className={`${styles.actionBtn} ${styles.iconBtn}`} title="이름 변경"><Edit2 size={16} /></button>
+              {!scenario.isDefault && (
+                <button onClick={(e) => { e.stopPropagation(); setIsRenaming(true); setIsConfirmingDelete(false); }} className={`${styles.actionBtn} ${styles.iconBtn}`} title="이름 변경"><Edit2 size={16} /></button>
+              )}
               <button 
                 onClick={(e) => { e.stopPropagation(); if (!isDuplicateDisabled) onDuplicate(); }} 
                 className={`${styles.actionBtn} ${styles.iconBtn}`} 

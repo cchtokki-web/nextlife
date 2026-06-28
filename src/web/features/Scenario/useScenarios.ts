@@ -157,29 +157,30 @@ export function useScenarios() {
               const activeKey = localKey || (userId ? localStorage.getItem(keyName) : null);
 
               for (const s of data) {
+                const displayName = s.isDefault ? '기본 시나리오' : s.name;
                 if (isEncryptedPayload(s.data)) {
                   if (activeKey && userId) {
                     try {
                       const decryptedData = await decryptData(s.data, activeKey, userId);
                       const migrated = migrateParams(decryptedData, etfTickers);
-                      decryptedList.push({ ...s, data: migrated });
+                      decryptedList.push({ ...s, name: displayName, data: migrated });
                       lastSavedParamsRef.current[s.id] = JSON.stringify(migrated);
                     } catch (err) {
                       console.error('Decryption failed for scenario', s.id, err);
                       hasDecryptionFailure = true;
-                      decryptedList.push({ ...s, data: initialParams });
+                      decryptedList.push({ ...s, name: displayName, data: initialParams });
                       lastSavedParamsRef.current[s.id] = JSON.stringify(initialParams);
                     }
                   } else {
                     // No key found in local storage, but database has E2EE scenarios!
                     hasDecryptionFailure = true;
-                    decryptedList.push({ ...s, data: initialParams });
+                    decryptedList.push({ ...s, name: displayName, data: initialParams });
                     lastSavedParamsRef.current[s.id] = JSON.stringify(initialParams);
                   }
                 } else {
                   // Backwards compatibility for plain text simulation data
                   const migrated = migrateParams(s.data, etfTickers);
-                  decryptedList.push({ ...s, data: migrated });
+                  decryptedList.push({ ...s, name: displayName, data: migrated });
                   lastSavedParamsRef.current[s.id] = JSON.stringify(migrated);
                 }
               }

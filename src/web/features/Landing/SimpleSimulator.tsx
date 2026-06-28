@@ -316,7 +316,7 @@ export function SimpleSimulator() {
                     setHasRun(false);
                     sessionStorage.setItem('nextlife_simple_simulator_has_run', 'false');
                   }}
-                  style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: 'white', padding: '0.4rem 0.8rem', borderRadius: '8px', cursor: 'pointer', fontWeight: 600, fontSize: '0.9rem' }}
+                  style={{ background: 'var(--card-border)', border: '1px solid var(--card-border-hover)', color: 'var(--foreground)', padding: '0.4rem 0.8rem', borderRadius: '8px', cursor: 'pointer', fontWeight: 600, fontSize: '0.9rem' }}
                 >
                   다시 계산하기
                 </button>
@@ -338,7 +338,7 @@ export function SimpleSimulator() {
                   transition={{ delay: 0.3 }}
                   style={{ marginTop: '1rem', padding: '1.5rem', backgroundColor: 'rgba(16, 185, 129, 0.05)', borderRadius: '16px', textAlign: 'center', border: '1px solid rgba(16, 185, 129, 0.2)' }}
                 >
-                  <p style={{ color: '#E5E7EB', marginBottom: '1rem', lineHeight: '1.6', fontSize: '0.95rem' }}>
+                  <p style={{ color: 'var(--foreground)', marginBottom: '1rem', lineHeight: '1.6', fontSize: '0.95rem' }}>
                     <strong style={{ color: '#10B981', fontSize: '1.05rem' }}>{session?.user?.name || '회원'}</strong>님의 자산 성향에 맞춘 상세 투자 비중과 월 배당금 예측 시뮬레이션은 회원님에게만 공개됩니다.<br/>
                     아래 이동하기 버튼을 클릭하세요.
                   </p>

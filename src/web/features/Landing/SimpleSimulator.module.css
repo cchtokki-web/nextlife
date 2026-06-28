@@ -151,8 +151,8 @@
 }
 
 .resultCard {
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid var(--card-border);
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
   border-radius: 16px;
   padding: 1.5rem;
   display: flex;
@@ -167,7 +167,7 @@
   width: 48px;
   height: 48px;
   border-radius: 14px;
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--primary-glow);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -188,7 +188,7 @@
 .resultValue {
   font-size: 1.8rem;
   font-weight: 700;
-  color: white;
+  color: var(--foreground);
 }
 
 .scoreValue {
