@@ -58,6 +58,7 @@ export default function LoginForm() {
             <path fillRule="evenodd" clipRule="evenodd" d="M12 3C6.477 3 2 6.58 2 11C2 13.829 3.754 16.31 6.438 17.653L5.454 21.282C5.352 21.658 5.766 21.936 6.096 21.722L10.36 18.966C10.893 19.043 11.44 19.083 12 19.083C17.523 19.083 22 15.503 22 11C22 6.58 17.523 3 12 3Z" fill="currentColor"/>
           </svg>
           카카오로 3초 만에 시작하기
+        </button>
       </div>
     </div>
   );
