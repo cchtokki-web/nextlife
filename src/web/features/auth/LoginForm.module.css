@@ -45,8 +45,8 @@
 .input {
   width: 100%;
   padding: 0.75rem 1rem;
-  background: rgba(0, 0, 0, 0.2);
-  border: 1px solid var(--card-border);
+  background: var(--input-bg);
+  border: 1px solid var(--input-border);
   border-radius: 12px;
   color: var(--foreground);
   font-size: 1rem;
@@ -57,7 +57,7 @@
 .input:focus {
   border-color: var(--primary);
   box-shadow: 0 0 0 3px var(--primary-glow);
-  background: rgba(0, 0, 0, 0.4);
+  background: var(--input-bg-focus);
 }
 
 .submitBtn {

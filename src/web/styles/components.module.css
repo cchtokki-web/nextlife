@@ -29,8 +29,8 @@
 .input {
   width: 100%;
   padding: 0.65rem 0.85rem;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid var(--card-border);
+  background: var(--input-bg);
+  border: 1px solid var(--input-border);
   border-radius: 12px;
   color: var(--foreground);
   font-family: var(--font-main);
@@ -41,7 +41,7 @@
 
 .input:focus {
   border-color: var(--primary);
-  background: rgba(99, 102, 241, 0.05);
+  background: var(--input-bg-focus);
   box-shadow: 0 0 10px 0 rgba(99, 102, 241, 0.2);
 }
 
@@ -108,14 +108,14 @@
 }
 
 .buttonSecondary {
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--input-bg);
   color: var(--foreground);
-  border: 1px solid var(--card-border);
+  border: 1px solid var(--input-border);
 }
 
 .buttonSecondary:hover {
-  background: rgba(255, 255, 255, 0.1);
-  border-color: rgba(255, 255, 255, 0.2);
+  background: var(--input-bg-focus);
+  border-color: var(--input-border-hover);
 }
 
 .buttonDanger {
@@ -163,8 +163,8 @@
 
 .stepperButton {
   pointer-events: auto;
-  background: rgba(255, 255, 255, 0.02);
-  border: 1px solid var(--card-border);
+  background: var(--input-bg);
+  border: 1px solid var(--input-border);
   color: var(--foreground-muted);
   border-radius: 4px;
   width: 28px;
