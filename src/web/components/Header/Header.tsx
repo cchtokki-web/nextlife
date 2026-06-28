@@ -24,7 +24,7 @@ export function Header({ children, saveStatus = 'idle', isSaving = false, lastSa
         <h1 className={styles.logoText}>NextLife</h1>
         <div className={styles.securityBadge} title="사용자 데이터가 로컬에서 암호화되어 서버로 저장되므로 관리자도 열람이 불가능합니다.">
           <Lock size={12} />
-          <span>E2EE 암호화 (관리자 열람 불가)</span>
+          <span>E2EE 암호화</span>
         </div>
 
         {/* Save Status Indicator */}
