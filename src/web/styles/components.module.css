@@ -167,8 +167,8 @@
   border: 1px solid var(--card-border);
   color: var(--foreground-muted);
   border-radius: 4px;
-  width: 24px;
-  height: 14px;
+  width: 28px;
+  height: 16px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -193,9 +193,9 @@
 }
 
 .suffixWithSteppers {
-  right: 2.5rem !important;
+  right: 2.8rem !important;
 }
 
 .inputWithSteppers {
-  padding-right: 4.8rem !important;
+  padding-right: 5.1rem !important;
 }

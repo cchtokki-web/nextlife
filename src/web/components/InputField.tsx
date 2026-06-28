@@ -146,7 +146,7 @@ export const InputField = React.forwardRef<HTMLInputElement, InputFieldProps>(({
               className={styles.stepperButton}
               aria-label="Increase value"
             >
-              <ChevronUp size={12} />
+              <ChevronUp size={14} />
             </button>
             <button
               type="button"
@@ -154,7 +154,7 @@ export const InputField = React.forwardRef<HTMLInputElement, InputFieldProps>(({
               className={styles.stepperButton}
               aria-label="Decrease value"
             >
-              <ChevronDown size={12} />
+              <ChevronDown size={14} />
             </button>
           </div>
         )}
