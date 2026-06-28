@@ -66,7 +66,7 @@ RUN echo '#!/bin/sh' > /app/start.sh && \
     echo '  chown nextjs:nodejs /app/data/dev.db' >> /app/start.sh && \
     echo 'fi' >> /app/start.sh && \
     echo 'echo "Checking and applying database migrations..."' >> /app/start.sh && \
-    echo 'cd /app && export DATABASE_URL="file:/app/data/dev.db" && prisma db push --accept-data-loss' >> /app/start.sh && \
+    echo 'cd /app && export DATABASE_URL="file:/app/data/dev.db" && prisma db push' >> /app/start.sh && \
     echo 'exec su nextjs -s /bin/sh -c "node server.js"' >> /app/start.sh && \
     chmod +x /app/start.sh
 
