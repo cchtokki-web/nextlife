@@ -286,6 +286,29 @@ export function useScenarios() {
     }
   }, [activeParams, isLoaded, status, activeScenarioId, scenarios, localKey, needsKeyRestore]);
 
+  // Alert user when they try to leave the page with unsaved changes
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (isLoaded && activeScenarioId) {
+        const activeScenario = scenarios.find(s => s.id === activeScenarioId);
+        if (activeScenario) {
+          const currentDataStr = JSON.stringify(activeScenario.data);
+          const lastSavedDataStr = lastSavedParamsRef.current[activeScenario.id];
+          if (currentDataStr !== lastSavedDataStr) {
+            e.preventDefault();
+            e.returnValue = ''; // Required for Chrome/Firefox
+            return '';
+          }
+        }
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [scenarios, activeScenarioId, isLoaded]);
+
   const handleUpdateActiveParams = useCallback((newParams: SimulationParams | ((prev: SimulationParams) => SimulationParams)) => {
     setScenarios(prev => prev.map(s => {
       if (s.id === activeScenarioId) {
