@@ -37,6 +37,8 @@ export const metadata: Metadata = {
   },
 };
 
+import { ThemeProvider } from "@/web/components/providers/ThemeProvider";
+
 export default function RootLayout({
   children,
   ...props
@@ -45,11 +47,31 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="ko" suppressHydrationWarning>
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              (function() {
+                try {
+                  const savedTheme = localStorage.getItem('theme');
+                  if (savedTheme === 'light' || savedTheme === 'dark') {
+                    document.documentElement.setAttribute('data-theme', savedTheme);
+                  } else {
+                    document.documentElement.setAttribute('data-theme', 'dark');
+                  }
+                } catch (e) {}
+              })();
+            `
+          }}
+        />
+      </head>
       <body suppressHydrationWarning>
-        <AuthProvider>
-          <AnalyticsTracker />
-          {children}
-        </AuthProvider>
+        <ThemeProvider>
+          <AuthProvider>
+            <AnalyticsTracker />
+            {children}
+          </AuthProvider>
+        </ThemeProvider>
       </body>
     </html>
   );

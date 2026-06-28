@@ -3,7 +3,8 @@
 import React from 'react';
 import Image from 'next/image';
 import styles from './Header.module.css';
-import { Lock, Cloud, Check, Loader2, AlertCircle } from 'lucide-react';
+import { Lock, Cloud, Check, Loader2, AlertCircle, Sun, Moon } from 'lucide-react';
+import { useTheme } from '@/web/components/providers/ThemeProvider';
 
 interface HeaderProps {
   children?: React.ReactNode;
@@ -13,6 +14,8 @@ interface HeaderProps {
 }
 
 export function Header({ children, saveStatus = 'idle', isSaving = false, lastSaved }: HeaderProps) {
+  const { theme, toggleTheme } = useTheme();
+
   const formatTime = (date: Date) => {
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
   };
@@ -49,11 +52,18 @@ export function Header({ children, saveStatus = 'idle', isSaving = false, lastSa
           </div>
         )}
       </div>
-      {children && (
-        <div className={styles.actions}>
-          {children}
-        </div>
-      )}
+      <div className={styles.actions}>
+        <button 
+          type="button"
+          onClick={toggleTheme} 
+          className={styles.themeToggle}
+          title={theme === 'light' ? '다크 모드로 전환' : '라이트 모드로 전환'}
+          aria-label="Toggle theme"
+        >
+          {theme === 'light' ? <Moon size={18} /> : <Sun size={18} />}
+        </button>
+        {children}
+      </div>
     </header>
   );
 }
