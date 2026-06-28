@@ -25,6 +25,10 @@ export function useScenarios() {
   const [isLoaded, setIsLoaded] = useState(false);
   const [etfTickers, setEtfTickers] = useState<string[]>(['VOO', 'QQQ', 'SCHD', 'SPY', 'JEPI', 'TLT', 'VNQ', 'SPLG']);
 
+  // Error & Retry States
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
+
   // E2EE States
   const [localKey, setLocalKey] = useState<string | null>(null);
   const [needsKeyRestore, setNeedsKeyRestore] = useState(false);
@@ -120,11 +124,27 @@ export function useScenarios() {
         }
       }
       setIsLoaded(false);
-      fetch('/api/scenarios')
-        .then(res => {
-          if (!res.ok) throw new Error('Failed to fetch scenarios');
-          return res.json();
-        })
+      setLoadError(null);
+
+      // Helper for retrying fetches (helps with NextJS rebuild/compilation delay)
+      const fetchWithRetry = async (url: string, retries = 3, delay = 1500): Promise<any> => {
+        try {
+          const res = await fetch(url);
+          if (!res.ok) {
+            throw new Error(`서버 응답 오류 (HTTP ${res.status})`);
+          }
+          return await res.json();
+        } catch (err: any) {
+          if (retries > 0) {
+            console.warn(`[useScenarios] Fetch failed, retrying in ${delay}ms... (${retries} left). Error:`, err);
+            await new Promise(resolve => setTimeout(resolve, delay));
+            return fetchWithRetry(url, retries - 1, delay);
+          }
+          throw err;
+        }
+      };
+
+      fetchWithRetry('/api/scenarios')
         .then(({ data }) => {
           if (data && data.length > 0) {
             const decryptAll = async () => {
@@ -188,28 +208,19 @@ export function useScenarios() {
           }
         })
         .catch(err => {
-          console.error(err);
-          const loaded = loadParams();
-          const defaultScenario: ScenarioModel = {
-            id: 'local-default',
-            name: '기본 시나리오',
-            isDefault: true,
-            data: migrateParams(loaded || initialParams, etfTickers),
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-          };
-          setScenarios([defaultScenario]);
-          setActiveScenarioId('local-default');
+          console.error('[useScenarios] Failed to load scenarios:', err);
+          setLoadError(err.message || '시나리오 데이터를 가져오지 못했습니다.');
           setIsLoaded(true);
         });
     }
-  }, [status, localKey, etfTickers]);
+  }, [status, localKey, etfTickers, retryCount]);
 
   // Get current active params
   const activeParams = scenarios.find(s => s.id === activeScenarioId)?.data || initialParams;
 
   // Auto-save debounced
   useEffect(() => {
+    if (needsKeyRestore) return; // Prevent overwriting encrypted server data with default values when key is missing!
     if (isLoaded && activeScenarioId) {
       const activeScenario = scenarios.find(s => s.id === activeScenarioId);
       // Only auto-save if data is not locked/encrypted payload (which would trigger decryption failure)
@@ -252,7 +263,7 @@ export function useScenarios() {
         }
       }
     }
-  }, [activeParams, isLoaded, status, activeScenarioId, scenarios, localKey]);
+  }, [activeParams, isLoaded, status, activeScenarioId, scenarios, localKey, needsKeyRestore]);
 
   const handleUpdateActiveParams = useCallback((newParams: SimulationParams | ((prev: SimulationParams) => SimulationParams)) => {
     setScenarios(prev => prev.map(s => {
@@ -446,6 +457,10 @@ export function useScenarios() {
       setNeedsKeyRestore(false);
       setIsLoaded(false); // will trigger refetching
       return true;
+    },
+    loadError,
+    handleRetryLoad: () => {
+      setRetryCount(prev => prev + 1);
     },
     isSaving,
     saveStatus,

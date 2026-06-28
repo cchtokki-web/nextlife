@@ -34,7 +34,9 @@ export default function Home() {
     handleAcknowledgeBackup,
     isSaving,
     saveStatus,
-    lastSaved
+    lastSaved,
+    loadError,
+    handleRetryLoad
   } = scenarioState;
 
   const handleResetAllScenarios = async () => {
@@ -240,6 +242,48 @@ export default function Home() {
       handleUpdateActiveParams(initialParams);
     }
   };
+
+  if (loadError) {
+    return (
+      <div style={{
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'center',
+        alignItems: 'center',
+        height: '100vh',
+        color: 'var(--foreground, #f8fafc)',
+        backgroundColor: 'var(--background, #0b0f19)',
+        gap: '1.5rem',
+        padding: '2rem',
+        textAlign: 'center'
+      }}>
+        <div style={{ color: 'var(--danger, #ef4444)', fontSize: '1.2rem', fontWeight: 600 }}>
+          시나리오 데이터를 불러오는 데 실패했습니다.
+        </div>
+        <p style={{ color: 'var(--foreground-muted, #94a3b8)', maxWidth: '400px', margin: 0, fontSize: '0.9rem', lineHeight: 1.5 }}>
+          {loadError}
+        </p>
+        <button
+          onClick={handleRetryLoad}
+          style={{
+            padding: '0.6rem 1.5rem',
+            backgroundColor: 'var(--primary, #3b82f6)',
+            color: '#fff',
+            border: 'none',
+            borderRadius: '12px',
+            fontSize: '0.9rem',
+            fontWeight: 600,
+            cursor: 'pointer',
+            transition: 'opacity 0.2s',
+          }}
+          onMouseEnter={(e) => e.currentTarget.style.opacity = '0.9'}
+          onMouseLeave={(e) => e.currentTarget.style.opacity = '1'}
+        >
+          다시 시도
+        </button>
+      </div>
+    );
+  }
 
   if (!isLoaded) {
     return <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', color: 'var(--foreground-muted)' }}>시뮬레이션 엔진을 준비하고 있습니다...</div>;
