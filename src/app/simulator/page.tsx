@@ -338,7 +338,7 @@ export default function Home() {
               }}
             >
               <Download size={16} />
-              데이터 다운로드
+              결과 다운로드
             </button>
 
 
