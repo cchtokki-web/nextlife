@@ -47,6 +47,28 @@
   --scrollbar-track: rgba(255, 255, 255, 0.01);
   --scrollbar-thumb: rgba(255, 255, 255, 0.1);
   --scrollbar-thumb-hover: rgba(255, 255, 255, 0.2);
+
+  /* Theme Adaptive Variables (Dark Theme defaults) */
+  --hero-bg: linear-gradient(135deg, rgba(15, 23, 42, 0.9) 0%, rgba(30, 27, 75, 0.9) 100%);
+  --hero-border: rgba(255, 255, 255, 0.1);
+  --hero-shadow: rgba(0, 0, 0, 0.3);
+  --hero-text: #ffffff;
+  --hero-text-muted: rgba(255, 255, 255, 0.7);
+  --hero-inner-bg: rgba(0, 0, 0, 0.2);
+  --hero-inner-border: rgba(255, 255, 255, 0.05);
+  
+  --panel-bg: rgba(255, 255, 255, 0.02);
+  --panel-border: rgba(255, 255, 255, 0.08);
+  --panel-text: #ffffff;
+  
+  --table-header-bg: rgba(0, 0, 0, 0.25);
+  --table-row-hover: rgba(255, 255, 255, 0.05);
+  
+  --select-arrow: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22white%22%20width%3D%2224%22%20height%3D%2224%22%3E%3Cpath%20d%3D%22M7%2010l5%205%205-5z%22%2F%3E%3Cpath%20d%3D%22M0%200h24v24H0z%22%20fill%3D%22none%22%2F%3E%3C/svg%3E");
+
+  --glow-opacity-1: 0.14;
+  --glow-opacity-2: 0.12;
+  --glow-opacity-3: 0.08;
 }
 
 :root[data-theme="light"] {
@@ -79,6 +101,28 @@
   --scrollbar-track: rgba(0, 0, 0, 0.02);
   --scrollbar-thumb: rgba(0, 0, 0, 0.12);
   --scrollbar-thumb-hover: rgba(0, 0, 0, 0.24);
+
+  /* Theme Adaptive Variables (Light Theme overrides) */
+  --hero-bg: linear-gradient(135deg, #EEF2FF 0%, #E0E7FF 100%);
+  --hero-border: rgba(99, 102, 241, 0.15);
+  --hero-shadow: rgba(99, 102, 241, 0.08);
+  --hero-text: #1E1B4B;
+  --hero-text-muted: #4F46E5;
+  --hero-inner-bg: rgba(255, 255, 255, 0.65);
+  --hero-inner-border: rgba(99, 102, 241, 0.1);
+  
+  --panel-bg: rgba(255, 255, 255, 0.55);
+  --panel-border: rgba(148, 163, 184, 0.15);
+  --panel-text: #0F172A;
+  
+  --table-header-bg: rgba(241, 245, 249, 0.85);
+  --table-row-hover: rgba(241, 245, 249, 0.5);
+  
+  --select-arrow: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22%234B5563%22%20width%3D%2224%22%20height%3D%2224%22%3E%3Cpath%20d%3D%22M7%2010l5%205%205-5z%22%2F%3E%3Cpath%20d%3D%22M0%200h24v24H0z%22%20fill%3D%22none%22%2F%3E%3C/svg%3E");
+
+  --glow-opacity-1: 0.05;
+  --glow-opacity-2: 0.04;
+  --glow-opacity-3: 0.02;
 }
 
 * {
@@ -99,9 +143,9 @@ html, body {
 
 body {
   /* Define default dynamic variables */
-  --glow-1: rgba(99, 102, 241, 0.14);
-  --glow-2: rgba(168, 85, 247, 0.12);
-  --glow-3: rgba(6, 182, 212, 0.08);
+  --glow-1: rgba(99, 102, 241, var(--glow-opacity-1));
+  --glow-2: rgba(168, 85, 247, var(--glow-opacity-2));
+  --glow-3: rgba(6, 182, 212, var(--glow-opacity-3));
 
   /* Radiant background glows for premium look */
   background-image: 
@@ -116,9 +160,9 @@ body {
 
 /* Dynamic Accent Colors & Background Glows per Preset */
 body[data-preset="conservative"] {
-  --glow-1: rgba(16, 185, 129, 0.14);
-  --glow-2: rgba(52, 211, 153, 0.10);
-  --glow-3: rgba(6, 182, 212, 0.06);
+  --glow-1: rgba(16, 185, 129, var(--glow-opacity-1));
+  --glow-2: rgba(52, 211, 153, var(--glow-opacity-2));
+  --glow-3: rgba(6, 182, 212, var(--glow-opacity-3));
   
   --primary: #10B981;
   --primary-light: #34D399;
@@ -130,9 +174,9 @@ body[data-preset="conservative"] {
 }
 
 body[data-preset="base"] {
-  --glow-1: rgba(99, 102, 241, 0.14);
-  --glow-2: rgba(168, 85, 247, 0.12);
-  --glow-3: rgba(6, 182, 212, 0.08);
+  --glow-1: rgba(99, 102, 241, var(--glow-opacity-1));
+  --glow-2: rgba(168, 85, 247, var(--glow-opacity-2));
+  --glow-3: rgba(6, 182, 212, var(--glow-opacity-3));
   
   --primary: #6366F1;
   --primary-light: #818CF8;
@@ -144,9 +188,9 @@ body[data-preset="base"] {
 }
 
 body[data-preset="aggressive"] {
-  --glow-1: rgba(168, 85, 247, 0.14);
-  --glow-2: rgba(236, 72, 153, 0.11);
-  --glow-3: rgba(99, 102, 241, 0.07);
+  --glow-1: rgba(168, 85, 247, var(--glow-opacity-1));
+  --glow-2: rgba(236, 72, 153, var(--glow-opacity-2));
+  --glow-3: rgba(99, 102, 241, var(--glow-opacity-3));
   
   --primary: #A855F7;
   --primary-light: #C084FC;
@@ -158,9 +202,9 @@ body[data-preset="aggressive"] {
 }
 
 body[data-preset="custom"] {
-  --glow-1: rgba(107, 114, 128, 0.08);
-  --glow-2: rgba(99, 102, 241, 0.06);
-  --glow-3: rgba(255, 255, 255, 0.01);
+  --glow-1: rgba(107, 114, 128, var(--glow-opacity-1));
+  --glow-2: rgba(99, 102, 241, var(--glow-opacity-2));
+  --glow-3: rgba(255, 255, 255, var(--glow-opacity-3));
   
   --primary: #6366F1;
   --primary-light: #818CF8;

@@ -36,11 +36,11 @@
 .heroCard {
   width: 100%;
   border-radius: 24px;
-  background: linear-gradient(135deg, rgba(15, 23, 42, 0.9) 0%, rgba(30, 27, 75, 0.9) 100%);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: var(--hero-bg);
+  border: 1px solid var(--hero-border);
   backdrop-filter: blur(12px);
   padding: 1.5rem;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  box-shadow: 0 10px 30px var(--hero-shadow);
   overflow: hidden;
   position: relative;
 }
@@ -89,25 +89,25 @@
 .heroTitle {
   font-size: 2rem;
   font-weight: 800;
-  color: white;
+  color: var(--hero-text);
   margin: 0;
   line-height: 1.2;
 }
 
 .heroMessageArea {
   margin-top: 0.5rem;
-  background: var(--hero-bg-color, rgba(255, 255, 255, 0.05));
+  background: var(--hero-inner-bg);
   padding: 1rem 1.25rem;
   border-radius: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid var(--hero-inner-border);
   border-left: 6px solid var(--hero-color);
-  box-shadow: 0 4px 20px var(--hero-bg-color, transparent);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
 }
 
 .heroMessageTitle {
   font-size: 1.35rem;
   font-weight: 800;
-  color: white;
+  color: var(--hero-text);
   margin: 0 0 0.5rem 0;
   display: flex;
   align-items: center;
@@ -117,7 +117,7 @@
 .heroMessageSub {
   font-size: 1.1rem;
   font-weight: 500;
-  color: rgba(255, 255, 255, 0.95);
+  color: var(--hero-text);
   margin: 0;
   line-height: 1.5;
   word-break: keep-all;
@@ -129,10 +129,10 @@
   gap: 0.75rem;
   width: 100%;
   max-width: none;
-  background: rgba(0, 0, 0, 0.2);
+  background: var(--hero-inner-bg);
   padding: 1rem 1.25rem;
   border-radius: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--hero-inner-border);
 }
 
 .heroAltRow {
@@ -145,14 +145,14 @@
   width: 80px;
   font-size: 0.9rem;
   font-weight: 600;
-  color: rgba(255, 255, 255, 0.8);
+  color: var(--hero-text-muted);
   white-space: nowrap;
 }
 
 .heroAltBarTrack {
   flex: 1;
   height: 8px;
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--hero-inner-border);
   border-radius: 4px;
   overflow: hidden;
 }
@@ -167,6 +167,7 @@
   text-align: right;
   font-size: 0.95rem;
   font-weight: 800;
+  color: var(--hero-text);
   font-family: var(--font-display);
 }
 
@@ -184,9 +185,9 @@
 }
 
 .coreMetricCard {
-  background: rgba(255, 255, 255, 0.02);
+  background: var(--panel-bg);
   backdrop-filter: blur(10px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--panel-border);
   border-radius: 20px;
   padding: 1.5rem 1.25rem;
   display: flex;
@@ -198,7 +199,7 @@
 }
 
 .coreMetricCard:hover {
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--card-bg-hover);
   transform: translateY(-2px);
 }
 
@@ -206,7 +207,7 @@
   width: 48px;
   height: 48px;
   border-radius: 14px;
-  background: rgba(255, 255, 255, 0.05);
+  background: rgba(99, 102, 241, 0.08);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -231,13 +232,13 @@
 .coreCardValue {
   font-size: 1.75rem;
   font-weight: 700;
-  color: white;
+  color: var(--panel-text);
   font-family: var(--font-display);
 }
 
 .coreCardDesc {
   font-size: 0.85rem;
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--foreground-muted);
   margin: 0;
 }
 
@@ -255,7 +256,7 @@
   gap: 0.5rem;
   font-size: 0.95rem;
   font-weight: 500;
-  color: white;
+  color: var(--panel-text);
 }
 
 /* 3. AI Advisor Card */
@@ -268,7 +269,7 @@
 .sectionTitle {
   font-size: 1.25rem;
   font-weight: 700;
-  color: white;
+  color: var(--foreground);
   margin: 0;
   display: flex;
   align-items: center;
@@ -276,8 +277,8 @@
 }
 
 .aiCard {
-  background: rgba(16, 185, 129, 0.05);
-  border: 1px solid rgba(16, 185, 129, 0.15);
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
   backdrop-filter: blur(10px);
   border-radius: 24px;
   padding: 1.5rem;
@@ -286,15 +287,13 @@
   align-items: flex-start;
 }
 
-
-
 .aiContent {
   flex: 1;
   position: relative;
 }
 
 .aiText {
-  color: rgba(255, 255, 255, 0.95);
+  color: var(--panel-text);
   font-size: 0.95rem;
   line-height: 1.7;
   margin: 0;
@@ -308,9 +307,9 @@
 }
 
 .scenarioTableWrapper {
-  background: rgba(255, 255, 255, 0.02);
+  background: var(--panel-bg);
   backdrop-filter: blur(10px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--panel-border);
   border-radius: 24px;
   overflow: hidden;
 }
@@ -326,22 +325,22 @@
   font-size: 0.85rem;
   font-weight: 600;
   color: var(--foreground-muted);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-  background: rgba(0, 0, 0, 0.2);
+  border-bottom: 1px solid var(--panel-border);
+  background: var(--table-header-bg);
   word-break: keep-all;
 }
 
 .scenarioTable td {
   padding: 1rem 0.75rem;
   font-size: 0.95rem;
-  color: white;
+  color: var(--panel-text);
   font-weight: 500;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+  border-bottom: 1px solid var(--panel-border);
   word-break: keep-all;
 }
 
 .currentScenarioRow {
-  background: rgba(255, 255, 255, 0.03);
+  background: rgba(99, 102, 241, 0.05);
 }
 
 .currentScenarioRow td {
@@ -349,7 +348,7 @@
 }
 
 .altScenarioRow:hover {
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--table-row-hover);
 }
 
 .scoreIncrease {
@@ -398,8 +397,8 @@
 .chartCard {
   width: 100%;
   padding: 1.5rem;
-  background: rgba(255, 255, 255, 0.02);
-  border: 1px solid rgba(255, 255, 255, 0.05);
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
   border-radius: 24px;
 }
 
