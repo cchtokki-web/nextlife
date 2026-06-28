@@ -144,7 +144,15 @@ export const ScenarioManager: React.FC<{ scenarioState: any }> = ({ scenarioStat
     const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(scenario.data, null, 2));
     const downloadAnchorNode = document.createElement('a');
     downloadAnchorNode.setAttribute("href", dataStr);
-    downloadAnchorNode.setAttribute("download", `nextlife_${scenario.name}_${new Date().toISOString().slice(0, 10)}.json`);
+    
+    // Format date in local timezone
+    const localDate = new Date();
+    const year = localDate.getFullYear();
+    const month = String(localDate.getMonth() + 1).padStart(2, '0');
+    const day = String(localDate.getDate()).padStart(2, '0');
+    const formattedDate = `${year}-${month}-${day}`;
+
+    downloadAnchorNode.setAttribute("download", `${scenario.name}_${formattedDate}.json`);
     document.body.appendChild(downloadAnchorNode);
     downloadAnchorNode.click();
     downloadAnchorNode.remove();
