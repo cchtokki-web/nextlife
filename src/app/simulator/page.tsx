@@ -166,74 +166,275 @@ export default function Home() {
       spendingStrategy 
     } = activeParams;
     
-    let md = `# 시뮬레이션 결과 리포트\n\n`;
-    md += `출력 일시: ${new Date().toLocaleString()}\n\n`;
-    
-    md += `## 1. 종합 결과 요약\n`;
-    md += `- **은퇴 준비도 점수:** ${retirementScore}점\n`;
-    md += `- **은퇴 소득 달성률:** ${goalAchievementRate}%\n`;
-    md += `- **FIRE 조기은퇴 가능 나이:** ${fireAge ? `${fireAge}세` : '달성 불가능'}\n`;
-    md += `- **자산 고갈 예상 나이:** ${depletionAge ? `${depletionAge}세` : '기대수명 내 고갈 없음'}\n`;
-    md += `- **사망 시(기대수명 ${userProfile.expectancy}세) 잔여 자산:** ${formatValue(endingAssets)}\n\n`;
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      alert('팝업 차단을 해제해 주세요.');
+      return;
+    }
 
-    md += `## 2. 시뮬레이션 설정 상태\n`;
-    md += `- **현재 나이:** ${userProfile.currentAge}세\n`;
-    md += `- **은퇴 목표 나이:** ${userProfile.retirementAge}세\n`;
-    md += `- **기대 수명:** ${userProfile.expectancy}세\n`;
-    md += `- **목표 월 생활비:** ${userProfile.targetMonthlySpending.toLocaleString()} ${displayCurrency}\n`;
-    md += `- **인출 전략:** ${spendingStrategy === 'dividend_only' ? '배당금(이자) 100% 소비' : spendingStrategy === 'max_sustainable' ? '최대 가능 생활비 자동계산' : '고정 목표 생활비'}\n`;
-    md += `- **물가 상승률:** ${inflationRate}% (${inflationMode === 'real' ? '실질 가치 - 인플레이션 차감' : '명목 가치 - 인플레이션 미차감'})\n`;
-    md += `- **표시 통화 / 기준 환율:** ${displayCurrency} / 1 USD = ${baseExchangeRate} KRW\n\n`;
+    const formatValuePrint = (val: number): string => formatValue(val);
 
-    md += `## 3. 연금 및 자산 현황\n`;
-    md += `### 국민연금\n`;
-    md += `- **예상 월 수령액:** ${nationalPension?.expectedMonthlyAmount.toLocaleString()}원 (65세부터 수령)\n\n`;
+    let htmlContent = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <title>NextLife 은퇴 자산 시뮬레이션 결과 리포트</title>
+        <style>
+          body {
+            font-family: 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif;
+            color: #1e293b;
+            line-height: 1.6;
+            padding: 40px;
+            max-width: 900px;
+            margin: 0 auto;
+          }
+          h1 {
+            font-size: 26px;
+            border-bottom: 3px solid #3b82f6;
+            padding-bottom: 12px;
+            color: #1e3a8a;
+            margin-top: 0;
+          }
+          h2 {
+            font-size: 18px;
+            border-bottom: 1px solid #e2e8f0;
+            padding-bottom: 6px;
+            color: #0f172a;
+            margin-top: 30px;
+          }
+          h3 {
+            font-size: 15px;
+            color: #475569;
+            margin-top: 15px;
+            margin-bottom: 8px;
+          }
+          .summary-card {
+            background-color: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 25px;
+          }
+          .summary-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+            margin-top: 15px;
+          }
+          .summary-item {
+            font-size: 14px;
+            border-bottom: 1px dashed #e2e8f0;
+            padding-bottom: 8px;
+          }
+          .summary-label {
+            font-weight: 600;
+            color: #475569;
+          }
+          .summary-value {
+            float: right;
+            font-size: 15px;
+            color: #0f172a;
+            font-weight: 700;
+          }
+          ul {
+            padding-left: 20px;
+            margin-top: 10px;
+            margin-bottom: 15px;
+          }
+          li {
+            font-size: 13.5px;
+            margin-bottom: 6px;
+          }
+          table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
+            font-size: 11px;
+          }
+          th, td {
+            border: 1px solid #cbd5e1;
+            padding: 6px 8px;
+            text-align: left;
+          }
+          th {
+            background-color: #f1f5f9;
+            font-weight: 700;
+            color: #334155;
+          }
+          tr:nth-child(even) td {
+            background-color: #f8fafc;
+          }
+          .text-right {
+            text-align: right;
+          }
+          .text-center {
+            text-align: center;
+          }
+          .tax-warning {
+            color: #ef4444;
+            font-weight: bold;
+          }
+          @media print {
+            body {
+              padding: 0;
+            }
+          }
+        </style>
+      </head>
+      <body>
+        <h1>NextLife 은퇴 자산 시뮬레이션 결과 리포트</h1>
+        <p style="font-size: 12px; color: #64748b; margin-bottom: 25px;">출력 일시: ${new Date().toLocaleString()}</p>
+        
+        <div class="summary-card">
+          <h2 style="margin-top: 0; border-bottom: none; padding-bottom: 0;">1. 종합 결과 요약</h2>
+          <div class="summary-grid">
+            <div class="summary-item">
+              <span class="summary-label">은퇴 준비도 점수</span>
+              <span class="summary-value">${retirementScore}점</span>
+            </div>
+            <div class="summary-item">
+              <span class="summary-label">은퇴 소득 달성률</span>
+              <span class="summary-value">${goalAchievementRate}%</span>
+            </div>
+            <div class="summary-item">
+              <span class="summary-label">FIRE 조기은퇴 가능 나이</span>
+              <span class="summary-value">${fireAge ? `${fireAge}세` : '달성 불가능'}</span>
+            </div>
+            <div class="summary-item">
+              <span class="summary-label">자산 고갈 예상 나이</span>
+              <span class="summary-value">${depletionAge ? `${depletionAge}세` : '기대수명 내 고갈 없음'}</span>
+            </div>
+            <div class="summary-item" style="grid-column: span 2; border-bottom: none;">
+              <span class="summary-label">사망 시(기대수명 ${userProfile.expectancy}세) 잔여 자산</span>
+              <span class="summary-value" style="font-size: 16px; color: #3b82f6;">${formatValuePrint(endingAssets)}</span>
+            </div>
+          </div>
+        </div>
 
-    md += `### 사적연금 (퇴직연금/개인연금)\n`;
+        <h2>2. 시뮬레이션 설정 상태</h2>
+        <ul>
+          <li><strong>현재 나이:</strong> ${userProfile.currentAge}세</li>
+          <li><strong>은퇴 목표 나이:</strong> ${userProfile.retirementAge}세</li>
+          <li><strong>기대 수명:</strong> ${userProfile.expectancy}세</li>
+          <li><strong>목표 월 생활비:</strong> ${userProfile.targetMonthlySpending.toLocaleString()} ${displayCurrency}</li>
+          <li><strong>인출 전략:</strong> ${spendingStrategy === 'dividend_only' ? '배당금(이자) 100% 소비' : spendingStrategy === 'max_sustainable' ? '최대 가능 생활비 자동계산' : '고정 목표 생활비'}</li>
+          <li><strong>물가 상승률:</strong> ${inflationRate}% (${inflationMode === 'real' ? '실질 가치 - 인플레이션 차감' : '명목 가치 - 인플레이션 미차감'})</li>
+          <li><strong>표시 통화 / 기준 환율:</strong> ${displayCurrency} / 1 USD = ${baseExchangeRate} KRW</li>
+        </ul>
+
+        <h2>3. 연금 및 자산 현황</h2>
+        <h3>국민연금</h3>
+        <ul>
+          <li><strong>예상 월 수령액:</strong> ${nationalPension?.expectedMonthlyAmount.toLocaleString()}원 (65세부터 수령)</li>
+        </ul>
+
+        <h3>사적연금 (퇴직연금/개인연금)</h3>
+        <ul>
+    `;
+
     if (privatePensions && privatePensions.length > 0) {
       privatePensions.forEach(p => {
-        md += `- **${p.name}** (${p.type === 'irp' ? 'IRP' : p.type === 'savings' ? '연금저축' : '기타'}): 현재 잔액 ${p.balance.toLocaleString()} ${p.currency}, 매월 ${p.monthlyContribution.toLocaleString()} ${p.currency} 납입, 예상 연 수익률 ${p.annualReturn}%\n`;
+        htmlContent += `<li><strong>${p.name}</strong> (${p.type === 'irp' ? 'IRP' : p.type === 'savings' ? '연금저축' : '기타'}): 현재 잔액 ${p.balance.toLocaleString()} ${p.currency}, 매월 ${p.monthlyContribution.toLocaleString()} ${p.currency} 납입, 예상 연 수익률 ${p.annualReturn}%</li>`;
       });
     } else {
-      md += `- 등록된 사적연금 없음\n`;
+      htmlContent += `<li>등록된 사적연금 없음</li>`;
     }
-    md += `\n### 투자 자산 (주식/ETF/부동산 등)\n`;
+
+    htmlContent += `
+        </ul>
+        <h3>투자 자산 (주식/ETF/부동산 등)</h3>
+        <ul>
+    `;
+
     if (assets && assets.length > 0) {
       assets.forEach(a => {
-        md += `- **${a.name}** (${a.type}): ${a.quantity}주(개) x 평균단가 ${a.averagePrice.toLocaleString()} ${a.currency}, 매월 ${a.monthlyContribution.toLocaleString()} ${a.currency} 납입, 예상 연 수익률 ${a.annualGrowthRate}%, 배당률 ${a.dividendYield}%\n`;
+        htmlContent += `<li><strong>${a.name}</strong> (${a.type}): ${a.quantity}주(개) x 평균단가 ${a.averagePrice.toLocaleString()} ${a.currency}, 매월 ${a.monthlyContribution.toLocaleString()} ${a.currency} 납입, 예상 연 수익률 ${a.annualGrowthRate}%, 배당률 ${a.dividendYield}%</li>`;
       });
     } else {
-      md += `- 등록된 투자 자산 없음\n`;
+      htmlContent += `<li>등록된 투자 자산 없음</li>`;
     }
-    md += `\n### 기타 소득\n`;
+
+    htmlContent += `
+        </ul>
+        <h3>기타 소득</h3>
+        <ul>
+    `;
+
     if (otherIncomes && otherIncomes.length > 0) {
       otherIncomes.forEach(i => {
-        md += `- **${i.label}**: 매월 ${i.monthlyAmount.toLocaleString()} ${i.currency}\n`;
+        htmlContent += `<li><strong>${i.label}</strong>: 매월 ${i.monthlyAmount.toLocaleString()} ${i.currency}</li>`;
       });
     } else {
-      md += `- 등록된 기타 소득 없음\n`;
+      htmlContent += `<li>등록된 기타 소득 없음</li>`;
     }
-    md += `\n`;
 
-    md += `## 4. 연령별 소득원 및 자산 추이\n`;
-    md += `| 나이 | 연도 | 총 자산 | 총 소득 | 생활비 지출 | 배당/투자 소득 | 연금 소득 | 기타 소득 | 금융소득종합과세 |\n`;
-    md += `| --- | --- | --- | --- | --- | --- | --- | --- | --- |\n`;
+    htmlContent += `
+        </ul>
+
+        <h2 style="page-break-before: always;">4. 연령별 소득원 및 자산 추이</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>나이</th>
+              <th>연도</th>
+              <th>총 자산</th>
+              <th>총 소득</th>
+              <th>생활비 지출</th>
+              <th>배당/투자 소득</th>
+              <th>연금 소득</th>
+              <th>기타 소득</th>
+              <th>금융소득종합과세</th>
+            </tr>
+          </thead>
+          <tbody>
+    `;
+
     if (yearlyResults && yearlyResults.length > 0) {
       yearlyResults.forEach(yr => {
-        md += `| ${yr.age}세 | ${yr.year} | ${formatValue(yr.totalAssets)} | ${formatValue(yr.totalIncome)} | ${formatValue(yr.spending)} | ${formatValue(yr.dividendIncome)} | ${formatValue(yr.pensionIncome)} | ${formatValue(yr.otherIncome)} | ${yr.hasTaxWarning ? '⚠️ 주의' : '-'} |\n`;
+        htmlContent += `
+          <tr>
+            <td>${yr.age}세</td>
+            <td>${yr.year}</td>
+            <td class="text-right">${formatValuePrint(yr.totalAssets)}</td>
+            <td class="text-right">${formatValuePrint(yr.totalIncome)}</td>
+            <td class="text-right">${formatValuePrint(yr.spending)}</td>
+            <td class="text-right">${formatValuePrint(yr.dividendIncome)}</td>
+            <td class="text-right">${formatValuePrint(yr.pensionIncome)}</td>
+            <td class="text-right">${formatValuePrint(yr.otherIncome)}</td>
+            <td class="text-center">${yr.hasTaxWarning ? '<span class="tax-warning">⚠️ 주의</span>' : '-'}</td>
+          </tr>
+        `;
       });
     } else {
-      md += `| 데이터가 없습니다. |\n`;
+      htmlContent += `<tr><td colspan="9" style="text-align: center;">데이터가 없습니다.</td></tr>`;
     }
-    md += `\n`;
-    
-    const dataStr = "data:text/markdown;charset=utf-8," + encodeURIComponent(md);
-    const downloadAnchorNode = document.createElement('a');
-    downloadAnchorNode.setAttribute("href", dataStr);
-    downloadAnchorNode.setAttribute("download", `nextlife_simulation_${new Date().toISOString().slice(0, 10)}.md`);
-    document.body.appendChild(downloadAnchorNode);
-    downloadAnchorNode.click();
-    downloadAnchorNode.remove();
+
+    htmlContent += `
+          </tbody>
+        </table>
+
+        <div style="margin-top: 50px; font-size: 11px; color: #64748b; border-top: 1px solid #cbd5e1; padding-top: 15px;">
+          <p><strong>중요 투자 및 시뮬레이션 법적 면책 고지</strong></p>
+          <p>본 NextLife 웹 서비스에서 산출 및 표시되는 모든 결과는 사용자가 기입한 가정치와 과거 시장 데이터에 기반한 시뮬레이션 결과입니다. 이는 미래의 실제 자산 가치 및 수익률을 보장하지 않습니다. 실제 투자 결정 시에는 반드시 전문 공인 재무 설계사와 상의하시기 바랍니다.</p>
+          <p>&copy; ${new Date().getFullYear()} NextLife. Created by TokkiLab. All rights reserved.</p>
+        </div>
+
+        <script>
+          window.onload = function() {
+            window.print();
+            // Automatically close tab after printing
+            setTimeout(function() {
+              window.close();
+            }, 500);
+          }
+        </script>
+      </body>
+      </html>
+    `;
+
+    printWindow.document.write(htmlContent);
+    printWindow.document.close();
   };
 
 
