@@ -285,15 +285,13 @@ export const E2eeKeyManager: React.FC<E2eeKeyManagerProps> = ({
           boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
           color: 'var(--foreground, #f8fafc)'
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.25rem', color: '#F59E0B' }}>
-            <AlertTriangle size={28} />
-            <h2 style={{ fontSize: '1.25rem', fontWeight: 700, margin: 0 }}>보안 데이터 복원 필요</h2>
+          <div style={{ display: 'flex', alignItems: 'center', marginBottom: '1.25rem', color: 'var(--foreground)' }}>
+            <h2 style={{ fontSize: '1.25rem', fontWeight: 700, margin: 0 }}>보안키 입력</h2>
           </div>
 
 
           <form onSubmit={handleRestoreSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-              <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--foreground-muted)' }}>보안 백업 키 입력</label>
               <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', margin: '10px 0' }}>
                 {[0, 1, 2, 3, 4, 5].map((idx) => (
                   <input
