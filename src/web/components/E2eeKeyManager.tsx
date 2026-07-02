@@ -10,6 +10,8 @@ interface E2eeKeyManagerProps {
   handleAcknowledgeBackup: () => void;
   onResetScenarios?: () => void;
   handleSendKeyToKakao?: (key: string) => Promise<{ success: boolean; error?: string }>;
+  needsKeySetup?: boolean;
+  handleSetupKey?: (key: string) => Promise<boolean>;
 }
 
 export const E2eeKeyManager: React.FC<E2eeKeyManagerProps> = ({
@@ -19,13 +21,19 @@ export const E2eeKeyManager: React.FC<E2eeKeyManagerProps> = ({
   handleRestoreKey,
   handleAcknowledgeBackup,
   onResetScenarios,
-  handleSendKeyToKakao
+  handleSendKeyToKakao,
+  needsKeySetup,
+  handleSetupKey
 }) => {
   const [copied, setCopied] = useState(false);
   const [restoreKeyInput, setRestoreKeyInput] = useState('');
   const [isRestoring, setIsRestoring] = useState(false);
   const [isSendingKakao, setIsSendingKakao] = useState(false);
   const [kakaoSentStatus, setKakaoSentStatus] = useState<'idle' | 'success' | 'error'>('idle');
+
+  const [setupKeyInput, setSetupKeyInput] = useState('');
+  const [setupKeyConfirmInput, setSetupKeyConfirmInput] = useState('');
+  const [isSettingUp, setIsSettingUp] = useState(false);
 
   const handleSendKakao = async () => {
     if (!localKey || !handleSendKeyToKakao) return;
@@ -63,6 +71,149 @@ export const E2eeKeyManager: React.FC<E2eeKeyManagerProps> = ({
       alert('보안 백업 키 복원에 실패했습니다. 키 형식을 다시 확인해 주세요.');
     }
   };
+
+  // 0. Setup key modal (Required for first-time login)
+  if (needsKeySetup) {
+    const handleSetupSubmit = async (e: React.FormEvent) => {
+      e.preventDefault();
+      const p1 = setupKeyInput.trim();
+      const p2 = setupKeyConfirmInput.trim();
+      if (p1.length !== 6 || !/^\d+$/.test(p1)) {
+        alert('보안 비밀번호는 숫자 6자리여야 합니다.');
+        return;
+      }
+      if (p1 !== p2) {
+        alert('입력하신 두 비밀번호가 일치하지 않습니다.');
+        return;
+      }
+      if (!handleSetupKey) return;
+      setIsSettingUp(true);
+      const success = await handleSetupKey(p1);
+      setIsSettingUp(false);
+      if (success) {
+        alert('보안 비밀번호가 성공적으로 설정되었습니다! 시나리오 저장을 위해 데이터 종단간 암호화(E2EE)가 활성화되었습니다.');
+      } else {
+        alert('비밀번호 설정에 실패했습니다.');
+      }
+    };
+
+    return (
+      <div style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        backgroundColor: 'rgba(0, 0, 0, 0.85)',
+        backdropFilter: 'blur(8px)',
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        zIndex: 9999,
+        padding: '1rem'
+      }}>
+        <div style={{
+          backgroundColor: 'var(--card-bg, #1e293b)',
+          border: '1px solid var(--card-border, #334155)',
+          borderRadius: '16px',
+          maxWidth: '500px',
+          width: '100%',
+          padding: '2rem',
+          boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
+          color: 'var(--foreground, #f8fafc)'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.25rem', color: 'var(--primary, #3b82f6)' }}>
+            <Key size={28} />
+            <h2 style={{ fontSize: '1.25rem', fontWeight: 700, margin: 0 }}>데이터 보안 비밀번호 설정</h2>
+          </div>
+          
+          <p style={{ fontSize: '0.9rem', lineHeight: 1.6, color: 'var(--foreground-muted, #94a3b8)', marginBottom: '1.5rem' }}>
+            은퇴 자산 시뮬레이션 데이터를 안전하게 암호화하기 위해 **숫자 6자리 보안 비밀번호**를 설정해 주세요.
+            <br />
+            이 비밀번호는 서버에 절대 저장되지 않으므로, 기기를 변경하거나 데이터를 복구할 때를 위해 반드시 기억해 두어야 합니다.
+          </p>
+
+          <form onSubmit={handleSetupSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.2rem' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--foreground-muted)' }}>숫자 6자리 입력</label>
+              <input
+                type="password"
+                maxLength={6}
+                pattern="\d{6}"
+                placeholder="숫자 6자리 입력 (예: 123456)"
+                value={setupKeyInput}
+                onChange={(e) => setSetupKeyInput(e.target.value.replace(/\D/g, ''))}
+                required
+                style={{
+                  width: '100%',
+                  padding: '0.75rem',
+                  backgroundColor: 'rgba(0, 0, 0, 0.2)',
+                  border: '1px solid var(--card-border)',
+                  borderRadius: '8px',
+                  color: 'var(--foreground)',
+                  fontSize: '0.9rem',
+                  fontFamily: 'monospace',
+                  letterSpacing: '0.5em',
+                  textAlign: 'center',
+                  outline: 'none'
+                }}
+              />
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--foreground-muted)' }}>비밀번호 확인 입력</label>
+              <input
+                type="password"
+                maxLength={6}
+                pattern="\d{6}"
+                placeholder="동일하게 한 번 더 입력"
+                value={setupKeyConfirmInput}
+                onChange={(e) => setSetupKeyConfirmInput(e.target.value.replace(/\D/g, ''))}
+                required
+                style={{
+                  width: '100%',
+                  padding: '0.75rem',
+                  backgroundColor: 'rgba(0, 0, 0, 0.2)',
+                  border: '1px solid var(--card-border)',
+                  borderRadius: '8px',
+                  color: 'var(--foreground)',
+                  fontSize: '0.9rem',
+                  fontFamily: 'monospace',
+                  letterSpacing: '0.5em',
+                  textAlign: 'center',
+                  outline: 'none'
+                }}
+              />
+            </div>
+
+            <button
+              type="submit"
+              disabled={isSettingUp}
+              style={{
+                width: '100%',
+                padding: '0.75rem',
+                backgroundColor: 'var(--primary, #3b82f6)',
+                border: 'none',
+                borderRadius: '8px',
+                color: '#fff',
+                fontSize: '0.9rem',
+                fontWeight: 600,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '0.5rem',
+                opacity: isSettingUp ? 0.7 : 1
+              }}
+            >
+              <Key size={16} />
+              보안 비밀번호 설정 완료
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
 
   // 1. Restore key modal (Required if decryption fails)
   if (needsKeyRestore) {

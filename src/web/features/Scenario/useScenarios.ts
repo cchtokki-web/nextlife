@@ -33,6 +33,7 @@ export function useScenarios() {
   // E2EE States
   const [localKey, setLocalKey] = useState<string | null>(null);
   const [needsKeyRestore, setNeedsKeyRestore] = useState(false);
+  const [needsKeySetup, setNeedsKeySetup] = useState(false);
   const [isBackupKeyBackedUp, setIsBackupKeyBackedUp] = useState(true);
 
   // Cloud Save States
@@ -195,45 +196,23 @@ export function useScenarios() {
             decryptAll();
           } else {
             // First-time user: No scenarios exist in the database!
-            // We can safely generate a brand new key for them here.
             const userId = (session?.user as any)?.id;
             if (userId) {
               const keyName = `nextlife_e2ee_key_${userId}`;
-              const backupName = `nextlife_e2ee_backed_up_${userId}`;
+              const storedKey = localStorage.getItem(keyName);
               
-              let generatedKey = localStorage.getItem(keyName);
-              let isBrandNew = false;
-              if (!generatedKey) {
-                generatedKey = generateBackupKey();
-                localStorage.setItem(keyName, generatedKey);
-                localStorage.setItem(backupName, 'false');
-                setIsBackupKeyBackedUp(false);
-                isBrandNew = true;
-              }
-              setLocalKey(generatedKey);
-
-              if (isBrandNew) {
-                fetch('/api/user/send-backup-key', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ key: generatedKey }),
-                })
-                  .then(res => res.json())
-                  .then(data => {
-                    if (data.success) {
-                      localStorage.setItem(backupName, 'true');
-                      setIsBackupKeyBackedUp(true);
-                      console.log('[E2EE] Auto-sent backup key to Kakao successfully.');
-                    }
-                  })
-                  .catch(err => console.error('[E2EE] Failed to auto-send key to Kakao:', err));
+              if (!storedKey) {
+                // Let the user set their own 6-digit password instead of auto-generating one
+                setNeedsKeySetup(true);
+                setIsLoaded(true);
+                return;
               }
               
+              setLocalKey(storedKey);
               const loaded = loadParams();
               const migrated = migrateParams(loaded || initialParams, etfTickers);
               lastSavedParamsRef.current['local-default'] = JSON.stringify(migrated);
-              // Pass the newly generated key directly to handleCreateScenario to avoid race conditions
-              handleCreateScenario('기본 시나리오', migrated, true, generatedKey);
+              handleCreateScenario('기본 시나리오', migrated, true, storedKey);
             }
             setIsLoaded(true);
           }
@@ -568,6 +547,47 @@ export function useScenarios() {
         setIsBackupKeyBackedUp(true);
       }
     },
+    needsKeySetup,
+    handleSetupKey: useCallback(async (password: string) => {
+      const cleanPassword = password.trim();
+      if (cleanPassword.length !== 6 || !/^\d+$/.test(cleanPassword)) {
+        alert('보안 비밀번호는 숫자 6자리여야 합니다.');
+        return false;
+      }
+      const userId = (session?.user as any)?.id;
+      if (!userId) return false;
+
+      const keyName = `nextlife_e2ee_key_${userId}`;
+      const backupName = `nextlife_e2ee_backed_up_${userId}`;
+
+      localStorage.setItem(keyName, cleanPassword);
+      localStorage.setItem(backupName, 'false');
+      setIsBackupKeyBackedUp(false);
+      setLocalKey(cleanPassword);
+      setNeedsKeySetup(false);
+
+      // Call API to send it to Kakao (optional / async background helper)
+      fetch('/api/user/send-backup-key', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key: cleanPassword }),
+      })
+        .then(res => res.json())
+        .then(data => {
+          if (data.success) {
+            localStorage.setItem(backupName, 'true');
+            setIsBackupKeyBackedUp(true);
+          }
+        })
+        .catch(err => console.error('Failed to send key to Kakao:', err));
+
+      // Initialize first scenario using the new key
+      const loaded = loadParams();
+      const migrated = migrateParams(loaded || initialParams, etfTickers);
+      lastSavedParamsRef.current['local-default'] = JSON.stringify(migrated);
+      await handleCreateScenario('기본 시나리오', migrated, true, cleanPassword);
+      return true;
+    }, [session, etfTickers]),
     handleSendKeyToKakao: useCallback(async (keyToSend: string) => {
       if (status !== 'authenticated') return { success: false, error: '로그인이 필요합니다.' };
       try {

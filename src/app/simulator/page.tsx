@@ -37,7 +37,9 @@ export default function Home() {
     lastSaved,
     loadError,
     handleRetryLoad,
-    handleSendKeyToKakao
+    handleSendKeyToKakao,
+    needsKeySetup,
+    handleSetupKey
   } = scenarioState;
 
   const handleResetAllScenarios = async () => {
@@ -414,6 +416,8 @@ export default function Home() {
         handleAcknowledgeBackup={handleAcknowledgeBackup}
         onResetScenarios={handleResetAllScenarios}
         handleSendKeyToKakao={handleSendKeyToKakao}
+        needsKeySetup={needsKeySetup}
+        handleSetupKey={handleSetupKey}
       />
 
       {/* 2. Content Layout */}
