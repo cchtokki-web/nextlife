@@ -381,27 +381,6 @@ export const E2eeKeyManager: React.FC<E2eeKeyManagerProps> = ({
             </button>
           </form>
 
-          {onResetScenarios && (
-            <div style={{ marginTop: '2rem', borderTop: '1px solid var(--card-border)', paddingTop: '1rem', textAlign: 'center' }}>
-              <p style={{ fontSize: '0.75rem', color: 'var(--foreground-muted)', marginBottom: '0.5rem' }}>
-                만약 키를 분실하셨다면, 기존 암호화된 서버 데이터를 복구할 수 없습니다.
-              </p>
-              <button
-                onClick={onResetScenarios}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  color: 'var(--danger, #ef4444)',
-                  fontSize: '0.8rem',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  textDecoration: 'underline'
-                }}
-              >
-                기존 서버 데이터를 포기하고 초기화하기
-              </button>
-            </div>
-          )}
         </div>
       </div>
     );
