@@ -369,7 +369,7 @@ export const E2eeKeyManager: React.FC<E2eeKeyManagerProps> = ({
               }}
             >
               <Key size={16} />
-              보안 키 적용 및 복원
+              조회하기
             </button>
           </form>
 
