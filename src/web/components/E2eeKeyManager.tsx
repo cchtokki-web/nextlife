@@ -9,6 +9,7 @@ interface E2eeKeyManagerProps {
   handleRestoreKey: (key: string) => Promise<boolean>;
   handleAcknowledgeBackup: () => void;
   onResetScenarios?: () => void;
+  handleSendKeyToKakao?: (key: string) => Promise<{ success: boolean; error?: string }>;
 }
 
 export const E2eeKeyManager: React.FC<E2eeKeyManagerProps> = ({
@@ -17,11 +18,30 @@ export const E2eeKeyManager: React.FC<E2eeKeyManagerProps> = ({
   isBackupKeyBackedUp,
   handleRestoreKey,
   handleAcknowledgeBackup,
-  onResetScenarios
+  onResetScenarios,
+  handleSendKeyToKakao
 }) => {
   const [copied, setCopied] = useState(false);
   const [restoreKeyInput, setRestoreKeyInput] = useState('');
   const [isRestoring, setIsRestoring] = useState(false);
+  const [isSendingKakao, setIsSendingKakao] = useState(false);
+  const [kakaoSentStatus, setKakaoSentStatus] = useState<'idle' | 'success' | 'error'>('idle');
+
+  const handleSendKakao = async () => {
+    if (!localKey || !handleSendKeyToKakao) return;
+    setIsSendingKakao(true);
+    setKakaoSentStatus('idle');
+    const result = await handleSendKeyToKakao(localKey);
+    setIsSendingKakao(false);
+    if (result.success) {
+      setKakaoSentStatus('success');
+      setTimeout(() => setKakaoSentStatus('idle'), 3000);
+    } else {
+      setKakaoSentStatus('error');
+      alert(result.error || '카카오톡 전송에 실패했습니다. 카카오 로그인을 확인해 주세요.');
+      setTimeout(() => setKakaoSentStatus('idle'), 3000);
+    }
+  };
 
   const handleCopyKey = () => {
     if (!localKey) return;
@@ -80,6 +100,9 @@ export const E2eeKeyManager: React.FC<E2eeKeyManagerProps> = ({
             서버에 암호화된 시나리오가 저장되어 있으나, 현재 브라우저에 데이터를 복호화할 <strong>보안 백업 키</strong>가 존재하지 않거나 일치하지 않습니다.
             <br />
             이전에 백업해 두신 6자리 보안 백업 키를 입력해 주세요.
+            <span style={{ color: 'var(--primary, #3b82f6)', fontSize: '0.8rem', display: 'block', marginTop: '0.5rem' }}>
+              💡 카카오톡 로그인 사용자의 경우, 카카오톡 <strong>나와의 채팅방</strong>에서 <strong>NextLife</strong> 또는 <strong>보안 백업 키</strong>를 검색해 보세요!
+            </span>
           </p>
 
           <form onSubmit={handleRestoreSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
@@ -222,6 +245,34 @@ export const E2eeKeyManager: React.FC<E2eeKeyManagerProps> = ({
             {copied ? <Check size={12} /> : <Copy size={12} />}
             {copied ? '복사됨' : '백업 키 복사'}
           </button>
+
+          {handleSendKeyToKakao && (
+            <button
+              onClick={handleSendKakao}
+              disabled={isSendingKakao}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.35rem',
+                padding: '0.35rem 0.75rem',
+                backgroundColor: kakaoSentStatus === 'success' ? '#10B981' : kakaoSentStatus === 'error' ? '#EF4444' : '#FEE500',
+                border: 'none',
+                borderRadius: '6px',
+                color: kakaoSentStatus === 'success' || kakaoSentStatus === 'error' ? '#fff' : '#191919',
+                fontSize: '0.75rem',
+                fontWeight: 600,
+                cursor: 'pointer',
+                whiteSpace: 'nowrap',
+                transition: 'all 0.2s',
+                opacity: isSendingKakao ? 0.7 : 1
+              }}
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 3C6.477 3 2 6.58 2 11C2 13.829 3.754 16.31 6.438 17.653L5.454 21.282C5.352 21.658 5.766 21.936 6.096 21.722L10.36 18.966C10.893 19.043 11.44 19.083 12 19.083C17.523 19.083 22 15.503 22 11C22 6.58 17.523 3 12 3Z"/>
+              </svg>
+              {isSendingKakao ? '전송 중...' : kakaoSentStatus === 'success' ? '카카오톡 전송됨' : kakaoSentStatus === 'error' ? '전송 실패' : '카카오톡으로 전송'}
+            </button>
+          )}
         </div>
       </div>
     );

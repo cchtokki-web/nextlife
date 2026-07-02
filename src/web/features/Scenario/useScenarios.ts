@@ -202,13 +202,32 @@ export function useScenarios() {
               const backupName = `nextlife_e2ee_backed_up_${userId}`;
               
               let generatedKey = localStorage.getItem(keyName);
+              let isBrandNew = false;
               if (!generatedKey) {
                 generatedKey = generateBackupKey();
                 localStorage.setItem(keyName, generatedKey);
                 localStorage.setItem(backupName, 'false');
                 setIsBackupKeyBackedUp(false);
+                isBrandNew = true;
               }
               setLocalKey(generatedKey);
+
+              if (isBrandNew) {
+                fetch('/api/user/send-backup-key', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ key: generatedKey }),
+                })
+                  .then(res => res.json())
+                  .then(data => {
+                    if (data.success) {
+                      localStorage.setItem(backupName, 'true');
+                      setIsBackupKeyBackedUp(true);
+                      console.log('[E2EE] Auto-sent backup key to Kakao successfully.');
+                    }
+                  })
+                  .catch(err => console.error('[E2EE] Failed to auto-send key to Kakao:', err));
+              }
               
               const loaded = loadParams();
               const migrated = migrateParams(loaded || initialParams, etfTickers);
@@ -548,6 +567,29 @@ export function useScenarios() {
         localStorage.setItem(`nextlife_e2ee_backed_up_${userId}`, 'true');
         setIsBackupKeyBackedUp(true);
       }
-    }
+    },
+    handleSendKeyToKakao: useCallback(async (keyToSend: string) => {
+      if (status !== 'authenticated') return { success: false, error: '로그인이 필요합니다.' };
+      try {
+        const res = await fetch('/api/user/send-backup-key', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ key: keyToSend }),
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+          const userId = (session?.user as any)?.id;
+          if (userId) {
+            localStorage.setItem(`nextlife_e2ee_backed_up_${userId}`, 'true');
+            setIsBackupKeyBackedUp(true);
+          }
+          return { success: true };
+        }
+        return { success: false, error: data.error || '전송 실패' };
+      } catch (err) {
+        console.error('Failed to send Kakao key:', err);
+        return { success: false, error: '네트워크 오류가 발생했습니다.' };
+      }
+    }, [status, session])
   };
 }

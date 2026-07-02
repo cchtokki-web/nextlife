@@ -36,7 +36,8 @@ export default function Home() {
     saveStatus,
     lastSaved,
     loadError,
-    handleRetryLoad
+    handleRetryLoad,
+    handleSendKeyToKakao
   } = scenarioState;
 
   const handleResetAllScenarios = async () => {
@@ -294,6 +295,43 @@ export default function Home() {
       <Header saveStatus={saveStatus} isSaving={isSaving} lastSaved={lastSaved}>
         <div className={styles.actionContainer}>
 
+            {localKey && (
+              <button 
+                onClick={async () => {
+                  if (confirm('현재 브라우저에 저장된 보안 백업 키를 카카오톡으로 전송하시겠습니까?')) {
+                    const res = await handleSendKeyToKakao(localKey);
+                    if (res.success) {
+                      alert('보안 백업 키가 카카오톡으로 전송되었습니다.');
+                    } else {
+                      alert(res.error || '전송에 실패했습니다.');
+                    }
+                  }
+                }}
+                onMouseEnter={() => setHoveredBtn('send_kakao')}
+                onMouseLeave={() => setHoveredBtn(null)}
+                style={{
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  gap: '0.5rem', 
+                  padding: '0.6rem 1.2rem', 
+                  background: hoveredBtn === 'send_kakao' ? 'rgba(254, 229, 0, 0.15)' : 'var(--card-bg)', 
+                  border: `1px solid ${hoveredBtn === 'send_kakao' ? '#FEE500' : 'var(--card-border)'}`, 
+                  borderRadius: '12px', 
+                  color: hoveredBtn === 'send_kakao' ? '#FFE500' : 'var(--foreground-muted)', 
+                  cursor: 'pointer', 
+                  fontSize: '0.85rem', 
+                  fontWeight: 600, 
+                  transition: 'all 0.2s ease',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style={{ color: '#FEE500' }}>
+                  <path d="M12 3C6.477 3 2 6.58 2 11C2 13.829 3.754 16.31 6.438 17.653L5.454 21.282C5.352 21.658 5.766 21.936 6.096 21.722L10.36 18.966C10.893 19.043 11.44 19.083 12 19.083C17.523 19.083 22 15.503 22 11C22 6.58 17.523 3 12 3Z"/>
+                </svg>
+                보안 키 카톡 전송
+              </button>
+            )}
+
             <button 
               onClick={handleReset}
               onMouseEnter={() => setHoveredBtn('reset')}
@@ -375,6 +413,7 @@ export default function Home() {
         handleRestoreKey={handleRestoreKey}
         handleAcknowledgeBackup={handleAcknowledgeBackup}
         onResetScenarios={handleResetAllScenarios}
+        handleSendKeyToKakao={handleSendKeyToKakao}
       />
 
       {/* 2. Content Layout */}

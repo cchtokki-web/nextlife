@@ -11,6 +11,11 @@ export const authOptions: NextAuthOptions = {
     KakaoProvider({
       clientId: process.env.KAKAO_CLIENT_ID || "",
       clientSecret: process.env.KAKAO_CLIENT_SECRET || "",
+      authorization: {
+        params: {
+          scope: "profile_nickname,profile_image,talk_message",
+        },
+      },
     }),
     CredentialsProvider({
       name: "이메일 로그인",
