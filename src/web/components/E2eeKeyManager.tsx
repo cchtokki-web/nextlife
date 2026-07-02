@@ -289,15 +289,7 @@ export const E2eeKeyManager: React.FC<E2eeKeyManagerProps> = ({
             <AlertTriangle size={28} />
             <h2 style={{ fontSize: '1.25rem', fontWeight: 700, margin: 0 }}>보안 데이터 복원 필요</h2>
           </div>
-          
-          <p style={{ fontSize: '0.9rem', lineHeight: 1.6, color: 'var(--foreground-muted, #94a3b8)', marginBottom: '1.5rem' }}>
-            서버에 암호화된 시나리오가 저장되어 있으나, 현재 브라우저에 데이터를 복호화할 <strong>보안 백업 키</strong>가 존재하지 않거나 일치하지 않습니다.
-            <br />
-            이전에 백업해 두신 6자리 보안 백업 키를 입력해 주세요.
-            <span style={{ color: 'var(--primary, #3b82f6)', fontSize: '0.8rem', display: 'block', marginTop: '0.5rem' }}>
-              💡 카카오톡 로그인 사용자의 경우, 카카오톡 <strong>나와의 채팅방</strong>에서 <strong>NextLife</strong> 또는 <strong>보안 백업 키</strong>를 검색해 보세요!
-            </span>
-          </p>
+
 
           <form onSubmit={handleRestoreSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
