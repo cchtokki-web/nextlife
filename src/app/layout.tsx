@@ -11,7 +11,7 @@ export const metadata: Metadata = {
   keywords: ['은퇴 시뮬레이터', 'FIRE 계산기', '노후 자산 계산', '국민연금', '사적연금', 'IRP', '배당 재투자', '금융소득종합과세'],
   authors: [{ name: 'Antigravity' }],
   verification: {
-    google: "fwRpzqcz6f0NJTc6d_8tmtKKKk_iVqn8j9DI7RehFZo"
+    google: "8OHIwvKTO5PwXxGWdAbarntfjJfd9MFltolt8TrRvIo"
   },
   openGraph: {
     title: 'NextLife - 은퇴 자산 시뮬레이터',
