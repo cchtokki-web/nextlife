@@ -31,6 +31,24 @@ export const E2eeKeyManager: React.FC<E2eeKeyManagerProps> = ({
   const [isSendingKakao, setIsSendingKakao] = useState(false);
   const [kakaoSentStatus, setKakaoSentStatus] = useState<'idle' | 'success' | 'error'>('idle');
 
+  React.useEffect(() => {
+    if (needsKeyRestore) {
+      setTimeout(() => {
+        const firstInput = document.getElementById('pin-input-0');
+        if (firstInput) firstInput.focus();
+      }, 100);
+    }
+  }, [needsKeyRestore]);
+
+  React.useEffect(() => {
+    if (needsKeySetup) {
+      setTimeout(() => {
+        const firstInput = document.getElementById('setup-pin-0');
+        if (firstInput) firstInput.focus();
+      }, 100);
+    }
+  }, [needsKeySetup]);
+
   const performRestore = async (enteredKey: string) => {
     setIsRestoring(true);
     const success = await handleRestoreKey(enteredKey);

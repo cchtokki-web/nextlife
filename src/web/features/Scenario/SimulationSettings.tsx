@@ -30,6 +30,12 @@ export const SimulationSettings: React.FC<{ scenarioState: any }> = ({ scenarioS
     spendingStrategy: rawActiveParams?.spendingStrategy || 'target',
   };
 
+  React.useEffect(() => {
+    if (activeParams.useLatestExchangeRate !== false) {
+      fetchExchangeRate();
+    }
+  }, [activeParams.useLatestExchangeRate]);
+
   const fetchExchangeRate = async () => {
     if (isFetching) return;
     setIsFetching(true);
@@ -136,32 +142,42 @@ export const SimulationSettings: React.FC<{ scenarioState: any }> = ({ scenarioS
                 { value: 'USD', label: 'USD (미국 달러)' },
               ]}
             />
-            <div className={styles.exchangeRateWrapper}>
-              <InputField
-                label="적용 환율"
-                type="text"
-                value={activeParams.baseExchangeRate ? activeParams.baseExchangeRate.toLocaleString() : ''}
-                onChange={(e) => {
-                  const val = e.target.value.replace(/,/g, '');
-                  if (val === '' || !isNaN(Number(val))) {
-                    handleUpdateActiveParams({ 
-                      ...activeParams, 
-                      baseExchangeRate: val === '' ? 0 : Number(val), 
-                      exchangeScenario: 'base' 
+            <div className={styles.exchangeRateWrapper} style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', alignItems: 'flex-start' }}>
+              <div style={{ display: 'flex', width: '100%', alignItems: 'center' }}>
+                <InputField
+                  label="적용 환율"
+                  type="text"
+                  value={activeParams.baseExchangeRate ? activeParams.baseExchangeRate.toLocaleString() : ''}
+                  onChange={(e) => {
+                    const val = e.target.value.replace(/,/g, '');
+                    if (val === '' || !isNaN(Number(val))) {
+                      handleUpdateActiveParams({ 
+                        ...activeParams, 
+                        baseExchangeRate: val === '' ? 0 : Number(val), 
+                        exchangeScenario: 'base',
+                        useLatestExchangeRate: false 
+                      });
+                    }
+                  }}
+                  disabled={activeParams.useLatestExchangeRate !== false}
+                  suffixText="원"
+                />
+              </div>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', cursor: 'pointer', userSelect: 'none', color: 'var(--foreground-muted, #94a3b8)' }}>
+                <input
+                  type="checkbox"
+                  checked={activeParams.useLatestExchangeRate !== false}
+                  onChange={(e) => {
+                    const isChecked = e.target.checked;
+                    handleUpdateActiveParams({
+                      ...activeParams,
+                      useLatestExchangeRate: isChecked,
                     });
-                  }
-                }}
-                suffixText="원"
-              />
-              <button
-                type="button"
-                className={`${compStyles.button} ${compStyles.buttonSecondary} ${styles.fetchButton}`}
-                onClick={fetchExchangeRate}
-                disabled={isFetching}
-                title="현재 환율 적용"
-              >
-                <RefreshCw size={18} className={isFetching ? styles.spinner : ''} />
-              </button>
+                  }}
+                  style={{ cursor: 'pointer' }}
+                />
+                최신 환율 적용
+              </label>
             </div>
             <div className={styles.toggleWrapper}>
               <span className={styles.toggleLabel}>실질 수익률 적용</span>

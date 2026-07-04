@@ -35,6 +35,19 @@ export async function GET(req: Request) {
 
     let scenarios = user.scenarios;
 
+    // Cleanup duplicate default scenarios (keep the oldest, delete the newer duplicates)
+    const defaultScenarios = scenarios.filter(s => s.isDefault);
+    if (defaultScenarios.length > 1) {
+      const [oldest, ...duplicates] = defaultScenarios;
+      const duplicateIds = duplicates.map(d => d.id);
+      await prisma.scenario.deleteMany({
+        where: {
+          id: { in: duplicateIds }
+        }
+      });
+      scenarios = scenarios.filter(s => !duplicateIds.includes(s.id));
+    }
+
     // Legacy data migration: If no scenarios exist, but there is simulationData, create a default scenario
     if (scenarios.length === 0 && user.simulationData) {
       const defaultScenario = await prisma.scenario.create({
