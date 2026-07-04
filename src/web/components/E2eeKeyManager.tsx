@@ -186,7 +186,7 @@ export const E2eeKeyManager: React.FC<E2eeKeyManagerProps> = ({
     const success = await handleSetupKey(primaryKey);
     setIsSettingUp(false);
     if (success) {
-      alert('보안키가 성공적으로 설정되었습니다! 시나리오 저장을 위해 데이터 종단간 암호화(E2EE)가 활성화되었습니다.');
+      // Alert removed for smoother user experience
     } else {
       alert('보안키 설정에 실패했습니다.');
     }
