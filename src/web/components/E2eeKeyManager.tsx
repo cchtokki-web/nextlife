@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Key, Copy, Check, AlertTriangle, RefreshCw } from 'lucide-react';
+import { Copy, Check, AlertTriangle, RefreshCw } from 'lucide-react';
 import { formatBackupKey } from '../../core/utils/crypto';
 
 interface E2eeKeyManagerProps {
@@ -271,16 +271,13 @@ export const E2eeKeyManager: React.FC<E2eeKeyManagerProps> = ({
           color: 'var(--foreground, #f8fafc)'
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.25rem', color: 'var(--primary, #3b82f6)' }}>
-            <Key size={28} />
             <h2 style={{ fontSize: '1.25rem', fontWeight: 700, margin: 0 }}>보안키 설정</h2>
           </div>
           
           <p style={{ fontSize: '0.9rem', lineHeight: 1.6, color: 'var(--foreground-muted, #94a3b8)', marginBottom: '1.5rem' }}>
-            은퇴 자산 시뮬레이션 데이터를 안전하게 암호화하기 위해 **숫자 6자리 보안키**를 설정해 주세요.
+            은퇴 자산 데이터를 암호화하기 위해 <strong>숫자 6자리 보안키</strong>를 설정해 주세요.
             <br />
-            설정이 완료되면 회원님의 카카오톡 나와의 채팅방으로 설정된 보안키가 자동 전송됩니다.
-            <br />
-            이 보안키는 서버에 저장되지 않으므로, 기기를 변경하거나 데이터를 복구할 때를 위해 안전하게 보관해 주셔야 합니다.
+            설정 완료 시 카카오톡 나와의 채팅방으로 보안키가 전송됩니다.
           </p>
 
           <form onSubmit={handleFormSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.2rem' }}>
