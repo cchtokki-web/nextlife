@@ -31,6 +31,18 @@ export const E2eeKeyManager: React.FC<E2eeKeyManagerProps> = ({
   const [isSendingKakao, setIsSendingKakao] = useState(false);
   const [kakaoSentStatus, setKakaoSentStatus] = useState<'idle' | 'success' | 'error'>('idle');
 
+  const performRestore = async (enteredKey: string) => {
+    setIsRestoring(true);
+    const success = await handleRestoreKey(enteredKey);
+    setIsRestoring(false);
+    if (success) {
+      alert('보안 백업 키가 성공적으로 복원되었습니다.');
+      setPinInputs(['', '', '', '', '', '']);
+    } else {
+      alert('보안 백업 키 복원에 실패했습니다. 키를 다시 확인해 주세요.');
+    }
+  };
+
   const handlePinChange = (index: number, value: string) => {
     const cleanVal = value.toUpperCase().replace(/[^A-Z0-9]/g, '');
     if (!cleanVal) {
@@ -48,11 +60,22 @@ export const E2eeKeyManager: React.FC<E2eeKeyManagerProps> = ({
       setPinInputs(newInputs);
       const lastInput = document.getElementById(`pin-input-5`);
       if (lastInput) lastInput.focus();
+
+      const enteredKey = newInputs.join('').trim().toUpperCase();
+      if (enteredKey.length === 6) {
+        performRestore(enteredKey);
+      }
       return;
     }
 
     newInputs[index] = cleanVal[cleanVal.length - 1];
     setPinInputs(newInputs);
+
+    const enteredKey = newInputs.join('').trim().toUpperCase();
+    if (enteredKey.length === 6) {
+      performRestore(enteredKey);
+      return;
+    }
 
     if (index < 5) {
       const nextInput = document.getElementById(`pin-input-${index + 1}`);
@@ -104,15 +127,7 @@ export const E2eeKeyManager: React.FC<E2eeKeyManagerProps> = ({
       alert('6자리 보안 백업 키를 모두 입력해 주세요.');
       return;
     }
-    setIsRestoring(true);
-    const success = await handleRestoreKey(enteredKey);
-    setIsRestoring(false);
-    if (success) {
-      alert('보안 백업 키가 성공적으로 복원되었습니다.');
-      setPinInputs(['', '', '', '', '', '']);
-    } else {
-      alert('보안 백업 키 복원에 실패했습니다. 키를 다시 확인해 주세요.');
-    }
+    await performRestore(enteredKey);
   };
 
   // 0. Setup key modal (Required for first-time login)
@@ -302,6 +317,7 @@ export const E2eeKeyManager: React.FC<E2eeKeyManagerProps> = ({
                     value={pinInputs[idx]}
                     onChange={(e) => handlePinChange(idx, e.target.value)}
                     onKeyDown={(e) => handleKeyDown(idx, e)}
+                    disabled={isRestoring}
                     style={{
                       width: '45px',
                       height: '45px',
@@ -319,56 +335,50 @@ export const E2eeKeyManager: React.FC<E2eeKeyManagerProps> = ({
                 ))}
               </div>
               
-              <button
-                type="button"
-                onClick={() => {
-                  alert("보안 비밀번호는 안전한 종단간 암호화(E2EE) 기술로 보호되어 서버에 저장되지 않으므로 직접적인 재발송이 불가능합니다.\n\n최초 설정 및 로그인 시 회원님의 카카오톡 '나와의 채팅방'으로 자동 발송해 드렸으니, 카카오톡에서 'NextLife' 또는 '보안 백업 키'를 검색하여 확인해 주세요!");
-                }}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  color: '#FEE500',
-                  fontSize: '0.8rem',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '0.4rem',
-                  margin: '5px auto 15px auto',
-                  textDecoration: 'underline'
-                }}
-              >
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M12 3C6.477 3 2 6.58 2 11C2 13.829 3.754 16.31 6.438 17.653L5.454 21.282C5.352 21.658 5.766 21.936 6.096 21.722L10.36 18.966C10.893 19.043 11.44 19.083 12 19.083C17.523 19.083 22 15.503 22 11C22 6.58 17.523 3 12 3Z"/>
-                </svg>
-                카카오톡으로 보안키 전송하기
-              </button>
+              <div style={{
+                backgroundColor: 'rgba(254, 229, 0, 0.08)',
+                border: '1px solid rgba(254, 229, 0, 0.2)',
+                borderRadius: '8px',
+                padding: '12px',
+                fontSize: '0.75rem',
+                lineHeight: '1.5',
+                color: 'var(--foreground-muted, #ccc)',
+                margin: '10px 0 20px 0',
+                textAlign: 'left'
+              }}>
+                <div style={{ 
+                  fontWeight: 'bold', 
+                  color: 'var(--kakaotalk-text-color, #FEE500)', 
+                  marginBottom: '6px', 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  gap: '4px',
+                  fontSize: '0.8rem'
+                }}>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 3C6.477 3 2 6.58 2 11C2 13.829 3.754 16.31 6.438 17.653L5.454 21.282C5.352 21.658 5.766 21.936 6.096 21.722L10.36 18.966C10.893 19.043 11.44 19.083 12 19.083C17.523 19.083 22 15.503 22 11C22 6.58 17.523 3 12 3Z"/>
+                  </svg>
+                  보안 백업 키 안내
+                </div>
+                보안키는 최초 설정 및 로그인 시 회원님의 카카오톡 <strong>'나와의 채팅방'</strong>으로 자동 발송되었습니다. 카카오톡에서 <strong>'NextLife'</strong> 또는 <strong>'보안키'</strong>를 검색하여 확인해 주세요!
+              </div>
             </div>
 
-            <button
-              type="submit"
-              disabled={isRestoring}
-              style={{
-                width: '100%',
-                padding: '0.75rem',
-                backgroundColor: 'var(--primary, #3b82f6)',
-                border: 'none',
-                borderRadius: '8px',
-                color: '#fff',
-                fontSize: '0.9rem',
-                fontWeight: 600,
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '0.5rem',
-                opacity: isRestoring ? 0.7 : 1
-              }}
-            >
-              <Key size={16} />
-              조회하기
-            </button>
+            {isRestoring && (
+              <div style={{ 
+                display: 'flex', 
+                justifyContent: 'center', 
+                alignItems: 'center', 
+                gap: '8px', 
+                color: 'var(--primary, #3b82f6)', 
+                fontSize: '0.9rem', 
+                margin: '10px 0',
+                fontWeight: 600
+              }}>
+                <RefreshCw style={{ animation: 'spin 1s linear infinite' }} size={16} />
+                <span>보안키 확인 및 데이터 조회 중...</span>
+              </div>
+            )}
           </form>
 
         </div>
