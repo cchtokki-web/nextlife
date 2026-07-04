@@ -493,7 +493,10 @@ export function useScenarios() {
             }
           }
           lastSavedParamsRef.current[newScenario.id] = JSON.stringify(decryptedData);
-          setScenarios(prev => [...prev, { ...newScenario, data: decryptedData }]);
+          setScenarios(prev => {
+            const filtered = prev.filter(s => s.id !== newScenario.id && !(isDefault && s.isDefault));
+            return [...filtered, { ...newScenario, data: decryptedData }];
+          });
           setActiveScenarioId(newScenario.id);
         }
       } catch (err) {

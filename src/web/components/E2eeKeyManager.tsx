@@ -36,7 +36,6 @@ export const E2eeKeyManager: React.FC<E2eeKeyManagerProps> = ({
     const success = await handleRestoreKey(enteredKey);
     setIsRestoring(false);
     if (success) {
-      alert('보안 백업 키가 성공적으로 복원되었습니다.');
       setPinInputs(['', '', '', '', '', '']);
     } else {
       alert('보안 백업 키 복원에 실패했습니다. 키를 다시 확인해 주세요.');

@@ -98,6 +98,28 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Missing name or data' }, { status: 400 });
     }
 
+    if (isDefault) {
+      const existingDefault = await prisma.scenario.findFirst({
+        where: {
+          userId: user.id,
+          isDefault: true,
+        },
+      });
+
+      if (existingDefault) {
+        const updatedScenario = await prisma.scenario.update({
+          where: { id: existingDefault.id },
+          data: {
+            data: JSON.stringify(data),
+          },
+        });
+        return NextResponse.json(
+          { data: { ...updatedScenario, data: JSON.parse(updatedScenario.data) } },
+          { status: 200 }
+        );
+      }
+    }
+
     const newScenario = await prisma.scenario.create({
       data: {
         userId: user.id,
