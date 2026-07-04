@@ -74,6 +74,7 @@ export default function Home() {
   const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(true);
   const [engine] = useState(() => new SimulationEngine());
   const [hoveredBtn, setHoveredBtn] = useState<string | null>(null);
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState<boolean>(false);
 
   // Auto-collapse sidebar on mobile devices
   useEffect(() => {
@@ -151,266 +152,171 @@ export default function Home() {
     }
   };
 
-  const handleDownload = () => {
-    const { retirementScore, goalAchievementRate, fireAge, depletionAge, endingAssets, yearlyResults } = result;
-    const { 
-      userProfile, 
-      assets, 
-      privatePensions, 
-      nationalPension, 
-      otherIncomes, 
-      inflationRate, 
-      inflationMode, 
-      baseExchangeRate, 
-      displayCurrency,
-      spendingStrategy 
-    } = activeParams;
-    
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) {
-      alert('팝업 차단을 해제해 주세요.');
-      return;
-    }
+  const handleDownload = async () => {
+    if (isGeneratingPdf) return;
+    setIsGeneratingPdf(true);
 
-    const formatValuePrint = (val: number): string => formatValue(val);
+    try {
+      const jsPDF = (await import('jspdf')).default;
+      const html2canvas = (await import('html2canvas')).default;
 
-    let htmlContent = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta charset="utf-8">
-        <title>NextLife 은퇴 자산 시뮬레이션 결과 리포트</title>
-        <style>
-          body {
-            font-family: 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif;
-            color: #1e293b;
-            line-height: 1.6;
-            padding: 40px;
-            max-width: 900px;
-            margin: 0 auto;
-          }
-          h1 {
-            font-size: 26px;
-            border-bottom: 3px solid #3b82f6;
-            padding-bottom: 12px;
-            color: #1e3a8a;
-            margin-top: 0;
-          }
-          h2 {
-            font-size: 18px;
-            border-bottom: 1px solid #e2e8f0;
-            padding-bottom: 6px;
-            color: #0f172a;
-            margin-top: 30px;
-          }
-          h3 {
-            font-size: 15px;
-            color: #475569;
-            margin-top: 15px;
-            margin-bottom: 8px;
-          }
-          .summary-card {
-            background-color: #f8fafc;
-            border: 1px solid #e2e8f0;
-            border-radius: 12px;
-            padding: 24px;
-            margin-bottom: 25px;
-          }
-          .summary-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 16px;
-            margin-top: 15px;
-          }
-          .summary-item {
-            font-size: 14px;
-            border-bottom: 1px dashed #e2e8f0;
-            padding-bottom: 8px;
-          }
-          .summary-label {
-            font-weight: 600;
-            color: #475569;
-          }
-          .summary-value {
-            float: right;
-            font-size: 15px;
-            color: #0f172a;
-            font-weight: 700;
-          }
-          ul {
-            padding-left: 20px;
-            margin-top: 10px;
-            margin-bottom: 15px;
-          }
-          li {
-            font-size: 13.5px;
-            margin-bottom: 6px;
-          }
-          table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 15px;
-            font-size: 11px;
-          }
-          th, td {
-            border: 1px solid #cbd5e1;
-            padding: 6px 8px;
-            text-align: left;
-          }
-          th {
-            background-color: #f1f5f9;
-            font-weight: 700;
-            color: #334155;
-          }
-          tr:nth-child(even) td {
-            background-color: #f8fafc;
-          }
-          .text-right {
-            text-align: right;
-          }
-          .text-center {
-            text-align: center;
-          }
-          .tax-warning {
-            color: #ef4444;
-            font-weight: bold;
-          }
-          @media print {
-            body {
-              padding: 0;
-            }
-          }
-        </style>
-      </head>
-      <body>
-        <h1>NextLife 은퇴 자산 시뮬레이션 결과 리포트</h1>
+      const { retirementScore, goalAchievementRate, fireAge, depletionAge, endingAssets, yearlyResults } = result;
+      const { 
+        userProfile, 
+        assets, 
+        privatePensions, 
+        nationalPension, 
+        otherIncomes, 
+        inflationRate, 
+        inflationMode, 
+        baseExchangeRate, 
+        displayCurrency,
+        spendingStrategy 
+      } = activeParams;
+
+      const formatValuePrint = (val: number): string => formatValue(val);
+
+      // Create a temporary container
+      const container = document.createElement('div');
+      container.style.position = 'absolute';
+      container.style.left = '-9999px';
+      container.style.top = '0';
+      container.style.width = '800px';
+      container.style.padding = '40px';
+      container.style.backgroundColor = '#ffffff';
+      container.style.color = '#1e293b';
+      container.style.fontFamily = "'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif";
+
+      let htmlContent = `
+        <h1 style="font-size: 26px; border-bottom: 3px solid #3b82f6; padding-bottom: 12px; color: #1e3a8a; margin-top: 0;">NextLife 은퇴 자산 시뮬레이션 결과 리포트</h1>
         <p style="font-size: 12px; color: #64748b; margin-bottom: 25px;">출력 일시: ${new Date().toLocaleString()}</p>
         
-        <div class="summary-card">
-          <h2 style="margin-top: 0; border-bottom: none; padding-bottom: 0;">1. 종합 결과 요약</h2>
-          <div class="summary-grid">
-            <div class="summary-item">
-              <span class="summary-label">은퇴 준비도 점수</span>
-              <span class="summary-value">${retirementScore}점</span>
+        <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 24px; margin-bottom: 25px;">
+          <h2 style="margin-top: 0; font-size: 18px; color: #0f172a; border-bottom: none; padding-bottom: 0;">1. 종합 결과 요약</h2>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 15px;">
+            <div style="font-size: 14px; border-bottom: 1px dashed #e2e8f0; padding-bottom: 8px;">
+              <span style="font-weight: 600; color: #475569;">은퇴 준비도 점수</span>
+              <span style="float: right; font-size: 15px; color: #0f172a; font-weight: 700;">${retirementScore}점</span>
             </div>
-            <div class="summary-item">
-              <span class="summary-label">은퇴 소득 달성률</span>
-              <span class="summary-value">${goalAchievementRate}%</span>
+            <div style="font-size: 14px; border-bottom: 1px dashed #e2e8f0; padding-bottom: 8px;">
+              <span style="font-weight: 600; color: #475569;">은퇴 소득 달성률</span>
+              <span style="float: right; font-size: 15px; color: #0f172a; font-weight: 700;">${goalAchievementRate}%</span>
             </div>
-            <div class="summary-item">
-              <span class="summary-label">FIRE 조기은퇴 가능 나이</span>
-              <span class="summary-value">${fireAge ? `${fireAge}세` : '달성 불가능'}</span>
+            <div style="font-size: 14px; border-bottom: 1px dashed #e2e8f0; padding-bottom: 8px;">
+              <span style="font-weight: 600; color: #475569;">FIRE 조기은퇴 가능 나이</span>
+              <span style="float: right; font-size: 15px; color: #0f172a; font-weight: 700;">${fireAge ? `${fireAge}세` : '달성 불가능'}</span>
             </div>
-            <div class="summary-item">
-              <span class="summary-label">자산 고갈 예상 나이</span>
-              <span class="summary-value">${depletionAge ? `${depletionAge}세` : '기대수명 내 고갈 없음'}</span>
+            <div style="font-size: 14px; border-bottom: 1px dashed #e2e8f0; padding-bottom: 8px;">
+              <span style="font-weight: 600; color: #475569;">자산 고갈 예상 나이</span>
+              <span style="float: right; font-size: 15px; color: #0f172a; font-weight: 700;">${depletionAge ? `${depletionAge}세` : '기대수명 내 고갈 없음'}</span>
             </div>
-            <div class="summary-item" style="grid-column: span 2; border-bottom: none;">
-              <span class="summary-label">사망 시(기대수명 ${userProfile.expectancy}세) 잔여 자산</span>
-              <span class="summary-value" style="font-size: 16px; color: #3b82f6;">${formatValuePrint(endingAssets)}</span>
+            <div style="grid-column: span 2; font-size: 14px; padding-bottom: 8px;">
+              <span style="font-weight: 600; color: #475569;">사망 시(기대수명 ${userProfile.expectancy}세) 잔여 자산</span>
+              <span style="float: right; font-size: 16px; color: #3b82f6; font-weight: 700;">${formatValuePrint(endingAssets)}</span>
             </div>
           </div>
         </div>
 
-        <h2>2. 시뮬레이션 설정 상태</h2>
-        <ul>
-          <li><strong>현재 나이:</strong> ${userProfile.currentAge}세</li>
-          <li><strong>은퇴 목표 나이:</strong> ${userProfile.retirementAge}세</li>
-          <li><strong>기대 수명:</strong> ${userProfile.expectancy}세</li>
-          <li><strong>목표 월 생활비:</strong> ${userProfile.targetMonthlySpending.toLocaleString()} ${displayCurrency}</li>
-          <li><strong>인출 전략:</strong> ${spendingStrategy === 'dividend_only' ? '배당금(이자) 100% 소비' : spendingStrategy === 'max_sustainable' ? '최대 가능 생활비 자동계산' : '고정 목표 생활비'}</li>
-          <li><strong>물가 상승률:</strong> ${inflationRate}% (${inflationMode === 'real' ? '실질 가치 - 인플레이션 차감' : '명목 가치 - 인플레이션 미차감'})</li>
-          <li><strong>표시 통화 / 기준 환율:</strong> ${displayCurrency} / 1 USD = ${baseExchangeRate} KRW</li>
+        <h2 style="font-size: 18px; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; color: #0f172a; margin-top: 30px;">2. 시뮬레이션 설정 상태</h2>
+        <ul style="padding-left: 20px; margin-top: 10px; margin-bottom: 15px;">
+          <li style="font-size: 13.5px; margin-bottom: 6px;"><strong>현재 나이:</strong> ${userProfile.currentAge}세</li>
+          <li style="font-size: 13.5px; margin-bottom: 6px;"><strong>은퇴 목표 나이:</strong> ${userProfile.retirementAge}세</li>
+          <li style="font-size: 13.5px; margin-bottom: 6px;"><strong>기대 수명:</strong> ${userProfile.expectancy}세</li>
+          <li style="font-size: 13.5px; margin-bottom: 6px;"><strong>목표 월 생활비:</strong> ${userProfile.targetMonthlySpending.toLocaleString()} ${displayCurrency}</li>
+          <li style="font-size: 13.5px; margin-bottom: 6px;"><strong>인출 전략:</strong> ${spendingStrategy === 'dividend_only' ? '배당금(이자) 100% 소비' : spendingStrategy === 'max_sustainable' ? '최대 가능 생활비 자동계산' : '고정 목표 생활비'}</li>
+          <li style="font-size: 13.5px; margin-bottom: 6px;"><strong>물가 상승률:</strong> ${inflationRate}% (${inflationMode === 'real' ? '실질 가치 - 인플레이션 차감' : '명목 가치 - 인플레이션 미차감'})</li>
+          <li style="font-size: 13.5px; margin-bottom: 6px;"><strong>표시 통화 / 기준 환율:</strong> ${displayCurrency} / 1 USD = ${baseExchangeRate} KRW</li>
         </ul>
 
-        <h2>3. 연금 및 자산 현황</h2>
-        <h3>국민연금</h3>
-        <ul>
-          <li><strong>예상 월 수령액:</strong> ${nationalPension?.expectedMonthlyAmount.toLocaleString()}원 (65세부터 수령)</li>
+        <h2 style="font-size: 18px; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; color: #0f172a; margin-top: 30px;">3. 연금 및 자산 현황</h2>
+        <h3 style="font-size: 15px; color: #475569; margin-top: 15px; margin-bottom: 8px;">국민연금</h3>
+        <ul style="padding-left: 20px; margin-top: 10px; margin-bottom: 15px;">
+          <li style="font-size: 13.5px; margin-bottom: 6px;"><strong>예상 월 수령액:</strong> ${nationalPension?.expectedMonthlyAmount.toLocaleString()}원 (65세부터 수령)</li>
         </ul>
 
-        <h3>사적연금 (퇴직연금/개인연금)</h3>
-        <ul>
-    `;
+        <h3 style="font-size: 15px; color: #475569; margin-top: 15px; margin-bottom: 8px;">사적연금 (퇴직연금/개인연금)</h3>
+        <ul style="padding-left: 20px; margin-top: 10px; margin-bottom: 15px;">
+      `;
 
-    if (privatePensions && privatePensions.length > 0) {
-      privatePensions.forEach(p => {
-        htmlContent += `<li><strong>${p.name}</strong> (${p.type === 'irp' ? 'IRP' : p.type === 'savings' ? '연금저축' : '기타'}): 현재 잔액 ${p.balance.toLocaleString()} ${p.currency}, 매월 ${p.monthlyContribution.toLocaleString()} ${p.currency} 납입, 예상 연 수익률 ${p.annualReturn}%</li>`;
-      });
-    } else {
-      htmlContent += `<li>등록된 사적연금 없음</li>`;
-    }
+      if (privatePensions && privatePensions.length > 0) {
+        privatePensions.forEach(p => {
+          htmlContent += `<li style="font-size: 13.5px; margin-bottom: 6px;"><strong>${p.name}</strong> (${p.type === 'irp' ? 'IRP' : p.type === 'savings' ? '연금저축' : '기타'}): 현재 잔액 ${p.balance.toLocaleString()} ${p.currency}, 매월 ${p.monthlyContribution.toLocaleString()} ${p.currency} 납입, 예상 연 수익률 ${p.annualReturn}%</li>`;
+        });
+      } else {
+        htmlContent += `<li style="font-size: 13.5px; margin-bottom: 6px;">등록된 사적연금 없음</li>`;
+      }
 
-    htmlContent += `
+      htmlContent += `
         </ul>
-        <h3>투자 자산 (주식/ETF/부동산 등)</h3>
-        <ul>
-    `;
+        <h3 style="font-size: 15px; color: #475569; margin-top: 15px; margin-bottom: 8px;">투자 자산 (주식/ETF/부동산 등)</h3>
+        <ul style="padding-left: 20px; margin-top: 10px; margin-bottom: 15px;">
+      `;
 
-    if (assets && assets.length > 0) {
-      assets.forEach(a => {
-        htmlContent += `<li><strong>${a.name}</strong> (${a.type}): ${a.quantity}주(개) x 평균단가 ${a.averagePrice.toLocaleString()} ${a.currency}, 매월 ${a.monthlyContribution.toLocaleString()} ${a.currency} 납입, 예상 연 수익률 ${a.annualGrowthRate}%, 배당률 ${a.dividendYield}%</li>`;
-      });
-    } else {
-      htmlContent += `<li>등록된 투자 자산 없음</li>`;
-    }
+      if (assets && assets.length > 0) {
+        assets.forEach(a => {
+          htmlContent += `<li style="font-size: 13.5px; margin-bottom: 6px;"><strong>${a.name}</strong> (${a.type}): ${a.quantity}주(개) x 평균단가 ${a.averagePrice.toLocaleString()} ${a.currency}, 매월 ${a.monthlyContribution.toLocaleString()} ${a.currency} 납입, 예상 연 수익률 ${a.annualGrowthRate}%, 배당률 ${a.dividendYield}%</li>`;
+        });
+      } else {
+        htmlContent += `<li style="font-size: 13.5px; margin-bottom: 6px;">등록된 투자 자산 없음</li>`;
+      }
 
-    htmlContent += `
+      htmlContent += `
         </ul>
-        <h3>기타 소득</h3>
-        <ul>
-    `;
+        <h3 style="font-size: 15px; color: #475569; margin-top: 15px; margin-bottom: 8px;">기타 소득</h3>
+        <ul style="padding-left: 20px; margin-top: 10px; margin-bottom: 15px;">
+      `;
 
-    if (otherIncomes && otherIncomes.length > 0) {
-      otherIncomes.forEach(i => {
-        htmlContent += `<li><strong>${i.label}</strong>: 매월 ${i.monthlyAmount.toLocaleString()} ${i.currency}</li>`;
-      });
-    } else {
-      htmlContent += `<li>등록된 기타 소득 없음</li>`;
-    }
+      if (otherIncomes && otherIncomes.length > 0) {
+        otherIncomes.forEach(i => {
+          htmlContent += `<li style="font-size: 13.5px; margin-bottom: 6px;"><strong>${i.label}</strong>: 매월 ${i.monthlyAmount.toLocaleString()} ${i.currency}</li>`;
+        });
+      } else {
+        htmlContent += `<li style="font-size: 13.5px; margin-bottom: 6px;">등록된 기타 소득 없음</li>`;
+      }
 
-    htmlContent += `
+      htmlContent += `
         </ul>
 
-        <h2 style="page-break-before: always;">4. 연령별 소득원 및 자산 추이</h2>
-        <table>
+        <h2 style="font-size: 18px; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; color: #0f172a; margin-top: 30px; page-break-before: always;">4. 연령별 소득원 및 자산 추이</h2>
+        <table style="width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 11px;">
           <thead>
             <tr>
-              <th>나이</th>
-              <th>연도</th>
-              <th>총 자산</th>
-              <th>총 소득</th>
-              <th>생활비 지출</th>
-              <th>배당/투자 소득</th>
-              <th>연금 소득</th>
-              <th>기타 소득</th>
-              <th>금융소득종합과세</th>
+              <th style="border: 1px solid #cbd5e1; padding: 6px 8px; text-align: left; background-color: #f1f5f9; font-weight: 700; color: #334155;">나이</th>
+              <th style="border: 1px solid #cbd5e1; padding: 6px 8px; text-align: left; background-color: #f1f5f9; font-weight: 700; color: #334155;">연도</th>
+              <th style="border: 1px solid #cbd5e1; padding: 6px 8px; text-align: right; background-color: #f1f5f9; font-weight: 700; color: #334155;">총 자산</th>
+              <th style="border: 1px solid #cbd5e1; padding: 6px 8px; text-align: right; background-color: #f1f5f9; font-weight: 700; color: #334155;">총 소득</th>
+              <th style="border: 1px solid #cbd5e1; padding: 6px 8px; text-align: right; background-color: #f1f5f9; font-weight: 700; color: #334155;">생활비 지출</th>
+              <th style="border: 1px solid #cbd5e1; padding: 6px 8px; text-align: right; background-color: #f1f5f9; font-weight: 700; color: #334155;">배당/투자 소득</th>
+              <th style="border: 1px solid #cbd5e1; padding: 6px 8px; text-align: right; background-color: #f1f5f9; font-weight: 700; color: #334155;">연금 소득</th>
+              <th style="border: 1px solid #cbd5e1; padding: 6px 8px; text-align: right; background-color: #f1f5f9; font-weight: 700; color: #334155;">기타 소득</th>
+              <th style="border: 1px solid #cbd5e1; padding: 6px 8px; text-align: center; background-color: #f1f5f9; font-weight: 700; color: #334155;">금융소득종합과세</th>
             </tr>
           </thead>
           <tbody>
-    `;
+      `;
 
-    if (yearlyResults && yearlyResults.length > 0) {
-      yearlyResults.forEach(yr => {
-        htmlContent += `
-          <tr>
-            <td>${yr.age}세</td>
-            <td>${yr.year}</td>
-            <td class="text-right">${formatValuePrint(yr.totalAssets)}</td>
-            <td class="text-right">${formatValuePrint(yr.totalIncome)}</td>
-            <td class="text-right">${formatValuePrint(yr.spending)}</td>
-            <td class="text-right">${formatValuePrint(yr.dividendIncome)}</td>
-            <td class="text-right">${formatValuePrint(yr.pensionIncome)}</td>
-            <td class="text-right">${formatValuePrint(yr.otherIncome)}</td>
-            <td class="text-center">${yr.hasTaxWarning ? '<span class="tax-warning">⚠️ 주의</span>' : '-'}</td>
-          </tr>
-        `;
-      });
-    } else {
-      htmlContent += `<tr><td colspan="9" style="text-align: center;">데이터가 없습니다.</td></tr>`;
-    }
+      if (yearlyResults && yearlyResults.length > 0) {
+        yearlyResults.forEach((yr, idx) => {
+          const bg = idx % 2 === 1 ? 'background-color: #f8fafc;' : '';
+          htmlContent += `
+            <tr style="${bg}">
+              <td style="border: 1px solid #cbd5e1; padding: 6px 8px; text-align: center;">${yr.age}세</td>
+              <td style="border: 1px solid #cbd5e1; padding: 6px 8px; text-align: center;">${yr.year}</td>
+              <td style="border: 1px solid #cbd5e1; padding: 6px 8px; text-align: right;">${formatValuePrint(yr.totalAssets)}</td>
+              <td style="border: 1px solid #cbd5e1; padding: 6px 8px; text-align: right;">${formatValuePrint(yr.totalIncome)}</td>
+              <td style="border: 1px solid #cbd5e1; padding: 6px 8px; text-align: right;">${formatValuePrint(yr.spending)}</td>
+              <td style="border: 1px solid #cbd5e1; padding: 6px 8px; text-align: right;">${formatValuePrint(yr.dividendIncome)}</td>
+              <td style="border: 1px solid #cbd5e1; padding: 6px 8px; text-align: right;">${formatValuePrint(yr.pensionIncome)}</td>
+              <td style="border: 1px solid #cbd5e1; padding: 6px 8px; text-align: right;">${formatValuePrint(yr.otherIncome)}</td>
+              <td style="border: 1px solid #cbd5e1; padding: 6px 8px; text-align: center; ${yr.hasTaxWarning ? 'color: #ef4444; font-weight: bold;' : ''}">${yr.hasTaxWarning ? '⚠️ 주의' : '-'}</td>
+            </tr>
+          `;
+        });
+      } else {
+        htmlContent += `<tr><td colspan="9" style="text-align: center; border: 1px solid #cbd5e1; padding: 6px 8px;">데이터가 없습니다.</td></tr>`;
+      }
 
-    htmlContent += `
+      htmlContent += `
           </tbody>
         </table>
 
@@ -419,22 +325,51 @@ export default function Home() {
           <p>본 NextLife 웹 서비스에서 산출 및 표시되는 모든 결과는 사용자가 기입한 가정치와 과거 시장 데이터에 기반한 시뮬레이션 결과입니다. 이는 미래의 실제 자산 가치 및 수익률을 보장하지 않습니다. 실제 투자 결정 시에는 반드시 전문 공인 재무 설계사와 상의하시기 바랍니다.</p>
           <p>&copy; ${new Date().getFullYear()} NextLife. Created by TokkiLab. All rights reserved.</p>
         </div>
+      `;
 
-        <script>
-          window.onload = function() {
-            window.print();
-            // Automatically close tab after printing
-            setTimeout(function() {
-              window.close();
-            }, 500);
-          }
-        </script>
-      </body>
-      </html>
-    `;
+      container.innerHTML = htmlContent;
+      document.body.appendChild(container);
 
-    printWindow.document.write(htmlContent);
-    printWindow.document.close();
+      // Render the DOM element to a canvas
+      const canvas = await html2canvas(container, {
+        scale: 2, // High resolution
+        useCORS: true,
+        logging: false
+      });
+
+      // Remove the temporary container
+      document.body.removeChild(container);
+
+      // Convert canvas to PDF
+      const imgData = canvas.toDataURL('image/jpeg', 1.0);
+      const pdf = new jsPDF('p', 'mm', 'a4');
+      
+      const imgWidth = 210; // A4 width in mm
+      const pageHeight = 295; // A4 height in mm
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+      
+      let heightLeft = imgHeight;
+      let position = 0;
+
+      // Add first page
+      pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight);
+      heightLeft -= pageHeight;
+
+      // Add remaining pages if any
+      while (heightLeft >= 0) {
+        position = heightLeft - imgHeight;
+        pdf.addPage();
+        pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight);
+        heightLeft -= pageHeight;
+      }
+
+      pdf.save('NextLife_Simulation_Report.pdf');
+    } catch (error) {
+      console.error('Failed to generate PDF:', error);
+      alert('PDF 생성 중 오류가 발생했습니다. 다시 시도해 주세요.');
+    } finally {
+      setIsGeneratingPdf(false);
+    }
   };
 
 
@@ -524,6 +459,7 @@ export default function Home() {
             </button>
             <button 
               onClick={handleDownload}
+              disabled={isGeneratingPdf}
               onMouseEnter={() => setHoveredBtn('download')}
               onMouseLeave={() => setHoveredBtn(null)}
               style={{
@@ -535,7 +471,8 @@ export default function Home() {
                 border: `1px solid ${hoveredBtn === 'download' ? 'var(--primary)' : 'var(--card-border)'}`, 
                 borderRadius: '12px', 
                 color: hoveredBtn === 'download' ? 'var(--primary)' : 'var(--foreground-muted)', 
-                cursor: 'pointer', 
+                cursor: isGeneratingPdf ? 'not-allowed' : 'pointer', 
+                opacity: isGeneratingPdf ? 0.6 : 1,
                 fontSize: '0.85rem', 
                 fontWeight: 600, 
                 transition: 'all 0.2s ease',
@@ -543,7 +480,7 @@ export default function Home() {
               }}
             >
               <FileText size={16} />
-              결과 다운로드
+              {isGeneratingPdf ? 'PDF 생성 중...' : '결과 다운로드'}
             </button>
 
 
