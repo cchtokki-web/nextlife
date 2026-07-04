@@ -39,7 +39,7 @@ export async function POST(req: Request) {
 
     const templateObject = {
       object_type: 'text',
-      text: `[NextLife] 회원님의 은퇴 자산 시뮬레이션 보안 백업 키입니다.\n\n🔑 백업 키: ${key.toUpperCase()}\n\n기기를 변경하거나 브라우저 캐시를 삭제했을 때 데이터를 안전하게 복구하려면 이 키를 입력해 주세요.`,
+      text: `[NextLife] 회원님의 은퇴 자산 시뮬레이션 보안키입니다.\n\n🔑 보안키: ${key.toUpperCase()}\n\n기기를 변경하거나 브라우저 캐시를 삭제했을 때 데이터를 안전하게 복구하려면 이 키를 입력해 주세요.`,
       link: {
         web_url: process.env.NEXTAUTH_URL || 'http://localhost:3000',
         mobile_web_url: process.env.NEXTAUTH_URL || 'http://localhost:3000',
