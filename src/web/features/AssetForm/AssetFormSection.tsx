@@ -116,6 +116,7 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
             dividendYield: pa.dividendYield,
           });
           fetchAssetInfo(id, pa.ticker);
+          fetchAssetPrice(id, pa.ticker);
         } else if (type === 'pension') {
           handleUpdatePrivatePension(id, {
             name: pa.name,
@@ -794,6 +795,7 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                                       setFocusedAssetId(null);
                                       setAutocompleteIndex(-1);
                                       fetchAssetInfo(asset.id, pa.ticker);
+                                      fetchAssetPrice(asset.id, pa.ticker);
                                       setTimeout(() => { isSelectingRef.current[asset.id] = false; }, 200);
                                     }}
                                   >

@@ -74,6 +74,86 @@ const migrateParams = (params: SimulationParams, tickers: string[]): SimulationP
   return changed ? { ...params, assets: migratedAssets } : params;
 };
 
+const fetchLatestParamsInfo = async (params: SimulationParams): Promise<SimulationParams> => {
+  const updatedParams = { ...params };
+  
+  // 1. Fetch latest USD/KRW exchange rate
+  let baseExchangeRate = params.baseExchangeRate;
+  try {
+    const rateRes = await fetch('https://open.er-api.com/v6/latest/USD');
+    if (rateRes.ok) {
+      const data = await rateRes.json();
+      if (data && data.rates && typeof data.rates.KRW === 'number') {
+        baseExchangeRate = Math.round(data.rates.KRW * 10) / 10;
+      }
+    }
+  } catch (err) {
+    console.error('Failed to fetch latest exchange rate:', err);
+  }
+  updatedParams.baseExchangeRate = baseExchangeRate;
+
+  // 2. Fetch latest stock prices and info for each asset
+  if (Array.isArray(updatedParams.assets)) {
+    const updatedAssets = await Promise.all(
+      updatedParams.assets.map(async (asset) => {
+        if (!asset.ticker || asset.ticker === 'NEW') return asset;
+        
+        let fetchedPrice = asset.averagePrice;
+        let fetchedGrowth = asset.annualGrowthRate;
+        let fetchedYield = asset.dividendYield;
+
+        try {
+          // Fetch price
+          const priceRes = await fetch(`/api/stock-price?ticker=${encodeURIComponent(asset.ticker)}`);
+          if (priceRes.ok) {
+            const priceData = await priceRes.json();
+            if (typeof priceData.price === 'number') {
+              const fetchedRawPrice = priceData.price;
+              const fetchedCurrency = priceData.currency || 'USD';
+
+              if (fetchedCurrency === 'USD' && asset.currency === 'KRW') {
+                fetchedPrice = Math.round(fetchedRawPrice * baseExchangeRate);
+              } else if (fetchedCurrency === 'KRW' && asset.currency === 'USD') {
+                fetchedPrice = Math.round((fetchedRawPrice / baseExchangeRate) * 100) / 100;
+              } else {
+                fetchedPrice = fetchedRawPrice;
+              }
+            }
+          }
+        } catch (err) {
+          console.error(`Failed to fetch stock price for ${asset.ticker}:`, err);
+        }
+
+        try {
+          // Fetch growth rate & dividend yield
+          const infoRes = await fetch(`/api/stock-info?ticker=${encodeURIComponent(asset.ticker)}`);
+          if (infoRes.ok) {
+            const infoData = await infoRes.json();
+            if (infoData.annualGrowthRate !== undefined) {
+              fetchedGrowth = infoData.annualGrowthRate;
+            }
+            if (infoData.dividendYield !== undefined) {
+              fetchedYield = infoData.dividendYield;
+            }
+          }
+        } catch (err) {
+          console.error(`Failed to fetch stock info for ${asset.ticker}:`, err);
+        }
+
+        return {
+          ...asset,
+          averagePrice: fetchedPrice,
+          annualGrowthRate: fetchedGrowth,
+          dividendYield: fetchedYield,
+        };
+      })
+    );
+    updatedParams.assets = updatedAssets;
+  }
+
+  return updatedParams;
+};
+
 export function useScenarios() {
   const { data: session, status } = useSession();
   const [scenarios, setScenarios] = useState<ScenarioModel[]>([]);
@@ -268,8 +348,14 @@ export function useScenarios() {
               setLocalKey(storedKey);
               const loaded = loadParams();
               const migrated = convertToRepresentativeAssets(migrateParams(loaded || initialParams, etfTickers));
-              lastSavedParamsRef.current['local-default'] = JSON.stringify(migrated);
-              handleCreateScenario('기본 시나리오', migrated, true, storedKey);
+              fetchLatestParamsInfo(migrated).then(latestParams => {
+                lastSavedParamsRef.current['local-default'] = JSON.stringify(latestParams);
+                handleCreateScenario('기본 시나리오', latestParams, true, storedKey);
+              }).catch(err => {
+                console.error('Failed to fetch initial parameters info:', err);
+                lastSavedParamsRef.current['local-default'] = JSON.stringify(migrated);
+                handleCreateScenario('기본 시나리오', migrated, true, storedKey);
+              });
             }
             setIsLoaded(true);
           }
@@ -641,8 +727,14 @@ export function useScenarios() {
       // Initialize first scenario using the new key
       const loaded = loadParams();
       const migrated = migrateParams(loaded || initialParams, etfTickers);
-      lastSavedParamsRef.current['local-default'] = JSON.stringify(migrated);
-      await handleCreateScenario('기본 시나리오', migrated, true, cleanPassword);
+      let latestParams = migrated;
+      try {
+        latestParams = await fetchLatestParamsInfo(migrated);
+      } catch (err) {
+        console.error('Failed to fetch setup parameters info:', err);
+      }
+      lastSavedParamsRef.current['local-default'] = JSON.stringify(latestParams);
+      await handleCreateScenario('기본 시나리오', latestParams, true, cleanPassword);
       return true;
     }, [session, etfTickers]),
     handleSendKeyToKakao: useCallback(async (keyToSend: string) => {

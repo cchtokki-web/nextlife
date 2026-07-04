@@ -40,6 +40,11 @@ export const E2eeKeyManager: React.FC<E2eeKeyManagerProps> = ({
       setPinInputs(['', '', '', '', '', '']);
     } else {
       alert('보안 백업 키 복원에 실패했습니다. 키를 다시 확인해 주세요.');
+      setPinInputs(['', '', '', '', '', '']);
+      setTimeout(() => {
+        const firstInput = document.getElementById('pin-input-0');
+        if (firstInput) firstInput.focus();
+      }, 50);
     }
   };
 
