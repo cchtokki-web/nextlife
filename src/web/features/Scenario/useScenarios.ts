@@ -4,6 +4,63 @@ import { SimulationParams, ScenarioModel } from '../../../core/entities/types';
 import { loadParams, saveParams, initialParams } from '../../../infrastructure/storage/localStore';
 import { generateBackupKey, encryptData, decryptData, isEncryptedPayload } from '../../../core/utils/crypto';
 
+const convertToRepresentativeAssets = (params: SimulationParams): SimulationParams => {
+  if (!params.assets) return params;
+  let changed = false;
+  const convertedAssets = params.assets.map(asset => {
+    if (asset.ticker === '안전자산' || asset.name === '예금/채권 혼합') {
+      changed = true;
+      const avgPrice = 35000;
+      const qty = Math.max(1, Math.floor(asset.averagePrice / avgPrice));
+      return {
+        ...asset,
+        ticker: '069500',
+        name: 'KODEX 200',
+        quantity: qty,
+        averagePrice: avgPrice,
+        annualGrowthRate: 5.0,
+        dividendYield: 2.0,
+        currency: 'KRW' as const,
+        assetMarket: 'KR_ETF' as const
+      };
+    }
+    if (asset.ticker === '혼합자산' || asset.name === '배당ETF/채권 혼합') {
+      changed = true;
+      const avgPrice = 15000;
+      const qty = Math.max(1, Math.floor(asset.averagePrice / avgPrice));
+      return {
+        ...asset,
+        ticker: '360750',
+        name: 'TIGER 미국S&P500',
+        quantity: qty,
+        averagePrice: avgPrice,
+        annualGrowthRate: 8.0,
+        dividendYield: 1.5,
+        currency: 'KRW' as const,
+        assetMarket: 'KR_ETF' as const
+      };
+    }
+    if (asset.ticker === '성장자산' || asset.name === '성장형 ETF') {
+      changed = true;
+      const avgPrice = 15000;
+      const qty = Math.max(1, Math.floor(asset.averagePrice / avgPrice));
+      return {
+        ...asset,
+        ticker: '133690',
+        name: 'TIGER 미국나스닥100',
+        quantity: qty,
+        averagePrice: avgPrice,
+        annualGrowthRate: 9.0,
+        dividendYield: 0.5,
+        currency: 'KRW' as const,
+        assetMarket: 'KR_ETF' as const
+      };
+    }
+    return asset;
+  });
+  return changed ? { ...params, assets: convertedAssets } : params;
+};
+
 const migrateParams = (params: SimulationParams, tickers: string[]): SimulationParams => {
   if (!params.assets) return params;
   let changed = false;
@@ -163,7 +220,7 @@ export function useScenarios() {
                   if (activeKey && userId) {
                     try {
                       const decryptedData = await decryptData(s.data, activeKey, userId);
-                      const migrated = migrateParams(decryptedData, etfTickers);
+                      const migrated = convertToRepresentativeAssets(migrateParams(decryptedData, etfTickers));
                       decryptedList.push({ ...s, name: displayName, data: migrated });
                       lastSavedParamsRef.current[s.id] = JSON.stringify(migrated);
                     } catch (err) {
@@ -180,7 +237,7 @@ export function useScenarios() {
                   }
                 } else {
                   // Backwards compatibility for plain text simulation data
-                  const migrated = migrateParams(s.data, etfTickers);
+                  const migrated = convertToRepresentativeAssets(migrateParams(s.data, etfTickers));
                   decryptedList.push({ ...s, name: displayName, data: migrated });
                   lastSavedParamsRef.current[s.id] = JSON.stringify(migrated);
                 }
@@ -210,7 +267,7 @@ export function useScenarios() {
               
               setLocalKey(storedKey);
               const loaded = loadParams();
-              const migrated = migrateParams(loaded || initialParams, etfTickers);
+              const migrated = convertToRepresentativeAssets(migrateParams(loaded || initialParams, etfTickers));
               lastSavedParamsRef.current['local-default'] = JSON.stringify(migrated);
               handleCreateScenario('기본 시나리오', migrated, true, storedKey);
             }
