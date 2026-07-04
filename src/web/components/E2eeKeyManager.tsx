@@ -92,9 +92,105 @@ export const E2eeKeyManager: React.FC<E2eeKeyManagerProps> = ({
     }
   };
 
-  const [setupKeyInput, setSetupKeyInput] = useState('');
-  const [setupKeyConfirmInput, setSetupKeyConfirmInput] = useState('');
+  const [setupStep, setSetupStep] = useState<1 | 2>(1);
+  const [setupPinInputs, setSetupPinInputs] = useState<string[]>(['', '', '', '', '', '']);
+  const [confirmPinInputs, setConfirmPinInputs] = useState<string[]>(['', '', '', '', '', '']);
+  const [setupMismatches, setSetupMismatches] = useState<number>(0);
+  const [setupError, setSetupError] = useState<string | null>(null);
   const [isSettingUp, setIsSettingUp] = useState(false);
+
+  const handleSetupPinChange = (index: number, value: string, isConfirm: boolean) => {
+    const cleanVal = value.replace(/[^0-9]/g, '');
+    const currentInputs = isConfirm ? confirmPinInputs : setupPinInputs;
+    const setInputs = isConfirm ? setConfirmPinInputs : setSetupPinInputs;
+    const prefix = isConfirm ? 'confirm-pin' : 'setup-pin';
+
+    if (!cleanVal) {
+      const newInputs = [...currentInputs];
+      newInputs[index] = '';
+      setInputs(newInputs);
+      return;
+    }
+
+    const newInputs = [...currentInputs];
+    if (cleanVal.length === 6) {
+      for (let i = 0; i < 6; i++) {
+        newInputs[i] = cleanVal[i] || '';
+      }
+      setInputs(newInputs);
+      const lastInput = document.getElementById(`${prefix}-5`);
+      if (lastInput) lastInput.focus();
+      checkSetupStepAutoTrigger(newInputs, isConfirm);
+      return;
+    }
+
+    newInputs[index] = cleanVal[cleanVal.length - 1];
+    setInputs(newInputs);
+
+    const enteredKey = newInputs.join('').trim();
+    if (enteredKey.length === 6) {
+      checkSetupStepAutoTrigger(newInputs, isConfirm);
+      return;
+    }
+
+    if (index < 5) {
+      const nextInput = document.getElementById(`${prefix}-${index + 1}`);
+      if (nextInput) nextInput.focus();
+    }
+  };
+
+  const handleSetupKeyDown = (index: number, e: React.KeyboardEvent<HTMLInputElement>, isConfirm: boolean) => {
+    const currentInputs = isConfirm ? confirmPinInputs : setupPinInputs;
+    const prefix = isConfirm ? 'confirm-pin' : 'setup-pin';
+    if (e.key === 'Backspace' && !currentInputs[index] && index > 0) {
+      const prevInput = document.getElementById(`${prefix}-${index - 1}`);
+      if (prevInput) {
+        prevInput.focus();
+      }
+    }
+  };
+
+  const checkSetupStepAutoTrigger = (inputs: string[], isConfirm: boolean) => {
+    const entered = inputs.join('').trim();
+    if (entered.length !== 6) return;
+
+    if (!isConfirm) {
+      setTimeout(() => {
+        setSetupStep(2);
+        setTimeout(() => {
+          const firstConfirm = document.getElementById('confirm-pin-0');
+          if (firstConfirm) firstConfirm.focus();
+        }, 50);
+      }, 300);
+    } else {
+      triggerSetupComplete(entered);
+    }
+  };
+
+  const triggerSetupComplete = async (confirmKey: string) => {
+    const primaryKey = setupPinInputs.join('').trim();
+    if (primaryKey !== confirmKey) {
+      setSetupError('보안키가 일치하지 않습니다. 다시 입력해 주세요.');
+      setSetupMismatches(prev => prev + 1);
+      setConfirmPinInputs(['', '', '', '', '', '']);
+      setTimeout(() => {
+        const firstConfirm = document.getElementById('confirm-pin-0');
+        if (firstConfirm) firstConfirm.focus();
+      }, 50);
+      return;
+    }
+
+    if (!handleSetupKey) return;
+    setIsSettingUp(true);
+    setSetupError(null);
+    const success = await handleSetupKey(primaryKey);
+    setIsSettingUp(false);
+    if (success) {
+      alert('보안키가 성공적으로 설정되었습니다! 시나리오 저장을 위해 데이터 종단간 암호화(E2EE)가 활성화되었습니다.');
+    } else {
+      alert('보안키 설정에 실패했습니다.');
+    }
+  };
 
   const handleSendKakao = async () => {
     if (!localKey || !handleSendKeyToKakao) return;
@@ -132,26 +228,20 @@ export const E2eeKeyManager: React.FC<E2eeKeyManagerProps> = ({
 
   // 0. Setup key modal (Required for first-time login)
   if (needsKeySetup) {
-    const handleSetupSubmit = async (e: React.FormEvent) => {
+    const handleFormSubmit = (e: React.FormEvent) => {
       e.preventDefault();
-      const p1 = setupKeyInput.trim();
-      const p2 = setupKeyConfirmInput.trim();
-      if (p1.length !== 6 || !/^\d+$/.test(p1)) {
-        alert('보안 비밀번호는 숫자 6자리여야 합니다.');
-        return;
-      }
-      if (p1 !== p2) {
-        alert('입력하신 두 비밀번호가 일치하지 않습니다.');
-        return;
-      }
-      if (!handleSetupKey) return;
-      setIsSettingUp(true);
-      const success = await handleSetupKey(p1);
-      setIsSettingUp(false);
-      if (success) {
-        alert('보안 비밀번호가 성공적으로 설정되었습니다! 시나리오 저장을 위해 데이터 종단간 암호화(E2EE)가 활성화되었습니다.');
+      if (setupStep === 1) {
+        const entered = setupPinInputs.join('').trim();
+        if (entered.length === 6) {
+          setSetupStep(2);
+          setTimeout(() => {
+            const firstConfirm = document.getElementById('confirm-pin-0');
+            if (firstConfirm) firstConfirm.focus();
+          }, 50);
+        }
       } else {
-        alert('비밀번호 설정에 실패했습니다.');
+        const entered = confirmPinInputs.join('').trim();
+        triggerSetupComplete(entered);
       }
     };
 
@@ -182,91 +272,132 @@ export const E2eeKeyManager: React.FC<E2eeKeyManagerProps> = ({
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.25rem', color: 'var(--primary, #3b82f6)' }}>
             <Key size={28} />
-            <h2 style={{ fontSize: '1.25rem', fontWeight: 700, margin: 0 }}>데이터 보안 비밀번호 설정</h2>
+            <h2 style={{ fontSize: '1.25rem', fontWeight: 700, margin: 0 }}>보안키 설정</h2>
           </div>
           
           <p style={{ fontSize: '0.9rem', lineHeight: 1.6, color: 'var(--foreground-muted, #94a3b8)', marginBottom: '1.5rem' }}>
-            은퇴 자산 시뮬레이션 데이터를 안전하게 암호화하기 위해 **숫자 6자리 보안 비밀번호**를 설정해 주세요.
+            은퇴 자산 시뮬레이션 데이터를 안전하게 암호화하기 위해 **숫자 6자리 보안키**를 설정해 주세요.
             <br />
-            이 비밀번호는 서버에 절대 저장되지 않으므로, 기기를 변경하거나 데이터를 복구할 때를 위해 반드시 기억해 두어야 합니다.
+            설정이 완료되면 회원님의 카카오톡 나와의 채팅방으로 설정된 보안키가 자동 전송됩니다.
+            <br />
+            이 보안키는 서버에 저장되지 않으므로, 기기를 변경하거나 데이터를 복구할 때를 위해 안전하게 보관해 주셔야 합니다.
           </p>
 
-          <form onSubmit={handleSetupSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.2rem' }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-              <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--foreground-muted)' }}>숫자 6자리 입력</label>
-              <input
-                type="password"
-                maxLength={6}
-                pattern="\d{6}"
-                placeholder="숫자 6자리 입력 (예: 123456)"
-                value={setupKeyInput}
-                onChange={(e) => setSetupKeyInput(e.target.value.replace(/\D/g, ''))}
-                required
+          <form onSubmit={handleFormSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.2rem' }}>
+            {setupStep === 1 ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--foreground-muted)' }}>숫자 6자리 입력</label>
+                <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', margin: '10px 0' }}>
+                  {[0, 1, 2, 3, 4, 5].map((idx) => (
+                    <input
+                      key={idx}
+                      id={`setup-pin-${idx}`}
+                      type="password"
+                      maxLength={1}
+                      value={setupPinInputs[idx]}
+                      onChange={(e) => handleSetupPinChange(idx, e.target.value, false)}
+                      onKeyDown={(e) => handleSetupKeyDown(idx, e, false)}
+                      disabled={isSettingUp}
+                      style={{
+                        width: '45px',
+                        height: '45px',
+                        backgroundColor: 'rgba(0, 0, 0, 0.2)',
+                        border: '1px solid var(--card-border)',
+                        borderRadius: '8px',
+                        color: 'var(--foreground)',
+                        fontSize: '18px',
+                        fontWeight: 'bold',
+                        textAlign: 'center',
+                        outline: 'none',
+                      }}
+                    />
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--foreground-muted)' }}>보안키 재입력 (확인)</label>
+                <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', margin: '10px 0' }}>
+                  {[0, 1, 2, 3, 4, 5].map((idx) => (
+                    <input
+                      key={idx}
+                      id={`confirm-pin-${idx}`}
+                      type="password"
+                      maxLength={1}
+                      value={confirmPinInputs[idx]}
+                      onChange={(e) => handleSetupPinChange(idx, e.target.value, true)}
+                      onKeyDown={(e) => handleSetupKeyDown(idx, e, true)}
+                      disabled={isSettingUp}
+                      style={{
+                        width: '45px',
+                        height: '45px',
+                        backgroundColor: 'rgba(0, 0, 0, 0.2)',
+                        border: '1px solid var(--card-border)',
+                        borderRadius: '8px',
+                        color: 'var(--foreground)',
+                        fontSize: '18px',
+                        fontWeight: 'bold',
+                        textAlign: 'center',
+                        outline: 'none',
+                      }}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {setupError && (
+              <div style={{ color: 'var(--danger, #EF4444)', fontSize: '0.8rem', textAlign: 'center', fontWeight: '500' }}>
+                {setupError}
+              </div>
+            )}
+
+            {isSettingUp && (
+              <div style={{ 
+                display: 'flex', 
+                justifyContent: 'center', 
+                alignItems: 'center', 
+                gap: '8px', 
+                color: 'var(--primary, #3b82f6)', 
+                fontSize: '0.9rem', 
+                margin: '10px 0',
+                fontWeight: 600
+              }}>
+                <RefreshCw style={{ animation: 'spin 1s linear infinite' }} size={16} />
+                <span>보안키 설정 중...</span>
+              </div>
+            )}
+
+            {setupStep === 2 && setupMismatches >= 3 && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSetupStep(1);
+                  setSetupPinInputs(['', '', '', '', '', '']);
+                  setConfirmPinInputs(['', '', '', '', '', '']);
+                  setSetupMismatches(0);
+                  setSetupError(null);
+                  setTimeout(() => {
+                    const firstInput = document.getElementById('setup-pin-0');
+                    if (firstInput) firstInput.focus();
+                  }, 50);
+                }}
                 style={{
                   width: '100%',
                   padding: '0.75rem',
-                  backgroundColor: 'rgba(0, 0, 0, 0.2)',
-                  border: '1px solid var(--card-border)',
+                  backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                  border: '1px solid var(--card-border, #334155)',
                   borderRadius: '8px',
-                  color: 'var(--foreground)',
+                  color: 'var(--foreground, #fff)',
                   fontSize: '0.9rem',
-                  fontFamily: 'monospace',
-                  letterSpacing: '0.5em',
-                  textAlign: 'center',
-                  outline: 'none'
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  marginTop: '5px'
                 }}
-              />
-            </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-              <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--foreground-muted)' }}>비밀번호 확인 입력</label>
-              <input
-                type="password"
-                maxLength={6}
-                pattern="\d{6}"
-                placeholder="동일하게 한 번 더 입력"
-                value={setupKeyConfirmInput}
-                onChange={(e) => setSetupKeyConfirmInput(e.target.value.replace(/\D/g, ''))}
-                required
-                style={{
-                  width: '100%',
-                  padding: '0.75rem',
-                  backgroundColor: 'rgba(0, 0, 0, 0.2)',
-                  border: '1px solid var(--card-border)',
-                  borderRadius: '8px',
-                  color: 'var(--foreground)',
-                  fontSize: '0.9rem',
-                  fontFamily: 'monospace',
-                  letterSpacing: '0.5em',
-                  textAlign: 'center',
-                  outline: 'none'
-                }}
-              />
-            </div>
-
-            <button
-              type="submit"
-              disabled={isSettingUp}
-              style={{
-                width: '100%',
-                padding: '0.75rem',
-                backgroundColor: 'var(--primary, #3b82f6)',
-                border: 'none',
-                borderRadius: '8px',
-                color: '#fff',
-                fontSize: '0.9rem',
-                fontWeight: 600,
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '0.5rem',
-                opacity: isSettingUp ? 0.7 : 1
-              }}
-            >
-              <Key size={16} />
-              보안 비밀번호 설정 완료
-            </button>
+              >
+                처음부터 입력
+              </button>
+            )}
           </form>
         </div>
       </div>
