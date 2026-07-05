@@ -50,15 +50,15 @@
   border-radius: 10px;
   cursor: pointer;
   border: 1px solid var(--card-border);
-  background: rgba(255, 255, 255, 0.02);
+  background: var(--input-bg);
   color: var(--foreground-muted);
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   text-align: center;
 }
 
 .presetBtn:hover {
-  background: rgba(255, 255, 255, 0.06);
-  border-color: rgba(255, 255, 255, 0.15);
+  background: var(--input-bg-focus);
+  border-color: var(--primary-light);
   color: var(--foreground);
   transform: translateY(-1px);
 }
