@@ -80,6 +80,11 @@
   --input-border: rgba(255, 255, 255, 0.08);
   --input-border-hover: rgba(255, 255, 255, 0.15);
   --input-bg-focus: rgba(99, 102, 241, 0.05);
+  --summary-bg: rgba(255, 255, 255, 0.015);
+  --summary-bg-hover: rgba(255, 255, 255, 0.035);
+  --summary-border: rgba(255, 255, 255, 0.03);
+  --summary-border-hover: rgba(255, 255, 255, 0.06);
+  --asset-card-bg: rgba(255, 255, 255, 0.02);
 }
 
 :root[data-theme="light"] {
@@ -144,6 +149,11 @@
   --input-border: rgba(15, 23, 42, 0.28);
   --input-border-hover: rgba(99, 102, 241, 0.45);
   --input-bg-focus: rgba(99, 102, 241, 0.04);
+  --summary-bg: rgba(15, 23, 42, 0.02);
+  --summary-bg-hover: rgba(15, 23, 42, 0.04);
+  --summary-border: rgba(15, 23, 42, 0.12);
+  --summary-border-hover: rgba(15, 23, 42, 0.22);
+  --asset-card-bg: rgba(15, 23, 42, 0.015);
 }
 
 * {
