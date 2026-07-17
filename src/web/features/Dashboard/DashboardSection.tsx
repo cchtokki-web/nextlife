@@ -7,7 +7,6 @@ import { YearlyChart } from './YearlyChart';
 import { HeroSummaryCard } from './HeroSummaryCard';
 import { CoreMetricsCards } from './CoreMetricsCards';
 import { AiAdvisorCard } from './AiAdvisorCard';
-import { ScenarioComparison, ComparisonScenario } from './ScenarioComparison';
 import styles from './Dashboard.module.css';
 import { AlertTriangle, TrendingDown, Target, Zap, Award, Calculator } from 'lucide-react';
 import {
@@ -209,30 +208,7 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({ params: rawP
   // New Data Extractions
   const assetAt60 = yearlyResults.find(r => r.age === 60)?.totalAssets || 0;
   const isMonthlyTargetPossible = result.depletionAge === null || result.depletionAge >= params.userProfile.expectancy;
-  const expectedAssetAt85 = yearlyResults.find(r => r.age === 85)?.totalAssets || 0;
 
-  const currentScenario: ComparisonScenario = {
-    id: 'current',
-    name: '현재 계획',
-    score: result.retirementScore,
-    expectedAssetAt85: expectedAssetAt85
-  };
-
-  // Mock alternative scenarios for demonstration
-  const alternativeScenarios: ComparisonScenario[] = [
-    {
-      id: 'alt1',
-      name: '매월 투자금 50만원 증가',
-      score: Math.min(100, result.retirementScore + 22),
-      expectedAssetAt85: expectedAssetAt85 + 300000000
-    },
-    {
-      id: 'alt2',
-      name: '은퇴 시기 2년 연기',
-      score: Math.min(100, result.retirementScore + 28),
-      expectedAssetAt85: expectedAssetAt85 + 400000000
-    }
-  ];
 
   return (
     <div className={styles.container}>
@@ -260,7 +236,14 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({ params: rawP
         </div>
       )}
 
-      <HeroSummaryCard score={result.retirementScore} expectancyAge={params.userProfile.expectancy} depletionAge={result.depletionAge} />
+      <HeroSummaryCard 
+        score={result.retirementScore} 
+        expectancyAge={params.userProfile.expectancy} 
+        depletionAge={result.depletionAge} 
+        monthlyTarget={params.spendingStrategy === 'max_sustainable' && result.calculatedTargetSpending ? result.calculatedTargetSpending : params.userProfile.targetMonthlySpending}
+        isPro={isPro}
+        userProfile={params.userProfile}
+      />
 
       <CoreMetricsCards 
         depletionAge={result.depletionAge}
@@ -272,20 +255,7 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({ params: rawP
         calculatedTargetSpending={result.calculatedTargetSpending}
       />
 
-      <AiAdvisorCard 
-        score={result.retirementScore}
-        monthlyTarget={params.userProfile.targetMonthlySpending}
-        formatValue={formatValue}
-        isPro={isPro}
-        userProfile={params.userProfile}
-        depletionAge={result.depletionAge}
-      />
 
-      <ScenarioComparison 
-        currentScenario={currentScenario}
-        alternativeScenarios={alternativeScenarios}
-        formatValue={formatValue}
-      />
 
       {/* 2. Tax Comparison Card (Retirement Period Average) */}
       {isPro && (

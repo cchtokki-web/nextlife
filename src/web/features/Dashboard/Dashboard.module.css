@@ -459,3 +459,138 @@
   border: 1px solid rgba(16, 185, 129, 0.2);
   font-weight: 600;
 }
+
+/* AI Tax & Decumulation Section Styles */
+.taxSectionTitle {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--foreground);
+  margin-bottom: 0.25rem;
+}
+
+.taxSectionDesc {
+  font-size: 0.85rem;
+  color: var(--foreground-muted);
+  margin-bottom: 1.5rem;
+}
+
+.decumulationGrid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1.5rem;
+}
+
+@media (min-width: 1024px) {
+  .decumulationGrid {
+    grid-template-columns: 3fr 2fr;
+  }
+}
+
+.flowContainer {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.flowItem {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+  padding: 1rem;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--card-border);
+  border-radius: 16px;
+  position: relative;
+  transition: all 0.2s ease;
+}
+
+.flowItem:hover {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.flowStepBadge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 50%;
+  background: var(--primary-bg);
+  border: 1px solid var(--primary-border);
+  color: var(--primary);
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+
+.flowItemContent {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  flex: 1;
+}
+
+.flowItemTitle {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--foreground);
+}
+
+.flowItemDesc {
+  font-size: 0.8rem;
+  color: var(--foreground-muted);
+  line-height: 1.4;
+}
+
+.arrowIcon {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  color: var(--foreground-muted);
+  opacity: 0.5;
+  height: 0.5rem;
+}
+
+.tipList {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.tipCard {
+  padding: 1rem;
+  border-radius: 16px;
+  border: 1px solid transparent;
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+}
+
+.tipCardGreen {
+  background: rgba(16, 185, 129, 0.04);
+  border-color: rgba(16, 185, 129, 0.1);
+}
+
+.tipCardOrange {
+  background: rgba(245, 158, 11, 0.04);
+  border-color: rgba(245, 158, 11, 0.1);
+}
+
+.tipCardBlue {
+  background: rgba(59, 130, 246, 0.04);
+  border-color: rgba(59, 130, 246, 0.1);
+}
+
+.tipTitle {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--foreground);
+  margin-bottom: 0.2rem;
+}
+
+.tipDesc {
+  font-size: 0.75rem;
+  color: var(--foreground-muted);
+  line-height: 1.4;
+}
+
