@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -8,6 +8,22 @@ import Image from "next/image";
 import styles from "./LoginForm.module.css";
 
 export default function LoginForm() {
+  const isDevMode = process.env.NEXT_PUBLIC_DEV_MODE === 'true';
+
+  useEffect(() => {
+    if (isDevMode) {
+      signIn('credentials', { email: 'dev', password: 'dev', callbackUrl: '/' });
+    }
+  }, [isDevMode]);
+
+  if (isDevMode) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '1rem', color: '#fff', textAlign: 'center' }}>
+        <div className="animate-pulse" style={{ fontSize: '1.2rem', fontWeight: 600 }}>개발 모드 자동 로그인 중...</div>
+      </div>
+    );
+  }
+
   return (
     <div className={`glass animate-fade-in ${styles.loginContainer}`}>
       <div className={styles.logoWrapper}>
