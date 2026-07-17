@@ -529,13 +529,15 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({ params: rawP
                 <span className={styles.flowItemTitle}>은퇴 준비 및 세제 혜택 극대화 시기</span>
                 <span className={styles.flowItemDesc}>
                   {isDepleted ? (
-                    <>
-                      현재 시뮬레이션 결과 <strong style={{ color: '#F87171' }}>{depletionAgeVal}세 자산 고갈</strong>이 발생할 우려가 감지되었습니다. 50대 은퇴 전까지 연금저축/IRP(최대 연 900만원 세액공제) 납입액 및 개인 주식 투자 적립금을 추가 확보하여 기초 은퇴 주머니를 최대한 키워야 합니다.
-                    </>
+                    <span style={{ display: 'block', paddingLeft: '4px' }}>
+                      • 현재 시뮬레이션 결과 <strong style={{ color: '#F87171' }}>{depletionAgeVal}세 자산 고갈</strong> 우려가 감지되었습니다.<br />
+                      • 은퇴 전까지 연금저축/IRP(최대 연 900만원 세액공제) 납입액 및 주식 투자 적립금을 증액하여 기초 자산을 추가 확보하세요.
+                    </span>
                   ) : (
-                    <>
-                      기대 수명인 {params.userProfile.expectancy}세까지 자산 고갈 위험이 발생하지 않는 양호한 궤도입니다. 은퇴 연령인 {retirementAgeVal}세 시점까지 ISA 만기 자금의 연금저축/IRP 이전(이전액의 10%, 최대 300만원 세액공제 한도 적용) 혜택을 이용해 은퇴 자금의 복리 효율을 안정적으로 늘리시기 바랍니다.
-                    </>
+                    <span style={{ display: 'block', paddingLeft: '4px' }}>
+                      • 기대 수명({params.userProfile.expectancy}세)까지 자산 고갈 위험이 발생하지 않는 양호한 궤도입니다.<br />
+                      • 은퇴 연령({retirementAgeVal}세) 시점까지 ISA 만기 자금의 연금 계좌 전환(이전액의 10%, 최대 300만원 추가 세액공제)을 통해 복리 혜택을 극대화하세요.
+                    </span>
                   )}
                 </span>
               </div>
@@ -552,13 +554,16 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({ params: rawP
                 <span className={styles.flowItemTitle}>소득 공백기 대응 및 분리과세 한도 인출 시기</span>
                 <span className={styles.flowItemDesc}>
                   {pensionGapYears > 0 ? (
-                    <>
-                      은퇴 {retirementAgeVal}세부터 국민연금 개시 {firstAgeWithNationalPension}세까지 약 <strong>{pensionGapYears}년의 소득 공백기</strong>가 관측됩니다. 이 시기에는 사적연금을 종합과세(16.5%~)가 되지 않는 연간 <strong>1,500만 원 이하</strong>로 우선 꺼내 쓰시고, 모자란 부분은 일반 주식/예금을 적절히 매도해 세율 상승을 조절해야 합니다.
-                    </>
+                    <span style={{ display: 'block', paddingLeft: '4px' }}>
+                      • 은퇴({retirementAgeVal}세)부터 국민연금 개시({firstAgeWithNationalPension}세)까지 약 <strong>{pensionGapYears}년의 소득 공백기</strong>가 감지되었습니다.<br />
+                      • 이 시기에는 사적연금을 종합과세(16.5%~) 부담이 없는 연간 <strong>1,500만 원 이하</strong> 한도 내에서 수령하세요.<br />
+                      • 부족한 생활비는 일반 금융 계좌의 주식/예금을 매도하여 충당해 종합 세율의 급상승을 예방하세요.
+                    </span>
                   ) : (
-                    <>
-                      은퇴와 동시에 즉시 연금 소득이 확보되므로 소득 공백 위험은 낮습니다. 다만 사적연금(연금저축/IRP)의 연간 인출 합계액이 1,500만 원을 넘어가 종합과세 대상에 포함되지 않도록 매년 인출 규모를 연금 인출 설계 시 주의 깊게 조율하세요.
-                    </>
+                    <span style={{ display: 'block', paddingLeft: '4px' }}>
+                      • 은퇴와 동시에 즉시 연금 소득이 개시되어 소득 공백 위험은 낮습니다.<br />
+                      • 단, 사적연금(연금저축/IRP)의 총 수령액이 연간 1,500만 원 한도를 넘지 않도록 다년도 분산 인출 계획을 세워 종합과세 편입을 예방하세요.
+                    </span>
                   )}
                 </span>
               </div>
@@ -575,13 +580,15 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({ params: rawP
                 <span className={styles.flowItemTitle}>종합소득세 & 건강보험료 자격 방어 시기</span>
                 <span className={styles.flowItemDesc}>
                   {everComprehensiveTax ? (
-                    <>
-                      현재 포트폴리오 상 배당소득이나 사적연금 규모가 크므로 금융소득종합과세(연 2,000만원) 혹은 건강보험료 피부양자 자격 박탈 위험선에 놓여 있습니다. 70대 이후 실질 세후 소득 증대를 위해 금융 자산을 분산하거나, 비과세 분리과세 혜택 자산 위주로 리밸런싱해야 합니다.
-                    </>
+                    <span style={{ display: 'block', paddingLeft: '4px' }}>
+                      • 현재 배당소득이나 연금 규모가 커 금융소득종합과세(연 2,000만원) 또는 건강보험료 피부양자 자격 박탈 리스크가 높습니다.<br />
+                      • 세후 실수령액 증대를 위해 배당 자산을 연금 계좌 내부로 이전하거나 비과세/분리과세 상품 위주로 자산 포트폴리오를 다변화해야 합니다.
+                    </span>
                   ) : (
-                    <>
-                      예상 금융 및 연금소득의 합산액이 건강보험료 피부양자 박탈 기준선(연 2,000만원)을 위협하지 않는 선에서 관리되고 있습니다. 세후 실수령액 극대화를 위해 매월 필요한 수준만 연금 계좌 및 배당주 자산에서 꺼내어 인출 순서에 맞춰 소모하시기 바랍니다.
-                    </>
+                    <span style={{ display: 'block', paddingLeft: '4px' }}>
+                      • 예상 금융 및 연금소득의 합산액이 건강보험료 피부양자 자격 유지선(연 2,000만 원 이하) 내에서 안전하게 관리되고 있습니다.<br />
+                      • 절세 최적화를 위해 매월 필요한 생활비 만큼만 연금 계좌 및 배당주에서 꺼내어 인출 순서 로드맵대로 지출을 관리하세요.
+                    </span>
                   )}
                 </span>
               </div>
