@@ -69,7 +69,7 @@ export default function Home() {
     }
   };
 
-  const isPro = session?.user?.tier === 'pro';
+  const isPro = session?.user?.tier === 'pro' || process.env.NEXT_PUBLIC_DEV_MODE === 'true';
 
   const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(true);
   const [engine] = useState(() => new SimulationEngine());

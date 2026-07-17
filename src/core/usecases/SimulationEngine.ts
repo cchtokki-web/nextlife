@@ -272,10 +272,17 @@ export class SimulationEngine {
       exchangeScenario = 'base', displayCurrency = 'KRW', taxSettings, spendingStrategy
     } = params;
 
-    const currentTaxSettings: TaxSettings = taxSettings || {
-      enableComprehensiveTax: true, enableHealthInsurance: true,
-      usDividendTaxRate: 15, domesticDividendTaxRate: 15.4,
-      comprehensiveTaxRate: 15, healthInsuranceRate: 5,
+    const currentTaxSettings: TaxSettings = {
+      enableComprehensiveTax: true,
+      enableHealthInsurance: true,
+      usDividendTaxRate: 15,
+      domesticDividendTaxRate: 15.4,
+      comprehensiveTaxRate: 15,
+      healthInsuranceRate: 5,
+      enablePrivatePensionTax: true,
+      privatePensionLimit: 15000000,
+      privatePensionExcessTaxRate: 16.5,
+      ...(taxSettings || {}),
     };
 
     const exchangeRate = this.getExchangeRate(baseExchangeRate, exchangeScenario);
@@ -311,6 +318,7 @@ export class SimulationEngine {
       let annualNationalPensionTaxPaid = 0;
       let annualPreTaxTotalIncome = 0;
       let annualRawFinancialIncomeKRW = 0;
+      let annualPrivatePensionPreTaxKRW = 0;
 
       let monthlyTargetSpending = 0;
       if (isRetired && spendingStrategy !== 'dividend_only') {
@@ -434,6 +442,7 @@ export class SimulationEngine {
             monthlyPensionIncomeNetDisplay += this.convertValue(drawAmountNet, pension.currency, displayCurrency, exchangeRate);
             annualPensionTaxPaid += this.convertValue(drawAmountTax, pension.currency, displayCurrency, exchangeRate);
             annualPreTaxTotalIncome += this.convertValue(drawAmountRaw, pension.currency, displayCurrency, exchangeRate);
+            annualPrivatePensionPreTaxKRW += this.convertValue(drawAmountRaw, pension.currency, 'KRW', exchangeRate);
           }
         });
         annualPrivatePensionIncome += monthlyPensionIncomeNetDisplay;
@@ -499,6 +508,32 @@ export class SimulationEngine {
             remainingTax -= deduct;
             if (remainingTax <= 0) break;
         }
+      }
+
+      // Private pension high tax threshold adjustment
+      if (currentTaxSettings.enablePrivatePensionTax && annualPrivatePensionPreTaxKRW > (currentTaxSettings.privatePensionLimit ?? 15000000)) {
+        const excessRate = currentTaxSettings.privatePensionExcessTaxRate ?? 16.5;
+        const totalPensionTaxNeededDisplay = this.convertValue(annualPrivatePensionPreTaxKRW * (excessRate / 100), 'KRW', displayCurrency, exchangeRate);
+        const pensionTaxAdjustmentDisplay = Math.max(0, totalPensionTaxNeededDisplay - annualPensionTaxPaid);
+        
+        let remainingTax = pensionTaxAdjustmentDisplay;
+        for (const asset of activeAssets) {
+          const assetValueDisplay = this.convertValue(asset.currentValue, asset.currency, displayCurrency, exchangeRate);
+          const deduct = Math.min(remainingTax, assetValueDisplay);
+          asset.currentValue -= this.convertValue(deduct, displayCurrency, asset.currency, exchangeRate);
+          remainingTax -= deduct;
+          if (remainingTax <= 0) break;
+        }
+        if (remainingTax > 0) {
+          for (const pension of activePensions) {
+            const pensionValueDisplay = this.convertValue(pension.currentBalance, pension.currency, displayCurrency, exchangeRate);
+            const deduct = Math.min(remainingTax, pensionValueDisplay);
+            pension.currentBalance -= this.convertValue(deduct, displayCurrency, pension.currency, exchangeRate);
+            remainingTax -= deduct;
+            if (remainingTax <= 0) break;
+          }
+        }
+        annualPensionTaxPaid += pensionTaxAdjustmentDisplay;
       }
 
       let stockAssetsDisplay = activeAssets.reduce((sum, a) => sum + this.convertValue(a.currentValue, a.currency, displayCurrency, exchangeRate), 0);

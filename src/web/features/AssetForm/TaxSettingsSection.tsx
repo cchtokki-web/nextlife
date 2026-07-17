@@ -13,13 +13,17 @@ interface TaxSettingsSectionProps {
 
 export const TaxSettingsSection: React.FC<TaxSettingsSectionProps> = ({ params, onChangeParams }) => {
   const [isExpanded, setIsExpanded] = useState(true);
-  const currentTaxSettings: TaxSettings = params.taxSettings || {
+  const currentTaxSettings: TaxSettings = {
     enableComprehensiveTax: true,
     enableHealthInsurance: true,
     usDividendTaxRate: 15,
     domesticDividendTaxRate: 15.4,
     comprehensiveTaxRate: 15,
     healthInsuranceRate: 5,
+    enablePrivatePensionTax: true,
+    privatePensionLimit: 15000000,
+    privatePensionExcessTaxRate: 16.5,
+    ...(params.taxSettings || {}),
   };
 
   const handleUpdate = (updates: Partial<TaxSettings>) => {
@@ -100,6 +104,45 @@ export const TaxSettingsSection: React.FC<TaxSettingsSectionProps> = ({ params, 
           step="0.1"
           value={currentTaxSettings.healthInsuranceRate}
           onChange={(e) => handleUpdate({ healthInsuranceRate: Number(e.target.value) })}
+          suffixText="%"
+        />
+
+        <SelectField
+          label="사적연금 고세율 과세 반영"
+          value={currentTaxSettings.enablePrivatePensionTax ? 'true' : 'false'}
+          onChange={(e) => handleUpdate({ enablePrivatePensionTax: e.target.value === 'true' })}
+          options={[
+            { value: 'true', label: '반영 - 한도 초과 시 고세율 적용' },
+            { value: 'false', label: '미반영 - 연령별 저율과세 유지' },
+          ]}
+        />
+
+        <InputField
+          label="사적연금 저율과세 한도 (연간)"
+          type="text"
+          value={currentTaxSettings.privatePensionLimit === 0 ? '0' : currentTaxSettings.privatePensionLimit?.toLocaleString()}
+          onChange={(e) => {
+            const rawValue = e.target.value.replace(/,/g, '');
+            const numValue = rawValue === '' ? 0 : Number(rawValue);
+            if (!isNaN(numValue)) {
+              handleUpdate({ privatePensionLimit: numValue });
+            }
+          }}
+          onStepUp={() => {
+            handleUpdate({ privatePensionLimit: (currentTaxSettings.privatePensionLimit ?? 15000000) + 1000000 });
+          }}
+          onStepDown={() => {
+            handleUpdate({ privatePensionLimit: Math.max(0, (currentTaxSettings.privatePensionLimit ?? 15000000) - 1000000) });
+          }}
+          suffixText="원"
+        />
+
+        <InputField
+          label="사적연금 한도 초과 시 세율"
+          type="number"
+          step="0.1"
+          value={currentTaxSettings.privatePensionExcessTaxRate}
+          onChange={(e) => handleUpdate({ privatePensionExcessTaxRate: Number(e.target.value) })}
           suffixText="%"
         />
       </div>

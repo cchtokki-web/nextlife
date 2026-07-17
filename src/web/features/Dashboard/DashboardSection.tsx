@@ -223,9 +223,10 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({ params: rawP
   // 3. Find if the user ever pays comprehensive tax or has warning
   const everComprehensiveTax = yearlyResults.some(r => r.comprehensiveTaxPaid > 0 || r.hasTaxWarning);
   
-  // 4. Calculate high-tax pension ages (where private pension exceeds 1,500万 KRW limit, i.e., 15,000,000 KRW)
+  // 4. Calculate high-tax pension ages (where private pension exceeds configured limit)
+  const pensionLimit = params.taxSettings?.privatePensionLimit ?? 15000000;
   const highPrivatePensionAges = yearlyResults
-    .filter(r => r.privatePensionIncome > 15000000)
+    .filter(r => (r.privatePensionIncome + r.pensionTaxPaid) > pensionLimit)
     .map(r => r.age);
   const hasHighPrivatePensionRisk = highPrivatePensionAges.length > 0;
 
@@ -284,33 +285,7 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({ params: rawP
 
 
 
-      {/* 2. Tax Comparison Card (Retirement Period Average) */}
-      {isPro && (
-        <GlassCard className={styles.chartCard} style={{ padding: '1.5rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', marginBottom: '1rem' }}>
-            <Calculator size={20} color="var(--primary)" style={{ marginRight: '0.5rem' }} />
-            <span className={styles.chartTitle} style={{ margin: 0 }}>은퇴기(은퇴 연령 ~ 기대 수명) 평균 세금 및 건강보험료 분석</span>
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '1rem', textAlign: 'center' }}>
-            <div style={{ padding: '1rem', background: 'rgba(255,255,255,0.03)', borderRadius: '12px' }}>
-              <div style={{ fontSize: '0.85rem', color: 'var(--foreground-muted)', marginBottom: '0.5rem' }}>연 평균 세전 소득</div>
-              <div style={{ fontSize: '1.2rem', fontWeight: 700, color: 'white' }}>{formatValue(avgPreTaxIncome)}</div>
-            </div>
-            <div style={{ padding: '1rem', background: 'rgba(239, 68, 68, 0.05)', border: '1px solid rgba(239, 68, 68, 0.2)', borderRadius: '12px' }}>
-              <div style={{ fontSize: '0.85rem', color: '#FCA5A5', marginBottom: '0.5rem' }}>연 평균 세금 차감</div>
-              <div style={{ fontSize: '1.2rem', fontWeight: 700, color: '#EF4444' }}>- {formatValue(avgTotalTax)}</div>
-            </div>
-            <div style={{ padding: '1rem', background: 'rgba(245, 158, 11, 0.05)', border: '1px solid rgba(245, 158, 11, 0.2)', borderRadius: '12px' }}>
-              <div style={{ fontSize: '0.85rem', color: '#FCD34D', marginBottom: '0.5rem' }}>건보료 추가 차감</div>
-              <div style={{ fontSize: '1.2rem', fontWeight: 700, color: '#F59E0B' }}>- {formatValue(avgHealthInsurance)}</div>
-            </div>
-            <div style={{ padding: '1rem', background: 'rgba(16, 185, 129, 0.05)', border: '1px solid rgba(16, 185, 129, 0.2)', borderRadius: '12px' }}>
-              <div style={{ fontSize: '0.85rem', color: '#6EE7B7', marginBottom: '0.5rem' }}>연 평균 세후 실수령액</div>
-              <div style={{ fontSize: '1.2rem', fontWeight: 700, color: '#10B981' }}>{formatValue(avgNetIncome)}</div>
-            </div>
-          </div>
-        </GlassCard>
-      )}
+
 
 
       {/* 3. Asset Projection Line Chart */}
@@ -599,16 +574,16 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({ params: rawP
               <AlertTriangle size={18} color={hasHighPrivatePensionRisk ? '#EF4444' : '#F59E0B'} style={{ marginTop: '0.1rem', flexShrink: 0 }} />
               <div>
                 <span className={styles.tipTitle} style={{ color: hasHighPrivatePensionRisk ? '#F87171' : 'inherit' }}>
-                  사적연금 연 1,500만 원 초과 위험 {hasHighPrivatePensionRisk ? '(발생 위험 높음)' : '(안정 범위)'}
+                  사적연금 연 {formatShortValue(pensionLimit)} 초과 위험 {hasHighPrivatePensionRisk ? '(발생 위험 높음)' : '(안정 범위)'}
                 </span>
                 <p className={styles.tipDesc}>
                   {hasHighPrivatePensionRisk ? (
                     <>
-                      시뮬레이션 분석 결과, 연금 수령 중 연간 1,500만 원 초과 연금 소득을 수령하는 연도가 다수 관측됩니다. 초과 수령액 전체에 고세율 종합과세가 적용되거나 16.5% 분리과세율이 붙어 실수령액이 깎이므로 수령 기간 연장을 검토해야 합니다.
+                      시뮬레이션 분석 결과, 연금 수령 중 연간 {formatShortValue(pensionLimit)} 초과 연금 소득을 수령하는 연도가 다수 관측됩니다. 초과 수령액 전체에 고세율 종합과세가 적용되거나 {params.taxSettings?.privatePensionExcessTaxRate ?? 16.5}% 분리과세율이 붙어 실수령액이 깎이므로 수령 기간 연장을 검토해야 합니다.
                     </>
                   ) : (
                     <>
-                      연간 사적연금 소득이 1,500만 원 이하의 저율 연금소득세(3.3%~5.5%) 안전 범위 내에 안착해 있습니다. 현재의 분산 인출 계획을 유지하시면 절세 효과가 극대화됩니다.
+                      연간 사적연금 소득이 {formatShortValue(pensionLimit)} 이하의 저율 연금소득세(3.3%~5.5%) 안전 범위 내에 안착해 있습니다. 현재의 분산 인출 계획을 유지하시면 절세 효과가 극대화됩니다.
                     </>
                   )}
                 </p>

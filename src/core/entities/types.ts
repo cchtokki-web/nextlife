@@ -61,6 +61,9 @@ export interface TaxSettings {
   domesticDividendTaxRate: number; // % (default: 15.4)
   comprehensiveTaxRate: number; // % (초과분 단순화 세율, default: 15)
   healthInsuranceRate: number; // % (초과분 건보료 비율, default: 5)
+  enablePrivatePensionTax?: boolean; // 사적연금 고세율 과세 반영 여부 (default: true)
+  privatePensionLimit?: number; // 사적연금 저율과세 한도 (원, default: 15000000)
+  privatePensionExcessTaxRate?: number; // 한도 초과 시 세율 (%, default: 16.5)
 }
 
 export type IsaAccountType = 'general' | 'low_income';
