@@ -92,7 +92,13 @@ const ScenarioCard: React.FC<ScenarioCardProps> = ({ title, subtitle, highlightC
         {isBlurredOverlay && (
           <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10 }}>
             <button 
-              onClick={() => signIn('kakao', { callbackUrl: '/' })}
+              onClick={() => {
+                if (process.env.NEXT_PUBLIC_DEV_MODE === 'true') {
+                  signIn('credentials', { email: 'dev', password: 'dev', callbackUrl: '/' });
+                } else {
+                  signIn('kakao', { callbackUrl: '/' });
+                }
+              }}
               style={{ 
                 backgroundColor: '#FEE500', 
                 color: '#191919', 
