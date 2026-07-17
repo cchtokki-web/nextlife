@@ -89,6 +89,22 @@ export const authOptions: NextAuthOptions = {
         }
       }
       return session;
+    },
+    async redirect({ url, baseUrl }) {
+      if (process.env.NEXT_PUBLIC_DEV_MODE === 'true') {
+        if (url.startsWith("/")) return url;
+        try {
+          const parsedUrl = new URL(url);
+          if (parsedUrl.hostname === 'localhost' || parsedUrl.hostname === '127.0.0.1') {
+            return url;
+          }
+        } catch (e) {
+          // ignore
+        }
+      }
+      if (url.startsWith("/")) return `${baseUrl}${url}`;
+      else if (new URL(url).origin === baseUrl) return url;
+      return baseUrl;
     }
   },
   pages: {
