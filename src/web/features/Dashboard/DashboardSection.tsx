@@ -478,7 +478,102 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({ params: rawP
         </div>
       </GlassCard>
 
-      {/* 5. Yearly Detailed Chart */}
+      {/* 5. AI 절세 및 자산 인출 가이드 (AI Tax & Decumulation Guide) */}
+      <GlassCard className={styles.chartCard} style={{ padding: '2rem', marginTop: '1.5rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', marginBottom: '0.5rem' }}>
+          <Zap size={22} color="var(--primary)" style={{ marginRight: '0.6rem' }} />
+          <h3 className={styles.taxSectionTitle} style={{ margin: 0 }}>AI 절세 및 자산 인출 가이드</h3>
+        </div>
+        <p className={styles.taxSectionDesc}>
+          은퇴 후 자산 가치를 극대화하고 불필요한 세금을 최소화하는 최적의 인출 전략과 절세 팁입니다.
+        </p>
+
+        <div className={styles.decumulationGrid}>
+          {/* Left: Withdrawal Order Flowchart */}
+          <div className={styles.flowContainer}>
+            <span style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--foreground-muted)', marginBottom: '0.25rem' }}>
+              💡 추천하는 은퇴 자산 인출 순서 (세금 최소화 로드맵)
+            </span>
+            
+            <div className={styles.flowItem}>
+              <div className={styles.flowStepBadge}>1</div>
+              <div className={styles.flowItemContent}>
+                <span className={styles.flowItemTitle}>일반 금융 계좌 & 주식 자산 우선 인출</span>
+                <span className={styles.flowItemDesc}>
+                  일반 과세 계좌의 예적금이나 국내 상장 주식을 먼저 꺼내어 소비합니다. 세금 이연 혜택이 있는 연금 계좌의 인출을 최대한 늦춰 복리 효과를 오래 누립니다.
+                </span>
+              </div>
+            </div>
+
+            <div className={styles.arrowIcon}>
+              <span style={{ fontSize: '1.2rem' }}>↓</span>
+            </div>
+
+            <div className={styles.flowItem}>
+              <div className={styles.flowStepBadge}>2</div>
+              <div className={styles.flowItemContent}>
+                <span className={styles.flowItemTitle}>사적연금(연금저축/IRP) 한도 내 인출</span>
+                <span className={styles.flowItemDesc}>
+                  연간 사적연금 수령액 합계액을 <strong>1,500만 원 이하</strong>로 유지하며 인출합니다. 이 한도 내에서는 종합과세되지 않고 3.3% ~ 5.5%의 저율 연금소득세만 부과됩니다.
+                </span>
+              </div>
+            </div>
+
+            <div className={styles.arrowIcon}>
+              <span style={{ fontSize: '1.2rem' }}>↓</span>
+            </div>
+
+            <div className={styles.flowItem}>
+              <div className={styles.flowStepBadge}>3</div>
+              <div className={styles.flowItemContent}>
+                <span className={styles.flowItemTitle}>ISA(개인자산관리계좌) 만기 자금 및 비과세 자산</span>
+                <span className={styles.flowItemDesc}>
+                  ISA 만기 시 연금저축/IRP로 추가 납입하여 세액공제 한도를 늘리거나, 비과세 분리과세 혜택이 있는 저축성 보험 및 국채를 통해 실질 가치를 보전하며 인출합니다.
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Right: Tax Alerts and Rebalancing Tips */}
+          <div className={styles.tipList}>
+            <span style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--foreground-muted)', marginBottom: '0.25rem' }}>
+              ⚠️ 주의해야 할 은퇴 소득 과세 임계점
+            </span>
+
+            <div className={`${styles.tipCard} ${styles.tipCardOrange}`}>
+              <AlertTriangle size={18} color="#F59E0B" style={{ marginTop: '0.1rem', flexShrink: 0 }} />
+              <div>
+                <span className={styles.tipTitle}>사적연금 연 1,500만 원 초과 과세</span>
+                <p className={styles.tipDesc}>
+                  연금저축과 IRP 수령액이 연간 1,500만 원을 초과할 경우, 수령액 전체에 대해 종합과세 대상이 되거나 16.5%의 분리과세율을 적용받으므로 인출 연도와 금액을 고르게 분산해야 합니다.
+                </p>
+              </div>
+            </div>
+
+            <div className={`${styles.tipCard} ${styles.tipCardBlue}`}>
+              <Calculator size={18} color="#3B82F6" style={{ marginTop: '0.1rem', flexShrink: 0 }} />
+              <div>
+                <span className={styles.tipTitle}>금융소득종합과세 한도 연 2,000만 원</span>
+                <p className={styles.tipDesc}>
+                  이자 및 배당소득의 연간 합계액이 2,000만 원을 넘으면 초과분이 종합과세(최대 45% 누진세율)에 반영됩니다. 배당이 많이 나오는 자산은 가능한 연금 계좌 내부에서 운용하세요.
+                </p>
+              </div>
+            </div>
+
+            <div className={`${styles.tipCard} ${styles.tipCardGreen}`}>
+              <Zap size={18} color="#10B981" style={{ marginTop: '0.1rem', flexShrink: 0 }} />
+              <div>
+                <span className={styles.tipTitle}>건강보험료 지역가입자 피부양자 자격</span>
+                <p className={styles.tipDesc}>
+                  연간 합산 소득(국민연금, 배당 등)이 2,000만 원을 초과하면 피부양자 자격이 박탈되어 지역건강보험료 부담이 크게 발생할 수 있습니다. 비과세/분리과세 자산 중심의 재배치가 필요합니다.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </GlassCard>
+
+      {/* 6. Yearly Detailed Chart */}
       {isPro && <YearlyChart params={params} result={result} />}
 
     </div>
