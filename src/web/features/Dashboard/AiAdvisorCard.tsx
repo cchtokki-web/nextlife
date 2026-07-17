@@ -196,7 +196,7 @@ export const AiAdvisorCard: React.FC<AiAdvisorCardProps> = ({ score, monthlyTarg
           </div>
 
           <AnimatePresence>
-            {isStale && !isRuleBased && (
+            {isStale && !isRuleBased && !isLoading && (
               <motion.div  
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
