@@ -146,7 +146,7 @@ export const AiAdvisorCard: React.FC<AiAdvisorCardProps> = ({ score, monthlyTarg
       <div className={styles.aiCard}>
 
         <div className={styles.aiContent} style={{ position: 'relative' }}>
-          <div style={{ filter: isStale ? 'blur(4px)' : 'none', transition: 'filter 0.3s ease', opacity: isStale ? 0.6 : 1 }}>
+          <div style={{ filter: (isStale && !isLoading) ? 'blur(4px)' : 'none', transition: 'filter 0.3s ease', opacity: (isStale && !isLoading) ? 0.6 : 1 }}>
             {error ? (
               <p className={styles.aiText} style={{ color: 'var(--error)' }}>{error}</p>
             ) : advice === '' && isLoading ? (
