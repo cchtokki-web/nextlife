@@ -12,7 +12,8 @@ export default function LoginForm() {
 
   useEffect(() => {
     if (isDevMode) {
-      signIn('credentials', { email: 'dev', password: 'dev', callbackUrl: '/' });
+      const callbackUrl = typeof window !== 'undefined' ? `${window.location.origin}/` : '/';
+      signIn('credentials', { email: 'dev', password: 'dev', callbackUrl });
     }
   }, [isDevMode]);
 
@@ -45,7 +46,8 @@ export default function LoginForm() {
           type="button"
           onClick={() => {
             if (process.env.NEXT_PUBLIC_DEV_MODE === 'true') {
-              signIn('credentials', { email: 'dev', password: 'dev', callbackUrl: '/' });
+              const callbackUrl = typeof window !== 'undefined' ? `${window.location.origin}/` : '/';
+              signIn('credentials', { email: 'dev', password: 'dev', callbackUrl });
             } else {
               signIn('kakao', { callbackUrl: '/' });
             }

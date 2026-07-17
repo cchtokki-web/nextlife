@@ -94,7 +94,8 @@ const ScenarioCard: React.FC<ScenarioCardProps> = ({ title, subtitle, highlightC
             <button 
               onClick={() => {
                 if (process.env.NEXT_PUBLIC_DEV_MODE === 'true') {
-                  signIn('credentials', { email: 'dev', password: 'dev', callbackUrl: '/' });
+                  const callbackUrl = typeof window !== 'undefined' ? `${window.location.origin}/` : '/';
+                  signIn('credentials', { email: 'dev', password: 'dev', callbackUrl });
                 } else {
                   signIn('kakao', { callbackUrl: '/' });
                 }
