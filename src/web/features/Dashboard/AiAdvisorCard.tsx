@@ -122,10 +122,10 @@ export const AiAdvisorCard: React.FC<AiAdvisorCardProps> = ({ score, monthlyTarg
   }, [triggerFetch]);
 
   useEffect(() => {
-    if (isStale && isRuleBased) {
+    if (isStale && (isRuleBased || advice === '')) {
       setTriggerFetch(prev => prev + 1);
     }
-  }, [isStale, isRuleBased]);
+  }, [isStale, isRuleBased, advice]);
 
   let displayAdvice = advice;
   const emptyThoughtTag = "<|channel>thought\n<channel|>";
