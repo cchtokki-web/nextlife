@@ -217,4 +217,31 @@ describe('SimulationEngine TDD Tests', () => {
     // 51세(현재나이)에 FIRE가 불가능하고 전체 기간 중 소득이 생활비를 충족하지 못하므로 null이어야 함
     expect(zeroResult.fireAge).toBeNull();
   });
+
+  test('사적연금 저율과세 한도 내 인출 활성화 시 연도별 수령액이 한도를 넘지 않는지 검증', () => {
+    const engine = new SimulationEngine();
+    const pensionLimit = 15000000; // 연간 1500만 원
+    const paramsWithLimit: SimulationParams = {
+      ...baseParams,
+      taxSettings: {
+        enableComprehensiveTax: true,
+        enableHealthInsurance: true,
+        usDividendTaxRate: 15,
+        domesticDividendTaxRate: 15.4,
+        comprehensiveTaxRate: 15,
+        healthInsuranceRate: 5,
+        enablePrivatePensionTax: true,
+        privatePensionLimit: pensionLimit,
+        privatePensionExcessTaxRate: 16.5,
+        limitPrivatePensionToTaxLimit: true,
+      },
+    };
+
+    const result = engine.run(paramsWithLimit);
+    
+    const retirementYears = result.yearlyResults.filter(r => r.age >= baseParams.userProfile.retirementAge);
+    for (const r of retirementYears) {
+      expect(r.privatePensionIncome).toBeLessThanOrEqual(pensionLimit);
+    }
+  });
 });

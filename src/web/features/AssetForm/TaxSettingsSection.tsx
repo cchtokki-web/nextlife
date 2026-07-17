@@ -23,6 +23,7 @@ export const TaxSettingsSection: React.FC<TaxSettingsSectionProps> = ({ params, 
     enablePrivatePensionTax: true,
     privatePensionLimit: 15000000,
     privatePensionExcessTaxRate: 16.5,
+    limitPrivatePensionToTaxLimit: false,
     ...(params.taxSettings || {}),
   };
 
@@ -114,6 +115,16 @@ export const TaxSettingsSection: React.FC<TaxSettingsSectionProps> = ({ params, 
           options={[
             { value: 'true', label: '반영 - 한도 초과 시 고세율 적용' },
             { value: 'false', label: '미반영 - 연령별 저율과세 유지' },
+          ]}
+        />
+
+        <SelectField
+          label="사적연금 저율과세 한도 내 인출"
+          value={currentTaxSettings.limitPrivatePensionToTaxLimit ? 'true' : 'false'}
+          onChange={(e) => handleUpdate({ limitPrivatePensionToTaxLimit: e.target.value === 'true' })}
+          options={[
+            { value: 'true', label: '한도 내 인출 (절세 최적화)' },
+            { value: 'false', label: '기본 인출 (일반 인출 계획)' },
           ]}
         />
 

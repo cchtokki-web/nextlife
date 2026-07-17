@@ -416,6 +416,8 @@ export class SimulationEngine {
 
         // Pensions Processing
         let monthlyPensionIncomeNetDisplay = 0;
+        let monthlyPensionPreTaxLimitRemainingKRW = (currentTaxSettings.privatePensionLimit ?? 15000000) / 12;
+
         activePensions.forEach((pension) => {
           if (pension.currentBalance < 0) pension.currentBalance = 0;
           const growth = pension.currentBalance * pension.returnRateMonthly;
@@ -430,6 +432,13 @@ export class SimulationEngine {
               const remainingMonths = Math.max(1, (endAge - currentAge) * 12 + (12 - m));
               drawAmountRaw = pension.currentBalance / remainingMonths;
             }
+
+            if (currentTaxSettings.limitPrivatePensionToTaxLimit) {
+              const remainingLimitInPensionCurrency = this.convertValue(monthlyPensionPreTaxLimitRemainingKRW, 'KRW', pension.currency, exchangeRate);
+              drawAmountRaw = Math.min(drawAmountRaw, Math.max(0, remainingLimitInPensionCurrency));
+              monthlyPensionPreTaxLimitRemainingKRW -= this.convertValue(drawAmountRaw, pension.currency, 'KRW', exchangeRate);
+            }
+
             pension.currentBalance -= drawAmountRaw;
 
             let taxRate = 0.055;
@@ -476,12 +485,50 @@ export class SimulationEngine {
           if (remainingShortfall > 0) {
             let taxRate = currentAge >= 80 ? 0.033 : (currentAge >= 70 ? 0.044 : 0.055);
             for (const pension of activePensions) {
-              const pensionValueNetDisplay = this.convertValue(pension.currentBalance, pension.currency, displayCurrency, exchangeRate) * (1 - taxRate);
+              let pensionValueNetDisplay = this.convertValue(pension.currentBalance, pension.currency, displayCurrency, exchangeRate) * (1 - taxRate);
+              
+              if (currentTaxSettings.limitPrivatePensionToTaxLimit) {
+                const remainingLimitInPensionCurrency = this.convertValue(monthlyPensionPreTaxLimitRemainingKRW, 'KRW', pension.currency, exchangeRate);
+                const maxAllowedDrawNetDisplay = this.convertValue(remainingLimitInPensionCurrency * (1 - taxRate), pension.currency, displayCurrency, exchangeRate);
+                pensionValueNetDisplay = Math.min(pensionValueNetDisplay, Math.max(0, maxAllowedDrawNetDisplay));
+              }
+
               if (pensionValueNetDisplay >= remainingShortfall) {
-                pension.currentBalance -= this.convertValue(remainingShortfall / (1 - taxRate), displayCurrency, pension.currency, exchangeRate);
+                const drawPreTax = remainingShortfall / (1 - taxRate);
+                pension.currentBalance -= this.convertValue(drawPreTax, displayCurrency, pension.currency, exchangeRate);
+                if (currentTaxSettings.limitPrivatePensionToTaxLimit) {
+                  monthlyPensionPreTaxLimitRemainingKRW -= this.convertValue(drawPreTax, displayCurrency, 'KRW', exchangeRate);
+                }
+                
+                // Update pension income variables with the shortfall drawing
+                const drawAmountTax = drawPreTax * taxRate;
+                const drawAmountNet = drawPreTax - drawAmountTax;
+                const drawAmountNetDisplay = this.convertValue(drawAmountNet, pension.currency, displayCurrency, exchangeRate);
+                monthlyPensionIncomeNetDisplay += drawAmountNetDisplay;
+                annualPrivatePensionIncome += drawAmountNetDisplay;
+                annualPensionTaxPaid += this.convertValue(drawAmountTax, pension.currency, displayCurrency, exchangeRate);
+                annualPreTaxTotalIncome += this.convertValue(drawPreTax, pension.currency, displayCurrency, exchangeRate);
+                annualPrivatePensionPreTaxKRW += this.convertValue(drawPreTax, pension.currency, 'KRW', exchangeRate);
+
                 remainingShortfall = 0; break;
               } else {
-                remainingShortfall -= pensionValueNetDisplay; pension.currentBalance = 0;
+                if (pensionValueNetDisplay > 0) {
+                  const drawPreTax = pensionValueNetDisplay / (1 - taxRate);
+                  remainingShortfall -= pensionValueNetDisplay;
+                  pension.currentBalance -= this.convertValue(drawPreTax, displayCurrency, pension.currency, exchangeRate);
+                  if (currentTaxSettings.limitPrivatePensionToTaxLimit) {
+                    monthlyPensionPreTaxLimitRemainingKRW -= this.convertValue(drawPreTax, displayCurrency, 'KRW', exchangeRate);
+                  }
+
+                  const drawAmountTax = drawPreTax * taxRate;
+                  const drawAmountNet = drawPreTax - drawAmountTax;
+                  const drawAmountNetDisplay = this.convertValue(drawAmountNet, pension.currency, displayCurrency, exchangeRate);
+                  monthlyPensionIncomeNetDisplay += drawAmountNetDisplay;
+                  annualPrivatePensionIncome += drawAmountNetDisplay;
+                  annualPensionTaxPaid += this.convertValue(drawAmountTax, pension.currency, displayCurrency, exchangeRate);
+                  annualPreTaxTotalIncome += this.convertValue(drawPreTax, pension.currency, displayCurrency, exchangeRate);
+                  annualPrivatePensionPreTaxKRW += this.convertValue(drawPreTax, pension.currency, 'KRW', exchangeRate);
+                }
               }
             }
           }
