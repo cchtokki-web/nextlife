@@ -3,7 +3,7 @@
 import { SessionProvider } from "next-auth/react";
 
 export default function AuthProvider({ children }: { children: React.ReactNode }) {
-  const isDevMode = process.env.NODE_ENV === 'development' || process.env.NEXT_PUBLIC_DEV_MODE === 'true';
+  const isDevMode = process.env.NEXT_PUBLIC_DEV_MODE === 'true';
   
   const mockSession = isDevMode ? {
     user: {

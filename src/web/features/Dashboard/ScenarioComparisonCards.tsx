@@ -151,7 +151,7 @@ export const ScenarioComparisonCards: React.FC<ScenarioComparisonCardsProps> = (
   formatValue
 }) => {
   const { data: session } = useSession();
-  const isDevMode = process.env.NODE_ENV === 'development' || process.env.NEXT_PUBLIC_DEV_MODE === 'true';
+  const isDevMode = process.env.NEXT_PUBLIC_DEV_MODE === 'true';
   const isBlurred = !isDevMode && (!session || session.user?.provider !== 'kakao');
 
   return (

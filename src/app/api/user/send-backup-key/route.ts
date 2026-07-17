@@ -19,7 +19,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Invalid key' }, { status: 400 });
     }
 
-    const isDevMode = process.env.NEXT_PUBLIC_DEV_MODE === 'true' || process.env.NODE_ENV === 'development';
+    const isDevMode = process.env.NEXT_PUBLIC_DEV_MODE === 'true';
     
     // Retrieve Kakao account details
     const account = await prisma.account.findFirst({

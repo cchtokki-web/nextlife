@@ -27,7 +27,7 @@ export function SimpleSimulator() {
 
   const [hasRun, setHasRun] = useState(false);
   const { data: session, status } = useSession();
-  const isDevMode = process.env.NODE_ENV === 'development' || process.env.NEXT_PUBLIC_DEV_MODE === 'true';
+  const isDevMode = process.env.NEXT_PUBLIC_DEV_MODE === 'true';
   const [isRuntimeDevMode, setIsRuntimeDevMode] = useState(isDevMode);
   const isKakaoUser = isRuntimeDevMode || session?.user?.provider === 'kakao';
   const router = useRouter();
