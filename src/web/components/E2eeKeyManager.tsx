@@ -529,6 +529,28 @@ export const E2eeKeyManager: React.FC<E2eeKeyManagerProps> = ({
                 <span>보안키 확인 및 데이터 조회 중...</span>
               </div>
             )}
+
+            {onResetScenarios && (
+              <button
+                type="button"
+                onClick={onResetScenarios}
+                style={{
+                  width: '100%',
+                  padding: '0.75rem',
+                  backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                  border: '1px solid rgba(239, 68, 68, 0.2)',
+                  borderRadius: '10px',
+                  color: '#EF4444',
+                  fontSize: '0.85rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  marginTop: '10px',
+                  transition: 'all 0.2s'
+                }}
+              >
+                모든 데이터 초기화 및 보안키 재설정
+              </button>
+            )}
           </form>
 
         </div>
