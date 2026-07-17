@@ -380,7 +380,11 @@ export function SimpleSimulator() {
                           console.error('Failed to sync scenario', err);
                         }
                       }
-                      router.push('/simulator');
+                      if (isDevMode) {
+                        window.location.href = 'http://localhost:3000/simulator';
+                      } else {
+                        router.push('/simulator');
+                      }
                     }}
                     style={{ display: 'inline-flex', alignItems: 'center', gap: '0.6rem', backgroundColor: '#10B981', color: '#ffffff', padding: '1rem 2.5rem', borderRadius: '14px', fontWeight: 700, fontSize: '1.2rem', textDecoration: 'none', transition: 'all 0.2s', boxShadow: '0 6px 16px rgba(16, 185, 129, 0.3)', cursor: 'pointer', border: 'none' }}
                   >
