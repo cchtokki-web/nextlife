@@ -28,8 +28,20 @@ export function SimpleSimulator() {
   const [hasRun, setHasRun] = useState(false);
   const { data: session, status } = useSession();
   const isDevMode = process.env.NODE_ENV === 'development' || process.env.NEXT_PUBLIC_DEV_MODE === 'true';
-  const isKakaoUser = isDevMode || session?.user?.provider === 'kakao';
+  const [isRuntimeDevMode, setIsRuntimeDevMode] = useState(isDevMode);
+  const isKakaoUser = isRuntimeDevMode || session?.user?.provider === 'kakao';
   const router = useRouter();
+
+  useEffect(() => {
+    fetch('/api/dev-mode')
+      .then(res => res.json())
+      .then(data => {
+        if (data && typeof data.isDevMode === 'boolean') {
+          setIsRuntimeDevMode(data.isDevMode);
+        }
+      })
+      .catch(err => console.error('Failed to fetch dev mode:', err));
+  }, []);
 
   useEffect(() => {
     if (status === 'authenticated') {
@@ -380,7 +392,7 @@ export function SimpleSimulator() {
                           console.error('Failed to sync scenario', err);
                         }
                       }
-                      if (isDevMode) {
+                      if (isRuntimeDevMode) {
                         window.location.href = 'http://localhost:3000/simulator';
                       } else {
                         router.push('/simulator');
