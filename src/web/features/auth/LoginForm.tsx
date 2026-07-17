@@ -9,15 +9,40 @@ import styles from "./LoginForm.module.css";
 
 export default function LoginForm() {
   const isDevMode = process.env.NEXT_PUBLIC_DEV_MODE === 'true';
+  const [isRuntimeDevMode, setIsRuntimeDevMode] = useState<boolean | null>(null);
 
   useEffect(() => {
-    if (isDevMode) {
+    fetch('/api/dev-mode')
+      .then(res => res.json())
+      .then(data => {
+        if (data && typeof data.isDevMode === 'boolean') {
+          setIsRuntimeDevMode(data.isDevMode);
+        } else {
+          setIsRuntimeDevMode(false);
+        }
+      })
+      .catch(err => {
+        console.error('Failed to fetch dev mode:', err);
+        setIsRuntimeDevMode(false);
+      });
+  }, []);
+
+  useEffect(() => {
+    if (isRuntimeDevMode === true) {
       const callbackUrl = typeof window !== 'undefined' ? `${window.location.origin}/` : '/';
       signIn('credentials', { email: 'dev', password: 'dev', callbackUrl });
     }
-  }, [isDevMode]);
+  }, [isRuntimeDevMode]);
 
-  if (isDevMode) {
+  if (isRuntimeDevMode === null) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '1rem', color: '#fff', textAlign: 'center' }}>
+        <div style={{ fontSize: '1.2rem', fontWeight: 600 }}>로딩 중...</div>
+      </div>
+    );
+  }
+
+  if (isRuntimeDevMode === true) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '1rem', color: '#fff', textAlign: 'center' }}>
         <div className="animate-pulse" style={{ fontSize: '1.2rem', fontWeight: 600 }}>개발 모드 자동 로그인 중...</div>
@@ -45,12 +70,7 @@ export default function LoginForm() {
         <button 
           type="button"
           onClick={() => {
-            if (process.env.NEXT_PUBLIC_DEV_MODE === 'true') {
-              const callbackUrl = typeof window !== 'undefined' ? `${window.location.origin}/` : '/';
-              signIn('credentials', { email: 'dev', password: 'dev', callbackUrl });
-            } else {
-              signIn('kakao', { callbackUrl: '/' });
-            }
+            signIn('kakao', { callbackUrl: '/' });
           }}
           style={{ 
             backgroundColor: '#FEE500', 
