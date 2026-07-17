@@ -505,16 +505,10 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({ params: rawP
         </div>
       </GlassCard>
 
-      {/* 5. AI 시뮬레이션 기반 연령별 인출 및 절세 가이드 */}
       <GlassCard className={styles.chartCard} style={{ padding: '2rem', marginTop: '1.5rem' }}>
-        <div style={{ display: 'flex', alignItems: 'center', marginBottom: '0.5rem' }}>
-          <Zap size={22} color="var(--primary)" style={{ marginRight: '0.6rem' }} />
+        <div style={{ marginBottom: '1.5rem' }}>
           <h3 className={styles.taxSectionTitle} style={{ margin: 0 }}>AI 시뮬레이션 기반 연령별 자산 인출 가이드</h3>
         </div>
-        <p className={styles.taxSectionDesc}>
-          시뮬레이션 분석 결과에 따라 나이대별(50대, 60대, 70대 이상) 최적의 인출 전략과 위험 요소를 연동하여 보여줍니다.
-        </p>
-
         <div className={styles.decumulationGrid}>
           {/* Left: Withdrawal Order Flowchart (Restructured to Age-based dynamic flow) */}
           <div className={styles.flowContainer}>
