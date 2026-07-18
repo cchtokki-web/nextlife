@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '@/core/utils/authOptions';
 import { prisma } from '@/infrastructure/db/prisma';
+import { isDevMode } from '@/core/utils/isDevMode';
 
 export async function POST(req: Request) {
   try {
@@ -19,8 +20,6 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Invalid key' }, { status: 400 });
     }
 
-    const isDevMode = process.env.NEXT_PUBLIC_DEV_MODE === 'true';
-    
     // Retrieve Kakao account details
     const account = await prisma.account.findFirst({
       where: {
@@ -30,7 +29,7 @@ export async function POST(req: Request) {
     });
 
     if (!account || !account.access_token) {
-      if (isDevMode || userId === 'dev-mock-id' || userId === 'dev-user-id') {
+      if (isDevMode() || userId === 'dev-mock-id' || userId === 'dev-user-id') {
         console.log(`[MOCK KAKAO MESSAGE] TO: ${session.user.name || 'User'}, KEY: ${key.toUpperCase()}`);
         return NextResponse.json({ success: true, message: 'Mock sent successfully (Dev Mode)' });
       }

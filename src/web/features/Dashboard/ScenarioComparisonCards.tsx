@@ -5,6 +5,7 @@ import { motion } from 'framer-motion';
 import { useSession, signIn } from 'next-auth/react';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import styles from './ScenarioComparisonCards.module.css';
+import { isDevMode } from '@/core/utils/isDevMode';
 
 interface ScenarioResult {
   age: number;
@@ -93,7 +94,7 @@ const ScenarioCard: React.FC<ScenarioCardProps> = ({ title, subtitle, highlightC
           <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10 }}>
             <button 
               onClick={() => {
-                if (process.env.NEXT_PUBLIC_DEV_MODE === 'true') {
+                if (isDevMode()) {
                   const callbackUrl = typeof window !== 'undefined' ? `${window.location.origin}/` : '/';
                   signIn('credentials', { email: 'dev', password: 'dev', callbackUrl });
                 } else {
@@ -151,8 +152,7 @@ export const ScenarioComparisonCards: React.FC<ScenarioComparisonCardsProps> = (
   formatValue
 }) => {
   const { data: session } = useSession();
-  const isDevMode = process.env.NEXT_PUBLIC_DEV_MODE === 'true';
-  const isBlurred = !isDevMode && (!session || session.user?.provider !== 'kakao');
+  const isBlurred = !isDevMode() && (!session || session.user?.provider !== 'kakao');
 
   return (
     <div className={styles.container}>

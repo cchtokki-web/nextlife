@@ -16,6 +16,7 @@ import { AlertCircle, Activity, Download, RotateCcw, PanelLeftClose, PanelLeftOp
 import { useScenarios } from '../../web/features/Scenario/useScenarios';
 import { E2eeKeyManager } from '../../web/components/E2eeKeyManager';
 import { generateBackupKey, encryptData } from '../../core/utils/crypto';
+import { isDevMode } from '../../core/utils/isDevMode';
 export default function Home() {
   const { data: session, status } = useSession();
   const scenarioState = useScenarios();
@@ -69,7 +70,7 @@ export default function Home() {
     }
   };
 
-  const isPro = session?.user?.tier === 'pro' || process.env.NEXT_PUBLIC_DEV_MODE === 'true';
+  const isPro = session?.user?.tier === 'pro' || isDevMode();
 
   const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(true);
   const [engine] = useState(() => new SimulationEngine());

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
+import { isDevMode } from '@/core/utils/isDevMode';
 
 export async function GET() {
-  const isDevMode = process.env.NEXT_PUBLIC_DEV_MODE === 'true';
-  return NextResponse.json({ isDevMode });
+  return NextResponse.json({ isDevMode: isDevMode() });
 }

@@ -1,11 +1,10 @@
 "use client";
 
 import { SessionProvider } from "next-auth/react";
+import { isDevMode } from "@/core/utils/isDevMode";
 
 export default function AuthProvider({ children }: { children: React.ReactNode }) {
-  const isDevMode = process.env.NEXT_PUBLIC_DEV_MODE === 'true';
-  
-  const mockSession = isDevMode ? {
+  const mockSession = isDevMode() ? {
     user: {
       id: "dev-mock-id",
       name: "Tokki",

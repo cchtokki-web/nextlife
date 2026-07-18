@@ -4,6 +4,7 @@ import KakaoProvider from "next-auth/providers/kakao";
 import { PrismaAdapter } from "@next-auth/prisma-adapter";
 import bcrypt from "bcrypt";
 import { prisma } from "@/infrastructure/db/prisma";
+import { isDevMode } from "@/core/utils/isDevMode";
 
 export const authOptions: NextAuthOptions = {
   adapter: PrismaAdapter(prisma),
@@ -24,7 +25,7 @@ export const authOptions: NextAuthOptions = {
         password: { label: "비밀번호", type: "password" }
       },
       async authorize(credentials) {
-        if (process.env.NEXT_PUBLIC_DEV_MODE === "true" && credentials?.email === "dev" && credentials?.password === "dev") {
+        if (isDevMode() && credentials?.email === "dev" && credentials?.password === "dev") {
           return {
             id: "dev-user-id",
             email: "dev@example.com",
@@ -91,7 +92,7 @@ export const authOptions: NextAuthOptions = {
       return session;
     },
     async redirect({ url, baseUrl }) {
-      if (process.env.NEXT_PUBLIC_DEV_MODE === 'true') {
+      if (isDevMode()) {
         if (url.startsWith("/")) return url;
         try {
           const parsedUrl = new URL(url);

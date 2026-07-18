@@ -8,7 +8,6 @@ import Image from "next/image";
 import styles from "./LoginForm.module.css";
 
 export default function LoginForm() {
-  const isDevMode = process.env.NEXT_PUBLIC_DEV_MODE === 'true';
   const [isRuntimeDevMode, setIsRuntimeDevMode] = useState<boolean | null>(null);
 
   useEffect(() => {

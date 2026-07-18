@@ -10,6 +10,7 @@ import GlassCard from '../../components/GlassCard';
 import { Target, TrendingUp, Coins } from 'lucide-react';
 import { useSession } from 'next-auth/react';
 import { initialParams } from '../../../infrastructure/storage/localStore';
+import { isDevMode } from '../../../core/utils/isDevMode';
 
 import { ScenarioComparisonCards } from '../Dashboard/ScenarioComparisonCards';
 import styles from './SimpleSimulator.module.css';
@@ -27,8 +28,7 @@ export function SimpleSimulator() {
 
   const [hasRun, setHasRun] = useState(false);
   const { data: session, status } = useSession();
-  const isDevMode = process.env.NEXT_PUBLIC_DEV_MODE === 'true';
-  const [isRuntimeDevMode, setIsRuntimeDevMode] = useState(isDevMode);
+  const [isRuntimeDevMode, setIsRuntimeDevMode] = useState(isDevMode());
   const isKakaoUser = isRuntimeDevMode || session?.user?.provider === 'kakao';
   const router = useRouter();
 
