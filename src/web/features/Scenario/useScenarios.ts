@@ -386,9 +386,9 @@ export function useScenarios() {
           return;
         }
 
-        saveParams(activeScenario.data); // save to local storage as fallback
-        
         if (status === 'authenticated' && !activeScenarioId.startsWith('local-')) {
+          // 로그인 사용자의 데이터는 서버에 E2EE로 암호화되어 저장되므로,
+          // 로컬 저장소에는 평문 폴백을 남기지 않는다(기기 탈취 시 평문 노출 방지).
           setSaveStatus('saving');
           setIsSaving(true);
           const timeoutId = setTimeout(async () => {
@@ -420,6 +420,7 @@ export function useScenarios() {
           return () => clearTimeout(timeoutId);
         } else {
           // Unauthenticated or local scenario - saved to local storage instantly
+          saveParams(activeScenario.data);
           setSaveStatus('success');
           setLastSaved(new Date());
           lastSavedParamsRef.current[activeScenarioId] = currentDataStr;

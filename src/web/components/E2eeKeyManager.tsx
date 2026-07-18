@@ -31,6 +31,29 @@ export const E2eeKeyManager: React.FC<E2eeKeyManagerProps> = ({
   const [isSendingKakao, setIsSendingKakao] = useState(false);
   const [kakaoSentStatus, setKakaoSentStatus] = useState<'idle' | 'success' | 'error'>('idle');
 
+  // 복구 실패 시도 제한 (온라인 브루트포스 억제용 speed bump)
+  const MAX_RESTORE_ATTEMPTS = 5;
+  const RESTORE_LOCKOUT_MS = 30000;
+  const [failedRestoreAttempts, setFailedRestoreAttempts] = useState(0);
+  const [restoreLockedUntil, setRestoreLockedUntil] = useState<number | null>(null);
+  const [restoreLockRemaining, setRestoreLockRemaining] = useState(0);
+
+  React.useEffect(() => {
+    if (!restoreLockedUntil) return;
+    const tick = () => {
+      const remaining = Math.max(0, Math.ceil((restoreLockedUntil - Date.now()) / 1000));
+      setRestoreLockRemaining(remaining);
+      if (remaining <= 0) {
+        setRestoreLockedUntil(null);
+      }
+    };
+    tick();
+    const interval = setInterval(tick, 1000);
+    return () => clearInterval(interval);
+  }, [restoreLockedUntil]);
+
+  const isRestoreLocked = restoreLockedUntil !== null && restoreLockRemaining > 0;
+
   React.useEffect(() => {
     if (needsKeyRestore) {
       setTimeout(() => {
@@ -50,18 +73,28 @@ export const E2eeKeyManager: React.FC<E2eeKeyManagerProps> = ({
   }, [needsKeySetup]);
 
   const performRestore = async (enteredKey: string) => {
+    if (isRestoreLocked) return;
     setIsRestoring(true);
     const success = await handleRestoreKey(enteredKey);
     setIsRestoring(false);
     if (success) {
       setPinInputs(['', '', '', '', '', '']);
+      setFailedRestoreAttempts(0);
     } else {
-      alert('보안 백업 키 복원에 실패했습니다. 키를 다시 확인해 주세요.');
       setPinInputs(['', '', '', '', '', '']);
-      setTimeout(() => {
-        const firstInput = document.getElementById('pin-input-0');
-        if (firstInput) firstInput.focus();
-      }, 50);
+      const nextAttempts = failedRestoreAttempts + 1;
+      if (nextAttempts >= MAX_RESTORE_ATTEMPTS) {
+        setFailedRestoreAttempts(0);
+        setRestoreLockedUntil(Date.now() + RESTORE_LOCKOUT_MS);
+        alert(`보안 백업 키를 ${MAX_RESTORE_ATTEMPTS}회 잘못 입력했습니다. ${RESTORE_LOCKOUT_MS / 1000}초 후 다시 시도해 주세요.`);
+      } else {
+        setFailedRestoreAttempts(nextAttempts);
+        alert(`보안 백업 키 복원에 실패했습니다. 키를 다시 확인해 주세요. (${nextAttempts}/${MAX_RESTORE_ATTEMPTS})`);
+        setTimeout(() => {
+          const firstInput = document.getElementById('pin-input-0');
+          if (firstInput) firstInput.focus();
+        }, 50);
+      }
     }
   };
 
@@ -240,6 +273,7 @@ export const E2eeKeyManager: React.FC<E2eeKeyManagerProps> = ({
 
   const handleRestoreSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isRestoreLocked) return;
     const enteredKey = pinInputs.join('').trim().toUpperCase();
     if (enteredKey.length !== 6) {
       alert('6자리 보안 백업 키를 모두 입력해 주세요.');
@@ -462,12 +496,12 @@ export const E2eeKeyManager: React.FC<E2eeKeyManagerProps> = ({
                   <input
                     key={idx}
                     id={`pin-input-${idx}`}
-                    type="text"
+                    type="password"
                     maxLength={1}
                     value={pinInputs[idx]}
                     onChange={(e) => handlePinChange(idx, e.target.value)}
                     onKeyDown={(e) => handleKeyDown(idx, e)}
-                    disabled={isRestoring}
+                    disabled={isRestoring || isRestoreLocked}
                     style={{
                       width: '45px',
                       height: '45px',
@@ -527,6 +561,22 @@ export const E2eeKeyManager: React.FC<E2eeKeyManagerProps> = ({
               }}>
                 <RefreshCw style={{ animation: 'spin 1s linear infinite' }} size={16} />
                 <span>보안키 확인 및 데이터 조회 중...</span>
+              </div>
+            )}
+
+            {isRestoreLocked && (
+              <div style={{
+                display: 'flex',
+                justifyContent: 'center',
+                alignItems: 'center',
+                gap: '8px',
+                color: '#EF4444',
+                fontSize: '0.85rem',
+                margin: '10px 0',
+                fontWeight: 600
+              }}>
+                <AlertTriangle size={16} />
+                <span>너무 많이 틀렸습니다. {restoreLockRemaining}초 후 다시 시도해 주세요.</span>
               </div>
             )}
 

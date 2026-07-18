@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth/next';
 import { authOptions } from '@/core/utils/authOptions';
 import { prisma } from '@/infrastructure/db/prisma';
 import { isDevMode } from '@/core/utils/isDevMode';
+import { isRateLimited } from '@/core/utils/rateLimiter';
 
 export async function POST(req: Request) {
   try {
@@ -13,6 +14,11 @@ export async function POST(req: Request) {
     }
 
     const userId = (session.user as any).id;
+
+    if (isRateLimited(`send-backup-key:${userId}`, 3, 5 * 60 * 1000)) {
+      return NextResponse.json({ error: '너무 많은 요청입니다. 잠시 후 다시 시도해 주세요.' }, { status: 429 });
+    }
+
     const body = await req.json();
     const { key } = body;
 

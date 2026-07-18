@@ -60,7 +60,13 @@ export default function Home() {
               body: JSON.stringify({ data: encrypted }),
             });
           }
-          alert('데이터가 성공적으로 초기화되었습니다.');
+
+          const kakaoResult = await handleSendKeyToKakao(newKey);
+          if (kakaoResult.success) {
+            alert('데이터가 성공적으로 초기화되었으며, 새 보안키가 카카오톡으로 발송되었습니다.');
+          } else {
+            alert(`데이터는 초기화되었지만 새 보안키를 카카오톡으로 보내지 못했습니다.\n새 보안키: ${newKey}\n이 키를 반드시 별도로 기록해 두세요.`);
+          }
           window.location.reload();
         } catch (err) {
           console.error('Failed to reset scenarios:', err);
