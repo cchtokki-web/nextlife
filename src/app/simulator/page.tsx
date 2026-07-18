@@ -44,17 +44,24 @@ export default function Home() {
   } = scenarioState;
 
   const handleResetAllScenarios = async () => {
-    if (confirm('모든 기존 데이터를 초기화하고 새로운 보안 키로 다시 시작하시겠습니까? 이 작업은 되돌릴 수 없으며 기존 암호화된 모든 시나리오 데이터가 기본값으로 초기화됩니다.')) {
+    if (confirm('모든 기존 데이터를 초기화하고 새로운 보안 키로 다시 시작하시겠습니까? 이 작업은 되돌릴 수 없으며 기본 시나리오를 제외한 나머지 시나리오는 모두 삭제되고, 기본 시나리오의 데이터는 기본값으로 초기화됩니다.')) {
       const newKey = generateBackupKey();
       const userId = (session?.user as any)?.id;
       if (userId) {
         localStorage.setItem(`nextlife_e2ee_key_${userId}`, newKey);
         localStorage.setItem(`nextlife_e2ee_backed_up_${userId}`, 'false');
-        
+
         try {
-          for (const s of scenarios) {
+          const defaultScenario = scenarios.find(s => s.isDefault) || scenarios[0];
+          const otherScenarios = scenarios.filter(s => s.id !== defaultScenario?.id);
+
+          for (const s of otherScenarios) {
+            await fetch(`/api/scenarios/${s.id}`, { method: 'DELETE' });
+          }
+
+          if (defaultScenario) {
             const encrypted = await encryptData(initialParams, newKey, userId);
-            await fetch(`/api/scenarios/${s.id}`, {
+            await fetch(`/api/scenarios/${defaultScenario.id}`, {
               method: 'PUT',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ data: encrypted }),
