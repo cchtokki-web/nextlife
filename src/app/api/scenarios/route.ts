@@ -11,8 +11,6 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    console.log('[API] GET scenarios session:', JSON.stringify(session));
-
     const userId = (session.user as any).id;
 
     let user = await prisma.user.findUnique({
