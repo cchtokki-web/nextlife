@@ -517,13 +517,16 @@ export class SimulationEngine {
           activeAssets[0].currentValue += this.convertValue(-shortfall, displayCurrency, activeAssets[0].currency, exchangeRate);
         } else if (shortfall > 0) {
           let remainingShortfall = shortfall;
-          for (const asset of withdrawalOrderedAssets) {
-            const assetValueDisplay = this.convertValue(asset.currentValue, asset.currency, displayCurrency, exchangeRate);
-            if (assetValueDisplay >= remainingShortfall) {
-              asset.currentValue -= this.convertValue(remainingShortfall, displayCurrency, asset.currency, exchangeRate);
-              remainingShortfall = 0; break;
-            } else {
-              remainingShortfall -= assetValueDisplay; asset.currentValue = 0;
+          const generalAssetWithdrawalStartAge = withdrawalPlan?.generalAssetWithdrawalStartAge ?? userProfile.retirementAge;
+          if (currentAge >= generalAssetWithdrawalStartAge) {
+            for (const asset of withdrawalOrderedAssets) {
+              const assetValueDisplay = this.convertValue(asset.currentValue, asset.currency, displayCurrency, exchangeRate);
+              if (assetValueDisplay >= remainingShortfall) {
+                asset.currentValue -= this.convertValue(remainingShortfall, displayCurrency, asset.currency, exchangeRate);
+                remainingShortfall = 0; break;
+              } else {
+                remainingShortfall -= assetValueDisplay; asset.currentValue = 0;
+              }
             }
           }
 

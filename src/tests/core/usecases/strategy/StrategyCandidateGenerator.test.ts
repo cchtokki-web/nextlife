@@ -39,7 +39,7 @@ describe('generateCandidatePlans', () => {
     const candidates = generateCandidatePlans(baseParams);
 
     expect(candidates.length).toBeGreaterThan(0);
-    expect(candidates.length).toBeLessThanOrEqual(150); // 브라우저 실시간 처리 가능한 상한 (최대 5×5×5=125)
+    expect(candidates.length).toBeLessThanOrEqual(600); // 브라우저 실시간 처리 가능한 상한 (전체 시나리오 최악의 경우 486)
 
     for (const c of candidates) {
       expect(c.privatePensionStartAge).toBeGreaterThanOrEqual(baseParams.userProfile.retirementAge);
@@ -54,8 +54,8 @@ describe('generateCandidatePlans', () => {
     for (const c of candidates) {
       expect(c.nationalPensionStartAge).toBe(65);
     }
-    // 사적연금 그리드(5×5)만큼만 생성되어야 함
-    expect(candidates.length).toBe(25);
+    // 사적연금 개시나이(retirementAge=60 유니온 포함 4개) × 월인출액(3개)만큼만 생성되어야 함
+    expect(candidates.length).toBe(12);
   });
 
   test('국민연금 수령액이 있으면 조기~연기 수령 나이 그리드를 함께 탐색한다', () => {
@@ -67,8 +67,8 @@ describe('generateCandidatePlans', () => {
 
     const distinctNationalPensionAges = new Set(candidates.map((c) => c.nationalPensionStartAge));
     expect(distinctNationalPensionAges.size).toBeGreaterThan(1);
-    // 5(사적연금 개시나이) × 5(월인출액) × 5(국민연금 개시나이) = 125
-    expect(candidates.length).toBe(125);
+    // 4(사적연금 개시나이, retirementAge 유니온 포함) × 3(월인출액) × 3(국민연금 개시나이) = 36
+    expect(candidates.length).toBe(36);
 
     for (const c of candidates) {
       expect(c.nationalPensionStartAge).toBeGreaterThanOrEqual(60);
@@ -145,5 +145,29 @@ describe('generateCandidatePlans', () => {
       assets: [],
     });
     expect(candidates).toEqual([]);
+  });
+
+  test('자산이 없으면 일반계좌 인출 개시 나이는 retirementAge 단일 후보만 사용한다', () => {
+    // baseParams.assets === []
+    const candidates = generateCandidatePlans(baseParams);
+    for (const c of candidates) {
+      expect(c.generalAssetWithdrawalStartAge).toBe(baseParams.userProfile.retirementAge);
+    }
+  });
+
+  test('자산이 있으면 일반계좌 인출 개시 나이 그리드를 함께 탐색한다', () => {
+    const withAsset: SimulationParams = {
+      ...baseParams,
+      assets: [
+        { id: 'a1', type: 'etf', ticker: 'A', name: '자산1', quantity: 1, averagePrice: 100, annualGrowthRate: 5, dividendYield: 2, monthlyContribution: 0, reinvestDividend: false, currency: 'KRW' },
+      ],
+    };
+    const candidates = generateCandidatePlans(withAsset);
+    const distinctAges = new Set(candidates.map((c) => c.generalAssetWithdrawalStartAge));
+    expect(distinctAges.size).toBeGreaterThan(1);
+    for (const c of candidates) {
+      expect(c.generalAssetWithdrawalStartAge).toBeGreaterThanOrEqual(withAsset.userProfile.retirementAge);
+      expect(c.generalAssetWithdrawalStartAge).toBeLessThan(withAsset.userProfile.expectancy);
+    }
   });
 });

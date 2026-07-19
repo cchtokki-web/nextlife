@@ -71,6 +71,9 @@ export function buildReasons(
   if (plan.isaMaturityDestination === 'asset') {
     reasons.push('ISA 만기 자금을 사적연금 대신 일반 자산으로 이동해 향후 인출 시 세금 부담을 낮춥니다.');
   }
+  if (plan.generalAssetWithdrawalStartAge !== undefined) {
+    reasons.push(`${plan.generalAssetWithdrawalStartAge}세부터 일반 자산(주식/ETF) 인출을 시작합니다.`);
+  }
   if (plan.nationalPensionStartAge !== undefined && plan.nationalPensionStartAge !== 65) {
     if (plan.nationalPensionStartAge < 65) {
       reasons.push(`국민연금을 ${plan.nationalPensionStartAge}세부터 조기 수령합니다.`);

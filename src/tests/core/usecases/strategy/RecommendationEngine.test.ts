@@ -113,6 +113,18 @@ describe('buildReasons - 자산 매도 순서 / ISA 만기 이동 문구', () =>
   });
 });
 
+describe('buildReasons - 일반계좌(자산) 인출 시점 문구', () => {
+  test('generalAssetWithdrawalStartAge가 정의되어 있으면 인출 개시 나이 문구를 포함한다', () => {
+    const reasons = buildReasons({ generalAssetWithdrawalStartAge: 70 }, zeroDeltas, true);
+    expect(reasons.some((r) => r.includes('70세') && r.includes('일반 자산'))).toBe(true);
+  });
+
+  test('generalAssetWithdrawalStartAge가 미지정이면 관련 문구를 추가하지 않는다', () => {
+    const reasons = buildReasons({}, zeroDeltas, true);
+    expect(reasons.some((r) => r.includes('일반 자산'))).toBe(false);
+  });
+});
+
 describe('buildReasons - 국민연금 조기/연기수령 문구', () => {
   test('nationalPensionStartAge가 65세보다 이르면 조기 수령 문구를 포함한다', () => {
     const reasons = buildReasons(

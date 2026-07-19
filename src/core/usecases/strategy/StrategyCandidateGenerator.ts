@@ -1,16 +1,16 @@
 import { AssetSellOrderStrategy, IsaMaturityDestination, SimulationParams, WithdrawalPlan } from '../../entities/types';
 import { NATIONAL_PENSION_NORMAL_START_AGE } from '../pension/nationalPensionRules';
 
-const START_AGE_GRID = [60, 62, 65, 67, 70];
-const MONTHLY_TARGET_MULTIPLIERS = [0.6, 0.8, 1.0, 1.2, 1.5];
-const NATIONAL_PENSION_START_AGE_GRID = [60, 63, 65, 67, 70]; // 조기~연기수령 그리드
+// 각 그리드는 3점(또는 이진) 수준으로 유지한다 — 6개 차원의 완전 조합(cartesian product)이라
+// 그리드 하나를 늘릴 때마다 후보 수가 곱셈으로 증가하기 때문이다(실측 결과 5×5×5×3×2×5=3750개
+// 조합에서 recommendStrategy가 약 8초 소요되어 실사용에 부적합했다). 3점 그리드 기준 최악의 경우
+// 3×3×3×3×2×3=486개로, 실측 약 1초 내외로 단축된다.
+const START_AGE_GRID = [62, 65, 70];
+const MONTHLY_TARGET_MULTIPLIERS = [0.8, 1.0, 1.3];
+const NATIONAL_PENSION_START_AGE_GRID = [60, 65, 70]; // 조기~기본~연기수령
 const ASSET_SELL_ORDER_GRID: AssetSellOrderStrategy[] = ['input_order', 'low_dividend_first', 'high_dividend_first'];
 const ISA_MATURITY_DESTINATION_GRID: IsaMaturityDestination[] = ['pension', 'asset'];
-
-// 사적연금 인출 정책 + 국민연금 수령 시점 + 자산 매도 순서 + ISA 만기 이동 목적지 후보를 유한 grid로
-// 생성한다. 각 차원은 해당 시나리오에 실제로 의미가 있을 때만 확장되고, 그렇지 않으면 단일값으로
-// 축소되어 후보 폭증을 막는다(전형적인 시나리오는 기존과 동일한 최대 125개, 자산·ISA가 모두 있는
-// 시나리오에서 최대 5×5×5×3×2=750개까지 늘어날 수 있음).
+const GENERAL_ASSET_WITHDRAWAL_START_AGE_GRID = [62, 65, 70];
 export function generateCandidatePlans(params: SimulationParams): WithdrawalPlan[] {
   const { userProfile, privatePensions = [], nationalPension, assets = [], isaAccounts = [] } = params;
   const { retirementAge, expectancy, targetMonthlySpending } = userProfile;
@@ -47,9 +47,19 @@ export function generateCandidatePlans(params: SimulationParams): WithdrawalPlan
       ? ISA_MATURITY_DESTINATION_GRID
       : ['pension'];
 
+  // 자산이 없으면 인출을 지연시킬 대상 자체가 없다.
+  const generalAssetWithdrawalStartAgeCandidates = assets.length > 0
+    ? (() => {
+        const grid = Array.from(
+          new Set([retirementAge, ...GENERAL_ASSET_WITHDRAWAL_START_AGE_GRID].filter((age) => age >= retirementAge && age < expectancy))
+        );
+        return grid.length > 0 ? grid : [retirementAge];
+      })()
+    : [retirementAge];
+
   const totalCombinations =
     startAgeCandidates.length * monthlyTargetCandidates.length * nationalPensionStartAgeCandidates.length *
-    assetSellOrderCandidates.length * isaMaturityDestinationCandidates.length;
+    assetSellOrderCandidates.length * isaMaturityDestinationCandidates.length * generalAssetWithdrawalStartAgeCandidates.length;
   if (totalCombinations <= 1) return []; // 탐색할 만한 차원이 전혀 없는 시나리오
 
   const candidates: WithdrawalPlan[] = [];
@@ -58,13 +68,16 @@ export function generateCandidatePlans(params: SimulationParams): WithdrawalPlan
       for (const privatePensionMonthlyTarget of monthlyTargetCandidates) {
         for (const assetSellOrderStrategy of assetSellOrderCandidates) {
           for (const isaMaturityDestination of isaMaturityDestinationCandidates) {
-            candidates.push({
-              privatePensionStartAge,
-              privatePensionMonthlyTarget,
-              nationalPensionStartAge,
-              assetSellOrderStrategy,
-              isaMaturityDestination,
-            });
+            for (const generalAssetWithdrawalStartAge of generalAssetWithdrawalStartAgeCandidates) {
+              candidates.push({
+                privatePensionStartAge,
+                privatePensionMonthlyTarget,
+                nationalPensionStartAge,
+                assetSellOrderStrategy,
+                isaMaturityDestination,
+                generalAssetWithdrawalStartAge,
+              });
+            }
           }
         }
       }
