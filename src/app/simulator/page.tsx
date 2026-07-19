@@ -284,8 +284,16 @@ export default function Home() {
               <li style="margin-bottom: 6px;"><strong>물가 상승률:</strong> ${inflationRate}% (${inflationMode === 'real' ? '실질 가치 - 인플레이션 차감' : '명목 가치 - 인플레이션 미차감'})</li>
               <li style="margin-bottom: 6px;"><strong>표시 통화 / 기준 환율:</strong> ${displayCurrency} / 1 USD = ${baseExchangeRate} KRW</li>
             </ul>
+          </div>
+          <div class="pdf-footer">
+            <span>NextLife 은퇴 자산 시뮬레이션 리포트</span>
+            <span>페이지 1 / {total_pages}</span>
+          </div>
+        </div>
 
-            <h2 style="font-size: 16px; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; color: #0f172a; margin-top: 25px; margin-bottom: 10px;">3. 연금 및 자산 현황</h2>
+        <div class="pdf-page">
+          <div class="pdf-content">
+            <h2 style="font-size: 16px; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; color: #0f172a; margin-top: 0; margin-bottom: 10px;">3. 연금 및 자산 현황</h2>
             <div style="font-size: 13px; line-height: 1.6; display: grid; grid-template-columns: 1fr; gap: 12px;">
               <div>
                 <strong>국민연금:</strong> 예상 월 수령액 ${nationalPension?.expectedMonthlyAmount.toLocaleString()}원 (65세부터 수령)
@@ -355,8 +363,16 @@ export default function Home() {
                 </ul>
               </div>
             </div>
+          </div>
+          <div class="pdf-footer">
+            <span>NextLife 은퇴 자산 시뮬레이션 리포트</span>
+            <span>페이지 2 / {total_pages}</span>
+          </div>
+        </div>
 
-            <h2 style="font-size: 16px; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; color: #0f172a; margin-top: 25px; margin-bottom: 10px;">4. 세금 설정</h2>
+        <div class="pdf-page">
+          <div class="pdf-content">
+            <h2 style="font-size: 16px; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; color: #0f172a; margin-top: 0; margin-bottom: 10px;">4. 세금 설정</h2>
             <ul style="padding-left: 20px; margin-top: 5px; margin-bottom: 0; font-size: 13px; line-height: 1.6;">
               <li style="margin-bottom: 6px;"><strong>금융소득종합과세 반영:</strong> ${currentTaxSettings.enableComprehensiveTax ? `반영 (2천만원 초과분 ${currentTaxSettings.comprehensiveTaxRate}% 추가 과세)` : '미반영'}</li>
               <li style="margin-bottom: 6px;"><strong>추가 건강보험료 반영:</strong> ${currentTaxSettings.enableHealthInsurance ? `반영 (초과분 ${currentTaxSettings.healthInsuranceRate}%)` : '미반영'}</li>
@@ -368,12 +384,12 @@ export default function Home() {
           </div>
           <div class="pdf-footer">
             <span>NextLife 은퇴 자산 시뮬레이션 리포트</span>
-            <span>페이지 1 / {total_pages}</span>
+            <span>페이지 3 / {total_pages}</span>
           </div>
         </div>
       `;
 
-      // Page 2+: Tables
+      // Page 4+: Tables
       const chunks: typeof yearlyResults[] = [];
       const rowsPerPage = 30; // Fits A4 page beautifully with comfortable vertical rhythm
       for (let i = 0; i < yearlyResults.length; i += rowsPerPage) {
@@ -388,7 +404,7 @@ export default function Home() {
       const hasSpendingSection = spendingChunks.length > 0;
 
       chunks.forEach((chunk, chunkIdx) => {
-        const pageNum = chunkIdx + 2;
+        const pageNum = chunkIdx + 4;
         const isLastChunk = chunkIdx === chunks.length - 1 && !hasSpendingSection;
         pagesHtml += `
           <div class="pdf-page">
@@ -456,7 +472,7 @@ export default function Home() {
       });
 
       spendingChunks.forEach((chunk, chunkIdx) => {
-        const pageNum = chunks.length + 2 + chunkIdx;
+        const pageNum = chunks.length + 4 + chunkIdx;
         const isLastChunk = chunkIdx === spendingChunks.length - 1;
         pagesHtml += `
           <div class="pdf-page">
@@ -520,7 +536,7 @@ export default function Home() {
         `;
       });
 
-      const totalPages = 1 + chunks.length + spendingChunks.length;
+      const totalPages = 3 + chunks.length + spendingChunks.length;
       pagesHtml = pagesHtml.replaceAll('{total_pages}', totalPages.toString());
 
       // Append pages html
