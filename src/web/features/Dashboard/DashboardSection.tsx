@@ -614,8 +614,8 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({ params: rawP
                   wrapperStyle={{ fontSize: '0.8rem', cursor: 'pointer' }} 
                   onClick={handleLegendClick}
                 />
-                <Bar name="국민연금" dataKey="국민연금" stackId="a" fill="#10B981" hide={!!hiddenKeys['국민연금']} />
                 <Bar name="사적연금" dataKey="사적연금" stackId="a" fill="#A855F7" hide={!!hiddenKeys['사적연금']} />
+                <Bar name="국민연금" dataKey="국민연금" stackId="a" fill="#10B981" hide={!!hiddenKeys['국민연금']} />
                 <Bar name="배당소득" dataKey="배당소득" stackId="a" fill="#3B82F6" hide={!!hiddenKeys['배당소득']} />
                 <Bar name="기타소득" dataKey="기타소득" stackId="a" fill="#F59E0B" hide={!!hiddenKeys['기타소득']} />
                 <Bar name="자산인출" dataKey="자산인출" stackId="a" fill="#EC4899" hide={!!hiddenKeys['자산인출']} />

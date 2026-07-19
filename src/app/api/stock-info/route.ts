@@ -95,9 +95,10 @@ export async function GET(request: NextRequest) {
 
     // Sanity checks and conservative adjustments
     // Cap long-term CAGR at 9.5% for general assets to avoid overly optimistic projections
-    if (cagr > 9.5) cagr = 9.5;
-    else if (cagr < -50 || isNaN(cagr)) cagr = 6.0;
-    
+    if (isNaN(cagr)) cagr = 6.0; // 데이터 계산 실패 시에만 기본값 사용
+    else if (cagr > 9.5) cagr = 9.5;
+    else if (cagr < 0) cagr = 0; // 실시간 조회 값이 마이너스여도 연 성장률 최소값은 0으로 한다
+
     if (dividendYield > 30 || dividendYield < 0 || isNaN(dividendYield)) dividendYield = 0;
 
     return Response.json({
