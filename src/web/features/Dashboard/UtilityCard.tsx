@@ -5,6 +5,8 @@ import GlassCard from '../../components/GlassCard';
 import styles from './Dashboard.module.css';
 import { UtilityBreakdown, StrategyRecommendation } from '../../../core/entities/types';
 import { getRetirementGradeColorTier } from '../../../core/entities/retirementGrade';
+import { analyzeCurrentStrategy } from '../../../core/usecases/utility/utilityAnalysis';
+import { UTILITY_COMPONENT_META } from './utilityComponentMeta';
 
 interface UtilityCardProps {
   utility?: UtilityBreakdown;
@@ -12,15 +14,6 @@ interface UtilityCardProps {
   isComputingRecommendation?: boolean;
   formatValue: (val: number) => string;
 }
-
-const COMPONENT_META: { key: keyof UtilityBreakdown['components']; label: string; max: number; color: string }[] = [
-  { key: 'consumption', label: '소비 만족도', max: 35, color: '#6366F1' },
-  { key: 'depletionSafety', label: '자산 고갈 방지', max: 20, color: '#10B981' },
-  { key: 'pensionUtilization', label: '연금 활용도', max: 15, color: '#A855F7' },
-  { key: 'taxEfficiency', label: '세금 효율', max: 10, color: '#06B6D4' },
-  { key: 'taxationRisk', label: '과세 위험 관리', max: 10, color: '#F59E0B' },
-  { key: 'bequestAdequacy', label: '상속 자산 적정성', max: 10, color: '#EC4899' },
-];
 
 export const UtilityCard: React.FC<UtilityCardProps> = ({
   utility,
@@ -34,6 +27,7 @@ export const UtilityCard: React.FC<UtilityCardProps> = ({
   const scoreColor = colorTier === 'red' ? '#EF4444' : colorTier === 'orange' ? '#F59E0B' : '#10B981';
 
   const hasImprovement = !!recommendation && recommendation.recommendedUtility.score > utility.score;
+  const currentStrategyAnalysis = analyzeCurrentStrategy(utility);
 
   return (
     <GlassCard className={styles.chartCard} glowColor="primary">
@@ -51,8 +45,8 @@ export const UtilityCard: React.FC<UtilityCardProps> = ({
         <span style={{ fontSize: '1rem', color: 'var(--foreground-muted)' }}>/ 100점</span>
       </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', marginBottom: hasImprovement ? '1.25rem' : 0 }}>
-        {COMPONENT_META.map(({ key, label, max, color }) => {
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', marginBottom: '1rem' }}>
+        {UTILITY_COMPONENT_META.map(({ key, label, max, color }) => {
           const value = utility.components[key];
           const pct = max > 0 ? Math.max(0, Math.min(100, (value / max) * 100)) : 0;
           return (
@@ -73,6 +67,37 @@ export const UtilityCard: React.FC<UtilityCardProps> = ({
             </div>
           );
         })}
+      </div>
+
+      <div
+        style={{
+          paddingTop: '0.9rem',
+          borderTop: '1px solid var(--card-border)',
+          marginBottom: '1rem',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '0.5rem',
+        }}
+      >
+        <span style={{ fontWeight: 700, fontSize: '0.95rem' }}>📋 현재 전략 분석</span>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '0.75rem' }}>
+          <div>
+            <span style={{ fontSize: '0.78rem', fontWeight: 600, color: '#10B981' }}>장점</span>
+            <ul style={{ margin: '0.3rem 0 0', paddingLeft: '1.1rem', display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+              {currentStrategyAnalysis.strengths.map((s, i) => (
+                <li key={i} style={{ fontSize: '0.8rem', color: 'var(--foreground-muted)', lineHeight: 1.5 }}>{s}</li>
+              ))}
+            </ul>
+          </div>
+          <div>
+            <span style={{ fontSize: '0.78rem', fontWeight: 600, color: '#F59E0B' }}>단점</span>
+            <ul style={{ margin: '0.3rem 0 0', paddingLeft: '1.1rem', display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+              {currentStrategyAnalysis.weaknesses.map((w, i) => (
+                <li key={i} style={{ fontSize: '0.8rem', color: 'var(--foreground-muted)', lineHeight: 1.5 }}>{w}</li>
+              ))}
+            </ul>
+          </div>
+        </div>
       </div>
 
       {isComputingRecommendation && (

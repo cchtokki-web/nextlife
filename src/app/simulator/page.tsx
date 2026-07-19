@@ -5,6 +5,8 @@ import { useSession, signOut } from 'next-auth/react';
 import { SimulationEngine } from '../../core/usecases/SimulationEngine';
 import { computeMonthlySpendingComposition } from '../../core/usecases/MonthlySpendingComposition';
 import { recommendStrategy } from '../../core/usecases/strategy/RecommendationEngine';
+import { analyzeCurrentStrategy } from '../../core/usecases/utility/utilityAnalysis';
+import { UTILITY_COMPONENT_META } from '../../web/features/Dashboard/utilityComponentMeta';
 import { initialParams } from '../../infrastructure/storage/localStore';
 import { AssetFormSection } from '../../web/features/AssetForm/AssetFormSection';
 import { TaxSettingsSection } from '../../web/features/AssetForm/TaxSettingsSection';
@@ -188,7 +190,7 @@ export default function Home() {
       const jsPDF = (await import('jspdf')).default;
       const html2canvas = (await import('html2canvas')).default;
 
-      const { retirementScore, retirementGrade, goalAchievementRate, fireAge, depletionAge, endingAssets, yearlyResults } = result;
+      const { retirementScore, retirementGrade, goalAchievementRate, fireAge, depletionAge, endingAssets, yearlyResults, utility } = result;
       const {
         userProfile,
         assets,
@@ -219,6 +221,51 @@ export default function Home() {
       };
 
       const formatValuePrint = (val: number): string => formatValue(val);
+
+      // Lifetime Utility Score / AI 추천 전략 PDF 섹션(페이지 2)용 데이터 준비
+      const utilityComponentRowsHtml = utility
+        ? UTILITY_COMPONENT_META.map(({ key, label, max, color }) => {
+            const value = utility.components[key];
+            const pct = max > 0 ? Math.max(0, Math.min(100, (value / max) * 100)) : 0;
+            return `
+              <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px; font-size: 12px;">
+                <span style="width: 110px; color: #475569; font-weight: 600;">${label}</span>
+                <div style="flex-grow: 1; height: 8px; background-color: #e2e8f0; border-radius: 4px; overflow: hidden;">
+                  <div style="width: ${pct}%; height: 100%; background-color: ${color};"></div>
+                </div>
+                <span style="width: 50px; text-align: right; font-weight: 700; color: ${color};">${value}/${max}</span>
+              </div>
+            `;
+          }).join('')
+        : '<p style="font-size: 12px; color: #94a3b8;">Utility 데이터를 계산할 수 없습니다.</p>';
+
+      const currentStrategyAnalysis = utility ? analyzeCurrentStrategy(utility) : null;
+      const strengthsHtml = currentStrategyAnalysis
+        ? currentStrategyAnalysis.strengths.map(s => `<li style="margin-bottom: 4px;">${s}</li>`).join('')
+        : '';
+      const weaknessesHtml = currentStrategyAnalysis
+        ? currentStrategyAnalysis.weaknesses.map(w => `<li style="margin-bottom: 4px;">${w}</li>`).join('')
+        : '';
+
+      const hasImprovement = !!recommendation && !!utility && recommendation.recommendedUtility.score > utility.score;
+      const recommendationSummaryText = !recommendation
+        ? 'AI 추천 전략을 계산할 수 없습니다.'
+        : hasImprovement
+          ? `Utility ${utility!.score}점 → ${recommendation.recommendedUtility.score}점`
+          : '현재 전략 유지 권장';
+      const recommendationReasonsHtml = recommendation
+        ? recommendation.reasons.map(r => `<li style="margin-bottom: 4px;">${r}</li>`).join('')
+        : '<li>탐색 가능한 최적화 여지가 없습니다.</li>';
+      const deltaRowsHtml = (recommendation && hasImprovement)
+        ? `
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; font-size: 12px;">
+            <div><strong>평생 소비 변화:</strong> ${recommendation.deltas.lifetimeConsumption >= 0 ? '+' : '-'}${formatValuePrint(Math.abs(recommendation.deltas.lifetimeConsumption))}</div>
+            <div><strong>평생 총세금 변화:</strong> ${recommendation.deltas.totalTax >= 0 ? '+' : '-'}${formatValuePrint(Math.abs(recommendation.deltas.totalTax))}</div>
+            <div><strong>사망 시 연금잔액 변화:</strong> ${recommendation.deltas.pensionEndingBalance >= 0 ? '+' : '-'}${formatValuePrint(Math.abs(recommendation.deltas.pensionEndingBalance))}</div>
+            <div><strong>사망 시 총자산 변화:</strong> ${recommendation.deltas.endingAssets >= 0 ? '+' : '-'}${formatValuePrint(Math.abs(recommendation.deltas.endingAssets))}</div>
+          </div>
+        `
+        : '';
 
       // Create a temporary container
       const container = document.createElement('div');
@@ -306,7 +353,42 @@ export default function Home() {
 
         <div class="pdf-page">
           <div class="pdf-content">
-            <h2 style="font-size: 16px; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; color: #0f172a; margin-top: 0; margin-bottom: 10px;">3. 연금 및 자산 현황</h2>
+            <h2 style="font-size: 16px; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; color: #0f172a; margin-top: 0; margin-bottom: 10px;">3. Lifetime Utility Score &amp; AI 추천 전략</h2>
+            <p style="font-size: 11px; color: #64748b; margin-top: 0; margin-bottom: 14px;">"얼마를 남기는가"보다 "얼마나 잘 사용하는가"를 기준으로 평가한 평생 효용 점수입니다.</p>
+
+            <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 18px; margin-bottom: 18px;">
+              <div style="display: flex; align-items: baseline; gap: 8px; margin-bottom: 12px;">
+                <span style="font-size: 24px; font-weight: 800; color: #1e3a8a;">${utility ? utility.score : '-'}</span>
+                <span style="font-size: 12px; color: #64748b;">/ 100점</span>
+              </div>
+              ${utilityComponentRowsHtml}
+            </div>
+
+            <h3 style="font-size: 13px; color: #0f172a; margin-bottom: 8px;">현재 전략 분석</h3>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 18px; font-size: 12px;">
+              <div>
+                <strong style="color: #10B981;">장점</strong>
+                <ul style="padding-left: 18px; margin-top: 4px; margin-bottom: 0;">${strengthsHtml}</ul>
+              </div>
+              <div>
+                <strong style="color: #F59E0B;">단점</strong>
+                <ul style="padding-left: 18px; margin-top: 4px; margin-bottom: 0;">${weaknessesHtml}</ul>
+              </div>
+            </div>
+
+            <h3 style="font-size: 13px; color: #0f172a; margin-bottom: 4px;">🤖 AI 추천 전략 — ${recommendationSummaryText}</h3>
+            <ul style="padding-left: 18px; margin-top: 6px; margin-bottom: 0; font-size: 12px; line-height: 1.6;">${recommendationReasonsHtml}</ul>
+            ${deltaRowsHtml}
+          </div>
+          <div class="pdf-footer">
+            <span>NextLife 은퇴 자산 시뮬레이션 리포트</span>
+            <span>페이지 2 / {total_pages}</span>
+          </div>
+        </div>
+
+        <div class="pdf-page">
+          <div class="pdf-content">
+            <h2 style="font-size: 16px; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; color: #0f172a; margin-top: 0; margin-bottom: 10px;">4. 연금 및 자산 현황</h2>
             <div style="font-size: 13px; line-height: 1.6; display: grid; grid-template-columns: 1fr; gap: 12px;">
               <div>
                 <strong>국민연금:</strong> 예상 월 수령액 ${nationalPension?.expectedMonthlyAmount.toLocaleString()}원 (65세부터 수령)
@@ -379,13 +461,13 @@ export default function Home() {
           </div>
           <div class="pdf-footer">
             <span>NextLife 은퇴 자산 시뮬레이션 리포트</span>
-            <span>페이지 2 / {total_pages}</span>
+            <span>페이지 3 / {total_pages}</span>
           </div>
         </div>
 
         <div class="pdf-page">
           <div class="pdf-content">
-            <h2 style="font-size: 16px; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; color: #0f172a; margin-top: 0; margin-bottom: 10px;">4. 세금 설정</h2>
+            <h2 style="font-size: 16px; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; color: #0f172a; margin-top: 0; margin-bottom: 10px;">5. 세금 설정</h2>
             <ul style="padding-left: 20px; margin-top: 5px; margin-bottom: 0; font-size: 13px; line-height: 1.6;">
               <li style="margin-bottom: 6px;"><strong>금융소득종합과세 반영:</strong> ${currentTaxSettings.enableComprehensiveTax ? `반영 (2천만원 초과분 ${currentTaxSettings.comprehensiveTaxRate}% 추가 과세)` : '미반영'}</li>
               <li style="margin-bottom: 6px;"><strong>추가 건강보험료 반영:</strong> ${currentTaxSettings.enableHealthInsurance ? `반영 (초과분 ${currentTaxSettings.healthInsuranceRate}%)` : '미반영'}</li>
@@ -397,12 +479,12 @@ export default function Home() {
           </div>
           <div class="pdf-footer">
             <span>NextLife 은퇴 자산 시뮬레이션 리포트</span>
-            <span>페이지 3 / {total_pages}</span>
+            <span>페이지 4 / {total_pages}</span>
           </div>
         </div>
       `;
 
-      // Page 4+: Tables
+      // Page 5+: Tables
       const chunks: typeof yearlyResults[] = [];
       const rowsPerPage = 30; // Fits A4 page beautifully with comfortable vertical rhythm
       for (let i = 0; i < yearlyResults.length; i += rowsPerPage) {
@@ -417,13 +499,13 @@ export default function Home() {
       const hasSpendingSection = spendingChunks.length > 0;
 
       chunks.forEach((chunk, chunkIdx) => {
-        const pageNum = chunkIdx + 4;
+        const pageNum = chunkIdx + 5;
         const isLastChunk = chunkIdx === chunks.length - 1 && !hasSpendingSection;
         pagesHtml += `
           <div class="pdf-page">
             <div class="pdf-content">
               <h2 style="font-size: 15px; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; color: #0f172a; margin-top: 0; margin-bottom: 12px;">
-                5. 연령별 소득원 및 자산 추이 (페이지 ${chunkIdx + 1})
+                6. 연령별 소득원 및 자산 추이 (페이지 ${chunkIdx + 1})
               </h2>
               <table style="width: 100%; border-collapse: collapse; font-size: 10.5px;">
                 <thead>
@@ -485,13 +567,13 @@ export default function Home() {
       });
 
       spendingChunks.forEach((chunk, chunkIdx) => {
-        const pageNum = chunks.length + 4 + chunkIdx;
+        const pageNum = chunks.length + 5 + chunkIdx;
         const isLastChunk = chunkIdx === spendingChunks.length - 1;
         pagesHtml += `
           <div class="pdf-page">
             <div class="pdf-content">
               <h2 style="font-size: 15px; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; color: #0f172a; margin-top: 0; margin-bottom: 12px;">
-                6. 은퇴 후 월 생활비 재원 구성 (페이지 ${chunkIdx + 1})
+                7. 은퇴 후 월 생활비 재원 구성 (페이지 ${chunkIdx + 1})
               </h2>
               <table style="width: 100%; border-collapse: collapse; font-size: 10.5px;">
                 <thead>
@@ -549,7 +631,7 @@ export default function Home() {
         `;
       });
 
-      const totalPages = 3 + chunks.length + spendingChunks.length;
+      const totalPages = 4 + chunks.length + spendingChunks.length;
       pagesHtml = pagesHtml.replaceAll('{total_pages}', totalPages.toString());
 
       // Append pages html
