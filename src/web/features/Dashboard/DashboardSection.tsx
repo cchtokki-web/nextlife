@@ -171,6 +171,11 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({ params: rawP
       };
     });
 
+  const rawPensionLimit = params.taxSettings?.privatePensionLimit ?? 15000000;
+  const monthlyPensionLimit = params.displayCurrency === 'USD'
+    ? (rawPensionLimit / 12) / params.baseExchangeRate
+    : rawPensionLimit / 12;
+
   // 월 생활비 구성 그래프 데이터 (은퇴 나이 이후 대상)
   const spendingChartData = retirementYearsResults.map((r) => {
     const age = r.age;
@@ -207,21 +212,23 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({ params: rawP
       // 국민연금은 실제로 매달 전액 지급되므로 축소하지 않고 raw 값 그대로 사용
       nationalUsed = national;
 
-      const remainingTarget = Math.max(0, targetMonthly - national);
-      const otherTotal = privatePen + dividend + other;
-      const ratio = otherTotal > 0 ? remainingTarget / otherTotal : 0;
+      const remainingAfterNational = Math.max(0, targetMonthly - national);
 
-      privatePenUsed = Math.round(privatePen * ratio);
+      // 사적연금은 저율과세 한도까지만 할당하고, 초과분은 배당소득/기타소득이 대신 채운다
+      privatePenUsed = Math.min(privatePen, monthlyPensionLimit, remainingAfterNational);
+
+      const remainingAfterPension = Math.max(0, remainingAfterNational - privatePenUsed);
+      const dividendOtherTotal = dividend + other;
+      const ratio = dividendOtherTotal > 0 ? Math.min(1, remainingAfterPension / dividendOtherTotal) : 0;
+
       dividendUsed = Math.round(dividend * ratio);
       otherUsed = Math.round(other * ratio);
 
-      // 라운딩 오차는 국민연금을 제외한 나머지 세 항목 중 가장 큰 값에서 보정
-      const sumOtherUsed = privatePenUsed + dividendUsed + otherUsed;
-      const diff = remainingTarget - sumOtherUsed;
-      if (diff !== 0) {
-        if (privatePenUsed >= dividendUsed && privatePenUsed >= otherUsed) {
-          privatePenUsed += diff;
-        } else if (dividendUsed >= otherUsed) {
+      // 라운딩 오차는 배당소득/기타소득 중 더 큰 값에서 보정 (실제 수입을 넘어서지 않는 선에서만)
+      const sumUsed = nationalUsed + privatePenUsed + dividendUsed + otherUsed;
+      const diff = targetMonthly - sumUsed;
+      if (diff !== 0 && ratio < 1) {
+        if (dividendUsed >= otherUsed) {
           dividendUsed += diff;
         } else {
           otherUsed += diff;
@@ -255,11 +262,6 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({ params: rawP
       ...({ 자산인출: assetWithdrawal, 자산부족: shortfall } as any)
     };
   });
-
-  const rawPensionLimit = params.taxSettings?.privatePensionLimit ?? 15000000;
-  const monthlyPensionLimit = params.displayCurrency === 'USD'
-    ? (rawPensionLimit / 12) / params.baseExchangeRate
-    : rawPensionLimit / 12;
 
   // 금융소득종합과세 기준 (연 2,000만원 초과 시 적용, SimulationEngine.ts와 동일한 고정 기준액)
   const rawComprehensiveTaxLimit = 20000000;
@@ -646,12 +648,12 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({ params: rawP
                 />
                 <ReferenceLine
                   y={monthlyComprehensiveTaxLimit}
-                  stroke="#94A3B8"
+                  stroke="#FDE047"
                   strokeDasharray="4 4"
                   strokeWidth={1.5}
                   label={{
                     value: `금융소득종합과세 기준 (${formatValue(monthlyComprehensiveTaxLimit)}/월)`,
-                    fill: '#94A3B8',
+                    fill: '#FDE047',
                     position: 'insideTopRight',
                     fontSize: '0.65rem',
                     fontWeight: 600,
