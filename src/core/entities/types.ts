@@ -58,7 +58,8 @@ export type SpendingStrategy = 'target' | 'dividend_only' | 'max_sustainable';
 
 export interface WithdrawalPlan {
   privatePensionStartAge?: number; // 사적연금 인출 개시 나이 (미지정 시 retirementAge)
-  privatePensionMonthlyTarget?: number; // 월 목표 인출액(KRW 기준, 세전). 잔액 한도 내에서 제한
+  privatePensionMonthlyTarget?: number; // 월 목표 인출액(KRW 기준, 세전). 계좌 합산 기준, 잔액 한도 내에서 제한
+  nationalPensionStartAge?: number; // 국민연금 수령 개시 나이 (60~70, 미지정 시 65 = 기존 동작과 동일)
 }
 
 export interface TaxSettings {

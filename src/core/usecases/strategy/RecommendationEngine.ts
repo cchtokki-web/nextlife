@@ -46,7 +46,7 @@ function formatManwon(amountKRW: number): string {
   return `${Math.round(amountKRW / 10000).toLocaleString('ko-KR')}만원`;
 }
 
-function buildReasons(
+export function buildReasons(
   plan: WithdrawalPlan | null,
   deltas: StrategyRecommendation['deltas'],
   improved: boolean
@@ -62,6 +62,13 @@ function buildReasons(
   }
   if (plan.privatePensionMonthlyTarget !== undefined) {
     reasons.push(`사적연금을 월 약 ${formatManwon(plan.privatePensionMonthlyTarget)} 수준으로 정액 인출합니다.`);
+  }
+  if (plan.nationalPensionStartAge !== undefined && plan.nationalPensionStartAge !== 65) {
+    if (plan.nationalPensionStartAge < 65) {
+      reasons.push(`국민연금을 ${plan.nationalPensionStartAge}세부터 조기 수령합니다.`);
+    } else {
+      reasons.push(`국민연금을 ${plan.nationalPensionStartAge}세까지 연기 수령해 수령액을 늘립니다.`);
+    }
   }
   if (deltas.lifetimeConsumption > 0) {
     reasons.push(`평생 소비 가능 금액이 약 ${formatManwon(deltas.lifetimeConsumption)} 증가합니다.`);

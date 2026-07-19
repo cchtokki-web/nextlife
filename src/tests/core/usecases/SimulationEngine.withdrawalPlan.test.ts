@@ -134,6 +134,48 @@ describe('SimulationEngine withdrawalPlan (인출 정책 파라미터화)', () =
     }
   });
 
+  test('withdrawalPlan.privatePensionMonthlyTarget은 사적연금 계좌 여러 개의 합산 기준으로 적용된다', () => {
+    // 계좌마다 개별 적용되는 버그가 있다면, 계좌가 2개일 때 총 인출액이 목표의 약 2배가 된다.
+    const engine = new SimulationEngine();
+    const monthlyTargetKRW = 1000000; // 월 100만 원(세전) 목표 - 계좌 합산 기준이어야 함
+    const multiPensionParams: SimulationParams = {
+      userProfile: {
+        currentAge: 60,
+        retirementAge: 60,
+        expectancy: 85,
+        targetMonthlySpending: 100000, // shortfall이 발생하지 않도록 목표 생활비를 낮게 설정
+      },
+      assets: [],
+      nationalPension: { expectedMonthlyAmount: 0 },
+      privatePensions: [
+        { id: 'pension-1', type: 'irp', balance: 300000000, monthlyContribution: 0, annualReturn: 5, currency: 'KRW' },
+        { id: 'pension-2', type: 'savings', balance: 300000000, monthlyContribution: 0, annualReturn: 5, currency: 'KRW' },
+      ],
+      otherIncomes: [
+        { id: 'income-1', label: '임대소득', monthlyAmount: 3000000, currency: 'KRW' }, // shortfall 방지용 충분한 소득
+      ],
+      inflationRate: 0,
+      inflationMode: 'real',
+      baseExchangeRate: 1350,
+      exchangeScenario: 'base',
+      displayCurrency: 'KRW',
+      withdrawalPlan: {
+        privatePensionStartAge: 60,
+        privatePensionMonthlyTarget: monthlyTargetKRW,
+      },
+    };
+
+    const result = engine.run(multiPensionParams);
+    const resultAt60 = result.yearlyResults.find((r) => r.age === 60);
+    expect(resultAt60).toBeDefined();
+
+    // 목표는 계좌 합산 기준 월 100만원(세전)이어야 하므로, 세후 연간 사적연금 소득은
+    // 대략 1,000,000*12*(1-0.055) ≈ 1134만원 근방이어야 한다.
+    const expectedAnnualNet = monthlyTargetKRW * 12 * (1 - 0.055);
+    expect(resultAt60!.privatePensionIncome).toBeLessThan(expectedAnnualNet * 1.3);
+    expect(resultAt60!.privatePensionIncome).toBeGreaterThan(expectedAnnualNet * 0.7);
+  });
+
   test('withdrawalPlan이 있어도 shortfall 발생 시 기존처럼 사적연금이 후행 인출된다', () => {
     const engine = new SimulationEngine();
     // 목표 생활비를 매우 낮은 사적연금 목표보다 훨씬 높게 잡아 shortfall이 발생하도록 함

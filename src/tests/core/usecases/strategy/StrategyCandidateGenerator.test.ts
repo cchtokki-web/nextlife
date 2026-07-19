@@ -39,12 +39,40 @@ describe('generateCandidatePlans', () => {
     const candidates = generateCandidatePlans(baseParams);
 
     expect(candidates.length).toBeGreaterThan(0);
-    expect(candidates.length).toBeLessThanOrEqual(40); // 브라우저 실시간 처리 가능한 상한
+    expect(candidates.length).toBeLessThanOrEqual(150); // 브라우저 실시간 처리 가능한 상한 (최대 5×5×5=125)
 
     for (const c of candidates) {
       expect(c.privatePensionStartAge).toBeGreaterThanOrEqual(baseParams.userProfile.retirementAge);
       expect(c.privatePensionStartAge).toBeLessThan(baseParams.userProfile.expectancy);
       expect(c.privatePensionMonthlyTarget).toBeGreaterThan(0);
+    }
+  });
+
+  test('국민연금 수령액이 0이면 국민연금 시점은 65세 단일 후보만 사용한다 (후보 폭증 방지)', () => {
+    // baseParams.nationalPension.expectedMonthlyAmount === 0
+    const candidates = generateCandidatePlans(baseParams);
+    for (const c of candidates) {
+      expect(c.nationalPensionStartAge).toBe(65);
+    }
+    // 사적연금 그리드(5×5)만큼만 생성되어야 함
+    expect(candidates.length).toBe(25);
+  });
+
+  test('국민연금 수령액이 있으면 조기~연기 수령 나이 그리드를 함께 탐색한다', () => {
+    const paramsWithNationalPension: SimulationParams = {
+      ...baseParams,
+      nationalPension: { expectedMonthlyAmount: 1000000 },
+    };
+    const candidates = generateCandidatePlans(paramsWithNationalPension);
+
+    const distinctNationalPensionAges = new Set(candidates.map((c) => c.nationalPensionStartAge));
+    expect(distinctNationalPensionAges.size).toBeGreaterThan(1);
+    // 5(사적연금 개시나이) × 5(월인출액) × 5(국민연금 개시나이) = 125
+    expect(candidates.length).toBe(125);
+
+    for (const c of candidates) {
+      expect(c.nationalPensionStartAge).toBeGreaterThanOrEqual(60);
+      expect(c.nationalPensionStartAge).toBeLessThanOrEqual(70);
     }
   });
 

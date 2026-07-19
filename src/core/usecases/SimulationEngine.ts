@@ -10,6 +10,21 @@ import {
 } from '../entities/types';
 import { getRetirementGrade, RetirementGrade } from '../entities/retirementGrade';
 import { computeLifetimeUtility } from './utility/UtilityEngine';
+import {
+  getDividendTaxRate,
+  getPrivatePensionIncomeTaxRate,
+  calculateNationalPensionTaxKRW,
+  getIsaExemptionLimitKRW,
+  calculateIsaMaturityTax,
+  calculateComprehensiveTaxAndHealthInsuranceKRW,
+  calculatePrivatePensionExcessTaxNeededKRW,
+} from './tax/TaxEngine';
+import {
+  getNationalPensionAdjustmentFactor,
+  NATIONAL_PENSION_NORMAL_START_AGE,
+  NATIONAL_PENSION_EARLY_MIN_AGE,
+  NATIONAL_PENSION_DEFERRED_MAX_AGE,
+} from './pension/nationalPensionRules';
 
 interface ActiveAsset extends InvestmentAsset {
   currentValue: number;
@@ -138,10 +153,7 @@ export class SimulationEngine {
       const growthRateMonthly = Math.pow(Math.max(0, 1 + growthRateAnnual), 1 / 12) - 1;
       const divRateMonthly = (asset.dividendYield / 100) / 12;
       
-      let taxRate = 0;
-      const market = asset.assetMarket || (asset.currency === 'USD' ? 'US_ETF' : 'KR_ETF');
-      if (market === 'US_ETF') taxRate = currentTaxSettings.usDividendTaxRate / 100;
-      else if (market === 'KR_ETF') taxRate = currentTaxSettings.domesticDividendTaxRate / 100;
+      const taxRate = getDividendTaxRate(asset.assetMarket, asset.currency, currentTaxSettings);
 
       return {
         ...asset,
@@ -340,11 +352,16 @@ export class SimulationEngine {
       let monthlyNationalPensionDisplay = 0;
       let monthlyNatTaxDisplay = 0;
       let monthlyNatPreTaxTotalDisplay = 0;
-      if (currentAge >= 65) {
-        let natAmountRaw = inflationMode === 'nominal'
+      const nationalPensionStartAge = Math.min(
+        NATIONAL_PENSION_DEFERRED_MAX_AGE,
+        Math.max(NATIONAL_PENSION_EARLY_MIN_AGE, withdrawalPlan?.nationalPensionStartAge ?? NATIONAL_PENSION_NORMAL_START_AGE)
+      );
+      if (currentAge >= nationalPensionStartAge) {
+        const nationalPensionAdjustmentFactor = getNationalPensionAdjustmentFactor(nationalPensionStartAge);
+        let natAmountRaw = (inflationMode === 'nominal'
           ? nationalPension.expectedMonthlyAmount * Math.pow(1 + infRateAnnual, y)
-          : nationalPension.expectedMonthlyAmount;
-        const natTax = natAmountRaw * 0.02;
+          : nationalPension.expectedMonthlyAmount) * nationalPensionAdjustmentFactor;
+        const natTax = calculateNationalPensionTaxKRW(natAmountRaw);
         monthlyNationalPensionDisplay = this.convertValue(natAmountRaw - natTax, 'KRW', displayCurrency, exchangeRate);
         monthlyNatTaxDisplay = this.convertValue(natTax, 'KRW', displayCurrency, exchangeRate);
         monthlyNatPreTaxTotalDisplay = this.convertValue(natAmountRaw, 'KRW', displayCurrency, exchangeRate);
@@ -381,11 +398,8 @@ export class SimulationEngine {
 
           if (isa.monthsSinceInception >= isa.maturityYears * 12) {
             const totalProfit = isa.currentBalance - isa.totalInvested;
-            let taxAmount = 0;
-            if (totalProfit > 0) {
-              const exemptionLimit = this.convertValue(isa.type === 'low_income' ? 4000000 : 2000000, 'KRW', isa.currency, exchangeRate);
-              taxAmount = Math.max(0, totalProfit - exemptionLimit) * 0.099;
-            }
+            const exemptionLimit = this.convertValue(getIsaExemptionLimitKRW(isa.type), 'KRW', isa.currency, exchangeRate);
+            const taxAmount = calculateIsaMaturityTax(totalProfit, exemptionLimit);
             const netBalance = isa.currentBalance - taxAmount;
             
             if (activePensions.length > 0) {
@@ -427,6 +441,9 @@ export class SimulationEngine {
         // Pensions Processing
         let monthlyPensionIncomeNetDisplay = 0;
         let monthlyPensionPreTaxLimitRemainingKRW = (currentTaxSettings.privatePensionLimit ?? 15000000) / 12;
+        // privatePensionMonthlyTarget은 계좌 개별이 아닌 "전체 사적연금 계좌 합산" 목표액이다.
+        // 계좌를 순서대로 처리하며 이 잔여 목표액만큼만 인출하도록 공유 상태로 관리한다.
+        let remainingMonthlyPensionTargetKRW = withdrawalPlan?.privatePensionMonthlyTarget;
 
         activePensions.forEach((pension) => {
           if (pension.currentBalance < 0) pension.currentBalance = 0;
@@ -440,11 +457,12 @@ export class SimulationEngine {
             const pensionWithdrawalsStarted = !withdrawalPlan || currentAge >= planStartAge;
 
             if (pensionWithdrawalsStarted) {
-              if (withdrawalPlan?.privatePensionMonthlyTarget !== undefined) {
+              if (remainingMonthlyPensionTargetKRW !== undefined) {
                 const targetInPensionCurrency = this.convertValue(
-                  withdrawalPlan.privatePensionMonthlyTarget, 'KRW', pension.currency, exchangeRate
+                  Math.max(0, remainingMonthlyPensionTargetKRW), 'KRW', pension.currency, exchangeRate
                 );
-                drawAmountRaw = Math.min(pension.currentBalance, Math.max(0, targetInPensionCurrency));
+                drawAmountRaw = Math.min(pension.currentBalance, targetInPensionCurrency);
+                remainingMonthlyPensionTargetKRW -= this.convertValue(drawAmountRaw, pension.currency, 'KRW', exchangeRate);
               } else if (spendingStrategy === 'dividend_only' || spendingStrategy === 'max_sustainable') {
                 drawAmountRaw = Math.max(0, growth);
               } else {
@@ -461,9 +479,7 @@ export class SimulationEngine {
 
             pension.currentBalance -= drawAmountRaw;
 
-            let taxRate = 0.055;
-            if (currentAge >= 70 && currentAge < 80) taxRate = 0.044;
-            else if (currentAge >= 80) taxRate = 0.033;
+            const taxRate = getPrivatePensionIncomeTaxRate(currentAge);
 
             const drawAmountTax = drawAmountRaw * taxRate;
             const drawAmountNet = drawAmountRaw - drawAmountTax;
@@ -503,7 +519,7 @@ export class SimulationEngine {
           }
 
           if (remainingShortfall > 0) {
-            let taxRate = currentAge >= 80 ? 0.033 : (currentAge >= 70 ? 0.044 : 0.055);
+            const taxRate = getPrivatePensionIncomeTaxRate(currentAge);
             for (const pension of activePensions) {
               let pensionValueNetDisplay = this.convertValue(pension.currentBalance, pension.currency, displayCurrency, exchangeRate) * (1 - taxRate);
               
@@ -558,15 +574,13 @@ export class SimulationEngine {
       }
 
       // Taxes
-      let annualComprehensiveTaxPaidDisplay = 0;
-      let annualHealthInsurancePaidDisplay = 0;
-      if (currentTaxSettings.enableComprehensiveTax && annualRawFinancialIncomeKRW > 20000000) {
-        const excessKRW = annualRawFinancialIncomeKRW - 20000000;
-        annualComprehensiveTaxPaidDisplay = this.convertValue(excessKRW * (currentTaxSettings.comprehensiveTaxRate / 100), 'KRW', displayCurrency, exchangeRate);
-        if (currentTaxSettings.enableHealthInsurance) {
-          annualHealthInsurancePaidDisplay = this.convertValue(excessKRW * (currentTaxSettings.healthInsuranceRate / 100), 'KRW', displayCurrency, exchangeRate);
-        }
-        
+      const { comprehensiveTaxKRW, healthInsuranceKRW } = calculateComprehensiveTaxAndHealthInsuranceKRW(
+        annualRawFinancialIncomeKRW, currentTaxSettings
+      );
+      const annualComprehensiveTaxPaidDisplay = this.convertValue(comprehensiveTaxKRW, 'KRW', displayCurrency, exchangeRate);
+      const annualHealthInsurancePaidDisplay = this.convertValue(healthInsuranceKRW, 'KRW', displayCurrency, exchangeRate);
+
+      {
         let remainingTax = annualComprehensiveTaxPaidDisplay + annualHealthInsurancePaidDisplay;
         for (const asset of activeAssets) {
             const assetValueDisplay = this.convertValue(asset.currentValue, asset.currency, displayCurrency, exchangeRate);
@@ -581,11 +595,11 @@ export class SimulationEngine {
       }
 
       // Private pension high tax threshold adjustment
-      if (currentTaxSettings.enablePrivatePensionTax && annualPrivatePensionPreTaxKRW > (currentTaxSettings.privatePensionLimit ?? 15000000)) {
-        const excessRate = currentTaxSettings.privatePensionExcessTaxRate ?? 16.5;
-        const totalPensionTaxNeededDisplay = this.convertValue(annualPrivatePensionPreTaxKRW * (excessRate / 100), 'KRW', displayCurrency, exchangeRate);
+      {
+        const totalPensionTaxNeededKRW = calculatePrivatePensionExcessTaxNeededKRW(annualPrivatePensionPreTaxKRW, currentTaxSettings);
+        const totalPensionTaxNeededDisplay = this.convertValue(totalPensionTaxNeededKRW, 'KRW', displayCurrency, exchangeRate);
         const pensionTaxAdjustmentDisplay = Math.max(0, totalPensionTaxNeededDisplay - annualPensionTaxPaid);
-        
+
         let remainingTax = pensionTaxAdjustmentDisplay;
         for (const asset of activeAssets) {
           const assetValueDisplay = this.convertValue(asset.currentValue, asset.currency, displayCurrency, exchangeRate);
