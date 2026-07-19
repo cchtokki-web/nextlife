@@ -8,6 +8,7 @@ import {
   AssetCurrency,
   TaxSettings,
 } from '../entities/types';
+import { getRetirementGrade, RetirementGrade } from '../entities/retirementGrade';
 
 interface ActiveAsset extends InvestmentAsset {
   currentValue: number;
@@ -191,9 +192,12 @@ export class SimulationEngine {
     depletionAge: number | null,
     inflationMode: 'nominal' | 'real',
     inflationRate: number
-  ): { retirementScore: number, retirementGrade: string } {
-    const retirementStartResult = yearlyResults.find(r => r.age === userProfile.retirementAge);
-    const retirementAssets = retirementStartResult ? retirementStartResult.totalAssets : 0;
+  ): { retirementScore: number, retirementGrade: RetirementGrade, retirementAssetsAtRetirement: number } {
+    // 이미 은퇴 나이를 지난 상태로 입력된 경우(currentAge > retirementAge) yearlyResults에는
+    // retirementAge 시점 행이 없으므로, 관측 가능한 첫 해(yearlyResults[0])를 은퇴 시점 자산의
+    // 대용치로 사용한다. 0으로 폴백하면 아래 오버라이드 조건이 사실상 항상 참이 되어버린다.
+    const retirementStartResult = yearlyResults.find(r => r.age === userProfile.retirementAge) ?? yearlyResults[0];
+    const retirementAssets = retirementStartResult.totalAssets;
     
     const yearsToRetirement = Math.max(0, userProfile.retirementAge - userProfile.currentAge);
     const targetMonthlyAtRetirement = inflationMode === 'nominal' 
@@ -234,35 +238,36 @@ export class SimulationEngine {
     const longevityScore = longevityScoreRaw * 0.15;
 
     // Use total invested assets (stock + pension + ISA) to calculate inflation hedge score
-    const retirementInvestedAssets = retirementStartResult ? (retirementStartResult.stockAssets + retirementStartResult.pensionAssets) : 0;
+    const retirementInvestedAssets = retirementStartResult.stockAssets + retirementStartResult.pensionAssets;
     const investedRatio = retirementAssets > 0 ? (retirementInvestedAssets / retirementAssets) * 100 : 0;
     const inflationScoreRaw = Math.min(100, (investedRatio / 40) * 100);
     const inflationScore = inflationScoreRaw * 0.15;
 
     let retirementScore = Math.round(assetScore + cashFlowScore + pensionScore + longevityScore + inflationScore);
     
-    // Logical override: If assets never deplete and cash flow covers living expenses, score must be >= 95
-    if (depletionAge === null && goalAchievementRate >= 100) {
+    // Logical override: goalAchievementRate는 배당·연금 등 고정소득만 반영하고 자산 매도·인출분은
+    // 제외한 지표라서, 원금을 계획적으로 인출하며 사는 정상적인 시나리오에서는 100%에 거의 도달하지
+    // 못한다. 따라서 이 오버라이드는 goalAchievementRate 대신 실제 자산 추이(은퇴 시작 시점 대비
+    // 순감소 여부)로 판단한다: 기대수명까지 고갈되지 않고 자산이 은퇴 시작 시점보다 줄지 않았다면
+    // 실질적으로 매우 안전한 시나리오이므로 점수 하한을 95점으로 보정한다.
+    const endingAssets = yearlyResults.length > 0 ? yearlyResults[yearlyResults.length - 1].totalAssets : 0;
+    if (depletionAge === null && endingAssets >= retirementAssets) {
       retirementScore = Math.max(retirementScore, 95);
     }
-    
+
     // Ensure max score is 100
     retirementScore = Math.min(100, retirementScore);
 
-    let retirementGrade = '위험';
-    if (retirementScore >= 90) retirementGrade = '매우 안정';
-    else if (retirementScore >= 80) retirementGrade = '안정';
-    else if (retirementScore >= 70) retirementGrade = '보통';
-    else if (retirementScore >= 60) retirementGrade = '주의';
+    const retirementGrade = getRetirementGrade(retirementScore);
 
-    return { retirementScore, retirementGrade };
+    return { retirementScore, retirementGrade, retirementAssetsAtRetirement: retirementAssets };
   }
 
   runSingle(params: SimulationParams): SimulationResult {
     if (!params || !params.userProfile) {
       return {
         yearlyResults: [], fireAge: null, depletionAge: null,
-        endingAssets: 0, retirementScore: 0, retirementGrade: '위험', goalAchievementRate: 0,
+        endingAssets: 0, retirementScore: 0, retirementGrade: '위험', goalAchievementRate: 0, retirementAssetsAtRetirement: 0,
       };
     }
 
@@ -295,7 +300,7 @@ export class SimulationEngine {
     if (isNaN(totalYears) || totalYears <= 0) {
       return {
         yearlyResults: [], fireAge: null, depletionAge: null,
-        endingAssets: 0, retirementScore: 0, retirementGrade: '위험', goalAchievementRate: 0,
+        endingAssets: 0, retirementScore: 0, retirementGrade: '위험', goalAchievementRate: 0, retirementAssetsAtRetirement: 0,
       };
     }
 
@@ -641,7 +646,7 @@ export class SimulationEngine {
 
     const endingAssets = yearlyResults.length > 0 ? yearlyResults[yearlyResults.length - 1].totalAssets : 0;
 
-    const { retirementScore, retirementGrade } = this.calculateRetirementScore(
+    const { retirementScore, retirementGrade, retirementAssetsAtRetirement } = this.calculateRetirementScore(
       yearlyResults, userProfile, goalAchievementRate, depletionAge, inflationMode, inflationRate
     );
 
@@ -653,6 +658,7 @@ export class SimulationEngine {
       retirementScore,
       retirementGrade,
       goalAchievementRate,
+      retirementAssetsAtRetirement,
     };
   }
 }

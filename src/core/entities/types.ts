@@ -1,3 +1,5 @@
+import { RetirementGrade } from './retirementGrade';
+
 export interface UserProfile {
   currentAge: number;
   retirementAge: number;
@@ -132,9 +134,10 @@ export interface SimulationResult {
   depletionAge: number | null; // 자산 고갈 나이 (0 이하가 되는 시점)
   endingAssets: number; // 기대수명(사망) 시점 잔여 자산
   retirementScore: number; // 0 ~ 100 점
-  retirementGrade: string; // 점수 등급 (매우 안정, 안정, 보통, 주의, 위험)
+  retirementGrade: RetirementGrade; // 점수 등급 (매우 안정, 안정, 보통, 주의, 위험)
   goalAchievementRate: number; // 은퇴 후 예상 월소득 / 목표 월소득 비율 (%)
   calculatedTargetSpending?: number; // 역산된 목표 생활비 (max_sustainable 모드 등에서 사용)
+  retirementAssetsAtRetirement: number; // 은퇴 시작 시점 총자산 (해석/배너 표시용)
 }
 
 export interface ScenarioModel {

@@ -238,10 +238,143 @@ describe('SimulationEngine TDD Tests', () => {
     };
 
     const result = engine.run(paramsWithLimit);
-    
+
     const retirementYears = result.yearlyResults.filter(r => r.age >= baseParams.userProfile.retirementAge);
     for (const r of retirementYears) {
       expect(r.privatePensionIncome).toBeLessThanOrEqual(pensionLimit);
     }
+  });
+
+  test('자산이 고갈되지 않고 순증가하면 goalAchievementRate<100이어도 retirementScore가 95점 이상(매우 안정)으로 보정되는지 검증', () => {
+    // 원금을 일부 인출하며 살아도(즉 고정소득 커버율이 낮아도) 자산이 은퇴 시작 시점보다
+    // 줄지 않는다면 실질적으로 매우 안전한 시나리오이므로, 점수 하한(95점)이 정상 작동해야 한다.
+    const engine = new SimulationEngine();
+    const growingAssetParams: SimulationParams = {
+      userProfile: {
+        currentAge: 60,
+        retirementAge: 60,
+        expectancy: 85,
+        targetMonthlySpending: 2000000, // 200만 원
+      },
+      assets: [
+        {
+          id: 'asset-large',
+          type: 'etf',
+          ticker: 'LARGE',
+          name: '대규모 저배당 성장자산',
+          quantity: 5000000,
+          averagePrice: 100, // 5억 원
+          annualGrowthRate: 9, // 자본 성장률 9%
+          dividendYield: 1, // 배당률 1% (고정소득 커버율을 낮게 유지)
+          monthlyContribution: 0,
+          reinvestDividend: false,
+          currency: 'KRW',
+        },
+      ],
+      nationalPension: { expectedMonthlyAmount: 0 },
+      privatePensions: [],
+      otherIncomes: [],
+      inflationRate: 0,
+      inflationMode: 'real',
+      baseExchangeRate: 1350,
+      exchangeScenario: 'base',
+      displayCurrency: 'KRW',
+    };
+
+    const result = engine.run(growingAssetParams);
+
+    expect(result.depletionAge).toBeNull();
+    expect(result.goalAchievementRate).toBeLessThan(80);
+    expect(result.endingAssets).toBeGreaterThanOrEqual(result.retirementAssetsAtRetirement);
+    expect(result.retirementScore).toBeGreaterThanOrEqual(95);
+    expect(result.retirementGrade).toBe('매우 안정');
+  });
+
+  test('자산이 순감소하지만 고갈되지 않는 경우 retirementScore가 95점으로 보정되지 않는지 검증', () => {
+    // 오버라이드가 "발동해야 하는 경우"뿐 아니라 "발동하지 말아야 하는 경우"도 함께 지켜야
+    // 과도하게 관대한 점수 부여를 막을 수 있다.
+    const engine = new SimulationEngine();
+    const decliningButNotDepletedParams: SimulationParams = {
+      userProfile: {
+        currentAge: 60,
+        retirementAge: 60,
+        expectancy: 85,
+        targetMonthlySpending: 3000000,
+      },
+      assets: [
+        {
+          id: 'asset-declining',
+          type: 'etf',
+          ticker: 'DECLINE',
+          name: '완만하게 줄어드는 자산',
+          quantity: 5000000,
+          averagePrice: 100, // 5억 원
+          annualGrowthRate: 5,
+          dividendYield: 1,
+          monthlyContribution: 0,
+          reinvestDividend: false,
+          currency: 'KRW',
+        },
+      ],
+      nationalPension: { expectedMonthlyAmount: 0 },
+      privatePensions: [],
+      otherIncomes: [],
+      inflationRate: 0,
+      inflationMode: 'real',
+      baseExchangeRate: 1350,
+      exchangeScenario: 'base',
+      displayCurrency: 'KRW',
+    };
+
+    const result = engine.run(decliningButNotDepletedParams);
+
+    expect(result.depletionAge).toBeNull();
+    expect(result.endingAssets).toBeLessThan(result.retirementAssetsAtRetirement);
+    expect(result.retirementScore).toBeLessThan(95);
+  });
+
+  test('이미 은퇴 나이를 지난 사용자(currentAge > retirementAge) 입력 시 retirementAssetsAtRetirement가 0으로 폴백되어 오버라이드가 잘못 발동하지 않는지 검증', () => {
+    // yearlyResults에는 age===retirementAge인 행이 존재하지 않으므로, 관측 가능한 첫 해의
+    // 자산을 대용치로 사용해야 한다. 0으로 폴백되면 고정소득 커버율이 매우 낮아도
+    // "매우 안정"으로 잘못 표시된다.
+    const engine = new SimulationEngine();
+    const alreadyRetiredParams: SimulationParams = {
+      userProfile: {
+        currentAge: 65,
+        retirementAge: 60, // 현재 나이보다 낮음 = 이미 은퇴한 상태
+        expectancy: 85,
+        targetMonthlySpending: 3000000,
+      },
+      assets: [
+        {
+          id: 'asset-retired',
+          type: 'etf',
+          ticker: 'RETIRED',
+          name: '이미 은퇴한 사용자의 자산',
+          quantity: 10000000,
+          averagePrice: 100, // 10억 원
+          annualGrowthRate: 3,
+          dividendYield: 0.5,
+          monthlyContribution: 0,
+          reinvestDividend: false,
+          currency: 'KRW',
+        },
+      ],
+      nationalPension: { expectedMonthlyAmount: 0 },
+      privatePensions: [],
+      otherIncomes: [],
+      inflationRate: 0,
+      inflationMode: 'real',
+      baseExchangeRate: 1350,
+      exchangeScenario: 'base',
+      displayCurrency: 'KRW',
+    };
+
+    const result = engine.run(alreadyRetiredParams);
+
+    expect(result.retirementAssetsAtRetirement).toBeGreaterThan(0);
+    expect(result.goalAchievementRate).toBeLessThan(50);
+    // 고정소득 커버율이 매우 낮은데도 자산 추이만으로 "매우 안정"이 되는 오탐이 없어야 한다.
+    expect(result.retirementGrade).not.toBe('매우 안정');
   });
 });

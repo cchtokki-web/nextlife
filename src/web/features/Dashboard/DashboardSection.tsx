@@ -282,9 +282,25 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({ params: rawP
           </div>
         </div>
       )}
+      {result.depletionAge === null
+        && result.goalAchievementRate < 100
+        && result.endingAssets >= result.retirementAssetsAtRetirement && (
+        <div className={styles.warningCard} style={{ background: 'rgba(16, 185, 129, 0.1)', borderColor: 'rgba(16, 185, 129, 0.3)', marginBottom: '1.5rem' }}>
+          <Award size={22} className={styles.warningIcon} color="var(--success)" />
+          <div className={styles.warningContent}>
+            <span className={styles.warningTitle} style={{ color: 'var(--success)' }}>자산이 고갈되지 않고 유지·증가하는 추세입니다</span>
+            <span className={styles.warningText}>
+              은퇴 소득 달성률({result.goalAchievementRate}%)은 배당·연금 등 고정소득만 반영한 수치입니다.
+              기대수명({params.userProfile.expectancy}세)까지 자산이 전혀 고갈되지 않고 은퇴 시작 시점보다
+              최종 자산이 더 큰 것으로 나타나, 원금을 계획적으로 인출하며 사는 안정적인 은퇴 설계로 평가됩니다.
+            </span>
+          </div>
+        </div>
+      )}
 
       <HeroSummaryCard
         score={result.retirementScore}
+        retirementGrade={result.retirementGrade}
         expectancyAge={params.userProfile.expectancy}
         depletionAge={result.depletionAge}
         monthlyTarget={params.spendingStrategy === 'max_sustainable' && result.calculatedTargetSpending ? result.calculatedTargetSpending : params.userProfile.targetMonthlySpending}

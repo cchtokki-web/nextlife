@@ -171,6 +171,17 @@
   font-family: var(--font-display);
 }
 
+.heroGradeBadge {
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+  background: transparent;
+  white-space: nowrap;
+  margin-left: 4px;
+}
+
 /* 2. Core Metrics Cards */
 .coreMetricsGrid {
   display: grid;

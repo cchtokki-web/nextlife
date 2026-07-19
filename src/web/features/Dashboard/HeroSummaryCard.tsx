@@ -4,9 +4,11 @@ import { useSession } from 'next-auth/react';
 import { Loader2, RefreshCcw } from 'lucide-react';
 import styles from './Dashboard.module.css';
 import { UserProfile, InvestmentAsset, PrivatePension, NationalPension, OtherIncome, TaxSettings, SpendingStrategy } from '../../../core/entities/types';
+import { getRetirementGradeColorTier, RetirementGrade } from '../../../core/entities/retirementGrade';
 
 interface HeroSummaryCardProps {
   score: number; // 0 ~ 100
+  retirementGrade?: RetirementGrade;
   expectancyAge: number;
   depletionAge: number | null;
   alternatives?: { label: string; score: number }[];
@@ -28,6 +30,7 @@ interface HeroSummaryCardProps {
 
 export const HeroSummaryCard: React.FC<HeroSummaryCardProps> = ({
   score,
+  retirementGrade,
   expectancyAge,
   depletionAge,
   alternatives = [],
@@ -57,12 +60,12 @@ export const HeroSummaryCard: React.FC<HeroSummaryCardProps> = ({
   const [isRuleBased, setIsRuleBased] = useState(false);
 
   const currentKey = useMemo(() => JSON.stringify({
-    score, monthlyTarget, isPro, userProfile, depletionAge,
+    score, retirementGrade, monthlyTarget, isPro, userProfile, depletionAge,
     goalAchievementRate, fireAge, endingAssets,
     assets, privatePensions, nationalPension, otherIncomes,
     taxSettings, spendingStrategy, inflationRate, inflationMode
   }), [
-    score, monthlyTarget, isPro, userProfile, depletionAge,
+    score, retirementGrade, monthlyTarget, isPro, userProfile, depletionAge,
     goalAchievementRate, fireAge, endingAssets,
     assets, privatePensions, nationalPension, otherIncomes,
     taxSettings, spendingStrategy, inflationRate, inflationMode
@@ -86,7 +89,7 @@ export const HeroSummaryCard: React.FC<HeroSummaryCardProps> = ({
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            score, monthlyTarget, isPro, userProfile, depletionAge,
+            score, retirementGrade, monthlyTarget, isPro, userProfile, depletionAge,
             goalAchievementRate, fireAge, endingAssets,
             assets, privatePensions, nationalPension, otherIncomes,
             taxSettings, spendingStrategy, inflationRate, inflationMode
@@ -176,12 +179,10 @@ export const HeroSummaryCard: React.FC<HeroSummaryCardProps> = ({
     displayAdvice = "";
   }
 
-  let colorClass = styles.colorGreen;
-  if (score < 70) {
-    colorClass = styles.colorRed;
-  } else if (score < 90) {
-    colorClass = styles.colorOrange;
-  }
+  const colorTier = getRetirementGradeColorTier(score);
+  const colorClass = colorTier === 'red' ? styles.colorRed
+    : colorTier === 'orange' ? styles.colorOrange
+    : styles.colorGreen;
 
   return (
     <motion.div 
@@ -294,30 +295,50 @@ export const HeroSummaryCard: React.FC<HeroSummaryCardProps> = ({
         
         <div className={styles.heroAlternativesSection}>
           <div className={styles.heroAltRow}>
-            <span className={styles.heroAltLabel}>은퇴 성공 확률</span>
+            <span className={styles.heroAltLabel}>은퇴 준비도 점수</span>
             <div className={styles.heroAltBarTrack}>
-              <motion.div 
-                className={styles.heroAltBarFill} 
+              <motion.div
+                className={styles.heroAltBarFill}
                 style={{ backgroundColor: 'var(--hero-color)' }}
                 initial={{ width: 0 }}
                 animate={{ width: `${score}%` }}
                 transition={{ duration: 1, ease: "easeOut", delay: 0.2 }}
               />
             </div>
-            <span className={styles.heroAltScore} style={{ color: 'var(--hero-color)' }}>{score}%</span>
+            <span className={styles.heroAltScore} style={{ color: 'var(--hero-color)' }}>{score}점</span>
+            {retirementGrade && (
+              <span className={styles.heroGradeBadge} style={{ color: 'var(--hero-color)', borderColor: 'var(--hero-color)' }}>
+                {retirementGrade}
+              </span>
+            )}
           </div>
 
+          {typeof goalAchievementRate === 'number' && (
+            <div className={styles.heroAltRow}>
+              <span className={styles.heroAltLabel}>고정소득<br/>커버율</span>
+              <div className={styles.heroAltBarTrack}>
+                <motion.div
+                  className={styles.heroAltBarFill}
+                  style={{ backgroundColor: '#6366F1' }}
+                  initial={{ width: 0 }}
+                  animate={{ width: `${Math.min(100, goalAchievementRate)}%` }}
+                  transition={{ duration: 1, ease: "easeOut", delay: 0.25 }}
+                />
+              </div>
+              <span className={styles.heroAltScore} style={{ color: '#6366F1' }}>{goalAchievementRate}%</span>
+            </div>
+          )}
+
           {alternatives.map((alt, i) => {
-            let altColor = '#EF4444'; // Red
-            if (alt.score >= 90) altColor = '#10B981'; // Green
-            else if (alt.score >= 70) altColor = '#F59E0B'; // Orange
+            const altTier = getRetirementGradeColorTier(alt.score);
+            const altColor = altTier === 'green' ? '#10B981' : altTier === 'orange' ? '#F59E0B' : '#EF4444';
 
             return (
               <div className={styles.heroAltRow} key={i}>
                 <span className={styles.heroAltLabel}>{alt.label}</span>
                 <div className={styles.heroAltBarTrack}>
-                  <motion.div 
-                    className={styles.heroAltBarFill} 
+                  <motion.div
+                    className={styles.heroAltBarFill}
                     style={{ backgroundColor: altColor }}
                     initial={{ width: 0 }}
                     animate={{ width: `${alt.score}%` }}
@@ -328,6 +349,14 @@ export const HeroSummaryCard: React.FC<HeroSummaryCardProps> = ({
               </div>
             );
           })}
+
+          {typeof goalAchievementRate === 'number' && (
+            <p style={{ fontSize: '0.72rem', color: 'var(--hero-text-muted)', margin: '0.5rem 0 0', lineHeight: 1.4 }}>
+              * 고정소득 커버율은 배당·연금·기타소득 등 <strong>원금 인출을 제외한</strong> 소득만으로 목표
+              생활비를 얼마나 충당하는지 나타내는 보조 지표입니다. 100% 미만이어도 자산이 고갈되지
+              않는다면 원금을 계획적으로 인출하는 안정적인 은퇴 설계일 수 있습니다.
+            </p>
+          )}
         </div>
       </div>
     </motion.div>

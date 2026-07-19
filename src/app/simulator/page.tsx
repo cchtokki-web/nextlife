@@ -175,7 +175,7 @@ export default function Home() {
       const jsPDF = (await import('jspdf')).default;
       const html2canvas = (await import('html2canvas')).default;
 
-      const { retirementScore, goalAchievementRate, fireAge, depletionAge, endingAssets, yearlyResults } = result;
+      const { retirementScore, retirementGrade, goalAchievementRate, fireAge, depletionAge, endingAssets, yearlyResults } = result;
       const {
         userProfile,
         assets,
@@ -255,10 +255,10 @@ export default function Home() {
               <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 15px;">
                 <div style="font-size: 13.5px; border-bottom: 1px dashed #e2e8f0; padding-bottom: 8px;">
                   <span style="font-weight: 600; color: #475569;">은퇴 준비도 점수</span>
-                  <span style="float: right; font-size: 15px; color: #0f172a; font-weight: 700;">${retirementScore}점</span>
+                  <span style="float: right; font-size: 15px; color: #0f172a; font-weight: 700;">${retirementScore}점 <span style="font-size: 11.5px; color: #64748b; font-weight: 600;">(${retirementGrade})</span></span>
                 </div>
                 <div style="font-size: 13.5px; border-bottom: 1px dashed #e2e8f0; padding-bottom: 8px;">
-                  <span style="font-weight: 600; color: #475569;">은퇴 소득 달성률</span>
+                  <span style="font-weight: 600; color: #475569;">은퇴 소득 달성률<br/><span style="font-size: 10px; color: #94a3b8; font-weight: 400;">(배당·연금 등 고정소득만 반영, 자산 인출분 제외)</span></span>
                   <span style="float: right; font-size: 15px; color: #0f172a; font-weight: 700;">${goalAchievementRate}%</span>
                 </div>
                 <div style="font-size: 13.5px; border-bottom: 1px dashed #e2e8f0; padding-bottom: 8px;">

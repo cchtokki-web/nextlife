@@ -4,6 +4,7 @@ import {
   UserProfile, InvestmentAsset, PrivatePension, NationalPension,
   OtherIncome, TaxSettings, SpendingStrategy,
 } from '../../../core/entities/types';
+import { RetirementGrade } from '../../../core/entities/retirementGrade';
 
 export const runtime = 'edge';
 
@@ -13,6 +14,7 @@ const DISCLAIMER = '\n\n실제 투자 결정 시에는 반드시 전문 공인 �
 
 interface AiAdvisorRequestBody {
   score: number;
+  retirementGrade?: RetirementGrade;
   monthlyTarget: number;
   isPro?: boolean;
   userProfile?: UserProfile;
@@ -40,6 +42,7 @@ function buildSimulationContextText(body: AiAdvisorRequestBody): string {
     userProfile, assets, privatePensions, nationalPension, otherIncomes,
     taxSettings, spendingStrategy, inflationRate, inflationMode,
     goalAchievementRate, fireAge, endingAssets, monthlyTarget, score, depletionAge,
+    retirementGrade,
   } = body;
 
   const lines: string[] = [];
@@ -48,7 +51,11 @@ function buildSimulationContextText(body: AiAdvisorRequestBody): string {
     lines.push(`- 현재 나이: ${userProfile.currentAge}세 / 은퇴 목표 나이: ${userProfile.retirementAge}세 / 기대 수명: ${userProfile.expectancy}세`);
   }
   lines.push(`- 목표 월 생활비: ${toManwon(monthlyTarget)}만원`);
-  lines.push(`- 은퇴 준비도 점수: ${score}점 / 은퇴 소득 달성률: ${goalAchievementRate ?? '정보 없음'}%`);
+  lines.push(`- 은퇴 준비도 점수: ${score}점 (등급: ${retirementGrade ?? '정보 없음'})`);
+  lines.push(
+    `- 고정소득 커버율(배당·연금·기타소득 등, 자산 매도·인출분 제외): ${goalAchievementRate ?? '정보 없음'}% ` +
+    `※ 이 값이 100% 미만이어도 "자산 고갈 예상 나이"가 없다면 원금을 정상적으로 인출하며 사는 안정적인 은퇴일 수 있음`
+  );
   lines.push(`- FIRE 조기은퇴 가능 나이: ${fireAge ? `${fireAge}세` : '달성 불가능'}`);
   lines.push(`- 자산 고갈 예상 나이: ${depletionAge === null || depletionAge === undefined ? '고갈 위험 없음' : `${depletionAge}세`}`);
   lines.push(`- 기대수명 시점 잔여 자산: ${toManwon(endingAssets)}만원`);
@@ -129,13 +136,13 @@ function buildRuleBasedStream(adviceText: string) {
 export async function POST(req: NextRequest) {
   try {
     const body: AiAdvisorRequestBody = await req.json();
-    const { score, monthlyTarget, isPro, userProfile, depletionAge } = body;
+    const { score, monthlyTarget, isPro, userProfile, depletionAge, retirementGrade } = body;
 
     const OLLAMA_ENDPOINT = process.env.OLLAMA_ENDPOINT;
     const OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'gemma4-12b';
 
     if (!OLLAMA_ENDPOINT || OLLAMA_ENDPOINT.trim() === '') {
-      const adviceText = generateRuleBasedAdvice(score, monthlyTarget, !!isPro, userProfile, depletionAge);
+      const adviceText = generateRuleBasedAdvice(score, monthlyTarget, !!isPro, userProfile, depletionAge, retirementGrade);
       return buildRuleBasedStream(adviceText);
     }
 
@@ -148,12 +155,13 @@ export async function POST(req: NextRequest) {
 1. 반드시 **딱 2개의 문장**으로만 작성하세요. 미사여구, 불필요한 인사말, 위로나 격려는 모두 제거하고 팩트 위주로 요점만 전달하세요. 상담을 권유하는 맺음말은 시스템이 별도로 자동 추가하므로 작성하지 마세요.
 2. 중요한 정보(점수, 금액, 핵심 조언 등)는 반드시 **텍스트**처럼 마크다운 볼드체를 사용하여 강조하세요.
 3. <think> 태그나 내부 사고 과정을 절대 출력하지 마세요. 곧바로 최종 답변만 출력하세요.
+4. 종합 진단은 반드시 "은퇴 준비도 점수/등급"과 "자산 고갈 예상 나이"를 1차 기준으로 삼으세요. "고정소득 커버율"은 배당·연금 등 원금 인출을 제외한 보조 지표이므로, 이 값이 100% 미만이라는 이유만으로 위험하다고 단정하지 마세요. 자산 고갈 예상 나이가 없고 기대수명 시점 잔여 자산이 충분하다면, 고정소득 커버율이 낮아도 안정적인 은퇴로 해석하세요.
 
 [시뮬레이션 결과 전체]
 ${simulationContextText}
 
 [작성 가이드]
-- 첫 번째 문장: 은퇴 성공 확률/점수, 자산 고갈 가능성, 세금 이슈 등을 종합한 직설적인 상태 진단.
+- 첫 번째 문장: 은퇴 준비도 등급(매우 안정/안정/보통/주의/위험)과 자산 고갈 가능성을 우선 기준으로 한 직설적인 상태 진단. 고정소득 커버율이 낮다는 이유만으로 부정적으로 서술하지 말 것.
 - 두 번째 문장: 연금 구성·세금 설정·자산 구성 등 위 데이터를 근거로 한 구체적인 액션 플랜 또는 제안.
 `;
 
@@ -179,7 +187,7 @@ ${simulationContextText}
       }
     } catch (fetchError) {
       console.warn('Failed to connect to Ollama, falling back to rule-based advice:', fetchError);
-      const adviceText = generateRuleBasedAdvice(score, monthlyTarget, !!isPro, userProfile, depletionAge);
+      const adviceText = generateRuleBasedAdvice(score, monthlyTarget, !!isPro, userProfile, depletionAge, retirementGrade);
       return buildRuleBasedStream(adviceText);
     }
 
