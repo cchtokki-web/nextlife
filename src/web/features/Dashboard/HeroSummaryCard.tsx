@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useSession } from 'next-auth/react';
 import { Loader2, RefreshCcw } from 'lucide-react';
 import styles from './Dashboard.module.css';
-import { UserProfile } from '../../../core/entities/types';
+import { UserProfile, InvestmentAsset, PrivatePension, NationalPension, OtherIncome, TaxSettings, SpendingStrategy } from '../../../core/entities/types';
 
 interface HeroSummaryCardProps {
   score: number; // 0 ~ 100
@@ -13,16 +13,38 @@ interface HeroSummaryCardProps {
   monthlyTarget: number;
   isPro?: boolean;
   userProfile?: UserProfile;
+  goalAchievementRate?: number;
+  fireAge?: number | null;
+  endingAssets?: number;
+  assets?: InvestmentAsset[];
+  privatePensions?: PrivatePension[];
+  nationalPension?: NationalPension;
+  otherIncomes?: OtherIncome[];
+  taxSettings?: TaxSettings;
+  spendingStrategy?: SpendingStrategy;
+  inflationRate?: number;
+  inflationMode?: 'nominal' | 'real';
 }
 
-export const HeroSummaryCard: React.FC<HeroSummaryCardProps> = ({ 
-  score, 
-  expectancyAge, 
-  depletionAge, 
-  alternatives = [], 
-  monthlyTarget, 
-  isPro = false, 
-  userProfile 
+export const HeroSummaryCard: React.FC<HeroSummaryCardProps> = ({
+  score,
+  expectancyAge,
+  depletionAge,
+  alternatives = [],
+  monthlyTarget,
+  isPro = false,
+  userProfile,
+  goalAchievementRate,
+  fireAge,
+  endingAssets,
+  assets,
+  privatePensions,
+  nationalPension,
+  otherIncomes,
+  taxSettings,
+  spendingStrategy,
+  inflationRate,
+  inflationMode
 }) => {
   const { data: session } = useSession();
   const userNamePrefix = session?.user?.name ? `${session.user.name}님의 ` : '';
@@ -34,7 +56,17 @@ export const HeroSummaryCard: React.FC<HeroSummaryCardProps> = ({
   const [lastFetchKey, setLastFetchKey] = useState('');
   const [isRuleBased, setIsRuleBased] = useState(false);
 
-  const currentKey = useMemo(() => JSON.stringify({ score, monthlyTarget, isPro, userProfile, depletionAge }), [score, monthlyTarget, isPro, userProfile, depletionAge]);
+  const currentKey = useMemo(() => JSON.stringify({
+    score, monthlyTarget, isPro, userProfile, depletionAge,
+    goalAchievementRate, fireAge, endingAssets,
+    assets, privatePensions, nationalPension, otherIncomes,
+    taxSettings, spendingStrategy, inflationRate, inflationMode
+  }), [
+    score, monthlyTarget, isPro, userProfile, depletionAge,
+    goalAchievementRate, fireAge, endingAssets,
+    assets, privatePensions, nationalPension, otherIncomes,
+    taxSettings, spendingStrategy, inflationRate, inflationMode
+  ]);
   const isStale = lastFetchKey !== '' && currentKey !== lastFetchKey;
 
   useEffect(() => {
@@ -54,11 +86,10 @@ export const HeroSummaryCard: React.FC<HeroSummaryCardProps> = ({
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            score,
-            monthlyTarget,
-            isPro,
-            userProfile,
-            depletionAge,
+            score, monthlyTarget, isPro, userProfile, depletionAge,
+            goalAchievementRate, fireAge, endingAssets,
+            assets, privatePensions, nationalPension, otherIncomes,
+            taxSettings, spendingStrategy, inflationRate, inflationMode
           }),
           signal: abortController.signal,
         });

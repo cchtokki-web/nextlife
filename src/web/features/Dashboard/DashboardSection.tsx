@@ -363,13 +363,24 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({ params: rawP
         </div>
       )}
 
-      <HeroSummaryCard 
-        score={result.retirementScore} 
-        expectancyAge={params.userProfile.expectancy} 
-        depletionAge={result.depletionAge} 
+      <HeroSummaryCard
+        score={result.retirementScore}
+        expectancyAge={params.userProfile.expectancy}
+        depletionAge={result.depletionAge}
         monthlyTarget={params.spendingStrategy === 'max_sustainable' && result.calculatedTargetSpending ? result.calculatedTargetSpending : params.userProfile.targetMonthlySpending}
         isPro={isPro}
         userProfile={params.userProfile}
+        goalAchievementRate={result.goalAchievementRate}
+        fireAge={result.fireAge}
+        endingAssets={result.endingAssets}
+        assets={params.assets}
+        privatePensions={params.privatePensions}
+        nationalPension={params.nationalPension}
+        otherIncomes={params.otherIncomes}
+        taxSettings={params.taxSettings}
+        spendingStrategy={params.spendingStrategy}
+        inflationRate={params.inflationRate}
+        inflationMode={params.inflationMode}
       />
 
       <CoreMetricsCards 
