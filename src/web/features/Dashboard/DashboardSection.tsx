@@ -632,12 +632,12 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({ params: rawP
                 <Bar name="자산부족" dataKey="자산부족" stackId="a" fill="#EF4444" hide={!!hiddenKeys['자산부족']} />
                 <ReferenceLine
                   y={monthlyPensionLimit}
-                  stroke="#E2E8F0"
+                  stroke="#F8FAFC"
                   strokeDasharray="4 4"
                   strokeWidth={1.5}
                   label={{
                     value: `사적연금 저율과세 한도 (${formatValue(monthlyPensionLimit)}/월)`,
-                    fill: '#E2E8F0',
+                    fill: '#F8FAFC',
                     position: 'insideBottomLeft',
                     fontSize: '0.65rem',
                     fontWeight: 600,
@@ -646,13 +646,13 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({ params: rawP
                 />
                 <ReferenceLine
                   y={monthlyComprehensiveTaxLimit}
-                  stroke="#E2E8F0"
+                  stroke="#94A3B8"
                   strokeDasharray="4 4"
                   strokeWidth={1.5}
                   label={{
                     value: `금융소득종합과세 기준 (${formatValue(monthlyComprehensiveTaxLimit)}/월)`,
-                    fill: '#E2E8F0',
-                    position: 'insideTopLeft',
+                    fill: '#94A3B8',
+                    position: 'insideTopRight',
                     fontSize: '0.65rem',
                     fontWeight: 600,
                     offset: 10
