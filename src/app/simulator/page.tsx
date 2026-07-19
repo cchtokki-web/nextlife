@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useMemo, useDeferredValue } from 'react';
 import { useSession, signOut } from 'next-auth/react';
 import { SimulationEngine } from '../../core/usecases/SimulationEngine';
+import { computeMonthlySpendingComposition } from '../../core/usecases/MonthlySpendingComposition';
 import { initialParams } from '../../infrastructure/storage/localStore';
 import { AssetFormSection } from '../../web/features/AssetForm/AssetFormSection';
 import { TaxSettingsSection } from '../../web/features/AssetForm/TaxSettingsSection';
@@ -379,9 +380,16 @@ export default function Home() {
         chunks.push(yearlyResults.slice(i, i + rowsPerPage));
       }
 
+      const spendingComposition = computeMonthlySpendingComposition(yearlyResults, activeParams, result);
+      const spendingChunks: typeof spendingComposition[] = [];
+      for (let i = 0; i < spendingComposition.length; i += rowsPerPage) {
+        spendingChunks.push(spendingComposition.slice(i, i + rowsPerPage));
+      }
+      const hasSpendingSection = spendingChunks.length > 0;
+
       chunks.forEach((chunk, chunkIdx) => {
         const pageNum = chunkIdx + 2;
-        const isLastChunk = chunkIdx === chunks.length - 1;
+        const isLastChunk = chunkIdx === chunks.length - 1 && !hasSpendingSection;
         pagesHtml += `
           <div class="pdf-page">
             <div class="pdf-content">
@@ -447,7 +455,72 @@ export default function Home() {
         `;
       });
 
-      const totalPages = chunks.length + 1;
+      spendingChunks.forEach((chunk, chunkIdx) => {
+        const pageNum = chunks.length + 2 + chunkIdx;
+        const isLastChunk = chunkIdx === spendingChunks.length - 1;
+        pagesHtml += `
+          <div class="pdf-page">
+            <div class="pdf-content">
+              <h2 style="font-size: 15px; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; color: #0f172a; margin-top: 0; margin-bottom: 12px;">
+                6. 은퇴 후 월 생활비 재원 구성 (페이지 ${chunkIdx + 1})
+              </h2>
+              <table style="width: 100%; border-collapse: collapse; font-size: 10.5px;">
+                <thead>
+                  <tr>
+                    <th style="border: 1px solid #cbd5e1; padding: 7px 8px; text-align: center; background-color: #f1f5f9; font-weight: 700; color: #334155;">나이</th>
+                    <th style="border: 1px solid #cbd5e1; padding: 7px 8px; text-align: right; background-color: #f1f5f9; font-weight: 700; color: #334155;">국민연금</th>
+                    <th style="border: 1px solid #cbd5e1; padding: 7px 8px; text-align: right; background-color: #f1f5f9; font-weight: 700; color: #334155;">사적연금</th>
+                    <th style="border: 1px solid #cbd5e1; padding: 7px 8px; text-align: right; background-color: #f1f5f9; font-weight: 700; color: #334155;">배당소득</th>
+                    <th style="border: 1px solid #cbd5e1; padding: 7px 8px; text-align: right; background-color: #f1f5f9; font-weight: 700; color: #334155;">기타소득</th>
+                    <th style="border: 1px solid #cbd5e1; padding: 7px 8px; text-align: right; background-color: #f1f5f9; font-weight: 700; color: #334155;">자산인출</th>
+                    <th style="border: 1px solid #cbd5e1; padding: 7px 8px; text-align: right; background-color: #f1f5f9; font-weight: 700; color: #334155;">자산부족</th>
+                  </tr>
+                </thead>
+                <tbody>
+        `;
+
+        chunk.forEach((d, idx) => {
+          const bg = idx % 2 === 1 ? 'background-color: #f8fafc;' : '';
+          pagesHtml += `
+            <tr style="${bg}">
+              <td style="border: 1px solid #cbd5e1; padding: 7px 8px; text-align: center;">${d.age}세</td>
+              <td style="border: 1px solid #cbd5e1; padding: 7px 8px; text-align: right;">${formatValuePrint(d.nationalUsed)}</td>
+              <td style="border: 1px solid #cbd5e1; padding: 7px 8px; text-align: right;">${formatValuePrint(d.privatePenUsed)}</td>
+              <td style="border: 1px solid #cbd5e1; padding: 7px 8px; text-align: right;">${formatValuePrint(d.dividendUsed)}</td>
+              <td style="border: 1px solid #cbd5e1; padding: 7px 8px; text-align: right;">${formatValuePrint(d.otherUsed)}</td>
+              <td style="border: 1px solid #cbd5e1; padding: 7px 8px; text-align: right;">${formatValuePrint(d.assetWithdrawal)}</td>
+              <td style="border: 1px solid #cbd5e1; padding: 7px 8px; text-align: right; ${d.shortfall > 0 ? 'color: #ef4444; font-weight: bold;' : ''}">${formatValuePrint(d.shortfall)}</td>
+            </tr>
+          `;
+        });
+
+        pagesHtml += `
+                </tbody>
+              </table>
+              <p style="margin-top: 10px; font-size: 10px; color: #64748b;">* 월 생활비 재원 구성은 연간 금액을 월 단위로 환산한 값이며, 사적연금은 저율과세 한도를 넘지 않는 범위 내에서만 사용하도록 계산되었습니다.</p>
+        `;
+
+        if (isLastChunk) {
+          pagesHtml += `
+            <div style="margin-top: 25px; font-size: 10px; color: #64748b; border-top: 1px solid #cbd5e1; padding-top: 10px;">
+              <p style="margin: 0 0 4px 0;"><strong>중요 투자 및 시뮬레이션 법적 면책 고지</strong></p>
+              <p style="margin: 0; line-height: 1.4;">본 NextLife 웹 서비스에서 산출 및 표시되는 모든 결과는 사용자가 가정치와 과거 시장 데이터에 기반한 시뮬레이션 결과입니다. 이는 미래의 실제 자산 가치 및 수익률을 보장하지 않습니다. 실제 투자 결정 시에는 반드시 전문 공인 재무 설계사와 상의하시기 바랍니다.</p>
+              <p style="margin: 4px 0 0 0;">&copy; ${new Date().getFullYear()} NextLife. Created by TokkiLab. All rights reserved.</p>
+            </div>
+          `;
+        }
+
+        pagesHtml += `
+            </div>
+            <div class="pdf-footer">
+              <span>NextLife 은퇴 자산 시뮬레이션 리포트</span>
+              <span>페이지 ${pageNum} / {total_pages}</span>
+            </div>
+          </div>
+        `;
+      });
+
+      const totalPages = 1 + chunks.length + spendingChunks.length;
       pagesHtml = pagesHtml.replaceAll('{total_pages}', totalPages.toString());
 
       // Append pages html

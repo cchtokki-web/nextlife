@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { SimulationParams, SimulationResult } from '../../../core/entities/types';
+import { computeMonthlySpendingComposition } from '../../../core/usecases/MonthlySpendingComposition';
 import GlassCard from '../../components/GlassCard';
 import { YearlyChart } from './YearlyChart';
 import { HeroSummaryCard } from './HeroSummaryCard';
@@ -177,58 +178,16 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({ params: rawP
     ? (rawPensionLimit / 12) / params.baseExchangeRate
     : rawPensionLimit / 12;
 
-  // 월 생활비 구성 그래프 데이터 (은퇴 나이 이후 대상)
-  const spendingChartData = retirementYearsResults.map((r) => {
-    const age = r.age;
-    const y = age - params.userProfile.currentAge;
-    const infRateAnnual = params.inflationRate / 100;
-    
-    let targetMonthly = 0;
-    if (params.spendingStrategy === 'max_sustainable' && result.calculatedTargetSpending !== undefined) {
-      targetMonthly = result.calculatedTargetSpending;
-    } else {
-      targetMonthly = params.userProfile.targetMonthlySpending;
-    }
-    
-    if (params.inflationMode === 'nominal') {
-      targetMonthly = targetMonthly * Math.pow(1 + infRateAnnual, y);
-    }
-
-    const national = Math.round(r.nationalPensionIncome / 12);
-    const privatePen = Math.round(r.privatePensionIncome / 12);
-    const dividend = Math.round(r.dividendIncome / 12);
-    const other = Math.round(r.otherIncome / 12);
-    
-    const actualSpendingMonthly = Math.round(r.spending / 12);
-
-    // 국민연금은 실제로 매달 전액 지급되므로 항상 raw 값 그대로 사용
-    const nationalUsed = national;
-
-    // 사적연금은 필요한 만큼만 쓰되, 저율과세 한도를 절대 넘지 않는다
-    const remainingAfterNational = Math.max(0, actualSpendingMonthly - nationalUsed);
-    const privatePenUsed = Math.min(privatePen, monthlyPensionLimit, remainingAfterNational);
-
-    // 남은 필요분은 배당소득/기타소득이 raw 한도 내에서 채운다
-    const remainingAfterPension = Math.max(0, remainingAfterNational - privatePenUsed);
-    const dividendOtherTotal = dividend + other;
-    const ratio = dividendOtherTotal > 0 ? Math.min(1, remainingAfterPension / dividendOtherTotal) : 0;
-    const dividendUsed = Math.round(dividend * ratio);
-    const otherUsed = Math.round(other * ratio);
-
-    // 그래도 부족하면 자산에서 인출하고, 실제로 인출할 자산조차 없으면(시뮬레이션상 지출이 이미 줄어든 만큼) 자산부족으로 표시
-    const usedSoFar = nationalUsed + privatePenUsed + dividendUsed + otherUsed;
-    const assetWithdrawal = Math.max(0, actualSpendingMonthly - usedSoFar);
-    const shortfall = Math.max(0, targetMonthly - actualSpendingMonthly);
-
-    return {
-      age,
-      국민연금: nationalUsed,
-      사적연금: privatePenUsed,
-      배당소득: dividendUsed,
-      기타소득: otherUsed,
-      ...({ 자산인출: assetWithdrawal, 자산부족: shortfall } as any)
-    };
-  });
+  // 월 생활비 구성 그래프 데이터 (은퇴 나이 이후 대상). PDF 리포트와 동일한 계산 로직을 공유한다.
+  const spendingChartData = computeMonthlySpendingComposition(yearlyResults, params, result).map((d) => ({
+    age: d.age,
+    국민연금: d.nationalUsed,
+    사적연금: d.privatePenUsed,
+    배당소득: d.dividendUsed,
+    기타소득: d.otherUsed,
+    자산인출: d.assetWithdrawal,
+    자산부족: d.shortfall,
+  }));
 
   // Assets Line chart data formatting (Merge base with compare scenarios)
   const assetChartData = yearlyResults.map((r) => {
