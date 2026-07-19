@@ -555,6 +555,9 @@ export class SimulationEngine {
             remainingTax -= deduct;
             if (remainingTax <= 0) break;
         }
+
+        // 초과세도 실질적으로 배당소득에서 빠져나가는 비용이므로 표시되는 배당소득에도 반영한다.
+        annualDividendIncome = Math.max(0, annualDividendIncome - annualComprehensiveTaxPaidDisplay - annualHealthInsurancePaidDisplay);
       }
 
       // Private pension high tax threshold adjustment
@@ -581,6 +584,8 @@ export class SimulationEngine {
           }
         }
         annualPensionTaxPaid += pensionTaxAdjustmentDisplay;
+        // 초과세도 실질적으로 사적연금 소득에서 빠져나가는 비용이므로 표시되는 소득에도 반영한다.
+        annualPrivatePensionIncome = Math.max(0, annualPrivatePensionIncome - pensionTaxAdjustmentDisplay);
       }
 
       let stockAssetsDisplay = activeAssets.reduce((sum, a) => sum + this.convertValue(a.currentValue, a.currency, displayCurrency, exchangeRate), 0);
