@@ -56,6 +56,11 @@ export interface OtherIncome {
 
 export type SpendingStrategy = 'target' | 'dividend_only' | 'max_sustainable';
 
+export interface WithdrawalPlan {
+  privatePensionStartAge?: number; // 사적연금 인출 개시 나이 (미지정 시 retirementAge)
+  privatePensionMonthlyTarget?: number; // 월 목표 인출액(KRW 기준, 세전). 잔액 한도 내에서 제한
+}
+
 export interface TaxSettings {
   enableComprehensiveTax: boolean;
   enableHealthInsurance: boolean;
@@ -100,6 +105,7 @@ export interface SimulationParams {
   yieldPreset?: 'conservative' | 'base' | 'aggressive' | 'custom';
   spendingStrategy?: SpendingStrategy; // 목표 생활비 달성 전략
   taxSettings?: TaxSettings; // 고급 세금 설정
+  withdrawalPlan?: WithdrawalPlan; // 사적연금 인출 정책 (미지정 시 기존 균등분할 인출 로직 사용)
 }
 
 export interface SimulationYearlyResult {
@@ -138,6 +144,50 @@ export interface SimulationResult {
   goalAchievementRate: number; // 은퇴 후 예상 월소득 / 목표 월소득 비율 (%)
   calculatedTargetSpending?: number; // 역산된 목표 생활비 (max_sustainable 모드 등에서 사용)
   retirementAssetsAtRetirement: number; // 은퇴 시작 시점 총자산 (해석/배너 표시용)
+  utility?: UtilityBreakdown; // Lifetime Utility Score
+  recommendation?: StrategyRecommendation; // AI 추천 전략 (별도 계산 시에만 채워짐)
+}
+
+export interface UtilityConfig {
+  weights: {
+    consumption: number; // 생활수준 유지 + 소비 만족도 (기본 35점)
+    depletionSafety: number; // 자산 고갈 방지 (기본 20점)
+    pensionUtilization: number; // 연금 활용 효율 (기본 15점)
+    taxEfficiency: number; // 세금 효율 (기본 10점)
+    taxationRisk: number; // 금융소득종합과세/건강보험료 위험 (기본 10점)
+    bequestAdequacy: number; // 상속 자산 적정성 (기본 10점)
+  };
+  appropriatePensionBalanceMonths: number; // 사망 시 적정 연금잔액 = 월 목표생활비 * N개월 (기본 12)
+  appropriateBequestMonths: number; // 사망 시 적정 총자산 = 월 목표생활비 * N개월 (기본 24)
+  taxBurdenCeiling: number; // 평생 세부담률이 이 값에 도달하면 taxEfficiency 0점 (기본 0.3)
+  healthInsuranceCeiling: number; // 건강보험료/총소득 비율이 이 값에 도달하면 taxationRisk 관련 항목 0점 (기본 0.05)
+}
+
+export interface UtilityBreakdown {
+  score: number; // 0~100 Lifetime Utility Score
+  components: {
+    consumption: number;
+    depletionSafety: number;
+    pensionUtilization: number;
+    taxEfficiency: number;
+    taxationRisk: number;
+    bequestAdequacy: number;
+  };
+}
+
+export interface StrategyRecommendation {
+  currentUtility: UtilityBreakdown; // 기존 로직(baseline) Utility
+  recommendedUtility: UtilityBreakdown; // 최고점 후보 Utility
+  recommendedPlan: WithdrawalPlan;
+  reasons: string[];
+  deltas: {
+    lifetimeConsumption: number; // 평생 소비(생활비 인출) 총액 변화
+    totalTax: number; // 평생 총세금 변화
+    endingAssets: number; // 사망 시 잔여 자산 변화
+    pensionEndingBalance: number; // 사망 시 연금잔액 변화
+    comprehensiveTaxYears: number; // 금융소득종합과세 발생 연수 변화
+    healthInsuranceTotal: number; // 평생 건강보험료(추가분) 변화
+  };
 }
 
 export interface ScenarioModel {

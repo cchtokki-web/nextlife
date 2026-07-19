@@ -9,6 +9,7 @@ import {
   TaxSettings,
 } from '../entities/types';
 import { getRetirementGrade, RetirementGrade } from '../entities/retirementGrade';
+import { computeLifetimeUtility } from './utility/UtilityEngine';
 
 interface ActiveAsset extends InvestmentAsset {
   currentValue: number;
@@ -34,14 +35,17 @@ export class SimulationEngine {
   run(params: SimulationParams): SimulationResult {
     const strategy = params.spendingStrategy || 'target';
 
+    let result: SimulationResult;
     if (strategy === 'max_sustainable') {
-      return this.findMaxSustainable(params);
+      result = this.findMaxSustainable(params);
+    } else {
+      const mainResult = this.runSingle(params);
+      const maxSustainable = this.findMaxSustainableValue(params);
+      result = { ...mainResult, calculatedTargetSpending: maxSustainable };
     }
 
-    const mainResult = this.runSingle(params);
-    const maxSustainable = this.findMaxSustainableValue(params);
-    
-    return { ...mainResult, calculatedTargetSpending: maxSustainable };
+    const utility = computeLifetimeUtility(result, params);
+    return { ...result, utility };
   }
 
   private findMaxSustainableValue(params: SimulationParams): number {
@@ -274,7 +278,8 @@ export class SimulationEngine {
     const {
       userProfile, nationalPension = { expectedMonthlyAmount: 0 }, otherIncomes = [],
       inflationRate = 2, inflationMode = 'real', baseExchangeRate = 1350,
-      exchangeScenario = 'base', displayCurrency = 'KRW', taxSettings, spendingStrategy
+      exchangeScenario = 'base', displayCurrency = 'KRW', taxSettings, spendingStrategy,
+      withdrawalPlan
     } = params;
 
     const currentTaxSettings: TaxSettings = {
@@ -431,11 +436,21 @@ export class SimulationEngine {
 
           if (isRetired && pension.currentBalance > 0) {
             let drawAmountRaw = 0;
-            if (spendingStrategy === 'dividend_only' || spendingStrategy === 'max_sustainable') {
-              drawAmountRaw = Math.max(0, growth);
-            } else {
-              const remainingMonths = Math.max(1, (endAge - currentAge) * 12 + (12 - m));
-              drawAmountRaw = pension.currentBalance / remainingMonths;
+            const planStartAge = withdrawalPlan?.privatePensionStartAge ?? userProfile.retirementAge;
+            const pensionWithdrawalsStarted = !withdrawalPlan || currentAge >= planStartAge;
+
+            if (pensionWithdrawalsStarted) {
+              if (withdrawalPlan?.privatePensionMonthlyTarget !== undefined) {
+                const targetInPensionCurrency = this.convertValue(
+                  withdrawalPlan.privatePensionMonthlyTarget, 'KRW', pension.currency, exchangeRate
+                );
+                drawAmountRaw = Math.min(pension.currentBalance, Math.max(0, targetInPensionCurrency));
+              } else if (spendingStrategy === 'dividend_only' || spendingStrategy === 'max_sustainable') {
+                drawAmountRaw = Math.max(0, growth);
+              } else {
+                const remainingMonths = Math.max(1, (endAge - currentAge) * 12 + (12 - m));
+                drawAmountRaw = pension.currentBalance / remainingMonths;
+              }
             }
 
             if (currentTaxSettings.limitPrivatePensionToTaxLimit) {

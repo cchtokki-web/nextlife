@@ -1,13 +1,14 @@
 "use client";
 
 import React from 'react';
-import { SimulationParams, SimulationResult } from '../../../core/entities/types';
+import { SimulationParams, SimulationResult, StrategyRecommendation } from '../../../core/entities/types';
 import { computeMonthlySpendingComposition } from '../../../core/usecases/MonthlySpendingComposition';
 import GlassCard from '../../components/GlassCard';
 import { YearlyChart } from './YearlyChart';
 import { HeroSummaryCard } from './HeroSummaryCard';
 import { CoreMetricsCards } from './CoreMetricsCards';
 import { AiAdvisorCard } from './AiAdvisorCard';
+import { UtilityCard } from './UtilityCard';
 import styles from './Dashboard.module.css';
 import { AlertTriangle, TrendingDown, Target, Zap, Award, Calculator } from 'lucide-react';
 import {
@@ -31,9 +32,10 @@ interface DashboardSectionProps {
   result: SimulationResult;
   compareResults?: { id: string, name: string, result: SimulationResult }[];
   isPro?: boolean;
+  recommendation?: StrategyRecommendation;
 }
 
-export const DashboardSection: React.FC<DashboardSectionProps> = ({ params: rawParams, result, compareResults = [], isPro = false }) => {
+export const DashboardSection: React.FC<DashboardSectionProps> = ({ params: rawParams, result, compareResults = [], isPro = false, recommendation }) => {
   const [hiddenKeys, setHiddenKeys] = React.useState<Record<string, boolean>>({});
 
   const handleLegendClick = (e: any) => {
@@ -319,7 +321,13 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({ params: rawP
         inflationMode={params.inflationMode}
       />
 
-      <CoreMetricsCards 
+      <UtilityCard
+        utility={result.utility}
+        recommendation={recommendation}
+        formatValue={formatValue}
+      />
+
+      <CoreMetricsCards
         depletionAge={result.depletionAge}
         expectancyAge={params.userProfile.expectancy}
         assetAt60={assetAt60}

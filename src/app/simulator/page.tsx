@@ -4,6 +4,7 @@ import React, { useState, useEffect, useMemo, useDeferredValue } from 'react';
 import { useSession, signOut } from 'next-auth/react';
 import { SimulationEngine } from '../../core/usecases/SimulationEngine';
 import { computeMonthlySpendingComposition } from '../../core/usecases/MonthlySpendingComposition';
+import { recommendStrategy } from '../../core/usecases/strategy/RecommendationEngine';
 import { initialParams } from '../../infrastructure/storage/localStore';
 import { AssetFormSection } from '../../web/features/AssetForm/AssetFormSection';
 import { TaxSettingsSection } from '../../web/features/AssetForm/TaxSettingsSection';
@@ -110,6 +111,18 @@ export default function Home() {
 
   // Run simulation engine for active scenario
   const result = useMemo(() => engine.run(deferredParams), [engine, deferredParams]);
+
+  // AI 추천 전략은 다수의 후보를 시뮬레이션하는 무거운 계산이므로, 메인 result보다
+  // 한 단계 더 지연시켜 타이핑 반응성에 영향을 주지 않도록 한다.
+  const recommendationParams = useDeferredValue(deferredParams);
+  const recommendation = useMemo(() => {
+    try {
+      return recommendStrategy(recommendationParams, engine);
+    } catch (err) {
+      console.error('Failed to compute strategy recommendation', err);
+      return undefined;
+    }
+  }, [engine, recommendationParams]);
 
   // Track simulation runs with a simple debounce
   useEffect(() => {
@@ -809,11 +822,12 @@ export default function Home() {
                 </button>
               </div>
             )}
-            <DashboardSection 
-              params={deferredParams} 
-              result={result} 
-              compareResults={compareResults} 
+            <DashboardSection
+              params={deferredParams}
+              result={result}
+              compareResults={compareResults}
               isPro={isPro}
+              recommendation={recommendation}
             />
           </section>
 
