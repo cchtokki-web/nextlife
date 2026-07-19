@@ -5,7 +5,6 @@ import { SimulationParams, SimulationResult, StrategyRecommendation } from '../.
 import { computeMonthlySpendingComposition } from '../../../core/usecases/MonthlySpendingComposition';
 import GlassCard from '../../components/GlassCard';
 import { YearlyChart } from './YearlyChart';
-import { HeroSummaryCard } from './HeroSummaryCard';
 import { CoreMetricsCards } from './CoreMetricsCards';
 import { AiAdvisorCard } from './AiAdvisorCard';
 import { UtilityCard } from './UtilityCard';
@@ -300,10 +299,12 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({ params: rawP
         </div>
       )}
 
-      <HeroSummaryCard
+      <UtilityCard
+        utility={result.utility}
+        recommendation={recommendation}
+        formatValue={formatValue}
         score={result.retirementScore}
         retirementGrade={result.retirementGrade}
-        expectancyAge={params.userProfile.expectancy}
         depletionAge={result.depletionAge}
         monthlyTarget={params.spendingStrategy === 'max_sustainable' && result.calculatedTargetSpending ? result.calculatedTargetSpending : params.userProfile.targetMonthlySpending}
         isPro={isPro}
@@ -319,14 +320,6 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({ params: rawP
         spendingStrategy={params.spendingStrategy}
         inflationRate={params.inflationRate}
         inflationMode={params.inflationMode}
-        utility={result.utility}
-        recommendation={recommendation}
-      />
-
-      <UtilityCard
-        utility={result.utility}
-        recommendation={recommendation}
-        formatValue={formatValue}
       />
 
       <CoreMetricsCards
