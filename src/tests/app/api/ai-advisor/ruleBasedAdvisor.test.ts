@@ -12,10 +12,12 @@ const zeroDeltas: StrategyRecommendation['deltas'] = {
 };
 
 function makeRecommendation(currentScore: number, recommendedScore: number): StrategyRecommendation {
+  const improved = recommendedScore > currentScore;
   return {
     currentUtility: { ...baseUtility, score: currentScore },
     recommendedUtility: { ...baseUtility, score: recommendedScore },
-    recommendedPlan: {},
+    recommendedPlan: improved ? { privatePensionStartAge: 62 } : null,
+    improved,
     reasons: ['62세부터 사적연금 인출을 시작합니다.'],
     deltas: zeroDeltas,
   };

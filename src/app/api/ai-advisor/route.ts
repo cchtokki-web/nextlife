@@ -66,7 +66,7 @@ export function buildSimulationContextText(body: AiAdvisorRequestBody): string {
     lines.push(`  - 약점: ${analysis.weaknesses.join(' ')}`);
   }
 
-  if (recommendation && recommendation.recommendedUtility.score > recommendation.currentUtility.score) {
+  if (recommendation?.improved) {
     lines.push(
       `- AI 추천 전략: 인출 전략을 조정하면 Utility 점수를 ${recommendation.currentUtility.score}점에서 ` +
       `${recommendation.recommendedUtility.score}점으로 높일 수 있음. 추천 이유: ${recommendation.reasons.join(' ')}`

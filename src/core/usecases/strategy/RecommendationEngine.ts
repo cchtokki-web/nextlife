@@ -31,7 +31,7 @@ function comprehensiveTaxYears(result: SimulationResult): number {
   return result.yearlyResults.filter((y) => y.hasTaxWarning).length;
 }
 
-function computeDeltas(baseline: SimulationResult, recommended: SimulationResult): StrategyRecommendation['deltas'] {
+export function computeDeltas(baseline: SimulationResult, recommended: SimulationResult): StrategyRecommendation['deltas'] {
   return {
     lifetimeConsumption: sumYears(recommended, (y) => y.spending) - sumYears(baseline, (y) => y.spending),
     totalTax: totalTaxPaid(recommended) - totalTaxPaid(baseline),
@@ -148,7 +148,8 @@ export function recommendStrategy(
   return {
     currentUtility,
     recommendedUtility: bestUtility,
-    recommendedPlan: bestPlan ?? {},
+    recommendedPlan: bestPlan,
+    improved,
     reasons,
     deltas,
   };

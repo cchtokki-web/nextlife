@@ -167,7 +167,9 @@ export interface UtilityConfig {
   appropriatePensionBalanceMonths: number; // 사망 시 적정 연금잔액 = 월 목표생활비 * N개월 (기본 12)
   appropriateBequestMonths: number; // 사망 시 적정 총자산 = 월 목표생활비 * N개월 (기본 24)
   taxBurdenCeiling: number; // 평생 세부담률이 이 값에 도달하면 taxEfficiency 0점 (기본 0.3)
-  healthInsuranceCeiling: number; // 건강보험료/총소득 비율이 이 값에 도달하면 taxationRisk 관련 항목 0점 (기본 0.05)
+  healthInsuranceCeiling: number; // 건강보험료/총소득 비율이 이 값에 도달하면 taxationRisk 산식의 건보료
+                                   // 페널티 하위항목(가중치 0.3)이 최대치가 됨(taxationRisk 전체가 0점이
+                                   // 되는 건 아니며, hasTaxWarning 비율(가중치 0.7)에도 함께 영향받음) (기본 0.05)
 }
 
 export interface UtilityBreakdown {
@@ -185,7 +187,11 @@ export interface UtilityBreakdown {
 export interface StrategyRecommendation {
   currentUtility: UtilityBreakdown; // 기존 로직(baseline) Utility
   recommendedUtility: UtilityBreakdown; // 최고점 후보 Utility
-  recommendedPlan: WithdrawalPlan;
+  // baseline보다 Utility가 개선되는 후보를 찾았을 때만 해당 WithdrawalPlan이 채워지고, 그렇지
+  // 않으면 null(= baseline 유지 권장). "부분 override 패치"인 WithdrawalPlan과 달리 여기서는
+  // "AI가 확정한 완결된 결정" 또는 "결정 없음"이라는 의미로만 쓰인다.
+  recommendedPlan: WithdrawalPlan | null;
+  improved: boolean; // recommendedUtility.score > currentUtility.score 여부를 미리 계산해 둔 값. 소비처마다 재계산하지 않는다.
   reasons: string[];
   deltas: {
     lifetimeConsumption: number; // 평생 소비(생활비 인출) 총액 변화

@@ -39,7 +39,7 @@ export function generateRuleBasedAdvice(
     ? `목표하신 월 **${targetInManwon}만원**의 생활비 유지가 가능할 것으로 보입니다.`
     : `목표 월 **${targetInManwon}만원** 유지를 위해 투자금을 늘리거나 은퇴를 늦추는 것을 추천합니다.`;
 
-  const hasImprovement = !!recommendation && recommendation.recommendedUtility.score > recommendation.currentUtility.score;
+  const hasImprovement = !!recommendation?.improved;
   const utilityText = hasImprovement
     ? ` AI 분석 결과, 인출 전략을 조정하면 평생 효용(Lifetime Utility) 점수를 **${recommendation!.currentUtility.score}점**에서 **${recommendation!.recommendedUtility.score}점**까지 높일 수 있습니다.`
     : '';

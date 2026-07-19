@@ -81,9 +81,9 @@ function bellShapedAdequacyRaw(ratio: number, baseFloor: number, excessDecayRate
   return Math.exp(-excessDecayRate * (ratio - 1));
 }
 
-function computePensionUtilizationRaw(params: SimulationParams, result: SimulationResult): number {
+function computePensionUtilizationRaw(params: SimulationParams, result: SimulationResult, cfg: UtilityConfig): number {
   const appropriateBalance =
-    params.userProfile.targetMonthlySpending * DEFAULT_UTILITY_CONFIG.appropriatePensionBalanceMonths;
+    params.userProfile.targetMonthlySpending * cfg.appropriatePensionBalanceMonths;
   const last = result.yearlyResults[result.yearlyResults.length - 1];
   const pensionEndingBalance = last?.pensionAssets ?? 0;
   const ratio = appropriateBalance > 0 ? pensionEndingBalance / appropriateBalance : (pensionEndingBalance > 0 ? 2 : 0);
@@ -144,7 +144,7 @@ export function computeLifetimeUtility(
 
   const consumption = Math.round(computeConsumptionRaw(params, retirementYears) * cfg.weights.consumption);
   const depletionSafety = Math.round(computeDepletionSafetyRaw(params, result) * cfg.weights.depletionSafety);
-  const pensionUtilization = Math.round(computePensionUtilizationRaw(params, result) * cfg.weights.pensionUtilization);
+  const pensionUtilization = Math.round(computePensionUtilizationRaw(params, result, cfg) * cfg.weights.pensionUtilization);
   const taxEfficiency = Math.round(computeTaxEfficiencyRaw(result.yearlyResults, cfg) * cfg.weights.taxEfficiency);
   const taxationRisk = Math.round(computeTaxationRiskRaw(result.yearlyResults, cfg) * cfg.weights.taxationRisk);
   const bequestAdequacy = Math.round(computeBequestAdequacyRaw(params, result, cfg) * cfg.weights.bequestAdequacy);

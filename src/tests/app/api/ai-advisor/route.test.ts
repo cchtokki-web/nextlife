@@ -36,7 +36,8 @@ describe('buildSimulationContextText - Utility Score 반영', () => {
     const recommendation: StrategyRecommendation = {
       currentUtility: { ...baseUtility, score: 83 },
       recommendedUtility: { ...baseUtility, score: 87 },
-      recommendedPlan: {},
+      recommendedPlan: { privatePensionStartAge: 62 },
+      improved: true,
       reasons: ['62세부터 사적연금 인출을 시작합니다.'],
       deltas: zeroDeltas,
     };
@@ -51,7 +52,8 @@ describe('buildSimulationContextText - Utility Score 반영', () => {
     const recommendation: StrategyRecommendation = {
       currentUtility: { ...baseUtility, score: 83 },
       recommendedUtility: { ...baseUtility, score: 83 },
-      recommendedPlan: {},
+      recommendedPlan: null,
+      improved: false,
       reasons: ['현재 전략이 이미 합리적입니다.'],
       deltas: zeroDeltas,
     };

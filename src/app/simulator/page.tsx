@@ -117,9 +117,12 @@ export default function Home() {
   // AI 추천 전략은 다수의 후보를 시뮬레이션하는 무거운 계산이므로, 메인 result보다
   // 한 단계 더 지연시켜 타이핑 반응성에 영향을 주지 않도록 한다.
   const recommendationParams = useDeferredValue(deferredParams);
+  // recommendationParams가 아직 최신 deferredParams를 따라잡지 못한 렌더에서는 참조가
+  // 서로 달라진다 — 이를 "AI 추천 전략을 계산 중" 로딩 상태로 사용한다.
+  const isComputingRecommendation = recommendationParams !== deferredParams;
   // recommendation이 undefined인 이유가 "계산 실패"인지 "탐색할 최적화 여지가 없어 baseline을
   // 그대로 반환"인지 UI에서 구분할 수 있도록 실패 여부를 함께 계산한다(후자는 recommendStrategy가
-  // 정상적으로 recommendedPlan: {}를 담은 객체를 반환하므로 undefined가 되지 않는다).
+  // 정상적으로 improved:false, recommendedPlan:null인 객체를 반환하므로 undefined가 되지 않는다).
   const { recommendation, recommendationFailed } = useMemo(() => {
     try {
       return { recommendation: recommendStrategy(recommendationParams, engine), recommendationFailed: false };
@@ -250,15 +253,15 @@ export default function Home() {
         ? currentStrategyAnalysis.weaknesses.map(w => `<li style="margin-bottom: 4px;">${w}</li>`).join('')
         : '';
 
-      const hasImprovement = !!recommendation && !!utility && recommendation.recommendedUtility.score > utility.score;
+      const hasImprovement = !!recommendation?.improved;
       const recommendationSummaryText = !recommendation
         ? 'AI 추천 전략을 계산할 수 없습니다.'
         : hasImprovement
-          ? `Utility ${utility!.score}점 → ${recommendation.recommendedUtility.score}점`
+          ? `Utility ${recommendation.currentUtility.score}점 → ${recommendation.recommendedUtility.score}점`
           : '현재 전략 유지 권장';
       const recommendationReasonsHtml = recommendation
         ? recommendation.reasons.map(r => `<li style="margin-bottom: 4px;">${r}</li>`).join('')
-        : '<li>탐색 가능한 최적화 여지가 없습니다.</li>';
+        : '<li>AI 추천 전략 계산에 실패했습니다.</li>';
       const deltaRowsHtml = (recommendation && hasImprovement)
         ? `
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; font-size: 12px;">
@@ -914,6 +917,7 @@ export default function Home() {
               isPro={isPro}
               recommendation={recommendation}
               recommendationFailed={recommendationFailed}
+              isComputingRecommendation={isComputingRecommendation}
             />
           </section>
 

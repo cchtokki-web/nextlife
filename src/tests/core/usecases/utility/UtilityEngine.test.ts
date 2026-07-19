@@ -175,4 +175,82 @@ describe('UtilityEngine.computeLifetimeUtility', () => {
       expect(utility.score).toBeLessThanOrEqual(100);
     }
   });
+
+  test('세부담률이 높을수록(taxBurdenCeiling에 근접/초과) taxEfficiency 점수가 낮아진다', () => {
+    // taxBurdenCeiling 기본값 0.3(30%). 세전소득 대비 세금 비율을 각각 0%, 15%, 40%로 구성.
+    const noTaxResult = makeResult(
+      Array.from({ length: 36 }, (_, i) => makeYear(60 + i, { totalAssets: ANNUAL_TARGET * 2, pensionAssets: ANNUAL_TARGET })),
+      null
+    );
+    const moderateTaxResult = makeResult(
+      Array.from({ length: 36 }, (_, i) =>
+        makeYear(60 + i, {
+          totalAssets: ANNUAL_TARGET * 2,
+          pensionAssets: ANNUAL_TARGET,
+          dividendTaxPaid: ANNUAL_TARGET * 0.15,
+        })
+      ),
+      null
+    );
+    const heavyTaxResult = makeResult(
+      Array.from({ length: 36 }, (_, i) =>
+        makeYear(60 + i, {
+          totalAssets: ANNUAL_TARGET * 2,
+          pensionAssets: ANNUAL_TARGET,
+          dividendTaxPaid: ANNUAL_TARGET * 0.4,
+        })
+      ),
+      null
+    );
+
+    const noTax = computeLifetimeUtility(noTaxResult, baseParams);
+    const moderateTax = computeLifetimeUtility(moderateTaxResult, baseParams);
+    const heavyTax = computeLifetimeUtility(heavyTaxResult, baseParams);
+
+    expect(noTax.components.taxEfficiency).toBeGreaterThan(moderateTax.components.taxEfficiency);
+    expect(moderateTax.components.taxEfficiency).toBeGreaterThan(heavyTax.components.taxEfficiency);
+    // ceiling(30%)을 초과하면 clamp되어 0점이어야 한다
+    expect(heavyTax.components.taxEfficiency).toBe(0);
+  });
+
+  test('금융소득종합과세 경고 연도 비율이 높을수록 taxationRisk 점수가 낮아진다', () => {
+    const noWarningResult = makeResult(
+      Array.from({ length: 36 }, (_, i) => makeYear(60 + i, { totalAssets: ANNUAL_TARGET * 2, pensionAssets: ANNUAL_TARGET })),
+      null
+    );
+    const allWarningResult = makeResult(
+      Array.from({ length: 36 }, (_, i) =>
+        makeYear(60 + i, { totalAssets: ANNUAL_TARGET * 2, pensionAssets: ANNUAL_TARGET, hasTaxWarning: true })
+      ),
+      null
+    );
+
+    const noWarning = computeLifetimeUtility(noWarningResult, baseParams);
+    const allWarning = computeLifetimeUtility(allWarningResult, baseParams);
+
+    expect(noWarning.components.taxationRisk).toBeGreaterThan(allWarning.components.taxationRisk);
+  });
+
+  test('건강보험료/총소득 비율이 healthInsuranceCeiling을 초과할수록 taxationRisk 점수가 낮아진다', () => {
+    // healthInsuranceCeiling 기본값 0.05(5%). 총소득 대비 건보료 비율을 각각 0%, 10%로 구성.
+    const noHealthInsuranceResult = makeResult(
+      Array.from({ length: 36 }, (_, i) => makeYear(60 + i, { totalAssets: ANNUAL_TARGET * 2, pensionAssets: ANNUAL_TARGET })),
+      null
+    );
+    const highHealthInsuranceResult = makeResult(
+      Array.from({ length: 36 }, (_, i) =>
+        makeYear(60 + i, {
+          totalAssets: ANNUAL_TARGET * 2,
+          pensionAssets: ANNUAL_TARGET,
+          healthInsurancePaid: ANNUAL_TARGET * 0.1,
+        })
+      ),
+      null
+    );
+
+    const noHealthInsurance = computeLifetimeUtility(noHealthInsuranceResult, baseParams);
+    const highHealthInsurance = computeLifetimeUtility(highHealthInsuranceResult, baseParams);
+
+    expect(noHealthInsurance.components.taxationRisk).toBeGreaterThan(highHealthInsurance.components.taxationRisk);
+  });
 });

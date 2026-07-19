@@ -1,7 +1,7 @@
 import { describe, test, expect } from 'vitest';
 import { SimulationEngine } from '@/core/usecases/SimulationEngine';
-import { recommendStrategy, buildReasons } from '@/core/usecases/strategy/RecommendationEngine';
-import { SimulationParams, StrategyRecommendation } from '@/core/entities/types';
+import { recommendStrategy, buildReasons, computeDeltas } from '@/core/usecases/strategy/RecommendationEngine';
+import { SimulationParams, StrategyRecommendation, SimulationResult, SimulationYearlyResult } from '@/core/entities/types';
 
 const zeroDeltas: StrategyRecommendation['deltas'] = {
   lifetimeConsumption: 0,
@@ -77,6 +77,72 @@ describe('recommendStrategy', () => {
       expect(typeof v).toBe('number');
       expect(Number.isNaN(v)).toBe(false);
     });
+  });
+});
+
+function makeYearlyResult(overrides: Partial<SimulationYearlyResult>): SimulationYearlyResult {
+  return {
+    age: 60,
+    year: 2026,
+    totalAssets: 0,
+    stockAssets: 0,
+    pensionAssets: 0,
+    dividendIncome: 0,
+    nationalPensionIncome: 0,
+    privatePensionIncome: 0,
+    pensionIncome: 0,
+    otherIncome: 0,
+    totalIncome: 0,
+    preTaxTotalIncome: 0,
+    dividendTaxPaid: 0,
+    pensionTaxPaid: 0,
+    nationalPensionTaxPaid: 0,
+    healthInsurancePaid: 0,
+    comprehensiveTaxPaid: 0,
+    spending: 0,
+    hasTaxWarning: false,
+    ...overrides,
+  };
+}
+
+function makeSimulationResult(yearlyResults: SimulationYearlyResult[], endingAssets: number): SimulationResult {
+  return {
+    yearlyResults,
+    fireAge: 60,
+    depletionAge: null,
+    endingAssets,
+    retirementScore: 0,
+    retirementGrade: '보통',
+    goalAchievementRate: 100,
+    retirementAssetsAtRetirement: 0,
+  };
+}
+
+describe('computeDeltas - baseline/recommended 실제 수치 차이 계산', () => {
+  const baseline = makeSimulationResult(
+    [
+      makeYearlyResult({ age: 60, year: 2026, spending: 1000, dividendTaxPaid: 10, pensionTaxPaid: 5, healthInsurancePaid: 20, hasTaxWarning: false, pensionAssets: 500 }),
+      makeYearlyResult({ age: 61, year: 2027, spending: 1100, dividendTaxPaid: 15, pensionTaxPaid: 5, healthInsurancePaid: 25, hasTaxWarning: true, pensionAssets: 400 }),
+    ],
+    5000
+  );
+  const recommended = makeSimulationResult(
+    [
+      makeYearlyResult({ age: 60, year: 2026, spending: 1200, dividendTaxPaid: 20, pensionTaxPaid: 10, nationalPensionTaxPaid: 5, healthInsurancePaid: 15, hasTaxWarning: true, pensionAssets: 600 }),
+      makeYearlyResult({ age: 61, year: 2027, spending: 1300, dividendTaxPaid: 25, pensionTaxPaid: 10, nationalPensionTaxPaid: 5, healthInsurancePaid: 15, comprehensiveTaxPaid: 10, hasTaxWarning: true, pensionAssets: 550 }),
+    ],
+    6000
+  );
+
+  test('deltas의 각 필드가 baseline/recommended 간 실제 차이와 정확히 일치한다', () => {
+    const deltas = computeDeltas(baseline, recommended);
+
+    expect(deltas.lifetimeConsumption).toBe(400); // (1200+1300) - (1000+1100)
+    expect(deltas.totalTax).toBe(35); // (50+65) - (35+45)
+    expect(deltas.endingAssets).toBe(1000); // 6000 - 5000
+    expect(deltas.pensionEndingBalance).toBe(150); // 550(마지막 해) - 400(마지막 해)
+    expect(deltas.comprehensiveTaxYears).toBe(1); // 2개 연도(hasTaxWarning) - 1개 연도
+    expect(deltas.healthInsuranceTotal).toBe(-15); // 30 - 45
   });
 });
 

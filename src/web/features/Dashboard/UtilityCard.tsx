@@ -127,6 +127,11 @@ export const UtilityCard: React.FC<UtilityCardProps> = ({
 
         const decoder = new TextDecoder('utf-8');
         let buffer = '';
+        // 모든 라인이 파싱에 실패하면 advice는 계속 빈 문자열로 남고 에러도 없이 로딩만
+        // 끝나버려 카드가 조용히 빈 채로 멈춘다. 파싱 실패 여부와 실제 콘텐츠 수신 여부를
+        // 추적해, 스트림이 끝났는데 콘텐츠를 하나도 못 받았다면 명시적으로 에러를 표시한다.
+        let receivedContent = false;
+        let hadParseFailure = false;
 
         while (true) {
           const { done, value } = await reader.read();
@@ -144,9 +149,11 @@ export const UtilityCard: React.FC<UtilityCardProps> = ({
               if (parsed.isRuleBased) setIsRuleBased(true);
               const chunk = parsed.message?.content || parsed.response;
               if (chunk) {
+                receivedContent = true;
                 setAdvice((prev) => prev + chunk);
               }
             } catch (e) {
+              hadParseFailure = true;
               console.warn('Failed to parse JSON line:', line);
             }
           }
@@ -158,11 +165,17 @@ export const UtilityCard: React.FC<UtilityCardProps> = ({
             if (parsed.isRuleBased) setIsRuleBased(true);
             const chunk = parsed.message?.content || parsed.response;
             if (chunk) {
+              receivedContent = true;
               setAdvice((prev) => prev + chunk);
             }
           } catch (e) {
+            hadParseFailure = true;
             console.warn('Failed to parse trailing JSON buffer:', buffer, e);
           }
+        }
+
+        if (!receivedContent && hadParseFailure) {
+          setError('AI 응답을 해석하지 못했습니다. 잠시 후 다시 시도해주세요.');
         }
       } catch (err: any) {
         if (err.name === 'AbortError') {
@@ -208,7 +221,7 @@ export const UtilityCard: React.FC<UtilityCardProps> = ({
     : styles.colorGreen;
   const scoreColor = colorTier === 'red' ? '#EF4444' : colorTier === 'orange' ? '#F59E0B' : '#10B981';
 
-  const hasImprovement = !!recommendation && recommendation.recommendedUtility.score > utility.score;
+  const hasImprovement = !!recommendation?.improved;
   const currentStrategyAnalysis = analyzeCurrentStrategy(utility);
 
   return (
@@ -221,10 +234,26 @@ export const UtilityCard: React.FC<UtilityCardProps> = ({
       <div className={styles.heroContent}>
         <div className={styles.heroTextSection} style={{ width: '100%' }}>
           <div className={styles.heroMessageArea} style={{ marginBottom: '1rem', marginTop: 0, display: 'flex', flexDirection: 'column', gap: '10px', position: 'relative' }}>
-            <div style={{ display: 'flex', justifyContent: 'between', alignItems: 'center', width: '100%' }}>
+            <div style={{ display: 'flex', justifyContent: 'between', alignItems: 'center', width: '100%', gap: '8px', flexWrap: 'wrap' }}>
               <h3 className={styles.heroMessageTitle} style={{ margin: 0, fontWeight: 700, fontSize: '1.15rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
                 🤖 {userNamePrefix}AI 노후 설계사 의견
               </h3>
+              {isRuleBased && !isLoading && (
+                <span
+                  title="AI 서버 연결이 원활하지 않아 정형화된 기본 안내 문구를 표시하고 있습니다."
+                  style={{
+                    fontSize: '0.7rem',
+                    fontWeight: 600,
+                    padding: '2px 8px',
+                    borderRadius: '999px',
+                    color: 'var(--hero-text-muted)',
+                    border: '1px solid var(--hero-inner-border)',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  AI 서버 연결 불가 · 기본 안내 표시 중
+                </span>
+              )}
             </div>
 
             <div style={{ filter: (isStale && !isLoading) ? 'blur(2px)' : 'none', transition: 'filter 0.3s ease', opacity: (isStale && !isLoading) ? 0.6 : 1 }}>
