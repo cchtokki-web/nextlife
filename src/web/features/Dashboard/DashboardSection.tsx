@@ -257,6 +257,12 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({ params: rawP
     ? (rawPensionLimit / 12) / params.baseExchangeRate
     : rawPensionLimit / 12;
 
+  // 금융소득종합과세 기준 (연 2,000만원 초과 시 적용, SimulationEngine.ts와 동일한 고정 기준액)
+  const rawComprehensiveTaxLimit = 20000000;
+  const monthlyComprehensiveTaxLimit = params.displayCurrency === 'USD'
+    ? (rawComprehensiveTaxLimit / 12) / params.baseExchangeRate
+    : rawComprehensiveTaxLimit / 12;
+
   // Assets Line chart data formatting (Merge base with compare scenarios)
   const assetChartData = yearlyResults.map((r) => {
     const dataPoint: any = {
@@ -620,19 +626,33 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({ params: rawP
                 <Bar name="기타소득" dataKey="기타소득" stackId="a" fill="#F59E0B" hide={!!hiddenKeys['기타소득']} />
                 <Bar name="자산인출" dataKey="자산인출" stackId="a" fill="#EC4899" hide={!!hiddenKeys['자산인출']} />
                 <Bar name="자산부족" dataKey="자산부족" stackId="a" fill="#EF4444" hide={!!hiddenKeys['자산부족']} />
-                <ReferenceLine 
-                  y={monthlyPensionLimit} 
-                  stroke="#F59E0B" 
-                  strokeDasharray="4 4" 
+                <ReferenceLine
+                  y={monthlyPensionLimit}
+                  stroke="#E2E8F0"
+                  strokeDasharray="4 4"
                   strokeWidth={1.5}
-                  label={{ 
-                    value: `사적연금 저율과세 한도 (${formatValue(monthlyPensionLimit)}/월)`, 
-                    fill: '#F59E0B', 
-                    position: 'insideBottomLeft', 
+                  label={{
+                    value: `사적연금 저율과세 한도 (${formatValue(monthlyPensionLimit)}/월)`,
+                    fill: '#E2E8F0',
+                    position: 'insideBottomLeft',
                     fontSize: '0.65rem',
                     fontWeight: 600,
                     offset: 10
-                  }} 
+                  }}
+                />
+                <ReferenceLine
+                  y={monthlyComprehensiveTaxLimit}
+                  stroke="#E2E8F0"
+                  strokeDasharray="4 4"
+                  strokeWidth={1.5}
+                  label={{
+                    value: `금융소득종합과세 기준 (${formatValue(monthlyComprehensiveTaxLimit)}/월)`,
+                    fill: '#E2E8F0',
+                    position: 'insideTopLeft',
+                    fontSize: '0.65rem',
+                    fontWeight: 600,
+                    offset: 10
+                  }}
                 />
               </BarChart>
             </ResponsiveContainer>
