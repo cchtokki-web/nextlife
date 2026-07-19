@@ -3,8 +3,11 @@ import { NATIONAL_PENSION_NORMAL_START_AGE } from '../pension/nationalPensionRul
 
 // 각 그리드는 3점(또는 이진) 수준으로 유지한다 — 6개 차원의 완전 조합(cartesian product)이라
 // 그리드 하나를 늘릴 때마다 후보 수가 곱셈으로 증가하기 때문이다(실측 결과 5×5×5×3×2×5=3750개
-// 조합에서 recommendStrategy가 약 8초 소요되어 실사용에 부적합했다). 3점 그리드 기준 최악의 경우
-// 3×3×3×3×2×3=486개로, 실측 약 1초 내외로 단축된다.
+// 조합에서 recommendStrategy가 약 8초 소요되어 실사용에 부적합했다). 3점 그리드 기준으로도,
+// startAgeCandidates/generalAssetWithdrawalStartAgeCandidates는 retirementAge가 그리드 3점
+// (62/65/70)과 겹치지 않으면 retirementAge까지 더해져 4개가 된다. 따라서 최악의 경우는
+// 3×3×3×3×2×3=486개가 아니라 4×3×3×3×2×4=864개다(retirementAge가 62/65/70이 아닌 흔한
+// 경우). 이 최악 시나리오 기준 성능은 RecommendationEngine.performance.test.ts에서 검증한다.
 const START_AGE_GRID = [62, 65, 70];
 const MONTHLY_TARGET_MULTIPLIERS = [0.8, 1.0, 1.3];
 const NATIONAL_PENSION_START_AGE_GRID = [60, 65, 70]; // 조기~기본~연기수령

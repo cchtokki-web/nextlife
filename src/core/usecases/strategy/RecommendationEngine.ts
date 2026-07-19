@@ -113,7 +113,10 @@ export function recommendStrategy(
   engine: SimulationEngine,
   cfg: UtilityConfig = DEFAULT_UTILITY_CONFIG
 ): StrategyRecommendation {
-  const baselineResult = engine.run(params);
+  // 후보 평가는 Utility 계산에만 쓰이므로 run()의 findMaxSustainableValue() 이진탐색(30회)이
+  // 필요 없는 runForUtility()로 실행한다. run()을 그대로 썼다면 후보 1개당 runSingle이 최대
+  // 31회 호출되는 낭비가 있었다.
+  const baselineResult = engine.runForUtility(params);
   const currentUtility: UtilityBreakdown = computeLifetimeUtility(baselineResult, params, cfg);
 
   const candidates = generateCandidatePlans(params);
@@ -123,12 +126,18 @@ export function recommendStrategy(
   let bestPlan: WithdrawalPlan | null = null;
 
   for (const plan of candidates) {
-    const candidateResult = engine.run({ ...params, withdrawalPlan: plan });
-    const candidateUtility = computeLifetimeUtility(candidateResult, params, cfg);
-    if (candidateUtility.score > bestUtility.score) {
-      bestUtility = candidateUtility;
-      bestResult = candidateResult;
-      bestPlan = plan;
+    // 특정 조합(예: 극단적인 나이 조합)이 SimulationEngine을 깨뜨리더라도 다른 후보 탐색까지
+    // 통째로 실패하지 않도록 후보 단위로 격리한다. 실패한 후보는 건너뛰고 로그만 남긴다.
+    try {
+      const candidateResult = engine.runForUtility({ ...params, withdrawalPlan: plan });
+      const candidateUtility = computeLifetimeUtility(candidateResult, params, cfg);
+      if (candidateUtility.score > bestUtility.score) {
+        bestUtility = candidateUtility;
+        bestResult = candidateResult;
+        bestPlan = plan;
+      }
+    } catch (err) {
+      console.warn('Skipping withdrawal plan candidate that failed to simulate', plan, err);
     }
   }
 

@@ -21,6 +21,7 @@ import { UTILITY_COMPONENT_META } from './utilityComponentMeta';
 interface UtilityCardProps {
   utility?: UtilityBreakdown;
   recommendation?: StrategyRecommendation;
+  recommendationFailed?: boolean;
   isComputingRecommendation?: boolean;
   formatValue: (val: number) => string;
   score: number; // 은퇴 준비도 점수(자산 유지력 관점, 0~100) — 보조 지표
@@ -45,6 +46,7 @@ interface UtilityCardProps {
 export const UtilityCard: React.FC<UtilityCardProps> = ({
   utility,
   recommendation,
+  recommendationFailed = false,
   isComputingRecommendation = false,
   formatValue,
   score,
@@ -159,7 +161,7 @@ export const UtilityCard: React.FC<UtilityCardProps> = ({
               setAdvice((prev) => prev + chunk);
             }
           } catch (e) {
-            // Ignore
+            console.warn('Failed to parse trailing JSON buffer:', buffer, e);
           }
         }
       } catch (err: any) {
@@ -423,7 +425,20 @@ export const UtilityCard: React.FC<UtilityCardProps> = ({
             </div>
           )}
 
-          {!isComputingRecommendation && recommendation && (
+          {!isComputingRecommendation && recommendationFailed && (
+            <div
+              style={{
+                paddingTop: '1rem',
+                borderTop: '1px solid var(--card-border)',
+                fontSize: '0.85rem',
+                color: 'var(--foreground-muted)',
+              }}
+            >
+              🤖 AI 추천 전략을 계산하지 못했습니다. 잠시 후 다시 시도해주세요.
+            </div>
+          )}
+
+          {!isComputingRecommendation && !recommendationFailed && recommendation && (
             <div
               style={{
                 paddingTop: '1rem',
@@ -465,7 +480,7 @@ export const UtilityCard: React.FC<UtilityCardProps> = ({
                   <div>
                     <span style={{ color: 'var(--foreground-muted)' }}>평생 소비 변화</span>
                     <div style={{ fontWeight: 700, color: recommendation.deltas.lifetimeConsumption >= 0 ? '#10B981' : '#EF4444' }}>
-                      {recommendation.deltas.lifetimeConsumption >= 0 ? '+' : ''}
+                      {recommendation.deltas.lifetimeConsumption >= 0 ? '+' : '-'}
                       {formatValue(Math.abs(recommendation.deltas.lifetimeConsumption))}
                     </div>
                   </div>

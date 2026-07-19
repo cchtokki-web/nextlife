@@ -64,6 +64,21 @@ export class SimulationEngine {
     return { ...result, utility };
   }
 
+  // Utility(효용) 계산 목적으로만 결과가 필요할 때 쓰는 경량 버전. run()은 'max_sustainable'이
+  // 아닌 전략에서도 항상 findMaxSustainableValue()로 30회 이진탐색을 추가 수행해
+  // calculatedTargetSpending을 구하지만, computeLifetimeUtility는 이 값을 쓰지 않으므로
+  // 후보를 대량으로 평가하는 RecommendationEngine 같은 곳에서는 이 탐색이 순수 낭비다.
+  // 'max_sustainable' 전략은 이진탐색 자체가 실제 인출액을 결정하는 계산이라 생략할 수 없다.
+  runForUtility(params: SimulationParams): SimulationResult {
+    const strategy = params.spendingStrategy || 'target';
+    if (strategy === 'max_sustainable') {
+      return this.run(params);
+    }
+    const result = this.runSingle(params);
+    const utility = computeLifetimeUtility(result, params);
+    return { ...result, utility };
+  }
+
   private findMaxSustainableValue(params: SimulationParams): number {
     let low = 0;
     let high = 50000000; // 5천만원/월

@@ -39,7 +39,7 @@ describe('generateCandidatePlans', () => {
     const candidates = generateCandidatePlans(baseParams);
 
     expect(candidates.length).toBeGreaterThan(0);
-    expect(candidates.length).toBeLessThanOrEqual(600); // 브라우저 실시간 처리 가능한 상한 (전체 시나리오 최악의 경우 486)
+    expect(candidates.length).toBeLessThanOrEqual(900); // 브라우저 실시간 처리 가능한 상한 (전체 시나리오 최악의 경우 864, 아래 별도 테스트로 검증)
 
     for (const c of candidates) {
       expect(c.privatePensionStartAge).toBeGreaterThanOrEqual(baseParams.userProfile.retirementAge);
@@ -169,5 +169,25 @@ describe('generateCandidatePlans', () => {
       expect(c.generalAssetWithdrawalStartAge).toBeGreaterThanOrEqual(withAsset.userProfile.retirementAge);
       expect(c.generalAssetWithdrawalStartAge).toBeLessThan(withAsset.userProfile.expectancy);
     }
+  });
+
+  test('모든 차원이 최대로 확장되는 최악의 경우 864개(4×3×3×3×2×4) 후보를 생성한다', () => {
+    // retirementAge가 그리드 3점(62/65/70)과 겹치지 않아야 startAgeCandidates/
+    // generalAssetWithdrawalStartAgeCandidates가 각각 4개(retirementAge 유니온 포함)가 된다.
+    const worstCaseParams: SimulationParams = {
+      ...baseParams,
+      userProfile: { ...baseParams.userProfile, retirementAge: 61, expectancy: 95 },
+      nationalPension: { expectedMonthlyAmount: 1000000 },
+      assets: [
+        { id: 'a1', type: 'etf', ticker: 'A', name: '자산1', quantity: 1, averagePrice: 100, annualGrowthRate: 5, dividendYield: 2, monthlyContribution: 0, reinvestDividend: false, currency: 'KRW' },
+        { id: 'a2', type: 'etf', ticker: 'B', name: '자산2', quantity: 1, averagePrice: 100, annualGrowthRate: 5, dividendYield: 4, monthlyContribution: 0, reinvestDividend: false, currency: 'KRW' },
+      ],
+      isaAccounts: [
+        { id: 'isa-1', type: 'general', balance: 1000000, monthlyContribution: 0, annualReturn: 5, dividendYield: 0, currency: 'KRW', maturityYears: 3 },
+      ],
+    };
+
+    const candidates = generateCandidatePlans(worstCaseParams);
+    expect(candidates.length).toBe(864);
   });
 });

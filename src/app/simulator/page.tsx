@@ -117,12 +117,15 @@ export default function Home() {
   // AI 추천 전략은 다수의 후보를 시뮬레이션하는 무거운 계산이므로, 메인 result보다
   // 한 단계 더 지연시켜 타이핑 반응성에 영향을 주지 않도록 한다.
   const recommendationParams = useDeferredValue(deferredParams);
-  const recommendation = useMemo(() => {
+  // recommendation이 undefined인 이유가 "계산 실패"인지 "탐색할 최적화 여지가 없어 baseline을
+  // 그대로 반환"인지 UI에서 구분할 수 있도록 실패 여부를 함께 계산한다(후자는 recommendStrategy가
+  // 정상적으로 recommendedPlan: {}를 담은 객체를 반환하므로 undefined가 되지 않는다).
+  const { recommendation, recommendationFailed } = useMemo(() => {
     try {
-      return recommendStrategy(recommendationParams, engine);
+      return { recommendation: recommendStrategy(recommendationParams, engine), recommendationFailed: false };
     } catch (err) {
       console.error('Failed to compute strategy recommendation', err);
-      return undefined;
+      return { recommendation: undefined, recommendationFailed: true };
     }
   }, [engine, recommendationParams]);
 
@@ -910,6 +913,7 @@ export default function Home() {
               compareResults={compareResults}
               isPro={isPro}
               recommendation={recommendation}
+              recommendationFailed={recommendationFailed}
             />
           </section>
 

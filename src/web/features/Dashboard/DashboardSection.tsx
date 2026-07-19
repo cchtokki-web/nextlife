@@ -32,9 +32,10 @@ interface DashboardSectionProps {
   compareResults?: { id: string, name: string, result: SimulationResult }[];
   isPro?: boolean;
   recommendation?: StrategyRecommendation;
+  recommendationFailed?: boolean;
 }
 
-export const DashboardSection: React.FC<DashboardSectionProps> = ({ params: rawParams, result, compareResults = [], isPro = false, recommendation }) => {
+export const DashboardSection: React.FC<DashboardSectionProps> = ({ params: rawParams, result, compareResults = [], isPro = false, recommendation, recommendationFailed = false }) => {
   const [hiddenKeys, setHiddenKeys] = React.useState<Record<string, boolean>>({});
 
   const handleLegendClick = (e: any) => {
@@ -302,6 +303,7 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({ params: rawP
       <UtilityCard
         utility={result.utility}
         recommendation={recommendation}
+        recommendationFailed={recommendationFailed}
         formatValue={formatValue}
         score={result.retirementScore}
         retirementGrade={result.retirementGrade}
