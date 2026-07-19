@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useSession } from 'next-auth/react';
 import { Loader2, RefreshCcw } from 'lucide-react';
 import styles from './Dashboard.module.css';
-import { UserProfile, InvestmentAsset, PrivatePension, NationalPension, OtherIncome, TaxSettings, SpendingStrategy } from '../../../core/entities/types';
+import { UserProfile, InvestmentAsset, PrivatePension, NationalPension, OtherIncome, TaxSettings, SpendingStrategy, UtilityBreakdown, StrategyRecommendation } from '../../../core/entities/types';
 import { getRetirementGradeColorTier, RetirementGrade } from '../../../core/entities/retirementGrade';
 
 interface HeroSummaryCardProps {
@@ -26,6 +26,8 @@ interface HeroSummaryCardProps {
   spendingStrategy?: SpendingStrategy;
   inflationRate?: number;
   inflationMode?: 'nominal' | 'real';
+  utility?: UtilityBreakdown;
+  recommendation?: StrategyRecommendation;
 }
 
 export const HeroSummaryCard: React.FC<HeroSummaryCardProps> = ({
@@ -47,7 +49,9 @@ export const HeroSummaryCard: React.FC<HeroSummaryCardProps> = ({
   taxSettings,
   spendingStrategy,
   inflationRate,
-  inflationMode
+  inflationMode,
+  utility,
+  recommendation
 }) => {
   const { data: session } = useSession();
   const userNamePrefix = session?.user?.name ? `${session.user.name}님의 ` : '';
@@ -63,12 +67,14 @@ export const HeroSummaryCard: React.FC<HeroSummaryCardProps> = ({
     score, retirementGrade, monthlyTarget, isPro, userProfile, depletionAge,
     goalAchievementRate, fireAge, endingAssets,
     assets, privatePensions, nationalPension, otherIncomes,
-    taxSettings, spendingStrategy, inflationRate, inflationMode
+    taxSettings, spendingStrategy, inflationRate, inflationMode,
+    utility, recommendation
   }), [
     score, retirementGrade, monthlyTarget, isPro, userProfile, depletionAge,
     goalAchievementRate, fireAge, endingAssets,
     assets, privatePensions, nationalPension, otherIncomes,
-    taxSettings, spendingStrategy, inflationRate, inflationMode
+    taxSettings, spendingStrategy, inflationRate, inflationMode,
+    utility, recommendation
   ]);
   const isStale = lastFetchKey !== '' && currentKey !== lastFetchKey;
 
@@ -92,7 +98,8 @@ export const HeroSummaryCard: React.FC<HeroSummaryCardProps> = ({
             score, retirementGrade, monthlyTarget, isPro, userProfile, depletionAge,
             goalAchievementRate, fireAge, endingAssets,
             assets, privatePensions, nationalPension, otherIncomes,
-            taxSettings, spendingStrategy, inflationRate, inflationMode
+            taxSettings, spendingStrategy, inflationRate, inflationMode,
+            utility, recommendation
           }),
           signal: abortController.signal,
         });

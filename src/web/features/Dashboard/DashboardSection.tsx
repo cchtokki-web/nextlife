@@ -319,6 +319,8 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({ params: rawP
         spendingStrategy={params.spendingStrategy}
         inflationRate={params.inflationRate}
         inflationMode={params.inflationMode}
+        utility={result.utility}
+        recommendation={recommendation}
       />
 
       <UtilityCard
