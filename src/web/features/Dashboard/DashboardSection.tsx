@@ -168,6 +168,7 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({ params: rawP
         사적연금: Math.round(r.privatePensionIncome),
         배당소득: Math.round(r.dividendIncome),
         기타소득: Math.round(r.otherIncome),
+        hasTaxWarning: r.hasTaxWarning,
       };
     });
 
@@ -262,12 +263,6 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({ params: rawP
       ...({ 자산인출: assetWithdrawal, 자산부족: shortfall } as any)
     };
   });
-
-  // 금융소득종합과세 기준 (연 2,000만원 초과 시 적용, SimulationEngine.ts와 동일한 고정 기준액)
-  const rawComprehensiveTaxLimit = 20000000;
-  const monthlyComprehensiveTaxLimit = params.displayCurrency === 'USD'
-    ? (rawComprehensiveTaxLimit / 12) / params.baseExchangeRate
-    : rawComprehensiveTaxLimit / 12;
 
   // Assets Line chart data formatting (Merge base with compare scenarios)
   const assetChartData = yearlyResults.map((r) => {
@@ -542,11 +537,16 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({ params: rawP
               ({params.inflationMode === 'nominal' ? '명목가치' : '실질가치'} 기준)
             </span>
           </span>
+          {pensionChartData.some((d) => d.hasTaxWarning) && (
+            <span style={{ fontSize: '0.75rem', color: '#EF4444', fontWeight: 600 }}>
+              ⚠️ 금융소득종합과세 위험(세전 배당소득 연 2,000만원 초과) 연도
+            </span>
+          )}
         </div>
         <div className={styles.chartScrollWrapper}>
           <div className={styles.chartContainer}>
             <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={pensionChartData} margin={{ top: 10, right: 43, left: 0, bottom: 0 }}>
+            <BarChart data={pensionChartData} margin={{ top: 24, right: 43, left: 0, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(255, 255, 255, 0.05)" />
               <XAxis
                 dataKey="age"
@@ -583,7 +583,22 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({ params: rawP
               <Bar name="국민연금" dataKey="국민연금" stackId="a" fill="#10B981" hide={!!hiddenKeys['국민연금']} />
               <Bar name="사적연금" dataKey="사적연금" stackId="a" fill="#A855F7" hide={!!hiddenKeys['사적연금']} />
               <Bar name="배당소득" dataKey="배당소득" stackId="a" fill="#3B82F6" hide={!!hiddenKeys['배당소득']} />
-              <Bar name="기타소득" dataKey="기타소득" stackId="a" fill="#F59E0B" hide={!!hiddenKeys['기타소득']} />
+              <Bar
+                name="기타소득"
+                dataKey="기타소득"
+                stackId="a"
+                fill="#F59E0B"
+                hide={!!hiddenKeys['기타소득']}
+                label={(props: any) => {
+                  const { x, y, width, index } = props;
+                  if (!pensionChartData[index]?.hasTaxWarning) return <React.Fragment key={index} />;
+                  return (
+                    <text key={index} x={x + width / 2} y={y - 8} textAnchor="middle" fontSize="12" fill="#EF4444">
+                      ⚠️
+                    </text>
+                  );
+                }}
+              />
             </BarChart>
           </ResponsiveContainer>
           </div>
@@ -652,20 +667,6 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({ params: rawP
                     value: `사적연금 저율과세 한도 (${formatValue(monthlyPensionLimit)}/월)`,
                     fill: '#F8FAFC',
                     position: 'insideBottomLeft',
-                    fontSize: '0.65rem',
-                    fontWeight: 600,
-                    offset: 10
-                  }}
-                />
-                <ReferenceLine
-                  y={monthlyComprehensiveTaxLimit}
-                  stroke="#FDE047"
-                  strokeDasharray="4 4"
-                  strokeWidth={1.5}
-                  label={{
-                    value: `금융소득종합과세 기준 (${formatValue(monthlyComprehensiveTaxLimit)}/월)`,
-                    fill: '#FDE047',
-                    position: 'insideTopRight',
                     fontSize: '0.65rem',
                     fontWeight: 600,
                     offset: 10
