@@ -204,18 +204,22 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({ params: rawP
     let shortfall = 0;
 
     if (totalIncomeMonthly > targetMonthly) {
-      const ratio = targetMonthly / totalIncomeMonthly;
-      nationalUsed = Math.round(national * ratio);
+      // 국민연금은 실제로 매달 전액 지급되므로 축소하지 않고 raw 값 그대로 사용
+      nationalUsed = national;
+
+      const remainingTarget = Math.max(0, targetMonthly - national);
+      const otherTotal = privatePen + dividend + other;
+      const ratio = otherTotal > 0 ? remainingTarget / otherTotal : 0;
+
       privatePenUsed = Math.round(privatePen * ratio);
       dividendUsed = Math.round(dividend * ratio);
       otherUsed = Math.round(other * ratio);
-      
-      const sumUsed = nationalUsed + privatePenUsed + dividendUsed + otherUsed;
-      const diff = targetMonthly - sumUsed;
+
+      // 라운딩 오차는 국민연금을 제외한 나머지 세 항목 중 가장 큰 값에서 보정
+      const sumOtherUsed = privatePenUsed + dividendUsed + otherUsed;
+      const diff = remainingTarget - sumOtherUsed;
       if (diff !== 0) {
-        if (nationalUsed >= privatePenUsed && nationalUsed >= dividendUsed && nationalUsed >= otherUsed) {
-          nationalUsed += diff;
-        } else if (privatePenUsed >= dividendUsed && privatePenUsed >= otherUsed) {
+        if (privatePenUsed >= dividendUsed && privatePenUsed >= otherUsed) {
           privatePenUsed += diff;
         } else if (dividendUsed >= otherUsed) {
           dividendUsed += diff;
