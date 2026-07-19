@@ -199,60 +199,26 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({ params: rawP
     const dividend = Math.round(r.dividendIncome / 12);
     const other = Math.round(r.otherIncome / 12);
     
-    const totalIncomeMonthly = national + privatePen + dividend + other;
     const actualSpendingMonthly = Math.round(r.spending / 12);
-    
-    let nationalUsed = national;
-    let privatePenUsed = privatePen;
-    let dividendUsed = dividend;
-    let otherUsed = other;
-    let assetWithdrawal = 0;
-    let shortfall = 0;
 
-    if (totalIncomeMonthly > targetMonthly) {
-      // 국민연금은 실제로 매달 전액 지급되므로 축소하지 않고 raw 값 그대로 사용
-      nationalUsed = national;
+    // 국민연금은 실제로 매달 전액 지급되므로 항상 raw 값 그대로 사용
+    const nationalUsed = national;
 
-      const remainingAfterNational = Math.max(0, targetMonthly - national);
+    // 사적연금은 필요한 만큼만 쓰되, 저율과세 한도를 절대 넘지 않는다
+    const remainingAfterNational = Math.max(0, actualSpendingMonthly - nationalUsed);
+    const privatePenUsed = Math.min(privatePen, monthlyPensionLimit, remainingAfterNational);
 
-      // 사적연금은 저율과세 한도까지만 할당하고, 초과분은 배당소득/기타소득이 대신 채운다
-      privatePenUsed = Math.min(privatePen, monthlyPensionLimit, remainingAfterNational);
+    // 남은 필요분은 배당소득/기타소득이 raw 한도 내에서 채운다
+    const remainingAfterPension = Math.max(0, remainingAfterNational - privatePenUsed);
+    const dividendOtherTotal = dividend + other;
+    const ratio = dividendOtherTotal > 0 ? Math.min(1, remainingAfterPension / dividendOtherTotal) : 0;
+    const dividendUsed = Math.round(dividend * ratio);
+    const otherUsed = Math.round(other * ratio);
 
-      const remainingAfterPension = Math.max(0, remainingAfterNational - privatePenUsed);
-      const dividendOtherTotal = dividend + other;
-      const ratio = dividendOtherTotal > 0 ? Math.min(1, remainingAfterPension / dividendOtherTotal) : 0;
-
-      dividendUsed = Math.round(dividend * ratio);
-      otherUsed = Math.round(other * ratio);
-
-      // 라운딩 오차는 배당소득/기타소득 중 더 큰 값에서 보정 (실제 수입을 넘어서지 않는 선에서만)
-      const sumUsed = nationalUsed + privatePenUsed + dividendUsed + otherUsed;
-      const diff = targetMonthly - sumUsed;
-      if (diff !== 0 && ratio < 1) {
-        if (dividendUsed >= otherUsed) {
-          dividendUsed += diff;
-        } else {
-          otherUsed += diff;
-        }
-      }
-    } else {
-      assetWithdrawal = Math.max(0, actualSpendingMonthly - totalIncomeMonthly);
-      shortfall = Math.max(0, targetMonthly - actualSpendingMonthly);
-      
-      const sumUsed = nationalUsed + privatePenUsed + dividendUsed + otherUsed + assetWithdrawal + shortfall;
-      const diff = targetMonthly - sumUsed;
-      if (diff !== 0) {
-        if (shortfall > 0) {
-          shortfall += diff;
-        } else if (assetWithdrawal > 0) {
-          assetWithdrawal += diff;
-        } else if (nationalUsed > 0) {
-          nationalUsed += diff;
-        } else {
-          dividendUsed += diff;
-        }
-      }
-    }
+    // 그래도 부족하면 자산에서 인출하고, 실제로 인출할 자산조차 없으면(시뮬레이션상 지출이 이미 줄어든 만큼) 자산부족으로 표시
+    const usedSoFar = nationalUsed + privatePenUsed + dividendUsed + otherUsed;
+    const assetWithdrawal = Math.max(0, actualSpendingMonthly - usedSoFar);
+    const shortfall = Math.max(0, targetMonthly - actualSpendingMonthly);
 
     return {
       age,
