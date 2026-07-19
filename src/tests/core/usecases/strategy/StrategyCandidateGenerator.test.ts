@@ -86,4 +86,64 @@ describe('generateCandidatePlans', () => {
       expect(c.privatePensionStartAge).toBe(88);
     }
   });
+
+  test('자산이 1개 이하면 매도 순서는 input_order 단일 후보만 사용한다', () => {
+    const candidates = generateCandidatePlans({
+      ...baseParams,
+      assets: [
+        { id: 'a1', type: 'etf', ticker: 'A', name: '자산1', quantity: 1, averagePrice: 100, annualGrowthRate: 5, dividendYield: 2, monthlyContribution: 0, reinvestDividend: false, currency: 'KRW' },
+      ],
+    });
+    for (const c of candidates) {
+      expect(c.assetSellOrderStrategy).toBe('input_order');
+    }
+  });
+
+  test('자산이 2개 이상이면 매도 순서 전략 3가지를 함께 탐색한다', () => {
+    const twoAssetParams: SimulationParams = {
+      ...baseParams,
+      assets: [
+        { id: 'a1', type: 'etf', ticker: 'A', name: '자산1', quantity: 1, averagePrice: 100, annualGrowthRate: 5, dividendYield: 2, monthlyContribution: 0, reinvestDividend: false, currency: 'KRW' },
+        { id: 'a2', type: 'etf', ticker: 'B', name: '자산2', quantity: 1, averagePrice: 100, annualGrowthRate: 5, dividendYield: 4, monthlyContribution: 0, reinvestDividend: false, currency: 'KRW' },
+      ],
+    };
+    const candidates = generateCandidatePlans(twoAssetParams);
+    const distinctStrategies = new Set(candidates.map((c) => c.assetSellOrderStrategy));
+    expect(distinctStrategies).toEqual(new Set(['input_order', 'low_dividend_first', 'high_dividend_first']));
+  });
+
+  test('ISA·사적연금·일반자산이 모두 있어야 ISA 만기 목적지 2가지를 탐색하고, 아니면 pension 단일 후보만 사용한다', () => {
+    const withoutIsa = generateCandidatePlans(baseParams); // isaAccounts 없음
+    for (const c of withoutIsa) {
+      expect(c.isaMaturityDestination).toBe('pension');
+    }
+
+    const withIsaButNoAsset: SimulationParams = {
+      ...baseParams,
+      isaAccounts: [
+        { id: 'isa-1', type: 'general', balance: 1000000, monthlyContribution: 0, annualReturn: 5, dividendYield: 0, currency: 'KRW', maturityYears: 3 },
+      ],
+    }; // assets가 여전히 []
+    for (const c of generateCandidatePlans(withIsaButNoAsset)) {
+      expect(c.isaMaturityDestination).toBe('pension');
+    }
+
+    const withAll: SimulationParams = {
+      ...withIsaButNoAsset,
+      assets: [
+        { id: 'a1', type: 'etf', ticker: 'A', name: '자산1', quantity: 1, averagePrice: 100, annualGrowthRate: 5, dividendYield: 2, monthlyContribution: 0, reinvestDividend: false, currency: 'KRW' },
+      ],
+    };
+    const distinctDestinations = new Set(generateCandidatePlans(withAll).map((c) => c.isaMaturityDestination));
+    expect(distinctDestinations).toEqual(new Set(['pension', 'asset']));
+  });
+
+  test('모든 차원이 무의미하면(사적연금 없음, 자산 1개 이하, ISA 조건 미충족) 후보를 생성하지 않는다', () => {
+    const candidates = generateCandidatePlans({
+      ...baseParams,
+      privatePensions: [],
+      assets: [],
+    });
+    expect(candidates).toEqual([]);
+  });
 });

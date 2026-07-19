@@ -63,6 +63,14 @@ export function buildReasons(
   if (plan.privatePensionMonthlyTarget !== undefined) {
     reasons.push(`사적연금을 월 약 ${formatManwon(plan.privatePensionMonthlyTarget)} 수준으로 정액 인출합니다.`);
   }
+  if (plan.assetSellOrderStrategy === 'low_dividend_first') {
+    reasons.push('배당수익률이 낮은 자산부터 매도해 배당 소득원을 오래 유지합니다.');
+  } else if (plan.assetSellOrderStrategy === 'high_dividend_first') {
+    reasons.push('배당수익률이 높은 자산부터 매도해 향후 금융소득종합과세 위험을 낮춥니다.');
+  }
+  if (plan.isaMaturityDestination === 'asset') {
+    reasons.push('ISA 만기 자금을 사적연금 대신 일반 자산으로 이동해 향후 인출 시 세금 부담을 낮춥니다.');
+  }
   if (plan.nationalPensionStartAge !== undefined && plan.nationalPensionStartAge !== 65) {
     if (plan.nationalPensionStartAge < 65) {
       reasons.push(`국민연금을 ${plan.nationalPensionStartAge}세부터 조기 수령합니다.`);

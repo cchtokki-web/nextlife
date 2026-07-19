@@ -56,10 +56,14 @@ describe('recommendStrategy', () => {
     expect(recommendation.reasons.length).toBeGreaterThan(0);
   });
 
-  test('사적연금이 없으면 후보가 없어 추천 Utility가 현재 Utility와 동일하다', () => {
+  test('탐색할 만한 최적화 차원이 전혀 없으면(사적연금·국민연금·복수자산·ISA 모두 없음) 추천 Utility가 현재 Utility와 동일하다', () => {
     const engine = new SimulationEngine();
-    const noPensionParams: SimulationParams = { ...paramsWithLargePension, privatePensions: [] };
-    const recommendation = recommendStrategy(noPensionParams, engine);
+    const noOptimizableDimensionParams: SimulationParams = {
+      ...paramsWithLargePension,
+      privatePensions: [],
+      nationalPension: { expectedMonthlyAmount: 0 },
+    };
+    const recommendation = recommendStrategy(noOptimizableDimensionParams, engine);
 
     expect(recommendation.recommendedUtility.score).toBe(recommendation.currentUtility.score);
   });
@@ -73,6 +77,39 @@ describe('recommendStrategy', () => {
       expect(typeof v).toBe('number');
       expect(Number.isNaN(v)).toBe(false);
     });
+  });
+});
+
+describe('buildReasons - 자산 매도 순서 / ISA 만기 이동 문구', () => {
+  test('low_dividend_first면 저배당 자산 우선 매도 문구를 포함한다', () => {
+    const reasons = buildReasons({ assetSellOrderStrategy: 'low_dividend_first' }, zeroDeltas, true);
+    expect(reasons.some((r) => r.includes('배당') && r.includes('낮은'))).toBe(true);
+  });
+
+  test('high_dividend_first면 고배당 자산 우선 매도 문구를 포함한다', () => {
+    const reasons = buildReasons({ assetSellOrderStrategy: 'high_dividend_first' }, zeroDeltas, true);
+    expect(reasons.some((r) => r.includes('배당') && r.includes('높은'))).toBe(true);
+  });
+
+  test('input_order이거나 미지정이면 매도 순서 관련 문구를 추가하지 않는다', () => {
+    const reasonsInputOrder = buildReasons({ assetSellOrderStrategy: 'input_order' }, zeroDeltas, true);
+    expect(reasonsInputOrder.some((r) => r.includes('매도'))).toBe(false);
+
+    const reasonsUndefined = buildReasons({}, zeroDeltas, true);
+    expect(reasonsUndefined.some((r) => r.includes('매도'))).toBe(false);
+  });
+
+  test("isaMaturityDestination이 'asset'이면 ISA 자금 이동 문구를 포함한다", () => {
+    const reasons = buildReasons({ isaMaturityDestination: 'asset' }, zeroDeltas, true);
+    expect(reasons.some((r) => r.includes('ISA') && r.includes('일반 자산'))).toBe(true);
+  });
+
+  test("isaMaturityDestination이 'pension'이거나 미지정이면 ISA 이동 문구를 추가하지 않는다", () => {
+    const reasonsPension = buildReasons({ isaMaturityDestination: 'pension' }, zeroDeltas, true);
+    expect(reasonsPension.some((r) => r.includes('ISA'))).toBe(false);
+
+    const reasonsUndefined = buildReasons({}, zeroDeltas, true);
+    expect(reasonsUndefined.some((r) => r.includes('ISA'))).toBe(false);
   });
 });
 

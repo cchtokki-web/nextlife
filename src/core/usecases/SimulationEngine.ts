@@ -25,6 +25,7 @@ import {
   NATIONAL_PENSION_EARLY_MIN_AGE,
   NATIONAL_PENSION_DEFERRED_MAX_AGE,
 } from './pension/nationalPensionRules';
+import { sortAssetsForWithdrawal } from './strategy/assetOrdering';
 
 interface ActiveAsset extends InvestmentAsset {
   currentValue: number;
@@ -309,6 +310,9 @@ export class SimulationEngine {
 
     const exchangeRate = this.getExchangeRate(baseExchangeRate, exchangeScenario);
     const { activeAssets, activePensions, activeIsas, infRateAnnual } = this.initializeAssets(params, currentTaxSettings);
+    // dividendYield는 시간에 따라 변하지 않으므로 인출 순서를 한 번만 계산해 재사용한다.
+    // 원본 activeAssets 배열(순서)은 잉여현금 재투자·ISA 만기 이동 등 다른 로직에서 그대로 쓰인다.
+    const withdrawalOrderedAssets = sortAssetsForWithdrawal(activeAssets, withdrawalPlan?.assetSellOrderStrategy);
 
     const startAge = userProfile.currentAge;
     const endAge = userProfile.expectancy;
@@ -401,8 +405,13 @@ export class SimulationEngine {
             const exemptionLimit = this.convertValue(getIsaExemptionLimitKRW(isa.type), 'KRW', isa.currency, exchangeRate);
             const taxAmount = calculateIsaMaturityTax(totalProfit, exemptionLimit);
             const netBalance = isa.currentBalance - taxAmount;
-            
-            if (activePensions.length > 0) {
+            const preferPension = (withdrawalPlan?.isaMaturityDestination ?? 'pension') === 'pension';
+
+            if (preferPension && activePensions.length > 0) {
+              activePensions[0].currentBalance += this.convertValue(netBalance, isa.currency, activePensions[0].currency, exchangeRate);
+            } else if (!preferPension && activeAssets.length > 0) {
+              activeAssets[0].currentValue += this.convertValue(netBalance, isa.currency, activeAssets[0].currency, exchangeRate);
+            } else if (activePensions.length > 0) {
               activePensions[0].currentBalance += this.convertValue(netBalance, isa.currency, activePensions[0].currency, exchangeRate);
             } else if (activeAssets.length > 0) {
               activeAssets[0].currentValue += this.convertValue(netBalance, isa.currency, activeAssets[0].currency, exchangeRate);
@@ -508,7 +517,7 @@ export class SimulationEngine {
           activeAssets[0].currentValue += this.convertValue(-shortfall, displayCurrency, activeAssets[0].currency, exchangeRate);
         } else if (shortfall > 0) {
           let remainingShortfall = shortfall;
-          for (const asset of activeAssets) {
+          for (const asset of withdrawalOrderedAssets) {
             const assetValueDisplay = this.convertValue(asset.currentValue, asset.currency, displayCurrency, exchangeRate);
             if (assetValueDisplay >= remainingShortfall) {
               asset.currentValue -= this.convertValue(remainingShortfall, displayCurrency, asset.currency, exchangeRate);
@@ -582,7 +591,7 @@ export class SimulationEngine {
 
       {
         let remainingTax = annualComprehensiveTaxPaidDisplay + annualHealthInsurancePaidDisplay;
-        for (const asset of activeAssets) {
+        for (const asset of withdrawalOrderedAssets) {
             const assetValueDisplay = this.convertValue(asset.currentValue, asset.currency, displayCurrency, exchangeRate);
             const deduct = Math.min(remainingTax, assetValueDisplay);
             asset.currentValue -= this.convertValue(deduct, displayCurrency, asset.currency, exchangeRate);
@@ -601,7 +610,7 @@ export class SimulationEngine {
         const pensionTaxAdjustmentDisplay = Math.max(0, totalPensionTaxNeededDisplay - annualPensionTaxPaid);
 
         let remainingTax = pensionTaxAdjustmentDisplay;
-        for (const asset of activeAssets) {
+        for (const asset of withdrawalOrderedAssets) {
           const assetValueDisplay = this.convertValue(asset.currentValue, asset.currency, displayCurrency, exchangeRate);
           const deduct = Math.min(remainingTax, assetValueDisplay);
           asset.currentValue -= this.convertValue(deduct, displayCurrency, asset.currency, exchangeRate);

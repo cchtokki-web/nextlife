@@ -56,10 +56,15 @@ export interface OtherIncome {
 
 export type SpendingStrategy = 'target' | 'dividend_only' | 'max_sustainable';
 
+export type AssetSellOrderStrategy = 'input_order' | 'low_dividend_first' | 'high_dividend_first';
+export type IsaMaturityDestination = 'pension' | 'asset';
+
 export interface WithdrawalPlan {
   privatePensionStartAge?: number; // 사적연금 인출 개시 나이 (미지정 시 retirementAge)
   privatePensionMonthlyTarget?: number; // 월 목표 인출액(KRW 기준, 세전). 계좌 합산 기준, 잔액 한도 내에서 제한
   nationalPensionStartAge?: number; // 국민연금 수령 개시 나이 (60~70, 미지정 시 65 = 기존 동작과 동일)
+  assetSellOrderStrategy?: AssetSellOrderStrategy; // 자산 매도 순서 (미지정 시 'input_order' = 기존 동작과 동일)
+  isaMaturityDestination?: IsaMaturityDestination; // ISA 만기 자금 이동 목적지 (미지정 시 'pension' = 기존 동작과 동일)
 }
 
 export interface TaxSettings {
