@@ -201,6 +201,11 @@ ${simulationContextText}
             { role: 'user', content: '내 시뮬레이션 결과에 대해 조언해줘.' }
           ],
           stream: true,
+          // reasoning 지원 모델(예: gemma4:12b-mlx)은 기본적으로 답변 전에 message.thinking 필드로
+          // 긴 사고 과정을 스트리밍한다. 클라이언트는 message.content만 렌더링하므로 thinking이
+          // 진행되는 동안(수십 초 이상) 화면이 "작성 중" 상태로 멈춰 보인다. think:false로 이
+          // 사고 과정 자체를 비활성화해 곧바로 최종 답변만 받는다.
+          think: false,
         }),
       });
 

@@ -1,5 +1,5 @@
-import { describe, test, expect } from 'vitest';
-import { buildSimulationContextText } from '@/app/api/ai-advisor/route';
+import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest';
+import { buildSimulationContextText, POST } from '@/app/api/ai-advisor/route';
 import { StrategyRecommendation, UtilityBreakdown } from '@/core/entities/types';
 
 const baseUtility: UtilityBreakdown = {
@@ -64,5 +64,48 @@ describe('buildSimulationContextText - Utility Score 반영', () => {
     const text = buildSimulationContextText(baseBody);
     expect(text).toContain('은퇴 준비도 점수');
     expect(text).toContain('90점');
+  });
+});
+
+describe('POST /api/ai-advisor - Ollama 요청 시 think:false 전달', () => {
+  // 회귀 가드: reasoning 지원 모델(예: gemma4:12b-mlx)은 think 옵션이 없으면 응답 전에
+  // message.thinking 필드로 긴 사고 과정을 스트리밍한다. 클라이언트는 message.content만
+  // 렌더링하므로 이 사고 과정이 진행되는 동안 "AI 분석 의견을 작성하고 있습니다..." 상태에서
+  // 수십 초 이상 멈춘 것처럼 보인다(실제로 발생을 확인한 버그). think:false로 이를 방지한다.
+  const originalEndpoint = process.env.OLLAMA_ENDPOINT;
+
+  beforeEach(() => {
+    process.env.OLLAMA_ENDPOINT = 'http://fake-ollama:11434';
+  });
+
+  afterEach(() => {
+    process.env.OLLAMA_ENDPOINT = originalEndpoint;
+    vi.restoreAllMocks();
+  });
+
+  test('Ollama /api/chat 요청 바디에 think:false가 포함된다', async () => {
+    const fakeStream = new ReadableStream({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode(JSON.stringify({ message: { content: '안녕' }, done: true }) + '\n'));
+        controller.close();
+      },
+    });
+
+    const fetchMock = vi.spyOn(global, 'fetch').mockResolvedValue(
+      new Response(fakeStream, { status: 200, headers: { 'Content-Type': 'text/event-stream' } })
+    );
+
+    const req = new Request('http://localhost/api/ai-advisor', {
+      method: 'POST',
+      body: JSON.stringify({ score: 80, monthlyTarget: 3000000, depletionAge: null }),
+    });
+
+    await POST(req as any);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [calledUrl, options] = fetchMock.mock.calls[0];
+    expect(String(calledUrl)).toContain('/api/chat');
+    const sentBody = JSON.parse((options as RequestInit).body as string);
+    expect(sentBody.think).toBe(false);
   });
 });
