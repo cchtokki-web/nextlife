@@ -175,18 +175,34 @@ export default function Home() {
       const html2canvas = (await import('html2canvas')).default;
 
       const { retirementScore, goalAchievementRate, fireAge, depletionAge, endingAssets, yearlyResults } = result;
-      const { 
-        userProfile, 
-        assets, 
-        privatePensions, 
-        nationalPension, 
-        otherIncomes, 
-        inflationRate, 
-        inflationMode, 
-        baseExchangeRate, 
+      const {
+        userProfile,
+        assets,
+        privatePensions,
+        isaAccounts,
+        nationalPension,
+        otherIncomes,
+        inflationRate,
+        inflationMode,
+        baseExchangeRate,
         displayCurrency,
-        spendingStrategy 
+        spendingStrategy,
+        taxSettings
       } = activeParams;
+
+      const currentTaxSettings = {
+        enableComprehensiveTax: true,
+        enableHealthInsurance: true,
+        usDividendTaxRate: 15,
+        domesticDividendTaxRate: 15.4,
+        comprehensiveTaxRate: 15,
+        healthInsuranceRate: 5,
+        enablePrivatePensionTax: true,
+        privatePensionLimit: 15000000,
+        privatePensionExcessTaxRate: 16.5,
+        limitPrivatePensionToTaxLimit: false,
+        ...(taxSettings || {}),
+      };
 
       const formatValuePrint = (val: number): string => formatValue(val);
 
@@ -296,10 +312,26 @@ export default function Home() {
 
       if (assets && assets.length > 0) {
         assets.forEach(a => {
-          pagesHtml += `<li style="margin-bottom: 4px;"><strong>${a.name}</strong> (${a.type}): ${a.quantity}주(개) x 평균단가 ${a.averagePrice.toLocaleString()} ${a.currency}, 매월 ${a.monthlyContribution.toLocaleString()} ${a.currency} 납입, 예상 연 수익률 ${a.annualGrowthRate}%, 배당률 ${a.dividendYield}%</li>`;
+          pagesHtml += `<li style="margin-bottom: 4px;"><strong>${a.name}</strong> (${a.type}): ${a.quantity}주(개) x 평균단가 ${a.averagePrice.toLocaleString()} ${a.currency}, 매월 ${a.monthlyContribution.toLocaleString()} ${a.currency} 납입, 예상 연 수익률 ${a.annualGrowthRate}%, 배당률 ${a.dividendYield}%, 배당 재투자 ${a.reinvestDividend ? 'O' : 'X'}</li>`;
         });
       } else {
         pagesHtml += `<li>등록된 투자 자산 없음</li>`;
+      }
+
+      pagesHtml += `
+                </ul>
+              </div>
+              <div>
+                <strong>ISA 계좌:</strong>
+                <ul style="padding-left: 20px; margin-top: 4px; margin-bottom: 0;">
+      `;
+
+      if (isaAccounts && isaAccounts.length > 0) {
+        isaAccounts.forEach(isa => {
+          pagesHtml += `<li style="margin-bottom: 4px;"><strong>${isa.name || 'ISA 계좌'}</strong> (${isa.type === 'general' ? '일반형' : '서민형'}): 현재 잔액 ${isa.balance.toLocaleString()} ${isa.currency}, 매월 ${isa.monthlyContribution.toLocaleString()} ${isa.currency} 납입, 예상 연 수익률 ${isa.annualReturn}%, 배당률 ${isa.dividendYield}%, 만기 ${isa.maturityYears}년</li>`;
+        });
+      } else {
+        pagesHtml += `<li>등록된 ISA 계좌 없음</li>`;
       }
 
       pagesHtml += `
@@ -322,6 +354,16 @@ export default function Home() {
                 </ul>
               </div>
             </div>
+
+            <h2 style="font-size: 16px; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; color: #0f172a; margin-top: 25px; margin-bottom: 10px;">4. 세금 설정</h2>
+            <ul style="padding-left: 20px; margin-top: 5px; margin-bottom: 0; font-size: 13px; line-height: 1.6;">
+              <li style="margin-bottom: 6px;"><strong>금융소득종합과세 반영:</strong> ${currentTaxSettings.enableComprehensiveTax ? `반영 (2천만원 초과분 ${currentTaxSettings.comprehensiveTaxRate}% 추가 과세)` : '미반영'}</li>
+              <li style="margin-bottom: 6px;"><strong>추가 건강보험료 반영:</strong> ${currentTaxSettings.enableHealthInsurance ? `반영 (초과분 ${currentTaxSettings.healthInsuranceRate}%)` : '미반영'}</li>
+              <li style="margin-bottom: 6px;"><strong>배당소득세율:</strong> 해외 주식/ETF ${currentTaxSettings.usDividendTaxRate}% / 국내 주식/ETF ${currentTaxSettings.domesticDividendTaxRate}%</li>
+              <li style="margin-bottom: 6px;"><strong>사적연금 고세율 과세 반영:</strong> ${currentTaxSettings.enablePrivatePensionTax ? '반영 - 한도 초과 시 고세율 적용' : '미반영 - 연령별 저율과세 유지'}</li>
+              <li style="margin-bottom: 6px;"><strong>사적연금 저율과세 한도(연간):</strong> ${currentTaxSettings.privatePensionLimit.toLocaleString()}원, 한도 초과 시 세율 ${currentTaxSettings.privatePensionExcessTaxRate}%</li>
+              <li style="margin-bottom: 6px;"><strong>사적연금 저율과세 한도 내 인출:</strong> ${currentTaxSettings.limitPrivatePensionToTaxLimit ? '한도 내 인출 (절세 최적화)' : '기본 인출 (일반 인출 계획)'}</li>
+            </ul>
           </div>
           <div class="pdf-footer">
             <span>NextLife 은퇴 자산 시뮬레이션 리포트</span>
@@ -344,7 +386,7 @@ export default function Home() {
           <div class="pdf-page">
             <div class="pdf-content">
               <h2 style="font-size: 15px; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; color: #0f172a; margin-top: 0; margin-bottom: 12px;">
-                4. 연령별 소득원 및 자산 추이 (페이지 ${chunkIdx + 1})
+                5. 연령별 소득원 및 자산 추이 (페이지 ${chunkIdx + 1})
               </h2>
               <table style="width: 100%; border-collapse: collapse; font-size: 10.5px;">
                 <thead>
