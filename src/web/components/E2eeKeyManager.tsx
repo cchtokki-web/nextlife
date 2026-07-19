@@ -2,6 +2,20 @@ import React, { useState } from 'react';
 import { Copy, Check, AlertTriangle, RefreshCw } from 'lucide-react';
 import { formatBackupKey } from '../../core/utils/crypto';
 
+// 어두운 모달 배경(--card-bg) 위에서도 박스 경계가 뚜렷이 보이도록 배경/테두리 대비를 높게 잡는다.
+const pinBoxStyle: React.CSSProperties = {
+  width: '45px',
+  height: '45px',
+  backgroundColor: 'rgba(255, 255, 255, 0.06)',
+  border: '1.5px solid rgba(255, 255, 255, 0.3)',
+  borderRadius: '8px',
+  color: 'var(--foreground)',
+  fontSize: '18px',
+  fontWeight: 'bold',
+  textAlign: 'center',
+  outline: 'none',
+};
+
 interface E2eeKeyManagerProps {
   localKey: string | null;
   needsKeyRestore: boolean;
@@ -351,18 +365,9 @@ export const E2eeKeyManager: React.FC<E2eeKeyManagerProps> = ({
                       onChange={(e) => handleSetupPinChange(idx, e.target.value, false)}
                       onKeyDown={(e) => handleSetupKeyDown(idx, e, false)}
                       disabled={isSettingUp}
-                      style={{
-                        width: '45px',
-                        height: '45px',
-                        backgroundColor: 'rgba(0, 0, 0, 0.2)',
-                        border: '1px solid var(--card-border)',
-                        borderRadius: '8px',
-                        color: 'var(--foreground)',
-                        fontSize: '18px',
-                        fontWeight: 'bold',
-                        textAlign: 'center',
-                        outline: 'none',
-                      }}
+                      style={pinBoxStyle}
+                      onFocus={(e) => { e.currentTarget.style.borderColor = 'var(--primary, #3b82f6)'; e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.1)'; }}
+                      onBlur={(e) => { e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.3)'; e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.06)'; }}
                     />
                   ))}
                 </div>
@@ -381,18 +386,9 @@ export const E2eeKeyManager: React.FC<E2eeKeyManagerProps> = ({
                       onChange={(e) => handleSetupPinChange(idx, e.target.value, true)}
                       onKeyDown={(e) => handleSetupKeyDown(idx, e, true)}
                       disabled={isSettingUp}
-                      style={{
-                        width: '45px',
-                        height: '45px',
-                        backgroundColor: 'rgba(0, 0, 0, 0.2)',
-                        border: '1px solid var(--card-border)',
-                        borderRadius: '8px',
-                        color: 'var(--foreground)',
-                        fontSize: '18px',
-                        fontWeight: 'bold',
-                        textAlign: 'center',
-                        outline: 'none',
-                      }}
+                      style={pinBoxStyle}
+                      onFocus={(e) => { e.currentTarget.style.borderColor = 'var(--primary, #3b82f6)'; e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.1)'; }}
+                      onBlur={(e) => { e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.3)'; e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.06)'; }}
                     />
                   ))}
                 </div>
@@ -502,19 +498,9 @@ export const E2eeKeyManager: React.FC<E2eeKeyManagerProps> = ({
                     onChange={(e) => handlePinChange(idx, e.target.value)}
                     onKeyDown={(e) => handleKeyDown(idx, e)}
                     disabled={isRestoring || isRestoreLocked}
-                    style={{
-                      width: '45px',
-                      height: '45px',
-                      backgroundColor: 'rgba(0, 0, 0, 0.2)',
-                      border: '1px solid var(--card-border)',
-                      borderRadius: '8px',
-                      color: 'var(--foreground)',
-                      fontSize: '18px',
-                      fontWeight: 'bold',
-                      textAlign: 'center',
-                      textTransform: 'uppercase',
-                      outline: 'none',
-                    }}
+                    style={{ ...pinBoxStyle, textTransform: 'uppercase' }}
+                    onFocus={(e) => { e.currentTarget.style.borderColor = 'var(--primary, #3b82f6)'; e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.1)'; }}
+                    onBlur={(e) => { e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.3)'; e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.06)'; }}
                   />
                 ))}
               </div>
@@ -542,7 +528,7 @@ export const E2eeKeyManager: React.FC<E2eeKeyManagerProps> = ({
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
                     <path d="M12 3C6.477 3 2 6.58 2 11C2 13.829 3.754 16.31 6.438 17.653L5.454 21.282C5.352 21.658 5.766 21.936 6.096 21.722L10.36 18.966C10.893 19.043 11.44 19.083 12 19.083C17.523 19.083 22 15.503 22 11C22 6.58 17.523 3 12 3Z"/>
                   </svg>
-                  보안 백업 키 안내
+                  보안키 안내
                 </div>
                 보안키는 최초 설정 및 로그인 시 회원님의 카카오톡 <strong>'나와의 채팅방'</strong>으로 자동 발송되었습니다. 카카오톡에서 <strong>'NextLife'</strong> 또는 <strong>'보안키'</strong>를 검색하여 확인해 주세요!
               </div>
