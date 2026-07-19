@@ -212,6 +212,18 @@ export const SimulationSettings: React.FC<{ scenarioState: any }> = ({ scenarioS
               onChange={(e) => handleUpdateActiveParams({ ...activeParams, inflationRate: Number(e.target.value) })}
               suffixText="%"
             />
+            <SelectField
+              label="사적연금 저율과세 한도 내 인출"
+              value={activeParams.taxSettings?.limitPrivatePensionToTaxLimit ? 'true' : 'false'}
+              onChange={(e) => handleUpdateActiveParams({
+                ...activeParams,
+                taxSettings: { ...activeParams.taxSettings, limitPrivatePensionToTaxLimit: e.target.value === 'true' },
+              })}
+              options={[
+                { value: 'true', label: '한도 내 인출 (절세 최적화)' },
+                { value: 'false', label: '기본 인출 (일반 인출 계획)' },
+              ]}
+            />
           </div>
         </div>
       )}

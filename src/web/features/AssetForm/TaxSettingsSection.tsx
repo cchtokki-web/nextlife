@@ -118,16 +118,6 @@ export const TaxSettingsSection: React.FC<TaxSettingsSectionProps> = ({ params, 
           ]}
         />
 
-        <SelectField
-          label="사적연금 저율과세 한도 내 인출"
-          value={currentTaxSettings.limitPrivatePensionToTaxLimit ? 'true' : 'false'}
-          onChange={(e) => handleUpdate({ limitPrivatePensionToTaxLimit: e.target.value === 'true' })}
-          options={[
-            { value: 'true', label: '한도 내 인출 (절세 최적화)' },
-            { value: 'false', label: '기본 인출 (일반 인출 계획)' },
-          ]}
-        />
-
         <InputField
           label="사적연금 저율과세 한도 (연간)"
           type="text"
