@@ -169,7 +169,7 @@ export const E2eeKeyManager: React.FC<E2eeKeyManagerProps> = ({
   const [isSettingUp, setIsSettingUp] = useState(false);
 
   const handleSetupPinChange = (index: number, value: string, isConfirm: boolean) => {
-    const cleanVal = value.replace(/[^0-9]/g, '');
+    const cleanVal = value.toUpperCase().replace(/[^A-Z0-9]/g, '');
     const currentInputs = isConfirm ? confirmPinInputs : setupPinInputs;
     const setInputs = isConfirm ? setConfirmPinInputs : setSetupPinInputs;
     const prefix = isConfirm ? 'confirm-pin' : 'setup-pin';
@@ -345,7 +345,7 @@ export const E2eeKeyManager: React.FC<E2eeKeyManagerProps> = ({
           </div>
           
           <p style={{ fontSize: '0.9rem', lineHeight: 1.6, color: 'var(--foreground-muted, #94a3b8)', marginBottom: '1.5rem' }}>
-            은퇴 자산 데이터를 암호화하기 위해 <strong>숫자 6자리 보안키</strong>를 설정해 주세요.
+            은퇴 자산 데이터를 암호화하기 위해 <strong>영문·숫자 6자리 보안키</strong>를 설정해 주세요.
             <br />
             설정 완료 시 카카오톡 나와의 채팅방으로 보안키가 전송됩니다.
           </p>
@@ -353,7 +353,7 @@ export const E2eeKeyManager: React.FC<E2eeKeyManagerProps> = ({
           <form onSubmit={handleFormSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.2rem' }}>
             {setupStep === 1 ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--foreground-muted)' }}>숫자 6자리 입력</label>
+                <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--foreground-muted)' }}>영문·숫자 6자리 입력</label>
                 <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', margin: '10px 0' }}>
                   {[0, 1, 2, 3, 4, 5].map((idx) => (
                     <input

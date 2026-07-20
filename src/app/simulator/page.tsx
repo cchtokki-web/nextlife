@@ -6,6 +6,7 @@ import { SimulationEngine } from '../../core/usecases/SimulationEngine';
 import { computeMonthlySpendingComposition } from '../../core/usecases/MonthlySpendingComposition';
 import { recommendStrategy } from '../../core/usecases/strategy/RecommendationEngine';
 import { analyzeCurrentStrategy } from '../../core/usecases/utility/utilityAnalysis';
+import { resolveTaxSettings } from '../../core/usecases/tax/taxRates';
 import { UTILITY_COMPONENT_META } from '../../web/features/Dashboard/utilityComponentMeta';
 import { initialParams } from '../../infrastructure/storage/localStore';
 import { AssetFormSection } from '../../web/features/AssetForm/AssetFormSection';
@@ -212,19 +213,7 @@ export default function Home() {
         taxSettings
       } = activeParams;
 
-      const currentTaxSettings = {
-        enableComprehensiveTax: true,
-        enableHealthInsurance: true,
-        usDividendTaxRate: 15,
-        domesticDividendTaxRate: 15.4,
-        comprehensiveTaxRate: 15,
-        healthInsuranceRate: 5,
-        enablePrivatePensionTax: true,
-        privatePensionLimit: 15000000,
-        privatePensionExcessTaxRate: 16.5,
-        limitPrivatePensionToTaxLimit: false,
-        ...(taxSettings || {}),
-      };
+      const currentTaxSettings = resolveTaxSettings(taxSettings);
 
       const formatValuePrint = (val: number): string => formatValue(val);
 

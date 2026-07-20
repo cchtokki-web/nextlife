@@ -1,5 +1,6 @@
-import { SimulationParams, InvestmentAsset, PrivatePension, UserProfile, TaxSettings } from '../entities/types';
+import { SimulationParams, InvestmentAsset, PrivatePension, UserProfile } from '../entities/types';
 import { v4 as uuidv4 } from 'uuid';
+import { resolveTaxSettings } from './tax/taxRates';
 
 export type InvestmentPropensity = 'conservative' | 'neutral' | 'aggressive';
 
@@ -76,14 +77,7 @@ export class SimpleSimulationAdapter {
       targetMonthlySpending,
     };
 
-    const defaultTaxSettings: TaxSettings = {
-      enableComprehensiveTax: true,
-      enableHealthInsurance: true,
-      usDividendTaxRate: 15,
-      domesticDividendTaxRate: 15.4,
-      comprehensiveTaxRate: 15,
-      healthInsuranceRate: 5,
-    };
+    const defaultTaxSettings = resolveTaxSettings();
 
     return {
       userProfile,

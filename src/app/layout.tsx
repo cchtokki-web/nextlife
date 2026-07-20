@@ -59,7 +59,11 @@ export default function RootLayout({
                   } else {
                     document.documentElement.setAttribute('data-theme', 'dark');
                   }
-                } catch (e) {}
+                } catch (e) {
+                  // localStorage 접근이 실패해도(사파리 프라이빗 모드 등) 테마 속성 자체는
+                  // 항상 설정해 기본 다크 테마로라도 일관되게 렌더링되도록 한다.
+                  document.documentElement.setAttribute('data-theme', 'dark');
+                }
               })();
             `
           }}

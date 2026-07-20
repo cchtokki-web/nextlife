@@ -30,10 +30,14 @@ export interface InvestmentAsset {
 
 export type PrivatePensionType = 'irp' | 'savings' | 'retirement';
 
+// PrivatePension/IsaAccount가 공유하는 계좌 내 운용 방식. 이름 있는 타입으로 추출해 두 곳이
+// 같은 개념을 공유한다는 것을 명시하고, 한쪽만 variant가 추가되는 drift를 막는다.
+export type AccountInvestmentType = 'custom' | 'deposit' | 'etf';
+
 export interface PrivatePension {
   id: string;
   type: PrivatePensionType;
-  investmentType?: 'custom' | 'deposit' | 'etf';
+  investmentType?: AccountInvestmentType;
   ticker?: string;
   name?: string;
   balance: number;
@@ -68,6 +72,11 @@ export interface WithdrawalPlan {
   generalAssetWithdrawalStartAge?: number; // 일반자산(주식/ETF) 인출 개시 나이 (미지정 시 retirementAge = 기존 동작과 동일)
 }
 
+// StrategyCandidateGenerator가 만드는 후보처럼 6개 필드가 모두 채워진 "완결된" 인출 전략.
+// WithdrawalPlan은 "부분 override 패치"(일부 필드만 지정)로도 쓰이는 반면, 이 타입은 그 의미를
+// 컴파일 타임에 구분하기 위한 것이다 (예: StrategyRecommendation.recommendedPlan).
+export type CompleteWithdrawalPlan = Required<WithdrawalPlan>;
+
 export interface TaxSettings {
   enableComprehensiveTax: boolean;
   enableHealthInsurance: boolean;
@@ -86,7 +95,7 @@ export type IsaAccountType = 'general' | 'low_income';
 export interface IsaAccount {
   id: string;
   type: IsaAccountType;
-  investmentType?: 'custom' | 'deposit' | 'etf';
+  investmentType?: AccountInvestmentType;
   ticker?: string;
   name?: string;
   balance: number;
@@ -190,7 +199,7 @@ export interface StrategyRecommendation {
   // baseline보다 Utility가 개선되는 후보를 찾았을 때만 해당 WithdrawalPlan이 채워지고, 그렇지
   // 않으면 null(= baseline 유지 권장). "부분 override 패치"인 WithdrawalPlan과 달리 여기서는
   // "AI가 확정한 완결된 결정" 또는 "결정 없음"이라는 의미로만 쓰인다.
-  recommendedPlan: WithdrawalPlan | null;
+  recommendedPlan: CompleteWithdrawalPlan | null;
   improved: boolean; // recommendedUtility.score > currentUtility.score 여부를 미리 계산해 둔 값. 소비처마다 재계산하지 않는다.
   reasons: string[];
   deltas: {
@@ -201,6 +210,8 @@ export interface StrategyRecommendation {
     comprehensiveTaxYears: number; // 금융소득종합과세 발생 연수 변화
     healthInsuranceTotal: number; // 평생 건강보험료(추가분) 변화
   };
+  totalCandidateCount: number; // 평가를 시도한 후보 전략 수 (탐색할 차원이 없으면 0)
+  failedCandidateCount: number; // 그중 SimulationEngine 실행이 실패해 건너뛴 후보 수
 }
 
 export interface ScenarioModel {

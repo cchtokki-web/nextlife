@@ -36,10 +36,19 @@ describe('buildSimulationContextText - Utility Score 반영', () => {
     const recommendation: StrategyRecommendation = {
       currentUtility: { ...baseUtility, score: 83 },
       recommendedUtility: { ...baseUtility, score: 87 },
-      recommendedPlan: { privatePensionStartAge: 62 },
+      recommendedPlan: {
+        privatePensionStartAge: 62,
+        privatePensionMonthlyTarget: 0,
+        nationalPensionStartAge: 65,
+        assetSellOrderStrategy: 'input_order',
+        isaMaturityDestination: 'pension',
+        generalAssetWithdrawalStartAge: 65,
+      },
       improved: true,
       reasons: ['62세부터 사적연금 인출을 시작합니다.'],
       deltas: zeroDeltas,
+      totalCandidateCount: 12,
+      failedCandidateCount: 0,
     };
     const text = buildSimulationContextText({ ...baseBody, utility: baseUtility, recommendation });
 
@@ -56,6 +65,8 @@ describe('buildSimulationContextText - Utility Score 반영', () => {
       improved: false,
       reasons: ['현재 전략이 이미 합리적입니다.'],
       deltas: zeroDeltas,
+      totalCandidateCount: 12,
+      failedCandidateCount: 0,
     };
     const text = buildSimulationContextText({ ...baseBody, utility: baseUtility, recommendation });
 

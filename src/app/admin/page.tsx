@@ -4,18 +4,10 @@ import React, { useState } from 'react';
 import GlassCard from '../../web/components/GlassCard';
 import styles from './AdminDashboard.module.css';
 import { Activity, Users, Calendar, Clock, BarChart3, ShieldCheck } from 'lucide-react';
+import type { AdminStatsResponse, AdminStatsPeriod } from '../api/admin/stats/route';
 
-interface StatsData {
-  visitors: number;
-  simulationRuns: number;
-}
-
-interface StatsResponse {
-  daily: StatsData;
-  weekly: StatsData;
-  monthly: StatsData;
-  yearly: StatsData;
-}
+type StatsResponse = AdminStatsResponse['stats'];
+type StatsData = AdminStatsPeriod;
 
 export default function AdminPage() {
   const [adminKey, setAdminKey] = useState('');
@@ -37,7 +29,7 @@ export default function AdminPage() {
       });
 
       if (res.ok) {
-        const data = await res.json();
+        const data: AdminStatsResponse = await res.json();
         setStats(data.stats);
         setIsAuthenticated(true);
       } else {

@@ -1,20 +1,22 @@
-import { AssetSellOrderStrategy, IsaMaturityDestination, SimulationParams, WithdrawalPlan } from '../../entities/types';
+import { AssetSellOrderStrategy, CompleteWithdrawalPlan, IsaMaturityDestination, SimulationParams } from '../../entities/types';
 import { NATIONAL_PENSION_NORMAL_START_AGE } from '../pension/nationalPensionRules';
 
 // 각 그리드는 3점(또는 이진) 수준으로 유지한다 — 6개 차원의 완전 조합(cartesian product)이라
 // 그리드 하나를 늘릴 때마다 후보 수가 곱셈으로 증가하기 때문이다(실측 결과 5×5×5×3×2×5=3750개
 // 조합에서 recommendStrategy가 약 8초 소요되어 실사용에 부적합했다). 3점 그리드 기준으로도,
-// startAgeCandidates/generalAssetWithdrawalStartAgeCandidates는 retirementAge가 그리드 3점
-// (62/65/70)과 겹치지 않으면 retirementAge까지 더해져 4개가 된다. 따라서 최악의 경우는
-// 3×3×3×3×2×3=486개가 아니라 4×3×3×3×2×4=864개다(retirementAge가 62/65/70이 아닌 흔한
-// 경우). 이 최악 시나리오 기준 성능은 RecommendationEngine.performance.test.ts에서 검증한다.
+// startAgeCandidates/generalAssetWithdrawalStartAgeCandidates는 `[retirementAge, ...GRID]`를
+// `age &gt;= retirementAge`로 필터링하는 방식이라, retirementAge가 그리드 최솟값(62)보다 작을
+// 때만 retirementAge가 추가로 살아남아 4개가 된다(그리드 점들 사이/이후에 있으면 오히려
+// 3개 이하로 줄어든다). 따라서 최악의 경우는 3×3×3×3×2×3=486개가 아니라 4×3×3×3×2×4=864개다
+// (retirementAge가 62 미만인 경우). 이 최악 시나리오 기준 성능은
+// RecommendationEngine.performance.test.ts에서 검증한다.
 const START_AGE_GRID = [62, 65, 70];
 const MONTHLY_TARGET_MULTIPLIERS = [0.8, 1.0, 1.3];
 const NATIONAL_PENSION_START_AGE_GRID = [60, 65, 70]; // 조기~기본~연기수령
 const ASSET_SELL_ORDER_GRID: AssetSellOrderStrategy[] = ['input_order', 'low_dividend_first', 'high_dividend_first'];
 const ISA_MATURITY_DESTINATION_GRID: IsaMaturityDestination[] = ['pension', 'asset'];
 const GENERAL_ASSET_WITHDRAWAL_START_AGE_GRID = [62, 65, 70];
-export function generateCandidatePlans(params: SimulationParams): WithdrawalPlan[] {
+export function generateCandidatePlans(params: SimulationParams): CompleteWithdrawalPlan[] {
   const { userProfile, privatePensions = [], nationalPension, assets = [], isaAccounts = [] } = params;
   const { retirementAge, expectancy, targetMonthlySpending } = userProfile;
 
@@ -65,7 +67,7 @@ export function generateCandidatePlans(params: SimulationParams): WithdrawalPlan
     assetSellOrderCandidates.length * isaMaturityDestinationCandidates.length * generalAssetWithdrawalStartAgeCandidates.length;
   if (totalCombinations <= 1) return []; // 탐색할 만한 차원이 전혀 없는 시나리오
 
-  const candidates: WithdrawalPlan[] = [];
+  const candidates: CompleteWithdrawalPlan[] = [];
   for (const nationalPensionStartAge of nationalPensionStartAgeCandidates) {
     for (const privatePensionStartAge of startAgeCandidates) {
       for (const privatePensionMonthlyTarget of monthlyTargetCandidates) {

@@ -19,6 +19,7 @@ import {
   calculateComprehensiveTaxAndHealthInsuranceKRW,
   calculatePrivatePensionExcessTaxNeededKRW,
 } from './tax/TaxEngine';
+import { resolveTaxSettings } from './tax/taxRates';
 import {
   getNationalPensionAdjustmentFactor,
   NATIONAL_PENSION_NORMAL_START_AGE,
@@ -310,18 +311,7 @@ export class SimulationEngine {
       withdrawalPlan
     } = params;
 
-    const currentTaxSettings: TaxSettings = {
-      enableComprehensiveTax: true,
-      enableHealthInsurance: true,
-      usDividendTaxRate: 15,
-      domesticDividendTaxRate: 15.4,
-      comprehensiveTaxRate: 15,
-      healthInsuranceRate: 5,
-      enablePrivatePensionTax: true,
-      privatePensionLimit: 15000000,
-      privatePensionExcessTaxRate: 16.5,
-      ...(taxSettings || {}),
-    };
+    const currentTaxSettings: TaxSettings = resolveTaxSettings(taxSettings);
 
     const exchangeRate = this.getExchangeRate(baseExchangeRate, exchangeScenario);
     const { activeAssets, activePensions, activeIsas, infRateAnnual } = this.initializeAssets(params, currentTaxSettings);

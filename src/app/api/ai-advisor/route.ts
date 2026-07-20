@@ -71,6 +71,14 @@ export function buildSimulationContextText(body: AiAdvisorRequestBody): string {
       `- AI 추천 전략: 인출 전략을 조정하면 Utility 점수를 ${recommendation.currentUtility.score}점에서 ` +
       `${recommendation.recommendedUtility.score}점으로 높일 수 있음. 추천 이유: ${recommendation.reasons.join(' ')}`
     );
+  } else if (
+    recommendation
+    && recommendation.totalCandidateCount > 0
+    && recommendation.failedCandidateCount === recommendation.totalCandidateCount
+  ) {
+    // 후보를 전부 평가 못 한 것과 "이미 최적"은 다른 상황이므로, AI가 "이미 최적화되어 있다"고
+    // 단정적으로 조언하지 않도록 계산 실패 사실 자체를 컨텍스트에 남긴다.
+    lines.push('- AI 추천 전략: 전략 후보를 평가하는 중 오류가 발생해 추천 계산에 실패함(최적화 여부 판단 불가).');
   }
 
   lines.push(

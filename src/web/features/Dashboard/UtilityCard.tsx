@@ -46,7 +46,7 @@ interface UtilityCardProps {
 export const UtilityCard: React.FC<UtilityCardProps> = ({
   utility,
   recommendation,
-  recommendationFailed = false,
+  recommendationFailed: recommendationThrewProp = false,
   isComputingRecommendation = false,
   formatValue,
   score,
@@ -222,6 +222,14 @@ export const UtilityCard: React.FC<UtilityCardProps> = ({
   const scoreColor = colorTier === 'red' ? '#EF4444' : colorTier === 'orange' ? '#F59E0B' : '#10B981';
 
   const hasImprovement = !!recommendation?.improved;
+  // recommendationThrewProp: recommendStrategy() 호출 자체가 throw한 경우(page.tsx에서 감지).
+  // 여기에 더해, 함수는 정상 반환됐지만 내부 후보가 전부 시뮬레이션 실패로 평가되지 못한 경우도
+  // "이미 최적"과는 다른 실패 상태이므로 같은 recommendationFailed로 합쳐서 취급한다.
+  const allCandidatesFailedInternally = !!recommendation
+    && !recommendation.improved
+    && recommendation.totalCandidateCount > 0
+    && recommendation.failedCandidateCount === recommendation.totalCandidateCount;
+  const recommendationFailed = recommendationThrewProp || allCandidatesFailedInternally;
   const currentStrategyAnalysis = analyzeCurrentStrategy(utility);
 
   return (

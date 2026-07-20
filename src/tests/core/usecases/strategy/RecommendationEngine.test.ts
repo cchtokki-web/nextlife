@@ -234,6 +234,51 @@ describe('computeDeltas - baseline/recommended 실제 수치 차이 계산', () 
   });
 });
 
+describe('buildReasons - 후보 실패 통계에 따른 메시지 분기', () => {
+  test('개선 없고 후보가 하나도 없으면(탐색할 차원 없음) 기존처럼 "이미 합리적" 문구를 반환한다', () => {
+    const reasons = buildReasons(null, zeroDeltas, false, { total: 0, failed: 0 });
+    expect(reasons).toEqual(['현재 전략이 이미 Lifetime Utility 관점에서 충분히 합리적이어서 별도로 추천할 변경 사항이 없습니다.']);
+  });
+
+  test('후보가 있었지만 모두 baseline보다 낮으면(정상 평가) "이미 합리적" 문구를 반환한다', () => {
+    const reasons = buildReasons(null, zeroDeltas, false, { total: 12, failed: 0 });
+    expect(reasons).toEqual(['현재 전략이 이미 Lifetime Utility 관점에서 충분히 합리적이어서 별도로 추천할 변경 사항이 없습니다.']);
+  });
+
+  test('후보가 전부 시뮬레이션 실패로 평가되지 못했으면 별도 문구를 반환한다', () => {
+    const reasons = buildReasons(null, zeroDeltas, false, { total: 12, failed: 12 });
+    expect(reasons).toEqual(['전략 후보를 평가하는 중 모두 오류가 발생해 추천을 계산하지 못했습니다. 현재 전략이 유지됩니다.']);
+  });
+
+  test('candidateStats 인자가 없으면 기존과 동일하게 동작한다(하위 호환)', () => {
+    const reasons = buildReasons(null, zeroDeltas, false);
+    expect(reasons).toEqual(['현재 전략이 이미 Lifetime Utility 관점에서 충분히 합리적이어서 별도로 추천할 변경 사항이 없습니다.']);
+  });
+});
+
+describe('recommendStrategy - totalCandidateCount/failedCandidateCount', () => {
+  test('탐색할 차원이 있으면 총 후보 수를 반환하고 실패 수는 0이다', () => {
+    const engine = new SimulationEngine();
+    const recommendation = recommendStrategy(paramsWithLargePension, engine);
+
+    expect(recommendation.totalCandidateCount).toBeGreaterThan(0);
+    expect(recommendation.failedCandidateCount).toBe(0);
+  });
+
+  test('탐색할 차원이 전혀 없으면 총 후보 수는 0이다', () => {
+    const engine = new SimulationEngine();
+    const noOptimizableDimensionParams: SimulationParams = {
+      ...paramsWithLargePension,
+      privatePensions: [],
+      nationalPension: { expectedMonthlyAmount: 0 },
+    };
+    const recommendation = recommendStrategy(noOptimizableDimensionParams, engine);
+
+    expect(recommendation.totalCandidateCount).toBe(0);
+    expect(recommendation.failedCandidateCount).toBe(0);
+  });
+});
+
 describe('buildReasons - 자산 매도 순서 / ISA 만기 이동 문구', () => {
   test('low_dividend_first면 저배당 자산 우선 매도 문구를 포함한다', () => {
     const reasons = buildReasons({ assetSellOrderStrategy: 'low_dividend_first' }, zeroDeltas, true);

@@ -142,7 +142,24 @@ export const AiAdvisorCard: React.FC<AiAdvisorCardProps> = ({ score, monthlyTarg
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.6, delay: 0.6 }}
     >
-      <h3 className={styles.sectionTitle}>🤖 AI 노후 설계사 의견</h3>
+      <h3 className={styles.sectionTitle} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+        🤖 AI 노후 설계사 의견
+        {isRuleBased && !isLoading && (
+          <span
+            title="AI 서버 연결이 원활하지 않아 기본 규칙 기반 조언을 보여드리고 있습니다."
+            style={{
+              fontSize: '0.7rem',
+              fontWeight: 600,
+              padding: '0.15rem 0.5rem',
+              borderRadius: '999px',
+              backgroundColor: 'rgba(245, 158, 11, 0.15)',
+              color: '#F59E0B',
+            }}
+          >
+            기본 조언 (AI 연결 지연)
+          </span>
+        )}
+      </h3>
       <div className={styles.aiCard}>
 
         <div className={styles.aiContent} style={{ position: 'relative' }}>

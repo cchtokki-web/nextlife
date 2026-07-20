@@ -87,7 +87,7 @@ export interface EncryptedData {
 }
 
 // Encrypt an object using AES-GCM 256 derived from the 6-character code
-export async function encryptData(data: any, code: string, userId: string): Promise<EncryptedData> {
+export async function encryptData<T>(data: T, code: string, userId: string): Promise<EncryptedData> {
   if (typeof window === 'undefined') {
     throw new Error('Encryption is only supported on the client-side');
   }
@@ -116,7 +116,7 @@ export async function encryptData(data: any, code: string, userId: string): Prom
 }
 
 // Decrypt an AES-GCM 256 encrypted payload using the 6-character code
-export async function decryptData(payload: EncryptedData, code: string, userId: string): Promise<any> {
+export async function decryptData<T = unknown>(payload: EncryptedData, code: string, userId: string): Promise<T> {
   if (typeof window === 'undefined') {
     throw new Error('Decryption is only supported on the client-side');
   }
@@ -141,6 +141,7 @@ export async function decryptData(payload: EncryptedData, code: string, userId: 
 }
 
 // Check if a payload is encrypted
-export function isEncryptedPayload(data: any): data is EncryptedData {
-  return data && typeof data === 'object' && data.isEncrypted === true && typeof data.ciphertext === 'string' && typeof data.iv === 'string';
+export function isEncryptedPayload(data: unknown): data is EncryptedData {
+  return !!data && typeof data === 'object' && (data as EncryptedData).isEncrypted === true
+    && typeof (data as EncryptedData).ciphertext === 'string' && typeof (data as EncryptedData).iv === 'string';
 }

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { SimulationParams, TaxSettings } from '../../../core/entities/types';
+import { resolveTaxSettings } from '../../../core/usecases/tax/taxRates';
 import { InputField } from '../../components/InputField';
 import { SelectField } from '../../components/SelectField';
 import styles from './AssetForm.module.css';
@@ -13,19 +14,7 @@ interface TaxSettingsSectionProps {
 
 export const TaxSettingsSection: React.FC<TaxSettingsSectionProps> = ({ params, onChangeParams }) => {
   const [isExpanded, setIsExpanded] = useState(true);
-  const currentTaxSettings: TaxSettings = {
-    enableComprehensiveTax: true,
-    enableHealthInsurance: true,
-    usDividendTaxRate: 15,
-    domesticDividendTaxRate: 15.4,
-    comprehensiveTaxRate: 15,
-    healthInsuranceRate: 5,
-    enablePrivatePensionTax: true,
-    privatePensionLimit: 15000000,
-    privatePensionExcessTaxRate: 16.5,
-    limitPrivatePensionToTaxLimit: false,
-    ...(params.taxSettings || {}),
-  };
+  const currentTaxSettings: TaxSettings = resolveTaxSettings(params.taxSettings);
 
   const handleUpdate = (updates: Partial<TaxSettings>) => {
     onChangeParams({

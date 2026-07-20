@@ -1,4 +1,5 @@
 import {
+  CompleteWithdrawalPlan,
   SimulationParams,
   SimulationResult,
   StrategyRecommendation,
@@ -46,12 +47,22 @@ function formatManwon(amountKRW: number): string {
   return `${Math.round(amountKRW / 10000).toLocaleString('ko-KR')}만원`;
 }
 
+// AssetSellOrderStrategy/IsaMaturityDestination에 새 variant가 추가됐는데 아래 switch를
+// 갱신하지 않으면 여기서 컴파일 에러가 나서 누락을 막아준다(조용히 무시되는 대신).
+function assertNever(x: never): never {
+  throw new Error(`Unhandled variant: ${x}`);
+}
+
 export function buildReasons(
   plan: WithdrawalPlan | null,
   deltas: StrategyRecommendation['deltas'],
-  improved: boolean
+  improved: boolean,
+  candidateStats?: { total: number; failed: number }
 ): string[] {
   if (!improved || !plan) {
+    if (candidateStats && candidateStats.total > 0 && candidateStats.failed === candidateStats.total) {
+      return ['전략 후보를 평가하는 중 모두 오류가 발생해 추천을 계산하지 못했습니다. 현재 전략이 유지됩니다.'];
+    }
     return ['현재 전략이 이미 Lifetime Utility 관점에서 충분히 합리적이어서 별도로 추천할 변경 사항이 없습니다.'];
   }
 
@@ -63,13 +74,28 @@ export function buildReasons(
   if (plan.privatePensionMonthlyTarget !== undefined) {
     reasons.push(`사적연금을 월 약 ${formatManwon(plan.privatePensionMonthlyTarget)} 수준으로 정액 인출합니다.`);
   }
-  if (plan.assetSellOrderStrategy === 'low_dividend_first') {
-    reasons.push('배당수익률이 낮은 자산부터 매도해 배당 소득원을 오래 유지합니다.');
-  } else if (plan.assetSellOrderStrategy === 'high_dividend_first') {
-    reasons.push('배당수익률이 높은 자산부터 매도해 향후 금융소득종합과세 위험을 낮춥니다.');
+  switch (plan.assetSellOrderStrategy) {
+    case 'low_dividend_first':
+      reasons.push('배당수익률이 낮은 자산부터 매도해 배당 소득원을 오래 유지합니다.');
+      break;
+    case 'high_dividend_first':
+      reasons.push('배당수익률이 높은 자산부터 매도해 향후 금융소득종합과세 위험을 낮춥니다.');
+      break;
+    case 'input_order':
+    case undefined:
+      break;
+    default:
+      assertNever(plan.assetSellOrderStrategy);
   }
-  if (plan.isaMaturityDestination === 'asset') {
-    reasons.push('ISA 만기 자금을 사적연금 대신 일반 자산으로 이동해 향후 인출 시 세금 부담을 낮춥니다.');
+  switch (plan.isaMaturityDestination) {
+    case 'asset':
+      reasons.push('ISA 만기 자금을 사적연금 대신 일반 자산으로 이동해 향후 인출 시 세금 부담을 낮춥니다.');
+      break;
+    case 'pension':
+    case undefined:
+      break;
+    default:
+      assertNever(plan.isaMaturityDestination);
   }
   if (plan.generalAssetWithdrawalStartAge !== undefined) {
     reasons.push(`${plan.generalAssetWithdrawalStartAge}세부터 일반 자산(주식/ETF) 인출을 시작합니다.`);
@@ -106,7 +132,7 @@ export function buildReasons(
 
 // 후보 전략 생성(StrategyCandidateGenerator) + Utility 평가(UtilityEngine)를 결합해
 // 기존 로직(baseline) 대비 Lifetime Utility가 가장 높은 인출 전략을 찾는다.
-// MC(Monte Carlo) 확장 시에는 이 함수 내부의 engine.run() 호출을 시나리오 평균으로
+// MC(Monte Carlo) 확장 시에는 이 함수 내부의 engine.runForUtility() 호출을 시나리오 평균으로
 // 교체하는 방식으로 확장 가능하다.
 export function recommendStrategy(
   params: SimulationParams,
@@ -123,7 +149,8 @@ export function recommendStrategy(
 
   let bestResult = baselineResult;
   let bestUtility = currentUtility;
-  let bestPlan: WithdrawalPlan | null = null;
+  let bestPlan: CompleteWithdrawalPlan | null = null;
+  let failedCandidateCount = 0;
 
   for (const plan of candidates) {
     // 특정 조합(예: 극단적인 나이 조합)이 SimulationEngine을 깨뜨리더라도 다른 후보 탐색까지
@@ -137,13 +164,15 @@ export function recommendStrategy(
         bestPlan = plan;
       }
     } catch (err) {
+      failedCandidateCount++;
       console.warn('Skipping withdrawal plan candidate that failed to simulate', plan, err);
     }
   }
 
   const deltas = computeDeltas(baselineResult, bestResult);
   const improved = bestPlan !== null;
-  const reasons = buildReasons(bestPlan, deltas, improved);
+  const candidateStats = { total: candidates.length, failed: failedCandidateCount };
+  const reasons = buildReasons(bestPlan, deltas, improved, candidateStats);
 
   return {
     currentUtility,
@@ -151,6 +180,8 @@ export function recommendStrategy(
     recommendedPlan: bestPlan,
     improved,
     reasons,
+    totalCandidateCount: candidateStats.total,
+    failedCandidateCount: candidateStats.failed,
     deltas,
   };
 }

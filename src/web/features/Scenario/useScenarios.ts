@@ -162,6 +162,10 @@ export function useScenarios() {
   const [isLoaded, setIsLoaded] = useState(false);
   const [etfTickers, setEtfTickers] = useState<string[]>(['VOO', 'QQQ', 'SCHD', 'SPY', 'JEPI', 'TLT', 'VNQ', 'SPLG']);
   const lastSavedParamsRef = useRef<Record<string, string>>({});
+  // handleRestoreKey에서 "키는 맞는데 이 시나리오만 데이터가 손상됨"으로 확인된 시나리오 ID.
+  // 여기 포함된 시나리오는 로드 시 복호화가 계속 실패해도 needsKeyRestore를 다시 띄우지 않는다
+  // (그렇지 않으면 방금 검증된 올바른 키를 사용자가 무한히 다시 요구받는 루프에 빠진다).
+  const corruptedScenarioIdsRef = useRef<Set<string>>(new Set());
 
   // Error & Retry States
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -299,13 +303,17 @@ export function useScenarios() {
                 if (isEncryptedPayload(s.data)) {
                   if (activeKey && userId) {
                     try {
-                      const decryptedData = await decryptData(s.data, activeKey, userId);
+                      const decryptedData = await decryptData<SimulationParams>(s.data, activeKey, userId);
                       const migrated = convertToRepresentativeAssets(migrateParams(decryptedData, etfTickers));
                       decryptedList.push({ ...s, name: displayName, data: migrated });
                       lastSavedParamsRef.current[s.id] = JSON.stringify(migrated);
                     } catch (err) {
                       console.error('Decryption failed for scenario', s.id, err);
-                      hasDecryptionFailure = true;
+                      // 이미 handleRestoreKey에서 "키는 맞지만 이 시나리오만 손상됨"으로 확인된
+                      // 경우에는 키를 다시 요구하지 않는다 (무한 복구 루프 방지).
+                      if (!corruptedScenarioIdsRef.current.has(s.id)) {
+                        hasDecryptionFailure = true;
+                      }
                       decryptedList.push({ ...s, name: displayName, data: initialParams });
                       lastSavedParamsRef.current[s.id] = JSON.stringify(initialParams);
                     }
@@ -484,13 +492,23 @@ export function useScenarios() {
         });
         const { data: newScenario } = await res.json();
         if (newScenario) {
+          // 서버가 반환한 payload는 방금 우리가 암호화해서 보낸 것과 동일하므로, 복호화에
+          // 실패해도 암호문 blob을 그대로 SimulationParams 자리에 남기지 않고 원본 평문(data)으로
+          // 폴백한다 (로드 경로의 initialParams 폴백과 동일한 안전장치).
           let decryptedData = newScenario.data;
           const decryptionKey = overrideKey || localKey;
-          if (isEncryptedPayload(newScenario.data) && decryptionKey && userId) {
-            try {
-              decryptedData = await decryptData(newScenario.data, decryptionKey, userId);
-            } catch (err) {
-              console.error('Failed to decrypt created scenario:', err);
+          if (isEncryptedPayload(newScenario.data)) {
+            if (decryptionKey && userId) {
+              try {
+                decryptedData = await decryptData<SimulationParams>(newScenario.data, decryptionKey, userId);
+              } catch (err) {
+                console.error('Failed to decrypt created scenario:', err);
+                decryptedData = data;
+                setNeedsKeyRestore(true);
+              }
+            } else {
+              decryptedData = data;
+              setNeedsKeyRestore(true);
             }
           }
           lastSavedParamsRef.current[newScenario.id] = JSON.stringify(decryptedData);
@@ -649,7 +667,8 @@ export function useScenarios() {
         if (data && data.length > 0) {
           let hasEncrypted = false;
           let decryptedSuccessfully = false;
-          
+          const failedScenarioIds: string[] = [];
+
           for (const s of data) {
             if (isEncryptedPayload(s.data)) {
               hasEncrypted = true;
@@ -657,14 +676,24 @@ export function useScenarios() {
                 await decryptData(s.data, cleanKey, userId);
                 decryptedSuccessfully = true;
               } catch (e) {
-                // Ignore failure for individual scenario, but keep tracking if any decrypt successfully
+                // 이 시나리오만 복호화 실패 — 키가 틀렸는지 이 시나리오만 손상됐는지는
+                // 아래에서 "다른 시나리오가 하나라도 복호화됐는지"로 판별한다.
+                failedScenarioIds.push(s.id);
               }
             }
           }
-          
+
           if (hasEncrypted && !decryptedSuccessfully) {
-            // If we have encrypted payloads but none decrypted successfully, the key is incorrect.
+            // 암호화된 시나리오가 있는데 단 하나도 복호화되지 않았다면 키 자체가 틀린 것이다.
             return false;
+          }
+
+          if (decryptedSuccessfully && failedScenarioIds.length > 0) {
+            // 키는 맞지만(다른 시나리오는 복호화됨) 일부 시나리오만 복호화에 실패했다면,
+            // 그건 키 문제가 아니라 해당 시나리오 데이터 자체가 손상된 것이다. 이후 로드에서
+            // 같은 키를 다시 요구하는 무한 루프에 빠지지 않도록 손상된 것으로 기록해둔다.
+            failedScenarioIds.forEach((id) => corruptedScenarioIdsRef.current.add(id));
+            alert(`일부 시나리오(${failedScenarioIds.length}개)는 데이터가 손상되어 복구할 수 없습니다. 해당 시나리오는 기본값으로 표시됩니다. 필요하면 삭제 후 다시 만들어주세요.`);
           }
         }
       } catch (err) {
@@ -696,9 +725,12 @@ export function useScenarios() {
     },
     needsKeySetup,
     handleSetupKey: useCallback(async (password: string) => {
-      const cleanPassword = password.trim();
-      if (cleanPassword.length !== 6 || !/^\d+$/.test(cleanPassword)) {
-        alert('보안 비밀번호는 숫자 6자리여야 합니다.');
+      // generateBackupKey()(시스템 생성 키)와 동일한 영문(모호한 0/O/1/I 제외)+숫자 조합을
+      // 허용해 사용자가 직접 정하는 키도 같은 수준의 엔트로피를 갖도록 한다. 숫자 6자리만
+      // 허용하면 10^6(약 20비트)에 불과해 시스템 생성 키(약 30비트)보다 훨씬 약했다.
+      const cleanPassword = password.trim().toUpperCase();
+      if (cleanPassword.length !== 6 || !/^[A-Z0-9]+$/.test(cleanPassword)) {
+        alert('보안 비밀번호는 영문·숫자 6자리여야 합니다.');
         return false;
       }
       const userId = (session?.user as any)?.id;
@@ -724,9 +756,18 @@ export function useScenarios() {
           if (data.success) {
             localStorage.setItem(backupName, 'true');
             setIsBackupKeyBackedUp(true);
+          } else {
+            // 카카오 발송이 실패해도 보안키 자체는 이미 설정되어 시뮬레이션은 정상 진행되므로
+            // 조용히 넘기지 않고, 키 값을 포함해 사용자가 직접 기록해두도록 명시적으로 알린다
+            // (handleResetAllScenarios/handleSendKeyToKakao와 동일한 실패 처리 패턴).
+            console.error('Failed to send key to Kakao:', data.error);
+            alert(`보안키는 설정되었지만 카카오톡 전송에 실패했습니다.\n보안키: ${cleanPassword}\n이 키를 반드시 별도로 기록해 두세요.`);
           }
         })
-        .catch(err => console.error('Failed to send key to Kakao:', err));
+        .catch(err => {
+          console.error('Failed to send key to Kakao:', err);
+          alert(`보안키는 설정되었지만 카카오톡 전송에 실패했습니다.\n보안키: ${cleanPassword}\n이 키를 반드시 별도로 기록해 두세요.`);
+        });
 
       // Initialize first scenario using the new key
       const loaded = loadParams();

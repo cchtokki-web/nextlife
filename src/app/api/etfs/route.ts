@@ -38,7 +38,7 @@ export async function GET() {
     return NextResponse.json({ success: true, count: etfTickers.length, data: etfTickers });
   } catch (err: any) {
     console.error("FTP Error:", err);
-    return NextResponse.json({ success: false, error: err.message }, { status: 500 });
+    return NextResponse.json({ success: false, error: 'Internal Server Error' }, { status: 500 });
   } finally {
     client.close();
   }

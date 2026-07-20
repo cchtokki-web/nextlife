@@ -172,7 +172,7 @@ describe('generateCandidatePlans', () => {
   });
 
   test('모든 차원이 최대로 확장되는 최악의 경우 864개(4×3×3×3×2×4) 후보를 생성한다', () => {
-    // retirementAge가 그리드 3점(62/65/70)과 겹치지 않아야 startAgeCandidates/
+    // retirementAge(61)가 그리드 최솟값(62)보다 작아야 startAgeCandidates/
     // generalAssetWithdrawalStartAgeCandidates가 각각 4개(retirementAge 유니온 포함)가 된다.
     const worstCaseParams: SimulationParams = {
       ...baseParams,
