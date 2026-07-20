@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Loader2, Bot, RefreshCcw } from 'lucide-react';
+import { Loader2, RefreshCcw } from 'lucide-react';
 import styles from './Dashboard.module.css';
 
 import { UserProfile } from '../../../core/entities/types';

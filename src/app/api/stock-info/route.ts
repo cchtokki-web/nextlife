@@ -109,6 +109,6 @@ export async function GET(request: NextRequest) {
 
   } catch (error: any) {
     console.error('Error fetching stock info:', error);
-    return Response.json({ error: error.message || 'Internal Server Error' }, { status: 500 });
+    return Response.json({ error: 'Internal Server Error' }, { status: 500 });
   }
 }

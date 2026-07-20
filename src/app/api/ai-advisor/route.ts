@@ -235,7 +235,7 @@ ${simulationContextText}
     });
   } catch (error: any) {
     console.error('Ollama API error:', error);
-    return new Response(JSON.stringify({ error: error.message || 'Internal Server Error' }), {
+    return new Response(JSON.stringify({ error: 'Internal Server Error' }), {
       status: 500,
       headers: { 'Content-Type': 'application/json' },
     });

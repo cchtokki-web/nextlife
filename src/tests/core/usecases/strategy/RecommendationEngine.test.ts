@@ -1,7 +1,16 @@
 import { describe, test, expect } from 'vitest';
 import { SimulationEngine } from '@/core/usecases/SimulationEngine';
 import { recommendStrategy, buildReasons, computeDeltas } from '@/core/usecases/strategy/RecommendationEngine';
-import { SimulationParams, StrategyRecommendation, SimulationResult, SimulationYearlyResult } from '@/core/entities/types';
+import { computeLifetimeUtility } from '@/core/usecases/utility/UtilityEngine';
+import {
+  AssetSellOrderStrategy,
+  IsaMaturityDestination,
+  SimulationParams,
+  StrategyRecommendation,
+  SimulationResult,
+  SimulationYearlyResult,
+  WithdrawalPlan,
+} from '@/core/entities/types';
 
 const zeroDeltas: StrategyRecommendation['deltas'] = {
   lifetimeConsumption: 0,
@@ -41,7 +50,86 @@ const paramsWithLargePension: SimulationParams = {
   displayCurrency: 'KRW',
 };
 
+// 자산 매도 순서·ISA 만기 목적지 두 차원이 실제로 결과에 영향을 주도록, 배당률이 크게 다른
+// 자산 2개와 ISA 계좌를 함께 둔 시나리오 (사적연금은 paramsWithLargePension과 동일하게 유지)
+const paramsWithAssetsAndIsa: SimulationParams = {
+  ...paramsWithLargePension,
+  assets: [
+    {
+      id: 'asset-high-div',
+      type: 'stock',
+      ticker: 'HIGHDIV',
+      name: '고배당주',
+      quantity: 1000,
+      averagePrice: 10000,
+      annualGrowthRate: 2,
+      dividendYield: 8,
+      monthlyContribution: 0,
+      reinvestDividend: false,
+      currency: 'KRW',
+    },
+    {
+      id: 'asset-low-div',
+      type: 'stock',
+      ticker: 'LOWDIV',
+      name: '저배당 성장주',
+      quantity: 1000,
+      averagePrice: 10000,
+      annualGrowthRate: 8,
+      dividendYield: 0.5,
+      monthlyContribution: 0,
+      reinvestDividend: false,
+      currency: 'KRW',
+    },
+  ],
+  isaAccounts: [
+    {
+      id: 'isa-1',
+      type: 'general',
+      balance: 50000000,
+      monthlyContribution: 0,
+      annualReturn: 5,
+      dividendYield: 2,
+      currency: 'KRW',
+      maturityYears: 3,
+    },
+  ],
+};
+
 describe('recommendStrategy', () => {
+  test('assetSellOrderStrategy/isaMaturityDestination 후보를 실제로 탐색해 최적 조합을 고른다', () => {
+    const engine = new SimulationEngine();
+    const recommendation = recommendStrategy(paramsWithAssetsAndIsa, engine);
+
+    // 두 차원을 제외한 나머지 계획은 recommendStrategy가 고른 조합으로 고정한 채, 두 차원의
+    // 6개 조합(3×2)을 엔진으로 직접 재현해 recommendStrategy가 실제로 최적을 찾았는지 검증한다.
+    const dimensionGrid: Array<[AssetSellOrderStrategy, IsaMaturityDestination]> = [
+      ['input_order', 'pension'],
+      ['input_order', 'asset'],
+      ['low_dividend_first', 'pension'],
+      ['low_dividend_first', 'asset'],
+      ['high_dividend_first', 'pension'],
+      ['high_dividend_first', 'asset'],
+    ];
+
+    const utilities = dimensionGrid.map(([assetSellOrderStrategy, isaMaturityDestination]) => {
+      const plan: WithdrawalPlan = {
+        ...(recommendation.recommendedPlan ?? {}),
+        assetSellOrderStrategy,
+        isaMaturityDestination,
+      };
+      const candidateResult = engine.runForUtility({ ...paramsWithAssetsAndIsa, withdrawalPlan: plan });
+      return computeLifetimeUtility(candidateResult, paramsWithAssetsAndIsa).score;
+    });
+
+    const bestAmongGrid = Math.max(...utilities);
+    expect(recommendation.recommendedUtility.score).toBeGreaterThanOrEqual(bestAmongGrid - 1e-9);
+
+    // 두 차원이 실제로 결과에 영향을 준다는 것도 함께 확인한다 (전부 동일하면 탐색이 무의미하다).
+    const distinctScores = new Set(utilities.map((u) => u.toFixed(6)));
+    expect(distinctScores.size).toBeGreaterThan(1);
+  });
+
   test('추천 전략의 Utility는 현재(baseline) 전략의 Utility보다 낮지 않아야 한다', () => {
     const engine = new SimulationEngine();
     const recommendation = recommendStrategy(paramsWithLargePension, engine);

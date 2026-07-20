@@ -6,7 +6,6 @@ import { computeMonthlySpendingComposition } from '../../../core/usecases/Monthl
 import GlassCard from '../../components/GlassCard';
 import { YearlyChart } from './YearlyChart';
 import { CoreMetricsCards } from './CoreMetricsCards';
-import { AiAdvisorCard } from './AiAdvisorCard';
 import { UtilityCard } from './UtilityCard';
 import styles from './Dashboard.module.css';
 import { AlertTriangle, TrendingDown, Target, Zap, Award, Calculator } from 'lucide-react';
