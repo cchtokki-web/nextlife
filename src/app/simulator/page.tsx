@@ -313,7 +313,7 @@ export default function Home() {
                   <span style="float: right; font-size: 15px; color: #0f172a; font-weight: 700;">${retirementScore}점 <span style="font-size: 11.5px; color: #64748b; font-weight: 600;">(${retirementGrade})</span></span>
                 </div>
                 <div style="font-size: 13.5px; border-bottom: 1px dashed #e2e8f0; padding-bottom: 8px;">
-                  <span style="font-weight: 600; color: #475569;">은퇴 소득 달성률<br/><span style="font-size: 10px; color: #94a3b8; font-weight: 400;">(배당·연금 등 고정소득만 반영, 자산 인출분 제외)</span></span>
+                  <span style="font-weight: 600; color: #475569;">은퇴 소득 달성률<br/><span style="font-size: 10px; color: #94a3b8; font-weight: 400;">(배당·연금 등 고정소득만 반영, 자산 인출분 제외 · 2페이지 Lifetime Utility Score와는 별도로 계산되는 지표입니다)</span></span>
                   <span style="float: right; font-size: 15px; color: #0f172a; font-weight: 700;">${goalAchievementRate}%</span>
                 </div>
                 <div style="font-size: 13.5px; border-bottom: 1px dashed #e2e8f0; padding-bottom: 8px;">
@@ -349,7 +349,7 @@ export default function Home() {
         <div class="pdf-page">
           <div class="pdf-content">
             <h2 style="font-size: 16px; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; color: #0f172a; margin-top: 0; margin-bottom: 10px;">3. Lifetime Utility Score &amp; AI 추천 전략</h2>
-            <p style="font-size: 11px; color: #64748b; margin-top: 0; margin-bottom: 14px;">"얼마를 남기는가"보다 "얼마나 잘 사용하는가"를 기준으로 평가한 평생 효용 점수입니다.</p>
+            <p style="font-size: 11px; color: #64748b; margin-top: 0; margin-bottom: 14px;">"얼마를 남기는가"보다 "얼마나 잘 사용하는가"를 기준으로 평가한 평생 효용 점수입니다. 1페이지의 은퇴 소득 달성률과는 별도로 계산되는 독립 지표입니다.</p>
 
             <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 18px; margin-bottom: 18px;">
               <div style="display: flex; align-items: baseline; gap: 8px; margin-bottom: 12px;">

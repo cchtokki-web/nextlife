@@ -1,14 +1,17 @@
 import { describe, test, expect } from 'vitest';
 import { SimulationEngine } from '@/core/usecases/SimulationEngine';
 import { recommendStrategy, buildReasons, computeDeltas } from '@/core/usecases/strategy/RecommendationEngine';
+import { generateCandidatePlans } from '@/core/usecases/strategy/StrategyCandidateGenerator';
 import { computeLifetimeUtility } from '@/core/usecases/utility/UtilityEngine';
 import {
   AssetSellOrderStrategy,
+  CompleteWithdrawalPlan,
   IsaMaturityDestination,
   SimulationParams,
   StrategyRecommendation,
   SimulationResult,
   SimulationYearlyResult,
+  UtilityBreakdown,
   WithdrawalPlan,
 } from '@/core/entities/types';
 
@@ -168,6 +171,76 @@ describe('recommendStrategy', () => {
   });
 });
 
+// 배당 자산만 있고 사적연금/국민연금이 없어, 6차원 그리드(인출 시점/순서)로는 사망 시
+// 잔여자산 과다를 해소할 수 없는 시나리오. 목표 생활비 증액(Phase 2)이 유일한 해소 수단이다.
+const paramsWithSurplusAssetOnly: SimulationParams = {
+  userProfile: { currentAge: 60, retirementAge: 60, expectancy: 90, targetMonthlySpending: 3000000 },
+  assets: [
+    {
+      id: 'a1',
+      type: 'etf',
+      ticker: 'AAA',
+      name: '고배당 자산',
+      quantity: 10000,
+      averagePrice: 50000,
+      annualGrowthRate: 5,
+      dividendYield: 3,
+      monthlyContribution: 0,
+      reinvestDividend: false,
+      currency: 'KRW',
+    },
+  ],
+  nationalPension: { expectedMonthlyAmount: 0 },
+  privatePensions: [],
+  otherIncomes: [],
+  inflationRate: 0,
+  inflationMode: 'real',
+  baseExchangeRate: 1350,
+  exchangeScenario: 'base',
+  displayCurrency: 'KRW',
+};
+
+// 자산이 목표 생활비를 감당하기에 턱없이 부족해 은퇴 시작과 동시에 고갈되는 시나리오.
+const paramsWithDepletionRisk: SimulationParams = {
+  ...paramsWithSurplusAssetOnly,
+  assets: [{ ...paramsWithSurplusAssetOnly.assets[0], quantity: 200 }],
+};
+
+describe('recommendStrategy - 생활비 증액(Phase 2) 후보', () => {
+  test('6차원 탐색으로 해소되지 않는 잔여자산 과다는 생활비 증액 후보로 개선된다', () => {
+    const engine = new SimulationEngine();
+    const recommendation = recommendStrategy(paramsWithSurplusAssetOnly, engine);
+
+    expect(recommendation.improved).toBe(true);
+    expect(recommendation.recommendedPlan?.monthlySpendingMultiplier).toBeGreaterThan(1);
+    expect(recommendation.reasons[0]).toContain('생활비');
+    expect(recommendation.reasons[0]).toContain('늘리면');
+    expect(recommendation.recommendedUtility.score).toBeGreaterThan(recommendation.currentUtility.score);
+  });
+
+  test('baseline이 기대수명 전에 고갈되는 시나리오에서는 생활비 증액 후보를 생성하지 않는다', () => {
+    const engine = new SimulationEngine();
+    const baseline = engine.runForUtility(paramsWithDepletionRisk);
+    expect(baseline.depletionAge).not.toBeNull();
+    expect(baseline.depletionAge!).toBeLessThan(paramsWithDepletionRisk.userProfile.expectancy);
+
+    const recommendation = recommendStrategy(paramsWithDepletionRisk, engine);
+    const baseCandidateCount = generateCandidatePlans(paramsWithDepletionRisk).length;
+
+    expect(recommendation.totalCandidateCount).toBe(baseCandidateCount);
+    expect(recommendation.recommendedPlan?.monthlySpendingMultiplier ?? 1).toBe(1);
+  });
+
+  test("spendingStrategy가 'target'이 아니면 생활비 증액 후보를 생성하지 않는다", () => {
+    const engine = new SimulationEngine();
+    const params: SimulationParams = { ...paramsWithSurplusAssetOnly, spendingStrategy: 'max_sustainable' };
+    const recommendation = recommendStrategy(params, engine);
+    const baseCandidateCount = generateCandidatePlans(params).length;
+
+    expect(recommendation.totalCandidateCount).toBe(baseCandidateCount);
+  });
+});
+
 function makeYearlyResult(overrides: Partial<SimulationYearlyResult>): SimulationYearlyResult {
   return {
     age: 60,
@@ -231,6 +304,105 @@ describe('computeDeltas - baseline/recommended 실제 수치 차이 계산', () 
     expect(deltas.pensionEndingBalance).toBe(150); // 550(마지막 해) - 400(마지막 해)
     expect(deltas.comprehensiveTaxYears).toBe(1); // 2개 연도(hasTaxWarning) - 1개 연도
     expect(deltas.healthInsuranceTotal).toBe(-15); // 30 - 45
+  });
+});
+
+function makeUtility(score: number, components: Partial<UtilityBreakdown['components']> = {}): UtilityBreakdown {
+  return {
+    score,
+    components: {
+      consumption: 0,
+      depletionSafety: 0,
+      pensionUtilization: 0,
+      taxEfficiency: 0,
+      taxationRisk: 0,
+      bequestAdequacy: 0,
+      ...components,
+    },
+  };
+}
+
+describe('buildReasons - context 인자로 전달되는 신규 문구', () => {
+  test('monthlySpendingMultiplier가 1이 아니고 context가 있으면 생활비 증액 문구를 가장 먼저 반환한다', () => {
+    const reasons = buildReasons({ monthlySpendingMultiplier: 1.2 }, zeroDeltas, true, undefined, {
+      currentUtility: makeUtility(70),
+      recommendedUtility: makeUtility(80),
+      originalMonthlyTarget: 3000000,
+    });
+
+    expect(reasons[0]).toContain('생활비');
+    expect(reasons[0]).toContain('늘리면');
+    expect(reasons[0]).toContain('70점 → 80점');
+  });
+
+  test('monthlySpendingMultiplier가 1이면(변경 없음) 생활비 증액 문구를 생성하지 않는다', () => {
+    const reasons = buildReasons({ monthlySpendingMultiplier: 1 }, zeroDeltas, true, undefined, {
+      currentUtility: makeUtility(70),
+      recommendedUtility: makeUtility(80),
+      originalMonthlyTarget: 3000000,
+    });
+
+    expect(reasons.some((r) => r.includes('생활비'))).toBe(false);
+  });
+
+  test("improved:false이고 '주의'/'위험' 등급이면 약점을 인용한 문구를 반환한다(단정적인 '이미 합리적' 문구 대신)", () => {
+    const currentUtility = makeUtility(66, {
+      consumption: 20,
+      depletionSafety: 20,
+      pensionUtilization: 0, // 0/15 -> 약점
+      taxEfficiency: 10,
+      taxationRisk: 10,
+      bequestAdequacy: 6,
+    });
+    const reasons = buildReasons(null, zeroDeltas, false, { total: 6, failed: 0 }, {
+      currentUtility,
+      recommendedUtility: currentUtility,
+    });
+
+    expect(reasons[0]).toContain('66점');
+    expect(reasons[0]).toContain('주의');
+    expect(reasons.some((r) => r.includes('연금 활용도'))).toBe(true);
+  });
+
+  test("improved:false이고 '보통' 이상 등급이면 기존의 '이미 합리적' 문구를 유지한다", () => {
+    const currentUtility = makeUtility(75, {
+      consumption: 27,
+      depletionSafety: 18,
+      pensionUtilization: 12,
+      taxEfficiency: 8,
+      taxationRisk: 8,
+      bequestAdequacy: 2,
+    });
+    const reasons = buildReasons(null, zeroDeltas, false, { total: 6, failed: 0 }, {
+      currentUtility,
+      recommendedUtility: currentUtility,
+    });
+
+    expect(reasons).toEqual(['현재 전략이 이미 Lifetime Utility 관점에서 충분히 합리적이어서 별도로 추천할 변경 사항이 없습니다.']);
+  });
+
+  test('identityPlan과 값이 같은 필드는(실제로는 바뀐 게 없으므로) 문구를 생성하지 않는다', () => {
+    const identityPlan: CompleteWithdrawalPlan = {
+      privatePensionStartAge: 60,
+      privatePensionMonthlyTarget: 0,
+      nationalPensionStartAge: 65,
+      assetSellOrderStrategy: 'input_order',
+      isaMaturityDestination: 'pension',
+      generalAssetWithdrawalStartAge: 60,
+      monthlySpendingMultiplier: 1,
+    };
+    const plan: CompleteWithdrawalPlan = { ...identityPlan, monthlySpendingMultiplier: 1.1 };
+
+    const reasons = buildReasons(plan, zeroDeltas, true, undefined, {
+      currentUtility: makeUtility(70),
+      recommendedUtility: makeUtility(75),
+      originalMonthlyTarget: 3000000,
+      identityPlan,
+    });
+
+    expect(reasons.some((r) => r.includes('사적연금'))).toBe(false);
+    expect(reasons.some((r) => r.includes('일반 자산'))).toBe(false);
+    expect(reasons[0]).toContain('생활비');
   });
 });
 

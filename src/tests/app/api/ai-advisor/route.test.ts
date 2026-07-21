@@ -43,6 +43,7 @@ describe('buildSimulationContextText - Utility Score 반영', () => {
         assetSellOrderStrategy: 'input_order',
         isaMaturityDestination: 'pension',
         generalAssetWithdrawalStartAge: 65,
+        monthlySpendingMultiplier: 1,
       },
       improved: true,
       reasons: ['62세부터 사적연금 인출을 시작합니다.'],

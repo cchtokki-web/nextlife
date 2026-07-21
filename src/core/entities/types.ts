@@ -70,6 +70,11 @@ export interface WithdrawalPlan {
   assetSellOrderStrategy?: AssetSellOrderStrategy; // 자산 매도 순서 (미지정 시 'input_order' = 기존 동작과 동일)
   isaMaturityDestination?: IsaMaturityDestination; // ISA 만기 자금 이동 목적지 (미지정 시 'pension' = 기존 동작과 동일)
   generalAssetWithdrawalStartAge?: number; // 일반자산(주식/ETF) 인출 개시 나이 (미지정 시 retirementAge = 기존 동작과 동일)
+  // 목표 생활비(userProfile.targetMonthlySpending) 배수 조정 (미지정 시 1 = 기존 동작과 동일).
+  // 다른 필드와 달리 "언제/어떤 순서로 인출하느냐"가 아니라 "얼마나 쓰느냐"를 조정하지만,
+  // SimulationEngine 변경 없이 RecommendationEngine이 targetMonthlySpending을 스케일링한
+  // params로 재시뮬레이션하는 방식으로 지원하기 위해 여기 포함한다.
+  monthlySpendingMultiplier?: number;
 }
 
 // StrategyCandidateGenerator가 만드는 후보처럼 6개 필드가 모두 채워진 "완결된" 인출 전략.
@@ -121,7 +126,7 @@ export interface SimulationParams {
   yieldPreset?: 'conservative' | 'base' | 'aggressive' | 'custom';
   spendingStrategy?: SpendingStrategy; // 목표 생활비 달성 전략
   taxSettings?: TaxSettings; // 고급 세금 설정
-  withdrawalPlan?: WithdrawalPlan; // 사적연금 인출 정책 (미지정 시 기존 균등분할 인출 로직 사용)
+  withdrawalPlan?: WithdrawalPlan; // 인출 정책 및 생활비 조정 (미지정 시 기존 균등분할 인출 로직 사용)
 }
 
 export interface SimulationYearlyResult {
@@ -173,7 +178,15 @@ export interface UtilityConfig {
     taxationRisk: number; // 금융소득종합과세/건강보험료 위험 (기본 10점)
     bequestAdequacy: number; // 상속 자산 적정성 (기본 10점)
   };
-  appropriatePensionBalanceMonths: number; // 사망 시 적정 연금잔액 = 월 목표생활비 * N개월 (기본 12)
+  // 연금 활용도(pensionUtilization) 서브 지표 가중치 (합 = 1). 국민연금 수급 여부 +
+  // 사적연금 실인출 활용도 + 저율과세 한도 준수도를 종합해 15점 배점 안에서 재분배한다.
+  pensionUtilizationSubWeights: {
+    nationalPension: number; // 국민연금 수급 연도 비율 (기본 0.4)
+    privatePensionWithdrawal: number; // 사적연금 실인출 연도 비율 (기본 0.4)
+    privatePensionTaxEfficiency: number; // 사적연금 저율과세 한도 준수도 (기본 0.2)
+  };
+  privatePensionEffectiveTaxCeiling: number; // 사적연금 실효세율(연금세/(순인출+연금세))이 이 값에 도달하면
+                                              // privatePensionTaxEfficiency 서브점수가 0이 됨 (기본 0.10)
   appropriateBequestMonths: number; // 사망 시 적정 총자산 = 월 목표생활비 * N개월 (기본 24)
   taxBurdenCeiling: number; // 평생 세부담률이 이 값에 도달하면 taxEfficiency 0점 (기본 0.3)
   healthInsuranceCeiling: number; // 건강보험료/총소득 비율이 이 값에 도달하면 taxationRisk 산식의 건보료

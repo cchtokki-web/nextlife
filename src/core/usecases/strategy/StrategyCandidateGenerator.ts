@@ -81,6 +81,9 @@ export function generateCandidatePlans(params: SimulationParams): CompleteWithdr
                 assetSellOrderStrategy,
                 isaMaturityDestination,
                 generalAssetWithdrawalStartAge,
+                monthlySpendingMultiplier: 1, // 생활비 배수는 이 cartesian product에 포함되지 않는다 (별도의
+                // generateSpendingAdjustmentCandidates가 담당). 여기서 곱셈 차원으로 끼워 넣으면
+                // 후보 수가 그리드 크기만큼 배로 늘어나므로 절대 이 루프에 추가하지 않는다.
               });
             }
           }
@@ -89,4 +92,40 @@ export function generateCandidatePlans(params: SimulationParams): CompleteWithdr
     }
   }
   return candidates;
+}
+
+// 6차원 그리드가 전혀 개선안을 찾지 못했을 때, 생활비 배수 후보(아래 generateSpendingAdjustmentCandidates)의
+// 베이스로 쓰기 위한 "baseline과 동등한" 완결 plan. 각 필드는 SimulationEngine이 WithdrawalPlan 필드
+// 미지정 시 쓰는 기본값과 동일하다.
+export function getIdentityPlan(params: SimulationParams): CompleteWithdrawalPlan {
+  const { userProfile, privatePensions = [] } = params;
+  const { retirementAge, targetMonthlySpending } = userProfile;
+  const hasPrivatePension = privatePensions.length > 0 && targetMonthlySpending > 0;
+
+  return {
+    privatePensionStartAge: retirementAge,
+    privatePensionMonthlyTarget: hasPrivatePension ? targetMonthlySpending : 0,
+    nationalPensionStartAge: NATIONAL_PENSION_NORMAL_START_AGE,
+    assetSellOrderStrategy: 'input_order',
+    isaMaturityDestination: 'pension',
+    generalAssetWithdrawalStartAge: retirementAge,
+    monthlySpendingMultiplier: 1,
+  };
+}
+
+// 생활비 배수는 6차원 cartesian product에 곱해 넣지 않고(그리드 크기만큼 후보가 배증하므로),
+// 6차원 탐색 결과(또는 개선안이 없으면 identity plan) 위에 배수만 얹은 별도의 소규모 후보로 평가한다.
+// 추가 비용은 그리드 크기가 아니라 고정 O(그리드 크기)다.
+const MONTHLY_SPENDING_MULTIPLIER_GRID = [1.1, 1.2]; // 1.0(현행)은 baseline/basePlan으로 이미 평가되므로 제외
+
+export function generateSpendingAdjustmentCandidates(
+  params: SimulationParams,
+  basePlan: CompleteWithdrawalPlan,
+  options: { allowIncrease: boolean }
+): CompleteWithdrawalPlan[] {
+  if (!options.allowIncrease) return [];
+  if ((params.spendingStrategy ?? 'target') !== 'target') return [];
+  if (params.userProfile.targetMonthlySpending <= 0) return [];
+
+  return MONTHLY_SPENDING_MULTIPLIER_GRID.map((multiplier) => ({ ...basePlan, monthlySpendingMultiplier: multiplier }));
 }

@@ -81,13 +81,42 @@ function bellShapedAdequacyRaw(ratio: number, baseFloor: number, excessDecayRate
   return Math.exp(-excessDecayRate * (ratio - 1));
 }
 
-function computePensionUtilizationRaw(params: SimulationParams, result: SimulationResult, cfg: UtilityConfig): number {
-  const appropriateBalance =
-    params.userProfile.targetMonthlySpending * cfg.appropriatePensionBalanceMonths;
-  const last = result.yearlyResults[result.yearlyResults.length - 1];
-  const pensionEndingBalance = last?.pensionAssets ?? 0;
-  const ratio = appropriateBalance > 0 ? pensionEndingBalance / appropriateBalance : (pensionEndingBalance > 0 ? 2 : 0);
-  return bellShapedAdequacyRaw(ratio, 0.85, 0.6);
+// "연금 활용도"는 사적연금 계좌 잔액의 과다/과소 여부가 아니라, 국민연금 수급 여부·사적연금
+// 실인출 활용도·저율과세 한도 준수도를 종합해 실제 "연금을 얼마나 잘 활용했는지"를 측정한다.
+// 사망 시 잔여자산이 과다한지는 이미 computeBequestAdequacyRaw가 endingAssets(사적연금 포함
+// 전체 자산)로 평가하므로, 여기서 사적연금 잔액을 다시 감점하면 이중 페널티가 된다.
+function computePensionUtilizationRaw(
+  params: SimulationParams,
+  retirementYears: SimulationYearlyResult[],
+  cfg: UtilityConfig
+): number {
+  if (retirementYears.length === 0) return 0;
+
+  const yearsWithNationalPension = retirementYears.filter((r) => r.nationalPensionIncome > 0).length;
+  const nationalRaw =
+    params.nationalPension.expectedMonthlyAmount > 0 ? yearsWithNationalPension / retirementYears.length : 1;
+
+  const privatePensions = params.privatePensions ?? [];
+  const yearsWithPrivateWithdrawal = retirementYears.filter((r) => r.privatePensionIncome > 0).length;
+  const privateWithdrawalRaw = privatePensions.length > 0 ? yearsWithPrivateWithdrawal / retirementYears.length : 0;
+
+  const withdrawalYears = retirementYears.filter((r) => r.privatePensionIncome > 0 || r.pensionTaxPaid > 0);
+  let taxEfficiencyRaw = 1;
+  if (withdrawalYears.length > 0) {
+    const totalNet = sum(withdrawalYears.map((r) => r.privatePensionIncome));
+    const totalTax = sum(withdrawalYears.map((r) => r.pensionTaxPaid));
+    const effectiveRate = totalNet + totalTax > 0 ? totalTax / (totalNet + totalTax) : 0;
+    taxEfficiencyRaw = clamp(1 - effectiveRate / cfg.privatePensionEffectiveTaxCeiling, 0, 1);
+  }
+
+  const w = cfg.pensionUtilizationSubWeights;
+  return clamp(
+    nationalRaw * w.nationalPension +
+      privateWithdrawalRaw * w.privatePensionWithdrawal +
+      taxEfficiencyRaw * w.privatePensionTaxEfficiency,
+    0,
+    1
+  );
 }
 
 function computeBequestAdequacyRaw(params: SimulationParams, result: SimulationResult, cfg: UtilityConfig): number {
@@ -144,7 +173,7 @@ export function computeLifetimeUtility(
 
   const consumption = Math.round(computeConsumptionRaw(params, retirementYears) * cfg.weights.consumption);
   const depletionSafety = Math.round(computeDepletionSafetyRaw(params, result) * cfg.weights.depletionSafety);
-  const pensionUtilization = Math.round(computePensionUtilizationRaw(params, result, cfg) * cfg.weights.pensionUtilization);
+  const pensionUtilization = Math.round(computePensionUtilizationRaw(params, retirementYears, cfg) * cfg.weights.pensionUtilization);
   const taxEfficiency = Math.round(computeTaxEfficiencyRaw(result.yearlyResults, cfg) * cfg.weights.taxEfficiency);
   const taxationRisk = Math.round(computeTaxationRiskRaw(result.yearlyResults, cfg) * cfg.weights.taxationRisk);
   const bequestAdequacy = Math.round(computeBequestAdequacyRaw(params, result, cfg) * cfg.weights.bequestAdequacy);

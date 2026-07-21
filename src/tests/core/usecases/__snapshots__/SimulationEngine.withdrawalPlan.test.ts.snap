@@ -15,11 +15,11 @@ exports[`SimulationEngine withdrawalPlan (인출 정책 파라미터화) > 회�
       "bequestAdequacy": 0,
       "consumption": 27,
       "depletionSafety": 20,
-      "pensionUtilization": 13,
+      "pensionUtilization": 11,
       "taxEfficiency": 7,
       "taxationRisk": 10,
     },
-    "score": 77,
+    "score": 75,
   },
   "yearlyResults": [
     {

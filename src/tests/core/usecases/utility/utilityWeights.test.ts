@@ -10,7 +10,12 @@ describe('DEFAULT_UTILITY_CONFIG.weights', () => {
 
 describe('createUtilityConfig', () => {
   const rest = {
-    appropriatePensionBalanceMonths: 12,
+    pensionUtilizationSubWeights: {
+      nationalPension: 0.4,
+      privatePensionWithdrawal: 0.4,
+      privatePensionTaxEfficiency: 0.2,
+    },
+    privatePensionEffectiveTaxCeiling: 0.1,
     appropriateBequestMonths: 24,
     taxBurdenCeiling: 0.3,
     healthInsuranceCeiling: 0.05,
@@ -31,5 +36,14 @@ describe('createUtilityConfig', () => {
         rest
       )
     ).toThrow(/100/);
+  });
+
+  test('pensionUtilizationSubWeights 합이 1이 아니면 예외를 던진다', () => {
+    expect(() =>
+      createUtilityConfig(
+        { consumption: 40, depletionSafety: 20, pensionUtilization: 15, taxEfficiency: 10, taxationRisk: 10, bequestAdequacy: 5 },
+        { ...rest, pensionUtilizationSubWeights: { nationalPension: 0.5, privatePensionWithdrawal: 0.4, privatePensionTaxEfficiency: 0.2 } }
+      )
+    ).toThrow(/pensionUtilizationSubWeights/);
   });
 });

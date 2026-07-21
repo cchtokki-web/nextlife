@@ -1,6 +1,10 @@
 import { describe, test, expect } from 'vitest';
-import { generateCandidatePlans } from '@/core/usecases/strategy/StrategyCandidateGenerator';
-import { SimulationParams } from '@/core/entities/types';
+import {
+  generateCandidatePlans,
+  getIdentityPlan,
+  generateSpendingAdjustmentCandidates,
+} from '@/core/usecases/strategy/StrategyCandidateGenerator';
+import { CompleteWithdrawalPlan, SimulationParams } from '@/core/entities/types';
 
 const baseParams: SimulationParams = {
   userProfile: {
@@ -189,5 +193,70 @@ describe('generateCandidatePlans', () => {
 
     const candidates = generateCandidatePlans(worstCaseParams);
     expect(candidates.length).toBe(864);
+  });
+
+  test('회귀 가드: monthlySpendingMultiplier는 이 cartesian product의 차원이 아니라 항상 1이다', () => {
+    const candidates = generateCandidatePlans(baseParams);
+    for (const c of candidates) {
+      expect(c.monthlySpendingMultiplier).toBe(1);
+    }
+  });
+});
+
+describe('getIdentityPlan', () => {
+  test('baseline과 동등한 기본값으로 채워진 완결 plan을 반환한다', () => {
+    const plan = getIdentityPlan(baseParams);
+
+    expect(plan).toEqual<CompleteWithdrawalPlan>({
+      privatePensionStartAge: baseParams.userProfile.retirementAge,
+      privatePensionMonthlyTarget: baseParams.userProfile.targetMonthlySpending,
+      nationalPensionStartAge: 65,
+      assetSellOrderStrategy: 'input_order',
+      isaMaturityDestination: 'pension',
+      generalAssetWithdrawalStartAge: baseParams.userProfile.retirementAge,
+      monthlySpendingMultiplier: 1,
+    });
+  });
+
+  test('사적연금이 없으면 privatePensionMonthlyTarget은 0이다', () => {
+    const plan = getIdentityPlan({ ...baseParams, privatePensions: [] });
+    expect(plan.privatePensionMonthlyTarget).toBe(0);
+  });
+});
+
+describe('generateSpendingAdjustmentCandidates', () => {
+  const basePlan = getIdentityPlan(baseParams);
+
+  test('allowIncrease가 false이면 후보를 생성하지 않는다', () => {
+    const candidates = generateSpendingAdjustmentCandidates(baseParams, basePlan, { allowIncrease: false });
+    expect(candidates).toEqual([]);
+  });
+
+  test("spendingStrategy가 'target'이 아니면 후보를 생성하지 않는다", () => {
+    const candidates = generateSpendingAdjustmentCandidates(
+      { ...baseParams, spendingStrategy: 'max_sustainable' },
+      basePlan,
+      { allowIncrease: true }
+    );
+    expect(candidates).toEqual([]);
+  });
+
+  test('targetMonthlySpending이 0 이하이면 후보를 생성하지 않는다', () => {
+    const candidates = generateSpendingAdjustmentCandidates(
+      { ...baseParams, userProfile: { ...baseParams.userProfile, targetMonthlySpending: 0 } },
+      basePlan,
+      { allowIncrease: true }
+    );
+    expect(candidates).toEqual([]);
+  });
+
+  test('정상 조건이면 배수 후보 2개(1.1, 1.2)를 생성하고 나머지 필드는 basePlan을 유지한다', () => {
+    const candidates = generateSpendingAdjustmentCandidates(baseParams, basePlan, { allowIncrease: true });
+
+    expect(candidates.map((c) => c.monthlySpendingMultiplier)).toEqual([1.1, 1.2]);
+    for (const c of candidates) {
+      expect(c.privatePensionStartAge).toBe(basePlan.privatePensionStartAge);
+      expect(c.assetSellOrderStrategy).toBe(basePlan.assetSellOrderStrategy);
+    }
   });
 });

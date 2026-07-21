@@ -125,7 +125,7 @@ describe('UtilityEngine.computeLifetimeUtility', () => {
     expect(balanced.score).toBeGreaterThan(depletion.score);
   });
 
-  test('사망 시 연금잔액이 과다할수록 pensionUtilization 점수가 낮아진다 (예: 6억 남는 전략 < 1억 남는 전략)', () => {
+  test('사망 시 연금잔액이 커도(6억) 작아도(1억) 수급·인출·세금 조건이 같으면 pensionUtilization 점수는 동일하다 (회귀 가드: 잔액 자체는 더 이상 감점 요인이 아님)', () => {
     const hugeLeftoverResult = makeResult(
       Array.from({ length: 36 }, (_, i) => makeYear(60 + i, { pensionAssets: 600000000, totalAssets: 600000000 })),
       null
@@ -138,7 +138,128 @@ describe('UtilityEngine.computeLifetimeUtility', () => {
     const huge = computeLifetimeUtility(hugeLeftoverResult, baseParams);
     const modest = computeLifetimeUtility(modestLeftoverResult, baseParams);
 
-    expect(modest.components.pensionUtilization).toBeGreaterThan(huge.components.pensionUtilization);
+    expect(modest.components.pensionUtilization).toBe(huge.components.pensionUtilization);
+  });
+
+  test('사망 시 연금잔액이 과다해도 bequestAdequacy(상속 자산 적정성)는 여전히 낮게 나온다 (책임 이동 확인: 과다잔여 감점은 이제 bequestAdequacy만의 역할)', () => {
+    const hugeLeftoverResult = makeResult(
+      Array.from({ length: 36 }, (_, i) => makeYear(60 + i, { pensionAssets: 600000000, totalAssets: 600000000 })),
+      null
+    );
+    const balanced = computeLifetimeUtility(buildBalancedScenario(), baseParams);
+    const huge = computeLifetimeUtility(hugeLeftoverResult, baseParams);
+
+    expect(huge.components.bequestAdequacy).toBeLessThan(balanced.components.bequestAdequacy);
+  });
+
+  describe('pensionUtilization (연금 활용도) 재설계', () => {
+    const pensionUserProfile = {
+      currentAge: 60,
+      retirementAge: 60,
+      expectancy: 95,
+      targetMonthlySpending: 3000000,
+    };
+    const NATIONAL_PENSION_ANNUAL = 2000000 * 12;
+    const PRIVATE_PENSION_ANNUAL = 10000000;
+
+    const privatePensionAccount = {
+      id: 'p1',
+      type: 'irp' as const,
+      balance: 50000000,
+      monthlyContribution: 0,
+      annualReturn: 5,
+      currency: 'KRW' as const,
+    };
+
+    function buildPensionParams(overrides: Partial<SimulationParams> = {}): SimulationParams {
+      return {
+        ...baseParams,
+        userProfile: pensionUserProfile,
+        nationalPension: { expectedMonthlyAmount: 0 },
+        privatePensions: [],
+        ...overrides,
+      };
+    }
+
+    function buildPensionResult(yearOverrides: Partial<SimulationYearlyResult> = {}): SimulationResult {
+      return makeResult(
+        Array.from({ length: 36 }, (_, i) => makeYear(60 + i, yearOverrides)),
+        null
+      );
+    }
+
+    test('국민연금을 실제로 수급하면 대상자이지만 미수급인 경우보다 점수가 높다', () => {
+      const params = buildPensionParams({ nationalPension: { expectedMonthlyAmount: 2000000 } });
+      const receiving = computeLifetimeUtility(
+        buildPensionResult({ nationalPensionIncome: NATIONAL_PENSION_ANNUAL }),
+        params
+      );
+      const notReceiving = computeLifetimeUtility(buildPensionResult({ nationalPensionIncome: 0 }), params);
+
+      expect(receiving.components.pensionUtilization).toBeGreaterThan(notReceiving.components.pensionUtilization);
+    });
+
+    test('국민연금 비대상자(수급액 0)는 대상자이지만 미수급인 경우보다 점수가 높다 (면제 처리)', () => {
+      const notEligible = computeLifetimeUtility(
+        buildPensionResult({ nationalPensionIncome: 0 }),
+        buildPensionParams({ nationalPension: { expectedMonthlyAmount: 0 } })
+      );
+      const eligibleButNotReceiving = computeLifetimeUtility(
+        buildPensionResult({ nationalPensionIncome: 0 }),
+        buildPensionParams({ nationalPension: { expectedMonthlyAmount: 2000000 } })
+      );
+
+      expect(notEligible.components.pensionUtilization).toBeGreaterThan(
+        eligibleButNotReceiving.components.pensionUtilization
+      );
+    });
+
+    test('사적연금을 실제로 인출하면 계좌만 있고 인출하지 않는 경우보다 점수가 높다', () => {
+      const params = buildPensionParams({ privatePensions: [privatePensionAccount] });
+      const withdrawing = computeLifetimeUtility(
+        buildPensionResult({ privatePensionIncome: PRIVATE_PENSION_ANNUAL, pensionAssets: 50000000 }),
+        params
+      );
+      const notWithdrawing = computeLifetimeUtility(
+        buildPensionResult({ privatePensionIncome: 0, pensionAssets: 100000000 }),
+        params
+      );
+
+      expect(withdrawing.components.pensionUtilization).toBeGreaterThan(notWithdrawing.components.pensionUtilization);
+    });
+
+    test('사적연금 계좌가 아예 없으면 계좌가 있고 인출 중인 경우보다 점수가 낮다', () => {
+      const noAccount = computeLifetimeUtility(
+        buildPensionResult({ privatePensionIncome: 0, pensionAssets: 0 }),
+        buildPensionParams({ privatePensions: [] })
+      );
+      const withdrawing = computeLifetimeUtility(
+        buildPensionResult({ privatePensionIncome: PRIVATE_PENSION_ANNUAL, pensionAssets: 50000000 }),
+        buildPensionParams({ privatePensions: [privatePensionAccount] })
+      );
+
+      expect(noAccount.components.pensionUtilization).toBeLessThan(withdrawing.components.pensionUtilization);
+    });
+
+    test('사적연금 저율과세 한도를 준수(낮은 실효세율)하면 한도를 초과(높은 실효세율)하는 경우보다 점수가 높다', () => {
+      const params = buildPensionParams({ privatePensions: [privatePensionAccount] });
+      const withinLimit = computeLifetimeUtility(
+        buildPensionResult({
+          privatePensionIncome: PRIVATE_PENSION_ANNUAL,
+          pensionTaxPaid: 500000, // 실효세율 ≈ 4.8% (한도 10% 이내)
+        }),
+        params
+      );
+      const overLimit = computeLifetimeUtility(
+        buildPensionResult({
+          privatePensionIncome: PRIVATE_PENSION_ANNUAL,
+          pensionTaxPaid: 3000000, // 실효세율 ≈ 23% (한도 10% 초과)
+        }),
+        params
+      );
+
+      expect(withinLimit.components.pensionUtilization).toBeGreaterThan(overLimit.components.pensionUtilization);
+    });
   });
 
   test('자산 고갈이 없으면 depletionSafety가 만점, 조기 고갈되면 만점보다 낮다', () => {

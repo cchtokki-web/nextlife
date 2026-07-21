@@ -9,6 +9,7 @@ export interface CurrentStrategyAnalysis {
 const COMPONENT_LABELS: Record<keyof UtilityBreakdown['components'], string> = {
   consumption: '소비 만족도',
   depletionSafety: '자산 고갈 방지',
+  // 국민연금 수급 여부 + 사적연금 실인출 활용도 + 저율과세 한도 준수도의 가중합 (UtilityEngine.computePensionUtilizationRaw 참조)
   pensionUtilization: '연금 활용도',
   taxEfficiency: '세금 효율',
   taxationRisk: '과세 위험 관리',

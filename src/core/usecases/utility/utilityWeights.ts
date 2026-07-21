@@ -11,6 +11,10 @@ export function createUtilityConfig(
   if (Math.abs(sum - 100) > 1e-9) {
     throw new Error(`UtilityConfig.weights 합은 100이어야 합니다 (현재 ${sum})`);
   }
+  const subWeightSum = Object.values(rest.pensionUtilizationSubWeights).reduce((a, b) => a + b, 0);
+  if (Math.abs(subWeightSum - 1) > 1e-9) {
+    throw new Error(`UtilityConfig.pensionUtilizationSubWeights 합은 1이어야 합니다 (현재 ${subWeightSum})`);
+  }
   return { weights, ...rest };
 }
 
@@ -28,7 +32,12 @@ export const DEFAULT_UTILITY_CONFIG: UtilityConfig = createUtilityConfig(
     bequestAdequacy: 10,
   },
   {
-    appropriatePensionBalanceMonths: 12, // 사망 시 연금잔액 적정치 = 월 목표생활비 * 12개월(1년치)
+    pensionUtilizationSubWeights: {
+      nationalPension: 0.4, // 국민연금 수급 연도 비율
+      privatePensionWithdrawal: 0.4, // 사적연금 실인출 연도 비율
+      privatePensionTaxEfficiency: 0.2, // 사적연금 저율과세 한도 준수도
+    },
+    privatePensionEffectiveTaxCeiling: 0.1, // 사적연금 실효세율 10%에서 해당 서브점수 0점
     appropriateBequestMonths: 24, // 사망 시 총자산 적정치 = 월 목표생활비 * 24개월(2년치)
     taxBurdenCeiling: 0.3, // 평생 세부담률 30%에서 taxEfficiency 0점
     healthInsuranceCeiling: 0.05, // 건강보험료/총소득 비율 5%에서 관련 페널티 최대

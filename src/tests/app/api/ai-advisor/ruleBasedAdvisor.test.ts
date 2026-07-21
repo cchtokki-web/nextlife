@@ -23,6 +23,7 @@ function makeRecommendation(currentScore: number, recommendedScore: number): Str
       assetSellOrderStrategy: 'input_order',
       isaMaturityDestination: 'pension',
       generalAssetWithdrawalStartAge: 65,
+      monthlySpendingMultiplier: 1,
     } : null,
     improved,
     reasons: ['62세부터 사적연금 인출을 시작합니다.'],

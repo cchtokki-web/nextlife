@@ -395,7 +395,8 @@ export const UtilityCard: React.FC<UtilityCardProps> = ({
               <p style={{ fontSize: '0.72rem', color: 'var(--hero-text-muted)', margin: '0.5rem 0 0', lineHeight: 1.4 }}>
                 * 고정소득 커버율은 배당·연금·기타소득 등 <strong>원금 인출을 제외한</strong> 소득만으로 목표
                 생활비를 얼마나 충당하는지 나타내는 보조 지표입니다. 100% 미만이어도 자산이 고갈되지
-                않는다면 원금을 계획적으로 인출하는 안정적인 은퇴 설계일 수 있습니다.
+                않는다면 원금을 계획적으로 인출하는 안정적인 은퇴 설계일 수 있습니다. Lifetime Utility
+                Score의 하위 항목이 아니라 별도로 계산되는 독립 지표입니다.
               </p>
             )}
           </div>
