@@ -10,7 +10,7 @@ import {
 import { SimulationEngine } from '../SimulationEngine';
 import { computeLifetimeUtility } from '../utility/UtilityEngine';
 import { DEFAULT_UTILITY_CONFIG } from '../utility/utilityWeights';
-import { analyzeCurrentStrategy } from '../utility/utilityAnalysis';
+import { analyzeCurrentStrategy, formatManwon } from '../utility/utilityAnalysis';
 import { getRetirementGrade } from '../../entities/retirementGrade';
 import { generateCandidatePlans, generateSpendingAdjustmentCandidates, getIdentityPlan } from './StrategyCandidateGenerator';
 
@@ -42,11 +42,8 @@ export function computeDeltas(baseline: SimulationResult, recommended: Simulatio
     pensionEndingBalance: pensionEndingBalance(recommended) - pensionEndingBalance(baseline),
     comprehensiveTaxYears: comprehensiveTaxYears(recommended) - comprehensiveTaxYears(baseline),
     healthInsuranceTotal: sumYears(recommended, (y) => y.healthInsurancePaid) - sumYears(baseline, (y) => y.healthInsurancePaid),
+    nationalPensionTotal: sumYears(recommended, (y) => y.nationalPensionIncome) - sumYears(baseline, (y) => y.nationalPensionIncome),
   };
-}
-
-function formatManwon(amountKRW: number): string {
-  return `${Math.round(amountKRW / 10000).toLocaleString('ko-KR')}만원`;
 }
 
 // AssetSellOrderStrategy/IsaMaturityDestination에 새 variant가 추가됐는데 아래 switch를
@@ -152,11 +149,13 @@ export function buildReasons(
   ) {
     reasons.push(`${plan.generalAssetWithdrawalStartAge}세부터 일반 자산(주식/ETF) 인출을 시작합니다.`);
   }
-  if (plan.nationalPensionStartAge !== undefined && plan.nationalPensionStartAge !== 65) {
-    if (plan.nationalPensionStartAge < 65) {
-      reasons.push(`국민연금을 ${plan.nationalPensionStartAge}세부터 조기 수령합니다.`);
+  const nationalPensionDefaultAge = context?.identityPlan?.nationalPensionStartAge ?? 65;
+  if (plan.nationalPensionStartAge !== undefined && plan.nationalPensionStartAge !== nationalPensionDefaultAge) {
+    const totalChangeText = `평생 총 수령액 약 ${formatManwon(Math.abs(deltas.nationalPensionTotal))} ${deltas.nationalPensionTotal < 0 ? '감소' : '증가'}`;
+    if (plan.nationalPensionStartAge < nationalPensionDefaultAge) {
+      reasons.push(`국민연금을 ${plan.nationalPensionStartAge}세부터 조기 수령합니다 (${totalChangeText}).`);
     } else {
-      reasons.push(`국민연금을 ${plan.nationalPensionStartAge}세까지 연기 수령해 수령액을 늘립니다.`);
+      reasons.push(`국민연금을 ${plan.nationalPensionStartAge}세까지 연기 수령해 수령액을 늘립니다 (${totalChangeText}).`);
     }
   }
   if (deltas.lifetimeConsumption > 0) {
@@ -164,6 +163,8 @@ export function buildReasons(
   }
   if (deltas.pensionEndingBalance < 0) {
     reasons.push(`사망 시 연금잔액이 약 ${formatManwon(-deltas.pensionEndingBalance)} 감소해 연금을 더 효율적으로 활용합니다.`);
+  } else if (deltas.pensionEndingBalance > 0) {
+    reasons.push(`사망 시 연금잔액이 약 ${formatManwon(deltas.pensionEndingBalance)} 증가합니다.`);
   }
   if (deltas.comprehensiveTaxYears <= 0) {
     reasons.push('금융소득종합과세 영향이 늘지 않습니다.');

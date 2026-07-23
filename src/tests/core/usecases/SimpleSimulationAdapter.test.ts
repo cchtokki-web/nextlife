@@ -194,6 +194,7 @@ describe('SimpleSimulationAdapter', () => {
         privatePensionLimit: 15000000,
         privatePensionExcessTaxRate: 16.5,
         limitPrivatePensionToTaxLimit: false,
+        enablePensionComprehensiveComparison: true,
       });
     });
 

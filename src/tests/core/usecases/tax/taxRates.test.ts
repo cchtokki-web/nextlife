@@ -20,7 +20,7 @@ describe('resolveTaxSettings', () => {
     const keys: (keyof typeof resolved)[] = [
       'enableComprehensiveTax', 'enableHealthInsurance', 'usDividendTaxRate', 'domesticDividendTaxRate',
       'comprehensiveTaxRate', 'healthInsuranceRate', 'enablePrivatePensionTax', 'privatePensionLimit',
-      'privatePensionExcessTaxRate', 'limitPrivatePensionToTaxLimit',
+      'privatePensionExcessTaxRate', 'limitPrivatePensionToTaxLimit', 'enablePensionComprehensiveComparison',
     ];
     keys.forEach((key) => expect(resolved[key]).not.toBeUndefined());
   });

@@ -199,7 +199,9 @@ export const SimulationSettings: React.FC<{ scenarioState: any }> = ({ scenarioS
                 <div className={styles.toggleTextContent}>
                   <span className={styles.toggleText}>물가상승률을 반영하여 실질 성장률로 계산</span>
                   <span className={styles.toggleDescription}>
-                    자산 성장률에서 물가상승률({activeParams.inflationRate}%)을 차감하여 시뮬레이션을 보수적(실질 가치 기준)으로 계산합니다. (추천)
+                    자산 성장률에서 물가상승률({activeParams.inflationRate}%)을 차감하고, 목표 생활비·국민연금
+                    수령액은 오늘 화폐가치로 고정 표시하여 시뮬레이션 전체를 실질 가치 기준으로 일관되게
+                    계산합니다(표에 나오는 생활비·연금 금액이 매년 그대로인 것은 버그가 아니라 이 설정 때문입니다). (추천)
                   </span>
                 </div>
               </div>

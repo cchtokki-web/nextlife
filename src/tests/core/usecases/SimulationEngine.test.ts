@@ -377,4 +377,58 @@ describe('SimulationEngine TDD Tests', () => {
     // 고정소득 커버율이 매우 낮은데도 자산 추이만으로 "매우 안정"이 되는 오탐이 없어야 한다.
     expect(result.retirementGrade).not.toBe('매우 안정');
   });
+
+  test('금융소득은 2천만원 이하이지만 연금소득(국민+사적) 합산 시 건강보험료가 발생하는지 검증', () => {
+    const engine = new SimulationEngine();
+    const params: SimulationParams = {
+      userProfile: {
+        currentAge: 65,
+        retirementAge: 65,
+        expectancy: 65,
+        targetMonthlySpending: 1500000,
+      },
+      assets: [], // 금융소득(배당) 자체가 없어 종합과세 판정 기준은 항상 0
+      nationalPension: { expectedMonthlyAmount: 1000000 }, // 연 1,200만 원
+      privatePensions: [
+        {
+          id: 'pension-1',
+          type: 'irp',
+          balance: 50000000,
+          monthlyContribution: 0,
+          annualReturn: 3,
+          currency: 'KRW',
+        },
+      ],
+      otherIncomes: [],
+      inflationRate: 0,
+      inflationMode: 'real',
+      baseExchangeRate: 1350,
+      exchangeScenario: 'base',
+      displayCurrency: 'KRW',
+      withdrawalPlan: { privatePensionMonthlyTarget: 900000 }, // 연 1,080만 원 (저율과세 한도 이하)
+    };
+
+    const result = engine.run(params);
+    const yr = result.yearlyResults[0];
+
+    // 국민연금(1,200만) + 사적연금(1,080만) = 2,280만 원 > 2천만 원 기준 초과
+    expect(yr.comprehensiveTaxPaid).toBe(0); // 종합과세 판정은 금융소득(배당)만 사용 -> 0
+    expect(yr.healthInsurancePaid).toBeGreaterThan(0); // 건보료는 연금소득 합산 기준이라 발생
+  });
+
+  test('명목(nominal) 모드에서 국민연금 수령액이 매년 물가상승률만큼 증가하는지 검증', () => {
+    const engine = new SimulationEngine();
+    const params: SimulationParams = {
+      ...baseParams,
+      inflationMode: 'nominal',
+      inflationRate: 2.5,
+    };
+
+    const result = engine.run(params);
+    const resultAt65 = result.yearlyResults[25]; // 65세, 국민연금 수령 원년
+    const resultAt70 = result.yearlyResults[30]; // 70세, 5년 후
+
+    // 물가상승률이 누적 반영되어 5년 뒤 국민연금 수령액이 더 커야 한다.
+    expect(resultAt70.nationalPensionIncome).toBeGreaterThan(resultAt65.nationalPensionIncome);
+  });
 });

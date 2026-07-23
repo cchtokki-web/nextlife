@@ -12,7 +12,9 @@ import {
 //
 // 이 함수는 다음 순서로 월 생활비를 채운다:
 //   1) 국민연금(nationalUsed): 항상 raw 값 그대로 전액 사용
-//   2) 사적연금(privatePenUsed): min(사적연금 raw, 저율과세 월한도, 국민연금 이후 남은 필요분)
+//   2) 사적연금(privatePenUsed): min(사적연금 raw, 국민연금 이후 남은 필요분) — 실제 시뮬레이션
+//      인출액(raw)을 그대로 반영하며, 저율과세 한도로 인위적으로 자르지 않는다(초과세 부담 여부는
+//      comprehensiveTaxPaid/healthInsurancePaid 등 별도 필드로 확인 가능).
 //   3) 배당/기타소득(dividendUsed/otherUsed): 남은 필요분을 raw 비율대로 채움 (0으로 나누기 방지)
 //   4) 자산인출(assetWithdrawal): 그래도 남은 필요분
 
@@ -92,6 +94,7 @@ function makeYearlyResult(overrides: {
     nationalPensionTaxPaid: 0,
     healthInsurancePaid: 0,
     comprehensiveTaxPaid: 0,
+    privatePensionTaxMethod: 'none',
     spending: overrides.spendingAnnual,
     hasTaxWarning: false,
   };
@@ -111,37 +114,35 @@ function makeResult(yearlyResults: SimulationYearlyResult[]): SimulationResult {
 }
 
 describe('computeMonthlySpendingComposition', () => {
-  describe('사적연금 3중 클램프: min(사적연금 raw, 저율과세 월한도, 국민연금 이후 남은 필요분)', () => {
-    test('저율과세 한도를 초과하면 한도가 이긴다 (privatePenUsed === monthlyPensionLimit)', () => {
-      // 저율과세 연 한도 6,000,000원 -> 월 500,000원
-      // 사적연금 raw 월 1,666,667원(연 20,000,000), 필요분(국민연금 이후) 월 1,500,000원
-      // 셋 중 가장 작은 값은 한도(500,000)여야 한다.
-      const params = makeParams({ privatePensionLimit: 6000000 });
+  describe('사적연금 2중 클램프: min(사적연금 raw, 국민연금 이후 남은 필요분)', () => {
+    test('사적연금 raw가 저율과세 한도를 초과해도 더 이상 한도로 자르지 않고 실제 인출액을 그대로 반영한다', () => {
+      // 사적연금 raw 월 1,666,667원(연 20,000,000, 구 기본 한도 월 1,250,000보다 큼).
+      // 남은 필요분(국민연금 이후)이 이보다 더 크므로(월 2,500,000) raw 값이 그대로 쓰여야 한다.
+      const params = makeParams({});
       const yearly = makeYearlyResult({
         age: 60,
         nationalPensionIncomeAnnual: 0,
         privatePensionIncomeAnnual: 20000000,
-        spendingAnnual: 18000000, // 월 1,500,000
+        spendingAnnual: 30000000, // 월 2,500,000
       });
       const result = makeResult([yearly]);
 
       const [composition] = computeMonthlySpendingComposition([yearly], params, result);
 
-      const expectedMonthlyLimit = 6000000 / 12; // 500,000
-      expect(composition.privatePenUsed).toBe(expectedMonthlyLimit);
-      // 한도에 걸렸으므로 사적연금 raw(1,666,667)나 남은 필요분(1,500,000)보다 작아야 한다
-      expect(composition.privatePenUsed).toBeLessThan(Math.round(20000000 / 12));
-      expect(composition.privatePenUsed).toBeLessThan(1500000);
+      const rawPrivatePenMonthly = Math.round(20000000 / 12); // 1,666,667
+      expect(composition.privatePenUsed).toBe(rawPrivatePenMonthly);
+      // 구 기본 한도(월 1,250,000)보다 커야 함 — 더 이상 한도에 걸리지 않는다는 회귀 가드
+      expect(composition.privatePenUsed).toBeGreaterThan(1250000);
     });
 
     test('필요 생활비 자체가 적으면 남은 필요분(remainingAfterNational)이 이긴다', () => {
       // 국민연금이 이미 대부분을 충당해 남은 필요분이 매우 작다 (월 100,000원).
-      // 사적연금 raw와 저율과세 한도는 모두 충분히 크다.
-      const params = makeParams({}); // 기본 저율과세 한도(연 15,000,000 -> 월 1,250,000) 사용
+      // 사적연금 raw는 충분히 크다.
+      const params = makeParams({});
       const yearly = makeYearlyResult({
         age: 60,
         nationalPensionIncomeAnnual: 22800000, // 월 1,900,000
-        privatePensionIncomeAnnual: 12000000, // 월 1,000,000 (한도보다 작지만 남은 필요분보다는 훨씬 큼)
+        privatePensionIncomeAnnual: 12000000, // 월 1,000,000 (남은 필요분보다는 훨씬 큼)
         spendingAnnual: 24000000, // 월 2,000,000 -> 남은 필요분 = 2,000,000 - 1,900,000 = 100,000
       });
       const result = makeResult([yearly]);
@@ -151,13 +152,11 @@ describe('computeMonthlySpendingComposition', () => {
       const remainingAfterNational = 100000;
       expect(composition.privatePenUsed).toBe(remainingAfterNational);
       expect(composition.privatePenUsed).toBeLessThan(Math.round(12000000 / 12));
-      expect(composition.privatePenUsed).toBeLessThan(15000000 / 12);
     });
 
     test('사적연금 자체가 부족하면 사적연금 raw 값이 이긴다', () => {
-      // 사적연금 raw가 월 100,000원으로 저율과세 한도(월 1,250,000)와
-      // 남은 필요분(월 1,500,000)보다 훨씬 작다.
-      const params = makeParams({}); // 기본 저율과세 한도
+      // 사적연금 raw가 월 100,000원으로 남은 필요분(월 1,500,000)보다 훨씬 작다.
+      const params = makeParams({});
       const yearly = makeYearlyResult({
         age: 60,
         nationalPensionIncomeAnnual: 0,
@@ -170,7 +169,6 @@ describe('computeMonthlySpendingComposition', () => {
 
       const rawPrivatePenMonthly = Math.round(1200000 / 12); // 100,000
       expect(composition.privatePenUsed).toBe(rawPrivatePenMonthly);
-      expect(composition.privatePenUsed).toBeLessThan(15000000 / 12);
       expect(composition.privatePenUsed).toBeLessThan(1500000);
     });
   });
@@ -206,58 +204,6 @@ describe('computeMonthlySpendingComposition', () => {
       for (const [key, value] of Object.entries(composition)) {
         expect(Number.isFinite(value), `${key} 필드가 유한해야 함`).toBe(true);
       }
-    });
-  });
-
-  describe('displayCurrency === "USD"일 때 저율과세 한도를 환율로 나누는 분기', () => {
-    test('동일한 입력이라도 KRW와 USD에서 사적연금 한도 클램프 결과가 달라진다', () => {
-      const rawPensionLimit = 15000000; // 연 (원)
-      const baseExchangeRate = 1300;
-
-      // 사적연금 raw와 남은 필요분을 모두 한도보다 크게 설정해
-      // KRW/USD 각각에서 "한도"가 클램프의 승자가 되도록 한다.
-      const yearly = makeYearlyResult({
-        age: 60,
-        nationalPensionIncomeAnnual: 6000000, // 월 500,000
-        privatePensionIncomeAnnual: 30000000, // 월 2,500,000 (두 통화 한도보다 훨씬 큼)
-        spendingAnnual: 60000000, // 월 5,000,000 -> 남은 필요분 4,500,000 (역시 한도보다 큼)
-      });
-
-      const krwParams = makeParams({
-        displayCurrency: 'KRW',
-        baseExchangeRate,
-        privatePensionLimit: rawPensionLimit,
-      });
-      const usdParams = makeParams({
-        displayCurrency: 'USD',
-        baseExchangeRate,
-        privatePensionLimit: rawPensionLimit,
-      });
-
-      const [krwComposition] = computeMonthlySpendingComposition(
-        [yearly],
-        krwParams,
-        makeResult([yearly])
-      );
-      const [usdComposition] = computeMonthlySpendingComposition(
-        [yearly],
-        usdParams,
-        makeResult([yearly])
-      );
-
-      const expectedKrwLimit = rawPensionLimit / 12; // 1,250,000
-      const expectedUsdLimit = rawPensionLimit / 12 / baseExchangeRate; // ≈ 961.54
-
-      expect(krwComposition.privatePenUsed).toBeCloseTo(expectedKrwLimit, 6);
-      expect(usdComposition.privatePenUsed).toBeCloseTo(expectedUsdLimit, 6);
-
-      // 환율 나눗셈으로 인해 USD 쪽 한도가 훨씬 작으므로 결과도 작아야 한다
-      expect(usdComposition.privatePenUsed).toBeLessThan(krwComposition.privatePenUsed);
-      // KRW 한도를 baseExchangeRate로 나눈 값과 정확히 일치해야 한다
-      expect(usdComposition.privatePenUsed).toBeCloseTo(
-        krwComposition.privatePenUsed / baseExchangeRate,
-        6
-      );
     });
   });
 

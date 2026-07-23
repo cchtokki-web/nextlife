@@ -41,6 +41,7 @@ interface UtilityCardProps {
   spendingStrategy?: SpendingStrategy;
   inflationRate?: number;
   inflationMode?: 'nominal' | 'real';
+  bequestAdequacyExplanation?: string;
 }
 
 export const UtilityCard: React.FC<UtilityCardProps> = ({
@@ -66,6 +67,7 @@ export const UtilityCard: React.FC<UtilityCardProps> = ({
   spendingStrategy,
   inflationRate,
   inflationMode,
+  bequestAdequacyExplanation,
 }) => {
   const { data: session } = useSession();
   const userNamePrefix = session?.user?.name ? `${session.user.name}님의 ` : '';
@@ -425,6 +427,12 @@ export const UtilityCard: React.FC<UtilityCardProps> = ({
             })}
           </div>
 
+          {bequestAdequacyExplanation && (
+            <p style={{ fontSize: '0.72rem', color: 'var(--hero-text-muted)', margin: '-0.3rem 0 1rem', lineHeight: 1.4 }}>
+              * 상속 자산 적정성: {bequestAdequacyExplanation}
+            </p>
+          )}
+
           <div
             style={{
               paddingTop: '0.9rem',
@@ -496,6 +504,12 @@ export const UtilityCard: React.FC<UtilityCardProps> = ({
                     : '현재 전략 유지 권장'}
                 </span>
               </div>
+
+              {hasImprovement && (
+                <p style={{ fontSize: '0.72rem', color: 'var(--foreground-muted)', margin: 0, lineHeight: 1.4 }}>
+                  ※ 아래 추천안은 시뮬레이션 결과이며 실제 설정에는 자동 반영되지 않습니다. 적용하려면 설정을 직접 변경하세요.
+                </p>
+              )}
 
               <ul style={{ margin: 0, paddingLeft: '1.1rem', display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
                 {recommendation.reasons.map((reason, i) => (

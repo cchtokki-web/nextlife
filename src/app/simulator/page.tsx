@@ -5,8 +5,9 @@ import { useSession, signOut } from 'next-auth/react';
 import { SimulationEngine } from '../../core/usecases/SimulationEngine';
 import { computeMonthlySpendingComposition } from '../../core/usecases/MonthlySpendingComposition';
 import { recommendStrategy } from '../../core/usecases/strategy/RecommendationEngine';
-import { analyzeCurrentStrategy } from '../../core/usecases/utility/utilityAnalysis';
+import { analyzeCurrentStrategy, explainBequestAdequacy } from '../../core/usecases/utility/utilityAnalysis';
 import { resolveTaxSettings } from '../../core/usecases/tax/taxRates';
+import { NATIONAL_PENSION_NORMAL_START_AGE } from '../../core/usecases/pension/nationalPensionRules';
 import { UTILITY_COMPONENT_META } from '../../web/features/Dashboard/utilityComponentMeta';
 import { initialParams } from '../../infrastructure/storage/localStore';
 import { AssetFormSection } from '../../web/features/AssetForm/AssetFormSection';
@@ -234,6 +235,10 @@ export default function Home() {
           }).join('')
         : '<p style="font-size: 12px; color: #94a3b8;">Utility 데이터를 계산할 수 없습니다.</p>';
 
+      const bequestAdequacyExplanationHtml = utility
+        ? `<p style="font-size: 10px; color: #94a3b8; margin: -6px 0 12px; line-height: 1.4;">* 상속 자산 적정성: ${explainBequestAdequacy(activeParams, result)}</p>`
+        : '';
+
       const currentStrategyAnalysis = utility ? analyzeCurrentStrategy(utility) : null;
       const strengthsHtml = currentStrategyAnalysis
         ? currentStrategyAnalysis.strengths.map(s => `<li style="margin-bottom: 4px;">${s}</li>`).join('')
@@ -254,10 +259,10 @@ export default function Home() {
       const deltaRowsHtml = (recommendation && hasImprovement)
         ? `
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; font-size: 12px;">
-            <div><strong>평생 소비 변화:</strong> ${recommendation.deltas.lifetimeConsumption >= 0 ? '+' : '-'}${formatValuePrint(Math.abs(recommendation.deltas.lifetimeConsumption))}</div>
-            <div><strong>평생 총세금 변화:</strong> ${recommendation.deltas.totalTax >= 0 ? '+' : '-'}${formatValuePrint(Math.abs(recommendation.deltas.totalTax))}</div>
-            <div><strong>사망 시 연금잔액 변화:</strong> ${recommendation.deltas.pensionEndingBalance >= 0 ? '+' : '-'}${formatValuePrint(Math.abs(recommendation.deltas.pensionEndingBalance))}</div>
-            <div><strong>사망 시 총자산 변화:</strong> ${recommendation.deltas.endingAssets >= 0 ? '+' : '-'}${formatValuePrint(Math.abs(recommendation.deltas.endingAssets))}</div>
+            <div><strong>평생 소비 변화:</strong> <span style="color: ${recommendation.deltas.lifetimeConsumption >= 0 ? '#10B981' : '#EF4444'}; font-weight: 700;">${recommendation.deltas.lifetimeConsumption >= 0 ? '+' : '-'}${formatValuePrint(Math.abs(recommendation.deltas.lifetimeConsumption))}</span></div>
+            <div><strong>평생 총세금 변화:</strong> <span style="color: ${recommendation.deltas.totalTax <= 0 ? '#10B981' : '#F59E0B'}; font-weight: 700;">${recommendation.deltas.totalTax >= 0 ? '+' : '-'}${formatValuePrint(Math.abs(recommendation.deltas.totalTax))}</span></div>
+            <div><strong>사망 시 연금잔액 변화:</strong> <span style="color: ${recommendation.deltas.pensionEndingBalance <= 0 ? '#10B981' : '#F59E0B'}; font-weight: 700;">${recommendation.deltas.pensionEndingBalance >= 0 ? '+' : '-'}${formatValuePrint(Math.abs(recommendation.deltas.pensionEndingBalance))}</span></div>
+            <div><strong>사망 시 총자산 변화:</strong> <span style="color: ${recommendation.deltas.endingAssets <= 0 ? '#10B981' : '#F59E0B'}; font-weight: 700;">${recommendation.deltas.endingAssets >= 0 ? '+' : '-'}${formatValuePrint(Math.abs(recommendation.deltas.endingAssets))}</span></div>
           </div>
         `
         : '';
@@ -336,7 +341,7 @@ export default function Home() {
               <li style="margin-bottom: 6px;"><strong>현재 나이:</strong> ${userProfile.currentAge}세 / <strong>은퇴 목표 나이:</strong> ${userProfile.retirementAge}세 / <strong>기대 수명:</strong> ${userProfile.expectancy}세</li>
               <li style="margin-bottom: 6px;"><strong>목표 월 생활비:</strong> ${userProfile.targetMonthlySpending.toLocaleString()} ${displayCurrency}</li>
               <li style="margin-bottom: 6px;"><strong>인출 전략:</strong> ${spendingStrategy === 'dividend_only' ? '배당금(이자) 100% 소비' : spendingStrategy === 'max_sustainable' ? '최대 가능 생활비 자동계산' : '고정 목표 생활비'}</li>
-              <li style="margin-bottom: 6px;"><strong>물가 상승률:</strong> ${inflationRate}% (${inflationMode === 'real' ? '실질 가치 - 인플레이션 차감' : '명목 가치 - 인플레이션 미차감'})</li>
+              <li style="margin-bottom: 6px;"><strong>물가 상승률:</strong> ${inflationRate}% (${inflationMode === 'real' ? '실질 가치 기준 — 아래 모든 표의 생활비·연금 금액은 오늘 화폐가치로 고정 표시되며, 인플레이션은 자산 성장률에 사전 차감 반영되었습니다' : '명목 가치 기준 — 아래 모든 표의 생활비·연금 금액에 물가상승률이 매년 누적 반영되어 있습니다'})</li>
               <li style="margin-bottom: 6px;"><strong>표시 통화 / 기준 환율:</strong> ${displayCurrency} / 1 USD = ${baseExchangeRate} KRW</li>
             </ul>
           </div>
@@ -358,6 +363,7 @@ export default function Home() {
               </div>
               ${utilityComponentRowsHtml}
             </div>
+            ${bequestAdequacyExplanationHtml}
 
             <h3 style="font-size: 13px; color: #0f172a; margin-bottom: 8px;">현재 전략 분석</h3>
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 18px; font-size: 12px;">
@@ -372,6 +378,7 @@ export default function Home() {
             </div>
 
             <h3 style="font-size: 13px; color: #0f172a; margin-bottom: 4px;">🤖 AI 추천 전략 — ${recommendationSummaryText}</h3>
+            ${hasImprovement ? '<p style="font-size: 10px; color: #94a3b8; margin: 0 0 6px;">※ 아래 추천안은 시뮬레이션 결과이며 실제 설정에는 자동 반영되지 않습니다. 적용하려면 설정을 직접 변경하세요.</p>' : ''}
             <ul style="padding-left: 18px; margin-top: 6px; margin-bottom: 0; font-size: 12px; line-height: 1.6;">${recommendationReasonsHtml}</ul>
             ${deltaRowsHtml}
           </div>
@@ -386,7 +393,7 @@ export default function Home() {
             <h2 style="font-size: 16px; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; color: #0f172a; margin-top: 0; margin-bottom: 10px;">4. 연금 및 자산 현황</h2>
             <div style="font-size: 13px; line-height: 1.6; display: grid; grid-template-columns: 1fr; gap: 12px;">
               <div>
-                <strong>국민연금:</strong> 예상 월 수령액 ${nationalPension?.expectedMonthlyAmount.toLocaleString()}원 (65세부터 수령)
+                <strong>국민연금:</strong> 예상 월 수령액 ${nationalPension?.expectedMonthlyAmount.toLocaleString()}원 (${activeParams.withdrawalPlan?.nationalPensionStartAge ?? NATIONAL_PENSION_NORMAL_START_AGE}세부터 수령)
               </div>
               <div>
                 <strong>사적연금:</strong>
@@ -493,6 +500,10 @@ export default function Home() {
       }
       const hasSpendingSection = spendingChunks.length > 0;
 
+      const realValueNoteHtml = inflationMode === 'real'
+        ? '<p style="font-size: 9.5px; color: #94a3b8; margin: 0 0 8px;">* 아래 금액은 모두 오늘 시점 기준 실질 가치입니다(물가상승률은 자산 성장률에 사전 차감 반영되었습니다). 명목(미래 실제 지급) 금액이 아닙니다.</p>'
+        : '<p style="font-size: 9.5px; color: #94a3b8; margin: 0 0 8px;">* 아래 금액은 물가상승률이 매년 누적 반영된 명목 가치입니다.</p>';
+
       chunks.forEach((chunk, chunkIdx) => {
         const pageNum = chunkIdx + 5;
         const isLastChunk = chunkIdx === chunks.length - 1 && !hasSpendingSection;
@@ -502,6 +513,7 @@ export default function Home() {
               <h2 style="font-size: 15px; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; color: #0f172a; margin-top: 0; margin-bottom: 12px;">
                 6. 연령별 소득원 및 자산 추이 (페이지 ${chunkIdx + 1})
               </h2>
+              ${realValueNoteHtml}
               <table style="width: 100%; border-collapse: collapse; font-size: 10.5px;">
                 <thead>
                   <tr>
@@ -513,7 +525,7 @@ export default function Home() {
                     <th style="border: 1px solid #cbd5e1; padding: 7px 8px; text-align: right; background-color: #f1f5f9; font-weight: 700; color: #334155;">배당/투자</th>
                     <th style="border: 1px solid #cbd5e1; padding: 7px 8px; text-align: right; background-color: #f1f5f9; font-weight: 700; color: #334155;">연금</th>
                     <th style="border: 1px solid #cbd5e1; padding: 7px 8px; text-align: right; background-color: #f1f5f9; font-weight: 700; color: #334155;">기타</th>
-                    <th style="border: 1px solid #cbd5e1; padding: 7px 8px; text-align: center; background-color: #f1f5f9; font-weight: 700; color: #334155;">금융소득과세</th>
+                    <th style="border: 1px solid #cbd5e1; padding: 7px 8px; text-align: right; background-color: #f1f5f9; font-weight: 700; color: #334155;">금융소득과세</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -531,7 +543,7 @@ export default function Home() {
               <td style="border: 1px solid #cbd5e1; padding: 7px 8px; text-align: right;">${formatValuePrint(yr.dividendIncome)}</td>
               <td style="border: 1px solid #cbd5e1; padding: 7px 8px; text-align: right;">${formatValuePrint(yr.pensionIncome)}</td>
               <td style="border: 1px solid #cbd5e1; padding: 7px 8px; text-align: right;">${formatValuePrint(yr.otherIncome)}</td>
-              <td style="border: 1px solid #cbd5e1; padding: 7px 8px; text-align: center; ${yr.hasTaxWarning ? 'color: #ef4444; font-weight: bold;' : ''}">${yr.hasTaxWarning ? '⚠️ 주의' : '-'}</td>
+              <td style="border: 1px solid #cbd5e1; padding: 7px 8px; text-align: right; ${yr.hasTaxWarning ? 'color: #ef4444; font-weight: bold;' : ''}">${formatValuePrint(yr.comprehensiveTaxPaid)}${yr.hasTaxWarning ? ' ⚠️' : ''}</td>
             </tr>
           `;
         });
@@ -570,6 +582,7 @@ export default function Home() {
               <h2 style="font-size: 15px; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; color: #0f172a; margin-top: 0; margin-bottom: 12px;">
                 7. 은퇴 후 월 생활비 재원 구성 (페이지 ${chunkIdx + 1})
               </h2>
+              ${realValueNoteHtml}
               <table style="width: 100%; border-collapse: collapse; font-size: 10.5px;">
                 <thead>
                   <tr>
@@ -603,7 +616,7 @@ export default function Home() {
         pagesHtml += `
                 </tbody>
               </table>
-              <p style="margin-top: 10px; font-size: 10px; color: #64748b;">* 월 생활비 재원 구성은 연간 금액을 월 단위로 환산한 값이며, 사적연금은 저율과세 한도를 넘지 않는 범위 내에서만 사용하도록 계산되었습니다.</p>
+              <p style="margin-top: 10px; font-size: 10px; color: #64748b;">* 월 생활비 재원 구성은 연간 금액을 월 단위로 환산한 값이며, 사적연금 열은 저율과세 한도와 무관하게 실제 시뮬레이션 인출액을 그대로 반영합니다. 한도 초과 시 발생하는 세금은 5페이지 세금 설정과 6페이지 금융소득과세 열을 참고하세요.</p>
         `;
 
         if (isLastChunk) {

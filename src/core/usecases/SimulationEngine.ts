@@ -7,6 +7,7 @@ import {
   IsaAccount,
   AssetCurrency,
   TaxSettings,
+  PrivatePensionTaxationMethod,
 } from '../entities/types';
 import { getRetirementGrade, RetirementGrade } from '../entities/retirementGrade';
 import { computeLifetimeUtility } from './utility/UtilityEngine';
@@ -350,6 +351,7 @@ export class SimulationEngine {
       let annualPreTaxTotalIncome = 0;
       let annualRawFinancialIncomeKRW = 0;
       let annualPrivatePensionPreTaxKRW = 0;
+      let annualNationalPensionPreTaxKRW = 0;
 
       let monthlyTargetSpending = 0;
       if (isRetired && spendingStrategy !== 'dividend_only') {
@@ -374,6 +376,7 @@ export class SimulationEngine {
         monthlyNationalPensionDisplay = this.convertValue(natAmountRaw - natTax, 'KRW', displayCurrency, exchangeRate);
         monthlyNatTaxDisplay = this.convertValue(natTax, 'KRW', displayCurrency, exchangeRate);
         monthlyNatPreTaxTotalDisplay = this.convertValue(natAmountRaw, 'KRW', displayCurrency, exchangeRate);
+        annualNationalPensionPreTaxKRW = natAmountRaw * 12;
       }
 
       let monthlyOtherIncomeTotalDisplay = 0;
@@ -592,7 +595,11 @@ export class SimulationEngine {
 
       // Taxes
       const { comprehensiveTaxKRW, healthInsuranceKRW } = calculateComprehensiveTaxAndHealthInsuranceKRW(
-        annualRawFinancialIncomeKRW, currentTaxSettings
+        {
+          annualRawFinancialIncomeKRW,
+          annualRawPensionIncomeKRW: annualPrivatePensionPreTaxKRW + annualNationalPensionPreTaxKRW,
+        },
+        currentTaxSettings
       );
       const annualComprehensiveTaxPaidDisplay = this.convertValue(comprehensiveTaxKRW, 'KRW', displayCurrency, exchangeRate);
       const annualHealthInsurancePaidDisplay = this.convertValue(healthInsuranceKRW, 'KRW', displayCurrency, exchangeRate);
@@ -612,8 +619,10 @@ export class SimulationEngine {
       }
 
       // Private pension high tax threshold adjustment
+      let privatePensionTaxMethod: PrivatePensionTaxationMethod = 'none';
       {
-        const totalPensionTaxNeededKRW = calculatePrivatePensionExcessTaxNeededKRW(annualPrivatePensionPreTaxKRW, currentTaxSettings);
+        const { taxKRW: totalPensionTaxNeededKRW, method } = calculatePrivatePensionExcessTaxNeededKRW(annualPrivatePensionPreTaxKRW, currentTaxSettings);
+        privatePensionTaxMethod = method;
         const totalPensionTaxNeededDisplay = this.convertValue(totalPensionTaxNeededKRW, 'KRW', displayCurrency, exchangeRate);
         const pensionTaxAdjustmentDisplay = Math.max(0, totalPensionTaxNeededDisplay - annualPensionTaxPaid);
 
@@ -656,7 +665,7 @@ export class SimulationEngine {
         totalIncome, spending: annualSpending, hasTaxWarning, preTaxTotalIncome: annualPreTaxTotalIncome,
         dividendTaxPaid: annualDividendTaxPaid, pensionTaxPaid: annualPensionTaxPaid,
         nationalPensionTaxPaid: annualNationalPensionTaxPaid, comprehensiveTaxPaid: annualComprehensiveTaxPaidDisplay,
-        healthInsurancePaid: annualHealthInsurancePaidDisplay,
+        healthInsurancePaid: annualHealthInsurancePaidDisplay, privatePensionTaxMethod,
       });
 
       if (totalAssetsDisplay <= 0 && depletionAge === null) depletionAge = currentAge;

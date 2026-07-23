@@ -8,7 +8,7 @@ const baseUtility: UtilityBreakdown = {
 };
 
 const zeroDeltas: StrategyRecommendation['deltas'] = {
-  lifetimeConsumption: 0, totalTax: 0, endingAssets: 0, pensionEndingBalance: 0, comprehensiveTaxYears: 0, healthInsuranceTotal: 0,
+  lifetimeConsumption: 0, totalTax: 0, endingAssets: 0, pensionEndingBalance: 0, comprehensiveTaxYears: 0, healthInsuranceTotal: 0, nationalPensionTotal: 0,
 };
 
 const baseBody = {

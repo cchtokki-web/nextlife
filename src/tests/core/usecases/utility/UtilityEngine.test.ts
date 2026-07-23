@@ -47,6 +47,7 @@ function makeYear(
     nationalPensionTaxPaid: 0,
     healthInsurancePaid: 0,
     comprehensiveTaxPaid: 0,
+    privatePensionTaxMethod: 'none',
     spending: ANNUAL_TARGET,
     hasTaxWarning: false,
     ...overrides,

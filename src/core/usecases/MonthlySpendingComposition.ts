@@ -11,8 +11,9 @@ export interface MonthlySpendingComposition {
 }
 
 // 은퇴 후 연령별 월 생활비를 어떤 재원으로 충당하는지 계산한다.
-// 국민연금은 항상 전액, 사적연금은 필요한 만큼만 쓰되 저율과세 한도를 절대 넘지 않고,
-// 남는 필요분은 배당소득/기타소득 -> 자산인출 -> 자산부족 순으로 채운다.
+// 국민연금은 항상 전액, 사적연금은 실제 시뮬레이션 인출액(raw)을 그대로 반영하며(저율과세 한도로
+// 인위적으로 자르지 않음 — 초과세 부담 여부는 comprehensiveTaxPaid/healthInsurancePaid 등 별도
+// 필드로 확인 가능), 남는 필요분은 배당소득/기타소득 -> 자산인출 -> 자산부족 순으로 채운다.
 // 대시보드 차트와 PDF 리포트가 동일한 결과를 보여줘야 하므로 계산 로직을 이 함수 하나로 공유한다.
 export function computeMonthlySpendingComposition(
   yearlyResults: SimulationYearlyResult[],
@@ -20,11 +21,6 @@ export function computeMonthlySpendingComposition(
   result: SimulationResult
 ): MonthlySpendingComposition[] {
   const retirementYearsResults = yearlyResults.filter(r => r.age >= params.userProfile.retirementAge);
-
-  const rawPensionLimit = params.taxSettings?.privatePensionLimit ?? 15000000;
-  const monthlyPensionLimit = params.displayCurrency === 'USD'
-    ? (rawPensionLimit / 12) / params.baseExchangeRate
-    : rawPensionLimit / 12;
 
   return retirementYearsResults.map((r) => {
     const age = r.age;
@@ -52,9 +48,9 @@ export function computeMonthlySpendingComposition(
     // 국민연금은 실제로 매달 전액 지급되므로 항상 raw 값 그대로 사용
     const nationalUsed = national;
 
-    // 사적연금은 필요한 만큼만 쓰되, 저율과세 한도를 절대 넘지 않는다
+    // 사적연금은 필요한 만큼만 쓰되, 실제 인출된 raw 값을 넘지 않는다
     const remainingAfterNational = Math.max(0, actualSpendingMonthly - nationalUsed);
-    const privatePenUsed = Math.min(privatePen, monthlyPensionLimit, remainingAfterNational);
+    const privatePenUsed = Math.min(privatePen, remainingAfterNational);
 
     // 남은 필요분은 배당소득/기타소득이 raw 한도 내에서 채운다
     const remainingAfterPension = Math.max(0, remainingAfterNational - privatePenUsed);

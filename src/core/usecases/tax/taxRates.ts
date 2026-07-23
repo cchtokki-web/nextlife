@@ -26,6 +26,27 @@ export const DEFAULT_PRIVATE_PENSION_EXCESS_TAX_RATE = 16.5; // 한도 초과 �
 export const DEFAULT_COMPREHENSIVE_TAX_RATE = 15; // 금융소득종합과세 초과분 단순화 세율(%)
 export const DEFAULT_HEALTH_INSURANCE_RATE = 5; // 초과분 건강보험료 비율(%)
 
+export interface ProgressiveTaxBracket {
+  minKRW: number; // 이 구간의 하한(초과 시 적용, 미포함)
+  rate: number; // 세율 (0~1)
+  deductionKRW: number; // 누진공제액
+}
+
+// 한국 종합소득세 누진세율표(2024년 기준, 단순화). 사적연금 저율과세 초과분 "단순 비교 모델"
+// 전용으로만 쓰인다. 실제 종합소득세는 근로/사업/기타 소득과 합산되고 각종 소득공제가 적용되지만,
+// 이 앱은 은퇴 후 연금소득만 있다고 가정하는 근사치이므로 사적연금 인출액 자체를 그대로 과세표준으로
+// 취급한다(연금소득공제 등 다른 공제는 반영하지 않음 — 실제보다 세금이 다소 높게 계산될 수 있음).
+export const KOREA_COMPREHENSIVE_INCOME_TAX_BRACKETS_2024: ProgressiveTaxBracket[] = [
+  { minKRW: 0, rate: 0.06, deductionKRW: 0 },
+  { minKRW: 14000000, rate: 0.15, deductionKRW: 1260000 },
+  { minKRW: 50000000, rate: 0.24, deductionKRW: 5760000 },
+  { minKRW: 88000000, rate: 0.35, deductionKRW: 15440000 },
+  { minKRW: 150000000, rate: 0.38, deductionKRW: 19940000 },
+  { minKRW: 300000000, rate: 0.40, deductionKRW: 25940000 },
+  { minKRW: 500000000, rate: 0.42, deductionKRW: 35940000 },
+  { minKRW: 1000000000, rate: 0.45, deductionKRW: 65940000 },
+];
+
 // TaxSettings 기본값 단일 소스. 과거 SimulationEngine.ts/simulator/page.tsx/
 // TaxSettingsSection.tsx/SimpleSimulationAdapter.ts 네 곳에 이 기본값 객체가 각각
 // 하드코딩되어 있었고, 그중 일부는 이미 서로 어긋나 있었다(limitPrivatePensionToTaxLimit
@@ -41,6 +62,7 @@ export const DEFAULT_TAX_SETTINGS: Required<TaxSettings> = {
   privatePensionLimit: DEFAULT_PRIVATE_PENSION_LIMIT_KRW,
   privatePensionExcessTaxRate: DEFAULT_PRIVATE_PENSION_EXCESS_TAX_RATE,
   limitPrivatePensionToTaxLimit: false,
+  enablePensionComprehensiveComparison: true,
 };
 
 export function resolveTaxSettings(partial?: Partial<TaxSettings>): Required<TaxSettings> {

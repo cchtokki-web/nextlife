@@ -3,6 +3,7 @@
 import React from 'react';
 import { SimulationParams, SimulationResult, StrategyRecommendation } from '../../../core/entities/types';
 import { computeMonthlySpendingComposition } from '../../../core/usecases/MonthlySpendingComposition';
+import { explainBequestAdequacy } from '../../../core/usecases/utility/utilityAnalysis';
 import GlassCard from '../../components/GlassCard';
 import { YearlyChart } from './YearlyChart';
 import { CoreMetricsCards } from './CoreMetricsCards';
@@ -323,6 +324,7 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({ params: rawP
         spendingStrategy={params.spendingStrategy}
         inflationRate={params.inflationRate}
         inflationMode={params.inflationMode}
+        bequestAdequacyExplanation={result.utility ? explainBequestAdequacy(params, result) : undefined}
       />
 
       <CoreMetricsCards

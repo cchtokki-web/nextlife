@@ -93,7 +93,13 @@ export interface TaxSettings {
   privatePensionLimit?: number; // 사적연금 저율과세 한도 (원, default: 15000000)
   privatePensionExcessTaxRate?: number; // 한도 초과 시 세율 (%, default: 16.5)
   limitPrivatePensionToTaxLimit?: boolean; // 사적연금 저율과세 한도 내 인출 여부 (default: false)
+  enablePensionComprehensiveComparison?: boolean; // 사적연금 한도초과 시 분리과세(16.5%)와 종합소득세 누진세율
+                                                    // 단순비교 중 유리한 쪽 선택 여부 (default: true).
+                                                    // enablePrivatePensionTax가 false면 이 값과 무관하게 초과세 자체가 없다.
 }
+
+// 사적연금 한도초과세 적용 방식. 'none'은 한도 이하이거나 enablePrivatePensionTax=false인 경우.
+export type PrivatePensionTaxationMethod = 'none' | 'separate' | 'comprehensive';
 
 export type IsaAccountType = 'general' | 'low_income';
 
@@ -149,7 +155,8 @@ export interface SimulationYearlyResult {
   nationalPensionTaxPaid: number; // 국민연금 세금 납부액
   healthInsurancePaid: number; // 건강보험료(추가분) 납부액
   comprehensiveTaxPaid: number; // 금융소득종합과세(추가분) 납부액
-  
+  privatePensionTaxMethod: PrivatePensionTaxationMethod; // 사적연금 한도초과세 적용 방식
+
   spending: number; // 연간 총 생활비 인출
   hasTaxWarning: boolean; // 연간 금융소득이 2,000만원 초과 여부
 
@@ -222,6 +229,7 @@ export interface StrategyRecommendation {
     pensionEndingBalance: number; // 사망 시 연금잔액 변화
     comprehensiveTaxYears: number; // 금융소득종합과세 발생 연수 변화
     healthInsuranceTotal: number; // 평생 건강보험료(추가분) 변화
+    nationalPensionTotal: number; // 평생 국민연금 총 수령액 변화
   };
   totalCandidateCount: number; // 평가를 시도한 후보 전략 수 (탐색할 차원이 없으면 0)
   failedCandidateCount: number; // 그중 SimulationEngine 실행이 실패해 건너뛴 후보 수

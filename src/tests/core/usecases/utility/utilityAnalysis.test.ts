@@ -1,6 +1,6 @@
 import { describe, test, expect } from 'vitest';
-import { analyzeCurrentStrategy } from '@/core/usecases/utility/utilityAnalysis';
-import { UtilityBreakdown } from '@/core/entities/types';
+import { analyzeCurrentStrategy, explainBequestAdequacy } from '@/core/usecases/utility/utilityAnalysis';
+import { SimulationParams, SimulationResult, UtilityBreakdown } from '@/core/entities/types';
 import { DEFAULT_UTILITY_CONFIG } from '@/core/usecases/utility/utilityWeights';
 
 function makeUtility(components: UtilityBreakdown['components']): UtilityBreakdown {
@@ -84,5 +84,52 @@ describe('analyzeCurrentStrategy', () => {
     });
 
     expect(() => analyzeCurrentStrategy(utility, zeroWeightCfg)).not.toThrow();
+  });
+});
+
+function makeParams(targetMonthlySpending: number): SimulationParams {
+  return {
+    userProfile: { currentAge: 60, retirementAge: 60, expectancy: 85, targetMonthlySpending },
+    assets: [],
+    nationalPension: { expectedMonthlyAmount: 0 },
+    privatePensions: [],
+    otherIncomes: [],
+    inflationRate: 0,
+    inflationMode: 'real',
+    baseExchangeRate: 1350,
+    exchangeScenario: 'base',
+    displayCurrency: 'KRW',
+  };
+}
+
+function makeResult(endingAssets: number): SimulationResult {
+  return {
+    yearlyResults: [],
+    fireAge: null,
+    depletionAge: null,
+    endingAssets,
+    retirementScore: 0,
+    retirementGrade: '보통',
+    goalAchievementRate: 0,
+    retirementAssetsAtRetirement: 0,
+  };
+}
+
+describe('explainBequestAdequacy', () => {
+  test('잔여자산이 적정 기준(월생활비*appropriateBequestMonths)보다 많으면 배수를 언급하며 감점 이유를 설명한다', () => {
+    // 적정 기준: 300만원 * 24개월 = 7,200만원. 잔여자산 7억 2천만원 -> 정확히 10배
+    const text = explainBequestAdequacy(makeParams(3000000), makeResult(720000000));
+    expect(text).toContain('10.0배');
+    expect(text).toContain('감점');
+  });
+
+  test('잔여자산이 적정 기준 이하이면 부족하다는 문구를 반환한다', () => {
+    const text = explainBequestAdequacy(makeParams(3000000), makeResult(10000000));
+    expect(text).toContain('부족');
+  });
+
+  test('목표 월 생활비가 0이면 계산 불가 문구를 반환한다', () => {
+    const text = explainBequestAdequacy(makeParams(0), makeResult(100000000));
+    expect(text).toContain('계산할 수 없습니다');
   });
 });

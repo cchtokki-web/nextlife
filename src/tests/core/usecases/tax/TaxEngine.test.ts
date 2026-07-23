@@ -7,8 +7,10 @@ import {
   calculateIsaMaturityTax,
   calculateComprehensiveTaxAndHealthInsuranceKRW,
   calculatePrivatePensionExcessTaxNeededKRW,
+  getComprehensiveIncomeTaxKRW,
 } from '@/core/usecases/tax/TaxEngine';
 import { TaxSettings } from '@/core/entities/types';
+import { InvalidTaxInputError } from '@/core/entities/errors';
 
 const baseTaxSettings: TaxSettings = {
   enableComprehensiveTax: true,
@@ -88,22 +90,67 @@ describe('calculateIsaMaturityTax', () => {
   });
 });
 
+describe('getComprehensiveIncomeTaxKRW', () => {
+  test('과세표준 0이면 0', () => {
+    expect(getComprehensiveIncomeTaxKRW(0)).toBe(0);
+  });
+
+  test('1,400만원 이하 구간: 6%, 공제 없음', () => {
+    expect(getComprehensiveIncomeTaxKRW(10000000)).toBeCloseTo(600000);
+  });
+
+  test('1,400만원 초과 ~5,000만원 이하 구간: 15%, 누진공제 126만원', () => {
+    // 30,000,000 * 0.15 - 1,260,000 = 3,240,000
+    expect(getComprehensiveIncomeTaxKRW(30000000)).toBeCloseTo(3240000);
+  });
+
+  test('구간 경계값(정확히 1,400만원)은 하위 구간(6%) 적용', () => {
+    expect(getComprehensiveIncomeTaxKRW(14000000)).toBeCloseTo(14000000 * 0.06);
+  });
+
+  test('10억 초과 구간: 45%, 누진공제 6,594만원', () => {
+    expect(getComprehensiveIncomeTaxKRW(1200000000)).toBeCloseTo(1200000000 * 0.45 - 65940000);
+  });
+
+  test('음수 입력 시 InvalidTaxInputError', () => {
+    expect(() => getComprehensiveIncomeTaxKRW(-1)).toThrow(InvalidTaxInputError);
+  });
+});
+
 describe('calculateComprehensiveTaxAndHealthInsuranceKRW', () => {
-  test('금융소득이 2천만원 이하이면 세금·건보료 모두 0', () => {
-    const result = calculateComprehensiveTaxAndHealthInsuranceKRW(20000000, baseTaxSettings);
+  const basis = (financial: number, pension: number = 0) => ({
+    annualRawFinancialIncomeKRW: financial,
+    annualRawPensionIncomeKRW: pension,
+  });
+
+  test('금융소득이 2천만원 이하, 연금소득 없음이면 세금·건보료 모두 0', () => {
+    const result = calculateComprehensiveTaxAndHealthInsuranceKRW(basis(20000000), baseTaxSettings);
     expect(result.comprehensiveTaxKRW).toBe(0);
     expect(result.healthInsuranceKRW).toBe(0);
   });
 
-  test('2천만원 초과분에 대해 종합과세율·건보료율을 각각 적용한다', () => {
+  test('2천만원 초과분에 대해 종합과세율·건보료율을 각각 적용한다 (연금소득 0)', () => {
     // 3천만원 -> 초과분 1천만원
-    const result = calculateComprehensiveTaxAndHealthInsuranceKRW(30000000, baseTaxSettings);
+    const result = calculateComprehensiveTaxAndHealthInsuranceKRW(basis(30000000), baseTaxSettings);
     expect(result.comprehensiveTaxKRW).toBeCloseTo(10000000 * 0.15);
     expect(result.healthInsuranceKRW).toBeCloseTo(10000000 * 0.05);
   });
 
-  test('enableComprehensiveTax가 false면 초과해도 세금·건보료 모두 0', () => {
-    const result = calculateComprehensiveTaxAndHealthInsuranceKRW(30000000, {
+  test('금융소득 단독으로는 기준 이하지만, 연금소득을 합산하면 건보료만 발생(종합과세는 0)', () => {
+    // 금융소득 1,000만원(기준 이하) + 연금소득 1,500만원 = 합산 2,500만원 -> 초과 500만원
+    const result = calculateComprehensiveTaxAndHealthInsuranceKRW(basis(10000000, 15000000), baseTaxSettings);
+    expect(result.comprehensiveTaxKRW).toBe(0); // 종합과세 판정은 금융소득만 사용
+    expect(result.healthInsuranceKRW).toBeCloseTo(5000000 * 0.05);
+  });
+
+  test('금융소득+연금소득 합산도 기준 이하면 둘 다 0', () => {
+    const result = calculateComprehensiveTaxAndHealthInsuranceKRW(basis(5000000, 5000000), baseTaxSettings);
+    expect(result.comprehensiveTaxKRW).toBe(0);
+    expect(result.healthInsuranceKRW).toBe(0);
+  });
+
+  test('enableComprehensiveTax가 false면 연금소득 합산으로 건보료 기준을 넘어도 둘 다 0 (마스터 스위치)', () => {
+    const result = calculateComprehensiveTaxAndHealthInsuranceKRW(basis(10000000, 15000000), {
       ...baseTaxSettings,
       enableComprehensiveTax: false,
     });
@@ -111,28 +158,62 @@ describe('calculateComprehensiveTaxAndHealthInsuranceKRW', () => {
     expect(result.healthInsuranceKRW).toBe(0);
   });
 
-  test('enableHealthInsurance가 false면 종합과세만 부과되고 건보료는 0', () => {
-    const result = calculateComprehensiveTaxAndHealthInsuranceKRW(30000000, {
+  test('enableHealthInsurance가 false면 건보료만 0, 종합과세는 정상 부과', () => {
+    const result = calculateComprehensiveTaxAndHealthInsuranceKRW(basis(30000000, 10000000), {
       ...baseTaxSettings,
       enableHealthInsurance: false,
     });
     expect(result.comprehensiveTaxKRW).toBeCloseTo(10000000 * 0.15);
     expect(result.healthInsuranceKRW).toBe(0);
   });
+
+  test('음수 입력 시 InvalidTaxInputError', () => {
+    expect(() => calculateComprehensiveTaxAndHealthInsuranceKRW(basis(-1), baseTaxSettings)).toThrow(
+      InvalidTaxInputError
+    );
+  });
 });
 
 describe('calculatePrivatePensionExcessTaxNeededKRW', () => {
-  test('저율과세 한도 이하이면 0', () => {
-    expect(calculatePrivatePensionExcessTaxNeededKRW(15000000, baseTaxSettings)).toBe(0);
+  test('저율과세 한도 이하이면 0, method는 none', () => {
+    const r = calculatePrivatePensionExcessTaxNeededKRW(15000000, baseTaxSettings);
+    expect(r.taxKRW).toBe(0);
+    expect(r.method).toBe('none');
   });
 
-  test('한도 초과 시 전체 세전 인출액에 초과세율을 적용한 총 필요세액을 반환한다', () => {
-    expect(calculatePrivatePensionExcessTaxNeededKRW(20000000, baseTaxSettings)).toBeCloseTo(20000000 * 0.165);
+  test('한도 초과 & 종합소득세가 더 유리하면 종합과세(누진세율) 선택', () => {
+    // 분리과세: 20,000,000 * 16.5% = 3,300,000
+    // 종합과세: 20,000,000 * 15% - 1,260,000 = 1,740,000 (더 유리)
+    const r = calculatePrivatePensionExcessTaxNeededKRW(20000000, baseTaxSettings);
+    expect(r.taxKRW).toBeCloseTo(1740000);
+    expect(r.method).toBe('comprehensive');
   });
 
-  test('enablePrivatePensionTax가 false면 0', () => {
-    expect(
-      calculatePrivatePensionExcessTaxNeededKRW(20000000, { ...baseTaxSettings, enablePrivatePensionTax: false })
-    ).toBe(0);
+  test('한도 초과 & 고액 구간에서는 누진세율(최고 45%)이 항상 불리하므로 분리과세 선택', () => {
+    const r = calculatePrivatePensionExcessTaxNeededKRW(500000000, baseTaxSettings);
+    expect(r.taxKRW).toBeCloseTo(500000000 * 0.165);
+    expect(r.method).toBe('separate');
+  });
+
+  test('enablePensionComprehensiveComparison=false면 비교 없이 항상 분리과세', () => {
+    const r = calculatePrivatePensionExcessTaxNeededKRW(20000000, {
+      ...baseTaxSettings,
+      enablePensionComprehensiveComparison: false,
+    });
+    expect(r.taxKRW).toBeCloseTo(20000000 * 0.165);
+    expect(r.method).toBe('separate');
+  });
+
+  test('enablePrivatePensionTax가 false면 0, method는 none', () => {
+    const r = calculatePrivatePensionExcessTaxNeededKRW(20000000, {
+      ...baseTaxSettings,
+      enablePrivatePensionTax: false,
+    });
+    expect(r.taxKRW).toBe(0);
+    expect(r.method).toBe('none');
+  });
+
+  test('음수 입력 시 InvalidTaxInputError', () => {
+    expect(() => calculatePrivatePensionExcessTaxNeededKRW(-1, baseTaxSettings)).toThrow(InvalidTaxInputError);
   });
 });

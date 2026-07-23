@@ -1,9 +1,13 @@
-import { UtilityBreakdown, UtilityConfig } from '../../entities/types';
+import { SimulationParams, SimulationResult, UtilityBreakdown, UtilityConfig } from '../../entities/types';
 import { DEFAULT_UTILITY_CONFIG } from './utilityWeights';
 
 export interface CurrentStrategyAnalysis {
   strengths: string[];
   weaknesses: string[];
+}
+
+export function formatManwon(amountKRW: number): string {
+  return `${Math.round(amountKRW / 10000).toLocaleString('ko-KR')}만원`;
 }
 
 const COMPONENT_LABELS: Record<keyof UtilityBreakdown['components'], string> = {
@@ -49,4 +53,30 @@ export function analyzeCurrentStrategy(
   }
 
   return { strengths, weaknesses };
+}
+
+// bequestAdequacy(상속 자산 적정성) 점수가 왜 그렇게 나왔는지 사용자가 이해할 수 있도록
+// UtilityEngine.computeBequestAdequacyRaw와 동일한 산식(적정 잔여자산 = 월 목표생활비 *
+// appropriateBequestMonths)을 근거로 구체적인 금액을 곁들여 설명한다.
+export function explainBequestAdequacy(
+  params: SimulationParams,
+  result: SimulationResult,
+  cfg: UtilityConfig = DEFAULT_UTILITY_CONFIG
+): string {
+  const appropriateBalance = params.userProfile.targetMonthlySpending * cfg.appropriateBequestMonths;
+  if (appropriateBalance <= 0) {
+    return '목표 월 생활비가 설정되지 않아 적정 상속 자산 기준을 계산할 수 없습니다.';
+  }
+
+  const ratio = result.endingAssets / appropriateBalance;
+  if (ratio > 1) {
+    return (
+      `적정 상속 자산 기준(목표 월생활비 ${cfg.appropriateBequestMonths}개월치 = 약 ${formatManwon(appropriateBalance)})보다 ` +
+      `예상 잔여자산(약 ${formatManwon(result.endingAssets)})이 약 ${ratio.toFixed(1)}배 많아 감점되었습니다. ` +
+      `자산을 다 쓰지 못하고 남기는 것도 Lifetime Utility 관점에서는 비효율로 간주됩니다.`
+    );
+  }
+  return (
+    `예상 잔여자산(약 ${formatManwon(result.endingAssets)})이 적정 상속 자산 기준(약 ${formatManwon(appropriateBalance)}) 대비 부족합니다.`
+  );
 }

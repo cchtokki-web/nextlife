@@ -22,6 +22,7 @@ const zeroDeltas: StrategyRecommendation['deltas'] = {
   pensionEndingBalance: 0,
   comprehensiveTaxYears: 0,
   healthInsuranceTotal: 0,
+  nationalPensionTotal: 0,
 };
 
 // 사적연금 잔액이 매우 커서(6억) 균등분할 인출 시 사망 시점까지 상당액이 남는,
@@ -260,6 +261,7 @@ function makeYearlyResult(overrides: Partial<SimulationYearlyResult>): Simulatio
     nationalPensionTaxPaid: 0,
     healthInsurancePaid: 0,
     comprehensiveTaxPaid: 0,
+    privatePensionTaxMethod: 'none',
     spending: 0,
     hasTaxWarning: false,
     ...overrides,
@@ -304,6 +306,19 @@ describe('computeDeltas - baseline/recommended 실제 수치 차이 계산', () 
     expect(deltas.pensionEndingBalance).toBe(150); // 550(마지막 해) - 400(마지막 해)
     expect(deltas.comprehensiveTaxYears).toBe(1); // 2개 연도(hasTaxWarning) - 1개 연도
     expect(deltas.healthInsuranceTotal).toBe(-15); // 30 - 45
+  });
+
+  test('nationalPensionTotal은 baseline/recommended 간 국민연금 총 수령액 차이와 일치한다', () => {
+    const baselineNat = makeSimulationResult(
+      [makeYearlyResult({ age: 60, year: 2026, nationalPensionIncome: 1000 })],
+      0
+    );
+    const recommendedNat = makeSimulationResult(
+      [makeYearlyResult({ age: 60, year: 2026, nationalPensionIncome: 700 })],
+      0
+    );
+    const deltas = computeDeltas(baselineNat, recommendedNat);
+    expect(deltas.nationalPensionTotal).toBe(-300);
   });
 });
 
@@ -521,5 +536,25 @@ describe('buildReasons - 국민연금 조기/연기수령 문구', () => {
 
     const reasonsUndefined = buildReasons({}, zeroDeltas, true);
     expect(reasonsUndefined.some((r) => r.includes('국민연금'))).toBe(false);
+  });
+
+  test('조기 수령 문구에 deltas.nationalPensionTotal 기준 평생 총 수령액 변화가 병기된다', () => {
+    const reasons = buildReasons(
+      { nationalPensionStartAge: 60 },
+      { ...zeroDeltas, nationalPensionTotal: -50000000 },
+      true
+    );
+    expect(reasons.some((r) => r.includes('60세') && r.includes('감소'))).toBe(true);
+  });
+});
+
+describe('buildReasons - pensionEndingBalance 증가 케이스', () => {
+  test('사망 시 연금잔액이 증가하면(가치판단 없이) 사실만 보고하는 문구를 반환한다', () => {
+    const reasons = buildReasons(
+      { privatePensionStartAge: 65 },
+      { ...zeroDeltas, pensionEndingBalance: 30000000 },
+      true
+    );
+    expect(reasons.some((r) => r.includes('연금잔액') && r.includes('증가'))).toBe(true);
   });
 });
