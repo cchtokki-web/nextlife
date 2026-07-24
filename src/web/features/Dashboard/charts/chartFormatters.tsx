@@ -1,3 +1,4 @@
+import { type YAxisTickContentProps } from 'recharts';
 import { AssetCurrency } from '../../../../core/entities/types';
 
 // DashboardSection의 자산추이/소득원구성/생활비구성 차트 3종이 공유하는 포맷터.
@@ -50,17 +51,12 @@ export function formatShortValue(val: number, currency: AssetCurrency): string {
   return `$ ${Math.round(val)}`;
 }
 
-interface MultilineYAxisTickProps {
-  x: number;
-  y: number;
-  payload: { value: number };
-  textAnchor?: 'start' | 'middle' | 'end';
-  fill?: string;
+type MultilineYAxisTickProps = Pick<YAxisTickContentProps, 'x' | 'y' | 'payload' | 'textAnchor' | 'fill'> & {
   currency: AssetCurrency;
-}
+};
 
 export function MultilineYAxisTick({ x, y, payload, textAnchor, fill, currency }: MultilineYAxisTickProps) {
-  const formatted = formatShortValue(payload.value, currency);
+  const formatted = formatShortValue(Number(payload.value), currency);
 
   let numPart = formatted;
   let unitPart = '';
@@ -78,14 +74,15 @@ export function MultilineYAxisTick({ x, y, payload, textAnchor, fill, currency }
   }
 
   const dx = textAnchor === 'end' ? -2 : textAnchor === 'start' ? 2 : 0;
+  const numX = Number(x) + dx;
 
   return (
-    <text x={x + dx} y={y} textAnchor={textAnchor} fill={fill || 'var(--foreground-muted)'} fontSize="0.65rem">
-      <tspan x={x + dx} dy="-0.2em">
+    <text x={numX} y={y} textAnchor={textAnchor} fill={fill || 'var(--foreground-muted)'} fontSize="0.65rem">
+      <tspan x={numX} dy="-0.2em">
         {numPart}
       </tspan>
       {unitPart && (
-        <tspan x={x + dx} dy="1.1em">
+        <tspan x={numX} dy="1.1em">
           {unitPart}
         </tspan>
       )}

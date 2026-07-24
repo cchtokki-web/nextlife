@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import { useSession } from 'next-auth/react';
 import GlassCard from '../../../components/GlassCard';
 import { Collapse } from '../../../components/ui';
@@ -23,6 +24,15 @@ export function AiSummaryHero({ formatValue, mode, onToggleMode, canApply, ...ad
   const userNamePrefix = session?.user?.name ? `${session.user.name}님의 ` : '';
   const { utility, recommendation, depletionAge, userProfile } = advisorInput;
   const aiAdvisor = useAiAdvisor(advisorInput);
+
+  // 에러/rule-based 폴백은 사용자가 반드시 알아야 할 신호라, 접힌 패널 안에 숨어있지 않도록
+  // 발생 즉시 자동으로 펼친다(닫는 것은 여전히 사용자가 직접 할 수 있음 — controlled 모드).
+  const [isAdviceOpen, setIsAdviceOpen] = useState(false);
+  useEffect(() => {
+    if (aiAdvisor.error || (aiAdvisor.isRuleBased && !aiAdvisor.isLoading)) {
+      setIsAdviceOpen(true);
+    }
+  }, [aiAdvisor.error, aiAdvisor.isRuleBased, aiAdvisor.isLoading]);
 
   if (!utility) return null;
 
@@ -70,7 +80,24 @@ export function AiSummaryHero({ formatValue, mode, onToggleMode, canApply, ...ad
         {canApply && <ApplyRecommendationButton mode={mode} onToggle={onToggleMode} />}
       </div>
 
-      <Collapse title="AI 노후 설계사 상세 의견 보기" className="mt-4">
+      <Collapse
+        title={
+          <span className="inline-flex items-center gap-2">
+            AI 노후 설계사 상세 의견 보기
+            {aiAdvisor.error && (
+              <span className="rounded-full bg-danger/10 px-2 py-0.5 text-xs font-semibold text-danger">오류 발생</span>
+            )}
+            {!aiAdvisor.error && aiAdvisor.isRuleBased && !aiAdvisor.isLoading && (
+              <span className="rounded-full border border-card-border px-2 py-0.5 text-xs font-semibold text-foreground-muted">
+                기본 안내 표시 중
+              </span>
+            )}
+          </span>
+        }
+        open={isAdviceOpen}
+        onOpenChange={setIsAdviceOpen}
+        className="mt-4"
+      >
         <AiAdviceText
           displayAdvice={aiAdvisor.displayAdvice}
           isLoading={aiAdvisor.isLoading}

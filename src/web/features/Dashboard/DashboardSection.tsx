@@ -69,11 +69,22 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
   const { mode, toggle, canApply } = useBeforeAfterToggle({ recommendation });
   const displayedResult = mode === 'after' && recommendation ? recommendation.recommendedResult : result;
 
-  const isMonthlyTargetPossible = result.depletionAge === null || result.depletionAge >= params.userProfile.expectancy;
+  // baseline(현재 설정) 기준 월 목표 생활비 — AI 노후 설계사 의견은 Before/After 미리보기와
+  // 무관하게 항상 "실제 설정"을 근거로 답해야 하므로 이 값을 그대로 쓴다.
   const monthlyTarget =
     params.spendingStrategy === 'max_sustainable' && result.calculatedTargetSpending
       ? result.calculatedTargetSpending
       : params.userProfile.targetMonthlySpending;
+
+  // KPI/지표는 화면에 실제로 표시 중인 결과(displayedResult)를 따라가야 한다 — After 모드에서
+  // 추천안이 생활비 배수(monthlySpendingMultiplier)를 포함하면 그만큼 반영하고, 고갈가능여부도
+  // baseline이 아니라 displayedResult 기준으로 판단한다.
+  const isMonthlyTargetPossible =
+    displayedResult.depletionAge === null || displayedResult.depletionAge >= params.userProfile.expectancy;
+  const displayedMonthlyTarget =
+    mode === 'after' && recommendation?.recommendedPlan?.monthlySpendingMultiplier
+      ? Math.round(monthlyTarget * recommendation.recommendedPlan.monthlySpendingMultiplier)
+      : monthlyTarget;
 
   const captions = generateChartCaptions(displayedResult, params);
 
@@ -150,14 +161,14 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
         survivalScore={displayedResult.retirementScore}
         expectancy={params.userProfile.expectancy}
         endingAssets={displayedResult.endingAssets}
-        monthlyTarget={monthlyTarget}
+        monthlyTarget={displayedMonthlyTarget}
         utilityScore={displayedResult.utility?.score}
         formatValue={formatValue}
       />
       <SecondaryKpiCollapse
         depletionAge={displayedResult.depletionAge}
         expectancyAge={params.userProfile.expectancy}
-        monthlyTarget={monthlyTarget}
+        monthlyTarget={displayedMonthlyTarget}
         isMonthlyTargetPossible={isMonthlyTargetPossible}
         formatValue={formatValue}
         calculatedTargetSpending={result.calculatedTargetSpending}

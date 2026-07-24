@@ -327,6 +327,41 @@ describe('computeItemizedContributions', () => {
     expect(items[0].deltas.nationalPensionTotal).not.toBe(0);
   });
 
+  test('2개 필드가 동시에 바뀌어도 각 필드를 독립적으로(단일 필드만 override) 평가해 서로 다른 deltas를 생성한다', () => {
+    const engine = new SimulationEngine();
+    const identityPlan = getIdentityPlan(paramsWithLargePension);
+    const baselineResult = engine.runForUtility(paramsWithLargePension);
+    const currentUtility = computeLifetimeUtility(baselineResult, paramsWithLargePension, DEFAULT_UTILITY_CONFIG);
+    // identityPlan의 privatePensionStartAge/retirementAge(60)와 다르게, 국민연금 연기(70)와
+    // 사적연금 개시 연령(65) 둘 다 바뀐 추천안 — 루프가 필드별로 격리되는지 검증한다.
+    const recommendedPlan = { ...identityPlan, nationalPensionStartAge: 70, privatePensionStartAge: 65 };
+
+    const items = computeItemizedContributions(
+      paramsWithLargePension,
+      identityPlan,
+      recommendedPlan,
+      currentUtility,
+      baselineResult,
+      engine,
+      DEFAULT_UTILITY_CONFIG
+    );
+
+    expect(items).toHaveLength(2);
+
+    const nationalPensionItem = items.find((item) => item.label.includes('국민연금'));
+    const privatePensionItem = items.find((item) => item.label.includes('사적연금'));
+    expect(nationalPensionItem).toBeDefined();
+    expect(privatePensionItem).toBeDefined();
+
+    // 국민연금 항목은 nationalPensionStartAge 하나만 baseline에 적용한 결과라, 사적연금
+    // 시작연령은 바뀌지 않았으므로 그 필드의 delta는 0이어야 한다(두 필드를 한꺼번에 섞어
+    // 적용하는 버그였다면 이 값도 함께 바뀌어 0이 아니게 된다).
+    expect(nationalPensionItem!.deltas.nationalPensionTotal).not.toBe(0);
+    expect(privatePensionItem!.label).toContain('65세');
+    // 두 항목의 deltas가 서로 동일하지 않아야(각자 다른 단일 필드 override 결과여야) 한다.
+    expect(nationalPensionItem!.deltas).not.toEqual(privatePensionItem!.deltas);
+  });
+
   test('recommendedPlan이 identityPlan과 완전히 같으면 빈 배열을 반환한다', () => {
     const engine = new SimulationEngine();
     const identityPlan = getIdentityPlan(paramsWithLargePension);

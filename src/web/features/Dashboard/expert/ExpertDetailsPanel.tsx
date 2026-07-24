@@ -73,8 +73,11 @@ export function ExpertDetailsPanel({
           <h4 className="mb-2 text-sm font-semibold">연금 구성 및 리스크</h4>
           <ul className="flex flex-col gap-1.5 text-xs text-foreground-muted">
             <li>
-              국민연금은 {analytics.firstAgeWithNationalPension}세부터 수령을 시작합니다
-              {analytics.pensionGapYears > 0 ? ` (은퇴 후 ${analytics.pensionGapYears}년의 연금 공백 기간이 있습니다)` : ''}.
+              {analytics.firstAgeWithNationalPension === null
+                ? '국민연금 없이 사적연금·배당·기타소득으로 생활비를 충당합니다.'
+                : `국민연금은 ${analytics.firstAgeWithNationalPension}세부터 수령을 시작합니다` +
+                  (analytics.pensionGapYears > 0 ? ` (은퇴 후 ${analytics.pensionGapYears}년의 연금 공백 기간이 있습니다)` : '') +
+                  '.'}
             </li>
             {analytics.everComprehensiveTax && (
               <li className="text-danger">⚠️ 금융소득종합과세 대상이 되는 연도가 있습니다.</li>

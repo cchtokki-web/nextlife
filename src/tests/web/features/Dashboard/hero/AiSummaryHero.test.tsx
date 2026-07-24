@@ -1,5 +1,5 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import { AiSummaryHero } from '@/web/features/Dashboard/hero/AiSummaryHero';
 import { StrategyRecommendation, SimulationResult, UtilityBreakdown } from '@/core/entities/types';
 
@@ -120,5 +120,50 @@ describe('AiSummaryHero', () => {
 
     expect(screen.getByText(/76.*→.*81/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '추천 적용하기' })).toBeInTheDocument();
+  });
+
+  test('AI 의견 fetch가 실패하면 상세 의견 패널이 자동으로 펼쳐져 클릭 없이 에러 문구가 보인다', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('network fail')));
+
+    render(
+      <AiSummaryHero
+        formatValue={formatValue}
+        mode="current"
+        onToggleMode={vi.fn()}
+        canApply={false}
+        score={80}
+        monthlyTarget={3000000}
+        isPro={false}
+        depletionAge={null}
+        utility={utility}
+        userProfile={{ currentAge: 55, retirementAge: 60, expectancy: 90, targetMonthlySpending: 3000000 }}
+      />
+    );
+
+    await waitFor(() => expect(screen.getByText('AI 의견을 가져오는 데 실패했습니다.')).toBeInTheDocument());
+  });
+
+  test('isRuleBased 응답이면 상세 의견 패널이 자동으로 펼쳐져 클릭 없이 안내 배지가 보인다', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(makeStreamResponse([JSON.stringify({ isRuleBased: true, response: '기본 안내' })]))
+    );
+
+    render(
+      <AiSummaryHero
+        formatValue={formatValue}
+        mode="current"
+        onToggleMode={vi.fn()}
+        canApply={false}
+        score={80}
+        monthlyTarget={3000000}
+        isPro={false}
+        depletionAge={null}
+        utility={utility}
+        userProfile={{ currentAge: 55, retirementAge: 60, expectancy: 90, targetMonthlySpending: 3000000 }}
+      />
+    );
+
+    await waitFor(() => expect(screen.getByText('AI 서버 연결 불가 · 기본 안내 표시 중')).toBeInTheDocument());
   });
 });

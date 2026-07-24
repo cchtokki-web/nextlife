@@ -88,4 +88,21 @@ describe('RecommendationChecklist', () => {
     expect(screen.getByText('총 +5.0 Utility')).toBeInTheDocument();
     expect(screen.getByText(/상호작용을/)).toBeInTheDocument();
   });
+
+  test('개별 항목의 utilityDelta가 음수(상호작용으로 인한 marginal 손실)여도 이중부호 없이 올바르게 표시한다', () => {
+    const recommendation = makeRecommendation({
+      improved: true,
+      itemizedContributions: [
+        {
+          label: '국민연금을 60세부터 조기 수령합니다.',
+          utilityDelta: -1.2,
+          deltas: { ...zeroDeltas, totalTax: 500000 },
+        },
+      ],
+    });
+    render(<RecommendationChecklist recommendation={recommendation} formatValue={formatValue} />);
+
+    expect(screen.getByText('-1.2 Utility')).toBeInTheDocument();
+    expect(screen.queryByText('+-1.2 Utility')).not.toBeInTheDocument();
+  });
 });

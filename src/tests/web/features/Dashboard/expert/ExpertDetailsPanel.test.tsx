@@ -90,4 +90,26 @@ describe('ExpertDetailsPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: '전문가용 상세 분석 더 보기' }));
     expect(screen.getByText('연도별 상세 내역')).toBeInTheDocument();
   });
+
+  test('국민연금이 전혀 없으면 "65세부터 수령"이 아니라 "국민연금 없이" 문구를 보여준다', () => {
+    const noNationalPensionResult: SimulationResult = {
+      ...result,
+      yearlyResults: [makeYearlyResult({ age: 65, nationalPensionIncome: 0 })],
+    };
+    const noNationalPensionParams: SimulationParams = { ...params, nationalPension: { expectedMonthlyAmount: 0 } };
+
+    render(
+      <ExpertDetailsPanel
+        result={noNationalPensionResult}
+        params={noNationalPensionParams}
+        utility={utility}
+        formatValue={formatValue}
+        isPro={false}
+      />
+    );
+    fireEvent.click(screen.getByRole('button', { name: '전문가용 상세 분석 더 보기' }));
+
+    expect(screen.getByText('국민연금 없이 사적연금·배당·기타소득으로 생활비를 충당합니다.')).toBeInTheDocument();
+    expect(screen.queryByText(/65세부터 수령/)).not.toBeInTheDocument();
+  });
 });

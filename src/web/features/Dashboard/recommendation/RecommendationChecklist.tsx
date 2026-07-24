@@ -67,8 +67,9 @@ export function RecommendationChecklist({
                 <Check size={16} className="mt-0.5 shrink-0 text-success" aria-hidden="true" />
                 {item.label}
               </span>
-              <span className="shrink-0 text-sm font-semibold text-success">
-                +{item.utilityDelta.toFixed(1)} Utility
+              <span className={`shrink-0 text-sm font-semibold ${item.utilityDelta >= 0 ? 'text-success' : 'text-danger'}`}>
+                {item.utilityDelta >= 0 ? '+' : ''}
+                {item.utilityDelta.toFixed(1)} Utility
               </span>
             </div>
             <div className="ml-6 mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-foreground-muted">

@@ -1,12 +1,21 @@
 'use client';
 
 import React from 'react';
-import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Legend, CartesianGrid, type LegendPayload } from 'recharts';
+import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Legend, CartesianGrid, type LegendPayload, type YAxisTickContentProps } from 'recharts';
 import GlassCard from '../../../components/GlassCard';
 import styles from '../Dashboard.module.css';
 import { SimulationParams, SimulationResult } from '../../../../core/entities/types';
 import { formatValue, MultilineYAxisTick, RECHARTS_TOOLTIP_STYLE } from './chartFormatters';
 import { ChartCaption } from './ChartCaption';
+
+// recharts는 Bar의 label render prop에 대한 공개 타입을 제공하지 않는다 — 실제 런타임에
+// 전달되는 필드 중 이 컴포넌트가 실제로 쓰는 것만 명시적으로 선언한다.
+interface BarLabelRenderProps {
+  x: number;
+  y: number;
+  width: number;
+  index: number;
+}
 
 interface IncomeCompositionChartProps {
   params: SimulationParams;
@@ -60,11 +69,11 @@ export function IncomeCompositionChart({ params, result, hiddenKeys, onLegendCli
               <YAxis
                 stroke="var(--foreground-muted)"
                 width={34}
-                tick={(props: any) => <MultilineYAxisTick {...props} currency={currency} />}
+                tick={(props: YAxisTickContentProps) => <MultilineYAxisTick {...props} currency={currency} />}
               />
               <Tooltip
                 contentStyle={RECHARTS_TOOLTIP_STYLE}
-                formatter={(value: any) => [formatValue(Number(value), currency), '']}
+                formatter={(value: unknown) => [formatValue(Number(value), currency), '']}
                 labelFormatter={(label) => (label.toString().includes('세') ? label : `${label}세`)}
               />
               <Legend
@@ -82,8 +91,11 @@ export function IncomeCompositionChart({ params, result, hiddenKeys, onLegendCli
                 stackId="a"
                 fill="#F59E0B"
                 hide={!!hiddenKeys['기타소득']}
-                label={(props: any) => {
-                  const { x, y, width, index } = props;
+                label={(props: unknown) => {
+                  // recharts는 Bar label render prop의 index/rect 좌표에 대한 공개 타입을 제공하지
+                  // 않는다(공식 Props 타입에 index 필드 자체가 없음) — 실제 런타임 shape을 명시한
+                  // BarLabelRenderProps로 좁혀서 쓴다.
+                  const { x, y, width, index } = props as BarLabelRenderProps;
                   if (!pensionChartData[index]?.hasTaxWarning) return <React.Fragment key={index} />;
                   return (
                     <text key={index} x={x + width / 2} y={y - 8} textAnchor="middle" fontSize="12" fill="#EF4444">

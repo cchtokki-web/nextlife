@@ -11,6 +11,7 @@ import {
   CartesianGrid,
   ReferenceLine,
   type LegendPayload,
+  type YAxisTickContentProps,
 } from 'recharts';
 import GlassCard from '../../../components/GlassCard';
 import styles from '../Dashboard.module.css';
@@ -71,11 +72,11 @@ export function SpendingCompositionChart({ params, result, hiddenKeys, onLegendC
               <YAxis
                 stroke="var(--foreground-muted)"
                 width={34}
-                tick={(props: any) => <MultilineYAxisTick {...props} currency={currency} />}
+                tick={(props: YAxisTickContentProps) => <MultilineYAxisTick {...props} currency={currency} />}
               />
               <Tooltip
                 contentStyle={RECHARTS_TOOLTIP_STYLE}
-                formatter={(value: any) => [formatValue(Number(value), currency), '']}
+                formatter={(value: unknown) => [formatValue(Number(value), currency), '']}
                 labelFormatter={(label) => (label.toString().includes('세') ? label : `${label}세 (월 생활비 구성)`)}
               />
               <Legend

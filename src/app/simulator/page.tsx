@@ -300,6 +300,9 @@ export default function Home() {
           display: flex;
           justify-content: space-between;
         }
+        .pdf-page ul {
+          list-style: disc;
+        }
       `;
       container.appendChild(styleBlock);
 

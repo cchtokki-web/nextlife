@@ -80,9 +80,10 @@ describe('computeExpertAnalytics', () => {
     expect(analytics.pensionGapYears).toBe(5);
   });
 
-  test('국민연금 수령 이력이 전혀 없으면 65세를 기본값으로 사용한다', () => {
+  test('국민연금 수령 이력이 전혀 없으면 null이고(65세로 임의 가정하지 않음) 공백 연수도 0이다', () => {
     const analytics = computeExpertAnalytics(makeResult([makeYearlyResult({ age: 60 })]), baseParams);
-    expect(analytics.firstAgeWithNationalPension).toBe(65);
+    expect(analytics.firstAgeWithNationalPension).toBeNull();
+    expect(analytics.pensionGapYears).toBe(0);
   });
 
   test('금융소득종합과세 납부 또는 경고가 있던 해가 있으면 everComprehensiveTax가 true다', () => {

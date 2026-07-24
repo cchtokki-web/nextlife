@@ -11,6 +11,7 @@ import {
   Legend,
   CartesianGrid,
   type LegendPayload,
+  type YAxisTickContentProps,
 } from 'recharts';
 import { TrendingDown } from 'lucide-react';
 import GlassCard from '../../../components/GlassCard';
@@ -107,18 +108,18 @@ export function AssetGrowthChart({
                 yAxisId="left"
                 stroke="var(--foreground-muted)"
                 width={34}
-                tick={(props: any) => <MultilineYAxisTick {...props} currency={currency} />}
+                tick={(props: YAxisTickContentProps) => <MultilineYAxisTick {...props} currency={currency} />}
               />
               <YAxis
                 yAxisId="right"
                 orientation="right"
                 stroke="#F59E0B"
                 width={38}
-                tick={(props: any) => <MultilineYAxisTick {...props} fill="#F59E0B" currency={currency} />}
+                tick={(props: YAxisTickContentProps) => <MultilineYAxisTick {...props} fill="#F59E0B" currency={currency} />}
               />
               <Tooltip
                 contentStyle={RECHARTS_TOOLTIP_STYLE}
-                formatter={(value: any) => [formatValue(Number(value), currency), '']}
+                formatter={(value: unknown) => [formatValue(Number(value), currency), '']}
                 labelFormatter={(label) => `${label}세`}
               />
               <Legend

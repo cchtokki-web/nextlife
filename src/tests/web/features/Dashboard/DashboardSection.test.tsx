@@ -1,7 +1,14 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { DashboardSection } from '@/web/features/Dashboard/DashboardSection';
-import { SimulationParams, SimulationResult, SimulationYearlyResult, StrategyRecommendation, UtilityBreakdown } from '@/core/entities/types';
+import {
+  CompleteWithdrawalPlan,
+  SimulationParams,
+  SimulationResult,
+  SimulationYearlyResult,
+  StrategyRecommendation,
+  UtilityBreakdown,
+} from '@/core/entities/types';
 
 vi.mock('next-auth/react', () => ({
   useSession: () => ({ data: null }),
@@ -141,9 +148,36 @@ describe('DashboardSection - IA 순서', () => {
     render(<DashboardSection params={params} result={result} recommendation={rec} />);
 
     expect(screen.queryByText('81점')).not.toBeInTheDocument();
+    expect(screen.getByText('5억원')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: '추천 적용하기' }));
 
     expect(screen.getByText('81점')).toBeInTheDocument();
+    // 순자산 KPI도 endingAssets(자산증가분)를 그대로 반영해야 한다 — utilityScore 하나만으로는
+    // 다른 하위 컴포넌트에 baseline 값이 잘못 배선돼도 잡아내지 못한다.
+    expect(screen.getByText('9억 9,900만원')).toBeInTheDocument();
+    expect(screen.queryByText('5억원')).not.toBeInTheDocument();
+  });
+
+  test('추천안에 생활비 배수(monthlySpendingMultiplier)가 포함되면 After 모드에서 예상 월 생활비 KPI가 그만큼 늘어난다', () => {
+    const recommendedPlan: CompleteWithdrawalPlan = {
+      privatePensionStartAge: 60,
+      privatePensionMonthlyTarget: 0,
+      nationalPensionStartAge: 65,
+      assetSellOrderStrategy: 'input_order',
+      isaMaturityDestination: 'pension',
+      generalAssetWithdrawalStartAge: 60,
+      monthlySpendingMultiplier: 1.2,
+    };
+    const rec: StrategyRecommendation = { ...recommendation, recommendedPlan };
+
+    render(<DashboardSection params={params} result={result} recommendation={rec} />);
+
+    expect(screen.getByText('300만원')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: '추천 적용하기' }));
+
+    expect(screen.getByText('360만원')).toBeInTheDocument();
+    expect(screen.queryByText('300만원')).not.toBeInTheDocument();
   });
 });
