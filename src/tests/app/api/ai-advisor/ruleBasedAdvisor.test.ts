@@ -1,6 +1,6 @@
 import { describe, test, expect } from 'vitest';
 import { generateRuleBasedAdvice } from '@/app/api/ai-advisor/ruleBasedAdvisor';
-import { StrategyRecommendation, UtilityBreakdown } from '@/core/entities/types';
+import { SimulationResult, StrategyRecommendation, UtilityBreakdown } from '@/core/entities/types';
 
 const baseUtility: UtilityBreakdown = {
   score: 76,
@@ -9,6 +9,17 @@ const baseUtility: UtilityBreakdown = {
 
 const zeroDeltas: StrategyRecommendation['deltas'] = {
   lifetimeConsumption: 0, totalTax: 0, endingAssets: 0, pensionEndingBalance: 0, comprehensiveTaxYears: 0, healthInsuranceTotal: 0, nationalPensionTotal: 0,
+};
+
+const emptyResult: SimulationResult = {
+  yearlyResults: [],
+  fireAge: 65,
+  depletionAge: null,
+  endingAssets: 0,
+  retirementScore: 0,
+  retirementGrade: '보통',
+  goalAchievementRate: 100,
+  retirementAssetsAtRetirement: 0,
 };
 
 function makeRecommendation(currentScore: number, recommendedScore: number): StrategyRecommendation {
@@ -30,6 +41,8 @@ function makeRecommendation(currentScore: number, recommendedScore: number): Str
     deltas: zeroDeltas,
     totalCandidateCount: 12,
     failedCandidateCount: 0,
+    recommendedResult: emptyResult,
+    itemizedContributions: [],
   };
 }
 

@@ -1,22 +1,21 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { Calendar, Wallet, TrendingUp, TrendingDown } from 'lucide-react';
+import { Calendar, TrendingUp, TrendingDown } from 'lucide-react';
 import styles from './Dashboard.module.css';
 
 interface CoreMetricsCardsProps {
   depletionAge: number | null;
   expectancyAge: number;
-  assetAt60: number;
   monthlyTarget: number;
   isMonthlyTargetPossible: boolean;
   formatValue: (val: number) => string;
   calculatedTargetSpending?: number;
 }
 
+// "60세 예상 자산" 카드는 CoreKpiGrid의 "예상 순자산" KPI와 정보가 겹쳐 이 축소판에서는 제거했다.
 export const CoreMetricsCards: React.FC<CoreMetricsCardsProps> = ({
   depletionAge,
   expectancyAge,
-  assetAt60,
   monthlyTarget,
   isMonthlyTargetPossible,
   formatValue,
@@ -63,21 +62,7 @@ export const CoreMetricsCards: React.FC<CoreMetricsCardsProps> = ({
         </div>
       </motion.div>
 
-      {/* Card 2: Age 60 Asset */}
-      <motion.div variants={itemVariants} className={styles.coreMetricCard}>
-        <div className={styles.coreIconWrapper}>
-          <Wallet size={24} className={styles.coreIcon} />
-        </div>
-        <div className={styles.coreCardContent}>
-          <h4 className={styles.coreCardTitle}>60세 예상 자산</h4>
-          <div className={styles.coreCardValue}>
-            {formatValue(assetAt60)}
-          </div>
-          <p className={styles.coreCardDesc}>현재 가치 기준 환산 금액</p>
-        </div>
-      </motion.div>
-
-      {/* Card 3: Living Standard */}
+      {/* Card 2: Living Standard */}
       <motion.div variants={itemVariants} className={styles.coreMetricCard}>
         <div className={styles.coreIconWrapper}>
           <TrendingUp size={24} className={styles.coreIcon} />

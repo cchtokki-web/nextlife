@@ -233,6 +233,21 @@ export interface StrategyRecommendation {
   };
   totalCandidateCount: number; // 평가를 시도한 후보 전략 수 (탐색할 차원이 없으면 0)
   failedCandidateCount: number; // 그중 SimulationEngine 실행이 실패해 건너뛴 후보 수
+  // 추천 전략(recommendedPlan) 적용 시 전체 연도별 시뮬레이션 결과. improved가 false이면
+  // baseline과 동일한 결과(currentUtility를 만든 결과)가 그대로 채워진다. 결과 화면의
+  // Before(baseline)/After(recommendedResult) 비교에 사용한다.
+  recommendedResult: SimulationResult;
+  // recommendedPlan이 identityPlan(아무 것도 안 바꾼 기준안) 대비 실제로 바뀐 필드 각각에 대해,
+  // "그 필드 하나만 baseline에 적용했을 때"의 독립적인(marginal) 효과. 필드 간 상호작용은
+  // 반영하지 않으므로, 이 배열의 utilityDelta 합계는 (recommendedUtility.score - currentUtility.score)와
+  // 정확히 일치하지 않을 수 있다. improved가 false이면 빈 배열이다.
+  itemizedContributions: ItemizedContribution[];
+}
+
+export interface ItemizedContribution {
+  label: string; // 사용자 친화적 문구 (예: "국민연금을 70세까지 연기 수령")
+  utilityDelta: number; // 이 변경 하나만 적용했을 때의 Utility 증가분(marginal, baseline 대비)
+  deltas: StrategyRecommendation['deltas']; // 동일 변경의 절세/자산증가 등 전체 delta
 }
 
 export interface ScenarioModel {

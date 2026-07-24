@@ -1,5 +1,6 @@
 import {
   CompleteWithdrawalPlan,
+  ItemizedContribution,
   SimulationParams,
   SimulationResult,
   StrategyRecommendation,
@@ -201,6 +202,109 @@ function paramsForCandidate(params: SimulationParams, plan: CompleteWithdrawalPl
   };
 }
 
+const PLAN_FIELDS: Array<keyof CompleteWithdrawalPlan> = [
+  'privatePensionStartAge',
+  'privatePensionMonthlyTarget',
+  'nationalPensionStartAge',
+  'assetSellOrderStrategy',
+  'isaMaturityDestination',
+  'generalAssetWithdrawalStartAge',
+  'monthlySpendingMultiplier',
+];
+
+// computeItemizedContributions 전용 문구 생성. buildReasons와 문장 목적이 달라(전역 최적화 결과
+// 설명 vs 단일 필드의 독립 효과 설명) 의도적으로 분리했다 — 특히 nationalPensionStartAge/
+// monthlySpendingMultiplier는 buildReasons가 여러 필드가 함께 바뀐 상태의 deltas를 문구에
+// 병기하는 반면, 여기서는 그 필드 하나만 바꿨을 때의 deltas(itemDeltas)를 병기한다.
+function labelForSingleFieldChange(
+  field: keyof CompleteWithdrawalPlan,
+  recommendedPlan: CompleteWithdrawalPlan,
+  identityPlan: CompleteWithdrawalPlan,
+  itemDeltas: StrategyRecommendation['deltas'],
+  originalMonthlyTarget: number
+): string {
+  switch (field) {
+    case 'privatePensionStartAge':
+      return `${recommendedPlan.privatePensionStartAge}세부터 사적연금 인출을 시작합니다.`;
+    case 'privatePensionMonthlyTarget':
+      return `사적연금을 월 약 ${formatManwon(recommendedPlan.privatePensionMonthlyTarget)} 수준으로 정액 인출합니다.`;
+    case 'generalAssetWithdrawalStartAge':
+      return `${recommendedPlan.generalAssetWithdrawalStartAge}세부터 일반 자산(주식/ETF) 인출을 시작합니다.`;
+    case 'assetSellOrderStrategy':
+      if (recommendedPlan.assetSellOrderStrategy === 'low_dividend_first') {
+        return '배당수익률이 낮은 자산부터 매도해 배당 소득원을 오래 유지합니다.';
+      }
+      if (recommendedPlan.assetSellOrderStrategy === 'high_dividend_first') {
+        return '배당수익률이 높은 자산부터 매도해 향후 금융소득종합과세 위험을 낮춥니다.';
+      }
+      return '자산 매도 순서를 조정합니다.';
+    case 'isaMaturityDestination':
+      return recommendedPlan.isaMaturityDestination === 'asset'
+        ? 'ISA 만기 자금을 사적연금 대신 일반 자산으로 이동합니다.'
+        : 'ISA 만기 자금을 연금 계좌로 이동합니다.';
+    case 'nationalPensionStartAge': {
+      const totalChangeText =
+        `평생 총 수령액 약 ${formatManwon(Math.abs(itemDeltas.nationalPensionTotal))} ` +
+        `${itemDeltas.nationalPensionTotal < 0 ? '감소' : '증가'}`;
+      return recommendedPlan.nationalPensionStartAge < identityPlan.nationalPensionStartAge
+        ? `국민연금을 ${recommendedPlan.nationalPensionStartAge}세부터 조기 수령합니다 (${totalChangeText}).`
+        : `국민연금을 ${recommendedPlan.nationalPensionStartAge}세까지 연기 수령합니다 (${totalChangeText}).`;
+    }
+    case 'monthlySpendingMultiplier': {
+      const before = originalMonthlyTarget;
+      const after = Math.round(before * recommendedPlan.monthlySpendingMultiplier);
+      return (
+        `목표 생활비를 월 약 ${formatManwon(before)} → ${formatManwon(after)}` +
+        `(약 ${formatManwon(after - before)} 증액)로 늘립니다.`
+      );
+    }
+    default:
+      return assertNever(field);
+  }
+}
+
+// recommendedPlan이 identityPlan 대비 실제로 바뀐 필드 각각에 대해, "그 필드 하나만 baseline에
+// 적용했을 때"의 독립적인(marginal) Utility/절세/자산 효과를 계산한다. 바뀐 필드가 N개면 N번의
+// 추가 시뮬레이션이 발생한다(N은 보통 1~7) — 기존 최대 866개 후보 평가 대비 무시할 수준이다.
+// 필드 간 상호작용은 반영하지 않으므로, 반환값의 utilityDelta 합계는 recommendStrategy가 최종
+// 반환하는 전체 개선폭(recommendedUtility.score - currentUtility.score)과 정확히 일치하지 않을 수 있다.
+export function computeItemizedContributions(
+  params: SimulationParams,
+  identityPlan: CompleteWithdrawalPlan,
+  recommendedPlan: CompleteWithdrawalPlan,
+  currentUtility: UtilityBreakdown,
+  baselineResult: SimulationResult,
+  engine: SimulationEngine,
+  cfg: UtilityConfig
+): ItemizedContribution[] {
+  const changedFields = PLAN_FIELDS.filter((field) => recommendedPlan[field] !== identityPlan[field]);
+
+  const contributions: ItemizedContribution[] = [];
+  for (const field of changedFields) {
+    try {
+      const overridePlan: CompleteWithdrawalPlan = { ...identityPlan, [field]: recommendedPlan[field] };
+      const overrideParams = paramsForCandidate(params, overridePlan);
+      const singleFieldResult = engine.runForUtility(overrideParams);
+      const singleFieldUtility = computeLifetimeUtility(singleFieldResult, overrideParams, cfg);
+      const itemDeltas = computeDeltas(baselineResult, singleFieldResult);
+      contributions.push({
+        label: labelForSingleFieldChange(
+          field,
+          recommendedPlan,
+          identityPlan,
+          itemDeltas,
+          params.userProfile.targetMonthlySpending
+        ),
+        utilityDelta: singleFieldUtility.score - currentUtility.score,
+        deltas: itemDeltas,
+      });
+    } catch (err) {
+      console.warn('Skipping itemized contribution that failed to simulate', field, err);
+    }
+  }
+  return contributions;
+}
+
 interface CandidateSearchState {
   bestResult: SimulationResult;
   bestUtility: UtilityBreakdown;
@@ -289,6 +393,9 @@ export function recommendStrategy(
     originalMonthlyTarget: params.userProfile.targetMonthlySpending,
     identityPlan,
   });
+  const itemizedContributions = bestPlan
+    ? computeItemizedContributions(params, identityPlan, bestPlan, currentUtility, baselineResult, engine, cfg)
+    : [];
 
   return {
     currentUtility,
@@ -299,5 +406,7 @@ export function recommendStrategy(
     totalCandidateCount: candidateStats.total,
     failedCandidateCount: candidateStats.failed,
     deltas,
+    recommendedResult: bestResult,
+    itemizedContributions,
   };
 }

@@ -1,30 +1,22 @@
-"use client";
+'use client';
 
 import React from 'react';
+import { type LegendPayload } from 'recharts';
+import { Award, Zap } from 'lucide-react';
 import { SimulationParams, SimulationResult, StrategyRecommendation } from '../../../core/entities/types';
-import { computeMonthlySpendingComposition } from '../../../core/usecases/MonthlySpendingComposition';
 import { explainBequestAdequacy } from '../../../core/usecases/utility/utilityAnalysis';
-import GlassCard from '../../components/GlassCard';
-import { YearlyChart } from './YearlyChart';
-import { CoreMetricsCards } from './CoreMetricsCards';
-import { UtilityCard } from './UtilityCard';
+import { generateChartCaptions } from '../../../core/usecases/dashboard/generateChartCaptions';
 import styles from './Dashboard.module.css';
-import { AlertTriangle, TrendingDown, Target, Zap, Award, Calculator } from 'lucide-react';
-import {
-  ResponsiveContainer,
-  ComposedChart,
-  AreaChart,
-  Area,
-  Line,
-  XAxis,
-  YAxis,
-  Tooltip,
-  BarChart,
-  Bar,
-  Legend,
-  CartesianGrid,
-  ReferenceLine,
-} from 'recharts';
+import { formatValue as formatValueForCurrency } from './charts/chartFormatters';
+import { AssetGrowthChart } from './charts/AssetGrowthChart';
+import { IncomeCompositionChart } from './charts/IncomeCompositionChart';
+import { SpendingCompositionChart } from './charts/SpendingCompositionChart';
+import { CoreKpiGrid } from './kpi/CoreKpiGrid';
+import { SecondaryKpiCollapse } from './kpi/SecondaryKpiCollapse';
+import { RecommendationChecklist } from './recommendation/RecommendationChecklist';
+import { AiSummaryHero } from './hero/AiSummaryHero';
+import { ExpertDetailsPanel } from './expert/ExpertDetailsPanel';
+import { useBeforeAfterToggle } from './hooks/useBeforeAfterToggle';
 
 interface DashboardSectionProps {
   params: SimulationParams;
@@ -36,16 +28,24 @@ interface DashboardSectionProps {
   isComputingRecommendation?: boolean;
 }
 
-export const DashboardSection: React.FC<DashboardSectionProps> = ({ params: rawParams, result, compareResults = [], isPro = false, recommendation, recommendationFailed = false, isComputingRecommendation = false }) => {
+// 결과 화면 오케스트레이터. 하위 조각(Hero/KPI/체크리스트/차트/전문가상세)을 IA 순서대로
+// 배치만 하고, 각 조각의 렌더링/계산 책임은 해당 컴포넌트/usecase가 갖는다.
+export const DashboardSection: React.FC<DashboardSectionProps> = ({
+  params: rawParams,
+  result,
+  compareResults = [],
+  isPro = false,
+  recommendation,
+  recommendationFailed = false,
+  isComputingRecommendation = false,
+}) => {
   const [hiddenKeys, setHiddenKeys] = React.useState<Record<string, boolean>>({});
 
-  const handleLegendClick = (e: any) => {
-    const dataKey = e.dataKey;
-    if (dataKey) {
-      setHiddenKeys((prev) => ({
-        ...prev,
-        [dataKey]: !prev[dataKey]
-      }));
+  const handleLegendClick = (data: LegendPayload) => {
+    const dataKey = data.dataKey;
+    if (dataKey !== undefined) {
+      const key = String(dataKey);
+      setHiddenKeys((prev) => ({ ...prev, [key]: !prev[key] }));
     }
   };
 
@@ -62,207 +62,24 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({ params: rawP
     displayCurrency: rawParams?.displayCurrency || 'KRW',
     spendingStrategy: rawParams?.spendingStrategy || 'target',
   };
-  const { yearlyResults, fireAge, depletionAge, endingAssets, retirementScore, goalAchievementRate } = result;
+
   const currency = params.displayCurrency;
+  const formatValue = (val: number) => formatValueForCurrency(val, currency);
 
-  // Currency Formatter
-  const formatValue = (val: number): string => {
-    if (val <= 0) return '0원';
-    if (currency === 'KRW') {
-      const valueInMan = Math.round(val / 10000);
-      if (valueInMan === 0) return '0원';
+  const { mode, toggle, canApply } = useBeforeAfterToggle({ recommendation });
+  const displayedResult = mode === 'after' && recommendation ? recommendation.recommendedResult : result;
 
-      const gyeong = Math.floor(valueInMan / 1000000000000);
-      const jo = Math.floor((valueInMan % 1000000000000) / 100000000);
-      const eok = Math.floor((valueInMan % 100000000) / 10000);
-      const man = valueInMan % 10000;
-
-      const parts = [];
-      if (gyeong > 0) parts.push(`${gyeong.toLocaleString()}경`);
-      if (jo > 0) parts.push(`${jo.toLocaleString()}조`);
-      if (eok > 0) parts.push(`${eok.toLocaleString()}억`);
-      if (man > 0) parts.push(`${man.toLocaleString()}만`);
-
-      return parts.join(' ') + '원';
-    } else {
-      if (val >= 1000000) {
-        return `$ ${(val / 1000000).toFixed(2)}M`;
-      }
-      if (val >= 1000) {
-        return `$ ${(val / 1000).toFixed(1)}K`;
-      }
-      return `$ ${Math.round(val).toLocaleString()}`;
-    }
-  };
-
-  const formatShortValue = (val: number): string => {
-    if (val <= 0) return '0원';
-    if (currency === 'KRW') {
-      if (val >= 1000000000000) {
-        const num = val / 1000000000000;
-        return `${num % 1 === 0 ? num : num.toFixed(1)}조원`;
-      }
-      if (val >= 100000000) {
-        const num = val / 100000000;
-        return `${num % 1 === 0 ? num : num.toFixed(1)}억원`;
-      }
-      return `${Math.round(val / 10000)}만원`;
-    } else {
-      if (val >= 1000000) {
-        const num = val / 1000000;
-        return `$ ${num % 1 === 0 ? num : num.toFixed(1)}M`;
-      }
-      if (val >= 1000) {
-        const num = val / 1000;
-        return `$ ${num % 1 === 0 ? num : num.toFixed(0)}K`;
-      }
-      return `$ ${Math.round(val)}`;
-    }
-  };
-
-  const MultilineYAxisTick = (props: any) => {
-    const { x, y, payload, textAnchor, fill } = props;
-    const formatted = formatShortValue(payload.value);
-    
-    let numPart = formatted;
-    let unitPart = "";
-    
-    const krwMatch = formatted.match(/^([\d.]+)([가-힣]+)$/);
-    if (krwMatch) {
-      numPart = krwMatch[1];
-      unitPart = krwMatch[2];
-    } else {
-      const usdMatch = formatted.match(/^(\$ *[\d.]+)([A-Z]*)$/);
-      if (usdMatch) {
-        numPart = usdMatch[1];
-        unitPart = usdMatch[2];
-      }
-    }
-
-    const dx = textAnchor === 'end' ? -2 : (textAnchor === 'start' ? 2 : 0);
-
-    return (
-      <text x={x + dx} y={y} textAnchor={textAnchor} fill={fill || "var(--foreground-muted)"} fontSize="0.65rem">
-        <tspan x={x + dx} dy="-0.2em">{numPart}</tspan>
-        {unitPart && <tspan x={x + dx} dy="1.1em">{unitPart}</tspan>}
-      </text>
-    );
-  };
-
-  // Retirement averages for Tax Comparison
-  const retirementYearsResults = yearlyResults.filter(r => r.age >= params.userProfile.retirementAge);
-  let avgPreTaxIncome = 0;
-  let avgTotalTax = 0;
-  let avgHealthInsurance = 0;
-  let avgNetIncome = 0;
-  
-  if (retirementYearsResults.length > 0) {
-    avgPreTaxIncome = retirementYearsResults.reduce((sum, r) => sum + r.preTaxTotalIncome, 0) / retirementYearsResults.length;
-    avgTotalTax = retirementYearsResults.reduce((sum, r) => sum + (r.dividendTaxPaid + r.pensionTaxPaid + r.nationalPensionTaxPaid + r.comprehensiveTaxPaid), 0) / retirementYearsResults.length;
-    avgHealthInsurance = retirementYearsResults.reduce((sum, r) => sum + r.healthInsurancePaid, 0) / retirementYearsResults.length;
-    avgNetIncome = retirementYearsResults.reduce((sum, r) => sum + r.totalIncome, 0) / retirementYearsResults.length;
-  }
-
-  // Income breakdown (cover the entire period to align with Asset Projection chart)
-  const pensionChartData = yearlyResults
-    .map((r) => {
-      return {
-        age: r.age,
-        국민연금: Math.round(r.nationalPensionIncome),
-        사적연금: Math.round(r.privatePensionIncome),
-        배당소득: Math.round(r.dividendIncome),
-        기타소득: Math.round(r.otherIncome),
-        hasTaxWarning: r.hasTaxWarning,
-      };
-    });
-
-  const rawPensionLimit = params.taxSettings?.privatePensionLimit ?? 15000000;
-  const monthlyPensionLimit = params.displayCurrency === 'USD'
-    ? (rawPensionLimit / 12) / params.baseExchangeRate
-    : rawPensionLimit / 12;
-
-  // 월 생활비 구성 그래프 데이터 (은퇴 나이 이후 대상). PDF 리포트와 동일한 계산 로직을 공유한다.
-  const spendingChartData = computeMonthlySpendingComposition(yearlyResults, params, result).map((d) => ({
-    age: d.age,
-    국민연금: d.nationalUsed,
-    사적연금: d.privatePenUsed,
-    배당소득: d.dividendUsed,
-    기타소득: d.otherUsed,
-    자산인출: d.assetWithdrawal,
-    자산부족: d.shortfall,
-  }));
-
-  // Assets Line chart data formatting (Merge base with compare scenarios)
-  const assetChartData = yearlyResults.map((r) => {
-    const dataPoint: any = {
-      age: r.age,
-      ageLabel: `${r.age}세`,
-      자산총액: Math.max(0, Math.round(r.totalAssets)),
-      주식자산: Math.max(0, Math.round(r.stockAssets)),
-      연금자산: Math.max(0, Math.round(r.pensionAssets)),
-      월생활비: Math.max(0, Math.round(r.spending / 12)),
-    };
-
-    compareResults.forEach((comp) => {
-      const compYear = comp.result.yearlyResults.find(yr => yr.age === r.age);
-      if (compYear) {
-        dataPoint[`compare_${comp.id}`] = Math.max(0, Math.round(compYear.totalAssets));
-      }
-    });
-
-    return dataPoint;
-  });
-
-  // Colors for comparison lines
-  const compareColors = ['#10B981', '#F59E0B', '#EF4444', '#8B5CF6'];
-
-  // Score Circle coordinates
-  const radius = 50;
-  const strokeWidth = 8;
-  const normalizedRadius = radius - strokeWidth * 2;
-  const circumference = normalizedRadius * 2 * Math.PI;
-  const strokeDashoffset = circumference - (result.retirementScore / 100) * circumference;
-
-  // Goal circle Dash offset
-  const minGoalRate = Math.min(100, result.goalAchievementRate);
-  const goalDashoffset = circumference - (minGoalRate / 100) * circumference;
-
-  // New Data Extractions
-  const assetAt60 = yearlyResults.find(r => r.age === 60)?.totalAssets || 0;
   const isMonthlyTargetPossible = result.depletionAge === null || result.depletionAge >= params.userProfile.expectancy;
+  const monthlyTarget =
+    params.spendingStrategy === 'max_sustainable' && result.calculatedTargetSpending
+      ? result.calculatedTargetSpending
+      : params.userProfile.targetMonthlySpending;
 
-  // --- Dynamic Simulation-Responsive Tax & Decumulation Analytics ---
-  
-  // 1. Check if and when assets get depleted
-  const isDepleted = result.depletionAge !== null && result.depletionAge < params.userProfile.expectancy;
-  const depletionAgeVal = result.depletionAge;
-
-  // 2. Identify the age where national pension starts being received
-  const firstAgeWithNationalPension = yearlyResults.find(r => r.nationalPensionIncome > 0)?.age || 65;
-  const retirementAgeVal = params.userProfile.retirementAge;
-  const pensionGapYears = Math.max(0, firstAgeWithNationalPension - retirementAgeVal);
-
-  // 3. Find if the user ever pays comprehensive tax or has warning
-  const everComprehensiveTax = yearlyResults.some(r => r.comprehensiveTaxPaid > 0 || r.hasTaxWarning);
-  
-  // 4. Calculate high-tax pension ages (where private pension exceeds configured limit)
-  const pensionLimit = params.taxSettings?.privatePensionLimit ?? 15000000;
-  const highPrivatePensionAges = yearlyResults
-    .filter(r => (r.privatePensionIncome + r.pensionTaxPaid) > pensionLimit)
-    .map(r => r.age);
-  const hasHighPrivatePensionRisk = highPrivatePensionAges.length > 0;
-
-  // 5. Total dividend income proportion
-  const avgYearlyDividend = retirementYearsResults.length > 0
-    ? retirementYearsResults.reduce((sum, r) => sum + r.dividendIncome, 0) / retirementYearsResults.length
-    : 0;
-  const hasSignificantDividends = avgYearlyDividend > 5000000; // Over 5 million KRW annually
-
-
+  const captions = generateChartCaptions(displayedResult, params);
 
   return (
     <div className={styles.container}>
-      {/* Strategy Indicator Banner */}
+      {/* Strategy Indicator Banners — 항상 baseline(현재 설정) 기준, Before/After 토글과 무관 */}
       {params.spendingStrategy === 'max_sustainable' && result.calculatedTargetSpending !== undefined && (
         <div className={styles.warningCard} style={{ background: 'rgba(16, 185, 129, 0.1)', borderColor: 'rgba(16, 185, 129, 0.3)', marginBottom: '1.5rem' }}>
           <Award size={22} className={styles.warningIcon} color="var(--success)" />
@@ -301,18 +118,18 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({ params: rawP
         </div>
       )}
 
-      <UtilityCard
-        utility={result.utility}
-        recommendation={recommendation}
-        recommendationFailed={recommendationFailed}
-        isComputingRecommendation={isComputingRecommendation}
+      {/* STEP 1: AI Summary Hero */}
+      <AiSummaryHero
         formatValue={formatValue}
+        mode={mode}
+        onToggleMode={toggle}
+        canApply={canApply}
         score={result.retirementScore}
         retirementGrade={result.retirementGrade}
-        depletionAge={result.depletionAge}
-        monthlyTarget={params.spendingStrategy === 'max_sustainable' && result.calculatedTargetSpending ? result.calculatedTargetSpending : params.userProfile.targetMonthlySpending}
+        monthlyTarget={monthlyTarget}
         isPro={isPro}
         userProfile={params.userProfile}
+        depletionAge={result.depletionAge}
         goalAchievementRate={result.goalAchievementRate}
         fireAge={result.fireAge}
         endingAssets={result.endingAssets}
@@ -324,314 +141,69 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({ params: rawP
         spendingStrategy={params.spendingStrategy}
         inflationRate={params.inflationRate}
         inflationMode={params.inflationMode}
-        bequestAdequacyExplanation={result.utility ? explainBequestAdequacy(params, result) : undefined}
+        utility={result.utility}
+        recommendation={recommendation}
       />
 
-      <CoreMetricsCards
-        depletionAge={result.depletionAge}
+      {/* STEP 2: 핵심 KPI */}
+      <CoreKpiGrid
+        survivalScore={displayedResult.retirementScore}
+        expectancy={params.userProfile.expectancy}
+        endingAssets={displayedResult.endingAssets}
+        monthlyTarget={monthlyTarget}
+        utilityScore={displayedResult.utility?.score}
+        formatValue={formatValue}
+      />
+      <SecondaryKpiCollapse
+        depletionAge={displayedResult.depletionAge}
         expectancyAge={params.userProfile.expectancy}
-        assetAt60={assetAt60}
-        monthlyTarget={params.spendingStrategy === 'max_sustainable' && result.calculatedTargetSpending ? result.calculatedTargetSpending : params.userProfile.targetMonthlySpending}
+        monthlyTarget={monthlyTarget}
         isMonthlyTargetPossible={isMonthlyTargetPossible}
         formatValue={formatValue}
         calculatedTargetSpending={result.calculatedTargetSpending}
       />
 
+      {/* STEP 3: AI 추천 전략 체크리스트 */}
+      <RecommendationChecklist
+        recommendation={recommendation}
+        recommendationFailed={recommendationFailed}
+        isComputingRecommendation={isComputingRecommendation}
+        formatValue={formatValue}
+      />
 
+      {/* STEP 4: 그래프 3종 (각 상단에 rule-based AI 캡션) */}
+      <AssetGrowthChart
+        params={params}
+        result={displayedResult}
+        compareResults={compareResults}
+        hiddenKeys={hiddenKeys}
+        onLegendClick={handleLegendClick}
+        caption={captions.assetGrowth}
+      />
+      <IncomeCompositionChart
+        params={params}
+        result={displayedResult}
+        hiddenKeys={hiddenKeys}
+        onLegendClick={handleLegendClick}
+        caption={captions.incomeComposition}
+      />
+      <SpendingCompositionChart
+        params={params}
+        result={displayedResult}
+        hiddenKeys={hiddenKeys}
+        onLegendClick={handleLegendClick}
+        caption={captions.spendingComposition}
+      />
 
-
-
-
-      {/* 3. Asset Projection Line Chart */}
-      <GlassCard className={styles.chartCard}>
-        <div className={styles.chartHeader}>
-          <span className={styles.chartTitle}>
-            자산 추이 시뮬레이션 (현재 ~ {params.userProfile.expectancy}세)
-            <span style={{ fontSize: '0.85em', color: 'var(--foreground-muted)', marginLeft: '8px', fontWeight: 'normal' }}>
-              ({params.inflationMode === 'nominal' ? '명목가치' : '실질가치'} 기준)
-            </span>
-          </span>
-          {depletionAge ? (
-            <span className={styles.depletionAlertBadge}>
-              <TrendingDown size={12} style={{ marginRight: '0.25rem', verticalAlign: 'middle' }} />
-              {depletionAge}세 자산 고갈 발생
-            </span>
-          ) : (
-            <span className={styles.successBadge}>안정적인 노후 자산 유지됨</span>
-          )}
-        </div>
-        <div className={styles.chartScrollWrapper}>
-          <div className={styles.chartContainer}>
-            <ResponsiveContainer width="100%" height="100%">
-            <ComposedChart data={assetChartData} margin={{ top: 10, right: 5, left: 0, bottom: 0 }}>
-              <defs>
-                <linearGradient id="totalAssetColor" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="var(--primary)" stopOpacity={0.4} />
-                  <stop offset="95%" stopColor="var(--primary)" stopOpacity={0.0} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255, 255, 255, 0.05)" />
-              <XAxis
-                dataKey="age"
-                stroke="var(--foreground-muted)"
-                style={{ fontSize: '0.75rem' }}
-                tickFormatter={(v) => `${v}세`}
-                minTickGap={15}
-                scale="point"
-                padding={{ left: 15, right: 15 }}
-              />
-              <YAxis
-                yAxisId="left"
-                stroke="var(--foreground-muted)"
-                width={34}
-                tick={(props) => <MultilineYAxisTick {...props} />}
-              />
-              <YAxis
-                yAxisId="right"
-                orientation="right"
-                stroke="#F59E0B"
-                width={38}
-                tick={(props) => <MultilineYAxisTick {...props} fill="#F59E0B" />}
-              />
-              <Tooltip
-                contentStyle={{
-                  background: 'rgba(17, 24, 39, 0.85)',
-                  border: '1px solid var(--card-border)',
-                  borderRadius: '12px',
-                  color: 'white',
-                  fontFamily: 'var(--font-main)',
-                  fontSize: '0.8rem',
-                }}
-                formatter={(value: any) => [formatValue(Number(value)), '']}
-                labelFormatter={(label) => `${label}세`}
-              />
-              <Legend 
-                verticalAlign="top" 
-                height={36} 
-                wrapperStyle={{ fontSize: '0.8rem', color: 'var(--foreground-muted)', cursor: 'pointer' }} 
-                onClick={handleLegendClick}
-              />
-              
-              <Area
-                yAxisId="left"
-                name="총 자산액 (현재)"
-                type="monotone"
-                dataKey="자산총액"
-                stroke="var(--primary)"
-                fillOpacity={1}
-                fill="url(#totalAssetColor)"
-                strokeWidth={3}
-                hide={!!hiddenKeys['자산총액']}
-              />
-              
-              {/* Compare Scenarios Lines */}
-              {compareResults.map((comp, idx) => (
-                <Line
-                  key={comp.id}
-                  yAxisId="left"
-                  name={`${comp.name} (비교)`}
-                  type="monotone"
-                  dataKey={`compare_${comp.id}`}
-                  stroke={compareColors[idx % compareColors.length]}
-                  strokeWidth={2}
-                  dot={false}
-                  hide={!!hiddenKeys[`compare_${comp.id}`]}
-                />
-              ))}
-
-              <Area
-                yAxisId="left"
-                name="주식/ETF 자산"
-                type="monotone"
-                dataKey="주식자산"
-                stroke="var(--accent)"
-                fill="transparent"
-                strokeDasharray="4 4"
-                strokeWidth={1.5}
-                hide={!!hiddenKeys['주식자산']}
-              />
-              <Area
-                yAxisId="left"
-                name="연금 자산"
-                type="monotone"
-                dataKey="연금자산"
-                stroke="var(--secondary)"
-                fill="transparent"
-                strokeDasharray="4 4"
-                strokeWidth={1.5}
-                hide={!!hiddenKeys['연금자산']}
-              />
-              <Line
-                yAxisId="right"
-                name="월 생활비"
-                type="monotone"
-                dataKey="월생활비"
-                stroke="#F59E0B"
-                strokeWidth={2}
-                dot={false}
-                hide={!!hiddenKeys['월생활비']}
-              />
-            </ComposedChart>
-          </ResponsiveContainer>
-          </div>
-        </div>
-      </GlassCard>
-
-      {/* 4. Income Breakdown Stacked Bar Chart */}
-      <GlassCard className={styles.chartCard}>
-        <div className={styles.chartHeader}>
-          <span className={styles.chartTitle}>
-            연령별 소득원 구성 (현재 ~ {params.userProfile.expectancy}세)
-            <span style={{ fontSize: '0.85em', color: 'var(--foreground-muted)', marginLeft: '8px', fontWeight: 'normal' }}>
-              ({params.inflationMode === 'nominal' ? '명목가치' : '실질가치'} 기준)
-            </span>
-          </span>
-          {pensionChartData.some((d) => d.hasTaxWarning) && (
-            <span style={{ fontSize: '0.75rem', color: '#EF4444', fontWeight: 600 }}>
-              ⚠️ 금융소득종합과세 위험(세전 배당소득 연 2,000만원 초과) 연도
-            </span>
-          )}
-        </div>
-        <div className={styles.chartScrollWrapper}>
-          <div className={styles.chartContainer}>
-            <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={pensionChartData} margin={{ top: 24, right: 43, left: 0, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255, 255, 255, 0.05)" />
-              <XAxis
-                dataKey="age"
-                stroke="var(--foreground-muted)"
-                style={{ fontSize: '0.75rem' }}
-                tickFormatter={(v) => `${v}세`}
-                minTickGap={15}
-                scale="point"
-                padding={{ left: 15, right: 15 }}
-              />
-              <YAxis
-                stroke="var(--foreground-muted)"
-                width={34}
-                tick={(props) => <MultilineYAxisTick {...props} />}
-              />
-              <Tooltip
-                contentStyle={{
-                  background: 'rgba(17, 24, 39, 0.85)',
-                  border: '1px solid var(--card-border)',
-                  borderRadius: '12px',
-                  color: 'white',
-                  fontFamily: 'var(--font-main)',
-                  fontSize: '0.8rem',
-                }}
-                formatter={(value: any) => [formatValue(Number(value)), '']}
-                labelFormatter={(label) => label.toString().includes('세') ? label : `${label}세`}
-              />
-              <Legend 
-                verticalAlign="top" 
-                height={36} 
-                wrapperStyle={{ fontSize: '0.8rem', cursor: 'pointer' }} 
-                onClick={handleLegendClick}
-              />
-              <Bar name="국민연금" dataKey="국민연금" stackId="a" fill="#10B981" hide={!!hiddenKeys['국민연금']} />
-              <Bar name="사적연금" dataKey="사적연금" stackId="a" fill="#A855F7" hide={!!hiddenKeys['사적연금']} />
-              <Bar name="배당소득" dataKey="배당소득" stackId="a" fill="#3B82F6" hide={!!hiddenKeys['배당소득']} />
-              <Bar
-                name="기타소득"
-                dataKey="기타소득"
-                stackId="a"
-                fill="#F59E0B"
-                hide={!!hiddenKeys['기타소득']}
-                label={(props: any) => {
-                  const { x, y, width, index } = props;
-                  if (!pensionChartData[index]?.hasTaxWarning) return <React.Fragment key={index} />;
-                  return (
-                    <text key={index} x={x + width / 2} y={y - 8} textAnchor="middle" fontSize="12" fill="#EF4444">
-                      ⚠️
-                    </text>
-                  );
-                }}
-              />
-            </BarChart>
-          </ResponsiveContainer>
-          </div>
-        </div>
-      </GlassCard>
-
-      {/* 5. 은퇴 후 연령별 월 생활비 재원 구성 그래프 */}
-      <GlassCard className={styles.chartCard}>
-        <div className={styles.chartHeader}>
-          <span className={styles.chartTitle}>
-            은퇴 후 연령별 월 생활비 재원 구성 ({params.userProfile.retirementAge}세 ~ {params.userProfile.expectancy}세)
-            <span style={{ fontSize: '0.85em', color: 'var(--foreground-muted)', marginLeft: '8px', fontWeight: 'normal' }}>
-              ({params.inflationMode === 'nominal' ? '명목가치' : '실질가치'} 기준, 월별 환산)
-            </span>
-          </span>
-        </div>
-        <div className={styles.chartScrollWrapper}>
-          <div className={styles.chartContainer}>
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={spendingChartData} margin={{ top: 10, right: 43, left: 0, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255, 255, 255, 0.05)" />
-                <XAxis
-                  dataKey="age"
-                  stroke="var(--foreground-muted)"
-                  style={{ fontSize: '0.75rem' }}
-                  tickFormatter={(v) => `${v}세`}
-                  minTickGap={10}
-                  scale="point"
-                  padding={{ left: 15, right: 15 }}
-                />
-                <YAxis
-                  stroke="var(--foreground-muted)"
-                  width={34}
-                  tick={(props) => <MultilineYAxisTick {...props} />}
-                />
-                <Tooltip
-                  contentStyle={{
-                    background: 'rgba(17, 24, 39, 0.85)',
-                    border: '1px solid var(--card-border)',
-                    borderRadius: '12px',
-                    color: 'white',
-                    fontFamily: 'var(--font-main)',
-                    fontSize: '0.8rem',
-                  }}
-                  formatter={(value: any) => [formatValue(Number(value)), '']}
-                  labelFormatter={(label) => label.toString().includes('세') ? label : `${label}세 (월 생활비 구성)`}
-                />
-                <Legend 
-                  verticalAlign="top" 
-                  height={36} 
-                  wrapperStyle={{ fontSize: '0.8rem', cursor: 'pointer' }} 
-                  onClick={handleLegendClick}
-                />
-                <Bar name="사적연금" dataKey="사적연금" stackId="a" fill="#A855F7" hide={!!hiddenKeys['사적연금']} />
-                <Bar name="국민연금" dataKey="국민연금" stackId="a" fill="#10B981" hide={!!hiddenKeys['국민연금']} />
-                <Bar name="배당소득" dataKey="배당소득" stackId="a" fill="#3B82F6" hide={!!hiddenKeys['배당소득']} />
-                <Bar name="기타소득" dataKey="기타소득" stackId="a" fill="#F59E0B" hide={!!hiddenKeys['기타소득']} />
-                <Bar name="자산인출" dataKey="자산인출" stackId="a" fill="#EC4899" hide={!!hiddenKeys['자산인출']} />
-                <Bar name="자산부족" dataKey="자산부족" stackId="a" fill="#EF4444" hide={!!hiddenKeys['자산부족']} />
-                <ReferenceLine
-                  y={monthlyPensionLimit}
-                  stroke="#F8FAFC"
-                  strokeDasharray="4 4"
-                  strokeWidth={1.5}
-                  label={{
-                    value: `사적연금 저율과세 한도 (${formatValue(monthlyPensionLimit)}/월)`,
-                    fill: '#F8FAFC',
-                    position: 'insideBottomLeft',
-                    fontSize: '0.65rem',
-                    fontWeight: 600,
-                    offset: 10
-                  }}
-                />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-      </GlassCard>
-
-
-
-      {/* 6. Yearly Detailed Chart */}
-      {isPro && <YearlyChart params={params} result={result} />}
-
+      {/* STEP 5: 전문가용 상세 분석 (기본 Collapse) */}
+      <ExpertDetailsPanel
+        result={displayedResult}
+        params={params}
+        utility={displayedResult.utility}
+        bequestAdequacyExplanation={displayedResult.utility ? explainBequestAdequacy(params, displayedResult) : undefined}
+        isPro={isPro}
+        formatValue={formatValue}
+      />
     </div>
   );
 };

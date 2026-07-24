@@ -12,7 +12,7 @@ import { useSession } from 'next-auth/react';
 import { initialParams } from '../../../infrastructure/storage/localStore';
 import { isDevMode } from '../../../core/utils/isDevMode';
 
-import { ScenarioComparisonCards } from '../Dashboard/ScenarioComparisonCards';
+import { ScenarioComparisonCards } from './ScenarioComparisonCards';
 import styles from './SimpleSimulator.module.css';
 
 export function SimpleSimulator() {

@@ -1,8 +1,14 @@
 import { describe, test, expect } from 'vitest';
 import { SimulationEngine } from '@/core/usecases/SimulationEngine';
-import { recommendStrategy, buildReasons, computeDeltas } from '@/core/usecases/strategy/RecommendationEngine';
-import { generateCandidatePlans } from '@/core/usecases/strategy/StrategyCandidateGenerator';
+import {
+  recommendStrategy,
+  buildReasons,
+  computeDeltas,
+  computeItemizedContributions,
+} from '@/core/usecases/strategy/RecommendationEngine';
+import { generateCandidatePlans, getIdentityPlan } from '@/core/usecases/strategy/StrategyCandidateGenerator';
 import { computeLifetimeUtility } from '@/core/usecases/utility/UtilityEngine';
+import { DEFAULT_UTILITY_CONFIG } from '@/core/usecases/utility/utilityWeights';
 import {
   AssetSellOrderStrategy,
   CompleteWithdrawalPlan,
@@ -239,6 +245,104 @@ describe('recommendStrategy - 생활비 증액(Phase 2) 후보', () => {
     const baseCandidateCount = generateCandidatePlans(params).length;
 
     expect(recommendation.totalCandidateCount).toBe(baseCandidateCount);
+  });
+});
+
+describe('recommendStrategy - recommendedResult', () => {
+  test('improved가 true면 recommendedResult가 baseline과 다른 연도별 결과를 담는다', () => {
+    const engine = new SimulationEngine();
+    const recommendation = recommendStrategy(paramsWithLargePension, engine);
+    expect(recommendation.improved).toBe(true);
+
+    const baseline = engine.runForUtility(paramsWithLargePension);
+    expect(recommendation.recommendedResult.endingAssets).not.toBe(baseline.endingAssets);
+  });
+
+  test('improved가 false면 recommendedResult가 baseline과 동일하다', () => {
+    const engine = new SimulationEngine();
+    const noOptimizableDimensionParams: SimulationParams = {
+      ...paramsWithLargePension,
+      privatePensions: [],
+      nationalPension: { expectedMonthlyAmount: 0 },
+    };
+    const recommendation = recommendStrategy(noOptimizableDimensionParams, engine);
+    expect(recommendation.improved).toBe(false);
+
+    const baseline = engine.runForUtility(noOptimizableDimensionParams);
+    expect(recommendation.recommendedResult.endingAssets).toBe(baseline.endingAssets);
+  });
+});
+
+describe('recommendStrategy - itemizedContributions', () => {
+  test('improved가 false면 itemizedContributions는 빈 배열이다', () => {
+    const engine = new SimulationEngine();
+    const noOptimizableDimensionParams: SimulationParams = {
+      ...paramsWithLargePension,
+      privatePensions: [],
+      nationalPension: { expectedMonthlyAmount: 0 },
+    };
+    const recommendation = recommendStrategy(noOptimizableDimensionParams, engine);
+    expect(recommendation.itemizedContributions).toEqual([]);
+  });
+
+  test('improved가 true면 itemizedContributions에 최소 1개 이상의 항목이 있고 각 필드가 유효하다', () => {
+    const engine = new SimulationEngine();
+    const recommendation = recommendStrategy(paramsWithLargePension, engine);
+    expect(recommendation.improved).toBe(true);
+
+    expect(recommendation.itemizedContributions.length).toBeGreaterThan(0);
+    recommendation.itemizedContributions.forEach((item) => {
+      expect(typeof item.label).toBe('string');
+      expect(item.label.length).toBeGreaterThan(0);
+      expect(Number.isNaN(item.utilityDelta)).toBe(false);
+      Object.values(item.deltas).forEach((v) => {
+        expect(Number.isNaN(v)).toBe(false);
+      });
+    });
+  });
+});
+
+describe('computeItemizedContributions', () => {
+  test('identityPlan과 다른 필드마다 독립적인 utilityDelta/deltas 항목을 생성한다', () => {
+    const engine = new SimulationEngine();
+    const identityPlan = getIdentityPlan(paramsWithLargePension);
+    const baselineResult = engine.runForUtility(paramsWithLargePension);
+    const currentUtility = computeLifetimeUtility(baselineResult, paramsWithLargePension, DEFAULT_UTILITY_CONFIG);
+    const recommendedPlan = { ...identityPlan, nationalPensionStartAge: 70 };
+
+    const items = computeItemizedContributions(
+      paramsWithLargePension,
+      identityPlan,
+      recommendedPlan,
+      currentUtility,
+      baselineResult,
+      engine,
+      DEFAULT_UTILITY_CONFIG
+    );
+
+    expect(items).toHaveLength(1);
+    expect(items[0].label).toContain('70세');
+    expect(items[0].label).toContain('연기');
+    expect(Number.isNaN(items[0].utilityDelta)).toBe(false);
+    expect(items[0].deltas.nationalPensionTotal).not.toBe(0);
+  });
+
+  test('recommendedPlan이 identityPlan과 완전히 같으면 빈 배열을 반환한다', () => {
+    const engine = new SimulationEngine();
+    const identityPlan = getIdentityPlan(paramsWithLargePension);
+    const baselineResult = engine.runForUtility(paramsWithLargePension);
+    const currentUtility = computeLifetimeUtility(baselineResult, paramsWithLargePension, DEFAULT_UTILITY_CONFIG);
+
+    const items = computeItemizedContributions(
+      paramsWithLargePension,
+      identityPlan,
+      identityPlan,
+      currentUtility,
+      baselineResult,
+      engine,
+      DEFAULT_UTILITY_CONFIG
+    );
+    expect(items).toEqual([]);
   });
 });
 
