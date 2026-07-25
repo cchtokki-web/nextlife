@@ -1,11 +1,15 @@
 'use client';
 
+import { useMemo } from 'react';
 import { Collapse } from '../../../components/ui';
 import { SimulationParams, SimulationResult, UtilityBreakdown } from '../../../../core/entities/types';
+import { SimulationEngine } from '../../../../core/usecases/SimulationEngine';
 import { computeExpertAnalytics } from '../../../../core/usecases/dashboard/computeExpertAnalytics';
+import { computeSensitivityAnalysis } from '../../../../core/usecases/dashboard/computeSensitivityAnalysis';
 import { YearlyChart } from '../YearlyChart';
 import { UtilityBreakdownBars } from './UtilityBreakdownBars';
 import { CurrentStrategyAnalysis } from './CurrentStrategyAnalysis';
+import { SensitivityAnalysisSection } from './SensitivityAnalysisSection';
 
 interface ExpertDetailsPanelProps {
   result: SimulationResult;
@@ -27,6 +31,11 @@ export function ExpertDetailsPanel({
   formatValue,
 }: ExpertDetailsPanelProps) {
   const analytics = computeExpertAnalytics(result, params);
+  const engine = useMemo(() => new SimulationEngine(), []);
+  const sensitivityScenarios = useMemo(
+    () => computeSensitivityAnalysis(params, result, engine),
+    [params, result, engine]
+  );
 
   return (
     <Collapse title={<span className="text-base font-semibold">전문가용 상세 분석 더 보기</span>} className="mb-6">
@@ -84,6 +93,8 @@ export function ExpertDetailsPanel({
             )}
           </ul>
         </section>
+
+        <SensitivityAnalysisSection baselineDepletionAge={result.depletionAge} scenarios={sensitivityScenarios} />
 
         {isPro && (
           <section>

@@ -112,4 +112,15 @@ describe('ExpertDetailsPanel', () => {
     expect(screen.getByText('국민연금 없이 사적연금·배당·기타소득으로 생활비를 충당합니다.')).toBeInTheDocument();
     expect(screen.queryByText(/65세부터 수령/)).not.toBeInTheDocument();
   });
+
+  test('민감도 분석 섹션(SensitivityAnalysisSection)이 렌더된다', () => {
+    render(
+      <ExpertDetailsPanel result={result} params={params} utility={utility} formatValue={formatValue} isPro={false} />
+    );
+    fireEvent.click(screen.getByRole('button', { name: '전문가용 상세 분석 더 보기' }));
+
+    expect(screen.getByText('민감도 분석 (핵심 가정 변화에 따른 자산 고갈 나이)')).toBeInTheDocument();
+    expect(screen.getByText('투자수익률 -2%p')).toBeInTheDocument();
+    expect(screen.getByText('은퇴시점 +3년')).toBeInTheDocument();
+  });
 });
