@@ -180,4 +180,21 @@ describe('DashboardSection - IA 순서', () => {
     expect(screen.getByText('360만원')).toBeInTheDocument();
     expect(screen.queryByText('300만원')).not.toBeInTheDocument();
   });
+
+  test('Before 상태에서 리스크 알림이 보이고, 추천 적용(After) 시 리스크가 해소되면 알림이 사라진다', () => {
+    const riskyResult: SimulationResult = {
+      ...result,
+      yearlyResults: [makeYearlyResult({ age: 60 }), makeYearlyResult({ age: 65, nationalPensionIncome: 12000000, hasTaxWarning: true })],
+    };
+    const cleanAfterResult: SimulationResult = { ...result, endingAssets: 999000000, utility: { ...utility, score: 81 } };
+    const rec: StrategyRecommendation = { ...recommendation, recommendedResult: cleanAfterResult };
+
+    render(<DashboardSection params={params} result={riskyResult} recommendation={rec} />);
+
+    expect(screen.getByText('금융소득종합과세 진입 가능성')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: '추천 적용하기' }));
+
+    expect(screen.queryByText('금융소득종합과세 진입 가능성')).not.toBeInTheDocument();
+  });
 });

@@ -16,6 +16,8 @@ import { SecondaryKpiCollapse } from './kpi/SecondaryKpiCollapse';
 import { RecommendationChecklist } from './recommendation/RecommendationChecklist';
 import { AiSummaryHero } from './hero/AiSummaryHero';
 import { ExpertDetailsPanel } from './expert/ExpertDetailsPanel';
+import { RiskAlertCards } from './risk/RiskAlertCards';
+import { computeRiskAlerts } from '../../../core/usecases/dashboard/computeRiskAlerts';
 import { useBeforeAfterToggle } from './hooks/useBeforeAfterToggle';
 
 interface DashboardSectionProps {
@@ -87,6 +89,7 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
       : monthlyTarget;
 
   const captions = generateChartCaptions(displayedResult, params);
+  const riskAlerts = computeRiskAlerts(displayedResult, params);
 
   return (
     <div className={styles.container}>
@@ -173,6 +176,9 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
         formatValue={formatValue}
         calculatedTargetSpending={result.calculatedTargetSpending}
       />
+
+      {/* 리스크 알림 (해당되는 것만, 0~3개) */}
+      <RiskAlertCards alerts={riskAlerts} />
 
       {/* STEP 3: AI 추천 전략 체크리스트 */}
       <RecommendationChecklist
