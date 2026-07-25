@@ -70,13 +70,13 @@ describe('RecommendationChecklist', () => {
     expect(screen.getByText('현재 전략이 이미 합리적입니다.')).toBeInTheDocument();
   });
 
-  test('improved가 true이면 항목별 체크리스트와 총 Utility 개선폭, 각주를 보여준다', () => {
+  test('improved가 true이면 항목별 체크리스트와 총 효용 개선폭, 각주를 보여준다', () => {
     const recommendation = makeRecommendation({
       improved: true,
       itemizedContributions: [
         {
           label: '국민연금을 70세까지 연기 수령합니다.',
-          utilityDelta: 2.3,
+          utilityDelta: 2,
           deltas: { ...zeroDeltas, totalTax: -1000000, endingAssets: 5000000 },
         },
       ],
@@ -84,8 +84,8 @@ describe('RecommendationChecklist', () => {
     render(<RecommendationChecklist recommendation={recommendation} formatValue={formatValue} />);
 
     expect(screen.getByText('국민연금을 70세까지 연기 수령합니다.')).toBeInTheDocument();
-    expect(screen.getByText('+2.3 Utility')).toBeInTheDocument();
-    expect(screen.getByText('총 +5.0 Utility')).toBeInTheDocument();
+    expect(screen.getByText('효용 +2점')).toBeInTheDocument();
+    expect(screen.getByText('총 효용 +5점')).toBeInTheDocument();
     expect(screen.getByText(/상호작용을/)).toBeInTheDocument();
   });
 
@@ -95,14 +95,30 @@ describe('RecommendationChecklist', () => {
       itemizedContributions: [
         {
           label: '국민연금을 60세부터 조기 수령합니다.',
-          utilityDelta: -1.2,
+          utilityDelta: -1,
           deltas: { ...zeroDeltas, totalTax: 500000 },
         },
       ],
     });
     render(<RecommendationChecklist recommendation={recommendation} formatValue={formatValue} />);
 
-    expect(screen.getByText('-1.2 Utility')).toBeInTheDocument();
-    expect(screen.queryByText('+-1.2 Utility')).not.toBeInTheDocument();
+    expect(screen.getByText('효용 -1점')).toBeInTheDocument();
+    expect(screen.queryByText('효용 +-1점')).not.toBeInTheDocument();
+  });
+
+  test('utilityDelta가 0이면(컴포넌트가 이미 만점/바닥이라 반영되지 않는 경우) 효용 +0점으로 표시한다', () => {
+    const recommendation = makeRecommendation({
+      improved: true,
+      itemizedContributions: [
+        {
+          label: '배당수익률이 높은 자산부터 매도해 향후 금융소득종합과세 위험을 낮춥니다.',
+          utilityDelta: 0,
+          deltas: { ...zeroDeltas, totalTax: -14820000, endingAssets: 235550000 },
+        },
+      ],
+    });
+    render(<RecommendationChecklist recommendation={recommendation} formatValue={formatValue} />);
+
+    expect(screen.getByText('효용 +0점')).toBeInTheDocument();
   });
 });

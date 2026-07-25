@@ -163,7 +163,15 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
       />
 
       {/* AI 추천 전략 실행 로드맵 (Before/After 토글과 무관하게 항상 고정 기준) */}
-      <ExecutionRoadmap roadmap={computeExecutionRoadmap(params, recommendation)} />
+      {/* 자산 고갈 나이도 로드맵이 보여주는 것과 같은 기준(추천 plan이 있으면 recommendedResult,
+          없으면 baseline result)으로 골라야 나이 이벤트와 고갈 시점이 같은 시나리오를 가리킨다. */}
+      <ExecutionRoadmap
+        roadmap={computeExecutionRoadmap(
+          params,
+          recommendation,
+          recommendation?.recommendedPlan ? recommendation.recommendedResult.depletionAge : result.depletionAge
+        )}
+      />
 
       {/* STEP 4: 그래프 3종 (각 상단에 rule-based AI 캡션) */}
       <AssetGrowthChart

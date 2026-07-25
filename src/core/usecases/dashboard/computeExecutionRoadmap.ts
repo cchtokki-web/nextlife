@@ -5,6 +5,8 @@ import { SimulationParams, StrategyRecommendation } from '../../entities/types';
 export interface RoadmapEventItem {
   title: string;
   description: string;
+  // 위험 신호(예: 자산 고갈)를 다른 이벤트와 시각적으로 구분해 강조하기 위한 선택적 플래그.
+  severity?: 'warning';
 }
 
 export interface RoadmapEvent {
@@ -25,11 +27,13 @@ function describeNationalPensionTitle(age: number): string {
 }
 
 // AI 추천 계획(또는 추천이 없거나 개선안이 없을 때는 getIdentityPlan로 현재 설정값) 기준으로 퇴직/
-// 일반자산 인출/사적연금/국민연금 수령 개시 나이 4개 이벤트를 계산한다. 같은 나이에 여러 이벤트가
-// 겹치면 하나의 노드로 병합하고, 나이 오름차순으로 정렬해 반환한다.
+// 일반자산 인출/사적연금/국민연금 수령 개시 나이와, 있다면 자산 고갈 예상 나이까지 이벤트를
+// 계산한다. 같은 나이에 여러 이벤트가 겹치면 하나의 노드로 병합하고, 나이 오름차순으로 정렬해
+// 반환한다.
 export function computeExecutionRoadmap(
   params: SimulationParams,
-  recommendation: StrategyRecommendation | undefined
+  recommendation: StrategyRecommendation | undefined,
+  depletionAge: number | null
 ): ExecutionRoadmap {
   const plan = recommendation?.recommendedPlan ?? getIdentityPlan(params);
   const { retirementAge, expectancy } = params.userProfile;
@@ -52,6 +56,19 @@ export function computeExecutionRoadmap(
       item: { title: describeNationalPensionTitle(plan.nationalPensionStartAge), description: '국민연금 수령을 시작합니다.' },
     },
   ];
+
+  // 자산이 기대수명 전에 고갈될 것으로 예상되면, 60~85세 구간의 다른 마일스톤과 함께 정확히
+  // 몇 세에 고갈되는지도 타임라인에 표시한다 — 위험 신호이므로 severity로 구분해 강조한다.
+  if (depletionAge !== null) {
+    rawEvents.push({
+      age: depletionAge,
+      item: {
+        title: '자산 고갈 예상',
+        description: '누적 자산이 모두 소진되어 목표 생활비를 유지하기 어려워질 것으로 예상됩니다.',
+        severity: 'warning',
+      },
+    });
+  }
 
   const byAge = new Map<number, RoadmapEventItem[]>();
   for (const { age, item } of rawEvents) {

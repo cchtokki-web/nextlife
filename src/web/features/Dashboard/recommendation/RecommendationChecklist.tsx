@@ -58,7 +58,7 @@ export function RecommendationChecklist({
     <GlassCard className="mb-6">
       <div className="mb-3 flex items-center justify-between">
         <h3 className="text-base font-semibold">🤖 AI 추천 전략</h3>
-        <span className="text-sm font-semibold text-success">총 +{totalUtilityDelta.toFixed(1)} Utility</span>
+        <span className="text-sm font-semibold text-success">총 효용 +{totalUtilityDelta}점</span>
       </div>
       <ul className="flex flex-col gap-3">
         {recommendation.itemizedContributions.map((item, i) => (
@@ -69,8 +69,8 @@ export function RecommendationChecklist({
                 {item.label}
               </span>
               <span className={`shrink-0 text-sm font-semibold ${item.utilityDelta >= 0 ? 'text-success' : 'text-danger'}`}>
-                {item.utilityDelta >= 0 ? '+' : ''}
-                {item.utilityDelta.toFixed(1)} Utility
+                효용 {item.utilityDelta >= 0 ? '+' : ''}
+                {item.utilityDelta}점
               </span>
             </div>
             <div className="ml-6 mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-foreground-muted">
@@ -96,8 +96,11 @@ export function RecommendationChecklist({
         ))}
       </ul>
       <p className="mt-2 text-xs text-foreground-muted">
-        * 각 항목의 Utility 기여도는 그 변경 하나만 단독 적용했을 때의 값으로, 항목 간 상호작용을
-        반영하지 않아 합계가 위 총 개선폭과 정확히 일치하지 않을 수 있습니다.
+        * 각 항목의 효용 기여도는 그 변경 하나만 단독 적용했을 때의 값으로, 항목 간 상호작용을
+        반영하지 않아 합계가 위 총 개선폭과 정확히 일치하지 않을 수 있습니다. 평생 효용 점수는
+        6개 항목을 각각 0~100점 만점으로 반올림해 합산하는 방식이라, 이미 만점(자산 고갈 방지)이거나
+        바닥(상속 자산 적정성 등 과다 잔여 페널티)에 가까운 항목은 실제 절세·자산 효과가 커도
+        점수에는 반영되지 않아 +0점으로 보일 수 있습니다.
       </p>
     </GlassCard>
   );

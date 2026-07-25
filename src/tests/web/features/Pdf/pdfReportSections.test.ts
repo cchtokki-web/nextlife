@@ -76,7 +76,7 @@ describe('renderItemizedChecklistSection', () => {
     expect(html).toContain('현재 설정이 이미 최적입니다');
   });
 
-  test('itemizedContributions를 항목별 +/-Utility와 함께 렌더링한다', () => {
+  test('itemizedContributions를 항목별 +/-효용 점수와 함께 렌더링한다', () => {
     const recommendation: StrategyRecommendation = {
       currentUtility: utility,
       recommendedUtility: { ...utility, score: 81 },
@@ -94,9 +94,9 @@ describe('renderItemizedChecklistSection', () => {
     };
     const html = renderItemizedChecklistSection(recommendation);
     expect(html).toContain('국민연금을 70세까지 연기 수령합니다.');
-    expect(html).toContain('+5.0 Utility');
+    expect(html).toContain('효용 +5점');
     expect(html).toContain('사적연금을 63세부터 인출합니다.');
-    expect(html).toContain('-1.2 Utility');
+    expect(html).toContain('효용 -1.2점');
   });
 });
 
@@ -116,6 +116,21 @@ describe('renderExecutionRoadmapSection', () => {
     expect(html).toContain('국민연금 수령 개시 (연기)');
     expect(html).toContain('90세');
     expect(html).toContain('기대수명');
+  });
+
+  test('severity가 warning인 이벤트는 danger 색상(#EF4444)으로 렌더링된다', () => {
+    const roadmap: ExecutionRoadmap = {
+      events: [
+        {
+          age: 78,
+          items: [{ title: '자산 고갈 예상', description: '누적 자산이 모두 소진됩니다.', severity: 'warning' }],
+        },
+      ],
+      expectancy: 90,
+    };
+    const html = renderExecutionRoadmapSection(roadmap);
+    expect(html).toContain('#EF4444');
+    expect(html).toContain('자산 고갈 예상');
   });
 });
 

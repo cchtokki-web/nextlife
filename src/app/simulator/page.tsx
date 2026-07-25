@@ -239,7 +239,7 @@ export default function Home() {
               </div>
             `;
           }).join('')
-        : '<p style="font-size: 12px; color: #94a3b8;">Utility 데이터를 계산할 수 없습니다.</p>';
+        : '<p style="font-size: 12px; color: #94a3b8;">효용 데이터를 계산할 수 없습니다.</p>';
 
       const bequestAdequacyExplanationHtml = utility
         ? `<p style="font-size: 10px; color: #94a3b8; margin: -6px 0 12px; line-height: 1.4;">* 상속 자산 적정성: ${explainBequestAdequacy(activeParams, result)}</p>`
@@ -257,7 +257,7 @@ export default function Home() {
       const recommendationSummaryText = !recommendation
         ? 'AI 추천 전략을 계산할 수 없습니다.'
         : hasImprovement
-          ? `Utility ${recommendation.currentUtility.score}점 → ${recommendation.recommendedUtility.score}점`
+          ? `효용 ${recommendation.currentUtility.score}점 → ${recommendation.recommendedUtility.score}점`
           : '현재 전략 유지 권장';
       const itemizedChecklistHtml = renderItemizedChecklistSection(recommendation);
       const deltaRowsHtml = (recommendation && hasImprovement)
@@ -273,7 +273,11 @@ export default function Home() {
 
       const riskAlerts = computeRiskAlerts(result, activeParams);
       const riskAlertsSectionHtml = renderRiskAlertsSection(riskAlerts);
-      const roadmap = computeExecutionRoadmap(activeParams, recommendation);
+      const roadmap = computeExecutionRoadmap(
+        activeParams,
+        recommendation,
+        recommendation?.recommendedPlan ? recommendation.recommendedResult.depletionAge : result.depletionAge
+      );
       const executionRoadmapSectionHtml = renderExecutionRoadmapSection(roadmap);
       const sensitivityScenarios = computeSensitivityAnalysis(activeParams, result, engine);
       const sensitivityTableSectionHtml = renderSensitivityTableSection(sensitivityScenarios);

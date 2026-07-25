@@ -54,4 +54,20 @@ describe('ExecutionRoadmap', () => {
     expect(screen.getByText(/90세/)).toBeInTheDocument();
     expect(screen.getByText(/기대수명/)).toBeInTheDocument();
   });
+
+  test('severity가 warning인 이벤트는 마커와 제목이 danger 색상으로 강조된다', () => {
+    const roadmapWithWarning: ExecutionRoadmapData = {
+      events: [
+        {
+          age: 78,
+          items: [{ title: '자산 고갈 예상', description: '누적 자산이 모두 소진됩니다.', severity: 'warning' }],
+        },
+      ],
+      expectancy: 90,
+    };
+    const { container } = render(<ExecutionRoadmap roadmap={roadmapWithWarning} />);
+    const marker = container.querySelector('[data-marker="filled"]');
+    expect(marker?.className).toContain('bg-danger');
+    expect(screen.getByText('자산 고갈 예상').className).toContain('text-danger');
+  });
 });

@@ -38,7 +38,7 @@ export function renderItemizedChecklistSection(recommendation: StrategyRecommend
       return `
         <div style="display: flex; justify-content: space-between; align-items: baseline; padding: 6px 0; border-bottom: 1px dashed #e2e8f0; font-size: 12px;">
           <span>✓ ${item.label}</span>
-          <span style="font-weight: 700; color: ${color}; white-space: nowrap; margin-left: 10px;">${sign}${item.utilityDelta.toFixed(1)} Utility</span>
+          <span style="font-weight: 700; color: ${color}; white-space: nowrap; margin-left: 10px;">효용 ${sign}${item.utilityDelta}점</span>
         </div>
       `;
     })
@@ -48,11 +48,12 @@ export function renderItemizedChecklistSection(recommendation: StrategyRecommend
 export function renderExecutionRoadmapSection(roadmap: ExecutionRoadmap): string {
   const eventsHtml = roadmap.events
     .map((event) => {
+      const hasWarning = event.items.some((item) => item.severity === 'warning');
       const itemsHtml = event.items
         .map(
           (item) => `
             <div style="margin-bottom: 2px;">
-              <strong style="font-size: 12px; color: #0f172a;">${item.title}</strong>
+              <strong style="font-size: 12px; color: ${item.severity === 'warning' ? '#EF4444' : '#0f172a'};">${item.title}</strong>
               <span style="font-size: 11px; color: #64748b;"> — ${item.description}</span>
             </div>
           `
@@ -60,7 +61,7 @@ export function renderExecutionRoadmapSection(roadmap: ExecutionRoadmap): string
         .join('');
       return `
         <div style="display: flex; gap: 10px; margin-bottom: 10px;">
-          <div style="width: 50px; flex-shrink: 0; font-size: 13px; font-weight: 700; color: #3b82f6;">${event.age}세</div>
+          <div style="width: 50px; flex-shrink: 0; font-size: 13px; font-weight: 700; color: ${hasWarning ? '#EF4444' : '#3b82f6'};">${event.age}세</div>
           <div style="flex-grow: 1;">${itemsHtml}</div>
         </div>
       `;

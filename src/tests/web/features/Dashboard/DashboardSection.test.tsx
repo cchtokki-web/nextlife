@@ -146,9 +146,9 @@ describe('DashboardSection - IA 순서', () => {
     expect(chartIdx).toBeGreaterThan(roadmapIdx);
   });
 
-  test('핵심 KPI 4장(생존가능성/순자산/월생활비/Utility)이 모두 노출된다', () => {
+  test('핵심 KPI 4장(은퇴준비도/순자산/월생활비/Utility)이 모두 노출된다', () => {
     render(<DashboardSection params={params} result={result} recommendation={recommendation} />);
-    expect(screen.getByText(/생존 가능성/)).toBeInTheDocument();
+    expect(screen.getByText(/은퇴 준비도/)).toBeInTheDocument();
     expect(screen.getByText('예상 순자산')).toBeInTheDocument();
     expect(screen.getByText('예상 월 생활비')).toBeInTheDocument();
     expect(screen.getByText('평생 효용')).toBeInTheDocument();

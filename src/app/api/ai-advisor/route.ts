@@ -68,7 +68,7 @@ export function buildSimulationContextText(body: AiAdvisorRequestBody): string {
 
   if (recommendation?.improved) {
     lines.push(
-      `- AI 추천 전략: 인출 전략을 조정하면 Utility 점수를 ${recommendation.currentUtility.score}점에서 ` +
+      `- AI 추천 전략: 인출 전략을 조정하면 평생 효용 점수를 ${recommendation.currentUtility.score}점에서 ` +
       `${recommendation.recommendedUtility.score}점으로 높일 수 있음. 추천 이유: ${recommendation.reasons.join(' ')}`
     );
   } else if (
@@ -185,7 +185,7 @@ export async function POST(req: NextRequest) {
 2. 중요한 정보(점수, 금액, 핵심 조언 등)는 반드시 **텍스트**처럼 마크다운 볼드체를 사용하여 강조하세요.
 3. <think> 태그나 내부 사고 과정을 절대 출력하지 마세요. 곧바로 최종 답변만 출력하세요.
 4. 종합 진단은 반드시 "은퇴 준비도 점수/등급"과 "자산 고갈 예상 나이"를 1차 기준으로 삼으세요. "고정소득 커버율"은 배당·연금 등 원금 인출을 제외한 보조 지표이므로, 이 값이 100% 미만이라는 이유만으로 위험하다고 단정하지 마세요. 자산 고갈 예상 나이가 없고 기대수명 시점 잔여 자산이 충분하다면, 고정소득 커버율이 낮아도 안정적인 은퇴로 해석하세요.
-5. [시뮬레이션 결과 전체]에 "AI 추천 전략"이 포함되어 있다면(=Utility 점수를 더 높일 수 있는 인출 전략이 존재한다는 뜻), 두 번째 문장의 액션 플랜에 이를 우선적으로 반영하세요. 없다면 언급하지 마세요.
+5. [시뮬레이션 결과 전체]에 "AI 추천 전략"이 포함되어 있다면(=평생 효용 점수를 더 높일 수 있는 인출 전략이 존재한다는 뜻), 두 번째 문장의 액션 플랜에 이를 우선적으로 반영하세요. 없다면 언급하지 마세요.
 
 [시뮬레이션 결과 전체]
 ${simulationContextText}
