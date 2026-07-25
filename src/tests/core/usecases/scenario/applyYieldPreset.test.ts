@@ -1,5 +1,5 @@
 import { describe, test, expect } from 'vitest';
-import { applyYieldPreset } from '@/core/usecases/scenario/applyYieldPreset';
+import { applyYieldPreset, restoreCustomYieldPreset } from '@/core/usecases/scenario/applyYieldPreset';
 import { SimulationParams } from '@/core/entities/types';
 
 const baseParams: SimulationParams = {
@@ -82,5 +82,58 @@ describe('applyYieldPreset', () => {
     expect(result.userProfile).toEqual(baseParams.userProfile);
     expect(result.displayCurrency).toBe(baseParams.displayCurrency);
     expect(result.inflationRate).toBe(baseParams.inflationRate);
+  });
+
+  test('yieldPreset이 custom일 때 다른 프리셋을 적용하면 직전 직접입력 값을 customYieldSnapshot에 저장한다', () => {
+    const customParams: SimulationParams = {
+      ...baseParams,
+      yieldPreset: 'custom',
+      assets: [{ ...baseParams.assets[0], id: 'a1', annualGrowthRate: 12.5 }],
+      privatePensions: [{ ...baseParams.privatePensions[0], id: 'p1', annualReturn: 2.5 }],
+    };
+    const result = applyYieldPreset(customParams, 'aggressive');
+    expect(result.customYieldSnapshot).toEqual({ assets: { a1: 12.5 }, privatePensions: { p1: 2.5 } });
+    expect(result.assets[0].annualGrowthRate).toBe(9);
+  });
+
+  test('이미 프리셋 상태에서 다른 프리셋으로 바꾸면 기존 customYieldSnapshot을 유지한다', () => {
+    const snapshot = { assets: { a1: 12.5 }, privatePensions: { p1: 2.5 } };
+    const params: SimulationParams = { ...baseParams, yieldPreset: 'conservative', customYieldSnapshot: snapshot };
+    const result = applyYieldPreset(params, 'aggressive');
+    expect(result.customYieldSnapshot).toEqual(snapshot);
+  });
+});
+
+describe('restoreCustomYieldPreset', () => {
+  test('customYieldSnapshot이 있으면 id 기준으로 자산/연금 값을 복원하고 yieldPreset을 custom으로 되돌린다', () => {
+    const params: SimulationParams = {
+      ...baseParams,
+      yieldPreset: 'aggressive',
+      assets: [{ ...baseParams.assets[0], id: 'a1', annualGrowthRate: 9 }],
+      privatePensions: [{ ...baseParams.privatePensions[0], id: 'p1', annualReturn: 6 }],
+      customYieldSnapshot: { assets: { a1: 12.5 }, privatePensions: { p1: 2.5 } },
+    };
+    const result = restoreCustomYieldPreset(params);
+    expect(result.assets[0].annualGrowthRate).toBe(12.5);
+    expect(result.privatePensions[0].annualReturn).toBe(2.5);
+    expect(result.yieldPreset).toBe('custom');
+  });
+
+  test('스냅샷에 없는 자산 id는 현재 값을 그대로 유지한다', () => {
+    const params: SimulationParams = {
+      ...baseParams,
+      yieldPreset: 'aggressive',
+      assets: [{ ...baseParams.assets[0], id: 'a2', annualGrowthRate: 9 }],
+      customYieldSnapshot: { assets: { a1: 12.5 }, privatePensions: {} },
+    };
+    const result = restoreCustomYieldPreset(params);
+    expect(result.assets[0].annualGrowthRate).toBe(9);
+  });
+
+  test('customYieldSnapshot이 없으면 값은 그대로 두고 yieldPreset만 custom으로 바꾼다', () => {
+    const params: SimulationParams = { ...baseParams, yieldPreset: 'base' };
+    const result = restoreCustomYieldPreset(params);
+    expect(result.assets[0].annualGrowthRate).toBe(baseParams.assets[0].annualGrowthRate);
+    expect(result.yieldPreset).toBe('custom');
   });
 });

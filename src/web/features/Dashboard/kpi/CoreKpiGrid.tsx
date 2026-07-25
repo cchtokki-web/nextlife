@@ -14,7 +14,7 @@ interface CoreKpiGridProps {
   formatValue: (val: number) => string;
 }
 
-// 결과 화면 최상단 핵심 KPI 4장. 나머지 지표는 SecondaryKpiCollapse로 옮겨 정보 우선순위를 명확히 한다.
+// 결과 화면 최상단 핵심 KPI 4장.
 export function CoreKpiGrid({
   survivalScore,
   expectancy,

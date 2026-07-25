@@ -15,7 +15,7 @@ export function ApplyRecommendationButton({ mode, onToggle, disabled = false }: 
       type="button"
       onClick={onToggle}
       disabled={disabled}
-      className="inline-flex items-center gap-1.5 rounded-full border border-primary bg-primary/10 px-4 py-1.5 text-sm font-semibold text-primary transition hover:bg-primary/20 disabled:cursor-not-allowed disabled:opacity-50"
+      className="inline-flex items-center gap-1.5 rounded-xl border border-primary bg-primary/10 px-4 py-2 text-sm font-semibold text-primary transition hover:bg-primary/20 disabled:cursor-not-allowed disabled:opacity-50"
     >
       <Sparkles size={14} aria-hidden="true" />
       {mode === 'after' ? '현재 전략으로 보기' : '추천 적용하기'}

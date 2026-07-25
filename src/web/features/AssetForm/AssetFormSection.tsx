@@ -6,6 +6,7 @@ import styles from './AssetForm.module.css';
 import compStyles from '../../styles/components.module.css';
 import { Plus, Trash2, User, Landmark, PiggyBank, DollarSign, ExternalLink, ChevronDown, ChevronUp, RefreshCw } from 'lucide-react';
 import { PredefinedAsset, predefinedAssets } from './predefinedAssets';
+import { PRIVATE_PENSION_MIN_START_AGE, clampPrivatePensionStartAge } from '../../../core/usecases/pension/privatePensionRules';
 
 const convertAmountOnPeriodChange = (amount: number, fromPeriod: 'daily' | 'weekly' | 'monthly', toPeriod: 'daily' | 'weekly' | 'monthly'): number => {
   let monthlyAmount = amount;
@@ -327,6 +328,14 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
       nationalPension: {
         expectedMonthlyAmount: value,
       },
+    });
+  };
+
+  // 2b. Private Pension start age update (전역 설정, 계좌 단위 아님)
+  const handlePrivatePensionStartAgeChange = (value: number) => {
+    onChangeParams({
+      ...params,
+      withdrawalPlan: { ...params.withdrawalPlan, privatePensionStartAge: clampPrivatePensionStartAge(value) },
     });
   };
 
@@ -1078,6 +1087,45 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
             <div className={styles.sectionHeader}>
               <span className={styles.sectionTitle}>사적연금 (IRP / 연금저축 / 퇴직연금)</span>
             </div>
+            {params.privatePensions.length > 0 && (
+              <div className={styles.assetCard}>
+                <div className={styles.cardHeader}>
+                  <span className={styles.cardTitle}>사적연금 수령 개시 나이 (만 55세부터 가능)</span>
+                </div>
+                <p style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)', marginBottom: '1rem', marginTop: '-0.5rem' }}>
+                  * 만 55세 이전에는 사적연금(IRP·연금저축)을 수령할 수 없어, 그 이전에는 시뮬레이션에서도 인출이 시작되지 않습니다.
+                </p>
+                <div className={compStyles.grid}>
+                  <InputField
+                    label="수령 개시 나이"
+                    type="number"
+                    value={
+                      params.withdrawalPlan?.privatePensionStartAge ??
+                      Math.max(PRIVATE_PENSION_MIN_START_AGE, params.userProfile.retirementAge)
+                    }
+                    onChange={(e) => {
+                      const numValue = Number(e.target.value);
+                      if (!isNaN(numValue)) {
+                        handlePrivatePensionStartAgeChange(numValue);
+                      }
+                    }}
+                    onStepUp={() => {
+                      const current =
+                        params.withdrawalPlan?.privatePensionStartAge ??
+                        Math.max(PRIVATE_PENSION_MIN_START_AGE, params.userProfile.retirementAge);
+                      handlePrivatePensionStartAgeChange(current + 1);
+                    }}
+                    onStepDown={() => {
+                      const current =
+                        params.withdrawalPlan?.privatePensionStartAge ??
+                        Math.max(PRIVATE_PENSION_MIN_START_AGE, params.userProfile.retirementAge);
+                      handlePrivatePensionStartAgeChange(current - 1);
+                    }}
+                    suffixText="세"
+                  />
+                </div>
+              </div>
+            )}
             {params.privatePensions.map((pension) => {
               const isExpanded = !!expandedPensions[pension.id];
               const formatAmount = (val: number, currency: string) => {

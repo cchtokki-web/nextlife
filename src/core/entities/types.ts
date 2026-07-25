@@ -117,6 +117,14 @@ export interface IsaAccount {
   maturityYears: number; // 기본 3년
 }
 
+// 자산/사적연금별 "사용자 프리셋"(직접입력 수익률) 스냅샷. 시장 수익률 프리셋(보수적/기본값/
+// 공격적)으로 전환하면 자산의 annualGrowthRate/annualReturn이 프리셋 값으로 덮어써지므로, 그
+// 직전 시점의 직접입력 값을 id 기준으로 보존해 두었다가 "사용자 프리셋" 재선택 시 되돌린다.
+export interface CustomYieldSnapshot {
+  assets: Record<string, number>; // InvestmentAsset.id -> annualGrowthRate
+  privatePensions: Record<string, number>; // PrivatePension.id -> annualReturn
+}
+
 export interface SimulationParams {
   userProfile: UserProfile;
   assets: InvestmentAsset[];
@@ -130,6 +138,7 @@ export interface SimulationParams {
   exchangeScenario: 'base' | 'usd_up' | 'usd_down'; // +10%, -10% 보정
   displayCurrency: AssetCurrency; // 최종 결과 표기용 통화 ('KRW' | 'USD')
   yieldPreset?: 'conservative' | 'base' | 'aggressive' | 'custom';
+  customYieldSnapshot?: CustomYieldSnapshot; // "사용자 프리셋" 복원용 저장값
   spendingStrategy?: SpendingStrategy; // 목표 생활비 달성 전략
   taxSettings?: TaxSettings; // 고급 세금 설정
   withdrawalPlan?: WithdrawalPlan; // 인출 정책 및 생활비 조정 (미지정 시 기존 균등분할 인출 로직 사용)

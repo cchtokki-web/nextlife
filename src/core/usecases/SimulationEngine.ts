@@ -27,6 +27,7 @@ import {
   NATIONAL_PENSION_EARLY_MIN_AGE,
   NATIONAL_PENSION_DEFERRED_MAX_AGE,
 } from './pension/nationalPensionRules';
+import { PRIVATE_PENSION_MIN_START_AGE, clampPrivatePensionStartAge } from './pension/privatePensionRules';
 import { sortAssetsForWithdrawal } from './strategy/assetOrdering';
 
 interface ActiveAsset extends InvestmentAsset {
@@ -470,8 +471,8 @@ export class SimulationEngine {
 
           if (isRetired && pension.currentBalance > 0) {
             let drawAmountRaw = 0;
-            const planStartAge = withdrawalPlan?.privatePensionStartAge ?? userProfile.retirementAge;
-            const pensionWithdrawalsStarted = !withdrawalPlan || currentAge >= planStartAge;
+            const planStartAge = clampPrivatePensionStartAge(withdrawalPlan?.privatePensionStartAge ?? userProfile.retirementAge);
+            const pensionWithdrawalsStarted = currentAge >= planStartAge;
 
             if (pensionWithdrawalsStarted) {
               if (remainingMonthlyPensionTargetKRW !== undefined) {
@@ -538,7 +539,9 @@ export class SimulationEngine {
             }
           }
 
-          if (remainingShortfall > 0) {
+          // 55세 미만은 사적연금(IRP/연금저축) 법정 인출 자체가 불가능하므로, 부족분이 있어도
+          // 조기 인출로 충당하지 않는다 — 이 경우 부족분은 실제 생활비 미충족으로 남는다.
+          if (remainingShortfall > 0 && currentAge >= PRIVATE_PENSION_MIN_START_AGE) {
             const taxRate = getPrivatePensionIncomeTaxRate(currentAge);
             for (const pension of activePensions) {
               let pensionValueNetDisplay = this.convertValue(pension.currentBalance, pension.currency, displayCurrency, exchangeRate) * (1 - taxRate);

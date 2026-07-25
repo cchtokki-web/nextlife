@@ -1,4 +1,4 @@
-import { SimulationParams } from '../../entities/types';
+import { CustomYieldSnapshot, SimulationParams } from '../../entities/types';
 
 // SimulationSettings.tsx에 있던 "시장 수익률 프리셋 적용" 로직을 순수 함수로 추출한 것.
 // QuickSettingsSummary.tsx도 동일한 프리셋 버튼을 제공해야 해서, 로직이 두 곳에 따로 복붙되어
@@ -7,6 +7,11 @@ import { SimulationParams } from '../../entities/types';
 // assets/privatePensions를 ?? []로 방어하는 이유: 이 함수를 호출하는 쪽(page.tsx가 넘기는
 // activeParams)이 과거 시나리오 데이터라서 최신 필드를 다 갖추지 못했을 가능성이 있다 —
 // AssetFormSection.tsx/DashboardSection.tsx가 이미 쓰고 있는 방어적 기본값 관례와 동일하다.
+//
+// yieldPreset이 'custom'인 상태(자산별 직접입력)에서 다른 프리셋을 적용하면 직접입력 값이
+// 사라지므로, 덮어쓰기 직전의 값을 customYieldSnapshot에 보관해 둔다 — restoreCustomYieldPreset이
+// 이 스냅샷으로 되돌린다. 이미 프리셋 상태에서 다른 프리셋으로 바꾸는 경우는 되돌릴 직접입력 값이
+// 없으므로 기존 스냅샷(있다면 더 이전의 직접입력 값)을 그대로 유지한다.
 export function applyYieldPreset(
   params: SimulationParams,
   preset: 'conservative' | 'base' | 'aggressive'
@@ -21,10 +26,39 @@ export function applyYieldPreset(
     pensionReturn = 6;
   }
 
+  const customYieldSnapshot = params.yieldPreset === 'custom' ? captureCustomYieldSnapshot(params) : params.customYieldSnapshot;
+
   return {
     ...params,
     assets: (params.assets ?? []).map((a) => ({ ...a, annualGrowthRate: stockGrowth })),
     privatePensions: (params.privatePensions ?? []).map((p) => ({ ...p, annualReturn: pensionReturn })),
     yieldPreset: preset,
+    customYieldSnapshot,
+  };
+}
+
+function captureCustomYieldSnapshot(params: SimulationParams): CustomYieldSnapshot {
+  return {
+    assets: Object.fromEntries((params.assets ?? []).map((a) => [a.id, a.annualGrowthRate])),
+    privatePensions: Object.fromEntries((params.privatePensions ?? []).map((p) => [p.id, p.annualReturn])),
+  };
+}
+
+// "사용자 프리셋" 재선택 시 마지막으로 저장된 직접입력 값(customYieldSnapshot)으로 복원한다.
+// 스냅샷이 아직 없으면(직접입력 후 프리셋으로 전환한 적이 없는 경우) 되돌릴 값이 없으므로
+// yieldPreset만 'custom'으로 맞추고 현재 값은 그대로 둔다.
+export function restoreCustomYieldPreset(params: SimulationParams): SimulationParams {
+  const snapshot = params.customYieldSnapshot;
+  if (!snapshot) {
+    return { ...params, yieldPreset: 'custom' };
+  }
+
+  return {
+    ...params,
+    assets: (params.assets ?? []).map((a) => (a.id in snapshot.assets ? { ...a, annualGrowthRate: snapshot.assets[a.id] } : a)),
+    privatePensions: (params.privatePensions ?? []).map((p) =>
+      p.id in snapshot.privatePensions ? { ...p, annualReturn: snapshot.privatePensions[p.id] } : p
+    ),
+    yieldPreset: 'custom',
   };
 }

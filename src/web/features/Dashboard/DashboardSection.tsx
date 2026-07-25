@@ -12,7 +12,6 @@ import { AssetGrowthChart } from './charts/AssetGrowthChart';
 import { IncomeCompositionChart } from './charts/IncomeCompositionChart';
 import { SpendingCompositionChart } from './charts/SpendingCompositionChart';
 import { CoreKpiGrid } from './kpi/CoreKpiGrid';
-import { SecondaryKpiCollapse } from './kpi/SecondaryKpiCollapse';
 import { RecommendationChecklist } from './recommendation/RecommendationChecklist';
 import { AiSummaryHero } from './hero/AiSummaryHero';
 import { ExpertDetailsPanel } from './expert/ExpertDetailsPanel';
@@ -81,10 +80,7 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
       : params.userProfile.targetMonthlySpending;
 
   // KPI/지표는 화면에 실제로 표시 중인 결과(displayedResult)를 따라가야 한다 — After 모드에서
-  // 추천안이 생활비 배수(monthlySpendingMultiplier)를 포함하면 그만큼 반영하고, 고갈가능여부도
-  // baseline이 아니라 displayedResult 기준으로 판단한다.
-  const isMonthlyTargetPossible =
-    displayedResult.depletionAge === null || displayedResult.depletionAge >= params.userProfile.expectancy;
+  // 추천안이 생활비 배수(monthlySpendingMultiplier)를 포함하면 그만큼 반영한다.
   const displayedMonthlyTarget =
     mode === 'after' && recommendation?.recommendedPlan?.monthlySpendingMultiplier
       ? Math.round(monthlyTarget * recommendation.recommendedPlan.monthlySpendingMultiplier)
@@ -118,22 +114,6 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
           </div>
         </div>
       )}
-      {result.depletionAge === null
-        && result.goalAchievementRate < 100
-        && result.endingAssets >= result.retirementAssetsAtRetirement && (
-        <div className={styles.warningCard} style={{ background: 'rgba(16, 185, 129, 0.1)', borderColor: 'rgba(16, 185, 129, 0.3)', marginBottom: '1.5rem' }}>
-          <Award size={22} className={styles.warningIcon} color="var(--success)" />
-          <div className={styles.warningContent}>
-            <span className={styles.warningTitle} style={{ color: 'var(--success)' }}>자산이 고갈되지 않고 유지·증가하는 추세입니다</span>
-            <span className={styles.warningText}>
-              은퇴 소득 달성률({result.goalAchievementRate}%)은 배당·연금 등 고정소득만 반영한 수치입니다.
-              기대수명({params.userProfile.expectancy}세)까지 자산이 전혀 고갈되지 않고 은퇴 시작 시점보다
-              최종 자산이 더 큰 것으로 나타나, 원금을 계획적으로 인출하며 사는 안정적인 은퇴 설계로 평가됩니다.
-            </span>
-          </div>
-        </div>
-      )}
-
       {/* STEP 1: AI Summary Hero */}
       <AiSummaryHero
         formatValue={formatValue}
@@ -169,14 +149,6 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
         monthlyTarget={displayedMonthlyTarget}
         utilityScore={displayedResult.utility?.score}
         formatValue={formatValue}
-      />
-      <SecondaryKpiCollapse
-        depletionAge={displayedResult.depletionAge}
-        expectancyAge={params.userProfile.expectancy}
-        monthlyTarget={displayedMonthlyTarget}
-        isMonthlyTargetPossible={isMonthlyTargetPossible}
-        formatValue={formatValue}
-        calculatedTargetSpending={result.calculatedTargetSpending}
       />
 
       {/* 리스크 알림 (해당되는 것만, 0~3개) */}

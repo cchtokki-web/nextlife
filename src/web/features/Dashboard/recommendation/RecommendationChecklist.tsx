@@ -2,6 +2,7 @@
 
 import { Check, Loader2 } from 'lucide-react';
 import { StrategyRecommendation } from '../../../../core/entities/types';
+import GlassCard from '../../../components/GlassCard';
 
 interface RecommendationChecklistProps {
   recommendation?: StrategyRecommendation;
@@ -21,18 +22,18 @@ export function RecommendationChecklist({
 }: RecommendationChecklistProps) {
   if (isComputingRecommendation) {
     return (
-      <div className="mb-6 flex items-center gap-2 text-sm text-foreground-muted">
+      <GlassCard className="mb-6 flex items-center gap-2 text-sm text-foreground-muted">
         <Loader2 size={14} className="animate-spin" aria-hidden="true" />
         <span>AI가 최적 인출 전략을 탐색하고 있습니다...</span>
-      </div>
+      </GlassCard>
     );
   }
 
   if (recommendationFailed) {
     return (
-      <div className="mb-6 text-sm text-foreground-muted">
+      <GlassCard className="mb-6 text-sm text-foreground-muted">
         🤖 AI 추천 전략을 계산하지 못했습니다. 잠시 후 다시 시도해주세요.
-      </div>
+      </GlassCard>
     );
   }
 
@@ -40,21 +41,21 @@ export function RecommendationChecklist({
 
   if (!recommendation.improved || recommendation.itemizedContributions.length === 0) {
     return (
-      <div className="mb-6">
+      <GlassCard className="mb-6">
         <h3 className="mb-2 text-base font-semibold">🤖 AI 추천 전략</h3>
         <ul className="flex flex-col gap-1.5 pl-5 text-sm text-foreground-muted">
           {recommendation.reasons.map((reason, i) => (
             <li key={i}>{reason}</li>
           ))}
         </ul>
-      </div>
+      </GlassCard>
     );
   }
 
   const totalUtilityDelta = recommendation.recommendedUtility.score - recommendation.currentUtility.score;
 
   return (
-    <div className="mb-6">
+    <GlassCard className="mb-6">
       <div className="mb-3 flex items-center justify-between">
         <h3 className="text-base font-semibold">🤖 AI 추천 전략</h3>
         <span className="text-sm font-semibold text-success">총 +{totalUtilityDelta.toFixed(1)} Utility</span>
@@ -98,6 +99,6 @@ export function RecommendationChecklist({
         * 각 항목의 Utility 기여도는 그 변경 하나만 단독 적용했을 때의 값으로, 항목 간 상호작용을
         반영하지 않아 합계가 위 총 개선폭과 정확히 일치하지 않을 수 있습니다.
       </p>
-    </div>
+    </GlassCard>
   );
 }

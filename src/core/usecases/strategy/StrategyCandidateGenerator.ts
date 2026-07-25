@@ -1,5 +1,6 @@
 import { AssetSellOrderStrategy, CompleteWithdrawalPlan, IsaMaturityDestination, SimulationParams } from '../../entities/types';
 import { NATIONAL_PENSION_NORMAL_START_AGE } from '../pension/nationalPensionRules';
+import { PRIVATE_PENSION_MIN_START_AGE } from '../pension/privatePensionRules';
 
 // 각 그리드는 3점(또는 이진) 수준으로 유지한다 — 6개 차원의 완전 조합(cartesian product)이라
 // 그리드 하나를 늘릴 때마다 후보 수가 곱셈으로 증가하기 때문이다(실측 결과 5×5×5×3×2×5=3750개
@@ -22,12 +23,15 @@ export function generateCandidatePlans(params: SimulationParams): CompleteWithdr
 
   const hasPrivatePension = privatePensions.length > 0 && targetMonthlySpending > 0;
 
+  // 사적연금은 만 55세 미만으로는 법정 수령이 불가능하므로, retirementAge가 55세 미만이어도
+  // 후보/시드값의 하한은 55세로 clamp한다.
   const startAgeCandidates = hasPrivatePension
     ? (() => {
+        const minPrivatePensionStartAge = Math.max(retirementAge, PRIVATE_PENSION_MIN_START_AGE);
         const grid = Array.from(
-          new Set([retirementAge, ...START_AGE_GRID].filter((age) => age >= retirementAge && age < expectancy))
+          new Set([minPrivatePensionStartAge, ...START_AGE_GRID].filter((age) => age >= minPrivatePensionStartAge && age < expectancy))
         );
-        return grid.length > 0 ? grid : [retirementAge];
+        return grid.length > 0 ? grid : [minPrivatePensionStartAge];
       })()
     : [retirementAge];
 
@@ -98,12 +102,14 @@ export function generateCandidatePlans(params: SimulationParams): CompleteWithdr
 // 베이스로 쓰기 위한 "baseline과 동등한" 완결 plan. 각 필드는 SimulationEngine이 WithdrawalPlan 필드
 // 미지정 시 쓰는 기본값과 동일하다.
 export function getIdentityPlan(params: SimulationParams): CompleteWithdrawalPlan {
-  const { userProfile, privatePensions = [] } = params;
+  const { userProfile, privatePensions = [], withdrawalPlan } = params;
   const { retirementAge, targetMonthlySpending } = userProfile;
   const hasPrivatePension = privatePensions.length > 0 && targetMonthlySpending > 0;
 
   return {
-    privatePensionStartAge: retirementAge,
+    // 사용자가 이미 직접 지정한 값이 있으면(새 UI) 그 값을 존중하고, 없으면 SimulationEngine의
+    // 기본값 산출 방식(retirementAge, 55세 하한 clamp)과 동일하게 맞춘다.
+    privatePensionStartAge: withdrawalPlan?.privatePensionStartAge ?? Math.max(retirementAge, PRIVATE_PENSION_MIN_START_AGE),
     privatePensionMonthlyTarget: hasPrivatePension ? targetMonthlySpending : 0,
     nationalPensionStartAge: NATIONAL_PENSION_NORMAL_START_AGE,
     assetSellOrderStrategy: 'input_order',

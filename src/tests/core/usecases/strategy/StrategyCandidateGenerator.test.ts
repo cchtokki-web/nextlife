@@ -91,6 +91,18 @@ describe('generateCandidatePlans', () => {
     }
   });
 
+  test('은퇴 나이가 55세 미만이면 사적연금 개시 나이 후보는 55세 미만을 포함하지 않는다', () => {
+    const candidates = generateCandidatePlans({
+      ...baseParams,
+      userProfile: { ...baseParams.userProfile, retirementAge: 50, expectancy: 90 },
+    });
+
+    expect(candidates.length).toBeGreaterThan(0);
+    for (const c of candidates) {
+      expect(c.privatePensionStartAge).toBeGreaterThanOrEqual(55);
+    }
+  });
+
   test('자산이 1개 이하면 매도 순서는 input_order 단일 후보만 사용한다', () => {
     const candidates = generateCandidatePlans({
       ...baseParams,
@@ -221,6 +233,22 @@ describe('getIdentityPlan', () => {
   test('사적연금이 없으면 privatePensionMonthlyTarget은 0이다', () => {
     const plan = getIdentityPlan({ ...baseParams, privatePensions: [] });
     expect(plan.privatePensionMonthlyTarget).toBe(0);
+  });
+
+  test('retirementAge가 55세 미만이면 privatePensionStartAge는 55세로 clamp된다', () => {
+    const plan = getIdentityPlan({
+      ...baseParams,
+      userProfile: { ...baseParams.userProfile, retirementAge: 50 },
+    });
+    expect(plan.privatePensionStartAge).toBe(55);
+  });
+
+  test('params.withdrawalPlan.privatePensionStartAge가 설정돼 있으면(55세 이상) 그 값을 그대로 쓴다', () => {
+    const plan = getIdentityPlan({
+      ...baseParams,
+      withdrawalPlan: { privatePensionStartAge: 62 },
+    });
+    expect(plan.privatePensionStartAge).toBe(62);
   });
 });
 

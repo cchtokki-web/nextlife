@@ -16,7 +16,7 @@ interface AiAdviceTextProps {
 // UtilityCard.tsx에 있던 AI 의견 렌더링 로직(로딩 점 애니메이션/굵게 표시/stale 오버레이)을
 // 그대로 이관한 프레젠테이션 컴포넌트. useAiAdvisor 훅의 결과를 그대로 props로 받는다.
 export function AiAdviceText({ displayAdvice, isLoading, error, isRuleBased, isStale, onRetry }: AiAdviceTextProps) {
-  const lines = displayAdvice.split('\n');
+  const lines = displayAdvice.split('\n').filter((line) => line.trim() !== '');
 
   return (
     <div className="relative">

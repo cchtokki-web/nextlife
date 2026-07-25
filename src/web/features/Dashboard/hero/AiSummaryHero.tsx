@@ -44,7 +44,8 @@ export function AiSummaryHero({ formatValue, mode, onToggleMode, canApply, ...ad
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h2 className="font-display text-xl font-bold sm:text-2xl">
-            {headline.emoji} {userNamePrefix}
+            <span className="mr-1 align-middle text-base sm:text-lg">{headline.emoji}</span>
+            {userNamePrefix}
             {headline.text}
           </h2>
           {hasImprovement && recommendation && (
@@ -98,14 +99,16 @@ export function AiSummaryHero({ formatValue, mode, onToggleMode, canApply, ...ad
         onOpenChange={setIsAdviceOpen}
         className="mt-4"
       >
-        <AiAdviceText
-          displayAdvice={aiAdvisor.displayAdvice}
-          isLoading={aiAdvisor.isLoading}
-          error={aiAdvisor.error}
-          isRuleBased={aiAdvisor.isRuleBased}
-          isStale={aiAdvisor.isStale}
-          onRetry={aiAdvisor.retry}
-        />
+        <div className="mt-2 rounded-xl border border-card-border bg-foreground/5 p-4">
+          <AiAdviceText
+            displayAdvice={aiAdvisor.displayAdvice}
+            isLoading={aiAdvisor.isLoading}
+            error={aiAdvisor.error}
+            isRuleBased={aiAdvisor.isRuleBased}
+            isStale={aiAdvisor.isStale}
+            onRetry={aiAdvisor.retry}
+          />
+        </div>
       </Collapse>
     </GlassCard>
   );

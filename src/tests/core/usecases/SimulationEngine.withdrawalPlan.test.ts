@@ -176,6 +176,91 @@ describe('SimulationEngine withdrawalPlan (인출 정책 파라미터화)', () =
     expect(resultAt60!.privatePensionIncome).toBeGreaterThan(expectedAnnualNet * 0.7);
   });
 
+  test('withdrawalPlan 없이 retirementAge가 55세 미만이면, 55세 전에는 사적연금을 인출하지 않고 55세부터 시작한다', () => {
+    const engine = new SimulationEngine();
+    const result = engine.run({
+      userProfile: { currentAge: 50, retirementAge: 50, expectancy: 60, targetMonthlySpending: 400000 },
+      assets: [],
+      nationalPension: { expectedMonthlyAmount: 0 },
+      privatePensions: [
+        { id: 'pension-1', type: 'irp', balance: 300000000, monthlyContribution: 0, annualReturn: 5, currency: 'KRW' },
+      ],
+      otherIncomes: [{ id: 'income-1', label: '임대소득', monthlyAmount: 1000000, currency: 'KRW' }], // 목표(40만원) 충분히 충당
+      inflationRate: 0,
+      inflationMode: 'real',
+      baseExchangeRate: 1350,
+      exchangeScenario: 'base',
+      displayCurrency: 'KRW',
+    });
+
+    const before55 = result.yearlyResults.filter((r) => r.age >= 50 && r.age < 55);
+    expect(before55.length).toBeGreaterThan(0);
+    for (const r of before55) {
+      expect(r.privatePensionIncome).toBe(0);
+    }
+
+    const from55 = result.yearlyResults.filter((r) => r.age >= 55);
+    expect(from55.some((r) => r.privatePensionIncome > 0)).toBe(true);
+  });
+
+  test('withdrawalPlan.privatePensionStartAge를 55세 미만으로 지정해도 55세로 clamp되어 55세부터 인출된다', () => {
+    const engine = new SimulationEngine();
+    const result = engine.run({
+      userProfile: { currentAge: 50, retirementAge: 50, expectancy: 60, targetMonthlySpending: 400000 },
+      assets: [],
+      nationalPension: { expectedMonthlyAmount: 0 },
+      privatePensions: [
+        { id: 'pension-1', type: 'irp', balance: 300000000, monthlyContribution: 0, annualReturn: 5, currency: 'KRW' },
+      ],
+      otherIncomes: [{ id: 'income-1', label: '임대소득', monthlyAmount: 1000000, currency: 'KRW' }],
+      inflationRate: 0,
+      inflationMode: 'real',
+      baseExchangeRate: 1350,
+      exchangeScenario: 'base',
+      displayCurrency: 'KRW',
+      withdrawalPlan: { privatePensionStartAge: 52 }, // 55세 미만 지정 -> 55로 clamp되어야 함
+    });
+
+    const before55 = result.yearlyResults.filter((r) => r.age >= 50 && r.age < 55);
+    for (const r of before55) {
+      expect(r.privatePensionIncome).toBe(0);
+    }
+    const at55 = result.yearlyResults.find((r) => r.age === 55);
+    expect(at55).toBeDefined();
+    expect(at55!.privatePensionIncome).toBeGreaterThan(0);
+  });
+
+  test('retirementAge가 55세 미만이고 생활비가 부족해도(shortfall), 55세 이전에는 사적연금을 조기 인출하지 않는다', () => {
+    const engine = new SimulationEngine();
+    const result = engine.run({
+      userProfile: { currentAge: 50, retirementAge: 50, expectancy: 60, targetMonthlySpending: 5000000 }, // 부족분 발생하도록 목표 생활비를 높게
+      assets: [], // 일반자산 없음 -> shortfall 시 바로 사적연금으로 갈 수밖에 없는 상황
+      nationalPension: { expectedMonthlyAmount: 0 },
+      privatePensions: [
+        { id: 'pension-1', type: 'irp', balance: 300000000, monthlyContribution: 0, annualReturn: 5, currency: 'KRW' },
+      ],
+      otherIncomes: [],
+      inflationRate: 0,
+      inflationMode: 'real',
+      baseExchangeRate: 1350,
+      exchangeScenario: 'base',
+      displayCurrency: 'KRW',
+    });
+
+    const before55 = result.yearlyResults.filter((r) => r.age >= 50 && r.age < 55);
+    expect(before55.length).toBeGreaterThan(0);
+    for (const r of before55) {
+      // 55세 미만이므로 shortfall이 있어도 사적연금을 인출할 수 없다 -> 인출 0, 목표 생활비 미충족
+      expect(r.privatePensionIncome).toBe(0);
+      expect(r.spending).toBeLessThan(5000000 * 12);
+    }
+
+    // 55세부터는 후행 인출로 부족분을 정상적으로 충당한다.
+    const at55 = result.yearlyResults.find((r) => r.age === 55);
+    expect(at55).toBeDefined();
+    expect(at55!.privatePensionIncome).toBeGreaterThan(0);
+  });
+
   test('withdrawalPlan이 있어도 shortfall 발생 시 기존처럼 사적연금이 후행 인출된다', () => {
     const engine = new SimulationEngine();
     // 목표 생활비를 매우 낮은 사적연금 목표보다 훨씬 높게 잡아 shortfall이 발생하도록 함
