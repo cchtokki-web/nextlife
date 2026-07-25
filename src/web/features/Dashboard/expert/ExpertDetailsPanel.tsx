@@ -3,31 +3,26 @@
 import { useMemo } from 'react';
 import { Collapse } from '../../../components/ui';
 import GlassCard from '../../../components/GlassCard';
-import { SimulationParams, SimulationResult, UtilityBreakdown } from '../../../../core/entities/types';
+import { SimulationParams, SimulationResult } from '../../../../core/entities/types';
 import { SimulationEngine } from '../../../../core/usecases/SimulationEngine';
 import { computeExpertAnalytics } from '../../../../core/usecases/dashboard/computeExpertAnalytics';
 import { computeSensitivityAnalysis } from '../../../../core/usecases/dashboard/computeSensitivityAnalysis';
 import { YearlyChart } from '../YearlyChart';
-import { UtilityBreakdownBars } from './UtilityBreakdownBars';
-import { CurrentStrategyAnalysis } from './CurrentStrategyAnalysis';
 import { SensitivityAnalysisSection } from './SensitivityAnalysisSection';
 
 interface ExpertDetailsPanelProps {
   result: SimulationResult;
   params: SimulationParams;
-  utility?: UtilityBreakdown;
-  bequestAdequacyExplanation?: string;
   isPro?: boolean;
   formatValue: (val: number) => string;
 }
 
 // 세금/건보료/인출순서/연금구성/금융소득종합과세/상속 등 전문가용 상세 분석. 기본 닫힘 상태이며,
 // DashboardSection에서 계산만 되고 렌더링되지 않던 세금/리스크 분석값(computeExpertAnalytics)을 소비한다.
+// "평생 효용 점수 구성"/"현재 전략 분석"은 UtilityInsightSection으로 승격되어 여기서는 다루지 않는다.
 export function ExpertDetailsPanel({
   result,
   params,
-  utility,
-  bequestAdequacyExplanation,
   isPro = false,
   formatValue,
 }: ExpertDetailsPanelProps) {
@@ -46,22 +41,6 @@ export function ExpertDetailsPanel({
     <GlassCard className="mb-6">
       <Collapse title={<span className="font-display text-base font-semibold">전문가용 상세 분석 더 보기</span>}>
         <div className="flex flex-col gap-6 pt-2">
-          {utility && (
-            <section>
-              <h4 className="mb-2 text-sm font-semibold">평생 효용 점수 구성</h4>
-              <UtilityBreakdownBars utility={utility} />
-              {bequestAdequacyExplanation && (
-                <p className="mt-2 text-xs text-foreground-muted">* 상속 자산 적정성: {bequestAdequacyExplanation}</p>
-              )}
-            </section>
-          )}
-
-          {utility && (
-            <section>
-              <CurrentStrategyAnalysis utility={utility} />
-            </section>
-          )}
-
           <section>
             <h4 className="mb-2 text-sm font-semibold">세금 및 건강보험료 (은퇴 이후 연평균)</h4>
             <dl className="grid grid-cols-2 gap-3 text-xs sm:grid-cols-4">

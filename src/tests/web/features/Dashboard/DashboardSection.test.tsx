@@ -146,6 +146,17 @@ describe('DashboardSection - IA 순서', () => {
     expect(chartIdx).toBeGreaterThan(roadmapIdx);
   });
 
+  test('전문가용 상세 분석 Collapse를 열지 않아도 평생 효용 점수 구성이 바로 보인다', () => {
+    render(<DashboardSection params={params} result={result} recommendation={recommendation} />);
+    expect(screen.getByText('평생 효용 점수 구성')).toBeInTheDocument();
+    expect(screen.getByText('장점')).toBeInTheDocument();
+  });
+
+  test('자산 추이 차트는 기본으로 단순화 모드이며, "자산 구성 상세보기" 버튼을 제공한다', () => {
+    render(<DashboardSection params={params} result={result} recommendation={recommendation} />);
+    expect(screen.getByRole('button', { name: '자산 구성 상세보기' })).toBeInTheDocument();
+  });
+
   test('핵심 KPI 4장(은퇴준비도/순자산/월생활비/Utility)이 모두 노출된다', () => {
     render(<DashboardSection params={params} result={result} recommendation={recommendation} />);
     expect(screen.getByText(/은퇴 준비도/)).toBeInTheDocument();

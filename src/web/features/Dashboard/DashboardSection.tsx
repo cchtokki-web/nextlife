@@ -16,6 +16,7 @@ import { RecommendationChecklist } from './recommendation/RecommendationChecklis
 import { AiSummaryHero } from './hero/AiSummaryHero';
 import { ExpertDetailsPanel } from './expert/ExpertDetailsPanel';
 import { RiskAlertCards } from './risk/RiskAlertCards';
+import { UtilityInsightSection } from './insights/UtilityInsightSection';
 import { computeRiskAlerts } from '../../../core/usecases/dashboard/computeRiskAlerts';
 import { useBeforeAfterToggle } from './hooks/useBeforeAfterToggle';
 import { ExecutionRoadmap } from './roadmap/ExecutionRoadmap';
@@ -43,6 +44,9 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
   isComputingRecommendation = false,
 }) => {
   const [hiddenKeys, setHiddenKeys] = React.useState<Record<string, boolean>>({});
+  // 자산 추이 차트 기본 단순화 모드: 켜지기 전까지는 주식자산/연금자산 breakdown을 숨기고
+  // 자산총액/월생활비만 보여준다. 범례 클릭으로 저장된 hiddenKeys는 그대로 두고 덮어씌우기만 한다.
+  const [showAssetBreakdown, setShowAssetBreakdown] = React.useState(false);
 
   const handleLegendClick = (data: LegendPayload) => {
     const dataKey = data.dataKey;
@@ -51,6 +55,10 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
       setHiddenKeys((prev) => ({ ...prev, [key]: !prev[key] }));
     }
   };
+
+  const assetChartHiddenKeys = showAssetBreakdown
+    ? hiddenKeys
+    : { ...hiddenKeys, 주식자산: true, 연금자산: true };
 
   const params: SimulationParams = React.useMemo(() => ({
     ...rawParams,
@@ -88,6 +96,10 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
 
   const captions = generateChartCaptions(displayedResult, params);
   const riskAlerts = computeRiskAlerts(displayedResult, params);
+  const bequestAdequacyExplanation = React.useMemo(
+    () => (displayedResult.utility ? explainBequestAdequacy(params, displayedResult) : undefined),
+    [params, displayedResult]
+  );
 
   return (
     <div className={styles.container}>
@@ -154,6 +166,11 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
       {/* 리스크 알림 (해당되는 것만, 0~3개) */}
       <RiskAlertCards alerts={riskAlerts} />
 
+      {/* 평생 효용 점수 구성 + 현재 전략 강점/약점 (항상 노출, Collapse 아님) */}
+      {displayedResult.utility && (
+        <UtilityInsightSection utility={displayedResult.utility} bequestAdequacyExplanation={bequestAdequacyExplanation} />
+      )}
+
       {/* STEP 3: AI 추천 전략 체크리스트 */}
       <RecommendationChecklist
         recommendation={recommendation}
@@ -178,9 +195,11 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
         params={params}
         result={displayedResult}
         compareResults={compareResults}
-        hiddenKeys={hiddenKeys}
+        hiddenKeys={assetChartHiddenKeys}
         onLegendClick={handleLegendClick}
         caption={captions.assetGrowth}
+        showBreakdown={showAssetBreakdown}
+        onToggleBreakdown={() => setShowAssetBreakdown((v) => !v)}
       />
       <IncomeCompositionChart
         params={params}
@@ -198,14 +217,7 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
       />
 
       {/* STEP 5: 전문가용 상세 분석 (기본 Collapse) */}
-      <ExpertDetailsPanel
-        result={displayedResult}
-        params={params}
-        utility={displayedResult.utility}
-        bequestAdequacyExplanation={displayedResult.utility ? explainBequestAdequacy(params, displayedResult) : undefined}
-        isPro={isPro}
-        formatValue={formatValue}
-      />
+      <ExpertDetailsPanel result={displayedResult} params={params} isPro={isPro} formatValue={formatValue} />
     </div>
   );
 };

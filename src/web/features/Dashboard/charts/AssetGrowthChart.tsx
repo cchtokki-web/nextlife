@@ -33,6 +33,8 @@ interface AssetGrowthChartProps {
   hiddenKeys: Record<string, boolean>;
   onLegendClick: (data: LegendPayload) => void;
   caption: string;
+  showBreakdown: boolean;
+  onToggleBreakdown: () => void;
 }
 
 const COMPARE_COLORS = ['#10B981', '#F59E0B', '#EF4444', '#8B5CF6'];
@@ -44,6 +46,8 @@ export function AssetGrowthChart({
   hiddenKeys,
   onLegendClick,
   caption,
+  showBreakdown,
+  onToggleBreakdown,
 }: AssetGrowthChartProps) {
   const currency = params.displayCurrency;
   const { yearlyResults, depletionAge } = result;
@@ -74,14 +78,23 @@ export function AssetGrowthChart({
             ({params.inflationMode === 'nominal' ? '명목가치' : '실질가치'} 기준)
           </span>
         </span>
-        {depletionAge ? (
-          <span className={styles.depletionAlertBadge}>
-            <TrendingDown size={12} style={{ marginRight: '0.25rem', verticalAlign: 'middle' }} />
-            {depletionAge}세 자산 고갈 발생
-          </span>
-        ) : (
-          <span className={styles.successBadge}>안정적인 노후 자산 유지됨</span>
-        )}
+        <div className="flex items-center gap-2">
+          {depletionAge ? (
+            <span className={styles.depletionAlertBadge}>
+              <TrendingDown size={12} style={{ marginRight: '0.25rem', verticalAlign: 'middle' }} />
+              {depletionAge}세 자산 고갈 발생
+            </span>
+          ) : (
+            <span className={styles.successBadge}>안정적인 노후 자산 유지됨</span>
+          )}
+          <button
+            type="button"
+            onClick={onToggleBreakdown}
+            className="rounded-full border border-card-border px-3 py-1 text-xs font-semibold text-foreground-muted hover:bg-foreground/5"
+          >
+            {showBreakdown ? '간단히 보기' : '자산 구성 상세보기'}
+          </button>
+        </div>
       </div>
       <ChartCaption>{caption}</ChartCaption>
       <div className={styles.chartScrollWrapper}>
