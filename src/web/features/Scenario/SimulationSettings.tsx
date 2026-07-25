@@ -4,6 +4,7 @@ import { InputField } from '../../components/InputField';
 import styles from './Scenario.module.css';
 import compStyles from '../../styles/components.module.css';
 import { Sliders, RefreshCw, ChevronDown, ChevronUp } from 'lucide-react';
+import { applyYieldPreset } from '../../../core/usecases/scenario/applyYieldPreset';
 
 export const SimulationSettings: React.FC<{ scenarioState: any }> = ({ scenarioState }) => {
   const [isExpanded, setIsExpanded] = useState(true);
@@ -64,20 +65,8 @@ export const SimulationSettings: React.FC<{ scenarioState: any }> = ({ scenarioS
     }
   };
 
-  const applyYieldPreset = (preset: 'conservative' | 'base' | 'aggressive') => {
-    let stockGrowth = 7, pensionReturn = 4;
-    if (preset === 'conservative') { stockGrowth = 5; pensionReturn = 3; }
-    else if (preset === 'aggressive') { stockGrowth = 9; pensionReturn = 6; }
-
-    const updatedAssets = activeParams.assets.map((a: any) => ({ ...a, annualGrowthRate: stockGrowth }));
-    const updatedPensions = activeParams.privatePensions.map((p: any) => ({ ...p, annualReturn: pensionReturn }));
-
-    handleUpdateActiveParams({
-      ...activeParams,
-      assets: updatedAssets,
-      privatePensions: updatedPensions,
-      yieldPreset: preset,
-    });
+  const applyYieldPresetToActiveScenario = (preset: 'conservative' | 'base' | 'aggressive') => {
+    handleUpdateActiveParams(applyYieldPreset(activeParams, preset));
   };
 
   const getActivePreset = () => {
@@ -112,19 +101,19 @@ export const SimulationSettings: React.FC<{ scenarioState: any }> = ({ scenarioS
             <div className={styles.presetButtons}>
               <button
                 className={`${styles.presetBtn} ${styles.btnConservative} ${activePreset === 'conservative' ? styles.active : ''}`}
-                onClick={() => applyYieldPreset('conservative')}
+                onClick={() => applyYieldPresetToActiveScenario('conservative')}
               >
                 보수적 (주식 5%, 연금 3%)
               </button>
               <button
                 className={`${styles.presetBtn} ${styles.btnBase} ${activePreset === 'base' ? styles.active : ''}`}
-                onClick={() => applyYieldPreset('base')}
+                onClick={() => applyYieldPresetToActiveScenario('base')}
               >
                 기본값 ⭐ (주식 7%, 연금 4%)
               </button>
               <button
                 className={`${styles.presetBtn} ${styles.btnAggressive} ${activePreset === 'aggressive' ? styles.active : ''}`}
-                onClick={() => applyYieldPreset('aggressive')}
+                onClick={() => applyYieldPresetToActiveScenario('aggressive')}
               >
                 공격적 (주식 9%, 연금 6%)
               </button>
