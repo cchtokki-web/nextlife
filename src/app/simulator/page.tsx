@@ -4,6 +4,8 @@ import React, { useState, useEffect, useMemo, useDeferredValue } from 'react';
 import { useSession, signOut } from 'next-auth/react';
 import { SimulationEngine } from '../../core/usecases/SimulationEngine';
 import { computeMonthlySpendingComposition } from '../../core/usecases/MonthlySpendingComposition';
+import { computeRiskAlerts } from '../../core/usecases/dashboard/computeRiskAlerts';
+import { renderRiskAlertsSection, renderItemizedChecklistSection } from '../../web/features/Pdf/pdfReportSections';
 import { recommendStrategy } from '../../core/usecases/strategy/RecommendationEngine';
 import { analyzeCurrentStrategy, explainBequestAdequacy } from '../../core/usecases/utility/utilityAnalysis';
 import { resolveTaxSettings } from '../../core/usecases/tax/taxRates';
@@ -255,9 +257,7 @@ export default function Home() {
         : hasImprovement
           ? `Utility ${recommendation.currentUtility.score}점 → ${recommendation.recommendedUtility.score}점`
           : '현재 전략 유지 권장';
-      const recommendationReasonsHtml = recommendation
-        ? recommendation.reasons.map(r => `<li style="margin-bottom: 4px;">${r}</li>`).join('')
-        : '<li>AI 추천 전략 계산에 실패했습니다.</li>';
+      const itemizedChecklistHtml = renderItemizedChecklistSection(recommendation);
       const deltaRowsHtml = (recommendation && hasImprovement)
         ? `
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; font-size: 12px;">
@@ -268,6 +268,9 @@ export default function Home() {
           </div>
         `
         : '';
+
+      const riskAlerts = computeRiskAlerts(result, activeParams);
+      const riskAlertsSectionHtml = renderRiskAlertsSection(riskAlerts);
 
       // Create a temporary container
       const container = document.createElement('div');
@@ -340,6 +343,7 @@ export default function Home() {
                 </div>
               </div>
             </div>
+            ${riskAlertsSectionHtml}
 
             <h2 style="font-size: 16px; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; color: #0f172a; margin-top: 25px; margin-bottom: 10px;">2. 시뮬레이션 설정 상태</h2>
             <ul style="padding-left: 20px; margin-top: 5px; margin-bottom: 25px; font-size: 13px; line-height: 1.6;">
@@ -384,7 +388,7 @@ export default function Home() {
 
             <h3 style="font-size: 13px; color: #0f172a; margin-bottom: 4px;">🤖 AI 추천 전략 — ${recommendationSummaryText}</h3>
             ${hasImprovement ? '<p style="font-size: 10px; color: #94a3b8; margin: 0 0 6px;">※ 아래 추천안은 시뮬레이션 결과이며 실제 설정에는 자동 반영되지 않습니다. 적용하려면 설정을 직접 변경하세요.</p>' : ''}
-            <ul style="padding-left: 18px; margin-top: 6px; margin-bottom: 0; font-size: 12px; line-height: 1.6;">${recommendationReasonsHtml}</ul>
+            <div style="margin-top: 6px;">${itemizedChecklistHtml}</div>
             ${deltaRowsHtml}
           </div>
           <div class="pdf-footer">
