@@ -60,9 +60,8 @@ function makeRecommendation(recommendedPlan: CompleteWithdrawalPlan | null): Str
 }
 
 describe('computeExecutionRoadmap', () => {
-  test('recommendedPlan이 채워진 경우 4개 이벤트가 정확한 나이/제목으로 생성된다', () => {
+  test('recommendedPlan이 채워진 경우 이벤트가 정확한 나이/제목으로 생성된다', () => {
     const plan: CompleteWithdrawalPlan = {
-      privatePensionStartAge: 63,
       privatePensionMonthlyTarget: 2000000,
       nationalPensionStartAge: 68,
       assetSellOrderStrategy: 'input_order',
@@ -73,13 +72,11 @@ describe('computeExecutionRoadmap', () => {
     const roadmap = computeExecutionRoadmap(baseParams, makeRecommendation(plan), null);
 
     const ages = roadmap.events.map((e) => e.age);
-    expect(ages).toEqual([60, 63, 68]); // 60세: 퇴직+일반자산(같은 나이 병합), 63세: 사적연금, 68세: 국민연금
+    // 60세: 퇴직+일반자산+사적연금(clampPrivatePensionStartAge(retirementAge)=60, 같은 나이 병합), 68세: 국민연금
+    expect(ages).toEqual([60, 68]);
 
     const age60 = roadmap.events.find((e) => e.age === 60)!;
-    expect(age60.items.map((i) => i.title)).toEqual(['퇴직', '일반자산 인출 개시']);
-
-    const age63 = roadmap.events.find((e) => e.age === 63)!;
-    expect(age63.items[0].title).toBe('사적연금 수령 개시');
+    expect(age60.items.map((i) => i.title)).toEqual(['퇴직', '일반자산 인출 개시', '사적연금 수령 개시']);
 
     const age68 = roadmap.events.find((e) => e.age === 68)!;
     expect(age68.items[0].title).toBe('국민연금 수령 개시 (연기)');
@@ -87,13 +84,29 @@ describe('computeExecutionRoadmap', () => {
 
   test('recommendation이 undefined이면 getIdentityPlan(params) 기준으로 폴백한다', () => {
     const roadmap = computeExecutionRoadmap(baseParams, undefined, null);
-    // getIdentityPlan: privatePensionStartAge=retirementAge=60, nationalPensionStartAge=65, generalAssetWithdrawalStartAge=60
+    // getIdentityPlan: nationalPensionStartAge=65, generalAssetWithdrawalStartAge=60,
+    // 사적연금 수령 개시 나이는 clampPrivatePensionStartAge(retirementAge)=60
     const ages = roadmap.events.map((e) => e.age);
     expect(ages).toEqual([60, 65]);
     const age60 = roadmap.events.find((e) => e.age === 60)!;
     expect(age60.items.map((i) => i.title)).toEqual(['퇴직', '일반자산 인출 개시', '사적연금 수령 개시']);
     const age65 = roadmap.events.find((e) => e.age === 65)!;
     expect(age65.items[0].title).toBe('국민연금 수령 개시');
+  });
+
+  test('retirementAge가 55세 미만이면 사적연금 수령 개시 이벤트는 55세로 clamp된다', () => {
+    const earlyRetirementParams: SimulationParams = {
+      ...baseParams,
+      userProfile: { ...baseParams.userProfile, retirementAge: 50 },
+    };
+    const roadmap = computeExecutionRoadmap(earlyRetirementParams, undefined, null);
+
+    const age50 = roadmap.events.find((e) => e.age === 50)!;
+    expect(age50.items.map((i) => i.title)).toEqual(['퇴직', '일반자산 인출 개시']);
+
+    const age55 = roadmap.events.find((e) => e.age === 55)!;
+    expect(age55).toBeDefined();
+    expect(age55.items.map((i) => i.title)).toEqual(['사적연금 수령 개시']);
   });
 
   test('recommendation.recommendedPlan이 null이면(improved: false) getIdentityPlan(params) 기준으로 폴백한다', () => {
@@ -104,7 +117,6 @@ describe('computeExecutionRoadmap', () => {
 
   test('국민연금 수령 개시 나이가 65세보다 이르면 "(조기)"를 표기한다', () => {
     const plan: CompleteWithdrawalPlan = {
-      privatePensionStartAge: 60,
       privatePensionMonthlyTarget: 0,
       nationalPensionStartAge: 62,
       assetSellOrderStrategy: 'input_order',
@@ -119,7 +131,6 @@ describe('computeExecutionRoadmap', () => {
 
   test('국민연금 수령 개시 나이가 정확히 65세면 접미사 없이 표기한다', () => {
     const plan: CompleteWithdrawalPlan = {
-      privatePensionStartAge: 60,
       privatePensionMonthlyTarget: 0,
       nationalPensionStartAge: 65,
       assetSellOrderStrategy: 'input_order',
@@ -134,18 +145,17 @@ describe('computeExecutionRoadmap', () => {
 
   test('events는 나이 오름차순으로 정렬된다', () => {
     const plan: CompleteWithdrawalPlan = {
-      privatePensionStartAge: 70,
       privatePensionMonthlyTarget: 0,
-      nationalPensionStartAge: 62,
+      nationalPensionStartAge: 61,
       assetSellOrderStrategy: 'input_order',
       isaMaturityDestination: 'pension',
-      generalAssetWithdrawalStartAge: 61,
+      generalAssetWithdrawalStartAge: 65,
       monthlySpendingMultiplier: 1,
     };
     const roadmap = computeExecutionRoadmap(baseParams, makeRecommendation(plan), null);
     const ages = roadmap.events.map((e) => e.age);
     expect(ages).toEqual([...ages].sort((a, b) => a - b));
-    expect(ages).toEqual([60, 61, 62, 70]);
+    expect(ages).toEqual([60, 61, 65]);
   });
 
   test('expectancy는 params.userProfile.expectancy 그대로 반환된다', () => {
@@ -168,7 +178,6 @@ describe('computeExecutionRoadmap', () => {
 
   test('depletionAge가 다른 이벤트와 같은 나이면 같은 노드로 병합된다', () => {
     const plan: CompleteWithdrawalPlan = {
-      privatePensionStartAge: 60,
       privatePensionMonthlyTarget: 0,
       nationalPensionStartAge: 65,
       assetSellOrderStrategy: 'input_order',

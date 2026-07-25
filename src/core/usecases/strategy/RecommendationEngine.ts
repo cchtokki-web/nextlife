@@ -61,9 +61,8 @@ export interface BuildReasonsContext {
   originalMonthlyTarget?: number;
   // "미지정 시 동일하게 동작하는" 기본값 plan. 필드별 문구는 이 값과 다를 때만 생성한다 —
   // 그렇지 않으면 phase 2(생활비 배수)가 만드는 identity 기반 plan(getIdentityPlan)이나,
-  // 우연히 기본값과 같은 phase 1 후보가 "N세부터 사적연금 인출을 시작합니다" 같은 실제로는
-  // 아무것도 바뀌지 않은 필드까지 문구로 노출시킨다(예: 사적연금 계좌가 아예 없는데도
-  // privatePensionMonthlyTarget=0/privatePensionStartAge=retirementAge가 "결정"처럼 보고됨).
+  // 우연히 기본값과 같은 phase 1 후보가 실제로는 아무것도 바뀌지 않은 필드까지 문구로
+  // 노출시킨다(예: 사적연금 계좌가 아예 없는데도 privatePensionMonthlyTarget=0이 "결정"처럼 보고됨).
   identityPlan?: CompleteWithdrawalPlan;
 }
 
@@ -109,12 +108,6 @@ export function buildReasons(
     );
   }
 
-  if (
-    plan.privatePensionStartAge !== undefined &&
-    plan.privatePensionStartAge !== context?.identityPlan?.privatePensionStartAge
-  ) {
-    reasons.push(`${plan.privatePensionStartAge}세부터 사적연금 인출을 시작합니다.`);
-  }
   if (
     plan.privatePensionMonthlyTarget !== undefined &&
     plan.privatePensionMonthlyTarget !== context?.identityPlan?.privatePensionMonthlyTarget
@@ -186,7 +179,7 @@ export function buildReasons(
 
 // plan.monthlySpendingMultiplier(1이 아닌 값)를 실제 시뮬레이션/Utility 평가에 반영하려면
 // userProfile.targetMonthlySpending 자체를 스케일링한 params가 필요하다. multiplier===1이면
-// (기존 6차원 후보 전부 해당) params를 그대로 반환해 기존 동작을 전혀 바꾸지 않는다.
+// (기존 5차원 후보 전부 해당) params를 그대로 반환해 기존 동작을 전혀 바꾸지 않는다.
 function paramsForCandidate(params: SimulationParams, plan: CompleteWithdrawalPlan): SimulationParams {
   const multiplier = plan.monthlySpendingMultiplier ?? 1;
   if (multiplier === 1) {
@@ -203,7 +196,6 @@ function paramsForCandidate(params: SimulationParams, plan: CompleteWithdrawalPl
 }
 
 const PLAN_FIELDS: Array<keyof CompleteWithdrawalPlan> = [
-  'privatePensionStartAge',
   'privatePensionMonthlyTarget',
   'nationalPensionStartAge',
   'assetSellOrderStrategy',
@@ -224,8 +216,6 @@ function labelForSingleFieldChange(
   originalMonthlyTarget: number
 ): string {
   switch (field) {
-    case 'privatePensionStartAge':
-      return `${recommendedPlan.privatePensionStartAge}세부터 사적연금 인출을 시작합니다.`;
     case 'privatePensionMonthlyTarget':
       return `사적연금을 월 약 ${formatManwon(recommendedPlan.privatePensionMonthlyTarget)} 수준으로 정액 인출합니다.`;
     case 'generalAssetWithdrawalStartAge':
@@ -265,7 +255,7 @@ function labelForSingleFieldChange(
 
 // recommendedPlan이 identityPlan 대비 실제로 바뀐 필드 각각에 대해, "그 필드 하나만 baseline에
 // 적용했을 때"의 독립적인(marginal) Utility/절세/자산 효과를 계산한다. 바뀐 필드가 N개면 N번의
-// 추가 시뮬레이션이 발생한다(N은 보통 1~7) — 기존 최대 866개 후보 평가 대비 무시할 수준이다.
+// 추가 시뮬레이션이 발생한다(N은 보통 1~6) — 기존 최대 218개 후보 평가 대비 무시할 수준이다.
 // 필드 간 상호작용은 반영하지 않으므로, 반환값의 utilityDelta 합계는 recommendStrategy가 최종
 // 반환하는 전체 개선폭(recommendedUtility.score - currentUtility.score)과 정확히 일치하지 않을 수 있다.
 export function computeItemizedContributions(
@@ -359,7 +349,7 @@ export function recommendStrategy(
     failedCandidateCount: 0,
   };
 
-  // Phase 1: 인출 시점/순서/목적지 6차원 그리드 탐색 (기존 로직, 변경 없음)
+  // Phase 1: 인출 시점/순서/목적지 5차원 그리드 탐색 (기존 로직, 변경 없음)
   const candidates = generateCandidatePlans(params);
   for (const plan of candidates) {
     evaluateCandidate(plan, params, engine, cfg, state);

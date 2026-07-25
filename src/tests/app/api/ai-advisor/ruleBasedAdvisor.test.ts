@@ -28,7 +28,6 @@ function makeRecommendation(currentScore: number, recommendedScore: number): Str
     currentUtility: { ...baseUtility, score: currentScore },
     recommendedUtility: { ...baseUtility, score: recommendedScore },
     recommendedPlan: improved ? {
-      privatePensionStartAge: 62,
       privatePensionMonthlyTarget: 0,
       nationalPensionStartAge: 65,
       assetSellOrderStrategy: 'input_order',
@@ -37,7 +36,7 @@ function makeRecommendation(currentScore: number, recommendedScore: number): Str
       monthlySpendingMultiplier: 1,
     } : null,
     improved,
-    reasons: ['62세부터 사적연금 인출을 시작합니다.'],
+    reasons: ['65세부터 일반 자산(주식/ETF) 인출을 시작합니다.'],
     deltas: zeroDeltas,
     totalCandidateCount: 12,
     failedCandidateCount: 0,

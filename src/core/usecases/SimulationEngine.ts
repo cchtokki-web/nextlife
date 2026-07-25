@@ -471,7 +471,9 @@ export class SimulationEngine {
 
           if (isRetired && pension.currentBalance > 0) {
             let drawAmountRaw = 0;
-            const planStartAge = clampPrivatePensionStartAge(withdrawalPlan?.privatePensionStartAge ?? userProfile.retirementAge);
+            // 사용자가 개별 조정할 수 있는 필드가 아니라 항상 이 식이다 — computeExecutionRoadmap.ts의
+            // 로드맵 이벤트 나이 계산과 동일해야 한다.
+            const planStartAge = clampPrivatePensionStartAge(userProfile.retirementAge);
             const pensionWithdrawalsStarted = currentAge >= planStartAge;
 
             if (pensionWithdrawalsStarted) {
@@ -544,10 +546,8 @@ export class SimulationEngine {
 
           // 55세 미만은 사적연금(IRP/연금저축) 법정 인출 자체가 불가능하므로, 부족분이 있어도
           // 조기 인출로 충당하지 않는다 — 이 경우 부족분은 실제 생활비 미충족으로 남는다.
-          // 55세 이상이면 withdrawalPlan.privatePensionStartAge(사용자가 세금 등을 이유로 더
-          // 늦게 지정했을 수 있는 "선호" 시점)와 무관하게 법정 최저 나이(55세)부터 바로 후행
-          // 인출한다 — 그 선호 시점은 최적화를 위한 것일 뿐 법적 제약이 아니므로, 부족분이 생긴
-          // 응급 상황에서는 있는 돈을 최대한 활용하는 쪽(조기에라도 인출)이 맞다.
+          // 55세 이상이면 법정 최저 나이(55세)부터 바로 후행 인출한다 — 부족분이 생긴 응급
+          // 상황에서는 있는 돈을 최대한 활용하는 쪽(조기에라도 인출)이 맞다.
           if (remainingShortfall > 0 && currentAge >= PRIVATE_PENSION_MIN_START_AGE) {
             const taxRate = getPrivatePensionIncomeTaxRate(currentAge);
             for (const pension of activePensions) {

@@ -178,7 +178,7 @@ describe('recommendStrategy', () => {
   });
 });
 
-// 배당 자산만 있고 사적연금/국민연금이 없어, 6차원 그리드(인출 시점/순서)로는 사망 시
+// 배당 자산만 있고 사적연금/국민연금이 없어, 5차원 그리드(인출 시점/순서)로는 사망 시
 // 잔여자산 과다를 해소할 수 없는 시나리오. 목표 생활비 증액(Phase 2)이 유일한 해소 수단이다.
 const paramsWithSurplusAssetOnly: SimulationParams = {
   userProfile: { currentAge: 60, retirementAge: 60, expectancy: 90, targetMonthlySpending: 3000000 },
@@ -214,7 +214,7 @@ const paramsWithDepletionRisk: SimulationParams = {
 };
 
 describe('recommendStrategy - 생활비 증액(Phase 2) 후보', () => {
-  test('6차원 탐색으로 해소되지 않는 잔여자산 과다는 생활비 증액 후보로 개선된다', () => {
+  test('5차원 탐색으로 해소되지 않는 잔여자산 과다는 생활비 증액 후보로 개선된다', () => {
     const engine = new SimulationEngine();
     const recommendation = recommendStrategy(paramsWithSurplusAssetOnly, engine);
 
@@ -332,9 +332,9 @@ describe('computeItemizedContributions', () => {
     const identityPlan = getIdentityPlan(paramsWithLargePension);
     const baselineResult = engine.runForUtility(paramsWithLargePension);
     const currentUtility = computeLifetimeUtility(baselineResult, paramsWithLargePension, DEFAULT_UTILITY_CONFIG);
-    // identityPlan의 privatePensionStartAge/retirementAge(60)와 다르게, 국민연금 연기(70)와
-    // 사적연금 개시 연령(65) 둘 다 바뀐 추천안 — 루프가 필드별로 격리되는지 검증한다.
-    const recommendedPlan = { ...identityPlan, nationalPensionStartAge: 70, privatePensionStartAge: 65 };
+    // identityPlan의 privatePensionMonthlyTarget과 다르게, 국민연금 연기(70)와 사적연금
+    // 월 인출액(300만원) 둘 다 바뀐 추천안 — 루프가 필드별로 격리되는지 검증한다.
+    const recommendedPlan = { ...identityPlan, nationalPensionStartAge: 70, privatePensionMonthlyTarget: 3000000 };
 
     const items = computeItemizedContributions(
       paramsWithLargePension,
@@ -354,10 +354,10 @@ describe('computeItemizedContributions', () => {
     expect(privatePensionItem).toBeDefined();
 
     // 국민연금 항목은 nationalPensionStartAge 하나만 baseline에 적용한 결과라, 사적연금
-    // 시작연령은 바뀌지 않았으므로 그 필드의 delta는 0이어야 한다(두 필드를 한꺼번에 섞어
+    // 월 인출액은 바뀌지 않았으므로 그 필드의 delta는 0이어야 한다(두 필드를 한꺼번에 섞어
     // 적용하는 버그였다면 이 값도 함께 바뀌어 0이 아니게 된다).
     expect(nationalPensionItem!.deltas.nationalPensionTotal).not.toBe(0);
-    expect(privatePensionItem!.label).toContain('65세');
+    expect(privatePensionItem!.label).toContain('정액 인출');
     // 두 항목의 deltas가 서로 동일하지 않아야(각자 다른 단일 필드 override 결과여야) 한다.
     expect(nationalPensionItem!.deltas).not.toEqual(privatePensionItem!.deltas);
   });
@@ -537,7 +537,6 @@ describe('buildReasons - context 인자로 전달되는 신규 문구', () => {
 
   test('identityPlan과 값이 같은 필드는(실제로는 바뀐 게 없으므로) 문구를 생성하지 않는다', () => {
     const identityPlan: CompleteWithdrawalPlan = {
-      privatePensionStartAge: 60,
       privatePensionMonthlyTarget: 0,
       nationalPensionStartAge: 65,
       assetSellOrderStrategy: 'input_order',
@@ -690,7 +689,7 @@ describe('buildReasons - 국민연금 조기/연기수령 문구', () => {
 describe('buildReasons - pensionEndingBalance 증가 케이스', () => {
   test('사망 시 연금잔액이 증가하면(가치판단 없이) 사실만 보고하는 문구를 반환한다', () => {
     const reasons = buildReasons(
-      { privatePensionStartAge: 65 },
+      {},
       { ...zeroDeltas, pensionEndingBalance: 30000000 },
       true
     );

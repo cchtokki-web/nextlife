@@ -59,3 +59,19 @@ describe('AssetFormSection - 목표 상속자산', () => {
     });
   });
 });
+
+// 사적연금 수령 개시 나이 설정 기능(WithdrawalPlan.privatePensionStartAge) 제거 회귀 가드.
+describe('AssetFormSection - 사적연금 수령 개시 나이 UI 제거됨', () => {
+  test('사적연금 계좌가 있어도 수령 개시 나이 입력 UI를 렌더링하지 않는다', () => {
+    const params: SimulationParams = {
+      ...baseParams,
+      privatePensions: [
+        { id: 'pension-1', type: 'irp', balance: 100000000, monthlyContribution: 0, annualReturn: 5, currency: 'KRW' },
+      ],
+    };
+    render(<AssetFormSection params={params} onChangeParams={vi.fn()} />);
+
+    expect(screen.queryByText(/사적연금 수령 개시 나이/)).not.toBeInTheDocument();
+    expect(screen.queryByText('수령 개시 나이')).not.toBeInTheDocument();
+  });
+});

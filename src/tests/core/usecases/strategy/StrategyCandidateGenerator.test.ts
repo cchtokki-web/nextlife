@@ -39,15 +39,13 @@ describe('generateCandidatePlans', () => {
     expect(candidates).toEqual([]);
   });
 
-  test('사적연금이 있으면 유효 범위 내의 인출 개시 나이 x 월 인출액 조합을 생성한다', () => {
+  test('사적연금이 있으면 유효 범위 내의 월 인출액 조합을 생성한다', () => {
     const candidates = generateCandidatePlans(baseParams);
 
     expect(candidates.length).toBeGreaterThan(0);
-    expect(candidates.length).toBeLessThanOrEqual(900); // 브라우저 실시간 처리 가능한 상한 (전체 시나리오 최악의 경우 864, 아래 별도 테스트로 검증)
+    expect(candidates.length).toBeLessThanOrEqual(900); // 브라우저 실시간 처리 가능한 상한 (전체 시나리오 최악의 경우 216, 아래 별도 테스트로 검증)
 
     for (const c of candidates) {
-      expect(c.privatePensionStartAge).toBeGreaterThanOrEqual(baseParams.userProfile.retirementAge);
-      expect(c.privatePensionStartAge).toBeLessThan(baseParams.userProfile.expectancy);
       expect(c.privatePensionMonthlyTarget).toBeGreaterThan(0);
     }
   });
@@ -58,8 +56,8 @@ describe('generateCandidatePlans', () => {
     for (const c of candidates) {
       expect(c.nationalPensionStartAge).toBe(65);
     }
-    // 사적연금 개시나이(retirementAge=60 유니온 포함 4개) × 월인출액(3개)만큼만 생성되어야 함
-    expect(candidates.length).toBe(12);
+    // 월인출액(3개)만큼만 생성되어야 함
+    expect(candidates.length).toBe(3);
   });
 
   test('국민연금 수령액이 있으면 조기~연기 수령 나이 그리드를 함께 탐색한다', () => {
@@ -71,35 +69,12 @@ describe('generateCandidatePlans', () => {
 
     const distinctNationalPensionAges = new Set(candidates.map((c) => c.nationalPensionStartAge));
     expect(distinctNationalPensionAges.size).toBeGreaterThan(1);
-    // 4(사적연금 개시나이, retirementAge 유니온 포함) × 3(월인출액) × 3(국민연금 개시나이) = 36
-    expect(candidates.length).toBe(36);
+    // 3(월인출액) × 3(국민연금 개시나이) = 9
+    expect(candidates.length).toBe(9);
 
     for (const c of candidates) {
       expect(c.nationalPensionStartAge).toBeGreaterThanOrEqual(60);
       expect(c.nationalPensionStartAge).toBeLessThanOrEqual(70);
-    }
-  });
-
-  test('은퇴 나이가 이미 기대수명에 가까우면 유효한 개시 나이 후보만 남는다', () => {
-    const candidates = generateCandidatePlans({
-      ...baseParams,
-      userProfile: { ...baseParams.userProfile, retirementAge: 88, expectancy: 90 },
-    });
-
-    for (const c of candidates) {
-      expect(c.privatePensionStartAge).toBe(88);
-    }
-  });
-
-  test('은퇴 나이가 55세 미만이면 사적연금 개시 나이 후보는 55세 미만을 포함하지 않는다', () => {
-    const candidates = generateCandidatePlans({
-      ...baseParams,
-      userProfile: { ...baseParams.userProfile, retirementAge: 50, expectancy: 90 },
-    });
-
-    expect(candidates.length).toBeGreaterThan(0);
-    for (const c of candidates) {
-      expect(c.privatePensionStartAge).toBeGreaterThanOrEqual(55);
     }
   });
 
@@ -187,9 +162,9 @@ describe('generateCandidatePlans', () => {
     }
   });
 
-  test('모든 차원이 최대로 확장되는 최악의 경우 864개(4×3×3×3×2×4) 후보를 생성한다', () => {
-    // retirementAge(61)가 그리드 최솟값(62)보다 작아야 startAgeCandidates/
-    // generalAssetWithdrawalStartAgeCandidates가 각각 4개(retirementAge 유니온 포함)가 된다.
+  test('모든 차원이 최대로 확장되는 최악의 경우 216개(3×3×3×2×4) 후보를 생성한다', () => {
+    // retirementAge(61)가 그리드 최솟값(62)보다 작아야 generalAssetWithdrawalStartAgeCandidates가
+    // 4개(retirementAge 유니온 포함)가 된다.
     const worstCaseParams: SimulationParams = {
       ...baseParams,
       userProfile: { ...baseParams.userProfile, retirementAge: 61, expectancy: 95 },
@@ -204,7 +179,7 @@ describe('generateCandidatePlans', () => {
     };
 
     const candidates = generateCandidatePlans(worstCaseParams);
-    expect(candidates.length).toBe(864);
+    expect(candidates.length).toBe(216);
   });
 
   test('회귀 가드: monthlySpendingMultiplier는 이 cartesian product의 차원이 아니라 항상 1이다', () => {
@@ -220,7 +195,6 @@ describe('getIdentityPlan', () => {
     const plan = getIdentityPlan(baseParams);
 
     expect(plan).toEqual<CompleteWithdrawalPlan>({
-      privatePensionStartAge: baseParams.userProfile.retirementAge,
       privatePensionMonthlyTarget: baseParams.userProfile.targetMonthlySpending,
       nationalPensionStartAge: 65,
       assetSellOrderStrategy: 'input_order',
@@ -233,30 +207,6 @@ describe('getIdentityPlan', () => {
   test('사적연금이 없으면 privatePensionMonthlyTarget은 0이다', () => {
     const plan = getIdentityPlan({ ...baseParams, privatePensions: [] });
     expect(plan.privatePensionMonthlyTarget).toBe(0);
-  });
-
-  test('retirementAge가 55세 미만이면 privatePensionStartAge는 55세로 clamp된다', () => {
-    const plan = getIdentityPlan({
-      ...baseParams,
-      userProfile: { ...baseParams.userProfile, retirementAge: 50 },
-    });
-    expect(plan.privatePensionStartAge).toBe(55);
-  });
-
-  test('params.withdrawalPlan.privatePensionStartAge가 55세 미만으로 설정돼 있어도(예: 레거시 시나리오) 55세로 clamp된다', () => {
-    const plan = getIdentityPlan({
-      ...baseParams,
-      withdrawalPlan: { privatePensionStartAge: 50 },
-    });
-    expect(plan.privatePensionStartAge).toBe(55);
-  });
-
-  test('params.withdrawalPlan.privatePensionStartAge가 설정돼 있으면(55세 이상) 그 값을 그대로 쓴다', () => {
-    const plan = getIdentityPlan({
-      ...baseParams,
-      withdrawalPlan: { privatePensionStartAge: 62 },
-    });
-    expect(plan.privatePensionStartAge).toBe(62);
   });
 });
 
@@ -291,7 +241,6 @@ describe('generateSpendingAdjustmentCandidates', () => {
 
     expect(candidates.map((c) => c.monthlySpendingMultiplier)).toEqual([1.1, 1.2]);
     for (const c of candidates) {
-      expect(c.privatePensionStartAge).toBe(basePlan.privatePensionStartAge);
       expect(c.assetSellOrderStrategy).toBe(basePlan.assetSellOrderStrategy);
     }
   });

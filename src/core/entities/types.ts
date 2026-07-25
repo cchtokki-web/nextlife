@@ -68,7 +68,6 @@ export type AssetSellOrderStrategy = 'input_order' | 'low_dividend_first' | 'hig
 export type IsaMaturityDestination = 'pension' | 'asset';
 
 export interface WithdrawalPlan {
-  privatePensionStartAge?: number; // 사적연금 인출 개시 나이 (미지정 시 retirementAge)
   privatePensionMonthlyTarget?: number; // 월 목표 인출액(KRW 기준, 세전). 계좌 합산 기준, 잔액 한도 내에서 제한
   nationalPensionStartAge?: number; // 국민연금 수령 개시 나이 (60~70, 미지정 시 65 = 기존 동작과 동일)
   assetSellOrderStrategy?: AssetSellOrderStrategy; // 자산 매도 순서 (미지정 시 'input_order' = 기존 동작과 동일)
@@ -81,7 +80,7 @@ export interface WithdrawalPlan {
   monthlySpendingMultiplier?: number;
 }
 
-// StrategyCandidateGenerator가 만드는 후보처럼 6개 필드가 모두 채워진 "완결된" 인출 전략.
+// StrategyCandidateGenerator가 만드는 후보처럼 필드가 모두 채워진 "완결된" 인출 전략.
 // WithdrawalPlan은 "부분 override 패치"(일부 필드만 지정)로도 쓰이는 반면, 이 타입은 그 의미를
 // 컴파일 타임에 구분하기 위한 것이다 (예: StrategyRecommendation.recommendedPlan).
 export type CompleteWithdrawalPlan = Required<WithdrawalPlan>;

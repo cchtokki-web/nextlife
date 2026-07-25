@@ -1,5 +1,6 @@
 import { getIdentityPlan } from '../strategy/StrategyCandidateGenerator';
 import { NATIONAL_PENSION_NORMAL_START_AGE } from '../pension/nationalPensionRules';
+import { clampPrivatePensionStartAge } from '../pension/privatePensionRules';
 import { SimulationParams, StrategyRecommendation } from '../../entities/types';
 
 export interface RoadmapEventItem {
@@ -48,7 +49,9 @@ export function computeExecutionRoadmap(
       item: { title: '일반자산 인출 개시', description: '주식/ETF 등 일반 자산의 인출을 시작합니다.' },
     },
     {
-      age: plan.privatePensionStartAge,
+      // 사적연금 개시 나이는 사용자가 조정하는 필드가 아니라 항상 법정 최저 나이(55세)로 하한된
+      // retirementAge다 — SimulationEngine.ts의 planStartAge 계산과 동일한 식이어야 한다.
+      age: clampPrivatePensionStartAge(retirementAge),
       item: { title: '사적연금 수령 개시', description: '사적연금(퇴직연금·연금저축 등) 인출을 시작합니다.' },
     },
     {

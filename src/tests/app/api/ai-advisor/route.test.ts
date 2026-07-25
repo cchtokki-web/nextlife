@@ -48,7 +48,6 @@ describe('buildSimulationContextText - Utility Score 반영', () => {
       currentUtility: { ...baseUtility, score: 83 },
       recommendedUtility: { ...baseUtility, score: 87 },
       recommendedPlan: {
-        privatePensionStartAge: 62,
         privatePensionMonthlyTarget: 0,
         nationalPensionStartAge: 65,
         assetSellOrderStrategy: 'input_order',
@@ -57,7 +56,7 @@ describe('buildSimulationContextText - Utility Score 반영', () => {
         monthlySpendingMultiplier: 1,
       },
       improved: true,
-      reasons: ['62세부터 사적연금 인출을 시작합니다.'],
+      reasons: ['65세부터 일반 자산(주식/ETF) 인출을 시작합니다.'],
       deltas: zeroDeltas,
       totalCandidateCount: 12,
       failedCandidateCount: 0,
@@ -68,7 +67,7 @@ describe('buildSimulationContextText - Utility Score 반영', () => {
 
     expect(text).toContain('83');
     expect(text).toContain('87');
-    expect(text).toContain('62세부터 사적연금 인출을 시작합니다.');
+    expect(text).toContain('65세부터 일반 자산(주식/ETF) 인출을 시작합니다.');
   });
 
   test('recommendation이 baseline과 동일하면(개선 없음) 추천 관련 줄을 추가하지 않는다', () => {

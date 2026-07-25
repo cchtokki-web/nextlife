@@ -174,7 +174,6 @@ describe('DashboardSection - IA 순서', () => {
 
   test('추천안에 생활비 배수(monthlySpendingMultiplier)가 포함되면 After 모드에서 예상 월 생활비 KPI가 그만큼 늘어난다', () => {
     const recommendedPlan: CompleteWithdrawalPlan = {
-      privatePensionStartAge: 60,
       privatePensionMonthlyTarget: 0,
       nationalPensionStartAge: 65,
       assetSellOrderStrategy: 'input_order',
