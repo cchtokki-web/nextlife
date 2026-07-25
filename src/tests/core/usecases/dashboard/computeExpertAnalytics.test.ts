@@ -86,34 +86,6 @@ describe('computeExpertAnalytics', () => {
     expect(analytics.pensionGapYears).toBe(0);
   });
 
-  test('금융소득종합과세 납부 또는 경고가 있던 해가 있으면 everComprehensiveTax가 true다', () => {
-    const analytics = computeExpertAnalytics(
-      makeResult([makeYearlyResult({ age: 65, hasTaxWarning: true })]),
-      baseParams
-    );
-    expect(analytics.everComprehensiveTax).toBe(true);
-  });
-
-  test('사적연금 소득+세금 합이 저율과세 한도를 초과하는 해가 있으면 hasHighPrivatePensionRisk가 true다', () => {
-    const params: SimulationParams = {
-      ...baseParams,
-      taxSettings: {
-        enableComprehensiveTax: true,
-        enableHealthInsurance: true,
-        usDividendTaxRate: 15,
-        domesticDividendTaxRate: 15.4,
-        comprehensiveTaxRate: 15,
-        healthInsuranceRate: 5,
-        privatePensionLimit: 15000000,
-      },
-    };
-    const analytics = computeExpertAnalytics(
-      makeResult([makeYearlyResult({ age: 65, privatePensionIncome: 20000000, pensionTaxPaid: 1000000 })]),
-      params
-    );
-    expect(analytics.hasHighPrivatePensionRisk).toBe(true);
-  });
-
   test('은퇴 이후 평균 배당소득이 연 500만원을 초과하면 hasSignificantDividends가 true다', () => {
     const analytics = computeExpertAnalytics(
       makeResult([makeYearlyResult({ age: 65, dividendIncome: 6000000 })]),

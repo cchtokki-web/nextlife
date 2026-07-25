@@ -9,8 +9,6 @@ export interface ExpertAnalytics {
   // 동일하게, "국민연금 없음"과 "65세부터 수령"을 구분하기 위해 임의 기본값(65)을 쓰지 않는다.
   firstAgeWithNationalPension: number | null;
   pensionGapYears: number;
-  everComprehensiveTax: boolean;
-  hasHighPrivatePensionRisk: boolean;
   hasSignificantDividends: boolean;
 }
 
@@ -37,11 +35,6 @@ export function computeExpertAnalytics(result: SimulationResult, params: Simulat
   const firstAgeWithNationalPension = yearlyResults.find((r) => r.nationalPensionIncome > 0)?.age ?? null;
   const pensionGapYears = firstAgeWithNationalPension === null ? 0 : Math.max(0, firstAgeWithNationalPension - retirementAge);
 
-  const everComprehensiveTax = yearlyResults.some((r) => r.comprehensiveTaxPaid > 0 || r.hasTaxWarning);
-
-  const pensionLimit = params.taxSettings?.privatePensionLimit ?? 15000000;
-  const hasHighPrivatePensionRisk = yearlyResults.some((r) => r.privatePensionIncome + r.pensionTaxPaid > pensionLimit);
-
   const hasSignificantDividends = avgYearlyDividend > 5000000;
 
   return {
@@ -51,8 +44,6 @@ export function computeExpertAnalytics(result: SimulationResult, params: Simulat
     avgNetIncome,
     firstAgeWithNationalPension,
     pensionGapYears,
-    everComprehensiveTax,
-    hasHighPrivatePensionRisk,
     hasSignificantDividends,
   };
 }

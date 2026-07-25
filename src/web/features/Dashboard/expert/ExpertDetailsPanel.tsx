@@ -79,12 +79,6 @@ export function ExpertDetailsPanel({
                   (analytics.pensionGapYears > 0 ? ` (은퇴 후 ${analytics.pensionGapYears}년의 연금 공백 기간이 있습니다)` : '') +
                   '.'}
             </li>
-            {analytics.everComprehensiveTax && (
-              <li className="text-danger">⚠️ 금융소득종합과세 대상이 되는 연도가 있습니다.</li>
-            )}
-            {analytics.hasHighPrivatePensionRisk && (
-              <li className="text-warning">⚠️ 사적연금 저율과세 한도를 초과하는 연도가 있어 세금 부담이 늘어날 수 있습니다.</li>
-            )}
             {analytics.hasSignificantDividends && (
               <li>배당소득 비중이 상당해 금융소득종합과세 여부를 주기적으로 점검하는 것이 좋습니다.</li>
             )}
