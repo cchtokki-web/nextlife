@@ -44,7 +44,7 @@ export function AiSummaryHero({ formatValue, mode, onToggleMode, canApply, ...ad
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h2 className="font-display text-xl font-bold sm:text-2xl">
-            <span className="mr-1 align-middle text-base sm:text-lg">{headline.emoji}</span>
+            <span className="mr-3 align-middle text-sm sm:text-base">{headline.emoji}</span>
             {userNamePrefix}
             {headline.text}
           </h2>
@@ -97,7 +97,7 @@ export function AiSummaryHero({ formatValue, mode, onToggleMode, canApply, ...ad
         }
         open={isAdviceOpen}
         onOpenChange={setIsAdviceOpen}
-        className="mt-4"
+        className="mt-6"
       >
         <div className="mt-2 rounded-xl border border-card-border bg-foreground/5 p-4">
           <AiAdviceText
