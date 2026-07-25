@@ -697,3 +697,60 @@ describe('buildReasons - pensionEndingBalance 증가 케이스', () => {
     expect(reasons.some((r) => r.includes('연금잔액') && r.includes('증가'))).toBe(true);
   });
 });
+
+describe('recommendStrategy - Phase 3 배당 재투자 통합', () => {
+  test('assets가 비어 있으면 recommendedAssetReinvestment는 null이다', () => {
+    const engine = new SimulationEngine();
+    const result = recommendStrategy(paramsWithLargePension, engine);
+    expect(result.recommendedAssetReinvestment).toBeNull();
+  });
+
+  test('자산이 있으면 itemizedContributions/reasons에 배당 재투자 항목이 추가될 수 있다(구조 검증)', () => {
+    // reinvestDividend는 SimulationEngine 내부에서 (1) 은퇴 전(currentAge < retirementAge) 연차에만,
+    // (2) assets[0]이 아닌 자산에 대해서만 실제로 결과에 영향을 준다 — assets[0]의 배당은
+    // reinvestDividend 값과 무관하게 항상 자기 자신으로 재유입되는 잉여 스윕 로직이 있어 index 0은
+    // 항상 무효과다(RecommendationEngine.ts의 Phase 3 통합 조사 과정에서 실제 엔진으로 확인).
+    // 그래서 이 fixture는 paramsWithLargePension을 은퇴 전 시점(currentAge 30 < retirementAge 65)으로
+    // 조정하고, 성장률이 크게 다른 자산 2개를 둔다 — asset-1(저성장·고배당)의 배당을 재투자하지
+    // 않고 asset-0(고성장)으로 흘려보내는 쪽이 유리해지도록 설계해 실제로 non-null 경로를 탄다.
+    const engine = new SimulationEngine();
+    const paramsWithAssets: SimulationParams = {
+      ...paramsWithLargePension,
+      userProfile: { ...paramsWithLargePension.userProfile, currentAge: 30, retirementAge: 65 },
+      assets: [
+        {
+          id: 'asset-0',
+          type: 'etf',
+          ticker: 'GROWTH',
+          name: '성장자산',
+          quantity: 1,
+          averagePrice: 30000000,
+          annualGrowthRate: 10,
+          dividendYield: 0,
+          monthlyContribution: 0,
+          reinvestDividend: true,
+          currency: 'KRW',
+        },
+        {
+          id: 'asset-1',
+          type: 'etf',
+          ticker: 'SPY',
+          name: '테스트자산',
+          quantity: 1,
+          averagePrice: 30000000,
+          annualGrowthRate: 1,
+          dividendYield: 8,
+          monthlyContribution: 0,
+          reinvestDividend: true,
+          currency: 'KRW',
+        },
+      ],
+    };
+    const result = recommendStrategy(paramsWithAssets, engine);
+    // 이 fixture는 실제 엔진에서 결정론적으로 asset-1만 재투자 중단(false)이 유리하다고 판단한다
+    // (asset-0은 index 0이라 flip해도 무효과이므로 beneficial 목록에 들어가지 않는다).
+    expect(result.recommendedAssetReinvestment).not.toBeNull();
+    expect(Object.keys(result.recommendedAssetReinvestment ?? {})).toEqual(['asset-1']);
+    expect(result.itemizedContributions.some((c) => c.label.includes('테스트자산'))).toBe(true);
+  });
+});

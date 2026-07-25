@@ -14,6 +14,7 @@ import { DEFAULT_UTILITY_CONFIG } from '../utility/utilityWeights';
 import { analyzeCurrentStrategy, formatManwon } from '../utility/utilityAnalysis';
 import { getRetirementGrade } from '../../entities/retirementGrade';
 import { generateCandidatePlans, generateSpendingAdjustmentCandidates, getIdentityPlan } from './StrategyCandidateGenerator';
+import { optimizeDividendReinvestment } from './DividendReinvestmentOptimizer';
 
 function sumYears(result: SimulationResult, pick: (y: SimulationResult['yearlyResults'][number]) => number): number {
   return result.yearlyResults.reduce((sum, y) => sum + pick(y), 0);
@@ -383,31 +384,56 @@ export function recommendStrategy(
   }
 
   const { bestResult, bestUtility, bestPlan, failedCandidateCount } = state;
-  const deltas = computeDeltas(baselineResult, bestResult);
-  const improved = bestPlan !== null;
+  const withdrawalPlanDeltas = computeDeltas(baselineResult, bestResult);
+  const withdrawalPlanImproved = bestPlan !== null;
   const candidateStats = { total: candidates.length + spendingCandidates.length, failed: failedCandidateCount };
-  const reasons = buildReasons(bestPlan, deltas, improved, candidateStats, {
+  const baseReasons = buildReasons(bestPlan, withdrawalPlanDeltas, withdrawalPlanImproved, candidateStats, {
     currentUtility,
     recommendedUtility: bestUtility,
     cfg,
     originalMonthlyTarget: params.userProfile.targetMonthlySpending,
     identityPlan,
   });
-  const itemizedContributions = bestPlan
+  const withdrawalItemizedContributions = bestPlan
     ? computeItemizedContributions(params, identityPlan, bestPlan, currentUtility, baselineResult, engine, cfg)
     : [];
 
+  // Phase 3: 배당 재투자 최적화 (신규). Phase 1+2 결과 위에서 자산별 reinvestDividend를
+  // 독립 평가(O(N)) + 통합 검증한다. WithdrawalPlan(bestPlan)과는 다른 축(축적기 파라미터)이라
+  // bestPlan 자체는 바꾸지 않고, 최종 결과와 추가 itemized 항목/reasons만 병합한다.
+  const reinvestOpt = optimizeDividendReinvestment(params, bestPlan, bestResult, bestUtility, engine, cfg);
+  const additionalItemizedContributions: ItemizedContribution[] = reinvestOpt.perAssetResults.map((r) => ({
+    label: r.flippedValue
+      ? `"${r.assetName}"의 배당을 재투자로 전환합니다.`
+      : `"${r.assetName}"의 배당 재투자를 중단하고 현금으로 인출합니다.`,
+    utilityDelta: r.utilityDelta,
+    deltas: computeDeltas(bestResult, r.individualResult),
+  }));
+  const additionalReasons = additionalItemizedContributions.map((c) => c.label);
+
+  // withdrawalPlanImproved면 기존 reasons 뒤에 자연스럽게 이어붙이고, WithdrawalPlan 차원에서는
+  // 개선이 없었는데 Phase 3만 개선을 찾았다면 "개선 없음" 문구(baseReasons) 대신 Phase 3
+  // 문구만 보여준다(둘 다 없으면 기존 baseReasons의 "개선 없음" 문구를 그대로 유지).
+  const reasons = withdrawalPlanImproved
+    ? [...baseReasons, ...additionalReasons]
+    : additionalReasons.length > 0
+      ? additionalReasons
+      : baseReasons;
+  const itemizedContributions = [...withdrawalItemizedContributions, ...additionalItemizedContributions];
+  const improved = reinvestOpt.finalUtility.score > currentUtility.score;
+  const deltas = computeDeltas(baselineResult, reinvestOpt.finalResult);
+
   return {
     currentUtility,
-    recommendedUtility: bestUtility,
+    recommendedUtility: reinvestOpt.finalUtility,
     recommendedPlan: bestPlan,
-    recommendedAssetReinvestment: null,
+    recommendedAssetReinvestment: reinvestOpt.recommendedAssetReinvestment,
     improved,
     reasons,
     totalCandidateCount: candidateStats.total,
     failedCandidateCount: candidateStats.failed,
     deltas,
-    recommendedResult: bestResult,
+    recommendedResult: reinvestOpt.finalResult,
     itemizedContributions,
   };
 }
