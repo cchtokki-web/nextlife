@@ -36,6 +36,7 @@ function makeRecommendation(currentScore: number, recommendedScore: number): Str
       generalAssetWithdrawalStartAge: 65,
       monthlySpendingMultiplier: 1,
     } : null,
+    recommendedAssetReinvestment: null,
     improved,
     reasons: ['62세부터 사적연금 인출을 시작합니다.'],
     deltas: zeroDeltas,

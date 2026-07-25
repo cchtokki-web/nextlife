@@ -401,6 +401,7 @@ export function recommendStrategy(
     currentUtility,
     recommendedUtility: bestUtility,
     recommendedPlan: bestPlan,
+    recommendedAssetReinvestment: null,
     improved,
     reasons,
     totalCandidateCount: candidateStats.total,

@@ -40,6 +40,7 @@ function makeRecommendation(recommendedPlan: CompleteWithdrawalPlan | null): Str
     currentUtility: utility,
     recommendedUtility: utility,
     recommendedPlan,
+    recommendedAssetReinvestment: null,
     improved: recommendedPlan !== null,
     reasons: [],
     deltas: zeroDeltas,

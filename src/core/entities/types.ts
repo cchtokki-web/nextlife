@@ -220,6 +220,10 @@ export interface StrategyRecommendation {
   // 않으면 null(= baseline 유지 권장). "부분 override 패치"인 WithdrawalPlan과 달리 여기서는
   // "AI가 확정한 완결된 결정" 또는 "결정 없음"이라는 의미로만 쓰인다.
   recommendedPlan: CompleteWithdrawalPlan | null;
+  // assetId -> 권장 reinvestDividend 값(Phase 3: 배당 재투자 최적화). recommendedPlan과 달리
+  // WithdrawalPlan이 아니라 은퇴 "전" 축적기 파라미터(자산 배열 내부 값)라 별도 필드로 분리했다.
+  // 변경 권장이 없으면(자산 없음/개선 없음/통합 검증 실패) null.
+  recommendedAssetReinvestment: Record<string, boolean> | null;
   improved: boolean; // recommendedUtility.score > currentUtility.score 여부를 미리 계산해 둔 값. 소비처마다 재계산하지 않는다.
   reasons: string[];
   deltas: {
