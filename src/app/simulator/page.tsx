@@ -14,6 +14,8 @@ import { AssetFormSection } from '../../web/features/AssetForm/AssetFormSection'
 import { TaxSettingsSection } from '../../web/features/AssetForm/TaxSettingsSection';
 import { ScenarioManager } from '../../web/features/Scenario/ScenarioManager';
 import { SimulationSettings } from '../../web/features/Scenario/SimulationSettings';
+import { QuickSettingsSummary } from '../../web/features/Scenario/QuickSettingsSummary';
+import { Collapse } from '../../web/components/ui';
 import { DashboardSection } from '../../web/features/Dashboard/DashboardSection';
 import GlassCard from '../../web/components/GlassCard';
 import { Header } from '../../web/components/Header/Header';
@@ -864,27 +866,35 @@ export default function Home() {
               </button>
             </div>
             
+            {/* Quick Settings Summary */}
+            <QuickSettingsSummary params={activeParams} onChangeParams={handleUpdateActiveParams} />
+
             {/* Scenario Manager Section */}
             <GlassCard>
               <ScenarioManager scenarioState={scenarioState} />
             </GlassCard>
 
-            {/* Inputs Section */}
-            <GlassCard>
-              <AssetFormSection params={activeParams} onChangeParams={handleUpdateActiveParams} />
-            </GlassCard>
+            {/* Detailed Settings (기본 닫힘) */}
+            <Collapse title={<span className="text-base font-semibold">설정 자세히 보기</span>}>
+              <div className="flex flex-col gap-6 pt-2">
+                {/* Inputs Section */}
+                <GlassCard>
+                  <AssetFormSection params={activeParams} onChangeParams={handleUpdateActiveParams} />
+                </GlassCard>
 
-            {/* Simulation Settings Section */}
-            <GlassCard>
-              <SimulationSettings scenarioState={scenarioState} />
-            </GlassCard>
+                {/* Simulation Settings Section */}
+                <GlassCard>
+                  <SimulationSettings scenarioState={scenarioState} />
+                </GlassCard>
 
-            {/* Tax Settings Section */}
-            {isPro && (
-              <GlassCard>
-                <TaxSettingsSection params={activeParams} onChangeParams={handleUpdateActiveParams} />
-              </GlassCard>
-            )}
+                {/* Tax Settings Section */}
+                {isPro && (
+                  <GlassCard>
+                    <TaxSettingsSection params={activeParams} onChangeParams={handleUpdateActiveParams} />
+                  </GlassCard>
+                )}
+              </div>
+            </Collapse>
           </section>
 
           {/* Right Side: Visual Dashboard */}
