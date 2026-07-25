@@ -63,6 +63,31 @@ export function explainBequestAdequacy(
   result: SimulationResult,
   cfg: UtilityConfig = DEFAULT_UTILITY_CONFIG
 ): string {
+  const { targetBequest } = params.userProfile;
+
+  // 사용자가 목표 상속자산을 직접 지정한 경우: UtilityEngine.computeBequestAdequacyRaw와
+  // 동일한 산식(0원은 "다 쓰고 가기"라 분모 0으로 처리)을 근거로 설명 문구를 만든다.
+  if (targetBequest !== undefined) {
+    if (targetBequest <= 0) {
+      if (result.endingAssets <= 0) {
+        return '목표 상속자산을 0원(다 쓰고 가기)으로 설정하셨고, 예상대로 자산을 모두 소진할 것으로 예상됩니다.';
+      }
+      return (
+        `목표 상속자산을 0원(다 쓰고 가기)으로 설정하셨지만, 예상 잔여자산이 약 ${formatManwon(result.endingAssets)} 남아 감점되었습니다. ` +
+        `자산을 다 쓰지 못하고 남기는 것도 평생 효용 관점에서는 비효율로 간주됩니다.`
+      );
+    }
+
+    const ratio = result.endingAssets / targetBequest;
+    if (ratio > 1) {
+      return (
+        `목표 상속자산(약 ${formatManwon(targetBequest)})보다 예상 잔여자산(약 ${formatManwon(result.endingAssets)})이 ` +
+        `약 ${ratio.toFixed(1)}배 많아 감점되었습니다. 자산을 다 쓰지 못하고 남기는 것도 평생 효용 관점에서는 비효율로 간주됩니다.`
+      );
+    }
+    return `예상 잔여자산(약 ${formatManwon(result.endingAssets)})이 목표 상속자산(약 ${formatManwon(targetBequest)}) 대비 부족합니다.`;
+  }
+
   const appropriateBalance = params.userProfile.targetMonthlySpending * cfg.appropriateBequestMonths;
   if (appropriateBalance <= 0) {
     return '목표 월 생활비가 설정되지 않아 적정 상속 자산 기준을 계산할 수 없습니다.';

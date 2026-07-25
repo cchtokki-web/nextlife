@@ -120,7 +120,19 @@ function computePensionUtilizationRaw(
 }
 
 function computeBequestAdequacyRaw(params: SimulationParams, result: SimulationResult, cfg: UtilityConfig): number {
-  const appropriateBalance = params.userProfile.targetMonthlySpending * cfg.appropriateBequestMonths;
+  const { targetBequest } = params.userProfile;
+
+  // 사용자가 명시적으로 목표 상속자산을 지정한 경우: 0원("다 쓰고 가기")은 일반 공식(분모 0)으로
+  // 표현할 수 없는 별도 케이스라 분리한다 — 잔여자산이 0 이하면 목표를 정확히 달성한 것이므로
+  // 만점, 남으면 그만큼(연 목표생활비 대비 배수) 초과로 간주해 감점한다.
+  if (targetBequest !== undefined && targetBequest <= 0) {
+    if (result.endingAssets <= 0) return 1;
+    const excessScale = params.userProfile.targetMonthlySpending > 0 ? params.userProfile.targetMonthlySpending * 12 : 1;
+    return bellShapedAdequacyRaw(1 + result.endingAssets / excessScale, 0.7, 0.4);
+  }
+
+  const appropriateBalance =
+    targetBequest !== undefined ? targetBequest : params.userProfile.targetMonthlySpending * cfg.appropriateBequestMonths;
   const ratio = appropriateBalance > 0 ? result.endingAssets / appropriateBalance : (result.endingAssets > 0 ? 2 : 0);
   return bellShapedAdequacyRaw(ratio, 0.7, 0.4);
 }

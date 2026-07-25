@@ -153,6 +153,83 @@ describe('UtilityEngine.computeLifetimeUtility', () => {
     expect(huge.components.bequestAdequacy).toBeLessThan(balanced.components.bequestAdequacy);
   });
 
+  describe('bequestAdequacy via userProfile.targetBequest (사용자 지정 상속자산 목표)', () => {
+    test('targetBequest가 없으면 기존 공식(목표월생활비 * 24개월)을 그대로 사용한다 (회귀 가드)', () => {
+      const result = makeResult(
+        Array.from({ length: 36 }, (_, i) => makeYear(60 + i, { totalAssets: ANNUAL_TARGET * 2, pensionAssets: 0 })),
+        null
+      );
+      const utility = computeLifetimeUtility(result, baseParams);
+      expect(utility.components.bequestAdequacy).toBe(10);
+    });
+
+    test('targetBequest를 설정하면 그 값을 기준으로 ratio를 계산한다 (정확히 달성 시 만점)', () => {
+      const targetBequest = 100000000; // 1억원
+      const paramsWithTarget: SimulationParams = { ...baseParams, userProfile: { ...userProfile, targetBequest } };
+      const result = makeResult(
+        Array.from({ length: 36 }, (_, i) => makeYear(60 + i, { totalAssets: targetBequest, pensionAssets: 0 })),
+        null
+      );
+      const utility = computeLifetimeUtility(result, paramsWithTarget);
+      expect(utility.components.bequestAdequacy).toBe(10);
+    });
+
+    test('targetBequest가 0이면(다 쓰고 가기) 잔여자산이 0일 때 만점이다', () => {
+      const paramsWithZeroTarget: SimulationParams = { ...baseParams, userProfile: { ...userProfile, targetBequest: 0 } };
+      const result = makeResult(
+        Array.from({ length: 36 }, (_, i) => makeYear(60 + i, { totalAssets: 0, pensionAssets: 0 })),
+        80
+      );
+      const utility = computeLifetimeUtility(result, paramsWithZeroTarget);
+      expect(utility.components.bequestAdequacy).toBe(10);
+    });
+
+    test('targetBequest가 0인데 잔여자산이 남으면 과다잔여로 간주해 감점된다', () => {
+      const paramsWithZeroTarget: SimulationParams = { ...baseParams, userProfile: { ...userProfile, targetBequest: 0 } };
+      const zeroResult = makeResult(
+        Array.from({ length: 36 }, (_, i) => makeYear(60 + i, { totalAssets: 0, pensionAssets: 0 })),
+        80
+      );
+      const leftoverResult = makeResult(
+        Array.from({ length: 36 }, (_, i) => makeYear(60 + i, { totalAssets: 200000000, pensionAssets: 0 })),
+        null
+      );
+      const zeroUtility = computeLifetimeUtility(zeroResult, paramsWithZeroTarget);
+      const leftoverUtility = computeLifetimeUtility(leftoverResult, paramsWithZeroTarget);
+      expect(leftoverUtility.components.bequestAdequacy).toBeLessThan(zeroUtility.components.bequestAdequacy);
+    });
+
+    test('잔여자산이 목표에 못 미칠 때, 목표가 클수록(=더 많이 부족할수록) 점수가 낮아진다', () => {
+      const endingAssets = 100000000; // 1억원 (아래 두 목표 모두보다 작음 = 항상 미달 구간)
+      const makeR = () =>
+        makeResult(
+          Array.from({ length: 36 }, (_, i) => makeYear(60 + i, { totalAssets: endingAssets, pensionAssets: 0 })),
+          null
+        );
+      const closeTargetParams: SimulationParams = { ...baseParams, userProfile: { ...userProfile, targetBequest: 150000000 } }; // 소폭 미달
+      const farTargetParams: SimulationParams = { ...baseParams, userProfile: { ...userProfile, targetBequest: 500000000 } }; // 대폭 미달
+
+      const closeTargetUtility = computeLifetimeUtility(makeR(), closeTargetParams);
+      const farTargetUtility = computeLifetimeUtility(makeR(), farTargetParams);
+      expect(farTargetUtility.components.bequestAdequacy).toBeLessThan(closeTargetUtility.components.bequestAdequacy);
+    });
+
+    test('잔여자산이 목표를 초과할 때는, 목표가 작을수록(=상대적으로 더 많이 초과할수록) 점수가 낮아진다', () => {
+      const endingAssets = 200000000; // 2억원 (아래 두 목표 모두보다 큼 = 항상 초과 구간)
+      const makeR = () =>
+        makeResult(
+          Array.from({ length: 36 }, (_, i) => makeYear(60 + i, { totalAssets: endingAssets, pensionAssets: 0 })),
+          null
+        );
+      const smallTargetParams: SimulationParams = { ...baseParams, userProfile: { ...userProfile, targetBequest: 50000000 } }; // 4배 초과
+      const bigTargetParams: SimulationParams = { ...baseParams, userProfile: { ...userProfile, targetBequest: 150000000 } }; // 1.33배 초과
+
+      const smallTargetUtility = computeLifetimeUtility(makeR(), smallTargetParams);
+      const bigTargetUtility = computeLifetimeUtility(makeR(), bigTargetParams);
+      expect(smallTargetUtility.components.bequestAdequacy).toBeLessThan(bigTargetUtility.components.bequestAdequacy);
+    });
+  });
+
   describe('pensionUtilization (연금 활용도) 재설계', () => {
     const pensionUserProfile = {
       currentAge: 60,

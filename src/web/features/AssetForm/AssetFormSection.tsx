@@ -687,6 +687,24 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                 suffixText={params.displayCurrency === 'KRW' ? '원' : params.displayCurrency}
               />
             )}
+            <InputField
+              label="목표 상속자산"
+              labelSecondary="(0원 = 다 쓰고 가기)"
+              type="text"
+              value={
+                (params.userProfile.targetBequest ?? 0) === 0
+                  ? '0'
+                  : (params.userProfile.targetBequest ?? 0).toLocaleString()
+              }
+              onChange={(e) => {
+                const rawValue = e.target.value.replace(/,/g, '');
+                const numValue = rawValue === '' ? 0 : Number(rawValue);
+                if (!isNaN(numValue)) {
+                  handleProfileChange('targetBequest', numValue);
+                }
+              }}
+              suffixText={params.displayCurrency === 'KRW' ? '원' : params.displayCurrency}
+            />
           </div>
         )}
 

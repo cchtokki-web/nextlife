@@ -13,8 +13,8 @@ export function RiskAlertCards({ alerts }: RiskAlertCardsProps) {
   return (
     <div className="mb-6 flex flex-col gap-3">
       {alerts.map((alert) => (
-        <div key={alert.key} className="flex items-start gap-3 rounded-2xl border border-danger/30 bg-danger/5 p-4">
-          <AlertTriangle size={20} className="mt-0.5 shrink-0 text-danger" aria-hidden="true" />
+        <div key={alert.key} className="flex items-center gap-3 rounded-2xl border border-danger/30 bg-danger/5 p-4">
+          <AlertTriangle size={20} className="shrink-0 text-danger" aria-hidden="true" />
           <div>
             <p className="text-sm font-semibold text-danger">{alert.title}</p>
             <p className="mt-1 text-sm text-foreground-muted">{alert.message}</p>

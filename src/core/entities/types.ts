@@ -5,6 +5,10 @@ export interface UserProfile {
   retirementAge: number;
   expectancy: number;
   targetMonthlySpending: number; // 기준 통화 기준
+  // 기대수명 시점에 남기고 싶은 목표 상속자산(기준 통화 기준). 미지정 시 UtilityEngine의 기존
+  // 공식(목표 월생활비 * appropriateBequestMonths)으로 적정 잔여자산을 대신 추정한다. 0으로
+  // 설정하면 "상속하지 않고 다 쓰고 간다"는 명시적 목표를 의미한다.
+  targetBequest?: number;
 }
 
 export type AssetCurrency = 'KRW' | 'USD';

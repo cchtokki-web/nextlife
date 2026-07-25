@@ -143,4 +143,46 @@ describe('computeRiskAlerts', () => {
 
     expect(alerts).toEqual([]);
   });
+
+  describe('목표 상속자산 미달 알림 (userProfile.targetBequest)', () => {
+    test('targetBequest가 설정되지 않으면 잔여자산이 얼마든 알림이 없다', () => {
+      const result = { ...makeResult([]), endingAssets: 0 };
+      const alerts = computeRiskAlerts(result, baseParams);
+      expect(alerts).toEqual([]);
+    });
+
+    test('targetBequest가 0원(다 쓰고 가기)이면 잔여자산이 얼마든 알림이 없다', () => {
+      const params: SimulationParams = { ...baseParams, userProfile: { ...baseParams.userProfile, targetBequest: 0 } };
+      const result = { ...makeResult([]), endingAssets: 0 };
+      const alerts = computeRiskAlerts(result, params);
+      expect(alerts).toEqual([]);
+    });
+
+    test('예상 잔여자산이 목표 상속자산에 못 미치면 알림이 발생하고 두 금액을 모두 언급한다', () => {
+      const params: SimulationParams = { ...baseParams, userProfile: { ...baseParams.userProfile, targetBequest: 200000000 } };
+      const result = { ...makeResult([]), endingAssets: 50000000 };
+      const alerts = computeRiskAlerts(result, params);
+
+      expect(alerts).toHaveLength(1);
+      expect(alerts[0].key).toBe('bequestShortfall');
+      expect(alerts[0].message).toContain('5,000만원');
+      expect(alerts[0].message).toContain('20,000만원');
+    });
+
+    test('예상 잔여자산이 목표 상속자산 이상이면 알림이 없다', () => {
+      const params: SimulationParams = { ...baseParams, userProfile: { ...baseParams.userProfile, targetBequest: 200000000 } };
+      const result = { ...makeResult([]), endingAssets: 200000000 };
+      const alerts = computeRiskAlerts(result, params);
+      expect(alerts).toEqual([]);
+    });
+
+    test('다른 리스크와 함께 발생하면 기대수명 시점 이벤트라 가장 나중(가장 늦은 나이)으로 정렬된다', () => {
+      const params: SimulationParams = { ...baseParams, userProfile: { ...baseParams.userProfile, targetBequest: 200000000 } };
+      const yearlyResults = [makeYearlyResult({ age: 65, hasTaxWarning: true })];
+      const result = { ...makeResult(yearlyResults), endingAssets: 50000000 };
+      const alerts = computeRiskAlerts(result, params);
+
+      expect(alerts.map((a) => a.key)).toEqual(['comprehensiveTax', 'bequestShortfall']);
+    });
+  });
 });

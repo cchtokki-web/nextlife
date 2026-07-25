@@ -133,3 +133,36 @@ describe('explainBequestAdequacy', () => {
     expect(text).toContain('계산할 수 없습니다');
   });
 });
+
+describe('explainBequestAdequacy - userProfile.targetBequest 지정 시', () => {
+  function makeParamsWithTarget(targetBequest: number): SimulationParams {
+    const base = makeParams(3000000);
+    return { ...base, userProfile: { ...base.userProfile, targetBequest } };
+  }
+
+  test('목표 상속자산을 초과하면 목표 금액과 배수를 언급하며 감점 이유를 설명한다', () => {
+    // 목표 1억원, 잔여자산 3억원 -> 정확히 3배
+    const text = explainBequestAdequacy(makeParamsWithTarget(100000000), makeResult(300000000));
+    expect(text).toContain('목표 상속자산');
+    expect(text).toContain('3.0배');
+    expect(text).toContain('감점');
+  });
+
+  test('목표 상속자산에 못 미치면 목표 금액 대비 부족하다는 문구를 반환한다', () => {
+    const text = explainBequestAdequacy(makeParamsWithTarget(200000000), makeResult(50000000));
+    expect(text).toContain('목표 상속자산');
+    expect(text).toContain('부족');
+  });
+
+  test('목표 상속자산이 0원(다 쓰고 가기)이고 잔여자산이 0이면 목표를 달성했다는 문구를 반환한다', () => {
+    const text = explainBequestAdequacy(makeParamsWithTarget(0), makeResult(0));
+    expect(text).toContain('0원');
+    expect(text).not.toContain('감점');
+  });
+
+  test('목표 상속자산이 0원인데 잔여자산이 남으면 초과로 설명하며 감점 이유를 언급한다', () => {
+    const text = explainBequestAdequacy(makeParamsWithTarget(0), makeResult(50000000));
+    expect(text).toContain('0원');
+    expect(text).toContain('감점');
+  });
+});
