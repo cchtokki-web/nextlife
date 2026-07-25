@@ -69,7 +69,7 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
   const currency = params.displayCurrency;
   const formatValue = (val: number) => formatValueForCurrency(val, currency);
 
-  const { mode, toggle, canApply } = useBeforeAfterToggle({ recommendation });
+  const { mode, toggle, canApply } = useBeforeAfterToggle({ recommendation, params: rawParams });
   const displayedResult = mode === 'after' && recommendation ? recommendation.recommendedResult : result;
 
   // baseline(현재 설정) 기준 월 목표 생활비 — AI 노후 설계사 의견은 Before/After 미리보기와

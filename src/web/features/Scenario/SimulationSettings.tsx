@@ -4,7 +4,7 @@ import { InputField } from '../../components/InputField';
 import styles from './Scenario.module.css';
 import compStyles from '../../styles/components.module.css';
 import { Sliders, RefreshCw, ChevronDown, ChevronUp } from 'lucide-react';
-import { applyYieldPreset } from '../../../core/usecases/scenario/applyYieldPreset';
+import { applyYieldPreset, restoreCustomYieldPreset } from '../../../core/usecases/scenario/applyYieldPreset';
 
 export const SimulationSettings: React.FC<{ scenarioState: any }> = ({ scenarioState }) => {
   const [isExpanded, setIsExpanded] = useState(true);
@@ -69,12 +69,19 @@ export const SimulationSettings: React.FC<{ scenarioState: any }> = ({ scenarioS
     handleUpdateActiveParams(applyYieldPreset(activeParams, preset));
   };
 
+  const handleCustomPresetClick = () => {
+    handleUpdateActiveParams(restoreCustomYieldPreset(activeParams));
+  };
+
   const getActivePreset = () => {
     if (activeParams.yieldPreset) return activeParams.yieldPreset;
     return null;
   };
 
   const activePreset = getActivePreset();
+  // 직접입력 중이거나(현재 custom) 과거 직접입력 값을 복원할 스냅샷이 있을 때만 "사용자 프리셋"
+  // 버튼을 노출한다 (QuickSettingsSummary.tsx와 동일한 규칙).
+  const showCustomPreset = activePreset === 'custom' || !!activeParams.customYieldSnapshot;
 
   return (
     <div className={styles.container}>
@@ -117,6 +124,14 @@ export const SimulationSettings: React.FC<{ scenarioState: any }> = ({ scenarioS
               >
                 공격적 (주식 9%, 연금 6%)
               </button>
+              {showCustomPreset && (
+                <button
+                  className={`${styles.presetBtn} ${styles.btnCustom} ${activePreset === 'custom' ? styles.active : ''}`}
+                  onClick={handleCustomPresetClick}
+                >
+                  사용자 프리셋
+                </button>
+              )}
             </div>
           </div>
 

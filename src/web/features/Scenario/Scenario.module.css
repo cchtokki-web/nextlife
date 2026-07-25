@@ -84,6 +84,13 @@
   box-shadow: 0 0 10px 0 rgba(168, 85, 247, 0.2);
 }
 
+.btnCustom:active, .btnCustom:hover, .btnCustom.active {
+  border-color: var(--accent);
+  background: rgba(6, 182, 212, 0.12);
+  color: var(--accent);
+  box-shadow: 0 0 10px 0 rgba(6, 182, 212, 0.2);
+}
+
 .exchangeScenarioWrapper {
   display: flex;
   flex-direction: column;
