@@ -133,6 +133,19 @@ describe('DashboardSection - IA 순서', () => {
     expect(expertIdx).toBeGreaterThan(chartIdx);
   });
 
+  test('실행 로드맵이 렌더링되고 체크리스트 다음, 차트 이전에 위치한다', () => {
+    const { container } = render(
+      <DashboardSection params={params} result={result} recommendation={recommendation} />
+    );
+    const text = container.textContent ?? '';
+    const checklistIdx = text.indexOf('AI 추천 전략');
+    const roadmapIdx = text.indexOf('실행 로드맵');
+    const chartIdx = text.indexOf('자산 추이 시뮬레이션');
+
+    expect(roadmapIdx).toBeGreaterThan(checklistIdx);
+    expect(chartIdx).toBeGreaterThan(roadmapIdx);
+  });
+
   test('핵심 KPI 4장(생존가능성/순자산/월생활비/Utility)이 모두 노출된다', () => {
     render(<DashboardSection params={params} result={result} recommendation={recommendation} />);
     expect(screen.getByText(/생존 가능성/)).toBeInTheDocument();

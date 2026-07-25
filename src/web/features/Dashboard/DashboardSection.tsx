@@ -19,6 +19,8 @@ import { ExpertDetailsPanel } from './expert/ExpertDetailsPanel';
 import { RiskAlertCards } from './risk/RiskAlertCards';
 import { computeRiskAlerts } from '../../../core/usecases/dashboard/computeRiskAlerts';
 import { useBeforeAfterToggle } from './hooks/useBeforeAfterToggle';
+import { ExecutionRoadmap } from './roadmap/ExecutionRoadmap';
+import { computeExecutionRoadmap } from '../../../core/usecases/dashboard/computeExecutionRoadmap';
 
 interface DashboardSectionProps {
   params: SimulationParams;
@@ -187,6 +189,9 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
         isComputingRecommendation={isComputingRecommendation}
         formatValue={formatValue}
       />
+
+      {/* AI 추천 전략 실행 로드맵 (Before/After 토글과 무관하게 항상 고정 기준) */}
+      <ExecutionRoadmap roadmap={computeExecutionRoadmap(params, recommendation)} />
 
       {/* STEP 4: 그래프 3종 (각 상단에 rule-based AI 캡션) */}
       <AssetGrowthChart
