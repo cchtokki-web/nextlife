@@ -1,21 +1,44 @@
-import { CompleteWithdrawalPlan, SimulationParams, SimulationResult, UtilityBreakdown, UtilityConfig } from '../../entities/types';
+import {
+  CompleteWithdrawalPlan,
+  SimulationParams,
+  SimulationResult,
+  StrategyRecommendation,
+  UtilityBreakdown,
+  UtilityConfig,
+} from '../../entities/types';
+import { DomainError } from '../../entities/errors';
 import { SimulationEngine } from '../SimulationEngine';
 import { computeLifetimeUtility } from '../utility/UtilityEngine';
 import { getIdentityPlan } from './StrategyCandidateGenerator';
+import { computeDeltas } from './deltas';
 
 export interface DividendReinvestmentPerAssetResult {
   assetId: string;
   assetName: string;
   flippedValue: boolean;
   utilityDelta: number;
-  individualResult: SimulationResult;
+  deltas: StrategyRecommendation['deltas'];
 }
 
 export interface DividendReinvestmentOptimizationResult {
   recommendedAssetReinvestment: Record<string, boolean> | null;
   perAssetResults: DividendReinvestmentPerAssetResult[];
+  // finalResult/finalUtility는 단일 생산자(optimizeDividendReinvestment)가 항상 함께 설정하는
+  // 상관 필드다. 개선을 못 찾으면 bestResult/bestUtility가 그대로 채워지므로 호출부는 분기 없이
+  // 무조건 소비할 수 있다(no-op이어도 항상 유효한 값이 들어 있음).
   finalResult: SimulationResult;
   finalUtility: UtilityBreakdown;
+  // Phase 3 진행 중 DomainError로 건너뛴 평가 횟수(자산별 루프 + 통합 검증 단계 각각 1건씩 집계).
+  // "개선을 못 찾음"과 "계산 실패로 건너뜀"을 상위(RecommendationEngine)가 구분할 수 있게 한다.
+  failedAssetCount: number;
+}
+
+// 자산별 평가에서 유리하다고 판단된 후보. 통합 검증을 건너뛰는 단일-자산 지름길에서 재사용하기
+// 위해 이미 계산해 둔 SimulationResult/UtilityBreakdown을 함께 들고 다닌다.
+interface BeneficialCandidate {
+  perAsset: DividendReinvestmentPerAssetResult;
+  result: SimulationResult;
+  utility: UtilityBreakdown;
 }
 
 function buildParamsWithReinvestmentOverrides(
@@ -30,12 +53,17 @@ function buildParamsWithReinvestmentOverrides(
   };
 }
 
-function noOpResult(bestResult: SimulationResult, bestUtility: UtilityBreakdown): DividendReinvestmentOptimizationResult {
+function noOpResult(
+  bestResult: SimulationResult,
+  bestUtility: UtilityBreakdown,
+  failedAssetCount: number
+): DividendReinvestmentOptimizationResult {
   return {
     recommendedAssetReinvestment: null,
     perAssetResults: [],
     finalResult: bestResult,
     finalUtility: bestUtility,
+    failedAssetCount,
   };
 }
 
@@ -52,10 +80,11 @@ export function optimizeDividendReinvestment(
   engine: SimulationEngine,
   cfg: UtilityConfig
 ): DividendReinvestmentOptimizationResult {
-  if (params.assets.length === 0) return noOpResult(bestResult, bestUtility);
+  if (params.assets.length === 0) return noOpResult(bestResult, bestUtility, 0);
 
   const plan = bestPlan ?? getIdentityPlan(params);
-  const beneficial: DividendReinvestmentPerAssetResult[] = [];
+  const beneficial: BeneficialCandidate[] = [];
+  let failedAssetCount = 0;
 
   for (const asset of params.assets) {
     const flippedValue = !asset.reinvestDividend;
@@ -65,40 +94,67 @@ export function optimizeDividendReinvestment(
       const candidateUtility = computeLifetimeUtility(candidateResult, candidateParams, cfg);
       if (candidateUtility.score > bestUtility.score) {
         beneficial.push({
-          assetId: asset.id,
-          assetName: asset.name,
-          flippedValue,
-          utilityDelta: candidateUtility.score - bestUtility.score,
-          individualResult: candidateResult,
+          perAsset: {
+            assetId: asset.id,
+            assetName: asset.name,
+            flippedValue,
+            utilityDelta: candidateUtility.score - bestUtility.score,
+            deltas: computeDeltas(bestResult, candidateResult),
+          },
+          result: candidateResult,
+          utility: candidateUtility,
         });
       }
     } catch (err) {
-      console.warn('Skipping dividend reinvestment candidate that failed to simulate', asset.id, err);
+      // DomainError(예상된 도메인 거부)는 이 후보만 건너뛰고 계속 진행한다. 그 외 예외는 실제
+      // 버그이므로 삼키지 않고 재던진다(recommendStrategy 호출부가 recommendationFailed로 처리).
+      if (err instanceof DomainError) {
+        failedAssetCount++;
+        console.warn('Skipping dividend reinvestment candidate that failed to simulate', asset.id, err);
+      } else {
+        throw err;
+      }
     }
   }
 
-  if (beneficial.length === 0) return noOpResult(bestResult, bestUtility);
+  if (beneficial.length === 0) return noOpResult(bestResult, bestUtility, failedAssetCount);
 
   const overrides: Record<string, boolean> = {};
-  for (const r of beneficial) overrides[r.assetId] = r.flippedValue;
+  for (const b of beneficial) overrides[b.perAsset.assetId] = b.perAsset.flippedValue;
 
   let combinedResult: SimulationResult;
   let combinedUtility: UtilityBreakdown;
-  try {
-    const combinedParams = buildParamsWithReinvestmentOverrides(params, plan, overrides);
-    combinedResult = engine.runForUtility(combinedParams);
-    combinedUtility = computeLifetimeUtility(combinedResult, combinedParams, cfg);
-  } catch (err) {
-    console.warn('Skipping combined dividend reinvestment verification', err);
-    return noOpResult(bestResult, bestUtility);
+  if (beneficial.length === 1) {
+    // 유리한 자산이 하나뿐이면 통합 검증은 자산별 루프에서 이미 돌린 단일 override와 정확히 동일한
+    // 시뮬레이션이라 재실행이 낭비다. 그 결과를 그대로 재사용한다(runForUtility 총 1회만 호출).
+    combinedResult = beneficial[0].result;
+    combinedUtility = beneficial[0].utility;
+  } else {
+    try {
+      const combinedParams = buildParamsWithReinvestmentOverrides(params, plan, overrides);
+      combinedResult = engine.runForUtility(combinedParams);
+      combinedUtility = computeLifetimeUtility(combinedResult, combinedParams, cfg);
+    } catch (err) {
+      if (err instanceof DomainError) {
+        failedAssetCount++;
+        console.warn(
+          'Skipping combined dividend reinvestment verification',
+          { overrides, beneficialCount: beneficial.length },
+          err
+        );
+        return noOpResult(bestResult, bestUtility, failedAssetCount);
+      }
+      throw err;
+    }
   }
 
-  if (combinedUtility.score <= bestUtility.score) return noOpResult(bestResult, bestUtility);
+  if (combinedUtility.score <= bestUtility.score) return noOpResult(bestResult, bestUtility, failedAssetCount);
 
   return {
     recommendedAssetReinvestment: overrides,
-    perAssetResults: beneficial,
+    perAssetResults: beneficial.map((b) => b.perAsset),
     finalResult: combinedResult,
     finalUtility: combinedUtility,
+    failedAssetCount,
   };
 }
