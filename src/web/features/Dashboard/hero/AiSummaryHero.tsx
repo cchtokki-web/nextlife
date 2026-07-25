@@ -50,7 +50,7 @@ export function AiSummaryHero({ formatValue, mode, onToggleMode, canApply, ...ad
           {hasImprovement && recommendation && (
             <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-foreground-muted">
               <span>
-                추천 전략 적용 시 Lifetime Utility{' '}
+                추천 전략 적용 시 평생 효용{' '}
                 <strong className="text-success">
                   {utility.score} → {recommendation.recommendedUtility.score}
                 </strong>

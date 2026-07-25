@@ -32,12 +32,12 @@ const baseBody = {
 describe('buildSimulationContextText - Utility Score 반영', () => {
   test('utility/recommendation 미지정 시 기존과 동일하게 Utility 관련 줄이 없다', () => {
     const text = buildSimulationContextText(baseBody);
-    expect(text).not.toContain('Lifetime Utility');
+    expect(text).not.toContain('평생 효용');
   });
 
-  test('utility가 있으면 Lifetime Utility Score 줄과 강점/약점 요약을 포함한다', () => {
+  test('utility가 있으면 평생 효용 점수 줄과 강점/약점 요약을 포함한다', () => {
     const text = buildSimulationContextText({ ...baseBody, utility: baseUtility });
-    expect(text).toContain('Lifetime Utility Score');
+    expect(text).toContain('평생 효용 점수');
     expect(text).toContain('76');
     // bequestAdequacy 0/10 -> 약점으로 분류되어야 함
     expect(text).toContain('상속 자산 적정성');

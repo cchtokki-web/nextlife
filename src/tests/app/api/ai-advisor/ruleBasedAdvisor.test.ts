@@ -59,7 +59,7 @@ describe('generateRuleBasedAdvice - Utility Score 반영', () => {
 
     expect(advice).toContain('83');
     expect(advice).toContain('87');
-    expect(advice).toContain('Utility');
+    expect(advice).toContain('평생 효용');
   });
 
   test('추천 전략이 baseline과 동일하면(개선 없음) 문장을 추가하지 않는다', () => {

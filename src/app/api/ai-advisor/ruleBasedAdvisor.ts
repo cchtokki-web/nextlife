@@ -41,7 +41,7 @@ export function generateRuleBasedAdvice(
 
   const hasImprovement = !!recommendation?.improved;
   const utilityText = hasImprovement
-    ? ` AI 분석 결과, 인출 전략을 조정하면 평생 효용(Lifetime Utility) 점수를 **${recommendation!.currentUtility.score}점**에서 **${recommendation!.recommendedUtility.score}점**까지 높일 수 있습니다.`
+    ? ` AI 분석 결과, 인출 전략을 조정하면 평생 효용 점수를 **${recommendation!.currentUtility.score}점**에서 **${recommendation!.recommendedUtility.score}점**까지 높일 수 있습니다.`
     : '';
 
   return `${statusText} ${possibilityText}${utilityText}`;

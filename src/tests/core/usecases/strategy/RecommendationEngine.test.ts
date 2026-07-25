@@ -532,7 +532,7 @@ describe('buildReasons - context 인자로 전달되는 신규 문구', () => {
       recommendedUtility: currentUtility,
     });
 
-    expect(reasons).toEqual(['현재 전략이 이미 Lifetime Utility 관점에서 충분히 합리적이어서 별도로 추천할 변경 사항이 없습니다.']);
+    expect(reasons).toEqual(['현재 전략이 이미 평생 효용 관점에서 충분히 합리적이어서 별도로 추천할 변경 사항이 없습니다.']);
   });
 
   test('identityPlan과 값이 같은 필드는(실제로는 바뀐 게 없으므로) 문구를 생성하지 않는다', () => {
@@ -563,12 +563,12 @@ describe('buildReasons - context 인자로 전달되는 신규 문구', () => {
 describe('buildReasons - 후보 실패 통계에 따른 메시지 분기', () => {
   test('개선 없고 후보가 하나도 없으면(탐색할 차원 없음) 기존처럼 "이미 합리적" 문구를 반환한다', () => {
     const reasons = buildReasons(null, zeroDeltas, false, { total: 0, failed: 0 });
-    expect(reasons).toEqual(['현재 전략이 이미 Lifetime Utility 관점에서 충분히 합리적이어서 별도로 추천할 변경 사항이 없습니다.']);
+    expect(reasons).toEqual(['현재 전략이 이미 평생 효용 관점에서 충분히 합리적이어서 별도로 추천할 변경 사항이 없습니다.']);
   });
 
   test('후보가 있었지만 모두 baseline보다 낮으면(정상 평가) "이미 합리적" 문구를 반환한다', () => {
     const reasons = buildReasons(null, zeroDeltas, false, { total: 12, failed: 0 });
-    expect(reasons).toEqual(['현재 전략이 이미 Lifetime Utility 관점에서 충분히 합리적이어서 별도로 추천할 변경 사항이 없습니다.']);
+    expect(reasons).toEqual(['현재 전략이 이미 평생 효용 관점에서 충분히 합리적이어서 별도로 추천할 변경 사항이 없습니다.']);
   });
 
   test('후보가 전부 시뮬레이션 실패로 평가되지 못했으면 별도 문구를 반환한다', () => {
@@ -578,7 +578,7 @@ describe('buildReasons - 후보 실패 통계에 따른 메시지 분기', () =>
 
   test('candidateStats 인자가 없으면 기존과 동일하게 동작한다(하위 호환)', () => {
     const reasons = buildReasons(null, zeroDeltas, false);
-    expect(reasons).toEqual(['현재 전략이 이미 Lifetime Utility 관점에서 충분히 합리적이어서 별도로 추천할 변경 사항이 없습니다.']);
+    expect(reasons).toEqual(['현재 전략이 이미 평생 효용 관점에서 충분히 합리적이어서 별도로 추천할 변경 사항이 없습니다.']);
   });
 });
 

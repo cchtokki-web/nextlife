@@ -18,7 +18,7 @@ describe('CoreKpiGrid', () => {
     expect(screen.getByText(/생존 가능성/)).toBeInTheDocument();
     expect(screen.getByText('예상 순자산')).toBeInTheDocument();
     expect(screen.getByText('예상 월 생활비')).toBeInTheDocument();
-    expect(screen.getByText('Lifetime Utility')).toBeInTheDocument();
+    expect(screen.getByText('평생 효용')).toBeInTheDocument();
     expect(screen.getByText('500000000원')).toBeInTheDocument();
     expect(screen.getByText('3000000원')).toBeInTheDocument();
     expect(screen.getByText('81점')).toBeInTheDocument();
@@ -35,6 +35,6 @@ describe('CoreKpiGrid', () => {
       />
     );
 
-    expect(screen.queryByText('Lifetime Utility')).not.toBeInTheDocument();
+    expect(screen.queryByText('평생 효용')).not.toBeInTheDocument();
   });
 });

@@ -85,13 +85,13 @@ export function buildReasons(
       if (grade === '주의' || grade === '위험') {
         const { weaknesses } = analyzeCurrentStrategy(context.currentUtility, context.cfg ?? DEFAULT_UTILITY_CONFIG);
         return [
-          `Lifetime Utility Score가 ${context.currentUtility.score}점('${grade}' 등급)으로 개선 여지가 있으나, ` +
+          `평생 효용 점수가 ${context.currentUtility.score}점('${grade}' 등급)으로 개선 여지가 있으나, ` +
             `탐색한 인출 시점·순서·생활비 조합(${candidateStats?.total ?? 0}개) 범위 내에서는 이보다 더 나은 조합을 찾지 못했습니다.`,
           ...weaknesses.map((w) => `- ${w}`),
         ];
       }
     }
-    return ['현재 전략이 이미 Lifetime Utility 관점에서 충분히 합리적이어서 별도로 추천할 변경 사항이 없습니다.'];
+    return ['현재 전략이 이미 평생 효용 관점에서 충분히 합리적이어서 별도로 추천할 변경 사항이 없습니다.'];
   }
 
   const reasons: string[] = [];
@@ -105,7 +105,7 @@ export function buildReasons(
     const after = Math.round(before * plan.monthlySpendingMultiplier);
     reasons.push(
       `목표 생활비를 월 약 ${formatManwon(before)} → ${formatManwon(after)}(약 ${formatManwon(after - before)} 증액)로 늘리면 ` +
-        `Lifetime Utility가 ${context.currentUtility.score}점 → ${context.recommendedUtility.score}점으로 개선됩니다.`
+        `평생 효용이 ${context.currentUtility.score}점 → ${context.recommendedUtility.score}점으로 개선됩니다.`
     );
   }
 

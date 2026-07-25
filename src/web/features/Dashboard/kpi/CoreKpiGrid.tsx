@@ -35,7 +35,7 @@ export function CoreKpiGrid({
         <span className="font-display text-2xl font-semibold">{formatValue(monthlyTarget)}</span>
       </KpiCard>
       {utilityScore !== undefined && (
-        <KpiCard label="Lifetime Utility">
+        <KpiCard label="평생 효용">
           <div className="flex items-center gap-2">
             <RetirementLikelihoodStars score={utilityScore} />
             <span className="text-sm text-foreground-muted">{Math.round(utilityScore)}점</span>

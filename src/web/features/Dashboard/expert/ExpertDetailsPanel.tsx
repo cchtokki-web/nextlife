@@ -46,7 +46,7 @@ export function ExpertDetailsPanel({
       <div className="flex flex-col gap-6 pt-2">
         {utility && (
           <section>
-            <h4 className="mb-2 text-sm font-semibold">Lifetime Utility Score 구성</h4>
+            <h4 className="mb-2 text-sm font-semibold">평생 효용 점수 구성</h4>
             <UtilityBreakdownBars utility={utility} />
             {bequestAdequacyExplanation && (
               <p className="mt-2 text-xs text-foreground-muted">* 상속 자산 적정성: {bequestAdequacyExplanation}</p>

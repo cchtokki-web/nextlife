@@ -58,7 +58,7 @@ export function buildSimulationContextText(body: AiAdvisorRequestBody): string {
 
   if (utility) {
     lines.push(
-      `- Lifetime Utility Score(평생 효용 점수, 은퇴 준비도 점수와는 별개의 지표로 "자산을 얼마나 잘 ` +
+      `- 평생 효용 점수(은퇴 준비도 점수와는 별개의 지표로 "자산을 얼마나 잘 ` +
       `활용하는가"를 종합 평가): ${utility.score}점/100점`
     );
     const analysis = analyzeCurrentStrategy(utility);

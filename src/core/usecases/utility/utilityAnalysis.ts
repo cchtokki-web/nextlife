@@ -73,7 +73,7 @@ export function explainBequestAdequacy(
     return (
       `적정 상속 자산 기준(목표 월생활비 ${cfg.appropriateBequestMonths}개월치 = 약 ${formatManwon(appropriateBalance)})보다 ` +
       `예상 잔여자산(약 ${formatManwon(result.endingAssets)})이 약 ${ratio.toFixed(1)}배 많아 감점되었습니다. ` +
-      `자산을 다 쓰지 못하고 남기는 것도 Lifetime Utility 관점에서는 비효율로 간주됩니다.`
+      `자산을 다 쓰지 못하고 남기는 것도 평생 효용 관점에서는 비효율로 간주됩니다.`
     );
   }
   return (
