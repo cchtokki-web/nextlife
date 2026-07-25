@@ -19,16 +19,19 @@ export function ExecutionRoadmap({ roadmap }: ExecutionRoadmapProps) {
           return (
             <div key={event.age} className="flex gap-3">
               <div className="flex flex-col items-center">
-                {/* text-sm의 기본 line-height(1.25rem)와 dot 크기(h-3=0.75rem)의 차이를 절반씩
-                    나눠(mt-1=0.25rem) 옆 텍스트의 첫 줄 중앙에 dot을 맞춘다. */}
-                <span
-                  data-marker="filled"
-                  className={`mt-1 h-3 w-3 shrink-0 rounded-full ${hasWarning ? 'bg-danger' : 'bg-primary'}`}
-                />
+                {/* dot을 margin 값으로 눈대중 맞추면 폰트/브라우저에 따라 어긋난다. 대신 옆
+                    텍스트와 정확히 같은 높이(h-5=leading-5=1.25rem)의 박스를 만들고 그 안에서
+                    flex items-center로 중앙 정렬하면, 두 박스의 세로 중심이 항상 일치한다. */}
+                <span className="flex h-5 w-3 shrink-0 items-center justify-center">
+                  <span
+                    data-marker="filled"
+                    className={`h-3 w-3 rounded-full ${hasWarning ? 'bg-danger' : 'bg-primary'}`}
+                  />
+                </span>
                 <span className="w-px flex-1 bg-foreground/15" />
               </div>
               <div className="pb-6">
-                <p className="text-sm font-semibold">{event.age}세</p>
+                <p className="text-sm font-semibold leading-5">{event.age}세</p>
                 {event.items.map((item) => (
                   <div key={item.title} className="mt-1">
                     <p className={`text-sm font-medium ${item.severity === 'warning' ? 'text-danger' : ''}`}>{item.title}</p>
@@ -40,8 +43,10 @@ export function ExecutionRoadmap({ roadmap }: ExecutionRoadmapProps) {
           );
         })}
         <div className="flex gap-3">
-          <span data-marker="hollow" className="mt-1 h-3 w-3 shrink-0 rounded-full border-2 border-foreground/40" />
-          <p className="text-sm font-semibold text-foreground-muted">{roadmap.expectancy}세 기대수명</p>
+          <span className="flex h-5 w-3 shrink-0 items-center justify-center">
+            <span data-marker="hollow" className="h-3 w-3 rounded-full border-2 border-foreground/40" />
+          </span>
+          <p className="text-sm font-semibold leading-5 text-foreground-muted">{roadmap.expectancy}세 기대수명</p>
         </div>
       </div>
     </GlassCard>
