@@ -1,5 +1,5 @@
 import { describe, test, expect } from 'vitest';
-import { analyzeCurrentStrategy, explainBequestAdequacy } from '@/core/usecases/utility/utilityAnalysis';
+import { analyzeCurrentStrategy, explainBequestAdequacy, formatManwon } from '@/core/usecases/utility/utilityAnalysis';
 import { SimulationParams, SimulationResult, UtilityBreakdown } from '@/core/entities/types';
 import { DEFAULT_UTILITY_CONFIG } from '@/core/usecases/utility/utilityWeights';
 
@@ -7,6 +7,24 @@ function makeUtility(components: UtilityBreakdown['components']): UtilityBreakdo
   const score = Object.values(components).reduce((a, b) => a + b, 0);
   return { score, components };
 }
+
+describe('formatManwon', () => {
+  test('1억원 미만이면 "N,NNN만원"만 표기한다', () => {
+    expect(formatManwon(50000000)).toBe('5,000만원');
+  });
+
+  test('1억원 이상이고 나머지가 있으면 "N억 M,MMM만원"으로 표기한다 (예: 179,169만원 -> 17억 9,169만원)', () => {
+    expect(formatManwon(1791690000)).toBe('17억 9,169만원');
+  });
+
+  test('억 단위로 정확히 나누어 떨어지면 "N억원"만 표기한다', () => {
+    expect(formatManwon(200000000)).toBe('2억원');
+  });
+
+  test('음수 금액도 부호를 유지하며 억 단위로 표기한다', () => {
+    expect(formatManwon(-172710000)).toBe('-1억 7,271만원');
+  });
+});
 
 describe('analyzeCurrentStrategy', () => {
   test('배점 대비 80% 이상인 항목은 강점으로 분류한다', () => {

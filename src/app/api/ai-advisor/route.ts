@@ -5,7 +5,7 @@ import {
   OtherIncome, TaxSettings, SpendingStrategy, UtilityBreakdown, StrategyRecommendation,
 } from '../../../core/entities/types';
 import { RetirementGrade } from '../../../core/entities/retirementGrade';
-import { analyzeCurrentStrategy } from '../../../core/usecases/utility/utilityAnalysis';
+import { analyzeCurrentStrategy, formatManwon } from '../../../core/usecases/utility/utilityAnalysis';
 
 export const runtime = 'edge';
 
@@ -87,7 +87,9 @@ export function buildSimulationContextText(body: AiAdvisorRequestBody): string {
   );
   lines.push(`- FIRE 조기은퇴 가능 나이: ${fireAge ? `${fireAge}세` : '달성 불가능'}`);
   lines.push(`- 자산 고갈 예상 나이: ${depletionAge === null || depletionAge === undefined ? '고갈 위험 없음' : `${depletionAge}세`}`);
-  lines.push(`- 기대수명 시점 잔여 자산: ${toManwon(endingAssets)}만원`);
+  lines.push(
+    `- 기대수명 시점 잔여 자산: ${typeof endingAssets === 'number' && !isNaN(endingAssets) ? formatManwon(endingAssets) : '정보 없음'}`
+  );
 
   if (spendingStrategy) {
     const strategyLabel = spendingStrategy === 'dividend_only'

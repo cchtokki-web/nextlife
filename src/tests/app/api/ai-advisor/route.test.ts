@@ -93,6 +93,12 @@ describe('buildSimulationContextText - Utility Score 반영', () => {
     expect(text).toContain('은퇴 준비도 점수');
     expect(text).toContain('90점');
   });
+
+  test('기대수명 시점 잔여 자산이 1억원을 넘으면 "179,169만원"이 아니라 억 단위로 표기한다', () => {
+    const text = buildSimulationContextText({ ...baseBody, endingAssets: 1791690000 });
+    expect(text).toContain('17억 9,169만원');
+    expect(text).not.toContain('179,169만원');
+  });
 });
 
 describe('POST /api/ai-advisor - Ollama 요청 시 think:false 전달', () => {

@@ -6,8 +6,18 @@ export interface CurrentStrategyAnalysis {
   weaknesses: string[];
 }
 
+// 1억원(=10,000만원) 이상이면 "N억 M,MMM만원"으로 나눠 표기해 큰 금액도 한눈에 읽히게 한다.
+// AI 노후 설계사 문구(예: "179,169만원")처럼 자릿수가 많은 순수 만원 표기가 되지 않도록 하는 목적.
 export function formatManwon(amountKRW: number): string {
-  return `${Math.round(amountKRW / 10000).toLocaleString('ko-KR')}만원`;
+  const manwon = Math.round(amountKRW / 10000);
+  const sign = manwon < 0 ? '-' : '';
+  const absManwon = Math.abs(manwon);
+  const eok = Math.floor(absManwon / 10000);
+  const rest = absManwon % 10000;
+
+  if (eok === 0) return `${sign}${absManwon.toLocaleString('ko-KR')}만원`;
+  if (rest === 0) return `${sign}${eok.toLocaleString('ko-KR')}억원`;
+  return `${sign}${eok.toLocaleString('ko-KR')}억 ${rest.toLocaleString('ko-KR')}만원`;
 }
 
 const COMPONENT_LABELS: Record<keyof UtilityBreakdown['components'], string> = {
