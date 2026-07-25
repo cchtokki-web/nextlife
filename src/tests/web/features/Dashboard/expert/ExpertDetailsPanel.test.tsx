@@ -123,4 +123,13 @@ describe('ExpertDetailsPanel', () => {
     expect(screen.getByText('투자수익률 -2%p')).toBeInTheDocument();
     expect(screen.getByText('은퇴시점 +3년')).toBeInTheDocument();
   });
+
+  test('민감도 분석 기준선은 result prop이 아니라 params로 직접 재계산한 값을 사용한다 (Before/After 토글과 무관)', () => {
+    const misleadingResult: SimulationResult = { ...result, depletionAge: 999 }; // 실제로는 나올 수 없는 값 — result를 그대로 믿으면 999세가 표시됨
+    render(
+      <ExpertDetailsPanel result={misleadingResult} params={params} utility={utility} formatValue={formatValue} isPro={false} />
+    );
+    fireEvent.click(screen.getByRole('button', { name: '전문가용 상세 분석 더 보기' }));
+    expect(screen.queryByText(/999세/)).not.toBeInTheDocument();
+  });
 });

@@ -32,9 +32,13 @@ export function ExpertDetailsPanel({
 }: ExpertDetailsPanelProps) {
   const analytics = computeExpertAnalytics(result, params);
   const engine = useMemo(() => new SimulationEngine(), []);
+  // 민감도 분석은 Before/After 토글과 무관하게 항상 "현재 설정(params)" 자체의 취약성을
+  // 보여줘야 하므로, 화면에 표시 중인 result(토글에 따라 추천안 결과일 수 있음)를 신뢰하지 않고
+  // params로부터 직접 기준선을 재계산한다.
+  const sensitivityBaseline = useMemo(() => engine.runForUtility(params), [params, engine]);
   const sensitivityScenarios = useMemo(
-    () => computeSensitivityAnalysis(params, result, engine),
-    [params, result, engine]
+    () => computeSensitivityAnalysis(params, sensitivityBaseline, engine),
+    [params, sensitivityBaseline, engine]
   );
 
   return (
@@ -94,7 +98,7 @@ export function ExpertDetailsPanel({
           </ul>
         </section>
 
-        <SensitivityAnalysisSection baselineDepletionAge={result.depletionAge} scenarios={sensitivityScenarios} />
+        <SensitivityAnalysisSection baselineDepletionAge={sensitivityBaseline.depletionAge} scenarios={sensitivityScenarios} />
 
         {isPro && (
           <section>

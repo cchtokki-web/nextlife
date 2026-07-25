@@ -51,7 +51,7 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
     }
   };
 
-  const params: SimulationParams = {
+  const params: SimulationParams = React.useMemo(() => ({
     ...rawParams,
     userProfile: rawParams?.userProfile || { currentAge: 35, retirementAge: 60, expectancy: 90, targetMonthlySpending: 3000000 },
     assets: rawParams?.assets || [],
@@ -63,7 +63,7 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
     baseExchangeRate: rawParams?.baseExchangeRate ?? 1350,
     displayCurrency: rawParams?.displayCurrency || 'KRW',
     spendingStrategy: rawParams?.spendingStrategy || 'target',
-  };
+  }), [rawParams]);
 
   const currency = params.displayCurrency;
   const formatValue = (val: number) => formatValueForCurrency(val, currency);
