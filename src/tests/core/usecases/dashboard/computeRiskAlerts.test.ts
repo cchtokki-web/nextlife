@@ -166,7 +166,7 @@ describe('computeRiskAlerts', () => {
       expect(alerts).toHaveLength(1);
       expect(alerts[0].key).toBe('bequestShortfall');
       expect(alerts[0].message).toContain('5,000만원');
-      expect(alerts[0].message).toContain('20,000만원');
+      expect(alerts[0].message).toContain('2억원');
     });
 
     test('예상 잔여자산이 목표 상속자산 이상이면 알림이 없다', () => {

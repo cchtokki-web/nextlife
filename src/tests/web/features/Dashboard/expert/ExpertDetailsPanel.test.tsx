@@ -1,7 +1,7 @@
 import { describe, test, expect } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { ExpertDetailsPanel } from '@/web/features/Dashboard/expert/ExpertDetailsPanel';
-import { SimulationParams, SimulationResult, SimulationYearlyResult, UtilityBreakdown } from '@/core/entities/types';
+import { SimulationParams, SimulationResult, SimulationYearlyResult } from '@/core/entities/types';
 
 function makeYearlyResult(overrides: Partial<SimulationYearlyResult>): SimulationYearlyResult {
   return {
@@ -53,18 +53,11 @@ const params: SimulationParams = {
   displayCurrency: 'KRW',
 };
 
-const utility: UtilityBreakdown = {
-  score: 76,
-  components: { consumption: 27, depletionSafety: 20, pensionUtilization: 13, taxEfficiency: 8, taxationRisk: 8, bequestAdequacy: 0 },
-};
-
 const formatValue = (v: number) => `${v.toLocaleString()}원`;
 
 describe('ExpertDetailsPanel', () => {
   test('기본적으로 닫혀 있고, 열면 세금/연금 리스크 섹션이 보인다', () => {
-    render(
-      <ExpertDetailsPanel result={result} params={params} utility={utility} formatValue={formatValue} isPro={false} />
-    );
+    render(<ExpertDetailsPanel result={result} params={params} formatValue={formatValue} isPro={false} />);
 
     expect(screen.queryByText('세금 및 건강보험료 (은퇴 이후 연평균)')).not.toBeInTheDocument();
 
@@ -72,21 +65,16 @@ describe('ExpertDetailsPanel', () => {
 
     expect(screen.getByText('세금 및 건강보험료 (은퇴 이후 연평균)')).toBeInTheDocument();
     expect(screen.getByText(/65세부터 수령/)).toBeInTheDocument();
-    expect(screen.getByText('장점')).toBeInTheDocument();
   });
 
   test('isPro가 false이면 연도별 상세 내역(YearlyChart) 섹션을 렌더링하지 않는다', () => {
-    render(
-      <ExpertDetailsPanel result={result} params={params} utility={utility} formatValue={formatValue} isPro={false} />
-    );
+    render(<ExpertDetailsPanel result={result} params={params} formatValue={formatValue} isPro={false} />);
     fireEvent.click(screen.getByRole('button', { name: '전문가용 상세 분석 더 보기' }));
     expect(screen.queryByText('연도별 상세 내역')).not.toBeInTheDocument();
   });
 
   test('isPro가 true이면 연도별 상세 내역(YearlyChart) 섹션을 렌더링한다', () => {
-    render(
-      <ExpertDetailsPanel result={result} params={params} utility={utility} formatValue={formatValue} isPro={true} />
-    );
+    render(<ExpertDetailsPanel result={result} params={params} formatValue={formatValue} isPro={true} />);
     fireEvent.click(screen.getByRole('button', { name: '전문가용 상세 분석 더 보기' }));
     expect(screen.getByText('연도별 상세 내역')).toBeInTheDocument();
   });
@@ -102,7 +90,6 @@ describe('ExpertDetailsPanel', () => {
       <ExpertDetailsPanel
         result={noNationalPensionResult}
         params={noNationalPensionParams}
-        utility={utility}
         formatValue={formatValue}
         isPro={false}
       />
@@ -114,9 +101,7 @@ describe('ExpertDetailsPanel', () => {
   });
 
   test('민감도 분석 섹션(SensitivityAnalysisSection)이 렌더된다', () => {
-    render(
-      <ExpertDetailsPanel result={result} params={params} utility={utility} formatValue={formatValue} isPro={false} />
-    );
+    render(<ExpertDetailsPanel result={result} params={params} formatValue={formatValue} isPro={false} />);
     fireEvent.click(screen.getByRole('button', { name: '전문가용 상세 분석 더 보기' }));
 
     expect(screen.getByText('민감도 분석 (핵심 가정 변화에 따른 자산 고갈 나이)')).toBeInTheDocument();
@@ -126,9 +111,7 @@ describe('ExpertDetailsPanel', () => {
 
   test('민감도 분석 기준선은 result prop이 아니라 params로 직접 재계산한 값을 사용한다 (Before/After 토글과 무관)', () => {
     const misleadingResult: SimulationResult = { ...result, depletionAge: 999 }; // 실제로는 나올 수 없는 값 — result를 그대로 믿으면 999세가 표시됨
-    render(
-      <ExpertDetailsPanel result={misleadingResult} params={params} utility={utility} formatValue={formatValue} isPro={false} />
-    );
+    render(<ExpertDetailsPanel result={misleadingResult} params={params} formatValue={formatValue} isPro={false} />);
     fireEvent.click(screen.getByRole('button', { name: '전문가용 상세 분석 더 보기' }));
     expect(screen.queryByText(/999세/)).not.toBeInTheDocument();
   });

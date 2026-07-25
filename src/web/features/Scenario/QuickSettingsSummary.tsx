@@ -84,7 +84,7 @@ export function QuickSettingsSummary({ params, onChangeParams }: QuickSettingsSu
                 key={key}
                 type="button"
                 onClick={() => handlePresetClick(key)}
-                className={`rounded-full border px-4 py-2 text-xs font-semibold transition ${
+                className={`rounded-full border px-5 py-2.5 text-xs font-semibold transition ${
                   activePreset === key ? 'border-primary bg-primary/10 text-primary' : 'border-card-border text-foreground-muted'
                 }`}
               >
@@ -95,7 +95,7 @@ export function QuickSettingsSummary({ params, onChangeParams }: QuickSettingsSu
               <button
                 type="button"
                 onClick={handleCustomPresetClick}
-                className={`rounded-full border px-4 py-2 text-xs font-semibold transition ${
+                className={`rounded-full border px-5 py-2.5 text-xs font-semibold transition ${
                   activePreset === 'custom' ? 'border-primary bg-primary/10 text-primary' : 'border-card-border text-foreground-muted'
                 }`}
               >
