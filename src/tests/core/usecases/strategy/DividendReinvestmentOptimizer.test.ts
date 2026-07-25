@@ -161,7 +161,7 @@ describe('optimizeDividendReinvestment', () => {
 
   test('bestPlan이 null이면 getIdentityPlan 기반 withdrawalPlan으로 후보를 만든다', () => {
     const params = { ...baseParams, assets: [makeAsset({ id: 'a1', reinvestDividend: true })] };
-    const runForUtility = vi.fn(() => makeResult(65));
+    const runForUtility = vi.fn((_params: SimulationParams) => makeResult(65));
     const engine = { runForUtility } as unknown as SimulationEngine;
 
     optimizeDividendReinvestment(params, null, bestResult, bestUtility, engine, DEFAULT_UTILITY_CONFIG);
@@ -181,7 +181,7 @@ describe('optimizeDividendReinvestment', () => {
       generalAssetWithdrawalStartAge: 60,
       monthlySpendingMultiplier: 1,
     };
-    const runForUtility = vi.fn(() => makeResult(65));
+    const runForUtility = vi.fn((_params: SimulationParams) => makeResult(65));
     const engine = { runForUtility } as unknown as SimulationEngine;
 
     optimizeDividendReinvestment(params, plan, bestResult, bestUtility, engine, DEFAULT_UTILITY_CONFIG);
