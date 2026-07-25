@@ -5,7 +5,9 @@ import { useSession, signOut } from 'next-auth/react';
 import { SimulationEngine } from '../../core/usecases/SimulationEngine';
 import { computeMonthlySpendingComposition } from '../../core/usecases/MonthlySpendingComposition';
 import { computeRiskAlerts } from '../../core/usecases/dashboard/computeRiskAlerts';
-import { renderRiskAlertsSection, renderItemizedChecklistSection } from '../../web/features/Pdf/pdfReportSections';
+import { computeExecutionRoadmap } from '../../core/usecases/dashboard/computeExecutionRoadmap';
+import { computeSensitivityAnalysis } from '../../core/usecases/dashboard/computeSensitivityAnalysis';
+import { renderRiskAlertsSection, renderItemizedChecklistSection, renderExecutionRoadmapSection, renderSensitivityTableSection } from '../../web/features/Pdf/pdfReportSections';
 import { recommendStrategy } from '../../core/usecases/strategy/RecommendationEngine';
 import { analyzeCurrentStrategy, explainBequestAdequacy } from '../../core/usecases/utility/utilityAnalysis';
 import { resolveTaxSettings } from '../../core/usecases/tax/taxRates';
@@ -271,6 +273,10 @@ export default function Home() {
 
       const riskAlerts = computeRiskAlerts(result, activeParams);
       const riskAlertsSectionHtml = renderRiskAlertsSection(riskAlerts);
+      const roadmap = computeExecutionRoadmap(activeParams, recommendation);
+      const executionRoadmapSectionHtml = renderExecutionRoadmapSection(roadmap);
+      const sensitivityScenarios = computeSensitivityAnalysis(activeParams, result, engine);
+      const sensitivityTableSectionHtml = renderSensitivityTableSection(sensitivityScenarios);
 
       // Create a temporary container
       const container = document.createElement('div');
@@ -399,7 +405,24 @@ export default function Home() {
 
         <div class="pdf-page">
           <div class="pdf-content">
-            <h2 style="font-size: 16px; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; color: #0f172a; margin-top: 0; margin-bottom: 10px;">4. 연금 및 자산 현황</h2>
+            <h2 style="font-size: 16px; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; color: #0f172a; margin-top: 0; margin-bottom: 10px;">4. 실행 로드맵 및 민감도 분석</h2>
+            <p style="font-size: 11px; color: #64748b; margin-top: 0; margin-bottom: 14px;">AI 추천 전략(또는 현재 설정) 기준으로 나이별 실행 시점과, 핵심 가정이 바뀌었을 때 결과가 얼마나 민감한지를 보여줍니다.</p>
+
+            <h3 style="font-size: 13px; color: #0f172a; margin-bottom: 8px;">실행 로드맵</h3>
+            ${executionRoadmapSectionHtml}
+
+            <h3 style="font-size: 13px; color: #0f172a; margin-top: 20px; margin-bottom: 8px;">민감도 분석 (자산 고갈 나이 기준)</h3>
+            ${sensitivityTableSectionHtml}
+          </div>
+          <div class="pdf-footer">
+            <span>NextLife 은퇴 자산 시뮬레이션 리포트</span>
+            <span>페이지 3 / {total_pages}</span>
+          </div>
+        </div>
+
+        <div class="pdf-page">
+          <div class="pdf-content">
+            <h2 style="font-size: 16px; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; color: #0f172a; margin-top: 0; margin-bottom: 10px;">5. 연금 및 자산 현황</h2>
             <div style="font-size: 13px; line-height: 1.6; display: grid; grid-template-columns: 1fr; gap: 12px;">
               <div>
                 <strong>국민연금:</strong> 예상 월 수령액 ${nationalPension?.expectedMonthlyAmount.toLocaleString()}원 (${activeParams.withdrawalPlan?.nationalPensionStartAge ?? NATIONAL_PENSION_NORMAL_START_AGE}세부터 수령)
@@ -472,13 +495,13 @@ export default function Home() {
           </div>
           <div class="pdf-footer">
             <span>NextLife 은퇴 자산 시뮬레이션 리포트</span>
-            <span>페이지 3 / {total_pages}</span>
+            <span>페이지 4 / {total_pages}</span>
           </div>
         </div>
 
         <div class="pdf-page">
           <div class="pdf-content">
-            <h2 style="font-size: 16px; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; color: #0f172a; margin-top: 0; margin-bottom: 10px;">5. 세금 설정</h2>
+            <h2 style="font-size: 16px; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; color: #0f172a; margin-top: 0; margin-bottom: 10px;">6. 세금 설정</h2>
             <ul style="padding-left: 20px; margin-top: 5px; margin-bottom: 0; font-size: 13px; line-height: 1.6;">
               <li style="margin-bottom: 6px;"><strong>금융소득종합과세 반영:</strong> ${currentTaxSettings.enableComprehensiveTax ? `반영 (2천만원 초과분 ${currentTaxSettings.comprehensiveTaxRate}% 추가 과세)` : '미반영'}</li>
               <li style="margin-bottom: 6px;"><strong>추가 건강보험료 반영:</strong> ${currentTaxSettings.enableHealthInsurance ? `반영 (초과분 ${currentTaxSettings.healthInsuranceRate}%)` : '미반영'}</li>
@@ -490,7 +513,7 @@ export default function Home() {
           </div>
           <div class="pdf-footer">
             <span>NextLife 은퇴 자산 시뮬레이션 리포트</span>
-            <span>페이지 4 / {total_pages}</span>
+            <span>페이지 5 / {total_pages}</span>
           </div>
         </div>
       `;
@@ -514,13 +537,13 @@ export default function Home() {
         : '<p style="font-size: 9.5px; color: #94a3b8; margin: 0 0 8px;">* 아래 금액은 물가상승률이 매년 누적 반영된 명목 가치입니다.</p>';
 
       chunks.forEach((chunk, chunkIdx) => {
-        const pageNum = chunkIdx + 5;
+        const pageNum = chunkIdx + 6;
         const isLastChunk = chunkIdx === chunks.length - 1 && !hasSpendingSection;
         pagesHtml += `
           <div class="pdf-page">
             <div class="pdf-content">
               <h2 style="font-size: 15px; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; color: #0f172a; margin-top: 0; margin-bottom: 12px;">
-                6. 연령별 소득원 및 자산 추이 (페이지 ${chunkIdx + 1})
+                7. 연령별 소득원 및 자산 추이 (페이지 ${chunkIdx + 1})
               </h2>
               ${realValueNoteHtml}
               <table style="width: 100%; border-collapse: collapse; font-size: 10.5px;">
@@ -583,13 +606,13 @@ export default function Home() {
       });
 
       spendingChunks.forEach((chunk, chunkIdx) => {
-        const pageNum = chunks.length + 5 + chunkIdx;
+        const pageNum = chunks.length + 6 + chunkIdx;
         const isLastChunk = chunkIdx === spendingChunks.length - 1;
         pagesHtml += `
           <div class="pdf-page">
             <div class="pdf-content">
               <h2 style="font-size: 15px; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; color: #0f172a; margin-top: 0; margin-bottom: 12px;">
-                7. 은퇴 후 월 생활비 재원 구성 (페이지 ${chunkIdx + 1})
+                8. 은퇴 후 월 생활비 재원 구성 (페이지 ${chunkIdx + 1})
               </h2>
               ${realValueNoteHtml}
               <table style="width: 100%; border-collapse: collapse; font-size: 10.5px;">
@@ -648,7 +671,7 @@ export default function Home() {
         `;
       });
 
-      const totalPages = 4 + chunks.length + spendingChunks.length;
+      const totalPages = 5 + chunks.length + spendingChunks.length;
       pagesHtml = pagesHtml.replaceAll('{total_pages}', totalPages.toString());
 
       // Append pages html
