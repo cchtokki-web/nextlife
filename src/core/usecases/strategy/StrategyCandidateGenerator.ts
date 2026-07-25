@@ -5,12 +5,13 @@ import { PRIVATE_PENSION_MIN_START_AGE } from '../pension/privatePensionRules';
 // 각 그리드는 3점(또는 이진) 수준으로 유지한다 — 6개 차원의 완전 조합(cartesian product)이라
 // 그리드 하나를 늘릴 때마다 후보 수가 곱셈으로 증가하기 때문이다(실측 결과 5×5×5×3×2×5=3750개
 // 조합에서 recommendStrategy가 약 8초 소요되어 실사용에 부적합했다). 3점 그리드 기준으로도,
-// startAgeCandidates/generalAssetWithdrawalStartAgeCandidates는 `[retirementAge, ...GRID]`를
-// `age &gt;= retirementAge`로 필터링하는 방식이라, retirementAge가 그리드 최솟값(62)보다 작을
-// 때만 retirementAge가 추가로 살아남아 4개가 된다(그리드 점들 사이/이후에 있으면 오히려
-// 3개 이하로 줄어든다). 따라서 최악의 경우는 3×3×3×3×2×3=486개가 아니라 4×3×3×3×2×4=864개다
-// (retirementAge가 62 미만인 경우). 이 최악 시나리오 기준 성능은
-// RecommendationEngine.performance.test.ts에서 검증한다.
+// startAgeCandidates/generalAssetWithdrawalStartAgeCandidates는 `[seed, ...GRID]`(seed는
+// startAgeCandidates의 경우 minPrivatePensionStartAge = max(retirementAge, 55))를
+// `age >= seed`로 필터링하는 방식이라, seed가 그리드 최솟값(62)보다 작을 때만 seed가 추가로
+// 살아남아 4개가 된다(그리드 점들 사이/이후에 있으면 오히려 3개 이하로 줄어든다). 따라서
+// 최악의 경우는 3×3×3×3×2×3=486개가 아니라 4×3×3×3×2×4=864개다(retirementAge가 62 미만인
+// 경우 — 55세 하한 clamp는 62보다 작으므로 이 결론에 영향 없음). 이 최악 시나리오 기준
+// 성능은 RecommendationEngine.performance.test.ts에서 검증한다.
 const START_AGE_GRID = [62, 65, 70];
 const MONTHLY_TARGET_MULTIPLIERS = [0.8, 1.0, 1.3];
 const NATIONAL_PENSION_START_AGE_GRID = [60, 65, 70]; // 조기~기본~연기수령
@@ -107,9 +108,11 @@ export function getIdentityPlan(params: SimulationParams): CompleteWithdrawalPla
   const hasPrivatePension = privatePensions.length > 0 && targetMonthlySpending > 0;
 
   return {
-    // 사용자가 이미 직접 지정한 값이 있으면(새 UI) 그 값을 존중하고, 없으면 SimulationEngine의
-    // 기본값 산출 방식(retirementAge, 55세 하한 clamp)과 동일하게 맞춘다.
-    privatePensionStartAge: withdrawalPlan?.privatePensionStartAge ?? Math.max(retirementAge, PRIVATE_PENSION_MIN_START_AGE),
+    // SimulationEngine.ts의 clampPrivatePensionStartAge(withdrawalPlan?.privatePensionStartAge ?? retirementAge)와
+    // 완전히 동일한 식이어야 한다 — 사용자가 명시적으로 지정한 값이라도(예: 55세 하한 규칙 도입 전
+    // 저장된 레거시 시나리오) 55세 미만이면 clamp해야, 이 identity plan을 그대로 쓰는
+    // computeExecutionRoadmap 등의 화면이 실제 시뮬레이션 동작과 어긋나지 않는다.
+    privatePensionStartAge: Math.max(PRIVATE_PENSION_MIN_START_AGE, withdrawalPlan?.privatePensionStartAge ?? retirementAge),
     privatePensionMonthlyTarget: hasPrivatePension ? targetMonthlySpending : 0,
     nationalPensionStartAge: NATIONAL_PENSION_NORMAL_START_AGE,
     assetSellOrderStrategy: 'input_order',

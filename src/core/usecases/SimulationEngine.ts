@@ -497,7 +497,10 @@ export class SimulationEngine {
 
             pension.currentBalance -= drawAmountRaw;
 
-            const taxRate = getPrivatePensionIncomeTaxRate(currentAge);
+            // pensionWithdrawalsStarted가 false면 drawAmountRaw는 항상 0이라 세율 값 자체는 결과에
+            // 영향을 주지 않지만, getPrivatePensionIncomeTaxRate는 "55세 미만으로 호출되지 않는다"는
+            // 불변식을 전제하므로(taxRates.ts 주석 참고) 그 불변식을 실제로 지키기 위해 게이트를 건다.
+            const taxRate = pensionWithdrawalsStarted ? getPrivatePensionIncomeTaxRate(currentAge) : 0;
 
             const drawAmountTax = drawAmountRaw * taxRate;
             const drawAmountNet = drawAmountRaw - drawAmountTax;
@@ -541,6 +544,10 @@ export class SimulationEngine {
 
           // 55세 미만은 사적연금(IRP/연금저축) 법정 인출 자체가 불가능하므로, 부족분이 있어도
           // 조기 인출로 충당하지 않는다 — 이 경우 부족분은 실제 생활비 미충족으로 남는다.
+          // 55세 이상이면 withdrawalPlan.privatePensionStartAge(사용자가 세금 등을 이유로 더
+          // 늦게 지정했을 수 있는 "선호" 시점)와 무관하게 법정 최저 나이(55세)부터 바로 후행
+          // 인출한다 — 그 선호 시점은 최적화를 위한 것일 뿐 법적 제약이 아니므로, 부족분이 생긴
+          // 응급 상황에서는 있는 돈을 최대한 활용하는 쪽(조기에라도 인출)이 맞다.
           if (remainingShortfall > 0 && currentAge >= PRIVATE_PENSION_MIN_START_AGE) {
             const taxRate = getPrivatePensionIncomeTaxRate(currentAge);
             for (const pension of activePensions) {

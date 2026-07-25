@@ -243,6 +243,14 @@ describe('getIdentityPlan', () => {
     expect(plan.privatePensionStartAge).toBe(55);
   });
 
+  test('params.withdrawalPlan.privatePensionStartAge가 55세 미만으로 설정돼 있어도(예: 레거시 시나리오) 55세로 clamp된다', () => {
+    const plan = getIdentityPlan({
+      ...baseParams,
+      withdrawalPlan: { privatePensionStartAge: 50 },
+    });
+    expect(plan.privatePensionStartAge).toBe(55);
+  });
+
   test('params.withdrawalPlan.privatePensionStartAge가 설정돼 있으면(55세 이상) 그 값을 그대로 쓴다', () => {
     const plan = getIdentityPlan({
       ...baseParams,

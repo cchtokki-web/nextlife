@@ -261,6 +261,30 @@ describe('SimulationEngine withdrawalPlan (인출 정책 파라미터화)', () =
     expect(at55!.privatePensionIncome).toBeGreaterThan(0);
   });
 
+  test('shortfall 발생 시, withdrawalPlan.privatePensionStartAge를 65세로 늦게 지정해도 55세부터 바로 후행 인출된다 (선호 시점보다 법정 최저 나이 우선)', () => {
+    const engine = new SimulationEngine();
+    const result = engine.run({
+      userProfile: { currentAge: 55, retirementAge: 55, expectancy: 70, targetMonthlySpending: 5000000 }, // 부족분 발생하도록 목표 생활비를 높게
+      assets: [], // 일반자산 없음 -> shortfall 시 바로 사적연금으로 감
+      nationalPension: { expectedMonthlyAmount: 0 },
+      privatePensions: [
+        { id: 'pension-1', type: 'irp', balance: 300000000, monthlyContribution: 0, annualReturn: 5, currency: 'KRW' },
+      ],
+      otherIncomes: [],
+      inflationRate: 0,
+      inflationMode: 'real',
+      baseExchangeRate: 1350,
+      exchangeScenario: 'base',
+      displayCurrency: 'KRW',
+      withdrawalPlan: { privatePensionStartAge: 65 }, // 사용자가 65세부터 받겠다고 지정했어도
+    });
+
+    // 55세(법정 최저 나이)부터 이미 shortfall 후행 인출이 발생해야 한다 - 65세까지 기다리지 않는다.
+    const at55 = result.yearlyResults.find((r) => r.age === 55);
+    expect(at55).toBeDefined();
+    expect(at55!.privatePensionIncome).toBeGreaterThan(0);
+  });
+
   test('withdrawalPlan이 있어도 shortfall 발생 시 기존처럼 사적연금이 후행 인출된다', () => {
     const engine = new SimulationEngine();
     // 목표 생활비를 매우 낮은 사적연금 목표보다 훨씬 높게 잡아 shortfall이 발생하도록 함
