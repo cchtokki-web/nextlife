@@ -11,13 +11,22 @@ export function RiskAlertCards({ alerts }: RiskAlertCardsProps) {
   if (alerts.length === 0) return null;
 
   return (
-    <div className="mb-6 flex flex-col gap-3">
+    <div className="mb-6 flex flex-col gap-4">
       {alerts.map((alert) => (
-        <div key={alert.key} className="flex items-center gap-5 rounded-2xl border border-danger/30 bg-danger/5 p-8">
-          <AlertTriangle size={20} className="shrink-0 text-danger" aria-hidden="true" />
+        <div
+          key={alert.key}
+          className="flex items-center gap-5 rounded-2xl border border-danger/30 bg-danger/5 p-10"
+        >
+          <AlertTriangle
+            size={20}
+            className="shrink-0 text-danger"
+            aria-hidden="true"
+          />
           <div>
             <p className="text-sm font-semibold text-danger">{alert.title}</p>
-            <p className="mt-1 text-sm text-foreground-muted">{alert.message}</p>
+            <p className="mt-1 text-sm text-foreground-muted">
+              {alert.message}
+            </p>
           </div>
         </div>
       ))}

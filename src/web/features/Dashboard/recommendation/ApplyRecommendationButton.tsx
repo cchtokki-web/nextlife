@@ -9,13 +9,17 @@ interface ApplyRecommendationButtonProps {
   disabled?: boolean;
 }
 
-export function ApplyRecommendationButton({ mode, onToggle, disabled = false }: ApplyRecommendationButtonProps) {
+export function ApplyRecommendationButton({
+  mode,
+  onToggle,
+  disabled = false,
+}: ApplyRecommendationButtonProps) {
   return (
     <button
       type="button"
       onClick={onToggle}
       disabled={disabled}
-      className="inline-flex items-center gap-3 rounded-xl border border-primary bg-primary/10 px-9 py-4 text-sm font-semibold text-primary transition hover:bg-primary/20 disabled:cursor-not-allowed disabled:opacity-50"
+      className="inline-flex items-center gap-2 rounded-xl border border-primary bg-primary/10 px-11 py-6 text-sm font-semibold text-primary transition hover:bg-primary/20 disabled:cursor-not-allowed disabled:opacity-50"
     >
       <Sparkles size={14} aria-hidden="true" />
       {mode === 'after' ? '현재 전략으로 보기' : '추천 적용하기'}
