@@ -86,7 +86,7 @@ describe('RecommendationChecklist', () => {
     expect(screen.getByText('국민연금을 70세까지 연기 수령합니다.')).toBeInTheDocument();
     expect(screen.getByText('효용 +2점')).toBeInTheDocument();
     expect(screen.getByText('총 효용 +5점')).toBeInTheDocument();
-    expect(screen.getByText(/상호작용을/)).toBeInTheDocument();
+    expect(screen.getByText(/단독 적용 기준/)).toBeInTheDocument();
   });
 
   test('개별 항목의 utilityDelta가 음수(상호작용으로 인한 marginal 손실)여도 이중부호 없이 올바르게 표시한다', () => {
