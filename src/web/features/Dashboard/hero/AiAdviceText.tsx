@@ -49,7 +49,11 @@ export function AiAdviceText({ displayAdvice, isLoading, error, isRuleBased, isS
               <p key={i} className="text-foreground/90">
                 {line.split(/(\*\*.*?\*\*)/g).map((part, j) =>
                   part.startsWith('**') && part.endsWith('**') ? (
-                    <strong key={j} className="mx-1 inline-flex items-center rounded-md bg-primary/15 px-2 py-0.5 align-baseline font-semibold text-primary">
+                    <strong
+                      key={j}
+                      style={{ padding: '3px 10px', margin: '0 4px', display: 'inline-flex', alignItems: 'center' }}
+                      className="mx-1 inline-flex items-center rounded-md bg-primary/15 px-2.5 py-0.5 align-baseline font-semibold text-primary"
+                    >
                       {part.slice(2, -2)}
                     </strong>
                   ) : (

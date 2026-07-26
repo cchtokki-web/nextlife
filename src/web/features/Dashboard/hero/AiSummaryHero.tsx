@@ -101,7 +101,10 @@ export function AiSummaryHero({ formatValue, mode, onToggleMode, canApply, ...ad
         onOpenChange={setIsAdviceOpen}
         className="mt-6"
       >
-        <div className="mt-2.5 rounded-2xl border border-card-border bg-foreground/5 px-6 py-5 sm:p-7">
+        <div
+          style={{ padding: '24px 28px' }}
+          className="mt-2.5 rounded-2xl border border-card-border bg-foreground/5 px-6 py-5 sm:p-7"
+        >
           <AiAdviceText
             displayAdvice={aiAdvisor.displayAdvice}
             isLoading={aiAdvisor.isLoading}
