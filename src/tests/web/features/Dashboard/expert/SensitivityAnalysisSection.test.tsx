@@ -55,3 +55,34 @@ describe('SensitivityAnalysisSection', () => {
     expect(screen.getByText(/현재 설정 기준/)).toBeInTheDocument();
   });
 });
+
+describe('SensitivityAnalysisSection - 기준선/시나리오가 전부 평생 유지인 경우', () => {
+  const allLifetimeScenarios: SensitivityScenario[] = [
+    { key: 'returnDown', label: '투자수익률 -2%p', depletionAge: null, deltaYears: null },
+    { key: 'returnUp', label: '투자수익률 +2%p', depletionAge: null, deltaYears: null },
+    { key: 'inflationUp', label: '물가상승률 +1%p', depletionAge: null, deltaYears: null },
+    { key: 'inflationDown', label: '물가상승률 -1%p', depletionAge: null, deltaYears: null },
+    { key: 'retirementEarlier', label: '은퇴시점 -3년', depletionAge: null, deltaYears: null },
+    { key: 'retirementLater', label: '은퇴시점 +3년', depletionAge: null, deltaYears: null },
+  ];
+
+  test('막대 6줄 대신 한 줄 요약 문구를 보여준다', () => {
+    const { container } = render(
+      <SensitivityAnalysisSection baselineDepletionAge={null} scenarios={allLifetimeScenarios} />
+    );
+
+    expect(screen.getByText(/평생 자산 고갈 위험이 없습니다/)).toBeInTheDocument();
+    expect(container.querySelectorAll('[data-testid="sensitivity-bar"]')).toHaveLength(0);
+    expect(screen.queryByText('투자수익률 -2%p')).not.toBeInTheDocument();
+  });
+
+  test('시나리오 중 하나라도 고갈이 발생하면 요약 대신 상세 막대를 보여준다', () => {
+    const mixedScenarios = [...allLifetimeScenarios];
+    mixedScenarios[0] = { key: 'returnDown', label: '투자수익률 -2%p', depletionAge: 82, deltaYears: -6 };
+
+    const { container } = render(<SensitivityAnalysisSection baselineDepletionAge={null} scenarios={mixedScenarios} />);
+
+    expect(screen.queryByText(/평생 자산 고갈 위험이 없습니다/)).not.toBeInTheDocument();
+    expect(container.querySelectorAll('[data-testid="sensitivity-bar"]')).toHaveLength(6);
+  });
+});

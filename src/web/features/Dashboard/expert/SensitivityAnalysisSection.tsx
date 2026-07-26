@@ -15,12 +15,29 @@ function formatDeltaYears(deltaYears: number | null): string | null {
   return `${sign}${deltaYears}년`;
 }
 
+// 기준선과 6개 시나리오가 전부 "평생 유지"이면 막대 6줄이 전부 동일한 정보(고갈 없음)만
+// 반복해 구분되는 정보가 없다 — 이 경우 상세 막대 대신 한 줄 요약으로 접는다.
+function isUniformlyLifetime(baselineDepletionAge: number | null, scenarios: SensitivityScenario[]): boolean {
+  return baselineDepletionAge === null && scenarios.length > 0 && scenarios.every((s) => s.depletionAge === null);
+}
+
 // 6개 시나리오의 자산 고갈 나이 변화를 가로 막대로 보여준다. deltaYears의 절대값을 막대
 // 길이(최대값 기준 정규화)로, 부호를 색상(악화=danger/개선=success)으로 표현한다.
 // "평생 유지"(depletionAge===null) 시나리오는 괄호 델타를 표시하지 않는다 — deltaYears가
 // expectancy 치환으로 계산된 근사치라 "평생 유지(+4년)" 같은 문구는 오히려 혼란을 준다.
 export function SensitivityAnalysisSection({ baselineDepletionAge, scenarios }: SensitivityAnalysisSectionProps) {
   const maxAbsDelta = Math.max(1, ...scenarios.map((s) => Math.abs(s.deltaYears ?? 0)));
+
+  if (isUniformlyLifetime(baselineDepletionAge, scenarios)) {
+    return (
+      <section>
+        <h4 className="mb-1 text-sm font-semibold">민감도 분석 (핵심 가정 변화에 따른 자산 고갈 나이)</h4>
+        <p className="text-xs text-foreground-muted">
+          투자수익률 ±2%p, 물가상승률 ±1%p, 은퇴시점 ±3년 등 주요 가정이 나빠지는 경우를 포함해도 평생 자산 고갈 위험이 없습니다.
+        </p>
+      </section>
+    );
+  }
 
   return (
     <section>
