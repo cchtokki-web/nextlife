@@ -43,10 +43,12 @@ export function AiSummaryHero({ formatValue, mode, onToggleMode, canApply, ...ad
     <GlassCard className="mb-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h2 className="font-display text-xl font-bold sm:text-2xl">
-            <span className="mr-6 align-middle text-xs sm:text-sm">{headline.emoji}</span>
-            {userNamePrefix}
-            {headline.text}
+          <h2 className="font-display flex items-center gap-4 text-xl font-bold sm:text-2xl">
+            <span className="text-xs sm:text-sm">{headline.emoji}</span>
+            <span>
+              {userNamePrefix}
+              {headline.text}
+            </span>
           </h2>
           {hasImprovement && recommendation && (
             <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-foreground-muted">
@@ -99,7 +101,7 @@ export function AiSummaryHero({ formatValue, mode, onToggleMode, canApply, ...ad
         onOpenChange={setIsAdviceOpen}
         className="mt-6"
       >
-        <div className="mt-2 rounded-xl border border-card-border bg-foreground/5 p-8">
+        <div className="mt-2 rounded-xl border border-card-border bg-foreground/5 p-10">
           <AiAdviceText
             displayAdvice={aiAdvisor.displayAdvice}
             isLoading={aiAdvisor.isLoading}
