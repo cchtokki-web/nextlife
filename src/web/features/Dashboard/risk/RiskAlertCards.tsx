@@ -15,7 +15,7 @@ export function RiskAlertCards({ alerts }: RiskAlertCardsProps) {
       {alerts.map((alert) => (
         <div
           key={alert.key}
-          className="flex items-center gap-5 rounded-2xl border border-danger/30 bg-danger/5 p-10"
+          className="flex items-center gap-4 rounded-xl border border-danger/30 bg-danger/5 p-5"
         >
           <AlertTriangle
             size={20}
