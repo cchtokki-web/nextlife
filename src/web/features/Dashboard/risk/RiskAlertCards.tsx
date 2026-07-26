@@ -15,7 +15,7 @@ export function RiskAlertCards({ alerts }: RiskAlertCardsProps) {
       {alerts.map((alert) => (
         <div
           key={alert.key}
-          className="flex items-center gap-4 rounded-xl border border-danger/30 bg-danger/5 p-5"
+          className="flex items-center gap-4.5 rounded-2xl border border-danger/30 bg-danger/5 px-6 py-5"
         >
           <AlertTriangle
             size={20}
@@ -24,7 +24,7 @@ export function RiskAlertCards({ alerts }: RiskAlertCardsProps) {
           />
           <div>
             <p className="text-sm font-semibold text-danger">{alert.title}</p>
-            <p className="mt-1 text-sm text-foreground-muted">
+            <p className="mt-1.5 text-sm leading-relaxed text-foreground-muted">
               {alert.message}
             </p>
           </div>

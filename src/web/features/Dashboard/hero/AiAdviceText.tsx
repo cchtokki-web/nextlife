@@ -44,12 +44,12 @@ export function AiAdviceText({ displayAdvice, isLoading, error, isRuleBased, isS
             <span className="ml-2 text-sm text-foreground-muted">AI 분석 의견을 작성하고 있습니다...</span>
           </div>
         ) : (
-          <div className="flex flex-col gap-3 text-sm leading-relaxed">
+          <div className="flex flex-col gap-3.5 text-sm leading-relaxed">
             {lines.map((line, i) => (
-              <p key={i}>
+              <p key={i} className="text-foreground/90">
                 {line.split(/(\*\*.*?\*\*)/g).map((part, j) =>
                   part.startsWith('**') && part.endsWith('**') ? (
-                    <strong key={j} className="mx-0.5 inline-block rounded bg-primary/15 px-2 py-0.5 font-semibold text-primary">
+                    <strong key={j} className="mx-1 inline-flex items-center rounded-md bg-primary/15 px-2 py-0.5 align-baseline font-semibold text-primary">
                       {part.slice(2, -2)}
                     </strong>
                   ) : (
