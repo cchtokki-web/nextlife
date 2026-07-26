@@ -44,23 +44,22 @@ export function AiAdviceText({ displayAdvice, isLoading, error, isRuleBased, isS
             <span className="ml-2 text-sm text-foreground-muted">AI 분석 의견을 작성하고 있습니다...</span>
           </div>
         ) : (
-          <p className="whitespace-pre-line text-sm leading-relaxed">
+          <div className="flex flex-col gap-3 text-sm leading-relaxed">
             {lines.map((line, i) => (
-              <React.Fragment key={i}>
+              <p key={i}>
                 {line.split(/(\*\*.*?\*\*)/g).map((part, j) =>
                   part.startsWith('**') && part.endsWith('**') ? (
-                    <strong key={j} className="rounded bg-primary/15 px-1 font-bold text-primary">
+                    <strong key={j} className="mx-0.5 inline-block rounded bg-primary/15 px-2 py-0.5 font-semibold text-primary">
                       {part.slice(2, -2)}
                     </strong>
                   ) : (
                     <React.Fragment key={j}>{part}</React.Fragment>
                   )
                 )}
-                {i < lines.length - 1 && <br />}
-              </React.Fragment>
+              </p>
             ))}
             {isLoading && <Loader2 size={16} className="ml-2 inline animate-spin text-primary" aria-hidden="true" />}
-          </p>
+          </div>
         )}
       </div>
 

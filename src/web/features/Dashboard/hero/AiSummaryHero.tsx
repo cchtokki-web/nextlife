@@ -101,7 +101,7 @@ export function AiSummaryHero({ formatValue, mode, onToggleMode, canApply, ...ad
         onOpenChange={setIsAdviceOpen}
         className="mt-6"
       >
-        <div className="mt-2 rounded-xl border border-card-border bg-foreground/5 p-5">
+        <div className="mt-2 rounded-xl border border-card-border bg-foreground/5 p-6">
           <AiAdviceText
             displayAdvice={aiAdvisor.displayAdvice}
             isLoading={aiAdvisor.isLoading}
