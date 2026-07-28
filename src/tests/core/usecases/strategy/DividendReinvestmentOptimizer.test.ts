@@ -240,13 +240,12 @@ describe('optimizeDividendReinvestment', () => {
     optimizeDividendReinvestment(params, null, bestResult, bestUtility, engine, DEFAULT_UTILITY_CONFIG);
 
     const calledParams = runForUtility.mock.calls[0][0] as SimulationParams;
-    expect(calledParams.withdrawalPlan?.privatePensionStartAge).toBe(params.userProfile.retirementAge);
+    expect(calledParams.withdrawalPlan?.generalAssetWithdrawalStartAge).toBe(params.userProfile.retirementAge);
   });
 
   test('bestPlan이 주어지면 그 계획을 그대로 사용한다', () => {
     const params = { ...baseParams, assets: [makeAsset({ id: 'a1', reinvestDividend: true })] };
     const plan: CompleteWithdrawalPlan = {
-      privatePensionStartAge: 65,
       privatePensionMonthlyTarget: 0,
       nationalPensionStartAge: 68,
       assetSellOrderStrategy: 'input_order',
