@@ -49,6 +49,10 @@ export interface PrivatePension {
   annualReturn: number; // % 단위 (ETF인 경우 연 성장률로 사용)
   dividendYield?: number; // % 단위 (ETF인 경우 연 배당률)
   currency: AssetCurrency;
+  // 사적연금 조기수령 채널링(Phase 4) 전용 내부 필드. true면 55세(PRIVATE_PENSION_MIN_START_AGE)부터
+  // retirementAge 이전(재직 중)에도 저율과세 한도 내에서 조기 인출해 ISA로 재투자한다. AI 추천
+  // 엔진(PrivatePensionChannelingOptimizer)만 설정하며, 사용자가 직접 켜는 입력 폼 필드가 아니다.
+  earlyChannelingEnabled?: boolean;
 }
 
 export interface NationalPension {

@@ -462,6 +462,10 @@ export class SimulationEngine {
         // privatePensionMonthlyTarget은 계좌 개별이 아닌 "전체 사적연금 계좌 합산" 목표액이다.
         // 계좌를 순서대로 처리하며 이 잔여 목표액만큼만 인출하도록 공유 상태로 관리한다.
         let remainingMonthlyPensionTargetKRW = withdrawalPlan?.privatePensionMonthlyTarget;
+        // 사적연금 조기수령 채널링(Phase 4)의 월별 저율과세 한도. 여러 계좌가 earlyChannelingEnabled면
+        // 위 monthlyPensionPreTaxLimitRemainingKRW와 별개로 이 잔여한도를 계좌 간에 공유한다 — 두
+        // 한도는 서로 다른 인출 경로(은퇴 후 정상 인출 vs 브릿지 조기 인출)라 섞이면 안 된다.
+        let remainingBridgeLimitKRW = (currentTaxSettings.privatePensionLimit ?? 15000000) / 12;
 
         activePensions.forEach((pension) => {
           if (pension.currentBalance < 0) pension.currentBalance = 0;
@@ -508,6 +512,36 @@ export class SimulationEngine {
             const drawAmountNet = drawAmountRaw - drawAmountTax;
 
             monthlyPensionIncomeNetDisplay += this.convertValue(drawAmountNet, pension.currency, displayCurrency, exchangeRate);
+            annualPensionTaxPaid += this.convertValue(drawAmountTax, pension.currency, displayCurrency, exchangeRate);
+            annualPreTaxTotalIncome += this.convertValue(drawAmountRaw, pension.currency, displayCurrency, exchangeRate);
+            annualPrivatePensionPreTaxKRW += this.convertValue(drawAmountRaw, pension.currency, 'KRW', exchangeRate);
+          } else if (
+            !isRetired &&
+            currentAge >= PRIVATE_PENSION_MIN_START_AGE &&
+            pension.earlyChannelingEnabled &&
+            pension.currentBalance > 0
+          ) {
+            // 사적연금 조기수령 채널링(Phase 4): 은퇴 전(재직 중)이라도 55세부터 저율과세 한도
+            // 내에서 조기 인출해 ISA로 재투자한다. 생활비 재원이 아니므로 monthlyPensionIncomeNetDisplay/
+            // annualPrivatePensionIncome(소득 표시용 필드)에는 더하지 않는다 — 재직 중이라 생활비는
+            // 이 시뮬레이터가 모델링하지 않는 근로소득으로 충당된다고 가정한다.
+            const limitInPensionCurrency = this.convertValue(
+              Math.max(0, remainingBridgeLimitKRW), 'KRW', pension.currency, exchangeRate
+            );
+            const drawAmountRaw = Math.min(pension.currentBalance, limitInPensionCurrency);
+            remainingBridgeLimitKRW -= this.convertValue(drawAmountRaw, pension.currency, 'KRW', exchangeRate);
+            pension.currentBalance -= drawAmountRaw;
+
+            const taxRate = getPrivatePensionIncomeTaxRate(currentAge);
+            const drawAmountTax = drawAmountRaw * taxRate;
+            const drawAmountNet = drawAmountRaw - drawAmountTax;
+
+            if (activeIsas.length > 0) {
+              const netInIsaCurrency = this.convertValue(drawAmountNet, pension.currency, activeIsas[0].currency, exchangeRate);
+              activeIsas[0].currentBalance += netInIsaCurrency;
+              activeIsas[0].totalInvested += netInIsaCurrency;
+            }
+
             annualPensionTaxPaid += this.convertValue(drawAmountTax, pension.currency, displayCurrency, exchangeRate);
             annualPreTaxTotalIncome += this.convertValue(drawAmountRaw, pension.currency, displayCurrency, exchangeRate);
             annualPrivatePensionPreTaxKRW += this.convertValue(drawAmountRaw, pension.currency, 'KRW', exchangeRate);
