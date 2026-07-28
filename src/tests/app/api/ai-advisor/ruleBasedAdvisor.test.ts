@@ -36,6 +36,7 @@ function makeRecommendation(currentScore: number, recommendedScore: number): Str
       monthlySpendingMultiplier: 1,
     } : null,
     recommendedAssetReinvestment: null,
+    recommendedPrivatePensionChanneling: null,
     improved,
     reasons: ['65세부터 일반 자산(주식/ETF) 인출을 시작합니다.'],
     deltas: zeroDeltas,

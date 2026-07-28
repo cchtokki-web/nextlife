@@ -15,6 +15,7 @@ import { analyzeCurrentStrategy, formatManwon } from '../utility/utilityAnalysis
 import { getRetirementGrade } from '../../entities/retirementGrade';
 import { generateCandidatePlans, generateSpendingAdjustmentCandidates, getIdentityPlan } from './StrategyCandidateGenerator';
 import { optimizeDividendReinvestment } from './DividendReinvestmentOptimizer';
+import { optimizePrivatePensionChanneling } from './PrivatePensionChannelingOptimizer';
 import { computeDeltas } from './deltas';
 
 // 하위 호환: 기존에 computeDeltas를 이 모듈에서 import하던 코드(테스트 등)를 위해 재노출한다.
@@ -371,38 +372,64 @@ export function recommendStrategy(
     utilityDelta: r.utilityDelta,
     deltas: r.deltas,
   }));
+
+  // Phase 4: 사적연금 조기수령 채널링 (신규). Phase 1+2+3 최종 결과(reinvestOpt.finalResult/
+  // finalUtility) 위에서 평가한다. paramsAfterPhase3는 Phase 3까지의 결정(인출계획 + 자산별
+  // reinvestDividend)을 반영한 params로, PrivatePensionChannelingOptimizer가 이 위에 사적연금
+  // 채널링+신규 계좌를 얹은 candidate를 만든다.
+  const paramsAfterPhase3: SimulationParams = {
+    ...params,
+    withdrawalPlan: bestPlan ?? identityPlan,
+    assets: reinvestOpt.recommendedAssetReinvestment
+      ? params.assets.map((a) =>
+          a.id in reinvestOpt.recommendedAssetReinvestment!
+            ? { ...a, reinvestDividend: reinvestOpt.recommendedAssetReinvestment![a.id] }
+            : a
+        )
+      : params.assets,
+  };
+  const channelingOpt = optimizePrivatePensionChanneling(
+    paramsAfterPhase3,
+    reinvestOpt.finalResult,
+    reinvestOpt.finalUtility,
+    engine,
+    cfg
+  );
+  if (channelingOpt.itemizedContribution) {
+    additionalItemizedContributions.push(channelingOpt.itemizedContribution);
+  }
   const additionalReasons = additionalItemizedContributions.map((c) => c.label);
 
   // withdrawalPlanImproved면 기존 reasons 뒤에 자연스럽게 이어붙이고, WithdrawalPlan 차원에서는
-  // 개선이 없었는데 Phase 3만 개선을 찾았다면 "개선 없음" 문구(baseReasons) 대신 Phase 3
-  // 문구만 보여준다(둘 다 없으면 기존 baseReasons의 "개선 없음" 문구를 그대로 유지).
+  // 개선이 없었는데 Phase 3/4만 개선을 찾았다면 "개선 없음" 문구(baseReasons) 대신 그 문구만
+  // 보여준다(둘 다 없으면 기존 baseReasons의 "개선 없음" 문구를 그대로 유지).
   const reasons = withdrawalPlanImproved
     ? [...baseReasons, ...additionalReasons]
     : additionalReasons.length > 0
       ? additionalReasons
       : baseReasons;
   const itemizedContributions = [...withdrawalItemizedContributions, ...additionalItemizedContributions];
-  const improved = reinvestOpt.finalUtility.score > currentUtility.score;
-  const deltas = computeDeltas(baselineResult, reinvestOpt.finalResult);
+  const improved = channelingOpt.finalUtility.score > currentUtility.score;
+  const deltas = computeDeltas(baselineResult, channelingOpt.finalResult);
 
-  // Phase 3의 시도량/실패량을 후보 통계에 합산해 AI advisor(계산 실패 감지)까지 흐르게 한다.
-  // params.assets.length는 Phase 3가 시도한 작업량의 근사치다(통합 검증 단계까지 정확히 세지는
-  // 않는다) — 이 총계는 "얼마나 시도했나"라는 coarse 신호로만 쓰이므로 candidateStats.total과
-  // 동일한 수준의 근사면 충분하다.
-  const totalCandidateCount = candidateStats.total + params.assets.length;
-  const failedCandidateCount = candidateStats.failed + reinvestOpt.failedAssetCount;
+  // Phase 3/4의 시도량/실패량을 후보 통계에 합산해 AI advisor(계산 실패 감지)까지 흐르게 한다.
+  // params.assets.length는 Phase 3가 시도한 작업량의 근사치이고, Phase 4는 최대 1회 시도이므로
+  // +1을 더한다 — 둘 다 "얼마나 시도했나"라는 coarse 신호로만 쓰이므로 근사면 충분하다.
+  const totalCandidateCount = candidateStats.total + params.assets.length + 1;
+  const failedCandidateCount = candidateStats.failed + reinvestOpt.failedAssetCount + (channelingOpt.failed ? 1 : 0);
 
   return {
     currentUtility,
-    recommendedUtility: reinvestOpt.finalUtility,
+    recommendedUtility: channelingOpt.finalUtility,
     recommendedPlan: bestPlan,
     recommendedAssetReinvestment: reinvestOpt.recommendedAssetReinvestment,
+    recommendedPrivatePensionChanneling: channelingOpt.recommendedPrivatePensionChanneling,
     improved,
     reasons,
     totalCandidateCount,
     failedCandidateCount,
     deltas,
-    recommendedResult: reinvestOpt.finalResult,
+    recommendedResult: channelingOpt.finalResult,
     itemizedContributions,
   };
 }

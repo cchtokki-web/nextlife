@@ -233,10 +233,12 @@ describe('recommendStrategy - 생활비 증액(Phase 2) 후보', () => {
 
     const recommendation = recommendStrategy(paramsWithDepletionRisk, engine);
     // Phase 2(생활비 증액) 후보가 0개임을 확인하는 것이 이 테스트의 취지다. totalCandidateCount에는
-    // Phase 3(배당 재투자)의 시도량(assets.length)이 함께 더해지므로 그만큼을 포함해 비교한다.
+    // Phase 3(배당 재투자)의 시도량(assets.length)과 Phase 4(사적연금 채널링)의 시도량(항상 +1,
+    // 전제 조건 미충족으로 실제 시뮬레이션을 안 돌려도 "최대 1회 시도"로 집계됨)이 함께 더해지므로
+    // 그만큼을 포함해 비교한다.
     const baseCandidateCount = generateCandidatePlans(paramsWithDepletionRisk).length;
 
-    expect(recommendation.totalCandidateCount).toBe(baseCandidateCount + paramsWithDepletionRisk.assets.length);
+    expect(recommendation.totalCandidateCount).toBe(baseCandidateCount + paramsWithDepletionRisk.assets.length + 1);
     expect(recommendation.recommendedPlan?.monthlySpendingMultiplier ?? 1).toBe(1);
   });
 
@@ -244,10 +246,11 @@ describe('recommendStrategy - 생활비 증액(Phase 2) 후보', () => {
     const engine = new SimulationEngine();
     const params: SimulationParams = { ...paramsWithSurplusAssetOnly, spendingStrategy: 'max_sustainable' };
     const recommendation = recommendStrategy(params, engine);
-    // Phase 2 후보 0개 확인이 취지. totalCandidateCount에는 Phase 3의 assets.length가 더해진다.
+    // Phase 2 후보 0개 확인이 취지. totalCandidateCount에는 Phase 3의 assets.length와 Phase 4의
+    // 고정 +1이 더해진다.
     const baseCandidateCount = generateCandidatePlans(params).length;
 
-    expect(recommendation.totalCandidateCount).toBe(baseCandidateCount + params.assets.length);
+    expect(recommendation.totalCandidateCount).toBe(baseCandidateCount + params.assets.length + 1);
   });
 });
 
@@ -593,7 +596,7 @@ describe('recommendStrategy - totalCandidateCount/failedCandidateCount', () => {
     expect(recommendation.failedCandidateCount).toBe(0);
   });
 
-  test('탐색할 차원이 전혀 없으면 총 후보 수는 0이다', () => {
+  test('탐색할 차원이 전혀 없으면 총 후보 수는 Phase 4의 고정 시도 1회만 남는다', () => {
     const engine = new SimulationEngine();
     const noOptimizableDimensionParams: SimulationParams = {
       ...paramsWithLargePension,
@@ -602,7 +605,11 @@ describe('recommendStrategy - totalCandidateCount/failedCandidateCount', () => {
     };
     const recommendation = recommendStrategy(noOptimizableDimensionParams, engine);
 
-    expect(recommendation.totalCandidateCount).toBe(0);
+    // Phase 1/2/3은 탐색할 차원이 전혀 없어 0개지만, Phase 4는 사적연금/ISA 존재 여부와
+    // 무관하게 "최대 1회 시도"로 고정 +1을 더한다(전제 조건 미충족으로 noOp이어도 시도 자체는
+    // 1회로 집계). 이 시나리오는 privatePensions가 비어 있어 실제로는 채널링을 시뮬레이션하지
+    // 않지만(hasPension이 false라 즉시 noOp) totalCandidateCount 집계는 이를 구분하지 않는다.
+    expect(recommendation.totalCandidateCount).toBe(1);
     expect(recommendation.failedCandidateCount).toBe(0);
   });
 });
@@ -839,5 +846,63 @@ describe('recommendStrategy - Phase 3 배당 재투자 통합', () => {
     // '주의'/'위험' 등급 폴백 문구("개선 여지가 있으나")는 포함하지 않아야 한다(가운데 분기 검증).
     expect(result.reasons.some((r) => r.includes('테스트자산') && r.includes('재투자'))).toBe(true);
     expect(result.reasons.every((r) => !r.includes('합리적') && !r.includes('개선 여지가 있으나'))).toBe(true);
+  });
+});
+
+describe('recommendStrategy - Phase 4 사적연금 채널링 통합', () => {
+  test('ISA 계좌가 없으면 recommendedPrivatePensionChanneling은 null이다', () => {
+    const engine = new SimulationEngine();
+    const result = recommendStrategy(paramsWithLargePension, engine);
+    expect(result.recommendedPrivatePensionChanneling).toBeNull();
+  });
+
+  test('사적연금+ISA가 있고 브릿지 구간이 존재하면 유리할 때 채택되고 itemizedContributions/reasons에 반영된다', () => {
+    const engine = new SimulationEngine();
+    const params: SimulationParams = {
+      ...paramsWithLargePension,
+      // targetMonthlySpending을 2,000,000(원안)에서 25,000,000으로 올렸다: 이 시뮬레이터는
+      // ISA(만기 99년이라 시뮬레이션 기간 내 절대 만기되지 않음)와 신규 연금 계좌(Phase 4가
+      // 추가하는 buildNewPension)에 들어간 돈을 전혀 소비로 되돌리지 않는다 — 순수 사망 시
+      // 잔여자산(bequest)으로만 남는다. bequestAdequacy는 "적정 잔여자산(=월 목표생활비 ×
+      // 24개월)" 대비 초과분을 지수적으로 감점하므로, 월 생활비가 낮으면(원안 200만원) 채널링이
+      // 만들어내는 추가 잔여자산이 적정치 대비 과다해져 bequestAdequacy 감점이 수익률 차익(ISA
+      // 6% vs 연금 2%) 효과를 압도해 버려 채널링이 항상 손해로 나온다(직접 확인함: 200만원에서는
+      // recommendedPrivatePensionChanneling이 결정론적으로 null). 월 생활비를 올려 적정
+      // 잔여자산 기준선을 함께 끌어올리면 과다 페널티가 완화되어 수익률 차익 효과가 순이익으로
+      // 드러난다. 2500만원은 19,000,000~30,000,000 구간에서 균일하게 true(정도 차이만 있을 뿐
+      // 항상 채택됨)로 확인된 안정 구간의 중간값이라 knife-edge가 아니다.
+      userProfile: { ...paramsWithLargePension.userProfile, currentAge: 50, retirementAge: 60, expectancy: 90, targetMonthlySpending: 25000000 },
+      privatePensions: [
+        { id: 'pension-1', type: 'irp', balance: 600000000, monthlyContribution: 0, annualReturn: 2, currency: 'KRW' },
+      ],
+      isaAccounts: [
+        { id: 'isa-1', type: 'general', balance: 10000000, monthlyContribution: 0, annualReturn: 6, dividendYield: 0, currency: 'KRW', maturityYears: 99 },
+      ],
+    };
+
+    const result = recommendStrategy(params, engine);
+
+    // ISA 수익률(6%)이 사적연금 수익률(2%)보다 높은 시나리오라 채널링이 유리해야 한다.
+    // 만약 이 assertion이 실패하면(유리하지 않다고 나오면) annualReturn 격차를 더 벌려서
+    // 결정론적으로 채택되는 시나리오를 다시 찾는다 — 실제 엔진 기반 통합 테스트이므로 근사치가
+    // 아니라 실제 계산 결과에 의존한다.
+    expect(result.recommendedPrivatePensionChanneling).toBe(true);
+    expect(result.itemizedContributions.some((c) => c.label.includes('사적연금을 55세부터'))).toBe(true);
+    expect(result.reasons.some((r) => r.includes('사적연금을 55세부터'))).toBe(true);
+    expect(result.recommendedUtility.score).toBeGreaterThan(result.currentUtility.score);
+  });
+
+  test('retirementAge가 55 이하이면 채널링 후보 자체가 생성되지 않는다', () => {
+    const engine = new SimulationEngine();
+    const params: SimulationParams = {
+      ...paramsWithLargePension,
+      userProfile: { ...paramsWithLargePension.userProfile, currentAge: 50, retirementAge: 55, expectancy: 90 },
+      isaAccounts: [
+        { id: 'isa-1', type: 'general', balance: 10000000, monthlyContribution: 0, annualReturn: 6, dividendYield: 0, currency: 'KRW', maturityYears: 99 },
+      ],
+    };
+
+    const result = recommendStrategy(params, engine);
+    expect(result.recommendedPrivatePensionChanneling).toBeNull();
   });
 });

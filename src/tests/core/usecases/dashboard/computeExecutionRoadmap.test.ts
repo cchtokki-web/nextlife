@@ -41,6 +41,7 @@ function makeRecommendation(recommendedPlan: CompleteWithdrawalPlan | null): Str
     recommendedUtility: utility,
     recommendedPlan,
     recommendedAssetReinvestment: null,
+    recommendedPrivatePensionChanneling: null,
     improved: recommendedPlan !== null,
     reasons: [],
     deltas: zeroDeltas,
