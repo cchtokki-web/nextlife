@@ -519,7 +519,8 @@ export class SimulationEngine {
             !isRetired &&
             currentAge >= PRIVATE_PENSION_MIN_START_AGE &&
             pension.earlyChannelingEnabled &&
-            pension.currentBalance > 0
+            pension.currentBalance > 0 &&
+            activeIsas.length > 0
           ) {
             // 사적연금 조기수령 채널링(Phase 4): 은퇴 전(재직 중)이라도 55세부터 저율과세 한도
             // 내에서 조기 인출해 ISA로 재투자한다. 생활비 재원이 아니므로 monthlyPensionIncomeNetDisplay/
@@ -536,11 +537,9 @@ export class SimulationEngine {
             const drawAmountTax = drawAmountRaw * taxRate;
             const drawAmountNet = drawAmountRaw - drawAmountTax;
 
-            if (activeIsas.length > 0) {
-              const netInIsaCurrency = this.convertValue(drawAmountNet, pension.currency, activeIsas[0].currency, exchangeRate);
-              activeIsas[0].currentBalance += netInIsaCurrency;
-              activeIsas[0].totalInvested += netInIsaCurrency;
-            }
+            const netInIsaCurrency = this.convertValue(drawAmountNet, pension.currency, activeIsas[0].currency, exchangeRate);
+            activeIsas[0].currentBalance += netInIsaCurrency;
+            activeIsas[0].totalInvested += netInIsaCurrency;
 
             annualPensionTaxPaid += this.convertValue(drawAmountTax, pension.currency, displayCurrency, exchangeRate);
             annualPreTaxTotalIncome += this.convertValue(drawAmountRaw, pension.currency, displayCurrency, exchangeRate);

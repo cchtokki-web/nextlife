@@ -98,4 +98,16 @@ describe('SimulationEngine 사적연금 브릿지 조기인출(Phase 4)', () => 
     const at55 = result.yearlyResults.find((r) => r.age === 55);
     expect(at55!.pensionAssets).toBeCloseTo(100000000, 2);
   });
+
+  test('ISA 계좌가 없으면 earlyChannelingEnabled가 켜져 있어도 브릿지 조기인출이 발동하지 않는다(자금 소실 방지)', () => {
+    const engine = new SimulationEngine();
+    const params: SimulationParams = {
+      ...baseParams,
+      isaAccounts: [], // ISA 계좌 없음
+    };
+    const result = engine.run(params);
+
+    const at55 = result.yearlyResults.find((r) => r.age === 55);
+    expect(at55!.pensionAssets).toBeCloseTo(100000000, 2); // 사적연금 잔액이 변하지 않음
+  });
 });
