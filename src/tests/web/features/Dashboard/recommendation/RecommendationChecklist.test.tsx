@@ -34,6 +34,7 @@ function makeRecommendation(overrides: Partial<StrategyRecommendation>): Strateg
     currentUtility: utility,
     recommendedUtility: { ...utility, score: 81 },
     recommendedPlan: null,
+    recommendedAssetReinvestment: null,
     improved: false,
     reasons: ['현재 전략이 이미 합리적입니다.'],
     deltas: zeroDeltas,

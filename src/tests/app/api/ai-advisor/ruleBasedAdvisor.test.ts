@@ -35,6 +35,7 @@ function makeRecommendation(currentScore: number, recommendedScore: number): Str
       generalAssetWithdrawalStartAge: 65,
       monthlySpendingMultiplier: 1,
     } : null,
+    recommendedAssetReinvestment: null,
     improved,
     reasons: ['65세부터 일반 자산(주식/ETF) 인출을 시작합니다.'],
     deltas: zeroDeltas,

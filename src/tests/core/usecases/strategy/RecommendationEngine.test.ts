@@ -232,9 +232,11 @@ describe('recommendStrategy - 생활비 증액(Phase 2) 후보', () => {
     expect(baseline.depletionAge!).toBeLessThan(paramsWithDepletionRisk.userProfile.expectancy);
 
     const recommendation = recommendStrategy(paramsWithDepletionRisk, engine);
+    // Phase 2(생활비 증액) 후보가 0개임을 확인하는 것이 이 테스트의 취지다. totalCandidateCount에는
+    // Phase 3(배당 재투자)의 시도량(assets.length)이 함께 더해지므로 그만큼을 포함해 비교한다.
     const baseCandidateCount = generateCandidatePlans(paramsWithDepletionRisk).length;
 
-    expect(recommendation.totalCandidateCount).toBe(baseCandidateCount);
+    expect(recommendation.totalCandidateCount).toBe(baseCandidateCount + paramsWithDepletionRisk.assets.length);
     expect(recommendation.recommendedPlan?.monthlySpendingMultiplier ?? 1).toBe(1);
   });
 
@@ -242,9 +244,10 @@ describe('recommendStrategy - 생활비 증액(Phase 2) 후보', () => {
     const engine = new SimulationEngine();
     const params: SimulationParams = { ...paramsWithSurplusAssetOnly, spendingStrategy: 'max_sustainable' };
     const recommendation = recommendStrategy(params, engine);
+    // Phase 2 후보 0개 확인이 취지. totalCandidateCount에는 Phase 3의 assets.length가 더해진다.
     const baseCandidateCount = generateCandidatePlans(params).length;
 
-    expect(recommendation.totalCandidateCount).toBe(baseCandidateCount);
+    expect(recommendation.totalCandidateCount).toBe(baseCandidateCount + params.assets.length);
   });
 });
 
@@ -694,5 +697,147 @@ describe('buildReasons - pensionEndingBalance 증가 케이스', () => {
       true
     );
     expect(reasons.some((r) => r.includes('연금잔액') && r.includes('증가'))).toBe(true);
+  });
+});
+
+describe('recommendStrategy - Phase 3 배당 재투자 통합', () => {
+  test('assets가 비어 있으면 recommendedAssetReinvestment는 null이다', () => {
+    const engine = new SimulationEngine();
+    const result = recommendStrategy(paramsWithLargePension, engine);
+    expect(result.recommendedAssetReinvestment).toBeNull();
+  });
+
+  test('자산이 있으면 itemizedContributions/reasons에 배당 재투자 항목이 추가될 수 있다(구조 검증)', () => {
+    // reinvestDividend는 SimulationEngine 내부에서 (1) 은퇴 전(currentAge < retirementAge) 연차에만,
+    // (2) assets[0]이 아닌 자산에 대해서만 실제로 결과에 영향을 준다 — assets[0]의 배당은
+    // reinvestDividend 값과 무관하게 항상 자기 자신으로 재유입되는 잉여 스윕 로직이 있어 index 0은
+    // 항상 무효과다(RecommendationEngine.ts의 Phase 3 통합 조사 과정에서 실제 엔진으로 확인).
+    // 그래서 이 fixture는 paramsWithLargePension을 은퇴 전 시점(currentAge 30 < retirementAge 65)으로
+    // 조정하고, 성장률이 크게 다른 자산 2개를 둔다 — asset-1(저성장·고배당)의 배당을 재투자하지
+    // 않고 asset-0(고성장)으로 흘려보내는 쪽이 유리해지도록 설계해 실제로 non-null 경로를 탄다.
+    const engine = new SimulationEngine();
+    const paramsWithAssets: SimulationParams = {
+      ...paramsWithLargePension,
+      userProfile: { ...paramsWithLargePension.userProfile, currentAge: 30, retirementAge: 65 },
+      assets: [
+        {
+          id: 'asset-0',
+          type: 'etf',
+          ticker: 'GROWTH',
+          name: '성장자산',
+          quantity: 1,
+          averagePrice: 30000000,
+          annualGrowthRate: 10,
+          dividendYield: 0,
+          monthlyContribution: 0,
+          reinvestDividend: true,
+          currency: 'KRW',
+        },
+        {
+          id: 'asset-1',
+          type: 'etf',
+          ticker: 'SPY',
+          name: '테스트자산',
+          quantity: 1,
+          averagePrice: 30000000,
+          annualGrowthRate: 1,
+          dividendYield: 8,
+          monthlyContribution: 0,
+          reinvestDividend: true,
+          currency: 'KRW',
+        },
+      ],
+    };
+    const result = recommendStrategy(paramsWithAssets, engine);
+    // 이 fixture는 실제 엔진에서 결정론적으로 asset-1만 재투자 중단(false)이 유리하다고 판단한다
+    // (asset-0은 index 0이라 flip해도 무효과이므로 beneficial 목록에 들어가지 않는다).
+    expect(result.recommendedAssetReinvestment).not.toBeNull();
+    expect(Object.keys(result.recommendedAssetReinvestment ?? {})).toEqual(['asset-1']);
+    expect(result.itemizedContributions.some((c) => c.label.includes('테스트자산'))).toBe(true);
+
+    // Phase 3 최종값(finalUtility/finalResult) 배선 회귀 방지: recommendedUtility/recommendedResult가
+    // "Phase 1+2 결과(bestUtility/bestResult)"가 아니라 "Phase 3까지 반영한 최종값"이어야 한다.
+    expect(result.improved).toBe(true);
+    expect(result.recommendedUtility.score).toBeGreaterThan(result.currentUtility.score);
+    // deltas가 전부 0이 아니어야 한다(재투자 변경이 실제 수치에 반영됨).
+    expect(Object.values(result.deltas).some((v) => v !== 0)).toBe(true);
+    expect(result.deltas.totalTax).toBeLessThan(0); // 세금 절감 방향
+
+    // recommendedResult가 "추천안(인출계획 + 배당 재투자)을 실제로 적용한 시뮬레이션"과 일치하는지
+    // 재구성해 검증한다 — bestUtility를 잘못 반환하는 회귀라면 이 값이 어긋난다.
+    expect(result.recommendedResult.yearlyResults.length).toBeGreaterThan(0);
+    const appliedParams: SimulationParams = {
+      ...paramsWithAssets,
+      withdrawalPlan: result.recommendedPlan ?? undefined,
+      assets: paramsWithAssets.assets.map((a) =>
+        result.recommendedAssetReinvestment && a.id in result.recommendedAssetReinvestment
+          ? { ...a, reinvestDividend: result.recommendedAssetReinvestment[a.id] }
+          : a
+      ),
+    };
+    const appliedResult = engine.runForUtility(appliedParams);
+    const appliedUtility = computeLifetimeUtility(appliedResult, appliedParams, DEFAULT_UTILITY_CONFIG);
+    expect(appliedUtility.score).toBe(result.recommendedUtility.score);
+    expect(appliedResult.endingAssets).toBeCloseTo(result.recommendedResult.endingAssets, 2);
+  });
+
+  test('WithdrawalPlan(Phase 1/2) 개선은 없지만 Phase 3(배당 재투자) 개선만 있으면 reasons에 Phase 3 문구만 담고 "이미 합리적" 폴백은 담지 않는다', () => {
+    // 인출계획 그리드로는 개선이 없도록(사적연금·국민연금·ISA 없음, 두 자산의 배당수익률을 동일하게
+    // 두어 매도순서 차원도 무효화, 은퇴기간을 짧게 두어 매도순서 절세 효과도 없음) 설계하되,
+    // 축적기(currentAge 25 < retirementAge 65)가 길어 asset-1(저성장·고배당)의 배당을 고성장
+    // asset-0으로 흘려보내는 재투자 중단이 유리해지도록 성장률 격차를 크게 둔다. 그 결과 bestPlan은
+    // null(인출계획 미개선)이지만 Phase 3는 asset-1 재투자 중단을 추천한다 —
+    // reasons 3-way 병합의 가운데 분기(withdrawalPlanImproved===false && additionalReasons.length>0).
+    const engine = new SimulationEngine();
+    const phase3OnlyParams: SimulationParams = {
+      userProfile: { currentAge: 25, retirementAge: 65, expectancy: 70, targetMonthlySpending: 2000000 },
+      assets: [
+        {
+          id: 'asset-0',
+          type: 'etf',
+          ticker: 'GROWTH',
+          name: '성장자산',
+          quantity: 1,
+          averagePrice: 30000000,
+          annualGrowthRate: 12,
+          dividendYield: 0,
+          monthlyContribution: 0,
+          reinvestDividend: true,
+          currency: 'KRW',
+        },
+        {
+          id: 'asset-1',
+          type: 'etf',
+          ticker: 'SPY',
+          name: '테스트자산',
+          quantity: 1,
+          averagePrice: 30000000,
+          annualGrowthRate: 1,
+          dividendYield: 8,
+          monthlyContribution: 0,
+          reinvestDividend: true,
+          currency: 'KRW',
+        },
+      ],
+      nationalPension: { expectedMonthlyAmount: 0 },
+      privatePensions: [],
+      otherIncomes: [],
+      inflationRate: 0,
+      inflationMode: 'real',
+      baseExchangeRate: 1350,
+      exchangeScenario: 'base',
+      displayCurrency: 'KRW',
+    };
+    const result = recommendStrategy(phase3OnlyParams, engine);
+
+    // 인출계획 차원은 개선 없음(bestPlan null), Phase 3만 개선.
+    expect(result.recommendedPlan).toBeNull();
+    expect(result.recommendedAssetReinvestment).toEqual({ 'asset-1': false });
+    expect(result.improved).toBe(true);
+
+    // reasons는 Phase 3 문구만 포함하고, buildReasons의 "이미 합리적"/"충분히 합리적" 및
+    // '주의'/'위험' 등급 폴백 문구("개선 여지가 있으나")는 포함하지 않아야 한다(가운데 분기 검증).
+    expect(result.reasons.some((r) => r.includes('테스트자산') && r.includes('재투자'))).toBe(true);
+    expect(result.reasons.every((r) => !r.includes('합리적') && !r.includes('개선 여지가 있으나'))).toBe(true);
   });
 });

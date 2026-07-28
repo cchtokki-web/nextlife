@@ -232,6 +232,10 @@ export interface StrategyRecommendation {
   // 않으면 null(= baseline 유지 권장). "부분 override 패치"인 WithdrawalPlan과 달리 여기서는
   // "AI가 확정한 완결된 결정" 또는 "결정 없음"이라는 의미로만 쓰인다.
   recommendedPlan: CompleteWithdrawalPlan | null;
+  // assetId -> 권장 reinvestDividend 값(Phase 3: 배당 재투자 최적화). recommendedPlan과 달리
+  // WithdrawalPlan이 아니라 은퇴 "전" 축적기 파라미터(자산 배열 내부 값)라 별도 필드로 분리했다.
+  // 변경 권장이 없으면(자산 없음/개선 없음/통합 검증 실패) null.
+  recommendedAssetReinvestment: Record<string, boolean> | null;
   improved: boolean; // recommendedUtility.score > currentUtility.score 여부를 미리 계산해 둔 값. 소비처마다 재계산하지 않는다.
   reasons: string[];
   deltas: {
@@ -249,17 +253,27 @@ export interface StrategyRecommendation {
   // baseline과 동일한 결과(currentUtility를 만든 결과)가 그대로 채워진다. 결과 화면의
   // Before(baseline)/After(recommendedResult) 비교에 사용한다.
   recommendedResult: SimulationResult;
-  // recommendedPlan이 identityPlan(아무 것도 안 바꾼 기준안) 대비 실제로 바뀐 필드 각각에 대해,
-  // "그 필드 하나만 baseline에 적용했을 때"의 독립적인(marginal) 효과. 필드 간 상호작용은
-  // 반영하지 않으므로, 이 배열의 utilityDelta 합계는 (recommendedUtility.score - currentUtility.score)와
-  // 정확히 일치하지 않을 수 있다. improved가 false이면 빈 배열이다.
+  // 개별 변경 항목의 독립적(marginal) 효과 목록. 두 종류의 항목이 섞여 있고 기준점(reference)이
+  // 서로 다르다:
+  //   (1) 인출계획(Phase 1/2) 항목: recommendedPlan이 identityPlan 대비 실제로 바뀐 필드 각각에
+  //       대해, "그 필드 하나만 진짜 baseline에 적용했을 때"의 효과 (기준점 = 진짜 baseline).
+  //   (2) 배당 재투자(Phase 3) 항목: 이미 인출계획이 최적화된 상태(bestResult) 대비 각 자산의
+  //       reinvestDividend 반전 효과 (기준점 = 인출계획 최적화 후 상태, 진짜 baseline 아님).
+  // 각 단계의 고유 기여분을 분리해 두 단계가 telescope되도록 하려는 의도적 설계다(phase1/2-delta
+  // + phase3-delta ≈ total-delta). 필드/자산 간 상호작용도 반영하지 않으므로, 이 배열의
+  // utilityDelta 합계는 (recommendedUtility.score - currentUtility.score)를 근사할 뿐 정확히
+  // 일치하지 않을 수 있다. improved가 false이면 빈 배열이다.
   itemizedContributions: ItemizedContribution[];
 }
 
 export interface ItemizedContribution {
   label: string; // 사용자 친화적 문구 (예: "국민연금을 70세까지 연기 수령")
-  utilityDelta: number; // 이 변경 하나만 적용했을 때의 Utility 증가분(marginal, baseline 대비)
-  deltas: StrategyRecommendation['deltas']; // 동일 변경의 절세/자산증가 등 전체 delta
+  // 이 변경 하나만 적용했을 때의 Utility 증가분(marginal). 기준점은 항목 종류에 따라 다르다:
+  // 인출계획(Phase 1/2) 항목은 진짜 baseline 대비, 배당 재투자(Phase 3) 항목은 인출계획이
+  // 최적화된 상태(bestResult) 대비다(itemizedContributions 필드 주석 참고).
+  utilityDelta: number;
+  // 동일 변경의 절세/자산증가 등 전체 delta. utilityDelta와 동일한 기준점을 사용한다.
+  deltas: StrategyRecommendation['deltas'];
 }
 
 export interface ScenarioModel {
