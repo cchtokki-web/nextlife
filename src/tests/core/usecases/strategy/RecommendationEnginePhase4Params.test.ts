@@ -1,0 +1,100 @@
+import { describe, test, expect, vi, afterEach } from 'vitest';
+import { SimulationEngine } from '@/core/usecases/SimulationEngine';
+import { SimulationParams, SimulationResult } from '@/core/entities/types';
+
+// Fix 2 검증 전용 파일이다. RecommendationEngine.test.ts와 달리 테스트마다 StrategyCandidateGenerator를
+// 다르게 모킹해 bestPlan(Phase 1+2 결과)을 결정론적으로 통제해야 하므로(자연스러운 5차원 그리드
+// 탐색만으로는 특정 필드 값이 우연히 승리하는 시나리오를 안정적으로 재현하기 어렵다) 별도 파일로
+// 분리하고, vi.mock(hoisted, 파일 전역) 대신 테스트별 vi.doMock + vi.resetModules를 쓴다.
+afterEach(() => {
+  vi.doUnmock('@/core/usecases/strategy/StrategyCandidateGenerator');
+  vi.resetModules();
+});
+
+// engine.runForUtility에 전달되는 모든 candidate params를 기록해, 그중 Phase 4(사적연금 채널링)
+// 후보(=신규 연금 계좌 'phase4-new-private-pension'을 포함하는 후보)를 찾아내기 위한 래퍼.
+// 실제 계산은 SimulationEngine에 그대로 위임하므로 시뮬레이션 결과 자체는 real engine과 동일하다.
+class RecordingEngine extends SimulationEngine {
+  calls: SimulationParams[] = [];
+  runForUtility(params: SimulationParams): SimulationResult {
+    this.calls.push(params);
+    return super.runForUtility(params);
+  }
+}
+
+const PHASE4_NEW_PENSION_ID = 'phase4-new-private-pension';
+
+function findPhase4Call(engine: RecordingEngine): SimulationParams | undefined {
+  return engine.calls.find((c) => c.privatePensions.some((p) => p.id === PHASE4_NEW_PENSION_ID));
+}
+
+const baseParams: SimulationParams = {
+  userProfile: { currentAge: 60, retirementAge: 60, expectancy: 90, targetMonthlySpending: 1000000, targetBequest: 0 },
+  assets: [],
+  nationalPension: { expectedMonthlyAmount: 0 },
+  privatePensions: [
+    { id: 'pension-1', type: 'irp', balance: 5000000000, monthlyContribution: 0, annualReturn: 4, currency: 'KRW' },
+  ],
+  isaAccounts: [
+    { id: 'isa-1', type: 'general', balance: 10000000, monthlyContribution: 0, annualReturn: 6, dividendYield: 0, currency: 'KRW', maturityYears: 99 },
+  ],
+  otherIncomes: [],
+  inflationRate: 0,
+  inflationMode: 'real',
+  baseExchangeRate: 1350,
+  exchangeScenario: 'base',
+  displayCurrency: 'KRW',
+};
+
+test(
+  'Fix 2(a): Phase 2가 생활비 배수(monthlySpendingMultiplier)를 선택하면, Phase 4 candidate 시뮬레이션도 ' +
+    '스케일링된 targetMonthlySpending을 받는다 (paramsForCandidate 재사용 검증)',
+  async () => {
+    // Phase 1(5차원 그리드)을 비워 Phase 2의 생활비 배수 후보가 확실히 경쟁 없이 채택되게 한다.
+    vi.doMock('@/core/usecases/strategy/StrategyCandidateGenerator', async (importOriginal) => {
+      const actual = await importOriginal<typeof import('@/core/usecases/strategy/StrategyCandidateGenerator')>();
+      return { ...actual, generateCandidatePlans: () => [] };
+    });
+    const { recommendStrategy } = await import('@/core/usecases/strategy/RecommendationEngine');
+    const engine = new RecordingEngine();
+    const originalMonthlySpending = baseParams.userProfile.targetMonthlySpending;
+
+    const result = recommendStrategy(baseParams, engine);
+
+    // 사전 조건: Phase 2의 생활비 배수 탐색이 실제로 승리해야 이 테스트가 의미 있다.
+    const multiplier = result.recommendedPlan?.monthlySpendingMultiplier ?? 1;
+    expect(multiplier).not.toBe(1);
+
+    const phase4Call = findPhase4Call(engine);
+    expect(phase4Call).toBeDefined();
+    expect(phase4Call!.userProfile.targetMonthlySpending).toBe(Math.round(originalMonthlySpending * multiplier));
+  }
+);
+
+test('Fix 2(b): bestPlan이 null(Phase 1+2 개선 없음)이면 Phase 4 candidate의 withdrawalPlan은 identityPlan으로 치환되지 않고 원래 params.withdrawalPlan을 그대로 유지한다', async () => {
+  // Phase 1/2 모두 후보를 비워 bestPlan이 반드시 null이 되게 한다.
+  vi.doMock('@/core/usecases/strategy/StrategyCandidateGenerator', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('@/core/usecases/strategy/StrategyCandidateGenerator')>();
+    return { ...actual, generateCandidatePlans: () => [], generateSpendingAdjustmentCandidates: () => [] };
+  });
+  const { recommendStrategy } = await import('@/core/usecases/strategy/RecommendationEngine');
+  const engine = new RecordingEngine();
+  // identityPlan이 강제하는 기본값(nationalPensionStartAge=65, privatePensionMonthlyTarget=
+  // targetMonthlySpending=1000000)과 명백히 다른 값을 원래 withdrawalPlan에 심어, identityPlan으로
+  // 치환됐는지 여부를 구분할 수 있게 한다.
+  const params: SimulationParams = {
+    ...baseParams,
+    withdrawalPlan: { nationalPensionStartAge: 62, privatePensionMonthlyTarget: 12345 },
+  };
+
+  const result = recommendStrategy(params, engine);
+
+  expect(result.recommendedPlan).toBeNull();
+
+  const phase4Call = findPhase4Call(engine);
+  expect(phase4Call).toBeDefined();
+  // identityPlan으로 치환됐다면 65 / 1000000이 됐을 것이다 — 원래 값(62 / 12345)이 그대로
+  // 유지돼야 한다.
+  expect(phase4Call!.withdrawalPlan?.nationalPensionStartAge).toBe(62);
+  expect(phase4Call!.withdrawalPlan?.privatePensionMonthlyTarget).toBe(12345);
+});

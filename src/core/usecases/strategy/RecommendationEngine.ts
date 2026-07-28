@@ -377,16 +377,26 @@ export function recommendStrategy(
   // finalUtility) 위에서 평가한다. paramsAfterPhase3는 Phase 3까지의 결정(인출계획 + 자산별
   // reinvestDividend)을 반영한 params로, PrivatePensionChannelingOptimizer가 이 위에 사적연금
   // 채널링+신규 계좌를 얹은 candidate를 만든다.
+  //
+  // bestPlan이 있으면 반드시 paramsForCandidate를 재사용한다 — 직접 손으로
+  // { ...params, withdrawalPlan: bestPlan }을 만들면 monthlySpendingMultiplier 스케일링
+  // (userProfile.targetMonthlySpending 조정)이 누락되어 Phase 2가 고른 생활비 배수가 Phase 4
+  // 평가에 반영되지 않는다.
+  // bestPlan이 null이면(Phase 1+2에서 개선을 찾지 못한 경우) identityPlan을 대신 끼워 넣으면
+  // 안 된다 — identityPlan은 privatePensionMonthlyTarget = targetMonthlySpending으로 항상 채워진
+  // "완결된" plan이라 withdrawalPlan을 아예 지정하지 않았을 때(엔진의 잔여월 기준 기본 인출)와
+  // 다르게 동작한다(동일 params에서 72점 vs 65점으로 갈리는 것을 확인함). 이 경우
+  // params.withdrawalPlan을 원래 값 그대로 둔다.
+  const baseParamsAfterPhase3: SimulationParams = bestPlan ? paramsForCandidate(params, bestPlan) : params;
   const paramsAfterPhase3: SimulationParams = {
-    ...params,
-    withdrawalPlan: bestPlan ?? identityPlan,
+    ...baseParamsAfterPhase3,
     assets: reinvestOpt.recommendedAssetReinvestment
-      ? params.assets.map((a) =>
+      ? baseParamsAfterPhase3.assets.map((a) =>
           a.id in reinvestOpt.recommendedAssetReinvestment!
             ? { ...a, reinvestDividend: reinvestOpt.recommendedAssetReinvestment![a.id] }
             : a
         )
-      : params.assets,
+      : baseParamsAfterPhase3.assets,
   };
   const channelingOpt = optimizePrivatePensionChanneling(
     paramsAfterPhase3,
