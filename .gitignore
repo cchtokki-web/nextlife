@@ -51,3 +51,4 @@ next-env.d.ts
 *.sqlite
 *.sqlite3
 .superpowers/
+.worktrees/
