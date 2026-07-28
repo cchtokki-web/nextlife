@@ -393,13 +393,23 @@ export class SimulationEngine {
 
       for (let m = 0; m < 12; m++) {
         // ISA Processing
-        activeIsas.forEach((isa) => {
+        // 사적연금 조기수령 채널링(Phase 4)의 브릿지 인출은 activeIsas[0]에 별도 크레딧을
+        // 더하는데(Pensions Processing 블록, 이달 뒤에서 실행), 이 크레딧도 월 법정 한도
+        // (20,000,000/12원)를 공유해야 한다 — 그렇지 않으면 이미 한도를 다 채운 ISA가 브릿지
+        // 크레딧으로 한도를 초과해 납입받는 셈이 된다. activeIsas[0]의 이번 달 잔여 한도(=
+        // monthlyLimit - contribution, isa.currency 기준)를 여기 기록해 뒀다가 Pensions
+        // Processing에서 그대로 재사용한다. 매달(이 for-m 블록) 새로 계산되므로 자동으로 리셋된다.
+        let isaBridgeRoomRemainingInIsaCurrency = 0;
+        activeIsas.forEach((isa, isaIdx) => {
           if (isa.currentBalance < 0) isa.currentBalance = 0;
           const growth = isa.currentBalance * isa.returnRateMonthly;
           const dividend = isa.currentBalance * isa.divRateMonthly;
           const monthlyLimit = this.convertValue(20000000 / 12, 'KRW', isa.currency, exchangeRate);
           let contribution = isRetired ? 0 : isa.monthlyContribution;
           if (contribution > monthlyLimit) contribution = monthlyLimit;
+          if (isaIdx === 0) {
+            isaBridgeRoomRemainingInIsaCurrency = Math.max(0, monthlyLimit - contribution);
+          }
 
           isa.currentBalance += growth + dividend + contribution;
           isa.totalInvested += contribution;
@@ -537,9 +547,17 @@ export class SimulationEngine {
             const drawAmountTax = drawAmountRaw * taxRate;
             const drawAmountNet = drawAmountRaw - drawAmountTax;
 
+            // Fix(important): 이 크레딧은 ISA Processing에서 이미 소비되고 남은 이번 달 법정
+            // 납입 한도(isaBridgeRoomRemainingInIsaCurrency) 내에서만 반영한다 — 이미 한도를 꽉
+            // 채운 ISA가 브릿지 재투자로 실질 연간 2천만원 한도를 초과해 받는 것을 막기 위함이다.
+            // 한도를 넘는 초과분은 어디에도 크레딧되지 않는다(단순화: 이 엔진이 다른 capped
+            // 흐름들에도 이미 적용하는 "초과분은 유실/미모델링" 처리와 동일한 방식 — 새로운
+            // 목적지를 발명하지 않는다).
             const netInIsaCurrency = this.convertValue(drawAmountNet, pension.currency, activeIsas[0].currency, exchangeRate);
-            activeIsas[0].currentBalance += netInIsaCurrency;
-            activeIsas[0].totalInvested += netInIsaCurrency;
+            const cappedNetInIsaCurrency = Math.min(netInIsaCurrency, isaBridgeRoomRemainingInIsaCurrency);
+            activeIsas[0].currentBalance += cappedNetInIsaCurrency;
+            activeIsas[0].totalInvested += cappedNetInIsaCurrency;
+            isaBridgeRoomRemainingInIsaCurrency -= cappedNetInIsaCurrency;
 
             annualPensionTaxPaid += this.convertValue(drawAmountTax, pension.currency, displayCurrency, exchangeRate);
             annualPreTaxTotalIncome += this.convertValue(drawAmountRaw, pension.currency, displayCurrency, exchangeRate);
