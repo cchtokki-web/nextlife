@@ -235,4 +235,13 @@ describe('computeExecutionRoadmap', () => {
     const roadmap = computeExecutionRoadmap(baseParams, undefined, null);
     expect(roadmap.events.some((e) => e.items.some((i) => i.title === '자산 고갈 예상'))).toBe(false);
   });
+
+  test('Phase 4만 채택된 경우(recommendedPlan=null)에도 로드맵과 고갈 나이가 같은 시나리오를 가리킨다', () => {
+    // computeExecutionRoadmap 자체는 depletionAge를 인자로 받으므로, 여기서는 채널링 채택 시
+    // 55세 마일스톤이 나오는 것과 depletionAge 인자가 그대로 이벤트로 반영되는 것만 확인하고,
+    // 호출부의 선택 조건은 위 Step 1에서 improved 기준으로 통일한 것으로 보장한다.
+    const roadmap = computeExecutionRoadmap(baseParams, makeRecommendation(null, true), 80);
+    expect(roadmap.events.find((e) => e.age === 55)).toBeDefined();
+    expect(roadmap.events.find((e) => e.age === 80)!.items.some((i) => i.severity === 'warning')).toBe(true);
+  });
 });

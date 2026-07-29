@@ -180,13 +180,16 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
       />
 
       {/* AI 추천 전략 실행 로드맵 (Before/After 토글과 무관하게 항상 고정 기준) */}
-      {/* 자산 고갈 나이도 로드맵이 보여주는 것과 같은 기준(추천 plan이 있으면 recommendedResult,
-          없으면 baseline result)으로 골라야 나이 이벤트와 고갈 시점이 같은 시나리오를 가리킨다. */}
+      {/* 자산 고갈 나이도 로드맵이 보여주는 것과 같은 기준(추천이 개선을 찾았으면 recommendedResult,
+          찾지 못했으면 baseline result)으로 골라야 나이 이벤트와 고갈 시점이 같은 시나리오를 가리킨다.
+          recommendedPlan 유무로만 판단하면 Phase 3/4가 단독으로 채택되어 recommendedPlan은 null이지만
+          improved는 true인 경우(예: 신규 연금계좌 납입만 채택)에 로드맵의 마일스톤과 고갈 나이가
+          서로 다른 시나리오를 섞어 보여주는 모순이 생긴다. */}
       <ExecutionRoadmap
         roadmap={computeExecutionRoadmap(
           params,
           recommendation,
-          recommendation?.recommendedPlan ? recommendation.recommendedResult.depletionAge : result.depletionAge
+          recommendation?.improved ? recommendation.recommendedResult.depletionAge : result.depletionAge
         )}
       />
 

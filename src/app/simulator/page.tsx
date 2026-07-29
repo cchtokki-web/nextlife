@@ -276,7 +276,7 @@ export default function Home() {
       const roadmap = computeExecutionRoadmap(
         activeParams,
         recommendation,
-        recommendation?.recommendedPlan ? recommendation.recommendedResult.depletionAge : result.depletionAge
+        recommendation?.improved ? recommendation.recommendedResult.depletionAge : result.depletionAge
       );
       const executionRoadmapSectionHtml = renderExecutionRoadmapSection(roadmap);
       const sensitivityScenarios = computeSensitivityAnalysis(activeParams, result, engine);
