@@ -1,6 +1,6 @@
 import { getIdentityPlan } from '../strategy/StrategyCandidateGenerator';
 import { NATIONAL_PENSION_NORMAL_START_AGE } from '../pension/nationalPensionRules';
-import { clampPrivatePensionStartAge } from '../pension/privatePensionRules';
+import { clampPrivatePensionStartAge, PRIVATE_PENSION_MIN_START_AGE } from '../pension/privatePensionRules';
 import { SimulationParams, StrategyRecommendation } from '../../entities/types';
 
 export interface RoadmapEventItem {
@@ -49,10 +49,20 @@ export function computeExecutionRoadmap(
       item: { title: '일반자산 인출 개시', description: '주식/ETF 등 일반 자산의 인출을 시작합니다.' },
     },
     {
-      // 사적연금 개시 나이는 사용자가 조정하는 필드가 아니라 항상 법정 최저 나이(55세)로 하한된
-      // retirementAge다 — SimulationEngine.ts의 planStartAge 계산과 동일한 식이어야 한다.
-      age: clampPrivatePensionStartAge(retirementAge),
-      item: { title: '사적연금 수령 개시', description: '사적연금(퇴직연금·연금저축 등) 인출을 시작합니다.' },
+      // 사적연금 개시 나이는 원칙적으로 법정 최저 나이(55세)로 하한된 retirementAge다 —
+      // SimulationEngine.ts의 planStartAge 계산과 동일한 식이어야 한다. 다만 Phase 4(사적연금
+      // 조기수령 채널링)가 채택된 경우에는 실제로 55세부터(재직 중) 조기 수령이 시작되므로,
+      // 로드맵도 그 실제 시점을 가리켜야 한다 — 그렇지 않으면 채택된 추천안과 로드맵이 서로
+      // 다른 나이를 보여주는 모순이 생긴다.
+      age: recommendation?.recommendedPrivatePensionChanneling
+        ? PRIVATE_PENSION_MIN_START_AGE
+        : clampPrivatePensionStartAge(retirementAge),
+      item: recommendation?.recommendedPrivatePensionChanneling
+        ? {
+            title: '사적연금 수령 개시 (조기·ISA 재투자)',
+            description: '사적연금을 55세부터 조기 수령해 ISA에 재투자하고, 신규 연금 계좌에 퇴직 전까지 납입합니다.',
+          }
+        : { title: '사적연금 수령 개시', description: '사적연금(퇴직연금·연금저축 등) 인출을 시작합니다.' },
     },
     {
       age: plan.nationalPensionStartAge,

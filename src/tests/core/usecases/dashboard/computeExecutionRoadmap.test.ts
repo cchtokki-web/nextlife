@@ -35,14 +35,17 @@ const zeroDeltas: StrategyRecommendation['deltas'] = {
   nationalPensionTotal: 0,
 };
 
-function makeRecommendation(recommendedPlan: CompleteWithdrawalPlan | null): StrategyRecommendation {
+function makeRecommendation(
+  recommendedPlan: CompleteWithdrawalPlan | null,
+  recommendedPrivatePensionChanneling: boolean | null = null
+): StrategyRecommendation {
   return {
     currentUtility: utility,
     recommendedUtility: utility,
     recommendedPlan,
     recommendedAssetReinvestment: null,
-    recommendedPrivatePensionChanneling: null,
-    improved: recommendedPlan !== null,
+    recommendedPrivatePensionChanneling,
+    improved: recommendedPlan !== null || recommendedPrivatePensionChanneling === true,
     reasons: [],
     deltas: zeroDeltas,
     totalCandidateCount: 0,
@@ -109,6 +112,27 @@ describe('computeExecutionRoadmap', () => {
     const age55 = roadmap.events.find((e) => e.age === 55)!;
     expect(age55).toBeDefined();
     expect(age55.items.map((i) => i.title)).toEqual(['사적연금 수령 개시']);
+  });
+
+  test('recommendedPrivatePensionChanneling이 true면 사적연금 수령 개시 나이가 55세(조기 채널링)로 표시된다', () => {
+    // baseParams: retirementAge=60 → 채널링이 없으면 사적연금 수령 개시는 60세여야 하지만,
+    // Phase 4가 채택되면 실제로는 55세부터 조기 수령되므로 로드맵도 55세를 가리켜야 한다.
+    const roadmap = computeExecutionRoadmap(baseParams, makeRecommendation(null, true), null);
+
+    const age55 = roadmap.events.find((e) => e.age === 55)!;
+    expect(age55).toBeDefined();
+    expect(age55.items.map((i) => i.title)).toContain('사적연금 수령 개시 (조기·ISA 재투자)');
+
+    const age60 = roadmap.events.find((e) => e.age === 60)!;
+    expect(age60.items.map((i) => i.title)).toEqual(['퇴직', '일반자산 인출 개시']);
+  });
+
+  test('recommendedPrivatePensionChanneling이 null/false면 기존과 동일하게 retirementAge 기준으로 표시된다', () => {
+    const roadmapNull = computeExecutionRoadmap(baseParams, makeRecommendation(null, null), null);
+    expect(roadmapNull.events.find((e) => e.age === 60)!.items.map((i) => i.title)).toContain('사적연금 수령 개시');
+
+    const roadmapFalse = computeExecutionRoadmap(baseParams, makeRecommendation(null, false), null);
+    expect(roadmapFalse.events.find((e) => e.age === 60)!.items.map((i) => i.title)).toContain('사적연금 수령 개시');
   });
 
   test('recommendation.recommendedPlan이 null이면(improved: false) getIdentityPlan(params) 기준으로 폴백한다', () => {
