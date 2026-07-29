@@ -429,10 +429,21 @@ export function recommendStrategy(
   const totalCandidateCount = candidateStats.total + params.assets.length + channelingOpt.attemptedCount;
   const failedCandidateCount = candidateStats.failed + reinvestOpt.failedAssetCount + channelingOpt.failedCount;
 
+  // 채널링 후보는 isaMaturityDestination을 'asset'으로 강제해 평가됐다. 그 전제가 추천안에
+  // 담기지 않으면 사용자가 체크리스트대로 실행해도 화면에 표시된 수치를 재현할 수 없고,
+  // 오히려 이 override가 제거하려던 트레드밀 손실을 그대로 맞게 된다. bestPlan이 null이면
+  // (Phase 1+2에서 개선을 찾지 못한 경우) identityPlan을 기반으로 완결된 plan을 만든다.
+  // computeItemizedContributions는 이 값이 아니라 기존 bestPlan 기준(withdrawalItemizedContributions)으로
+  // 이미 계산되어 있다 — ISA 목적지 변경 문구는 Task 2에서 채널링 항목 라벨에 이미 포함했으므로
+  // 여기서 별도 체크리스트 항목을 추가하지 않는다(중복 방지).
+  const recommendedPlan: CompleteWithdrawalPlan | null = channelingOpt.recommendedPrivatePensionChanneling
+    ? { ...(bestPlan ?? identityPlan), isaMaturityDestination: 'asset' }
+    : bestPlan;
+
   return {
     currentUtility,
     recommendedUtility: channelingOpt.finalUtility,
-    recommendedPlan: bestPlan,
+    recommendedPlan,
     recommendedAssetReinvestment: reinvestOpt.recommendedAssetReinvestment,
     recommendedPrivatePensionChanneling: channelingOpt.recommendedPrivatePensionChanneling,
     recommendedNewPensionContribution: channelingOpt.recommendedNewPensionContribution,

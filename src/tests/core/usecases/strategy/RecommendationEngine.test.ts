@@ -903,4 +903,26 @@ describe('recommendStrategy - Phase 4 사적연금 채널링 통합', () => {
     const result = recommendStrategy(params, engine);
     expect(result.recommendedPrivatePensionChanneling).toBeNull();
   });
+
+  test('채널링이 채택되면 recommendedPlan에도 isaMaturityDestination 변경이 반영된다', () => {
+    // Phase 4가 채택되는 위 테스트와 동일한 픽스처를 재사용한다.
+    const engine = new SimulationEngine();
+    const params: SimulationParams = {
+      ...paramsWithLargePension,
+      userProfile: { ...paramsWithLargePension.userProfile, currentAge: 50, retirementAge: 60, expectancy: 90, targetMonthlySpending: 25000000 },
+      privatePensions: [
+        { id: 'pension-1', type: 'irp', balance: 600000000, monthlyContribution: 0, annualReturn: 2, currency: 'KRW' },
+      ],
+      isaAccounts: [
+        { id: 'isa-1', type: 'general', balance: 10000000, monthlyContribution: 0, annualReturn: 6, dividendYield: 0, currency: 'KRW', maturityYears: 99 },
+      ],
+    };
+
+    const result = recommendStrategy(params, engine);
+
+    expect(result.recommendedPrivatePensionChanneling).toBe(true);
+    // 후보 시뮬레이션이 전제한 값이 추천안에도 실제로 담겨야 한다 —
+    // 그렇지 않으면 사용자가 체크리스트대로 해도 표시된 수치가 재현되지 않는다.
+    expect(result.recommendedPlan?.isaMaturityDestination).toBe('asset');
+  });
 });
