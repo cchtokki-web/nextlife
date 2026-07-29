@@ -1,4 +1,4 @@
-import { describe, test, expect } from 'vitest';
+import { describe, test, expect, vi } from 'vitest';
 import { SimulationEngine } from '@/core/usecases/SimulationEngine';
 import {
   recommendStrategy,
@@ -854,7 +854,14 @@ describe('recommendStrategy - Phase 4 사적연금 채널링 통합', () => {
     expect(result.recommendedPrivatePensionChanneling).toBeNull();
   });
 
-  test('사적연금+ISA가 있고 브릿지 구간이 존재하면 유리할 때 채택되고 itemizedContributions/reasons에 반영된다', () => {
+  test('사적연금+ISA가 있고 브릿지 구간이 존재하면 유리할 때 채택되고 itemizedContributions/reasons에 반영된다 (bestPlan이 non-null인 경우)', () => {
+    // 주의: 이 픽스처는 Phase 1/2(인출계획 5차원 탐색 + 생활비 배수)도 개선안을 찾아
+    // bestPlan이 non-null이 된다(privatePensionMonthlyTarget/nationalPensionStartAge가
+    // identity와 달라짐 — 아래에서 직접 확인). 즉 recommendedPlan은
+    // `{ ...bestPlan, isaMaturityDestination: 'asset' }` 분기만 검증한다.
+    // `bestPlan === null`인 채널링-단독 채택 케이스(`{ ...identityPlan, isaMaturityDestination: 'asset' }`
+    // 분기)는 실제 엔진으로 재현하기 어려워(리뷰어가 ~40개 파라미터 조합을 스윕해도 못 찾음)
+    // 아래 별도 테스트(엔진 stub 사용)에서 검증한다.
     const engine = new SimulationEngine();
     const params: SimulationParams = {
       ...paramsWithLargePension,
@@ -888,6 +895,76 @@ describe('recommendStrategy - Phase 4 사적연금 채널링 통합', () => {
     expect(result.itemizedContributions.some((c) => c.label.includes('사적연금을 55세부터'))).toBe(true);
     expect(result.reasons.some((r) => r.includes('사적연금을 55세부터'))).toBe(true);
     expect(result.recommendedUtility.score).toBeGreaterThan(result.currentUtility.score);
+
+    // bestPlan이 실제로 non-null이라는 것(즉 이 테스트가 위 주석대로 `{ ...bestPlan, ... }` 분기를
+    // 검증하고 있다는 것)을 identity 대비 필드 차이로 확인한다. bestPlan이 null이었다면 이 값들은
+    // identityPlan과 동일했을 것이다(사적연금 25,000,000/국민연금 65세).
+    const identityPlan = getIdentityPlan(params);
+    expect(result.recommendedPlan?.privatePensionMonthlyTarget).not.toBe(identityPlan.privatePensionMonthlyTarget);
+    expect(result.recommendedPlan?.nationalPensionStartAge).not.toBe(identityPlan.nationalPensionStartAge);
+    expect(result.recommendedPlan?.isaMaturityDestination).toBe('asset');
+  });
+
+  test('Phase 1/2가 개선안을 찾지 못해 bestPlan이 null이어도, 채널링이 채택되면 recommendedPlan은 identityPlan 기반으로 완결되고 isaMaturityDestination이 asset이다', () => {
+    // 실제 엔진으로 "bestPlan===null이면서 채널링만 채택되는" 조합을 재현하려 했으나(리뷰어가
+    // ~40개 파라미터 조합을 스윕) 자연 발생시키지 못했다. 그래서 engine.runForUtility를 stub해
+    // Phase 1/2/신규계좌 후보는 baseline과 동점(개선 없음)으로, 채널링 후보만 baseline보다
+    // 낫게 만들어 RecommendationEngine.ts:440의 `?? identityPlan` 폴백 분기를 직접 겨냥한다.
+    // 이 테스트는 그 폴백을 지우면(예: `bestPlan!`로 단순화하면) recommendedPlan이 null이 되어
+    // 반드시 실패한다.
+    const userProfile = { currentAge: 50, retirementAge: 60, expectancy: 60, targetMonthlySpending: 2000000 };
+    const params: SimulationParams = {
+      userProfile,
+      assets: [],
+      nationalPension: { expectedMonthlyAmount: 1000000 },
+      privatePensions: [
+        { id: 'pension-1', type: 'irp', balance: 600000000, monthlyContribution: 0, annualReturn: 2, currency: 'KRW' },
+      ],
+      isaAccounts: [
+        { id: 'isa-1', type: 'general', balance: 10000000, monthlyContribution: 0, annualReturn: 6, dividendYield: 0, currency: 'KRW', maturityYears: 99 },
+      ],
+      otherIncomes: [],
+      inflationRate: 0,
+      inflationMode: 'real',
+      baseExchangeRate: 1350,
+      exchangeScenario: 'base',
+      displayCurrency: 'KRW',
+    };
+
+    // 목표 연간 생활비(2,000,000 * 12 = 24,000,000)를 정확히 충족하는 결과 — baseline과 모든
+    // Phase 1/2/신규계좌 후보에 대해 이 값을 반환해 서로 동점(개선 없음)으로 묶는다.
+    const tiedResult: SimulationResult = makeSimulationResult(
+      [makeYearlyResult({ age: 60, spending: 24000000 })],
+      0
+    );
+    // 목표 대비 125% 소비(consumption 컴포넌트만 더 높음, 다른 컴포넌트는 동일하게 유지)로
+    // baseline보다 Utility 점수가 확실히 높은 결과 — 채널링 후보 전용.
+    const channelingResult: SimulationResult = makeSimulationResult(
+      [makeYearlyResult({ age: 60, spending: 30000000 })],
+      0
+    );
+
+    const engine = new SimulationEngine();
+    // PrivatePensionChannelingOptimizer.buildChannelingParams만 privatePensions 각 계좌에
+    // earlyChannelingEnabled: true를 설정한다(신규계좌 레그/Phase 1/2 후보는 설정하지 않음) —
+    // 이 필드로 채널링 후보만 식별해 다른 결과를 반환한다.
+    engine.runForUtility = vi.fn((candidateParams: SimulationParams): SimulationResult => {
+      const isChannelingCandidate = candidateParams.privatePensions.some((p) => p.earlyChannelingEnabled === true);
+      return isChannelingCandidate ? channelingResult : tiedResult;
+    });
+
+    const result = recommendStrategy(params, engine);
+
+    // 전제 확인: 채널링이 채택되었다.
+    expect(result.recommendedPrivatePensionChanneling).toBe(true);
+    expect(result.recommendedUtility.score).toBeGreaterThan(result.currentUtility.score);
+
+    // 본 assertion: recommendedPlan은 null이 아니고, identityPlan 기반으로 완결되어 있으며
+    // (bestPlan이 없었으므로 privatePensionMonthlyTarget/nationalPensionStartAge 등 나머지
+    // 필드가 identityPlan과 정확히 일치해야 한다), isaMaturityDestination만 'asset'으로 덮였다.
+    const identityPlan = getIdentityPlan(params);
+    expect(result.recommendedPlan).not.toBeNull();
+    expect(result.recommendedPlan).toEqual({ ...identityPlan, isaMaturityDestination: 'asset' });
   });
 
   test('retirementAge가 55 이하이면 채널링 후보 자체가 생성되지 않는다', () => {
