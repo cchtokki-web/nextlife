@@ -37,7 +37,7 @@ const zeroDeltas: StrategyRecommendation['deltas'] = {
 
 function makeRecommendation(
   recommendedPlan: CompleteWithdrawalPlan | null,
-  recommendedPrivatePensionChanneling: boolean | null = null
+  recommendedPrivatePensionChanneling: true | null = null
 ): StrategyRecommendation {
   return {
     currentUtility: utility,
@@ -45,6 +45,7 @@ function makeRecommendation(
     recommendedPlan,
     recommendedAssetReinvestment: null,
     recommendedPrivatePensionChanneling,
+    recommendedNewPensionContribution: null,
     improved: recommendedPlan !== null || recommendedPrivatePensionChanneling === true,
     reasons: [],
     deltas: zeroDeltas,
@@ -127,12 +128,11 @@ describe('computeExecutionRoadmap', () => {
     expect(age60.items.map((i) => i.title)).toEqual(['퇴직', '일반자산 인출 개시']);
   });
 
-  test('recommendedPrivatePensionChanneling이 null/false면 기존과 동일하게 retirementAge 기준으로 표시된다', () => {
+  // recommendedPrivatePensionChanneling은 true | null이라 false는 타입상 표현 불가능하다
+  // (사용자가 직접 켜는 설정이 아니므로 "끄라는 추천"이 존재하지 않는다). 따라서 null 케이스만 검증한다.
+  test('recommendedPrivatePensionChanneling이 null이면 기존과 동일하게 retirementAge 기준으로 표시된다', () => {
     const roadmapNull = computeExecutionRoadmap(baseParams, makeRecommendation(null, null), null);
     expect(roadmapNull.events.find((e) => e.age === 60)!.items.map((i) => i.title)).toContain('사적연금 수령 개시');
-
-    const roadmapFalse = computeExecutionRoadmap(baseParams, makeRecommendation(null, false), null);
-    expect(roadmapFalse.events.find((e) => e.age === 60)!.items.map((i) => i.title)).toContain('사적연금 수령 개시');
   });
 
   test('recommendation.recommendedPlan이 null이면(improved: false) getIdentityPlan(params) 기준으로 폴백한다', () => {

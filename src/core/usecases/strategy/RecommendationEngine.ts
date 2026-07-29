@@ -373,10 +373,10 @@ export function recommendStrategy(
     deltas: r.deltas,
   }));
 
-  // Phase 4: 사적연금 조기수령 채널링 (신규). Phase 1+2+3 최종 결과(reinvestOpt.finalResult/
-  // finalUtility) 위에서 평가한다. paramsAfterPhase3는 Phase 3까지의 결정(인출계획 + 자산별
-  // reinvestDividend)을 반영한 params로, PrivatePensionChannelingOptimizer가 이 위에 사적연금
-  // 채널링+신규 계좌를 얹은 candidate를 만든다.
+  // Phase 4: 사적연금 조기수령 채널링(4-A)과 신규 연금계좌 추가 납입(4-B). Phase 1+2+3 최종
+  // 결과(reinvestOpt.finalResult/finalUtility)를 공통 baseline으로 두 레그를 독립 평가한다.
+  // paramsAfterPhase3는 Phase 3까지의 결정(인출계획 + 자산별 reinvestDividend)을 반영한 params로,
+  // PrivatePensionChannelingOptimizer가 이 위에 각 레그의 candidate를 만든다.
   //
   // bestPlan이 있으면 반드시 paramsForCandidate를 재사용한다 — 직접 손으로
   // { ...params, withdrawalPlan: bestPlan }을 만들면 monthlySpendingMultiplier 스케일링
@@ -405,9 +405,7 @@ export function recommendStrategy(
     engine,
     cfg
   );
-  if (channelingOpt.itemizedContribution) {
-    additionalItemizedContributions.push(channelingOpt.itemizedContribution);
-  }
+  additionalItemizedContributions.push(...channelingOpt.itemizedContributions);
   const additionalReasons = additionalItemizedContributions.map((c) => c.label);
 
   // withdrawalPlanImproved면 기존 reasons 뒤에 자연스럽게 이어붙이고, WithdrawalPlan 차원에서는
@@ -423,10 +421,13 @@ export function recommendStrategy(
   const deltas = computeDeltas(baselineResult, channelingOpt.finalResult);
 
   // Phase 3/4의 시도량/실패량을 후보 통계에 합산해 AI advisor(계산 실패 감지)까지 흐르게 한다.
-  // params.assets.length는 Phase 3가 시도한 작업량의 근사치이고, Phase 4는 최대 1회 시도이므로
-  // +1을 더한다 — 둘 다 "얼마나 시도했나"라는 coarse 신호로만 쓰이므로 근사면 충분하다.
-  const totalCandidateCount = candidateStats.total + params.assets.length + 1;
-  const failedCandidateCount = candidateStats.failed + reinvestOpt.failedAssetCount + (channelingOpt.failed ? 1 : 0);
+  // params.assets.length는 Phase 3가 시도한 작업량의 근사치이고, Phase 4는 실제로 실행한
+  // 시뮬레이션 횟수(attemptedCount, 전제 조건 미충족이면 0)를 그대로 더한다. 무조건 +1을 더하면
+  // 시뮬레이션을 한 번도 안 돌린 사용자(예: ISA·사적연금 미보유)에게도 후보가 1개 있는 것으로
+  // 집계되어, AI advisor의 "전부 실패" 판정(failedCandidateCount === totalCandidateCount)이
+  // 영원히 성립하지 않는다.
+  const totalCandidateCount = candidateStats.total + params.assets.length + channelingOpt.attemptedCount;
+  const failedCandidateCount = candidateStats.failed + reinvestOpt.failedAssetCount + channelingOpt.failedCount;
 
   return {
     currentUtility,
@@ -434,6 +435,7 @@ export function recommendStrategy(
     recommendedPlan: bestPlan,
     recommendedAssetReinvestment: reinvestOpt.recommendedAssetReinvestment,
     recommendedPrivatePensionChanneling: channelingOpt.recommendedPrivatePensionChanneling,
+    recommendedNewPensionContribution: channelingOpt.recommendedNewPensionContribution,
     improved,
     reasons,
     totalCandidateCount,

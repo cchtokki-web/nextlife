@@ -240,10 +240,15 @@ export interface StrategyRecommendation {
   // WithdrawalPlan이 아니라 은퇴 "전" 축적기 파라미터(자산 배열 내부 값)라 별도 필드로 분리했다.
   // 변경 권장이 없으면(자산 없음/개선 없음/통합 검증 실패) null.
   recommendedAssetReinvestment: Record<string, boolean> | null;
-  // 사적연금 조기수령 채널링(Phase 4) 권장 여부. 전제 조건(사적연금/ISA 존재, retirementAge>55)
-  // 불충족이거나 개선이 없으면 null. recommendedPlan/recommendedAssetReinvestment와 마찬가지로
-  // 독립된 축(축적기 파라미터 중에서도 은퇴 전 인출이라는 새로운 층위)이다.
-  recommendedPrivatePensionChanneling: boolean | null;
+  // 사적연금 조기수령 채널링(Phase 4-A) 권장 여부. 채택되면 true, 아니면 null(전제 조건
+  // 불충족 또는 개선 없음). recommendedPlan/recommendedAssetReinvestment와 마찬가지로 독립된
+  // 축(축적기 파라미터 중에서도 은퇴 전 인출이라는 새로운 층위)이다.
+  // false는 생산되지 않는다 — 사용자가 직접 켤 수 있는 설정이 아니므로 "끄라는 추천"이 존재할 수 없다
+  // (사용자 설정값을 뒤집을 수 있는 recommendedAssetReinvestment와의 결정적 차이).
+  recommendedPrivatePensionChanneling: true | null;
+  // 신규 연금계좌 추가 납입(Phase 4-B) 권장 여부. 채택되면 true, 아니면 null.
+  // 채널링과는 완전히 독립된 후보로 각각 baseline 대비 평가된다.
+  recommendedNewPensionContribution: true | null;
   improved: boolean; // recommendedUtility.score > currentUtility.score 여부를 미리 계산해 둔 값. 소비처마다 재계산하지 않는다.
   reasons: string[];
   deltas: {

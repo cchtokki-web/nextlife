@@ -233,12 +233,11 @@ describe('recommendStrategy - 생활비 증액(Phase 2) 후보', () => {
 
     const recommendation = recommendStrategy(paramsWithDepletionRisk, engine);
     // Phase 2(생활비 증액) 후보가 0개임을 확인하는 것이 이 테스트의 취지다. totalCandidateCount에는
-    // Phase 3(배당 재투자)의 시도량(assets.length)과 Phase 4(사적연금 채널링)의 시도량(항상 +1,
-    // 전제 조건 미충족으로 실제 시뮬레이션을 안 돌려도 "최대 1회 시도"로 집계됨)이 함께 더해지므로
-    // 그만큼을 포함해 비교한다.
+    // Phase 3(배당 재투자)의 시도량(assets.length)이 더해진다. Phase 4는 실제로 실행한 시뮬레이션
+    // 횟수만 더하는데, 이 시나리오는 사적연금이 없어 두 레그 모두 평가되지 않으므로 0이다.
     const baseCandidateCount = generateCandidatePlans(paramsWithDepletionRisk).length;
 
-    expect(recommendation.totalCandidateCount).toBe(baseCandidateCount + paramsWithDepletionRisk.assets.length + 1);
+    expect(recommendation.totalCandidateCount).toBe(baseCandidateCount + paramsWithDepletionRisk.assets.length);
     expect(recommendation.recommendedPlan?.monthlySpendingMultiplier ?? 1).toBe(1);
   });
 
@@ -246,11 +245,11 @@ describe('recommendStrategy - 생활비 증액(Phase 2) 후보', () => {
     const engine = new SimulationEngine();
     const params: SimulationParams = { ...paramsWithSurplusAssetOnly, spendingStrategy: 'max_sustainable' };
     const recommendation = recommendStrategy(params, engine);
-    // Phase 2 후보 0개 확인이 취지. totalCandidateCount에는 Phase 3의 assets.length와 Phase 4의
-    // 고정 +1이 더해진다.
+    // Phase 2 후보 0개 확인이 취지. totalCandidateCount에는 Phase 3의 assets.length가 더해진다
+    // (사적연금이 없어 Phase 4는 시뮬레이션을 0회 실행한다).
     const baseCandidateCount = generateCandidatePlans(params).length;
 
-    expect(recommendation.totalCandidateCount).toBe(baseCandidateCount + params.assets.length + 1);
+    expect(recommendation.totalCandidateCount).toBe(baseCandidateCount + params.assets.length);
   });
 });
 
@@ -596,7 +595,7 @@ describe('recommendStrategy - totalCandidateCount/failedCandidateCount', () => {
     expect(recommendation.failedCandidateCount).toBe(0);
   });
 
-  test('탐색할 차원이 전혀 없으면 총 후보 수는 Phase 4의 고정 시도 1회만 남는다', () => {
+  test('탐색할 차원이 전혀 없으면 총 후보 수는 0이다', () => {
     const engine = new SimulationEngine();
     const noOptimizableDimensionParams: SimulationParams = {
       ...paramsWithLargePension,
@@ -605,11 +604,10 @@ describe('recommendStrategy - totalCandidateCount/failedCandidateCount', () => {
     };
     const recommendation = recommendStrategy(noOptimizableDimensionParams, engine);
 
-    // Phase 1/2/3은 탐색할 차원이 전혀 없어 0개지만, Phase 4는 사적연금/ISA 존재 여부와
-    // 무관하게 "최대 1회 시도"로 고정 +1을 더한다(전제 조건 미충족으로 noOp이어도 시도 자체는
-    // 1회로 집계). 이 시나리오는 privatePensions가 비어 있어 실제로는 채널링을 시뮬레이션하지
-    // 않지만(hasPension이 false라 즉시 noOp) totalCandidateCount 집계는 이를 구분하지 않는다.
-    expect(recommendation.totalCandidateCount).toBe(1);
+    // Phase 1/2/3은 탐색할 차원이 전혀 없어 0개이고, Phase 4도 사적연금이 없어(hasPension false)
+    // 시뮬레이션을 한 번도 실행하지 않으므로 0이다. 예전에는 Phase 4가 전제 조건 미충족이어도
+    // 무조건 +1을 더해, AI advisor의 "전부 실패" 판정(failed === total)이 성립할 수 없었다.
+    expect(recommendation.totalCandidateCount).toBe(0);
     expect(recommendation.failedCandidateCount).toBe(0);
   });
 });

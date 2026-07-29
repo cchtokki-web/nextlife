@@ -11,9 +11,9 @@ afterEach(() => {
   vi.resetModules();
 });
 
-// engine.runForUtility에 전달되는 모든 candidate params를 기록해, 그중 Phase 4(사적연금 채널링)
-// 후보(=신규 연금 계좌 'phase4-new-private-pension'을 포함하는 후보)를 찾아내기 위한 래퍼.
-// 실제 계산은 SimulationEngine에 그대로 위임하므로 시뮬레이션 결과 자체는 real engine과 동일하다.
+// engine.runForUtility에 전달되는 모든 candidate params를 기록해, 그중 Phase 4 후보를 찾아내기
+// 위한 래퍼. 실제 계산은 SimulationEngine에 그대로 위임하므로 시뮬레이션 결과 자체는 real engine과
+// 동일하다.
 class RecordingEngine extends SimulationEngine {
   calls: SimulationParams[] = [];
   runForUtility(params: SimulationParams): SimulationResult {
@@ -24,12 +24,17 @@ class RecordingEngine extends SimulationEngine {
 
 const PHASE4_NEW_PENSION_ID = 'phase4-new-private-pension';
 
-function findPhase4Call(engine: RecordingEngine): SimulationParams | undefined {
-  return engine.calls.find((c) => c.privatePensions.some((p) => p.id === PHASE4_NEW_PENSION_ID));
+// Phase 4는 독립된 두 레그(채널링 / 신규계좌 납입)를 각각 시뮬레이션한다. 두 레그 모두 Phase 3까지의
+// 결정을 그대로 물려받아야 하므로, 여기서는 두 후보를 모두 찾아 각각 검증한다.
+function findPhase4Calls(engine: RecordingEngine): SimulationParams[] {
+  return engine.calls.filter((c) =>
+    c.privatePensions.some((p) => p.id === PHASE4_NEW_PENSION_ID || p.earlyChannelingEnabled)
+  );
 }
 
 const baseParams: SimulationParams = {
-  userProfile: { currentAge: 60, retirementAge: 60, expectancy: 90, targetMonthlySpending: 1000000, targetBequest: 0 },
+  // currentAge < retirementAge여야 Phase 4의 두 레그(브릿지 인출 구간 / 납입 기간)가 평가된다.
+  userProfile: { currentAge: 50, retirementAge: 60, expectancy: 90, targetMonthlySpending: 1000000, targetBequest: 0 },
   assets: [],
   nationalPension: { expectedMonthlyAmount: 0 },
   privatePensions: [
@@ -65,9 +70,11 @@ test(
     const multiplier = result.recommendedPlan?.monthlySpendingMultiplier ?? 1;
     expect(multiplier).not.toBe(1);
 
-    const phase4Call = findPhase4Call(engine);
-    expect(phase4Call).toBeDefined();
-    expect(phase4Call!.userProfile.targetMonthlySpending).toBe(Math.round(originalMonthlySpending * multiplier));
+    const phase4Calls = findPhase4Calls(engine);
+    expect(phase4Calls.length).toBeGreaterThanOrEqual(2); // 채널링 레그 + 신규계좌 레그
+    for (const call of phase4Calls) {
+      expect(call.userProfile.targetMonthlySpending).toBe(Math.round(originalMonthlySpending * multiplier));
+    }
   }
 );
 
@@ -91,10 +98,12 @@ test('Fix 2(b): bestPlan이 null(Phase 1+2 개선 없음)이면 Phase 4 candidat
 
   expect(result.recommendedPlan).toBeNull();
 
-  const phase4Call = findPhase4Call(engine);
-  expect(phase4Call).toBeDefined();
+  const phase4Calls = findPhase4Calls(engine);
+  expect(phase4Calls.length).toBeGreaterThanOrEqual(2); // 채널링 레그 + 신규계좌 레그
   // identityPlan으로 치환됐다면 65 / 1000000이 됐을 것이다 — 원래 값(62 / 12345)이 그대로
   // 유지돼야 한다.
-  expect(phase4Call!.withdrawalPlan?.nationalPensionStartAge).toBe(62);
-  expect(phase4Call!.withdrawalPlan?.privatePensionMonthlyTarget).toBe(12345);
+  for (const call of phase4Calls) {
+    expect(call.withdrawalPlan?.nationalPensionStartAge).toBe(62);
+    expect(call.withdrawalPlan?.privatePensionMonthlyTarget).toBe(12345);
+  }
 });

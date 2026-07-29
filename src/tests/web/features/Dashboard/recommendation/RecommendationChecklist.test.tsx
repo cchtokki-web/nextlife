@@ -36,6 +36,7 @@ function makeRecommendation(overrides: Partial<StrategyRecommendation>): Strateg
     recommendedPlan: null,
     recommendedAssetReinvestment: null,
     recommendedPrivatePensionChanneling: null,
+    recommendedNewPensionContribution: null,
     improved: false,
     reasons: ['현재 전략이 이미 합리적입니다.'],
     deltas: zeroDeltas,
