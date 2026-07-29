@@ -1,5 +1,9 @@
 import { describe, test, expect, vi, afterEach } from 'vitest';
-import { optimizePrivatePensionChanneling } from '@/core/usecases/strategy/PrivatePensionChannelingOptimizer';
+import {
+  CHANNELING_TRANSFER_PENSION_ID,
+  NEW_PENSION_ID,
+  optimizePrivatePensionChanneling,
+} from '@/core/usecases/strategy/PrivatePensionChannelingOptimizer';
 import { SimulationEngine } from '@/core/usecases/SimulationEngine';
 import { DomainError } from '@/core/entities/errors';
 import { DEFAULT_UTILITY_CONFIG } from '@/core/usecases/utility/utilityWeights';
@@ -13,8 +17,6 @@ vi.mock('@/core/usecases/utility/UtilityEngine', () => ({
 }));
 
 const zeroComponents = { consumption: 0, depletionSafety: 0, pensionUtilization: 0, taxEfficiency: 0, taxationRisk: 0, bequestAdequacy: 0 };
-
-const NEW_PENSION_MONTHLY_CONTRIBUTION = 750000;
 
 const baseParams: SimulationParams = {
   userProfile: { currentAge: 50, retirementAge: 60, expectancy: 90, targetMonthlySpending: 3000000 },
@@ -77,8 +79,10 @@ const bestResult = makeResult(70);
 // 후보 params를 보고 어떤 레그인지 식별한다. 호출 순서에 의존하지 않고 레그별 점수를 주기 위한 헬퍼.
 type Leg = 'channeling' | 'newPension' | 'combined';
 
+// 금액(750,000원)이 아니라 id로 식별한다 — 기존 계좌 납입 합계가 우연히 750,000원이면 이전용
+// 계좌를 신규 계좌로 오인해 채널링 후보가 'combined'로 잘못 분류된다.
 function isNewAccount(p: PrivatePension): boolean {
-  return p.monthlyContribution === NEW_PENSION_MONTHLY_CONTRIBUTION && !p.earlyChannelingEnabled && p.balance === 0;
+  return p.id === NEW_PENSION_ID;
 }
 
 function legOf(params: SimulationParams): Leg {
@@ -192,13 +196,43 @@ describe('optimizePrivatePensionChanneling - 채널링 레그 params', () => {
     const existing = channelingParams.privatePensions.find((p) => p.id === 'existing-1')!;
     expect(existing.monthlyContribution).toBe(0);
 
-    const transfer = channelingParams.privatePensions.filter((p) => p.id !== 'existing-1');
+    const transfer = channelingParams.privatePensions.filter((p) => p.id === CHANNELING_TRANSFER_PENSION_ID);
     expect(transfer).toHaveLength(1);
     expect(transfer[0].monthlyContribution).toBe(500000);
     expect(transfer[0].balance).toBe(0);
     // 순유입 보존: 후보의 납입 합계 === baseline의 납입 합계
     const sum = (ps: PrivatePension[]) => ps.reduce((s, p) => s + p.monthlyContribution, 0);
     expect(sum(channelingParams.privatePensions)).toBe(sum(params.privatePensions));
+  });
+
+  test('이전용 계좌는 채널링 대상이 아니다(브릿지 구간에 곧바로 인출되면 순유입 보존이 무의미해진다)', () => {
+    const { engine, runForUtility } = makeEngineByLeg({ channeling: 80 });
+    const params = paramsWithBothLegs({
+      privatePensions: [makePension({ id: 'existing-1', monthlyContribution: 500000 })],
+    });
+
+    optimizePrivatePensionChanneling(params, bestResult, bestUtility, engine, DEFAULT_UTILITY_CONFIG);
+
+    const channelingParams = runForUtility.mock.calls.map((c) => c[0]).find((p) => legOf(p) === 'channeling')!;
+    const transfer = channelingParams.privatePensions.find((p) => p.id === CHANNELING_TRANSFER_PENSION_ID)!;
+    expect(transfer.earlyChannelingEnabled).toBeFalsy();
+  });
+
+  test('baseExchangeRate가 없으면 엔진과 같은 기본값(1350)으로 환산한다(NaN으로 이전용 계좌가 사라지지 않는다)', () => {
+    const { engine, runForUtility } = makeEngineByLeg({ channeling: 80 });
+    const params = paramsWithBothLegs({
+      privatePensions: [makePension({ id: 'usd-1', monthlyContribution: 100, currency: 'USD' })],
+      // 타입상 필수 필드지만 런타임에는 undefined가 들어오는 경로가 실제로 있다(엔진도 구조분해
+      // 기본값 1350으로 방어한다). 기본값이 없으면 합계가 NaN이 되어 이전용 계좌가 조용히 사라진다.
+      baseExchangeRate: undefined as unknown as number,
+    });
+
+    optimizePrivatePensionChanneling(params, bestResult, bestUtility, engine, DEFAULT_UTILITY_CONFIG);
+
+    const channelingParams = runForUtility.mock.calls.map((c) => c[0]).find((p) => legOf(p) === 'channeling')!;
+    const transfer = channelingParams.privatePensions.find((p) => p.id === CHANNELING_TRANSFER_PENSION_ID);
+    expect(transfer).toBeDefined();
+    expect(transfer!.monthlyContribution).toBe(100 * 1350);
   });
 
   test('기존 계좌 납입이 0이면 이전용 계좌를 만들지 않는다', () => {
@@ -228,7 +262,7 @@ describe('optimizePrivatePensionChanneling - 채널링 레그 params', () => {
     optimizePrivatePensionChanneling(params, bestResult, bestUtility, engine, DEFAULT_UTILITY_CONFIG);
 
     const channelingParams = runForUtility.mock.calls.map((c) => c[0]).find((p) => legOf(p) === 'channeling')!;
-    const transfer = channelingParams.privatePensions.find((p) => p.id !== 'krw-1' && p.id !== 'usd-1')!;
+    const transfer = channelingParams.privatePensions.find((p) => p.id === CHANNELING_TRANSFER_PENSION_ID)!;
     expect(transfer.monthlyContribution).toBe(100000 + 100 * 1100);
     expect(transfer.currency).toBe('KRW');
   });
@@ -327,6 +361,37 @@ describe('optimizePrivatePensionChanneling - 채택 판정', () => {
     expect(runForUtility).toHaveBeenCalledTimes(3);
     expect(result.attemptedCount).toBe(3);
     expect(legOf(runForUtility.mock.calls[2][0])).toBe('combined');
+  });
+
+  test('통합 결과가 baseline보다는 낫지만 단일 레그보다 나쁘면 그 단일 레그를 채택한다', () => {
+    // 레그 간 상호작용이 sub-additive인 경우다: 통합(85)이 baseline(70)보다는 개선이지만 이미
+    // 검증해 둔 채널링 단독(90)보다 나쁘다. 세 후보 모두 계산이 끝나 있으므로 최고점을 골라야 한다.
+    const { engine, runForUtility } = makeEngineByLeg({ channeling: 90, newPension: 80, combined: 85 });
+    const params = paramsWithBothLegs();
+
+    const result = optimizePrivatePensionChanneling(params, bestResult, bestUtility, engine, DEFAULT_UTILITY_CONFIG);
+
+    expect(result.recommendedPrivatePensionChanneling).toBe(true);
+    expect(result.recommendedNewPensionContribution).toBeNull();
+    expect(result.itemizedContributions).toHaveLength(1);
+    expect(result.itemizedContributions[0].label).toContain('사적연금을 55세부터');
+    expect(result.itemizedContributions[0].utilityDelta).toBe(20);
+    expect(result.finalUtility.score).toBe(90);
+    expect(result.finalResult.retirementScore).toBe(90);
+    expect(runForUtility).toHaveBeenCalledTimes(3);
+    expect(result.attemptedCount).toBe(3);
+  });
+
+  test('통합이 단일 레그와 동점이면 더 적은 행동을 요구하는 단일 레그를 채택한다', () => {
+    const { engine } = makeEngineByLeg({ channeling: 75, newPension: 90, combined: 90 });
+    const params = paramsWithBothLegs();
+
+    const result = optimizePrivatePensionChanneling(params, bestResult, bestUtility, engine, DEFAULT_UTILITY_CONFIG);
+
+    expect(result.recommendedPrivatePensionChanneling).toBeNull();
+    expect(result.recommendedNewPensionContribution).toBe(true);
+    expect(result.itemizedContributions).toHaveLength(1);
+    expect(result.finalUtility.score).toBe(90);
   });
 
   test('통합 결과가 baseline보다 나쁘면 더 나은 단일 레그만 채택한다', () => {

@@ -60,7 +60,12 @@ export function computeExecutionRoadmap(
       item: recommendation?.recommendedPrivatePensionChanneling
         ? {
             title: '사적연금 수령 개시 (조기·ISA 재투자)',
-            description: '사적연금을 55세부터 조기 수령해 ISA에 재투자하고, 신규 연금 계좌에 퇴직 전까지 납입합니다.',
+            // 채널링 레그가 실제로 시뮬레이션한 내용만 기술한다. 신규 연금 계좌 납입은 이제
+            // 독립 후보(recommendedNewPensionContribution)라 채택되지 않을 수 있으므로, 여기에
+            // 섞어 쓰면 시뮬레이션하지 않은 행동을 사용자에게 단언하게 된다.
+            description:
+              '사적연금을 55세부터 저율과세 한도 내에서 조기 수령해 ISA에 재투자합니다. ' +
+              '기존 연금 계좌 납입은 중단하고 같은 금액을 새 계좌로 옮깁니다.',
           }
         : { title: '사적연금 수령 개시', description: '사적연금(퇴직연금·연금저축 등) 인출을 시작합니다.' },
     },

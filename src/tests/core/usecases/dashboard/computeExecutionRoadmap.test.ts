@@ -128,6 +128,21 @@ describe('computeExecutionRoadmap', () => {
     expect(age60.items.map((i) => i.title)).toEqual(['퇴직', '일반자산 인출 개시']);
   });
 
+  test('채널링 설명은 채널링 레그가 실제로 시뮬레이션한 내용만 기술한다(신규 계좌 추가 납입을 단언하지 않는다)', () => {
+    // 신규 연금 계좌 납입은 recommendedNewPensionContribution이라는 독립 후보라 채택되지 않을 수
+    // 있다. 채널링만 채택된 사용자에게 "신규 계좌에 납입합니다"라고 적으면 시뮬레이션하지 않은
+    // 행동을 단언하게 되므로, 설명에는 채널링의 실제 가정(납입 중단 → 이전용 계좌)만 담는다.
+    const roadmap = computeExecutionRoadmap(baseParams, makeRecommendation(null, true), null);
+    const channelingItem = roadmap.events
+      .find((e) => e.age === 55)!
+      .items.find((i) => i.title === '사적연금 수령 개시 (조기·ISA 재투자)')!;
+
+    expect(channelingItem.description).toContain('ISA에 재투자');
+    expect(channelingItem.description).toContain('기존 연금 계좌 납입은 중단');
+    expect(channelingItem.description).not.toContain('추가로 납입');
+    expect(channelingItem.description).not.toContain('퇴직 전까지 납입');
+  });
+
   // recommendedPrivatePensionChanneling은 true | null이라 false는 타입상 표현 불가능하다
   // (사용자가 직접 켜는 설정이 아니므로 "끄라는 추천"이 존재하지 않는다). 따라서 null 케이스만 검증한다.
   test('recommendedPrivatePensionChanneling이 null이면 기존과 동일하게 retirementAge 기준으로 표시된다', () => {

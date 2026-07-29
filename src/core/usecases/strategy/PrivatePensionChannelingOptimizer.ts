@@ -26,14 +26,20 @@ import { computeDeltas } from './deltas';
 // 채널링만 63 → 신규계좌만 68 → 묶음 72). 그래서 각 레그를 같은 baseline 대비 독립 평가한다.
 
 const NEW_PENSION_MONTHLY_CONTRIBUTION = 750000; // 연 900만원 세액공제 한도 — 원화(KRW) 법정 한도다
-const NEW_PENSION_ID = 'phase4-new-private-pension';
-const CHANNELING_TRANSFER_PENSION_ID = 'phase4-channeling-transfer-pension';
+// 합성 계좌 id는 테스트와 진단이 후보 params에서 이 계좌들을 금액이 아니라 id로 식별할 수 있도록
+// export한다(납입 합계가 우연히 750,000원이면 금액 기반 식별은 두 계좌를 혼동한다).
+export const NEW_PENSION_ID = 'phase4-new-private-pension';
+export const CHANNELING_TRANSFER_PENSION_ID = 'phase4-channeling-transfer-pension';
 
 const CHANNELING_LABEL =
   '사적연금을 55세부터 저율과세 한도(연 1,500만원) 내에서 조기 수령해 ISA에 재투자합니다. ' +
   '기존 연금 계좌 납입은 중단하고 같은 금액을 새 계좌로 옮기며, ISA 만기 자금은 일반 자산으로 이전합니다.';
+// 두 번째 문장은 이 레그의 점수가 어떤 가정 위에 서 있는지 알리는 것이다(모듈 헤더의 모델 한계 참조).
+// 이 라벨은 체크리스트·PDF·AI 프롬프트로 그대로 흘러가므로, 여기 적으면 모든 표면에 전달된다.
 const NEW_PENSION_LABEL =
-  '연금 계좌를 새로 개설해 퇴직 전까지 월 75만원(연 900만원 세액공제 한도)을 추가로 납입합니다.';
+  '연금 계좌를 새로 개설해 퇴직 전까지 월 75만원(연 900만원 세액공제 한도)을 추가로 납입합니다. ' +
+  '이 점수는 현재 계획 밖에서 추가로 마련한 자금을 납입한다고 가정한 결과이며, ' +
+  '실제 이점인 세액공제 효과는 포함하지 않았습니다(시뮬레이터가 은퇴 전 근로소득·소득세를 다루지 않기 때문입니다).';
 
 export interface PrivatePensionChannelingResult {
   // 채널링 레그 채택 여부. 채택되면 true, 아니면 null(false는 생산하지 않는다).
@@ -62,7 +68,10 @@ interface LegEvaluation {
 // SimulationEngine.getExchangeRate가 private이라 여기서 동일한 계산을 복제한다. 엔진 쪽이 바뀌면
 // 이 함수도 함께 고쳐야 한다(환산 결과가 어긋나면 순유입 보존이 깨진다).
 function resolveExchangeRate(params: SimulationParams): number {
-  const base = params.baseExchangeRate;
+  // 기본값 1350도 엔진과 동일하게 적용한다. 타입상 필수 필드지만 런타임에는 undefined가 들어오는
+  // 경로가 실제로 있고(엔진도 구조분해 기본값으로 방어한다), 기본값이 없으면 USD 납입 합계가
+  // NaN이 되어 `NaN > 0`이 false → 이전용 계좌가 조용히 생성되지 않고 순유입 보존이 깨진다.
+  const base = params.baseExchangeRate ?? 1350;
   if (params.exchangeScenario === 'usd_up') return base * 1.1;
   if (params.exchangeScenario === 'usd_down') return base * 0.9;
   return base;
@@ -247,14 +256,20 @@ export function optimizePrivatePensionChanneling(
   if (!newPensionBeneficial) return adoptChannelingOnly(channelingEval!);
   if (!channelingBeneficial) return adoptNewPensionOnly(newPensionEval!);
 
-  // 둘 다 유리하면 함께 적용한 params로 한 번 더 평가한다(레그 간 상호작용 반영). 통합 결과가
-  // baseline보다 나쁘거나 계산에 실패하면 더 나은 단일 레그만 채택한다 — Phase 3의 통합 검증과
-  // 같은 안전장치다.
+  // 둘 다 유리하면 함께 적용한 params로 한 번 더 평가한다(레그 간 상호작용 반영).
   const combinedEval = runLeg('combined', buildNewPensionParams(buildChannelingParams(params)));
-  if (combinedEval === null || combinedEval.utility.score <= bestUtility.score) {
-    return channelingEval!.utility.score >= newPensionEval!.utility.score
-      ? adoptChannelingOnly(channelingEval!)
-      : adoptNewPensionOnly(newPensionEval!);
+
+  // 이제 검증된 후보가 셋(채널링 단독 / 신규계좌 단독 / 통합)이므로 그중 최고점을 채택한다.
+  // "통합이 baseline보다 나으면 통합"이 아니다 — 레그 간 상호작용이 sub-additive면 통합(85)이
+  // baseline(70)보다는 나아도 이미 손에 든 단일 레그(90)보다 나쁠 수 있다. 세 결과가 모두
+  // 계산 완료 상태라 최선을 고르는 데 추가 시뮬레이션 비용이 들지 않는다. 동점이면 더 적은
+  // 행동을 요구하는 단일 레그를 선호한다(통합 채택은 두 레그를 모두 실행하라는 뜻이므로).
+  // 통합이 실패(DomainError)했거나 단일 레그보다 나쁘면 자연스럽게 단일 레그로 폴백된다 —
+  // Phase 3의 통합 검증과 같은 안전장치다.
+  const bestSingleIsChanneling = channelingEval!.utility.score >= newPensionEval!.utility.score;
+  const bestSingleScore = Math.max(channelingEval!.utility.score, newPensionEval!.utility.score);
+  if (combinedEval === null || combinedEval.utility.score <= bestSingleScore) {
+    return bestSingleIsChanneling ? adoptChannelingOnly(channelingEval!) : adoptNewPensionOnly(newPensionEval!);
   }
 
   return {
