@@ -29,11 +29,19 @@ const NEW_PENSION_MONTHLY_CONTRIBUTION = 750000; // 연 900만원 세액공제 �
 // 합성 계좌 id는 테스트와 진단이 후보 params에서 이 계좌들을 금액이 아니라 id로 식별할 수 있도록
 // export한다(납입 합계가 우연히 750,000원이면 금액 기반 식별은 두 계좌를 혼동한다).
 export const NEW_PENSION_ID = 'phase4-new-private-pension';
-export const CHANNELING_TRANSFER_PENSION_ID = 'phase4-channeling-transfer-pension';
+// 이전용 계좌는 원본 계좌마다 하나씩 생기므로 id는 단일 상수가 아니라 접두사 + 원본 id다.
+// (원본별로 나누는 이유는 buildChannelingParams 주석 참조 — 운용 조건 보존)
+export const CHANNELING_TRANSFER_PENSION_ID_PREFIX = 'phase4-channeling-transfer-pension';
+export function isChannelingTransferPensionId(id: string): boolean {
+  return id.startsWith(`${CHANNELING_TRANSFER_PENSION_ID_PREFIX}-`);
+}
 
 const CHANNELING_LABEL =
-  '사적연금을 55세부터 저율과세 한도(연 1,500만원) 내에서 조기 수령해 ISA에 재투자합니다. ' +
-  '기존 연금 계좌 납입은 중단하고 같은 금액을 새 계좌로 옮기며, ISA 만기 자금은 일반 자산으로 이전합니다.';
+  '사적연금을 55세부터 조기 수령해 ISA에 재투자합니다. 실제로 옮길 수 있는 금액은 사적연금 ' +
+  '저율과세 한도(연 1,500만원)와 ISA 납입 한도(연 2,000만원)의 잔여 여력 중 더 작은 쪽으로 ' +
+  '제한되며, ISA에 이미 정기 납입을 하고 있다면 대개 ISA 잔여 납입 한도가 실질적인 상한이 되어 ' +
+  '연 1,500만원보다 훨씬 적은 금액만 이전됩니다. ' +
+  '기존 연금 계좌 납입은 중단하고 같은 금액·같은 운용 조건의 새 계좌로 옮기며, ISA 만기 자금은 일반 자산으로 이전합니다.';
 // 두 번째 문장은 이 레그의 점수가 어떤 가정 위에 서 있는지 알리는 것이다(모듈 헤더의 모델 한계 참조).
 // 이 라벨은 체크리스트·PDF·AI 프롬프트로 그대로 흘러가므로, 여기 적으면 모든 표면에 전달된다.
 const NEW_PENSION_LABEL =
@@ -65,58 +73,55 @@ interface LegEvaluation {
   utility: UtilityBreakdown;
 }
 
-// SimulationEngine.getExchangeRate가 private이라 여기서 동일한 계산을 복제한다. 엔진 쪽이 바뀌면
-// 이 함수도 함께 고쳐야 한다(환산 결과가 어긋나면 순유입 보존이 깨진다).
-function resolveExchangeRate(params: SimulationParams): number {
-  // 기본값 1350도 엔진과 동일하게 적용한다. 타입상 필수 필드지만 런타임에는 undefined가 들어오는
-  // 경로가 실제로 있고(엔진도 구조분해 기본값으로 방어한다), 기본값이 없으면 USD 납입 합계가
-  // NaN이 되어 `NaN > 0`이 false → 이전용 계좌가 조용히 생성되지 않고 순유입 보존이 깨진다.
-  const base = params.baseExchangeRate ?? 1350;
-  if (params.exchangeScenario === 'usd_up') return base * 1.1;
-  if (params.exchangeScenario === 'usd_down') return base * 0.9;
-  return base;
-}
-
-// 신규/이전용 연금 계좌 생성 공통 헬퍼. 운용 조건(수익률/투자종류/배당률)만 템플릿 계좌에서
-// 복사하고 잔액은 0으로 시작한다. 통화는 항상 KRW로 고정한다 — 이 계좌들이 다루는 금액은
-// 원화 법정 한도(월 75만원) 또는 이미 KRW로 환산한 납입 합계라, 템플릿 계좌의 통화(USD 등)를
-// 그대로 복사하면 금액이 그 통화로 재해석되어 유령 자산이 생긴다.
-function buildPensionAccount(
-  templatePension: PrivatePension,
-  id: string,
-  monthlyContributionKRW: number
-): PrivatePension {
+// 신규 연금 계좌(4-B 레그) 생성 헬퍼. 운용 조건(수익률/투자종류/배당률)만 템플릿 계좌에서
+// 복사하고 잔액은 0으로 시작한다. 통화는 항상 KRW로 고정한다 — 납입액이 원화 법정 한도
+// (월 75만원)라, 템플릿 계좌의 통화(USD 등)를 그대로 복사하면 금액이 그 통화로 재해석되어
+// 유령 자산이 생긴다.
+function buildNewPensionAccount(templatePension: PrivatePension): PrivatePension {
   return {
-    id,
+    id: NEW_PENSION_ID,
     type: 'irp',
     investmentType: templatePension.investmentType,
     annualReturn: templatePension.annualReturn,
     dividendYield: templatePension.dividendYield,
     balance: 0,
-    monthlyContribution: monthlyContributionKRW,
+    monthlyContribution: NEW_PENSION_MONTHLY_CONTRIBUTION,
     currency: 'KRW',
   };
 }
 
-// 채널링 레그 후보. 기존 계좌를 전부 조기수령 대상으로 켜고, 그 계좌들의 납입은 중단한다
-// (한국 세법상 연금 개시 후 해당 계좌 재납입 불가). 중단한 납입 합계는 이전용 계좌로 옮겨
-// baseline과 순유입(총 월 납입액)을 동일하게 유지한다 — 그래야 "채널링 자체"의 효과만 측정된다.
-function buildChannelingParams(params: SimulationParams): SimulationParams {
-  const exchangeRate = resolveExchangeRate(params);
-  const transferredContributionKRW = params.privatePensions.reduce(
-    (sum, p) => sum + (p.currency === 'USD' ? p.monthlyContribution * exchangeRate : p.monthlyContribution),
-    0
-  );
+// 이전용 계좌 생성 헬퍼. 원본 계좌 하나당 하나씩 만들고, 납입액뿐 아니라 운용 조건
+// (annualReturn/investmentType/dividendYield)과 통화까지 원본 그대로 복제한다. 잔액만 0에서
+// 시작하고, 이 계좌 자체는 채널링 대상이 아니다(넣자마자 다시 빼면 순유입 보존이 무의미해진다).
+function buildTransferPensionAccount(source: PrivatePension): PrivatePension {
+  return {
+    ...source,
+    id: `${CHANNELING_TRANSFER_PENSION_ID_PREFIX}-${source.id}`,
+    balance: 0,
+    earlyChannelingEnabled: false,
+  };
+}
 
+// 채널링 레그 후보. 기존 계좌를 전부 조기수령 대상으로 켜고, 그 계좌들의 납입은 중단한다
+// (한국 세법상 연금 개시 후 해당 계좌 재납입 불가). 중단한 납입은 이전용 계좌로 옮겨 baseline과
+// 순유입(총 월 납입액)을 동일하게 유지한다 — 그래야 "채널링 자체"의 효과만 측정된다.
+//
+// 이전용 계좌는 반드시 **원본 계좌마다 하나씩** 만든다. 예전처럼 납입 합계를 하나의 계좌로 묶으면
+// 그 계좌의 운용 조건을 privatePensions[0]에서 복사하게 되어, 금액은 보존되지만 성장 프로필이
+// 바뀐다. 퇴직연금(2%, 예금) + 연금저축(8%, ETF)처럼 수익률이 섞인 흔한 구성에서 8%로 굴러야 할
+// 납입이 2%로 굴러 은퇴까지 수천만~1억원대의 종말가치 차이를 만들고(배열 순서를 뒤집으면 부호가
+// 반대로 뒤집힌다), 이는 측정하려는 채널링 효과(수백만원대)보다 훨씬 커서 채택/기각 판정을
+// 좌우한다 — C3(대조군 없는 비교)와 같은 계열의 결함이다.
+function buildChannelingParams(params: SimulationParams): SimulationParams {
   const channeledPensions: PrivatePension[] = params.privatePensions.map((p) => ({
     ...p,
     earlyChannelingEnabled: true,
     monthlyContribution: 0,
   }));
-  if (transferredContributionKRW > 0) {
-    channeledPensions.push(
-      buildPensionAccount(params.privatePensions[0], CHANNELING_TRANSFER_PENSION_ID, transferredContributionKRW)
-    );
+  // 통화 환산이 전혀 필요 없다 — 각 이전용 계좌가 원본의 통화를 그대로 쓰므로 엔진의
+  // getExchangeRate를 복제할 이유도 사라진다.
+  for (const p of params.privatePensions) {
+    if (p.monthlyContribution > 0) channeledPensions.push(buildTransferPensionAccount(p));
   }
 
   return {
@@ -140,10 +145,7 @@ function buildChannelingParams(params: SimulationParams): SimulationParams {
 function buildNewPensionParams(params: SimulationParams): SimulationParams {
   return {
     ...params,
-    privatePensions: [
-      ...params.privatePensions,
-      buildPensionAccount(params.privatePensions[0], NEW_PENSION_ID, NEW_PENSION_MONTHLY_CONTRIBUTION),
-    ],
+    privatePensions: [...params.privatePensions, buildNewPensionAccount(params.privatePensions[0])],
   };
 }
 
@@ -262,10 +264,20 @@ export function optimizePrivatePensionChanneling(
   // 이제 검증된 후보가 셋(채널링 단독 / 신규계좌 단독 / 통합)이므로 그중 최고점을 채택한다.
   // "통합이 baseline보다 나으면 통합"이 아니다 — 레그 간 상호작용이 sub-additive면 통합(85)이
   // baseline(70)보다는 나아도 이미 손에 든 단일 레그(90)보다 나쁠 수 있다. 세 결과가 모두
-  // 계산 완료 상태라 최선을 고르는 데 추가 시뮬레이션 비용이 들지 않는다. 동점이면 더 적은
-  // 행동을 요구하는 단일 레그를 선호한다(통합 채택은 두 레그를 모두 실행하라는 뜻이므로).
+  // 계산 완료 상태라 최선을 고르는 데 추가 시뮬레이션 비용이 들지 않는다.
   // 통합이 실패(DomainError)했거나 단일 레그보다 나쁘면 자연스럽게 단일 레그로 폴백된다 —
   // Phase 3의 통합 검증과 같은 안전장치다.
+  //
+  // 동점 처리는 두 가지가 있고 근거가 서로 다르다:
+  //  (1) 통합 == 단일 레그: 더 적은 행동을 요구하는 단일 레그를 고른다(통합 채택은 두 레그를 모두
+  //      실행하라는 뜻이므로 추가 행동에 대한 대가가 0이면 권할 이유가 없다).
+  //  (2) 채널링 == 신규계좌(아래 `>=`): 채널링을 고른다. 이건 "행동이 더 적어서"가 아니다 —
+  //      오히려 채널링이 요구하는 행동이 더 많다(납입 중단 + 새 계좌 개설 + 조기수령 개시 +
+  //      ISA 만기 목적지 변경). 근거는 두 점수의 신뢰도 차이다: 신규계좌 레그의 개선분은 모듈
+  //      헤더에 적은 대로 "계획 밖의 새 돈을 월 75만원 더 저축한다"는 가정에서 나오는 것이라
+  //      진짜 최적화가 아니고 사용자에게 신규 자금 부담을 지운다. 반면 채널링은 순유입이 보존된
+  //      기존 자산의 재배치라 점수가 그대로 실현 가능한 이득이다. 동점이면 새 돈을 요구하지 않는
+  //      쪽을 권하는 것이 맞다.
   const bestSingleIsChanneling = channelingEval!.utility.score >= newPensionEval!.utility.score;
   const bestSingleScore = Math.max(channelingEval!.utility.score, newPensionEval!.utility.score);
   if (combinedEval === null || combinedEval.utility.score <= bestSingleScore) {

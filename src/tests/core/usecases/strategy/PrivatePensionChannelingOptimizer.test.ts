@@ -1,6 +1,6 @@
 import { describe, test, expect, vi, afterEach } from 'vitest';
 import {
-  CHANNELING_TRANSFER_PENSION_ID,
+  isChannelingTransferPensionId,
   NEW_PENSION_ID,
   optimizePrivatePensionChanneling,
 } from '@/core/usecases/strategy/PrivatePensionChannelingOptimizer';
@@ -83,6 +83,19 @@ type Leg = 'channeling' | 'newPension' | 'combined';
 // 계좌를 신규 계좌로 오인해 채널링 후보가 'combined'로 잘못 분류된다.
 function isNewAccount(p: PrivatePension): boolean {
   return p.id === NEW_PENSION_ID;
+}
+
+function transferAccounts(params: SimulationParams): PrivatePension[] {
+  return params.privatePensions.filter((p) => isChannelingTransferPensionId(p.id));
+}
+
+// 납입 중인 계좌들의 "운용 프로필" 멀티셋. 채널링 후보는 이 멀티셋을 baseline과 동일하게 유지해야
+// 한다 — 금액만 보존하고 수익률·투자종류를 바꾸면 측정하려는 채널링 효과보다 큰 편향이 섞인다.
+function contributionProfile(params: SimulationParams): string[] {
+  return params.privatePensions
+    .filter((p) => p.monthlyContribution > 0)
+    .map((p) => `${p.annualReturn}|${p.investmentType}|${p.dividendYield}|${p.monthlyContribution}|${p.currency}`)
+    .sort();
 }
 
 function legOf(params: SimulationParams): Leg {
@@ -196,7 +209,7 @@ describe('optimizePrivatePensionChanneling - 채널링 레그 params', () => {
     const existing = channelingParams.privatePensions.find((p) => p.id === 'existing-1')!;
     expect(existing.monthlyContribution).toBe(0);
 
-    const transfer = channelingParams.privatePensions.filter((p) => p.id === CHANNELING_TRANSFER_PENSION_ID);
+    const transfer = transferAccounts(channelingParams);
     expect(transfer).toHaveLength(1);
     expect(transfer[0].monthlyContribution).toBe(500000);
     expect(transfer[0].balance).toBe(0);
@@ -205,34 +218,46 @@ describe('optimizePrivatePensionChanneling - 채널링 레그 params', () => {
     expect(sum(channelingParams.privatePensions)).toBe(sum(params.privatePensions));
   });
 
+  test('이전용 계좌는 원본 계좌마다 하나씩 만들어 운용 프로필(수익률/투자종류/배당률/통화)까지 보존한다', () => {
+    // 퇴직연금(2%, 예금) + 연금저축(8%, ETF)은 흔한 구성이다. 이전용 계좌를 하나로 합치면
+    // 8%로 굴러야 할 납입이 2%로 굴러(또는 그 반대로) 채널링 효과보다 훨씬 큰 편향이 생긴다.
+    const { engine, runForUtility } = makeEngineByLeg({ channeling: 80 });
+    const params = paramsWithBothLegs({
+      privatePensions: [
+        makePension({ id: 'p-low', monthlyContribution: 500000, annualReturn: 2, investmentType: 'deposit', dividendYield: 0 }),
+        makePension({ id: 'p-high', monthlyContribution: 500000, annualReturn: 8, investmentType: 'etf', dividendYield: 3 }),
+      ],
+    });
+
+    optimizePrivatePensionChanneling(params, bestResult, bestUtility, engine, DEFAULT_UTILITY_CONFIG);
+
+    const channelingParams = runForUtility.mock.calls.map((c) => c[0]).find((p) => legOf(p) === 'channeling')!;
+    expect(transferAccounts(channelingParams)).toHaveLength(2);
+    // 핵심 불변식: 납입 중인 계좌들의 (수익률, 투자종류, 배당률, 납입액, 통화) 멀티셋이 baseline과 동일하다.
+    expect(contributionProfile(channelingParams)).toEqual(contributionProfile(params));
+    // 배열 순서를 뒤집어도 결과가 같아야 한다(합산 방식은 privatePensions[0]에 의존해 부호가 뒤집혔다).
+    const reversed = { ...params, privatePensions: [...params.privatePensions].reverse() };
+    const { engine: engine2, runForUtility: run2 } = makeEngineByLeg({ channeling: 80 });
+    optimizePrivatePensionChanneling(reversed, bestResult, bestUtility, engine2, DEFAULT_UTILITY_CONFIG);
+    const reversedChanneling = run2.mock.calls.map((c) => c[0]).find((p) => legOf(p) === 'channeling')!;
+    expect(contributionProfile(reversedChanneling)).toEqual(contributionProfile(channelingParams));
+  });
+
   test('이전용 계좌는 채널링 대상이 아니다(브릿지 구간에 곧바로 인출되면 순유입 보존이 무의미해진다)', () => {
     const { engine, runForUtility } = makeEngineByLeg({ channeling: 80 });
     const params = paramsWithBothLegs({
-      privatePensions: [makePension({ id: 'existing-1', monthlyContribution: 500000 })],
+      privatePensions: [
+        makePension({ id: 'existing-1', monthlyContribution: 500000 }),
+        makePension({ id: 'existing-2', monthlyContribution: 300000 }),
+      ],
     });
 
     optimizePrivatePensionChanneling(params, bestResult, bestUtility, engine, DEFAULT_UTILITY_CONFIG);
 
     const channelingParams = runForUtility.mock.calls.map((c) => c[0]).find((p) => legOf(p) === 'channeling')!;
-    const transfer = channelingParams.privatePensions.find((p) => p.id === CHANNELING_TRANSFER_PENSION_ID)!;
-    expect(transfer.earlyChannelingEnabled).toBeFalsy();
-  });
-
-  test('baseExchangeRate가 없으면 엔진과 같은 기본값(1350)으로 환산한다(NaN으로 이전용 계좌가 사라지지 않는다)', () => {
-    const { engine, runForUtility } = makeEngineByLeg({ channeling: 80 });
-    const params = paramsWithBothLegs({
-      privatePensions: [makePension({ id: 'usd-1', monthlyContribution: 100, currency: 'USD' })],
-      // 타입상 필수 필드지만 런타임에는 undefined가 들어오는 경로가 실제로 있다(엔진도 구조분해
-      // 기본값 1350으로 방어한다). 기본값이 없으면 합계가 NaN이 되어 이전용 계좌가 조용히 사라진다.
-      baseExchangeRate: undefined as unknown as number,
-    });
-
-    optimizePrivatePensionChanneling(params, bestResult, bestUtility, engine, DEFAULT_UTILITY_CONFIG);
-
-    const channelingParams = runForUtility.mock.calls.map((c) => c[0]).find((p) => legOf(p) === 'channeling')!;
-    const transfer = channelingParams.privatePensions.find((p) => p.id === CHANNELING_TRANSFER_PENSION_ID);
-    expect(transfer).toBeDefined();
-    expect(transfer!.monthlyContribution).toBe(100 * 1350);
+    const transfer = transferAccounts(channelingParams);
+    expect(transfer).toHaveLength(2);
+    expect(transfer.every((p) => !p.earlyChannelingEnabled)).toBe(true);
   });
 
   test('기존 계좌 납입이 0이면 이전용 계좌를 만들지 않는다', () => {
@@ -248,23 +273,30 @@ describe('optimizePrivatePensionChanneling - 채널링 레그 params', () => {
     expect(channelingParams.privatePensions[0].id).toBe('existing-1');
   });
 
-  test('통화가 섞인 기존 계좌 납입 합계는 KRW로 환산해 이전한다(exchangeScenario 반영)', () => {
-    const { engine, runForUtility } = makeEngineByLeg({ channeling: 80 });
-    const params = paramsWithBothLegs({
-      privatePensions: [
-        makePension({ id: 'krw-1', monthlyContribution: 100000, currency: 'KRW' }),
-        makePension({ id: 'usd-1', monthlyContribution: 100, currency: 'USD' }),
-      ],
-      baseExchangeRate: 1000,
-      exchangeScenario: 'usd_up', // 엔진의 getExchangeRate와 동일하게 x1.1 → 1100
-    });
+  test('통화가 섞여 있어도 각 이전용 계좌가 원본 통화·금액을 그대로 쓰므로 환율 환산이 필요 없다', () => {
+    // 예전 구현은 합계를 KRW로 환산해 하나의 계좌로 묶느라 엔진의 private getExchangeRate를
+    // 복제해야 했다(환율이 어긋나면 순유입 보존이 깨지는 취약한 결합). 계좌별 이전으로 바뀌면서
+    // 환산 자체가 사라졌으므로, 환율 시나리오를 바꿔도 후보 params는 달라지지 않아야 한다.
+    const build = (exchangeScenario: SimulationParams['exchangeScenario']) => {
+      const { engine, runForUtility } = makeEngineByLeg({ channeling: 80 });
+      const params = paramsWithBothLegs({
+        privatePensions: [
+          makePension({ id: 'krw-1', monthlyContribution: 100000, currency: 'KRW' }),
+          makePension({ id: 'usd-1', monthlyContribution: 100, currency: 'USD' }),
+        ],
+        baseExchangeRate: 1000,
+        exchangeScenario,
+      });
+      optimizePrivatePensionChanneling(params, bestResult, bestUtility, engine, DEFAULT_UTILITY_CONFIG);
+      return runForUtility.mock.calls.map((c) => c[0]).find((p) => legOf(p) === 'channeling')!;
+    };
 
-    optimizePrivatePensionChanneling(params, bestResult, bestUtility, engine, DEFAULT_UTILITY_CONFIG);
-
-    const channelingParams = runForUtility.mock.calls.map((c) => c[0]).find((p) => legOf(p) === 'channeling')!;
-    const transfer = channelingParams.privatePensions.find((p) => p.id === CHANNELING_TRANSFER_PENSION_ID)!;
-    expect(transfer.monthlyContribution).toBe(100000 + 100 * 1100);
-    expect(transfer.currency).toBe('KRW');
+    const base = build('base');
+    const transfers = transferAccounts(base);
+    expect(transfers).toHaveLength(2);
+    expect(transfers.find((p) => p.currency === 'USD')!.monthlyContribution).toBe(100);
+    expect(transfers.find((p) => p.currency === 'KRW')!.monthlyContribution).toBe(100000);
+    expect(contributionProfile(build('usd_up'))).toEqual(contributionProfile(base));
   });
 });
 
@@ -302,12 +334,14 @@ describe('optimizePrivatePensionChanneling - 신규계좌 레그 params', () => 
 
     optimizePrivatePensionChanneling(params, bestResult, bestUtility, engine, DEFAULT_UTILITY_CONFIG);
 
-    // 750000은 원화 법정 한도이므로 USD로 해석되면 안 된다. 이전용 계좌도 마찬가지.
-    for (const call of runForUtility.mock.calls) {
-      for (const p of call[0].privatePensions) {
-        if (p.id !== 'usd-1') expect(p.currency).toBe('KRW');
-      }
-    }
+    // 750000은 원화 법정 한도이므로 USD로 해석되면 안 된다.
+    const newAccounts = runForUtility.mock.calls.flatMap((c) => c[0].privatePensions.filter(isNewAccount));
+    expect(newAccounts.length).toBeGreaterThan(0);
+    expect(newAccounts.every((p) => p.currency === 'KRW')).toBe(true);
+    // 반면 이전용 계좌는 원본 통화(USD)를 그대로 유지한다 — 금액을 환산하지 않기 때문이다.
+    const transfers = runForUtility.mock.calls.flatMap((c) => transferAccounts(c[0]));
+    expect(transfers.length).toBeGreaterThan(0);
+    expect(transfers.every((p) => p.currency === 'USD' && p.monthlyContribution === 100)).toBe(true);
   });
 });
 
