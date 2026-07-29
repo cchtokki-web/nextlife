@@ -387,6 +387,16 @@ export function recommendStrategy(
   // "완결된" plan이라 withdrawalPlan을 아예 지정하지 않았을 때(엔진의 잔여월 기준 기본 인출)와
   // 다르게 동작한다(동일 params에서 72점 vs 65점으로 갈리는 것을 확인함). 이 경우
   // params.withdrawalPlan을 원래 값 그대로 둔다.
+  //
+  // 알려진 한계(Phase 3 → Phase 4 baseline 이음매): bestPlan === null일 때 위 규칙 때문에
+  // 여기서는 params.withdrawalPlan을 원본 그대로 쓰지만, Phase 3의 DividendReinvestmentOptimizer는
+  // (`DividendReinvestmentOptimizer.ts:85`) 후보 params를 `bestPlan ?? getIdentityPlan(params)`로
+  // 만든다. 즉 Phase 3가 개선을 채택하면 Phase 4에 넘어오는 baseline(reinvestOpt.finalUtility)은
+  // identityPlan 아래에서 측정된 값인데, Phase 4의 두 레그는 원본 plan 아래에서 측정된다. 두
+  // 기준선이 같은 계획을 가리키지 않으므로 Phase 4의 marginal delta에 5~10점 규모의 계통 오차가
+  // 섞일 수 있다(이 오차는 채널링 자체와 무관하다). Phase 3의 params 구성은 이미 출시·별도 리뷰된
+  // 기능이라 이번 수정 범위 밖이며(계획 문서 §범위 밖), 고치려면 Phase 3의 baseline 규칙을
+  // 여기와 동일하게 맞추는 별도 작업이 필요하다.
   const baseParamsAfterPhase3: SimulationParams = bestPlan ? paramsForCandidate(params, bestPlan) : params;
   const paramsAfterPhase3: SimulationParams = {
     ...baseParamsAfterPhase3,
@@ -431,14 +441,25 @@ export function recommendStrategy(
 
   // 채널링 후보는 isaMaturityDestination을 'asset'으로 강제해 평가됐다. 그 전제가 추천안에
   // 담기지 않으면 사용자가 체크리스트대로 실행해도 화면에 표시된 수치를 재현할 수 없고,
-  // 오히려 이 override가 제거하려던 트레드밀 손실을 그대로 맞게 된다. bestPlan이 null이면
-  // (Phase 1+2에서 개선을 찾지 못한 경우) identityPlan을 기반으로 완결된 plan을 만든다.
-  // computeItemizedContributions는 이 값이 아니라 기존 bestPlan 기준(withdrawalItemizedContributions)으로
-  // 이미 계산되어 있다 — ISA 목적지 변경 문구는 Task 2에서 채널링 항목 라벨에 이미 포함했으므로
-  // 여기서 별도 체크리스트 항목을 추가하지 않는다(중복 방지).
-  const recommendedPlan: CompleteWithdrawalPlan | null = channelingOpt.recommendedPrivatePensionChanneling
-    ? { ...(bestPlan ?? identityPlan), isaMaturityDestination: 'asset' }
-    : bestPlan;
+  // 오히려 이 override가 제거하려던 트레드밀 손실을 그대로 맞게 된다.
+  //
+  // bestPlan이 null이면 여기서도 null을 그대로 돌려준다. identityPlan을 채워 넣으면 안 된다 —
+  // 그 경우 채널링 후보는 `{ ...params.withdrawalPlan(=대개 undefined), isaMaturityDestination: 'asset' }`
+  // 으로 평가됐으므로, identityPlan 기반 plan은 한 번도 시뮬레이션되지 않은 전혀 다른 계획이다
+  // (위 :385~389 주석대로 두 계획은 동일 params에서 72점 vs 65점으로 갈린다). ISA 만기 목적지를
+  // 바꿔야 한다는 사실 자체는 채널링 항목 라벨(CHANNELING_LABEL)이 체크리스트·PDF·AI 프롬프트로
+  // 전달하므로, 사용자가 안내를 못 받는 상황은 생기지 않는다.
+  //
+  // 중복 안내에 대해: computeItemizedContributions는 이 값이 아니라 bestPlan 기준
+  // (withdrawalItemizedContributions)으로 이미 계산되어 있다. bestPlan이 없거나
+  // bestPlan.isaMaturityDestination === 'pension'이면 ISA 목적지 항목이 만들어지지 않으므로
+  // 채널링 라벨과 중복되지 않는다. 다만 Phase 1이 독립적으로 'asset'을 고르고 채널링도 채택되면
+  // 두 곳(항목별 기여 + 채널링 라벨)에서 같은 지시가 언급된다 — 지시 내용이 서로 모순되지 않고
+  // (둘 다 "일반 자산으로"), 항목별 기여의 점수 배분도 각자 독립 측정치라 정확하므로 그대로 둔다.
+  const recommendedPlan: CompleteWithdrawalPlan | null =
+    channelingOpt.recommendedPrivatePensionChanneling && bestPlan
+      ? { ...bestPlan, isaMaturityDestination: 'asset' }
+      : bestPlan;
 
   return {
     currentUtility,

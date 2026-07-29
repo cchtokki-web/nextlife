@@ -905,13 +905,17 @@ describe('recommendStrategy - Phase 4 사적연금 채널링 통합', () => {
     expect(result.recommendedPlan?.isaMaturityDestination).toBe('asset');
   });
 
-  test('Phase 1/2가 개선안을 찾지 못해 bestPlan이 null이어도, 채널링이 채택되면 recommendedPlan은 identityPlan 기반으로 완결되고 isaMaturityDestination이 asset이다', () => {
+  test('Phase 1/2가 개선안을 찾지 못해 bestPlan이 null이면, 채널링이 채택돼도 recommendedPlan을 지어내지 않는다(null 유지 + 라벨로 안내)', () => {
     // 실제 엔진으로 "bestPlan===null이면서 채널링만 채택되는" 조합을 재현하려 했으나(리뷰어가
     // ~40개 파라미터 조합을 스윕) 자연 발생시키지 못했다. 그래서 engine.runForUtility를 stub해
     // Phase 1/2/신규계좌 후보는 baseline과 동점(개선 없음)으로, 채널링 후보만 baseline보다
-    // 낫게 만들어 RecommendationEngine.ts:440의 `?? identityPlan` 폴백 분기를 직접 겨냥한다.
-    // 이 테스트는 그 폴백을 지우면(예: `bestPlan!`로 단순화하면) recommendedPlan이 null이 되어
-    // 반드시 실패한다.
+    // 낫게 만들어 이 분기를 직접 겨냥한다.
+    //
+    // 이전 구현은 여기서 `{ ...identityPlan, isaMaturityDestination: 'asset' }`을 만들어 돌려줬는데,
+    // 그 계획은 한 번도 시뮬레이션되지 않은 조합이었다 — 채널링 후보는 params.withdrawalPlan
+    // (이 경로에서는 대개 undefined) 위에서 평가됐고, identityPlan은 그와 다르게 동작한다
+    // (같은 파일 :385~389 주석: 동일 params에서 72점 vs 65점). 시뮬레이션되지 않은 계획을
+    // 추천안으로 내보내지 않는 것이 새 계약이다.
     const userProfile = { currentAge: 50, retirementAge: 60, expectancy: 60, targetMonthlySpending: 2000000 };
     const params: SimulationParams = {
       userProfile,
@@ -959,12 +963,11 @@ describe('recommendStrategy - Phase 4 사적연금 채널링 통합', () => {
     expect(result.recommendedPrivatePensionChanneling).toBe(true);
     expect(result.recommendedUtility.score).toBeGreaterThan(result.currentUtility.score);
 
-    // 본 assertion: recommendedPlan은 null이 아니고, identityPlan 기반으로 완결되어 있으며
-    // (bestPlan이 없었으므로 privatePensionMonthlyTarget/nationalPensionStartAge 등 나머지
-    // 필드가 identityPlan과 정확히 일치해야 한다), isaMaturityDestination만 'asset'으로 덮였다.
-    const identityPlan = getIdentityPlan(params);
-    expect(result.recommendedPlan).not.toBeNull();
-    expect(result.recommendedPlan).toEqual({ ...identityPlan, isaMaturityDestination: 'asset' });
+    // 본 assertion: 시뮬레이션되지 않은 계획을 지어내지 않는다.
+    expect(result.recommendedPlan).toBeNull();
+    // 대신 ISA 만기 자금을 일반 자산으로 옮기라는 지시는 채널링 항목 라벨을 통해 전달된다
+    // (이 라벨은 reasons/체크리스트/PDF/AI 프롬프트로 그대로 흘러간다).
+    expect(result.reasons.some((r) => r.includes('ISA 만기 자금은 일반 자산으로 이전'))).toBe(true);
   });
 
   test('retirementAge가 55 이하이면 채널링 후보 자체가 생성되지 않는다', () => {
