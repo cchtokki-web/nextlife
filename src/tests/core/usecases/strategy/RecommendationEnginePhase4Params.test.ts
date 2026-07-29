@@ -1,6 +1,6 @@
 import { describe, test, expect, vi, afterEach } from 'vitest';
 import { SimulationEngine } from '@/core/usecases/SimulationEngine';
-import { SimulationParams, SimulationResult } from '@/core/entities/types';
+import { InvestmentAsset, SimulationParams, SimulationResult } from '@/core/entities/types';
 
 // Fix 2 검증 전용 파일이다. RecommendationEngine.test.ts와 달리 테스트마다 StrategyCandidateGenerator를
 // 다르게 모킹해 bestPlan(Phase 1+2 결과)을 결정론적으로 통제해야 하므로(자연스러운 5차원 그리드
@@ -8,6 +8,7 @@ import { SimulationParams, SimulationResult } from '@/core/entities/types';
 // 분리하고, vi.mock(hoisted, 파일 전역) 대신 테스트별 vi.doMock + vi.resetModules를 쓴다.
 afterEach(() => {
   vi.doUnmock('@/core/usecases/strategy/StrategyCandidateGenerator');
+  vi.doUnmock('@/core/usecases/strategy/DividendReinvestmentOptimizer');
   vi.resetModules();
 });
 
@@ -107,3 +108,68 @@ test('Fix 2(b): bestPlan이 null(Phase 1+2 개선 없음)이면 Phase 4 candidat
     expect(call.withdrawalPlan?.privatePensionMonthlyTarget).toBe(12345);
   }
 });
+
+function makeAsset(overrides: Partial<InvestmentAsset>): InvestmentAsset {
+  return {
+    id: 'asset-1',
+    type: 'etf',
+    ticker: 'SPY',
+    name: 'S&P500',
+    quantity: 10,
+    averagePrice: 400000,
+    annualGrowthRate: 7,
+    dividendYield: 3,
+    monthlyContribution: 0,
+    reinvestDividend: true,
+    currency: 'KRW',
+    ...overrides,
+  };
+}
+
+test(
+  'Phase 3(배당 재투자 최적화)가 뒤집은 자산의 reinvestDividend가 Phase 4 candidate params에도 그대로 전달된다 ' +
+    '(paramsAfterPhase3의 assets 리매핑 검증 — baseParams.assets가 항상 []이면 이 분기는 한 번도 실행되지 않는다)',
+  async () => {
+    // Phase 1/2는 이 테스트의 관심사가 아니므로 비워서 bestPlan을 결정론적으로 null로 만든다.
+    vi.doMock('@/core/usecases/strategy/StrategyCandidateGenerator', async (importOriginal) => {
+      const actual = await importOriginal<typeof import('@/core/usecases/strategy/StrategyCandidateGenerator')>();
+      return { ...actual, generateCandidatePlans: () => [], generateSpendingAdjustmentCandidates: () => [] };
+    });
+    // Phase 3(어떤 자산을 뒤집을지 스스로 판단하는 로직) 자체는 DividendReinvestmentOptimizer.test.ts가
+    // 이미 검증한다. 여기서는 그 판단 결과가 "asset-1의 reinvestDividend: true -> false"라고 결정론적으로
+    // 고정해, RecommendationEngine.ts가 그 결정을 paramsAfterPhase3.assets에 실제로 반영해 Phase 4로
+    // 넘기는지(=핸드오프 배선 자체)만 검증한다.
+    vi.doMock('@/core/usecases/strategy/DividendReinvestmentOptimizer', async (importOriginal) => {
+      const actual = await importOriginal<typeof import('@/core/usecases/strategy/DividendReinvestmentOptimizer')>();
+      return {
+        ...actual,
+        optimizeDividendReinvestment: (
+          _params: SimulationParams,
+          _bestPlan: unknown,
+          bestResult: SimulationResult,
+          bestUtility: unknown
+        ) => ({
+          recommendedAssetReinvestment: { 'asset-1': false },
+          perAssetResults: [],
+          finalResult: bestResult,
+          finalUtility: bestUtility,
+          failedAssetCount: 0,
+        }),
+      };
+    });
+    const { recommendStrategy } = await import('@/core/usecases/strategy/RecommendationEngine');
+    const engine = new RecordingEngine();
+    const params: SimulationParams = {
+      ...baseParams,
+      assets: [makeAsset({ id: 'asset-1', reinvestDividend: true })],
+    };
+
+    recommendStrategy(params, engine);
+
+    const phase4Calls = findPhase4Calls(engine);
+    expect(phase4Calls.length).toBeGreaterThanOrEqual(2); // 채널링 레그 + 신규계좌 레그
+    for (const call of phase4Calls) {
+      expect(call.assets.find((a) => a.id === 'asset-1')!.reinvestDividend).toBe(false);
+    }
+  }
+);

@@ -473,8 +473,21 @@ export class SimulationEngine {
         // 계좌를 순서대로 처리하며 이 잔여 목표액만큼만 인출하도록 공유 상태로 관리한다.
         let remainingMonthlyPensionTargetKRW = withdrawalPlan?.privatePensionMonthlyTarget;
         // 사적연금 조기수령 채널링(Phase 4)의 월별 저율과세 한도. 여러 계좌가 earlyChannelingEnabled면
-        // 위 monthlyPensionPreTaxLimitRemainingKRW와 별개로 이 잔여한도를 계좌 간에 공유한다 — 두
-        // 한도는 서로 다른 인출 경로(은퇴 후 정상 인출 vs 브릿지 조기 인출)라 섞이면 안 된다.
+        // 이 잔여한도를 계좌 간에 공유한다(remainingBridgeLimitKRW는 forEach 밖, 이 m 루프 안에서
+        // 선언되어 있으므로 계좌마다 새로 리셋되지 않는다 — forEach 안으로 옮기면 계좌당 한도를
+        // 따로 주는 세법 위반 버그가 된다).
+        //
+        // 위 monthlyPensionPreTaxLimitRemainingKRW와는 별개의 변수지만, 같은 법정 한도(연
+        // 1,500만원 — 인출 사유와 무관하게 1인당 적용되는 단일 한도)를 추적한다. 두 캡의 적용
+        // 조건은 비대칭이다: 이 브릿지 캡은 설정과 무관하게 항상 적용되지만,
+        // monthlyPensionPreTaxLimitRemainingKRW(정상/후행 인출 캡)는 limitPrivatePensionToTaxLimit가
+        // 켜졌을 때만 적용된다(기본값 false — 기본 설정에서는 정상 인출이 한도를 초과할 수 있다).
+        // 어느 경로로 인출됐든 세전 금액은 annualPrivatePensionPreTaxKRW에 함께 누적되고,
+        // calculatePrivatePensionExcessTaxNeededKRW가 연말에 그 누적치 전체를 기준으로 초과분을
+        // 합산 과세하므로, 인출 시점의 캡이 느슨해도 결국 과세 단계에서 법정 한도 초과분이
+        // 보정된다. 이 브릿지 분기는 !isRetired, 정상/후행 인출 분기는 isRetired(또는 은퇴 전엔
+        // monthlyTargetSpending이 0으로 강제돼 shortfall이 발생하지 않음)로 갈리므로, 실제로는
+        // 두 캡이 같은 해에 함께 소진되는 일은 없다.
         let remainingBridgeLimitKRW = (currentTaxSettings.privatePensionLimit ?? 15000000) / 12;
 
         activePensions.forEach((pension) => {

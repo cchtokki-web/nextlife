@@ -72,6 +72,12 @@ export function computeExecutionRoadmap(
       // 조기수령 채널링)가 채택된 경우에는 실제로 55세부터(재직 중) 조기 수령이 시작되므로,
       // 로드맵도 그 실제 시점을 가리켜야 한다 — 그렇지 않으면 채택된 추천안과 로드맵이 서로
       // 다른 나이를 보여주는 모순이 생긴다.
+      //
+      // 주의: 채널링이 채택돼도 엔진의 정상 인출(생활비 재원)은 사라지지 않는다 — 브릿지는
+      // 은퇴 전 조기 인출분을 ISA로 재투자하는 것일 뿐이고, planStartAge(= clampPrivatePensionStartAge
+      // (retirementAge)) 기준의 정상 인출은 retirementAge부터 그대로 시작된다. 즉 이 이벤트는
+      // 논리적으로 "55세(조기 개시)"와 "retirementAge(정상 개시)" 두 시점을 모두 가지지만,
+      // 로드맵은 UI를 단순화하기 위해 더 이른 시점(55세)만 마일스톤으로 표시한다.
       age: recommendation?.recommendedPrivatePensionChanneling
         ? PRIVATE_PENSION_MIN_START_AGE
         : clampPrivatePensionStartAge(retirementAge),

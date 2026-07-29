@@ -47,7 +47,12 @@ function makeRecommendation(
     recommendedAssetReinvestment: null,
     recommendedPrivatePensionChanneling,
     recommendedNewPensionContribution: null,
-    improved: recommendedPlan !== null || recommendedPrivatePensionChanneling === true,
+    // computeExecutionRoadmap 자체는 improved를 읽지 않는다(recommendedPlan/
+    // recommendedPrivatePensionChanneling만 본다) — 이 describe('computeExecutionRoadmap') 블록의
+    // 모든 테스트에서 값은 무의미하므로 고정값으로 둔다. selectDepletionAge는 improved를 실제로
+    // 읽으므로, 아래 describe('selectDepletionAge') 블록은 이 값을 그대로 쓰지 않고 스프레드 후
+    // 매번 명시적으로 override한다.
+    improved: false,
     reasons: [],
     deltas: zeroDeltas,
     totalCandidateCount: 0,

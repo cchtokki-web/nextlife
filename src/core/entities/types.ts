@@ -52,6 +52,13 @@ export interface PrivatePension {
   // 사적연금 조기수령 채널링(Phase 4) 전용 내부 필드. true면 55세(PRIVATE_PENSION_MIN_START_AGE)부터
   // retirementAge 이전(재직 중)에도 저율과세 한도 내에서 조기 인출해 ISA로 재투자한다. AI 추천
   // 엔진(PrivatePensionChannelingOptimizer)만 설정하며, 사용자가 직접 켜는 입력 폼 필드가 아니다.
+  //
+  // true라도 SimulationEngine.ts의 브릿지 분기는 다음 4개 조건을 모두 만족해야 실제로 발동한다:
+  // (1) !isRetired(재직 중, currentAge < retirementAge) (2) currentAge >= PRIVATE_PENSION_MIN_START_AGE
+  // (55세) (3) 이 계좌의 currentBalance > 0 (4) params.isaAccounts에 계좌가 1개 이상 존재. 조건을
+  // 하나라도 못 채우면 조기 인출은 조용히 발동하지 않는다(경고/에러 없이 무시 — 자금이 소실되지도
+  // 않고, 그렇다고 사용자에게 "왜 채널링이 안 됐는지" 알려주지도 않는다). 예: ISA 계좌를 모두
+  // 지우면 earlyChannelingEnabled가 true여도 조기 인출은 그냥 멈춘다.
   earlyChannelingEnabled?: boolean;
 }
 

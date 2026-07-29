@@ -134,11 +134,17 @@ describe('SimulationEngine 사적연금 브릿지 조기인출(Phase 4)', () => 
     const drawnPreTax = 100000000 - at55.pensionAssets;
     const isaBalanceAt54 = at54.totalAssets - at54.pensionAssets;
     const isaBalanceAt55 = at55.totalAssets - at55.pensionAssets;
-    const bridgeNetCreditToIsa = (isaBalanceAt55 - isaBalanceAt54) - isaMonthlyContribution * 12;
+    const isaAnnualInflow = isaBalanceAt55 - isaBalanceAt54;
+    const bridgeNetCreditToIsa = isaAnnualInflow - isaMonthlyContribution * 12;
     expect(drawnPreTax - at55.pensionTaxPaid).toBeCloseTo(bridgeNetCreditToIsa, 2);
     // 인출은 저율과세 한도(15,000,000)가 아니라 ISA 룸에 의해 캡된다.
     expect(drawnPreTax).toBeLessThan(15000000);
     expect(drawnPreTax).toBeCloseTo((666666.67 / (1 - 0.055)) * 12, 0);
+    // 법정 한도: ISA 연간 신규 납입 총액(정기납입 + 브릿지 크레딧)은 20,000,000원을 넘을 수 없다
+    // (부동소수점 누적 오차를 감안해 1원 미만 초과는 허용). 이번 케이스는 정기납입(12,000,000) +
+    // 브릿지가 남은 룸을 전부 채우므로 정확히 한도에 닿는다.
+    expect(isaAnnualInflow).toBeLessThanOrEqual(20000000 + 1);
+    expect(isaAnnualInflow).toBeCloseTo(20000000, 2);
   });
 
   test('ISA 잔여 납입 한도가 0이면 브릿지 인출 자체가 일어나지 않는다(세금도 내지 않는다)', () => {
@@ -153,5 +159,61 @@ describe('SimulationEngine 사적연금 브릿지 조기인출(Phase 4)', () => 
     const at55 = result.yearlyResults.find((r) => r.age === 55)!;
     expect(at55.pensionAssets).toBeCloseTo(100000000, 2); // 연금 잔액 그대로
     expect(at55.pensionTaxPaid).toBeCloseTo(0, 2);         // 세금도 없음
+  });
+
+  test('사적연금 계좌가 2개여도 저율과세 한도는 계좌 간에 공유된다', () => {
+    const engine = new SimulationEngine();
+    const params: SimulationParams = {
+      ...baseParams,
+      privatePensions: [
+        { ...baseParams.privatePensions[0], id: 'p1', balance: 100000000 },
+        { ...baseParams.privatePensions[0], id: 'p2', balance: 100000000, earlyChannelingEnabled: true },
+      ],
+    };
+    const result = engine.run(params);
+    const at54 = result.yearlyResults.find((r) => r.age === 54)!;
+    const at55 = result.yearlyResults.find((r) => r.age === 55)!;
+    // 계좌당 15,000,000(합계 30,000,000)이 아니라, 두 계좌 합계로 15,000,000만 인출되어야 한다
+    // (remainingBridgeLimitKRW가 forEach 바깥, m 루프 안에서 선언되어 계좌 간에 공유되기 때문).
+    expect(at54.pensionAssets - at55.pensionAssets).toBeCloseTo(15000000, 0);
+  });
+
+  test('첫 계좌 잔액이 한도보다 적으면 나머지를 두 번째 계좌가 채운다', () => {
+    const engine = new SimulationEngine();
+    const params: SimulationParams = {
+      ...baseParams,
+      privatePensions: [
+        { ...baseParams.privatePensions[0], id: 'p1', balance: 5000000 },
+        { ...baseParams.privatePensions[0], id: 'p2', balance: 100000000, earlyChannelingEnabled: true },
+      ],
+    };
+    const result = engine.run(params);
+    const at54 = result.yearlyResults.find((r) => r.age === 54)!;
+    const at55 = result.yearlyResults.find((r) => r.age === 55)!;
+
+    // p1(잔액 5,000,000)이 첫 4개월 만에 소진되고, 남은 8개월분(10,000,000)을 p2가 채운다 —
+    // 합계는 여전히 15,000,000이다. 엔진이 계좌별이 아닌 합산 pensionAssets만 반환하므로 합계
+    // 감소분으로 검증한다.
+    expect(at54.pensionAssets - at55.pensionAssets).toBeCloseTo(15000000, 0);
+  });
+
+  test('USD 사적연금 + KRW ISA에서도 저율과세 한도가 원화 기준으로 정확히 적용된다(통화 변환 방향 검증)', () => {
+    const engine = new SimulationEngine();
+    // 사적연금이 USD(200,000), baseExchangeRate 1350 → 원화 환산 270,000,000원. ISA는 KRW라
+    // 브릿지 크레딧을 계산할 때 pension(USD) <-> KRW(저율과세 한도) <-> ISA(KRW) 사이를
+    // convertValue로 세 번 오간다 — 인자 순서(from/to)가 하나라도 뒤바뀌면 이 테스트가 실패한다.
+    const params: SimulationParams = {
+      ...baseParams,
+      privatePensions: [
+        { ...baseParams.privatePensions[0], balance: 200000, currency: 'USD' },
+      ],
+    };
+    const result = engine.run(params);
+
+    const at54 = result.yearlyResults.find((r) => r.age === 54)!;
+    const at55 = result.yearlyResults.find((r) => r.age === 55)!;
+    // pensionAssets는 displayCurrency('KRW') 기준이므로, 저율과세 한도(연 15,000,000원)만큼
+    // 원화 환산 잔액이 감소해야 한다.
+    expect(at54.pensionAssets - at55.pensionAssets).toBeCloseTo(15000000, 0);
   });
 });
