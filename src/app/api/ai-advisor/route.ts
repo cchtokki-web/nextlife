@@ -67,9 +67,16 @@ export function buildSimulationContextText(body: AiAdvisorRequestBody): string {
   }
 
   if (recommendation?.improved) {
+    // 신규 연금계좌 납입 레그가 채택되면 개선분의 일부는 기존 자산 재배치가 아니라 사용자가
+    // 새로 마련해야 하는 자금에서 나온다. AI가 "지금 자산만 잘 굴리면 N점"이라고 단정하지
+    // 않도록 이 전제를 컨텍스트에 명시한다.
+    const newPensionCaveat = recommendation.recommendedNewPensionContribution
+      ? ' ※ 이 점수에는 연금 계좌를 새로 개설해 월 75만원(연 900만원)을 추가 납입한다는 가정이 포함되어 있어, 기존 자산 재배치만으로 달성되는 점수가 아님.'
+      : '';
     lines.push(
       `- AI 추천 전략: 인출 전략을 조정하면 평생 효용 점수를 ${recommendation.currentUtility.score}점에서 ` +
-      `${recommendation.recommendedUtility.score}점으로 높일 수 있음. 추천 이유: ${recommendation.reasons.join(' ')}`
+      `${recommendation.recommendedUtility.score}점으로 높일 수 있음. 추천 이유: ${recommendation.reasons.join(' ')}` +
+      newPensionCaveat
     );
   } else if (
     recommendation

@@ -40,8 +40,15 @@ export function generateRuleBasedAdvice(
     : `목표 월 **${targetInManwon}만원** 유지를 위해 투자금을 늘리거나 은퇴를 늦추는 것을 추천합니다.`;
 
   const hasImprovement = !!recommendation?.improved;
+  // 신규 연금계좌 납입 레그(Phase 4-B)가 채택된 경우, 개선분의 일부는 "인출 전략 조정"이 아니라
+  // 사용자가 계획 밖에서 새로 마련해 납입하는 자금에서 나온다. 이 단서를 빼면 헤드라인 문구가
+  // 기존 자산만 재배치해도 그 점수에 도달하는 것처럼 읽힌다(단서가 지금은 체크리스트 항목
+  // 라벨에만 있다).
+  const newPensionCaveat = recommendation?.recommendedNewPensionContribution
+    ? ' 다만 이 점수에는 연금 계좌를 새로 열어 월 75만원을 추가로 납입한다는 가정이 포함되어 있어, 기존 자산 재배치만으로는 전부 달성되지 않습니다.'
+    : '';
   const utilityText = hasImprovement
-    ? ` AI 분석 결과, 인출 전략을 조정하면 평생 효용 점수를 **${recommendation!.currentUtility.score}점**에서 **${recommendation!.recommendedUtility.score}점**까지 높일 수 있습니다.`
+    ? ` AI 분석 결과, 인출 전략을 조정하면 평생 효용 점수를 **${recommendation!.currentUtility.score}점**에서 **${recommendation!.recommendedUtility.score}점**까지 높일 수 있습니다.${newPensionCaveat}`
     : '';
 
   return `${statusText} ${possibilityText}${utilityText}`;
