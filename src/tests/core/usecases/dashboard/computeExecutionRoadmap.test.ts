@@ -1,8 +1,9 @@
 import { describe, test, expect } from 'vitest';
-import { computeExecutionRoadmap } from '@/core/usecases/dashboard/computeExecutionRoadmap';
+import { computeExecutionRoadmap, selectDepletionAge } from '@/core/usecases/dashboard/computeExecutionRoadmap';
 import {
   CompleteWithdrawalPlan,
   SimulationParams,
+  SimulationResult,
   StrategyRecommendation,
   UtilityBreakdown,
 } from '@/core/entities/types';
@@ -238,10 +239,75 @@ describe('computeExecutionRoadmap', () => {
 
   test('Phase 4만 채택된 경우(recommendedPlan=null)에도 로드맵과 고갈 나이가 같은 시나리오를 가리킨다', () => {
     // computeExecutionRoadmap 자체는 depletionAge를 인자로 받으므로, 여기서는 채널링 채택 시
-    // 55세 마일스톤이 나오는 것과 depletionAge 인자가 그대로 이벤트로 반영되는 것만 확인하고,
-    // 호출부의 선택 조건은 위 Step 1에서 improved 기준으로 통일한 것으로 보장한다.
+    // 55세 마일스톤이 나오는 것과 depletionAge 인자가 그대로 이벤트로 반영되는 것만 확인한다.
+    // 호출부(DashboardSection.tsx/simulator/page.tsx)가 실제로 recommendedResult의 depletionAge를
+    // 골라 넘기는지는 selectDepletionAge 자체를 검증하는 아래 describe('selectDepletionAge')에서
+    // 별도로 확인한다 — 두 호출부 모두 selectDepletionAge 한 곳만 호출하므로, 그 함수의 동작만
+    // 보장되면 화면/PDF 양쪽에 동일하게 적용된다.
     const roadmap = computeExecutionRoadmap(baseParams, makeRecommendation(null, true), 80);
     expect(roadmap.events.find((e) => e.age === 55)).toBeDefined();
     expect(roadmap.events.find((e) => e.age === 80)!.items.some((i) => i.severity === 'warning')).toBe(true);
+  });
+});
+
+// DashboardSection.tsx(화면)와 simulator/page.tsx(PDF) 양쪽이 로드맵에 넘길 depletionAge를
+// 고르는 데 공통으로 쓰는 selectDepletionAge를 직접 검증한다. computeExecutionRoadmap 자체는
+// depletionAge를 그대로 인자로 받아 반영할 뿐이라 호출부의 "어떤 시나리오의 depletionAge를
+// 넘길지" 판단 로직은 이 describe 없이는 회귀 보호가 전혀 없었다(이전 커밋의 갭).
+describe('selectDepletionAge', () => {
+  const baselineResult: SimulationResult = {
+    yearlyResults: [],
+    fireAge: null,
+    depletionAge: 75,
+    endingAssets: 0,
+    retirementScore: 0,
+    retirementGrade: '보통',
+    goalAchievementRate: 100,
+    retirementAssetsAtRetirement: 0,
+  };
+
+  test('recommendation이 없으면 baseline(result)의 depletionAge를 쓴다', () => {
+    expect(selectDepletionAge(undefined, baselineResult)).toBe(75);
+  });
+
+  test('improved가 false면 recommendedResult가 달라도 baseline(result)의 depletionAge를 쓴다', () => {
+    const rec: StrategyRecommendation = {
+      ...makeRecommendation(null),
+      improved: false,
+      recommendedResult: { ...baselineResult, depletionAge: 60 },
+    };
+    expect(selectDepletionAge(rec, baselineResult)).toBe(75);
+  });
+
+  // 이게 이번 수정이 고치는 정확한 케이스다: Phase 3/4(배당 재투자·사적연금 채널링·신규
+  // 연금계좌 납입)가 단독으로 채택되면 recommendedPlan은 null이지만 improved는 true다.
+  // recommendedPlan 유무로만 판단하던 예전 조건이라면 이 케이스에서 baseline(75)을 반환해,
+  // 로드맵의 마일스톤(추천 시나리오 기준)과 고갈 나이(baseline 기준)가 서로 다른 시나리오를
+  // 섞어 보여주는 버그가 재현된다.
+  test('improved가 true이고 recommendedPlan이 null이어도(신규 연금계좌 납입만 채택) recommendedResult의 depletionAge를 쓴다', () => {
+    const rec: StrategyRecommendation = {
+      ...makeRecommendation(null),
+      improved: true,
+      recommendedNewPensionContribution: true,
+      recommendedResult: { ...baselineResult, depletionAge: 82 },
+    };
+    expect(selectDepletionAge(rec, baselineResult)).toBe(82);
+  });
+
+  test('improved가 true이고 recommendedPlan도 있으면 recommendedResult의 depletionAge를 쓴다', () => {
+    const plan: CompleteWithdrawalPlan = {
+      privatePensionMonthlyTarget: 0,
+      nationalPensionStartAge: 65,
+      assetSellOrderStrategy: 'input_order',
+      isaMaturityDestination: 'pension',
+      generalAssetWithdrawalStartAge: 60,
+      monthlySpendingMultiplier: 1,
+    };
+    const rec: StrategyRecommendation = {
+      ...makeRecommendation(plan),
+      improved: true,
+      recommendedResult: { ...baselineResult, depletionAge: 88 },
+    };
+    expect(selectDepletionAge(rec, baselineResult)).toBe(88);
   });
 });

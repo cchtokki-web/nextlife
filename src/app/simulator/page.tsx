@@ -5,7 +5,7 @@ import { useSession, signOut } from 'next-auth/react';
 import { SimulationEngine } from '../../core/usecases/SimulationEngine';
 import { computeMonthlySpendingComposition } from '../../core/usecases/MonthlySpendingComposition';
 import { computeRiskAlerts } from '../../core/usecases/dashboard/computeRiskAlerts';
-import { computeExecutionRoadmap } from '../../core/usecases/dashboard/computeExecutionRoadmap';
+import { computeExecutionRoadmap, selectDepletionAge } from '../../core/usecases/dashboard/computeExecutionRoadmap';
 import { computeSensitivityAnalysis } from '../../core/usecases/dashboard/computeSensitivityAnalysis';
 import { renderRiskAlertsSection, renderItemizedChecklistSection, renderExecutionRoadmapSection, renderSensitivityTableSection } from '../../web/features/Pdf/pdfReportSections';
 import { recommendStrategy } from '../../core/usecases/strategy/RecommendationEngine';
@@ -273,11 +273,7 @@ export default function Home() {
 
       const riskAlerts = computeRiskAlerts(result, activeParams);
       const riskAlertsSectionHtml = renderRiskAlertsSection(riskAlerts);
-      const roadmap = computeExecutionRoadmap(
-        activeParams,
-        recommendation,
-        recommendation?.improved ? recommendation.recommendedResult.depletionAge : result.depletionAge
-      );
+      const roadmap = computeExecutionRoadmap(activeParams, recommendation, selectDepletionAge(recommendation, result));
       const executionRoadmapSectionHtml = renderExecutionRoadmapSection(roadmap);
       const sensitivityScenarios = computeSensitivityAnalysis(activeParams, result, engine);
       const sensitivityTableSectionHtml = renderSensitivityTableSection(sensitivityScenarios);

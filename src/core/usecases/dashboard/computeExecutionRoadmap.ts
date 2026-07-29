@@ -1,7 +1,25 @@
 import { getIdentityPlan } from '../strategy/StrategyCandidateGenerator';
 import { NATIONAL_PENSION_NORMAL_START_AGE } from '../pension/nationalPensionRules';
 import { clampPrivatePensionStartAge, PRIVATE_PENSION_MIN_START_AGE } from '../pension/privatePensionRules';
-import { SimulationParams, StrategyRecommendation } from '../../entities/types';
+import { SimulationParams, SimulationResult, StrategyRecommendation } from '../../entities/types';
+
+// 로드맵(computeExecutionRoadmap)에 넘길 depletionAge를 고르는 단일 지점. 화면(DashboardSection)과
+// PDF(simulator/page.tsx) 양쪽에서 이 함수로 호출부를 통일해, 로드맵의 나이 마일스톤과 자산 고갈
+// 나이가 항상 같은 시나리오를 가리키도록 보장한다.
+//
+// recommendation이 개선(improved)을 찾았으면 로드맵의 마일스톤도 추천 시나리오
+// (recommendation.recommendedPlan ?? getIdentityPlan) 기준으로 그려지므로, 고갈 나이도 같은
+// recommendedResult에서 가져와야 한다. recommendedPlan 유무만으로 판단하면 Phase 3/4(배당
+// 재투자, 사적연금 채널링, 신규 연금계좌 납입)가 단독으로 채택되어 recommendedPlan은 null이지만
+// improved는 true인 경우, 로드맵은 추천 시나리오의 마일스톤과 baseline 시나리오의 고갈 나이를
+// 섞어 보여주는 모순이 생긴다. improved가 아니면(개선을 찾지 못했거나 recommendation이 없으면)
+// baseline인 result의 고갈 나이를 쓴다.
+export function selectDepletionAge(
+  recommendation: StrategyRecommendation | undefined,
+  result: SimulationResult
+): number | null {
+  return recommendation?.improved ? recommendation.recommendedResult.depletionAge : result.depletionAge;
+}
 
 export interface RoadmapEventItem {
   title: string;
