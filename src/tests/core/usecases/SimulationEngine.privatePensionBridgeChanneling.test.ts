@@ -111,70 +111,47 @@ describe('SimulationEngine 사적연금 브릿지 조기인출(Phase 4)', () => 
     expect(at55!.pensionAssets).toBeCloseTo(100000000, 2); // 사적연금 잔액이 변하지 않음
   });
 
-  test('Fix 4: ISA가 이미 정기 납입으로 월 한도 일부를 채운 상태면, 브릿지 크레딧은 남은 한도만큼만 들어가 연간 총 유입액이 법정 한도(2천만원)를 넘지 않는다', () => {
+  test('ISA 잔여 납입 한도가 부분적으로만 남아 있으면 그 한도만큼만 인출하고 자금 소실은 없다', () => {
     const engine = new SimulationEngine();
-    const monthlyLimit = 20000000 / 12; // ISA 월 법정 납입 한도 (KRW)
-    const isaMonthlyContribution = 1000000; // 한도(약 166.7만원)보다 낮게 설정해 매달 66.7만원의 여유(room)만 남긴다
+    // ISA가 월 한도(20,000,000/12 = 1,666,666.67원) 중 1,000,000원을 이미 정기납입으로 소진 →
+    // 브릿지가 쓸 수 있는 잔여 룸은 666,666.67원. 세율 5.5%이므로 세전 인출 상한은
+    // 666,666.67 / (1 - 0.055) = 705,467.37원.
+    const isaMonthlyContribution = 1000000;
     const params: SimulationParams = {
       ...baseParams,
-      isaAccounts: [
-        {
-          ...baseParams.isaAccounts![0],
-          monthlyContribution: isaMonthlyContribution,
-          annualReturn: 0, // growth/dividend를 0으로 고정해 유입액 계산을 단순화한다
-          dividendYield: 0,
-        },
-      ],
+      isaAccounts: [{ ...baseParams.isaAccounts![0], monthlyContribution: isaMonthlyContribution }],
     };
-    const result = engine.run(params); // expectancy: 55 (baseParams) — age 50~55 구간이 모두 존재
+    const result = engine.run(params);
 
-    // baseParams는 currentAge:50이라 ISA가 50~54세에도 정기납입을 계속 쌓는다 — 브릿지가 막 시작된
-    // "그 해(55세)"만의 순수 유입액을 보려면 54→55세 구간의 델타로 봐야 한다(54세까지는 브릿지가
-    // 아직 발동하지 않으므로 순수 정기납입 누적만 있다).
-    const at54 = result.yearlyResults.find((r) => r.age === 54);
-    const at55 = result.yearlyResults.find((r) => r.age === 55);
-    // assets=[]이므로 stockAssets는 항상 0 — ISA 잔액은 totalAssets에서 pensionAssets를 뺀 값과 같다.
-    const isaBalanceAt54 = at54!.totalAssets - at54!.pensionAssets;
-    const isaBalanceAt55 = at55!.totalAssets - at55!.pensionAssets;
-    const annualIsaInflowAt55 = isaBalanceAt55 - isaBalanceAt54;
+    const at54 = result.yearlyResults.find((r) => r.age === 54)!;
+    const at55 = result.yearlyResults.find((r) => r.age === 55)!;
 
-    // 캡이 없었다면(버그): 매달 정기납입(100만원) + 무제한 브릿지 순액(약 118.125만원)이 그대로
-    // 더해져 연간 약 2,617.5만원까지 쌓여 법정 한도(2천만원)를 크게 초과했을 것이다.
-    const uncappedAnnualInflow = 12 * (isaMonthlyContribution + (15000000 / 12) * (1 - 0.055));
-    expect(uncappedAnnualInflow).toBeGreaterThan(20000000);
-
-    // 수정 후: 매달 "정기납입 + 브릿지 크레딧"의 합이 월 한도를 넘지 않도록 브릿지 크레딧이
-    // 캡핑되므로, 55세 그 해의 총 유입액은 법정 한도(2천만원)를 넘지 않는다.
-    expect(annualIsaInflowAt55).toBeLessThanOrEqual(20000000 + 1e-6);
-    expect(annualIsaInflowAt55).toBeCloseTo(20000000, 2);
+    // 자금 보존: (인출액 - 세금)이 ISA에 적립된 브릿지 순크레딧과 정확히 같아야 한다(초과분 소실
+    // 없음). ISA 잔액 증가분에는 브릿지 크레딧 외에 ISA 자체의 정기납입(연 1,200만원 — 브릿지와
+    // 무관하게 currentAge:50부터 매년 발생하는 외부 자금 유입)도 섞여 있으므로, 단순히
+    // totalAssets(54)-totalAssets(55)를 세금과 비교하면 이 정기납입 유입분(12,000,000원) 때문에
+    // 어긋난다. 따라서 정기납입분을 분리해 브릿지 크레딧만 비교한다.
+    const drawnPreTax = 100000000 - at55.pensionAssets;
+    const isaBalanceAt54 = at54.totalAssets - at54.pensionAssets;
+    const isaBalanceAt55 = at55.totalAssets - at55.pensionAssets;
+    const bridgeNetCreditToIsa = (isaBalanceAt55 - isaBalanceAt54) - isaMonthlyContribution * 12;
+    expect(drawnPreTax - at55.pensionTaxPaid).toBeCloseTo(bridgeNetCreditToIsa, 2);
+    // 인출은 저율과세 한도(15,000,000)가 아니라 ISA 룸에 의해 캡된다.
+    expect(drawnPreTax).toBeLessThan(15000000);
+    expect(drawnPreTax).toBeCloseTo((666666.67 / (1 - 0.055)) * 12, 0);
   });
 
-  test('Fix 4: ISA가 이미 월 한도를 꽉 채운 상태면 브릿지 크레딧은 전혀 들어가지 않는다', () => {
+  test('ISA 잔여 납입 한도가 0이면 브릿지 인출 자체가 일어나지 않는다(세금도 내지 않는다)', () => {
     const engine = new SimulationEngine();
-    const monthlyLimit = 20000000 / 12;
+    // ISA가 월 한도를 전부 정기납입으로 소진 → 브릿지 룸 0 → 인출 0
     const params: SimulationParams = {
       ...baseParams,
-      isaAccounts: [
-        {
-          ...baseParams.isaAccounts![0],
-          monthlyContribution: monthlyLimit, // 이미 한도를 꽉 채움 → room = 0
-          annualReturn: 0,
-          dividendYield: 0,
-        },
-      ],
+      isaAccounts: [{ ...baseParams.isaAccounts![0], monthlyContribution: 20000000 / 12 }],
     };
-    const result = engine.run(params); // expectancy: 55 (baseParams) — age 50~55 구간이 모두 존재
+    const result = engine.run(params);
 
-    const at54 = result.yearlyResults.find((r) => r.age === 54);
-    const at55 = result.yearlyResults.find((r) => r.age === 55);
-    const isaBalanceAt54 = at54!.totalAssets - at54!.pensionAssets;
-    const isaBalanceAt55 = at55!.totalAssets - at55!.pensionAssets;
-    const annualIsaInflowAt55 = isaBalanceAt55 - isaBalanceAt54;
-
-    // 정기납입만큼만 쌓이고(연 2천만원), 브릿지 크레딧은 room이 0이라 전혀 반영되지 않는다.
-    expect(annualIsaInflowAt55).toBeCloseTo(monthlyLimit * 12, 2);
-    // 사적연금 쪽은 브릿지 인출 자체는 그대로 발생(세금까지 낸 뒤 자금이 유실)하므로 잔액은 여전히
-    // 저율과세 한도(1500만원)만큼 감소한다 — 인출 자체를 막는 것이 아니라 ISA 측 크레딧만 캡한다.
-    expect(at55!.pensionAssets).toBeCloseTo(100000000 - 15000000, 2);
+    const at55 = result.yearlyResults.find((r) => r.age === 55)!;
+    expect(at55.pensionAssets).toBeCloseTo(100000000, 2); // 연금 잔액 그대로
+    expect(at55.pensionTaxPaid).toBeCloseTo(0, 2);         // 세금도 없음
   });
 });

@@ -539,29 +539,38 @@ export class SimulationEngine {
             const limitInPensionCurrency = this.convertValue(
               Math.max(0, remainingBridgeLimitKRW), 'KRW', pension.currency, exchangeRate
             );
-            const drawAmountRaw = Math.min(pension.currentBalance, limitInPensionCurrency);
-            remainingBridgeLimitKRW -= this.convertValue(drawAmountRaw, pension.currency, 'KRW', exchangeRate);
-            pension.currentBalance -= drawAmountRaw;
-
             const taxRate = getPrivatePensionIncomeTaxRate(currentAge);
-            const drawAmountTax = drawAmountRaw * taxRate;
-            const drawAmountNet = drawAmountRaw - drawAmountTax;
 
-            // Fix(important): 이 크레딧은 ISA Processing에서 이미 소비되고 남은 이번 달 법정
-            // 납입 한도(isaBridgeRoomRemainingInIsaCurrency) 내에서만 반영한다 — 이미 한도를 꽉
-            // 채운 ISA가 브릿지 재투자로 실질 연간 2천만원 한도를 초과해 받는 것을 막기 위함이다.
-            // 한도를 넘는 초과분은 어디에도 크레딧되지 않는다(단순화: 이 엔진이 다른 capped
-            // 흐름들에도 이미 적용하는 "초과분은 유실/미모델링" 처리와 동일한 방식 — 새로운
-            // 목적지를 발명하지 않는다).
-            const netInIsaCurrency = this.convertValue(drawAmountNet, pension.currency, activeIsas[0].currency, exchangeRate);
-            const cappedNetInIsaCurrency = Math.min(netInIsaCurrency, isaBridgeRoomRemainingInIsaCurrency);
-            activeIsas[0].currentBalance += cappedNetInIsaCurrency;
-            activeIsas[0].totalInvested += cappedNetInIsaCurrency;
-            isaBridgeRoomRemainingInIsaCurrency -= cappedNetInIsaCurrency;
+            // 인출액은 ISA가 이번 달 실제로 받을 수 있는 만큼으로 제한한다 — 놓을 곳이 없는 돈을
+            // 먼저 빼서 과세한 뒤 버리면 자금이 소멸한다(총자산 보존 위반). 이 엔진의 다른 캡들
+            // (:409 ISA 납입 캡, :510 연금 인출 캡)도 모두 유출 자체를 줄이는 방식이며, 이 분기만
+            // 예외가 되어서는 안 된다. ISA 잔여 룸(세후 기준)을 세전으로 역산해 상한에 포함한다.
+            const roomInPensionCurrency = this.convertValue(
+              isaBridgeRoomRemainingInIsaCurrency, activeIsas[0].currency, pension.currency, exchangeRate
+            );
+            const maxRawByIsaRoom = taxRate < 1 ? roomInPensionCurrency / (1 - taxRate) : 0;
+            const drawAmountRaw = Math.max(
+              0,
+              Math.min(pension.currentBalance, limitInPensionCurrency, maxRawByIsaRoom)
+            );
 
-            annualPensionTaxPaid += this.convertValue(drawAmountTax, pension.currency, displayCurrency, exchangeRate);
-            annualPreTaxTotalIncome += this.convertValue(drawAmountRaw, pension.currency, displayCurrency, exchangeRate);
-            annualPrivatePensionPreTaxKRW += this.convertValue(drawAmountRaw, pension.currency, 'KRW', exchangeRate);
+            if (drawAmountRaw > 0) {
+              remainingBridgeLimitKRW -= this.convertValue(drawAmountRaw, pension.currency, 'KRW', exchangeRate);
+              pension.currentBalance -= drawAmountRaw;
+
+              const drawAmountTax = drawAmountRaw * taxRate;
+              const drawAmountNet = drawAmountRaw - drawAmountTax;
+
+              // 인출액이 이미 ISA 룸으로 캡되어 있으므로 순액은 전액 적립된다(소실 없음).
+              const netInIsaCurrency = this.convertValue(drawAmountNet, pension.currency, activeIsas[0].currency, exchangeRate);
+              activeIsas[0].currentBalance += netInIsaCurrency;
+              activeIsas[0].totalInvested += netInIsaCurrency;
+              isaBridgeRoomRemainingInIsaCurrency = Math.max(0, isaBridgeRoomRemainingInIsaCurrency - netInIsaCurrency);
+
+              annualPensionTaxPaid += this.convertValue(drawAmountTax, pension.currency, displayCurrency, exchangeRate);
+              annualPreTaxTotalIncome += this.convertValue(drawAmountRaw, pension.currency, displayCurrency, exchangeRate);
+              annualPrivatePensionPreTaxKRW += this.convertValue(drawAmountRaw, pension.currency, 'KRW', exchangeRate);
+            }
           }
         });
         annualPrivatePensionIncome += monthlyPensionIncomeNetDisplay;
