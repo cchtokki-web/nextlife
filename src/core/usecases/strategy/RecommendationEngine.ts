@@ -468,6 +468,7 @@ export function recommendStrategy(
     recommendedAssetReinvestment: reinvestOpt.recommendedAssetReinvestment,
     recommendedPrivatePensionChanneling: channelingOpt.recommendedPrivatePensionChanneling,
     recommendedNewPensionContribution: channelingOpt.recommendedNewPensionContribution,
+    channelingIncludesAccountTransfer: channelingOpt.channelingIncludesAccountTransfer,
     improved,
     reasons,
     totalCandidateCount,

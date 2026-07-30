@@ -77,7 +77,10 @@ const bestUtility: UtilityBreakdown = { score: 70, components: zeroComponents };
 const bestResult = makeResult(70);
 
 // 후보 params를 보고 어떤 레그인지 식별한다. 호출 순서에 의존하지 않고 레그별 점수를 주기 위한 헬퍼.
-type Leg = 'channeling' | 'newPension' | 'combined';
+// 'channelingBaseline'은 Fix(중요 #1)로 추가된 대조군이다: isaMaturityDestination만 'asset'으로
+// 바꾸고 조기수령은 켜지 않은 후보로, isaMaturityDestination 변경 효과가 채널링 효과로
+// 오귀속되는 것을 막기 위해 채택 판정의 기준선으로 쓰인다.
+type Leg = 'channeling' | 'channelingBaseline' | 'newPension' | 'combined';
 
 // 금액(750,000원)이 아니라 id로 식별한다 — 기존 계좌 납입 합계가 우연히 750,000원이면 이전용
 // 계좌를 신규 계좌로 오인해 채널링 후보가 'combined'로 잘못 분류된다.
@@ -103,7 +106,10 @@ function legOf(params: SimulationParams): Leg {
   const hasNewAccount = params.privatePensions.some(isNewAccount);
   if (hasChanneling && hasNewAccount) return 'combined';
   if (hasChanneling) return 'channeling';
-  return 'newPension';
+  if (hasNewAccount) return 'newPension';
+  // 채널링도 신규계좌도 아니면 대조군(channelingBaseline)이다 — isaMaturityDestination만
+  // 'asset'으로 바뀐 원본 계좌 구성이다.
+  return 'channelingBaseline';
 }
 
 // 레그별 점수를 지정해 mock 엔진을 만든다(지정하지 않은 레그는 baseline과 동점 = 비개선).
@@ -273,6 +279,33 @@ describe('optimizePrivatePensionChanneling - 채널링 레그 params', () => {
     expect(channelingParams.privatePensions[0].id).toBe('existing-1');
   });
 
+  // Fix(중요 #2) 회귀: 기존 계좌 납입이 전부 0이면 이전용 계좌가 생기지 않으므로(위 테스트), 채택
+  // 라벨도 "계좌 이전"을 시뮬레이션되지 않은 행동으로 단언하면 안 된다.
+  test('기존 계좌 납입이 0이면 채택 라벨에 "계좌 이전" 문구를 넣지 않는다', () => {
+    const { engine } = makeEngineByLeg({ channeling: 80 });
+    const params = paramsWithBothLegs({
+      privatePensions: [makePension({ id: 'existing-1', monthlyContribution: 0 })],
+    });
+
+    const result = optimizePrivatePensionChanneling(params, bestResult, bestUtility, engine, DEFAULT_UTILITY_CONFIG);
+
+    expect(result.channelingIncludesAccountTransfer).toBe(false);
+    expect(result.itemizedContributions[0].label).not.toContain('기존 연금 계좌 납입은 중단');
+    expect(result.itemizedContributions[0].label).toContain('ISA 만기 자금은 일반 자산으로 이전합니다');
+  });
+
+  test('기존 계좌 납입이 있으면 채택 라벨에 "계좌 이전" 문구를 넣는다', () => {
+    const { engine } = makeEngineByLeg({ channeling: 80 });
+    const params = paramsWithBothLegs({
+      privatePensions: [makePension({ id: 'existing-1', monthlyContribution: 500000 })],
+    });
+
+    const result = optimizePrivatePensionChanneling(params, bestResult, bestUtility, engine, DEFAULT_UTILITY_CONFIG);
+
+    expect(result.channelingIncludesAccountTransfer).toBe(true);
+    expect(result.itemizedContributions[0].label).toContain('기존 연금 계좌 납입은 중단');
+  });
+
   test('통화가 섞여 있어도 각 이전용 계좌가 원본 통화·금액을 그대로 쓰므로 환율 환산이 필요 없다', () => {
     // 예전 구현은 합계를 KRW로 환산해 하나의 계좌로 묶느라 엔진의 private getExchangeRate를
     // 복제해야 했다(환율이 어긋나면 순유입 보존이 깨지는 취약한 결합). 계좌별 이전으로 바뀌면서
@@ -358,8 +391,9 @@ describe('optimizePrivatePensionChanneling - 채택 판정', () => {
     expect(result.itemizedContributions[0].label).toContain('사적연금을 55세부터');
     expect(result.itemizedContributions[0].utilityDelta).toBe(10);
     expect(result.finalUtility.score).toBe(80);
-    expect(runForUtility).toHaveBeenCalledTimes(2);
-    expect(result.attemptedCount).toBe(2);
+    // 3회: channelingBaseline(대조군, 미지정이라 70) + channeling(80) + newPension(65)
+    expect(runForUtility).toHaveBeenCalledTimes(3);
+    expect(result.attemptedCount).toBe(3);
   });
 
   test('신규계좌만 유리하면 신규계좌만 채택한다', () => {
@@ -392,9 +426,10 @@ describe('optimizePrivatePensionChanneling - 채택 판정', () => {
     expect(result.itemizedContributions[1].utilityDelta).toBe(10);
     // finalResult는 두 레그를 함께 적용한 통합 시뮬레이션 결과다
     expect(result.finalUtility.score).toBe(90);
-    expect(runForUtility).toHaveBeenCalledTimes(3);
-    expect(result.attemptedCount).toBe(3);
-    expect(legOf(runForUtility.mock.calls[2][0])).toBe('combined');
+    // 4회: channelingBaseline + channeling + newPension + combined
+    expect(runForUtility).toHaveBeenCalledTimes(4);
+    expect(result.attemptedCount).toBe(4);
+    expect(legOf(runForUtility.mock.calls[3][0])).toBe('combined');
   });
 
   test('통합 결과가 baseline보다는 낫지만 단일 레그보다 나쁘면 그 단일 레그를 채택한다', () => {
@@ -412,8 +447,9 @@ describe('optimizePrivatePensionChanneling - 채택 판정', () => {
     expect(result.itemizedContributions[0].utilityDelta).toBe(20);
     expect(result.finalUtility.score).toBe(90);
     expect(result.finalResult.retirementScore).toBe(90);
-    expect(runForUtility).toHaveBeenCalledTimes(3);
-    expect(result.attemptedCount).toBe(3);
+    // 4회: channelingBaseline + channeling + newPension + combined
+    expect(runForUtility).toHaveBeenCalledTimes(4);
+    expect(result.attemptedCount).toBe(4);
   });
 
   test('통합이 단일 레그와 동점이면 더 적은 행동을 요구하는 단일 레그를 채택한다', () => {
@@ -428,6 +464,20 @@ describe('optimizePrivatePensionChanneling - 채택 판정', () => {
     expect(result.finalUtility.score).toBe(90);
   });
 
+  // Fix(중요 #4) 회귀: 채널링과 신규계좌 단독 점수가 동점이고 통합이 그 점수를 넘지 못하면,
+  // "새 돈을 요구하지 않는" 채널링을 우선한다(`>=`). 이 동점 분기 자체가 지금까지 테스트되지
+  // 않아 `>`로 실수 변경돼도(신규계좌가 채택됨) 통과했다.
+  test('채널링과 신규계좌 단독 점수가 동점이면 채널링을 우선 채택한다', () => {
+    const { engine } = makeEngineByLeg({ channeling: 80, newPension: 80, combined: 75 });
+    const params = paramsWithBothLegs();
+
+    const result = optimizePrivatePensionChanneling(params, bestResult, bestUtility, engine, DEFAULT_UTILITY_CONFIG);
+
+    expect(result.recommendedPrivatePensionChanneling).toBe(true);
+    expect(result.recommendedNewPensionContribution).toBeNull();
+    expect(result.finalUtility.score).toBe(80);
+  });
+
   test('통합 결과가 baseline보다 나쁘면 더 나은 단일 레그만 채택한다', () => {
     const { engine } = makeEngineByLeg({ channeling: 75, newPension: 80, combined: 60 });
     const params = paramsWithBothLegs();
@@ -438,7 +488,8 @@ describe('optimizePrivatePensionChanneling - 채택 판정', () => {
     expect(result.recommendedNewPensionContribution).toBe(true);
     expect(result.itemizedContributions).toHaveLength(1);
     expect(result.finalUtility.score).toBe(80);
-    expect(result.attemptedCount).toBe(3);
+    // 4회: channelingBaseline + channeling + newPension + combined
+    expect(result.attemptedCount).toBe(4);
   });
 
   test('두 레그 모두 불리하면 no-op이고 finalResult/finalUtility는 입력 그대로다', () => {
@@ -452,7 +503,8 @@ describe('optimizePrivatePensionChanneling - 채택 판정', () => {
     expect(result.itemizedContributions).toEqual([]);
     expect(result.finalResult).toBe(bestResult);
     expect(result.finalUtility).toBe(bestUtility);
-    expect(result.attemptedCount).toBe(2);
+    // 3회: channelingBaseline(대조군, 70) + channeling(60) + newPension(65) — 둘 다 대조군/baseline을 못 넘음
+    expect(result.attemptedCount).toBe(3);
     expect(result.failedCount).toBe(0);
   });
 
@@ -464,6 +516,36 @@ describe('optimizePrivatePensionChanneling - 채택 판정', () => {
 
     expect(result.recommendedPrivatePensionChanneling).toBeNull();
     expect(result.recommendedNewPensionContribution).toBeNull();
+  });
+
+  // Fix(중요 #1) 회귀: 채널링 후보는 baseline 대비로만 보면 개선처럼 보여도, 그 개선이 전부
+  // isaMaturityDestination:'asset' 오버라이드(대조군에도 동일하게 적용됨)에서 온 것이라면 조기수령
+  // 자체는 아무 효과가 없다는 뜻이다. 실측 사례: ISA 정기납입이 월 한도를 채운 사용자는 브릿지
+  // 인출이 0원 실행되는데도 채널링만 baseline과 비교하면(옛 로직) "채택"으로 잘못 나왔다.
+  test('채널링 점수가 baseline보다 높아도 isaMaturityDestination 대조군과 동점이면(조기수령 자체는 무효과) 채택하지 않는다', () => {
+    const { engine, runForUtility } = makeEngineByLeg({ channeling: 75, channelingBaseline: 75 });
+    const params = paramsWithBothLegs();
+
+    const result = optimizePrivatePensionChanneling(params, bestResult, bestUtility, engine, DEFAULT_UTILITY_CONFIG);
+
+    expect(result.recommendedPrivatePensionChanneling).toBeNull();
+    expect(result.recommendedNewPensionContribution).toBeNull();
+    expect(result.finalResult).toBe(bestResult);
+    expect(result.finalUtility).toBe(bestUtility);
+    expect(legOf(runForUtility.mock.calls[0][0])).toBe('channelingBaseline');
+  });
+
+  test('채널링 점수가 isaMaturityDestination 대조군보다 높으면(조기수령 자체가 유효) 채택한다', () => {
+    const { engine } = makeEngineByLeg({ channeling: 80, channelingBaseline: 72, newPension: 65 });
+    const params = paramsWithBothLegs();
+
+    const result = optimizePrivatePensionChanneling(params, bestResult, bestUtility, engine, DEFAULT_UTILITY_CONFIG);
+
+    expect(result.recommendedPrivatePensionChanneling).toBe(true);
+    // 표시되는 delta는 대조군이 아니라 진짜 baseline(bestUtility) 대비 총 개선분이다 —
+    // isaMaturityDestination 변경도 채널링 채택 시 실제로 적용되는 행동이라 표시상 숨기지 않는다.
+    expect(result.itemizedContributions[0].utilityDelta).toBe(10);
+    expect(result.finalUtility.score).toBe(80);
   });
 });
 
@@ -480,9 +562,33 @@ describe('optimizePrivatePensionChanneling - 실패 처리', () => {
     const result = optimizePrivatePensionChanneling(params, bestResult, bestUtility, engine, DEFAULT_UTILITY_CONFIG);
 
     expect(result.failedCount).toBe(1);
-    expect(result.attemptedCount).toBe(2);
+    // 3회: channelingBaseline(성공, 85) + channeling(실패) + newPension(성공, 85)
+    expect(result.attemptedCount).toBe(3);
     expect(result.recommendedPrivatePensionChanneling).toBeNull();
     expect(result.recommendedNewPensionContribution).toBe(true);
+    expect(result.finalUtility.score).toBe(85);
+  });
+
+  // pr-test-analyzer 지적: 채널링 레그의 DomainError 처리만 테스트되고 신규계좌 레그는 대칭
+  // 테스트가 없었다. runLeg는 두 레그가 공유하는 코드 경로이므로 위험도는 낮지만, 완결성을 위해
+  // 추가한다.
+  test('신규계좌 레그가 DomainError로 실패해도 채널링 레그는 계속 평가하고 failedCount를 센다', () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const runForUtility = vi.fn((params: SimulationParams) => {
+      const leg = legOf(params);
+      if (leg === 'newPension') throw new DomainError('평가 실패');
+      return makeResult(leg === 'channeling' ? 85 : 70);
+    });
+    const engine = { runForUtility } as unknown as SimulationEngine;
+    const params = paramsWithBothLegs();
+
+    const result = optimizePrivatePensionChanneling(params, bestResult, bestUtility, engine, DEFAULT_UTILITY_CONFIG);
+
+    expect(result.failedCount).toBe(1);
+    // 3회: channelingBaseline(70) + channeling(85) + newPension(실패)
+    expect(result.attemptedCount).toBe(3);
+    expect(result.recommendedPrivatePensionChanneling).toBe(true);
+    expect(result.recommendedNewPensionContribution).toBeNull();
     expect(result.finalUtility.score).toBe(85);
   });
 
@@ -499,13 +605,14 @@ describe('optimizePrivatePensionChanneling - 실패 처리', () => {
     const result = optimizePrivatePensionChanneling(params, bestResult, bestUtility, engine, DEFAULT_UTILITY_CONFIG);
 
     expect(result.failedCount).toBe(1);
-    expect(result.attemptedCount).toBe(3);
+    // 4회: channelingBaseline(80) + channeling(90) + newPension(80) + combined(실패)
+    expect(result.attemptedCount).toBe(4);
     expect(result.recommendedPrivatePensionChanneling).toBe(true);
     expect(result.recommendedNewPensionContribution).toBeNull();
     expect(result.finalUtility.score).toBe(90);
   });
 
-  test('두 레그 모두 DomainError면 no-op이고 failedCount는 2다', () => {
+  test('두 레그 모두 DomainError면 no-op이고 failedCount는 시도한 후보 수만큼이다', () => {
     vi.spyOn(console, 'warn').mockImplementation(() => {});
     const runForUtility = vi.fn((_params: SimulationParams) => {
       throw new DomainError('평가 실패');
@@ -515,8 +622,9 @@ describe('optimizePrivatePensionChanneling - 실패 처리', () => {
 
     const result = optimizePrivatePensionChanneling(params, bestResult, bestUtility, engine, DEFAULT_UTILITY_CONFIG);
 
-    expect(result.attemptedCount).toBe(2);
-    expect(result.failedCount).toBe(2);
+    // 3회 시도(channelingBaseline + channeling + newPension) 모두 DomainError
+    expect(result.attemptedCount).toBe(3);
+    expect(result.failedCount).toBe(3);
     expect(result.finalResult).toBe(bestResult);
     expect(result.finalUtility).toBe(bestUtility);
   });

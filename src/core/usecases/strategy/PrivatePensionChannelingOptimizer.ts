@@ -36,14 +36,25 @@ export function isChannelingTransferPensionId(id: string): boolean {
   return id.startsWith(`${CHANNELING_TRANSFER_PENSION_ID_PREFIX}-`);
 }
 
-const CHANNELING_LABEL =
-  '사적연금을 55세부터 조기 수령해 ISA에 재투자합니다. 실제로 옮길 수 있는 금액은 사적연금 ' +
-  '저율과세 한도(연 1,500만원)와 ISA 납입 한도(연 2,000만원)의 잔여 여력 중 더 작은 쪽으로 ' +
-  '제한되며, ISA에 이미 정기 납입을 하고 있다면 대개 ISA 잔여 납입 한도가 실질적인 상한이 되어 ' +
-  '연 1,500만원보다 훨씬 적은 금액만 이전됩니다. ' +
-  '기존 연금 계좌 납입은 중단하고 같은 금액·같은 운용 조건의 새 계좌로 옮기며, ISA 만기 자금은 일반 자산으로 이전합니다.';
-// 두 번째 문장은 이 레그의 점수가 어떤 가정 위에 서 있는지 알리는 것이다(모듈 헤더의 모델 한계 참조).
-// 이 라벨은 체크리스트·PDF·AI 프롬프트로 그대로 흘러가므로, 여기 적으면 모든 표면에 전달된다.
+// 두 번째 문장(계좌 이전/ISA 만기 이전)은 이 레그의 점수가 어떤 가정 위에 서 있는지 알리는 것이다
+// (모듈 헤더의 모델 한계 참조). 이 라벨은 체크리스트·PDF·AI 프롬프트로 그대로 흘러가므로, 여기
+// 적으면 모든 표면에 전달된다.
+//
+// "기존 계좌 납입 중단 후 새 계좌로 이전" 절은 hasAccountTransfer(= 채널링 대상 계좌 중
+// monthlyContribution > 0인 계좌가 하나라도 있는지)일 때만 넣는다 — 전부 납입 0인 사용자는
+// buildChannelingParams가 이전용 계좌를 아예 만들지 않으므로(코드 참조), 시뮬레이션되지 않은
+// 행동을 단언하면 안 된다. ISA 만기 이전 문장은 채널링이 켜지면 항상 참이므로(withdrawalPlan
+// 오버라이드가 무조건 적용됨) 조건 없이 남긴다.
+function buildChannelingLabel(hasAccountTransfer: boolean): string {
+  return (
+    '사적연금을 55세부터 조기 수령해 ISA에 재투자합니다. 실제로 옮길 수 있는 금액은 사적연금 ' +
+    '저율과세 한도(연 1,500만원)와 ISA 납입 한도(연 2,000만원)의 잔여 여력 중 더 작은 쪽으로 ' +
+    '제한되며, ISA에 이미 정기 납입을 하고 있다면 대개 ISA 잔여 납입 한도가 실질적인 상한이 되어 ' +
+    '연 1,500만원보다 훨씬 적은 금액만 이전됩니다. ' +
+    (hasAccountTransfer ? '기존 연금 계좌 납입은 중단하고 같은 금액·같은 운용 조건의 새 계좌로 옮기며, ' : '') +
+    'ISA 만기 자금은 일반 자산으로 이전합니다.'
+  );
+}
 const NEW_PENSION_LABEL =
   '연금 계좌를 새로 개설해 퇴직 전까지 월 75만원(연 900만원 세액공제 한도)을 추가로 납입합니다. ' +
   '이 점수는 현재 계획 밖에서 추가로 마련한 자금을 납입한다고 가정한 결과이며, ' +
@@ -54,6 +65,9 @@ export interface PrivatePensionChannelingResult {
   recommendedPrivatePensionChanneling: true | null;
   // 신규 연금계좌 납입 레그 채택 여부. 채택되면 true, 아니면 null.
   recommendedNewPensionContribution: true | null;
+  // 채널링 채택 시 "기존 연금 계좌 납입 중단 후 새 계좌로 이전" 행동이 실제로 포함되는지.
+  // recommendedPrivatePensionChanneling이 true일 때만 의미가 있고, 그 외에는 false다.
+  channelingIncludesAccountTransfer: boolean;
   // 채택된 레그별 항목(0~2개). 순서: 채널링 → 신규계좌.
   itemizedContributions: ItemizedContribution[];
   // finalResult/finalUtility는 Phase 3와 동일한 규약이다: 개선을 못 찾으면 입력받은
@@ -66,7 +80,7 @@ export interface PrivatePensionChannelingResult {
   failedCount: number;
 }
 
-type Leg = 'channeling' | 'new-pension' | 'combined';
+type Leg = 'channeling' | 'channeling-baseline' | 'new-pension' | 'combined';
 
 interface LegEvaluation {
   result: SimulationResult;
@@ -149,6 +163,19 @@ function buildNewPensionParams(params: SimulationParams): SimulationParams {
   };
 }
 
+// 채널링 레그의 대조군(control). buildChannelingParams와 동일하게 isaMaturityDestination만
+// 'asset'으로 바꾸고, 조기수령 관련 필드(earlyChannelingEnabled/monthlyContribution)는 전혀
+// 건드리지 않는다. ISA 만기 목적지 변경 자체가 채널링과 무관하게 이미 유리한 사용자(예: ISA
+// 정기납입이 월 한도를 채워 브릿지 인출이 실질적으로 0원인 경우)에게, 그 효과가 채널링 효과로
+// 오귀속되는 것을 막기 위한 기준선이다 — channelingBeneficial은 bestUtility가 아니라 이 대조군
+// 대비로 판정해야 "채널링을 켠 것 자체"의 순수 효과만 측정된다.
+function buildIsaAssetOnlyParams(params: SimulationParams): SimulationParams {
+  return {
+    ...params,
+    withdrawalPlan: { ...params.withdrawalPlan, isaMaturityDestination: 'asset' },
+  };
+}
+
 function noOp(
   bestResult: SimulationResult,
   bestUtility: UtilityBreakdown,
@@ -158,6 +185,7 @@ function noOp(
   return {
     recommendedPrivatePensionChanneling: null,
     recommendedNewPensionContribution: null,
+    channelingIncludesAccountTransfer: false,
     itemizedContributions: [],
     finalResult: bestResult,
     finalUtility: bestUtility,
@@ -219,18 +247,34 @@ export function optimizePrivatePensionChanneling(
     return { result, utility: computeLifetimeUtility(result, candidateParams, cfg) };
   };
 
+  // 채널링 후보는 항상 isaMaturityDestination을 'asset'으로 바꿔서 평가되므로(buildChannelingParams),
+  // bestUtility(원래 withdrawalPlan 기준)와 직접 비교하면 그 필드 변경 효과까지 채널링 효과로
+  // 잡힌다. 같은 오버라이드를 적용하되 조기수령은 켜지 않은 대조군을 별도로 평가해, 채널링의
+  // 순수 marginal 효과만 채택 판정에 쓴다.
+  const channelingBaselineEval = evaluateChanneling
+    ? runLeg('channeling-baseline', buildIsaAssetOnlyParams(params))
+    : null;
   const channelingEval = evaluateChanneling ? runLeg('channeling', buildChannelingParams(params)) : null;
   const newPensionEval = evaluateNewPension ? runLeg('new-pension', buildNewPensionParams(params)) : null;
 
-  const channelingBeneficial = channelingEval !== null && channelingEval.utility.score > bestUtility.score;
+  const channelingBeneficial =
+    channelingEval !== null &&
+    channelingBaselineEval !== null &&
+    channelingEval.utility.score > channelingBaselineEval.utility.score;
   const newPensionBeneficial = newPensionEval !== null && newPensionEval.utility.score > bestUtility.score;
 
   if (!channelingBeneficial && !newPensionBeneficial) return noOp(bestResult, bestUtility, attemptedCount, failedCount);
+
+  // 채널링 대상 계좌 중 납입 중인 계좌가 하나라도 있어야 이전용 계좌가 생기고, 그래야 라벨의
+  // "계좌 이전" 문구가 실제로 시뮬레이션된 행동이 된다(buildChannelingParams 참조).
+  const hasAccountTransfer = params.privatePensions.some((p) => p.monthlyContribution > 0);
 
   const makeItem = (label: string, evaluation: LegEvaluation): ItemizedContribution => ({
     label,
     // 각 항목은 "그 레그 하나만 baseline에 적용했을 때"의 독립(marginal) 효과다. 두 레그를 함께
     // 채택해도 이 값은 각자의 단독 측정치를 유지하므로 합계가 총 개선분과 정확히 일치하지는 않는다.
+    // (채널링 항목은 채택 판정과 달리 여기서는 bestUtility 대비 총 delta를 그대로 보여준다 —
+    // isaMaturityDestination 변경도 채널링 채택 시 실제로 적용되는 행동이므로 표시상 숨기지 않는다.)
     utilityDelta: evaluation.utility.score - bestUtility.score,
     deltas: computeDeltas(bestResult, evaluation.result),
   });
@@ -238,7 +282,8 @@ export function optimizePrivatePensionChanneling(
   const adoptChannelingOnly = (evaluation: LegEvaluation): PrivatePensionChannelingResult => ({
     recommendedPrivatePensionChanneling: true,
     recommendedNewPensionContribution: null,
-    itemizedContributions: [makeItem(CHANNELING_LABEL, evaluation)],
+    channelingIncludesAccountTransfer: hasAccountTransfer,
+    itemizedContributions: [makeItem(buildChannelingLabel(hasAccountTransfer), evaluation)],
     finalResult: evaluation.result,
     finalUtility: evaluation.utility,
     attemptedCount,
@@ -248,6 +293,7 @@ export function optimizePrivatePensionChanneling(
   const adoptNewPensionOnly = (evaluation: LegEvaluation): PrivatePensionChannelingResult => ({
     recommendedPrivatePensionChanneling: null,
     recommendedNewPensionContribution: true,
+    channelingIncludesAccountTransfer: false,
     itemizedContributions: [makeItem(NEW_PENSION_LABEL, evaluation)],
     finalResult: evaluation.result,
     finalUtility: evaluation.utility,
@@ -287,8 +333,9 @@ export function optimizePrivatePensionChanneling(
   return {
     recommendedPrivatePensionChanneling: true,
     recommendedNewPensionContribution: true,
+    channelingIncludesAccountTransfer: hasAccountTransfer,
     itemizedContributions: [
-      makeItem(CHANNELING_LABEL, channelingEval!),
+      makeItem(buildChannelingLabel(hasAccountTransfer), channelingEval!),
       makeItem(NEW_PENSION_LABEL, newPensionEval!),
     ],
     finalResult: combinedEval.result,

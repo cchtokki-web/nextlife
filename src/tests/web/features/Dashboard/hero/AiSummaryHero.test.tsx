@@ -96,6 +96,7 @@ describe('AiSummaryHero', () => {
       recommendedAssetReinvestment: null,
       recommendedPrivatePensionChanneling: null,
       recommendedNewPensionContribution: null,
+      channelingIncludesAccountTransfer: false,
       improved: true,
       reasons: ['국민연금을 70세부터 수령합니다.'],
       deltas: { ...zeroDeltas, totalTax: -1000000, endingAssets: 5000000 },

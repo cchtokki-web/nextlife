@@ -22,7 +22,11 @@ const emptyResult: SimulationResult = {
   retirementAssetsAtRetirement: 0,
 };
 
-function makeRecommendation(currentScore: number, recommendedScore: number): StrategyRecommendation {
+function makeRecommendation(
+  currentScore: number,
+  recommendedScore: number,
+  recommendedNewPensionContribution: true | null = null
+): StrategyRecommendation {
   const improved = recommendedScore > currentScore;
   return {
     currentUtility: { ...baseUtility, score: currentScore },
@@ -37,7 +41,8 @@ function makeRecommendation(currentScore: number, recommendedScore: number): Str
     } : null,
     recommendedAssetReinvestment: null,
     recommendedPrivatePensionChanneling: null,
-    recommendedNewPensionContribution: null,
+    recommendedNewPensionContribution,
+    channelingIncludesAccountTransfer: false,
     improved,
     reasons: ['65세부터 일반 자산(주식/ETF) 인출을 시작합니다.'],
     deltas: zeroDeltas,
@@ -62,6 +67,18 @@ describe('generateRuleBasedAdvice - Utility Score 반영', () => {
     expect(advice).toContain('83');
     expect(advice).toContain('87');
     expect(advice).toContain('평생 효용');
+    expect(advice).not.toContain('추가로 납입한다는 가정');
+  });
+
+  // Fix(중요 #4) 회귀: recommendedNewPensionContribution이 채택되면 newPensionCaveat 문장이
+  // 실제로 advice 문자열에 삽입되는지 검증한다. 이전에는 이 분기가 테스트되지 않았다.
+  test('recommendedNewPensionContribution이 true면 신규 납입 가정 캐비트를 포함한다', () => {
+    const recommendation = makeRecommendation(70, 85, true);
+    const advice = generateRuleBasedAdvice(90, 3000000, false, undefined, null, '매우 안정', baseUtility, recommendation);
+
+    expect(advice).toContain('추가로 납입한다는 가정이 포함되어 있어');
+    expect(advice).toContain('70점');
+    expect(advice).toContain('85점');
   });
 
   test('추천 전략이 baseline과 동일하면(개선 없음) 문장을 추가하지 않는다', () => {

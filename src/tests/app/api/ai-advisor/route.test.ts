@@ -58,6 +58,7 @@ describe('buildSimulationContextText - Utility Score 반영', () => {
       recommendedAssetReinvestment: null,
       recommendedPrivatePensionChanneling: null,
       recommendedNewPensionContribution: null,
+      channelingIncludesAccountTransfer: false,
       improved: true,
       reasons: ['65세부터 일반 자산(주식/ETF) 인출을 시작합니다.'],
       deltas: zeroDeltas,
@@ -71,6 +72,34 @@ describe('buildSimulationContextText - Utility Score 반영', () => {
     expect(text).toContain('83');
     expect(text).toContain('87');
     expect(text).toContain('65세부터 일반 자산(주식/ETF) 인출을 시작합니다.');
+    expect(text).not.toContain('추가 납입한다는 가정');
+  });
+
+  // Fix(중요 #4) 회귀: recommendedNewPensionContribution이 채택되면 개선분의 일부가 신규 납입
+  // 자금에서 나온다는 단서(newPensionCaveat)가 실제로 컨텍스트 텍스트에 삽입되는지 검증한다.
+  // 지금까지는 이 분기 자체가 테스트되지 않아, 조건식이 뒤집히거나 삭제돼도 테스트가 통과했다.
+  test('recommendedNewPensionContribution이 true면 신규 납입 가정 캐비트를 포함한다', () => {
+    const recommendation: StrategyRecommendation = {
+      currentUtility: { ...baseUtility, score: 70 },
+      recommendedUtility: { ...baseUtility, score: 85 },
+      recommendedPlan: null,
+      recommendedAssetReinvestment: null,
+      recommendedPrivatePensionChanneling: null,
+      recommendedNewPensionContribution: true,
+      channelingIncludesAccountTransfer: false,
+      improved: true,
+      reasons: ['연금 계좌를 새로 개설해 퇴직 전까지 월 75만원을 추가로 납입합니다.'],
+      deltas: zeroDeltas,
+      totalCandidateCount: 1,
+      failedCandidateCount: 0,
+      recommendedResult: emptyResult,
+      itemizedContributions: [],
+    };
+    const text = buildSimulationContextText({ ...baseBody, utility: baseUtility, recommendation });
+
+    expect(text).toContain('추가 납입한다는 가정이 포함되어 있어');
+    expect(text).toContain('70점');
+    expect(text).toContain('85점');
   });
 
   test('recommendation이 baseline과 동일하면(개선 없음) 추천 관련 줄을 추가하지 않는다', () => {
@@ -81,6 +110,7 @@ describe('buildSimulationContextText - Utility Score 반영', () => {
       recommendedAssetReinvestment: null,
       recommendedPrivatePensionChanneling: null,
       recommendedNewPensionContribution: null,
+      channelingIncludesAccountTransfer: false,
       improved: false,
       reasons: ['현재 전략이 이미 합리적입니다.'],
       deltas: zeroDeltas,

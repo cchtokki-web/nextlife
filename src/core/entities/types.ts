@@ -53,12 +53,11 @@ export interface PrivatePension {
   // retirementAge 이전(재직 중)에도 저율과세 한도 내에서 조기 인출해 ISA로 재투자한다. AI 추천
   // 엔진(PrivatePensionChannelingOptimizer)만 설정하며, 사용자가 직접 켜는 입력 폼 필드가 아니다.
   //
-  // true라도 SimulationEngine.ts의 브릿지 분기는 다음 4개 조건을 모두 만족해야 실제로 발동한다:
-  // (1) !isRetired(재직 중, currentAge < retirementAge) (2) currentAge >= PRIVATE_PENSION_MIN_START_AGE
-  // (55세) (3) 이 계좌의 currentBalance > 0 (4) params.isaAccounts에 계좌가 1개 이상 존재. 조건을
-  // 하나라도 못 채우면 조기 인출은 조용히 발동하지 않는다(경고/에러 없이 무시 — 자금이 소실되지도
-  // 않고, 그렇다고 사용자에게 "왜 채널링이 안 됐는지" 알려주지도 않는다). 예: ISA 계좌를 모두
-  // 지우면 earlyChannelingEnabled가 true여도 조기 인출은 그냥 멈춘다.
+  // true는 "허용"일 뿐 발동을 보장하지 않는다 — 실제 발동 조건(재직 중/55세 이상/잔액 존재/ISA
+  // 계좌 존재)은 SimulationEngine.ts의 브릿지 분기(earlyChannelingEnabled 사용처)를 source of
+  // truth로 삼는다. 여기서 조건을 다시 나열하지 않는 이유는, 두 곳을 강제로 동기화하는 장치가
+  // 없어 SimulationEngine.ts 쪽 조건이 바뀌면 이 주석만 조용히 stale해지기 때문이다. 조건을
+  // 하나라도 못 채우면 조기 인출은 조용히 발동하지 않는다(경고/에러 없이 무시).
   earlyChannelingEnabled?: boolean;
 }
 
@@ -256,6 +255,10 @@ export interface StrategyRecommendation {
   // 신규 연금계좌 추가 납입(Phase 4-B) 권장 여부. 채택되면 true, 아니면 null.
   // 채널링과는 완전히 독립된 후보로 각각 baseline 대비 평가된다.
   recommendedNewPensionContribution: true | null;
+  // 채널링(Phase 4-A) 채택 시 "기존 연금 계좌 납입 중단 후 새 계좌로 이전" 행동이 실제로
+  // 포함되는지. recommendedPrivatePensionChanneling이 true일 때만 의미가 있고, 그 외에는 false다
+  // (채널링 대상 계좌 전부가 이미 납입 0이면 이전용 계좌가 생기지 않는다).
+  channelingIncludesAccountTransfer: boolean;
   improved: boolean; // recommendedUtility.score > currentUtility.score 여부를 미리 계산해 둔 값. 소비처마다 재계산하지 않는다.
   reasons: string[];
   deltas: {

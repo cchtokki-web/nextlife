@@ -556,8 +556,8 @@ export class SimulationEngine {
 
             // 인출액은 ISA가 이번 달 실제로 받을 수 있는 만큼으로 제한한다 — 놓을 곳이 없는 돈을
             // 먼저 빼서 과세한 뒤 버리면 자금이 소멸한다(총자산 보존 위반). 이 엔진의 다른 캡들
-            // (:409 ISA 납입 캡, :510 연금 인출 캡)도 모두 유출 자체를 줄이는 방식이며, 이 분기만
-            // 예외가 되어서는 안 된다. ISA 잔여 룸(세후 기준)을 세전으로 역산해 상한에 포함한다.
+            // (ISA 월 납입 캡, 정상 인출 시 연금 잔액 상한)도 모두 유출 자체를 줄이는 방식이며,
+            // 이 분기만 예외가 되어서는 안 된다. ISA 잔여 룸(세후 기준)을 세전으로 역산해 상한에 포함한다.
             const roomInPensionCurrency = this.convertValue(
               isaBridgeRoomRemainingInIsaCurrency, activeIsas[0].currency, pension.currency, exchangeRate
             );

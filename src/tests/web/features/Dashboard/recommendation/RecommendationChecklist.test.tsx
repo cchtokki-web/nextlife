@@ -37,6 +37,7 @@ function makeRecommendation(overrides: Partial<StrategyRecommendation>): Strateg
     recommendedAssetReinvestment: null,
     recommendedPrivatePensionChanneling: null,
     recommendedNewPensionContribution: null,
+    channelingIncludesAccountTransfer: false,
     improved: false,
     reasons: ['현재 전략이 이미 합리적입니다.'],
     deltas: zeroDeltas,

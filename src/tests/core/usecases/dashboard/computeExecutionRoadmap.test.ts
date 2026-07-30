@@ -38,7 +38,8 @@ const zeroDeltas: StrategyRecommendation['deltas'] = {
 
 function makeRecommendation(
   recommendedPlan: CompleteWithdrawalPlan | null,
-  recommendedPrivatePensionChanneling: true | null = null
+  recommendedPrivatePensionChanneling: true | null = null,
+  channelingIncludesAccountTransfer = false
 ): StrategyRecommendation {
   return {
     currentUtility: utility,
@@ -47,6 +48,7 @@ function makeRecommendation(
     recommendedAssetReinvestment: null,
     recommendedPrivatePensionChanneling,
     recommendedNewPensionContribution: null,
+    channelingIncludesAccountTransfer,
     // computeExecutionRoadmap 자체는 improved를 읽지 않는다(recommendedPlan/
     // recommendedPrivatePensionChanneling만 본다) — 이 describe('computeExecutionRoadmap') 블록의
     // 모든 테스트에서 값은 무의미하므로 고정값으로 둔다. selectDepletionAge는 improved를 실제로
@@ -138,7 +140,7 @@ describe('computeExecutionRoadmap', () => {
     // 신규 연금 계좌 납입은 recommendedNewPensionContribution이라는 독립 후보라 채택되지 않을 수
     // 있다. 채널링만 채택된 사용자에게 "신규 계좌에 납입합니다"라고 적으면 시뮬레이션하지 않은
     // 행동을 단언하게 되므로, 설명에는 채널링의 실제 가정(납입 중단 → 이전용 계좌)만 담는다.
-    const roadmap = computeExecutionRoadmap(baseParams, makeRecommendation(null, true), null);
+    const roadmap = computeExecutionRoadmap(baseParams, makeRecommendation(null, true, true), null);
     const channelingItem = roadmap.events
       .find((e) => e.age === 55)!
       .items.find((i) => i.title === '사적연금 수령 개시 (조기·ISA 재투자)')!;
@@ -147,6 +149,19 @@ describe('computeExecutionRoadmap', () => {
     expect(channelingItem.description).toContain('기존 연금 계좌 납입은 중단');
     expect(channelingItem.description).not.toContain('추가로 납입');
     expect(channelingItem.description).not.toContain('퇴직 전까지 납입');
+  });
+
+  test('channelingIncludesAccountTransfer가 false면(채널링 대상 계좌가 전부 납입 0) 계좌 이전 문구를 넣지 않는다', () => {
+    // 채널링이 채택돼도 buildChannelingParams는 원래 계좌들의 monthlyContribution이 모두 0이면
+    // 이전용 계좌를 만들지 않는다. 이 경우 "기존 계좌 납입은 중단하고 옮긴다"는 시뮬레이션되지
+    // 않은 행동이므로 설명에서 빠져야 한다.
+    const roadmap = computeExecutionRoadmap(baseParams, makeRecommendation(null, true, false), null);
+    const channelingItem = roadmap.events
+      .find((e) => e.age === 55)!
+      .items.find((i) => i.title === '사적연금 수령 개시 (조기·ISA 재투자)')!;
+
+    expect(channelingItem.description).toContain('ISA에 재투자');
+    expect(channelingItem.description).not.toContain('기존 연금 계좌 납입은 중단');
   });
 
   // recommendedPrivatePensionChanneling은 true | null이라 false는 타입상 표현 불가능하다
