@@ -138,9 +138,15 @@ export type EconomicScenario =
 
 export type TaxLawVersion = 'current';
 
+// 엔진의 SpendingStrategy 3종 + 'ai'. 'ai'는 엔진에 없는 값이므로 compileStrategy가
+// 'target'으로 내리지만, 선택 상태 자체는 strategy.spendingChoice에 남는다 —
+// params.spendingStrategy 하나에만 저장하면 'AI 추천'을 고른 사실이 사라진다.
+export type SpendingStrategyChoice = SpendingStrategy | 'ai';
+
 export interface RetirementStrategy {
   mode: StrategyMode;
   objective: ObjectivePriority;
+  spendingChoice: SpendingStrategyChoice;
   bequestStrategy: BequestStrategy;
   nationalPensionStrategy: NationalPensionStrategy;
   privatePensionStrategy: PrivatePensionStrategy;
