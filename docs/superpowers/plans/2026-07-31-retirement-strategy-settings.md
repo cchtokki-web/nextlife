@@ -5906,6 +5906,27 @@ export function AdvancedSection({ params, onChangeParams, mode, changed }: Secti
         return <AdvancedSection {...sectionProps} />;
 ```
 
+- [ ] **Step 9b: 경제 가정 배너를 필드 가시성에 맞춰 게이트**
+
+Task 8 재리뷰가 찾은 결함이다. `EconomicAssumptionSection`의 "시나리오가 물가·환율을
+결정합니다" 배너가 `scenarioGoverns`만으로 렌더되고 `isFieldVisible` 게이트가 없다.
+
+표준/전문가 모드에서 시나리오를 고른 뒤 간편 모드로 낮추면(모드를 낮춰도 값은
+보존되므로 `scenarioGoverns`가 참으로 남는다), 배너가 가리키는 물가상승률 필드는
+숨겨진 채 배너만 홀로 남는다. 경제 가정 섹션이 이 경고 하나만 보여주게 된다.
+
+배너를 물가상승률/환율 중 하나라도 보일 때만 렌더하도록 바꾼다.
+
+```tsx
+      {scenarioGoverns
+        && (isFieldVisible(mode, 'inflationRate') || isFieldVisible(mode, 'baseExchangeRate')) && (
+        <p className="text-xs text-amber-500">
+```
+
+`InvestmentStrategySection.test.tsx`의 간편 모드 테스트와 같은 방식으로,
+`EconomicAssumptionSection.test.tsx`에 "간편 모드에서는 배너가 렌더되지 않는다"
+케이스를 추가한다(시나리오를 `recession`으로 두고 `mode="simple"`).
+
 - [ ] **Step 10: 최신 환율 자동 조회를 ⑤ 경제 가정으로 이전**
 
 기존 `SimulationSettings.tsx`의 `fetchExchangeRate` 로직을 `EconomicAssumptionSection.tsx`로
