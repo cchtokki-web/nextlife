@@ -4953,7 +4953,7 @@ const healthcare: HealthcareAssumptions = {
 const call = (patch: Partial<Parameters<typeof computeAnnualHealthcareCost>[0]> = {}) =>
   computeAnnualHealthcareCost({
     healthcare, currentAge: 65, retirementAge: 60, yearsSinceRetirement: 5,
-    inflationMode: 'nominal', inflationRate: 2.5, ...patch,
+    inflationMode: 'nominal', inflationRate: 2.5, spendingFactor: 1, ...patch,
   });
 
 describe('computeAnnualHealthcareCost', () => {
@@ -5020,6 +5020,26 @@ describe('computeAnnualHealthcareCost', () => {
       .toBeCloseTo(300000 * 12 * Math.pow(1.05, 11), 0);
   });
 
+  test('생존자가 한 명이면 축소 계수만큼 줄어든다', () => {
+    // 의료비는 생활비와 같은 성격의 반복 가구 지출이다. 본인 사후 배우자 단독
+    // 생존 기간에 본인 기준 전액이 계속 나가면 안 된다.
+    expect(call({ spendingFactor: 0.7 })).toBeCloseTo(call() * 0.7, 0);
+  });
+
+  test('둘 다 사망한 해(계수 0)에는 의료비가 0이다', () => {
+    expect(call({ spendingFactor: 0 })).toBe(0);
+  });
+
+  test('실효 증가율이 -100% 이하여도 음수가 되지 않는다', () => {
+    // Math.pow(음수, y)는 연도마다 부호가 뒤집혀 "공짜 돈"을 만든다.
+    const result = call({
+      inflationMode: 'real',
+      healthcare: { ...healthcare, costGrowthRate: -200 }, // -200 - 2.5 = -202.5%
+    });
+
+    expect(result).toBe(0);
+  });
+
   test('쇼크 금액에는 증가율을 적용하지 않는다 (오늘 화폐가치 목돈)', () => {
     const withShock = {
       ...healthcare, shockEnabled: true, shockAge: 70,
@@ -5052,6 +5072,9 @@ interface HealthcareCostInput {
   yearsSinceRetirement: number;
   inflationMode: 'nominal' | 'real';
   inflationRate: number; // %
+  // 생존 인원에 따른 생활비 축소 계수(spouseRules.computeSpendingFactor). 배우자
+  // 미설정이면 항상 1이다. 의료비도 생활비와 같은 규칙으로 줄어야 한다.
+  spendingFactor: number;
 }
 
 // 해당 연도의 추가 의료비 지출(생활비와 별개 라인).
@@ -5061,8 +5084,15 @@ interface HealthcareCostInput {
 //
 // 실질 모드에서는 물가 초과분만 적용한다. 시뮬레이션 전체가 오늘 화폐가치로
 // 표시되므로, 여기서도 "물가보다 얼마나 더 빨리 오르는가"만 반영해야 일관된다.
+//
+// spendingFactor(생존 인원에 따른 축소 계수)를 곱한다. 의료비는 생활비와 같은
+// 성격의 반복 가구 지출이므로 한 명만 남으면 함께 줄어야 한다. 곱하지 않으면
+// 연도 루프가 둘 중 늦게 죽는 쪽까지 도는 탓에(computeHouseholdEndAge) 본인 사후에도
+// 본인 기준 의료비·장기요양비가 전액 계속 인출되고, shockAge가 본인 기대수명을
+// 넘으면 사망 후에 쇼크가 발생한다.
 export function computeAnnualHealthcareCost({
   healthcare, currentAge, retirementAge, yearsSinceRetirement, inflationMode, inflationRate,
+  spendingFactor,
 }: HealthcareCostInput): number {
   if (!healthcare || !healthcare.enabled) return 0;
   if (currentAge < retirementAge) return 0;
@@ -5070,7 +5100,10 @@ export function computeAnnualHealthcareCost({
   const effectiveGrowthRate = inflationMode === 'real'
     ? healthcare.costGrowthRate - inflationRate
     : healthcare.costGrowthRate;
-  const growthFactor = Math.pow(1 + effectiveGrowthRate / 100, Math.max(0, yearsSinceRetirement));
+  // 실효 증가율이 -100% 이하면 Math.pow(음수, y)가 연도마다 부호를 뒤집어
+  // 음수 의료비(= 공짜 돈)를 만든다. 밑을 0에서 잘라 막는다.
+  const growthBase = Math.max(0, 1 + effectiveGrowthRate / 100);
+  const growthFactor = Math.pow(growthBase, Math.max(0, yearsSinceRetirement));
 
   let annual = healthcare.baseMonthlyCost * 12 * growthFactor;
 
@@ -5084,7 +5117,7 @@ export function computeAnnualHealthcareCost({
     annual += healthcare.shockAmount;
   }
 
-  return annual;
+  return annual * spendingFactor;
 }
 ```
 
@@ -5216,6 +5249,8 @@ import { computeAnnualHealthcareCost } from './healthcare/healthcareCosts';
         yearsSinceRetirement: currentAge - userProfile.retirementAge,
         inflationMode,
         inflationRate: infRateAnnual * 100,
+        // 생활비와 같은 계수를 쓴다 — 의료비만 안 줄면 본인 사후에도 전액이 나간다.
+        spendingFactor,
       });
 ```
 
