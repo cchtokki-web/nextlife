@@ -1,6 +1,8 @@
 'use client';
 
 import { AssetCurrency } from '../../../../core/entities/types';
+import { DEFAULT_RETIREMENT_STRATEGY } from '../../../../core/usecases/strategy/compileStrategy';
+import { isEconomicScenarioGoverning } from '../../../../core/usecases/scenario/economicScenarios';
 import InputField from '../../../components/InputField';
 import SelectField from '../../../components/SelectField';
 import { FieldRow, SwitchField } from '../../../components/form';
@@ -8,8 +10,20 @@ import { isFieldVisible } from '../fieldVisibility';
 import { SectionProps } from '../strategyOptions';
 
 export function EconomicAssumptionSection({ params, onChangeParams, mode, changed }: SectionProps) {
+  // 경제 시나리오를 명시적으로 고르면 그 프로필이 물가·환율을 지배한다. 그 상태에서
+  // 입력을 열어두면 "고쳤는데 결과가 안 바뀐다"가 되므로 비활성화하고 이유를 적는다.
+  const scenario =
+    params.strategy?.economicScenario ?? DEFAULT_RETIREMENT_STRATEGY.economicScenario;
+  const scenarioGoverns = isEconomicScenarioGoverning(scenario);
+
   return (
     <>
+      {scenarioGoverns && (
+        <p className="text-xs text-amber-500">
+          ④투자 전략에서 고른 경제 시나리오가 아래 물가상승률과 환율을 결정합니다.
+          직접 정하려면 시나리오를 &ldquo;AI 추천&rdquo;으로 두세요.
+        </p>
+      )}
       {isFieldVisible(mode, 'inflationMode') && (
         <SwitchField
           label="실질 수익률로 계산"
@@ -28,6 +42,7 @@ export function EconomicAssumptionSection({ params, onChangeParams, mode, change
             <InputField
               label="" aria-label="물가상승률" type="number" step="0.1" suffixText="%"
               value={params.inflationRate}
+              disabled={scenarioGoverns}
               onChange={(e) => onChangeParams({ ...params, inflationRate: Number(e.target.value) })}
             />
           </FieldRow>

@@ -12,7 +12,10 @@ export interface EconomicScenarioProfile {
 //
 // 침체·고물가에서 exchangeScenario를 'usd_up'으로 두는 이유: 두 국면 모두 원화 약세
 // 압력이 커진다는 경험적 관찰을 단순화한 것이다. 정밀한 환율 모형이 아니다.
-export const ECONOMIC_SCENARIO_PROFILES: Record<EconomicScenario, EconomicScenarioProfile> = {
+// 'ai_recommended'는 이 테이블에 없다. "미정"이지 "장기 평균"이 아니기 때문이다 —
+// 프로필을 주면 사용자가 ⑤경제 가정에서 직접 입력한 물가상승률이 매 컴파일마다
+// 조용히 덮어써진다(Task 8 리뷰에서 발견, Task 7의 'ai_optimized'와 같은 버그).
+export const ECONOMIC_SCENARIO_PROFILES: Partial<Record<EconomicScenario, EconomicScenarioProfile>> = {
   long_term_average: {
     inflationRate: 2.5, stockGrowthRate: 7, pensionReturnRate: 4, exchangeScenario: 'base',
   },
@@ -25,13 +28,16 @@ export const ECONOMIC_SCENARIO_PROFILES: Record<EconomicScenario, EconomicScenar
   low_growth: {
     inflationRate: 2, stockGrowthRate: 4, pensionReturnRate: 2.5, exchangeScenario: 'base',
   },
-  // 사용자가 시나리오를 정하지 않은 상태. 장기 평균을 쓴다.
-  ai_recommended: {
-    inflationRate: 2.5, stockGrowthRate: 7, pensionReturnRate: 4, exchangeScenario: 'base',
-  },
 };
 
-// 시나리오 프로필을 params에 적용한다. 순수 함수이며 알 수 없는 값이면 입력을 그대로 돌려준다.
+// 특정 시나리오가 경제 변수를 지배하는지. false면 사용자가 직접 입력한
+// 물가상승률/환율이 그대로 쓰이므로 UI는 그 입력 필드를 열어두어야 한다.
+export function isEconomicScenarioGoverning(scenario: EconomicScenario): boolean {
+  return ECONOMIC_SCENARIO_PROFILES[scenario] !== undefined;
+}
+
+// 시나리오 프로필을 params에 적용한다. 순수 함수이며, 'ai_recommended'(미정)이거나
+// 알 수 없는 값이면 입력을 그대로 돌려준다 — 사용자가 직접 입력한 값을 보존하기 위해서다.
 export function applyEconomicScenario(
   params: SimulationParams,
   scenario: EconomicScenario

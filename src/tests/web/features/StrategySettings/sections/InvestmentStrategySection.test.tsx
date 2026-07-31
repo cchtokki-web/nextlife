@@ -59,6 +59,22 @@ describe('InvestmentStrategySection', () => {
     expect(screen.getByText(/시나리오는 물가·환율을, 리스크 성향은 수익률을 결정합니다/))
       .toBeInTheDocument();
   });
+
+  test('간편 모드에서는 두 필드가 모두 숨겨지므로 역할 구분 설명문도 렌더되지 않는다', () => {
+    // 리스크 성향/경제 시나리오는 SIMPLE_FIELDS에 없다. 필드가 하나도 안 보이는데
+    // "두 설정이 겹칠 때는..." 설명문만 남으면 무엇에 대한 설명인지 알 수 없다.
+    render(
+      <InvestmentStrategySection
+        params={initialParams} onChangeParams={vi.fn()}
+        mode="simple" changed={new Set()} ai={noAi}
+      />
+    );
+
+    expect(screen.queryByRole('radiogroup', { name: '리스크 성향' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('radiogroup', { name: '경제 시나리오' })).not.toBeInTheDocument();
+    expect(screen.queryByText(/시나리오는 물가·환율을, 리스크 성향은 수익률을 결정합니다/))
+      .not.toBeInTheDocument();
+  });
 });
 
 describe('EconomicAssumptionSection', () => {
@@ -87,5 +103,34 @@ describe('EconomicAssumptionSection', () => {
     fireEvent.click(screen.getByRole('switch', { name: /실질 수익률로 계산/ }));
 
     expect(onChangeParams).toHaveBeenCalledWith({ ...initialParams, inflationMode: 'nominal' });
+  });
+
+  test('경제 시나리오를 명시적으로 고르면 물가상승률 입력이 비활성화되고 안내문이 보인다', () => {
+    const params = {
+      ...initialParams,
+      strategy: { ...DEFAULT_RETIREMENT_STRATEGY, economicScenario: 'recession' as const },
+    };
+
+    render(
+      <EconomicAssumptionSection
+        params={params} onChangeParams={vi.fn()}
+        mode="standard" changed={new Set()}
+      />
+    );
+
+    expect(screen.getByLabelText('물가상승률')).toBeDisabled();
+    expect(screen.getByText(/경제 시나리오가 아래 물가상승률과 환율을 결정합니다/)).toBeInTheDocument();
+  });
+
+  test('경제 시나리오가 AI 추천(미정)이면 물가상승률 입력이 가능하고 안내문이 없다', () => {
+    render(
+      <EconomicAssumptionSection
+        params={initialParams} onChangeParams={vi.fn()}
+        mode="standard" changed={new Set()}
+      />
+    );
+
+    expect(screen.getByLabelText('물가상승률')).not.toBeDisabled();
+    expect(screen.queryByText(/경제 시나리오가 아래 물가상승률과 환율을 결정합니다/)).not.toBeInTheDocument();
   });
 });

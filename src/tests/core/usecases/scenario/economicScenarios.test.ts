@@ -1,6 +1,6 @@
 import { describe, test, expect } from 'vitest';
 import {
-  ECONOMIC_SCENARIO_PROFILES, applyEconomicScenario,
+  ECONOMIC_SCENARIO_PROFILES, applyEconomicScenario, isEconomicScenarioGoverning,
 } from '@/core/usecases/scenario/economicScenarios';
 import { EconomicScenario, SimulationParams } from '@/core/entities/types';
 
@@ -30,32 +30,34 @@ const params: SimulationParams = {
 };
 
 describe('ECONOMIC_SCENARIO_PROFILES', () => {
-  test('모든 시나리오에 프로필이 정의되어 있다', () => {
-    for (const s of ALL) {
+  test('AI 추천을 제외한 모든 시나리오에 프로필이 정의되어 있다', () => {
+    for (const s of ALL.filter((x) => x !== 'ai_recommended')) {
       expect(ECONOMIC_SCENARIO_PROFILES[s], s).toBeDefined();
     }
   });
 
   test('고물가는 장기 평균보다 물가상승률이 높다', () => {
-    expect(ECONOMIC_SCENARIO_PROFILES.high_inflation.inflationRate)
-      .toBeGreaterThan(ECONOMIC_SCENARIO_PROFILES.long_term_average.inflationRate);
+    expect(ECONOMIC_SCENARIO_PROFILES.high_inflation!.inflationRate)
+      .toBeGreaterThan(ECONOMIC_SCENARIO_PROFILES.long_term_average!.inflationRate);
   });
 
   test('장기 침체는 장기 평균보다 주식 수익률이 낮다', () => {
-    expect(ECONOMIC_SCENARIO_PROFILES.recession.stockGrowthRate)
-      .toBeLessThan(ECONOMIC_SCENARIO_PROFILES.long_term_average.stockGrowthRate);
+    expect(ECONOMIC_SCENARIO_PROFILES.recession!.stockGrowthRate)
+      .toBeLessThan(ECONOMIC_SCENARIO_PROFILES.long_term_average!.stockGrowthRate);
   });
 
-  test('AI 추천은 장기 평균과 동일하다', () => {
-    expect(ECONOMIC_SCENARIO_PROFILES.ai_recommended)
-      .toEqual(ECONOMIC_SCENARIO_PROFILES.long_term_average);
+  test('AI 추천(미정)에는 프로필이 없다', () => {
+    // 프로필을 주면 사용자가 직접 입력한 물가상승률이 조용히 덮어써진다.
+    expect(ECONOMIC_SCENARIO_PROFILES.ai_recommended).toBeUndefined();
+    expect(isEconomicScenarioGoverning('ai_recommended')).toBe(false);
+    expect(isEconomicScenarioGoverning('recession')).toBe(true);
   });
 });
 
 describe('applyEconomicScenario', () => {
   test('물가·환율 시나리오·수익률을 한꺼번에 교체한다', () => {
     const r = applyEconomicScenario(params, 'high_inflation');
-    const profile = ECONOMIC_SCENARIO_PROFILES.high_inflation;
+    const profile = ECONOMIC_SCENARIO_PROFILES.high_inflation!;
 
     expect(r.inflationRate).toBe(profile.inflationRate);
     expect(r.exchangeScenario).toBe(profile.exchangeScenario);
@@ -73,5 +75,14 @@ describe('applyEconomicScenario', () => {
 
   test('알 수 없는 시나리오는 입력을 그대로 반환한다', () => {
     expect(applyEconomicScenario(params, 'nope' as never)).toEqual(params);
+  });
+
+  test('AI 추천(미정)은 사용자가 입력한 물가상승률을 보존한다', () => {
+    const custom = { ...params, inflationRate: 3.7 };
+
+    const r = applyEconomicScenario(custom, 'ai_recommended');
+
+    expect(r.inflationRate).toBe(3.7);
+    expect(r).toEqual(custom);
   });
 });

@@ -33,8 +33,8 @@ describe('compileStrategy 투자/경제 축', () => {
   test('경제 시나리오가 물가와 환율 시나리오를 지배한다', () => {
     const r = compileStrategy(withStrategy({ economicScenario: 'high_inflation' }));
 
-    expect(r.params.inflationRate).toBe(ECONOMIC_SCENARIO_PROFILES.high_inflation.inflationRate);
-    expect(r.params.exchangeScenario).toBe(ECONOMIC_SCENARIO_PROFILES.high_inflation.exchangeScenario);
+    expect(r.params.inflationRate).toBe(ECONOMIC_SCENARIO_PROFILES.high_inflation!.inflationRate);
+    expect(r.params.exchangeScenario).toBe(ECONOMIC_SCENARIO_PROFILES.high_inflation!.exchangeScenario);
   });
 
   test('리스크 성향이 시나리오보다 나중에 적용되어 수익률의 최종 승자가 된다', () => {
@@ -45,7 +45,7 @@ describe('compileStrategy 투자/경제 축', () => {
 
     expect(r.params.assets[0].annualGrowthRate).toBe(9);
     // 물가는 여전히 시나리오가 지배한다.
-    expect(r.params.inflationRate).toBe(ECONOMIC_SCENARIO_PROFILES.recession.inflationRate);
+    expect(r.params.inflationRate).toBe(ECONOMIC_SCENARIO_PROFILES.recession!.inflationRate);
   });
 
   test('리스크 성향이 ai_recommended면 시나리오 수익률을 덮어쓰지 않는다', () => {
@@ -55,7 +55,7 @@ describe('compileStrategy 투자/경제 축', () => {
     }));
 
     expect(r.params.assets[0].annualGrowthRate)
-      .toBe(ECONOMIC_SCENARIO_PROFILES.recession.stockGrowthRate);
+      .toBe(ECONOMIC_SCENARIO_PROFILES.recession!.stockGrowthRate);
   });
 
   test('안정형/중립형/공격형이 각각 yieldPreset으로 번역된다', () => {
