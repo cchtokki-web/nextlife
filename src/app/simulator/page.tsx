@@ -9,6 +9,7 @@ import { computeExecutionRoadmap, selectDepletionAge } from '../../core/usecases
 import { computeSensitivityAnalysis } from '../../core/usecases/dashboard/computeSensitivityAnalysis';
 import { renderRiskAlertsSection, renderItemizedChecklistSection, renderExecutionRoadmapSection, renderSensitivityTableSection } from '../../web/features/Pdf/pdfReportSections';
 import { recommendStrategy } from '../../core/usecases/strategy/RecommendationEngine';
+import { compileStrategy } from '../../core/usecases/strategy/compileStrategy';
 import { analyzeCurrentStrategy, explainBequestAdequacy } from '../../core/usecases/utility/utilityAnalysis';
 import { resolveTaxSettings } from '../../core/usecases/tax/taxRates';
 import { NATIONAL_PENSION_NORMAL_START_AGE } from '../../core/usecases/pension/nationalPensionRules';
@@ -120,26 +121,43 @@ export default function Home() {
   // Defer the parameters to unblock the main thread during rapid typing
   const deferredParams = useDeferredValue(activeParams);
 
+  // 전략(사용자 언어)을 저수준 파라미터로 컴파일한 뒤 엔진에 넘긴다.
+  // strategy가 없는 기존 시나리오는 compileStrategy가 입력을 그대로 통과시킨다.
+  const compiled = useMemo(() => compileStrategy(deferredParams), [deferredParams]);
+
   // Run simulation engine for active scenario
-  const result = useMemo(() => engine.run(deferredParams), [engine, deferredParams]);
+  const result = useMemo(() => engine.run(compiled.params), [engine, compiled.params]);
 
   // AI 추천 전략은 다수의 후보를 시뮬레이션하는 무거운 계산이므로, 메인 result보다
   // 한 단계 더 지연시켜 타이핑 반응성에 영향을 주지 않도록 한다.
   const recommendationParams = useDeferredValue(deferredParams);
   // recommendationParams가 아직 최신 deferredParams를 따라잡지 못한 렌더에서는 참조가
-  // 서로 달라진다 — 이를 "AI 추천 전략을 계산 중" 로딩 상태로 사용한다.
+  // 서로 달라진다 — 이를 "AI 추천 전략을 계산 중" 로딩 상태로 사용한다. 이 비교는 compileStrategy
+  // 이전의 원본 참조로 해야 한다 — compiled.params는 strategy가 있으면 매번 새 객체라
+  // 참조가 항상 달라져 로딩 상태가 고착된다.
   const isComputingRecommendation = recommendationParams !== deferredParams;
+  const recommendationCompiled = useMemo(
+    () => compileStrategy(recommendationParams),
+    [recommendationParams]
+  );
   // recommendation이 undefined인 이유가 "계산 실패"인지 "탐색할 최적화 여지가 없어 baseline을
   // 그대로 반환"인지 UI에서 구분할 수 있도록 실패 여부를 함께 계산한다(후자는 recommendStrategy가
   // 정상적으로 improved:false, recommendedPlan:null인 객체를 반환하므로 undefined가 되지 않는다).
   const { recommendation, recommendationFailed } = useMemo(() => {
     try {
-      return { recommendation: recommendStrategy(recommendationParams, engine), recommendationFailed: false };
+      return {
+        recommendation: recommendStrategy(
+          recommendationCompiled.params,
+          engine,
+          recommendationCompiled.utilityConfig
+        ),
+        recommendationFailed: false,
+      };
     } catch (err) {
       console.error('Failed to compute strategy recommendation', err);
       return { recommendation: undefined, recommendationFailed: true };
     }
-  }, [engine, recommendationParams]);
+  }, [engine, recommendationCompiled]);
 
   // Track simulation runs with a simple debounce
   useEffect(() => {
@@ -243,10 +261,10 @@ export default function Home() {
         : '<p style="font-size: 12px; color: #94a3b8;">효용 데이터를 계산할 수 없습니다.</p>';
 
       const bequestAdequacyExplanationHtml = utility
-        ? `<p style="font-size: 10px; color: #94a3b8; margin: -6px 0 12px; line-height: 1.4;">* 상속 자산 적정성: ${explainBequestAdequacy(activeParams, result)}</p>`
+        ? `<p style="font-size: 10px; color: #94a3b8; margin: -6px 0 12px; line-height: 1.4;">* 상속 자산 적정성: ${explainBequestAdequacy(activeParams, result, compiled.utilityConfig)}</p>`
         : '';
 
-      const currentStrategyAnalysis = utility ? analyzeCurrentStrategy(utility) : null;
+      const currentStrategyAnalysis = utility ? analyzeCurrentStrategy(utility, compiled.utilityConfig) : null;
       const strengthsHtml = currentStrategyAnalysis
         ? currentStrategyAnalysis.strengths.map(s => `<li style="margin-bottom: 4px;">${s}</li>`).join('')
         : '';
@@ -272,7 +290,7 @@ export default function Home() {
         `
         : '';
 
-      const riskAlerts = computeRiskAlerts(result, activeParams);
+      const riskAlerts = computeRiskAlerts(result, activeParams, compiled.utilityConfig);
       const riskAlertsSectionHtml = renderRiskAlertsSection(riskAlerts);
       const roadmap = computeExecutionRoadmap(activeParams, recommendation, selectDepletionAge(recommendation, result));
       const executionRoadmapSectionHtml = renderExecutionRoadmapSection(roadmap);
@@ -957,7 +975,7 @@ export default function Home() {
               </div>
             )}
             <DashboardSection
-              params={deferredParams}
+              params={compiled.params}
               result={result}
               compareResults={compareResults}
               isPro={isPro}

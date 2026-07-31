@@ -6,10 +6,12 @@ import { RetirementStrategy, SimulationParams, StrategyMode } from '../../../cor
 import { DEFAULT_RETIREMENT_STRATEGY } from '../../../core/usecases/strategy/compileStrategy';
 import { SettingSection } from '../../components/form';
 import { BasicInfoSection } from './sections/BasicInfoSection';
+import { RetirementGoalSection } from './sections/RetirementGoalSection';
 import { StrategyModeSelector } from './StrategyModeSelector';
 import { collectChangedPaths, countSectionChanges } from './diffDefaults';
 import { SectionId } from './fieldVisibility';
 import { SectionProps } from './strategyOptions';
+import { useAiRecommendation } from './useAiRecommendation';
 
 export interface StrategySettingsPanelProps {
   params: SimulationParams;
@@ -34,11 +36,15 @@ export function resolveStrategy(params: SimulationParams): RetirementStrategy {
   return { ...DEFAULT_RETIREMENT_STRATEGY, ...(params.strategy ?? {}) };
 }
 
+// AI 추천 버튼을 붙일 섹션. 배우자·경제 가정처럼 AI가 관여하지 않는 섹션은 제외한다.
+const AI_SECTIONS: ReadonlySet<SectionId> = new Set(['goal', 'pension', 'investment']);
+
 export function StrategySettingsPanel({ params, onChangeParams }: StrategySettingsPanelProps) {
   const strategy = resolveStrategy(params);
   const mode = strategy.mode;
 
   const changed = useMemo(() => collectChangedPaths(params), [params]);
+  const ai = useAiRecommendation(params);
 
   // 방금 바뀐 섹션을 잠깐 강조한다. 어떤 필드가 바뀌었는지는 changed 집합의 변화로
   // 알 수 있지만, "언제" 바뀌었는지는 상태가 없으면 알 수 없어 로컬 state로 둔다.
@@ -66,8 +72,28 @@ export function StrategySettingsPanel({ params, onChangeParams }: StrategySettin
     switch (id) {
       case 'basic':
         return <BasicInfoSection {...sectionProps} />;
+      case 'goal':
+        return <RetirementGoalSection {...sectionProps} ai={ai} />;
       default:
         return null;
+    }
+  };
+
+  // 섹션별 AI 적용. Task 7·8이 자기 케이스를 추가한다.
+  const applyAiToSection = (id: SectionId) => {
+    const plan = ai.recommendation?.recommendedPlan;
+    if (!plan) return;
+
+    if (id === 'goal' && plan.monthlySpendingMultiplier !== 1) {
+      onChangeParams({
+        ...params,
+        userProfile: {
+          ...params.userProfile,
+          targetMonthlySpending: Math.round(
+            params.userProfile.targetMonthlySpending * plan.monthlySpendingMultiplier
+          ),
+        },
+      });
     }
   };
 
@@ -105,6 +131,9 @@ export function StrategySettingsPanel({ params, onChangeParams }: StrategySettin
               highlighted={recentSection === id}
               // 고급 설정은 전문가 모드에서만 기본으로 펼친다.
               defaultOpen={id === 'advanced' ? mode === 'expert' : false}
+              onAiRecommend={AI_SECTIONS.has(id) ? () => applyAiToSection(id) : undefined}
+              aiDisabled={!ai.improved}
+              aiLabel={ai.error ?? (ai.improved ? 'AI 추천' : '이미 최적')}
             >
               {renderSectionBody(id, sectionPropsFor(id))}
             </SettingSection>
