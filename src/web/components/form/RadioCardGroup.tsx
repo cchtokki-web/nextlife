@@ -38,7 +38,7 @@ export function RadioCardGroup<T extends string>({
         return (
           <label
             key={opt.value}
-            className={`flex cursor-pointer items-start gap-3 rounded-xl border p-3 transition ${
+            className={`flex cursor-pointer items-start gap-3 rounded-xl border p-3 transition has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-primary has-[:focus-visible]:ring-offset-2 ${
               selected
                 ? 'border-primary bg-primary/10'
                 : 'border-card-border hover:border-primary/50'

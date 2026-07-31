@@ -96,11 +96,11 @@ export function SettingSection({
           <motion.div
             id={contentId}
             role="region"
+            className="overflow-hidden"
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
             transition={{ duration: 0.2 }}
-            style={{ overflow: 'hidden' }}
           >
             <div className="flex flex-col gap-4 px-3 pb-4">{children}</div>
           </motion.div>
