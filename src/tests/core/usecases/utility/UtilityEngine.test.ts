@@ -51,6 +51,7 @@ function makeYear(
     spending: ANNUAL_TARGET,
     hasTaxWarning: false,
     spouseAlive: false,
+    spendingFactor: 1,
     ...overrides,
   };
 }

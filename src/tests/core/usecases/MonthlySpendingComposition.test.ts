@@ -98,6 +98,7 @@ function makeYearlyResult(overrides: {
     spending: overrides.spendingAnnual,
     hasTaxWarning: false,
     spouseAlive: false,
+    spendingFactor: 1,
   };
 }
 

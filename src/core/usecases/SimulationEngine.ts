@@ -230,7 +230,10 @@ export class SimulationEngine {
     goalAchievementRate: number,
     depletionAge: number | null,
     inflationMode: 'nominal' | 'real',
-    inflationRate: number
+    inflationRate: number,
+    // 시뮬레이션이 실제로 돈 종료 나이(= computeHouseholdEndAge). 배우자가 본인보다 오래 살면
+    // userProfile.expectancy보다 크다. 호출부가 루프에 쓴 값을 그대로 넘겨받아 재유도하지 않는다.
+    householdEndAge: number
   ): { retirementScore: number, retirementGrade: RetirementGrade, retirementAssetsAtRetirement: number } {
     // 이미 은퇴 나이를 지난 상태로 입력된 경우(currentAge > retirementAge) yearlyResults에는
     // retirementAge 시점 행이 없으므로, 관측 가능한 첫 해(yearlyResults[0])를 은퇴 시점 자산의
@@ -269,7 +272,9 @@ export class SimulationEngine {
       if (depletionAge <= userProfile.retirementAge) {
         longevityScoreRaw = 0;
       } else {
-        const retirementSpan = userProfile.expectancy - userProfile.retirementAge;
+        // 본인 기대수명이 아니라 가구 종료 나이로 정규화한다. 배우자 단독 생존 기간에
+        // 고갈되는 계획이 clamp(=100) 때문에 "고갈 없음"과 같은 점수를 받으면 안 된다.
+        const retirementSpan = householdEndAge - userProfile.retirementAge;
         const survivalSpan = depletionAge - userProfile.retirementAge;
         longevityScoreRaw = Math.min(100, Math.max(0, (survivalSpan / retirementSpan) * 100));
       }
@@ -783,7 +788,7 @@ export class SimulationEngine {
         stockAssets: stockAssetsDisplay, pensionAssets: pensionAssetsDisplay,
         dividendIncome: annualDividendIncome, nationalPensionIncome: annualNationalPensionIncome,
         privatePensionIncome: annualPrivatePensionIncome, pensionIncome, otherIncome: annualOtherIncome,
-        totalIncome, spending: annualSpending, hasTaxWarning, spouseAlive,
+        totalIncome, spending: annualSpending, hasTaxWarning, spouseAlive, spendingFactor,
         preTaxTotalIncome: annualPreTaxTotalIncome,
         dividendTaxPaid: annualDividendTaxPaid, pensionTaxPaid: annualPensionTaxPaid,
         nationalPensionTaxPaid: annualNationalPensionTaxPaid, comprehensiveTaxPaid: annualComprehensiveTaxPaidDisplay,
@@ -807,7 +812,10 @@ export class SimulationEngine {
       const totalIncomeSum = retirementYearsResults.reduce((sum, r) => sum + r.totalIncome, 0);
       let totalTargetSum = 0;
       retirementYearsResults.forEach(r => {
-          let annualTarget = userProfile.targetMonthlySpending * 12;
+          // 목표액에도 그 해의 가구 규모 계수를 곱한다. 한 명만 남은 해의 실제 지출은 이미
+          // 0.7배로 줄어 있으므로, 분모만 2인 기준으로 두면 줄어든 필요를 완벽히 충족한
+          // 계획이 영구적 결손으로 채점된다(아래 avgRetirementMonthlySpending과도 어긋난다).
+          let annualTarget = userProfile.targetMonthlySpending * 12 * r.spendingFactor;
           if (inflationMode === 'nominal') {
               annualTarget = annualTarget * Math.pow(1 + inflationRate / 100, r.age - startAge);
           }
@@ -824,7 +832,7 @@ export class SimulationEngine {
     const endingAssets = yearlyResults.length > 0 ? yearlyResults[yearlyResults.length - 1].totalAssets : 0;
 
     const { retirementScore, retirementGrade, retirementAssetsAtRetirement } = this.calculateRetirementScore(
-      yearlyResults, userProfile, goalAchievementRate, depletionAge, inflationMode, inflationRate
+      yearlyResults, userProfile, goalAchievementRate, depletionAge, inflationMode, inflationRate, endAge
     );
 
     return {

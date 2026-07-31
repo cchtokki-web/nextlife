@@ -6,6 +6,7 @@ import {
   UtilityConfig,
 } from '../../entities/types';
 import { DEFAULT_UTILITY_CONFIG } from './utilityWeights';
+import { computeHouseholdEndAge, resolveSpouse } from '../spouse/spouseRules';
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
@@ -27,14 +28,19 @@ function sum(values: number[]): number {
   return values.reduce((s, v) => s + v, 0);
 }
 
-// 해당 연도의 목표 연간 생활비(인플레이션 반영). SimulationEngine의 목표 생활비 산출 로직과
-// 동일한 규칙(명목: 매년 물가상승률 복리 반영 / 실질: 고정)을 따른다.
+// 해당 연도의 목표 연간 생활비(인플레이션 + 가구 규모 반영). SimulationEngine의 목표 생활비
+// 산출 로직과 동일한 규칙(명목: 매년 물가상승률 복리 반영 / 실질: 고정)을 따른다.
+//
+// 가구 규모 계수는 여기서 다시 유도하지 않고 엔진이 실제로 곱한 값(r.spendingFactor)을 그대로
+// 쓴다 — 규칙을 두 곳에 두면 반드시 어긋나고, 이 주석의 "동일한 규칙" 문구가 배우자 기능
+// 추가 때 한 번 stale해진 것이 그 증거다.
 function targetAnnualSpendingForYear(params: SimulationParams, r: SimulationYearlyResult): number {
   const { userProfile, inflationRate = 2, inflationMode = 'real' } = params;
   const yearIndex = r.age - userProfile.currentAge;
+  const base = userProfile.targetMonthlySpending * 12 * r.spendingFactor;
   return inflationMode === 'nominal'
-    ? userProfile.targetMonthlySpending * 12 * Math.pow(1 + inflationRate / 100, yearIndex)
-    : userProfile.targetMonthlySpending * 12;
+    ? base * Math.pow(1 + inflationRate / 100, yearIndex)
+    : base;
 }
 
 // 목표 대비 소비 충족률(ratio)의 연도별 효용. 부족분은 볼록(convex) 페널티로 강하게 반영하고,
@@ -64,11 +70,16 @@ function computeConsumptionRaw(params: SimulationParams, retirementYears: Simula
 }
 
 function computeDepletionSafetyRaw(params: SimulationParams, result: SimulationResult): number {
-  const { retirementAge, expectancy } = params.userProfile;
+  const { retirementAge } = params.userProfile;
   if (result.depletionAge === null) return 1;
   if (result.depletionAge <= retirementAge) return 0;
 
-  const span = expectancy - retirementAge;
+  // 본인 기대수명이 아니라 가구 종료 나이로 정규화한다. 본인 기대수명으로 나누면
+  // 배우자 단독 생존 기간에 고갈되는 계획도 ratio > 1이 되어 clamp에 걸려 "고갈 없음"
+  // 조기 반환과 바이트 단위로 같은 만점이 나온다 — 파산 계획이 만점을 받는다.
+  // 엔진이 종료 나이를 정하는 데 쓴 바로 그 함수를 호출하므로 규칙이 복제되지 않는다.
+  const span = computeHouseholdEndAge(params.userProfile, resolveSpouse(params.spouse, params.userProfile))
+    - retirementAge;
   if (span <= 0) return 0;
   return clamp((result.depletionAge - retirementAge) / span, 0, 1);
 }

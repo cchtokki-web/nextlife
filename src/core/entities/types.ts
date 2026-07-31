@@ -190,13 +190,22 @@ export interface SimulationYearlyResult {
   // (배우자가 없는 것과 사망한 것을 결과 타입에서 구분하지 않는다 —
   //  구분이 필요한 소비처는 params.spouse를 함께 본다).
   spouseAlive: boolean;
+  // 해당 연도에 적용된 가구 생활비 규모 계수(2인=1, 1인 생존=0.7, 배우자 미설정=1).
+  // SimulationEngine이 목표 생활비에 곱한 바로 그 값을 그대로 노출한다.
+  //
+  // 점수·효용 계산이 "목표 대비 얼마나 충족했는가"의 분모를 만들 때 반드시 이 값을 곱해야 한다.
+  // 곱하지 않으면 배우자 사망으로 줄어든 필요를 완벽히 충족한 계획이 영구적 결손으로 채점된다.
+  // 계수를 소비처에서 재유도(resolveSpouse 재호출 등)하지 않고 결과에 실어 나르는 이유는,
+  // 계수를 계산하는 곳을 엔진 한 곳으로 묶어 두 로직이 다시 어긋나지 못하게 하기 위해서다.
+  spendingFactor: number;
 }
 
 export interface SimulationResult {
   yearlyResults: SimulationYearlyResult[];
   fireAge: number | null; // FIRE 달성(소득 >= 생활비) 가능 나이
   depletionAge: number | null; // 자산 고갈 나이 (0 이하가 되는 시점)
-  endingAssets: number; // 기대수명(사망) 시점 잔여 자산
+  endingAssets: number; // 시뮬레이션 종료 시점 잔여 자산. 배우자가 본인보다 오래 살면
+                        // 본인 기대수명이 아니라 "둘 중 늦게 사망하는 쪽" 시점의 잔액이다.
   retirementScore: number; // 0 ~ 100 점
   retirementGrade: RetirementGrade; // 점수 등급 (매우 안정, 안정, 보통, 주의, 위험)
   goalAchievementRate: number; // 은퇴 후 예상 월소득 / 목표 월소득 비율 (%)

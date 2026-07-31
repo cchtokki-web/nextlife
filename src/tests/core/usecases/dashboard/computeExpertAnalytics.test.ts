@@ -25,6 +25,7 @@ function makeYearlyResult(overrides: Partial<SimulationYearlyResult>): Simulatio
     spending: 0,
     hasTaxWarning: false,
     spouseAlive: false,
+    spendingFactor: 1,
     ...overrides,
   };
 }
