@@ -67,6 +67,32 @@ describe('compileStrategy 투자/경제 축', () => {
       .toBe('aggressive');
   });
 
+  test('리스크 성향이 custom이면 자산·연금에 직접 입력한 수익률을 그대로 쓴다', () => {
+    // '사용자 직접입력'은 프리셋 매핑이 없어야 한다. RISK_PROFILE_PRESETS에 항목이
+    // 생기면 applyYieldPreset이 호출되어 직접 입력한 값이 조용히 덮어써진다.
+    const params = withStrategy({ riskProfile: 'custom' });
+    params.assets = [{ ...params.assets[0], annualGrowthRate: 11.5 }];
+    params.privatePensions = [{ ...params.privatePensions[0], annualReturn: 6.5 }];
+
+    const r = compileStrategy(params);
+
+    expect(r.params.assets[0].annualGrowthRate).toBe(11.5);
+    expect(r.params.privatePensions[0].annualReturn).toBe(6.5);
+    expect(r.params.yieldPreset).toBeUndefined();
+  });
+
+  test('custom은 경제 시나리오가 정한 수익률도 덮어쓰지 않는다', () => {
+    // ai_recommended와 같은 메커니즘이다 — 시나리오는 여전히 적용되고, 리스크 성향만
+    // 그 위에 아무것도 얹지 않는다.
+    const r = compileStrategy(withStrategy({
+      economicScenario: 'recession',
+      riskProfile: 'custom',
+    }));
+
+    expect(r.params.assets[0].annualGrowthRate)
+      .toBe(ECONOMIC_SCENARIO_PROFILES.recession!.stockGrowthRate);
+  });
+
   test('리스크 성향 프리셋을 적용해도 자산별 reinvestDividend가 보존된다', () => {
     // applyYieldPreset이 자산 배열을 새로 만들지만 reinvestDividend는 스프레드로 유지된다.
     const params = withStrategy({ riskProfile: 'aggressive' });

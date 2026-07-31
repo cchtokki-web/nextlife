@@ -8,7 +8,7 @@ import { resolveTaxSettings } from '../../../../core/usecases/tax/taxRates';
 import InputField from '../../../components/InputField';
 import SelectField from '../../../components/SelectField';
 import { FieldRow, SwitchField } from '../../../components/form';
-import { isFieldVisible } from '../fieldVisibility';
+import { SECTION_FIELDS, isFieldVisible } from '../fieldVisibility';
 import { SectionProps } from '../strategyOptions';
 
 // 세법 버전 선택지. 현재는 현행 하나뿐이며, 확정된 개정안이 생기면 여기에 추가한다
@@ -38,6 +38,17 @@ export function AdvancedSection({ params, onChangeParams, mode, changed }: Secti
   const setTax = (patch: Partial<TaxSettings>) => {
     onChangeParams({ ...params, taxSettings: { ...tax, ...patch } });
   };
+
+  // 이 섹션의 필드는 전부 전문가 전용이라 간편/표준에서는 본문이 통째로 빈다. 아코디언은
+  // 여전히 열리므로, 왜 비어 있는지 알려 주지 않으면 고장으로 읽힌다.
+  const hasVisibleField = SECTION_FIELDS.advanced.some((path) => isFieldVisible(mode, path));
+  if (!hasVisibleField) {
+    return (
+      <p className="text-xs text-foreground-muted">
+        전문가 모드에서 세율·한도를 직접 조정할 수 있습니다. 지금은 현행 세법 기준 기본값으로 계산합니다.
+      </p>
+    );
+  }
 
   const rateField = (key: RateKey, label: string, tooltip?: string) => {
     const path = `taxSettings.${key}`;

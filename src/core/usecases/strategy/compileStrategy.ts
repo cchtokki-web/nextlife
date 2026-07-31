@@ -75,8 +75,11 @@ export function resolvePrivatePensionTaxLimitOverride(
   return (PRIVATE_PENSION_RULES[strategy] ?? PRIVATE_PENSION_RULES.ai_optimized).limitToTaxLimit;
 }
 
-// 리스크 성향 → 기존 수익률 프리셋. 'ai_recommended'는 매핑이 없으며,
-// 이 경우 경제 시나리오가 정한 수익률을 그대로 둔다("미정"이지 "중립형"이 아니다).
+// 리스크 성향 → 기존 수익률 프리셋. 'ai_recommended'와 'custom'은 의도적으로 매핑이 없다.
+// 매핑이 없으면 applyYieldPreset을 부르지 않아 자산·연금에 직접 입력한 수익률(또는 경제
+// 시나리오가 정한 값)이 그대로 남는다 — 'ai_recommended'는 "미정"이지 "중립형"이 아니고,
+// 'custom'은 "내가 넣은 값을 덮어쓰지 말라"는 뜻이다. 여기에 항목을 추가하면 두 선택지
+// 모두 사용자의 직접 입력을 조용히 덮어쓰게 된다.
 const RISK_PROFILE_PRESETS: Partial<Record<RiskProfile, 'conservative' | 'base' | 'aggressive'>> = {
   conservative: 'conservative',
   neutral: 'base',

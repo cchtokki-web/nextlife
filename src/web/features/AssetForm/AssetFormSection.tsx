@@ -4,7 +4,7 @@ import { InputField } from '../../components/InputField';
 import { SelectField } from '../../components/SelectField';
 import styles from './AssetForm.module.css';
 import compStyles from '../../styles/components.module.css';
-import { Plus, Trash2, User, Landmark, PiggyBank, DollarSign, ExternalLink, ChevronDown, ChevronUp, RefreshCw } from 'lucide-react';
+import { Plus, Trash2, Wallet, Landmark, PiggyBank, DollarSign, ExternalLink, ChevronDown, ChevronUp, RefreshCw } from 'lucide-react';
 import { PredefinedAsset, predefinedAssets } from './predefinedAssets';
 
 const convertAmountOnPeriodChange = (amount: number, fromPeriod: 'daily' | 'weekly' | 'monthly', toPeriod: 'daily' | 'weekly' | 'monthly'): number => {
@@ -571,8 +571,8 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
         style={{ cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: isSectionExpanded ? '1rem' : '0' }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <User size={18} className={styles.icon} />
-          <span className={styles.title}>인적사항 및 자산 입력</span>
+          <Wallet size={18} className={styles.icon} />
+          <span className={styles.title}>보유 자산 입력</span>
         </div>
         {isSectionExpanded ? <ChevronUp size={18} className={styles.icon} /> : <ChevronDown size={18} className={styles.icon} />}
       </div>

@@ -1,7 +1,7 @@
 import {
   Activity, Banknote, CalendarClock, CalendarMinus, CalendarPlus, CloudRain, Coins, Flame, Gift,
-  HandCoins, Leaf, PiggyBank, Receipt, Rocket, Shield, ShieldCheck, Sparkles, TrendingDown, TrendingUp,
-  Wallet,
+  HandCoins, Leaf, PiggyBank, Receipt, Rocket, Shield, ShieldCheck, SlidersHorizontal, Sparkles,
+  TrendingDown, TrendingUp, Wallet,
 } from 'lucide-react';
 import {
   BequestStrategy, EconomicScenario, HealthcareAssumptions, NationalPensionStrategy, ObjectivePriority,
@@ -196,6 +196,11 @@ export const RISK_PROFILE_OPTIONS: ReadonlyArray<RadioCardOption<RiskProfile>> =
     value: 'aggressive', label: '공격형',
     description: '높은 수익을 가정하되 그만큼 변동도 크다고 봅니다. (주식 9%)',
     icon: <Flame size={16} />,
+  },
+  {
+    value: 'custom', label: '사용자 직접입력',
+    description: '자산마다 직접 입력한 수익률을 그대로 씁니다. 프리셋으로 덮어쓰지 않습니다.',
+    icon: <SlidersHorizontal size={16} />,
   },
   {
     value: 'ai_recommended', label: 'AI 추천',

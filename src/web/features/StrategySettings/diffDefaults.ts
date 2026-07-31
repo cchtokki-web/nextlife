@@ -32,6 +32,17 @@ function readBaseline(path: FieldPath): unknown {
 // "자산 중 하나라도 기본값과 다른가"로 축약해 판정한다.
 const ASSET_REINVEST_PATH: FieldPath = 'assets.reinvestDividend';
 
+// 최신 환율 자동 조회가 켜져 있는 동안 baseExchangeRate는 사용자가 정한 값이 아니라
+// 실시간 시세다(⑤경제 가정을 열 때마다 덮어써지고, 입력도 비활성화된다). 이것을 변경으로
+// 세면 사용자가 손대지 않았는데 "1개 변경" / "숨겨진 사용자 설정 1개" 배지가 붙는다.
+// 자동 조회를 끄는 순간부터는 환율이 사용자의 선택이 되므로 정상적으로 판정한다.
+// useLatestExchangeRate 자신도 함께 제외한다. 껐다가 다시 켜면 값이 명시적 true가 되는데,
+// 기준값은 undefined(=켜짐)라서 "기본과 동일한 동작"인데도 변경으로 잡히기 때문이다.
+function isAutoFetchedExchangeRate(params: SimulationParams, path: FieldPath): boolean {
+  if (params.useLatestExchangeRate === false) return false;
+  return path === 'baseExchangeRate' || path === 'useLatestExchangeRate';
+}
+
 function isAssetReinvestChanged(params: SimulationParams): boolean {
   const baseline = new Map(initialParams.assets.map((a) => [a.id, a.reinvestDividend]));
   return params.assets.some((a) => {
@@ -52,6 +63,8 @@ export function collectChangedPaths(params: SimulationParams): ReadonlySet<Field
         if (isAssetReinvestChanged(params)) changed.add(path);
         continue;
       }
+
+      if (isAutoFetchedExchangeRate(params, path)) continue;
 
       const current = readPath(params, path);
       // 값을 아직 지정하지 않은 필드(undefined)는 "기본값 그대로"로 본다.

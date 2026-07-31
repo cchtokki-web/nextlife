@@ -362,7 +362,10 @@ export type NationalPensionStrategy =
 export type PrivatePensionStrategy =
   | 'tax_first' | 'spending_first' | 'growth_first' | 'minimum' | 'ai_optimized';
 
-export type RiskProfile = 'conservative' | 'neutral' | 'aggressive' | 'ai_recommended';
+// 'custom'과 'ai_recommended'는 둘 다 "수익률 프리셋을 적용하지 않는다"는 같은 동작이지만
+// 뜻이 다르다: 'custom'은 사용자가 자산별로 직접 넣은 값을 쓰겠다는 명시적 선택이고,
+// 'ai_recommended'는 아직 정하지 않았다는 뜻이다.
+export type RiskProfile = 'conservative' | 'neutral' | 'aggressive' | 'custom' | 'ai_recommended';
 
 export type EconomicScenario =
   | 'long_term_average' | 'recession' | 'high_inflation' | 'low_growth' | 'ai_recommended';

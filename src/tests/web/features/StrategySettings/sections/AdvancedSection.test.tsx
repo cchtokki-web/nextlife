@@ -117,26 +117,27 @@ describe('AdvancedSection', () => {
     expect(screen.getByRole('switch', { name: /건강보험료 반영/ })).toBeInTheDocument();
   });
 
-  test('간편 모드에서는 아무것도 렌더링하지 않는다', () => {
+  test('전문가 모드에서는 안내문 없이 실제 설정만 보여준다', () => {
+    renderSection();
+
+    expect(screen.queryByText(/전문가 모드에서 세율·한도를 직접 조정할 수 있습니다/))
+      .not.toBeInTheDocument();
+  });
+
+  // 간편/표준에서는 이 섹션의 모든 필드가 STANDARD_EXCLUDED라 본문이 통째로 비는데,
+  // 아코디언은 열 수 있다. 빈 아코디언은 고장으로 읽히므로 왜 비었는지 알려 준다.
+  test.each(['simple', 'standard'] as const)('%s 모드에서는 필드 대신 안내문만 보여준다', (mode) => {
     render(
       <AdvancedSection
         params={initialParams} onChangeParams={vi.fn()}
-        mode="simple" changed={new Set()}
+        mode={mode} changed={new Set()}
       />
     );
 
     expect(screen.queryByLabelText('미국 배당세율')).not.toBeInTheDocument();
-  });
-
-  test('표준 모드에서도 고급 설정은 숨긴다', () => {
-    render(
-      <AdvancedSection
-        params={initialParams} onChangeParams={vi.fn()}
-        mode="standard" changed={new Set()}
-      />
-    );
-
     expect(screen.queryByLabelText('세법 버전')).not.toBeInTheDocument();
     expect(screen.queryByRole('switch', { name: /금융소득종합과세 반영/ })).not.toBeInTheDocument();
+    expect(screen.getByText(/전문가 모드에서 세율·한도를 직접 조정할 수 있습니다/))
+      .toBeInTheDocument();
   });
 });

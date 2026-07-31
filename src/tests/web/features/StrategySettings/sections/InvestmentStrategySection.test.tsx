@@ -17,7 +17,7 @@ describe('InvestmentStrategySection', () => {
 
     // 두 그룹 모두 'AI 추천' 옵션을 가지므로 그룹으로 좁혀 찾는다.
     const risk = within(screen.getByRole('radiogroup', { name: '리스크 성향' }));
-    for (const label of [/안정형/, /중립형/, /공격형/, /AI 추천/]) {
+    for (const label of [/안정형/, /중립형/, /공격형/, /사용자 직접입력/, /AI 추천/]) {
       expect(risk.getByRole('radio', { name: label })).toBeInTheDocument();
     }
 
@@ -44,6 +44,26 @@ describe('InvestmentStrategySection', () => {
     expect(onChangeParams).toHaveBeenCalledWith({
       ...initialParams,
       strategy: { ...DEFAULT_RETIREMENT_STRATEGY, riskProfile: 'aggressive' },
+    });
+  });
+
+  test('사용자 직접입력을 고르면 strategy.riskProfile이 custom이 된다', () => {
+    const onChangeParams = vi.fn();
+    render(
+      <InvestmentStrategySection
+        params={initialParams} onChangeParams={onChangeParams}
+        mode="standard" changed={new Set()} ai={noAi}
+      />
+    );
+
+    fireEvent.click(
+      within(screen.getByRole('radiogroup', { name: '리스크 성향' }))
+        .getByRole('radio', { name: /사용자 직접입력/ })
+    );
+
+    expect(onChangeParams).toHaveBeenCalledWith({
+      ...initialParams,
+      strategy: { ...DEFAULT_RETIREMENT_STRATEGY, riskProfile: 'custom' },
     });
   });
 
