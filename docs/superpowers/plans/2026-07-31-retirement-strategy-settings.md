@@ -5774,7 +5774,12 @@ QuickSettingsSummary / SimulationSettings / TaxSettingsSection 세 컴포넌트�
 
 ## 완료 기준
 
-- `npm test` 전체 통과, `npx tsc --noEmit` 에러 없음, `npm run lint` 에러 없음
+- `npm test` 전체 통과, `npx tsc --noEmit` 에러 없음
+- `npm run lint`: **베이스라인 대비 증가 없음.** 이 저장소는 작업 시작 시점(커밋 59b558e)에
+  이미 137 errors / 74 warnings를 갖고 있다(대부분 루트 스크립트의 `require()` 스타일 import).
+  "lint 에러 0"은 달성 불가능한 기준이므로, 판정은 `npm run lint` 총계가 137 errors를
+  넘지 않고 경고도 74건에서 늘지 않았는지로 한다. 새로 만든 파일에 대해서는
+  `npx eslint <새 파일들>`이 완전히 깨끗해야 한다.
 - `grep -rn "QuickSettingsSummary\|SimulationSettings\|TaxSettingsSection" src/` 결과 없음
 - 새 코드에 `any` 없음: `grep -rn ": any\|as any" src/web/features/StrategySettings src/web/components/form src/core/usecases/strategy src/core/usecases/spouse src/core/usecases/healthcare` 결과 없음
 - 전략 기능을 모두 끈 상태(`strategy`/`spouse`/`healthcare` 미설정)에서 시뮬레이션 결과가 작업 시작 전과 동일
