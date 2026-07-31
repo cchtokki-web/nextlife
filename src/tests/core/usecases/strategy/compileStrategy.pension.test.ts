@@ -35,10 +35,22 @@ describe('compileStrategy 연금 축', () => {
     expect(r.params.withdrawalPlan?.nationalPensionStartAge).toBe(NATIONAL_PENSION_NORMAL_START_AGE);
   });
 
+  test('국민연금 "조기 수령"은 60세다', () => {
+    const r = compileStrategy(withStrategy({ nationalPensionStrategy: 'early' }));
+
+    expect(r.params.withdrawalPlan?.nationalPensionStartAge).toBe(60);
+  });
+
   test('국민연금 "1년 연기"는 66세다', () => {
     const r = compileStrategy(withStrategy({ nationalPensionStrategy: 'defer_1y' }));
 
     expect(r.params.withdrawalPlan?.nationalPensionStartAge).toBe(66);
+  });
+
+  test('국민연금 "2년 연기"는 67세다', () => {
+    const r = compileStrategy(withStrategy({ nationalPensionStrategy: 'defer_2y' }));
+
+    expect(r.params.withdrawalPlan?.nationalPensionStartAge).toBe(67);
   });
 
   test('국민연금 "최대 연기"는 70세다', () => {
@@ -51,6 +63,16 @@ describe('compileStrategy 연금 축', () => {
     const r = compileStrategy(withStrategy({ nationalPensionStrategy: 'ai_optimized' }));
 
     expect(r.params.withdrawalPlan?.nationalPensionStartAge).toBe(NATIONAL_PENSION_NORMAL_START_AGE);
+  });
+
+  test('알 수 없는 국민연금 전략 값이 들어와도 baseline(정상 개시)으로 폴백한다', () => {
+    // 저장된 옛 시나리오에 없어진 enum 값이 남아 있어도 화면이 죽으면 안 된다.
+    const params = withStrategy({});
+    (params.strategy as RetirementStrategy).nationalPensionStrategy = 'nonexistent' as never;
+
+    expect(() => compileStrategy(params)).not.toThrow();
+    expect(compileStrategy(params).params.withdrawalPlan?.nationalPensionStartAge)
+      .toBe(NATIONAL_PENSION_NORMAL_START_AGE);
   });
 
   test('사적연금 "절세 우선"은 한도 내 인출을 켜고 월 목표를 한도/12로 잡는다', () => {
@@ -92,6 +114,29 @@ describe('compileStrategy 연금 축', () => {
     expect(r.params.taxSettings?.limitPrivatePensionToTaxLimit).toBe(true);
   });
 
+  test('사적연금 "AI 최적화"는 고급 설정에서 끈 한도 내 인출도 덮어쓰지 않는다', () => {
+    // true 쪽만 테스트하면 "무조건 true로 강제"하는 버그와 구분되지 않는다.
+    const params = withStrategy({ privatePensionStrategy: 'ai_optimized' });
+    params.taxSettings = { ...params.taxSettings, limitPrivatePensionToTaxLimit: false } as never;
+
+    const r = compileStrategy(params);
+
+    expect(r.params.taxSettings?.limitPrivatePensionToTaxLimit).toBe(false);
+  });
+
+  test('알 수 없는 사적연금 전략 값이 들어와도 baseline(AI 최적화와 동일)으로 폴백한다', () => {
+    // 저장된 옛 시나리오에 없어진 enum 값이 남아 있어도 화면이 죽으면 안 된다.
+    const params = withStrategy({});
+    (params.strategy as RetirementStrategy).privatePensionStrategy = 'nonexistent' as never;
+    params.taxSettings = { ...params.taxSettings, limitPrivatePensionToTaxLimit: true } as never;
+
+    expect(() => compileStrategy(params)).not.toThrow();
+    const r = compileStrategy(params);
+    // ai_optimized와 동일하게 월 목표는 미지정, 한도 내 인출은 사용자가 켠 값을 유지한다.
+    expect(r.params.withdrawalPlan?.privatePensionMonthlyTarget).toBeUndefined();
+    expect(r.params.taxSettings?.limitPrivatePensionToTaxLimit).toBe(true);
+  });
+
   test('명시적 전략은 고급 설정의 한도 내 인출 값을 덮어쓴다', () => {
     const params = withStrategy({ privatePensionStrategy: 'spending_first' });
     params.taxSettings = { ...params.taxSettings, limitPrivatePensionToTaxLimit: true } as never;
@@ -122,12 +167,18 @@ describe('compileStrategy 연금 축', () => {
     expect(r.params.withdrawalPlan?.isaMaturityDestination).toBe('pension');
   });
 
-  test('배당 재투자 스위치가 모든 자산의 reinvestDividend에 일괄 적용된다', () => {
-    const on = compileStrategy(withStrategy({ reinvestDividends: true }));
-    const off = compileStrategy(withStrategy({ reinvestDividends: false }));
+  test('compileStrategy는 자산별 reinvestDividend를 건드리지 않는다', () => {
+    // 배당 재투자 스위치는 "일괄 적용 버튼"이라 눌린 순간에만 assets를 갱신한다.
+    // 컴파일 때마다 덮어쓰면 AssetFormSection의 자산별 토글이 뭉개진다.
+    const params = withStrategy({});
+    params.assets = [
+      { ...params.assets[0], id: 'a1', reinvestDividend: true },
+      { ...params.assets[0], id: 'a2', reinvestDividend: false },
+    ];
 
-    expect(on.params.assets.every((a) => a.reinvestDividend)).toBe(true);
-    expect(off.params.assets.every((a) => !a.reinvestDividend)).toBe(true);
+    const r = compileStrategy(params);
+
+    expect(r.params.assets.map((a) => a.reinvestDividend)).toEqual([true, false]);
   });
 
   test('사용자가 이미 넣어둔 withdrawalPlan 필드는 덮어쓰지 않는다', () => {

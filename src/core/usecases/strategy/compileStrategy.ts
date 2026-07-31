@@ -2,7 +2,9 @@ import {
   BequestStrategy, NationalPensionStrategy, PrivatePensionStrategy, RetirementStrategy,
   SimulationParams, SpendingStrategy, SpendingStrategyChoice, UtilityConfig, WithdrawalPlan,
 } from '../../entities/types';
-import { NATIONAL_PENSION_NORMAL_START_AGE } from '../pension/nationalPensionRules';
+import {
+  NATIONAL_PENSION_EARLY_MIN_AGE, NATIONAL_PENSION_NORMAL_START_AGE,
+} from '../pension/nationalPensionRules';
 import { resolveTaxSettings } from '../tax/taxRates';
 import { createUtilityConfig, DEFAULT_UTILITY_CONFIG } from '../utility/utilityWeights';
 import { OBJECTIVE_WEIGHT_PRESETS } from './objectivePresets';
@@ -27,7 +29,6 @@ export const DEFAULT_RETIREMENT_STRATEGY: RetirementStrategy = {
   nationalPensionStrategy: 'ai_optimized',
   privatePensionStrategy: 'ai_optimized',
   preferIsaFirst: false,
-  reinvestDividends: true,
   riskProfile: 'ai_recommended',
   economicScenario: 'ai_recommended',
 };
@@ -36,6 +37,9 @@ export const DEFAULT_RETIREMENT_STRATEGY: RetirementStrategy = {
 // getNationalPensionAdjustmentFactor가 연기 1개월당 0.6%를 가산하므로
 // 70세는 +36%가 된다. 'ai_optimized'는 baseline(정상 개시)으로 내린다.
 export const NATIONAL_PENSION_STRATEGY_AGES: Record<NationalPensionStrategy, number> = {
+  // 조기수령. StrategyCandidateGenerator의 나이 격자가 [60, 65, 70]이므로 60을 표현할
+  // enum이 없으면 AI가 조기수령을 추천해도 적용 시 가장 가까운 'normal'(65)로 뒤집힌다.
+  early: NATIONAL_PENSION_EARLY_MIN_AGE,
   normal: NATIONAL_PENSION_NORMAL_START_AGE,
   defer_1y: NATIONAL_PENSION_NORMAL_START_AGE + 1,
   defer_2y: NATIONAL_PENSION_NORMAL_START_AGE + 2,
@@ -156,9 +160,10 @@ export function compileStrategy(params: SimulationParams): CompiledStrategy {
     withdrawalPlan.privatePensionMonthlyTarget = privatePensionMonthlyTarget;
   }
 
-  const assets = params.assets.map((a) => ({
-    ...a, reinvestDividend: strategy.reinvestDividends,
-  }));
+  // 배당 재투자는 compileStrategy가 건드리지 않는다. ③연금 전략의 스위치는 "설정"이 아니라
+  // "일괄 적용 버튼"이며, 눌린 그 순간에만 params.assets를 직접 갱신한다. 여기서 매번
+  // 덮어쓰면 AssetFormSection의 자산별 토글이 조용히 뭉개진다.
+  const assets = params.assets;
 
   return {
     params: {

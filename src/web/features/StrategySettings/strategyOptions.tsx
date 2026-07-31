@@ -1,6 +1,6 @@
 import {
-  Banknote, CalendarClock, CalendarPlus, Coins, Gift, HandCoins, Leaf, PiggyBank, Receipt, Rocket,
-  Shield, Sparkles, TrendingUp, Wallet,
+  Banknote, CalendarClock, CalendarMinus, CalendarPlus, Coins, Gift, HandCoins, Leaf, PiggyBank, Receipt,
+  Rocket, Shield, Sparkles, TrendingUp, Wallet,
 } from 'lucide-react';
 import {
   BequestStrategy, NationalPensionStrategy, ObjectivePriority, PrivatePensionStrategy, SimulationParams,
@@ -105,6 +105,11 @@ export const BEQUEST_OPTIONS: ReadonlyArray<RadioCardOption<BequestStrategy>> = 
 ];
 
 export const NATIONAL_PENSION_OPTIONS: ReadonlyArray<RadioCardOption<NationalPensionStrategy>> = [
+  {
+    value: 'early', label: '조기 수령 (60세)',
+    description: '5년 일찍 받는 대신 매달 받는 금액이 30% 줄어듭니다.',
+    icon: <CalendarMinus size={16} />,
+  },
   {
     value: 'normal', label: '예상 수령 (65세)',
     description: '원래 받기로 된 나이에 그대로 받습니다.',

@@ -29,7 +29,9 @@ export const SECTION_FIELDS: Record<SectionId, ReadonlyArray<FieldPath>> = {
     'strategy.nationalPensionStrategy',
     'strategy.privatePensionStrategy',
     'strategy.preferIsaFirst',
-    'strategy.reinvestDividends',
+    // 자산 배열 내부 값을 가리키는 가상 경로. diffDefaults가 "자산 중 하나라도
+    // 기본값과 다른가"로 해석한다 (배열 인덱스별 경로를 만들지 않기 위한 장치).
+    'assets.reinvestDividend',
   ],
   investment: [
     'yieldPreset',

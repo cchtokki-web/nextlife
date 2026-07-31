@@ -1,8 +1,13 @@
-import { describe, test, expect, vi } from 'vitest';
-import { act, render, screen, fireEvent } from '@testing-library/react';
+import { describe, test, expect, vi, afterEach } from 'vitest';
+import { act, render, screen, fireEvent, within } from '@testing-library/react';
 import { StrategySettingsPanel } from '@/web/features/StrategySettings/StrategySettingsPanel';
 import { initialParams } from '@/infrastructure/storage/localStore';
 import { DEFAULT_RETIREMENT_STRATEGY } from '@/core/usecases/strategy/compileStrategy';
+import * as RecommendationEngine from '@/core/usecases/strategy/RecommendationEngine';
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 describe('StrategySettingsPanel', () => {
   test('전략 모드 3개와 6개 섹션 제목을 렌더링한다', () => {
@@ -55,6 +60,31 @@ describe('StrategySettingsPanel', () => {
     render(<StrategySettingsPanel params={params} onChangeParams={vi.fn()} />);
 
     expect(screen.getByText('숨겨진 사용자 설정 1개')).toBeInTheDocument();
+  });
+
+  test('AI가 60세(조기수령)를 추천하면 적용 시 조기 수령 전략으로 역매핑된다', () => {
+    // StrategyCandidateGenerator의 나이 격자는 [60, 65, 70]이라 AI가 60세를 정당하게
+    // 추천할 수 있다. NationalPensionStrategy에 조기수령(early=60) 값이 없으면 최근접
+    // 역매핑이 60을 'normal'(65)로 뒤집어 추천과 반대 방향이 된다 — 이 테스트가 그 경로를 잡는다.
+    vi.spyOn(RecommendationEngine, 'recommendStrategy').mockReturnValue({
+      improved: true,
+      recommendedPlan: { nationalPensionStartAge: 60, isaMaturityDestination: 'pension' },
+    } as never);
+
+    const onChangeParams = vi.fn();
+    render(<StrategySettingsPanel params={initialParams} onChangeParams={onChangeParams} />);
+
+    const pensionToggle = screen.getByRole('button', { name: '연금 전략' });
+    fireEvent.click(
+      within(pensionToggle.parentElement as HTMLElement).getByRole('button', { name: 'AI 추천' })
+    );
+
+    expect(onChangeParams).toHaveBeenCalledWith({
+      ...initialParams,
+      strategy: {
+        ...DEFAULT_RETIREMENT_STRATEGY, nationalPensionStrategy: 'early', preferIsaFirst: false,
+      },
+    });
   });
 
   test('섹션에서 값을 바꾸면 그 섹션이 잠깐 강조되고 시간이 지나면 해제된다', () => {

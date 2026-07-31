@@ -17,6 +17,21 @@ export function PensionStrategySection({ params, onChangeParams, mode, changed, 
     onChangeParams({ ...params, strategy: { ...strategy, ...patch } });
   };
 
+  // 배당 재투자 스위치는 "설정"이 아니라 "일괄 적용 버튼"이다. 표시 상태는 자산들에서
+  // 파생하고(모두 켜짐 / 모두 꺼짐 / 혼합), 누르면 그 순간 모든 자산을 갱신한다.
+  // compileStrategy는 이 값을 건드리지 않으므로 이후 자산별로 고친 값이 그대로 살아남는다.
+  const reinvestState: 'all' | 'none' | 'mixed' =
+    params.assets.every((a) => a.reinvestDividend) ? 'all'
+      : params.assets.every((a) => !a.reinvestDividend) ? 'none'
+        : 'mixed';
+
+  const applyReinvestToAllAssets = (next: boolean) => {
+    onChangeParams({
+      ...params,
+      assets: params.assets.map((a) => ({ ...a, reinvestDividend: next })),
+    });
+  };
+
   const plan = ai.improved ? ai.recommendation?.recommendedPlan : undefined;
   const nationalHint = plan?.nationalPensionStartAge !== undefined
     ? `${plan.nationalPensionStartAge}세부터 수령`
@@ -68,13 +83,17 @@ export function PensionStrategySection({ params, onChangeParams, mode, changed, 
         />
       )}
 
-      {isFieldVisible(mode, 'strategy.reinvestDividends') && (
+      {isFieldVisible(mode, 'assets.reinvestDividend') && params.assets.length > 0 && (
         <SwitchField
           label="배당금 재투자"
-          description="받은 배당을 쓰지 않고 다시 사들여 복리로 굴립니다."
-          checked={strategy.reinvestDividends}
-          onChange={(v) => setStrategy({ reinvestDividends: v })}
-          changed={changed.has('strategy.reinvestDividends')}
+          description={
+            reinvestState === 'mixed'
+              ? '자산마다 다르게 설정되어 있습니다. 여기서 켜거나 끄면 모든 자산에 한 번에 적용됩니다.'
+              : '받은 배당을 쓰지 않고 다시 사들여 복리로 굴립니다. 모든 자산에 한 번에 적용됩니다.'
+          }
+          checked={reinvestState === 'all'}
+          onChange={applyReinvestToAllAssets}
+          changed={changed.has('assets.reinvestDividend')}
         />
       )}
     </>

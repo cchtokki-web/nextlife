@@ -28,6 +28,19 @@ function readBaseline(path: FieldPath): unknown {
   return readPath(initialParams, path);
 }
 
+// 자산 배열 내부 값을 가리키는 가상 경로. 배열 인덱스별 경로를 만들지 않기 위해
+// "자산 중 하나라도 기본값과 다른가"로 축약해 판정한다.
+const ASSET_REINVEST_PATH: FieldPath = 'assets.reinvestDividend';
+
+function isAssetReinvestChanged(params: SimulationParams): boolean {
+  const baseline = new Map(initialParams.assets.map((a) => [a.id, a.reinvestDividend]));
+  return params.assets.some((a) => {
+    const base = baseline.get(a.id);
+    // initialParams에 없는 자산(사용자가 추가한 것)은 기준값이 없으므로 변경으로 보지 않는다.
+    return base !== undefined && a.reinvestDividend !== base;
+  });
+}
+
 // 현재 params가 기본값과 다른 필드 경로의 집합.
 // FieldRow의 "사용자 설정" 배지와 SettingSection의 변경 개수 배지가 모두 이 결과를 쓴다.
 export function collectChangedPaths(params: SimulationParams): ReadonlySet<FieldPath> {
@@ -35,6 +48,11 @@ export function collectChangedPaths(params: SimulationParams): ReadonlySet<Field
 
   for (const section of Object.keys(SECTION_FIELDS) as SectionId[]) {
     for (const path of SECTION_FIELDS[section]) {
+      if (path === ASSET_REINVEST_PATH) {
+        if (isAssetReinvestChanged(params)) changed.add(path);
+        continue;
+      }
+
       const current = readPath(params, path);
       // 값을 아직 지정하지 않은 필드(undefined)는 "기본값 그대로"로 본다.
       // undefined vs 기본값을 변경으로 잡으면 새 시나리오가 전부 '사용자 설정'이 된다.

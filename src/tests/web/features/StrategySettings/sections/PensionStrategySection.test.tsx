@@ -7,7 +7,7 @@ import { initialParams } from '@/infrastructure/storage/localStore';
 const noAi = { recommendation: null, error: null, improved: false };
 
 describe('PensionStrategySection', () => {
-  test('국민연금 전략 5개와 사적연금 전략 5개를 렌더링한다', () => {
+  test('국민연금 전략 6개(조기수령 포함)와 사적연금 전략 5개를 렌더링한다', () => {
     render(
       <PensionStrategySection
         params={initialParams} onChangeParams={vi.fn()}
@@ -17,7 +17,7 @@ describe('PensionStrategySection', () => {
 
     // 두 그룹 모두 'AI 최적화' 옵션을 가지므로 그룹으로 좁혀 찾는다.
     const national = within(screen.getByRole('radiogroup', { name: '국민연금 수령 시작' }));
-    for (const label of [/예상 수령/, /1년 연기/, /2년 연기/, /최대 연기/, /AI 최적화/]) {
+    for (const label of [/조기 수령/, /예상 수령/, /1년 연기/, /2년 연기/, /최대 연기/, /AI 최적화/]) {
       expect(national.getByRole('radio', { name: label })).toBeInTheDocument();
     }
 
@@ -57,6 +57,43 @@ describe('PensionStrategySection', () => {
 
     expect(screen.getByRole('switch', { name: /ISA 먼저 사용/ })).toBeInTheDocument();
     expect(screen.getByRole('switch', { name: /배당금 재투자/ })).toBeInTheDocument();
+  });
+
+  test('배당금 재투자를 끄면 모든 자산의 reinvestDividend가 false가 된다', () => {
+    const onChangeParams = vi.fn();
+    render(
+      <PensionStrategySection
+        params={initialParams} onChangeParams={onChangeParams}
+        mode="standard" changed={new Set()} ai={noAi}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('switch', { name: /배당금 재투자/ }));
+
+    expect(onChangeParams).toHaveBeenCalledWith({
+      ...initialParams,
+      assets: initialParams.assets.map((a) => ({ ...a, reinvestDividend: false })),
+    });
+  });
+
+  test('자산마다 설정이 다르면 스위치가 꺼진 상태로 보이고 혼합 안내를 표시한다', () => {
+    const mixed = {
+      ...initialParams,
+      assets: [
+        { ...initialParams.assets[0], reinvestDividend: true },
+        { ...initialParams.assets[1], reinvestDividend: false },
+      ],
+    };
+
+    render(
+      <PensionStrategySection
+        params={mixed} onChangeParams={vi.fn()}
+        mode="standard" changed={new Set()} ai={noAi}
+      />
+    );
+
+    expect(screen.getByRole('switch', { name: /배당금 재투자/ })).not.toBeChecked();
+    expect(screen.getByText(/자산마다 다르게 설정되어 있습니다/)).toBeInTheDocument();
   });
 
   test('AI가 연기 수령을 추천하면 힌트를 표시한다', () => {

@@ -90,7 +90,7 @@ describe('useAiRecommendation', () => {
         spendingChoice: 'target' as const,
         bequestStrategy: 'maximize' as const, nationalPensionStrategy: 'normal' as const,
         privatePensionStrategy: 'tax_first' as const, preferIsaFirst: false,
-        reinvestDividends: true, riskProfile: 'neutral' as const,
+        riskProfile: 'neutral' as const,
         economicScenario: 'long_term_average' as const,
       },
     };

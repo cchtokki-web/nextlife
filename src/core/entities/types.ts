@@ -339,7 +339,7 @@ export type SpendingStrategyChoice = SpendingStrategy | 'ai';
 export type BequestStrategy = 'spend_all' | 'leave_some' | 'maximize' | 'target_amount';
 
 export type NationalPensionStrategy =
-  | 'normal' | 'defer_1y' | 'defer_2y' | 'defer_max' | 'ai_optimized';
+  | 'early' | 'normal' | 'defer_1y' | 'defer_2y' | 'defer_max' | 'ai_optimized';
 
 export type PrivatePensionStrategy =
   | 'tax_first' | 'spending_first' | 'growth_first' | 'minimum' | 'ai_optimized';
@@ -361,7 +361,6 @@ export interface RetirementStrategy {
   nationalPensionStrategy: NationalPensionStrategy;
   privatePensionStrategy: PrivatePensionStrategy;
   preferIsaFirst: boolean;
-  reinvestDividends: boolean;
   riskProfile: RiskProfile;
   economicScenario: EconomicScenario;
 }
