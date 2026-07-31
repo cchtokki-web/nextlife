@@ -186,6 +186,10 @@ export interface SimulationYearlyResult {
   spending: number; // 연간 총 생활비 인출
   hasTaxWarning: boolean; // 연간 금융소득이 2,000만원 초과 여부
 
+  // 해당 연도 배우자 생존 여부. 배우자 미설정이면 항상 false다
+  // (배우자가 없는 것과 사망한 것을 결과 타입에서 구분하지 않는다 —
+  //  구분이 필요한 소비처는 params.spouse를 함께 본다).
+  spouseAlive: boolean;
 }
 
 export interface SimulationResult {

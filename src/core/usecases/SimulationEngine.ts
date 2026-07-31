@@ -29,6 +29,10 @@ import {
 } from './pension/nationalPensionRules';
 import { PRIVATE_PENSION_MIN_START_AGE, clampPrivatePensionStartAge } from './pension/privatePensionRules';
 import { sortAssetsForWithdrawal } from './strategy/assetOrdering';
+import {
+  computeHouseholdEndAge, computeSpendingFactor, computeSpouseNationalPensionMonthly,
+  computeSurvivorPensionMonthly, resolveSpouse,
+} from './spouse/spouseRules';
 
 interface ActiveAsset extends InvestmentAsset {
   currentValue: number;
@@ -322,7 +326,8 @@ export class SimulationEngine {
     const withdrawalOrderedAssets = sortAssetsForWithdrawal(activeAssets, withdrawalPlan?.assetSellOrderStrategy);
 
     const startAge = userProfile.currentAge;
-    const endAge = userProfile.expectancy;
+    const resolvedSpouse = resolveSpouse(params.spouse, userProfile);
+    const endAge = computeHouseholdEndAge(userProfile, resolvedSpouse);
     const totalYears = endAge - startAge + 1;
 
     if (isNaN(totalYears) || totalYears <= 0) {
@@ -341,6 +346,12 @@ export class SimulationEngine {
       const currentYear = new Date().getFullYear() + y;
       const isRetired = currentAge >= userProfile.retirementAge;
 
+      // 생존 판정. 기대수명 "까지"는 생존으로 본다(기존 endAge 포함 루프와 일관).
+      const selfAlive = currentAge <= userProfile.expectancy;
+      const spouseAlive = resolvedSpouse !== null && currentAge <= resolvedSpouse.deathAtSelfAge;
+      // 배우자가 없으면 본인 생존 기간만 돌므로 계수는 항상 1이다.
+      const spendingFactor = resolvedSpouse === null ? 1 : computeSpendingFactor(selfAlive, spouseAlive);
+
       let annualDividendIncome = 0;
       let annualNationalPensionIncome = 0;
       let annualPrivatePensionIncome = 0;
@@ -356,9 +367,10 @@ export class SimulationEngine {
 
       let monthlyTargetSpending = 0;
       if (isRetired && spendingStrategy !== 'dividend_only') {
-        monthlyTargetSpending = inflationMode === 'nominal'
+        const baseMonthly = inflationMode === 'nominal'
           ? userProfile.targetMonthlySpending * Math.pow(1 + infRateAnnual, y)
           : userProfile.targetMonthlySpending;
+        monthlyTargetSpending = baseMonthly * spendingFactor;
       }
 
       let monthlyNationalPensionDisplay = 0;
@@ -368,11 +380,37 @@ export class SimulationEngine {
         NATIONAL_PENSION_DEFERRED_MAX_AGE,
         Math.max(NATIONAL_PENSION_EARLY_MIN_AGE, withdrawalPlan?.nationalPensionStartAge ?? NATIONAL_PENSION_NORMAL_START_AGE)
       );
-      if (currentAge >= nationalPensionStartAge) {
+      // 본인과 배우자는 각자의 개시 나이로 따로 판정한다. 배우자가 본인보다 나이가 많으면
+      // 본인이 아직 개시 전이어도 배우자는 이미 수령 중일 수 있으므로, 이 블록의 진입 조건을
+      // 본인 개시 나이에만 걸면 그 기간의 배우자 연금이 조용히 사라진다.
+      // 배우자가 없으면(resolvedSpouse === null) 조건은 기존과 완전히 동일하다.
+      const selfNationalPensionStarted = currentAge >= nationalPensionStartAge;
+      if (selfNationalPensionStarted || resolvedSpouse !== null) {
         const nationalPensionAdjustmentFactor = getNationalPensionAdjustmentFactor(nationalPensionStartAge);
-        let natAmountRaw = (inflationMode === 'nominal'
-          ? nationalPension.expectedMonthlyAmount * Math.pow(1 + infRateAnnual, y)
-          : nationalPension.expectedMonthlyAmount) * nationalPensionAdjustmentFactor;
+        let natAmountRaw = selfNationalPensionStarted
+          ? (inflationMode === 'nominal'
+            ? nationalPension.expectedMonthlyAmount * Math.pow(1 + infRateAnnual, y)
+            : nationalPension.expectedMonthlyAmount) * nationalPensionAdjustmentFactor
+          : 0;
+
+        // 배우자 국민연금 합산. 사망자가 생기면 중복조정으로 큰 쪽만 남는다.
+        if (resolvedSpouse !== null) {
+          const spouseMonthlyBase = computeSpouseNationalPensionMonthly(resolvedSpouse, currentAge);
+          const spouseMonthly = inflationMode === 'nominal'
+            ? spouseMonthlyBase * Math.pow(1 + infRateAnnual, y)
+            : spouseMonthlyBase;
+
+          if (selfAlive && spouseAlive) {
+            natAmountRaw += spouseMonthly;
+          } else if (spouseAlive) {
+            // 본인 사망 → 배우자가 생존자. 본인 연금을 유족연금으로 승계 판정.
+            natAmountRaw = computeSurvivorPensionMonthly(spouseMonthly, natAmountRaw);
+          } else {
+            // 배우자 사망 → 본인이 생존자.
+            natAmountRaw = computeSurvivorPensionMonthly(natAmountRaw, spouseMonthly);
+          }
+        }
+
         const natTax = calculateNationalPensionTaxKRW(natAmountRaw);
         monthlyNationalPensionDisplay = this.convertValue(natAmountRaw - natTax, 'KRW', displayCurrency, exchangeRate);
         monthlyNatTaxDisplay = this.convertValue(natTax, 'KRW', displayCurrency, exchangeRate);
@@ -745,7 +783,8 @@ export class SimulationEngine {
         stockAssets: stockAssetsDisplay, pensionAssets: pensionAssetsDisplay,
         dividendIncome: annualDividendIncome, nationalPensionIncome: annualNationalPensionIncome,
         privatePensionIncome: annualPrivatePensionIncome, pensionIncome, otherIncome: annualOtherIncome,
-        totalIncome, spending: annualSpending, hasTaxWarning, preTaxTotalIncome: annualPreTaxTotalIncome,
+        totalIncome, spending: annualSpending, hasTaxWarning, spouseAlive,
+        preTaxTotalIncome: annualPreTaxTotalIncome,
         dividendTaxPaid: annualDividendTaxPaid, pensionTaxPaid: annualPensionTaxPaid,
         nationalPensionTaxPaid: annualNationalPensionTaxPaid, comprehensiveTaxPaid: annualComprehensiveTaxPaidDisplay,
         healthInsurancePaid: annualHealthInsurancePaidDisplay, privatePensionTaxMethod,

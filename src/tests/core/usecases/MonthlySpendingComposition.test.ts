@@ -97,6 +97,7 @@ function makeYearlyResult(overrides: {
     privatePensionTaxMethod: 'none',
     spending: overrides.spendingAnnual,
     hasTaxWarning: false,
+    spouseAlive: false,
   };
 }
 

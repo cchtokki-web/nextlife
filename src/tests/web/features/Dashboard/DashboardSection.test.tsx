@@ -47,6 +47,7 @@ function makeYearlyResult(overrides: Partial<SimulationYearlyResult>): Simulatio
     privatePensionTaxMethod: 'none',
     spending: 36000000,
     hasTaxWarning: false,
+    spouseAlive: false,
     ...overrides,
   };
 }

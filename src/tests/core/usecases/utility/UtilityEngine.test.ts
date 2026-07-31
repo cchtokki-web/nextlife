@@ -50,6 +50,7 @@ function makeYear(
     privatePensionTaxMethod: 'none',
     spending: ANNUAL_TARGET,
     hasTaxWarning: false,
+    spouseAlive: false,
     ...overrides,
   };
 }
