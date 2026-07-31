@@ -19,6 +19,7 @@ import { TaxSettingsSection } from '../../web/features/AssetForm/TaxSettingsSect
 import { ScenarioManager } from '../../web/features/Scenario/ScenarioManager';
 import { SimulationSettings } from '../../web/features/Scenario/SimulationSettings';
 import { QuickSettingsSummary } from '../../web/features/Scenario/QuickSettingsSummary';
+import { StrategySettingsPanel } from '../../web/features/StrategySettings/StrategySettingsPanel';
 import { Collapse } from '../../web/components/ui';
 import { DashboardSection } from '../../web/features/Dashboard/DashboardSection';
 import GlassCard from '../../web/components/GlassCard';
@@ -895,6 +896,9 @@ export default function Home() {
             
             {/* Quick Settings Summary */}
             <QuickSettingsSummary params={activeParams} onChangeParams={handleUpdateActiveParams} />
+            <GlassCard>
+              <StrategySettingsPanel params={activeParams} onChangeParams={handleUpdateActiveParams} />
+            </GlassCard>
 
             {/* Scenario Manager Section */}
             <GlassCard>

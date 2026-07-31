@@ -1,0 +1,60 @@
+import { describe, test, expect } from 'vitest';
+import { collectChangedPaths, countSectionChanges } from '@/web/features/StrategySettings/diffDefaults';
+import { initialParams } from '@/infrastructure/storage/localStore';
+import { DEFAULT_RETIREMENT_STRATEGY } from '@/core/usecases/strategy/compileStrategy';
+
+describe('collectChangedPaths', () => {
+  test('기본값 그대로면 변경된 경로가 없다', () => {
+    expect(collectChangedPaths(initialParams).size).toBe(0);
+  });
+
+  test('현재 나이를 바꾸면 그 경로만 변경으로 잡힌다', () => {
+    const params = {
+      ...initialParams,
+      userProfile: { ...initialParams.userProfile, currentAge: 42 },
+    };
+
+    const changed = collectChangedPaths(params);
+
+    expect(changed.has('userProfile.currentAge')).toBe(true);
+    expect(changed.has('userProfile.retirementAge')).toBe(false);
+  });
+
+  test('전략이 기본 전략과 같으면 변경으로 잡지 않는다', () => {
+    const params = { ...initialParams, strategy: { ...DEFAULT_RETIREMENT_STRATEGY } };
+
+    expect(collectChangedPaths(params).size).toBe(0);
+  });
+
+  test('전략 하위 필드를 바꾸면 strategy.* 경로가 잡힌다', () => {
+    const params = {
+      ...initialParams,
+      strategy: { ...DEFAULT_RETIREMENT_STRATEGY, objective: 'tax_minimization' as const },
+    };
+
+    expect(collectChangedPaths(params).has('strategy.objective')).toBe(true);
+  });
+
+  test('taxSettings를 기본값과 다르게 주면 해당 경로가 잡힌다', () => {
+    const params = { ...initialParams, taxSettings: { ...initialParams.taxSettings, usDividendTaxRate: 20 } as never };
+
+    expect(collectChangedPaths(params).has('taxSettings.usDividendTaxRate')).toBe(true);
+  });
+});
+
+describe('countSectionChanges', () => {
+  test('보이는 변경과 숨겨진 변경을 모드 기준으로 나눈다', () => {
+    const changed = new Set(['userProfile.currentAge', 'taxSettings.usDividendTaxRate']);
+
+    // 간편 모드: currentAge는 basic 섹션에서 보이고, 세율은 advanced라 숨겨진다.
+    expect(countSectionChanges(changed, 'basic', 'simple')).toEqual({ visible: 1, hidden: 0 });
+    expect(countSectionChanges(changed, 'advanced', 'simple')).toEqual({ visible: 0, hidden: 1 });
+
+    // 전문가 모드: 둘 다 보인다.
+    expect(countSectionChanges(changed, 'advanced', 'expert')).toEqual({ visible: 1, hidden: 0 });
+  });
+
+  test('변경이 없으면 0을 반환한다', () => {
+    expect(countSectionChanges(new Set(), 'goal', 'standard')).toEqual({ visible: 0, hidden: 0 });
+  });
+});

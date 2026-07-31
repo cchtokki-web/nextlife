@@ -1,0 +1,65 @@
+import { SimulationParams, StrategyMode } from '../../../core/entities/types';
+import { DEFAULT_RETIREMENT_STRATEGY } from '../../../core/usecases/strategy/compileStrategy';
+import { resolveTaxSettings } from '../../../core/usecases/tax/taxRates';
+import { initialParams } from '../../../infrastructure/storage/localStore';
+import { FieldPath, SECTION_FIELDS, SectionId, isFieldVisible } from './fieldVisibility';
+
+// 'a.b' 경로로 중첩 값을 읽는다. 중간이 없으면 undefined.
+function readPath(source: unknown, path: FieldPath): unknown {
+  return path.split('.').reduce<unknown>((acc, key) => {
+    if (acc === null || acc === undefined || typeof acc !== 'object') return undefined;
+    return (acc as Record<string, unknown>)[key];
+  }, source);
+}
+
+// 비교 기준값. 세 곳에서 온다:
+//   - taxSettings.*  : resolveTaxSettings()가 채우는 기본 세팅
+//   - strategy.*     : DEFAULT_RETIREMENT_STRATEGY
+//   - 그 외          : initialParams (앱이 새 시나리오에 넣는 값)
+// spouse/healthcare는 initialParams에 없으므로 undefined가 기준이 되고,
+// 사용자가 켜는 순간 "변경됨"으로 잡힌다 — 의도한 동작이다.
+function readBaseline(path: FieldPath): unknown {
+  if (path.startsWith('taxSettings.')) {
+    return readPath({ taxSettings: resolveTaxSettings() }, path);
+  }
+  if (path.startsWith('strategy.')) {
+    return readPath({ strategy: DEFAULT_RETIREMENT_STRATEGY }, path);
+  }
+  return readPath(initialParams, path);
+}
+
+// 현재 params가 기본값과 다른 필드 경로의 집합.
+// FieldRow의 "사용자 설정" 배지와 SettingSection의 변경 개수 배지가 모두 이 결과를 쓴다.
+export function collectChangedPaths(params: SimulationParams): ReadonlySet<FieldPath> {
+  const changed = new Set<FieldPath>();
+
+  for (const section of Object.keys(SECTION_FIELDS) as SectionId[]) {
+    for (const path of SECTION_FIELDS[section]) {
+      const current = readPath(params, path);
+      // 값을 아직 지정하지 않은 필드(undefined)는 "기본값 그대로"로 본다.
+      // undefined vs 기본값을 변경으로 잡으면 새 시나리오가 전부 '사용자 설정'이 된다.
+      if (current === undefined) continue;
+      if (current !== readBaseline(path)) changed.add(path);
+    }
+  }
+
+  return changed;
+}
+
+// 섹션 헤더 배지용. 현재 모드에서 보이는 변경 수와 숨겨진 변경 수를 나눈다.
+export function countSectionChanges(
+  changed: ReadonlySet<FieldPath>,
+  section: SectionId,
+  mode: StrategyMode
+): { visible: number; hidden: number } {
+  let visible = 0;
+  let hidden = 0;
+
+  for (const path of SECTION_FIELDS[section]) {
+    if (!changed.has(path)) continue;
+    if (isFieldVisible(mode, path)) visible += 1;
+    else hidden += 1;
+  }
+
+  return { visible, hidden };
+}
