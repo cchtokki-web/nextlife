@@ -69,7 +69,7 @@ export function compileStrategy(params: SimulationParams): CompiledStrategy
 | 국민연금 수령 전략 | `withdrawalPlan.nationalPensionStartAge` |
 | 사적연금 전략 | `taxSettings.limitPrivatePensionToTaxLimit` + `withdrawalPlan.privatePensionMonthlyTarget` |
 | ISA 우선 사용 | `withdrawalPlan.isaMaturityDestination` |
-| 배당 재투자 | 자산별 `reinvestDividend` 일괄 |
+| ~~배당 재투자~~ | **컴파일 대상이 아님** — ③연금 전략의 스위치는 눌린 순간에만 `assets[].reinvestDividend`를 일괄 갱신하는 "버튼"이다. 매 컴파일마다 덮어쓰면 `AssetFormSection`의 자산별 토글이 조용히 뭉개진다(Task 7 리뷰에서 발견). |
 | 리스크 성향 | `yieldPreset` (기존 `applyYieldPreset` 재사용) |
 | 경제 시나리오 | `inflationRate` + 수익률 + `exchangeScenario` |
 
@@ -151,7 +151,6 @@ export interface RetirementStrategy {
   nationalPensionStrategy: NationalPensionStrategy;
   privatePensionStrategy: PrivatePensionStrategy;
   preferIsaFirst: boolean;
-  reinvestDividends: boolean;
   riskProfile: RiskProfile;
   economicScenario: EconomicScenario;
 }
@@ -453,7 +452,7 @@ src/web/features/StrategySettings/
 | --- | --- |
 | ② 은퇴 목표 | `monthlySpendingMultiplier` → 생활비, 목표 우선순위 제안 |
 | ③ 연금 전략 | `nationalPensionStartAge` → `nationalPensionStrategy`, `privatePensionMonthlyTarget` → `privatePensionStrategy`, `isaMaturityDestination` → `preferIsaFirst` |
-| ④ 투자 전략 | `recommendedAssetReinvestment` → `reinvestDividends` |
+| ④ 투자 전략 | `recommendedAssetReinvestment` → 자산별 `reinvestDividend` 직접 적용 |
 
 적용 전에는 값 옆에 `AI 추천: 70세` 형태의 힌트만 보여준다.
 사용자가 명시적으로 버튼을 눌러야 값이 바뀐다 — 조용한 덮어쓰기는 하지 않는다.

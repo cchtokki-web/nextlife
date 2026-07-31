@@ -4139,6 +4139,18 @@ privatePensionMonthlyTarget, isaMaturityDestination을 사용자가 직접 고�
 - Test: `src/tests/core/usecases/strategy/compileStrategy.investment.test.ts`
 - Test: `src/tests/web/features/StrategySettings/sections/InvestmentStrategySection.test.tsx`
 
+**선행 작업**: `SettingSection`의 AI 추천 버튼에 섹션 이름을 붙인다.
+현재 세 섹션(`goal`/`pension`/`investment`)이 모두 `aiLabel`("AI 추천")만으로 접근성
+이름을 만들어, 스크린리더 사용자가 role+name으로 이동할 때 세 버튼을 구분할 수 없다.
+`RadioCardGroup`에 `ariaLabel`을 추가한 것과 같은 이유다.
+
+`SettingSection.tsx`의 AI 버튼에 `aria-label={\`${title} ${aiLabel}\`}`을 주고
+(예: "연금 전략 AI 추천"), 화면에 보이는 텍스트는 `aiLabel` 그대로 둔다.
+`SettingSection.test.tsx`에 "AI 버튼의 접근성 이름에 섹션 제목이 포함된다" 케이스를
+추가하고, 기존 테스트 중 `getByRole('button', { name: 'AI 추천' })`으로 찾던 것을
+`name: /AI 추천/`으로 완화한다. Task 7이 DOM 형제 관계로 버튼을 찾던 테스트도
+이 접근성 이름으로 바꿔 정리한다.
+
 **Interfaces:**
 - Consumes: `applyYieldPreset` (기존), `compileStrategy` (Task 1·7)
 - Produces:
