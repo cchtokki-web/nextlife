@@ -125,8 +125,13 @@ export default function Home() {
   // strategy가 없는 기존 시나리오는 compileStrategy가 입력을 그대로 통과시킨다.
   const compiled = useMemo(() => compileStrategy(deferredParams), [deferredParams]);
 
-  // Run simulation engine for active scenario
-  const result = useMemo(() => engine.run(compiled.params), [engine, compiled.params]);
+  // Run simulation engine for active scenario. cfg를 넘겨야 대시보드 헤드라인 효용
+  // 점수(result.utility)가 사용자가 고른 목표 우선순위를 반영한다 — 생략하면 항상
+  // 기본 가중치로 계산되어 목표 우선순위를 아무리 바꿔도 점수가 그대로다.
+  const result = useMemo(
+    () => engine.run(compiled.params, compiled.utilityConfig),
+    [engine, compiled.params, compiled.utilityConfig]
+  );
 
   // AI 추천 전략은 다수의 후보를 시뮬레이션하는 무거운 계산이므로, 메인 result보다
   // 한 단계 더 지연시켜 타이핑 반응성에 영향을 주지 않도록 한다.
@@ -235,7 +240,6 @@ export default function Home() {
         inflationMode,
         baseExchangeRate,
         displayCurrency,
-        spendingStrategy,
         taxSettings
       } = activeParams;
 
@@ -374,7 +378,7 @@ export default function Home() {
             <ul style="padding-left: 20px; margin-top: 5px; margin-bottom: 25px; font-size: 13px; line-height: 1.6;">
               <li style="margin-bottom: 6px;"><strong>현재 나이:</strong> ${userProfile.currentAge}세 / <strong>은퇴 목표 나이:</strong> ${userProfile.retirementAge}세 / <strong>기대 수명:</strong> ${userProfile.expectancy}세</li>
               <li style="margin-bottom: 6px;"><strong>목표 월 생활비:</strong> ${userProfile.targetMonthlySpending.toLocaleString()} ${displayCurrency}</li>
-              <li style="margin-bottom: 6px;"><strong>인출 전략:</strong> ${spendingStrategy === 'dividend_only' ? '배당금(이자) 100% 소비' : spendingStrategy === 'max_sustainable' ? '최대 가능 생활비 자동계산' : '고정 목표 생활비'}</li>
+              <li style="margin-bottom: 6px;"><strong>인출 전략:</strong> ${compiled.params.spendingStrategy === 'dividend_only' ? '배당금(이자) 100% 소비' : compiled.params.spendingStrategy === 'max_sustainable' ? '최대 가능 생활비 자동계산' : '고정 목표 생활비'}</li>
               <li style="margin-bottom: 6px;"><strong>물가 상승률:</strong> ${inflationRate}% (${inflationMode === 'real' ? '실질 가치 기준 — 아래 모든 표의 생활비·연금 금액은 오늘 화폐가치로 고정 표시되며, 인플레이션은 자산 성장률에 사전 차감 반영되었습니다' : '명목 가치 기준 — 아래 모든 표의 생활비·연금 금액에 물가상승률이 매년 누적 반영되어 있습니다'})</li>
               <li style="margin-bottom: 6px;"><strong>표시 통화 / 기준 환율:</strong> ${displayCurrency} / 1 USD = ${baseExchangeRate} KRW</li>
             </ul>

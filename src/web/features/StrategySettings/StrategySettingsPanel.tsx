@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { Coins, LineChart, Settings2, Target, TrendingUp, User } from 'lucide-react';
 import { RetirementStrategy, SimulationParams, StrategyMode } from '../../../core/entities/types';
 import { DEFAULT_RETIREMENT_STRATEGY } from '../../../core/usecases/strategy/compileStrategy';
@@ -44,7 +44,12 @@ export function StrategySettingsPanel({ params, onChangeParams }: StrategySettin
   const mode = strategy.mode;
 
   const changed = useMemo(() => collectChangedPaths(params), [params]);
-  const ai = useAiRecommendation(params);
+  // AI 추천(recommendStrategy)은 후보 최대 162개를 시뮬레이션하는 무거운 계산이다.
+  // 화면에 즉시 반영돼야 하는 params와 달리, AI 추천 계산만 page.tsx의 deferredParams와
+  // 같은 패턴으로 지연시켜 설정 패널 어디서든 타이핑할 때마다 동기적으로 재계산되는
+  // 것을 막는다. 화면에 보이는 값(sectionPropsFor 등)은 여전히 즉시 반영되는 params를 쓴다.
+  const deferredParams = useDeferredValue(params);
+  const ai = useAiRecommendation(deferredParams);
 
   // 방금 바뀐 섹션을 잠깐 강조한다. 어떤 필드가 바뀌었는지는 changed 집합의 변화로
   // 알 수 있지만, "언제" 바뀌었는지는 상태가 없으면 알 수 없어 로컬 state로 둔다.

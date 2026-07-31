@@ -1,6 +1,8 @@
 import { describe, test, expect } from 'vitest';
 import { SimulationEngine } from '@/core/usecases/SimulationEngine';
 import { SimulationParams } from '@/core/entities/types';
+import { compileStrategy, DEFAULT_RETIREMENT_STRATEGY } from '@/core/usecases/strategy/compileStrategy';
+import { initialParams } from '@/infrastructure/storage/localStore';
 
 describe('SimulationEngine TDD Tests', () => {
   const baseParams: SimulationParams = {
@@ -430,5 +432,64 @@ describe('SimulationEngine TDD Tests', () => {
 
     // 물가상승률이 누적 반영되어 5년 뒤 국민연금 수령액이 더 커야 한다.
     expect(resultAt70.nationalPensionIncome).toBeGreaterThan(resultAt65.nationalPensionIncome);
+  });
+
+  // 대시보드 헤드라인 점수(result.utility.score)가 사용자가 고른 목표 우선순위를 실제로
+  // 반영하는지 확인한다. run()/runForUtility()가 cfg 인자를 computeLifetimeUtility로 넘기지
+  // 않으면 objective를 무엇으로 바꾸든 이 점수가 절대 움직이지 않는데, 이를 잡아줄 테스트가
+  // 없어서 그런 배선 누락이 리뷰 전까지 발견되지 않았다.
+  test('run()에 cfg를 넘기면 목표 우선순위에 따라 result.utility.score가 달라진다', () => {
+    const engine = new SimulationEngine();
+
+    const lifetimeSpendingParams: SimulationParams = {
+      ...initialParams,
+      strategy: { ...DEFAULT_RETIREMENT_STRATEGY, objective: 'lifetime_spending' },
+    };
+    const bequestParams: SimulationParams = {
+      ...initialParams,
+      strategy: { ...DEFAULT_RETIREMENT_STRATEGY, objective: 'bequest_maximization' },
+    };
+
+    const lifetimeSpendingCompiled = compileStrategy(lifetimeSpendingParams);
+    const bequestCompiled = compileStrategy(bequestParams);
+
+    const lifetimeSpendingResult = engine.run(
+      lifetimeSpendingCompiled.params, lifetimeSpendingCompiled.utilityConfig
+    );
+    const bequestResult = engine.run(bequestCompiled.params, bequestCompiled.utilityConfig);
+
+    expect(lifetimeSpendingResult.utility?.score).not.toBe(bequestResult.utility?.score);
+  });
+
+  test('runForUtility()에 cfg를 넘기면 목표 우선순위에 따라 result.utility.score가 달라진다', () => {
+    const engine = new SimulationEngine();
+
+    const lifetimeSpendingParams: SimulationParams = {
+      ...initialParams,
+      strategy: { ...DEFAULT_RETIREMENT_STRATEGY, objective: 'lifetime_spending' },
+    };
+    const bequestParams: SimulationParams = {
+      ...initialParams,
+      strategy: { ...DEFAULT_RETIREMENT_STRATEGY, objective: 'bequest_maximization' },
+    };
+
+    const lifetimeSpendingCompiled = compileStrategy(lifetimeSpendingParams);
+    const bequestCompiled = compileStrategy(bequestParams);
+
+    const lifetimeSpendingResult = engine.runForUtility(
+      lifetimeSpendingCompiled.params, lifetimeSpendingCompiled.utilityConfig
+    );
+    const bequestResult = engine.runForUtility(bequestCompiled.params, bequestCompiled.utilityConfig);
+
+    expect(lifetimeSpendingResult.utility?.score).not.toBe(bequestResult.utility?.score);
+  });
+
+  test('cfg를 생략하면 기존과 동일하게 기본 UtilityConfig로 계산한다(하위 호환)', () => {
+    const engine = new SimulationEngine();
+
+    const withoutCfg = engine.run(initialParams);
+    const withDefaultCfg = engine.run(initialParams, compileStrategy(initialParams).utilityConfig);
+
+    expect(withoutCfg.utility).toEqual(withDefaultCfg.utility);
   });
 });

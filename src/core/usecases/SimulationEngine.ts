@@ -8,9 +8,11 @@ import {
   AssetCurrency,
   TaxSettings,
   PrivatePensionTaxationMethod,
+  UtilityConfig,
 } from '../entities/types';
 import { getRetirementGrade, RetirementGrade } from '../entities/retirementGrade';
 import { computeLifetimeUtility } from './utility/UtilityEngine';
+import { DEFAULT_UTILITY_CONFIG } from './utility/utilityWeights';
 import {
   getDividendTaxRate,
   getPrivatePensionIncomeTaxRate,
@@ -55,7 +57,10 @@ interface ActiveIsa extends IsaAccount {
 }
 
 export class SimulationEngine {
-  run(params: SimulationParams): SimulationResult {
+  // cfg는 목표 우선순위(UtilityConfig.weights)를 반영한 효용 계산에 쓰인다. 생략하면
+  // 기본 가중치(DEFAULT_UTILITY_CONFIG)로 계산되어 호출부 9곳(RecommendationEngine 등,
+  // 전부 자체적으로 cfg를 다루거나 기본값으로 충분한 곳)의 기존 동작이 그대로 유지된다.
+  run(params: SimulationParams, cfg: UtilityConfig = DEFAULT_UTILITY_CONFIG): SimulationResult {
     const strategy = params.spendingStrategy || 'target';
 
     let result: SimulationResult;
@@ -67,7 +72,7 @@ export class SimulationEngine {
       result = { ...mainResult, calculatedTargetSpending: maxSustainable };
     }
 
-    const utility = computeLifetimeUtility(result, params);
+    const utility = computeLifetimeUtility(result, params, cfg);
     return { ...result, utility };
   }
 
@@ -76,13 +81,13 @@ export class SimulationEngine {
   // calculatedTargetSpending을 구하지만, computeLifetimeUtility는 이 값을 쓰지 않으므로
   // 후보를 대량으로 평가하는 RecommendationEngine 같은 곳에서는 이 탐색이 순수 낭비다.
   // 'max_sustainable' 전략은 이진탐색 자체가 실제 인출액을 결정하는 계산이라 생략할 수 없다.
-  runForUtility(params: SimulationParams): SimulationResult {
+  runForUtility(params: SimulationParams, cfg: UtilityConfig = DEFAULT_UTILITY_CONFIG): SimulationResult {
     const strategy = params.spendingStrategy || 'target';
     if (strategy === 'max_sustainable') {
-      return this.run(params);
+      return this.run(params, cfg);
     }
     const result = this.runSingle(params);
-    const utility = computeLifetimeUtility(result, params);
+    const utility = computeLifetimeUtility(result, params, cfg);
     return { ...result, utility };
   }
 
