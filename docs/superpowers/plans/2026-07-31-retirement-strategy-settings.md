@@ -133,7 +133,7 @@ export type SpendingStrategyChoice = SpendingStrategy | 'ai';
 export type BequestStrategy = 'spend_all' | 'leave_some' | 'maximize' | 'target_amount';
 
 export type NationalPensionStrategy =
-  | 'normal' | 'defer_1y' | 'defer_2y' | 'defer_max' | 'ai_optimized';
+  | 'early' | 'normal' | 'defer_1y' | 'defer_2y' | 'defer_max' | 'ai_optimized';
 
 export type PrivatePensionStrategy =
   | 'tax_first' | 'spending_first' | 'growth_first' | 'minimum' | 'ai_optimized';
@@ -155,7 +155,6 @@ export interface RetirementStrategy {
   nationalPensionStrategy: NationalPensionStrategy;
   privatePensionStrategy: PrivatePensionStrategy;
   preferIsaFirst: boolean;
-  reinvestDividends: boolean;
   riskProfile: RiskProfile;
   economicScenario: EconomicScenario;
 }
@@ -444,7 +443,6 @@ export const DEFAULT_RETIREMENT_STRATEGY: RetirementStrategy = {
   nationalPensionStrategy: 'ai_optimized',
   privatePensionStrategy: 'ai_optimized',
   preferIsaFirst: false,
-  reinvestDividends: true,
   riskProfile: 'ai_recommended',
   economicScenario: 'ai_recommended',
 };
@@ -1364,7 +1362,9 @@ export const SECTION_FIELDS: Record<SectionId, ReadonlyArray<FieldPath>> = {
     'strategy.nationalPensionStrategy',
     'strategy.privatePensionStrategy',
     'strategy.preferIsaFirst',
-    'strategy.reinvestDividends',
+    // 자산 배열 내부 값을 가리키는 가상 경로. diffDefaults가 "자산 중 하나라도
+    // 기본값과 다른가"로 해석한다 (배열 인덱스별 경로를 만들지 않기 위한 장치).
+    'assets.reinvestDividend',
   ],
   investment: [
     'yieldPreset',
@@ -1550,6 +1550,19 @@ function readBaseline(path: FieldPath): unknown {
   return readPath(initialParams, path);
 }
 
+// 자산 배열 내부 값을 가리키는 가상 경로. 배열 인덱스별 경로를 만들지 않기 위해
+// "자산 중 하나라도 기본값과 다른가"로 축약해 판정한다.
+const ASSET_REINVEST_PATH: FieldPath = 'assets.reinvestDividend';
+
+function isAssetReinvestChanged(params: SimulationParams): boolean {
+  const baseline = new Map(initialParams.assets.map((a) => [a.id, a.reinvestDividend]));
+  return params.assets.some((a) => {
+    const base = baseline.get(a.id);
+    // initialParams에 없는 자산(사용자가 추가한 것)은 기준값이 없으므로 변경으로 보지 않는다.
+    return base !== undefined && a.reinvestDividend !== base;
+  });
+}
+
 // 현재 params가 기본값과 다른 필드 경로의 집합.
 // FieldRow의 "사용자 설정" 배지와 SettingSection의 변경 개수 배지가 모두 이 결과를 쓴다.
 export function collectChangedPaths(params: SimulationParams): ReadonlySet<FieldPath> {
@@ -1557,6 +1570,11 @@ export function collectChangedPaths(params: SimulationParams): ReadonlySet<Field
 
   for (const section of Object.keys(SECTION_FIELDS) as SectionId[]) {
     for (const path of SECTION_FIELDS[section]) {
+      if (path === ASSET_REINVEST_PATH) {
+        if (isAssetReinvestChanged(params)) changed.add(path);
+        continue;
+      }
+
       const current = readPath(params, path);
       // 값을 아직 지정하지 않은 필드(undefined)는 "기본값 그대로"로 본다.
       // undefined vs 기본값을 변경으로 잡으면 새 시나리오가 전부 '사용자 설정'이 된다.
@@ -3569,12 +3587,18 @@ describe('compileStrategy 연금 축', () => {
     expect(r.params.withdrawalPlan?.isaMaturityDestination).toBe('pension');
   });
 
-  test('배당 재투자 스위치가 모든 자산의 reinvestDividend에 일괄 적용된다', () => {
-    const on = compileStrategy(withStrategy({ reinvestDividends: true }));
-    const off = compileStrategy(withStrategy({ reinvestDividends: false }));
+  test('compileStrategy는 자산별 reinvestDividend를 건드리지 않는다', () => {
+    // 배당 재투자 스위치는 "일괄 적용 버튼"이라 눌린 순간에만 assets를 갱신한다.
+    // 컴파일 때마다 덮어쓰면 AssetFormSection의 자산별 토글이 뭉개진다.
+    const params = withStrategy({});
+    params.assets = [
+      { ...params.assets[0], id: 'a1', reinvestDividend: true },
+      { ...params.assets[0], id: 'a2', reinvestDividend: false },
+    ];
 
-    expect(on.params.assets.every((a) => a.reinvestDividend)).toBe(true);
-    expect(off.params.assets.every((a) => !a.reinvestDividend)).toBe(true);
+    const r = compileStrategy(params);
+
+    expect(r.params.assets.map((a) => a.reinvestDividend)).toEqual([true, false]);
   });
 
   test('사용자가 이미 넣어둔 withdrawalPlan 필드는 덮어쓰지 않는다', () => {
@@ -3602,13 +3626,18 @@ Expected: FAIL — `withdrawalPlan`이 undefined
 import {
   NationalPensionStrategy, PrivatePensionStrategy, WithdrawalPlan,
 } from '../../entities/types';
-import { NATIONAL_PENSION_NORMAL_START_AGE } from '../pension/nationalPensionRules';
+import {
+  NATIONAL_PENSION_EARLY_MIN_AGE, NATIONAL_PENSION_NORMAL_START_AGE,
+} from '../pension/nationalPensionRules';
 import { resolveTaxSettings } from '../tax/taxRates';
 
 // 국민연금 수령 전략 → 청구 나이.
 // getNationalPensionAdjustmentFactor가 연기 1개월당 0.6%를 가산하므로
 // 70세는 +36%가 된다. 'ai_optimized'는 baseline(정상 개시)으로 내린다.
 export const NATIONAL_PENSION_STRATEGY_AGES: Record<NationalPensionStrategy, number> = {
+  // 조기수령. StrategyCandidateGenerator의 나이 격자가 [60, 65, 70]이므로 60을 표현할
+  // enum이 없으면 AI가 조기수령을 추천해도 적용 시 가장 가까운 'normal'(65)로 뒤집힌다.
+  early: NATIONAL_PENSION_EARLY_MIN_AGE,
   normal: NATIONAL_PENSION_NORMAL_START_AGE,
   defer_1y: NATIONAL_PENSION_NORMAL_START_AGE + 1,
   defer_2y: NATIONAL_PENSION_NORMAL_START_AGE + 2,
@@ -3660,9 +3689,8 @@ const PRIVATE_PENSION_RULES: Record<
     withdrawalPlan.privatePensionMonthlyTarget = privatePensionMonthlyTarget;
   }
 
-  const assets = params.assets.map((a) => ({
-    ...a, reinvestDividend: strategy.reinvestDividends,
-  }));
+  // 배당 재투자는 compileStrategy가 건드리지 않는다 (위 주석과 동일한 이유).
+  const assets = params.assets;
 ```
 
 `return` 문을 다음으로 교체한다.
@@ -3760,6 +3788,43 @@ describe('PensionStrategySection', () => {
     expect(screen.getByRole('switch', { name: /배당금 재투자/ })).toBeInTheDocument();
   });
 
+  test('배당금 재투자를 끄면 모든 자산의 reinvestDividend가 false가 된다', () => {
+    const onChangeParams = vi.fn();
+    render(
+      <PensionStrategySection
+        params={initialParams} onChangeParams={onChangeParams}
+        mode="standard" changed={new Set()} ai={noAi}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('switch', { name: /배당금 재투자/ }));
+
+    expect(onChangeParams).toHaveBeenCalledWith({
+      ...initialParams,
+      assets: initialParams.assets.map((a) => ({ ...a, reinvestDividend: false })),
+    });
+  });
+
+  test('자산마다 설정이 다르면 스위치가 꺼진 상태로 보이고 혼합 안내를 표시한다', () => {
+    const mixed = {
+      ...initialParams,
+      assets: [
+        { ...initialParams.assets[0], reinvestDividend: true },
+        { ...initialParams.assets[1], reinvestDividend: false },
+      ],
+    };
+
+    render(
+      <PensionStrategySection
+        params={mixed} onChangeParams={vi.fn()}
+        mode="standard" changed={new Set()} ai={noAi}
+      />
+    );
+
+    expect(screen.getByRole('switch', { name: /배당금 재투자/ })).not.toBeChecked();
+    expect(screen.getByText(/자산마다 다르게 설정되어 있습니다/)).toBeInTheDocument();
+  });
+
   test('AI가 연기 수령을 추천하면 힌트를 표시한다', () => {
     const ai = {
       recommendation: { improved: true, recommendedPlan: { nationalPensionStartAge: 70 } } as never,
@@ -3811,10 +3876,15 @@ Expected: FAIL — `Failed to resolve import ".../PensionStrategySection"`
 `strategyOptions.tsx`에 추가한다.
 
 ```tsx
-import { CalendarClock, CalendarPlus, Leaf, Rocket, Shield, Sparkles, Wallet } from 'lucide-react';
+import { CalendarClock, CalendarMinus, CalendarPlus, Leaf, Rocket, Shield, Sparkles, Wallet } from 'lucide-react';
 import { NationalPensionStrategy, PrivatePensionStrategy } from '../../../core/entities/types';
 
 export const NATIONAL_PENSION_OPTIONS: ReadonlyArray<RadioCardOption<NationalPensionStrategy>> = [
+  {
+    value: 'early', label: '조기 수령 (60세)',
+    description: '5년 일찍 받는 대신 매달 받는 금액이 30% 줄어듭니다.',
+    icon: <CalendarMinus size={16} />,
+  },
   {
     value: 'normal', label: '예상 수령 (65세)',
     description: '원래 받기로 된 나이에 그대로 받습니다.',
@@ -3895,6 +3965,21 @@ export function PensionStrategySection({ params, onChangeParams, mode, changed, 
     onChangeParams({ ...params, strategy: { ...strategy, ...patch } });
   };
 
+  // 배당 재투자 스위치는 "설정"이 아니라 "일괄 적용 버튼"이다. 표시 상태는 자산들에서
+  // 파생하고(모두 켜짐 / 모두 꺼짐 / 혼합), 누르면 그 순간 모든 자산을 갱신한다.
+  // compileStrategy는 이 값을 건드리지 않으므로 이후 자산별로 고친 값이 그대로 살아남는다.
+  const reinvestState: 'all' | 'none' | 'mixed' =
+    params.assets.every((a) => a.reinvestDividend) ? 'all'
+      : params.assets.every((a) => !a.reinvestDividend) ? 'none'
+        : 'mixed';
+
+  const applyReinvestToAllAssets = (next: boolean) => {
+    onChangeParams({
+      ...params,
+      assets: params.assets.map((a) => ({ ...a, reinvestDividend: next })),
+    });
+  };
+
   const plan = ai.improved ? ai.recommendation?.recommendedPlan : undefined;
   const nationalHint = plan?.nationalPensionStartAge !== undefined
     ? `${plan.nationalPensionStartAge}세부터 수령`
@@ -3946,13 +4031,17 @@ export function PensionStrategySection({ params, onChangeParams, mode, changed, 
         />
       )}
 
-      {isFieldVisible(mode, 'strategy.reinvestDividends') && (
+      {isFieldVisible(mode, 'assets.reinvestDividend') && params.assets.length > 0 && (
         <SwitchField
           label="배당금 재투자"
-          description="받은 배당을 쓰지 않고 다시 사들여 복리로 굴립니다."
-          checked={strategy.reinvestDividends}
-          onChange={(v) => setStrategy({ reinvestDividends: v })}
-          changed={changed.has('strategy.reinvestDividends')}
+          description={
+            reinvestState === 'mixed'
+              ? '자산마다 다르게 설정되어 있습니다. 여기서 켜거나 끄면 모든 자산에 한 번에 적용됩니다.'
+              : '받은 배당을 쓰지 않고 다시 사들여 복리로 굴립니다. 모든 자산에 한 번에 적용됩니다.'
+          }
+          checked={reinvestState === 'all'}
+          onChange={applyReinvestToAllAssets}
+          changed={changed.has('assets.reinvestDividend')}
         />
       )}
     </>
@@ -4303,12 +4392,15 @@ describe('compileStrategy 투자/경제 축', () => {
       .toBe('aggressive');
   });
 
-  test('배당 재투자 스위치가 리스크 성향 적용 후에도 유지된다', () => {
-    const r = compileStrategy(withStrategy({
-      riskProfile: 'aggressive', reinvestDividends: false,
-    }));
+  test('리스크 성향 프리셋을 적용해도 자산별 reinvestDividend가 보존된다', () => {
+    // applyYieldPreset이 자산 배열을 새로 만들지만 reinvestDividend는 스프레드로 유지된다.
+    const params = withStrategy({ riskProfile: 'aggressive' });
+    params.assets = [{ ...params.assets[0], reinvestDividend: false }];
 
-    expect(r.params.assets.every((a) => !a.reinvestDividend)).toBe(true);
+    const r = compileStrategy(params);
+
+    expect(r.params.assets[0].reinvestDividend).toBe(false);
+    expect(r.params.assets[0].annualGrowthRate).toBe(9);
   });
 });
 ```
@@ -4365,11 +4457,10 @@ const RISK_PROFILE_PRESETS: Partial<Record<RiskProfile, 'conservative' | 'base' 
 ```
 
 ```ts
-  // 배당 재투자는 applyYieldPreset이 자산 배열을 새로 만든 뒤에 적용해야 한다 —
-  // 순서가 반대면 프리셋 적용이 reinvestDividend를 되돌린다.
-  const assets = economyApplied.assets.map((a) => ({
-    ...a, reinvestDividend: strategy.reinvestDividends,
-  }));
+  // 배당 재투자는 compileStrategy가 건드리지 않는다. ③연금 전략의 스위치는 "설정"이 아니라
+  // "일괄 적용 버튼"이며, 눌린 그 순간에만 params.assets를 직접 갱신한다. 여기서 매번
+  // 덮어쓰면 AssetFormSection의 자산별 토글이 조용히 뭉개진다.
+  const assets = economyApplied.assets;
 ```
 
 `return` 문의 스프레드 대상도 바꾼다.
@@ -4725,19 +4816,13 @@ export function EconomicAssumptionSection({ params, onChangeParams, mode, change
       const recommended = ai.recommendation?.recommendedAssetReinvestment;
       if (!recommended) return;
 
-      // 자산별 권장값이 전부 같으면 전역 스위치로 반영하고, 섞여 있으면
-      // 자산 배열에 직접 적용한다(전역 스위치로 표현할 수 없는 상태).
-      const values = Object.values(recommended);
-      const uniform = values.length > 0 && values.every((v) => v === values[0]);
-
+      // 자산별 권장값을 그대로 적용한다. 전역 스위치는 표시 상태를 자산에서 파생하므로
+      // 별도로 갱신할 필요가 없다.
       onChangeParams({
         ...params,
         assets: params.assets.map((a) =>
           a.id in recommended ? { ...a, reinvestDividend: recommended[a.id] } : a
         ),
-        strategy: uniform
-          ? { ...resolveStrategy(params), reinvestDividends: values[0] }
-          : params.strategy,
       });
       return;
     }
