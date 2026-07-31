@@ -83,47 +83,55 @@ export function BasicInfoSection({ params, onChangeParams, mode, changed }: Sect
 
       {spouseEnabled && (
         <div className="grid grid-cols-2 gap-3">
-          <FieldRow label="배우자 나이" changed={changed.has('spouse.currentAge')}>
-            <InputField
-              label="" aria-label="배우자 나이" type="number" suffixText="세"
-              value={spouse?.currentAge ?? DEFAULT_SPOUSE.currentAge}
-              onChange={(e) => setSpouse({ currentAge: Number(e.target.value) })}
-            />
-          </FieldRow>
-          <FieldRow label="배우자 기대수명" changed={changed.has('spouse.expectancy')}>
-            <InputField
-              label="" aria-label="배우자 기대수명" type="number" suffixText="세"
-              value={spouse?.expectancy ?? DEFAULT_SPOUSE.expectancy}
-              onChange={(e) => setSpouse({ expectancy: Number(e.target.value) })}
-            />
-          </FieldRow>
-          <FieldRow
-            label="배우자 국민연금 예상 월 수령액"
-            tooltipText="65세에 받기 시작할 때의 금액입니다. 연기하면 자동으로 가산됩니다."
-            changed={changed.has('spouse.nationalPensionMonthlyAmount')}
-          >
-            <InputField
-              label="" aria-label="배우자 국민연금 예상 월 수령액" type="text" suffixText="원"
-              value={(spouse?.nationalPensionMonthlyAmount ?? 0).toLocaleString()}
-              onChange={(e) => {
-                const raw = e.target.value.replace(/,/g, '');
-                if (raw === '' || !isNaN(Number(raw))) {
-                  setSpouse({ nationalPensionMonthlyAmount: raw === '' ? 0 : Number(raw) });
-                }
-              }}
-            />
-          </FieldRow>
-          <FieldRow
-            label="배우자 수령 개시 나이"
-            changed={changed.has('spouse.nationalPensionStartAge')}
-          >
-            <InputField
-              label="" aria-label="배우자 수령 개시 나이" type="number" suffixText="세"
-              min={NATIONAL_PENSION_EARLY_MIN_AGE} max={NATIONAL_PENSION_DEFERRED_MAX_AGE}
-              value={spouse?.nationalPensionStartAge ?? DEFAULT_SPOUSE.nationalPensionStartAge}
-              onChange={(e) => setSpouse({ nationalPensionStartAge: Number(e.target.value) })}
-            />
-          </FieldRow>
+          {isFieldVisible(mode, 'spouse.currentAge') && (
+            <FieldRow label="배우자 나이" changed={changed.has('spouse.currentAge')}>
+              <InputField
+                label="" aria-label="배우자 나이" type="number" suffixText="세"
+                value={spouse?.currentAge ?? DEFAULT_SPOUSE.currentAge}
+                onChange={(e) => setSpouse({ currentAge: Number(e.target.value) })}
+              />
+            </FieldRow>
+          )}
+          {isFieldVisible(mode, 'spouse.expectancy') && (
+            <FieldRow label="배우자 기대수명" changed={changed.has('spouse.expectancy')}>
+              <InputField
+                label="" aria-label="배우자 기대수명" type="number" suffixText="세"
+                value={spouse?.expectancy ?? DEFAULT_SPOUSE.expectancy}
+                onChange={(e) => setSpouse({ expectancy: Number(e.target.value) })}
+              />
+            </FieldRow>
+          )}
+          {isFieldVisible(mode, 'spouse.nationalPensionMonthlyAmount') && (
+            <FieldRow
+              label="배우자 국민연금 예상 월 수령액"
+              tooltipText="65세에 받기 시작할 때의 금액입니다. 연기하면 자동으로 가산됩니다."
+              changed={changed.has('spouse.nationalPensionMonthlyAmount')}
+            >
+              <InputField
+                label="" aria-label="배우자 국민연금 예상 월 수령액" type="text" suffixText="원"
+                value={(spouse?.nationalPensionMonthlyAmount ?? 0).toLocaleString()}
+                onChange={(e) => {
+                  const raw = e.target.value.replace(/,/g, '');
+                  if (raw === '' || !isNaN(Number(raw))) {
+                    setSpouse({ nationalPensionMonthlyAmount: raw === '' ? 0 : Number(raw) });
+                  }
+                }}
+              />
+            </FieldRow>
+          )}
+          {isFieldVisible(mode, 'spouse.nationalPensionStartAge') && (
+            <FieldRow
+              label="배우자 수령 개시 나이"
+              changed={changed.has('spouse.nationalPensionStartAge')}
+            >
+              <InputField
+                label="" aria-label="배우자 수령 개시 나이" type="number" suffixText="세"
+                min={NATIONAL_PENSION_EARLY_MIN_AGE} max={NATIONAL_PENSION_DEFERRED_MAX_AGE}
+                value={spouse?.nationalPensionStartAge ?? DEFAULT_SPOUSE.nationalPensionStartAge}
+                onChange={(e) => setSpouse({ nationalPensionStartAge: Number(e.target.value) })}
+              />
+            </FieldRow>
+          )}
         </div>
       )}
 

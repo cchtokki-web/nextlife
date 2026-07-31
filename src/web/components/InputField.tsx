@@ -118,10 +118,12 @@ export const InputField = React.forwardRef<HTMLInputElement, InputFieldProps>(({
 
   return (
     <div className={styles.formGroup}>
-      <label className={styles.label}>
-        <span>{label}</span>
-        {labelSecondary && <span className={styles.labelSecondary}>{labelSecondary}</span>}
-      </label>
+      {label && (
+        <label className={styles.label}>
+          <span>{label}</span>
+          {labelSecondary && <span className={styles.labelSecondary}>{labelSecondary}</span>}
+        </label>
+      )}
       <div className={styles.inputWrapper}>
         {prefixText && <span className={styles.prefix}>{prefixText}</span>}
         <input
