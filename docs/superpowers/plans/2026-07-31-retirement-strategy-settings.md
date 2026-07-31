@@ -210,11 +210,17 @@ describe('OBJECTIVE_WEIGHT_PRESETS', () => {
     }
   });
 
-  test('모든 프리셋이 createUtilityConfig 불변식을 통과한다', () => {
+  test('모든 프리셋이 createUtilityConfig 불변식을 통과하고 weights가 보존된다', () => {
+    // createUtilityConfig는 `{ weights, ...rest }`를 반환하므로 rest에 weights가
+    // 섞여 있으면 나중에 스프레드되어 프리셋을 덮어쓴다. rest는 반드시 weights를
+    // 떼어낸 것이어야 한다 — 이 테스트가 그 회귀를 잡는다.
+    const { weights: _unused, ...rest } = DEFAULT_UTILITY_CONFIG;
+
     for (const key of ALL) {
-      expect(() =>
-        createUtilityConfig(OBJECTIVE_WEIGHT_PRESETS[key], DEFAULT_UTILITY_CONFIG)
-      ).not.toThrow();
+      const cfg = createUtilityConfig(OBJECTIVE_WEIGHT_PRESETS[key], rest);
+
+      expect(cfg.weights, `${key} weights`).toEqual(OBJECTIVE_WEIGHT_PRESETS[key]);
+      expect(cfg.appropriateBequestMonths).toBe(DEFAULT_UTILITY_CONFIG.appropriateBequestMonths);
     }
   });
 
@@ -412,6 +418,11 @@ import {
 import { createUtilityConfig, DEFAULT_UTILITY_CONFIG } from '../utility/utilityWeights';
 import { OBJECTIVE_WEIGHT_PRESETS } from './objectivePresets';
 
+// createUtilityConfig는 `{ weights, ...rest }`를 반환한다. rest에 DEFAULT_UTILITY_CONFIG를
+// 통째로 넘기면 그 안의 weights가 나중에 스프레드되어 방금 고른 프리셋을 덮어쓴다.
+// weights를 떼어낸 나머지만 재사용한다.
+const { weights: _defaultWeights, ...UTILITY_CONFIG_REST } = DEFAULT_UTILITY_CONFIG;
+
 export interface CompiledStrategy {
   params: SimulationParams; // 저수준 파라미터가 채워진 결과
   utilityConfig: UtilityConfig; // 목적 함수
@@ -468,7 +479,7 @@ export function compileStrategy(params: SimulationParams): CompiledStrategy {
   }
 
   const weights = OBJECTIVE_WEIGHT_PRESETS[strategy.objective] ?? DEFAULT_UTILITY_CONFIG.weights;
-  const utilityConfig = createUtilityConfig(weights, DEFAULT_UTILITY_CONFIG);
+  const utilityConfig = createUtilityConfig(weights, UTILITY_CONFIG_REST);
 
   const targetBequest = resolveTargetBequest(
     strategy.bequestStrategy,
