@@ -1,5 +1,6 @@
 import {
-  BequestStrategy, RetirementStrategy, SimulationParams, SpendingStrategy, UtilityConfig,
+  BequestStrategy, RetirementStrategy, SimulationParams, SpendingStrategy,
+  SpendingStrategyChoice, UtilityConfig,
 } from '../../entities/types';
 import { createUtilityConfig, DEFAULT_UTILITY_CONFIG } from '../utility/utilityWeights';
 import { OBJECTIVE_WEIGHT_PRESETS } from './objectivePresets';
@@ -51,6 +52,23 @@ function resolveTargetBequest(
   }
 }
 
+// spendingChoice → 엔진 SpendingStrategy.
+// 'ai'는 엔진에 없는 값이므로 baseline인 'target'으로 내린다. 알 수 없는 값(저장된 옛
+// 시나리오에 남은, 지금은 없어진 값 등)도 같은 이유로 baseline인 'target'으로 폴백한다.
+// 사용자가 무엇을 골랐는지는 strategy.spendingChoice 쪽에 그대로 남는다.
+function resolveSpendingStrategy(spendingChoice: SpendingStrategyChoice): SpendingStrategy {
+  switch (spendingChoice) {
+    case 'dividend_only':
+      return 'dividend_only';
+    case 'max_sustainable':
+      return 'max_sustainable';
+    case 'target':
+    case 'ai':
+    default:
+      return 'target';
+  }
+}
+
 // 전략(사용자 언어)을 저수준 파라미터(엔진 언어)로 번역한다.
 //
 // 순수 함수이며 절대 던지지 않는다. 알 수 없는 enum 값(저장된 옛 시나리오에 남은
@@ -83,10 +101,7 @@ export function compileStrategy(params: SimulationParams): CompiledStrategy {
     userProfile.targetBequest = targetBequest;
   }
 
-  // 'ai'는 엔진 SpendingStrategy에 없는 값이므로 baseline인 'target'으로 내린다.
-  // 사용자가 무엇을 골랐는지는 strategy.spendingChoice에 그대로 남는다.
-  const spendingStrategy: SpendingStrategy =
-    strategy.spendingChoice === 'ai' ? 'target' : (strategy.spendingChoice ?? 'target');
+  const spendingStrategy = resolveSpendingStrategy(strategy.spendingChoice);
 
   return {
     params: { ...params, userProfile, spendingStrategy },

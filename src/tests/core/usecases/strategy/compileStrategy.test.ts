@@ -92,6 +92,24 @@ describe('compileStrategy', () => {
     expect(compileStrategy(params).utilityConfig.weights).toEqual(DEFAULT_UTILITY_CONFIG.weights);
   });
 
+  test('알 수 없는 생활비 전략 값이 들어와도 던지지 않고 baseline(target)으로 폴백한다', () => {
+    // 저장된 옛 시나리오에 없어진 enum 값이 남아 있어도 화면이 죽으면 안 된다.
+    const params = withStrategy({});
+    (params.strategy as RetirementStrategy).spendingChoice = 'nonexistent' as never;
+
+    expect(() => compileStrategy(params)).not.toThrow();
+    expect(compileStrategy(params).params.spendingStrategy).toBe('target');
+  });
+
+  test('알 수 없는 상속 전략 값이 들어와도 던지지 않고 targetBequest가 미지정으로 폴백한다', () => {
+    // 저장된 옛 시나리오에 없어진 enum 값이 남아 있어도 화면이 죽으면 안 된다.
+    const params = withStrategy({});
+    (params.strategy as RetirementStrategy).bequestStrategy = 'nonexistent' as never;
+
+    expect(() => compileStrategy(params)).not.toThrow();
+    expect(compileStrategy(params).params.userProfile.targetBequest).toBeUndefined();
+  });
+
   test('입력 params 객체를 변형하지 않는다 (순수 함수)', () => {
     const params = withStrategy({ bequestStrategy: 'spend_all' });
     const snapshot = JSON.parse(JSON.stringify(params));
