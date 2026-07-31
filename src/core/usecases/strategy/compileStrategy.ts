@@ -1,10 +1,12 @@
 import {
-  BequestStrategy, NationalPensionStrategy, PrivatePensionStrategy, RetirementStrategy,
+  BequestStrategy, NationalPensionStrategy, PrivatePensionStrategy, RetirementStrategy, RiskProfile,
   SimulationParams, SpendingStrategy, SpendingStrategyChoice, UtilityConfig, WithdrawalPlan,
 } from '../../entities/types';
 import {
   NATIONAL_PENSION_EARLY_MIN_AGE, NATIONAL_PENSION_NORMAL_START_AGE,
 } from '../pension/nationalPensionRules';
+import { applyYieldPreset } from '../scenario/applyYieldPreset';
+import { applyEconomicScenario } from '../scenario/economicScenarios';
 import { resolveTaxSettings } from '../tax/taxRates';
 import { createUtilityConfig, DEFAULT_UTILITY_CONFIG } from '../utility/utilityWeights';
 import { OBJECTIVE_WEIGHT_PRESETS } from './objectivePresets';
@@ -61,6 +63,14 @@ const PRIVATE_PENSION_RULES: Record<
   growth_first: { limitToTaxLimit: true, withdrawalRatio: 0.5 },
   minimum: { limitToTaxLimit: true, withdrawalRatio: 0.25 },
   ai_optimized: { limitToTaxLimit: null, withdrawalRatio: null },
+};
+
+// 리스크 성향 → 기존 수익률 프리셋. 'ai_recommended'는 매핑이 없으며,
+// 이 경우 경제 시나리오가 정한 수익률을 그대로 둔다("미정"이지 "중립형"이 아니다).
+const RISK_PROFILE_PRESETS: Partial<Record<RiskProfile, 'conservative' | 'base' | 'aggressive'>> = {
+  conservative: 'conservative',
+  neutral: 'base',
+  aggressive: 'aggressive',
 };
 
 // bequestStrategy → userProfile.targetBequest.
@@ -136,7 +146,15 @@ export function compileStrategy(params: SimulationParams): CompiledStrategy {
 
   const spendingStrategy = resolveSpendingStrategy(strategy.spendingChoice);
 
-  const taxSettings = resolveTaxSettings(params.taxSettings);
+  // 경제 시나리오 → 리스크 성향 순으로 적용한다. 둘 다 수익률을 건드리므로
+  // 순서가 결과를 결정한다: 시나리오는 물가·환율을, 리스크 성향은 수익률을 지배한다.
+  let economyApplied = applyEconomicScenario(params, strategy.economicScenario);
+  const riskPreset = RISK_PROFILE_PRESETS[strategy.riskProfile];
+  if (riskPreset) {
+    economyApplied = applyYieldPreset(economyApplied, riskPreset);
+  }
+
+  const taxSettings = resolveTaxSettings(economyApplied.taxSettings);
   const pensionRule = PRIVATE_PENSION_RULES[strategy.privatePensionStrategy]
     ?? PRIVATE_PENSION_RULES.ai_optimized;
 
@@ -148,7 +166,7 @@ export function compileStrategy(params: SimulationParams): CompiledStrategy {
   // 사용자가 직접 넣어둔 withdrawalPlan 필드(일반자산 인출 개시 나이 등)는 보존하고,
   // 전략이 지배하는 3개 필드만 덮어쓴다.
   const withdrawalPlan: WithdrawalPlan = {
-    ...(params.withdrawalPlan ?? {}),
+    ...(economyApplied.withdrawalPlan ?? {}),
     nationalPensionStartAge:
       NATIONAL_PENSION_STRATEGY_AGES[strategy.nationalPensionStrategy]
       ?? NATIONAL_PENSION_NORMAL_START_AGE,
@@ -163,11 +181,11 @@ export function compileStrategy(params: SimulationParams): CompiledStrategy {
   // 배당 재투자는 compileStrategy가 건드리지 않는다. ③연금 전략의 스위치는 "설정"이 아니라
   // "일괄 적용 버튼"이며, 눌린 그 순간에만 params.assets를 직접 갱신한다. 여기서 매번
   // 덮어쓰면 AssetFormSection의 자산별 토글이 조용히 뭉개진다.
-  const assets = params.assets;
+  const assets = economyApplied.assets;
 
   return {
     params: {
-      ...params,
+      ...economyApplied,
       userProfile,
       spendingStrategy,
       assets,

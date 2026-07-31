@@ -1,5 +1,5 @@
 import { describe, test, expect, vi, afterEach } from 'vitest';
-import { act, render, screen, fireEvent, within } from '@testing-library/react';
+import { act, render, screen, fireEvent } from '@testing-library/react';
 import { StrategySettingsPanel } from '@/web/features/StrategySettings/StrategySettingsPanel';
 import { initialParams } from '@/infrastructure/storage/localStore';
 import { DEFAULT_RETIREMENT_STRATEGY } from '@/core/usecases/strategy/compileStrategy';
@@ -74,10 +74,7 @@ describe('StrategySettingsPanel', () => {
     const onChangeParams = vi.fn();
     render(<StrategySettingsPanel params={initialParams} onChangeParams={onChangeParams} />);
 
-    const pensionToggle = screen.getByRole('button', { name: '연금 전략' });
-    fireEvent.click(
-      within(pensionToggle.parentElement as HTMLElement).getByRole('button', { name: 'AI 추천' })
-    );
+    fireEvent.click(screen.getByRole('button', { name: '연금 전략 AI 추천' }));
 
     expect(onChangeParams).toHaveBeenCalledWith({
       ...initialParams,

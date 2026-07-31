@@ -16,10 +16,12 @@ export const SelectField: React.FC<SelectFieldProps> = ({
 }) => {
   return (
     <div className={styles.formGroup}>
-      <label className={styles.label}>
-        <span>{label}</span>
-        {labelSecondary && <span className={styles.labelSecondary}>{labelSecondary}</span>}
-      </label>
+      {label && (
+        <label className={styles.label}>
+          <span>{label}</span>
+          {labelSecondary && <span className={styles.labelSecondary}>{labelSecondary}</span>}
+        </label>
+      )}
       <div className={styles.inputWrapper}>
         <select
           className={`${styles.input} ${styles.select} ${className}`}

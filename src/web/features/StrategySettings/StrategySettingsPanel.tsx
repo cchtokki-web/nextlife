@@ -10,6 +10,8 @@ import {
 } from '../../../core/usecases/strategy/compileStrategy';
 import { SettingSection } from '../../components/form';
 import { BasicInfoSection } from './sections/BasicInfoSection';
+import { EconomicAssumptionSection } from './sections/EconomicAssumptionSection';
+import { InvestmentStrategySection } from './sections/InvestmentStrategySection';
 import { PensionStrategySection } from './sections/PensionStrategySection';
 import { RetirementGoalSection } from './sections/RetirementGoalSection';
 import { StrategyModeSelector } from './StrategyModeSelector';
@@ -86,6 +88,10 @@ export function StrategySettingsPanel({ params, onChangeParams }: StrategySettin
         return <RetirementGoalSection {...sectionProps} ai={ai} />;
       case 'pension':
         return <PensionStrategySection {...sectionProps} ai={ai} />;
+      case 'investment':
+        return <InvestmentStrategySection {...sectionProps} ai={ai} />;
+      case 'economic':
+        return <EconomicAssumptionSection {...sectionProps} />;
       default:
         return null;
     }
@@ -93,6 +99,24 @@ export function StrategySettingsPanel({ params, onChangeParams }: StrategySettin
 
   // 섹션별 AI 적용. Task 7·8이 자기 케이스를 추가한다.
   const applyAiToSection = (id: SectionId) => {
+    if (id === 'investment') {
+      // recommendedAssetReinvestment는 recommendedPlan과 독립적으로 계산된다(Phase 3).
+      // 아래 plan 널 체크보다 앞에 두지 않으면, 인출계획은 개선이 없고 배당 재투자만
+      // 개선된 경우에도 이 섹션의 AI 추천 버튼이 조용히 아무 일도 하지 않게 된다.
+      const recommended = ai.recommendation?.recommendedAssetReinvestment;
+      if (!recommended) return;
+
+      // 자산별 권장값을 그대로 적용한다. 전역 스위치는 표시 상태를 자산에서 파생하므로
+      // 별도로 갱신할 필요가 없다.
+      onChangeParams({
+        ...params,
+        assets: params.assets.map((a) =>
+          a.id in recommended ? { ...a, reinvestDividend: recommended[a.id] } : a
+        ),
+      });
+      return;
+    }
+
     const plan = ai.recommendation?.recommendedPlan;
     if (!plan) return;
 

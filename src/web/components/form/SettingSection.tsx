@@ -74,6 +74,10 @@ export function SettingSection({
             type="button"
             onClick={onAiRecommend}
             disabled={aiDisabled}
+            // 화면에는 aiLabel("AI 추천")만 보이지만, 접근성 이름에는 섹션 제목을 덧붙인다.
+            // 6개 섹션 중 셋(연금·투자 등)이 모두 같은 aiLabel을 쓰므로, 이 이름이 없으면
+            // 스크린리더 사용자가 role+name으로 이동할 때 버튼을 구분할 수 없다.
+            aria-label={`${title} ${aiLabel}`}
             className="flex shrink-0 items-center gap-1 rounded-full border border-primary/40 px-2.5 py-1 text-xs font-semibold text-primary transition disabled:cursor-not-allowed disabled:border-card-border disabled:text-foreground-muted"
           >
             <Sparkles size={12} aria-hidden="true" />

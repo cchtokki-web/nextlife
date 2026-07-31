@@ -65,10 +65,22 @@ describe('SettingSection', () => {
       </SettingSection>
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'AI 추천' }));
+    fireEvent.click(screen.getByRole('button', { name: /AI 추천/ }));
 
     expect(onAiRecommend).toHaveBeenCalledTimes(1);
     expect(screen.queryByText('본문')).not.toBeInTheDocument();
+  });
+
+  test('AI 버튼의 접근성 이름에 섹션 제목이 포함된다', () => {
+    // 세 섹션(goal/pension/investment)이 모두 'AI 추천'만으로 접근성 이름을 만들면
+    // 스크린리더 사용자가 role+name으로 이동할 때 세 버튼을 구분할 수 없다.
+    render(
+      <SettingSection icon={<Target size={16} />} title="연금 전략" onAiRecommend={vi.fn()}>
+        <p>본문</p>
+      </SettingSection>
+    );
+
+    expect(screen.getByRole('button', { name: '연금 전략 AI 추천' })).toBeInTheDocument();
   });
 
   test('highlighted면 강조 표식이 붙고, 아니면 붙지 않는다', () => {
@@ -99,6 +111,6 @@ describe('SettingSection', () => {
       </SettingSection>
     );
 
-    expect(screen.getByRole('button', { name: '이미 최적' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /이미 최적/ })).toBeDisabled();
   });
 });

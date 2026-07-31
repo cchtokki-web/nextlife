@@ -1,10 +1,11 @@
 import {
-  Banknote, CalendarClock, CalendarMinus, CalendarPlus, Coins, Gift, HandCoins, Leaf, PiggyBank, Receipt,
-  Rocket, Shield, Sparkles, TrendingUp, Wallet,
+  Activity, Banknote, CalendarClock, CalendarMinus, CalendarPlus, CloudRain, Coins, Flame, Gift,
+  HandCoins, Leaf, PiggyBank, Receipt, Rocket, Shield, ShieldCheck, Sparkles, TrendingDown, TrendingUp,
+  Wallet,
 } from 'lucide-react';
 import {
-  BequestStrategy, NationalPensionStrategy, ObjectivePriority, PrivatePensionStrategy, SimulationParams,
-  SpendingStrategyChoice, SpouseProfile, StrategyMode,
+  BequestStrategy, EconomicScenario, NationalPensionStrategy, ObjectivePriority, PrivatePensionStrategy,
+  RiskProfile, SimulationParams, SpendingStrategyChoice, SpouseProfile, StrategyMode,
 } from '../../../core/entities/types';
 import { NATIONAL_PENSION_NORMAL_START_AGE } from '../../../core/usecases/pension/nationalPensionRules';
 import { RadioCardOption } from '../../components/form';
@@ -161,6 +162,60 @@ export const PRIVATE_PENSION_OPTIONS: ReadonlyArray<RadioCardOption<PrivatePensi
   {
     value: 'ai_optimized', label: 'AI 최적화',
     description: '세금과 생활비를 함께 따져 가장 유리한 인출량을 찾습니다.',
+    icon: <Sparkles size={16} />, recommended: true,
+  },
+];
+
+export const RISK_PROFILE_OPTIONS: ReadonlyArray<RadioCardOption<RiskProfile>> = [
+  {
+    value: 'conservative', label: '안정형',
+    description: '수익은 낮아도 흔들림이 적은 쪽으로 계산합니다. (주식 5%)',
+    icon: <ShieldCheck size={16} />,
+  },
+  {
+    value: 'neutral', label: '중립형',
+    description: '장기 평균 수준의 수익을 가정합니다. (주식 7%)',
+    icon: <Activity size={16} />,
+  },
+  {
+    value: 'aggressive', label: '공격형',
+    description: '높은 수익을 가정하되 그만큼 변동도 크다고 봅니다. (주식 9%)',
+    icon: <Flame size={16} />,
+  },
+  {
+    value: 'ai_recommended', label: 'AI 추천',
+    description: '나이와 은퇴까지 남은 기간을 보고 알아서 정합니다.',
+    icon: <Sparkles size={16} />, recommended: true,
+  },
+];
+
+export const ECONOMIC_SCENARIO_OPTIONS: ReadonlyArray<RadioCardOption<EconomicScenario>> = [
+  {
+    value: 'long_term_average', label: '장기 평균',
+    description: '지난 수십 년의 평균적인 물가와 성장을 가정합니다.',
+    icon: <Activity size={16} />,
+  },
+  {
+    value: 'recession', label: '장기 침체',
+    description: '성장이 오래 정체되고 원화가 약해지는 국면입니다.',
+    icon: <CloudRain size={16} />,
+  },
+  {
+    value: 'high_inflation', label: '고물가',
+    description: '물가가 연 5% 오르는 국면입니다. 실질 구매력이 빠르게 줄어듭니다.',
+    icon: <Flame size={16} />,
+  },
+  {
+    value: 'low_growth', label: '저성장',
+    description: '물가는 안정적이지만 자산이 잘 늘지 않는 국면입니다.',
+    icon: <TrendingDown size={16} />,
+  },
+  {
+    value: 'ai_recommended', label: 'AI 추천',
+    // "장기 평균" 문구를 그대로 쓰면 위 '장기 평균' 옵션과 접근성 이름이 부분 문자열로
+    // 겹쳐 테스트(정규식 /장기 평균/)가 두 라디오를 동시에 찾아버린다. 의미는 같지만
+    // 표현을 바꿔 충돌을 피한다.
+    description: '특정 국면을 가정하지 않고 안정적인 기본 가정으로 계산합니다.',
     icon: <Sparkles size={16} />, recommended: true,
   },
 ];
