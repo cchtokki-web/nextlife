@@ -125,6 +125,21 @@ describe('SimulationEngine 의료비 통합', () => {
       expect(withHc.utility!.components.consumption)
         .toBeLessThanOrEqual(without.utility!.components.consumption + 1e-9);
     });
+
+    test('FIRE 판정도 의료비를 감당할 수 있어야 성립한다', () => {
+      const engine = new SimulationEngine();
+
+      // 월 220만원 고정소득 vs 목표 220만원(생활비 200 + 의료비 50 = 250만원엔 미달).
+      // 의료비를 목표에 넣지 않으면 "의료비를 못 내는데 FIRE 달성"이 된다.
+      const fixedIncome: SimulationParams = {
+        ...baseParams,
+        privatePensions: [],
+        otherIncomes: [{ id: 'o1', label: '임대소득', monthlyAmount: 2200000, currency: 'KRW' }],
+      };
+
+      expect(engine.run(fixedIncome).fireAge).toBe(60);
+      expect(engine.run({ ...fixedIncome, healthcare }).fireAge).toBeNull();
+    });
   });
 
   test('배당금만 소비 전략에서도 의료비는 실제로 지출된다', () => {

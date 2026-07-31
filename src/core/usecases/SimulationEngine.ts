@@ -827,10 +827,11 @@ export class SimulationEngine {
 
       if (totalAssetsDisplay <= 0 && depletionAge === null) depletionAge = currentAge;
 
-      const targetSpendingForFIRE = inflationMode === 'nominal'
+      // 의료비도 소득으로 감당해야 할 지출이다. 빼면 "의료비를 못 내는데 FIRE 달성"이 된다.
+      const targetSpendingForFIRE = (inflationMode === 'nominal'
         ? userProfile.targetMonthlySpending * 12 * Math.pow(1 + inflationRate / 100, y)
-        : userProfile.targetMonthlySpending * 12;
-      
+        : userProfile.targetMonthlySpending * 12) + annualHealthcareCost;
+
       if (totalIncome >= targetSpendingForFIRE && fireAge === null) fireAge = currentAge;
     }
 
