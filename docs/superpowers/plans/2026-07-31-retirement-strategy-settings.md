@@ -19,6 +19,12 @@
 - 테스트 import는 `@/` 별칭 사용 (예: `@/core/entities/types`). `vitest.config.ts`에 설정됨.
 - 새 UI 컴포넌트 스타일은 **Tailwind v4 클래스만** 사용. CSS Module과 인라인 style 혼용 금지.
 - 새 섹션 컴포넌트의 props 인터페이스는 `{ params: SimulationParams; onChangeParams: (p: SimulationParams) => void }`로 통일. `scenarioState` 통째 주입 금지.
+- **모든 설정 필드는 예외 없이 `isFieldVisible(mode, path)`를 거쳐 렌더한다.** 부모 스위치가
+  켜져 있어야만 보이는 하위 필드(배우자 상세, 의료비 상세 등)도 마찬가지로
+  `parentEnabled && isFieldVisible(mode, path) && (...)` 형태여야 한다. 데이터 조건만으로
+  게이트하면 `fieldVisibility.ts`가 노출 규칙의 단일 소스라는 보장이 깨진다.
+- `InputField`에 `label=""`을 넘길 때(가시 라벨은 `FieldRow`가 그림) `InputField`가 빈
+  `<label>` 요소를 렌더하지 않아야 한다. 빈 라벨은 입력마다 불필요한 세로 여백을 만든다.
 - `SimulationParams`에 추가하는 모든 신규 필드는 **optional**. 저장된 기존 시나리오가 마이그레이션 없이 로드되어야 한다.
 - 기능 off 상태(`spouse.enabled === false` 등)에서 시뮬레이션 결과가 변경 전과 **완전히 동일**해야 한다. Task 5·9·10은 이를 검증하는 회귀 테스트가 필수다.
 - 커밋은 Task 단위. 각 커밋 시점에 `npm test` 전체가 통과해야 한다.
@@ -5172,6 +5178,7 @@ import { DEFAULT_HEALTHCARE } from '../strategyOptions';
       {healthcareEnabled && (
         <>
           <div className="grid grid-cols-2 gap-3">
+            {isFieldVisible(mode, 'healthcare.baseMonthlyCost') && (
             <FieldRow label="은퇴 시점 월 의료비" changed={changed.has('healthcare.baseMonthlyCost')}>
               <InputField
                 label="" aria-label="은퇴 시점 월 의료비" type="text" suffixText="원"
@@ -5184,6 +5191,8 @@ import { DEFAULT_HEALTHCARE } from '../strategyOptions';
                 }}
               />
             </FieldRow>
+            )}
+            {isFieldVisible(mode, 'healthcare.costGrowthRate') && (
             <FieldRow
               label="의료비 증가율"
               tooltipText="의료비는 보통 일반 물가보다 빠르게 오릅니다."
@@ -5195,8 +5204,10 @@ import { DEFAULT_HEALTHCARE } from '../strategyOptions';
                 onChange={(e) => setHealthcare({ costGrowthRate: Number(e.target.value) })}
               />
             </FieldRow>
+            )}
           </div>
 
+          {isFieldVisible(mode, 'healthcare.longTermCareEnabled') && (
           <SwitchField
             label="장기요양 발생 가정"
             description="특정 나이부터 요양 비용이 매달 추가로 나간다고 봅니다."
@@ -5204,6 +5215,7 @@ import { DEFAULT_HEALTHCARE } from '../strategyOptions';
             onChange={(v) => setHealthcare({ longTermCareEnabled: v })}
             changed={changed.has('healthcare.longTermCareEnabled')}
           />
+          )}
 
           {healthcare?.longTermCareEnabled && (
             <div className="grid grid-cols-2 gap-3">
@@ -5229,6 +5241,7 @@ import { DEFAULT_HEALTHCARE } from '../strategyOptions';
             </div>
           )}
 
+          {isFieldVisible(mode, 'healthcare.shockEnabled') && (
           <SwitchField
             label="의료비 급증 시나리오"
             description="특정 나이에 큰 목돈이 한 번 나가는 상황을 가정합니다."
@@ -5236,6 +5249,7 @@ import { DEFAULT_HEALTHCARE } from '../strategyOptions';
             onChange={(v) => setHealthcare({ shockEnabled: v })}
             changed={changed.has('healthcare.shockEnabled')}
           />
+          )}
 
           {healthcare?.shockEnabled && (
             <div className="grid grid-cols-2 gap-3">
