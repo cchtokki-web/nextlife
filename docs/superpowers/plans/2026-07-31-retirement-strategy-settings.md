@@ -1382,6 +1382,7 @@ export const SECTION_FIELDS: Record<SectionId, ReadonlyArray<FieldPath>> = {
   ],
   advanced: [
     'taxLawVersion',
+    'taxSettings.limitPrivatePensionToTaxLimit',
     'taxSettings.enableComprehensiveTax',
     'taxSettings.enableHealthInsurance',
     'taxSettings.usDividendTaxRate',
@@ -3522,6 +3523,25 @@ describe('compileStrategy 연금 축', () => {
       .toBe(DEFAULT_PRIVATE_PENSION_LIMIT_KRW / 12 * 0.25);
   });
 
+  test('사적연금 "AI 최적화"는 고급 설정에서 켠 한도 내 인출을 덮어쓰지 않는다', () => {
+    // 'ai_*'는 "미정"이지 "끄기"가 아니다. 저장해 둔 설정이 조용히 뒤집히면 안 된다.
+    const params = withStrategy({ privatePensionStrategy: 'ai_optimized' });
+    params.taxSettings = { ...params.taxSettings, limitPrivatePensionToTaxLimit: true } as never;
+
+    const r = compileStrategy(params);
+
+    expect(r.params.taxSettings?.limitPrivatePensionToTaxLimit).toBe(true);
+  });
+
+  test('명시적 전략은 고급 설정의 한도 내 인출 값을 덮어쓴다', () => {
+    const params = withStrategy({ privatePensionStrategy: 'spending_first' });
+    params.taxSettings = { ...params.taxSettings, limitPrivatePensionToTaxLimit: true } as never;
+
+    const r = compileStrategy(params);
+
+    expect(r.params.taxSettings?.limitPrivatePensionToTaxLimit).toBe(false);
+  });
+
   test('사용자가 지정한 privatePensionLimit이 있으면 그 값을 기준으로 계산한다', () => {
     const params = withStrategy({ privatePensionStrategy: 'tax_first' });
     params.taxSettings = { ...params.taxSettings, privatePensionLimit: 12000000 } as never;
@@ -3592,15 +3612,18 @@ export const NATIONAL_PENSION_STRATEGY_AGES: Record<NationalPensionStrategy, num
 
 // 사적연금 전략 → (저율과세 한도 대비 인출 비율, 한도 내 인출 강제 여부).
 // null 비율은 "월 목표를 지정하지 않음" = 엔진의 기존 균등분할 인출을 뜻한다.
+// limitToTaxLimit이 null이면 "전략이 이 값을 정하지 않음" = 사용자가 ⑥고급 설정에서
+// 직접 켠 값을 그대로 존중한다는 뜻이다. 'ai_optimized'는 "미정"이지 "끄기"가 아니므로
+// false를 강제하면 안 된다 — 저장해 둔 설정이 조용히 뒤집힌다.
 const PRIVATE_PENSION_RULES: Record<
   PrivatePensionStrategy,
-  { limitToTaxLimit: boolean; withdrawalRatio: number | null }
+  { limitToTaxLimit: boolean | null; withdrawalRatio: number | null }
 > = {
   tax_first: { limitToTaxLimit: true, withdrawalRatio: 1 },
   spending_first: { limitToTaxLimit: false, withdrawalRatio: null },
   growth_first: { limitToTaxLimit: true, withdrawalRatio: 0.5 },
   minimum: { limitToTaxLimit: true, withdrawalRatio: 0.25 },
-  ai_optimized: { limitToTaxLimit: false, withdrawalRatio: null },
+  ai_optimized: { limitToTaxLimit: null, withdrawalRatio: null },
 };
 ```
 
@@ -3648,7 +3671,9 @@ const PRIVATE_PENSION_RULES: Record<
       withdrawalPlan,
       taxSettings: {
         ...taxSettings,
-        limitPrivatePensionToTaxLimit: pensionRule.limitToTaxLimit,
+        // null이면 사용자가 고급 설정에서 정한 값을 유지한다.
+        limitPrivatePensionToTaxLimit:
+          pensionRule.limitToTaxLimit ?? taxSettings.limitPrivatePensionToTaxLimit,
       },
     },
     utilityConfig,
@@ -4353,7 +4378,9 @@ const RISK_PROFILE_PRESETS: Partial<Record<RiskProfile, 'conservative' | 'base' 
       withdrawalPlan,
       taxSettings: {
         ...taxSettings,
-        limitPrivatePensionToTaxLimit: pensionRule.limitToTaxLimit,
+        // null이면 사용자가 고급 설정에서 정한 값을 유지한다.
+        limitPrivatePensionToTaxLimit:
+          pensionRule.limitToTaxLimit ?? taxSettings.limitPrivatePensionToTaxLimit,
       },
     },
     utilityConfig,
@@ -5475,6 +5502,7 @@ import { describe, test, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { AdvancedSection } from '@/web/features/StrategySettings/sections/AdvancedSection';
 import { initialParams } from '@/infrastructure/storage/localStore';
+import { DEFAULT_RETIREMENT_STRATEGY } from '@/core/usecases/strategy/compileStrategy';
 import { resolveTaxSettings } from '@/core/usecases/tax/taxRates';
 
 const renderSection = (onChangeParams = vi.fn()) => {
@@ -5516,6 +5544,38 @@ describe('AdvancedSection', () => {
     });
   });
 
+  test('연금 전략이 AI 최적화면 저율과세 한도 스위치를 직접 켤 수 있다', () => {
+    const onChangeParams = renderSection();
+
+    const sw = screen.getByRole('switch', { name: /저율과세 한도 내에서만 인출/ });
+    expect(sw).not.toBeDisabled();
+
+    fireEvent.click(sw);
+
+    expect(onChangeParams).toHaveBeenCalledWith({
+      ...initialParams,
+      taxSettings: {
+        ...resolveTaxSettings(initialParams.taxSettings),
+        limitPrivatePensionToTaxLimit: true,
+      },
+    });
+  });
+
+  test('연금 전략이 명시적이면 저율과세 한도 스위치가 비활성화되고 이유를 설명한다', () => {
+    render(
+      <AdvancedSection
+        params={{
+          ...initialParams,
+          strategy: { ...DEFAULT_RETIREMENT_STRATEGY, privatePensionStrategy: 'tax_first' },
+        }}
+        onChangeParams={vi.fn()} mode="expert" changed={new Set()}
+      />
+    );
+
+    expect(screen.getByRole('switch', { name: /저율과세 한도 내에서만 인출/ })).toBeDisabled();
+    expect(screen.getByText(/③연금 전략의 선택이 이 값을 결정합니다/)).toBeInTheDocument();
+  });
+
   test('금융소득종합과세 스위치를 렌더링한다', () => {
     renderSection();
 
@@ -5543,6 +5603,11 @@ Expected: FAIL — import 실패
 
 - [ ] **Step 8: `AdvancedSection` 구현**
 
+**선행 작업**: `SwitchField`에 `disabled?: boolean` prop을 추가한다
+(`src/web/components/form/SwitchField.tsx`). `disabled`면 `<input>`에 `disabled`를 넘기고
+라벨 전체를 `opacity-60 cursor-not-allowed`로 처리한다. `SwitchField.test.tsx`에
+"disabled면 클릭해도 onChange가 호출되지 않는다" 케이스를 추가한다.
+
 `src/web/features/StrategySettings/sections/AdvancedSection.tsx`
 
 기존 `TaxSettingsSection.tsx`를 먼저 읽어 어떤 필드를 어떤 라벨로 다루는지 확인한다.
@@ -5555,6 +5620,7 @@ Run: `cat src/web/features/AssetForm/TaxSettingsSection.tsx`
 'use client';
 
 import { TaxSettings } from '../../../../core/entities/types';
+import { DEFAULT_RETIREMENT_STRATEGY } from '../../../../core/usecases/strategy/compileStrategy';
 import { resolveTaxSettings } from '../../../../core/usecases/tax/taxRates';
 import InputField from '../../../components/InputField';
 import SelectField from '../../../components/SelectField';
@@ -5567,6 +5633,13 @@ const TAX_LAW_OPTIONS = [{ value: 'current', label: '현행 세법 (2024년 기�
 
 export function AdvancedSection({ params, onChangeParams, mode, changed }: SectionProps) {
   const tax = resolveTaxSettings(params.taxSettings);
+
+  // ③연금 전략이 'ai_optimized'가 아니면 compileStrategy가 저율과세 한도 설정을
+  // 덮어쓴다. 그 상태에서 스위치를 켤 수 있게 두면 "켰는데 결과가 안 바뀐다"가 되므로
+  // 비활성화하고 이유를 설명문에 적는다.
+  const pensionStrategy =
+    params.strategy?.privatePensionStrategy ?? DEFAULT_RETIREMENT_STRATEGY.privatePensionStrategy;
+  const pensionStrategyGovernsLimit = pensionStrategy !== 'ai_optimized';
 
   const setTax = (patch: Partial<TaxSettings>) => {
     onChangeParams({ ...params, taxSettings: { ...tax, ...patch } });
@@ -5614,6 +5687,22 @@ export function AdvancedSection({ params, onChangeParams, mode, changed }: Secti
           '이 금액까지는 낮은 세율이 적용됩니다.')}
         {numberField('taxSettings.privatePensionExcessTaxRate', '사적연금 한도초과 세율', 'privatePensionExcessTaxRate', '%')}
       </div>
+
+      {isFieldVisible(mode, 'taxSettings.limitPrivatePensionToTaxLimit') && (
+        <SwitchField
+          label="사적연금을 저율과세 한도 내에서만 인출"
+          description={
+            pensionStrategyGovernsLimit
+              ? '지금은 ③연금 전략의 선택이 이 값을 결정합니다. 직접 정하려면 연금 전략을 "AI 최적화"로 두세요.'
+              : '세금이 적게 붙는 한도까지만 꺼내 씁니다. 생활비가 모자라면 다른 자산에서 채웁니다.'
+          }
+          tooltipTerm="irp"
+          checked={tax.limitPrivatePensionToTaxLimit}
+          onChange={(v) => setTax({ limitPrivatePensionToTaxLimit: v })}
+          disabled={pensionStrategyGovernsLimit}
+          changed={changed.has('taxSettings.limitPrivatePensionToTaxLimit')}
+        />
+      )}
 
       {isFieldVisible(mode, 'taxSettings.enableComprehensiveTax') && (
         <SwitchField
