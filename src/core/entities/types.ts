@@ -155,6 +155,10 @@ export interface SimulationParams {
   spendingStrategy?: SpendingStrategy; // 목표 생활비 달성 전략
   taxSettings?: TaxSettings; // 고급 세금 설정
   withdrawalPlan?: WithdrawalPlan; // 인출 정책 및 생활비 조정 (미지정 시 기존 균등분할 인출 로직 사용)
+  strategy?: RetirementStrategy; // 은퇴 전략 설정 (미지정 시 compileStrategy가 입력을 그대로 통과)
+  spouse?: SpouseProfile;
+  healthcare?: HealthcareAssumptions;
+  taxLawVersion?: TaxLawVersion;
 }
 
 export interface SimulationYearlyResult {
@@ -297,6 +301,78 @@ export interface ItemizedContribution {
   utilityDelta: number;
   // 동일 변경의 절세/자산증가 등 전체 delta. utilityDelta와 동일한 기준점을 사용한다.
   deltas: StrategyRecommendation['deltas'];
+}
+
+// ── 은퇴 전략 설정 ────────────────────────────────────────────────────────
+// 아래 enum들은 "사용자 언어"이며 SimulationEngine은 이 타입들을 알지 못한다.
+// compileStrategy()가 저수준 파라미터(withdrawalPlan/taxSettings/yieldPreset 등)로
+// 번역한 뒤에야 엔진에 들어간다.
+
+export type StrategyMode = 'simple' | 'standard' | 'expert';
+
+// 모든 계산의 목적 함수. UtilityConfig.weights 프리셋으로 번역된다.
+export type ObjectivePriority =
+  | 'lifetime_spending'
+  | 'tax_minimization'
+  | 'wealth_maximization'
+  | 'bequest_maximization'
+  | 'ai_recommended';
+
+// 엔진의 SpendingStrategy 3종 + 'ai'. 'ai'는 엔진에 없는 값이라 compileStrategy가
+// 'target'으로 내리고, AI가 제안한 생활비는 화면에 힌트로만 노출한다.
+// 선택 상태 자체는 strategy.spendingChoice에 남으므로 화면에서 사라지지 않는다.
+export type SpendingStrategyChoice = SpendingStrategy | 'ai';
+
+export type BequestStrategy = 'spend_all' | 'leave_some' | 'maximize' | 'target_amount';
+
+export type NationalPensionStrategy =
+  | 'normal' | 'defer_1y' | 'defer_2y' | 'defer_max' | 'ai_optimized';
+
+export type PrivatePensionStrategy =
+  | 'tax_first' | 'spending_first' | 'growth_first' | 'minimum' | 'ai_optimized';
+
+export type RiskProfile = 'conservative' | 'neutral' | 'aggressive' | 'ai_recommended';
+
+export type EconomicScenario =
+  | 'long_term_average' | 'recession' | 'high_inflation' | 'low_growth' | 'ai_recommended';
+
+// 현재는 'current' 하나뿐이다. 실제 개정안이 확정되면 프로필을 추가한다
+// (허구의 개정안을 지어내지 않는다는 것이 설계 결정이다).
+export type TaxLawVersion = 'current';
+
+export interface RetirementStrategy {
+  mode: StrategyMode;
+  objective: ObjectivePriority;
+  spendingChoice: SpendingStrategyChoice;
+  bequestStrategy: BequestStrategy;
+  nationalPensionStrategy: NationalPensionStrategy;
+  privatePensionStrategy: PrivatePensionStrategy;
+  preferIsaFirst: boolean;
+  reinvestDividends: boolean;
+  riskProfile: RiskProfile;
+  economicScenario: EconomicScenario;
+}
+
+// 배우자. 자산/ISA/사적연금 계좌는 가구 합산 하나로 유지하고, 여기서는 생존 기간과
+// 국민연금만 분리한다(설계 결정: 계좌 소유자 분리는 이번 범위 밖).
+export interface SpouseProfile {
+  enabled: boolean;
+  currentAge: number;
+  expectancy: number;
+  nationalPensionMonthlyAmount: number; // 65세 기준 금액 (본인과 동일 해석)
+  nationalPensionStartAge: number; // 60~70
+}
+
+export interface HealthcareAssumptions {
+  enabled: boolean;
+  costGrowthRate: number; // 의료비 증가율 %
+  baseMonthlyCost: number; // 은퇴 시점 기준 월 의료비 (오늘 화폐가치)
+  longTermCareEnabled: boolean;
+  longTermCareStartAge: number;
+  longTermCareMonthlyCost: number;
+  shockEnabled: boolean;
+  shockAge: number;
+  shockAmount: number; // 일회성 목돈
 }
 
 export interface ScenarioModel {
