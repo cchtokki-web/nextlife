@@ -4185,7 +4185,7 @@ privatePensionMonthlyTarget, isaMaturityDestination을 사용자가 직접 고�
 ```ts
 import { describe, test, expect } from 'vitest';
 import {
-  ECONOMIC_SCENARIO_PROFILES, applyEconomicScenario,
+  ECONOMIC_SCENARIO_PROFILES, applyEconomicScenario, isEconomicScenarioGoverning,
 } from '@/core/usecases/scenario/economicScenarios';
 import { EconomicScenario, SimulationParams } from '@/core/entities/types';
 
@@ -4215,8 +4215,8 @@ const params: SimulationParams = {
 };
 
 describe('ECONOMIC_SCENARIO_PROFILES', () => {
-  test('모든 시나리오에 프로필이 정의되어 있다', () => {
-    for (const s of ALL) {
+  test('AI 추천을 제외한 모든 시나리오에 프로필이 정의되어 있다', () => {
+    for (const s of ALL.filter((x) => x !== 'ai_recommended')) {
       expect(ECONOMIC_SCENARIO_PROFILES[s], s).toBeDefined();
     }
   });
@@ -4231,9 +4231,11 @@ describe('ECONOMIC_SCENARIO_PROFILES', () => {
       .toBeLessThan(ECONOMIC_SCENARIO_PROFILES.long_term_average.stockGrowthRate);
   });
 
-  test('AI 추천은 장기 평균과 동일하다', () => {
-    expect(ECONOMIC_SCENARIO_PROFILES.ai_recommended)
-      .toEqual(ECONOMIC_SCENARIO_PROFILES.long_term_average);
+  test('AI 추천(미정)에는 프로필이 없다', () => {
+    // 프로필을 주면 사용자가 직접 입력한 물가상승률이 조용히 덮어써진다.
+    expect(ECONOMIC_SCENARIO_PROFILES.ai_recommended).toBeUndefined();
+    expect(isEconomicScenarioGoverning('ai_recommended')).toBe(false);
+    expect(isEconomicScenarioGoverning('recession')).toBe(true);
   });
 });
 
@@ -4258,6 +4260,15 @@ describe('applyEconomicScenario', () => {
 
   test('알 수 없는 시나리오는 입력을 그대로 반환한다', () => {
     expect(applyEconomicScenario(params, 'nope' as never)).toEqual(params);
+  });
+
+  test('AI 추천(미정)은 사용자가 입력한 물가상승률을 보존한다', () => {
+    const custom = { ...params, inflationRate: 3.7 };
+
+    const r = applyEconomicScenario(custom, 'ai_recommended');
+
+    expect(r.inflationRate).toBe(3.7);
+    expect(r).toEqual(custom);
   });
 });
 ```
@@ -4286,7 +4297,10 @@ export interface EconomicScenarioProfile {
 //
 // 침체·고물가에서 exchangeScenario를 'usd_up'으로 두는 이유: 두 국면 모두 원화 약세
 // 압력이 커진다는 경험적 관찰을 단순화한 것이다. 정밀한 환율 모형이 아니다.
-export const ECONOMIC_SCENARIO_PROFILES: Record<EconomicScenario, EconomicScenarioProfile> = {
+// 'ai_recommended'는 이 테이블에 없다. "미정"이지 "장기 평균"이 아니기 때문이다 —
+// 프로필을 주면 사용자가 ⑤경제 가정에서 직접 입력한 물가상승률이 매 컴파일마다
+// 조용히 덮어써진다(Task 8 리뷰에서 발견, Task 7의 'ai_optimized'와 같은 버그).
+export const ECONOMIC_SCENARIO_PROFILES: Partial<Record<EconomicScenario, EconomicScenarioProfile>> = {
   long_term_average: {
     inflationRate: 2.5, stockGrowthRate: 7, pensionReturnRate: 4, exchangeScenario: 'base',
   },
@@ -4299,13 +4313,16 @@ export const ECONOMIC_SCENARIO_PROFILES: Record<EconomicScenario, EconomicScenar
   low_growth: {
     inflationRate: 2, stockGrowthRate: 4, pensionReturnRate: 2.5, exchangeScenario: 'base',
   },
-  // 사용자가 시나리오를 정하지 않은 상태. 장기 평균을 쓴다.
-  ai_recommended: {
-    inflationRate: 2.5, stockGrowthRate: 7, pensionReturnRate: 4, exchangeScenario: 'base',
-  },
 };
 
-// 시나리오 프로필을 params에 적용한다. 순수 함수이며 알 수 없는 값이면 입력을 그대로 돌려준다.
+// 특정 시나리오가 경제 변수를 지배하는지. false면 사용자가 직접 입력한
+// 물가상승률/환율이 그대로 쓰이므로 UI는 그 입력 필드를 열어두어야 한다.
+export function isEconomicScenarioGoverning(scenario: EconomicScenario): boolean {
+  return ECONOMIC_SCENARIO_PROFILES[scenario] !== undefined;
+}
+
+// 시나리오 프로필을 params에 적용한다. 순수 함수이며, 'ai_recommended'(미정)이거나
+// 알 수 없는 값이면 입력을 그대로 돌려준다 — 사용자가 직접 입력한 값을 보존하기 위해서다.
 export function applyEconomicScenario(
   params: SimulationParams,
   scenario: EconomicScenario
@@ -4719,9 +4736,12 @@ export function InvestmentStrategySection({ params, onChangeParams, mode, change
         </FieldRow>
       )}
 
-      <p className="text-xs text-foreground-muted">
-        두 설정이 겹칠 때는 시나리오는 물가·환율을, 리스크 성향은 수익률을 결정합니다.
-      </p>
+      {(isFieldVisible(mode, 'strategy.riskProfile')
+        || isFieldVisible(mode, 'strategy.economicScenario')) && (
+        <p className="text-xs text-foreground-muted">
+          두 설정이 겹칠 때는 시나리오는 물가·환율을, 리스크 성향은 수익률을 결정합니다.
+        </p>
+      )}
     </>
   );
 }
@@ -4733,6 +4753,8 @@ export function InvestmentStrategySection({ params, onChangeParams, mode, change
 'use client';
 
 import { AssetCurrency } from '../../../../core/entities/types';
+import { DEFAULT_RETIREMENT_STRATEGY } from '../../../../core/usecases/strategy/compileStrategy';
+import { isEconomicScenarioGoverning } from '../../../../core/usecases/scenario/economicScenarios';
 import InputField from '../../../components/InputField';
 import SelectField from '../../../components/SelectField';
 import { FieldRow, SwitchField } from '../../../components/form';
@@ -4740,8 +4762,20 @@ import { isFieldVisible } from '../fieldVisibility';
 import { SectionProps } from '../strategyOptions';
 
 export function EconomicAssumptionSection({ params, onChangeParams, mode, changed }: SectionProps) {
+  // 경제 시나리오를 명시적으로 고르면 그 프로필이 물가·환율을 지배한다. 그 상태에서
+  // 입력을 열어두면 "고쳤는데 결과가 안 바뀐다"가 되므로 비활성화하고 이유를 적는다.
+  const scenario =
+    params.strategy?.economicScenario ?? DEFAULT_RETIREMENT_STRATEGY.economicScenario;
+  const scenarioGoverns = isEconomicScenarioGoverning(scenario);
+
   return (
     <>
+      {scenarioGoverns && (
+        <p className="text-xs text-amber-500">
+          ④투자 전략에서 고른 경제 시나리오가 아래 물가상승률과 환율을 결정합니다.
+          직접 정하려면 시나리오를 &ldquo;AI 추천&rdquo;으로 두세요.
+        </p>
+      )}
       {isFieldVisible(mode, 'inflationMode') && (
         <SwitchField
           label="실질 수익률로 계산"
@@ -4760,6 +4794,7 @@ export function EconomicAssumptionSection({ params, onChangeParams, mode, change
             <InputField
               label="" aria-label="물가상승률" type="number" step="0.1" suffixText="%"
               value={params.inflationRate}
+              disabled={scenarioGoverns}
               onChange={(e) => onChangeParams({ ...params, inflationRate: Number(e.target.value) })}
             />
           </FieldRow>
