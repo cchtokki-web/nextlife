@@ -49,6 +49,7 @@ function makeYear(
     comprehensiveTaxPaid: 0,
     privatePensionTaxMethod: 'none',
     spending: ANNUAL_TARGET,
+    healthcareSpending: 0,
     hasTaxWarning: false,
     spouseAlive: false,
     spendingFactor: 1,

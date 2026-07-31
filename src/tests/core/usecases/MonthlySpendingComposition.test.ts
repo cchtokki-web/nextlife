@@ -74,6 +74,7 @@ function makeYearlyResult(overrides: {
   dividendIncomeAnnual?: number;
   otherIncomeAnnual?: number;
   spendingAnnual: number;
+  healthcareSpendingAnnual?: number;
 }): SimulationYearlyResult {
   return {
     age: overrides.age,
@@ -96,6 +97,7 @@ function makeYearlyResult(overrides: {
     comprehensiveTaxPaid: 0,
     privatePensionTaxMethod: 'none',
     spending: overrides.spendingAnnual,
+    healthcareSpending: overrides.healthcareSpendingAnnual ?? 0,
     hasTaxWarning: false,
     spouseAlive: false,
     spendingFactor: 1,
@@ -280,6 +282,35 @@ describe('computeMonthlySpendingComposition', () => {
       expect(composition.dividendUsed).toBe(225000);
       expect(composition.otherUsed).toBe(75000);
       expect(composition.assetWithdrawal).toBe(0);
+    });
+  });
+
+  describe('의료비(healthcareSpending)', () => {
+    test('의료비도 필요분에 포함해 자산부족(shortfall)을 판정한다', () => {
+      // 목표 생활비 월 200만원 + 의료비 월 50만원 = 필요분 월 250만원인데
+      // 실제 지출은 월 220만원까지밖에 못 갔으므로 자산부족은 월 30만원이다.
+      // 의료비를 필요분에 넣지 않으면 220만원 >= 200만원이라 부족이 0으로 숨는다.
+      const params = makeParams({ targetMonthlySpending: 2000000 });
+      const yearly = makeYearlyResult({
+        age: 60,
+        spendingAnnual: 26400000, // 월 2,200,000
+        healthcareSpendingAnnual: 6000000, // 월 500,000
+      });
+      const result = makeResult([yearly]);
+
+      const [composition] = computeMonthlySpendingComposition([yearly], params, result);
+
+      expect(composition.shortfall).toBe(300000);
+    });
+
+    test('의료비가 0이면 기존과 동일하게 판정한다', () => {
+      const params = makeParams({ targetMonthlySpending: 2000000 });
+      const yearly = makeYearlyResult({ age: 60, spendingAnnual: 26400000 });
+      const result = makeResult([yearly]);
+
+      const [composition] = computeMonthlySpendingComposition([yearly], params, result);
+
+      expect(composition.shortfall).toBe(0);
     });
   });
 });

@@ -104,8 +104,13 @@ export const YearlyChart: React.FC<YearlyChartProps> = ({ params, result }) => {
     '건보료 추가': Math.round(r.healthInsurancePaid),
     '세후 총소득': Math.round(r.totalIncome),
     '생활비 지출': Math.round(r.spending),
+    '의료비 지출': Math.round(r.healthcareSpending),
     '잔여 자산액': Math.round(r.totalAssets),
   }));
+
+  // 의료비는 이미 '생활비 지출'에 포함된 금액이라 항상 그리면 "0에 붙은 줄"이 하나 늘 뿐이다.
+  // 의료비 가정을 실제로 켠 시나리오에서만 분해해서 보여준다.
+  const hasHealthcare = yearlyResults.some((r) => r.healthcareSpending > 0);
 
   return (
     <GlassCard className={styles.chartCard}>
@@ -175,7 +180,10 @@ export const YearlyChart: React.FC<YearlyChartProps> = ({ params, result }) => {
             <Line yAxisId="left" name="세전 총소득" type="monotone" dataKey="세전 총소득" stroke="#60A5FA" strokeWidth={2} dot={false} hide={!!hiddenKeys['세전 총소득']} />
             <Line yAxisId="left" name="세후 총소득" type="monotone" dataKey="세후 총소득" stroke="#10B981" strokeWidth={2} dot={false} hide={!!hiddenKeys['세후 총소득']} />
             <Line yAxisId="left" name="생활비 지출" type="monotone" dataKey="생활비 지출" stroke="#A855F7" strokeWidth={2} dot={false} hide={!!hiddenKeys['생활비 지출']} strokeDasharray="5 5" />
-            
+            {hasHealthcare && (
+              <Line yAxisId="left" name="의료비 지출 (생활비에 포함)" type="monotone" dataKey="의료비 지출" stroke="#F472B6" strokeWidth={2} dot={false} hide={!!hiddenKeys['의료비 지출']} strokeDasharray="2 4" />
+            )}
+
             {/* Assets (Right Axis Line) */}
             <Line yAxisId="right" name="잔여 자산액" type="monotone" dataKey="잔여 자산액" stroke="var(--primary)" strokeWidth={2} dot={false} hide={!!hiddenKeys['잔여 자산액']} />
 

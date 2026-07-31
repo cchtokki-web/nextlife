@@ -184,6 +184,13 @@ export interface SimulationYearlyResult {
   privatePensionTaxMethod: PrivatePensionTaxationMethod; // 사적연금 한도초과세 적용 방식
 
   spending: number; // 연간 총 생활비 인출
+  // 연간 의료비 지출. spending에 이미 포함된 금액 중 의료비분을 분해해 보여주기
+  // 위한 정보성 필드다 (spending에서 빼면 안 된다).
+  //
+  // 점수·효용 계산이 "목표 대비 얼마나 충족했는가"의 분모를 만들 때는 이 값을 목표에
+  // 더해야 한다. 더하지 않으면 의료비를 켠 사용자의 spending만 커져서 "목표를 초과해
+  // 소비했다"로 잘못 채점된다(spendingFactor와 같은 이유다).
+  healthcareSpending: number;
   hasTaxWarning: boolean; // 연간 금융소득이 2,000만원 초과 여부
 
   // 해당 연도 배우자 생존 여부. 배우자 미설정이면 항상 false다

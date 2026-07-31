@@ -12,6 +12,7 @@ import {
 } from '../entities/types';
 import { getRetirementGrade, RetirementGrade } from '../entities/retirementGrade';
 import { computeLifetimeUtility } from './utility/UtilityEngine';
+import { computeAnnualHealthcareCost } from './healthcare/healthcareCosts';
 import { DEFAULT_UTILITY_CONFIG } from './utility/utilityWeights';
 import {
   getDividendTaxRate,
@@ -375,6 +376,18 @@ export class SimulationEngine {
       let annualPrivatePensionPreTaxKRW = 0;
       let annualNationalPensionPreTaxKRW = 0;
 
+      // 생활비와 별개의 지출 라인. 은퇴 후에만 발생하며 spending에 합산된다.
+      // infRateAnnual은 소수(inflationRate / 100)이므로 % 단위로 되돌려 넘긴다.
+      const annualHealthcareCost = computeAnnualHealthcareCost({
+        healthcare: params.healthcare,
+        currentAge,
+        retirementAge: userProfile.retirementAge,
+        yearsSinceRetirement: currentAge - userProfile.retirementAge,
+        inflationMode,
+        inflationRate: infRateAnnual * 100,
+      });
+      const monthlyHealthcareCost = annualHealthcareCost / 12;
+
       let monthlyTargetSpending = 0;
       if (isRetired && spendingStrategy !== 'dividend_only') {
         const baseMonthly = inflationMode === 'nominal'
@@ -382,6 +395,10 @@ export class SimulationEngine {
           : userProfile.targetMonthlySpending;
         monthlyTargetSpending = baseMonthly * spendingFactor;
       }
+      // 의료비는 목표 생활비와 같은 재원(자산 인출)에서 나가므로 월 단위로 환산해 더한다.
+      // 가구 규모 계수(spendingFactor)를 곱하지 않는 이유: 의료비는 "본인 기준 입력값"이고
+      // 배우자 사망으로 본인 의료비가 30% 줄어들 이유가 없다.
+      monthlyTargetSpending += monthlyHealthcareCost;
 
       let monthlyNationalPensionDisplay = 0;
       let monthlyNatTaxDisplay = 0;
@@ -645,7 +662,14 @@ export class SimulationEngine {
         annualPreTaxTotalIncome += monthlyOtherPreTaxTotalDisplay;
 
         const monthlyTotalIncome = monthlyDividendIncomeNetDisplay + monthlyPensionIncomeNetDisplay + monthlyNationalPensionDisplay + monthlyOtherIncomeTotalDisplay;
-        let actualMonthlySpending = (isRetired && spendingStrategy === 'dividend_only') ? monthlyTotalIncome : monthlyTargetSpending;
+        // dividend_only는 목표 생활비를 쓰지 않고 "그달 들어온 소득만큼만" 쓰는 전략이라
+        // monthlyTargetSpending을 참조하지 않는다. 그래서 의료비를 여기에 따로 더해 준다 —
+        // 더하지 않으면 healthcareSpending은 기록되는데 실제로는 한 푼도 나가지 않아
+        // "spending에 포함된 금액"이라는 필드 정의가 이 전략에서만 거짓이 된다.
+        // 의료비는 배당으로 감당되지 않으면 자산 인출로 충당된다(아래 shortfall 로직).
+        let actualMonthlySpending = (isRetired && spendingStrategy === 'dividend_only')
+          ? monthlyTotalIncome + monthlyHealthcareCost
+          : monthlyTargetSpending;
 
         const shortfall = actualMonthlySpending - monthlyTotalIncome;
         if (shortfall < 0 && activeAssets.length > 0) {
@@ -793,7 +817,8 @@ export class SimulationEngine {
         stockAssets: stockAssetsDisplay, pensionAssets: pensionAssetsDisplay,
         dividendIncome: annualDividendIncome, nationalPensionIncome: annualNationalPensionIncome,
         privatePensionIncome: annualPrivatePensionIncome, pensionIncome, otherIncome: annualOtherIncome,
-        totalIncome, spending: annualSpending, hasTaxWarning, spouseAlive, spendingFactor,
+        totalIncome, spending: annualSpending, healthcareSpending: annualHealthcareCost,
+        hasTaxWarning, spouseAlive, spendingFactor,
         preTaxTotalIncome: annualPreTaxTotalIncome,
         dividendTaxPaid: annualDividendTaxPaid, pensionTaxPaid: annualPensionTaxPaid,
         nationalPensionTaxPaid: annualNationalPensionTaxPaid, comprehensiveTaxPaid: annualComprehensiveTaxPaidDisplay,
@@ -824,6 +849,12 @@ export class SimulationEngine {
           if (inflationMode === 'nominal') {
               annualTarget = annualTarget * Math.pow(1 + inflationRate / 100, r.age - startAge);
           }
+          // 의료비도 목표(=충족해야 할 필요)의 일부다. 더하지 않으면 의료비를 켠 순간
+          // 분자(totalIncome)만 커진다 — 의료비를 메우려 사적연금을 더 인출한 금액이
+          // 소득으로 집계되기 때문이다 — 분모는 그대로라서 달성률이 부풀려진다.
+          // 물가 보정을 적용하지 않는 이유: healthcareSpending은 이미 엔진이 그 해의
+          // inflationMode에 맞춰 계산해 둔 실제 지출액이다(중복 보정 금지).
+          annualTarget += r.healthcareSpending;
           totalTargetSum += annualTarget;
       });
 

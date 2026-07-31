@@ -4,8 +4,8 @@ import {
   Wallet,
 } from 'lucide-react';
 import {
-  BequestStrategy, EconomicScenario, NationalPensionStrategy, ObjectivePriority, PrivatePensionStrategy,
-  RiskProfile, SimulationParams, SpendingStrategyChoice, SpouseProfile, StrategyMode,
+  BequestStrategy, EconomicScenario, HealthcareAssumptions, NationalPensionStrategy, ObjectivePriority,
+  PrivatePensionStrategy, RiskProfile, SimulationParams, SpendingStrategyChoice, SpouseProfile, StrategyMode,
 } from '../../../core/entities/types';
 import { NATIONAL_PENSION_NORMAL_START_AGE } from '../../../core/usecases/pension/nationalPensionRules';
 import { RadioCardOption } from '../../components/form';
@@ -27,6 +27,21 @@ export const DEFAULT_SPOUSE: SpouseProfile = {
   expectancy: 90, // 여성 기대수명이 더 길다는 통계를 반영해 본인 기본값(85)보다 높게 둔다.
   nationalPensionMonthlyAmount: 0,
   nationalPensionStartAge: NATIONAL_PENSION_NORMAL_START_AGE,
+};
+
+// 의료비 스위치를 처음 켤 때 채워 넣는 값.
+// 월 30만원은 통계청 가계동향의 60대 이상 보건 지출 수준을 참고한 것이고,
+// 증가율 5%는 건강보험 진료비 증가율이 일반 물가를 상회해 온 추세를 반영한다.
+export const DEFAULT_HEALTHCARE: HealthcareAssumptions = {
+  enabled: false,
+  costGrowthRate: 5,
+  baseMonthlyCost: 300000,
+  longTermCareEnabled: false,
+  longTermCareStartAge: 80,
+  longTermCareMonthlyCost: 1500000,
+  shockEnabled: false,
+  shockAge: 75,
+  shockAmount: 30000000,
 };
 
 // SpendingStrategyChoice는 core(entities/types.ts)에 정의되어 있다 —

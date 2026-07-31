@@ -34,13 +34,20 @@ function sum(values: number[]): number {
 // 가구 규모 계수는 여기서 다시 유도하지 않고 엔진이 실제로 곱한 값(r.spendingFactor)을 그대로
 // 쓴다 — 규칙을 두 곳에 두면 반드시 어긋나고, 이 주석의 "동일한 규칙" 문구가 배우자 기능
 // 추가 때 한 번 stale해진 것이 그 증거다.
+//
+// 의료비(r.healthcareSpending)도 목표에 더한다. 엔진이 의료비를 spending에 합산하므로,
+// 분모에 더하지 않으면 의료비를 켠 계획이 "목표를 초과 소비했다"로 잘못 보상받는다
+// (consumptionYearUtility가 ratio > 1을 보너스로 처리한다). 의료비는 생활수준을 높이는
+// 재량 소비가 아니라 반드시 나가는 비용이므로 목표(=필요) 쪽에 들어가는 것이 맞다.
+// 이미 엔진이 inflationMode를 반영해 계산한 실제 지출액이라 물가 보정을 다시 적용하지 않는다.
 function targetAnnualSpendingForYear(params: SimulationParams, r: SimulationYearlyResult): number {
   const { userProfile, inflationRate = 2, inflationMode = 'real' } = params;
   const yearIndex = r.age - userProfile.currentAge;
   const base = userProfile.targetMonthlySpending * 12 * r.spendingFactor;
-  return inflationMode === 'nominal'
+  const target = inflationMode === 'nominal'
     ? base * Math.pow(1 + inflationRate / 100, yearIndex)
     : base;
+  return target + r.healthcareSpending;
 }
 
 // 목표 대비 소비 충족률(ratio)의 연도별 효용. 부족분은 볼록(convex) 페널티로 강하게 반영하고,

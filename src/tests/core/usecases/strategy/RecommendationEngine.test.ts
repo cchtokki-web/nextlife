@@ -407,6 +407,7 @@ function makeYearlyResult(overrides: Partial<SimulationYearlyResult>): Simulatio
     comprehensiveTaxPaid: 0,
     privatePensionTaxMethod: 'none',
     spending: 0,
+    healthcareSpending: 0,
     hasTaxWarning: false,
     spouseAlive: false,
     spendingFactor: 1,
