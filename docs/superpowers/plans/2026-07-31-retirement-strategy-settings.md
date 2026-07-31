@@ -535,6 +535,7 @@ SimulationParams에 추가한 4개 필드는 모두 optional이라 저장된 기
 
 **Files:**
 - Create: `src/web/components/form/HelpTip.tsx`
+- Create: `src/web/components/form/ChangedBadge.tsx`
 - Create: `src/web/components/form/FieldRow.tsx`
 - Create: `src/web/components/form/SwitchField.tsx`
 - Create: `src/web/components/form/RadioCardGroup.tsx`
@@ -550,6 +551,9 @@ SimulationParams에 추가한 4개 필드는 모두 optional이라 저장된 기
   ```ts
   // HelpTip.tsx
   export function HelpTip(props: { term?: GlossaryTerm; text?: string }): JSX.Element | null
+
+  // ChangedBadge.tsx — FieldRow와 SwitchField가 공유하는 '사용자 설정' 배지
+  export function ChangedBadge(props: { changed?: boolean }): JSX.Element | null
 
   // FieldRow.tsx
   export function FieldRow(props: {
@@ -570,7 +574,7 @@ SimulationParams에 추가한 4개 필드는 모두 optional이라 저장된 기
   }
   export function RadioCardGroup<T extends string>(props: {
     name: string; value: T; options: ReadonlyArray<RadioCardOption<T>>;
-    onChange: (value: T) => void; columns?: 1 | 2;
+    onChange: (value: T) => void; columns?: 1 | 2; ariaLabel?: string;
   }): JSX.Element
 
   // SettingSection.tsx
@@ -622,6 +626,14 @@ describe('RadioCardGroup', () => {
     fireEvent.click(screen.getByRole('radio', { name: /바나나/ }));
 
     expect(onChange).toHaveBeenCalledWith('banana');
+  });
+
+  test('ariaLabel을 주면 radiogroup의 접근성 이름이 된다', () => {
+    render(
+      <RadioCardGroup name="fruit" ariaLabel="과일 선택" value="apple" options={options} onChange={vi.fn()} />
+    );
+
+    expect(screen.getByRole('radiogroup', { name: '과일 선택' })).toBeInTheDocument();
   });
 
   test('recommended 옵션에는 추천 표식이 붙는다', () => {
@@ -689,17 +701,21 @@ interface RadioCardGroupProps<T extends string> {
   options: ReadonlyArray<RadioCardOption<T>>;
   onChange: (value: T) => void;
   columns?: 1 | 2;
+  // 그룹의 접근성 이름. 한 화면에 같은 라벨('AI 추천' 등)을 가진 그룹이 둘 이상
+  // 있을 수 있으므로, 그룹 단위로 좁혀 찾을 수 있도록 반드시 지정한다.
+  ariaLabel?: string;
 }
 
 // 아이콘 + 라벨 + 2줄 설명을 담은 카드형 라디오. 중요도가 높은 전략 선택은
 // SelectField 대신 이 컴포넌트를 쓴다 — 선택지마다 "왜 이걸 고르는가"를
 // 함께 보여줘야 사용자가 전략을 설계한다는 감각을 갖기 때문이다.
 export function RadioCardGroup<T extends string>({
-  name, value, options, onChange, columns = 1,
+  name, value, options, onChange, columns = 1, ariaLabel,
 }: RadioCardGroupProps<T>) {
   return (
     <div
       role="radiogroup"
+      aria-label={ariaLabel}
       className={`grid gap-2 ${columns === 2 ? 'sm:grid-cols-2' : 'grid-cols-1'}`}
     >
       {options.map((opt) => {
@@ -802,6 +818,22 @@ Expected: FAIL — `Failed to resolve import "@/web/components/form/FieldRow"`
 
 - [ ] **Step 7: `FieldRow`와 `SwitchField` 구현**
 
+`src/web/components/form/ChangedBadge.tsx`
+
+```tsx
+// 기본값과 다른 값임을 알리는 배지. FieldRow와 SwitchField가 같은 마크업을 쓰므로
+// 한 곳으로 뽑아 두 컴포넌트가 서로 어긋나지 않게 한다.
+export function ChangedBadge({ changed }: { changed?: boolean }) {
+  if (!changed) return null;
+
+  return (
+    <span className="rounded-full border border-primary/40 bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold text-primary">
+      사용자 설정
+    </span>
+  );
+}
+```
+
 `src/web/components/form/FieldRow.tsx`
 
 ```tsx
@@ -809,6 +841,7 @@ Expected: FAIL — `Failed to resolve import "@/web/components/form/FieldRow"`
 
 import { type ReactNode } from 'react';
 import { GlossaryTerm } from '../ui';
+import { ChangedBadge } from './ChangedBadge';
 import { HelpTip } from './HelpTip';
 
 interface FieldRowProps {
@@ -831,11 +864,7 @@ export function FieldRow({
       <div className="flex flex-wrap items-center gap-1.5">
         <span className="text-xs font-medium text-foreground-muted">{label}</span>
         <HelpTip term={tooltipTerm} text={tooltipText} />
-        {changed && (
-          <span className="rounded-full border border-primary/40 bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold text-primary">
-            사용자 설정
-          </span>
-        )}
+        <ChangedBadge changed={changed} />
         {aiHint && (
           <span className="text-[10px] text-foreground-muted">AI 추천: {aiHint}</span>
         )}
@@ -852,6 +881,7 @@ export function FieldRow({
 'use client';
 
 import { GlossaryTerm } from '../ui';
+import { ChangedBadge } from './ChangedBadge';
 import { HelpTip } from './HelpTip';
 
 interface SwitchFieldProps {
@@ -882,11 +912,7 @@ export function SwitchField({
         <span className="flex items-center gap-1.5 text-sm font-semibold text-foreground">
           {label}
           <HelpTip term={tooltipTerm} text={tooltipText} />
-          {changed && (
-            <span className="rounded-full border border-primary/40 bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold text-primary">
-              사용자 설정
-            </span>
-          )}
+          <ChangedBadge changed={changed} />
         </span>
         <span className="text-xs leading-snug text-foreground-muted">{description}</span>
       </span>
@@ -1140,6 +1166,7 @@ export function SettingSection({
 
 ```ts
 export { HelpTip } from './HelpTip';
+export { ChangedBadge } from './ChangedBadge';
 export { FieldRow } from './FieldRow';
 export { SwitchField } from './SwitchField';
 export { RadioCardGroup } from './RadioCardGroup';
@@ -1660,7 +1687,7 @@ export function StrategyModeSelector({ mode, onChange }: StrategyModeSelectorPro
   return (
     <div className="flex flex-col gap-2">
       <span className="text-xs font-semibold text-foreground-muted">은퇴 전략 모드</span>
-      <RadioCardGroup name="strategy-mode" value={mode} options={MODE_OPTIONS} onChange={onChange} />
+      <RadioCardGroup name="strategy-mode" ariaLabel="은퇴 전략 모드" value={mode} options={MODE_OPTIONS} onChange={onChange} />
     </div>
   );
 }
@@ -2921,7 +2948,7 @@ Expected: PASS (4 tests)
 
 ```tsx
 import { describe, test, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, within } from '@testing-library/react';
 import { RetirementGoalSection } from '@/web/features/StrategySettings/sections/RetirementGoalSection';
 import { DEFAULT_RETIREMENT_STRATEGY } from '@/core/usecases/strategy/compileStrategy';
 import { initialParams } from '@/infrastructure/storage/localStore';
@@ -2939,28 +2966,33 @@ const renderSection = (params: SimulationParams = initialParams, onChangeParams 
   return onChangeParams;
 };
 
+// '생활비 전략'과 '목표 우선순위'는 둘 다 'AI 추천' 옵션을 갖는다. 그룹으로 좁히지
+// 않으면 getByRole이 두 개를 찾아 던지므로, 라디오는 항상 그룹 안에서 찾는다.
+const group = (name: string) => within(screen.getByRole('radiogroup', { name }));
+
 describe('RetirementGoalSection', () => {
   test('생활비 전략 4개 선택지를 렌더링한다', () => {
     renderSection();
 
-    expect(screen.getByRole('radio', { name: /원하는 생활비 직접 입력/ })).toBeInTheDocument();
-    expect(screen.getByRole('radio', { name: /배당금만 소비/ })).toBeInTheDocument();
-    expect(screen.getByRole('radio', { name: /최대 생활비 자동 계산/ })).toBeInTheDocument();
-    expect(screen.getByRole('radio', { name: /AI 추천/ })).toBeInTheDocument();
+    const spending = group('생활비 전략');
+    for (const label of [/원하는 생활비 직접 입력/, /배당금만 소비/, /최대 생활비 자동 계산/, /AI 추천/]) {
+      expect(spending.getByRole('radio', { name: label })).toBeInTheDocument();
+    }
   });
 
   test('목표 우선순위 5개 선택지를 렌더링한다', () => {
     renderSection();
 
-    for (const label of [/평생 생활비 확보/, /세금 최소화/, /자산 최대화/, /상속 최대화/]) {
-      expect(screen.getByRole('radio', { name: label })).toBeInTheDocument();
+    const objective = group('목표 우선순위');
+    for (const label of [/평생 생활비 확보/, /세금 최소화/, /자산 최대화/, /상속 최대화/, /AI 추천/]) {
+      expect(objective.getByRole('radio', { name: label })).toBeInTheDocument();
     }
   });
 
   test('목표 우선순위를 고르면 strategy.objective가 반영된다', () => {
     const onChangeParams = renderSection();
 
-    fireEvent.click(screen.getByRole('radio', { name: /세금 최소화/ }));
+    fireEvent.click(group('목표 우선순위').getByRole('radio', { name: /세금 최소화/ }));
 
     expect(onChangeParams).toHaveBeenCalledWith({
       ...initialParams,
@@ -2991,7 +3023,7 @@ describe('RetirementGoalSection', () => {
   test('AI 추천을 고르면 그 선택 상태가 유지된다', () => {
     const onChangeParams = renderSection();
 
-    fireEvent.click(screen.getByRole('radio', { name: /AI 추천/ }));
+    fireEvent.click(group('생활비 전략').getByRole('radio', { name: /AI 추천/ }));
 
     expect(onChangeParams).toHaveBeenCalledWith({
       ...initialParams,
@@ -3167,7 +3199,7 @@ export function RetirementGoalSection({ params, onChangeParams, mode, changed, a
       {isFieldVisible(mode, 'strategy.spendingChoice') && (
         <FieldRow label="생활비 전략" changed={changed.has('strategy.spendingChoice')}>
           <RadioCardGroup
-            name="spending-strategy" value={spendingChoice}
+            name="spending-strategy" ariaLabel="생활비 전략" value={spendingChoice}
             options={SPENDING_STRATEGY_OPTIONS}
             onChange={(v) => setStrategy({ spendingChoice: v })}
           />
@@ -3207,7 +3239,7 @@ export function RetirementGoalSection({ params, onChangeParams, mode, changed, a
           changed={changed.has('strategy.objective')}
         >
           <RadioCardGroup
-            name="objective" value={strategy.objective}
+            name="objective" ariaLabel="목표 우선순위" value={strategy.objective}
             options={OBJECTIVE_OPTIONS} onChange={(v) => setStrategy({ objective: v })}
           />
         </FieldRow>
@@ -3216,7 +3248,7 @@ export function RetirementGoalSection({ params, onChangeParams, mode, changed, a
       {isFieldVisible(mode, 'strategy.bequestStrategy') && (
         <FieldRow label="상속 전략" changed={changed.has('strategy.bequestStrategy')}>
           <RadioCardGroup
-            name="bequest-strategy" value={strategy.bequestStrategy}
+            name="bequest-strategy" ariaLabel="상속 전략" value={strategy.bequestStrategy}
             options={BEQUEST_OPTIONS} onChange={(v) => setStrategy({ bequestStrategy: v })}
             columns={2}
           />
@@ -3626,7 +3658,7 @@ Expected: PASS (26 tests)
 
 ```tsx
 import { describe, test, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, within } from '@testing-library/react';
 import { PensionStrategySection } from '@/web/features/StrategySettings/sections/PensionStrategySection';
 import { DEFAULT_RETIREMENT_STRATEGY } from '@/core/usecases/strategy/compileStrategy';
 import { initialParams } from '@/infrastructure/storage/localStore';
@@ -3642,11 +3674,15 @@ describe('PensionStrategySection', () => {
       />
     );
 
-    for (const label of [/예상 수령/, /1년 연기/, /2년 연기/, /최대 연기/]) {
-      expect(screen.getByRole('radio', { name: label })).toBeInTheDocument();
+    // 두 그룹 모두 'AI 최적화' 옵션을 가지므로 그룹으로 좁혀 찾는다.
+    const national = within(screen.getByRole('radiogroup', { name: '국민연금 수령 시작' }));
+    for (const label of [/예상 수령/, /1년 연기/, /2년 연기/, /최대 연기/, /AI 최적화/]) {
+      expect(national.getByRole('radio', { name: label })).toBeInTheDocument();
     }
-    for (const label of [/절세 우선/, /생활비 우선/, /자산 성장 우선/, /최소 인출/]) {
-      expect(screen.getByRole('radio', { name: label })).toBeInTheDocument();
+
+    const priv = within(screen.getByRole('radiogroup', { name: '사적연금 인출 전략' }));
+    for (const label of [/절세 우선/, /생활비 우선/, /자산 성장 우선/, /최소 인출/, /AI 최적화/]) {
+      expect(priv.getByRole('radio', { name: label })).toBeInTheDocument();
     }
   });
 
@@ -3659,7 +3695,10 @@ describe('PensionStrategySection', () => {
       />
     );
 
-    fireEvent.click(screen.getByRole('radio', { name: /최대 연기/ }));
+    fireEvent.click(
+      within(screen.getByRole('radiogroup', { name: '국민연금 수령 시작' }))
+        .getByRole('radio', { name: /최대 연기/ })
+    );
 
     expect(onChangeParams).toHaveBeenCalledWith({
       ...initialParams,
@@ -3832,7 +3871,7 @@ export function PensionStrategySection({ params, onChangeParams, mode, changed, 
           aiHint={nationalHint}
         >
           <RadioCardGroup
-            name="national-pension-strategy" value={strategy.nationalPensionStrategy}
+            name="national-pension-strategy" ariaLabel="국민연금 수령 시작" value={strategy.nationalPensionStrategy}
             options={NATIONAL_PENSION_OPTIONS}
             onChange={(v) => setStrategy({ nationalPensionStrategy: v })}
           />
@@ -3847,7 +3886,7 @@ export function PensionStrategySection({ params, onChangeParams, mode, changed, 
           aiHint={privateHint}
         >
           <RadioCardGroup
-            name="private-pension-strategy" value={strategy.privatePensionStrategy}
+            name="private-pension-strategy" ariaLabel="사적연금 인출 전략" value={strategy.privatePensionStrategy}
             options={PRIVATE_PENSION_OPTIONS}
             onChange={(v) => setStrategy({ privatePensionStrategy: v })}
           />
@@ -4324,7 +4363,7 @@ Expected: PASS (전체 31 tests). 기존 Task 1·7 테스트가 모두 통과해
 
 ```tsx
 import { describe, test, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, within } from '@testing-library/react';
 import { InvestmentStrategySection } from '@/web/features/StrategySettings/sections/InvestmentStrategySection';
 import { EconomicAssumptionSection } from '@/web/features/StrategySettings/sections/EconomicAssumptionSection';
 import { DEFAULT_RETIREMENT_STRATEGY } from '@/core/usecases/strategy/compileStrategy';
@@ -4341,11 +4380,15 @@ describe('InvestmentStrategySection', () => {
       />
     );
 
-    for (const label of [/안정형/, /중립형/, /공격형/]) {
-      expect(screen.getByRole('radio', { name: label })).toBeInTheDocument();
+    // 두 그룹 모두 'AI 추천' 옵션을 가지므로 그룹으로 좁혀 찾는다.
+    const risk = within(screen.getByRole('radiogroup', { name: '리스크 성향' }));
+    for (const label of [/안정형/, /중립형/, /공격형/, /AI 추천/]) {
+      expect(risk.getByRole('radio', { name: label })).toBeInTheDocument();
     }
-    for (const label of [/장기 평균/, /장기 침체/, /고물가/, /저성장/]) {
-      expect(screen.getByRole('radio', { name: label })).toBeInTheDocument();
+
+    const scenario = within(screen.getByRole('radiogroup', { name: '경제 시나리오' }));
+    for (const label of [/장기 평균/, /장기 침체/, /고물가/, /저성장/, /AI 추천/]) {
+      expect(scenario.getByRole('radio', { name: label })).toBeInTheDocument();
     }
   });
 
@@ -4358,7 +4401,10 @@ describe('InvestmentStrategySection', () => {
       />
     );
 
-    fireEvent.click(screen.getByRole('radio', { name: /공격형/ }));
+    fireEvent.click(
+      within(screen.getByRole('radiogroup', { name: '리스크 성향' }))
+        .getByRole('radio', { name: /공격형/ })
+    );
 
     expect(onChangeParams).toHaveBeenCalledWith({
       ...initialParams,
@@ -4508,7 +4554,7 @@ export function InvestmentStrategySection({ params, onChangeParams, mode, change
           aiHint={reinvestHint}
         >
           <RadioCardGroup
-            name="risk-profile" value={strategy.riskProfile}
+            name="risk-profile" ariaLabel="리스크 성향" value={strategy.riskProfile}
             options={RISK_PROFILE_OPTIONS} onChange={(v) => setStrategy({ riskProfile: v })}
             columns={2}
           />
@@ -4518,7 +4564,7 @@ export function InvestmentStrategySection({ params, onChangeParams, mode, change
       {isFieldVisible(mode, 'strategy.economicScenario') && (
         <FieldRow label="경제 시나리오" changed={changed.has('strategy.economicScenario')}>
           <RadioCardGroup
-            name="economic-scenario" value={strategy.economicScenario}
+            name="economic-scenario" ariaLabel="경제 시나리오" value={strategy.economicScenario}
             options={ECONOMIC_SCENARIO_OPTIONS}
             onChange={(v) => setStrategy({ economicScenario: v })}
             columns={2}
