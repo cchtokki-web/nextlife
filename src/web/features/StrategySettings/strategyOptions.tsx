@@ -1,6 +1,10 @@
-import { Banknote, Coins, Gift, HandCoins, PiggyBank, Receipt, Sparkles, TrendingUp, Wallet } from 'lucide-react';
 import {
-  BequestStrategy, ObjectivePriority, SimulationParams, SpendingStrategyChoice, SpouseProfile, StrategyMode,
+  Banknote, CalendarClock, CalendarPlus, Coins, Gift, HandCoins, Leaf, PiggyBank, Receipt, Rocket,
+  Shield, Sparkles, TrendingUp, Wallet,
+} from 'lucide-react';
+import {
+  BequestStrategy, NationalPensionStrategy, ObjectivePriority, PrivatePensionStrategy, SimulationParams,
+  SpendingStrategyChoice, SpouseProfile, StrategyMode,
 } from '../../../core/entities/types';
 import { NATIONAL_PENSION_NORMAL_START_AGE } from '../../../core/usecases/pension/nationalPensionRules';
 import { RadioCardOption } from '../../components/form';
@@ -97,5 +101,61 @@ export const BEQUEST_OPTIONS: ReadonlyArray<RadioCardOption<BequestStrategy>> = 
     value: 'target_amount', label: '목표 금액 유지',
     description: '남기고 싶은 금액을 직접 정합니다.',
     icon: <PiggyBank size={16} />,
+  },
+];
+
+export const NATIONAL_PENSION_OPTIONS: ReadonlyArray<RadioCardOption<NationalPensionStrategy>> = [
+  {
+    value: 'normal', label: '예상 수령 (65세)',
+    description: '원래 받기로 된 나이에 그대로 받습니다.',
+    icon: <CalendarClock size={16} />,
+  },
+  {
+    value: 'defer_1y', label: '1년 연기 (66세)',
+    description: '1년 늦추면 매달 받는 금액이 7.2% 늘어납니다.',
+    icon: <CalendarPlus size={16} />,
+  },
+  {
+    value: 'defer_2y', label: '2년 연기 (67세)',
+    description: '2년 늦추면 매달 받는 금액이 14.4% 늘어납니다.',
+    icon: <CalendarPlus size={16} />,
+  },
+  {
+    value: 'defer_max', label: '최대 연기 (70세)',
+    description: '5년 늦추면 매달 받는 금액이 36% 늘어납니다.',
+    icon: <CalendarPlus size={16} />,
+  },
+  {
+    value: 'ai_optimized', label: 'AI 최적화',
+    description: '연기 가산과 평생 수령액을 따져 가장 유리한 시점을 찾습니다.',
+    icon: <Sparkles size={16} />, recommended: true,
+  },
+];
+
+export const PRIVATE_PENSION_OPTIONS: ReadonlyArray<RadioCardOption<PrivatePensionStrategy>> = [
+  {
+    value: 'tax_first', label: '절세 우선',
+    description: '세금이 적게 붙는 한도까지만 꺼내 씁니다.',
+    icon: <Shield size={16} />,
+  },
+  {
+    value: 'spending_first', label: '생활비 우선',
+    description: '세금보다 생활비를 먼저 채웁니다. 필요한 만큼 꺼냅니다.',
+    icon: <Wallet size={16} />,
+  },
+  {
+    value: 'growth_first', label: '자산 성장 우선',
+    description: '절반만 꺼내고 나머지는 계좌 안에서 계속 굴립니다.',
+    icon: <Rocket size={16} />,
+  },
+  {
+    value: 'minimum', label: '최소 인출',
+    description: '꼭 필요한 만큼만 꺼내 연금 잔액을 최대한 지킵니다.',
+    icon: <Leaf size={16} />,
+  },
+  {
+    value: 'ai_optimized', label: 'AI 최적화',
+    description: '세금과 생활비를 함께 따져 가장 유리한 인출량을 찾습니다.',
+    icon: <Sparkles size={16} />, recommended: true,
   },
 ];

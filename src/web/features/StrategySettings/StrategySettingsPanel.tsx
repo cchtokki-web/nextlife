@@ -2,10 +2,15 @@
 
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { Coins, LineChart, Settings2, Target, TrendingUp, User } from 'lucide-react';
-import { RetirementStrategy, SimulationParams, StrategyMode } from '../../../core/entities/types';
-import { DEFAULT_RETIREMENT_STRATEGY } from '../../../core/usecases/strategy/compileStrategy';
+import {
+  NationalPensionStrategy, RetirementStrategy, SimulationParams, StrategyMode,
+} from '../../../core/entities/types';
+import {
+  DEFAULT_RETIREMENT_STRATEGY, NATIONAL_PENSION_STRATEGY_AGES,
+} from '../../../core/usecases/strategy/compileStrategy';
 import { SettingSection } from '../../components/form';
 import { BasicInfoSection } from './sections/BasicInfoSection';
+import { PensionStrategySection } from './sections/PensionStrategySection';
 import { RetirementGoalSection } from './sections/RetirementGoalSection';
 import { StrategyModeSelector } from './StrategyModeSelector';
 import { collectChangedPaths, countSectionChanges } from './diffDefaults';
@@ -79,6 +84,8 @@ export function StrategySettingsPanel({ params, onChangeParams }: StrategySettin
         return <BasicInfoSection {...sectionProps} />;
       case 'goal':
         return <RetirementGoalSection {...sectionProps} ai={ai} />;
+      case 'pension':
+        return <PensionStrategySection {...sectionProps} ai={ai} />;
       default:
         return null;
     }
@@ -99,6 +106,31 @@ export function StrategySettingsPanel({ params, onChangeParams }: StrategySettin
           ),
         },
       });
+      return;
+    }
+
+    if (id === 'pension') {
+      // 추천 나이를 enum으로 역매핑한다. 정확히 일치하는 전략이 없으면(예: 68세)
+      // 가장 가까운 값을 고른다 — 후보 생성기의 나이 격자와 전략 4종이 완전히
+      // 겹치지는 않기 때문이다.
+      const strategy = resolveStrategy(params);
+      const targetAge = plan.nationalPensionStartAge;
+      const candidates = (Object.keys(NATIONAL_PENSION_STRATEGY_AGES) as NationalPensionStrategy[])
+        .filter((k) => k !== 'ai_optimized');
+      const nearest = candidates.reduce((best, k) =>
+        Math.abs(NATIONAL_PENSION_STRATEGY_AGES[k] - targetAge)
+          < Math.abs(NATIONAL_PENSION_STRATEGY_AGES[best] - targetAge) ? k : best
+      );
+
+      onChangeParams({
+        ...params,
+        strategy: {
+          ...strategy,
+          nationalPensionStrategy: nearest,
+          preferIsaFirst: plan.isaMaturityDestination === 'asset',
+        },
+      });
+      return;
     }
   };
 

@@ -1,7 +1,9 @@
 import {
-  BequestStrategy, RetirementStrategy, SimulationParams, SpendingStrategy,
-  SpendingStrategyChoice, UtilityConfig,
+  BequestStrategy, NationalPensionStrategy, PrivatePensionStrategy, RetirementStrategy,
+  SimulationParams, SpendingStrategy, SpendingStrategyChoice, UtilityConfig, WithdrawalPlan,
 } from '../../entities/types';
+import { NATIONAL_PENSION_NORMAL_START_AGE } from '../pension/nationalPensionRules';
+import { resolveTaxSettings } from '../tax/taxRates';
 import { createUtilityConfig, DEFAULT_UTILITY_CONFIG } from '../utility/utilityWeights';
 import { OBJECTIVE_WEIGHT_PRESETS } from './objectivePresets';
 
@@ -28,6 +30,33 @@ export const DEFAULT_RETIREMENT_STRATEGY: RetirementStrategy = {
   reinvestDividends: true,
   riskProfile: 'ai_recommended',
   economicScenario: 'ai_recommended',
+};
+
+// 국민연금 수령 전략 → 청구 나이.
+// getNationalPensionAdjustmentFactor가 연기 1개월당 0.6%를 가산하므로
+// 70세는 +36%가 된다. 'ai_optimized'는 baseline(정상 개시)으로 내린다.
+export const NATIONAL_PENSION_STRATEGY_AGES: Record<NationalPensionStrategy, number> = {
+  normal: NATIONAL_PENSION_NORMAL_START_AGE,
+  defer_1y: NATIONAL_PENSION_NORMAL_START_AGE + 1,
+  defer_2y: NATIONAL_PENSION_NORMAL_START_AGE + 2,
+  defer_max: 70,
+  ai_optimized: NATIONAL_PENSION_NORMAL_START_AGE,
+};
+
+// 사적연금 전략 → (저율과세 한도 대비 인출 비율, 한도 내 인출 강제 여부).
+// null 비율은 "월 목표를 지정하지 않음" = 엔진의 기존 균등분할 인출을 뜻한다.
+// limitToTaxLimit이 null이면 "전략이 이 값을 정하지 않음" = 사용자가 ⑥고급 설정에서
+// 직접 켠 값을 그대로 존중한다는 뜻이다. 'ai_optimized'는 "미정"이지 "끄기"가 아니므로
+// false를 강제하면 안 된다 — 저장해 둔 설정이 조용히 뒤집힌다.
+const PRIVATE_PENSION_RULES: Record<
+  PrivatePensionStrategy,
+  { limitToTaxLimit: boolean | null; withdrawalRatio: number | null }
+> = {
+  tax_first: { limitToTaxLimit: true, withdrawalRatio: 1 },
+  spending_first: { limitToTaxLimit: false, withdrawalRatio: null },
+  growth_first: { limitToTaxLimit: true, withdrawalRatio: 0.5 },
+  minimum: { limitToTaxLimit: true, withdrawalRatio: 0.25 },
+  ai_optimized: { limitToTaxLimit: null, withdrawalRatio: null },
 };
 
 // bequestStrategy → userProfile.targetBequest.
@@ -103,8 +132,48 @@ export function compileStrategy(params: SimulationParams): CompiledStrategy {
 
   const spendingStrategy = resolveSpendingStrategy(strategy.spendingChoice);
 
+  const taxSettings = resolveTaxSettings(params.taxSettings);
+  const pensionRule = PRIVATE_PENSION_RULES[strategy.privatePensionStrategy]
+    ?? PRIVATE_PENSION_RULES.ai_optimized;
+
+  const monthlyPensionLimit = taxSettings.privatePensionLimit / 12;
+  const privatePensionMonthlyTarget = pensionRule.withdrawalRatio === null
+    ? undefined
+    : monthlyPensionLimit * pensionRule.withdrawalRatio;
+
+  // 사용자가 직접 넣어둔 withdrawalPlan 필드(일반자산 인출 개시 나이 등)는 보존하고,
+  // 전략이 지배하는 3개 필드만 덮어쓴다.
+  const withdrawalPlan: WithdrawalPlan = {
+    ...(params.withdrawalPlan ?? {}),
+    nationalPensionStartAge:
+      NATIONAL_PENSION_STRATEGY_AGES[strategy.nationalPensionStrategy]
+      ?? NATIONAL_PENSION_NORMAL_START_AGE,
+    isaMaturityDestination: strategy.preferIsaFirst ? 'asset' : 'pension',
+  };
+  if (privatePensionMonthlyTarget === undefined) {
+    delete withdrawalPlan.privatePensionMonthlyTarget;
+  } else {
+    withdrawalPlan.privatePensionMonthlyTarget = privatePensionMonthlyTarget;
+  }
+
+  const assets = params.assets.map((a) => ({
+    ...a, reinvestDividend: strategy.reinvestDividends,
+  }));
+
   return {
-    params: { ...params, userProfile, spendingStrategy },
+    params: {
+      ...params,
+      userProfile,
+      spendingStrategy,
+      assets,
+      withdrawalPlan,
+      taxSettings: {
+        ...taxSettings,
+        // null이면 사용자가 고급 설정에서 정한 값을 유지한다.
+        limitPrivatePensionToTaxLimit:
+          pensionRule.limitToTaxLimit ?? taxSettings.limitPrivatePensionToTaxLimit,
+      },
+    },
     utilityConfig,
   };
 }
