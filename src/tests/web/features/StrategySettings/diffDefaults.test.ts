@@ -40,6 +40,15 @@ describe('collectChangedPaths', () => {
 
     expect(collectChangedPaths(params).has('taxSettings.usDividendTaxRate')).toBe(true);
   });
+
+  test('저율과세 한도 내 인출을 켜면 변경으로 잡힌다', () => {
+    const params = {
+      ...initialParams,
+      taxSettings: { ...initialParams.taxSettings, limitPrivatePensionToTaxLimit: true } as never,
+    };
+
+    expect(collectChangedPaths(params).has('taxSettings.limitPrivatePensionToTaxLimit')).toBe(true);
+  });
 });
 
 describe('countSectionChanges', () => {
