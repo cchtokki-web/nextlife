@@ -9,6 +9,7 @@ import {
   DEFAULT_RETIREMENT_STRATEGY, NATIONAL_PENSION_STRATEGY_AGES,
 } from '../../../core/usecases/strategy/compileStrategy';
 import { SettingSection } from '../../components/form';
+import { AdvancedSection } from './sections/AdvancedSection';
 import { BasicInfoSection } from './sections/BasicInfoSection';
 import { EconomicAssumptionSection } from './sections/EconomicAssumptionSection';
 import { InvestmentStrategySection } from './sections/InvestmentStrategySection';
@@ -79,7 +80,7 @@ export function StrategySettingsPanel({ params, onChangeParams }: StrategySettin
     onChangeParams({ ...params, strategy: { ...strategy, mode: nextMode } });
   };
 
-  // 섹션 본문 렌더링. Task 6·7·8·10이 여기에 자기 케이스를 추가한다.
+  // 섹션 본문 렌더링. SECTIONS의 6개 id가 모두 여기서 처리된다.
   const renderSectionBody = (id: SectionId, sectionProps: SectionProps) => {
     switch (id) {
       case 'basic':
@@ -92,6 +93,8 @@ export function StrategySettingsPanel({ params, onChangeParams }: StrategySettin
         return <InvestmentStrategySection {...sectionProps} ai={ai} />;
       case 'economic':
         return <EconomicAssumptionSection {...sectionProps} />;
+      case 'advanced':
+        return <AdvancedSection {...sectionProps} />;
       default:
         return null;
     }

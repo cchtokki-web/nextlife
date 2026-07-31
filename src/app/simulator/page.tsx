@@ -16,10 +16,7 @@ import { NATIONAL_PENSION_NORMAL_START_AGE } from '../../core/usecases/pension/n
 import { UTILITY_COMPONENT_META } from '../../web/features/Dashboard/utilityComponentMeta';
 import { initialParams } from '../../infrastructure/storage/localStore';
 import { AssetFormSection } from '../../web/features/AssetForm/AssetFormSection';
-import { TaxSettingsSection } from '../../web/features/AssetForm/TaxSettingsSection';
 import { ScenarioManager } from '../../web/features/Scenario/ScenarioManager';
-import { SimulationSettings } from '../../web/features/Scenario/SimulationSettings';
-import { QuickSettingsSummary } from '../../web/features/Scenario/QuickSettingsSummary';
 import { StrategySettingsPanel } from '../../web/features/StrategySettings/StrategySettingsPanel';
 import { Collapse } from '../../web/components/ui';
 import { DashboardSection } from '../../web/features/Dashboard/DashboardSection';
@@ -924,8 +921,7 @@ export default function Home() {
               </button>
             </div>
             
-            {/* Quick Settings Summary */}
-            <QuickSettingsSummary params={activeParams} onChangeParams={handleUpdateActiveParams} />
+            {/* 내 은퇴 전략 = 6개 섹션 (기본 정보 / 은퇴 목표 / 연금 / 투자 / 경제 가정 / 고급 설정) */}
             <GlassCard>
               <StrategySettingsPanel params={activeParams} onChangeParams={handleUpdateActiveParams} />
             </GlassCard>
@@ -935,25 +931,12 @@ export default function Home() {
               <ScenarioManager scenarioState={scenarioState} />
             </GlassCard>
 
-            {/* Detailed Settings (기본 닫힘) */}
-            <Collapse title={<span className="text-base font-semibold">설정 자세히 보기</span>}>
+            {/* 내 자산 — 보유 자산·연금·ISA·기타 소득 입력 (기본 닫힘) */}
+            <Collapse title={<span className="text-base font-semibold">내 자산</span>}>
               <div className="flex flex-col gap-6 pt-2">
-                {/* Inputs Section */}
                 <GlassCard>
                   <AssetFormSection params={activeParams} onChangeParams={handleUpdateActiveParams} />
                 </GlassCard>
-
-                {/* Simulation Settings Section */}
-                <GlassCard>
-                  <SimulationSettings scenarioState={scenarioState} />
-                </GlassCard>
-
-                {/* Tax Settings Section */}
-                {isPro && (
-                  <GlassCard>
-                    <TaxSettingsSection params={activeParams} onChangeParams={handleUpdateActiveParams} />
-                  </GlassCard>
-                )}
               </div>
             </Collapse>
           </section>

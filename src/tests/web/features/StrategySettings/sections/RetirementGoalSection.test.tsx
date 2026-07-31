@@ -98,6 +98,41 @@ describe('RetirementGoalSection', () => {
     expect(screen.getByLabelText('목표 상속자산')).toBeInTheDocument();
   });
 
+  // 아래 두 케이스는 제거된 AssetFormSection profile 탭의 목표 상속자산 입력에서 옮겨온 것이다.
+  test('목표 상속자산을 콤마 표기로 보여주고 콤마를 뗀 숫자로 반영한다', () => {
+    const params: SimulationParams = {
+      ...initialParams,
+      strategy: { ...DEFAULT_RETIREMENT_STRATEGY, bequestStrategy: 'target_amount' },
+      userProfile: { ...initialParams.userProfile, targetBequest: 200000000 },
+    };
+    const onChangeParams = renderSection(params);
+
+    expect(screen.getByLabelText('목표 상속자산')).toHaveValue('200,000,000');
+
+    fireEvent.change(screen.getByLabelText('목표 상속자산'), { target: { value: '150,000,000' } });
+
+    expect(onChangeParams).toHaveBeenCalledWith({
+      ...params,
+      userProfile: { ...params.userProfile, targetBequest: 150000000 },
+    });
+  });
+
+  test('0으로 명시적으로 입력해도(다 쓰고 가기) 정상 반영된다', () => {
+    const params: SimulationParams = {
+      ...initialParams,
+      strategy: { ...DEFAULT_RETIREMENT_STRATEGY, bequestStrategy: 'target_amount' },
+      userProfile: { ...initialParams.userProfile, targetBequest: 100000000 },
+    };
+    const onChangeParams = renderSection(params);
+
+    fireEvent.change(screen.getByLabelText('목표 상속자산'), { target: { value: '0' } });
+
+    expect(onChangeParams).toHaveBeenCalledWith({
+      ...params,
+      userProfile: { ...params.userProfile, targetBequest: 0 },
+    });
+  });
+
   test('AI 추천이 개선안을 찾으면 생활비 배수 힌트를 표시한다', () => {
     const ai = {
       recommendation: {

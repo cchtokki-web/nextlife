@@ -1,6 +1,9 @@
 'use client';
 
-import { AssetCurrency, HealthcareAssumptions } from '../../../../core/entities/types';
+import { useEffect, useRef, useState } from 'react';
+import {
+  AssetCurrency, HealthcareAssumptions, SimulationParams,
+} from '../../../../core/entities/types';
 import { DEFAULT_RETIREMENT_STRATEGY } from '../../../../core/usecases/strategy/compileStrategy';
 import { isEconomicScenarioGoverning } from '../../../../core/usecases/scenario/economicScenarios';
 import InputField from '../../../components/InputField';
@@ -9,12 +12,70 @@ import { FieldRow, SwitchField } from '../../../components/form';
 import { isFieldVisible } from '../fieldVisibility';
 import { DEFAULT_HEALTHCARE, SectionProps } from '../strategyOptions';
 
+// 무료·무인증 환율 API. 실패해도 시뮬레이션은 기존 환율로 계속 돌아간다.
+const EXCHANGE_RATE_API_URL = 'https://open.er-api.com/v6/latest/USD';
+
 export function EconomicAssumptionSection({ params, onChangeParams, mode, changed }: SectionProps) {
   // 경제 시나리오를 명시적으로 고르면 그 프로필이 물가·환율을 지배한다. 그 상태에서
   // 입력을 열어두면 "고쳤는데 결과가 안 바뀐다"가 되므로 비활성화하고 이유를 적는다.
   const scenario =
     params.strategy?.economicScenario ?? DEFAULT_RETIREMENT_STRATEGY.economicScenario;
   const scenarioGoverns = isEconomicScenarioGoverning(scenario);
+
+  // 미지정은 "켜짐"이다 — 구 시뮬레이션 설정 UI의 동작을 그대로 유지한다.
+  const autoExchangeRate = params.useLatestExchangeRate !== false;
+  const [rateError, setRateError] = useState<string | null>(null);
+  const [isFetchingRate, setIsFetchingRate] = useState(false);
+
+  // 응답이 도착하는 시점의 최신 params/콜백에 얹는다. 이펙트가 캡처한 params를 그대로
+  // 되쓰면 조회가 끝나기 전에 사용자가 바꾼 다른 값이 조용히 되돌아간다.
+  const latest = useRef<{
+    params: SimulationParams;
+    onChangeParams: (p: SimulationParams) => void;
+  }>({ params, onChangeParams });
+  useEffect(() => {
+    latest.current = { params, onChangeParams };
+  }, [params, onChangeParams]);
+
+  // 자동 조회 스위치가 켜져 있을 때 한 번만 조회한다. params/onChangeParams는 매 렌더
+  // 새로 만들어지므로 의존성에 넣으면 조회가 무한히 반복된다 — 그래서 ref로 우회한다.
+  useEffect(() => {
+    if (!autoExchangeRate) return;
+
+    let cancelled = false;
+
+    (async () => {
+      // setState는 이펙트 본문이 아니라 비동기 작업 안에서만 호출한다
+      // (이펙트 본문의 동기 setState는 렌더를 한 번 더 연쇄시킨다).
+      setIsFetchingRate(true);
+      setRateError(null);
+      try {
+        const res = await fetch(EXCHANGE_RATE_API_URL);
+        if (!res.ok) throw new Error('실시간 환율 데이터를 가져오지 못했습니다.');
+        const data: unknown = await res.json();
+        const krw = (data as { rates?: { KRW?: unknown } } | null)?.rates?.KRW;
+        if (typeof krw !== 'number') throw new Error('환율 데이터 형식이 유효하지 않습니다.');
+        if (cancelled) return;
+
+        const rate = Math.round(krw * 10) / 10;
+        latest.current.onChangeParams({
+          ...latest.current.params,
+          baseExchangeRate: rate,
+          exchangeScenario: 'base',
+        });
+      } catch (err: unknown) {
+        if (cancelled) return;
+        setRateError(err instanceof Error ? err.message : '환율 정보를 가져오지 못했습니다.');
+      } finally {
+        if (!cancelled) setIsFetchingRate(false);
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [autoExchangeRate]);
+
+  // 스위치와 조회 상태 문구는 함께 보이거나 함께 숨는다.
+  const showExchangeRateAuto = isFieldVisible(mode, 'useLatestExchangeRate');
 
   const healthcare = params.healthcare;
   const healthcareEnabled = healthcare?.enabled ?? false;
@@ -30,7 +91,10 @@ export function EconomicAssumptionSection({ params, onChangeParams, mode, change
 
   return (
     <>
-      {scenarioGoverns && (
+      {/* 배너가 가리키는 필드가 하나도 안 보이는 모드(간편)에서는 배너만 홀로 남으므로
+          렌더하지 않는다. 모드를 낮춰도 값은 보존되어 scenarioGoverns는 참으로 남는다. */}
+      {scenarioGoverns
+        && (isFieldVisible(mode, 'inflationRate') || isFieldVisible(mode, 'baseExchangeRate')) && (
         <p className="text-xs text-amber-500">
           ④투자 전략에서 고른 경제 시나리오가 아래 물가상승률과 환율을 결정합니다.
           직접 정하려면 시나리오를 &ldquo;AI 추천&rdquo;으로 두세요.
@@ -69,6 +133,7 @@ export function EconomicAssumptionSection({ params, onChangeParams, mode, change
             <InputField
               label="" aria-label="적용 환율" type="text" suffixText="원"
               value={params.baseExchangeRate.toLocaleString()}
+              disabled={autoExchangeRate}
               onChange={(e) => {
                 const raw = e.target.value.replace(/,/g, '');
                 if (raw === '' || !isNaN(Number(raw))) {
@@ -98,6 +163,24 @@ export function EconomicAssumptionSection({ params, onChangeParams, mode, change
           </FieldRow>
         )}
       </div>
+
+      {showExchangeRateAuto && (
+        <>
+          <SwitchField
+            label="최신 환율 자동 적용"
+            description="화면을 열 때마다 실시간 환율을 받아 적용합니다. 끄면 위 값을 직접 정할 수 있습니다."
+            checked={autoExchangeRate}
+            onChange={(checked) => onChangeParams({ ...params, useLatestExchangeRate: checked })}
+            changed={changed.has('useLatestExchangeRate')}
+          />
+          {isFetchingRate && (
+            <p className="text-xs text-foreground-muted">최신 환율을 불러오는 중입니다…</p>
+          )}
+          {rateError && (
+            <p className="text-xs text-amber-500">{rateError} 기존 환율을 그대로 사용합니다.</p>
+          )}
+        </>
+      )}
 
       {isFieldVisible(mode, 'healthcare.enabled') && (
         <SwitchField

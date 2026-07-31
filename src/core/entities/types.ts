@@ -150,6 +150,7 @@ export interface SimulationParams {
   baseExchangeRate: number; // 1 USD = N KRW (예: 1350)
   exchangeScenario: 'base' | 'usd_up' | 'usd_down'; // +10%, -10% 보정
   displayCurrency: AssetCurrency; // 최종 결과 표기용 통화 ('KRW' | 'USD')
+  useLatestExchangeRate?: boolean; // 실시간 환율 자동 조회 여부 (미지정 시 true = 기존 동작)
   yieldPreset?: 'conservative' | 'base' | 'aggressive' | 'custom';
   customYieldSnapshot?: CustomYieldSnapshot; // "사용자 프리셋" 복원용 저장값
   spendingStrategy?: SpendingStrategy; // 목표 생활비 달성 전략

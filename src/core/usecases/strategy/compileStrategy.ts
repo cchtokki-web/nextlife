@@ -65,6 +65,16 @@ const PRIVATE_PENSION_RULES: Record<
   ai_optimized: { limitToTaxLimit: null, withdrawalRatio: null },
 };
 
+// ③연금 전략이 "저율과세 한도 내에서만 인출"을 지배하는지, 지배한다면 어떤 값으로
+// 고정하는지. null이면 지배하지 않으므로 고급 설정의 값이 그대로 쓰인다.
+// 고급 설정 UI가 스위치를 비활성화할지, 어떤 값을 보여줄지 판정하는 데 쓴다 —
+// 규칙표를 UI에 복제하면 두 곳이 조용히 어긋난다.
+export function resolvePrivatePensionTaxLimitOverride(
+  strategy: PrivatePensionStrategy
+): boolean | null {
+  return (PRIVATE_PENSION_RULES[strategy] ?? PRIVATE_PENSION_RULES.ai_optimized).limitToTaxLimit;
+}
+
 // 리스크 성향 → 기존 수익률 프리셋. 'ai_recommended'는 매핑이 없으며,
 // 이 경우 경제 시나리오가 정한 수익률을 그대로 둔다("미정"이지 "중립형"이 아니다).
 const RISK_PROFILE_PRESETS: Partial<Record<RiskProfile, 'conservative' | 'base' | 'aggressive'>> = {
@@ -157,6 +167,7 @@ export function compileStrategy(params: SimulationParams): CompiledStrategy {
   const taxSettings = resolveTaxSettings(economyApplied.taxSettings);
   const pensionRule = PRIVATE_PENSION_RULES[strategy.privatePensionStrategy]
     ?? PRIVATE_PENSION_RULES.ai_optimized;
+  const limitOverride = resolvePrivatePensionTaxLimitOverride(strategy.privatePensionStrategy);
 
   const monthlyPensionLimit = taxSettings.privatePensionLimit / 12;
   const privatePensionMonthlyTarget = pensionRule.withdrawalRatio === null
@@ -194,7 +205,7 @@ export function compileStrategy(params: SimulationParams): CompiledStrategy {
         ...taxSettings,
         // null이면 사용자가 고급 설정에서 정한 값을 유지한다.
         limitPrivatePensionToTaxLimit:
-          pensionRule.limitToTaxLimit ?? taxSettings.limitPrivatePensionToTaxLimit,
+          limitOverride ?? taxSettings.limitPrivatePensionToTaxLimit,
       },
     },
     utilityConfig,

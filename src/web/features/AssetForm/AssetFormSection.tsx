@@ -39,7 +39,7 @@ interface AssetFormSectionProps {
   onChangeParams: (newParams: SimulationParams) => void;
 }
 
-type TabType = 'profile' | 'stocks' | 'pensions' | 'isa' | 'other';
+type TabType = 'stocks' | 'pensions' | 'isa' | 'other';
 
 export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawParams, onChangeParams }) => {
   const params: SimulationParams = {
@@ -56,7 +56,7 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
     displayCurrency: rawParams?.displayCurrency || 'KRW',
     spendingStrategy: rawParams?.spendingStrategy || 'target',
   };
-  const [activeTab, setActiveTab] = useState<TabType>('profile');
+  const [activeTab, setActiveTab] = useState<TabType>('stocks');
   const [expandedAssets, setExpandedAssets] = useState<Record<string, boolean>>({});
   const [expandedPensions, setExpandedPensions] = useState<Record<string, boolean>>({});
   const [expandedIsa, setExpandedIsa] = useState<Record<string, boolean>>({});
@@ -309,18 +309,10 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
     }));
   };
 
-  // 1. User Profile update
-  const handleProfileChange = (key: keyof SimulationParams['userProfile'], value: number) => {
-    onChangeParams({
-      ...params,
-      userProfile: {
-        ...params.userProfile,
-        [key]: value,
-      },
-    });
-  };
+  // 인적사항(나이·생활비·상속 목표)은 좌측 "내 은퇴 전략" 패널의 ①기본정보·②은퇴목표가
+  // 담당한다. 이 컴포넌트는 보유 자산 입력에만 집중한다.
 
-  // 2. National Pension update
+  // 1. National Pension update
   const handleNationalPensionChange = (value: number) => {
     onChangeParams({
       ...params,
@@ -590,13 +582,6 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
           {/* Tab Menu */}
           <div className={styles.tabList}>
         <button
-          className={`${styles.tabButton} ${activeTab === 'profile' ? styles.tabButtonActive : ''}`}
-          onClick={(e) => handleTabClick('profile', e)}
-        >
-          <User size={16} style={{ marginRight: '0.4rem', verticalAlign: 'middle' }} />
-          인적사항
-        </button>
-        <button
           className={`${styles.tabButton} ${activeTab === 'stocks' ? styles.tabButtonActive : ''}`}
           onClick={(e) => handleTabClick('stocks', e)}
         >
@@ -628,77 +613,6 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
 
       {/* Tab Panels */}
       <div className={styles.tabContent}>
-        {/* Profile Tab */}
-        {activeTab === 'profile' && (
-          <div className={compStyles.grid}>
-            <InputField
-              label="현재 나이"
-              type="number"
-              value={params.userProfile.currentAge}
-              onChange={(e) => handleProfileChange('currentAge', Number(e.target.value))}
-              suffixText="세"
-            />
-            <InputField
-              label="목표 은퇴 나이"
-              type="number"
-              value={params.userProfile.retirementAge}
-              onChange={(e) => handleProfileChange('retirementAge', Number(e.target.value))}
-              suffixText="세"
-            />
-            <InputField
-              label="기대 수명"
-              type="number"
-              value={params.userProfile.expectancy}
-              onChange={(e) => handleProfileChange('expectancy', Number(e.target.value))}
-              suffixText="세"
-            />
-            <SelectField
-              label="은퇴 생활비 전략"
-              value={params.spendingStrategy || 'target'}
-              onChange={(e) => onChangeParams({ ...params, spendingStrategy: e.target.value as any })}
-              options={[
-                { value: 'target', label: '고정 목표 생활비 직접 입력' },
-                { value: 'dividend_only', label: '배당금 100% 소비 모드 (원금 보존)' },
-                { value: 'max_sustainable', label: '최대 고정 생활비 자동 역산 (자산 전액 사용)' },
-              ]}
-            />
-            {(!params.spendingStrategy || params.spendingStrategy === 'target') && (
-              <InputField
-                label="은퇴 후 목표 월 생활비"
-                labelSecondary="(선택 통화 기준)"
-                type="text"
-                value={params.userProfile.targetMonthlySpending === 0 ? '0' : params.userProfile.targetMonthlySpending.toLocaleString()}
-                onChange={(e) => {
-                  const rawValue = e.target.value.replace(/,/g, '');
-                  const numValue = rawValue === '' ? 0 : Number(rawValue);
-                  if (!isNaN(numValue)) {
-                    handleProfileChange('targetMonthlySpending', numValue);
-                  }
-                }}
-                suffixText={params.displayCurrency === 'KRW' ? '원' : params.displayCurrency}
-              />
-            )}
-            <InputField
-              label="목표 상속자산"
-              labelSecondary="(0원 = 다 쓰고 가기)"
-              type="text"
-              value={
-                (params.userProfile.targetBequest ?? 0) === 0
-                  ? '0'
-                  : (params.userProfile.targetBequest ?? 0).toLocaleString()
-              }
-              onChange={(e) => {
-                const rawValue = e.target.value.replace(/,/g, '');
-                const numValue = rawValue === '' ? 0 : Number(rawValue);
-                if (!isNaN(numValue)) {
-                  handleProfileChange('targetBequest', numValue);
-                }
-              }}
-              suffixText={params.displayCurrency === 'KRW' ? '원' : params.displayCurrency}
-            />
-          </div>
-        )}
-
         {/* Stock & ETF Tab */}
         {activeTab === 'stocks' && (
           <div>

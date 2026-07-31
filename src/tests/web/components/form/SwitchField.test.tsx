@@ -60,6 +60,20 @@ describe('SwitchField', () => {
     expect(screen.queryByText('사용자 설정')).not.toBeInTheDocument();
   });
 
+  test('disabled면 스위치가 비활성화되고 클릭해도 onChange가 호출되지 않는다', () => {
+    const onChange = vi.fn();
+    render(
+      <SwitchField label="자동 인출" description="설명" checked={false} onChange={onChange} disabled />
+    );
+
+    const sw = screen.getByRole('switch', { name: /자동 인출/ });
+    expect(sw).toBeDisabled();
+
+    fireEvent.click(sw);
+
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
   test('tooltipText가 있으면 도움말 버튼을 렌더링한다', () => {
     render(
       <SwitchField

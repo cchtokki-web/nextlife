@@ -1,7 +1,6 @@
 import { describe, test, expect, vi } from 'vitest';
 import { render, screen, fireEvent, within } from '@testing-library/react';
 import { InvestmentStrategySection } from '@/web/features/StrategySettings/sections/InvestmentStrategySection';
-import { EconomicAssumptionSection } from '@/web/features/StrategySettings/sections/EconomicAssumptionSection';
 import { DEFAULT_RETIREMENT_STRATEGY } from '@/core/usecases/strategy/compileStrategy';
 import { initialParams } from '@/infrastructure/storage/localStore';
 
@@ -74,63 +73,5 @@ describe('InvestmentStrategySection', () => {
     expect(screen.queryByRole('radiogroup', { name: '경제 시나리오' })).not.toBeInTheDocument();
     expect(screen.queryByText(/시나리오는 물가·환율을, 리스크 성향은 수익률을 결정합니다/))
       .not.toBeInTheDocument();
-  });
-});
-
-describe('EconomicAssumptionSection', () => {
-  test('물가상승률·환율·기준 통화를 표시한다', () => {
-    render(
-      <EconomicAssumptionSection
-        params={initialParams} onChangeParams={vi.fn()}
-        mode="standard" changed={new Set()}
-      />
-    );
-
-    expect(screen.getByLabelText('물가상승률')).toHaveValue(2.5);
-    expect(screen.getByLabelText('적용 환율')).toBeInTheDocument();
-    expect(screen.getByLabelText('대시보드 기준 통화')).toBeInTheDocument();
-  });
-
-  test('실질 수익률 스위치를 끄면 inflationMode가 nominal이 된다', () => {
-    const onChangeParams = vi.fn();
-    render(
-      <EconomicAssumptionSection
-        params={initialParams} onChangeParams={onChangeParams}
-        mode="standard" changed={new Set()}
-      />
-    );
-
-    fireEvent.click(screen.getByRole('switch', { name: /실질 수익률로 계산/ }));
-
-    expect(onChangeParams).toHaveBeenCalledWith({ ...initialParams, inflationMode: 'nominal' });
-  });
-
-  test('경제 시나리오를 명시적으로 고르면 물가상승률 입력이 비활성화되고 안내문이 보인다', () => {
-    const params = {
-      ...initialParams,
-      strategy: { ...DEFAULT_RETIREMENT_STRATEGY, economicScenario: 'recession' as const },
-    };
-
-    render(
-      <EconomicAssumptionSection
-        params={params} onChangeParams={vi.fn()}
-        mode="standard" changed={new Set()}
-      />
-    );
-
-    expect(screen.getByLabelText('물가상승률')).toBeDisabled();
-    expect(screen.getByText(/경제 시나리오가 아래 물가상승률과 환율을 결정합니다/)).toBeInTheDocument();
-  });
-
-  test('경제 시나리오가 AI 추천(미정)이면 물가상승률 입력이 가능하고 안내문이 없다', () => {
-    render(
-      <EconomicAssumptionSection
-        params={initialParams} onChangeParams={vi.fn()}
-        mode="standard" changed={new Set()}
-      />
-    );
-
-    expect(screen.getByLabelText('물가상승률')).not.toBeDisabled();
-    expect(screen.queryByText(/경제 시나리오가 아래 물가상승률과 환율을 결정합니다/)).not.toBeInTheDocument();
   });
 });

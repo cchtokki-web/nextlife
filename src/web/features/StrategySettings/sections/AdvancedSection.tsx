@@ -1,0 +1,167 @@
+'use client';
+
+import { TaxLawVersion, TaxSettings } from '../../../../core/entities/types';
+import {
+  DEFAULT_RETIREMENT_STRATEGY, resolvePrivatePensionTaxLimitOverride,
+} from '../../../../core/usecases/strategy/compileStrategy';
+import { resolveTaxSettings } from '../../../../core/usecases/tax/taxRates';
+import InputField from '../../../components/InputField';
+import SelectField from '../../../components/SelectField';
+import { FieldRow, SwitchField } from '../../../components/form';
+import { isFieldVisible } from '../fieldVisibility';
+import { SectionProps } from '../strategyOptions';
+
+// 세법 버전 선택지. 현재는 현행 하나뿐이며, 확정된 개정안이 생기면 여기에 추가한다
+// (허구의 개정안을 지어내지 않는다는 것이 설계 결정이다 — taxLawProfiles.ts 참고).
+const TAX_LAW_OPTIONS: ReadonlyArray<{ value: TaxLawVersion; label: string }> = [
+  { value: 'current', label: '현행 세법 (2024년 기준)' },
+];
+
+// %로 입력받는 세율 필드. 키를 좁혀 두어야 setTax에 엉뚱한 필드가 들어가지 않는다.
+type RateKey =
+  | 'usDividendTaxRate' | 'domesticDividendTaxRate'
+  | 'comprehensiveTaxRate' | 'healthInsuranceRate' | 'privatePensionExcessTaxRate';
+
+export function AdvancedSection({ params, onChangeParams, mode, changed }: SectionProps) {
+  const tax = resolveTaxSettings(params.taxSettings);
+
+  // ③연금 전략이 'ai_optimized'가 아니면 compileStrategy가 저율과세 한도 설정을
+  // 덮어쓴다. 그 상태에서 스위치를 켤 수 있게 두면 "켰는데 결과가 안 바뀐다"가 되므로
+  // 비활성화하고 이유를 설명문에 적는다.
+  const pensionStrategy =
+    params.strategy?.privatePensionStrategy ?? DEFAULT_RETIREMENT_STRATEGY.privatePensionStrategy;
+  const limitOverride = resolvePrivatePensionTaxLimitOverride(pensionStrategy);
+  const pensionStrategyGovernsLimit = limitOverride !== null;
+  // 지배당하는 동안에는 저장된 값이 아니라 실제 계산에 쓰이는 값을 보여준다.
+  const limitChecked = limitOverride ?? tax.limitPrivatePensionToTaxLimit;
+
+  const setTax = (patch: Partial<TaxSettings>) => {
+    onChangeParams({ ...params, taxSettings: { ...tax, ...patch } });
+  };
+
+  const rateField = (key: RateKey, label: string, tooltip?: string) => {
+    const path = `taxSettings.${key}`;
+    return isFieldVisible(mode, path) && (
+      <FieldRow label={label} tooltipText={tooltip} changed={changed.has(path)}>
+        <InputField
+          label="" aria-label={label} type="number" step="0.1" suffixText="%"
+          value={tax[key]}
+          onChange={(e) => setTax({ [key]: Number(e.target.value) })}
+        />
+      </FieldRow>
+    );
+  };
+
+  return (
+    <>
+      {isFieldVisible(mode, 'taxLawVersion') && (
+        <FieldRow
+          label="세법 버전"
+          tooltipText="계산에 사용할 세율표입니다. 확정된 개정안이 생기면 선택지가 늘어납니다."
+          changed={changed.has('taxLawVersion')}
+        >
+          <SelectField
+            label="" aria-label="세법 버전"
+            value={params.taxLawVersion ?? 'current'}
+            onChange={(e) =>
+              onChangeParams({ ...params, taxLawVersion: e.target.value as TaxLawVersion })
+            }
+            options={TAX_LAW_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
+          />
+        </FieldRow>
+      )}
+
+      <div className="grid grid-cols-2 gap-3">
+        {rateField('usDividendTaxRate', '미국 배당세율',
+          '해외 주식·ETF 배당에 붙는 세율입니다.')}
+        {rateField('domesticDividendTaxRate', '국내 배당세율',
+          '국내 주식·ETF 배당에 붙는 세율입니다.')}
+        {rateField('comprehensiveTaxRate', '금융소득종합과세 세율',
+          '연 2천만원을 넘는 금융소득에 추가로 붙는 세율입니다.')}
+        {rateField('healthInsuranceRate', '건강보험료율',
+          '기준을 넘는 소득에 추가로 붙는 건강보험료 비율입니다.')}
+
+        {isFieldVisible(mode, 'taxSettings.privatePensionLimit') && (
+          <FieldRow
+            label="사적연금 저율과세 한도"
+            tooltipText="이 금액까지는 낮은 세율이 적용됩니다."
+            changed={changed.has('taxSettings.privatePensionLimit')}
+          >
+            <InputField
+              label="" aria-label="사적연금 저율과세 한도" type="text" suffixText="원"
+              value={tax.privatePensionLimit.toLocaleString()}
+              onChange={(e) => {
+                const raw = e.target.value.replace(/,/g, '');
+                if (raw === '' || !isNaN(Number(raw))) {
+                  setTax({ privatePensionLimit: raw === '' ? 0 : Number(raw) });
+                }
+              }}
+            />
+          </FieldRow>
+        )}
+
+        {rateField('privatePensionExcessTaxRate', '사적연금 한도초과 세율',
+          '저율과세 한도를 넘긴 연금소득에 붙는 세율입니다.')}
+      </div>
+
+      {isFieldVisible(mode, 'taxSettings.limitPrivatePensionToTaxLimit') && (
+        <SwitchField
+          label="사적연금을 저율과세 한도 내에서만 인출"
+          description={
+            pensionStrategyGovernsLimit
+              ? '지금은 ③연금 전략의 선택이 이 값을 결정합니다. 직접 정하려면 연금 전략을 "AI 최적화"로 두세요.'
+              : '세금이 적게 붙는 한도까지만 꺼내 씁니다. 생활비가 모자라면 다른 자산에서 채웁니다.'
+          }
+          tooltipTerm="irp"
+          checked={limitChecked}
+          onChange={(v) => setTax({ limitPrivatePensionToTaxLimit: v })}
+          disabled={pensionStrategyGovernsLimit}
+          changed={changed.has('taxSettings.limitPrivatePensionToTaxLimit')}
+        />
+      )}
+
+      {isFieldVisible(mode, 'taxSettings.enableComprehensiveTax') && (
+        <SwitchField
+          label="금융소득종합과세 반영"
+          description="배당·이자가 연 2천만원을 넘을 때의 추가 세금을 계산에 넣습니다."
+          tooltipTerm="comprehensiveTax"
+          checked={tax.enableComprehensiveTax}
+          onChange={(v) => setTax({ enableComprehensiveTax: v })}
+          changed={changed.has('taxSettings.enableComprehensiveTax')}
+        />
+      )}
+
+      {isFieldVisible(mode, 'taxSettings.enableHealthInsurance') && (
+        <SwitchField
+          label="건강보험료 반영"
+          description="은퇴 후 소득에 따라 늘어나는 건강보험료를 계산에 넣습니다."
+          tooltipTerm="healthInsurance"
+          checked={tax.enableHealthInsurance}
+          onChange={(v) => setTax({ enableHealthInsurance: v })}
+          changed={changed.has('taxSettings.enableHealthInsurance')}
+        />
+      )}
+
+      {isFieldVisible(mode, 'taxSettings.enablePrivatePensionTax') && (
+        <SwitchField
+          label="사적연금 한도초과세 반영"
+          description="저율과세 한도를 넘겨 인출할 때의 추가 세금을 계산에 넣습니다."
+          tooltipTerm="irp"
+          checked={tax.enablePrivatePensionTax}
+          onChange={(v) => setTax({ enablePrivatePensionTax: v })}
+          changed={changed.has('taxSettings.enablePrivatePensionTax')}
+        />
+      )}
+
+      {isFieldVisible(mode, 'taxSettings.enablePensionComprehensiveComparison') && (
+        <SwitchField
+          label="분리과세·종합과세 유리한 쪽 선택"
+          description="한도를 넘긴 연금소득에 대해 둘 중 세금이 적은 쪽으로 계산합니다."
+          checked={tax.enablePensionComprehensiveComparison}
+          onChange={(v) => setTax({ enablePensionComprehensiveComparison: v })}
+          changed={changed.has('taxSettings.enablePensionComprehensiveComparison')}
+        />
+      )}
+    </>
+  );
+}

@@ -42,6 +42,7 @@ export const SECTION_FIELDS: Record<SectionId, ReadonlyArray<FieldPath>> = {
     'inflationRate',
     'inflationMode',
     'baseExchangeRate',
+    'useLatestExchangeRate',
     'displayCurrency',
     'healthcare.enabled',
     'healthcare.baseMonthlyCost',
