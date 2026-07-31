@@ -187,9 +187,19 @@ export interface SimulationYearlyResult {
   // 연간 의료비 지출. spending에 이미 포함된 금액 중 의료비분을 분해해 보여주기
   // 위한 정보성 필드다 (spending에서 빼면 안 된다).
   //
+  // 생활비와 동일하게 그 해의 spendingFactor(생존 인원 계수)가 이미 곱해져 있다.
+  // 소비처에서 다시 곱하면 이중 축소가 된다.
+  //
   // 점수·효용 계산이 "목표 대비 얼마나 충족했는가"의 분모를 만들 때는 이 값을 목표에
   // 더해야 한다. 더하지 않으면 의료비를 켠 사용자의 spending만 커져서 "목표를 초과해
   // 소비했다"로 잘못 채점된다(spendingFactor와 같은 이유다).
+  //
+  // 예외 — 자산이 고갈된 해: 인출할 자산이 없으면 엔진이 실제 지출(spending)을 인출
+  // 가능한 만큼으로 깎으므로 spending < healthcareSpending이 될 수 있다. 즉 이 해에는
+  // "spending에 포함된 금액"이 아니라 "그 해에 나갔어야 할 명목 의료비"를 뜻한다.
+  // 실제로 깎인 금액을 의료비/생활비로 나눠 역산하려면 인출 로직 전체를 헤집어야 하는
+  // 반면, 점수 분모 쪽은 이 값을 목표에 더할수록 결손이 정확히 드러나므로 안전하다.
+  // 표시 목적으로 쓰는 곳은 Math.min(spending, healthcareSpending)을 고려할 것.
   healthcareSpending: number;
   hasTaxWarning: boolean; // 연간 금융소득이 2,000만원 초과 여부
 

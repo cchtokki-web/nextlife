@@ -385,6 +385,8 @@ export class SimulationEngine {
         yearsSinceRetirement: currentAge - userProfile.retirementAge,
         inflationMode,
         inflationRate: infRateAnnual * 100,
+        // 생활비와 같은 계수를 쓴다 — 의료비만 안 줄면 본인 사후에도 전액이 나간다.
+        spendingFactor,
       });
       const monthlyHealthcareCost = annualHealthcareCost / 12;
 
@@ -396,8 +398,8 @@ export class SimulationEngine {
         monthlyTargetSpending = baseMonthly * spendingFactor;
       }
       // 의료비는 목표 생활비와 같은 재원(자산 인출)에서 나가므로 월 단위로 환산해 더한다.
-      // 가구 규모 계수(spendingFactor)를 곱하지 않는 이유: 의료비는 "본인 기준 입력값"이고
-      // 배우자 사망으로 본인 의료비가 30% 줄어들 이유가 없다.
+      // 가구 규모 계수는 computeAnnualHealthcareCost 안에서 이미 곱해져 있으므로 여기서
+      // 다시 곱하지 않는다(이중 적용 금지).
       monthlyTargetSpending += monthlyHealthcareCost;
 
       let monthlyNationalPensionDisplay = 0;

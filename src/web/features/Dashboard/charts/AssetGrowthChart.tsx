@@ -69,6 +69,10 @@ export function AssetGrowthChart({
     return dataPoint;
   });
 
+  // r.spending에는 의료비가 이미 합산되어 있다. 의료비 가정을 켠 시나리오에서만 라벨에
+  // 그 사실을 밝힌다 — 밝히지 않으면 "생활비를 200만원으로 넣었는데 왜 250만원이지?"가 된다.
+  const hasHealthcareCost = yearlyResults.some((r) => r.healthcareSpending > 0);
+
   return (
     <GlassCard className={styles.chartCard}>
       <div className={styles.chartHeader}>
@@ -189,7 +193,7 @@ export function AssetGrowthChart({
               />
               <Line
                 yAxisId="right"
-                name="월 생활비"
+                name={hasHealthcareCost ? '월 생활비 (의료비 포함)' : '월 생활비'}
                 type="monotone"
                 dataKey="월생활비"
                 stroke="#F59E0B"

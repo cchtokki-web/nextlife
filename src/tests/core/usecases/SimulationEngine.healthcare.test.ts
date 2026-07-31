@@ -1,5 +1,6 @@
 import { describe, test, expect } from 'vitest';
 import { SimulationEngine } from '@/core/usecases/SimulationEngine';
+import { SINGLE_SURVIVOR_SPENDING_FACTOR } from '@/core/usecases/spouse/spouseRules';
 import { HealthcareAssumptions, SimulationParams } from '@/core/entities/types';
 
 const baseParams: SimulationParams = {
@@ -24,18 +25,33 @@ const healthcare: HealthcareAssumptions = {
 };
 
 describe('SimulationEngine 의료비 통합', () => {
-  test('healthcare가 없으면 결과가 기존과 완전히 동일하다', () => {
+  // 주의: 아래 두 테스트는 "변경 전 엔진과 동일하다"를 증명하지 않는다(둘 다 변경 후 엔진끼리의
+  // 비교다). 특히 healthcare: undefined는 runSingle 입장에서 필드가 없는 것과 같은 입력이라
+  // 사실상 실행의 결정성만 확인한다. 증명하는 것은 "의료비 off ≡ 의료비 미설정"이라는 동치성이고,
+  // 실제 무회귀 증거는 (1) SimulationEngine.withdrawalPlan.test.ts 스냅샷이 +36/-0(추가된
+  // healthcareSpending 줄뿐, 기존 값 변경 0)이라는 것과 (2) 의료비 기능 이전부터 있던 기존
+  // 테스트 전체가 그대로 통과한다는 사실이다.
+  test('healthcare: undefined는 healthcare 필드 자체가 없는 것과 동치다', () => {
     const engine = new SimulationEngine();
 
     expect(engine.run({ ...baseParams, healthcare: undefined })).toEqual(engine.run(baseParams));
   });
 
-  test('healthcare.enabled가 false면 결과가 기존과 완전히 동일하다', () => {
+  test('healthcare.enabled가 false면 다른 의료비 값과 무관하게 의료비 미설정과 동치다', () => {
     const engine = new SimulationEngine();
 
-    const disabled = engine.run({ ...baseParams, healthcare: { ...healthcare, enabled: false } });
+    const disabled = engine.run({
+      ...baseParams,
+      spendingStrategy: 'target',
+      healthcare: {
+        // enabled가 false이므로 아래 값들은 결과에 전혀 반영되면 안 된다.
+        enabled: false, costGrowthRate: 12, baseMonthlyCost: 3000000,
+        longTermCareEnabled: true, longTermCareStartAge: 65, longTermCareMonthlyCost: 5000000,
+        shockEnabled: true, shockAge: 70, shockAmount: 100000000,
+      },
+    });
 
-    expect(disabled).toEqual(engine.run(baseParams));
+    expect(disabled).toEqual(engine.run({ ...baseParams, spendingStrategy: 'target' }));
   });
 
   test('의료비를 켜면 해당 금액이 healthcareSpending에 기록된다', () => {
@@ -139,6 +155,47 @@ describe('SimulationEngine 의료비 통합', () => {
 
       expect(engine.run(fixedIncome).fireAge).toBe(60);
       expect(engine.run({ ...fixedIncome, healthcare }).fireAge).toBeNull();
+    });
+  });
+
+  // 연도 루프는 computeHouseholdEndAge()까지, 즉 "둘 중 늦게 죽는 쪽"까지 돈다. 그 구간에서
+  // 의료비만 축소 계수를 안 받으면 사망한 본인 앞으로 전액이 계속 인출된다.
+  describe('배우자 생존 기간 축소 계수', () => {
+    // 본인 60세/기대수명 80, 배우자 55세/기대수명 90 → deathAtSelfAge = 60 + (90-55) = 95.
+    // 즉 본인 사후 81~95세 구간을 배우자가 단독 생존한다.
+    const withSpouse: SimulationParams = {
+      ...baseParams,
+      spouse: {
+        enabled: true, currentAge: 55, expectancy: 90,
+        nationalPensionMonthlyAmount: 0, nationalPensionStartAge: 65,
+      },
+    };
+
+    const healthcareAt = (params: SimulationParams, age: number) =>
+      new SimulationEngine().run(params).yearlyResults.find((y) => y.age === age)!.healthcareSpending;
+
+    test('둘 다 생존한 해에는 의료비가 전액 나간다', () => {
+      expect(healthcareAt({ ...withSpouse, healthcare }, 75)).toBe(500000 * 12);
+    });
+
+    test('본인 사후 배우자 단독 생존 기간에는 의료비도 축소 계수만큼 줄어든다', () => {
+      expect(healthcareAt({ ...withSpouse, healthcare }, 85))
+        .toBeCloseTo(500000 * 12 * SINGLE_SURVIVOR_SPENDING_FACTOR, 6);
+    });
+
+    test('본인 기대수명 이후로 잡힌 쇼크도 축소 계수를 따른다', () => {
+      // shockAge 85는 본인 기대수명(80)을 넘는다. 계수를 적용하지 않으면 사망한 본인 앞으로
+      // 목돈 1억이 전액 인출된다.
+      const withLateShock: HealthcareAssumptions = {
+        ...healthcare, baseMonthlyCost: 0, shockEnabled: true, shockAge: 85, shockAmount: 100000000,
+      };
+
+      expect(healthcareAt({ ...withSpouse, healthcare: withLateShock }, 85))
+        .toBeCloseTo(100000000 * SINGLE_SURVIVOR_SPENDING_FACTOR, 6);
+    });
+
+    test('배우자가 없으면 계수가 1이라 의료비가 그대로다', () => {
+      expect(healthcareAt({ ...baseParams, healthcare }, 75)).toBe(500000 * 12);
     });
   });
 
