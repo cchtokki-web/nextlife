@@ -5,9 +5,11 @@ import { Coins, LineChart, Settings2, Target, TrendingUp, User } from 'lucide-re
 import { RetirementStrategy, SimulationParams, StrategyMode } from '../../../core/entities/types';
 import { DEFAULT_RETIREMENT_STRATEGY } from '../../../core/usecases/strategy/compileStrategy';
 import { SettingSection } from '../../components/form';
+import { BasicInfoSection } from './sections/BasicInfoSection';
 import { StrategyModeSelector } from './StrategyModeSelector';
 import { collectChangedPaths, countSectionChanges } from './diffDefaults';
 import { SectionId } from './fieldVisibility';
+import { SectionProps } from './strategyOptions';
 
 export interface StrategySettingsPanelProps {
   params: SimulationParams;
@@ -43,9 +45,6 @@ export function StrategySettingsPanel({ params, onChangeParams }: StrategySettin
   const [recentSection, setRecentSection] = useState<SectionId | null>(null);
   const clearTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // 이번 Task에서는 섹션 본문이 비어 있어 호출부가 없다. Task 4가 섹션 값 변경
-  // 핸들러에서 이 함수를 호출한다(브리프 참고).
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const highlightSection = useCallback((id: SectionId) => {
     setRecentSection(id);
     if (clearTimer.current) clearTimeout(clearTimer.current);
@@ -62,11 +61,38 @@ export function StrategySettingsPanel({ params, onChangeParams }: StrategySettin
     onChangeParams({ ...params, strategy: { ...strategy, mode: nextMode } });
   };
 
+  // 섹션 본문 렌더링. Task 6·7·8·10이 여기에 자기 케이스를 추가한다.
+  const renderSectionBody = (id: SectionId, sectionProps: SectionProps) => {
+    switch (id) {
+      case 'basic':
+        return <BasicInfoSection {...sectionProps} />;
+      default:
+        return null;
+    }
+  };
+
+  // 섹션이 값을 바꾸면 그 섹션을 잠깐 강조한다. 각 섹션이 highlightSection을
+  // 직접 호출하게 하면 여섯 곳에서 잊어버릴 수 있으므로 여기서 한 번만 감싼다.
+  const sectionPropsFor = (id: SectionId): SectionProps => ({
+    params,
+    onChangeParams: (next) => {
+      highlightSection(id);
+      onChangeParams(next);
+    },
+    mode,
+    changed,
+  });
+
   return (
     <div className="flex flex-col gap-4">
       <StrategyModeSelector mode={mode} onChange={handleModeChange} />
 
       <div className="flex flex-col gap-2">
+        {/* react-hooks/refs 오탐: sectionPropsFor가 만드는 onChangeParams 클로저는 highlightSection을
+            통해 ref(clearTimer)를 참조하지만, 실제 실행은 하위 섹션이 자기 이벤트 핸들러 안에서 이
+            함수를 호출할 때뿐이다(렌더 중에는 호출되지 않는다). 컴파일러는 renderSectionBody라는
+            일반 함수 인자로 전달되는 값까지는 추적하지 못해 보수적으로 에러를 낸다. */}
+        {/* eslint-disable-next-line react-hooks/refs */}
         {SECTIONS.map(({ id, title, icon }) => {
           const counts = countSectionChanges(changed, id, mode);
           return (
@@ -80,9 +106,7 @@ export function StrategySettingsPanel({ params, onChangeParams }: StrategySettin
               // 고급 설정은 전문가 모드에서만 기본으로 펼친다.
               defaultOpen={id === 'advanced' ? mode === 'expert' : false}
             >
-              {/* 섹션 본문은 Task 4·6·7·8·10에서 채운다. JSX 주석만으로는 children이 전달되지
-                  않아(SettingSection의 children이 필수 prop) null을 명시한다. */}
-              {null}
+              {renderSectionBody(id, sectionPropsFor(id))}
             </SettingSection>
           );
         })}

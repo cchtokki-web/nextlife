@@ -1,5 +1,5 @@
 import { describe, test, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { act, render, screen, fireEvent } from '@testing-library/react';
 import { StrategySettingsPanel } from '@/web/features/StrategySettings/StrategySettingsPanel';
 import { initialParams } from '@/infrastructure/storage/localStore';
 import { DEFAULT_RETIREMENT_STRATEGY } from '@/core/usecases/strategy/compileStrategy';
@@ -55,5 +55,25 @@ describe('StrategySettingsPanel', () => {
     render(<StrategySettingsPanel params={params} onChangeParams={vi.fn()} />);
 
     expect(screen.getByText('숨겨진 사용자 설정 1개')).toBeInTheDocument();
+  });
+
+  test('섹션에서 값을 바꾸면 그 섹션이 잠깐 강조되고 시간이 지나면 해제된다', () => {
+    vi.useFakeTimers();
+    try {
+      const { container } = render(
+        <StrategySettingsPanel params={initialParams} onChangeParams={vi.fn()} />
+      );
+
+      fireEvent.click(screen.getByRole('button', { name: /기본 정보/ }));
+      fireEvent.change(screen.getByLabelText('현재 나이'), { target: { value: '48' } });
+
+      expect(container.querySelectorAll('[data-highlighted]')).toHaveLength(1);
+
+      act(() => { vi.advanceTimersByTime(2000); });
+
+      expect(container.querySelectorAll('[data-highlighted]')).toHaveLength(0);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
