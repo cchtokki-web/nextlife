@@ -138,6 +138,7 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
         isPro={isPro}
         userProfile={params.userProfile}
         depletionAge={result.depletionAge}
+        householdEndAge={result.householdEndAge}
         goalAchievementRate={result.goalAchievementRate}
         fireAge={result.fireAge}
         endingAssets={result.endingAssets}

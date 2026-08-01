@@ -23,7 +23,10 @@ function makeYearlyResult(overrides: Partial<SimulationYearlyResult>): Simulatio
     comprehensiveTaxPaid: 0,
     privatePensionTaxMethod: 'none',
     spending: 0,
+    healthcareSpending: 0,
     hasTaxWarning: false,
+    spouseAlive: false,
+    spendingFactor: 1,
     ...overrides,
   };
 }
@@ -38,6 +41,7 @@ function makeResult(yearlyResults: SimulationYearlyResult[]): SimulationResult {
     retirementGrade: '보통',
     goalAchievementRate: 100,
     retirementAssetsAtRetirement: 0,
+    householdEndAge: 90,
   };
 }
 

@@ -130,12 +130,15 @@ export interface IsaAccount {
   maturityYears: number; // 기본 3년
 }
 
-// 자산/사적연금별 "사용자 프리셋"(직접입력 수익률) 스냅샷. 시장 수익률 프리셋(보수적/기본값/
+// 자산/사적연금/ISA별 "사용자 프리셋"(직접입력 수익률) 스냅샷. 시장 수익률 프리셋(보수적/기본값/
 // 공격적)으로 전환하면 자산의 annualGrowthRate/annualReturn이 프리셋 값으로 덮어써지므로, 그
 // 직전 시점의 직접입력 값을 id 기준으로 보존해 두었다가 "사용자 프리셋" 재선택 시 되돌린다.
 export interface CustomYieldSnapshot {
   assets: Record<string, number>; // InvestmentAsset.id -> annualGrowthRate
   privatePensions: Record<string, number>; // PrivatePension.id -> annualReturn
+  // IsaAccount.id -> annualReturn. ISA가 프리셋 대상에 들어오기 전에 저장된 스냅샷에는
+  // 이 키가 없으므로 optional이다 — 필수로 바꾸면 이미 저장된 시나리오가 타입과 어긋난다.
+  isaAccounts?: Record<string, number>;
 }
 
 export interface SimulationParams {
@@ -150,11 +153,21 @@ export interface SimulationParams {
   baseExchangeRate: number; // 1 USD = N KRW (예: 1350)
   exchangeScenario: 'base' | 'usd_up' | 'usd_down'; // +10%, -10% 보정
   displayCurrency: AssetCurrency; // 최종 결과 표기용 통화 ('KRW' | 'USD')
+  useLatestExchangeRate?: boolean; // 실시간 환율 자동 조회 여부 (미지정 시 true = 기존 동작)
   yieldPreset?: 'conservative' | 'base' | 'aggressive' | 'custom';
   customYieldSnapshot?: CustomYieldSnapshot; // "사용자 프리셋" 복원용 저장값
   spendingStrategy?: SpendingStrategy; // 목표 생활비 달성 전략
   taxSettings?: TaxSettings; // 고급 세금 설정
   withdrawalPlan?: WithdrawalPlan; // 인출 정책 및 생활비 조정 (미지정 시 기존 균등분할 인출 로직 사용)
+  // 은퇴 전략 설정. 미지정이면 compileStrategy가 baseline 전략으로 컴파일한다.
+  // "입력을 그대로 통과"하는 것은 이 필드가 없고 **동시에** 레거시 저수준 필드
+  // (spendingStrategy='dividend_only'/'max_sustainable', userProfile.targetBequest)도
+  // 없을 때뿐이다 — 그 씨앗이 하나라도 있으면 전략이 유도되어 저수준 필드가 실체화된다
+  // (compileStrategy.seedStrategyFromLegacyParams 참조).
+  strategy?: RetirementStrategy;
+  spouse?: SpouseProfile;
+  healthcare?: HealthcareAssumptions;
+  taxLawVersion?: TaxLawVersion;
 }
 
 export interface SimulationYearlyResult {
@@ -180,20 +193,70 @@ export interface SimulationYearlyResult {
   privatePensionTaxMethod: PrivatePensionTaxationMethod; // 사적연금 한도초과세 적용 방식
 
   spending: number; // 연간 총 생활비 인출
+  // 연간 의료비 지출. spending에 이미 포함된 금액 중 의료비분을 분해해 보여주기
+  // 위한 정보성 필드다 (spending에서 빼면 안 된다).
+  //
+  // 생활비와 동일하게 그 해의 spendingFactor(생존 인원 계수)가 이미 곱해져 있다.
+  // 소비처에서 다시 곱하면 이중 축소가 된다.
+  //
+  // 점수·효용 계산이 "목표 대비 얼마나 충족했는가"의 분모를 만들 때는 이 값을 목표에
+  // 더해야 한다. 더하지 않으면 의료비를 켠 사용자의 spending만 커져서 "목표를 초과해
+  // 소비했다"로 잘못 채점된다(spendingFactor와 같은 이유다).
+  //
+  // 예외 — 자산이 고갈된 해: 인출할 자산이 없으면 엔진이 실제 지출(spending)을 인출
+  // 가능한 만큼으로 깎으므로 spending < healthcareSpending이 될 수 있다. 즉 이 해에는
+  // "spending에 포함된 금액"이 아니라 "그 해에 나갔어야 할 명목 의료비"를 뜻한다.
+  // 실제로 깎인 금액을 의료비/생활비로 나눠 역산하려면 인출 로직 전체를 헤집어야 하는
+  // 반면, 점수 분모 쪽은 이 값을 목표에 더할수록 결손이 정확히 드러나므로 안전하다.
+  // 표시 목적으로 쓰는 곳은 Math.min(spending, healthcareSpending)을 고려할 것.
+  healthcareSpending: number;
   hasTaxWarning: boolean; // 연간 금융소득이 2,000만원 초과 여부
 
+  // 해당 연도 배우자 생존 여부. 배우자 미설정이면 항상 false다
+  // (배우자가 없는 것과 사망한 것을 결과 타입에서 구분하지 않는다 —
+  //  구분이 필요한 소비처는 params.spouse를 함께 본다).
+  spouseAlive: boolean;
+  // 해당 연도에 적용된 가구 생활비 규모 계수(2인=1, 1인 생존=0.7, 배우자 미설정=1).
+  // SimulationEngine이 목표 생활비에 곱한 바로 그 값을 그대로 노출한다.
+  //
+  // 점수·효용 계산이 "목표 대비 얼마나 충족했는가"의 분모를 만들 때 반드시 이 값을 곱해야 한다.
+  // 곱하지 않으면 배우자 사망으로 줄어든 필요를 완벽히 충족한 계획이 영구적 결손으로 채점된다.
+  // 계수를 소비처에서 재유도(resolveSpouse 재호출 등)하지 않고 결과에 실어 나르는 이유는,
+  // 계수를 계산하는 곳을 엔진 한 곳으로 묶어 두 로직이 다시 어긋나지 못하게 하기 위해서다.
+  spendingFactor: SpendingFactor;
 }
+
+// 생존 인원에 따른 가구 생활비 규모 계수가 실제로 가질 수 있는 값. number로 두면 오타
+// (0.75 등)가 조용히 통과한다.
+//
+// 값의 출처는 usecases/spouse/spouseRules.computeSpendingFactor다:
+//   1   = 본인·배우자 모두 생존(또는 배우자 미설정)
+//   0.7 = 한 명만 생존(SINGLE_SURVIVOR_SPENDING_FACTOR)
+//   0   = 모두 사망
+// 여기서 SINGLE_SURVIVOR_SPENDING_FACTOR를 import하지 않고 리터럴을 직접 쓰는 이유는
+// 계층 방향 때문이다 — entities가 usecases를 참조하면 의존 방향이 역전된다.
+// 두 곳이 어긋나면 spouseRules 쪽에서 컴파일 에러가 난다(반환 타입이 이 타입이다).
+export type SpendingFactor = 0 | 0.7 | 1;
 
 export interface SimulationResult {
   yearlyResults: SimulationYearlyResult[];
   fireAge: number | null; // FIRE 달성(소득 >= 생활비) 가능 나이
   depletionAge: number | null; // 자산 고갈 나이 (0 이하가 되는 시점)
-  endingAssets: number; // 기대수명(사망) 시점 잔여 자산
+  endingAssets: number; // 시뮬레이션 종료 시점 잔여 자산. 배우자가 본인보다 오래 살면
+                        // 본인 기대수명이 아니라 "둘 중 늦게 사망하는 쪽" 시점의 잔액이다.
   retirementScore: number; // 0 ~ 100 점
   retirementGrade: RetirementGrade; // 점수 등급 (매우 안정, 안정, 보통, 주의, 위험)
   goalAchievementRate: number; // 은퇴 후 예상 월소득 / 목표 월소득 비율 (%)
   calculatedTargetSpending?: number; // 역산된 목표 생활비 (max_sustainable 모드 등에서 사용)
   retirementAssetsAtRetirement: number; // 은퇴 시작 시점 총자산 (해석/배너 표시용)
+  // 시뮬레이션이 실제로 돈 마지막 나이(본인 나이 기준) = computeHouseholdEndAge.
+  // 배우자가 본인보다 오래 살면 userProfile.expectancy보다 크다.
+  //
+  // depletionAge는 이 나이까지의 루프에서 판정되므로 "고갈되었는가"를 묻는 모든 소비처는
+  // 반드시 이 값과 비교해야 한다. 본인 기대수명과 비교하면 배우자 단독 생존 구간의 파산이
+  // 통째로 숨어 "고갈 위험 없음"이라는 거짓 진술이 된다.
+  // 규칙(둘 중 늦게 죽는 쪽)을 소비처마다 재유도하지 않도록 엔진이 결과에 실어 보낸다.
+  householdEndAge: number;
   utility?: UtilityBreakdown; // Lifetime Utility Score
   recommendation?: StrategyRecommendation; // AI 추천 전략 (별도 계산 시에만 채워짐)
 }
@@ -297,6 +360,80 @@ export interface ItemizedContribution {
   utilityDelta: number;
   // 동일 변경의 절세/자산증가 등 전체 delta. utilityDelta와 동일한 기준점을 사용한다.
   deltas: StrategyRecommendation['deltas'];
+}
+
+// ── 은퇴 전략 설정 ────────────────────────────────────────────────────────
+// 아래 enum들은 "사용자 언어"이며 SimulationEngine은 이 타입들을 알지 못한다.
+// compileStrategy()가 저수준 파라미터(withdrawalPlan/taxSettings/yieldPreset 등)로
+// 번역한 뒤에야 엔진에 들어간다.
+
+export type StrategyMode = 'simple' | 'standard' | 'expert';
+
+// 모든 계산의 목적 함수. UtilityConfig.weights 프리셋으로 번역된다.
+export type ObjectivePriority =
+  | 'lifetime_spending'
+  | 'tax_minimization'
+  | 'wealth_maximization'
+  | 'bequest_maximization'
+  | 'ai_recommended';
+
+// 엔진의 SpendingStrategy 3종 + 'ai'. 'ai'는 엔진에 없는 값이라 compileStrategy가
+// 'target'으로 내리고, AI가 제안한 생활비는 화면에 힌트로만 노출한다.
+// 선택 상태 자체는 strategy.spendingChoice에 남으므로 화면에서 사라지지 않는다.
+export type SpendingStrategyChoice = SpendingStrategy | 'ai';
+
+export type BequestStrategy = 'spend_all' | 'leave_some' | 'maximize' | 'target_amount';
+
+export type NationalPensionStrategy =
+  | 'early' | 'normal' | 'defer_1y' | 'defer_2y' | 'defer_max' | 'ai_optimized';
+
+export type PrivatePensionStrategy =
+  | 'tax_first' | 'spending_first' | 'growth_first' | 'minimum' | 'ai_optimized';
+
+// 'custom'과 'ai_recommended'는 둘 다 "수익률 프리셋을 적용하지 않는다"는 같은 동작이지만
+// 뜻이 다르다: 'custom'은 사용자가 자산별로 직접 넣은 값을 쓰겠다는 명시적 선택이고,
+// 'ai_recommended'는 아직 정하지 않았다는 뜻이다.
+export type RiskProfile = 'conservative' | 'neutral' | 'aggressive' | 'custom' | 'ai_recommended';
+
+export type EconomicScenario =
+  | 'long_term_average' | 'recession' | 'high_inflation' | 'low_growth' | 'ai_recommended';
+
+// 현재는 'current' 하나뿐이다. 실제 개정안이 확정되면 프로필을 추가한다
+// (허구의 개정안을 지어내지 않는다는 것이 설계 결정이다).
+export type TaxLawVersion = 'current';
+
+export interface RetirementStrategy {
+  mode: StrategyMode;
+  objective: ObjectivePriority;
+  spendingChoice: SpendingStrategyChoice;
+  bequestStrategy: BequestStrategy;
+  nationalPensionStrategy: NationalPensionStrategy;
+  privatePensionStrategy: PrivatePensionStrategy;
+  preferIsaFirst: boolean;
+  riskProfile: RiskProfile;
+  economicScenario: EconomicScenario;
+}
+
+// 배우자. 자산/ISA/사적연금 계좌는 가구 합산 하나로 유지하고, 여기서는 생존 기간과
+// 국민연금만 분리한다(설계 결정: 계좌 소유자 분리는 이번 범위 밖).
+export interface SpouseProfile {
+  enabled: boolean;
+  currentAge: number;
+  expectancy: number;
+  nationalPensionMonthlyAmount: number; // 65세 기준 금액 (본인과 동일 해석)
+  nationalPensionStartAge: number; // 60~70
+}
+
+export interface HealthcareAssumptions {
+  enabled: boolean;
+  costGrowthRate: number; // 의료비 증가율 %
+  baseMonthlyCost: number; // 은퇴 시점 기준 월 의료비 (오늘 화폐가치)
+  longTermCareEnabled: boolean;
+  longTermCareStartAge: number;
+  longTermCareMonthlyCost: number;
+  shockEnabled: boolean;
+  shockAge: number;
+  shockAmount: number; // 일회성 목돈
 }
 
 export interface ScenarioModel {

@@ -70,6 +70,55 @@ describe('applyYieldPreset', () => {
     expect(result.privatePensions.map((p) => p.annualReturn)).toEqual([6, 6]);
   });
 
+  // B1: ISA도 annualReturn을 가진 투자 계좌다. 리스크 성향 프리셋에서만 빼두면
+  // "보수적"을 골라도 ISA만 홀로 높은 수익률을 유지해 계좌 간 서열이 뒤집힌다.
+  test('ISA 계좌 annualReturn도 주식과 같은 값으로 설정한다', () => {
+    const withIsa: SimulationParams = {
+      ...baseParams,
+      isaAccounts: [{
+        id: 'i1', type: 'general', balance: 1000, monthlyContribution: 0,
+        annualReturn: 12, dividendYield: 1.5, currency: 'KRW', maturityYears: 3,
+      }],
+    };
+
+    expect(applyYieldPreset(withIsa, 'conservative').isaAccounts![0].annualReturn).toBe(5);
+    expect(applyYieldPreset(withIsa, 'aggressive').isaAccounts![0].annualReturn).toBe(9);
+  });
+
+  test('yieldPreset이 custom이면 ISA 직접입력 값도 스냅샷에 보관하고 복원한다', () => {
+    const customParams: SimulationParams = {
+      ...baseParams,
+      yieldPreset: 'custom',
+      isaAccounts: [{
+        id: 'i1', type: 'general', balance: 1000, monthlyContribution: 0,
+        annualReturn: 12.5, dividendYield: 1.5, currency: 'KRW', maturityYears: 3,
+      }],
+    };
+
+    const applied = applyYieldPreset(customParams, 'aggressive');
+    expect(applied.customYieldSnapshot?.isaAccounts).toEqual({ i1: 12.5 });
+
+    expect(restoreCustomYieldPreset(applied).isaAccounts![0].annualReturn).toBe(12.5);
+  });
+
+  // 과거에 저장된 스냅샷에는 isaAccounts 키가 없다. 복원이 그 위에서 터지면 안 된다.
+  test('isaAccounts가 없는 옛 스냅샷으로도 복원할 수 있다', () => {
+    const params: SimulationParams = {
+      ...baseParams,
+      yieldPreset: 'aggressive',
+      isaAccounts: [{
+        id: 'i1', type: 'general', balance: 1000, monthlyContribution: 0,
+        annualReturn: 9, dividendYield: 1.5, currency: 'KRW', maturityYears: 3,
+      }],
+      customYieldSnapshot: { assets: { a1: 12.5 }, privatePensions: { p1: 2.5 } },
+    };
+
+    const result = restoreCustomYieldPreset(params);
+
+    expect(result.isaAccounts![0].annualReturn).toBe(9);
+    expect(result.assets[0].annualGrowthRate).toBe(12.5);
+  });
+
   test('assets/privatePensions가 undefined여도 크래시 없이 빈 배열로 처리한다', () => {
     const params = { ...baseParams, assets: undefined, privatePensions: undefined } as unknown as SimulationParams;
     const result = applyYieldPreset(params, 'base');
@@ -92,7 +141,8 @@ describe('applyYieldPreset', () => {
       privatePensions: [{ ...baseParams.privatePensions[0], id: 'p1', annualReturn: 2.5 }],
     };
     const result = applyYieldPreset(customParams, 'aggressive');
-    expect(result.customYieldSnapshot).toEqual({ assets: { a1: 12.5 }, privatePensions: { p1: 2.5 } });
+    // ISA가 없는 시나리오도 assets/privatePensions와 같은 관례로 빈 맵을 남긴다.
+    expect(result.customYieldSnapshot).toEqual({ assets: { a1: 12.5 }, privatePensions: { p1: 2.5 }, isaAccounts: {} });
     expect(result.assets[0].annualGrowthRate).toBe(9);
   });
 

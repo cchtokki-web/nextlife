@@ -46,7 +46,9 @@ export function ExecutionRoadmap({ roadmap }: ExecutionRoadmapProps) {
           <span className="flex h-5 w-3 shrink-0 items-center justify-center">
             <span data-marker="hollow" className="h-3 w-3 rounded-full border-2 border-foreground/40" />
           </span>
-          <p className="text-sm font-semibold leading-5 text-foreground-muted">{roadmap.expectancy}세 기대수명</p>
+          <p className="text-sm font-semibold leading-5 text-foreground-muted">
+            {roadmap.endAge}세 {roadmap.endLabel}
+          </p>
         </div>
       </div>
     </GlassCard>

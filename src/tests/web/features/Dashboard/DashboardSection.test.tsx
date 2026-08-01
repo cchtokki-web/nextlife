@@ -46,7 +46,10 @@ function makeYearlyResult(overrides: Partial<SimulationYearlyResult>): Simulatio
     comprehensiveTaxPaid: 0,
     privatePensionTaxMethod: 'none',
     spending: 36000000,
+    healthcareSpending: 0,
     hasTaxWarning: false,
+    spouseAlive: false,
+    spendingFactor: 1,
     ...overrides,
   };
 }
@@ -65,6 +68,7 @@ const result: SimulationResult = {
   retirementGrade: '안정',
   goalAchievementRate: 100,
   retirementAssetsAtRetirement: 400000000,
+  householdEndAge: 90,
   utility,
 };
 

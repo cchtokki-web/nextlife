@@ -21,7 +21,8 @@ const roadmap: ExecutionRoadmapData = {
       items: [{ title: '국민연금 수령 개시 (연기)', description: '국민연금 수령을 시작합니다.' }],
     },
   ],
-  expectancy: 90,
+  endAge: 90,
+  endLabel: '기대수명',
 };
 
 describe('ExecutionRoadmap', () => {
@@ -63,7 +64,8 @@ describe('ExecutionRoadmap', () => {
           items: [{ title: '자산 고갈 예상', description: '누적 자산이 모두 소진됩니다.', severity: 'warning' }],
         },
       ],
-      expectancy: 90,
+      endAge: 90,
+      endLabel: '기대수명',
     };
     const { container } = render(<ExecutionRoadmap roadmap={roadmapWithWarning} />);
     const marker = container.querySelector('[data-marker="filled"]');

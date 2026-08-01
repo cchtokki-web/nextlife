@@ -7,18 +7,19 @@ import { computeMonthlySpendingComposition } from '../../core/usecases/MonthlySp
 import { computeRiskAlerts } from '../../core/usecases/dashboard/computeRiskAlerts';
 import { computeExecutionRoadmap, selectDepletionAge } from '../../core/usecases/dashboard/computeExecutionRoadmap';
 import { computeSensitivityAnalysis } from '../../core/usecases/dashboard/computeSensitivityAnalysis';
+import { describeFireAge } from '../../core/usecases/dashboard/describeFireAge';
+import { describeDepletionAge } from '../../core/usecases/dashboard/describeDepletionAge';
 import { renderRiskAlertsSection, renderItemizedChecklistSection, renderExecutionRoadmapSection, renderSensitivityTableSection } from '../../web/features/Pdf/pdfReportSections';
 import { recommendStrategy } from '../../core/usecases/strategy/RecommendationEngine';
+import { compileStrategy } from '../../core/usecases/strategy/compileStrategy';
 import { analyzeCurrentStrategy, explainBequestAdequacy } from '../../core/usecases/utility/utilityAnalysis';
 import { resolveTaxSettings } from '../../core/usecases/tax/taxRates';
 import { NATIONAL_PENSION_NORMAL_START_AGE } from '../../core/usecases/pension/nationalPensionRules';
 import { UTILITY_COMPONENT_META } from '../../web/features/Dashboard/utilityComponentMeta';
 import { initialParams } from '../../infrastructure/storage/localStore';
 import { AssetFormSection } from '../../web/features/AssetForm/AssetFormSection';
-import { TaxSettingsSection } from '../../web/features/AssetForm/TaxSettingsSection';
 import { ScenarioManager } from '../../web/features/Scenario/ScenarioManager';
-import { SimulationSettings } from '../../web/features/Scenario/SimulationSettings';
-import { QuickSettingsSummary } from '../../web/features/Scenario/QuickSettingsSummary';
+import { StrategySettingsPanel } from '../../web/features/StrategySettings/StrategySettingsPanel';
 import { Collapse } from '../../web/components/ui';
 import { DashboardSection } from '../../web/features/Dashboard/DashboardSection';
 import GlassCard from '../../web/components/GlassCard';
@@ -29,6 +30,7 @@ import { useScenarios } from '../../web/features/Scenario/useScenarios';
 import { E2eeKeyManager } from '../../web/components/E2eeKeyManager';
 import { generateBackupKey, encryptData } from '../../core/utils/crypto';
 import { isDevMode } from '../../core/utils/isDevMode';
+import { useBackgroundValue } from '../../web/hooks/useBackgroundValue';
 export default function Home() {
   const { data: session, status } = useSession();
   const scenarioState = useScenarios();
@@ -119,26 +121,60 @@ export default function Home() {
   // Defer the parameters to unblock the main thread during rapid typing
   const deferredParams = useDeferredValue(activeParams);
 
-  // Run simulation engine for active scenario
-  const result = useMemo(() => engine.run(deferredParams), [engine, deferredParams]);
+  // 전략(사용자 언어)을 저수준 파라미터로 컴파일한 뒤 엔진에 넘긴다.
+  // strategy가 없는 기존 시나리오는 compileStrategy가 입력을 그대로 통과시킨다.
+  const compiled = useMemo(() => compileStrategy(deferredParams), [deferredParams]);
 
-  // AI 추천 전략은 다수의 후보를 시뮬레이션하는 무거운 계산이므로, 메인 result보다
-  // 한 단계 더 지연시켜 타이핑 반응성에 영향을 주지 않도록 한다.
-  const recommendationParams = useDeferredValue(deferredParams);
-  // recommendationParams가 아직 최신 deferredParams를 따라잡지 못한 렌더에서는 참조가
-  // 서로 달라진다 — 이를 "AI 추천 전략을 계산 중" 로딩 상태로 사용한다.
-  const isComputingRecommendation = recommendationParams !== deferredParams;
+  // Run simulation engine for active scenario. cfg를 넘겨야 대시보드 헤드라인 효용
+  // 점수(result.utility)가 사용자가 고른 목표 우선순위를 반영한다 — 생략하면 항상
+  // 기본 가중치로 계산되어 목표 우선순위를 아무리 바꿔도 점수가 그대로다.
+  // engine.run에는 try/catch를 두지 않는다. 예외는 simulator/error.tsx(App Router 에러
+  // 바운더리)가 받는다.
+  //
+  // "직전 성공 결과를 폴백으로 유지" 방식을 검토했지만 택하지 않았다. (1) 그러려면 렌더 간
+  // 살아남는 가변 캐시를 렌더 중에 갱신해야 하는데 이 저장소의 lint 규칙(react-hooks/refs)이
+  // 정당하게 금지한다. 상태로 대신하면 이 화면에서 가장 무거운 렌더가 매번 한 번 더 돈다.
+  // (2) 더 중요하게는, 살아 있는 설정 패널 옆에 옛 결과를 보여주는 것 자체가 "화면이 말하는
+  // 값과 엔진이 실제로 쓴 값이 다른" 상태다 — 이 브랜치가 반복해서 제거해 온 결함 유형이다.
+  // recommendStrategy의 try/catch와 비대칭인 것도 의도적이다: 그쪽 실패는 부분적이고
+  // (나머지 대시보드는 여전히 옳다) 전용 "계산하지 못했습니다" 상태가 있지만,
+  // engine.run이 실패하면 진실하게 보여줄 결과가 하나도 없다.
+  const result = useMemo(
+    () => engine.run(compiled.params, compiled.utilityConfig),
+    [engine, compiled.params, compiled.utilityConfig]
+  );
+
+  // AI 추천 전략은 다수의 후보를 시뮬레이션하는(최악 216개) 이 화면에서 가장 무거운 계산이라,
+  // 위 engine.run과 같은 렌더 패스에서 돌면 안 된다. useBackgroundValue가 compiled를 한 커밋
+  // 뒤로 미뤄 트랜지션(비긴급) 우선순위에서 계산하게 하고, 아직 따라잡지 못한 렌더를
+  // "탐색 중" 로딩 상태로 노출한다.
+  //
+  // 예전에는 useDeferredValue를 연쇄해 이것을 만들려 했지만 그 방식으로는 2단이 되지 않는다
+  // (React 19의 updateDeferredValueImpl은 이미 비긴급 렌더이면 새 값을 그대로 반환한다).
+  // 그래서 로딩 상태가 영구히 false였고, 추천 계산은 실제로는 result와 같은 패스에서 돌았다.
+  // 자세한 근거는 useBackgroundValue와 그 테스트 참조.
+  //
+  // 원본 params가 아니라 compiled를 미루는 이유: compileStrategy가 같은 입력에 대해 두 번
+  // 실행되지 않는다(예전에는 두 개의 useMemo가 결국 같은 params를 각자 컴파일했다).
+  const [recommendationCompiled, isComputingRecommendation] = useBackgroundValue(compiled);
   // recommendation이 undefined인 이유가 "계산 실패"인지 "탐색할 최적화 여지가 없어 baseline을
   // 그대로 반환"인지 UI에서 구분할 수 있도록 실패 여부를 함께 계산한다(후자는 recommendStrategy가
   // 정상적으로 improved:false, recommendedPlan:null인 객체를 반환하므로 undefined가 되지 않는다).
   const { recommendation, recommendationFailed } = useMemo(() => {
     try {
-      return { recommendation: recommendStrategy(recommendationParams, engine), recommendationFailed: false };
+      return {
+        recommendation: recommendStrategy(
+          recommendationCompiled.params,
+          engine,
+          recommendationCompiled.utilityConfig
+        ),
+        recommendationFailed: false,
+      };
     } catch (err) {
       console.error('Failed to compute strategy recommendation', err);
       return { recommendation: undefined, recommendationFailed: true };
     }
-  }, [engine, recommendationParams]);
+  }, [engine, recommendationCompiled]);
 
   // Track simulation runs with a simple debounce
   useEffect(() => {
@@ -204,7 +240,13 @@ export default function Home() {
       const jsPDF = (await import('jspdf')).default;
       const html2canvas = (await import('html2canvas')).default;
 
-      const { retirementScore, retirementGrade, goalAchievementRate, fireAge, depletionAge, endingAssets, yearlyResults, utility } = result;
+      const { retirementScore, retirementGrade, goalAchievementRate, fireAge, depletionAge, endingAssets, householdEndAge, yearlyResults, utility } = result;
+      // 리포트가 인쇄하는 모든 값은 "결과를 만든 params"에서 읽는다.
+      // activeParams(사용자가 입력한 원본)를 읽으면 경제 시나리오·리스크 성향·연금 전략이
+      // 지배하는 필드에서 화면에 찍힌 숫자와 실제 시뮬레이션이 쓴 숫자가 달라진다
+      // (물가상승률·국민연금 개시 나이·저율과세 한도 내 인출 등).
+      // 예외는 "사용자가 무엇을 입력했는가"를 보여주는 설정 UI뿐이며 이 리포트는 결과 설명이다.
+      const reportParams = compiled.params;
       const {
         userProfile,
         assets,
@@ -216,9 +258,8 @@ export default function Home() {
         inflationMode,
         baseExchangeRate,
         displayCurrency,
-        spendingStrategy,
         taxSettings
-      } = activeParams;
+      } = reportParams;
 
       const currentTaxSettings = resolveTaxSettings(taxSettings);
 
@@ -242,10 +283,10 @@ export default function Home() {
         : '<p style="font-size: 12px; color: #94a3b8;">효용 데이터를 계산할 수 없습니다.</p>';
 
       const bequestAdequacyExplanationHtml = utility
-        ? `<p style="font-size: 10px; color: #94a3b8; margin: -6px 0 12px; line-height: 1.4;">* 상속 자산 적정성: ${explainBequestAdequacy(activeParams, result)}</p>`
+        ? `<p style="font-size: 10px; color: #94a3b8; margin: -6px 0 12px; line-height: 1.4;">* 상속 자산 적정성: ${explainBequestAdequacy(reportParams, result, compiled.utilityConfig)}</p>`
         : '';
 
-      const currentStrategyAnalysis = utility ? analyzeCurrentStrategy(utility) : null;
+      const currentStrategyAnalysis = utility ? analyzeCurrentStrategy(utility, compiled.utilityConfig) : null;
       const strengthsHtml = currentStrategyAnalysis
         ? currentStrategyAnalysis.strengths.map(s => `<li style="margin-bottom: 4px;">${s}</li>`).join('')
         : '';
@@ -271,11 +312,11 @@ export default function Home() {
         `
         : '';
 
-      const riskAlerts = computeRiskAlerts(result, activeParams);
+      const riskAlerts = computeRiskAlerts(result, reportParams, compiled.utilityConfig);
       const riskAlertsSectionHtml = renderRiskAlertsSection(riskAlerts);
-      const roadmap = computeExecutionRoadmap(activeParams, recommendation, selectDepletionAge(recommendation, result));
+      const roadmap = computeExecutionRoadmap(reportParams, recommendation, selectDepletionAge(recommendation, result));
       const executionRoadmapSectionHtml = renderExecutionRoadmapSection(roadmap);
-      const sensitivityScenarios = computeSensitivityAnalysis(activeParams, result, engine);
+      const sensitivityScenarios = computeSensitivityAnalysis(reportParams, result, engine);
       const sensitivityTableSectionHtml = renderSensitivityTableSection(sensitivityScenarios);
 
       // Create a temporary container
@@ -337,14 +378,14 @@ export default function Home() {
                 </div>
                 <div style="font-size: 13.5px; border-bottom: 1px dashed #e2e8f0; padding-bottom: 8px;">
                   <span style="font-weight: 600; color: #475569;">FIRE 조기은퇴 가능 나이</span>
-                  <span style="float: right; font-size: 15px; color: #0f172a; font-weight: 700;">${fireAge ? `${fireAge}세` : '달성 불가능'}</span>
+                  <span style="float: right; font-size: 15px; color: #0f172a; font-weight: 700;">${describeFireAge(fireAge, userProfile.expectancy)}</span>
                 </div>
                 <div style="font-size: 13.5px; border-bottom: 1px dashed #e2e8f0; padding-bottom: 8px;">
                   <span style="font-weight: 600; color: #475569;">자산 고갈 예상 나이</span>
-                  <span style="float: right; font-size: 15px; color: #0f172a; font-weight: 700;">${depletionAge ? `${depletionAge}세` : '기대수명 내 고갈 없음'}</span>
+                  <span style="float: right; font-size: 15px; color: #0f172a; font-weight: 700;">${describeDepletionAge(depletionAge, householdEndAge, userProfile.expectancy)}</span>
                 </div>
                 <div style="grid-column: span 2; font-size: 13.5px; padding-top: 8px;">
-                  <span style="font-weight: 600; color: #475569;">사망 시(기대수명 ${userProfile.expectancy}세) 잔여 자산</span>
+                  <span style="font-weight: 600; color: #475569;">사망 시(${householdEndAge > userProfile.expectancy ? `배우자 기대수명 시점, 본인 나이 ${householdEndAge}세` : `기대수명 ${householdEndAge}세`}) 잔여 자산</span>
                   <span style="float: right; font-size: 16px; color: #3b82f6; font-weight: 700;">${formatValuePrint(endingAssets)}</span>
                 </div>
               </div>
@@ -355,7 +396,7 @@ export default function Home() {
             <ul style="padding-left: 20px; margin-top: 5px; margin-bottom: 25px; font-size: 13px; line-height: 1.6;">
               <li style="margin-bottom: 6px;"><strong>현재 나이:</strong> ${userProfile.currentAge}세 / <strong>은퇴 목표 나이:</strong> ${userProfile.retirementAge}세 / <strong>기대 수명:</strong> ${userProfile.expectancy}세</li>
               <li style="margin-bottom: 6px;"><strong>목표 월 생활비:</strong> ${userProfile.targetMonthlySpending.toLocaleString()} ${displayCurrency}</li>
-              <li style="margin-bottom: 6px;"><strong>인출 전략:</strong> ${spendingStrategy === 'dividend_only' ? '배당금(이자) 100% 소비' : spendingStrategy === 'max_sustainable' ? '최대 가능 생활비 자동계산' : '고정 목표 생활비'}</li>
+              <li style="margin-bottom: 6px;"><strong>인출 전략:</strong> ${reportParams.spendingStrategy === 'dividend_only' ? '배당금(이자) 100% 소비' : reportParams.spendingStrategy === 'max_sustainable' ? '최대 가능 생활비 자동계산' : '고정 목표 생활비'}</li>
               <li style="margin-bottom: 6px;"><strong>물가 상승률:</strong> ${inflationRate}% (${inflationMode === 'real' ? '실질 가치 기준 — 아래 모든 표의 생활비·연금 금액은 오늘 화폐가치로 고정 표시되며, 인플레이션은 자산 성장률에 사전 차감 반영되었습니다' : '명목 가치 기준 — 아래 모든 표의 생활비·연금 금액에 물가상승률이 매년 누적 반영되어 있습니다'})</li>
               <li style="margin-bottom: 6px;"><strong>표시 통화 / 기준 환율:</strong> ${displayCurrency} / 1 USD = ${baseExchangeRate} KRW</li>
             </ul>
@@ -425,7 +466,7 @@ export default function Home() {
             <h2 style="font-size: 16px; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; color: #0f172a; margin-top: 0; margin-bottom: 10px;">5. 연금 및 자산 현황</h2>
             <div style="font-size: 13px; line-height: 1.6; display: grid; grid-template-columns: 1fr; gap: 12px;">
               <div>
-                <strong>국민연금:</strong> 예상 월 수령액 ${nationalPension?.expectedMonthlyAmount.toLocaleString()}원 (${activeParams.withdrawalPlan?.nationalPensionStartAge ?? NATIONAL_PENSION_NORMAL_START_AGE}세부터 수령)
+                <strong>국민연금:</strong> 예상 월 수령액 ${nationalPension?.expectedMonthlyAmount.toLocaleString()}원 (${reportParams.withdrawalPlan?.nationalPensionStartAge ?? NATIONAL_PENSION_NORMAL_START_AGE}세부터 수령)
               </div>
               <div>
                 <strong>사적연금:</strong>
@@ -525,12 +566,24 @@ export default function Home() {
         chunks.push(yearlyResults.slice(i, i + rowsPerPage));
       }
 
-      const spendingComposition = computeMonthlySpendingComposition(yearlyResults, activeParams, result);
+      const spendingComposition = computeMonthlySpendingComposition(yearlyResults, reportParams, result);
       const spendingChunks: typeof spendingComposition[] = [];
       for (let i = 0; i < spendingComposition.length; i += rowsPerPage) {
         spendingChunks.push(spendingComposition.slice(i, i + rowsPerPage));
       }
       const hasSpendingSection = spendingChunks.length > 0;
+
+      // 의료비는 spending에 이미 합산되어 있어 "생활비" 열만 보면 왜 커졌는지 알 수 없다.
+      // 의료비 가정을 실제로 켠 시나리오에서만 열 이름과 각주로 포함 사실을 밝힌다.
+      //
+      // "별도 지출이 아니다"를 무조건 단언하면 안 된다. 자산이 고갈된 해에는 엔진이 실제
+      // 인출액을 가능한 만큼으로 깎으므로 spending < healthcareSpending이 되고, 그 해의
+      // 「생활비」 열에는 의료비 전액이 들어 있지 않다(types.ts SimulationYearlyResult
+      // .healthcareSpending의 "예외" 참조). 각주는 PDF에 그대로 인쇄되므로 단서를 붙인다.
+      const hasHealthcareCost = yearlyResults.some((yr) => yr.healthcareSpending > 0);
+      const healthcareNoteHtml = hasHealthcareCost
+        ? '<p style="font-size: 9.5px; color: #94a3b8; margin: 0 0 8px;">* 「생활비」 열에는 의료비·장기요양비가 합산되어 있습니다(별도 지출이 아니라 같은 금액의 내역입니다). 다만 자산이 고갈된 해에는 인출 가능한 금액까지만 표시되므로 의료비 전액이 반영되지 않을 수 있습니다.</p>'
+        : '';
 
       const realValueNoteHtml = inflationMode === 'real'
         ? '<p style="font-size: 9.5px; color: #94a3b8; margin: 0 0 8px;">* 아래 금액은 모두 오늘 시점 기준 실질 가치입니다(물가상승률은 자산 성장률에 사전 차감 반영되었습니다). 명목(미래 실제 지급) 금액이 아닙니다.</p>'
@@ -546,6 +599,7 @@ export default function Home() {
                 7. 연령별 소득원 및 자산 추이 (페이지 ${chunkIdx + 1})
               </h2>
               ${realValueNoteHtml}
+              ${healthcareNoteHtml}
               <table style="width: 100%; border-collapse: collapse; font-size: 10.5px;">
                 <thead>
                   <tr>
@@ -553,7 +607,7 @@ export default function Home() {
                     <th style="border: 1px solid #cbd5e1; padding: 7px 8px; text-align: center; background-color: #f1f5f9; font-weight: 700; color: #334155;">연도</th>
                     <th style="border: 1px solid #cbd5e1; padding: 7px 8px; text-align: right; background-color: #f1f5f9; font-weight: 700; color: #334155;">총 자산</th>
                     <th style="border: 1px solid #cbd5e1; padding: 7px 8px; text-align: right; background-color: #f1f5f9; font-weight: 700; color: #334155;">총 소득</th>
-                    <th style="border: 1px solid #cbd5e1; padding: 7px 8px; text-align: right; background-color: #f1f5f9; font-weight: 700; color: #334155;">생활비</th>
+                    <th style="border: 1px solid #cbd5e1; padding: 7px 8px; text-align: right; background-color: #f1f5f9; font-weight: 700; color: #334155;">생활비${hasHealthcareCost ? '<br/>(의료비 포함)' : ''}</th>
                     <th style="border: 1px solid #cbd5e1; padding: 7px 8px; text-align: right; background-color: #f1f5f9; font-weight: 700; color: #334155;">배당/투자</th>
                     <th style="border: 1px solid #cbd5e1; padding: 7px 8px; text-align: right; background-color: #f1f5f9; font-weight: 700; color: #334155;">연금</th>
                     <th style="border: 1px solid #cbd5e1; padding: 7px 8px; text-align: right; background-color: #f1f5f9; font-weight: 700; color: #334155;">기타</th>
@@ -893,33 +947,29 @@ export default function Home() {
               </button>
             </div>
             
-            {/* Quick Settings Summary */}
-            <QuickSettingsSummary params={activeParams} onChangeParams={handleUpdateActiveParams} />
+            {/* 내 은퇴 전략 = 6개 섹션 (기본 정보 / 은퇴 목표 / 연금 / 투자 / 경제 가정 / 고급 설정) */}
+            <GlassCard>
+              {/* 추천은 여기서 한 번만 계산해 내려보낸다. 패널이 자체적으로 계산하면
+                  이 앱에서 가장 무거운 계산(최대 162개 후보 시뮬레이션)이 두 배가 된다. */}
+              <StrategySettingsPanel
+                params={activeParams}
+                onChangeParams={handleUpdateActiveParams}
+                recommendation={recommendation}
+                recommendationFailed={recommendationFailed}
+              />
+            </GlassCard>
 
             {/* Scenario Manager Section */}
             <GlassCard>
               <ScenarioManager scenarioState={scenarioState} />
             </GlassCard>
 
-            {/* Detailed Settings (기본 닫힘) */}
-            <Collapse title={<span className="text-base font-semibold">설정 자세히 보기</span>}>
+            {/* 내 자산 — 보유 자산·연금·ISA·기타 소득 입력 (기본 닫힘) */}
+            <Collapse title={<span className="text-base font-semibold">내 자산</span>}>
               <div className="flex flex-col gap-6 pt-2">
-                {/* Inputs Section */}
                 <GlassCard>
                   <AssetFormSection params={activeParams} onChangeParams={handleUpdateActiveParams} />
                 </GlassCard>
-
-                {/* Simulation Settings Section */}
-                <GlassCard>
-                  <SimulationSettings scenarioState={scenarioState} />
-                </GlassCard>
-
-                {/* Tax Settings Section */}
-                {isPro && (
-                  <GlassCard>
-                    <TaxSettingsSection params={activeParams} onChangeParams={handleUpdateActiveParams} />
-                  </GlassCard>
-                )}
               </div>
             </Collapse>
           </section>
@@ -953,7 +1003,7 @@ export default function Home() {
               </div>
             )}
             <DashboardSection
-              params={deferredParams}
+              params={compiled.params}
               result={result}
               compareResults={compareResults}
               isPro={isPro}

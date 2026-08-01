@@ -6,6 +6,7 @@ import {
   UtilityConfig,
 } from '../../entities/types';
 import { DEFAULT_UTILITY_CONFIG } from './utilityWeights';
+import { isMaximizeBequestStrategy } from '../strategy/compileStrategy';
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
@@ -27,14 +28,26 @@ function sum(values: number[]): number {
   return values.reduce((s, v) => s + v, 0);
 }
 
-// 해당 연도의 목표 연간 생활비(인플레이션 반영). SimulationEngine의 목표 생활비 산출 로직과
-// 동일한 규칙(명목: 매년 물가상승률 복리 반영 / 실질: 고정)을 따른다.
+// 해당 연도의 목표 연간 생활비(인플레이션 + 가구 규모 반영). SimulationEngine의 목표 생활비
+// 산출 로직과 동일한 규칙(명목: 매년 물가상승률 복리 반영 / 실질: 고정)을 따른다.
+//
+// 가구 규모 계수는 여기서 다시 유도하지 않고 엔진이 실제로 곱한 값(r.spendingFactor)을 그대로
+// 쓴다 — 규칙을 두 곳에 두면 반드시 어긋나고, 이 주석의 "동일한 규칙" 문구가 배우자 기능
+// 추가 때 한 번 stale해진 것이 그 증거다.
+//
+// 의료비(r.healthcareSpending)도 목표에 더한다. 엔진이 의료비를 spending에 합산하므로,
+// 분모에 더하지 않으면 의료비를 켠 계획이 "목표를 초과 소비했다"로 잘못 보상받는다
+// (consumptionYearUtility가 ratio > 1을 보너스로 처리한다). 의료비는 생활수준을 높이는
+// 재량 소비가 아니라 반드시 나가는 비용이므로 목표(=필요) 쪽에 들어가는 것이 맞다.
+// 이미 엔진이 inflationMode를 반영해 계산한 실제 지출액이라 물가 보정을 다시 적용하지 않는다.
 function targetAnnualSpendingForYear(params: SimulationParams, r: SimulationYearlyResult): number {
   const { userProfile, inflationRate = 2, inflationMode = 'real' } = params;
   const yearIndex = r.age - userProfile.currentAge;
-  return inflationMode === 'nominal'
-    ? userProfile.targetMonthlySpending * 12 * Math.pow(1 + inflationRate / 100, yearIndex)
-    : userProfile.targetMonthlySpending * 12;
+  const base = userProfile.targetMonthlySpending * 12 * r.spendingFactor;
+  const target = inflationMode === 'nominal'
+    ? base * Math.pow(1 + inflationRate / 100, yearIndex)
+    : base;
+  return target + r.healthcareSpending;
 }
 
 // 목표 대비 소비 충족률(ratio)의 연도별 효용. 부족분은 볼록(convex) 페널티로 강하게 반영하고,
@@ -64,11 +77,19 @@ function computeConsumptionRaw(params: SimulationParams, retirementYears: Simula
 }
 
 function computeDepletionSafetyRaw(params: SimulationParams, result: SimulationResult): number {
-  const { retirementAge, expectancy } = params.userProfile;
+  const { retirementAge } = params.userProfile;
   if (result.depletionAge === null) return 1;
   if (result.depletionAge <= retirementAge) return 0;
 
-  const span = expectancy - retirementAge;
+  // 본인 기대수명이 아니라 가구 종료 나이로 정규화한다. 본인 기대수명으로 나누면
+  // 배우자 단독 생존 기간에 고갈되는 계획도 ratio > 1이 되어 clamp에 걸려 "고갈 없음"
+  // 조기 반환과 바이트 단위로 같은 만점이 나온다 — 파산 계획이 만점을 받는다.
+  //
+  // 규칙을 다시 유도(computeHouseholdEndAge 재호출)하지 않고 엔진이 결과에 실어 보낸
+  // 값을 그대로 쓴다. depletionAge가 바로 그 루프에서 판정된 값이므로 분자와 분모가
+  // 반드시 같은 기간을 가리켜야 하고, 재유도는 두 값이 어긋날 여지를 남긴다
+  // (SimulationResult.householdEndAge가 존재하는 이유가 이것이다).
+  const span = result.householdEndAge - retirementAge;
   if (span <= 0) return 0;
   return clamp((result.depletionAge - retirementAge) / span, 0, 1);
 }
@@ -79,6 +100,22 @@ function computeDepletionSafetyRaw(params: SimulationParams, result: SimulationR
 function bellShapedAdequacyRaw(ratio: number, baseFloor: number, excessDecayRate: number): number {
   if (ratio <= 1) return baseFloor + (1 - baseFloor) * ratio;
   return Math.exp(-excessDecayRate * (ratio - 1));
+}
+
+// "최대 상속"을 고른 사용자에게 쓰는 채점 곡선. 종형 곡선은 적정선을 넘으면 감점하므로
+// "가능한 한 많이 남기는" 전략에 그대로 쓰면 많이 남길수록 점수가 깎여 옵션 이름과
+// 정반대로 동작한다. 단조증가하되 상한이 필요하므로 포화 곡선 1 - exp(-k * ratio)를 쓴다:
+// 0에서 시작해 1로 수렴하므로 다른 축과 같은 0~1 정규화를 유지하고, 상속 한 축이 무한히
+// 커져 총점을 지배하는 일이 없다.
+//
+// k = 0.35(≈ ln2 / 2)는 "적정선(월생활비 24개월치)의 2배를 남기면 절반 점수"라는 앵커에서
+// 나왔다. 이 값이면 적정선의 6배에서 약 0.88, 10배에서 약 0.97로, 현실적인 잔여자산
+// 구간 전체에서 기울기가 살아 있어 RecommendationEngine이 후보들을 상속 관점으로
+// 서열화할 수 있다. k를 크게 잡으면(예: ln2) 2~3배에서 이미 포화해 후보 간 차이가 사라진다.
+const MAXIMIZE_BEQUEST_SATURATION_K = 0.35;
+
+function monotonicAdequacyRaw(ratio: number): number {
+  return 1 - Math.exp(-MAXIMIZE_BEQUEST_SATURATION_K * Math.max(0, ratio));
 }
 
 // "연금 활용도"는 사적연금 계좌 잔액의 과다/과소 여부가 아니라, 국민연금 수급 여부·사적연금
@@ -119,8 +156,28 @@ function computePensionUtilizationRaw(
   );
 }
 
+// 적정 잔여자산(= 월 목표생활비 * appropriateBequestMonths). 사용자가 목표 금액을 지정하지
+// 않았을 때의 기준선이며 'maximize'의 ratio 분모이기도 하다.
+function appropriateBequestBalance(params: SimulationParams, cfg: UtilityConfig): number {
+  return params.userProfile.targetMonthlySpending * cfg.appropriateBequestMonths;
+}
+
+// 분모가 0(목표 생활비 미입력)이면 비율을 정의할 수 없다. 잔여자산이 있으면 "적정선의 2배"로
+// 간주하던 기존 폴백을 그대로 유지한다.
+function bequestRatio(endingAssets: number, appropriateBalance: number): number {
+  if (appropriateBalance > 0) return endingAssets / appropriateBalance;
+  return endingAssets > 0 ? 2 : 0;
+}
+
 function computeBequestAdequacyRaw(params: SimulationParams, result: SimulationResult, cfg: UtilityConfig): number {
   const { targetBequest } = params.userProfile;
+
+  // "최대 상속" 판정이 가장 먼저다. compileStrategy는 이 전략에서 targetBequest 키를 지우지만,
+  // 컴파일을 거치지 않은 params(레거시 저장값 등)에는 옛 금액이 남아 있을 수 있어 아래
+  // targetBequest 분기에 먼저 걸리면 전략과 다른 곡선으로 채점된다.
+  if (isMaximizeBequestStrategy(params)) {
+    return monotonicAdequacyRaw(bequestRatio(result.endingAssets, appropriateBequestBalance(params, cfg)));
+  }
 
   // 사용자가 명시적으로 목표 상속자산을 지정한 경우: 0원("다 쓰고 가기")은 일반 공식(분모 0)으로
   // 표현할 수 없는 별도 케이스라 분리한다 — 잔여자산이 0 이하면 목표를 정확히 달성한 것이므로
@@ -132,9 +189,8 @@ function computeBequestAdequacyRaw(params: SimulationParams, result: SimulationR
   }
 
   const appropriateBalance =
-    targetBequest !== undefined ? targetBequest : params.userProfile.targetMonthlySpending * cfg.appropriateBequestMonths;
-  const ratio = appropriateBalance > 0 ? result.endingAssets / appropriateBalance : (result.endingAssets > 0 ? 2 : 0);
-  return bellShapedAdequacyRaw(ratio, 0.7, 0.4);
+    targetBequest !== undefined ? targetBequest : appropriateBequestBalance(params, cfg);
+  return bellShapedAdequacyRaw(bequestRatio(result.endingAssets, appropriateBalance), 0.7, 0.4);
 }
 
 function computeTaxEfficiencyRaw(yearlyResults: SimulationYearlyResult[], cfg: UtilityConfig): number {

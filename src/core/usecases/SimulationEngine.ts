@@ -8,9 +8,12 @@ import {
   AssetCurrency,
   TaxSettings,
   PrivatePensionTaxationMethod,
+  UtilityConfig,
 } from '../entities/types';
 import { getRetirementGrade, RetirementGrade } from '../entities/retirementGrade';
 import { computeLifetimeUtility } from './utility/UtilityEngine';
+import { computeAnnualHealthcareCostBreakdown } from './healthcare/healthcareCosts';
+import { DEFAULT_UTILITY_CONFIG } from './utility/utilityWeights';
 import {
   getDividendTaxRate,
   getPrivatePensionIncomeTaxRate,
@@ -29,6 +32,10 @@ import {
 } from './pension/nationalPensionRules';
 import { PRIVATE_PENSION_MIN_START_AGE, clampPrivatePensionStartAge } from './pension/privatePensionRules';
 import { sortAssetsForWithdrawal } from './strategy/assetOrdering';
+import {
+  computeHouseholdEndAge, computeSpendingFactor, computeSpouseNationalPensionMonthly,
+  computeSurvivorPensionMonthly, resolveSpouse,
+} from './spouse/spouseRules';
 
 interface ActiveAsset extends InvestmentAsset {
   currentValue: number;
@@ -50,8 +57,31 @@ interface ActiveIsa extends IsaAccount {
   divRateMonthly: number;
 }
 
+// 은퇴 준비도 점수의 자산 항목(100점 중 25점)의 분모. 4% 룰(연 필요액 × 25)로 환산한 목표 자산.
+//
+// 분모는 "그 계획이 실제로 감당해야 할 필요"여야 한다. 다른 목표 분모 세 곳
+// (goalAchievementRate / UtilityEngine / MonthlySpendingComposition)과 같은 규칙을 쓴다:
+//   - spendingFactor: 은퇴 시점의 가구 규모 계수. 배우자가 나이가 많아 은퇴 전에 사망하면
+//     은퇴 기간 전체의 필요가 0.7배인데, 분모만 2인 기준으로 두면 assetScore가 약 30%
+//     과소평가된다.
+//   - 의료비: 켜면 실제로 필요한 자산이 늘어난다. 분모가 그대로면 의료비를 켠 계획이
+//     "자산이 충분하다"는 같은 점수를 받는다(FIRE 판정 목표에 의료비를 넣은 것과 같은 이유).
+//     엔진이 이미 spendingFactor를 곱해 둔 값이므로 여기서 다시 곱하지 않는다.
+export function computeRetirementTargetAssets(
+  targetMonthlyAtRetirement: number,
+  spendingFactorAtRetirement: number,
+  annualHealthcareAtRetirement: number
+): number {
+  const annualNeed = targetMonthlyAtRetirement * 12 * spendingFactorAtRetirement
+    + annualHealthcareAtRetirement;
+  return Math.max(0, annualNeed) * 25;
+}
+
 export class SimulationEngine {
-  run(params: SimulationParams): SimulationResult {
+  // cfg는 목표 우선순위(UtilityConfig.weights)를 반영한 효용 계산에 쓰인다. 생략하면
+  // 기본 가중치(DEFAULT_UTILITY_CONFIG)로 계산되어 호출부 9곳(RecommendationEngine 등,
+  // 전부 자체적으로 cfg를 다루거나 기본값으로 충분한 곳)의 기존 동작이 그대로 유지된다.
+  run(params: SimulationParams, cfg: UtilityConfig = DEFAULT_UTILITY_CONFIG): SimulationResult {
     const strategy = params.spendingStrategy || 'target';
 
     let result: SimulationResult;
@@ -63,7 +93,7 @@ export class SimulationEngine {
       result = { ...mainResult, calculatedTargetSpending: maxSustainable };
     }
 
-    const utility = computeLifetimeUtility(result, params);
+    const utility = computeLifetimeUtility(result, params, cfg);
     return { ...result, utility };
   }
 
@@ -72,13 +102,13 @@ export class SimulationEngine {
   // calculatedTargetSpending을 구하지만, computeLifetimeUtility는 이 값을 쓰지 않으므로
   // 후보를 대량으로 평가하는 RecommendationEngine 같은 곳에서는 이 탐색이 순수 낭비다.
   // 'max_sustainable' 전략은 이진탐색 자체가 실제 인출액을 결정하는 계산이라 생략할 수 없다.
-  runForUtility(params: SimulationParams): SimulationResult {
+  runForUtility(params: SimulationParams, cfg: UtilityConfig = DEFAULT_UTILITY_CONFIG): SimulationResult {
     const strategy = params.spendingStrategy || 'target';
     if (strategy === 'max_sustainable') {
-      return this.run(params);
+      return this.run(params, cfg);
     }
     const result = this.runSingle(params);
-    const utility = computeLifetimeUtility(result, params);
+    const utility = computeLifetimeUtility(result, params, cfg);
     return { ...result, utility };
   }
 
@@ -226,7 +256,12 @@ export class SimulationEngine {
     goalAchievementRate: number,
     depletionAge: number | null,
     inflationMode: 'nominal' | 'real',
-    inflationRate: number
+    inflationRate: number,
+    // 시뮬레이션이 실제로 돈 종료 나이(= computeHouseholdEndAge). 배우자가 본인보다 오래 살면
+    // userProfile.expectancy보다 크다. 호출부가 루프에 쓴 값을 그대로 넘겨받아 재유도하지 않는다.
+    householdEndAge: number,
+    // 나이 → 그 해 의료비 중 반복 구성요소. 4% 룰 분모에는 이 값만 들어간다.
+    recurringHealthcareByAge: ReadonlyMap<number, number>
   ): { retirementScore: number, retirementGrade: RetirementGrade, retirementAssetsAtRetirement: number } {
     // 이미 은퇴 나이를 지난 상태로 입력된 경우(currentAge > retirementAge) yearlyResults에는
     // retirementAge 시점 행이 없으므로, 관측 가능한 첫 해(yearlyResults[0])를 은퇴 시점 자산의
@@ -235,11 +270,23 @@ export class SimulationEngine {
     const retirementAssets = retirementStartResult.totalAssets;
     
     const yearsToRetirement = Math.max(0, userProfile.retirementAge - userProfile.currentAge);
-    const targetMonthlyAtRetirement = inflationMode === 'nominal' 
+    const targetMonthlyAtRetirement = inflationMode === 'nominal'
       ? userProfile.targetMonthlySpending * Math.pow(1 + inflationRate / 100, yearsToRetirement)
       : userProfile.targetMonthlySpending;
-    const targetAssets = targetMonthlyAtRetirement * 12 * 25;
-    
+    // 4% 룰(연 필요액 × 25)은 "이 필요가 영구히 반복된다"는 가정이다. 그래서 그 해 총
+    // 의료비가 아니라 반복 구성요소만 넘긴다 — 일회성 쇼크가 은퇴 연도에 걸리면 기본값
+    // 3천만원이 25배로 곱해져 목표 자산에 7.5억이 더해지고 assetScore(25점 만점)가 0에
+    // 수렴했다. 쇼크의 실제 영향은 그 해 자산이 줄어드는 것으로 이미 반영되어 있다.
+    // 루프가 모든 연도를 기록하므로 조회가 실패할 일은 없지만, 미래에 누락되더라도
+    // 반복 의료비를 과대계상하지 않도록 0으로 폴백한다.
+    const recurringHealthcareAtRetirement =
+      recurringHealthcareByAge.get(retirementStartResult.age) ?? 0;
+    const targetAssets = computeRetirementTargetAssets(
+      targetMonthlyAtRetirement,
+      retirementStartResult.spendingFactor,
+      recurringHealthcareAtRetirement
+    );
+
     const assetScoreRaw = targetAssets > 0 ? (retirementAssets / targetAssets) * 100 : 100;
     const assetScore = Math.min(25, (assetScoreRaw * 0.25));
 
@@ -265,7 +312,9 @@ export class SimulationEngine {
       if (depletionAge <= userProfile.retirementAge) {
         longevityScoreRaw = 0;
       } else {
-        const retirementSpan = userProfile.expectancy - userProfile.retirementAge;
+        // 본인 기대수명이 아니라 가구 종료 나이로 정규화한다. 배우자 단독 생존 기간에
+        // 고갈되는 계획이 clamp(=100) 때문에 "고갈 없음"과 같은 점수를 받으면 안 된다.
+        const retirementSpan = householdEndAge - userProfile.retirementAge;
         const survivalSpan = depletionAge - userProfile.retirementAge;
         longevityScoreRaw = Math.min(100, Math.max(0, (survivalSpan / retirementSpan) * 100));
       }
@@ -303,6 +352,7 @@ export class SimulationEngine {
       return {
         yearlyResults: [], fireAge: null, depletionAge: null,
         endingAssets: 0, retirementScore: 0, retirementGrade: '위험', goalAchievementRate: 0, retirementAssetsAtRetirement: 0,
+        householdEndAge: 0,
       };
     }
 
@@ -322,17 +372,24 @@ export class SimulationEngine {
     const withdrawalOrderedAssets = sortAssetsForWithdrawal(activeAssets, withdrawalPlan?.assetSellOrderStrategy);
 
     const startAge = userProfile.currentAge;
-    const endAge = userProfile.expectancy;
+    const resolvedSpouse = resolveSpouse(params.spouse, userProfile);
+    const endAge = computeHouseholdEndAge(userProfile, resolvedSpouse);
     const totalYears = endAge - startAge + 1;
 
     if (isNaN(totalYears) || totalYears <= 0) {
       return {
         yearlyResults: [], fireAge: null, depletionAge: null,
         endingAssets: 0, retirementScore: 0, retirementGrade: '위험', goalAchievementRate: 0, retirementAssetsAtRetirement: 0,
+        householdEndAge: isNaN(endAge) ? 0 : endAge,
       };
     }
 
     const yearlyResults: SimulationYearlyResult[] = [];
+    // 나이 → 그 해 의료비 중 "매년 반복되는" 부분. SimulationYearlyResult.healthcareSpending은
+    // 실제 인출액(일회성 쇼크 포함)이라 4% 룰 분모로 쓸 수 없어 따로 모아 둔다.
+    // 결과 객체에 필드를 추가하지 않는 이유: 이 값은 점수 계산의 중간 산물일 뿐
+    // 화면·PDF·AI 프롬프트가 읽을 지표가 아니다.
+    const recurringHealthcareByAge = new Map<number, number>();
     let fireAge: number | null = null;
     let depletionAge: number | null = null;
 
@@ -340,6 +397,12 @@ export class SimulationEngine {
       const currentAge = startAge + y;
       const currentYear = new Date().getFullYear() + y;
       const isRetired = currentAge >= userProfile.retirementAge;
+
+      // 생존 판정. 기대수명 "까지"는 생존으로 본다(기존 endAge 포함 루프와 일관).
+      const selfAlive = currentAge <= userProfile.expectancy;
+      const spouseAlive = resolvedSpouse !== null && currentAge <= resolvedSpouse.deathAtSelfAge;
+      // 배우자가 없으면 본인 생존 기간만 돌므로 계수는 항상 1이다.
+      const spendingFactor = resolvedSpouse === null ? 1 : computeSpendingFactor(selfAlive, spouseAlive);
 
       let annualDividendIncome = 0;
       let annualNationalPensionIncome = 0;
@@ -354,12 +417,35 @@ export class SimulationEngine {
       let annualPrivatePensionPreTaxKRW = 0;
       let annualNationalPensionPreTaxKRW = 0;
 
+      // 생활비와 별개의 지출 라인. 은퇴 후에만 발생하며 spending에 합산된다.
+      // infRateAnnual은 소수(inflationRate / 100)이므로 % 단위로 되돌려 넘긴다.
+      const healthcareCost = computeAnnualHealthcareCostBreakdown({
+        healthcare: params.healthcare,
+        currentAge,
+        retirementAge: userProfile.retirementAge,
+        simulationStartAge: startAge,
+        yearsSinceRetirement: currentAge - userProfile.retirementAge,
+        inflationMode,
+        inflationRate: infRateAnnual * 100,
+        // 생활비와 같은 계수를 쓴다 — 의료비만 안 줄면 본인 사후에도 전액이 나간다.
+        spendingFactor,
+      });
+      const annualHealthcareCost = healthcareCost.total;
+      // 4% 룰 분모에 넣을 반복 구성요소만 따로 기록해 둔다(일회성 쇼크 제외).
+      recurringHealthcareByAge.set(currentAge, healthcareCost.recurring);
+      const monthlyHealthcareCost = annualHealthcareCost / 12;
+
       let monthlyTargetSpending = 0;
       if (isRetired && spendingStrategy !== 'dividend_only') {
-        monthlyTargetSpending = inflationMode === 'nominal'
+        const baseMonthly = inflationMode === 'nominal'
           ? userProfile.targetMonthlySpending * Math.pow(1 + infRateAnnual, y)
           : userProfile.targetMonthlySpending;
+        monthlyTargetSpending = baseMonthly * spendingFactor;
       }
+      // 의료비는 목표 생활비와 같은 재원(자산 인출)에서 나가므로 월 단위로 환산해 더한다.
+      // 가구 규모 계수는 computeAnnualHealthcareCost 안에서 이미 곱해져 있으므로 여기서
+      // 다시 곱하지 않는다(이중 적용 금지).
+      monthlyTargetSpending += monthlyHealthcareCost;
 
       let monthlyNationalPensionDisplay = 0;
       let monthlyNatTaxDisplay = 0;
@@ -368,11 +454,37 @@ export class SimulationEngine {
         NATIONAL_PENSION_DEFERRED_MAX_AGE,
         Math.max(NATIONAL_PENSION_EARLY_MIN_AGE, withdrawalPlan?.nationalPensionStartAge ?? NATIONAL_PENSION_NORMAL_START_AGE)
       );
-      if (currentAge >= nationalPensionStartAge) {
+      // 본인과 배우자는 각자의 개시 나이로 따로 판정한다. 배우자가 본인보다 나이가 많으면
+      // 본인이 아직 개시 전이어도 배우자는 이미 수령 중일 수 있으므로, 이 블록의 진입 조건을
+      // 본인 개시 나이에만 걸면 그 기간의 배우자 연금이 조용히 사라진다.
+      // 배우자가 없으면(resolvedSpouse === null) 조건은 기존과 완전히 동일하다.
+      const selfNationalPensionStarted = currentAge >= nationalPensionStartAge;
+      if (selfNationalPensionStarted || resolvedSpouse !== null) {
         const nationalPensionAdjustmentFactor = getNationalPensionAdjustmentFactor(nationalPensionStartAge);
-        let natAmountRaw = (inflationMode === 'nominal'
-          ? nationalPension.expectedMonthlyAmount * Math.pow(1 + infRateAnnual, y)
-          : nationalPension.expectedMonthlyAmount) * nationalPensionAdjustmentFactor;
+        let natAmountRaw = selfNationalPensionStarted
+          ? (inflationMode === 'nominal'
+            ? nationalPension.expectedMonthlyAmount * Math.pow(1 + infRateAnnual, y)
+            : nationalPension.expectedMonthlyAmount) * nationalPensionAdjustmentFactor
+          : 0;
+
+        // 배우자 국민연금 합산. 사망자가 생기면 중복조정으로 큰 쪽만 남는다.
+        if (resolvedSpouse !== null) {
+          const spouseMonthlyBase = computeSpouseNationalPensionMonthly(resolvedSpouse, currentAge);
+          const spouseMonthly = inflationMode === 'nominal'
+            ? spouseMonthlyBase * Math.pow(1 + infRateAnnual, y)
+            : spouseMonthlyBase;
+
+          if (selfAlive && spouseAlive) {
+            natAmountRaw += spouseMonthly;
+          } else if (spouseAlive) {
+            // 본인 사망 → 배우자가 생존자. 본인 연금을 유족연금으로 승계 판정.
+            natAmountRaw = computeSurvivorPensionMonthly(spouseMonthly, natAmountRaw);
+          } else {
+            // 배우자 사망 → 본인이 생존자.
+            natAmountRaw = computeSurvivorPensionMonthly(natAmountRaw, spouseMonthly);
+          }
+        }
+
         const natTax = calculateNationalPensionTaxKRW(natAmountRaw);
         monthlyNationalPensionDisplay = this.convertValue(natAmountRaw - natTax, 'KRW', displayCurrency, exchangeRate);
         monthlyNatTaxDisplay = this.convertValue(natTax, 'KRW', displayCurrency, exchangeRate);
@@ -597,7 +709,14 @@ export class SimulationEngine {
         annualPreTaxTotalIncome += monthlyOtherPreTaxTotalDisplay;
 
         const monthlyTotalIncome = monthlyDividendIncomeNetDisplay + monthlyPensionIncomeNetDisplay + monthlyNationalPensionDisplay + monthlyOtherIncomeTotalDisplay;
-        let actualMonthlySpending = (isRetired && spendingStrategy === 'dividend_only') ? monthlyTotalIncome : monthlyTargetSpending;
+        // dividend_only는 목표 생활비를 쓰지 않고 "그달 들어온 소득만큼만" 쓰는 전략이라
+        // monthlyTargetSpending을 참조하지 않는다. 그래서 의료비를 여기에 따로 더해 준다 —
+        // 더하지 않으면 healthcareSpending은 기록되는데 실제로는 한 푼도 나가지 않아
+        // "spending에 포함된 금액"이라는 필드 정의가 이 전략에서만 거짓이 된다.
+        // 의료비는 배당으로 감당되지 않으면 자산 인출로 충당된다(아래 shortfall 로직).
+        let actualMonthlySpending = (isRetired && spendingStrategy === 'dividend_only')
+          ? monthlyTotalIncome + monthlyHealthcareCost
+          : monthlyTargetSpending;
 
         const shortfall = actualMonthlySpending - monthlyTotalIncome;
         if (shortfall < 0 && activeAssets.length > 0) {
@@ -745,7 +864,9 @@ export class SimulationEngine {
         stockAssets: stockAssetsDisplay, pensionAssets: pensionAssetsDisplay,
         dividendIncome: annualDividendIncome, nationalPensionIncome: annualNationalPensionIncome,
         privatePensionIncome: annualPrivatePensionIncome, pensionIncome, otherIncome: annualOtherIncome,
-        totalIncome, spending: annualSpending, hasTaxWarning, preTaxTotalIncome: annualPreTaxTotalIncome,
+        totalIncome, spending: annualSpending, healthcareSpending: annualHealthcareCost,
+        hasTaxWarning, spouseAlive, spendingFactor,
+        preTaxTotalIncome: annualPreTaxTotalIncome,
         dividendTaxPaid: annualDividendTaxPaid, pensionTaxPaid: annualPensionTaxPaid,
         nationalPensionTaxPaid: annualNationalPensionTaxPaid, comprehensiveTaxPaid: annualComprehensiveTaxPaidDisplay,
         healthInsurancePaid: annualHealthInsurancePaidDisplay, privatePensionTaxMethod,
@@ -753,10 +874,15 @@ export class SimulationEngine {
 
       if (totalAssetsDisplay <= 0 && depletionAge === null) depletionAge = currentAge;
 
-      const targetSpendingForFIRE = inflationMode === 'nominal'
+      // 의료비도 소득으로 감당해야 할 지출이다. 빼면 "의료비를 못 내는데 FIRE 달성"이 된다.
+      // 생활비에는 그 해의 가구 규모 계수를 곱한다 — 위 monthlyTargetSpending(실제 인출 목표)과
+      // 아래 goalAchievementRate의 분모가 모두 곱하므로, 여기만 빼면 한 명만 남아 실제 필요가
+      // 0.7배로 줄어든 해에도 2인 기준 소득을 요구해 fireAge가 늦어지거나 null이 된다.
+      // annualHealthcareCost에는 computeAnnualHealthcareCost가 이미 곱해 두었으므로 다시 곱하지 않는다.
+      const targetSpendingForFIRE = (inflationMode === 'nominal'
         ? userProfile.targetMonthlySpending * 12 * Math.pow(1 + inflationRate / 100, y)
-        : userProfile.targetMonthlySpending * 12;
-      
+        : userProfile.targetMonthlySpending * 12) * spendingFactor + annualHealthcareCost;
+
       if (totalIncome >= targetSpendingForFIRE && fireAge === null) fireAge = currentAge;
     }
 
@@ -768,10 +894,19 @@ export class SimulationEngine {
       const totalIncomeSum = retirementYearsResults.reduce((sum, r) => sum + r.totalIncome, 0);
       let totalTargetSum = 0;
       retirementYearsResults.forEach(r => {
-          let annualTarget = userProfile.targetMonthlySpending * 12;
+          // 목표액에도 그 해의 가구 규모 계수를 곱한다. 한 명만 남은 해의 실제 지출은 이미
+          // 0.7배로 줄어 있으므로, 분모만 2인 기준으로 두면 줄어든 필요를 완벽히 충족한
+          // 계획이 영구적 결손으로 채점된다(아래 avgRetirementMonthlySpending과도 어긋난다).
+          let annualTarget = userProfile.targetMonthlySpending * 12 * r.spendingFactor;
           if (inflationMode === 'nominal') {
               annualTarget = annualTarget * Math.pow(1 + inflationRate / 100, r.age - startAge);
           }
+          // 의료비도 목표(=충족해야 할 필요)의 일부다. 더하지 않으면 의료비를 켠 순간
+          // 분자(totalIncome)만 커진다 — 의료비를 메우려 사적연금을 더 인출한 금액이
+          // 소득으로 집계되기 때문이다 — 분모는 그대로라서 달성률이 부풀려진다.
+          // 물가 보정을 적용하지 않는 이유: healthcareSpending은 이미 엔진이 그 해의
+          // inflationMode에 맞춰 계산해 둔 실제 지출액이다(중복 보정 금지).
+          annualTarget += r.healthcareSpending;
           totalTargetSum += annualTarget;
       });
 
@@ -785,18 +920,24 @@ export class SimulationEngine {
     const endingAssets = yearlyResults.length > 0 ? yearlyResults[yearlyResults.length - 1].totalAssets : 0;
 
     const { retirementScore, retirementGrade, retirementAssetsAtRetirement } = this.calculateRetirementScore(
-      yearlyResults, userProfile, goalAchievementRate, depletionAge, inflationMode, inflationRate
+      yearlyResults, userProfile, goalAchievementRate, depletionAge, inflationMode, inflationRate, endAge,
+      recurringHealthcareByAge
     );
 
     return {
       yearlyResults,
-      fireAge: fireAge === null || fireAge >= userProfile.expectancy ? null : fireAge,
+      // 종료 판정은 같은 반환 객체의 depletionAge/endingAssets/householdEndAge와 같은 기준
+      // (가구 종료 나이)을 써야 한다. 본인 기대수명으로 게이트하면 배우자 단독 생존 기간에
+      // 달성한 FIRE가 "달성 불가(null)"로 지워진다. 배우자가 없으면 endAge === expectancy라
+      // 기존 동작과 완전히 동일하다.
+      fireAge: fireAge === null || fireAge >= endAge ? null : fireAge,
       depletionAge,
       endingAssets,
       retirementScore,
       retirementGrade,
       goalAchievementRate,
       retirementAssetsAtRetirement,
+      householdEndAge: endAge,
     };
   }
 }

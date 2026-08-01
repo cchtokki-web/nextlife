@@ -52,6 +52,7 @@ describe('renderItemizedChecklistSection', () => {
     retirementGrade: '보통' as const,
     goalAchievementRate: 100,
     retirementAssetsAtRetirement: 0,
+    householdEndAge: 90,
   };
 
   test('recommendation이 undefined이면 폴백 문구를 반환한다', () => {
@@ -115,7 +116,8 @@ describe('renderExecutionRoadmapSection', () => {
         { age: 60, items: [{ title: '퇴직', description: '상용소득이 종료되고 자산 인출 계획이 시작됩니다.' }] },
         { age: 68, items: [{ title: '국민연금 수령 개시 (연기)', description: '국민연금 수령을 시작합니다.' }] },
       ],
-      expectancy: 90,
+      endAge: 90,
+      endLabel: '기대수명',
     };
     const html = renderExecutionRoadmapSection(roadmap);
     expect(html).toContain('60세');
@@ -134,7 +136,8 @@ describe('renderExecutionRoadmapSection', () => {
           items: [{ title: '자산 고갈 예상', description: '누적 자산이 모두 소진됩니다.', severity: 'warning' }],
         },
       ],
-      expectancy: 90,
+      endAge: 90,
+      endLabel: '기대수명',
     };
     const html = renderExecutionRoadmapSection(roadmap);
     expect(html).toContain('#EF4444');

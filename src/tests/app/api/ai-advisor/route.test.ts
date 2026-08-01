@@ -20,6 +20,7 @@ const emptyResult: SimulationResult = {
   retirementGrade: '보통',
   goalAchievementRate: 100,
   retirementAssetsAtRetirement: 0,
+  householdEndAge: 90,
 };
 
 const baseBody = {
@@ -134,6 +135,24 @@ describe('buildSimulationContextText - Utility Score 반영', () => {
     const text = buildSimulationContextText({ ...baseBody, endingAssets: 1791690000 });
     expect(text).toContain('17억 9,169만원');
     expect(text).not.toContain('179,169만원');
+  });
+
+  // A2: fireAge는 가구 종료 나이 기준으로 판정되므로 배우자가 더 오래 사는 계획에서는
+  // 본인 기대수명을 넘을 수 있다. 단서를 붙이지 않으면 같은 프롬프트가 "80세 사망"과
+  // "85세 FIRE"를 나란히 제시해 LLM이 모순된 두 숫자를 받는다.
+  test('FIRE 나이가 본인 기대수명을 넘으면 배우자 생존 기간 기준임을 함께 넣는다', () => {
+    const userProfile = { currentAge: 55, retirementAge: 60, expectancy: 80, targetMonthlySpending: 3000000 };
+    const text = buildSimulationContextText({ ...baseBody, userProfile, fireAge: 85 });
+
+    expect(text).toContain('배우자 생존 기간');
+  });
+
+  test('FIRE 나이가 본인 기대수명 이내면 단서를 붙이지 않는다', () => {
+    const userProfile = { currentAge: 55, retirementAge: 60, expectancy: 90, targetMonthlySpending: 3000000 };
+    const text = buildSimulationContextText({ ...baseBody, userProfile, fireAge: 65 });
+
+    expect(text).toContain('FIRE 조기은퇴 가능 나이: 65세');
+    expect(text).not.toContain('배우자 생존 기간');
   });
 });
 

@@ -68,6 +68,7 @@ function makeRecommendation(
       retirementGrade: '보통',
       goalAchievementRate: 100,
       retirementAssetsAtRetirement: 0,
+      householdEndAge: 90,
     },
     itemizedContributions: [],
   };
@@ -220,9 +221,44 @@ describe('computeExecutionRoadmap', () => {
     expect(ages).toEqual([60, 61, 65]);
   });
 
-  test('expectancy는 params.userProfile.expectancy 그대로 반환된다', () => {
+  test('배우자가 없으면 종료 마커는 본인 기대수명이다', () => {
     const roadmap = computeExecutionRoadmap(baseParams, undefined, null);
-    expect(roadmap.expectancy).toBe(90);
+    expect(roadmap.endAge).toBe(90);
+    expect(roadmap.endLabel).toBe('기대수명');
+  });
+
+  // B4: depletionAge는 가구 종료 나이까지의 루프에서 판정되므로 본인 기대수명을 넘을 수 있다.
+  // 종료 마커를 본인 기대수명으로 두면 "95세 자산 고갈" 노드가 "90세 기대수명" 종점보다
+  // 뒤에 있는데도 타임라인상 그 앞에 놓인다.
+  test('배우자가 더 오래 살면 종료 마커가 가구 종료 나이가 된다', () => {
+    const params: SimulationParams = {
+      ...baseParams,
+      spouse: {
+        enabled: true, currentAge: 50, expectancy: 95,
+        nationalPensionMonthlyAmount: 0, nationalPensionStartAge: 65,
+      },
+    };
+
+    const roadmap = computeExecutionRoadmap(params, undefined, null);
+
+    // 배우자가 본인보다 5살 어리고 95세까지 산다 = 본인 나이 기준 100세.
+    expect(roadmap.endAge).toBe(100);
+    expect(roadmap.endLabel).toContain('배우자');
+  });
+
+  test('가구 종료 나이를 넘지 않는 고갈 이벤트가 종료 마커보다 앞에 온다', () => {
+    const params: SimulationParams = {
+      ...baseParams,
+      spouse: {
+        enabled: true, currentAge: 50, expectancy: 95,
+        nationalPensionMonthlyAmount: 0, nationalPensionStartAge: 65,
+      },
+    };
+
+    const roadmap = computeExecutionRoadmap(params, undefined, 95);
+
+    expect(roadmap.events.some((e) => e.age === 95)).toBe(true);
+    expect(roadmap.endAge).toBeGreaterThan(95);
   });
 
   test('depletionAge가 있으면 "자산 고갈 예상" 이벤트가 severity: warning으로 추가된다', () => {
@@ -284,6 +320,7 @@ describe('selectDepletionAge', () => {
     retirementGrade: '보통',
     goalAchievementRate: 100,
     retirementAssetsAtRetirement: 0,
+    householdEndAge: 90,
   };
 
   test('recommendation이 없으면 baseline(result)의 depletionAge를 쓴다', () => {

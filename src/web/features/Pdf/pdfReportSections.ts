@@ -70,8 +70,8 @@ export function renderExecutionRoadmapSection(roadmap: ExecutionRoadmap): string
   return `
     ${eventsHtml}
     <div style="display: flex; gap: 10px; margin-top: 4px;">
-      <div style="width: 50px; flex-shrink: 0; font-size: 13px; font-weight: 700; color: #94a3b8;">${roadmap.expectancy}세</div>
-      <div style="flex-grow: 1; font-size: 12px; color: #94a3b8;">기대수명</div>
+      <div style="width: 50px; flex-shrink: 0; font-size: 13px; font-weight: 700; color: #94a3b8;">${roadmap.endAge}세</div>
+      <div style="flex-grow: 1; font-size: 12px; color: #94a3b8;">${roadmap.endLabel}</div>
     </div>
   `;
 }

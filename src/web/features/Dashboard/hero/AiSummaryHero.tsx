@@ -15,14 +15,24 @@ interface AiSummaryHeroProps extends UseAiAdvisorInput {
   mode: BeforeAfterMode;
   onToggleMode: () => void;
   canApply: boolean;
+  // 시뮬레이션이 실제로 돈 마지막 나이(SimulationResult.householdEndAge). depletionAge가
+  // 이 나이까지의 루프에서 판정되므로 헤드라인의 고갈 여부도 이 값과 비교해야 한다.
+  //
+  // optional이 아닌 이유: 폴백(userProfile.expectancy)이 있으면 새 호출부가 이 prop을
+  // 빠뜨려도 타입 에러 없이 통과하고, 파산하는 계획에 "고갈 위험 없음"이 다시 표시된다
+  // (C2 결함). 필수로 두면 그 재발이 구조적으로 불가능하다 — 이 값은 항상
+  // SimulationResult에 들어 있으므로 호출부에 부담도 없다.
+  householdEndAge: number;
 }
 
 // 결과 화면 최상단 Hero. 한줄 요약(rule-based) + Before/After Utility 비교 + 절세/자산증가
 // 요약 + 추천 적용 버튼을 보여주고, LLM이 생성한 전체 AI 의견은 Collapse 안에 격리한다.
-export function AiSummaryHero({ formatValue, mode, onToggleMode, canApply, ...advisorInput }: AiSummaryHeroProps) {
+export function AiSummaryHero({
+  formatValue, mode, onToggleMode, canApply, householdEndAge, ...advisorInput
+}: AiSummaryHeroProps) {
   const { data: session } = useSession();
   const userNamePrefix = session?.user?.name ? `${session.user.name}님의 ` : '';
-  const { utility, recommendation, depletionAge, userProfile } = advisorInput;
+  const { utility, recommendation, depletionAge } = advisorInput;
   const aiAdvisor = useAiAdvisor(advisorInput);
 
   // 에러/rule-based 폴백은 사용자가 반드시 알아야 할 신호라, 접힌 패널 안에 숨어있지 않도록
@@ -36,7 +46,7 @@ export function AiSummaryHero({ formatValue, mode, onToggleMode, canApply, ...ad
 
   if (!utility) return null;
 
-  const headline = buildHeroHeadline(utility.score, depletionAge, userProfile?.expectancy ?? 90);
+  const headline = buildHeroHeadline(utility.score, depletionAge, householdEndAge);
   const hasImprovement = !!recommendation?.improved;
 
   return (

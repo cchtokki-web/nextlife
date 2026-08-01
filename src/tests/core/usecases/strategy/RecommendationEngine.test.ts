@@ -251,6 +251,31 @@ describe('recommendStrategy - 생활비 증액(Phase 2) 후보', () => {
 
     expect(recommendation.totalCandidateCount).toBe(baseCandidateCount + params.assets.length);
   });
+
+  // B5: 고갈 판정 기준은 본인 기대수명이 아니라 가구 종료 나이다. 장수 배우자가 있으면
+  // 본인 기대수명 이후·가구 종료 이전에 파산하는 계획이 "고갈 위험 없음"으로 통과해
+  // 생활비를 더 늘리라는 추천을 받는다.
+  test('배우자 단독 생존 구간에 고갈되는 baseline에서는 생활비 증액 후보를 생성하지 않는다', () => {
+    const engine = new SimulationEngine();
+    const params: SimulationParams = {
+      ...paramsWithSurplusAssetOnly,
+      assets: [{ ...paramsWithSurplusAssetOnly.assets[0], quantity: 9000 }],
+      spouse: {
+        enabled: true, currentAge: 50, expectancy: 95,
+        nationalPensionMonthlyAmount: 0, nationalPensionStartAge: 65,
+      },
+    };
+
+    const baseline = engine.runForUtility(params);
+    // 전제: 본인 기대수명(90)은 넘겼지만 가구 종료(105) 전에 고갈된다.
+    expect(baseline.depletionAge!).toBeGreaterThan(params.userProfile.expectancy);
+    expect(baseline.depletionAge!).toBeLessThan(baseline.householdEndAge);
+
+    const recommendation = recommendStrategy(params, engine);
+    const baseCandidateCount = generateCandidatePlans(params).length;
+
+    expect(recommendation.totalCandidateCount).toBe(baseCandidateCount + params.assets.length);
+  });
 });
 
 describe('recommendStrategy - recommendedResult', () => {
@@ -407,7 +432,10 @@ function makeYearlyResult(overrides: Partial<SimulationYearlyResult>): Simulatio
     comprehensiveTaxPaid: 0,
     privatePensionTaxMethod: 'none',
     spending: 0,
+    healthcareSpending: 0,
     hasTaxWarning: false,
+    spouseAlive: false,
+    spendingFactor: 1,
     ...overrides,
   };
 }
@@ -422,6 +450,7 @@ function makeSimulationResult(yearlyResults: SimulationYearlyResult[], endingAss
     retirementGrade: '보통',
     goalAchievementRate: 100,
     retirementAssetsAtRetirement: 0,
+    householdEndAge: 90,
   };
 }
 

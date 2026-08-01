@@ -6,6 +6,7 @@ import {
 } from '../../../core/entities/types';
 import { RetirementGrade } from '../../../core/entities/retirementGrade';
 import { analyzeCurrentStrategy, formatManwon } from '../../../core/usecases/utility/utilityAnalysis';
+import { describeFireAge } from '../../../core/usecases/dashboard/describeFireAge';
 
 export const runtime = 'edge';
 
@@ -92,7 +93,11 @@ export function buildSimulationContextText(body: AiAdvisorRequestBody): string {
     `- 고정소득 커버율(배당·연금·기타소득 등, 자산 매도·인출분 제외): ${goalAchievementRate ?? '정보 없음'}% ` +
     `※ 이 값이 100% 미만이어도 "자산 고갈 예상 나이"가 없다면 원금을 정상적으로 인출하며 사는 안정적인 은퇴일 수 있음`
   );
-  lines.push(`- FIRE 조기은퇴 가능 나이: ${fireAge ? `${fireAge}세` : '달성 불가능'}`);
+  // userProfile이 없으면 비교 기준이 없으므로 단서 없이 나이만 적는다(이 경우 프롬프트에
+  // 기대수명 줄 자체가 없어 모순이 생기지 않는다).
+  lines.push(
+    `- FIRE 조기은퇴 가능 나이: ${userProfile ? describeFireAge(fireAge, userProfile.expectancy) : (fireAge ? `${fireAge}세` : '달성 불가능')}`
+  );
   lines.push(`- 자산 고갈 예상 나이: ${depletionAge === null || depletionAge === undefined ? '고갈 위험 없음' : `${depletionAge}세`}`);
   lines.push(
     `- 기대수명 시점 잔여 자산: ${typeof endingAssets === 'number' && !isNaN(endingAssets) ? formatManwon(endingAssets) : '정보 없음'}`

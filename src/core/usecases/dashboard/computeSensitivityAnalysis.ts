@@ -48,16 +48,21 @@ const SCENARIO_DEFINITIONS: ScenarioDefinition[] = [
   { key: 'retirementLater', label: '은퇴시점 +3년', buildParams: (p) => shiftRetirementAge(p, 3) },
 ];
 
-// null(평생 유지)을 expectancy로 치환해 비교 가능한 숫자로 만든 뒤 차이를 낸다. 단, baseline과
-// 시나리오가 둘 다 null이면 "변화 없음"을 명확히 하기 위해 0이 아닌 null을 반환한다.
+// null(평생 유지)을 "고갈 없음" 센티널 나이로 치환해 비교 가능한 숫자로 만든 뒤 차이를 낸다.
+// 단, baseline과 시나리오가 둘 다 null이면 "변화 없음"을 명확히 하기 위해 0이 아닌 null을 반환한다.
+//
+// 센티널은 본인 기대수명이 아니라 시뮬레이션이 실제로 돈 마지막 나이(householdEndAge)다.
+// 본인 기대수명을 쓰면 장수 배우자가 있는 계획에서 그 나이를 넘겨 고갈되는 시나리오가
+// "고갈 없음"보다 큰 값이 되어, 95세에 파산하는 시나리오가 전혀 파산하지 않는 baseline보다
+// 몇 년 낫다고 보고된다.
 function computeDeltaYears(
   baselineDepletionAge: number | null,
   depletionAge: number | null,
-  expectancy: number
+  householdEndAge: number
 ): number | null {
   if (baselineDepletionAge === null && depletionAge === null) return null;
-  const baselineEffective = baselineDepletionAge ?? expectancy;
-  const scenarioEffective = depletionAge ?? expectancy;
+  const baselineEffective = baselineDepletionAge ?? householdEndAge;
+  const scenarioEffective = depletionAge ?? householdEndAge;
   return scenarioEffective - baselineEffective;
 }
 
@@ -69,8 +74,8 @@ export function computeSensitivityAnalysis(
   baselineResult: SimulationResult,
   engine: SimulationEngine
 ): SensitivityScenario[] {
-  const { expectancy } = params.userProfile;
   const baselineDepletionAge = baselineResult.depletionAge;
+  const { householdEndAge } = baselineResult;
 
   const withSortKey: (SensitivityScenario & { sortAge: number })[] = [];
 
@@ -83,7 +88,7 @@ export function computeSensitivityAnalysis(
         key: def.key,
         label: def.label,
         depletionAge,
-        deltaYears: computeDeltaYears(baselineDepletionAge, depletionAge, expectancy),
+        deltaYears: computeDeltaYears(baselineDepletionAge, depletionAge, householdEndAge),
         sortAge: depletionAge ?? Infinity,
       });
     } catch {

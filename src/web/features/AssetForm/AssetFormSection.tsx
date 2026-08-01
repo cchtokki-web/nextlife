@@ -4,8 +4,10 @@ import { InputField } from '../../components/InputField';
 import { SelectField } from '../../components/SelectField';
 import styles from './AssetForm.module.css';
 import compStyles from '../../styles/components.module.css';
-import { Plus, Trash2, User, Landmark, PiggyBank, DollarSign, ExternalLink, ChevronDown, ChevronUp, RefreshCw } from 'lucide-react';
+import { Plus, Trash2, Wallet, Landmark, PiggyBank, DollarSign, ExternalLink, ChevronDown, ChevronUp, RefreshCw } from 'lucide-react';
 import { PredefinedAsset, predefinedAssets } from './predefinedAssets';
+import { resolveRiskProfileYieldPreset, resolveStrategy } from '../../../core/usecases/strategy/compileStrategy';
+import { isEconomicScenarioGoverning } from '../../../core/usecases/scenario/economicScenarios';
 
 const convertAmountOnPeriodChange = (amount: number, fromPeriod: 'daily' | 'weekly' | 'monthly', toPeriod: 'daily' | 'weekly' | 'monthly'): number => {
   let monthlyAmount = amount;
@@ -39,7 +41,7 @@ interface AssetFormSectionProps {
   onChangeParams: (newParams: SimulationParams) => void;
 }
 
-type TabType = 'profile' | 'stocks' | 'pensions' | 'isa' | 'other';
+type TabType = 'stocks' | 'pensions' | 'isa' | 'other';
 
 export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawParams, onChangeParams }) => {
   const params: SimulationParams = {
@@ -56,7 +58,41 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
     displayCurrency: rawParams?.displayCurrency || 'KRW',
     spendingStrategy: rawParams?.spendingStrategy || 'target',
   };
-  const [activeTab, setActiveTab] = useState<TabType>('profile');
+  // 전략(「투자 전략」)이 수익률을 지배하는 동안에는 이 폼의 수익률 입력을 잠근다.
+  //
+  // 이 폼은 compileStrategy를 거친 params가 아니라 원본 params를 받는다. 그래서 입력을
+  // 열어두면 사용자는 자기가 넣은 값을 보면서 엔진은 프리셋 값(리스크 성향 5/7/9% ·
+  // 3/4/6%, 경제 시나리오 프로필)으로 계산하는 상태가 조용히 만들어진다. 고급 설정의
+  // 저율과세 한도, 「경제 가정」의 물가상승률에 이미 쓰고 있는 "지배 중이면 비활성화 +
+  // 이유 표시" 패턴을 그대로 재사용한다.
+  //
+  // 반대 방향(수익률을 편집하면 riskProfile을 'custom'으로 되돌리기)은 택하지 않았다:
+  // 다른 섹션에서 사용자가 명시적으로 고른 전략이 화면 반대편의 입력 때문에 소리 없이
+  // 뒤집히는 것이야말로 이 브랜치가 반복해서 고쳐 온 결함 형태이고, 게다가 경제 시나리오는
+  // riskProfile이 아니므로 그 방식으로는 절반만 해결된다.
+  const strategy = resolveStrategy(params);
+  const yieldGovernedBy = resolveRiskProfileYieldPreset(strategy.riskProfile) !== null
+    ? '리스크 성향'
+    : isEconomicScenarioGoverning(strategy.economicScenario)
+      ? '경제 시나리오'
+      : null;
+
+  // 실시간 조회 버튼도 같은 이유로 잠근다.
+  //
+  // fetchAssetInfo/fetchPensionInfo/fetchIsaInfo는 annualGrowthRate·annualReturn을 덮어쓰면서
+  // yieldPreset을 'custom'으로까지 찍는다. 입력만 비활성화하고 이 버튼을 열어두면, 지배 중에도
+  // 버튼 하나로 화면상 수익률과 '직접입력' 표식이 동시에 바뀌는데 엔진은 여전히 프리셋으로
+  // 계산한다 — 입력을 잠가서 없애려던 바로 그 불일치가 다른 문으로 되돌아온다.
+  // 배당률 조회가 같은 함수에 묶여 있어 함께 잠기지만, 조회 결과가 수익률을 덮어쓰는 이상
+  // 부분 적용은 "눌렀는데 일부만 반영된다"는 더 나쁜 상태가 된다.
+  // 이유는 원래 제목 뒤에 덧붙인다 — 제목을 통째로 갈아치우면 툴팁만 보고는 이 버튼이
+  // 무슨 버튼이었는지 알 수 없다. 화면 상단 배너가 같은 이유를 이미 문장으로 설명한다.
+  const yieldFetchTitle = (base: string): string =>
+    yieldGovernedBy
+      ? `${base} (「투자 전략」의 ${yieldGovernedBy}이(가) 수익률을 결정하는 동안에는 쓸 수 없습니다)`
+      : base;
+
+  const [activeTab, setActiveTab] = useState<TabType>('stocks');
   const [expandedAssets, setExpandedAssets] = useState<Record<string, boolean>>({});
   const [expandedPensions, setExpandedPensions] = useState<Record<string, boolean>>({});
   const [expandedIsa, setExpandedIsa] = useState<Record<string, boolean>>({});
@@ -309,18 +345,10 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
     }));
   };
 
-  // 1. User Profile update
-  const handleProfileChange = (key: keyof SimulationParams['userProfile'], value: number) => {
-    onChangeParams({
-      ...params,
-      userProfile: {
-        ...params.userProfile,
-        [key]: value,
-      },
-    });
-  };
+  // 인적사항(나이·생활비·상속 목표)은 좌측 "내 은퇴 전략" 패널의 「기본 정보」·「은퇴 목표」가
+  // 담당한다. 이 컴포넌트는 보유 자산 입력에만 집중한다.
 
-  // 2. National Pension update
+  // 1. National Pension update
   const handleNationalPensionChange = (value: number) => {
     onChangeParams({
       ...params,
@@ -579,23 +607,22 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
         style={{ cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: isSectionExpanded ? '1rem' : '0' }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <User size={18} className={styles.icon} />
-          <span className={styles.title}>인적사항 및 자산 입력</span>
+          <Wallet size={18} className={styles.icon} />
+          <span className={styles.title}>보유 자산 입력</span>
         </div>
         {isSectionExpanded ? <ChevronUp size={18} className={styles.icon} /> : <ChevronDown size={18} className={styles.icon} />}
       </div>
 
       {isSectionExpanded && (
         <>
+          {yieldGovernedBy && (
+            <p style={{ fontSize: '0.75rem', color: 'var(--warning, #f59e0b)', margin: '0 0 0.75rem' }}>
+              「투자 전략」의 {yieldGovernedBy}이(가) 아래 수익률 값을 결정합니다. 직접 입력하려면
+              투자 전략에서 리스크 성향과 경제 시나리오를 모두 &ldquo;AI 추천&rdquo;으로 두세요.
+            </p>
+          )}
           {/* Tab Menu */}
           <div className={styles.tabList}>
-        <button
-          className={`${styles.tabButton} ${activeTab === 'profile' ? styles.tabButtonActive : ''}`}
-          onClick={(e) => handleTabClick('profile', e)}
-        >
-          <User size={16} style={{ marginRight: '0.4rem', verticalAlign: 'middle' }} />
-          인적사항
-        </button>
         <button
           className={`${styles.tabButton} ${activeTab === 'stocks' ? styles.tabButtonActive : ''}`}
           onClick={(e) => handleTabClick('stocks', e)}
@@ -628,77 +655,6 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
 
       {/* Tab Panels */}
       <div className={styles.tabContent}>
-        {/* Profile Tab */}
-        {activeTab === 'profile' && (
-          <div className={compStyles.grid}>
-            <InputField
-              label="현재 나이"
-              type="number"
-              value={params.userProfile.currentAge}
-              onChange={(e) => handleProfileChange('currentAge', Number(e.target.value))}
-              suffixText="세"
-            />
-            <InputField
-              label="목표 은퇴 나이"
-              type="number"
-              value={params.userProfile.retirementAge}
-              onChange={(e) => handleProfileChange('retirementAge', Number(e.target.value))}
-              suffixText="세"
-            />
-            <InputField
-              label="기대 수명"
-              type="number"
-              value={params.userProfile.expectancy}
-              onChange={(e) => handleProfileChange('expectancy', Number(e.target.value))}
-              suffixText="세"
-            />
-            <SelectField
-              label="은퇴 생활비 전략"
-              value={params.spendingStrategy || 'target'}
-              onChange={(e) => onChangeParams({ ...params, spendingStrategy: e.target.value as any })}
-              options={[
-                { value: 'target', label: '고정 목표 생활비 직접 입력' },
-                { value: 'dividend_only', label: '배당금 100% 소비 모드 (원금 보존)' },
-                { value: 'max_sustainable', label: '최대 고정 생활비 자동 역산 (자산 전액 사용)' },
-              ]}
-            />
-            {(!params.spendingStrategy || params.spendingStrategy === 'target') && (
-              <InputField
-                label="은퇴 후 목표 월 생활비"
-                labelSecondary="(선택 통화 기준)"
-                type="text"
-                value={params.userProfile.targetMonthlySpending === 0 ? '0' : params.userProfile.targetMonthlySpending.toLocaleString()}
-                onChange={(e) => {
-                  const rawValue = e.target.value.replace(/,/g, '');
-                  const numValue = rawValue === '' ? 0 : Number(rawValue);
-                  if (!isNaN(numValue)) {
-                    handleProfileChange('targetMonthlySpending', numValue);
-                  }
-                }}
-                suffixText={params.displayCurrency === 'KRW' ? '원' : params.displayCurrency}
-              />
-            )}
-            <InputField
-              label="목표 상속자산"
-              labelSecondary="(0원 = 다 쓰고 가기)"
-              type="text"
-              value={
-                (params.userProfile.targetBequest ?? 0) === 0
-                  ? '0'
-                  : (params.userProfile.targetBequest ?? 0).toLocaleString()
-              }
-              onChange={(e) => {
-                const rawValue = e.target.value.replace(/,/g, '');
-                const numValue = rawValue === '' ? 0 : Number(rawValue);
-                if (!isNaN(numValue)) {
-                  handleProfileChange('targetBequest', numValue);
-                }
-              }}
-              suffixText={params.displayCurrency === 'KRW' ? '원' : params.displayCurrency}
-            />
-          </div>
-        )}
-
         {/* Stock & ETF Tab */}
         {activeTab === 'stocks' && (
           <div>
@@ -894,6 +850,7 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                             type="number"
                             step="0.1"
                             value={asset.annualGrowthRate}
+                            disabled={yieldGovernedBy !== null}
                             onChange={(e) => handleUpdateAsset(asset.id, 'annualGrowthRate', Number(e.target.value))}
                             suffixText="%"
                           />
@@ -902,8 +859,8 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                           type="button"
                           className={`${compStyles.button} ${compStyles.buttonSecondary} ${styles.priceFetchButton}`}
                           onClick={() => fetchAssetInfo(asset.id, asset.ticker)}
-                          disabled={fetchingInfoMap[asset.id] || asset.ticker === 'NEW'}
-                          title="실시간 성장률/배당률 조회"
+                          disabled={fetchingInfoMap[asset.id] || asset.ticker === 'NEW' || yieldGovernedBy !== null}
+                          title={yieldFetchTitle('실시간 성장률/배당률 조회')}
                         >
                           <RefreshCw
                             size={22}
@@ -926,8 +883,8 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                           type="button"
                           className={`${compStyles.button} ${compStyles.buttonSecondary} ${styles.priceFetchButton}`}
                           onClick={() => fetchAssetInfo(asset.id, asset.ticker)}
-                          disabled={fetchingInfoMap[asset.id] || asset.ticker === 'NEW'}
-                          title="실시간 성장률/배당률 조회"
+                          disabled={fetchingInfoMap[asset.id] || asset.ticker === 'NEW' || yieldGovernedBy !== null}
+                          title={yieldFetchTitle('실시간 성장률/배당률 조회')}
                         >
                           <RefreshCw
                             size={22}
@@ -1293,6 +1250,7 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                             type="number"
                             step="0.1"
                             value={pension.annualReturn}
+                            disabled={yieldGovernedBy !== null}
                             onChange={(e) => handleUpdatePrivatePension(pension.id, 'annualReturn', Number(e.target.value))}
                             suffixText="%"
                           />
@@ -1301,8 +1259,8 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                           type="button"
                           className={`${compStyles.button} ${compStyles.buttonSecondary} ${styles.priceFetchButton}`}
                           onClick={() => fetchPensionInfo(pension.id, pension.ticker!)}
-                          disabled={fetchingInfoMap[pension.id] || !pension.ticker}
-                          title="실시간 수익률 조회"
+                          disabled={fetchingInfoMap[pension.id] || !pension.ticker || yieldGovernedBy !== null}
+                          title={yieldFetchTitle('실시간 수익률 조회')}
                         >
                           <RefreshCw
                             size={22}
@@ -1325,8 +1283,8 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                           type="button"
                           className={`${compStyles.button} ${compStyles.buttonSecondary} ${styles.priceFetchButton}`}
                           onClick={() => fetchPensionInfo(pension.id, pension.ticker!)}
-                          disabled={fetchingInfoMap[pension.id] || !pension.ticker}
-                          title="실시간 수익률/배당률 조회"
+                          disabled={fetchingInfoMap[pension.id] || !pension.ticker || yieldGovernedBy !== null}
+                          title={yieldFetchTitle('실시간 수익률/배당률 조회')}
                         >
                           <RefreshCw
                             size={22}
@@ -1341,6 +1299,7 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                       type="number"
                       step="0.1"
                       value={pension.annualReturn}
+                      disabled={yieldGovernedBy !== null}
                       onChange={(e) => handleUpdatePrivatePension(pension.id, 'annualReturn', Number(e.target.value))}
                       suffixText="%"
                     />
@@ -1516,6 +1475,7 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                                 type="number"
                                 step="0.1"
                                 value={isa.annualReturn}
+                                disabled={yieldGovernedBy !== null}
                                 onChange={(e) => handleUpdateIsaAccount(isa.id, 'annualReturn', Number(e.target.value))}
                                 suffixText="%"
                               />
@@ -1524,8 +1484,8 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                               type="button"
                               className={`${compStyles.button} ${compStyles.buttonSecondary} ${styles.priceFetchButton}`}
                               onClick={() => fetchIsaInfo(isa.id, isa.ticker!)}
-                              disabled={fetchingInfoMap[isa.id] || !isa.ticker}
-                              title="실시간 수익률 조회"
+                              disabled={fetchingInfoMap[isa.id] || !isa.ticker || yieldGovernedBy !== null}
+                              title={yieldFetchTitle('실시간 수익률 조회')}
                             >
                               <RefreshCw
                                 size={22}
@@ -1548,8 +1508,8 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                               type="button"
                               className={`${compStyles.button} ${compStyles.buttonSecondary} ${styles.priceFetchButton}`}
                               onClick={() => fetchIsaInfo(isa.id, isa.ticker!)}
-                              disabled={fetchingInfoMap[isa.id] || !isa.ticker}
-                              title="실시간 수익률/배당률 조회"
+                              disabled={fetchingInfoMap[isa.id] || !isa.ticker || yieldGovernedBy !== null}
+                              title={yieldFetchTitle('실시간 수익률/배당률 조회')}
                             >
                               <RefreshCw
                                 size={22}
@@ -1564,6 +1524,7 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                           type="number"
                           step="0.1"
                           value={isa.annualReturn}
+                          disabled={yieldGovernedBy !== null}
                           onChange={(e) => handleUpdateIsaAccount(isa.id, 'annualReturn', Number(e.target.value))}
                           suffixText="%"
                         />
@@ -1574,6 +1535,7 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                             type="number"
                             step="0.1"
                             value={isa.annualReturn}
+                            disabled={yieldGovernedBy !== null}
                             onChange={(e) => handleUpdateIsaAccount(isa.id, 'annualReturn', Number(e.target.value))}
                             suffixText="%"
                           />
