@@ -1,6 +1,7 @@
 import { getIdentityPlan } from '../strategy/StrategyCandidateGenerator';
 import { NATIONAL_PENSION_NORMAL_START_AGE } from '../pension/nationalPensionRules';
 import { clampPrivatePensionStartAge, PRIVATE_PENSION_MIN_START_AGE } from '../pension/privatePensionRules';
+import { computeHouseholdEndAge, resolveSpouse } from '../spouse/spouseRules';
 import { SimulationParams, SimulationResult, StrategyRecommendation } from '../../entities/types';
 
 // 로드맵(computeExecutionRoadmap)에 넘길 depletionAge를 고르는 단일 지점. 화면(DashboardSection)과
@@ -35,7 +36,14 @@ export interface RoadmapEvent {
 
 export interface ExecutionRoadmap {
   events: RoadmapEvent[];
-  expectancy: number;
+  // 타임라인의 종점(본인 나이 기준). 본인 기대수명이 아니라 가구 종료 나이
+  // (computeHouseholdEndAge)다 — depletionAge가 이 나이까지의 루프에서 판정되므로
+  // 본인 기대수명을 종점으로 쓰면 "95세 자산 고갈" 노드가 "90세 기대수명" 종점보다
+  // 뒤에 놓이는 타임라인이 만들어진다.
+  endAge: number;
+  // 종점 마커에 붙일 이름. 배우자가 더 오래 살 때만 배우자를 언급하는 것은
+  // generateChartCaptions·computeRiskAlerts와 같은 관례다.
+  endLabel: string;
 }
 
 // 국민연금 수령 개시 나이를 정상 개시 나이(65)와 비교해 조기/연기 여부를 제목에 표기한다.
@@ -103,8 +111,9 @@ export function computeExecutionRoadmap(
     },
   ];
 
-  // 자산이 기대수명 전에 고갈될 것으로 예상되면, 60~85세 구간의 다른 마일스톤과 함께 정확히
-  // 몇 세에 고갈되는지도 타임라인에 표시한다 — 위험 신호이므로 severity로 구분해 강조한다.
+  // 자산 고갈이 예상되면 다른 마일스톤과 함께 정확히 몇 세에 고갈되는지도 타임라인에
+  // 표시한다 — 위험 신호이므로 severity로 구분해 강조한다. 고갈 나이는 가구 종료 나이까지의
+  // 어느 시점이든 될 수 있으므로(배우자 단독 생존 구간 포함) 나이 조건 없이 항상 넣는다.
   if (depletionAge !== null) {
     rawEvents.push({
       age: depletionAge,
@@ -127,5 +136,11 @@ export function computeExecutionRoadmap(
     .map(([age, items]) => ({ age, items }))
     .sort((a, b) => a.age - b.age);
 
-  return { events, expectancy };
+  const endAge = computeHouseholdEndAge(params.userProfile, resolveSpouse(params.spouse, params.userProfile));
+
+  return {
+    events,
+    endAge,
+    endLabel: endAge > expectancy ? '배우자 기대수명 (가구 종료)' : '기대수명',
+  };
 }

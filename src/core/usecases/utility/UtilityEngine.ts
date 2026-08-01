@@ -6,7 +6,6 @@ import {
   UtilityConfig,
 } from '../../entities/types';
 import { DEFAULT_UTILITY_CONFIG } from './utilityWeights';
-import { computeHouseholdEndAge, resolveSpouse } from '../spouse/spouseRules';
 import { isMaximizeBequestStrategy } from '../strategy/compileStrategy';
 
 function clamp(value: number, min: number, max: number): number {
@@ -85,9 +84,12 @@ function computeDepletionSafetyRaw(params: SimulationParams, result: SimulationR
   // 본인 기대수명이 아니라 가구 종료 나이로 정규화한다. 본인 기대수명으로 나누면
   // 배우자 단독 생존 기간에 고갈되는 계획도 ratio > 1이 되어 clamp에 걸려 "고갈 없음"
   // 조기 반환과 바이트 단위로 같은 만점이 나온다 — 파산 계획이 만점을 받는다.
-  // 엔진이 종료 나이를 정하는 데 쓴 바로 그 함수를 호출하므로 규칙이 복제되지 않는다.
-  const span = computeHouseholdEndAge(params.userProfile, resolveSpouse(params.spouse, params.userProfile))
-    - retirementAge;
+  //
+  // 규칙을 다시 유도(computeHouseholdEndAge 재호출)하지 않고 엔진이 결과에 실어 보낸
+  // 값을 그대로 쓴다. depletionAge가 바로 그 루프에서 판정된 값이므로 분자와 분모가
+  // 반드시 같은 기간을 가리켜야 하고, 재유도는 두 값이 어긋날 여지를 남긴다
+  // (SimulationResult.householdEndAge가 존재하는 이유가 이것이다).
+  const span = result.householdEndAge - retirementAge;
   if (span <= 0) return 0;
   return clamp((result.depletionAge - retirementAge) / span, 0, 1);
 }

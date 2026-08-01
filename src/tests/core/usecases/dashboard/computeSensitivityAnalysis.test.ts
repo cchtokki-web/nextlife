@@ -25,7 +25,7 @@ const baseParams: SimulationParams = {
   displayCurrency: 'KRW',
 };
 
-function makeResult(depletionAge: number | null): SimulationResult {
+function makeResult(depletionAge: number | null, householdEndAge = 90): SimulationResult {
   return {
     yearlyResults: [],
     fireAge: 60,
@@ -35,7 +35,7 @@ function makeResult(depletionAge: number | null): SimulationResult {
     retirementGrade: '보통',
     goalAchievementRate: 100,
     retirementAssetsAtRetirement: 0,
-    householdEndAge: 90,
+    householdEndAge,
   };
 }
 
@@ -161,6 +161,20 @@ describe('computeSensitivityAnalysis', () => {
     });
     const scenarios = computeSensitivityAnalysis(baseParams, makeResult(80), engine);
     expect(scenarios.find((s) => s.key === 'returnUp')!.deltaYears).toBe(10); // 90 - 80
+  });
+
+  // B5: "고갈 없음"의 센티널은 본인 기대수명이 아니라 가구 종료 나이여야 한다.
+  // 장수 배우자가 있으면(가구 종료 100세) 95세 고갈 시나리오가 고갈이 전혀 없는
+  // baseline보다 5년 "낫다"고 보고된다.
+  test('고갈 없음 센티널은 본인 기대수명이 아니라 가구 종료 나이다', () => {
+    const engine = makeMockEngine({
+      returnDown: 95, returnUp: null, inflationUp: null, inflationDown: null,
+      retirementEarlier: null, retirementLater: null,
+    });
+
+    const scenarios = computeSensitivityAnalysis(baseParams, makeResult(null, 100), engine);
+
+    expect(scenarios.find((s) => s.key === 'returnDown')!.deltaYears).toBe(-5);
   });
 
   test('특정 시나리오가 예외를 던져도 나머지 5개는 정상 반환된다', () => {

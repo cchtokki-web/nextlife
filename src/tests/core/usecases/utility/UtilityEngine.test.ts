@@ -72,7 +72,8 @@ function makeResult(yearlyResults: SimulationYearlyResult[], depletionAge: numbe
     retirementGrade: '보통',
     goalAchievementRate: 100,
     retirementAssetsAtRetirement: 0,
-    householdEndAge: 90,
+    // 배우자가 없는 공통 프로필이므로 가구 종료 나이는 본인 기대수명과 같다.
+    householdEndAge: userProfile.expectancy,
   };
 }
 
@@ -353,6 +354,20 @@ describe('UtilityEngine.computeLifetimeUtility', () => {
     const depletion = computeLifetimeUtility(buildDepletionScenario(), baseParams);
 
     expect(noDepletion.components.depletionSafety).toBeGreaterThan(depletion.components.depletionSafety);
+  });
+
+  // B6: result.householdEndAge는 엔진이 실제로 돌린 종료 나이다. 채점이 이를 무시하고
+  // params에서 다시 유도하면, 두 값이 어긋나는 순간(엔진을 거치지 않은 결과, 저장된 결과 등)
+  // 화면이 보여주는 기간과 다른 기준으로 점수가 매겨진다.
+  test('depletionSafety는 params에서 재유도하지 않고 result.householdEndAge를 쓴다', () => {
+    const years = Array.from({ length: 36 }, (_, i) =>
+      makeYear(60 + i, { totalAssets: ANNUAL_TARGET * 2, pensionAssets: ANNUAL_TARGET })
+    );
+    const shortHousehold = computeLifetimeUtility({ ...makeResult(years, 85), householdEndAge: 90 }, baseParams);
+    const longHousehold = computeLifetimeUtility({ ...makeResult(years, 85), householdEndAge: 110 }, baseParams);
+
+    expect(longHousehold.components.depletionSafety)
+      .toBeLessThan(shortHousehold.components.depletionSafety);
   });
 
   test('생활비 충족률이 낮을수록(지속적 부족) consumption 점수가 낮아진다', () => {

@@ -58,8 +58,22 @@ export function computeAnnualHealthcareCost({
 
   let annual = healthcare.baseMonthlyCost * 12 * growthFactor * retirementNominalFactor;
 
+  // 장기요양비의 기준 시점은 은퇴가 아니라 "장기요양이 시작되는 나이"다.
+  //
+  // 세 항목이 같은 규약을 쓴다: **사용자가 입력하는 금액은 그 항목이 시작되는 시점의
+  // 오늘 화폐가치 금액이며, 시작 이후에는 의료비 증가율로 오른다.** 기본 의료비의 시작은
+  // 은퇴 시점(라벨도 "은퇴 시점 월 의료비"), 장기요양비는 longTermCareStartAge, 쇼크는
+  // shockAge(일회성이라 이후 증가가 없다)다.
+  //
+  // 은퇴 시점 기준으로 해석하던 예전 규약은 기본값(은퇴 60 / 시작 80 / 증가율 5%)에서
+  // 입력한 150만원을 발생 시점에 1.05^20 = 2.65배로 부풀렸고, 같은 함수의 쇼크가 정반대
+  // 규약을 쓰고 있어 한 화면의 두 입력이 서로 다른 의미를 갖고 있었다. 사용자는 요양
+  // 비용을 "지금 요양원이 얼마인가"로 조사해 넣지, "내 은퇴 시점에 얼마일까"로 넣지 않는다.
   if (healthcare.longTermCareEnabled && currentAge >= healthcare.longTermCareStartAge) {
-    annual += healthcare.longTermCareMonthlyCost * 12 * growthFactor * retirementNominalFactor;
+    const yearsSinceLongTermCare = Math.max(0, currentAge - healthcare.longTermCareStartAge);
+    annual += healthcare.longTermCareMonthlyCost * 12
+      * Math.pow(growthBase, yearsSinceLongTermCare)
+      * nominalFactorAt(healthcare.longTermCareStartAge);
   }
 
   // 쇼크는 "오늘 화폐가치의 일회성 목돈"으로 정의한다. 의료비 증가율을 곱하지 않는 이유는

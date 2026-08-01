@@ -246,9 +246,15 @@ export function EconomicAssumptionSection({ params, onChangeParams, mode, change
                 </FieldRow>
               )}
               {isFieldVisible(mode, 'healthcare.longTermCareMonthlyCost') && (
-                <FieldRow label="월 장기요양비" changed={changed.has('healthcare.longTermCareMonthlyCost')}>
+                // 기준 시점을 라벨에 적는다. 옆의 "은퇴 시점 월 의료비"와 시점이 다르므로
+                // 시점 표기가 없으면 두 값이 같은 기준인 줄 오해한다(healthcareCosts.ts 참조).
+                <FieldRow
+                  label="장기요양 시작 시점 월 비용"
+                  tooltipText="요양이 시작되는 나이 기준 금액입니다. 그 이후에는 의료비 증가율만큼 오릅니다."
+                  changed={changed.has('healthcare.longTermCareMonthlyCost')}
+                >
                   <InputField
-                    label="" aria-label="월 장기요양비" type="text" suffixText="원"
+                    label="" aria-label="장기요양 시작 시점 월 비용" type="text" suffixText="원"
                     value={healthcare.longTermCareMonthlyCost.toLocaleString()}
                     onChange={(e) => {
                       const raw = e.target.value.replace(/,/g, '');

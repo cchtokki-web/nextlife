@@ -66,13 +66,35 @@ describe('computeAnnualHealthcareCost', () => {
       .toBeCloseTo(300000 * 12 * Math.pow(1.05, 19), 0);
   });
 
-  test('장기요양 시작 나이부터 장기요양비가 더해진다', () => {
+  // B3: 장기요양비는 "장기요양이 시작되는 나이의 금액"으로 입력받는다. 은퇴 시점 기준으로
+  // 해석해 (1+증가율)^(현재나이-은퇴나이)를 곱하면, 기본값(은퇴 60 / 시작 80 / 증가율 5%)에서
+  // 입력한 150만원이 발생 시점에 1.05^20 = 2.65배가 된다. 같은 함수의 일회성 쇼크가 이미
+  // "그 나이에 실제로 나갈 금액"이라는 반대 규약을 쓰고 있어 두 항목이 어긋나 있었다.
+  test('장기요양비는 은퇴 시점이 아니라 장기요양 시작 나이 기준 금액이다', () => {
     const withLtc = { ...healthcare, longTermCareEnabled: true, longTermCareStartAge: 80 };
     const base = 300000 * 12 * Math.pow(1.05, 20);
-    const ltc = 1500000 * 12 * Math.pow(1.05, 20);
+    // 명목 모드이므로 시작 나이까지의 물가상승분만 붙는다(쇼크와 같은 규약).
+    const ltc = 1500000 * 12 * Math.pow(1.025, 20);
 
     expect(call({ healthcare: withLtc, currentAge: 80, yearsSinceRetirement: 20 }))
       .toBeCloseTo(base + ltc, 0);
+  });
+
+  test('장기요양 시작 이후에는 의료비 증가율만큼 오른다', () => {
+    const withLtc = { ...healthcare, longTermCareEnabled: true, longTermCareStartAge: 80 };
+    const base = 300000 * 12 * Math.pow(1.05, 25);
+    const ltc = 1500000 * 12 * Math.pow(1.05, 5) * Math.pow(1.025, 20);
+
+    expect(call({ healthcare: withLtc, currentAge: 85, yearsSinceRetirement: 25 }))
+      .toBeCloseTo(base + ltc, 0);
+  });
+
+  test('실질 모드에서 장기요양 시작 해의 금액은 입력값 그대로다', () => {
+    const withLtc = { ...healthcare, longTermCareEnabled: true, longTermCareStartAge: 80 };
+    const base = 300000 * 12 * Math.pow(1.025, 20); // 물가 초과분(5% - 2.5%)만 20년
+
+    expect(call({ healthcare: withLtc, currentAge: 80, yearsSinceRetirement: 20, inflationMode: 'real' }))
+      .toBeCloseTo(base + 1500000 * 12, 0);
   });
 
   test('쇼크는 지정한 나이 한 해에만 발생한다', () => {
@@ -98,8 +120,10 @@ describe('computeAnnualHealthcareCost', () => {
   test('장기요양 시작 나이가 은퇴 나이보다 이르면 은퇴 첫 해부터 붙는다', () => {
     const withEarlyLtc = { ...healthcare, longTermCareEnabled: true, longTermCareStartAge: 55 };
 
+    // 은퇴 전 지출은 모델링하지 않지만 요양은 이미 55세에 시작된 것으로 보므로,
+    // 은퇴 첫 해(60세)의 금액에는 5년치 증가율이 이미 반영되어 있다.
     expect(call({ healthcare: withEarlyLtc, currentAge: 60, yearsSinceRetirement: 0 }))
-      .toBe((300000 + 1500000) * 12);
+      .toBeCloseTo(300000 * 12 + 1500000 * 12 * Math.pow(1.05, 5), 0);
   });
 
   test('생존자가 한 명이면 축소 계수만큼 줄어든다', () => {

@@ -334,9 +334,13 @@ export function recommendStrategy(
   // baseline이 이미 기대수명 전에 고갈되거나(depletion 위험), 목표 생활비 자체가 인출액을
   // 결정하지 않는 전략(dividend_only/max_sustainable)이거나, 목표 생활비가 0 이하이면 생활비를
   // 늘리는 후보를 생성하지 않는다.
+  //
+  // 고갈 판정 기준은 본인 기대수명이 아니라 시뮬레이션이 실제로 돈 마지막 나이
+  // (baselineResult.householdEndAge)다. 본인 기대수명과 비교하면 장수 배우자가 있는 계획에서
+  // 배우자 단독 생존 구간의 파산이 통째로 숨어, 파산하는 계획에 "생활비를 더 쓰라"고 권한다.
   const allowSpendingIncrease =
     (params.spendingStrategy ?? 'target') === 'target' &&
-    (baselineResult.depletionAge === null || baselineResult.depletionAge >= params.userProfile.expectancy);
+    (baselineResult.depletionAge === null || baselineResult.depletionAge >= baselineResult.householdEndAge);
   const identityPlan = getIdentityPlan(params);
   const spendingBasePlan = state.bestPlan ?? identityPlan;
   const spendingCandidates = generateSpendingAdjustmentCandidates(params, spendingBasePlan, {
