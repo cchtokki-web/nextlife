@@ -30,6 +30,7 @@ import { useScenarios } from '../../web/features/Scenario/useScenarios';
 import { E2eeKeyManager } from '../../web/components/E2eeKeyManager';
 import { generateBackupKey, encryptData } from '../../core/utils/crypto';
 import { isDevMode } from '../../core/utils/isDevMode';
+import { useBackgroundValue } from '../../web/hooks/useBackgroundValue';
 export default function Home() {
   const { data: session, status } = useSession();
   const scenarioState = useScenarios();
@@ -132,18 +133,19 @@ export default function Home() {
     [engine, compiled.params, compiled.utilityConfig]
   );
 
-  // AI 추천 전략은 다수의 후보를 시뮬레이션하는 무거운 계산이므로, 메인 result보다
-  // 한 단계 더 지연시켜 타이핑 반응성에 영향을 주지 않도록 한다.
-  const recommendationParams = useDeferredValue(deferredParams);
-  // recommendationParams가 아직 최신 deferredParams를 따라잡지 못한 렌더에서는 참조가
-  // 서로 달라진다 — 이를 "AI 추천 전략을 계산 중" 로딩 상태로 사용한다. 이 비교는 compileStrategy
-  // 이전의 원본 참조로 해야 한다 — compiled.params는 strategy가 있으면 매번 새 객체라
-  // 참조가 항상 달라져 로딩 상태가 고착된다.
-  const isComputingRecommendation = recommendationParams !== deferredParams;
-  const recommendationCompiled = useMemo(
-    () => compileStrategy(recommendationParams),
-    [recommendationParams]
-  );
+  // AI 추천 전략은 다수의 후보를 시뮬레이션하는(최악 216개) 이 화면에서 가장 무거운 계산이라,
+  // 위 engine.run과 같은 렌더 패스에서 돌면 안 된다. useBackgroundValue가 compiled를 한 커밋
+  // 뒤로 미뤄 트랜지션(비긴급) 우선순위에서 계산하게 하고, 아직 따라잡지 못한 렌더를
+  // "탐색 중" 로딩 상태로 노출한다.
+  //
+  // 예전에는 useDeferredValue를 연쇄해 이것을 만들려 했지만 그 방식으로는 2단이 되지 않는다
+  // (React 19의 updateDeferredValueImpl은 이미 비긴급 렌더이면 새 값을 그대로 반환한다).
+  // 그래서 로딩 상태가 영구히 false였고, 추천 계산은 실제로는 result와 같은 패스에서 돌았다.
+  // 자세한 근거는 useBackgroundValue와 그 테스트 참조.
+  //
+  // 원본 params가 아니라 compiled를 미루는 이유: compileStrategy가 같은 입력에 대해 두 번
+  // 실행되지 않는다(예전에는 두 개의 useMemo가 결국 같은 params를 각자 컴파일했다).
+  const [recommendationCompiled, isComputingRecommendation] = useBackgroundValue(compiled);
   // recommendation이 undefined인 이유가 "계산 실패"인지 "탐색할 최적화 여지가 없어 baseline을
   // 그대로 반환"인지 UI에서 구분할 수 있도록 실패 여부를 함께 계산한다(후자는 recommendStrategy가
   // 정상적으로 improved:false, recommendedPlan:null인 객체를 반환하므로 undefined가 되지 않는다).

@@ -58,7 +58,8 @@ export function StrategySettingsPanel({
   const mode = strategy.mode;
 
   const changed = useMemo(() => collectChangedPaths(params), [params]);
-  // 추천 계산은 page.tsx가 한다(그쪽이 이미 2단 useDeferredValue로 타이핑 반응성을 지킨다).
+  // 추천 계산은 page.tsx가 한다(그쪽이 useDeferredValue + useBackgroundValue 파이프라인으로
+  // 타이핑 반응성을 지킨다 — useDeferredValue 연쇄로는 2단이 되지 않는다).
   // 여기서는 섹션들이 쓰는 형태로 펴 주기만 한다 — 패널이 따로 지연시키거나 다시 계산하면
   // 같은 결과를 두 번 만들게 된다.
   const ai: AiRecommendationState = useMemo(() => ({
@@ -108,31 +109,42 @@ export function StrategySettingsPanel({
     }
   };
 
-  // 섹션별 AI 적용. Task 7·8이 자기 케이스를 추가한다.
-  const applyAiToSection = (id: SectionId) => {
+  // 섹션별 AI 적용 결과를 "적용 후 params" 또는 null(적용할 것이 없음)로 계산한다.
+  //
+  // 적용 로직과 버튼 활성 판정을 같은 함수로 묶는 이유: aiDisabled가 패널 전역
+  // (!ai.improved) 판정이면, 이 섹션에서 바뀔 것이 하나도 없는데도 버튼이 활성으로 남아
+  // 눌러도 조용히 아무 일이 일어나지 않는다. 게다가 추천에는 이 화면이 적용할 수 없는
+  // 축(사적연금 월 인출 목표 등)이 섞여 있어 improved가 사실상 영구히 true다.
+  const buildAiSectionPatch = (id: SectionId): SimulationParams | null => {
     if (id === 'investment') {
       // recommendedAssetReinvestment는 recommendedPlan과 독립적으로 계산된다(Phase 3).
       // 아래 plan 널 체크보다 앞에 두지 않으면, 인출계획은 개선이 없고 배당 재투자만
       // 개선된 경우에도 이 섹션의 AI 추천 버튼이 조용히 아무 일도 하지 않게 된다.
       const recommended = ai.recommendation?.recommendedAssetReinvestment;
-      if (!recommended) return;
+      if (!recommended) return null;
+
+      // 이미 권장값과 같으면 적용할 것이 없다.
+      const changesAnything = params.assets.some(
+        (a) => a.id in recommended && a.reinvestDividend !== recommended[a.id]
+      );
+      if (!changesAnything) return null;
 
       // 자산별 권장값을 그대로 적용한다. 전역 스위치는 표시 상태를 자산에서 파생하므로
       // 별도로 갱신할 필요가 없다.
-      onChangeParams({
+      return {
         ...params,
         assets: params.assets.map((a) =>
           a.id in recommended ? { ...a, reinvestDividend: recommended[a.id] } : a
         ),
-      });
-      return;
+      };
     }
 
     const plan = ai.recommendation?.recommendedPlan;
-    if (!plan) return;
+    if (!plan) return null;
 
-    if (id === 'goal' && plan.monthlySpendingMultiplier !== 1) {
-      onChangeParams({
+    if (id === 'goal') {
+      if (plan.monthlySpendingMultiplier === 1) return null;
+      return {
         ...params,
         userProfile: {
           ...params.userProfile,
@@ -140,15 +152,14 @@ export function StrategySettingsPanel({
             params.userProfile.targetMonthlySpending * plan.monthlySpendingMultiplier
           ),
         },
-      });
-      return;
+      };
     }
 
     if (id === 'pension') {
       // 추천 나이를 enum으로 역매핑한다. 정확히 일치하는 전략이 없으면(예: 68세)
       // 가장 가까운 값을 고른다 — 후보 생성기의 나이 격자와 전략 4종이 완전히
       // 겹치지는 않기 때문이다.
-      const strategy = resolveStrategy(params);
+      const currentStrategy = resolveStrategy(params);
       const targetAge = plan.nationalPensionStartAge;
       const candidates = (Object.keys(NATIONAL_PENSION_STRATEGY_AGES) as NationalPensionStrategy[])
         .filter((k) => k !== 'ai_optimized');
@@ -156,17 +167,25 @@ export function StrategySettingsPanel({
         Math.abs(NATIONAL_PENSION_STRATEGY_AGES[k] - targetAge)
           < Math.abs(NATIONAL_PENSION_STRATEGY_AGES[best] - targetAge) ? k : best
       );
+      const preferIsaFirst = plan.isaMaturityDestination === 'asset';
 
-      onChangeParams({
+      if (currentStrategy.nationalPensionStrategy === nearest
+        && currentStrategy.preferIsaFirst === preferIsaFirst) {
+        return null;
+      }
+
+      return {
         ...params,
-        strategy: {
-          ...strategy,
-          nationalPensionStrategy: nearest,
-          preferIsaFirst: plan.isaMaturityDestination === 'asset',
-        },
-      });
-      return;
+        strategy: { ...currentStrategy, nationalPensionStrategy: nearest, preferIsaFirst },
+      };
     }
+
+    return null;
+  };
+
+  const applyAiToSection = (id: SectionId) => {
+    const next = buildAiSectionPatch(id);
+    if (next) onChangeParams(next);
   };
 
   // 섹션이 값을 바꾸면 그 섹션을 잠깐 강조한다. 각 섹션이 highlightSection을
@@ -193,6 +212,8 @@ export function StrategySettingsPanel({
         {/* eslint-disable-next-line react-hooks/refs */}
         {SECTIONS.map(({ id, title, icon }) => {
           const counts = countSectionChanges(changed, id, mode);
+          // 이 섹션에서 실제로 바뀌는 값이 있을 때만 버튼을 연다.
+          const canApplyAi = AI_SECTIONS.has(id) && buildAiSectionPatch(id) !== null;
           return (
             <SettingSection
               key={id}
@@ -204,8 +225,8 @@ export function StrategySettingsPanel({
               // 고급 설정은 전문가 모드에서만 기본으로 펼친다.
               defaultOpen={id === 'advanced' ? mode === 'expert' : false}
               onAiRecommend={AI_SECTIONS.has(id) ? () => applyAiToSection(id) : undefined}
-              aiDisabled={!ai.improved}
-              aiLabel={ai.error ?? (ai.improved ? 'AI 추천' : '이미 최적')}
+              aiDisabled={!!ai.error || !canApplyAi}
+              aiLabel={ai.error ?? (canApplyAi ? 'AI 추천' : '이미 최적')}
             >
               {renderSectionBody(id, sectionPropsFor(id))}
             </SettingSection>

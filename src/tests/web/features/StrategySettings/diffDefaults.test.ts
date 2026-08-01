@@ -96,6 +96,28 @@ describe('collectChangedPaths', () => {
 
     expect(collectChangedPaths(params).has('taxSettings.limitPrivatePensionToTaxLimit')).toBe(true);
   });
+
+  // B6: AdvancedSection은 지배 중일 때 저장값이 아니라 전략이 강제하는 실효값을 보여준다.
+  // 배지만 저장값으로 판정하면, 스위치는 ON인데 "사용자 설정" 배지가 붙고 그 배지가 가리키는
+  // OFF 값은 화면 어디에도 없는 상태가 된다. 최신 환율 자동 조회(baseExchangeRate)에
+  // 이미 쓰고 있는 정책 — "사용자가 정한 값이 아니면 변경으로 세지 않는다" — 과 같다.
+  describe('연금 전략이 저율과세 한도를 지배할 때', () => {
+    const stored = (privatePensionStrategy: 'ai_optimized' | 'spending_first') => ({
+      ...initialParams,
+      strategy: { ...DEFAULT_RETIREMENT_STRATEGY, privatePensionStrategy },
+      taxSettings: { ...initialParams.taxSettings, limitPrivatePensionToTaxLimit: true } as never,
+    });
+
+    test('지배 중이면 저장값이 기본과 달라도 변경으로 세지 않는다', () => {
+      expect(collectChangedPaths(stored('spending_first'))
+        .has('taxSettings.limitPrivatePensionToTaxLimit')).toBe(false);
+    });
+
+    test('지배하지 않으면(AI 최적화) 평소대로 변경으로 잡는다', () => {
+      expect(collectChangedPaths(stored('ai_optimized'))
+        .has('taxSettings.limitPrivatePensionToTaxLimit')).toBe(true);
+    });
+  });
 });
 
 describe('countSectionChanges', () => {

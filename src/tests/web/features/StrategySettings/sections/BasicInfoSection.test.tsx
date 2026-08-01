@@ -1,8 +1,11 @@
 import { describe, test, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { BasicInfoSection } from '@/web/features/StrategySettings/sections/BasicInfoSection';
-import { DEFAULT_SPOUSE } from '@/web/features/StrategySettings/strategyOptions';
+import { createDefaultSpouse } from '@/web/features/StrategySettings/strategyOptions';
 import { initialParams } from '@/infrastructure/storage/localStore';
+
+// 기본 시나리오(본인 50세 / 기대수명 85세) 기준 배우자 기본값. 예전 고정값과 같은 50/90이다.
+const DEFAULT_SPOUSE = createDefaultSpouse(initialParams.userProfile);
 
 const renderSection = (params = initialParams, onChangeParams = vi.fn()) => {
   render(
@@ -50,6 +53,48 @@ describe('BasicInfoSection', () => {
     expect(onChangeParams).toHaveBeenCalledWith({
       ...initialParams,
       spouse: { ...DEFAULT_SPOUSE, enabled: true },
+    });
+  });
+
+  // B3: 고정 기본값(50세/90세)은 65세 사용자가 스위치를 켜는 순간
+  // deathAtSelfAge = 65 + (90 - 50) = 105를 만들어 시뮬레이션이 105세까지 돈다.
+  // householdEndAge가 depletionAge·endingAssets·depletionSafety를 좌우하므로 파급이 크다.
+  describe('배우자 기본값은 본인 값에서 유도한다', () => {
+    test('65세 사용자가 스위치를 켜면 배우자 나이가 본인 나이에서 시작한다', () => {
+      const params = {
+        ...initialParams,
+        userProfile: { ...initialParams.userProfile, currentAge: 65, expectancy: 88 },
+      };
+      const onChangeParams = renderSection(params);
+
+      fireEvent.click(screen.getByRole('switch', { name: /배우자 포함/ }));
+
+      expect(onChangeParams).toHaveBeenCalledWith({
+        ...params,
+        spouse: {
+          enabled: true,
+          currentAge: 65,
+          expectancy: 93, // 본인 기대수명 + 5년(여성 기대수명이 더 길다는 통계)
+          nationalPensionMonthlyAmount: 0,
+          nationalPensionStartAge: 65,
+        },
+      });
+    });
+
+    test('기대수명 상한을 넘기지 않는다', () => {
+      const params = {
+        ...initialParams,
+        userProfile: { ...initialParams.userProfile, currentAge: 60, expectancy: 128 },
+      };
+      const onChangeParams = renderSection(params);
+
+      fireEvent.click(screen.getByRole('switch', { name: /배우자 포함/ }));
+
+      expect(onChangeParams).toHaveBeenCalledWith(
+        expect.objectContaining({
+          spouse: expect.objectContaining({ expectancy: 130 }),
+        })
+      );
     });
   });
 

@@ -35,9 +35,17 @@ export function PensionStrategySection({ params, onChangeParams, mode, changed, 
   const nationalHint = plan?.nationalPensionStartAge !== undefined
     ? `${plan.nationalPensionStartAge}세부터 수령`
     : undefined;
-  const privateHint = plan?.privatePensionMonthlyTarget !== undefined
-    ? `월 ${Math.round(plan.privatePensionMonthlyTarget / 10000).toLocaleString()}만원 인출`
-    : undefined;
+
+  // 사적연금 인출 전략에는 AI 힌트를 붙이지 않는다.
+  //
+  // 추천이 내놓는 privatePensionMonthlyTarget은 이 화면의 선택지로 표현할 수 없다:
+  //   후보 격자   = targetMonthlySpending × {0.8, 1.0, 1.3}   (기본값 기준 280/350/455만원)
+  //   표현 가능   = privatePensionLimit/12 × {1, 0.5, 0.25}   (125/62.5/31.25만원)
+  // 교집합이 없어 어떤 값으로도 역매핑되지 않고, applyAiToSection도 이 축을 적용하지 않는다.
+  // 적용할 수 없는 값을 "AI 추천"으로 보여주면 사용자는 추천을 따르려고 버튼을 눌렀다가
+  // 아무 일도 일어나지 않는 것을 보게 된다. 가장 가까운 전략으로 억지 역매핑하는 방식은
+  // 택하지 않았다 — 그러면 시뮬레이션한 적 없는 값을 "AI가 계산한 결과"로 제시하게 되고,
+  // 이는 이 브랜치가 이미 한 번 제거한 결함 유형이다(시뮬레이션되지 않은 recommendedPlan 조작).
 
   return (
     <>
@@ -61,7 +69,6 @@ export function PensionStrategySection({ params, onChangeParams, mode, changed, 
           label="사적연금 인출 전략"
           tooltipTerm="irp"
           changed={changed.has('strategy.privatePensionStrategy')}
-          aiHint={privateHint}
         >
           <RadioCardGroup
             name="private-pension-strategy" ariaLabel="사적연금 인출 전략" value={strategy.privatePensionStrategy}

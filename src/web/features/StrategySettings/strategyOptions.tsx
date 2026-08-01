@@ -10,6 +10,7 @@ import {
 } from '../../../core/entities/types';
 import { NATIONAL_PENSION_NORMAL_START_AGE } from '../../../core/usecases/pension/nationalPensionRules';
 import { RadioCardOption } from '../../components/form';
+import { EXPECTANCY_MAX } from './ageInput';
 import { FieldPath } from './fieldVisibility';
 
 // 6개 섹션이 공유하는 props. 섹션은 자기 값 읽기/쓰기와 노출 판정에 필요한 것만 받는다.
@@ -23,9 +24,9 @@ export interface SectionProps {
 // AI 추천을 쓰는 섹션들이 공유하는 표면.
 //
 // 추천 계산(recommendStrategy, 최대 162개 후보 시뮬레이션)은 이 앱에서 가장 무거운 계산이라
-// 화면 전체에서 딱 한 번만 돌아야 한다. 계산은 page.tsx가 하고(이미 2단 useDeferredValue로
-// 보호된다) 그 결과가 이 형태로 패널을 거쳐 각 섹션에 내려온다 — 패널 안에서 다시 계산하면
-// 같은 결과를 두 번 만든다.
+// 화면 전체에서 딱 한 번만 돌아야 한다. 계산은 page.tsx가 하고(useDeferredValue로 한 번,
+// useBackgroundValue로 한 번 더 미뤄 트랜지션 우선순위에서 돈다) 그 결과가 이 형태로 패널을
+// 거쳐 각 섹션에 내려온다 — 패널 안에서 다시 계산하면 같은 결과를 두 번 만든다.
 export interface AiRecommendationState {
   recommendation: StrategyRecommendation | null;
   error: string | null;
@@ -33,15 +34,31 @@ export interface AiRecommendationState {
   improved: boolean;
 }
 
-// 배우자 스위치를 처음 켤 때 채워 넣는 값.
-// currentAge/expectancy는 BasicInfoSection이 본인 값을 기준으로 덮어쓴다.
-export const DEFAULT_SPOUSE: SpouseProfile = {
-  enabled: false,
-  currentAge: 50,
-  expectancy: 90, // 여성 기대수명이 더 길다는 통계를 반영해 본인 기본값(85)보다 높게 둔다.
-  nationalPensionMonthlyAmount: 0,
-  nationalPensionStartAge: NATIONAL_PENSION_NORMAL_START_AGE,
-};
+// 배우자 기대수명을 본인 기대수명보다 몇 년 길게 잡을지. 여성 기대수명이 더 길다는
+// 통계를 반영한 값이며, 예전 고정 기본값(본인 85 / 배우자 90)의 간격과 같다.
+export const SPOUSE_EXPECTANCY_BONUS = 5;
+
+// 배우자 스위치를 처음 켤 때 채워 넣는 값. 나이는 반드시 본인 값에서 유도한다.
+//
+// 예전에는 고정값(currentAge 50 / expectancy 90)이었고 "BasicInfoSection이 본인 값을 기준으로
+// 덮어쓴다"는 주석이 붙어 있었지만 그런 로직은 없었다. 그 결과 65세 사용자가 스위치를 켜면
+// 배우자가 50세·90세로 저장되어 deathAtSelfAge = 65 + (90 - 50) = 105가 되고, 시뮬레이션이
+// 105세까지 돌았다. householdEndAge가 depletionAge·endingAssets·depletionSafety를 좌우하므로
+// 이 한 번의 스위치가 결과 전체를 바꿔 놓는다.
+//
+// 배우자 나이를 본인 나이와 같게 두는 것은 "모른다"에 대한 가장 중립적인 시작점이며,
+// 사용자가 곧바로 옆 입력에서 고칠 수 있다.
+export function createDefaultSpouse(
+  userProfile: Pick<SimulationParams['userProfile'], 'currentAge' | 'expectancy'>
+): SpouseProfile {
+  return {
+    enabled: false,
+    currentAge: userProfile.currentAge,
+    expectancy: Math.min(EXPECTANCY_MAX, userProfile.expectancy + SPOUSE_EXPECTANCY_BONUS),
+    nationalPensionMonthlyAmount: 0,
+    nationalPensionStartAge: NATIONAL_PENSION_NORMAL_START_AGE,
+  };
+}
 
 // 의료비 스위치를 처음 켤 때 채워 넣는 값.
 // 월 30만원은 통계청 가계동향의 60대 이상 보건 지출 수준을 참고한 것이고,

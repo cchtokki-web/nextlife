@@ -1,5 +1,7 @@
 import { SimulationParams, StrategyMode } from '../../../core/entities/types';
-import { DEFAULT_RETIREMENT_STRATEGY } from '../../../core/usecases/strategy/compileStrategy';
+import {
+  DEFAULT_RETIREMENT_STRATEGY, resolvePrivatePensionTaxLimitOverride, resolveStrategy,
+} from '../../../core/usecases/strategy/compileStrategy';
 import { resolveTaxSettings } from '../../../core/usecases/tax/taxRates';
 import { initialParams } from '../../../infrastructure/storage/localStore';
 import { FieldPath, SECTION_FIELDS, SectionId, isFieldVisible } from './fieldVisibility';
@@ -43,6 +45,19 @@ function isAutoFetchedExchangeRate(params: SimulationParams, path: FieldPath): b
   return path === 'baseExchangeRate' || path === 'useLatestExchangeRate';
 }
 
+// ③연금 전략이 'ai_optimized'가 아니면 compileStrategy가 저율과세 한도 내 인출 여부를
+// 덮어쓴다. AdvancedSection도 그 상태에서는 저장값이 아니라 전략이 강제하는 실효값을
+// 스위치에 보여준다. 배지만 저장값으로 판정하면 스위치는 ON인데 "사용자 설정" 배지가 붙고,
+// 그 배지가 가리키는 OFF 값은 화면 어디에도 없는 상태가 된다.
+// isAutoFetchedExchangeRate와 같은 정책이다 — 사용자가 지금 정하고 있는 값이 아니면
+// 변경으로 세지 않는다. 전략을 'AI 최적화'로 되돌리는 순간부터 다시 정상 판정된다.
+function isStrategyGovernedTaxLimit(params: SimulationParams, path: FieldPath): boolean {
+  if (path !== 'taxSettings.limitPrivatePensionToTaxLimit') return false;
+  return resolvePrivatePensionTaxLimitOverride(
+    resolveStrategy(params).privatePensionStrategy
+  ) !== null;
+}
+
 function isAssetReinvestChanged(params: SimulationParams): boolean {
   const baseline = new Map(initialParams.assets.map((a) => [a.id, a.reinvestDividend]));
   return params.assets.some((a) => {
@@ -65,6 +80,7 @@ export function collectChangedPaths(params: SimulationParams): ReadonlySet<Field
       }
 
       if (isAutoFetchedExchangeRate(params, path)) continue;
+      if (isStrategyGovernedTaxLimit(params, path)) continue;
 
       const current = readPath(params, path);
       // 값을 아직 지정하지 않은 필드(undefined)는 "기본값 그대로"로 본다.

@@ -8,7 +8,7 @@ import InputField from '../../../components/InputField';
 import { FieldRow, SwitchField } from '../../../components/form';
 import { AGE_MAX, AGE_MIN, EXPECTANCY_MAX, parseAge } from '../ageInput';
 import { isFieldVisible } from '../fieldVisibility';
-import { DEFAULT_SPOUSE, SectionProps } from '../strategyOptions';
+import { createDefaultSpouse, SectionProps } from '../strategyOptions';
 
 export function BasicInfoSection({ params, onChangeParams, mode, changed }: SectionProps) {
   const { userProfile } = params;
@@ -19,10 +19,14 @@ export function BasicInfoSection({ params, onChangeParams, mode, changed }: Sect
     onChangeParams({ ...params, userProfile: { ...userProfile, [key]: value } });
   };
 
+  // 기본값은 본인 값에서 유도한다(createDefaultSpouse). 고정 나이를 쓰면 스위치 한 번으로
+  // 가구 종료 나이가 엉뚱하게 늘어난다.
+  const spouseDefaults = createDefaultSpouse(userProfile);
+
   const setSpouse = (patch: Partial<SpouseProfile>) => {
     const next: SimulationParams = {
       ...params,
-      spouse: { ...DEFAULT_SPOUSE, ...(spouse ?? {}), ...patch },
+      spouse: { ...spouseDefaults, ...(spouse ?? {}), ...patch },
     };
     onChangeParams(next);
   };
@@ -101,7 +105,7 @@ export function BasicInfoSection({ params, onChangeParams, mode, changed }: Sect
               <InputField
                 label="" aria-label="배우자 나이" type="number" suffixText="세"
                 min={AGE_MIN} max={AGE_MAX}
-                value={spouse?.currentAge ?? DEFAULT_SPOUSE.currentAge}
+                value={spouse?.currentAge ?? spouseDefaults.currentAge}
                 onChange={(e) => {
                   const age = parseAge(e.target.value, AGE_MAX);
                   if (age !== null) setSpouse({ currentAge: age });
@@ -114,7 +118,7 @@ export function BasicInfoSection({ params, onChangeParams, mode, changed }: Sect
               <InputField
                 label="" aria-label="배우자 기대수명" type="number" suffixText="세"
                 min={AGE_MIN} max={EXPECTANCY_MAX}
-                value={spouse?.expectancy ?? DEFAULT_SPOUSE.expectancy}
+                value={spouse?.expectancy ?? spouseDefaults.expectancy}
                 onChange={(e) => {
                   const age = parseAge(e.target.value, EXPECTANCY_MAX);
                   if (age !== null) setSpouse({ expectancy: age });
@@ -148,7 +152,7 @@ export function BasicInfoSection({ params, onChangeParams, mode, changed }: Sect
               <InputField
                 label="" aria-label="배우자 수령 개시 나이" type="number" suffixText="세"
                 min={NATIONAL_PENSION_EARLY_MIN_AGE} max={NATIONAL_PENSION_DEFERRED_MAX_AGE}
-                value={spouse?.nationalPensionStartAge ?? DEFAULT_SPOUSE.nationalPensionStartAge}
+                value={spouse?.nationalPensionStartAge ?? spouseDefaults.nationalPensionStartAge}
                 // 하한을 조기수령 개시 나이(55)로 잡지 않는 이유: 타이핑 중간 상태("6")가
                 // 곧바로 55로 튀어 "65"를 입력할 수 없게 된다. 여기서는 저장하면 안 되는
                 // 값(빈 문자열 = 0)만 막고, 계산 시점의 범위 강제는 resolveSpouse가 한다.

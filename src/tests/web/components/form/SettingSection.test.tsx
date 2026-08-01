@@ -101,6 +101,56 @@ describe('SettingSection', () => {
     expect(container.querySelector('[data-highlighted]')).toBeNull();
   });
 
+  // B5: StrategySettingsPanel은 defaultOpen={mode === 'expert'}로 고급 설정을 여는데,
+  // useState(defaultOpen)은 초기값만 읽고 key도 안정적이라 리마운트가 없다. 기본 모드가
+  // 'simple'이므로 마운트 시 false로 굳어 이후 전문가 모드로 올려도 영영 열리지 않았다.
+  describe('defaultOpen이 바뀌면 열림 상태를 따라간다', () => {
+    const section = (defaultOpen: boolean) => (
+      <SettingSection icon={<Target size={16} />} title="고급 설정" defaultOpen={defaultOpen}>
+        <p>본문</p>
+      </SettingSection>
+    );
+
+    // 접힘 여부는 aria-expanded로 확인한다. 본문 텍스트는 AnimatePresence의 exit 애니메이션
+    // 동안 DOM에 남아 있어 "방금 접혔다"를 즉시 관찰할 수 없다.
+    const header = () => screen.getByRole('button', { name: /고급 설정/ });
+
+    test('false → true로 바뀌면 펼쳐진다', () => {
+      const { rerender } = render(section(false));
+      expect(header()).toHaveAttribute('aria-expanded', 'false');
+
+      rerender(section(true));
+
+      expect(header()).toHaveAttribute('aria-expanded', 'true');
+      expect(screen.getByText('본문')).toBeInTheDocument();
+    });
+
+    test('true → false로 바뀌면 접힌다', () => {
+      const { rerender } = render(section(true));
+
+      rerender(section(false));
+
+      expect(header()).toHaveAttribute('aria-expanded', 'false');
+    });
+
+    test('defaultOpen이 그대로면 사용자가 접은 상태를 유지한다', () => {
+      const { rerender } = render(section(true));
+      fireEvent.click(header());
+      expect(header()).toHaveAttribute('aria-expanded', 'false');
+
+      // 다른 prop만 바뀐 리렌더가 사용자의 조작을 되돌려서는 안 된다.
+      rerender(
+        <SettingSection
+          icon={<Target size={16} />} title="고급 설정" defaultOpen changedCount={2}
+        >
+          <p>본문</p>
+        </SettingSection>
+      );
+
+      expect(header()).toHaveAttribute('aria-expanded', 'false');
+    });
+  });
+
   test('aiDisabled면 AI 추천 버튼이 비활성화된다', () => {
     render(
       <SettingSection

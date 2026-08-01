@@ -112,6 +112,29 @@ describe('PensionStrategySection', () => {
     expect(screen.getByText('AI 추천: 70세부터 수령')).toBeInTheDocument();
   });
 
+  // B2: 사적연금 월 인출 목표는 적용되지 않을 뿐 아니라 이 화면의 선택지로는 표현조차 되지
+  // 않는다. 후보 격자는 targetMonthlySpending × {0.8, 1.0, 1.3}이고 표현 가능한 값은
+  // privatePensionLimit/12 × {1, 0.5, 0.25}라 교집합이 없다. 적용할 수 없는 값을 "AI 추천"으로
+  // 보여주면 사용자는 추천을 따르려고 눌렀다가 아무 일도 일어나지 않는 것을 보게 된다.
+  test('적용할 수 없는 사적연금 월 인출 목표는 힌트로 보여주지 않는다', () => {
+    const ai = {
+      recommendation: {
+        improved: true,
+        recommendedPlan: { nationalPensionStartAge: 70, privatePensionMonthlyTarget: 2800000 },
+      } as never,
+      error: null, improved: true,
+    };
+
+    render(
+      <PensionStrategySection
+        params={initialParams} onChangeParams={vi.fn()}
+        mode="standard" changed={new Set()} ai={ai}
+      />
+    );
+
+    expect(screen.queryByText(/만원 인출/)).not.toBeInTheDocument();
+  });
+
   test('간편 모드에서도 국민연금/사적연금 전략은 보인다', () => {
     render(
       <PensionStrategySection
