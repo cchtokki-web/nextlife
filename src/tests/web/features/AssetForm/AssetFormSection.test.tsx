@@ -2,6 +2,7 @@ import { describe, test, expect, vi, beforeAll } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { AssetFormSection } from '@/web/features/AssetForm/AssetFormSection';
 import { SimulationParams } from '@/core/entities/types';
+import { DEFAULT_RETIREMENT_STRATEGY } from '@/core/usecases/strategy/compileStrategy';
 
 // 탭 클릭 시 handleTabClick이 scrollIntoView를 부르는데 jsdom에는 구현이 없다.
 beforeAll(() => {
@@ -38,6 +39,95 @@ describe('AssetFormSection - 인적사항 탭 제거됨', () => {
 
     expect(screen.getByRole('button', { name: /주식 & ETF/ })).toBeInTheDocument();
     expect(screen.getByText(/자산 추가/)).toBeInTheDocument();
+  });
+});
+
+// B2: compileStrategy는 리스크 성향(또는 경제 시나리오)이 명시적이면 applyYieldPreset/
+// applyEconomicScenario로 자산·연금·ISA 수익률을 통째로 덮어쓴다. 이 폼은 compiled.params가
+// 아니라 원본 params를 받으므로, 입력을 열어두면 사용자는 자기 입력값을 보면서 엔진은
+// 프리셋 값으로 계산하는 상태가 된다. 저율과세 한도·물가상승률과 같은 처리를 한다:
+// 전략이 지배 중이면 비활성화하고 이유를 표시한다.
+describe('AssetFormSection - 전략이 수익률을 지배할 때', () => {
+  const withAsset: SimulationParams = {
+    ...baseParams,
+    assets: [{
+      id: 'a1', type: 'etf', ticker: 'AAA', name: '자산1', quantity: 10, averagePrice: 1000,
+      annualGrowthRate: 12, dividendYield: 2, monthlyContribution: 0,
+      reinvestDividend: false, currency: 'KRW',
+    }],
+  };
+
+  const renderExpanded = (params: SimulationParams) => {
+    render(<AssetFormSection params={params} onChangeParams={vi.fn()} />);
+    // 수익률 입력은 자산 카드를 펼쳐야 보인다.
+    fireEvent.click(screen.getByText('자산1'));
+  };
+
+  test('리스크 성향이 명시적이면 연 성장률 입력이 비활성화되고 이유가 표시된다', () => {
+    renderExpanded({
+      ...withAsset,
+      strategy: { ...DEFAULT_RETIREMENT_STRATEGY, riskProfile: 'conservative' },
+    });
+
+    expect(screen.getByLabelText('연 성장률')).toBeDisabled();
+    expect(screen.getByText(/리스크 성향/)).toBeInTheDocument();
+  });
+
+  test('경제 시나리오가 명시적이면 연 성장률 입력이 비활성화되고 이유가 표시된다', () => {
+    renderExpanded({
+      ...withAsset,
+      strategy: { ...DEFAULT_RETIREMENT_STRATEGY, economicScenario: 'recession' },
+    });
+
+    expect(screen.getByLabelText('연 성장률')).toBeDisabled();
+    expect(screen.getByText(/경제 시나리오/)).toBeInTheDocument();
+  });
+
+  test('둘 다 AI 추천(미정)이면 입력이 열려 있고 안내 문구도 없다', () => {
+    renderExpanded({ ...withAsset, strategy: { ...DEFAULT_RETIREMENT_STRATEGY } });
+
+    expect(screen.getByLabelText('연 성장률')).toBeEnabled();
+    expect(screen.queryByText(/이 값을 결정합니다/)).not.toBeInTheDocument();
+  });
+
+  test('전략이 아예 없는(레거시) 시나리오에서도 입력이 열려 있다', () => {
+    renderExpanded(withAsset);
+
+    expect(screen.getByLabelText('연 성장률')).toBeEnabled();
+  });
+
+  test('배당률은 프리셋이 건드리지 않으므로 계속 편집할 수 있다', () => {
+    renderExpanded({
+      ...withAsset,
+      strategy: { ...DEFAULT_RETIREMENT_STRATEGY, riskProfile: 'aggressive' },
+    });
+
+    expect(screen.getByLabelText('연 배당률')).toBeEnabled();
+  });
+
+  test('사적연금·ISA 수익률 입력도 함께 비활성화된다', () => {
+    const params: SimulationParams = {
+      ...baseParams,
+      strategy: { ...DEFAULT_RETIREMENT_STRATEGY, riskProfile: 'conservative' },
+      privatePensions: [
+        { id: 'p1', type: 'irp', balance: 1000, monthlyContribution: 0, annualReturn: 5, currency: 'KRW' },
+      ],
+      isaAccounts: [
+        {
+          id: 'i1', type: 'general', balance: 1000, monthlyContribution: 0,
+          annualReturn: 5, dividendYield: 1.5, currency: 'KRW', maturityYears: 3,
+        },
+      ],
+    };
+    render(<AssetFormSection params={params} onChangeParams={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /연금 자산/ }));
+    fireEvent.click(screen.getByText(/IRP 연금 계좌/));
+    expect(screen.getByLabelText('연 수익률')).toBeDisabled();
+
+    fireEvent.click(screen.getByRole('button', { name: /ISA 계좌/ }));
+    fireEvent.click(screen.getByText(/중개형 ISA/));
+    expect(screen.getByLabelText('연 수익률')).toBeDisabled();
   });
 });
 

@@ -65,6 +65,30 @@ describe('applyEconomicScenario', () => {
     expect(r.privatePensions[0].annualReturn).toBe(profile.pensionReturnRate);
   });
 
+  // B1: ISA는 assets와 같은 시장 연동 계좌인데(annualReturn + dividendYield로 성장하고
+  // 엔진이 자기 annualReturn으로 굴린다) 시나리오에서만 빠져 있었다. "장기 침체"를 골라
+  // 주식이 7% → 3%로 떨어지는 동안 ISA만 사용자 입력값을 유지하면, 구성상 ISA가 항상
+  // 최고 수익 버킷이 되어 isaMaturityDestination 추천과 연금→ISA 채널링 판정이
+  // 그 인공물 쪽으로 편향된다.
+  test('ISA 계좌 수익률도 주식 수익률로 함께 교체한다', () => {
+    const withIsa: SimulationParams = {
+      ...params,
+      isaAccounts: [{
+        id: 'i1', type: 'general', balance: 1000, monthlyContribution: 0,
+        annualReturn: 9, dividendYield: 1.5, currency: 'KRW', maturityYears: 3,
+      }],
+    };
+
+    const r = applyEconomicScenario(withIsa, 'recession');
+
+    expect(r.isaAccounts![0].annualReturn).toBe(ECONOMIC_SCENARIO_PROFILES.recession!.stockGrowthRate);
+  });
+
+  test('ISA 계좌가 없어도 크래시하지 않는다', () => {
+    expect(() => applyEconomicScenario(params, 'recession')).not.toThrow();
+    expect(applyEconomicScenario(params, 'recession').isaAccounts).toBeUndefined();
+  });
+
   test('입력 객체를 변형하지 않는다', () => {
     const snapshot = JSON.parse(JSON.stringify(params));
 

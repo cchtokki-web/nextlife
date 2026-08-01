@@ -6,6 +6,8 @@ import styles from './AssetForm.module.css';
 import compStyles from '../../styles/components.module.css';
 import { Plus, Trash2, Wallet, Landmark, PiggyBank, DollarSign, ExternalLink, ChevronDown, ChevronUp, RefreshCw } from 'lucide-react';
 import { PredefinedAsset, predefinedAssets } from './predefinedAssets';
+import { resolveRiskProfileYieldPreset, resolveStrategy } from '../../../core/usecases/strategy/compileStrategy';
+import { isEconomicScenarioGoverning } from '../../../core/usecases/scenario/economicScenarios';
 
 const convertAmountOnPeriodChange = (amount: number, fromPeriod: 'daily' | 'weekly' | 'monthly', toPeriod: 'daily' | 'weekly' | 'monthly'): number => {
   let monthlyAmount = amount;
@@ -56,6 +58,25 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
     displayCurrency: rawParams?.displayCurrency || 'KRW',
     spendingStrategy: rawParams?.spendingStrategy || 'target',
   };
+  // 전략(④투자 전략)이 수익률을 지배하는 동안에는 이 폼의 수익률 입력을 잠근다.
+  //
+  // 이 폼은 compileStrategy를 거친 params가 아니라 원본 params를 받는다. 그래서 입력을
+  // 열어두면 사용자는 자기가 넣은 값을 보면서 엔진은 프리셋 값(리스크 성향 5/7/9% ·
+  // 3/4/6%, 경제 시나리오 프로필)으로 계산하는 상태가 조용히 만들어진다. 고급 설정의
+  // 저율과세 한도, ⑤경제 가정의 물가상승률에 이미 쓰고 있는 "지배 중이면 비활성화 +
+  // 이유 표시" 패턴을 그대로 재사용한다.
+  //
+  // 반대 방향(수익률을 편집하면 riskProfile을 'custom'으로 되돌리기)은 택하지 않았다:
+  // 다른 섹션에서 사용자가 명시적으로 고른 전략이 화면 반대편의 입력 때문에 소리 없이
+  // 뒤집히는 것이야말로 이 브랜치가 반복해서 고쳐 온 결함 형태이고, 게다가 경제 시나리오는
+  // riskProfile이 아니므로 그 방식으로는 절반만 해결된다.
+  const strategy = resolveStrategy(params);
+  const yieldGovernedBy = resolveRiskProfileYieldPreset(strategy.riskProfile) !== null
+    ? '리스크 성향'
+    : isEconomicScenarioGoverning(strategy.economicScenario)
+      ? '경제 시나리오'
+      : null;
+
   const [activeTab, setActiveTab] = useState<TabType>('stocks');
   const [expandedAssets, setExpandedAssets] = useState<Record<string, boolean>>({});
   const [expandedPensions, setExpandedPensions] = useState<Record<string, boolean>>({});
@@ -579,6 +600,12 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
 
       {isSectionExpanded && (
         <>
+          {yieldGovernedBy && (
+            <p style={{ fontSize: '0.75rem', color: 'var(--warning, #f59e0b)', margin: '0 0 0.75rem' }}>
+              ④투자 전략의 {yieldGovernedBy}이(가) 아래 수익률 값을 결정합니다. 직접 입력하려면
+              투자 전략에서 리스크 성향과 경제 시나리오를 모두 &ldquo;AI 추천&rdquo;으로 두세요.
+            </p>
+          )}
           {/* Tab Menu */}
           <div className={styles.tabList}>
         <button
@@ -805,9 +832,11 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                         <div className={styles.priceInputGrow}>
                           <InputField
                             label="연 성장률"
+                            aria-label="연 성장률"
                             type="number"
                             step="0.1"
                             value={asset.annualGrowthRate}
+                            disabled={yieldGovernedBy !== null}
                             onChange={(e) => handleUpdateAsset(asset.id, 'annualGrowthRate', Number(e.target.value))}
                             suffixText="%"
                           />
@@ -829,6 +858,7 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                         <div className={styles.priceInputGrow}>
                           <InputField
                             label="연 배당률"
+                            aria-label="연 배당률"
                             type="number"
                             step="0.1"
                             value={asset.dividendYield}
@@ -1204,9 +1234,11 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                         <div className={styles.priceInputGrow}>
                           <InputField
                             label="연 주가 상승률"
+                            aria-label="연 수익률"
                             type="number"
                             step="0.1"
                             value={pension.annualReturn}
+                            disabled={yieldGovernedBy !== null}
                             onChange={(e) => handleUpdatePrivatePension(pension.id, 'annualReturn', Number(e.target.value))}
                             suffixText="%"
                           />
@@ -1252,9 +1284,11 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                   ) : (
                     <InputField
                       label={pension.investmentType === 'deposit' ? '연 이자율 (금리)' : '연 주가 상승률'}
+                      aria-label="연 수익률"
                       type="number"
                       step="0.1"
                       value={pension.annualReturn}
+                      disabled={yieldGovernedBy !== null}
                       onChange={(e) => handleUpdatePrivatePension(pension.id, 'annualReturn', Number(e.target.value))}
                       suffixText="%"
                     />
@@ -1427,9 +1461,11 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                             <div className={styles.priceInputGrow}>
                               <InputField
                                 label="연 주가 상승률"
+                                aria-label="연 수익률"
                                 type="number"
                                 step="0.1"
                                 value={isa.annualReturn}
+                                disabled={yieldGovernedBy !== null}
                                 onChange={(e) => handleUpdateIsaAccount(isa.id, 'annualReturn', Number(e.target.value))}
                                 suffixText="%"
                               />
@@ -1475,9 +1511,11 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                       ) : isa.investmentType === 'deposit' ? (
                         <InputField
                           label="연 이자율 (금리)"
+                          aria-label="연 수익률"
                           type="number"
                           step="0.1"
                           value={isa.annualReturn}
+                          disabled={yieldGovernedBy !== null}
                           onChange={(e) => handleUpdateIsaAccount(isa.id, 'annualReturn', Number(e.target.value))}
                           suffixText="%"
                         />
@@ -1485,9 +1523,11 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                         <>
                           <InputField
                             label="연 기대 수익률"
+                            aria-label="연 수익률"
                             type="number"
                             step="0.1"
                             value={isa.annualReturn}
+                            disabled={yieldGovernedBy !== null}
                             onChange={(e) => handleUpdateIsaAccount(isa.id, 'annualReturn', Number(e.target.value))}
                             suffixText="%"
                           />

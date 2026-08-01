@@ -130,12 +130,15 @@ export interface IsaAccount {
   maturityYears: number; // 기본 3년
 }
 
-// 자산/사적연금별 "사용자 프리셋"(직접입력 수익률) 스냅샷. 시장 수익률 프리셋(보수적/기본값/
+// 자산/사적연금/ISA별 "사용자 프리셋"(직접입력 수익률) 스냅샷. 시장 수익률 프리셋(보수적/기본값/
 // 공격적)으로 전환하면 자산의 annualGrowthRate/annualReturn이 프리셋 값으로 덮어써지므로, 그
 // 직전 시점의 직접입력 값을 id 기준으로 보존해 두었다가 "사용자 프리셋" 재선택 시 되돌린다.
 export interface CustomYieldSnapshot {
   assets: Record<string, number>; // InvestmentAsset.id -> annualGrowthRate
   privatePensions: Record<string, number>; // PrivatePension.id -> annualReturn
+  // IsaAccount.id -> annualReturn. ISA가 프리셋 대상에 들어오기 전에 저장된 스냅샷에는
+  // 이 키가 없으므로 optional이다 — 필수로 바꾸면 이미 저장된 시나리오가 타입과 어긋난다.
+  isaAccounts?: Record<string, number>;
 }
 
 export interface SimulationParams {

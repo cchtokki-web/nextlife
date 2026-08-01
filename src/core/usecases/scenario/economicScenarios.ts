@@ -2,7 +2,12 @@ import { EconomicScenario, SimulationParams } from '../../entities/types';
 
 export interface EconomicScenarioProfile {
   inflationRate: number; // %
-  stockGrowthRate: number; // % — 모든 주식/ETF 자산에 일괄 적용
+  // % — 모든 주식/ETF 자산과 ISA 계좌에 일괄 적용.
+  // ISA에 별도 요율을 두지 않는 이유: 이 모델에서 ISA는 assets와 구조가 같은 시장 연동
+  // 계좌다(annualReturn + dividendYield로 굴러가고 세제만 다르다). 반면 사적연금은 더
+  // 보수적인 배분을 가정해 별도 요율을 쓴다. computeSensitivityAnalysis.shiftReturn도
+  // "시장 전체가 함께 움직인다"는 같은 전제로 세 버킷을 동일 폭만큼 움직인다.
+  stockGrowthRate: number;
   pensionReturnRate: number; // % — 모든 사적연금 계좌에 일괄 적용
   exchangeScenario: SimulationParams['exchangeScenario'];
 }
@@ -45,6 +50,10 @@ export function applyEconomicScenario(
   const profile = ECONOMIC_SCENARIO_PROFILES[scenario];
   if (!profile) return params;
 
+  // isaAccounts는 키가 없을 수도 있으므로(옛 시나리오 데이터) 있을 때만 교체한다.
+  // 빈 배열을 새로 심으면 "ISA를 만든 적 없음"과 "ISA를 다 지움"이 구분되지 않는다.
+  const isaAccounts = params.isaAccounts?.map((i) => ({ ...i, annualReturn: profile.stockGrowthRate }));
+
   return {
     ...params,
     inflationRate: profile.inflationRate,
@@ -53,5 +62,6 @@ export function applyEconomicScenario(
     privatePensions: (params.privatePensions ?? []).map((p) => ({
       ...p, annualReturn: profile.pensionReturnRate,
     })),
+    ...(isaAccounts ? { isaAccounts } : {}),
   };
 }

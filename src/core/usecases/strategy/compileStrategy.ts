@@ -150,6 +150,18 @@ const RISK_PROFILE_PRESETS: Partial<Record<RiskProfile, 'conservative' | 'base' 
   aggressive: 'aggressive',
 };
 
+// ④투자 전략의 리스크 성향이 자산·연금·ISA 수익률을 지배하는지, 지배한다면 어떤 프리셋으로
+// 고정하는지. null이면 지배하지 않으므로 사용자가 직접 입력한 수익률이 그대로 쓰인다.
+// 자산 입력 폼이 수익률 입력을 비활성화할지 판정하는 데 쓴다 —
+// resolvePrivatePensionTaxLimitOverride와 같은 이유로, 규칙표를 UI에 복제하면 두 곳이
+// 조용히 어긋난다(그 어긋남이 정확히 이 결함이었다: 폼은 사용자 입력값을 보여주는데
+// 엔진은 프리셋 값으로 계산했다).
+export function resolveRiskProfileYieldPreset(
+  riskProfile: RiskProfile
+): 'conservative' | 'base' | 'aggressive' | null {
+  return RISK_PROFILE_PRESETS[riskProfile] ?? null;
+}
+
 // bequestStrategy → userProfile.targetBequest.
 // 'maximize'는 undefined를 돌려주며, 이는 "미지정 → UtilityEngine이 월생활비 *
 // appropriateBequestMonths로 적정 잔여자산을 추정" 이라는 기존 동작을 뜻한다.
@@ -230,7 +242,7 @@ export function compileStrategy(params: SimulationParams): CompiledStrategy {
   // 경제 시나리오 → 리스크 성향 순으로 적용한다. 둘 다 수익률을 건드리므로
   // 순서가 결과를 결정한다: 시나리오는 물가·환율을, 리스크 성향은 수익률을 지배한다.
   let economyApplied = applyEconomicScenario(params, strategy.economicScenario);
-  const riskPreset = RISK_PROFILE_PRESETS[strategy.riskProfile];
+  const riskPreset = resolveRiskProfileYieldPreset(strategy.riskProfile);
   if (riskPreset) {
     economyApplied = applyYieldPreset(economyApplied, riskPreset);
   }
