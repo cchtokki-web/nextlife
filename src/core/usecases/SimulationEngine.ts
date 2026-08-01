@@ -857,9 +857,13 @@ export class SimulationEngine {
       if (totalAssetsDisplay <= 0 && depletionAge === null) depletionAge = currentAge;
 
       // 의료비도 소득으로 감당해야 할 지출이다. 빼면 "의료비를 못 내는데 FIRE 달성"이 된다.
+      // 생활비에는 그 해의 가구 규모 계수를 곱한다 — 위 monthlyTargetSpending(실제 인출 목표)과
+      // 아래 goalAchievementRate의 분모가 모두 곱하므로, 여기만 빼면 한 명만 남아 실제 필요가
+      // 0.7배로 줄어든 해에도 2인 기준 소득을 요구해 fireAge가 늦어지거나 null이 된다.
+      // annualHealthcareCost에는 computeAnnualHealthcareCost가 이미 곱해 두었으므로 다시 곱하지 않는다.
       const targetSpendingForFIRE = (inflationMode === 'nominal'
         ? userProfile.targetMonthlySpending * 12 * Math.pow(1 + inflationRate / 100, y)
-        : userProfile.targetMonthlySpending * 12) + annualHealthcareCost;
+        : userProfile.targetMonthlySpending * 12) * spendingFactor + annualHealthcareCost;
 
       if (totalIncome >= targetSpendingForFIRE && fireAge === null) fireAge = currentAge;
     }
@@ -903,7 +907,11 @@ export class SimulationEngine {
 
     return {
       yearlyResults,
-      fireAge: fireAge === null || fireAge >= userProfile.expectancy ? null : fireAge,
+      // 종료 판정은 같은 반환 객체의 depletionAge/endingAssets/householdEndAge와 같은 기준
+      // (가구 종료 나이)을 써야 한다. 본인 기대수명으로 게이트하면 배우자 단독 생존 기간에
+      // 달성한 FIRE가 "달성 불가(null)"로 지워진다. 배우자가 없으면 endAge === expectancy라
+      // 기존 동작과 완전히 동일하다.
+      fireAge: fireAge === null || fireAge >= endAge ? null : fireAge,
       depletionAge,
       endingAssets,
       retirementScore,

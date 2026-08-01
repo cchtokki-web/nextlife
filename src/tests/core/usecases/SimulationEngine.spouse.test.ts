@@ -285,3 +285,49 @@ describe('SimulationEngine 배우자 단독 생존 기간의 고갈', () => {
     expect(longer.retirementGrade).not.toBe('매우 안정');
   });
 });
+
+describe('SimulationEngine FIRE 판정의 가구 규모 계수', () => {
+  // 자산·사적연금이 없어 소득이 국민연금뿐이다 — FIRE 판정의 분자를 정확히 고정하기 위해서다.
+  // 국민연금 월 150만원(65세 개시, 세후 2%) = 연 1,764만원.
+  //   2인 기준 목표 = 200만 * 12         = 2,400만원 (미달)
+  //   1인 기준 목표 = 200만 * 12 * 0.7   = 1,680만원 (충족)
+  // 즉 이 시나리오의 FIRE 달성 여부는 오직 spendingFactor를 곱했는지로만 갈린다.
+  const pensionOnly: SimulationParams = {
+    ...baseParams,
+    privatePensions: [],
+    nationalPension: { expectedMonthlyAmount: 1500000 },
+  };
+
+  test('배우자 사망으로 줄어든 목표 생활비를 기준으로 FIRE를 판정한다', () => {
+    const engine = new SimulationEngine();
+
+    const result = engine.run({
+      ...pensionOnly,
+      spouse: {
+        enabled: true, currentAge: 60, expectancy: 70, // 본인 70세에 배우자 사망 → 71세부터 1인
+        nationalPensionMonthlyAmount: 0, nationalPensionStartAge: 65,
+      },
+    });
+
+    expect(result.fireAge).toBe(71);
+  });
+
+  test('본인 기대수명 이후여도 가구 종료 전에 달성하면 FIRE 나이를 보고한다', () => {
+    const engine = new SimulationEngine();
+
+    // 배우자가 20살 어리고 95세까지 산다 → 가구 종료는 본인 나이 115세.
+    // 배우자 국민연금(월 300만)은 배우자가 65세가 되는 본인 85세부터 나온다.
+    const result = engine.run({
+      ...pensionOnly,
+      nationalPension: { expectedMonthlyAmount: 1000000 },
+      spouse: {
+        enabled: true, currentAge: 40, expectancy: 95,
+        nationalPensionMonthlyAmount: 3000000, nationalPensionStartAge: 65,
+      },
+    });
+
+    expect(result.householdEndAge).toBe(115);
+    // 본인 기대수명(80)으로 게이트하면 null이 되어 "FIRE 달성 불가"라는 거짓 진술이 된다.
+    expect(result.fireAge).toBe(85);
+  });
+});

@@ -7,6 +7,7 @@ import {
 } from '../../entities/types';
 import { DEFAULT_UTILITY_CONFIG } from './utilityWeights';
 import { computeHouseholdEndAge, resolveSpouse } from '../spouse/spouseRules';
+import { isMaximizeBequestStrategy } from '../strategy/compileStrategy';
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
@@ -99,6 +100,22 @@ function bellShapedAdequacyRaw(ratio: number, baseFloor: number, excessDecayRate
   return Math.exp(-excessDecayRate * (ratio - 1));
 }
 
+// "최대 상속"을 고른 사용자에게 쓰는 채점 곡선. 종형 곡선은 적정선을 넘으면 감점하므로
+// "가능한 한 많이 남기는" 전략에 그대로 쓰면 많이 남길수록 점수가 깎여 옵션 이름과
+// 정반대로 동작한다. 단조증가하되 상한이 필요하므로 포화 곡선 1 - exp(-k * ratio)를 쓴다:
+// 0에서 시작해 1로 수렴하므로 다른 축과 같은 0~1 정규화를 유지하고, 상속 한 축이 무한히
+// 커져 총점을 지배하는 일이 없다.
+//
+// k = 0.35(≈ ln2 / 2)는 "적정선(월생활비 24개월치)의 2배를 남기면 절반 점수"라는 앵커에서
+// 나왔다. 이 값이면 적정선의 6배에서 약 0.88, 10배에서 약 0.97로, 현실적인 잔여자산
+// 구간 전체에서 기울기가 살아 있어 RecommendationEngine이 후보들을 상속 관점으로
+// 서열화할 수 있다. k를 크게 잡으면(예: ln2) 2~3배에서 이미 포화해 후보 간 차이가 사라진다.
+const MAXIMIZE_BEQUEST_SATURATION_K = 0.35;
+
+function monotonicAdequacyRaw(ratio: number): number {
+  return 1 - Math.exp(-MAXIMIZE_BEQUEST_SATURATION_K * Math.max(0, ratio));
+}
+
 // "연금 활용도"는 사적연금 계좌 잔액의 과다/과소 여부가 아니라, 국민연금 수급 여부·사적연금
 // 실인출 활용도·저율과세 한도 준수도를 종합해 실제 "연금을 얼마나 잘 활용했는지"를 측정한다.
 // 사망 시 잔여자산이 과다한지는 이미 computeBequestAdequacyRaw가 endingAssets(사적연금 포함
@@ -137,8 +154,28 @@ function computePensionUtilizationRaw(
   );
 }
 
+// 적정 잔여자산(= 월 목표생활비 * appropriateBequestMonths). 사용자가 목표 금액을 지정하지
+// 않았을 때의 기준선이며 'maximize'의 ratio 분모이기도 하다.
+function appropriateBequestBalance(params: SimulationParams, cfg: UtilityConfig): number {
+  return params.userProfile.targetMonthlySpending * cfg.appropriateBequestMonths;
+}
+
+// 분모가 0(목표 생활비 미입력)이면 비율을 정의할 수 없다. 잔여자산이 있으면 "적정선의 2배"로
+// 간주하던 기존 폴백을 그대로 유지한다.
+function bequestRatio(endingAssets: number, appropriateBalance: number): number {
+  if (appropriateBalance > 0) return endingAssets / appropriateBalance;
+  return endingAssets > 0 ? 2 : 0;
+}
+
 function computeBequestAdequacyRaw(params: SimulationParams, result: SimulationResult, cfg: UtilityConfig): number {
   const { targetBequest } = params.userProfile;
+
+  // "최대 상속" 판정이 가장 먼저다. compileStrategy는 이 전략에서 targetBequest 키를 지우지만,
+  // 컴파일을 거치지 않은 params(레거시 저장값 등)에는 옛 금액이 남아 있을 수 있어 아래
+  // targetBequest 분기에 먼저 걸리면 전략과 다른 곡선으로 채점된다.
+  if (isMaximizeBequestStrategy(params)) {
+    return monotonicAdequacyRaw(bequestRatio(result.endingAssets, appropriateBequestBalance(params, cfg)));
+  }
 
   // 사용자가 명시적으로 목표 상속자산을 지정한 경우: 0원("다 쓰고 가기")은 일반 공식(분모 0)으로
   // 표현할 수 없는 별도 케이스라 분리한다 — 잔여자산이 0 이하면 목표를 정확히 달성한 것이므로
@@ -150,9 +187,8 @@ function computeBequestAdequacyRaw(params: SimulationParams, result: SimulationR
   }
 
   const appropriateBalance =
-    targetBequest !== undefined ? targetBequest : params.userProfile.targetMonthlySpending * cfg.appropriateBequestMonths;
-  const ratio = appropriateBalance > 0 ? result.endingAssets / appropriateBalance : (result.endingAssets > 0 ? 2 : 0);
-  return bellShapedAdequacyRaw(ratio, 0.7, 0.4);
+    targetBequest !== undefined ? targetBequest : appropriateBequestBalance(params, cfg);
+  return bellShapedAdequacyRaw(bequestRatio(result.endingAssets, appropriateBalance), 0.7, 0.4);
 }
 
 function computeTaxEfficiencyRaw(yearlyResults: SimulationYearlyResult[], cfg: UtilityConfig): number {

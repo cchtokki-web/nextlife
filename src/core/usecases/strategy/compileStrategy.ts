@@ -27,7 +27,19 @@ export const DEFAULT_RETIREMENT_STRATEGY: RetirementStrategy = {
   mode: 'simple',
   objective: 'ai_recommended',
   spendingChoice: 'target', // 엔진 기본값(spendingStrategy 미지정)과 같은 동작
-  bequestStrategy: 'maximize', // targetBequest 미지정 = UtilityEngine 기존 공식
+  // 'leave_some'은 targetBequest를 "월 목표생활비 * appropriateBequestMonths(24)"로 채우는데,
+  // 이는 targetBequest가 미지정일 때 UtilityEngine이 쓰는 추정식과 정확히 같은 값이라 채점
+  // 결과가 바뀌지 않는다(엔진의 시뮬레이션 산식은 targetBequest를 아예 읽지 않는다).
+  //
+  // 예전에는 이 자리에 'maximize'가 있었다. 그때는 'maximize'가 "targetBequest 미지정"으로
+  // 컴파일될 뿐 채점상 아무 의미가 없어서 무동작 기본값으로 쓸 수 있었지만, 지금은
+  // "많이 남길수록 가점"이라는 실제 의미를 갖는다(UtilityEngine.monotonicAdequacyRaw).
+  // 의미를 가진 값을 기본값으로 두면 (1) 패널에서 아무 필드나 건드려 strategy가 materialize
+  // 되는 순간 상속 점수가 조용히 뒤집히고 (2) 반대로 그 기본값까지 "최대 상속"으로 채점하면
+  // 전략을 한 번도 저장한 적 없는 모든 시나리오의 점수가 작업 전과 달라진다.
+  // 기본값은 "화면이 보여주는 문구 = 엔진이 실제로 하는 일"인 값이어야 하며,
+  // 엔진이 실제로 가정하는 것은 '2년치 생활비를 적정선으로 본다' = 일부 남기기다.
+  bequestStrategy: 'leave_some',
   nationalPensionStrategy: 'ai_optimized',
   privatePensionStrategy: 'ai_optimized',
   preferIsaFirst: false,
@@ -76,6 +88,15 @@ export function resolveStrategy(params: SimulationParams): RetirementStrategy {
     ...seedStrategyFromLegacyParams(params),
     ...(params.strategy ?? {}),
   };
+}
+
+// 이 시나리오가 "최대 상속"(가능한 한 많이 남기기)을 선택한 상태인가.
+// UtilityEngine(채점)과 utilityAnalysis(설명 문구)가 반드시 같은 판정을 쓰도록 여기서 한 번만
+// 정의한다. 판정은 화면과 동일한 진입점(resolveStrategy)을 쓰므로 레거시 씨앗을 거친 값이든
+// 새 UI가 저장한 값이든 결과가 같다 — 'maximize'는 기본값도 레거시 유도값도 아니라서
+// 사용자가 명시적으로 고른 경우에만 참이 된다.
+export function isMaximizeBequestStrategy(params: SimulationParams): boolean {
+  return resolveStrategy(params).bequestStrategy === 'maximize';
 }
 
 // 국민연금 수령 전략 → 청구 나이.

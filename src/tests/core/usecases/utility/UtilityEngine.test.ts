@@ -1,6 +1,10 @@
 import { describe, test, expect } from 'vitest';
 import { computeLifetimeUtility } from '@/core/usecases/utility/UtilityEngine';
-import { SimulationParams, SimulationResult, SimulationYearlyResult } from '@/core/entities/types';
+import { DEFAULT_UTILITY_CONFIG } from '@/core/usecases/utility/utilityWeights';
+import { DEFAULT_RETIREMENT_STRATEGY } from '@/core/usecases/strategy/compileStrategy';
+import {
+  BequestStrategy, SimulationParams, SimulationResult, SimulationYearlyResult,
+} from '@/core/entities/types';
 
 // 60세 은퇴, 95세 기대수명, 월 목표생활비 300만 원 공통 프로필
 const userProfile = {
@@ -455,5 +459,66 @@ describe('UtilityEngine.computeLifetimeUtility', () => {
     const highHealthInsurance = computeLifetimeUtility(highHealthInsuranceResult, baseParams);
 
     expect(noHealthInsurance.components.taxationRisk).toBeGreaterThan(highHealthInsurance.components.taxationRisk);
+  });
+});
+
+// C4: "최대 상속"은 종형 곡선이 아니라 단조증가(포화) 곡선으로 채점되어야 한다.
+// 종형 곡선을 그대로 쓰면 "가능한 한 많이 남기는" 전략을 고른 사용자가 많이 남길수록 감점된다.
+describe('bequestAdequacy — bequestStrategy = maximize (최대 상속)', () => {
+  const APPROPRIATE_BALANCE = userProfile.targetMonthlySpending * 24; // 7,200만원 = ANNUAL_TARGET * 2
+
+  const withStrategy = (bequestStrategy: BequestStrategy): SimulationParams => ({
+    ...baseParams,
+    strategy: { ...DEFAULT_RETIREMENT_STRATEGY, bequestStrategy },
+  });
+
+  const resultWithEndingAssets = (totalAssets: number): SimulationResult =>
+    makeResult(
+      Array.from({ length: 36 }, (_, i) => makeYear(60 + i, { totalAssets, pensionAssets: 0 })),
+      null
+    );
+
+  test('최대 상속을 고르면 잔여자산이 많을수록 점수가 높아진다', () => {
+    const params = withStrategy('maximize');
+    const atAppropriate = computeLifetimeUtility(resultWithEndingAssets(APPROPRIATE_BALANCE), params);
+    const farAbove = computeLifetimeUtility(resultWithEndingAssets(APPROPRIATE_BALANCE * 6), params);
+
+    expect(farAbove.components.bequestAdequacy).toBeGreaterThan(atAppropriate.components.bequestAdequacy);
+  });
+
+  test('단조증가여도 배점(가중치)을 넘지 않는다 — 0~1로 정규화된 포화 곡선', () => {
+    const params = withStrategy('maximize');
+    const astronomical = computeLifetimeUtility(resultWithEndingAssets(1e12), params);
+
+    expect(astronomical.components.bequestAdequacy)
+      .toBeLessThanOrEqual(DEFAULT_UTILITY_CONFIG.weights.bequestAdequacy);
+    expect(astronomical.components.bequestAdequacy).toBeGreaterThan(0);
+  });
+
+  test('잔여자산이 0이면 최대 상속 점수도 0이다', () => {
+    const params = withStrategy('maximize');
+    const nothing = computeLifetimeUtility(resultWithEndingAssets(0), params);
+
+    expect(nothing.components.bequestAdequacy).toBe(0);
+  });
+
+  test('다른 상속 전략(일부 남기기)은 종형 곡선을 그대로 유지한다', () => {
+    const params = withStrategy('leave_some');
+    const atAppropriate = computeLifetimeUtility(resultWithEndingAssets(APPROPRIATE_BALANCE), params);
+    const farAbove = computeLifetimeUtility(resultWithEndingAssets(APPROPRIATE_BALANCE * 6), params);
+
+    expect(farAbove.components.bequestAdequacy).toBeLessThan(atAppropriate.components.bequestAdequacy);
+  });
+
+  // 회귀 가드: '최대 상속'은 기본값이 아니어야 한다. 기본값이 단조증가로 채점되면
+  // (1) 전략을 저장한 적 없는 모든 시나리오의 점수가 작업 전과 달라지고
+  // (2) "과다 잔여자산은 감점"이라는 앱의 기본 판단이 통째로 사라진다.
+  test('strategy를 저장하지 않은 시나리오는 기본값(일부 남기기)의 종형 곡선을 쓴다', () => {
+    const atAppropriate = computeLifetimeUtility(resultWithEndingAssets(APPROPRIATE_BALANCE), baseParams);
+    const farAbove = computeLifetimeUtility(resultWithEndingAssets(APPROPRIATE_BALANCE * 6), baseParams);
+
+    expect(baseParams.strategy).toBeUndefined();
+    expect(DEFAULT_RETIREMENT_STRATEGY.bequestStrategy).not.toBe('maximize');
+    expect(farAbove.components.bequestAdequacy).toBeLessThan(atAppropriate.components.bequestAdequacy);
   });
 });

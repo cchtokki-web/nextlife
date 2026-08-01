@@ -76,8 +76,12 @@ describe('레거시 저수준 필드에서의 전략 유도(resolveStrategy)', (
     expect(resolveStrategy(params).bequestStrategy).toBe('spend_all');
   });
 
-  test('targetBequest 미설정이면 baseline인 "최대 상속"이다', () => {
-    expect(resolveStrategy(legacyBase).bequestStrategy).toBe('maximize');
+  // baseline은 '일부 남기기'다. '최대 상속'은 "많이 남길수록 가점"이라는 실제 채점 의미를
+  // 가지므로 무동작 기본값으로 쓸 수 없다(compileStrategy의 DEFAULT_RETIREMENT_STRATEGY 주석).
+  // '일부 남기기'가 채우는 targetBequest(월생활비 * 24)는 미지정일 때 UtilityEngine이 쓰는
+  // 추정식과 같은 값이라 채점 결과가 바뀌지 않는다 — 아래 "엔진 결과 동일성"이 이를 건다.
+  test('targetBequest 미설정이면 baseline인 "일부 남기기"다', () => {
+    expect(resolveStrategy(legacyBase).bequestStrategy).toBe('leave_some');
   });
 
   test('명시적으로 저장된 strategy가 레거시 유도값을 이긴다', () => {

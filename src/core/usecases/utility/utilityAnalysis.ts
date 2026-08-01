@@ -1,5 +1,6 @@
 import { SimulationParams, SimulationResult, UtilityBreakdown, UtilityConfig } from '../../entities/types';
 import { DEFAULT_UTILITY_CONFIG } from './utilityWeights';
+import { isMaximizeBequestStrategy } from '../strategy/compileStrategy';
 
 export interface CurrentStrategyAnalysis {
   strengths: string[];
@@ -74,6 +75,24 @@ export function explainBequestAdequacy(
   cfg: UtilityConfig = DEFAULT_UTILITY_CONFIG
 ): string {
   const { targetBequest } = params.userProfile;
+
+  // "최대 상속"은 단조증가로 채점되므로(UtilityEngine.monotonicAdequacyRaw) "많이 남아서
+  // 감점되었다"는 아래 문구를 쓰면 화면과 점수가 정반대를 말하게 된다. 판정은 채점과 같은
+  // 함수(isMaximizeBequestStrategy)를 쓴다.
+  if (isMaximizeBequestStrategy(params)) {
+    if (result.endingAssets <= 0) {
+      return '최대 상속을 목표로 하셨지만 예상 잔여자산이 남지 않아 상속 자산 적정성 점수를 받지 못했습니다.';
+    }
+    const appropriateBalance = params.userProfile.targetMonthlySpending * cfg.appropriateBequestMonths;
+    if (appropriateBalance <= 0) {
+      return `최대 상속을 목표로 하셨고, 예상 잔여자산은 약 ${formatManwon(result.endingAssets)}입니다. 많이 남길수록 점수가 올라갑니다.`;
+    }
+    return (
+      `최대 상속을 목표로 하셨습니다. 예상 잔여자산(약 ${formatManwon(result.endingAssets)})은 적정 상속 자산 기준` +
+      `(목표 월생활비 ${cfg.appropriateBequestMonths}개월치 = 약 ${formatManwon(appropriateBalance)})의 ` +
+      `약 ${(result.endingAssets / appropriateBalance).toFixed(1)}배이며, 많이 남길수록 점수가 올라갑니다.`
+    );
+  }
 
   // 사용자가 목표 상속자산을 직접 지정한 경우: UtilityEngine.computeBequestAdequacyRaw와
   // 동일한 산식(0원은 "다 쓰고 가기"라 분모 0으로 처리)을 근거로 설명 문구를 만든다.

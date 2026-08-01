@@ -180,7 +180,30 @@ describe('computeRiskAlerts', () => {
       expect(alerts).toEqual([]);
     });
 
-    test('다른 리스크와 함께 발생하면 기대수명 시점 이벤트라 가장 나중(가장 늦은 나이)으로 정렬된다', () => {
+    // C6: endingAssets는 "둘 중 늦게 사망하는 쪽" 시점의 잔액(types.ts)이다. 라벨과 정렬을
+    // 본인 기대수명으로 잡으면, 배우자가 더 오래 사는 계획에서 몇 년치 더 인출된 잔액을
+    // 본인 기대수명 시점 값으로 제시해 부족분을 실제보다 크게 보고한다.
+    test('가구 종료 나이가 본인 기대수명보다 늦으면 그 나이를 라벨로 쓴다', () => {
+      const params: SimulationParams = { ...baseParams, userProfile: { ...baseParams.userProfile, targetBequest: 200000000 } };
+      const result = { ...makeResult([]), endingAssets: 50000000, householdEndAge: 95 };
+      const alerts = computeRiskAlerts(result, params);
+
+      expect(alerts).toHaveLength(1);
+      expect(alerts[0].message).toContain('95세');
+      expect(alerts[0].message).not.toContain('90세');
+    });
+
+    test('가구 종료 나이 기준으로 정렬된다', () => {
+      const params: SimulationParams = { ...baseParams, userProfile: { ...baseParams.userProfile, targetBequest: 200000000 } };
+      // 92세는 본인 기대수명(90)보다 늦지만 가구 종료 나이(95)보다는 이르다.
+      const yearlyResults = [makeYearlyResult({ age: 92, hasTaxWarning: true })];
+      const result = { ...makeResult(yearlyResults), endingAssets: 50000000, householdEndAge: 95 };
+      const alerts = computeRiskAlerts(result, params);
+
+      expect(alerts.map((a) => a.key)).toEqual(['comprehensiveTax', 'bequestShortfall']);
+    });
+
+    test('다른 리스크와 함께 발생하면 가구 종료 시점 이벤트라 가장 나중(가장 늦은 나이)으로 정렬된다', () => {
       const params: SimulationParams = { ...baseParams, userProfile: { ...baseParams.userProfile, targetBequest: 200000000 } };
       const yearlyResults = [makeYearlyResult({ age: 65, hasTaxWarning: true })];
       const result = { ...makeResult(yearlyResults), endingAssets: 50000000 };
