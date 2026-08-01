@@ -66,6 +66,7 @@ describe('AiSummaryHero', () => {
         monthlyTarget={3000000}
         isPro={false}
         depletionAge={null}
+        householdEndAge={90}
       />
     );
     expect(container).toBeEmptyDOMElement();
@@ -82,6 +83,7 @@ describe('AiSummaryHero', () => {
         monthlyTarget={3000000}
         isPro={false}
         depletionAge={null}
+        householdEndAge={90}
         utility={utility}
         userProfile={{ currentAge: 55, retirementAge: 60, expectancy: 90, targetMonthlySpending: 3000000 }}
       />
@@ -140,6 +142,7 @@ describe('AiSummaryHero', () => {
         monthlyTarget={3000000}
         isPro={false}
         depletionAge={null}
+        householdEndAge={90}
         utility={utility}
         recommendation={recommendation}
         userProfile={{ currentAge: 55, retirementAge: 60, expectancy: 90, targetMonthlySpending: 3000000 }}
@@ -163,6 +166,7 @@ describe('AiSummaryHero', () => {
         monthlyTarget={3000000}
         isPro={false}
         depletionAge={null}
+        householdEndAge={90}
         utility={utility}
         userProfile={{ currentAge: 55, retirementAge: 60, expectancy: 90, targetMonthlySpending: 3000000 }}
       />
@@ -187,6 +191,7 @@ describe('AiSummaryHero', () => {
         monthlyTarget={3000000}
         isPro={false}
         depletionAge={null}
+        householdEndAge={90}
         utility={utility}
         userProfile={{ currentAge: 55, retirementAge: 60, expectancy: 90, targetMonthlySpending: 3000000 }}
       />

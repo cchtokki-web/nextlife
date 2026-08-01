@@ -12,7 +12,7 @@ import {
 } from '../entities/types';
 import { getRetirementGrade, RetirementGrade } from '../entities/retirementGrade';
 import { computeLifetimeUtility } from './utility/UtilityEngine';
-import { computeAnnualHealthcareCost } from './healthcare/healthcareCosts';
+import { computeAnnualHealthcareCostBreakdown } from './healthcare/healthcareCosts';
 import { DEFAULT_UTILITY_CONFIG } from './utility/utilityWeights';
 import {
   getDividendTaxRate,
@@ -259,7 +259,9 @@ export class SimulationEngine {
     inflationRate: number,
     // 시뮬레이션이 실제로 돈 종료 나이(= computeHouseholdEndAge). 배우자가 본인보다 오래 살면
     // userProfile.expectancy보다 크다. 호출부가 루프에 쓴 값을 그대로 넘겨받아 재유도하지 않는다.
-    householdEndAge: number
+    householdEndAge: number,
+    // 나이 → 그 해 의료비 중 반복 구성요소. 4% 룰 분모에는 이 값만 들어간다.
+    recurringHealthcareByAge: ReadonlyMap<number, number>
   ): { retirementScore: number, retirementGrade: RetirementGrade, retirementAssetsAtRetirement: number } {
     // 이미 은퇴 나이를 지난 상태로 입력된 경우(currentAge > retirementAge) yearlyResults에는
     // retirementAge 시점 행이 없으므로, 관측 가능한 첫 해(yearlyResults[0])를 은퇴 시점 자산의
@@ -271,10 +273,18 @@ export class SimulationEngine {
     const targetMonthlyAtRetirement = inflationMode === 'nominal'
       ? userProfile.targetMonthlySpending * Math.pow(1 + inflationRate / 100, yearsToRetirement)
       : userProfile.targetMonthlySpending;
+    // 4% 룰(연 필요액 × 25)은 "이 필요가 영구히 반복된다"는 가정이다. 그래서 그 해 총
+    // 의료비가 아니라 반복 구성요소만 넘긴다 — 일회성 쇼크가 은퇴 연도에 걸리면 기본값
+    // 3천만원이 25배로 곱해져 목표 자산에 7.5억이 더해지고 assetScore(25점 만점)가 0에
+    // 수렴했다. 쇼크의 실제 영향은 그 해 자산이 줄어드는 것으로 이미 반영되어 있다.
+    // 루프가 모든 연도를 기록하므로 조회가 실패할 일은 없지만, 미래에 누락되더라도
+    // 반복 의료비를 과대계상하지 않도록 0으로 폴백한다.
+    const recurringHealthcareAtRetirement =
+      recurringHealthcareByAge.get(retirementStartResult.age) ?? 0;
     const targetAssets = computeRetirementTargetAssets(
       targetMonthlyAtRetirement,
       retirementStartResult.spendingFactor,
-      retirementStartResult.healthcareSpending
+      recurringHealthcareAtRetirement
     );
 
     const assetScoreRaw = targetAssets > 0 ? (retirementAssets / targetAssets) * 100 : 100;
@@ -375,6 +385,11 @@ export class SimulationEngine {
     }
 
     const yearlyResults: SimulationYearlyResult[] = [];
+    // 나이 → 그 해 의료비 중 "매년 반복되는" 부분. SimulationYearlyResult.healthcareSpending은
+    // 실제 인출액(일회성 쇼크 포함)이라 4% 룰 분모로 쓸 수 없어 따로 모아 둔다.
+    // 결과 객체에 필드를 추가하지 않는 이유: 이 값은 점수 계산의 중간 산물일 뿐
+    // 화면·PDF·AI 프롬프트가 읽을 지표가 아니다.
+    const recurringHealthcareByAge = new Map<number, number>();
     let fireAge: number | null = null;
     let depletionAge: number | null = null;
 
@@ -404,7 +419,7 @@ export class SimulationEngine {
 
       // 생활비와 별개의 지출 라인. 은퇴 후에만 발생하며 spending에 합산된다.
       // infRateAnnual은 소수(inflationRate / 100)이므로 % 단위로 되돌려 넘긴다.
-      const annualHealthcareCost = computeAnnualHealthcareCost({
+      const healthcareCost = computeAnnualHealthcareCostBreakdown({
         healthcare: params.healthcare,
         currentAge,
         retirementAge: userProfile.retirementAge,
@@ -415,6 +430,9 @@ export class SimulationEngine {
         // 생활비와 같은 계수를 쓴다 — 의료비만 안 줄면 본인 사후에도 전액이 나간다.
         spendingFactor,
       });
+      const annualHealthcareCost = healthcareCost.total;
+      // 4% 룰 분모에 넣을 반복 구성요소만 따로 기록해 둔다(일회성 쇼크 제외).
+      recurringHealthcareByAge.set(currentAge, healthcareCost.recurring);
       const monthlyHealthcareCost = annualHealthcareCost / 12;
 
       let monthlyTargetSpending = 0;
@@ -902,7 +920,8 @@ export class SimulationEngine {
     const endingAssets = yearlyResults.length > 0 ? yearlyResults[yearlyResults.length - 1].totalAssets : 0;
 
     const { retirementScore, retirementGrade, retirementAssetsAtRetirement } = this.calculateRetirementScore(
-      yearlyResults, userProfile, goalAchievementRate, depletionAge, inflationMode, inflationRate, endAge
+      yearlyResults, userProfile, goalAchievementRate, depletionAge, inflationMode, inflationRate, endAge,
+      recurringHealthcareByAge
     );
 
     return {

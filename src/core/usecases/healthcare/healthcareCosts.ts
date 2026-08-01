@@ -16,6 +16,18 @@ interface HealthcareCostInput {
   spendingFactor: number;
 }
 
+// 그 해 의료비의 구성. 4% 룰(연 필요액 × 25)처럼 "이 필요가 영구히 반복된다"고 가정하는
+// 계산에는 recurring만 들어가야 한다 — 일회성 목돈을 25배로 곱하면 목표 자산이 부풀려진다
+// (기본값 3천만원이 은퇴 연도에 걸리면 7.5억이 더해진다).
+export interface HealthcareCostBreakdown {
+  // 매년 되풀이되는 구성요소: 기본 의료비 + 장기요양비.
+  recurring: number;
+  // 그 해에만 발생하는 일회성 목돈(의료비 급증 시나리오).
+  oneTime: number;
+  // 실제 그 해에 인출해야 하는 금액. recurring + oneTime.
+  total: number;
+}
+
 // 해당 연도의 추가 의료비 지출(생활비와 별개 라인).
 //
 // 은퇴 전에는 0이다 — 이 앱은 근로소득을 모델링하지 않으므로 은퇴 전 의료비를
@@ -29,12 +41,18 @@ interface HealthcareCostInput {
 // 연도 루프가 둘 중 늦게 죽는 쪽까지 도는 탓에(computeHouseholdEndAge) 본인 사후에도
 // 본인 기준 의료비·장기요양비가 전액 계속 인출되고, shockAge가 본인 기대수명을
 // 넘으면 사망 후에 쇼크가 발생한다.
-export function computeAnnualHealthcareCost({
+export function computeAnnualHealthcareCost(input: HealthcareCostInput): number {
+  return computeAnnualHealthcareCostBreakdown(input).total;
+}
+
+// 반복 지출과 일회성 지출을 나눠 계산한다. 계산 규칙 자체는 위 설명과 같다.
+export function computeAnnualHealthcareCostBreakdown({
   healthcare, currentAge, retirementAge, simulationStartAge, yearsSinceRetirement,
   inflationMode, inflationRate, spendingFactor,
-}: HealthcareCostInput): number {
-  if (!healthcare || !healthcare.enabled) return 0;
-  if (currentAge < retirementAge) return 0;
+}: HealthcareCostInput): HealthcareCostBreakdown {
+  const none: HealthcareCostBreakdown = { recurring: 0, oneTime: 0, total: 0 };
+  if (!healthcare || !healthcare.enabled) return none;
+  if (currentAge < retirementAge) return none;
 
   const effectiveGrowthRate = inflationMode === 'real'
     ? healthcare.costGrowthRate - inflationRate
@@ -56,7 +74,7 @@ export function computeAnnualHealthcareCost({
       : 1;
   const retirementNominalFactor = nominalFactorAt(retirementAge);
 
-  let annual = healthcare.baseMonthlyCost * 12 * growthFactor * retirementNominalFactor;
+  let recurring = healthcare.baseMonthlyCost * 12 * growthFactor * retirementNominalFactor;
 
   // 장기요양비의 기준 시점은 은퇴가 아니라 "장기요양이 시작되는 나이"다.
   //
@@ -71,7 +89,7 @@ export function computeAnnualHealthcareCost({
   // 비용을 "지금 요양원이 얼마인가"로 조사해 넣지, "내 은퇴 시점에 얼마일까"로 넣지 않는다.
   if (healthcare.longTermCareEnabled && currentAge >= healthcare.longTermCareStartAge) {
     const yearsSinceLongTermCare = Math.max(0, currentAge - healthcare.longTermCareStartAge);
-    annual += healthcare.longTermCareMonthlyCost * 12
+    recurring += healthcare.longTermCareMonthlyCost * 12
       * Math.pow(growthBase, yearsSinceLongTermCare)
       * nominalFactorAt(healthcare.longTermCareStartAge);
   }
@@ -80,9 +98,14 @@ export function computeAnnualHealthcareCost({
   // 사용자가 입력하는 값이 "그 나이에 실제로 나갈 금액(오늘 기준)"이기 때문이다.
   // 다만 명목 모드에서는 그 해의 다른 모든 금액과 같은 화폐가치로 맞춰야 하므로
   // 발생 나이까지의 물가상승분은 곱한다(곱하지 않으면 쇼크만 홀로 과소 계상된다).
+  let oneTime = 0;
   if (healthcare.shockEnabled && currentAge === healthcare.shockAge) {
-    annual += healthcare.shockAmount * nominalFactorAt(currentAge);
+    oneTime = healthcare.shockAmount * nominalFactorAt(currentAge);
   }
 
-  return annual * spendingFactor;
+  return {
+    recurring: recurring * spendingFactor,
+    oneTime: oneTime * spendingFactor,
+    total: (recurring + oneTime) * spendingFactor,
+  };
 }
