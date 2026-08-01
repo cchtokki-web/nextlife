@@ -1,5 +1,6 @@
 import { describe, test, expect } from 'vitest';
 import { computeRiskAlerts } from '@/core/usecases/dashboard/computeRiskAlerts';
+import { compileStrategy, DEFAULT_RETIREMENT_STRATEGY } from '@/core/usecases/strategy/compileStrategy';
 import { SimulationParams, SimulationResult, SimulationYearlyResult } from '@/core/entities/types';
 
 function makeYearlyResult(overrides: Partial<SimulationYearlyResult>): SimulationYearlyResult {
@@ -201,6 +202,42 @@ describe('computeRiskAlerts', () => {
       const alerts = computeRiskAlerts(result, params);
 
       expect(alerts.map((a) => a.key)).toEqual(['comprehensiveTax', 'bequestShortfall']);
+    });
+
+    // A1: 상속 부족 알림은 "사용자가 명시적으로 금액 목표를 세웠는가"로 판정해야 한다.
+    // userProfile.targetBequest의 존재 여부로 판정하면, 기본 전략('leave_some')이
+    // compileStrategy를 거쳐 실체화되는 순간(= 패널에서 아무 필드나 건드리는 순간)
+    // 같은 계획에 없던 알림이 새로 생긴다.
+    test('전략 실체화(compileStrategy) 전후로 알림 집합이 동일하다', () => {
+      // 잔여자산 1,000만원 < 적정선(월 300만 * 24개월 = 7,200만원) — 실체화된
+      // targetBequest 기준으로는 "미달"이 되는 값이다.
+      const result = { ...makeResult([]), endingAssets: 10000000 };
+      const compiled = compileStrategy({ ...baseParams, strategy: DEFAULT_RETIREMENT_STRATEGY }).params;
+
+      expect(computeRiskAlerts(result, compiled)).toEqual(computeRiskAlerts(result, baseParams));
+      expect(computeRiskAlerts(result, compiled)).toEqual([]);
+    });
+
+    test("상속 전략이 '일부 남기기'면 잔여자산이 적정선에 못 미쳐도 알림이 없다", () => {
+      const params: SimulationParams = {
+        ...baseParams,
+        strategy: { ...DEFAULT_RETIREMENT_STRATEGY, bequestStrategy: 'leave_some' },
+        userProfile: { ...baseParams.userProfile, targetBequest: 72000000 },
+      };
+      const result = { ...makeResult([]), endingAssets: 10000000 };
+
+      expect(computeRiskAlerts(result, params)).toEqual([]);
+    });
+
+    test("상속 전략이 '목표 금액'이면 미달 시 알림이 발생한다", () => {
+      const params: SimulationParams = {
+        ...baseParams,
+        strategy: { ...DEFAULT_RETIREMENT_STRATEGY, bequestStrategy: 'target_amount' },
+        userProfile: { ...baseParams.userProfile, targetBequest: 200000000 },
+      };
+      const result = { ...makeResult([]), endingAssets: 50000000 };
+
+      expect(computeRiskAlerts(result, params).map((a) => a.key)).toEqual(['bequestShortfall']);
     });
 
     test('다른 리스크와 함께 발생하면 가구 종료 시점 이벤트라 가장 나중(가장 늦은 나이)으로 정렬된다', () => {

@@ -2,7 +2,7 @@ import { describe, test, expect } from 'vitest';
 import { analyzeCurrentStrategy, explainBequestAdequacy, formatManwon } from '@/core/usecases/utility/utilityAnalysis';
 import { SimulationParams, SimulationResult, UtilityBreakdown } from '@/core/entities/types';
 import { DEFAULT_UTILITY_CONFIG } from '@/core/usecases/utility/utilityWeights';
-import { DEFAULT_RETIREMENT_STRATEGY } from '@/core/usecases/strategy/compileStrategy';
+import { compileStrategy, DEFAULT_RETIREMENT_STRATEGY } from '@/core/usecases/strategy/compileStrategy';
 
 function makeUtility(components: UtilityBreakdown['components']): UtilityBreakdown {
   const score = Object.values(components).reduce((a, b) => a + b, 0);
@@ -207,5 +207,32 @@ describe('explainBequestAdequacy - 최대 상속 전략', () => {
     const text = explainBequestAdequacy(maximizeParams(3000000), makeResult(0));
 
     expect(text).toContain('점수를 받지 못했습니다');
+  });
+});
+
+// A5: 기본 전략('일부 남기기')이 compileStrategy를 거치면 targetBequest가 실체화된다.
+// 그 값을 "사용자가 지정한 목표"로 서술하면, 목표 금액을 입력한 적도 없고 그 입력이
+// 화면에 보이지도 않는(UI는 '목표 금액' 선택 시에만 보여준다) 사용자에게 거짓을 말한다.
+describe('explainBequestAdequacy - 명시적 목표가 아닌 전략', () => {
+  const leaveSomeParams = (): SimulationParams => {
+    const base = makeParams(3000000);
+    return compileStrategy({
+      ...base,
+      strategy: { ...DEFAULT_RETIREMENT_STRATEGY, bequestStrategy: 'leave_some' },
+    }).params;
+  };
+
+  test("'일부 남기기'는 목표 상속자산이 아니라 적정 기준으로 설명한다", () => {
+    const text = explainBequestAdequacy(leaveSomeParams(), makeResult(720000000));
+
+    expect(text).toContain('적정 상속 자산 기준');
+    expect(text).not.toContain('목표 상속자산');
+  });
+
+  test("'일부 남기기'는 실체화 전후로 설명 문구가 같다", () => {
+    const before = explainBequestAdequacy(makeParams(3000000), makeResult(10000000));
+    const after = explainBequestAdequacy(leaveSomeParams(), makeResult(10000000));
+
+    expect(after).toBe(before);
   });
 });

@@ -1,6 +1,7 @@
 import { SimulationParams, SimulationResult, SimulationYearlyResult, UtilityConfig } from '../../entities/types';
 import { DEFAULT_UTILITY_CONFIG } from '../utility/utilityWeights';
 import { formatManwon } from '../utility/utilityAnalysis';
+import { resolveStrategy } from '../strategy/compileStrategy';
 
 export interface RiskAlert {
   key: 'comprehensiveTax' | 'privatePensionLimit' | 'healthInsurance' | 'bequestShortfall';
@@ -93,10 +94,19 @@ function buildHealthInsuranceAlert(
   };
 }
 
-// 목표 상속자산(userProfile.targetBequest)이 설정되어 있고, 가구 종료 시점 예상 잔여자산이 그
-// 목표에 못 미치면 알림을 만든다. 0원("다 쓰고 가기")은 미달이라는 개념 자체가 성립하지 않으므로
-// (잔여자산이 0 이상이면 항상 목표를 만족) 대상에서 제외한다. 다른 알림과 달리 연도별 시뮬레이션
-// 조건이 아니라 단일 시점 이벤트라 sortAge는 그 시점 나이로 고정한다.
+// 사용자가 명시적으로 금액 목표를 세운 계획("목표 금액 유지")에서, 가구 종료 시점 예상
+// 잔여자산이 그 목표에 못 미치면 알림을 만든다. 다른 알림과 달리 연도별 시뮬레이션 조건이
+// 아니라 단일 시점 이벤트라 sortAge는 그 시점 나이로 고정한다.
+//
+// 판정 기준이 "userProfile.targetBequest의 존재 여부"가 아니라 전략(resolveStrategy)인 이유:
+// compileStrategy는 'leave_some'(기본 전략)에서도 targetBequest를 월 목표생활비 24개월치로
+// 실체화한다. 존재 여부로 판정하면 패널에서 아무 필드나 건드려 전략이 실체화되는 순간
+// 같은 계획에 없던 경고 카드가 새로 생긴다 — 사용자는 목표 금액을 입력한 적이 없고,
+// 애초에 그 입력은 'target_amount'일 때만 화면에 보인다. 화면이 말하는 것과 알림이 뜨는
+// 조건을 같은 함수(resolveStrategy)로 묶어 어긋날 수 없게 한다.
+//
+// 'spend_all'(0원, 다 쓰고 가기)은 미달이라는 개념 자체가 성립하지 않으므로(잔여자산이
+// 0 이상이면 항상 목표를 만족) 대상이 아니다.
 //
 // 기준 나이는 본인 기대수명이 아니라 result.householdEndAge다 — endingAssets가 "둘 중 늦게
 // 사망하는 쪽" 시점의 잔액이기 때문이다(types.ts). 배우자가 더 오래 사는 계획에서 본인
@@ -105,6 +115,7 @@ function buildHealthInsuranceAlert(
 // 문구는 generateChartCaptions와 같은 관례를 따른다(가구 종료가 더 늦을 때만 배우자를 언급).
 function buildBequestShortfallAlert(params: SimulationParams, result: SimulationResult): RiskAlertCandidate | null {
   const { targetBequest, expectancy } = params.userProfile;
+  if (resolveStrategy(params).bequestStrategy !== 'target_amount') return null;
   if (targetBequest === undefined || targetBequest <= 0) return null;
   if (result.endingAssets >= targetBequest) return null;
 

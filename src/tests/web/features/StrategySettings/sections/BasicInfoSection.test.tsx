@@ -108,7 +108,7 @@ describe('BasicInfoSection', () => {
     test('나이 입력에 min/max 범위가 걸려 있다', () => {
       renderSection();
 
-      expect(screen.getByLabelText('현재 나이')).toHaveAttribute('min', '0');
+      expect(screen.getByLabelText('현재 나이')).toHaveAttribute('min', '1');
       expect(screen.getByLabelText('현재 나이')).toHaveAttribute('max', '120');
       expect(screen.getByLabelText('목표 은퇴 나이')).toHaveAttribute('max', '120');
       expect(screen.getByLabelText('기대수명')).toHaveAttribute('max', '130');
@@ -125,14 +125,71 @@ describe('BasicInfoSection', () => {
       });
     });
 
-    test('음수는 0으로 클램프한다', () => {
+    // A3: 하한이 0이면 0세가 저장 가능하고, currentAge 0은 SimulationEngine의
+    // totalYears 가드(<= 0)를 통과해 91년짜리 시뮬레이션이 조용히 돈다. 사람 나이의
+    // 하한은 1이다(0세 기대수명·0세 은퇴는 어느 것도 의미가 없다).
+    test.each([
+      ['현재 나이', 'currentAge'],
+      ['목표 은퇴 나이', 'retirementAge'],
+      ['기대수명', 'expectancy'],
+    ] as const)('%s의 음수·0은 1로 클램프한다', (label, key) => {
       const onChangeParams = renderSection();
 
-      fireEvent.change(screen.getByLabelText('현재 나이'), { target: { value: '-5' } });
+      fireEvent.change(screen.getByLabelText(label), { target: { value: '-5' } });
+      fireEvent.change(screen.getByLabelText(label), { target: { value: '0' } });
+
+      expect(onChangeParams).toHaveBeenCalledTimes(2);
+      expect(onChangeParams).toHaveBeenNthCalledWith(1, {
+        ...initialParams,
+        userProfile: { ...initialParams.userProfile, [key]: 1 },
+      });
+      expect(onChangeParams).toHaveBeenNthCalledWith(2, {
+        ...initialParams,
+        userProfile: { ...initialParams.userProfile, [key]: 1 },
+      });
+    });
+
+    test('배우자 나이·기대수명의 0도 1로 클램프한다', () => {
+      const params = { ...initialParams, spouse: { ...DEFAULT_SPOUSE, enabled: true } };
+      const onChangeParams = vi.fn();
+      render(
+        <BasicInfoSection params={params} onChangeParams={onChangeParams} mode="standard" changed={new Set()} />
+      );
+
+      fireEvent.change(screen.getByLabelText('배우자 나이'), { target: { value: '0' } });
 
       expect(onChangeParams).toHaveBeenCalledWith({
-        ...initialParams,
-        userProfile: { ...initialParams.userProfile, currentAge: 0 },
+        ...params,
+        spouse: { ...DEFAULT_SPOUSE, enabled: true, currentAge: 1 },
+      });
+    });
+
+    // A4: HTML min/max는 Number('')가 상태에 도달하는 것을 막지 못한다. 지우면 0이
+    // 저장되어(resolveSpouse가 계산 시 클램프하더라도) 저장값이 조용히 바뀐다.
+    test('배우자 수령 개시 나이를 비우면 아무것도 저장하지 않는다', () => {
+      const params = { ...initialParams, spouse: { ...DEFAULT_SPOUSE, enabled: true } };
+      const onChangeParams = vi.fn();
+      render(
+        <BasicInfoSection params={params} onChangeParams={onChangeParams} mode="standard" changed={new Set()} />
+      );
+
+      fireEvent.change(screen.getByLabelText('배우자 수령 개시 나이'), { target: { value: '' } });
+
+      expect(onChangeParams).not.toHaveBeenCalled();
+    });
+
+    test('배우자 수령 개시 나이는 연기 상한(70세)으로 클램프한다', () => {
+      const params = { ...initialParams, spouse: { ...DEFAULT_SPOUSE, enabled: true } };
+      const onChangeParams = vi.fn();
+      render(
+        <BasicInfoSection params={params} onChangeParams={onChangeParams} mode="standard" changed={new Set()} />
+      );
+
+      fireEvent.change(screen.getByLabelText('배우자 수령 개시 나이'), { target: { value: '99' } });
+
+      expect(onChangeParams).toHaveBeenCalledWith({
+        ...params,
+        spouse: { ...DEFAULT_SPOUSE, enabled: true, nationalPensionStartAge: 70 },
       });
     });
   });

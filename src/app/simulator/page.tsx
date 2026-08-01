@@ -7,6 +7,7 @@ import { computeMonthlySpendingComposition } from '../../core/usecases/MonthlySp
 import { computeRiskAlerts } from '../../core/usecases/dashboard/computeRiskAlerts';
 import { computeExecutionRoadmap, selectDepletionAge } from '../../core/usecases/dashboard/computeExecutionRoadmap';
 import { computeSensitivityAnalysis } from '../../core/usecases/dashboard/computeSensitivityAnalysis';
+import { describeFireAge } from '../../core/usecases/dashboard/describeFireAge';
 import { renderRiskAlertsSection, renderItemizedChecklistSection, renderExecutionRoadmapSection, renderSensitivityTableSection } from '../../web/features/Pdf/pdfReportSections';
 import { recommendStrategy } from '../../core/usecases/strategy/RecommendationEngine';
 import { compileStrategy } from '../../core/usecases/strategy/compileStrategy';
@@ -363,7 +364,7 @@ export default function Home() {
                 </div>
                 <div style="font-size: 13.5px; border-bottom: 1px dashed #e2e8f0; padding-bottom: 8px;">
                   <span style="font-weight: 600; color: #475569;">FIRE 조기은퇴 가능 나이</span>
-                  <span style="float: right; font-size: 15px; color: #0f172a; font-weight: 700;">${fireAge ? `${fireAge}세` : '달성 불가능'}</span>
+                  <span style="float: right; font-size: 15px; color: #0f172a; font-weight: 700;">${describeFireAge(fireAge, userProfile.expectancy)}</span>
                 </div>
                 <div style="font-size: 13.5px; border-bottom: 1px dashed #e2e8f0; padding-bottom: 8px;">
                   <span style="font-weight: 600; color: #475569;">자산 고갈 예상 나이</span>

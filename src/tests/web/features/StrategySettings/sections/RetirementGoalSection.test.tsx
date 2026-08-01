@@ -51,24 +51,33 @@ describe('RetirementGoalSection', () => {
     });
   });
 
-  test('생활비 전략이 target일 때만 목표 월 생활비 입력이 보인다', () => {
-    renderSection();
+  // A6(C2와 같은 결함 형태): UtilityEngine.targetAnnualSpendingForYear는 **모든** 생활비
+  // 전략에서 userProfile.targetMonthlySpending을 소비 만족도의 분모로 쓴다. 어느 선택지에서든
+  // 숨기면 사용자가 볼 수도 고칠 수도 없는 값이 점수를 좌우한다.
+  test.each([
+    ['target'],
+    ['ai'],
+    ['dividend_only'],
+    ['max_sustainable'],
+  ] as const)('생활비 전략이 %s여도 목표 월 생활비 입력이 보인다', (spendingChoice) => {
+    renderSection({
+      ...initialParams,
+      strategy: { ...DEFAULT_RETIREMENT_STRATEGY, spendingChoice },
+    });
 
     expect(screen.getByLabelText('목표 월 생활비')).toBeInTheDocument();
   });
 
-  test('배당금만 소비를 고르면 목표 월 생활비 입력이 사라진다', () => {
-    render(
-      <RetirementGoalSection
-        params={{
-          ...initialParams,
-          strategy: { ...DEFAULT_RETIREMENT_STRATEGY, spendingChoice: 'dividend_only' },
-        }}
-        onChangeParams={vi.fn()} mode="standard" changed={new Set()} ai={noAi}
-      />
-    );
+  test.each([
+    ['dividend_only'],
+    ['max_sustainable'],
+  ] as const)('인출액을 정하지 않는 전략(%s)에서는 이 값이 채점 기준임을 안내한다', (spendingChoice) => {
+    renderSection({
+      ...initialParams,
+      strategy: { ...DEFAULT_RETIREMENT_STRATEGY, spendingChoice },
+    });
 
-    expect(screen.queryByLabelText('목표 월 생활비')).not.toBeInTheDocument();
+    expect(screen.getByText(/소비 만족도/)).toBeInTheDocument();
   });
 
   test('AI 추천을 고르면 그 선택 상태가 유지된다', () => {

@@ -1,6 +1,6 @@
 import { SimulationParams, SimulationResult, UtilityBreakdown, UtilityConfig } from '../../entities/types';
 import { DEFAULT_UTILITY_CONFIG } from './utilityWeights';
-import { isMaximizeBequestStrategy } from '../strategy/compileStrategy';
+import { resolveStrategy } from '../strategy/compileStrategy';
 
 export interface CurrentStrategyAnalysis {
   strengths: string[];
@@ -75,11 +75,12 @@ export function explainBequestAdequacy(
   cfg: UtilityConfig = DEFAULT_UTILITY_CONFIG
 ): string {
   const { targetBequest } = params.userProfile;
+  const bequestStrategy = resolveStrategy(params).bequestStrategy;
 
   // "최대 상속"은 단조증가로 채점되므로(UtilityEngine.monotonicAdequacyRaw) "많이 남아서
   // 감점되었다"는 아래 문구를 쓰면 화면과 점수가 정반대를 말하게 된다. 판정은 채점과 같은
-  // 함수(isMaximizeBequestStrategy)를 쓴다.
-  if (isMaximizeBequestStrategy(params)) {
+  // 진입점(resolveStrategy)을 쓴다.
+  if (bequestStrategy === 'maximize') {
     if (result.endingAssets <= 0) {
       return '최대 상속을 목표로 하셨지만 예상 잔여자산이 남지 않아 상속 자산 적정성 점수를 받지 못했습니다.';
     }
@@ -96,7 +97,14 @@ export function explainBequestAdequacy(
 
   // 사용자가 목표 상속자산을 직접 지정한 경우: UtilityEngine.computeBequestAdequacyRaw와
   // 동일한 산식(0원은 "다 쓰고 가기"라 분모 0으로 처리)을 근거로 설명 문구를 만든다.
-  if (targetBequest !== undefined) {
+  //
+  // targetBequest의 존재 여부가 아니라 전략으로 판정한다 — compileStrategy는 기본 전략인
+  // 'leave_some'에서도 targetBequest를 월생활비 24개월치로 실체화하므로, 존재 여부로
+  // 판정하면 사용자가 입력한 적 없는 금액을 "목표 상속자산"이라고 서술하게 된다
+  // (그 입력란은 '목표 금액 유지'를 골랐을 때만 화면에 나타난다). computeRiskAlerts의
+  // 상속 부족 알림과 같은 기준이다.
+  const hasExplicitTarget = bequestStrategy === 'target_amount' || bequestStrategy === 'spend_all';
+  if (hasExplicitTarget && targetBequest !== undefined) {
     if (targetBequest <= 0) {
       if (result.endingAssets <= 0) {
         return '목표 상속자산을 0원(다 쓰고 가기)으로 설정하셨고, 예상대로 자산을 모두 소진할 것으로 예상됩니다.';

@@ -20,6 +20,11 @@ export function RetirementGoalSection({ params, onChangeParams, mode, changed, a
   const strategy = resolveStrategy(params);
   const spendingChoice = strategy.spendingChoice;
 
+  // 엔진이 인출액을 다른 규칙(배당액 / 역산된 최대 생활비)으로 정하는 전략. 이때도 목표
+  // 월 생활비는 채점의 분모로 계속 쓰이므로, 입력은 보여주되 역할이 달라졌음을 알린다.
+  const spendingUsedForScoringOnly =
+    spendingChoice === 'dividend_only' || spendingChoice === 'max_sustainable';
+
   const setStrategy = (patch: Partial<typeof strategy>) => {
     onChangeParams({ ...params, strategy: { ...strategy, ...patch } });
   };
@@ -66,14 +71,20 @@ export function RetirementGoalSection({ params, onChangeParams, mode, changed, a
       )}
 
       {/*
-        'ai'에서도 이 입력을 보여준다. compileStrategy의 resolveSpendingStrategy가 'ai'를
-        baseline인 'target'으로 내리므로, 엔진은 'AI 추천'을 골라도 이 금액을 그대로 인출
-        목표로 쓴다 — 숨기면 사용자가 볼 수도 고칠 수도 없는 값이 계산을 지배한다.
-        게다가 AI 제안값(aiHint)이 붙어 있는 곳이 바로 이 행이라, 제안을 받으려고 고른
-        선택지에서 정작 제안이 사라지는 모순도 생긴다.
+        네 선택지 모두에서 이 입력을 보여준다.
+
+        'target'/'ai': compileStrategy의 resolveSpendingStrategy가 'ai'를 baseline인 'target'으로
+        내리므로 엔진은 이 금액을 그대로 인출 목표로 쓴다. 게다가 AI 제안값(aiHint)이 붙어 있는
+        곳이 바로 이 행이라, 제안을 받으려고 고른 선택지에서 정작 제안이 사라지는 모순도 생긴다.
+
+        'dividend_only'/'max_sustainable': 인출액은 이 금액이 정하지 않지만,
+        UtilityEngine.targetAnnualSpendingForYear가 **모든** 전략에서 이 값을 소비 만족도의
+        분모(= 충족해야 할 "필요")로 쓴다. 숨기면 사용자가 볼 수도 고칠 수도 없는 값이 점수를
+        좌우한다 — C2와 정확히 같은 결함이다. 'max_sustainable'의 계산 결과
+        (result.calculatedTargetSpending)를 분모로 대신 쓰면 비율이 항상 1이 되어 월 50만원짜리
+        계획과 월 500만원짜리 계획이 같은 점수를 받으므로, 분모는 사용자가 말한 "필요"여야 한다.
       */}
-      {isFieldVisible(mode, 'userProfile.targetMonthlySpending')
-        && (spendingChoice === 'target' || spendingChoice === 'ai') && (
+      {isFieldVisible(mode, 'userProfile.targetMonthlySpending') && (
         <FieldRow
           label="목표 월 생활비"
           tooltipText={spendingChoice === 'ai'
@@ -99,6 +110,12 @@ export function RetirementGoalSection({ params, onChangeParams, mode, changed, a
               }
             }}
           />
+          {spendingUsedForScoringOnly && (
+            <p className="text-xs text-foreground-muted">
+              이 전략에서는 인출액을 이 금액으로 정하지 않습니다. 다만 소비 만족도 점수를 매길 때
+              &ldquo;필요 생활비&rdquo; 기준으로 쓰이므로, 실제로 필요한 금액을 넣어 주세요.
+            </p>
+          )}
         </FieldRow>
       )}
 
