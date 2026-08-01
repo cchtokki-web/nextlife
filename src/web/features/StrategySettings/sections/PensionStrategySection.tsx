@@ -35,6 +35,9 @@ export function PensionStrategySection({ params, onChangeParams, mode, changed, 
   const nationalHint = plan?.nationalPensionStartAge !== undefined
     ? `${plan.nationalPensionStartAge}세부터 수령`
     : undefined;
+  // 전략이 'ai_optimized'(미정)로 남아 있으면 applyAiSentinels가 이 나이를 시뮬레이션에
+  // 실제로 넣는다. 확정 전략을 고른 사용자에게는 같은 값이 단순 제안일 뿐이다.
+  const nationalHintApplied = strategy.nationalPensionStrategy === 'ai_optimized';
 
   // 사적연금 인출 전략에는 AI 힌트를 붙이지 않는다.
   //
@@ -55,6 +58,7 @@ export function PensionStrategySection({ params, onChangeParams, mode, changed, 
           tooltipText="늦게 받을수록 매달 받는 금액이 커집니다. 대신 받는 기간은 짧아집니다."
           changed={changed.has('strategy.nationalPensionStrategy')}
           aiHint={nationalHint}
+          aiHintApplied={nationalHintApplied}
         >
           <RadioCardGroup
             name="national-pension-strategy" ariaLabel="국민연금 수령 시작" value={strategy.nationalPensionStrategy}
