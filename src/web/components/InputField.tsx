@@ -20,10 +20,20 @@ export const InputField = React.forwardRef<HTMLInputElement, InputFieldProps>(({
   onStepDown,
   className = '',
   type,
+  id,
+  disabled,
   ...props
 }, ref) => {
   const localRef = React.useRef<HTMLInputElement>(null);
-  
+  // 보이는 라벨을 입력의 접근성 이름으로 삼기 위한 연결 id(WCAG 2.5.3 "Label in Name").
+  // 예전에는 <label>에 htmlFor가 없고 입력을 감싸지도 않아 아무 연결이 없었고, 그 자리를
+  // 보이는 문구와 다른 aria-label이 메우고 있었다(예: 보이는 "연 주가 상승률" /
+  // 읽히는 "연 수익률"). 음성 제어 사용자가 화면에 보이는 말을 그대로 하면 잡히지 않는다.
+  // 호출부가 id를 직접 주면 그것을 존중하고, 없으면 useId로 인스턴스별 고유 id를 만든다
+  // (같은 라벨의 입력이 자산 개수만큼 반복 렌더되므로 고정 id는 쓸 수 없다).
+  const generatedId = React.useId();
+  const inputId = id ?? generatedId;
+
   // Combine forwarded ref and local ref
   const setRef = React.useCallback((node: HTMLInputElement | null) => {
     (localRef as any).current = node;
@@ -36,7 +46,15 @@ export const InputField = React.forwardRef<HTMLInputElement, InputFieldProps>(({
     }
   }, [ref]);
 
-  const hasSteppers = type === 'number' || !!(onStepUp || onStepDown);
+  // 잠긴 입력에는 스테퍼를 아예 렌더하지 않는다.
+  //
+  // 브라우저는 disabled 입력에 대한 사용자 조작만 막을 뿐, 스크립트의 값 변경은 막지 않는다.
+  // 아래 handleStepUp/handleStepDown은 input.stepUp() 후 'input' 이벤트를 직접 dispatch하므로
+  // 버튼이 살아 있으면 잠긴 필드가 그대로 편집된다 — 전략(리스크 성향·경제 시나리오·연금
+  // 전략)이 값을 지배하는 동안 화면과 엔진이 다시 어긋나는 경로다.
+  // 비활성 버튼을 남기는 대신 숨기는 이유: 조작할 수 없는 컨트롤을 그려두면 잠금 상태가
+  // 여전히 편집 가능한 것처럼 읽히고, 입력 우측 여백(inputWithSteppers)도 함께 정리된다.
+  const hasSteppers = !disabled && (type === 'number' || !!(onStepUp || onStepDown));
 
   const handleStepUp = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -119,7 +137,7 @@ export const InputField = React.forwardRef<HTMLInputElement, InputFieldProps>(({
   return (
     <div className={styles.formGroup}>
       {label && (
-        <label className={styles.label}>
+        <label className={styles.label} htmlFor={inputId}>
           <span>{label}</span>
           {labelSecondary && <span className={styles.labelSecondary}>{labelSecondary}</span>}
         </label>
@@ -128,6 +146,8 @@ export const InputField = React.forwardRef<HTMLInputElement, InputFieldProps>(({
         {prefixText && <span className={styles.prefix}>{prefixText}</span>}
         <input
           ref={setRef}
+          id={inputId}
+          disabled={disabled}
           type={type}
           className={`${styles.input} ${prefixText ? styles.inputWithPrefix : ''} ${
             suffixText ? styles.inputWithSuffix : ''

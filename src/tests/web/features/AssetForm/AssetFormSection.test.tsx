@@ -22,6 +22,23 @@ const baseParams: SimulationParams = {
   displayCurrency: 'KRW',
 };
 
+// 사적연금(IRP)·ISA를 하나씩 가진 params. 여러 describe가 공유한다.
+const withPensionAndIsa = (
+  strategy: SimulationParams['strategy'],
+  pensionInvestmentType?: 'etf'
+): SimulationParams => ({
+  ...baseParams,
+  strategy,
+  privatePensions: [{
+    id: 'p1', type: 'irp', balance: 1000, monthlyContribution: 0, annualReturn: 5,
+    currency: 'KRW', investmentType: pensionInvestmentType, ticker: 'AAA',
+  }],
+  isaAccounts: [{
+    id: 'i1', type: 'general', balance: 1000, monthlyContribution: 0,
+    annualReturn: 5, dividendYield: 1.5, currency: 'KRW', maturityYears: 3,
+  }],
+});
+
 // 인적사항(나이/생활비/목표 상속자산) 탭은 좌측 "내 은퇴 전략" 패널의 ①기본정보·②은퇴목표로
 // 옮겨졌다. 같은 값을 두 곳에서 편집할 수 있으면 어느 쪽이 진짜인지 알 수 없어진다.
 describe('AssetFormSection - 인적사항 탭 제거됨', () => {
@@ -106,28 +123,93 @@ describe('AssetFormSection - 전략이 수익률을 지배할 때', () => {
   });
 
   test('사적연금·ISA 수익률 입력도 함께 비활성화된다', () => {
+    const params = withPensionAndIsa({ ...DEFAULT_RETIREMENT_STRATEGY, riskProfile: 'conservative' });
+    render(<AssetFormSection params={params} onChangeParams={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /연금 자산/ }));
+    fireEvent.click(screen.getByText(/IRP 연금 계좌/));
+    expect(screen.getByLabelText('연 주가 상승률')).toBeDisabled();
+
+    fireEvent.click(screen.getByRole('button', { name: /ISA 계좌/ }));
+    fireEvent.click(screen.getByText(/중개형 ISA/));
+    expect(screen.getByLabelText('연 기대 수익률')).toBeDisabled();
+  });
+
+  // A2(2): 실시간 조회 버튼은 annualGrowthRate/annualReturn을 덮어쓰면서 yieldPreset을
+  // 'custom'으로까지 찍는다. 입력만 잠그고 이 버튼을 남기면 지배 중에도 버튼 하나로
+  // 화면상 수익률과 'custom' 표식이 동시에 바뀌고 엔진은 여전히 프리셋으로 계산한다.
+  test('지배 중이면 자산의 실시간 성장률/배당률 조회 버튼도 비활성화된다', () => {
+    renderExpanded({
+      ...withAsset,
+      strategy: { ...DEFAULT_RETIREMENT_STRATEGY, riskProfile: 'conservative' },
+    });
+
+    for (const button of screen.getAllByTitle(/실시간 성장률\/배당률 조회/)) {
+      expect(button).toBeDisabled();
+    }
+  });
+
+  test('지배하지 않으면 실시간 조회 버튼은 평소대로 쓸 수 있다', () => {
+    renderExpanded({ ...withAsset, strategy: { ...DEFAULT_RETIREMENT_STRATEGY } });
+
+    for (const button of screen.getAllByTitle(/실시간 성장률\/배당률 조회/)) {
+      expect(button).toBeEnabled();
+    }
+  });
+
+  test('지배 중이면 사적연금의 실시간 수익률 조회 버튼도 비활성화된다', () => {
+    const params = withPensionAndIsa(
+      { ...DEFAULT_RETIREMENT_STRATEGY, economicScenario: 'recession' },
+      'etf'
+    );
+    render(<AssetFormSection params={params} onChangeParams={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /연금 자산/ }));
+    fireEvent.click(screen.getByText(/IRP 연금 계좌/));
+
+    for (const button of screen.getAllByTitle(/실시간 수익률/)) {
+      expect(button).toBeDisabled();
+    }
+  });
+});
+
+// A3(WCAG 2.5.3): 보이는 라벨과 접근성 이름이 달라선 안 된다. 음성 제어 사용자가 화면에
+// 보이는 "연 주가 상승률"이라고 말했을 때 aria-label이 "연 수익률"이면 잡히지 않는다.
+describe('AssetFormSection - 수익률 입력의 접근성 이름', () => {
+  test('사적연금 수익률 입력의 접근성 이름이 보이는 라벨과 같다', () => {
+    const params = withPensionAndIsa(DEFAULT_RETIREMENT_STRATEGY);
+    render(<AssetFormSection params={params} onChangeParams={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /연금 자산/ }));
+    fireEvent.click(screen.getByText(/IRP 연금 계좌/));
+
+    expect(screen.getByLabelText('연 주가 상승률')).toHaveAccessibleName('연 주가 상승률');
+  });
+
+  test('ISA 수익률 입력의 접근성 이름이 보이는 라벨과 같다', () => {
+    const params = withPensionAndIsa(DEFAULT_RETIREMENT_STRATEGY);
+    render(<AssetFormSection params={params} onChangeParams={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /ISA 계좌/ }));
+    fireEvent.click(screen.getByText(/중개형 ISA/));
+
+    expect(screen.getByLabelText('연 기대 수익률')).toHaveAccessibleName('연 기대 수익률');
+  });
+
+  test('예금형 사적연금은 "연 이자율 (금리)"로 읽힌다', () => {
     const params: SimulationParams = {
       ...baseParams,
-      strategy: { ...DEFAULT_RETIREMENT_STRATEGY, riskProfile: 'conservative' },
-      privatePensions: [
-        { id: 'p1', type: 'irp', balance: 1000, monthlyContribution: 0, annualReturn: 5, currency: 'KRW' },
-      ],
-      isaAccounts: [
-        {
-          id: 'i1', type: 'general', balance: 1000, monthlyContribution: 0,
-          annualReturn: 5, dividendYield: 1.5, currency: 'KRW', maturityYears: 3,
-        },
-      ],
+      privatePensions: [{
+        id: 'p1', type: 'irp', balance: 1000, monthlyContribution: 0,
+        annualReturn: 5, currency: 'KRW', investmentType: 'deposit',
+      }],
     };
     render(<AssetFormSection params={params} onChangeParams={vi.fn()} />);
 
     fireEvent.click(screen.getByRole('button', { name: /연금 자산/ }));
     fireEvent.click(screen.getByText(/IRP 연금 계좌/));
-    expect(screen.getByLabelText('연 수익률')).toBeDisabled();
 
-    fireEvent.click(screen.getByRole('button', { name: /ISA 계좌/ }));
-    fireEvent.click(screen.getByText(/중개형 ISA/));
-    expect(screen.getByLabelText('연 수익률')).toBeDisabled();
+    expect(screen.getByLabelText('연 이자율 (금리)')).toHaveAccessibleName('연 이자율 (금리)');
   });
 });
 

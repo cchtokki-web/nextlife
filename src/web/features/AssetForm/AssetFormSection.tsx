@@ -77,6 +77,21 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
       ? '경제 시나리오'
       : null;
 
+  // 실시간 조회 버튼도 같은 이유로 잠근다.
+  //
+  // fetchAssetInfo/fetchPensionInfo/fetchIsaInfo는 annualGrowthRate·annualReturn을 덮어쓰면서
+  // yieldPreset을 'custom'으로까지 찍는다. 입력만 비활성화하고 이 버튼을 열어두면, 지배 중에도
+  // 버튼 하나로 화면상 수익률과 '직접입력' 표식이 동시에 바뀌는데 엔진은 여전히 프리셋으로
+  // 계산한다 — 입력을 잠가서 없애려던 바로 그 불일치가 다른 문으로 되돌아온다.
+  // 배당률 조회가 같은 함수에 묶여 있어 함께 잠기지만, 조회 결과가 수익률을 덮어쓰는 이상
+  // 부분 적용은 "눌렀는데 일부만 반영된다"는 더 나쁜 상태가 된다.
+  // 이유는 원래 제목 뒤에 덧붙인다 — 제목을 통째로 갈아치우면 툴팁만 보고는 이 버튼이
+  // 무슨 버튼이었는지 알 수 없다. 화면 상단 배너가 같은 이유를 이미 문장으로 설명한다.
+  const yieldFetchTitle = (base: string): string =>
+    yieldGovernedBy
+      ? `${base} (④투자 전략의 ${yieldGovernedBy}이(가) 수익률을 결정하는 동안에는 쓸 수 없습니다)`
+      : base;
+
   const [activeTab, setActiveTab] = useState<TabType>('stocks');
   const [expandedAssets, setExpandedAssets] = useState<Record<string, boolean>>({});
   const [expandedPensions, setExpandedPensions] = useState<Record<string, boolean>>({});
@@ -832,7 +847,6 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                         <div className={styles.priceInputGrow}>
                           <InputField
                             label="연 성장률"
-                            aria-label="연 성장률"
                             type="number"
                             step="0.1"
                             value={asset.annualGrowthRate}
@@ -845,8 +859,8 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                           type="button"
                           className={`${compStyles.button} ${compStyles.buttonSecondary} ${styles.priceFetchButton}`}
                           onClick={() => fetchAssetInfo(asset.id, asset.ticker)}
-                          disabled={fetchingInfoMap[asset.id] || asset.ticker === 'NEW'}
-                          title="실시간 성장률/배당률 조회"
+                          disabled={fetchingInfoMap[asset.id] || asset.ticker === 'NEW' || yieldGovernedBy !== null}
+                          title={yieldFetchTitle('실시간 성장률/배당률 조회')}
                         >
                           <RefreshCw
                             size={22}
@@ -858,7 +872,6 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                         <div className={styles.priceInputGrow}>
                           <InputField
                             label="연 배당률"
-                            aria-label="연 배당률"
                             type="number"
                             step="0.1"
                             value={asset.dividendYield}
@@ -870,8 +883,8 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                           type="button"
                           className={`${compStyles.button} ${compStyles.buttonSecondary} ${styles.priceFetchButton}`}
                           onClick={() => fetchAssetInfo(asset.id, asset.ticker)}
-                          disabled={fetchingInfoMap[asset.id] || asset.ticker === 'NEW'}
-                          title="실시간 성장률/배당률 조회"
+                          disabled={fetchingInfoMap[asset.id] || asset.ticker === 'NEW' || yieldGovernedBy !== null}
+                          title={yieldFetchTitle('실시간 성장률/배당률 조회')}
                         >
                           <RefreshCw
                             size={22}
@@ -1234,7 +1247,6 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                         <div className={styles.priceInputGrow}>
                           <InputField
                             label="연 주가 상승률"
-                            aria-label="연 수익률"
                             type="number"
                             step="0.1"
                             value={pension.annualReturn}
@@ -1247,8 +1259,8 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                           type="button"
                           className={`${compStyles.button} ${compStyles.buttonSecondary} ${styles.priceFetchButton}`}
                           onClick={() => fetchPensionInfo(pension.id, pension.ticker!)}
-                          disabled={fetchingInfoMap[pension.id] || !pension.ticker}
-                          title="실시간 수익률 조회"
+                          disabled={fetchingInfoMap[pension.id] || !pension.ticker || yieldGovernedBy !== null}
+                          title={yieldFetchTitle('실시간 수익률 조회')}
                         >
                           <RefreshCw
                             size={22}
@@ -1271,8 +1283,8 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                           type="button"
                           className={`${compStyles.button} ${compStyles.buttonSecondary} ${styles.priceFetchButton}`}
                           onClick={() => fetchPensionInfo(pension.id, pension.ticker!)}
-                          disabled={fetchingInfoMap[pension.id] || !pension.ticker}
-                          title="실시간 수익률/배당률 조회"
+                          disabled={fetchingInfoMap[pension.id] || !pension.ticker || yieldGovernedBy !== null}
+                          title={yieldFetchTitle('실시간 수익률/배당률 조회')}
                         >
                           <RefreshCw
                             size={22}
@@ -1284,7 +1296,6 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                   ) : (
                     <InputField
                       label={pension.investmentType === 'deposit' ? '연 이자율 (금리)' : '연 주가 상승률'}
-                      aria-label="연 수익률"
                       type="number"
                       step="0.1"
                       value={pension.annualReturn}
@@ -1461,7 +1472,6 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                             <div className={styles.priceInputGrow}>
                               <InputField
                                 label="연 주가 상승률"
-                                aria-label="연 수익률"
                                 type="number"
                                 step="0.1"
                                 value={isa.annualReturn}
@@ -1474,8 +1484,8 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                               type="button"
                               className={`${compStyles.button} ${compStyles.buttonSecondary} ${styles.priceFetchButton}`}
                               onClick={() => fetchIsaInfo(isa.id, isa.ticker!)}
-                              disabled={fetchingInfoMap[isa.id] || !isa.ticker}
-                              title="실시간 수익률 조회"
+                              disabled={fetchingInfoMap[isa.id] || !isa.ticker || yieldGovernedBy !== null}
+                              title={yieldFetchTitle('실시간 수익률 조회')}
                             >
                               <RefreshCw
                                 size={22}
@@ -1498,8 +1508,8 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                               type="button"
                               className={`${compStyles.button} ${compStyles.buttonSecondary} ${styles.priceFetchButton}`}
                               onClick={() => fetchIsaInfo(isa.id, isa.ticker!)}
-                              disabled={fetchingInfoMap[isa.id] || !isa.ticker}
-                              title="실시간 수익률/배당률 조회"
+                              disabled={fetchingInfoMap[isa.id] || !isa.ticker || yieldGovernedBy !== null}
+                              title={yieldFetchTitle('실시간 수익률/배당률 조회')}
                             >
                               <RefreshCw
                                 size={22}
@@ -1511,7 +1521,6 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                       ) : isa.investmentType === 'deposit' ? (
                         <InputField
                           label="연 이자율 (금리)"
-                          aria-label="연 수익률"
                           type="number"
                           step="0.1"
                           value={isa.annualReturn}
@@ -1523,7 +1532,6 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                         <>
                           <InputField
                             label="연 기대 수익률"
-                            aria-label="연 수익률"
                             type="number"
                             step="0.1"
                             value={isa.annualReturn}
