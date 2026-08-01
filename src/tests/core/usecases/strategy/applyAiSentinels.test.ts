@@ -116,6 +116,20 @@ describe('applyAiSentinels', () => {
     expect(applyAiSentinels(compiled, makeRecommendation(plan(65)))).toBe(compiled);
   });
 
+  test('strategy 필드가 없는 통과 경로(compileStrategy)에서도 65세 추천이면 참조를 그대로 반환한다', () => {
+    // baseParams에는 strategy가 없으므로 compileStrategy는 통과 경로를 타 params를
+    // 그대로 반환한다(withdrawalPlan도 undefined). 이때 resolveStrategy는
+    // DEFAULT_RETIREMENT_STRATEGY로 폴백하는데 그 nationalPensionStrategy가
+    // 'ai_optimized'라서 센티널 조건 자체는 통과한다 — "나이가 같아서" 원본을
+    // 반환하는 경로(33번째 줄 부근의 폴백)를 검증하는 케이스다.
+    const compiled = compileStrategy(baseParams);
+    expect(compiled.params.withdrawalPlan).toBeUndefined();
+
+    const applied = applyAiSentinels(compiled, makeRecommendation(plan(65)));
+
+    expect(applied).toBe(compiled);
+  });
+
   test('withdrawalPlan의 다른 필드와 utilityConfig는 보존된다', () => {
     const compiled = compileStrategy({
       ...baseParams,

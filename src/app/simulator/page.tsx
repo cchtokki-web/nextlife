@@ -250,12 +250,13 @@ export default function Home() {
       const html2canvas = (await import('html2canvas')).default;
 
       const { retirementScore, retirementGrade, goalAchievementRate, fireAge, depletionAge, endingAssets, householdEndAge, yearlyResults, utility } = result;
-      // 리포트가 인쇄하는 모든 값은 "결과를 만든 params"에서 읽는다.
-      // activeParams(사용자가 입력한 원본)를 읽으면 경제 시나리오·리스크 성향·연금 전략이
-      // 지배하는 필드에서 화면에 찍힌 숫자와 실제 시뮬레이션이 쓴 숫자가 달라진다
+      // 리포트가 인쇄하는 모든 값은 "결과(result)를 만든 params", 즉 effective.params에서 읽는다.
+      // compiled.params(AI 센티널 적용 전)나 activeParams(사용자가 입력한 원본)를 읽으면
+      // 경제 시나리오·리스크 성향·연금 전략이 지배하는 필드에서 화면에 찍힌 숫자와
+      // 실제 시뮬레이션이 쓴 숫자가 달라진다
       // (물가상승률·국민연금 개시 나이·저율과세 한도 내 인출 등).
       // 예외는 "사용자가 무엇을 입력했는가"를 보여주는 설정 UI뿐이며 이 리포트는 결과 설명이다.
-      const reportParams = compiled.params;
+      const reportParams = effective.params;
       const {
         userProfile,
         assets,
@@ -292,10 +293,10 @@ export default function Home() {
         : '<p style="font-size: 12px; color: #94a3b8;">효용 데이터를 계산할 수 없습니다.</p>';
 
       const bequestAdequacyExplanationHtml = utility
-        ? `<p style="font-size: 10px; color: #94a3b8; margin: -6px 0 12px; line-height: 1.4;">* 상속 자산 적정성: ${explainBequestAdequacy(reportParams, result, compiled.utilityConfig)}</p>`
+        ? `<p style="font-size: 10px; color: #94a3b8; margin: -6px 0 12px; line-height: 1.4;">* 상속 자산 적정성: ${explainBequestAdequacy(reportParams, result, effective.utilityConfig)}</p>`
         : '';
 
-      const currentStrategyAnalysis = utility ? analyzeCurrentStrategy(utility, compiled.utilityConfig) : null;
+      const currentStrategyAnalysis = utility ? analyzeCurrentStrategy(utility, effective.utilityConfig) : null;
       const strengthsHtml = currentStrategyAnalysis
         ? currentStrategyAnalysis.strengths.map(s => `<li style="margin-bottom: 4px;">${s}</li>`).join('')
         : '';
@@ -321,7 +322,7 @@ export default function Home() {
         `
         : '';
 
-      const riskAlerts = computeRiskAlerts(result, reportParams, compiled.utilityConfig);
+      const riskAlerts = computeRiskAlerts(result, reportParams, effective.utilityConfig);
       const riskAlertsSectionHtml = renderRiskAlertsSection(riskAlerts);
       const roadmap = computeExecutionRoadmap(reportParams, recommendation, selectDepletionAge(recommendation, result));
       const executionRoadmapSectionHtml = renderExecutionRoadmapSection(roadmap);
@@ -1012,7 +1013,7 @@ export default function Home() {
               </div>
             )}
             <DashboardSection
-              params={compiled.params}
+              params={effective.params}
               result={result}
               compareResults={compareResults}
               isPro={isPro}
