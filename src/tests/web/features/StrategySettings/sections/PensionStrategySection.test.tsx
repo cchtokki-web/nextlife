@@ -3,6 +3,7 @@ import { render, screen, fireEvent, within } from '@testing-library/react';
 import { PensionStrategySection } from '@/web/features/StrategySettings/sections/PensionStrategySection';
 import { DEFAULT_RETIREMENT_STRATEGY } from '@/core/usecases/strategy/compileStrategy';
 import { initialParams } from '@/infrastructure/storage/localStore';
+import { NationalPensionStrategy } from '@/core/entities/types';
 
 const noAi = { recommendation: null, error: null, improved: false };
 
@@ -104,12 +105,15 @@ describe('PensionStrategySection', () => {
 
     render(
       <PensionStrategySection
+        // initialParams는 strategy를 지정하지 않아 resolveStrategy가 DEFAULT_RETIREMENT_STRATEGY로
+        // 채운다. nationalPensionStrategy의 기본값이 센티널('ai_optimized')이라 이 추천은
+        // "제안"이 아니라 이미 시뮬레이션에 반영되는 "적용"이다.
         params={initialParams} onChangeParams={vi.fn()}
         mode="standard" changed={new Set()} ai={ai}
       />
     );
 
-    expect(screen.getByText('AI 추천: 70세부터 수령')).toBeInTheDocument();
+    expect(screen.getByText('AI 적용: 70세부터 수령')).toBeInTheDocument();
   });
 
   // B2: 사적연금 월 인출 목표는 적용되지 않을 뿐 아니라 이 화면의 선택지로는 표현조차 되지
@@ -156,5 +160,53 @@ describe('PensionStrategySection', () => {
     );
 
     expect(screen.queryByRole('switch', { name: /ISA 먼저 사용/ })).not.toBeInTheDocument();
+  });
+
+  describe('국민연금 AI 힌트', () => {
+    // 이 컴포넌트가 recommendedPlan에서 읽는 필드는 nationalPensionStartAge 하나뿐이라,
+    // 기존 'AI가 연기 수령을 추천하면 힌트를 표시한다' 테스트(99행)와 같은 방식으로
+    // 필요한 필드만 채우고 나머지는 as never로 넘긴다.
+    const aiWithAge = (nationalPensionStartAge: number) => ({
+      recommendation: { improved: true, recommendedPlan: { nationalPensionStartAge } } as never,
+      error: null, improved: true,
+    });
+
+    const paramsWith = (nationalPensionStrategy: NationalPensionStrategy) => ({
+      ...initialParams,
+      strategy: { ...DEFAULT_RETIREMENT_STRATEGY, nationalPensionStrategy },
+    });
+
+    test("'AI 최적화'(센티널)이면 '적용' 문구로 표시한다", () => {
+      render(
+        <PensionStrategySection
+          params={paramsWith('ai_optimized')} onChangeParams={vi.fn()}
+          mode="standard" changed={new Set()} ai={aiWithAge(68)}
+        />
+      );
+
+      expect(screen.getByText('AI 적용: 68세부터 수령')).toBeInTheDocument();
+    });
+
+    test('확정 전략을 고른 상태면 "추천" 문구로 표시한다', () => {
+      render(
+        <PensionStrategySection
+          params={paramsWith('defer_max')} onChangeParams={vi.fn()}
+          mode="standard" changed={new Set()} ai={aiWithAge(68)}
+        />
+      );
+
+      expect(screen.getByText('AI 추천: 68세부터 수령')).toBeInTheDocument();
+    });
+
+    test('추천이 없으면 힌트를 표시하지 않는다', () => {
+      render(
+        <PensionStrategySection
+          params={paramsWith('ai_optimized')} onChangeParams={vi.fn()}
+          mode="standard" changed={new Set()} ai={noAi}
+        />
+      );
+
+      expect(screen.queryByText(/68세부터 수령/)).not.toBeInTheDocument();
+    });
   });
 });

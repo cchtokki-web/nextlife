@@ -80,8 +80,9 @@ export function applyAiSentinels(
 ```
 
 `compileStrategy` **뒤에 붙는 별도 단계**다. `compileStrategy` 안에 넣지 않는 이유는
-순환이다: `recommendStrategy`가 내부적으로 `compileStrategy`를 호출하므로, 컴파일러가 추천을
-알게 되면 무한 재귀가 된다.
+시그니처 순환이다: `compileStrategy(params)`가 추천을 반영하려면 추천이 필요한데,
+`recommendStrategy`는 이미 컴파일된 params를 입력으로 요구한다 — 서로의 출력을 서로의
+입력으로 요구하는 순환이라 한 함수로 합칠 수 없다.
 
 ### 데이터 흐름 (`src/app/simulator/page.tsx`)
 
@@ -116,14 +117,6 @@ activeParams → compiled ──────────────────
 
 `utilityConfig`는 건드리지 않고 그대로 전달한다.
 
-### 부수 효과: 반올림 손실 제거
-
-기존 「AI 추천」 버튼은 추천 나이를 가장 가까운 enum으로 역매핑하므로 68세 추천이 65세로
-뒤집힌다(`StrategySettingsPanel.tsx:159-170`). 자동 채움 경로는 `withdrawalPlan`에 나이를
-직접 쓰므로 이 손실이 없다. 두 경로의 결과가 다를 수 있다는 뜻이며, 이는 의도된 것이다 —
-버튼은 "사용자 설정을 확정 enum으로 바꾸는" 행위이고 자동 채움은 "미정 축을 계산에만
-반영하는" 행위다.
-
 ## 표시 (UI)
 
 `PensionStrategySection.tsx:34-37`에 이미 AI 힌트가 있다. 현재는 추천이 있으면 무조건
@@ -152,11 +145,14 @@ itemized의 `utilityDelta`를 "자동 채움의 효과"로 그대로 쓸 수 없
 로직은 두지 않는다. 적용 근거는 "추천 엔진이 전역 최적화에서 고른 나이"이며, 표시로 그
 사실을 정직하게 알린다.
 
-**2. 추천 도착 전 한 커밋은 baseline으로 렌더된다.**
-`useBackgroundValue`가 추천을 한 커밋 뒤로 미루므로 그 사이 결과는 65세 기준으로 렌더된 뒤
-갱신된다. KPI 숫자가 한 번 바뀐다. 기존 "AI가 최적 인출 전략을 탐색하고 있습니다..."
-표시(`RecommendationChecklist.tsx:27`)가 이 구간을 덮으므로 1차 범위에서는 추가 처리를 하지
-않는다.
+**2. `recommendation`은 항상 한 커밋 뒤처진다.**
+`useBackgroundValue`가 `compiled`를 한 커밋 미뤄서 `recommendationCompiled`를 만들기 때문에,
+최초 로드 시에만 "baseline(65세)으로 렌더된 뒤 갱신"이 일어나는 것이 아니다. 이후 사용자가
+값을 편집할 때마다 `compiled`는 그 렌더에서 즉시 갱신되지만 `recommendation`은 직전 값을
+한 커밋 더 들고 있으므로, 그 구간의 `result`는 baseline이 아니라 **"새 params + 직전
+추천의 나이"**로 계산된 결과다. 사용자에게 보이는 결과는 같다 — 기존 "AI가 최적 인출
+전략을 탐색하고 있습니다..." 표시(`RecommendationChecklist.tsx:27`)가 매 편집마다 이 구간을
+덮으므로 1차 범위에서는 추가 처리를 하지 않는다.
 
 ## 테스트 계획 (TDD)
 
