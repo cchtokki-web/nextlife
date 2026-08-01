@@ -331,3 +331,163 @@ describe('SimulationEngine FIRE 판정의 가구 규모 계수', () => {
     expect(result.fireAge).toBe(85);
   });
 });
+
+// 국민연금 금액을 손계산으로 고정하기 위한 파라미터. 자산·사적연금·기타소득을 모두 비워
+// nationalPensionIncome에 섞여 들어올 다른 재원을 없앴다(배당세·종합과세 조정이 걸리면
+// 손계산과 어긋난다). 본인 국민연금은 각 describe에서 필요할 때만 채운다.
+const pensionOnlyParams: SimulationParams = {
+  userProfile: { currentAge: 60, retirementAge: 60, expectancy: 90, targetMonthlySpending: 2000000 },
+  assets: [],
+  nationalPension: { expectedMonthlyAmount: 0 },
+  privatePensions: [],
+  otherIncomes: [],
+  inflationRate: 0,
+  inflationMode: 'real',
+  baseExchangeRate: 1350,
+  exchangeScenario: 'base',
+  displayCurrency: 'KRW',
+};
+
+describe('SimulationEngine 배우자 국민연금의 물가 반영 모드', () => {
+  // 이 describe가 없으면 배우자 국민연금의 명목(nominal) 분기가 어떤 테스트에서도 실행되지
+  // 않는다 — 기존 배우자 테스트는 전부 inflationMode: 'real' + inflationRate: 0이라 명목/실질이
+  // 같은 값으로 붕괴한다. 그래서 배우자 몫에만 물가 복리를 아예 빼먹거나(실질값 그대로 지급),
+  // 반대로 두 번 곱해도((1.1^10)^2) 스위트 전체가 초록이다.
+  //
+  // 배우자 60세·개시 65세이므로 본인 70세(= 시뮬레이션 10년차, y = 10)에는 조정계수 1이
+  // 곱해진 월 100만원이 기준액이다. 물가상승률은 1.1^10을 손으로 계산할 수 있도록 10%로 둔다.
+  const spouseOnly = (mode: 'nominal' | 'real'): SimulationParams => ({
+    ...pensionOnlyParams,
+    inflationRate: 10,
+    inflationMode: mode,
+    spouse: {
+      enabled: true, currentAge: 60, expectancy: 90,
+      nationalPensionMonthlyAmount: 1000000, nationalPensionStartAge: 65,
+    },
+  });
+
+  const incomeAt70 = (mode: 'nominal' | 'real'): number =>
+    new SimulationEngine().run(spouseOnly(mode)).yearlyResults.find((y) => y.age === 70)!
+      .nationalPensionIncome;
+
+  test('실질 모드에서는 배우자 국민연금에 물가상승이 누적되지 않는다', () => {
+    // 월 1,000,000 × 12 × (1 - 0.02) = 11,760,000원. 물가 10%가 10년 지나도 그대로다 —
+    // 실질 모드의 모든 금액은 오늘 화폐가치로 표시되기 때문이다.
+    expect(incomeAt70('real')).toBeCloseTo(11760000, 2);
+  });
+
+  test('명목 모드에서는 배우자 국민연금에 시작 시점부터의 물가상승이 누적된다', () => {
+    // 1,000,000 × 1.1^10 = 1,000,000 × 2.5937424601 = 2,593,742.4601원/월
+    //   × 12개월 = 31,124,909.5212원
+    //   × (1 - 0.02) = 30,502,411.330776원
+    // 복리를 빼먹으면 11,760,000원, 두 번 곱하면 1.1^20 배가 되어 둘 다 여기서 걸린다.
+    expect(incomeAt70('nominal')).toBeCloseTo(30502411.330776, 2);
+  });
+});
+
+describe('SimulationEngine 본인+배우자 국민연금 합산액', () => {
+  // 기존 합산 테스트는 "배우자를 켜면 늘어난다"는 방향만 본다. 방향만 보면 조정계수를
+  // 빼먹거나, 유족연금 지급률(0.6)을 두 사람이 모두 살아 있는 해에 곱하거나, 한쪽 금액을
+  // 두 번 세어도 전부 "늘어났다"로 통과한다. 그래서 절대값을 고정한다.
+  //
+  // 본인과 배우자의 금액·개시 나이를 모두 다르게 두어 위 세 결함이 각각 다른 값을 내게 했다:
+  //   본인   월 1,000,000, 개시 65세 → 조정계수 1
+  //   배우자 월   800,000, 개시 70세 → 조정계수 1 + 0.006 × (70-65) × 12 = 1.36
+  const couple: SimulationParams = {
+    ...pensionOnlyParams,
+    nationalPension: { expectedMonthlyAmount: 1000000 },
+    spouse: {
+      enabled: true, currentAge: 60, expectancy: 85,
+      nationalPensionMonthlyAmount: 800000, nationalPensionStartAge: 70,
+    },
+  };
+
+  const incomeAt = (age: number): number =>
+    new SimulationEngine().run(couple).yearlyResults.find((y) => y.age === age)!.nationalPensionIncome;
+
+  test('배우자 개시 전에는 본인 몫만 나온다', () => {
+    // 본인 68세 = 배우자 68세 < 개시 70세 → 배우자 몫 0.
+    // 1,000,000 × 12 × (1 - 0.02) = 11,760,000원.
+    expect(incomeAt(68)).toBeCloseTo(11760000, 2);
+  });
+
+  test('둘 다 수령 중인 해의 가구 합산액이 절대값으로 고정된다', () => {
+    // 본인   1,000,000 × 1.00 = 1,000,000
+    // 배우자   800,000 × 1.36 = 1,088,000
+    // 합계 월 2,088,000 → × 12 × (1 - 0.02) = 24,554,880원.
+    // 조정계수 누락이면 21,168,000원, 생존 중 0.6 적용이면 14,732,928원이 되어 구분된다.
+    expect(incomeAt(70)).toBeCloseTo(24554880, 2);
+  });
+});
+
+describe('SimulationEngine 생존 경계 연도의 spendingFactor', () => {
+  const engine = new SimulationEngine();
+
+  // 이 describe가 없으면 "사망하는 바로 그 해"가 어느 쪽에 속하는지가 어디에도 고정되어
+  // 있지 않다. 기존 테스트는 사망 5년 전(69세)과 5년 후(75세)만 보므로, 생존 판정의
+  // 부등호가 `<=`에서 `<`로 바뀌어 계수가 한 해 일찍 꺾여도 전부 초록이다.
+
+  test('배우자가 사망하는 그 해까지 2인 가구이고, 다음 해부터 1인 가구다', () => {
+    // 배우자 60세·기대수명 70 → deathAtSelfAge = 60 + (70-60) = 본인 70세.
+    // 엔진은 기대수명 "까지"를 생존으로 보므로 70세 행은 아직 계수 1이다.
+    const result = engine.run({
+      ...pensionOnlyParams,
+      userProfile: { ...pensionOnlyParams.userProfile, expectancy: 80 },
+      spouse: {
+        enabled: true, currentAge: 60, expectancy: 70,
+        nationalPensionMonthlyAmount: 0, nationalPensionStartAge: 65,
+      },
+    });
+    const at = (age: number) => result.yearlyResults.find((y) => y.age === age)!;
+
+    expect(at(69)).toMatchObject({ spouseAlive: true, spendingFactor: 1 });
+    expect(at(70)).toMatchObject({ spouseAlive: true, spendingFactor: 1 });
+    expect(at(71)).toMatchObject({ spouseAlive: false, spendingFactor: SINGLE_SURVIVOR_SPENDING_FACTOR });
+  });
+
+  test('본인이 사망하는 그 해까지 2인 가구이고, 다음 해부터 배우자 단독 가구다', () => {
+    // 본인 기대수명 70, 배우자는 본인 나이 85세까지 생존(55세 + 30년) → 가구 종료 85세.
+    const result = engine.run({
+      ...pensionOnlyParams,
+      userProfile: { ...pensionOnlyParams.userProfile, expectancy: 70 },
+      spouse: {
+        enabled: true, currentAge: 55, expectancy: 80,
+        nationalPensionMonthlyAmount: 0, nationalPensionStartAge: 65,
+      },
+    });
+    const at = (age: number) => result.yearlyResults.find((y) => y.age === age)!;
+
+    expect(at(69)).toMatchObject({ spouseAlive: true, spendingFactor: 1 });
+    expect(at(70)).toMatchObject({ spouseAlive: true, spendingFactor: 1 });
+    expect(at(71)).toMatchObject({ spouseAlive: true, spendingFactor: SINGLE_SURVIVOR_SPENDING_FACTOR });
+
+    // 마지막 해도 배우자 생존 구간이다 — 루프는 배우자가 죽는 해에서 끝난다.
+    const last = result.yearlyResults[result.yearlyResults.length - 1];
+    expect(last).toMatchObject({ age: 85, spouseAlive: true, spendingFactor: SINGLE_SURVIVOR_SPENDING_FACTOR });
+  });
+
+  test('가구 종료 나이까지 계수 0인 해는 한 번도 나오지 않는다', () => {
+    // 루프 종료 나이가 max(본인 기대수명, 배우자 사망 나이)이므로 "둘 다 사망"인 해는
+    // 구조적으로 존재할 수 없다(computeSpendingFactor의 0 분기는 엔진 경로에서 도달 불가).
+    // 종료 조건이 바뀌어 사망 후 연도가 결과에 섞이면 생활비 0인 유령 행이 차트에 그려진다.
+    const spouseFirst = engine.run({
+      ...pensionOnlyParams,
+      userProfile: { ...pensionOnlyParams.userProfile, expectancy: 80 },
+      spouse: {
+        enabled: true, currentAge: 60, expectancy: 70,
+        nationalPensionMonthlyAmount: 0, nationalPensionStartAge: 65,
+      },
+    });
+    const selfFirst = engine.run({
+      ...pensionOnlyParams,
+      userProfile: { ...pensionOnlyParams.userProfile, expectancy: 70 },
+      spouse: {
+        enabled: true, currentAge: 55, expectancy: 80,
+        nationalPensionMonthlyAmount: 0, nationalPensionStartAge: 65,
+      },
+    });
+
+    expect(spouseFirst.yearlyResults.some((y) => y.spendingFactor === 0)).toBe(false);
+    expect(selfFirst.yearlyResults.some((y) => y.spendingFactor === 0)).toBe(false);
+  });
+});

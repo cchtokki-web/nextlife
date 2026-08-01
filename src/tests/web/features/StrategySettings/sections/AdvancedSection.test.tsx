@@ -117,6 +117,56 @@ describe('AdvancedSection', () => {
     expect(screen.getByRole('switch', { name: /건강보험료 반영/ })).toBeInTheDocument();
   });
 
+  // C10: 세금 스위치 4종은 "렌더된다"까지만 검증되어 있었다. 이 섹션의 스위치는 전부
+  // setTax(patch) 하나를 공유하므로, 핸들러가 붙는 키를 잘못 적으면(복붙 실수)
+  // 스위치를 켰는데 옆 항목이 켜지거나 값이 통째로 초기화되는데 아무도 잡지 못했다.
+  describe('세금 스위치 4종', () => {
+    const defaults = resolveTaxSettings(initialParams.taxSettings);
+
+    const SWITCHES = [
+      ['금융소득종합과세 반영', 'enableComprehensiveTax'],
+      ['건강보험료 반영', 'enableHealthInsurance'],
+      ['사적연금 한도초과세 반영', 'enablePrivatePensionTax'],
+      ['분리과세·종합과세 유리한 쪽 선택', 'enablePensionComprehensiveComparison'],
+    ] as const;
+
+    test.each(SWITCHES)('%s 스위치를 누르면 그 필드만 뒤집힌다', (label, key) => {
+      const onChangeParams = renderSection();
+
+      const sw = screen.getByRole('switch', { name: new RegExp(label) });
+      // 저장된 값이 그대로 화면에 반영되어야 한다. 여기가 어긋나면 클릭 결과도 반대가 된다.
+      expect(sw).toHaveProperty('checked', defaults[key]);
+
+      fireEvent.click(sw);
+
+      // taxSettings 전체를 단정한다 — 다른 세율·한도를 함께 덮어쓰면 깨진다.
+      expect(onChangeParams).toHaveBeenCalledWith({
+        ...initialParams,
+        taxSettings: { ...defaults, [key]: !defaults[key] },
+      });
+    });
+
+    test.each(SWITCHES)('%s 스위치는 반대 상태에서 누르면 원래대로 돌아온다', (label, key) => {
+      // 한 방향(꺼짐→켜짐)만 검증하면 핸들러가 e.target.checked 대신 상수 true를 써도 통과한다.
+      const flipped = { ...defaults, [key]: !defaults[key] };
+      const params: SimulationParams = { ...initialParams, taxSettings: flipped };
+      const onChangeParams = vi.fn();
+      render(
+        <AdvancedSection
+          params={params} onChangeParams={onChangeParams}
+          mode="expert" changed={new Set()}
+        />
+      );
+
+      fireEvent.click(screen.getByRole('switch', { name: new RegExp(label) }));
+
+      expect(onChangeParams).toHaveBeenCalledWith({
+        ...params,
+        taxSettings: { ...flipped, [key]: defaults[key] },
+      });
+    });
+  });
+
   // 구 TaxSettingsSection에 있던 ±100만원 스텝 버튼. 금액이 커서 직접 타이핑하면
   // 자릿수를 틀리기 쉬운 필드라 새 섹션에도 있어야 한다.
   describe('사적연금 저율과세 한도 스텝 버튼', () => {

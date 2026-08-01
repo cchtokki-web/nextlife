@@ -220,6 +220,103 @@ describe('RetirementGoalSection', () => {
     });
   });
 
+  // C9: 두 금액 입력의 콤마 파싱이 검증되지 않았다. 화면은 toLocaleString()으로 콤마를
+  // 붙여 보여주므로, onChange에서 콤마를 떼지 않으면 사용자가 그 값을 그대로 고쳤을 때
+  // Number('3,000,000') === NaN이 저장되고 엔진 전체가 NaN으로 물든다.
+  describe('금액 입력의 콤마 파싱', () => {
+    const targetAmountParams: SimulationParams = {
+      ...initialParams,
+      strategy: { ...DEFAULT_RETIREMENT_STRATEGY, bequestStrategy: 'target_amount' },
+      userProfile: { ...initialParams.userProfile, targetBequest: 200000000 },
+    };
+
+    test('목표 월 생활비를 콤마 표기로 보여준다', () => {
+      renderSection();
+
+      expect(screen.getByLabelText('목표 월 생활비')).toHaveValue('3,500,000');
+    });
+
+    test('목표 월 생활비는 콤마를 뗀 숫자로 저장한다', () => {
+      const onChangeParams = renderSection();
+
+      fireEvent.change(screen.getByLabelText('목표 월 생활비'), { target: { value: '3,000,000' } });
+
+      // params 전체를 단정한다 — strategy나 targetBequest를 함께 건드리면 깨진다.
+      expect(onChangeParams).toHaveBeenCalledWith({
+        ...initialParams,
+        userProfile: { ...initialParams.userProfile, targetMonthlySpending: 3000000 },
+      });
+    });
+
+    test('목표 월 생활비를 비우면 0으로 저장한다(지웠다 다시 입력하는 경로)', () => {
+      const onChangeParams = renderSection();
+
+      fireEvent.change(screen.getByLabelText('목표 월 생활비'), { target: { value: '' } });
+
+      expect(onChangeParams).toHaveBeenCalledWith({
+        ...initialParams,
+        userProfile: { ...initialParams.userProfile, targetMonthlySpending: 0 },
+      });
+    });
+
+    test('목표 월 생활비에 숫자가 아닌 값을 넣으면 저장하지 않는다', () => {
+      // NaN이 저장되면 소비 만족도의 분모가 NaN이 되어 점수 전체가 사라진다.
+      const onChangeParams = renderSection();
+
+      fireEvent.change(screen.getByLabelText('목표 월 생활비'), { target: { value: '350만' } });
+
+      expect(onChangeParams).not.toHaveBeenCalled();
+    });
+
+    test('목표 상속자산을 비우면 0으로 저장한다', () => {
+      const onChangeParams = renderSection(targetAmountParams);
+
+      fireEvent.change(screen.getByLabelText('목표 상속자산'), { target: { value: '' } });
+
+      expect(onChangeParams).toHaveBeenCalledWith({
+        ...targetAmountParams,
+        userProfile: { ...targetAmountParams.userProfile, targetBequest: 0 },
+      });
+    });
+
+    test('목표 상속자산에 숫자가 아닌 값을 넣으면 저장하지 않는다', () => {
+      const onChangeParams = renderSection(targetAmountParams);
+
+      fireEvent.change(screen.getByLabelText('목표 상속자산'), { target: { value: '2억' } });
+
+      expect(onChangeParams).not.toHaveBeenCalled();
+    });
+
+    // 엔진은 자산 흐름을 displayCurrency로 환산한 뒤 이 두 값과 맞댄다(SimulationEngine).
+    // 단위를 '원'으로 고정하면 USD 표기 사용자가 달러 값을 넣으면서 '원'을 보게 되어
+    // 화면 표기와 엔진 해석이 어긋난다.
+    test.each([
+      ['KRW', '원'],
+      ['USD', 'USD'],
+    ] as const)('표시 통화가 %s면 두 금액 입력의 단위가 %s가 된다', (displayCurrency, suffix) => {
+      renderSection({ ...targetAmountParams, displayCurrency });
+
+      expect(screen.getByLabelText('목표 월 생활비').parentElement).toHaveTextContent(suffix);
+      expect(screen.getByLabelText('목표 상속자산').parentElement).toHaveTextContent(suffix);
+    });
+  });
+
+  // 금액 입력이 '목표 금액 유지' 외의 전략에서도 보이면, 엔진이 쓰지 않는 값을
+  // 사용자가 조정하며 "고쳤는데 결과가 안 바뀐다"를 겪는다.
+  test.each([
+    ['spend_all'],
+    ['leave_some'],
+    ['maximize'],
+  ] as const)('상속 전략이 %s면 목표 상속자산 입력이 보이지 않는다', (bequestStrategy) => {
+    renderSection({
+      ...initialParams,
+      strategy: { ...DEFAULT_RETIREMENT_STRATEGY, bequestStrategy },
+      userProfile: { ...initialParams.userProfile, targetBequest: 200000000 },
+    });
+
+    expect(screen.queryByLabelText('목표 상속자산')).not.toBeInTheDocument();
+  });
+
   test('AI 추천이 개선안을 찾으면 생활비 배수 힌트를 표시한다', () => {
     const ai = {
       recommendation: {

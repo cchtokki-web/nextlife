@@ -204,6 +204,157 @@ describe('StrategySettingsPanel', () => {
     });
   });
 
+  // C4: 지금까지 "클릭 → 실제로 어떤 값이 바뀌는가"가 고정된 섹션은 연금 전략뿐이었다.
+  // 은퇴 목표·투자 전략은 버튼 활성/비활성만 검증되어 있어, buildAiSectionPatch가 엉뚱한
+  // 필드(예: 목표 상속자산, 자산의 monthlyContribution)를 쓰거나 배수를 반대로 적용해도
+  // 전부 통과했다. 아래는 적용 결과 params 전체를 그대로 단정해 그 경로를 막는다.
+  describe('AI 추천 적용 — 은퇴 목표', () => {
+    const withMultiplier = (monthlySpendingMultiplier: number) => ({
+      improved: true,
+      recommendedPlan: {
+        monthlySpendingMultiplier,
+        nationalPensionStartAge: 65,
+        isaMaturityDestination: 'pension',
+      },
+      recommendedAssetReinvestment: null,
+    } as unknown as StrategyRecommendation);
+
+    test('생활비 배수를 목표 월 생활비에만 곱해 반올림한 값으로 적용한다', () => {
+      const onChangeParams = vi.fn();
+      render(
+        <StrategySettingsPanel
+          params={initialParams} onChangeParams={onChangeParams}
+          recommendation={withMultiplier(1.1)} recommendationFailed={false}
+        />
+      );
+
+      fireEvent.click(screen.getByRole('button', { name: '은퇴 목표 AI 추천' }));
+
+      // 350만 × 1.1 = 385만. params 전체를 단정하므로 strategy나 자산을 함께 건드리면 깨진다.
+      expect(onChangeParams).toHaveBeenCalledWith({
+        ...initialParams,
+        userProfile: { ...initialParams.userProfile, targetMonthlySpending: 3850000 },
+      });
+    });
+
+    test('배수가 1보다 작으면 생활비를 줄이는 방향으로 적용한다', () => {
+      // 배수를 나눗셈으로 쓰거나 부호를 뒤집어도 1.1 케이스만으로는 잡히지 않는다.
+      const onChangeParams = vi.fn();
+      render(
+        <StrategySettingsPanel
+          params={initialParams} onChangeParams={onChangeParams}
+          recommendation={withMultiplier(0.9)} recommendationFailed={false}
+        />
+      );
+
+      fireEvent.click(screen.getByRole('button', { name: '은퇴 목표 AI 추천' }));
+
+      expect(onChangeParams).toHaveBeenCalledWith({
+        ...initialParams,
+        userProfile: { ...initialParams.userProfile, targetMonthlySpending: 3150000 },
+      });
+    });
+
+    test('배수가 1이면 버튼이 비활성이고 눌러도 아무 값도 바뀌지 않는다', () => {
+      const onChangeParams = vi.fn();
+      render(
+        <StrategySettingsPanel
+          params={initialParams} onChangeParams={onChangeParams}
+          recommendation={withMultiplier(1)} recommendationFailed={false}
+        />
+      );
+
+      const button = screen.getByRole('button', { name: '은퇴 목표 이미 최적' });
+      expect(button).toBeDisabled();
+
+      fireEvent.click(button);
+
+      expect(onChangeParams).not.toHaveBeenCalled();
+    });
+
+    test('추천이 아직 없으면(계산 전) 버튼이 비활성이고 눌러도 호출되지 않는다', () => {
+      // 추천 도착 전에 눌렸을 때 recommendedPlan이 undefined인 채로 곱하면
+      // targetMonthlySpending이 NaN이 되어 저장되고, 디바운스 자동저장이 그 NaN을 남긴다.
+      const onChangeParams = vi.fn();
+      render(
+        <StrategySettingsPanel
+          params={initialParams} onChangeParams={onChangeParams} {...noRecommendation}
+        />
+      );
+
+      const button = screen.getByRole('button', { name: '은퇴 목표 이미 최적' });
+      expect(button).toBeDisabled();
+
+      fireEvent.click(button);
+
+      expect(onChangeParams).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('AI 추천 적용 — 투자 전략', () => {
+    // 권장값이 첫 자산에만 있고 값도 현재와 다르다. 두 번째 자산은 권장 대상이 아니다.
+    const reinvestRecommendation = {
+      improved: true,
+      recommendedPlan: null,
+      recommendedAssetReinvestment: { 'asset-kodex200': false },
+    } as unknown as StrategyRecommendation;
+
+    test('자산별 배당 재투자 권장값을 해당 자산에만 적용한다', () => {
+      const onChangeParams = vi.fn();
+      render(
+        <StrategySettingsPanel
+          params={initialParams} onChangeParams={onChangeParams}
+          recommendation={reinvestRecommendation} recommendationFailed={false}
+        />
+      );
+
+      fireEvent.click(screen.getByRole('button', { name: '투자 전략 AI 추천' }));
+
+      // 권장에 없는 자산까지 일괄로 뒤집거나(전역 스위치식 구현), 자산 순서를 흐트러뜨리면 깨진다.
+      expect(onChangeParams).toHaveBeenCalledWith({
+        ...initialParams,
+        assets: [
+          { ...initialParams.assets[0], reinvestDividend: false },
+          initialParams.assets[1],
+        ],
+      });
+    });
+
+    test('recommendedPlan이 없어도 배당 재투자 권장만으로 적용된다', () => {
+      // recommendedPlan 널 체크를 앞에 두면 "인출계획은 개선 없음 + 재투자만 개선" 상태에서
+      // 이 섹션 버튼이 조용히 아무 일도 하지 않는다(Phase 3에서 실제로 났던 결함).
+      const onChangeParams = vi.fn();
+      render(
+        <StrategySettingsPanel
+          params={initialParams} onChangeParams={onChangeParams}
+          recommendation={reinvestRecommendation} recommendationFailed={false}
+        />
+      );
+
+      expect(screen.getByRole('button', { name: '투자 전략 AI 추천' })).toBeEnabled();
+
+      fireEvent.click(screen.getByRole('button', { name: '투자 전략 AI 추천' }));
+
+      expect(onChangeParams).toHaveBeenCalledTimes(1);
+    });
+
+    test('추천이 아직 없으면(계산 전) 버튼이 비활성이고 눌러도 호출되지 않는다', () => {
+      const onChangeParams = vi.fn();
+      render(
+        <StrategySettingsPanel
+          params={initialParams} onChangeParams={onChangeParams} {...noRecommendation}
+        />
+      );
+
+      const button = screen.getByRole('button', { name: '투자 전략 이미 최적' });
+      expect(button).toBeDisabled();
+
+      fireEvent.click(button);
+
+      expect(onChangeParams).not.toHaveBeenCalled();
+    });
+  });
+
   test('섹션에서 값을 바꾸면 그 섹션이 잠깐 강조되고 시간이 지나면 해제된다', () => {
     vi.useFakeTimers();
     try {
