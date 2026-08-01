@@ -11,12 +11,15 @@
 
 ## 우선 처리 권장
 
-### 1. `householdEndAge` prop이 optional이라 같은 버그가 재발할 수 있다
+### 1. `householdEndAge` prop이 optional이라 같은 버그가 재발할 수 있다 — **해결됨(Wave 3, B8)**
 
 `src/web/features/Dashboard/hero/AiSummaryHero` — `householdEndAge?: number`이고 `userProfile?.expectancy ?? 90`으로 폴백한다.
 프로덕션 호출부는 항상 값을 넘기지만, **새 호출부가 빠뜨리면 타입 에러 없이 C2 결함이 그대로 되살아난다**(파산하는 계획에 "고갈 위험 없음" 표시).
 
 prop을 필수로 바꾸고 기존 테스트 호출부 6곳을 고치면 구조적으로 재발 불가능해진다.
+
+→ Wave 3에서 필수로 바꾸고 폴백을 제거했다. `tsc`가 누락 호출부 5곳(1곳은 이미 값을 넘기고
+있었다)을 잡아냈고 전부 명시했다.
 
 ### 2. C2와 같은 결함이 두 곳에 남아 있다 — **해결됨(Wave 2, B5)**
 
@@ -30,25 +33,38 @@ Task 5가 `depletionAge`를 가구 종료 나이 기준으로 바꾼 뒤, 본인
 → Wave 2에서 둘 다 `result.householdEndAge` 기준으로 바꿨다. 같은 유형이 `UtilityEngine`
 (재유도)과 `computeExecutionRoadmap`(종료 마커)에도 있어 함께 정리했다.
 
-### 3. `targetAssets`의 배선에 테스트가 없다
+### 3. `targetAssets`의 배선에 테스트가 없다 — **해결됨(Wave 3, B8)**
 
 `computeRetirementTargetAssets`는 순수 함수로 분리되어 산술 계약은 테스트되지만, `calculateRetirementScore`가 실제로 `retirementStartResult.spendingFactor`/`.healthcareSpending`을 넘기는지는 아무도 검증하지 않는다.
 `computeRetirementTargetAssets(target, 1, 0)`으로 회귀시켜도 **신규 테스트 5개가 전부 통과하고 스냅샷도 안 깨진다**(해당 fixture는 factor 1 / healthcare 0).
 
 배우자나 의료비를 켠 상태의 `retirementScore` end-to-end 테스트가 `src/tests` 전체에 없다.
 
-### 4. 일회성 의료비가 은퇴 연도에 걸리면 4% 룰 분모가 부풀려진다
+→ Wave 3에서 `SimulationEngine.retirementScoreWiring.test.ts`를 추가했다. "분모가 같아야 하는
+두 시나리오는 은퇴 준비도가 같다"로 걸며, `(target, 1, 0)`으로 회귀시키면 두 테스트가 모두 실패한다.
+
+### 4. 일회성 의료비가 은퇴 연도에 걸리면 4% 룰 분모가 부풀려진다 — **해결됨(Wave 3, B8)**
 
 `src/core/usecases/SimulationEngine.ts:278`이 `retirementStartResult.healthcareSpending`(그 해 **총** 의료비)를 넘긴다.
 `shockAge === retirementAge`이거나 `longTermCareStartAge === retirementAge`이면 일회성 3천만원이 25배로 곱해져 목표 자산에 7.5억이 더해지고 `assetScore`가 0에 수렴한다(은퇴 준비도 100점 중 최대 25점 손실).
 
 영구 연금 분모에는 **반복 구성요소만** 들어가야 한다. 기본값(쇼크 75세 / 장기요양 80세 vs 은퇴 60~65세)에서는 발동하지 않아 미뤘다.
 
+→ Wave 3에서 `computeAnnualHealthcareCostBreakdown`(`recurring`/`oneTime`/`total`)으로 분해하고,
+4% 룰 분모에는 `recurring`만 넘긴다. 장기요양비는 반복 지출이므로 계속 포함된다.
+
 ---
 
 ## 모델링 한계 (의도된 단순화, 문서화 목적)
 
 이 브랜치의 범위 결정("계좌는 가구 합산, 생존·연금 기준만 분리")에서 직접 따라오는 것들이다.
+
+- **`recommendation.improved`가 이 화면이 적용할 수 없는 축까지 포함해 계산된다.** 후보 생성기는
+  `privatePensionMonthlyTarget`을 `targetMonthlySpending × {0.8, 1.0, 1.3}` 격자로 탐색하는데,
+  ③연금 전략이 표현할 수 있는 값은 `privatePensionLimit/12 × {1, 0.5, 0.25}`뿐이라 교집합이 없다.
+  Wave 3(B2)에서 적용 불가능한 힌트와 섹션별 버튼 활성 판정은 고쳤지만, PDF·히어로가 인쇄하는
+  "효용 N점 → M점"에는 그 축의 기여가 남아 있어 사용자가 모든 추천을 눌러도 그 점수에 도달하지
+  못한다. 구조적 해결은 후보 생성기에서 표현 불가능한 축을 빼는 것이다.
 
 - **가구 합산 과세표준** — 두 사람의 연금을 1인 소득으로 평가해 건강보험료·금융소득종합과세 임계를 실제보다 빨리 넘는다.
 - **유족연금이 사망자의 청구 개시 전에는 0** — 60세 사망 + 청구 예정 65세면 65세까지 지급이 없다. 실제 제도는 사망일부터 지급한다.
@@ -64,22 +80,24 @@ Task 5가 `depletionAge`를 가구 종료 나이 기준으로 바꾼 뒤, 본인
 
 - **`resolveTaxLawProfile`의 프로덕션 호출부가 0이다.** `params.taxLawVersion`을 엔진이 읽지 않아 ⑥고급 설정의 "세법 버전" 셀렉터가 장식적이다. 선택지가 `'current'` 하나뿐이라 지금은 오해를 일으키지 않지만, 셀렉터를 숨기거나 배선하거나 결정이 필요하다.
 - **`RiskProfile`의 `'custom'`과 `'ai_recommended'`가 동작상 100% 동일하다.** 둘 다 `compileStrategy`에서 no-op이며, 나이 기반 AI 프로필 선택 로직은 존재하지 않는다.
-- **`params.yieldPreset`을 `compileStrategy`가 읽지 않는다.** Wave 2(B2)에서 수익률 입력이 전략 지배 중에는 잠기므로 "직접입력 모드인 줄 알았는데 프리셋으로 계산된다"는 오해는 사라졌지만, `yieldPreset` 자체는 여전히 `customYieldSnapshot` 관리용 표식일 뿐 계산에 관여하지 않는다.
+- **`params.yieldPreset`을 `compileStrategy`가 읽지 않는다.** Wave 2(B2)에서 수익률 입력이 전략 지배 중에는 잠기고 Wave 3(A2)에서 실시간 조회 버튼까지 잠겼으므로 "직접입력 모드인 줄 알았는데 프리셋으로 계산된다"는 오해는 사라졌지만, `yieldPreset` 자체는 여전히 `customYieldSnapshot` 관리용 표식일 뿐 계산에 관여하지 않는다.
+- **전략이 수익률을 지배하는 동안에는 배당률만 조회하는 것도 불가능하다**(Wave 3, A2). 조회 API가 성장률과 배당률을 한 번에 돌려주고 같은 핸들러가 둘 다 쓰기 때문이다. 분리하려면 응답을 나누거나 부분 적용이 필요하다.
 - **비교 시나리오가 `compileStrategy`를 거치지 않는다** (`src/app/simulator/page.tsx:185`의 `engine.run(scenario.data)`). 현재는 컴파일이 동작 보존적이라 무해하다.
-- **레거시 `params.spendingStrategy`/`userProfile.targetBequest`가 `strategy` 생성 후에도 지워지지 않는다.** 영구히 가려지므로 무해하나, 미래의 import/migration 경로가 `strategy`를 떨어뜨리면 stale 값이 씨앗으로 되살아난다.
+- **레거시 `params.spendingStrategy`/`userProfile.targetBequest`가 `strategy` 생성 후에도 지워지지 않는다.** 영구히 가려지므로 무해하나, 미래의 import/migration 경로가 `strategy`를 떨어뜨리면 stale 값이 씨앗으로 되살아난다. (Wave 3(A1) 이후 `compileStrategy`의 결과에는 `strategy`가 함께 찍히므로 컴파일 결과를 다시 읽는 경로에서는 재유도가 불가능하다.)
 
 ---
 
 ## 표시·접근성
 
 - `SettingSection`의 `role="region"`에 `aria-labelledby`가 없어 이름 없는 landmark다.
+- `/simulator` 외의 라우트에는 여전히 에러 바운더리가 없다(Wave 3(B4)에서 `simulator/error.tsx`만 추가했다). 저장된 시나리오 자체가 엔진을 터뜨리면 `reset()`이 같은 예외를 반복하는데, 에러 페이지에 시나리오 전환 UI가 없어 안내 문구로만 유도한다.
 - `SwitchField`가 `role="switch"`인데 네이티브 체크박스 외형이다.
 - 섹션 문구가 존재하지 않는 번호를 참조한다 — 제목에는 번호가 없는데 본문은 "④투자 전략", "③연금 전략"을 쓴다. 참조 표기법도 3가지다.
 - 통화 접미사가 일부 하드코딩되어 있다 — `displayCurrency`가 `'USD'`면 한 섹션에 "USD"와 "원"이 공존한다(목표 상속자산, 의료비 3종).
 - 간편 모드에서 빈 섹션 처리가 일관되지 않다 — `AdvancedSection`만 "왜 비어 있는지" 안내문을 렌더한다.
 - 간편 모드에서 환율 조회 실패가 조용하다 — 스위치와 에러 문구가 함께 숨겨지는데 조회 자체는 모드와 무관하게 실행된다.
 - PDF가 `baseExchangeRate`를 인쇄하면서 `exchangeScenario`를 언급하지 않는다(경제 시나리오가 이 값을 교체한다).
-- AI 추천 버튼이 섹션별로 할 일이 없어도 활성화된다 — `aiDisabled={!ai.improved}`가 패널 전역 판정이라, 적용해도 조용히 아무 일도 일어나지 않는 경우가 있다.
+- ~~AI 추천 버튼이 섹션별로 할 일이 없어도 활성화된다~~ — **해결됨(Wave 3, B2)**. `buildAiSectionPatch`가 적용 로직과 활성 판정을 한 함수로 묶어, 그 섹션에서 실제로 바뀌는 값이 있을 때만 버튼이 열린다.
 - 에러 메시지가 버튼의 `aria-label`로 들어간다.
 
 ---
@@ -99,7 +117,7 @@ Task 5가 `depletionAge`를 가구 종료 나이 기준으로 바꾼 뒤, 본인
 - `AssetFormSection.tsx`(1655줄)와 `src/app/simulator/page.tsx`(989줄+)가 크다.
 - `SimulationEngine.runSingle()`이 ~540줄 3중 중첩 루프다. Task 5·9가 각각 이 루프에 기능을 얹었고, 다음 기능 전에 연도 루프 본문 추출을 검토할 만하다. (이번엔 변경이 3곳 국소 수정이라 추출이 더 위험하다고 판단해 보류했다.)
 - `compileStrategy.ts`가 ~200줄에 5개 축이다. 한눈에 보이는 편이 낫다고 판단해 분해하지 않았다.
-- 콤마 파싱 로직이 8곳에 중복되고, 대부분의 숫자 입력에 `min`/`max` 클램프가 없다. `type="number"`를 비우면 `Number('') === 0`이 조용히 저장된다.
+- 콤마 파싱 로직이 8곳에 중복되고, 대부분의 숫자 입력에 `min`/`max` 클램프가 없다. `type="number"`를 비우면 `Number('') === 0`이 조용히 저장된다. (나이 입력은 Wave 3(A4)에서 `StrategySettings/ageInput.ts`로 모았다. 금액 입력의 콤마 파싱은 그대로다.)
 - 배지 pill Tailwind 문자열이 `ChangedBadge.tsx`와 `SettingSection.tsx`에 각각 있다.
 - `TAX_LAW_PROFILES`의 배열이 `readonly`가 아니고 `taxRates` export와 인스턴스를 공유한다(현 소비처는 읽기 전용).
 - `restoreCustomYieldPreset`의 프로덕션 호출부가 0이다. `applyYieldPreset`이 컴파일 사본에만 적용되어 되돌릴 대상이 생기지 않으므로 데이터 손실 위험은 아니다.
