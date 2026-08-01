@@ -226,6 +226,12 @@ export default function Home() {
       const html2canvas = (await import('html2canvas')).default;
 
       const { retirementScore, retirementGrade, goalAchievementRate, fireAge, depletionAge, endingAssets, yearlyResults, utility } = result;
+      // 리포트가 인쇄하는 모든 값은 "결과를 만든 params"에서 읽는다.
+      // activeParams(사용자가 입력한 원본)를 읽으면 경제 시나리오·리스크 성향·연금 전략이
+      // 지배하는 필드에서 화면에 찍힌 숫자와 실제 시뮬레이션이 쓴 숫자가 달라진다
+      // (물가상승률·국민연금 개시 나이·저율과세 한도 내 인출 등).
+      // 예외는 "사용자가 무엇을 입력했는가"를 보여주는 설정 UI뿐이며 이 리포트는 결과 설명이다.
+      const reportParams = compiled.params;
       const {
         userProfile,
         assets,
@@ -238,7 +244,7 @@ export default function Home() {
         baseExchangeRate,
         displayCurrency,
         taxSettings
-      } = activeParams;
+      } = reportParams;
 
       const currentTaxSettings = resolveTaxSettings(taxSettings);
 
@@ -262,7 +268,7 @@ export default function Home() {
         : '<p style="font-size: 12px; color: #94a3b8;">효용 데이터를 계산할 수 없습니다.</p>';
 
       const bequestAdequacyExplanationHtml = utility
-        ? `<p style="font-size: 10px; color: #94a3b8; margin: -6px 0 12px; line-height: 1.4;">* 상속 자산 적정성: ${explainBequestAdequacy(activeParams, result, compiled.utilityConfig)}</p>`
+        ? `<p style="font-size: 10px; color: #94a3b8; margin: -6px 0 12px; line-height: 1.4;">* 상속 자산 적정성: ${explainBequestAdequacy(reportParams, result, compiled.utilityConfig)}</p>`
         : '';
 
       const currentStrategyAnalysis = utility ? analyzeCurrentStrategy(utility, compiled.utilityConfig) : null;
@@ -291,11 +297,11 @@ export default function Home() {
         `
         : '';
 
-      const riskAlerts = computeRiskAlerts(result, activeParams, compiled.utilityConfig);
+      const riskAlerts = computeRiskAlerts(result, reportParams, compiled.utilityConfig);
       const riskAlertsSectionHtml = renderRiskAlertsSection(riskAlerts);
-      const roadmap = computeExecutionRoadmap(activeParams, recommendation, selectDepletionAge(recommendation, result));
+      const roadmap = computeExecutionRoadmap(reportParams, recommendation, selectDepletionAge(recommendation, result));
       const executionRoadmapSectionHtml = renderExecutionRoadmapSection(roadmap);
-      const sensitivityScenarios = computeSensitivityAnalysis(activeParams, result, engine);
+      const sensitivityScenarios = computeSensitivityAnalysis(reportParams, result, engine);
       const sensitivityTableSectionHtml = renderSensitivityTableSection(sensitivityScenarios);
 
       // Create a temporary container
@@ -375,7 +381,7 @@ export default function Home() {
             <ul style="padding-left: 20px; margin-top: 5px; margin-bottom: 25px; font-size: 13px; line-height: 1.6;">
               <li style="margin-bottom: 6px;"><strong>현재 나이:</strong> ${userProfile.currentAge}세 / <strong>은퇴 목표 나이:</strong> ${userProfile.retirementAge}세 / <strong>기대 수명:</strong> ${userProfile.expectancy}세</li>
               <li style="margin-bottom: 6px;"><strong>목표 월 생활비:</strong> ${userProfile.targetMonthlySpending.toLocaleString()} ${displayCurrency}</li>
-              <li style="margin-bottom: 6px;"><strong>인출 전략:</strong> ${compiled.params.spendingStrategy === 'dividend_only' ? '배당금(이자) 100% 소비' : compiled.params.spendingStrategy === 'max_sustainable' ? '최대 가능 생활비 자동계산' : '고정 목표 생활비'}</li>
+              <li style="margin-bottom: 6px;"><strong>인출 전략:</strong> ${reportParams.spendingStrategy === 'dividend_only' ? '배당금(이자) 100% 소비' : reportParams.spendingStrategy === 'max_sustainable' ? '최대 가능 생활비 자동계산' : '고정 목표 생활비'}</li>
               <li style="margin-bottom: 6px;"><strong>물가 상승률:</strong> ${inflationRate}% (${inflationMode === 'real' ? '실질 가치 기준 — 아래 모든 표의 생활비·연금 금액은 오늘 화폐가치로 고정 표시되며, 인플레이션은 자산 성장률에 사전 차감 반영되었습니다' : '명목 가치 기준 — 아래 모든 표의 생활비·연금 금액에 물가상승률이 매년 누적 반영되어 있습니다'})</li>
               <li style="margin-bottom: 6px;"><strong>표시 통화 / 기준 환율:</strong> ${displayCurrency} / 1 USD = ${baseExchangeRate} KRW</li>
             </ul>
@@ -445,7 +451,7 @@ export default function Home() {
             <h2 style="font-size: 16px; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; color: #0f172a; margin-top: 0; margin-bottom: 10px;">5. 연금 및 자산 현황</h2>
             <div style="font-size: 13px; line-height: 1.6; display: grid; grid-template-columns: 1fr; gap: 12px;">
               <div>
-                <strong>국민연금:</strong> 예상 월 수령액 ${nationalPension?.expectedMonthlyAmount.toLocaleString()}원 (${activeParams.withdrawalPlan?.nationalPensionStartAge ?? NATIONAL_PENSION_NORMAL_START_AGE}세부터 수령)
+                <strong>국민연금:</strong> 예상 월 수령액 ${nationalPension?.expectedMonthlyAmount.toLocaleString()}원 (${reportParams.withdrawalPlan?.nationalPensionStartAge ?? NATIONAL_PENSION_NORMAL_START_AGE}세부터 수령)
               </div>
               <div>
                 <strong>사적연금:</strong>
@@ -545,7 +551,7 @@ export default function Home() {
         chunks.push(yearlyResults.slice(i, i + rowsPerPage));
       }
 
-      const spendingComposition = computeMonthlySpendingComposition(yearlyResults, activeParams, result);
+      const spendingComposition = computeMonthlySpendingComposition(yearlyResults, reportParams, result);
       const spendingChunks: typeof spendingComposition[] = [];
       for (let i = 0; i < spendingComposition.length; i += rowsPerPage) {
         spendingChunks.push(spendingComposition.slice(i, i + rowsPerPage));
@@ -923,7 +929,14 @@ export default function Home() {
             
             {/* 내 은퇴 전략 = 6개 섹션 (기본 정보 / 은퇴 목표 / 연금 / 투자 / 경제 가정 / 고급 설정) */}
             <GlassCard>
-              <StrategySettingsPanel params={activeParams} onChangeParams={handleUpdateActiveParams} />
+              {/* 추천은 여기서 한 번만 계산해 내려보낸다. 패널이 자체적으로 계산하면
+                  이 앱에서 가장 무거운 계산(최대 162개 후보 시뮬레이션)이 두 배가 된다. */}
+              <StrategySettingsPanel
+                params={activeParams}
+                onChangeParams={handleUpdateActiveParams}
+                recommendation={recommendation}
+                recommendationFailed={recommendationFailed}
+              />
             </GlassCard>
 
             {/* Scenario Manager Section */}

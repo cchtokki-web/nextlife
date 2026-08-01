@@ -117,6 +117,49 @@ describe('AdvancedSection', () => {
     expect(screen.getByRole('switch', { name: /건강보험료 반영/ })).toBeInTheDocument();
   });
 
+  // 구 TaxSettingsSection에 있던 ±100만원 스텝 버튼. 금액이 커서 직접 타이핑하면
+  // 자릿수를 틀리기 쉬운 필드라 새 섹션에도 있어야 한다.
+  describe('사적연금 저율과세 한도 스텝 버튼', () => {
+    const currentLimit = resolveTaxSettings(initialParams.taxSettings).privatePensionLimit;
+
+    const stepperFor = (label: string, name: 'Increase value' | 'Decrease value') => {
+      const input = screen.getByLabelText(label);
+      const buttons = input.closest('div')?.parentElement
+        ?.querySelectorAll<HTMLButtonElement>(`button[aria-label="${name}"]`);
+      return buttons?.[0];
+    };
+
+    test('▲ 버튼이 한도를 100만원 올린다', () => {
+      const onChangeParams = renderSection();
+
+      fireEvent.click(stepperFor('사적연금 저율과세 한도', 'Increase value')!);
+
+      expect(onChangeParams).toHaveBeenCalledWith(expect.objectContaining({
+        taxSettings: expect.objectContaining({ privatePensionLimit: currentLimit + 1000000 }),
+      }));
+    });
+
+    test('▼ 버튼이 한도를 100만원 내리고 0 아래로는 내려가지 않는다', () => {
+      const onChangeParams = vi.fn();
+      render(
+        <AdvancedSection
+          params={{
+            ...initialParams,
+            taxSettings: { ...resolveTaxSettings(initialParams.taxSettings), privatePensionLimit: 500000 },
+          }}
+          onChangeParams={onChangeParams}
+          mode="expert" changed={new Set()}
+        />
+      );
+
+      fireEvent.click(stepperFor('사적연금 저율과세 한도', 'Decrease value')!);
+
+      expect(onChangeParams).toHaveBeenCalledWith(expect.objectContaining({
+        taxSettings: expect.objectContaining({ privatePensionLimit: 0 }),
+      }));
+    });
+  });
+
   test('전문가 모드에서는 안내문 없이 실제 설정만 보여준다', () => {
     renderSection();
 

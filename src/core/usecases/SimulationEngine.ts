@@ -57,6 +57,26 @@ interface ActiveIsa extends IsaAccount {
   divRateMonthly: number;
 }
 
+// 은퇴 준비도 점수의 자산 항목(100점 중 25점)의 분모. 4% 룰(연 필요액 × 25)로 환산한 목표 자산.
+//
+// 분모는 "그 계획이 실제로 감당해야 할 필요"여야 한다. 다른 목표 분모 세 곳
+// (goalAchievementRate / UtilityEngine / MonthlySpendingComposition)과 같은 규칙을 쓴다:
+//   - spendingFactor: 은퇴 시점의 가구 규모 계수. 배우자가 나이가 많아 은퇴 전에 사망하면
+//     은퇴 기간 전체의 필요가 0.7배인데, 분모만 2인 기준으로 두면 assetScore가 약 30%
+//     과소평가된다.
+//   - 의료비: 켜면 실제로 필요한 자산이 늘어난다. 분모가 그대로면 의료비를 켠 계획이
+//     "자산이 충분하다"는 같은 점수를 받는다(FIRE 판정 목표에 의료비를 넣은 것과 같은 이유).
+//     엔진이 이미 spendingFactor를 곱해 둔 값이므로 여기서 다시 곱하지 않는다.
+export function computeRetirementTargetAssets(
+  targetMonthlyAtRetirement: number,
+  spendingFactorAtRetirement: number,
+  annualHealthcareAtRetirement: number
+): number {
+  const annualNeed = targetMonthlyAtRetirement * 12 * spendingFactorAtRetirement
+    + annualHealthcareAtRetirement;
+  return Math.max(0, annualNeed) * 25;
+}
+
 export class SimulationEngine {
   // cfg는 목표 우선순위(UtilityConfig.weights)를 반영한 효용 계산에 쓰인다. 생략하면
   // 기본 가중치(DEFAULT_UTILITY_CONFIG)로 계산되어 호출부 9곳(RecommendationEngine 등,
@@ -248,11 +268,15 @@ export class SimulationEngine {
     const retirementAssets = retirementStartResult.totalAssets;
     
     const yearsToRetirement = Math.max(0, userProfile.retirementAge - userProfile.currentAge);
-    const targetMonthlyAtRetirement = inflationMode === 'nominal' 
+    const targetMonthlyAtRetirement = inflationMode === 'nominal'
       ? userProfile.targetMonthlySpending * Math.pow(1 + inflationRate / 100, yearsToRetirement)
       : userProfile.targetMonthlySpending;
-    const targetAssets = targetMonthlyAtRetirement * 12 * 25;
-    
+    const targetAssets = computeRetirementTargetAssets(
+      targetMonthlyAtRetirement,
+      retirementStartResult.spendingFactor,
+      retirementStartResult.healthcareSpending
+    );
+
     const assetScoreRaw = targetAssets > 0 ? (retirementAssets / targetAssets) * 100 : 100;
     const assetScore = Math.min(25, (assetScoreRaw * 0.25));
 
@@ -384,6 +408,7 @@ export class SimulationEngine {
         healthcare: params.healthcare,
         currentAge,
         retirementAge: userProfile.retirementAge,
+        simulationStartAge: startAge,
         yearsSinceRetirement: currentAge - userProfile.retirementAge,
         inflationMode,
         inflationRate: infRateAnnual * 100,

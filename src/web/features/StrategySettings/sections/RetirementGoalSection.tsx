@@ -4,10 +4,9 @@ import InputField from '../../../components/InputField';
 import { FieldRow, RadioCardGroup } from '../../../components/form';
 import { isFieldVisible } from '../fieldVisibility';
 import {
-  BEQUEST_OPTIONS, OBJECTIVE_OPTIONS, SPENDING_STRATEGY_OPTIONS, SectionProps,
+  AiRecommendationState, BEQUEST_OPTIONS, OBJECTIVE_OPTIONS, SPENDING_STRATEGY_OPTIONS, SectionProps,
 } from '../strategyOptions';
 import { resolveStrategy } from '../../../../core/usecases/strategy/compileStrategy';
-import { AiRecommendationState } from '../useAiRecommendation';
 
 type Props = SectionProps & { ai: AiRecommendationState };
 

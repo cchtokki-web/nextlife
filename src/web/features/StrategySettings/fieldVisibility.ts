@@ -34,7 +34,11 @@ export const SECTION_FIELDS: Record<SectionId, ReadonlyArray<FieldPath>> = {
     'assets.reinvestDividend',
   ],
   investment: [
-    'yieldPreset',
+    // 'yieldPreset'은 여기에 없다. 이 섹션에 그 필드를 렌더하는 입력이 없기 때문이다
+    // (수익률 직접 입력은 "내 자산" 폼에 있고, 그쪽이 값을 바꿀 때 yieldPreset을 'custom'으로
+    //  적는다). 등록해 두면 자산 폼에서 수익률을 한 번만 고쳐도 이 섹션에 "1개 변경" 배지가
+    // 붙는데, 섹션을 열어도 전문가 모드로 올려도 되돌릴 입력이 없어 지울 방법이 없다.
+    // sectionFieldCoverage.test.tsx가 "모든 경로는 어딘가에서 렌더된다"를 강제한다.
     'strategy.riskProfile',
     'strategy.economicScenario',
   ],

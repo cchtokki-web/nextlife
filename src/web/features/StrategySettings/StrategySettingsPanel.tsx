@@ -1,9 +1,9 @@
 'use client';
 
-import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Coins, LineChart, Settings2, Target, TrendingUp, User } from 'lucide-react';
 import {
-  NationalPensionStrategy, SimulationParams, StrategyMode,
+  NationalPensionStrategy, SimulationParams, StrategyMode, StrategyRecommendation,
 } from '../../../core/entities/types';
 import {
   NATIONAL_PENSION_STRATEGY_AGES, resolveStrategy,
@@ -18,12 +18,17 @@ import { RetirementGoalSection } from './sections/RetirementGoalSection';
 import { StrategyModeSelector } from './StrategyModeSelector';
 import { collectChangedPaths, countSectionChanges } from './diffDefaults';
 import { SectionId } from './fieldVisibility';
-import { SectionProps } from './strategyOptions';
-import { useAiRecommendation } from './useAiRecommendation';
+import { AiRecommendationState, SectionProps } from './strategyOptions';
 
 export interface StrategySettingsPanelProps {
   params: SimulationParams;
   onChangeParams: (params: SimulationParams) => void;
+  // page.tsx가 이미 계산해 둔 AI 추천. 패널이 직접 recommendStrategy를 부르면 화면 전체에서
+  // 가장 무거운 계산(최대 162개 후보 시뮬레이션)이 params 변경마다 두 번 돈다.
+  recommendation: StrategyRecommendation | undefined;
+  // 추천이 없는 이유가 "계산 실패"인지 "개선 여지 없음"인지 구분한다. 실패일 때만
+  // 섹션의 AI 추천 버튼에 에러 문구를 보여준다.
+  recommendationFailed: boolean;
 }
 
 // 값을 바꾼 섹션을 강조하는 시간. 눈에 띄되 시선을 붙잡지 않을 정도로 짧게 둔다.
@@ -46,17 +51,21 @@ export { resolveStrategy };
 // AI 추천 버튼을 붙일 섹션. 배우자·경제 가정처럼 AI가 관여하지 않는 섹션은 제외한다.
 const AI_SECTIONS: ReadonlySet<SectionId> = new Set(['goal', 'pension', 'investment']);
 
-export function StrategySettingsPanel({ params, onChangeParams }: StrategySettingsPanelProps) {
+export function StrategySettingsPanel({
+  params, onChangeParams, recommendation, recommendationFailed,
+}: StrategySettingsPanelProps) {
   const strategy = resolveStrategy(params);
   const mode = strategy.mode;
 
   const changed = useMemo(() => collectChangedPaths(params), [params]);
-  // AI 추천(recommendStrategy)은 후보 최대 162개를 시뮬레이션하는 무거운 계산이다.
-  // 화면에 즉시 반영돼야 하는 params와 달리, AI 추천 계산만 page.tsx의 deferredParams와
-  // 같은 패턴으로 지연시켜 설정 패널 어디서든 타이핑할 때마다 동기적으로 재계산되는
-  // 것을 막는다. 화면에 보이는 값(sectionPropsFor 등)은 여전히 즉시 반영되는 params를 쓴다.
-  const deferredParams = useDeferredValue(params);
-  const ai = useAiRecommendation(deferredParams);
+  // 추천 계산은 page.tsx가 한다(그쪽이 이미 2단 useDeferredValue로 타이핑 반응성을 지킨다).
+  // 여기서는 섹션들이 쓰는 형태로 펴 주기만 한다 — 패널이 따로 지연시키거나 다시 계산하면
+  // 같은 결과를 두 번 만들게 된다.
+  const ai: AiRecommendationState = useMemo(() => ({
+    recommendation: recommendation ?? null,
+    error: recommendationFailed ? '추천을 계산하지 못했습니다.' : null,
+    improved: recommendation?.improved ?? false,
+  }), [recommendation, recommendationFailed]);
 
   // 방금 바뀐 섹션을 잠깐 강조한다. 어떤 필드가 바뀌었는지는 changed 집합의 변화로
   // 알 수 있지만, "언제" 바뀌었는지는 상태가 없으면 알 수 없어 로컬 state로 둔다.

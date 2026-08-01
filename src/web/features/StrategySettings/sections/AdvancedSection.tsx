@@ -17,6 +17,9 @@ const TAX_LAW_OPTIONS: ReadonlyArray<{ value: TaxLawVersion; label: string }> = 
   { value: 'current', label: '현행 세법 (2024년 기준)' },
 ];
 
+// 저율과세 한도 스텝 버튼의 증감 단위(100만원). 구 TaxSettingsSection과 같은 값이다.
+const PENSION_LIMIT_STEP = 1000000;
+
 // %로 입력받는 세율 필드. 키를 좁혀 두어야 setTax에 엉뚱한 필드가 들어가지 않는다.
 type RateKey =
   | 'usDividendTaxRate' | 'domesticDividendTaxRate'
@@ -106,6 +109,14 @@ export function AdvancedSection({ params, onChangeParams, mode, changed }: Secti
                   setTax({ privatePensionLimit: raw === '' ? 0 : Number(raw) });
                 }
               }}
+              // 구 세금 설정 화면에 있던 ±100만원 스텝 버튼. 금액이 커서 직접 타이핑하면
+              // 자릿수를 틀리기 쉬운 필드라 그대로 복원한다.
+              onStepUp={() => setTax({
+                privatePensionLimit: tax.privatePensionLimit + PENSION_LIMIT_STEP,
+              })}
+              onStepDown={() => setTax({
+                privatePensionLimit: Math.max(0, tax.privatePensionLimit - PENSION_LIMIT_STEP),
+              })}
             />
           </FieldRow>
         )}

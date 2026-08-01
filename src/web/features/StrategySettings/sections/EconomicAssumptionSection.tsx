@@ -95,7 +95,8 @@ export function EconomicAssumptionSection({ params, onChangeParams, mode, change
       {scenarioGoverns
         && (isFieldVisible(mode, 'inflationRate') || isFieldVisible(mode, 'baseExchangeRate')) && (
         <p className="text-xs text-amber-500">
-          ④투자 전략에서 고른 경제 시나리오가 아래 물가상승률과 환율을 결정합니다.
+          ④투자 전략에서 고른 경제 시나리오가 아래 물가상승률과 환율은 물론,
+          보유 자산과 사적연금의 수익률까지 일괄 대체합니다.
           직접 정하려면 시나리오를 &ldquo;AI 추천&rdquo;으로 두세요.
         </p>
       )}

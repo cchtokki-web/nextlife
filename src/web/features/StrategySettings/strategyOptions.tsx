@@ -5,7 +5,8 @@ import {
 } from 'lucide-react';
 import {
   BequestStrategy, EconomicScenario, HealthcareAssumptions, NationalPensionStrategy, ObjectivePriority,
-  PrivatePensionStrategy, RiskProfile, SimulationParams, SpendingStrategyChoice, SpouseProfile, StrategyMode,
+  PrivatePensionStrategy, RiskProfile, SimulationParams, SpendingStrategyChoice, SpouseProfile,
+  StrategyMode, StrategyRecommendation,
 } from '../../../core/entities/types';
 import { NATIONAL_PENSION_NORMAL_START_AGE } from '../../../core/usecases/pension/nationalPensionRules';
 import { RadioCardOption } from '../../components/form';
@@ -17,6 +18,19 @@ export interface SectionProps {
   onChangeParams: (params: SimulationParams) => void;
   mode: StrategyMode;
   changed: ReadonlySet<FieldPath>;
+}
+
+// AI 추천을 쓰는 섹션들이 공유하는 표면.
+//
+// 추천 계산(recommendStrategy, 최대 162개 후보 시뮬레이션)은 이 앱에서 가장 무거운 계산이라
+// 화면 전체에서 딱 한 번만 돌아야 한다. 계산은 page.tsx가 하고(이미 2단 useDeferredValue로
+// 보호된다) 그 결과가 이 형태로 패널을 거쳐 각 섹션에 내려온다 — 패널 안에서 다시 계산하면
+// 같은 결과를 두 번 만든다.
+export interface AiRecommendationState {
+  recommendation: StrategyRecommendation | null;
+  error: string | null;
+  // recommendation?.improved의 안전한 별칭. 섹션들이 매번 옵셔널 체이닝하지 않도록 미리 편다.
+  improved: boolean;
 }
 
 // 배우자 스위치를 처음 켤 때 채워 넣는 값.

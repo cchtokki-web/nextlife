@@ -4,6 +4,9 @@ interface HealthcareCostInput {
   healthcare: HealthcareAssumptions | undefined;
   currentAge: number;
   retirementAge: number;
+  // 시뮬레이션 시작 나이(userProfile.currentAge). 명목 모드에서 "오늘 화폐가치"로 입력된
+  // 의료비를 해당 연도의 명목 금액으로 환산하는 기준점이다.
+  simulationStartAge: number;
   // 은퇴 후 경과 연수. 은퇴 전이면 음수다.
   yearsSinceRetirement: number;
   inflationMode: 'nominal' | 'real';
@@ -27,8 +30,8 @@ interface HealthcareCostInput {
 // 본인 기준 의료비·장기요양비가 전액 계속 인출되고, shockAge가 본인 기대수명을
 // 넘으면 사망 후에 쇼크가 발생한다.
 export function computeAnnualHealthcareCost({
-  healthcare, currentAge, retirementAge, yearsSinceRetirement, inflationMode, inflationRate,
-  spendingFactor,
+  healthcare, currentAge, retirementAge, simulationStartAge, yearsSinceRetirement,
+  inflationMode, inflationRate, spendingFactor,
 }: HealthcareCostInput): number {
   if (!healthcare || !healthcare.enabled) return 0;
   if (currentAge < retirementAge) return 0;
@@ -41,16 +44,30 @@ export function computeAnnualHealthcareCost({
   const growthBase = Math.max(0, 1 + effectiveGrowthRate / 100);
   const growthFactor = Math.pow(growthBase, Math.max(0, yearsSinceRetirement));
 
-  let annual = healthcare.baseMonthlyCost * 12 * growthFactor;
+  // 명목 모드에서 오늘 화폐가치 입력을 그 시점의 명목 금액으로 올리는 계수.
+  // baseMonthlyCost는 "은퇴 시점 월 의료비"를 오늘 화폐가치로 받고 growthFactor가
+  // yearsSinceRetirement = 0부터 복리를 시작하므로, 은퇴까지의 물가상승분이 아무 데도
+  // 반영되지 않는다. 주변의 모든 명목 금액(목표 생활비·국민연금 등)은 시뮬레이션
+  // 시작 나이부터 인플레이션을 누적하므로 의료비만 (1+물가)^(은퇴나이-현재나이)만큼
+  // 작아진다. 실질 모드에서는 모든 금액이 오늘 화폐가치이므로 계수가 1이다.
+  const nominalFactorAt = (age: number): number =>
+    inflationMode === 'nominal'
+      ? Math.pow(Math.max(0, 1 + inflationRate / 100), Math.max(0, age - simulationStartAge))
+      : 1;
+  const retirementNominalFactor = nominalFactorAt(retirementAge);
+
+  let annual = healthcare.baseMonthlyCost * 12 * growthFactor * retirementNominalFactor;
 
   if (healthcare.longTermCareEnabled && currentAge >= healthcare.longTermCareStartAge) {
-    annual += healthcare.longTermCareMonthlyCost * 12 * growthFactor;
+    annual += healthcare.longTermCareMonthlyCost * 12 * growthFactor * retirementNominalFactor;
   }
 
-  // 쇼크는 "오늘 화폐가치의 일회성 목돈"으로 정의한다. 증가율을 곱하지 않는 이유는
-  // 사용자가 입력하는 값이 "그 나이에 실제로 나갈 금액"이기 때문이다.
+  // 쇼크는 "오늘 화폐가치의 일회성 목돈"으로 정의한다. 의료비 증가율을 곱하지 않는 이유는
+  // 사용자가 입력하는 값이 "그 나이에 실제로 나갈 금액(오늘 기준)"이기 때문이다.
+  // 다만 명목 모드에서는 그 해의 다른 모든 금액과 같은 화폐가치로 맞춰야 하므로
+  // 발생 나이까지의 물가상승분은 곱한다(곱하지 않으면 쇼크만 홀로 과소 계상된다).
   if (healthcare.shockEnabled && currentAge === healthcare.shockAge) {
-    annual += healthcare.shockAmount;
+    annual += healthcare.shockAmount * nominalFactorAt(currentAge);
   }
 
   return annual * spendingFactor;

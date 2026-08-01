@@ -4,9 +4,8 @@ import { FieldRow, RadioCardGroup, SwitchField } from '../../../components/form'
 import { resolveStrategy } from '../../../../core/usecases/strategy/compileStrategy';
 import { isFieldVisible } from '../fieldVisibility';
 import {
-  NATIONAL_PENSION_OPTIONS, PRIVATE_PENSION_OPTIONS, SectionProps,
+  AiRecommendationState, NATIONAL_PENSION_OPTIONS, PRIVATE_PENSION_OPTIONS, SectionProps,
 } from '../strategyOptions';
-import { AiRecommendationState } from '../useAiRecommendation';
 
 type Props = SectionProps & { ai: AiRecommendationState };
 

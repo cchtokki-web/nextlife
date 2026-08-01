@@ -16,7 +16,8 @@ const healthcare: HealthcareAssumptions = {
 
 const call = (patch: Partial<Parameters<typeof computeAnnualHealthcareCost>[0]> = {}) =>
   computeAnnualHealthcareCost({
-    healthcare, currentAge: 65, retirementAge: 60, yearsSinceRetirement: 5,
+    healthcare, currentAge: 65, retirementAge: 60, simulationStartAge: 60,
+    yearsSinceRetirement: 5,
     inflationMode: 'nominal', inflationRate: 2.5, spendingFactor: 1, ...patch,
   });
 
@@ -77,9 +78,12 @@ describe('computeAnnualHealthcareCost', () => {
   test('쇼크는 지정한 나이 한 해에만 발생한다', () => {
     const withShock = { ...healthcare, shockEnabled: true, shockAge: 70 };
     const baseAt10 = 300000 * 12 * Math.pow(1.05, 10);
+    // 명목 모드이므로 쇼크 금액(오늘 화폐가치 입력)에는 시작 나이(60)부터 발생 나이(70)까지의
+    // 물가상승분이 붙는다 — 그래야 그 해의 다른 명목 금액과 같은 화폐가치가 된다.
+    const shockAt70 = 30000000 * Math.pow(1.025, 10);
 
     expect(call({ healthcare: withShock, currentAge: 70, yearsSinceRetirement: 10 }))
-      .toBeCloseTo(baseAt10 + 30000000, 0);
+      .toBeCloseTo(baseAt10 + shockAt70, 0);
     expect(call({ healthcare: withShock, currentAge: 71, yearsSinceRetirement: 11 }))
       .toBeCloseTo(300000 * 12 * Math.pow(1.05, 11), 0);
   });
@@ -118,13 +122,68 @@ describe('computeAnnualHealthcareCost', () => {
     expect(result).toBe(0);
   });
 
-  test('쇼크 금액에는 증가율을 적용하지 않는다 (오늘 화폐가치 목돈)', () => {
+  test('쇼크 금액에는 의료비 증가율을 적용하지 않는다 (오늘 화폐가치 목돈)', () => {
     const withShock = {
       ...healthcare, shockEnabled: true, shockAge: 70,
       baseMonthlyCost: 0, longTermCareEnabled: false,
     };
 
-    expect(call({ healthcare: withShock, currentAge: 70, yearsSinceRetirement: 10 }))
-      .toBe(30000000);
+    // 실질 모드에서는 모든 금액이 오늘 화폐가치이므로 입력값이 그대로 나온다.
+    expect(call({
+      healthcare: withShock, currentAge: 70, yearsSinceRetirement: 10, inflationMode: 'real',
+    })).toBe(30000000);
+  });
+
+  // 명목 모드에서 의료비만 오늘 화폐가치로 남아 과소 계상되던 결함의 회귀 가드.
+  // 주변의 모든 명목 금액(목표 생활비·연금 등)은 시뮬레이션 시작 나이부터 인플레이션을
+  // 누적하는데, 의료비의 growthFactor는 은퇴 시점(yearsSinceRetirement = 0)부터 시작하므로
+  // 은퇴까지의 물가상승분이 아무 데도 반영되지 않았다.
+  describe('명목 모드의 화폐가치 정합성', () => {
+    const nominalHealthcare: HealthcareAssumptions = {
+      ...healthcare, costGrowthRate: 3, baseMonthlyCost: 1000000,
+    };
+    const nominalCall = (patch: Partial<Parameters<typeof computeAnnualHealthcareCost>[0]> = {}) =>
+      computeAnnualHealthcareCost({
+        healthcare: nominalHealthcare,
+        currentAge: 65, retirementAge: 65, simulationStartAge: 50,
+        yearsSinceRetirement: 0,
+        inflationMode: 'nominal', inflationRate: 3, spendingFactor: 1, ...patch,
+      });
+
+    test('은퇴 시점 의료비에 현재 나이부터 은퇴까지의 물가상승분이 반영된다', () => {
+      // 현재 50 / 은퇴 65 / 물가 3% / 의료비 증가 3% / 기준 월 100만원
+      // 오늘 화폐가치 12,000,000원 → 명목 12,000,000 × 1.03^15 = 18,695,609원
+      expect(nominalCall()).toBeCloseTo(12000000 * Math.pow(1.03, 15), 0);
+      expect(Math.round(nominalCall())).toBe(18695609);
+    });
+
+    test('은퇴 이후에는 은퇴까지의 물가상승분 위에 의료비 증가율이 복리로 얹힌다', () => {
+      expect(nominalCall({ currentAge: 75, yearsSinceRetirement: 10 }))
+        .toBeCloseTo(12000000 * Math.pow(1.03, 15) * Math.pow(1.03, 10), 0);
+    });
+
+    test('장기요양비에도 같은 계수가 적용된다', () => {
+      const withLtc: HealthcareAssumptions = {
+        ...nominalHealthcare, longTermCareEnabled: true, longTermCareStartAge: 65,
+        longTermCareMonthlyCost: 1000000,
+      };
+
+      expect(nominalCall({ healthcare: withLtc }))
+        .toBeCloseTo(24000000 * Math.pow(1.03, 15), 0);
+    });
+
+    test('쇼크 금액에도 발생 나이까지의 물가상승분이 붙는다', () => {
+      const withShock: HealthcareAssumptions = {
+        ...nominalHealthcare, baseMonthlyCost: 0, shockEnabled: true, shockAge: 75,
+      };
+
+      expect(nominalCall({ healthcare: withShock, currentAge: 75, yearsSinceRetirement: 10 }))
+        .toBeCloseTo(30000000 * Math.pow(1.03, 25), 0);
+    });
+
+    test('실질 모드는 영향을 받지 않는다 (모든 금액이 오늘 화폐가치)', () => {
+      // 의료비 3% - 물가 3% = 0% → 은퇴 시점 값이 입력 그대로 유지된다.
+      expect(nominalCall({ inflationMode: 'real' })).toBeCloseTo(12000000, 0);
+    });
   });
 });
