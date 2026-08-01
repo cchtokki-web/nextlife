@@ -5,6 +5,7 @@ import {
   SimulationResult,
   SimulationYearlyResult,
   AssetCurrency,
+  SpendingFactor,
 } from '@/core/entities/types';
 
 // 대시보드 차트와 PDF 리포트가 "월 생활비 재원 구성"을 동일하게 계산하도록
@@ -75,7 +76,7 @@ function makeYearlyResult(overrides: {
   otherIncomeAnnual?: number;
   spendingAnnual: number;
   healthcareSpendingAnnual?: number;
-  spendingFactor?: number;
+  spendingFactor?: SpendingFactor;
 }): SimulationYearlyResult {
   return {
     age: overrides.age,

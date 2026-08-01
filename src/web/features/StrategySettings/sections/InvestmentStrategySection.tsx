@@ -17,7 +17,7 @@ export function InvestmentStrategySection({ params, onChangeParams, mode, change
   };
 
   // AI가 배당 재투자 변경을 권하면 그 사실만 알린다(적용은 이 섹션의 AI 추천 버튼으로,
-  // 실제 자산별 토글은 ③연금 전략 섹션에 있다). 리스크 성향과는 무관한 값이라 FieldRow의
+  // 실제 자산별 토글은 「연금 전략」 섹션에 있다). 리스크 성향과는 무관한 값이라 FieldRow의
   // aiHint(특정 필드용)에 붙이지 않고 별도 문구로 둔다.
   const reinvestHint = ai.improved && ai.recommendation?.recommendedAssetReinvestment
     ? '배당 재투자 설정 변경을 함께 권장합니다(연금 전략 섹션에서 확인).'

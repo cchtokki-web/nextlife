@@ -1,7 +1,7 @@
 import { CustomYieldSnapshot, SimulationParams } from '../../entities/types';
 
 // 구 설정 UI(시뮬레이션 설정/핵심 설정 카드)에 있던 "시장 수익률 프리셋 적용" 로직을 순수
-// 함수로 추출한 것. 그 UI들은 제거되었고, 지금은 compileStrategy가 ④투자 전략의 리스크 성향을
+// 함수로 추출한 것. 그 UI들은 제거되었고, 지금은 compileStrategy가 「투자 전략」의 리스크 성향을
 // 프리셋으로 번역할 때 이 함수를 호출한다.
 //
 // restoreCustomYieldPreset은 프리셋 버튼과 함께 사라진 "사용자 프리셋 복원" 동작을 위한 것이라

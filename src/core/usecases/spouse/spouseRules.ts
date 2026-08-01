@@ -1,4 +1,4 @@
-import { SpouseProfile, UserProfile } from '../../entities/types';
+import { SpendingFactor, SpouseProfile, UserProfile } from '../../entities/types';
 import {
   NATIONAL_PENSION_DEFERRED_MAX_AGE, NATIONAL_PENSION_EARLY_MIN_AGE,
   getNationalPensionAdjustmentFactor,
@@ -61,7 +61,9 @@ export function computeHouseholdEndAge(
 }
 
 // 생존 인원에 따른 생활비 계수.
-export function computeSpendingFactor(selfAlive: boolean, spouseAlive: boolean): number {
+// 반환 타입이 SpendingFactor(0 | 0.7 | 1)라, SINGLE_SURVIVOR_SPENDING_FACTOR를 바꾸면
+// 여기서 컴파일 에러가 나 결과 타입과 이 함수가 어긋나지 못한다.
+export function computeSpendingFactor(selfAlive: boolean, spouseAlive: boolean): SpendingFactor {
   if (selfAlive && spouseAlive) return 1;
   if (!selfAlive && !spouseAlive) return 0;
   return SINGLE_SURVIVOR_SPENDING_FACTOR;

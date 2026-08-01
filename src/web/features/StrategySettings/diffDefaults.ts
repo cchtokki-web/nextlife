@@ -35,7 +35,7 @@ function readBaseline(path: FieldPath): unknown {
 const ASSET_REINVEST_PATH: FieldPath = 'assets.reinvestDividend';
 
 // 최신 환율 자동 조회가 켜져 있는 동안 baseExchangeRate는 사용자가 정한 값이 아니라
-// 실시간 시세다(⑤경제 가정을 열 때마다 덮어써지고, 입력도 비활성화된다). 이것을 변경으로
+// 실시간 시세다(「경제 가정」을 열 때마다 덮어써지고, 입력도 비활성화된다). 이것을 변경으로
 // 세면 사용자가 손대지 않았는데 "1개 변경" / "숨겨진 사용자 설정 1개" 배지가 붙는다.
 // 자동 조회를 끄는 순간부터는 환율이 사용자의 선택이 되므로 정상적으로 판정한다.
 // useLatestExchangeRate 자신도 함께 제외한다. 껐다가 다시 켜면 값이 명시적 true가 되는데,
@@ -45,7 +45,7 @@ function isAutoFetchedExchangeRate(params: SimulationParams, path: FieldPath): b
   return path === 'baseExchangeRate' || path === 'useLatestExchangeRate';
 }
 
-// ③연금 전략이 'ai_optimized'가 아니면 compileStrategy가 저율과세 한도 내 인출 여부를
+// 「연금 전략」이 'ai_optimized'가 아니면 compileStrategy가 저율과세 한도 내 인출 여부를
 // 덮어쓴다. AdvancedSection도 그 상태에서는 저장값이 아니라 전략이 강제하는 실효값을
 // 스위치에 보여준다. 배지만 저장값으로 판정하면 스위치는 ON인데 "사용자 설정" 배지가 붙고,
 // 그 배지가 가리키는 OFF 값은 화면 어디에도 없는 상태가 된다.

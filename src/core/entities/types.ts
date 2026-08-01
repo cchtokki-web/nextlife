@@ -159,7 +159,12 @@ export interface SimulationParams {
   spendingStrategy?: SpendingStrategy; // 목표 생활비 달성 전략
   taxSettings?: TaxSettings; // 고급 세금 설정
   withdrawalPlan?: WithdrawalPlan; // 인출 정책 및 생활비 조정 (미지정 시 기존 균등분할 인출 로직 사용)
-  strategy?: RetirementStrategy; // 은퇴 전략 설정 (미지정 시 compileStrategy가 입력을 그대로 통과)
+  // 은퇴 전략 설정. 미지정이면 compileStrategy가 baseline 전략으로 컴파일한다.
+  // "입력을 그대로 통과"하는 것은 이 필드가 없고 **동시에** 레거시 저수준 필드
+  // (spendingStrategy='dividend_only'/'max_sustainable', userProfile.targetBequest)도
+  // 없을 때뿐이다 — 그 씨앗이 하나라도 있으면 전략이 유도되어 저수준 필드가 실체화된다
+  // (compileStrategy.seedStrategyFromLegacyParams 참조).
+  strategy?: RetirementStrategy;
   spouse?: SpouseProfile;
   healthcare?: HealthcareAssumptions;
   taxLawVersion?: TaxLawVersion;
@@ -218,8 +223,20 @@ export interface SimulationYearlyResult {
   // 곱하지 않으면 배우자 사망으로 줄어든 필요를 완벽히 충족한 계획이 영구적 결손으로 채점된다.
   // 계수를 소비처에서 재유도(resolveSpouse 재호출 등)하지 않고 결과에 실어 나르는 이유는,
   // 계수를 계산하는 곳을 엔진 한 곳으로 묶어 두 로직이 다시 어긋나지 못하게 하기 위해서다.
-  spendingFactor: number;
+  spendingFactor: SpendingFactor;
 }
+
+// 생존 인원에 따른 가구 생활비 규모 계수가 실제로 가질 수 있는 값. number로 두면 오타
+// (0.75 등)가 조용히 통과한다.
+//
+// 값의 출처는 usecases/spouse/spouseRules.computeSpendingFactor다:
+//   1   = 본인·배우자 모두 생존(또는 배우자 미설정)
+//   0.7 = 한 명만 생존(SINGLE_SURVIVOR_SPENDING_FACTOR)
+//   0   = 모두 사망
+// 여기서 SINGLE_SURVIVOR_SPENDING_FACTOR를 import하지 않고 리터럴을 직접 쓰는 이유는
+// 계층 방향 때문이다 — entities가 usecases를 참조하면 의존 방향이 역전된다.
+// 두 곳이 어긋나면 spouseRules 쪽에서 컴파일 에러가 난다(반환 타입이 이 타입이다).
+export type SpendingFactor = 0 | 0.7 | 1;
 
 export interface SimulationResult {
   yearlyResults: SimulationYearlyResult[];

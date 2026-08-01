@@ -35,7 +35,7 @@ describe('collectChangedPaths', () => {
     expect(collectChangedPaths(params).has('strategy.objective')).toBe(true);
   });
 
-  // 최신 환율 자동 조회는 ⑤경제 가정을 열 때마다 baseExchangeRate를 실시간 값으로
+  // 최신 환율 자동 조회는 「경제 가정」을 열 때마다 baseExchangeRate를 실시간 값으로
   // 덮어쓴다. 그것까지 "사용자 설정"으로 세면, 사용자가 손대지 않았는데 손댄 것처럼
   // 배지가 붙는다(간편 모드에서는 "숨겨진 사용자 설정 1개"로 나타난다).
   describe('자동 조회된 환율은 사용자 변경으로 세지 않는다', () => {

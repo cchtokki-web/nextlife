@@ -2,6 +2,7 @@
 
 import InputField from '../../../components/InputField';
 import { FieldRow, RadioCardGroup } from '../../../components/form';
+import { currencySuffix } from '../currencySuffix';
 import { isFieldVisible } from '../fieldVisibility';
 import {
   AiRecommendationState, BEQUEST_OPTIONS, OBJECTIVE_OPTIONS, SPENDING_STRATEGY_OPTIONS, SectionProps,
@@ -95,7 +96,7 @@ export function RetirementGoalSection({ params, onChangeParams, mode, changed, a
         >
           <InputField
             label="" aria-label="목표 월 생활비" type="text"
-            suffixText={params.displayCurrency === 'KRW' ? '원' : params.displayCurrency}
+            suffixText={currencySuffix(params.displayCurrency)}
             value={params.userProfile.targetMonthlySpending.toLocaleString()}
             onChange={(e) => {
               const raw = e.target.value.replace(/,/g, '');
@@ -145,7 +146,8 @@ export function RetirementGoalSection({ params, onChangeParams, mode, changed, a
       {isFieldVisible(mode, 'userProfile.targetBequest') && strategy.bequestStrategy === 'target_amount' && (
         <FieldRow label="목표 상속자산" changed={changed.has('userProfile.targetBequest')}>
           <InputField
-            label="" aria-label="목표 상속자산" type="text" suffixText="원"
+            label="" aria-label="목표 상속자산" type="text"
+            suffixText={currencySuffix(params.displayCurrency)}
             value={(params.userProfile.targetBequest ?? 0).toLocaleString()}
             onChange={(e) => {
               const raw = e.target.value.replace(/,/g, '');

@@ -104,11 +104,16 @@ export const YearlyChart: React.FC<YearlyChartProps> = ({ params, result }) => {
     '건보료 추가': Math.round(r.healthInsurancePaid),
     '세후 총소득': Math.round(r.totalIncome),
     '생활비 지출': Math.round(r.spending),
-    '의료비 지출': Math.round(r.healthcareSpending),
+    // 이 차트는 의료비를 "생활비 지출에 포함된 금액의 내역"으로 보여준다. 자산이 고갈된
+    // 해에는 엔진이 실제 인출액을 가능한 만큼으로 깎아 spending < healthcareSpending이
+    // 되므로(types.ts의 "예외" 참조), 원값을 그대로 그리면 내역이 총액을 넘는 그림이 된다.
+    // types.ts가 표시용으로 권하는 Math.min을 그대로 적용한다.
+    '의료비 지출': Math.round(Math.min(r.spending, r.healthcareSpending)),
     '잔여 자산액': Math.round(r.totalAssets),
   }));
 
-  // 의료비는 이미 '생활비 지출'에 포함된 금액이라 항상 그리면 "0에 붙은 줄"이 하나 늘 뿐이다.
+  // 의료비는 (인출 가능한 해에는) 이미 '생활비 지출'에 포함된 금액이라 항상 그리면
+  // "0에 붙은 줄"이 하나 늘 뿐이다.
   // 의료비 가정을 실제로 켠 시나리오에서만 분해해서 보여준다.
   const hasHealthcare = yearlyResults.some((r) => r.healthcareSpending > 0);
 

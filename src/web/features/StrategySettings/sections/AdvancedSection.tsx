@@ -28,7 +28,7 @@ type RateKey =
 export function AdvancedSection({ params, onChangeParams, mode, changed }: SectionProps) {
   const tax = resolveTaxSettings(params.taxSettings);
 
-  // ③연금 전략이 'ai_optimized'가 아니면 compileStrategy가 저율과세 한도 설정을
+  // 「연금 전략」이 'ai_optimized'가 아니면 compileStrategy가 저율과세 한도 설정을
   // 덮어쓴다. 그 상태에서 스위치를 켤 수 있게 두면 "켰는데 결과가 안 바뀐다"가 되므로
   // 비활성화하고 이유를 설명문에 적는다.
   const pensionStrategy = resolveStrategy(params).privatePensionStrategy;
@@ -130,7 +130,7 @@ export function AdvancedSection({ params, onChangeParams, mode, changed }: Secti
           label="사적연금을 저율과세 한도 내에서만 인출"
           description={
             pensionStrategyGovernsLimit
-              ? '지금은 ③연금 전략의 선택이 이 값을 결정합니다. 직접 정하려면 연금 전략을 "AI 최적화"로 두세요.'
+              ? '지금은 「연금 전략」의 선택이 이 값을 결정합니다. 직접 정하려면 연금 전략을 "AI 최적화"로 두세요.'
               : '세금이 적게 붙는 한도까지만 꺼내 씁니다. 생활비가 모자라면 다른 자산에서 채웁니다.'
           }
           tooltipTerm="irp"

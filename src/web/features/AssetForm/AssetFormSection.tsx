@@ -58,12 +58,12 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
     displayCurrency: rawParams?.displayCurrency || 'KRW',
     spendingStrategy: rawParams?.spendingStrategy || 'target',
   };
-  // 전략(④투자 전략)이 수익률을 지배하는 동안에는 이 폼의 수익률 입력을 잠근다.
+  // 전략(「투자 전략」)이 수익률을 지배하는 동안에는 이 폼의 수익률 입력을 잠근다.
   //
   // 이 폼은 compileStrategy를 거친 params가 아니라 원본 params를 받는다. 그래서 입력을
   // 열어두면 사용자는 자기가 넣은 값을 보면서 엔진은 프리셋 값(리스크 성향 5/7/9% ·
   // 3/4/6%, 경제 시나리오 프로필)으로 계산하는 상태가 조용히 만들어진다. 고급 설정의
-  // 저율과세 한도, ⑤경제 가정의 물가상승률에 이미 쓰고 있는 "지배 중이면 비활성화 +
+  // 저율과세 한도, 「경제 가정」의 물가상승률에 이미 쓰고 있는 "지배 중이면 비활성화 +
   // 이유 표시" 패턴을 그대로 재사용한다.
   //
   // 반대 방향(수익률을 편집하면 riskProfile을 'custom'으로 되돌리기)은 택하지 않았다:
@@ -89,7 +89,7 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
   // 무슨 버튼이었는지 알 수 없다. 화면 상단 배너가 같은 이유를 이미 문장으로 설명한다.
   const yieldFetchTitle = (base: string): string =>
     yieldGovernedBy
-      ? `${base} (④투자 전략의 ${yieldGovernedBy}이(가) 수익률을 결정하는 동안에는 쓸 수 없습니다)`
+      ? `${base} (「투자 전략」의 ${yieldGovernedBy}이(가) 수익률을 결정하는 동안에는 쓸 수 없습니다)`
       : base;
 
   const [activeTab, setActiveTab] = useState<TabType>('stocks');
@@ -345,7 +345,7 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
     }));
   };
 
-  // 인적사항(나이·생활비·상속 목표)은 좌측 "내 은퇴 전략" 패널의 ①기본정보·②은퇴목표가
+  // 인적사항(나이·생활비·상속 목표)은 좌측 "내 은퇴 전략" 패널의 「기본 정보」·「은퇴 목표」가
   // 담당한다. 이 컴포넌트는 보유 자산 입력에만 집중한다.
 
   // 1. National Pension update
@@ -617,7 +617,7 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
         <>
           {yieldGovernedBy && (
             <p style={{ fontSize: '0.75rem', color: 'var(--warning, #f59e0b)', margin: '0 0 0.75rem' }}>
-              ④투자 전략의 {yieldGovernedBy}이(가) 아래 수익률 값을 결정합니다. 직접 입력하려면
+              「투자 전략」의 {yieldGovernedBy}이(가) 아래 수익률 값을 결정합니다. 직접 입력하려면
               투자 전략에서 리스크 성향과 경제 시나리오를 모두 &ldquo;AI 추천&rdquo;으로 두세요.
             </p>
           )}

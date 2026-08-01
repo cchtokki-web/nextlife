@@ -10,6 +10,7 @@ import InputField from '../../../components/InputField';
 import SelectField from '../../../components/SelectField';
 import { FieldRow, SwitchField } from '../../../components/form';
 import { AGE_MAX, AGE_MIN, parseAge } from '../ageInput';
+import { currencySuffix } from '../currencySuffix';
 import { isFieldVisible } from '../fieldVisibility';
 import { DEFAULT_HEALTHCARE, SectionProps } from '../strategyOptions';
 
@@ -96,7 +97,7 @@ export function EconomicAssumptionSection({ params, onChangeParams, mode, change
       {scenarioGoverns
         && (isFieldVisible(mode, 'inflationRate') || isFieldVisible(mode, 'baseExchangeRate')) && (
         <p className="text-xs text-amber-500">
-          ④투자 전략에서 고른 경제 시나리오가 아래 물가상승률과 환율은 물론,
+          「투자 전략」에서 고른 경제 시나리오가 아래 물가상승률과 환율은 물론,
           보유 자산과 사적연금의 수익률까지 일괄 대체합니다.
           직접 정하려면 시나리오를 &ldquo;AI 추천&rdquo;으로 두세요.
         </p>
@@ -199,7 +200,8 @@ export function EconomicAssumptionSection({ params, onChangeParams, mode, change
             {isFieldVisible(mode, 'healthcare.baseMonthlyCost') && (
               <FieldRow label="은퇴 시점 월 의료비" changed={changed.has('healthcare.baseMonthlyCost')}>
                 <InputField
-                  label="" aria-label="은퇴 시점 월 의료비" type="text" suffixText="원"
+                  label="" aria-label="은퇴 시점 월 의료비" type="text"
+                  suffixText={currencySuffix(params.displayCurrency)}
                   value={(healthcare?.baseMonthlyCost ?? 0).toLocaleString()}
                   onChange={(e) => {
                     const raw = e.target.value.replace(/,/g, '');
@@ -262,7 +264,8 @@ export function EconomicAssumptionSection({ params, onChangeParams, mode, change
                   changed={changed.has('healthcare.longTermCareMonthlyCost')}
                 >
                   <InputField
-                    label="" aria-label="장기요양 시작 시점 월 비용" type="text" suffixText="원"
+                    label="" aria-label="장기요양 시작 시점 월 비용" type="text"
+                    suffixText={currencySuffix(params.displayCurrency)}
                     value={healthcare.longTermCareMonthlyCost.toLocaleString()}
                     onChange={(e) => {
                       const raw = e.target.value.replace(/,/g, '');
@@ -302,13 +305,16 @@ export function EconomicAssumptionSection({ params, onChangeParams, mode, change
                 </FieldRow>
               )}
               {isFieldVisible(mode, 'healthcare.shockAmount') && (
+                // 옆의 두 금액 필드가 "월" 기준임을 라벨에 밝히고 있다. 이 값만 1회성인데
+                // 라벨에 시점 표기가 없으면 같은 격자 안에서 월 금액으로 오해된다.
                 <FieldRow
-                  label="급증 금액"
+                  label="급증 시 1회 금액"
                   tooltipText="증가율을 곱하지 않고 입력한 금액 그대로 그 해에 한 번 나갑니다."
                   changed={changed.has('healthcare.shockAmount')}
                 >
                   <InputField
-                    label="" aria-label="급증 금액" type="text" suffixText="원"
+                    label="" aria-label="급증 시 1회 금액" type="text"
+                    suffixText={currencySuffix(params.displayCurrency)}
                     value={healthcare.shockAmount.toLocaleString()}
                     onChange={(e) => {
                       const raw = e.target.value.replace(/,/g, '');

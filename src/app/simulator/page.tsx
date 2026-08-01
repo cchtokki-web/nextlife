@@ -575,9 +575,14 @@ export default function Home() {
 
       // 의료비는 spending에 이미 합산되어 있어 "생활비" 열만 보면 왜 커졌는지 알 수 없다.
       // 의료비 가정을 실제로 켠 시나리오에서만 열 이름과 각주로 포함 사실을 밝힌다.
+      //
+      // "별도 지출이 아니다"를 무조건 단언하면 안 된다. 자산이 고갈된 해에는 엔진이 실제
+      // 인출액을 가능한 만큼으로 깎으므로 spending < healthcareSpending이 되고, 그 해의
+      // 「생활비」 열에는 의료비 전액이 들어 있지 않다(types.ts SimulationYearlyResult
+      // .healthcareSpending의 "예외" 참조). 각주는 PDF에 그대로 인쇄되므로 단서를 붙인다.
       const hasHealthcareCost = yearlyResults.some((yr) => yr.healthcareSpending > 0);
       const healthcareNoteHtml = hasHealthcareCost
-        ? '<p style="font-size: 9.5px; color: #94a3b8; margin: 0 0 8px;">* 「생활비」 열에는 의료비·장기요양비가 합산되어 있습니다(별도 지출이 아니라 같은 금액의 내역입니다).</p>'
+        ? '<p style="font-size: 9.5px; color: #94a3b8; margin: 0 0 8px;">* 「생활비」 열에는 의료비·장기요양비가 합산되어 있습니다(별도 지출이 아니라 같은 금액의 내역입니다). 다만 자산이 고갈된 해에는 인출 가능한 금액까지만 표시되므로 의료비 전액이 반영되지 않을 수 있습니다.</p>'
         : '';
 
       const realValueNoteHtml = inflationMode === 'real'

@@ -204,7 +204,9 @@ export const PRIVATE_PENSION_OPTIONS: ReadonlyArray<RadioCardOption<PrivatePensi
   },
   {
     value: 'minimum', label: '최소 인출',
-    description: '꼭 필요한 만큼만 꺼내 연금 잔액을 최대한 지킵니다.',
+    // "꼭 필요한 만큼"이 아니다. compileStrategy의 PRIVATE_PENSION_RULES.minimum은
+    // withdrawalRatio 0.25로, 실수요와 무관하게 저율과세 한도의 25%를 인출한다.
+    description: '저율과세 한도의 25%만 꺼내 연금 잔액을 최대한 지킵니다.',
     icon: <Leaf size={16} />,
   },
   {
@@ -237,7 +239,10 @@ export const RISK_PROFILE_OPTIONS: ReadonlyArray<RadioCardOption<RiskProfile>> =
   },
   {
     value: 'ai_recommended', label: 'AI 추천',
-    description: '나이와 은퇴까지 남은 기간을 보고 알아서 정합니다.',
+    // 나이·은퇴 시점을 보고 프리셋을 고르는 로직은 코드베이스에 없다. compileStrategy의
+    // RISK_PROFILE_PRESETS에 'ai_recommended' 항목이 없어 applyYieldPreset이 호출되지
+    // 않는 것이 전부다 — 즉 "미정"이며, 아무것도 덮어쓰지 않는다.
+    description: '특정 수익률을 강제하지 않고, 직접 입력했거나 경제 시나리오가 정한 수익률을 그대로 둡니다.',
     icon: <Sparkles size={16} />, recommended: true,
   },
 ];
@@ -265,10 +270,12 @@ export const ECONOMIC_SCENARIO_OPTIONS: ReadonlyArray<RadioCardOption<EconomicSc
   },
   {
     value: 'ai_recommended', label: 'AI 추천',
-    // "장기 평균" 문구를 그대로 쓰면 위 '장기 평균' 옵션과 접근성 이름이 부분 문자열로
-    // 겹쳐 테스트(정규식 /장기 평균/)가 두 라디오를 동시에 찾아버린다. 의미는 같지만
-    // 표현을 바꿔 충돌을 피한다.
-    description: '특정 국면을 가정하지 않고 안정적인 기본 가정으로 계산합니다.',
+    // 이 선택지는 '장기 평균'과 의미가 다르다. '장기 평균'은 프로필이 있어 물가·환율·수익률을
+    // 일괄 대체하지만, 'ai_recommended'는 ECONOMIC_SCENARIO_PROFILES에 항목이 없어(=미정)
+    // 아무것도 대체하지 않는다. 둘을 "같은 뜻"으로 적어 두면 언젠가 프로필을 채우게 되고,
+    // 그 순간 사용자가 경제 가정에 직접 입력한 물가상승률이 조용히 덮어써진다
+    // (economicScenarios.ts의 경고 참조).
+    description: '특정 국면을 강제하지 않고 경제 가정에 직접 입력한 값을 그대로 사용합니다.',
     icon: <Sparkles size={16} />, recommended: true,
   },
 ];

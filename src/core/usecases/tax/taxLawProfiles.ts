@@ -36,7 +36,8 @@ export interface TaxLawProfile {
 // 현행 세법(2024년 기준). taxRates.ts에 있던 값을 그대로 옮긴 것이며 값 변경은 없다
 // (taxLawProfiles.test.ts가 기존 상수와의 일치를 검증한다).
 //
-// 'planned'(예정 법령) 프로필은 의도적으로 비워 두었다. 실제로 확정된 개정안이
+// '예정 법령' 프로필은 아직 만들지 않았다 — 비워 둔 슬롯이 아니라 슬롯 자체가 없다
+// (TaxLawVersion에 'planned' 같은 멤버를 추가하는 것이 첫 단계다). 확정된 개정안이
 // 없는 상태에서 허구의 숫자를 넣으면 사용자가 그것을 사실로 받아들이기 때문이다.
 const CURRENT_PROFILE: TaxLawProfile = {
   financialIncomeThresholdKRW: 20000000, // 금융소득종합과세 기준(연)

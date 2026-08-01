@@ -90,7 +90,7 @@ describe('AdvancedSection', () => {
     );
 
     expect(screen.getByRole('switch', { name: /저율과세 한도 내에서만 인출/ })).toBeDisabled();
-    expect(screen.getByText(/③연금 전략의 선택이 이 값을 결정합니다/)).toBeInTheDocument();
+    expect(screen.getByText(/「연금 전략」의 선택이 이 값을 결정합니다/)).toBeInTheDocument();
   });
 
   test('전략이 지배할 때는 저장된 값이 아니라 전략이 강제하는 값을 보여준다', () => {

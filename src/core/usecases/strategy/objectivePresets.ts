@@ -29,7 +29,9 @@ export const OBJECTIVE_WEIGHT_PRESETS: Record<ObjectivePriority, UtilityConfig['
     consumption: 20, depletionSafety: 20, pensionUtilization: 10,
     taxEfficiency: 10, taxationRisk: 5, bequestAdequacy: 35,
   },
-  // AI 추천: 사용자가 목표를 정하지 않은 상태다. 특정 축으로 기울이지 않고
-  // 기본 가중치를 그대로 쓰며, AI가 별도로 목표를 제안한다.
+  // AI 추천: 사용자가 목표를 정하지 않은 상태다. 특정 축으로 기울이지 않고 기본 가중치를
+  // 그대로 쓴다. 목표(objective) 자체를 제안하는 경로는 없다 — StrategyRecommendation에는
+  // 목표를 담는 필드가 없고, objective는 오직 사용자가 화면에서 고를 때만 바뀐다.
+  // 이 값이 기본 가중치와 달라지면 "목표 미정"이 조용히 특정 목표로 채점된다.
   ai_recommended: DEFAULT_UTILITY_CONFIG.weights,
 };

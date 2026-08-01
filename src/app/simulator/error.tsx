@@ -11,9 +11,11 @@ import { AlertCircle, RotateCcw } from 'lucide-react';
 // SimulationEngine.runSingle은 ~540줄 3중 중첩 루프이고, 입력은 E2EE 복호화 결과나
 // import된 레거시 JSON처럼 이 앱이 형태를 보장하지 못하는 데이터다.
 //
-// 여기까지 오는 경우는 "직전 성공 결과조차 없는" 실패뿐이다(useSimulationRun 참조).
-// 그래서 재시도 외에 "저장된 시나리오 자체가 문제일 수 있다"는 안내를 함께 준다 —
-// reset()만 제공하면 같은 입력으로 같은 예외가 반복되어 사용자가 갇힌다.
+// 직전 성공 결과로 되돌리는 폴백은 두지 않기로 했다 — 살아 있는 설정 패널 옆에 낡은
+// 결과를 띄우면 이 브랜치가 계속 걷어내 온 "화면과 엔진의 불일치"를 새로 만든다.
+// 따라서 engine.run이 던지는 모든 실패가 여기로 온다. reset()만 제공하면 같은 입력으로
+// 같은 예외가 반복되어 사용자가 갇히므로, "저장된 시나리오 자체가 문제일 수 있다"는
+// 안내를 함께 준다.
 export default function SimulatorError({
   error,
   reset,

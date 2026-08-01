@@ -115,7 +115,7 @@ export const NATIONAL_PENSION_STRATEGY_AGES: Record<NationalPensionStrategy, num
 
 // 사적연금 전략 → (저율과세 한도 대비 인출 비율, 한도 내 인출 강제 여부).
 // null 비율은 "월 목표를 지정하지 않음" = 엔진의 기존 균등분할 인출을 뜻한다.
-// limitToTaxLimit이 null이면 "전략이 이 값을 정하지 않음" = 사용자가 ⑥고급 설정에서
+// limitToTaxLimit이 null이면 "전략이 이 값을 정하지 않음" = 사용자가 「고급 설정」에서
 // 직접 켠 값을 그대로 존중한다는 뜻이다. 'ai_optimized'는 "미정"이지 "끄기"가 아니므로
 // false를 강제하면 안 된다 — 저장해 둔 설정이 조용히 뒤집힌다.
 const PRIVATE_PENSION_RULES: Record<
@@ -129,7 +129,7 @@ const PRIVATE_PENSION_RULES: Record<
   ai_optimized: { limitToTaxLimit: null, withdrawalRatio: null },
 };
 
-// ③연금 전략이 "저율과세 한도 내에서만 인출"을 지배하는지, 지배한다면 어떤 값으로
+// 「연금 전략」이 "저율과세 한도 내에서만 인출"을 지배하는지, 지배한다면 어떤 값으로
 // 고정하는지. null이면 지배하지 않으므로 고급 설정의 값이 그대로 쓰인다.
 // 고급 설정 UI가 스위치를 비활성화할지, 어떤 값을 보여줄지 판정하는 데 쓴다 —
 // 규칙표를 UI에 복제하면 두 곳이 조용히 어긋난다.
@@ -139,18 +139,35 @@ export function resolvePrivatePensionTaxLimitOverride(
   return (PRIVATE_PENSION_RULES[strategy] ?? PRIVATE_PENSION_RULES.ai_optimized).limitToTaxLimit;
 }
 
-// 리스크 성향 → 기존 수익률 프리셋. 'ai_recommended'와 'custom'은 의도적으로 매핑이 없다.
-// 매핑이 없으면 applyYieldPreset을 부르지 않아 자산·연금에 직접 입력한 수익률(또는 경제
-// 시나리오가 정한 값)이 그대로 남는다 — 'ai_recommended'는 "미정"이지 "중립형"이 아니고,
-// 'custom'은 "내가 넣은 값을 덮어쓰지 말라"는 뜻이다. 여기에 항목을 추가하면 두 선택지
-// 모두 사용자의 직접 입력을 조용히 덮어쓰게 된다.
-const RISK_PROFILE_PRESETS: Partial<Record<RiskProfile, 'conservative' | 'base' | 'aggressive'>> = {
+// 수익률 프리셋을 지배하는 리스크 성향. 'ai_recommended'(미정)와 'custom'(덮어쓰지 말 것)은
+// 키 도메인에서 아예 제거한다.
+//
+// Partial<Record<RiskProfile, ...>>가 아니라 Record<Exclude<...>>인 이유:
+// Partial은 'ai_recommended'/'custom' 항목을 채워 넣어도 컴파일이 통과한다. 이 브랜치에서
+// 같은 실수('ai_*' 센티널에 값을 채워 사용자 입력을 조용히 덮어씀)가 세 번 반복됐으므로,
+// 네 번째는 리터럴 객체의 초과 프로퍼티 검사로 컴파일 타임에 막는다.
+type GoverningRiskProfile = Exclude<RiskProfile, 'custom' | 'ai_recommended'>;
+
+// 리스크 성향 → 기존 수익률 프리셋. 매핑이 없는 성향은 applyYieldPreset을 부르지 않아
+// 자산·연금에 직접 입력한 수익률(또는 경제 시나리오가 정한 값)이 그대로 남는다 —
+// 'ai_recommended'는 "미정"이지 "중립형"이 아니고, 'custom'은 "내가 넣은 값을 덮어쓰지
+// 말라"는 뜻이다.
+const RISK_PROFILE_PRESETS: Record<
+  GoverningRiskProfile,
+  'conservative' | 'base' | 'aggressive'
+> = {
   conservative: 'conservative',
   neutral: 'base',
   aggressive: 'aggressive',
 };
 
-// ④투자 전략의 리스크 성향이 자산·연금·ISA 수익률을 지배하는지, 지배한다면 어떤 프리셋으로
+// 리스크 성향이 수익률을 지배할 수 있는 값인지. "미정"과 "직접입력"을 여기서 한 번만
+// 걸러내고, 그 분기가 "여기가 센티널을 처리하는 자리"임을 코드 흐름으로 드러낸다.
+function isGoverningRiskProfile(profile: RiskProfile): profile is GoverningRiskProfile {
+  return profile !== 'custom' && profile !== 'ai_recommended';
+}
+
+// 「투자 전략」의 리스크 성향이 자산·연금·ISA 수익률을 지배하는지, 지배한다면 어떤 프리셋으로
 // 고정하는지. null이면 지배하지 않으므로 사용자가 직접 입력한 수익률이 그대로 쓰인다.
 // 자산 입력 폼이 수익률 입력을 비활성화할지 판정하는 데 쓴다 —
 // resolvePrivatePensionTaxLimitOverride와 같은 이유로, 규칙표를 UI에 복제하면 두 곳이
@@ -159,6 +176,9 @@ const RISK_PROFILE_PRESETS: Partial<Record<RiskProfile, 'conservative' | 'base' 
 export function resolveRiskProfileYieldPreset(
   riskProfile: RiskProfile
 ): 'conservative' | 'base' | 'aggressive' | null {
+  if (!isGoverningRiskProfile(riskProfile)) return null;
+  // 알 수 없는 값(저장된 옛 시나리오에 남은 없어진 enum 등)은 타입 가드를 통과하지만
+  // 테이블에는 없다. 런타임 폴백을 지운 순간 undefined가 그대로 새어 나간다.
   return RISK_PROFILE_PRESETS[riskProfile] ?? null;
 }
 
@@ -188,6 +208,12 @@ function resolveTargetBequest(
 // 'ai'는 엔진에 없는 값이므로 baseline인 'target'으로 내린다. 알 수 없는 값(저장된 옛
 // 시나리오에 남은, 지금은 없어진 값 등)도 같은 이유로 baseline인 'target'으로 폴백한다.
 // 사용자가 무엇을 골랐는지는 strategy.spendingChoice 쪽에 그대로 남는다.
+//
+// default를 두지 않고 모든 case를 명시한 뒤 never 단정으로 마무리한다. default가 있으면
+// SpendingStrategyChoice에 새 값이 추가돼도 컴파일이 통과해 조용히 'target'으로 떨어지지만,
+// 이 형태에서는 새 값이 exhaustiveCheck에 대입되지 못해 컴파일 에러가 난다.
+// never 단정 뒤의 return은 런타임 폴백을 유지하기 위한 것이다 — 타입은 도달 불가라고
+// 보지만, 저장된 옛 시나리오에는 실제로 타입에 없는 문자열이 들어 있을 수 있다.
 function resolveSpendingStrategy(spendingChoice: SpendingStrategyChoice): SpendingStrategy {
   switch (spendingChoice) {
     case 'dividend_only':
@@ -196,9 +222,12 @@ function resolveSpendingStrategy(spendingChoice: SpendingStrategyChoice): Spendi
       return 'max_sustainable';
     case 'target':
     case 'ai':
-    default:
       return 'target';
   }
+
+  const exhaustiveCheck: never = spendingChoice;
+  void exhaustiveCheck;
+  return 'target';
 }
 
 // 전략(사용자 언어)을 저수준 파라미터(엔진 언어)로 번역한다.
@@ -272,7 +301,7 @@ export function compileStrategy(params: SimulationParams): CompiledStrategy {
     withdrawalPlan.privatePensionMonthlyTarget = privatePensionMonthlyTarget;
   }
 
-  // 배당 재투자는 compileStrategy가 건드리지 않는다. ③연금 전략의 스위치는 "설정"이 아니라
+  // 배당 재투자는 compileStrategy가 건드리지 않는다. 「연금 전략」의 스위치는 "설정"이 아니라
   // "일괄 적용 버튼"이며, 눌린 그 순간에만 params.assets를 직접 갱신한다. 여기서 매번
   // 덮어쓰면 AssetFormSection의 자산별 토글이 조용히 뭉개진다.
   const assets = economyApplied.assets;
