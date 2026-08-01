@@ -95,8 +95,9 @@ const ScenarioCard: React.FC<ScenarioCardProps> = ({ title, subtitle, highlightC
             <button 
               onClick={() => {
                 if (isDevMode()) {
-                  const callbackUrl = typeof window !== 'undefined' ? `${window.location.origin}/` : '/';
-                  signIn('credentials', { email: 'dev', password: 'dev', callbackUrl });
+                  signIn('credentials', { email: 'dev', password: 'dev', redirect: false }).then(() => {
+                    window.location.reload();
+                  });
                 } else {
                   signIn('kakao', { callbackUrl: '/' });
                 }

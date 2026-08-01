@@ -14,6 +14,21 @@ describe('FieldRow', () => {
     expect(screen.getByLabelText('현재 나이 입력')).toHaveValue('50');
   });
 
+  // 금액 입력은 2열 격자 안에서 폭이 모자라 값이 잘린다. 호출부가 col-span-2 같은
+  // 배치 클래스를 얹을 수 있어야 한다.
+  test('className을 주면 루트 요소에 함께 붙는다', () => {
+    const { container } = render(
+      <FieldRow label="사적연금 저율과세 한도" className="col-span-2">
+        <input />
+      </FieldRow>
+    );
+
+    const root = container.firstElementChild!;
+    expect(root).toHaveClass('col-span-2');
+    // 기존 레이아웃 클래스를 덮어쓰면 라벨과 입력이 가로로 붙는다.
+    expect(root).toHaveClass('flex', 'flex-col');
+  });
+
   test('changed가 true면 "사용자 설정" 배지를 표시한다', () => {
     render(<FieldRow label="현재 나이" changed><input /></FieldRow>);
 

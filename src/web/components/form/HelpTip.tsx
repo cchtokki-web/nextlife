@@ -17,7 +17,9 @@ export function HelpTip({ term, text }: HelpTipProps) {
   if (!label) return null;
 
   return (
-    <Tooltip label={<span className="block max-w-xs whitespace-normal">{label}</span>}>
+    // 폭·줄바꿈은 Tooltip이 정한다. 예전에는 여기서 max-w-xs를 걸었는데, 그 값이
+    // 붙는 안쪽 span이 아니라 바깥 툴팁 상자의 폭이 문제라 아무 효과가 없었다.
+    <Tooltip label={label}>
       <HelpCircle size={14} className="text-foreground-muted" aria-label="도움말" />
     </Tooltip>
   );

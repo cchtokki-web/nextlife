@@ -13,21 +13,26 @@ interface FieldRowProps {
   changed?: boolean;
   // AI가 제안한 값의 표시 문자열(예: "70세"). 표시만 하며 자동 적용하지 않는다.
   aiHint?: string;
+  // 격자 안에서의 배치 클래스(예: 'col-span-2'). 금액 입력처럼 두 칸을 다 써야
+  // 값이 안 잘리는 항목이 있어 호출부가 지정할 수 있게 열어 둔다.
+  className?: string;
   children: ReactNode;
 }
 
 // 라벨 + 도움말 + 입력 + 상태 배지를 한 줄로 묶는 설정 항목 셸.
 export function FieldRow({
-  label, tooltipTerm, tooltipText, changed, aiHint, children,
+  label, tooltipTerm, tooltipText, changed, aiHint, className = '', children,
 }: FieldRowProps) {
   return (
-    <div className="flex flex-col gap-1.5">
-      <div className="flex flex-wrap items-center gap-1.5">
-        <span className="text-xs font-medium text-foreground-muted">{label}</span>
+    <div className={`flex flex-col gap-2 ${className}`}>
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-xs sm:text-[13px] font-medium text-foreground/85">{label}</span>
         <HelpTip term={tooltipTerm} text={tooltipText} />
         <ChangedBadge changed={changed} />
         {aiHint && (
-          <span className="text-[10px] text-foreground-muted">AI 추천: {aiHint}</span>
+          <span className="text-xs font-semibold text-primary/90 bg-primary/10 border border-primary/20 rounded-full px-2 py-0.5">
+            AI 추천: {aiHint}
+          </span>
         )}
       </div>
       {children}

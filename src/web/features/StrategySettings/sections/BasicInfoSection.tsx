@@ -38,7 +38,7 @@ export function BasicInfoSection({ params, onChangeParams, mode, changed }: Sect
 
   return (
     <>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 items-end gap-3.5 sm:gap-4">
         {isFieldVisible(mode, 'userProfile.currentAge') && (
           <FieldRow label="현재 나이" changed={changed.has('userProfile.currentAge')}>
             <InputField
@@ -99,7 +99,7 @@ export function BasicInfoSection({ params, onChangeParams, mode, changed }: Sect
       )}
 
       {spouseEnabled && (
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-2 items-end gap-3.5 sm:gap-4">
           {isFieldVisible(mode, 'spouse.currentAge') && (
             <FieldRow label="배우자 나이" changed={changed.has('spouse.currentAge')}>
               <InputField
@@ -127,7 +127,11 @@ export function BasicInfoSection({ params, onChangeParams, mode, changed }: Sect
             </FieldRow>
           )}
           {isFieldVisible(mode, 'spouse.nationalPensionMonthlyAmount') && (
+            // 금액 입력은 한 줄을 다 쓴다. 입력 우측에는 단위와 스테퍼 자리로 5.1rem이
+            // 비워져 있어(components.module.css의 inputWithSteppers), 격자 반 칸(126px)에서는
+            // 백만 단위 금액이 그대로 잘린다.
             <FieldRow
+              className="col-span-2"
               label="배우자 국민연금 예상 월 수령액"
               tooltipText="65세에 받기 시작할 때의 금액입니다. 연기하면 자동으로 가산됩니다."
               changed={changed.has('spouse.nationalPensionMonthlyAmount')}
@@ -167,7 +171,7 @@ export function BasicInfoSection({ params, onChangeParams, mode, changed }: Sect
       )}
 
       {spouseAgeInvalid && (
-        <p className="text-xs text-amber-500">
+        <p className="text-xs leading-relaxed text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-xl p-3 my-1">
           배우자 기대수명이 현재 나이보다 작습니다. 계산에는 현재 나이를 사용합니다.
         </p>
       )}

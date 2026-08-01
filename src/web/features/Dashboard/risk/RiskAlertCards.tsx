@@ -11,7 +11,7 @@ export function RiskAlertCards({ alerts }: RiskAlertCardsProps) {
   if (alerts.length === 0) return null;
 
   return (
-    <div className="mb-6 flex flex-col gap-4">
+    <div className="flex flex-col gap-4">
       {alerts.map((alert) => (
         <div
           key={alert.key}

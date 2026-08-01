@@ -112,7 +112,7 @@ export function RetirementGoalSection({ params, onChangeParams, mode, changed, a
             }}
           />
           {spendingUsedForScoringOnly && (
-            <p className="text-xs text-foreground-muted">
+            <p className="text-xs leading-relaxed text-foreground-muted/90 pt-1">
               이 전략에서는 인출액을 이 금액으로 정하지 않습니다. 다만 소비 만족도 점수를 매길 때
               &ldquo;필요 생활비&rdquo; 기준으로 쓰이므로, 실제로 필요한 금액을 넣어 주세요.
             </p>

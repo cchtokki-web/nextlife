@@ -184,11 +184,14 @@
   --asset-card-bg: rgba(15, 23, 42, 0.015);
 }
 
-* {
-  box-sizing: border-box;
-  padding: 0;
-  margin: 0;
-}
+/*
+ * 여기 있던 `* { box-sizing: border-box; padding: 0; margin: 0 }` 규칙을 제거했다.
+ *
+ * Tailwind v4의 preflight(@layer base)가 이미 동일한 초기화를 하므로 중복이었고,
+ * 무엇보다 이 규칙은 레이어 밖에 있었다. 레이어 밖 선언은 @layer utilities 안의
+ * 선언을 항상 이기므로(우선순위 계산에서 레이어 순서가 명시도보다 먼저 적용됨)
+ * 프로젝트 전체의 p-*, m-* 유틸리티가 통째로 무력화되고 있었다.
+ */
 
 html, body {
   width: 100%;

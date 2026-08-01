@@ -105,7 +105,7 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
     <div className={styles.container}>
       {/* Strategy Indicator Banners — 항상 baseline(현재 설정) 기준, Before/After 토글과 무관 */}
       {params.spendingStrategy === 'max_sustainable' && result.calculatedTargetSpending !== undefined && (
-        <div className={styles.warningCard} style={{ background: 'rgba(16, 185, 129, 0.1)', borderColor: 'rgba(16, 185, 129, 0.3)', marginBottom: '1.5rem' }}>
+        <div className={styles.warningCard} style={{ background: 'rgba(16, 185, 129, 0.1)', borderColor: 'rgba(16, 185, 129, 0.3)' }}>
           <Award size={22} className={styles.warningIcon} color="var(--success)" />
           <div className={styles.warningContent}>
             <span className={styles.warningTitle} style={{ color: 'var(--success)' }}>최대 고정 생활비 산출 완료</span>
@@ -116,7 +116,7 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
         </div>
       )}
       {params.spendingStrategy === 'dividend_only' && (
-        <div className={styles.warningCard} style={{ background: 'rgba(59, 130, 246, 0.1)', borderColor: 'rgba(59, 130, 246, 0.3)', marginBottom: '1.5rem' }}>
+        <div className={styles.warningCard} style={{ background: 'rgba(59, 130, 246, 0.1)', borderColor: 'rgba(59, 130, 246, 0.3)' }}>
           <Zap size={22} className={styles.warningIcon} color="#3B82F6" />
           <div className={styles.warningContent}>
             <span className={styles.warningTitle} style={{ color: '#3B82F6' }}>배당금 100% 소비 모드 적용 중</span>

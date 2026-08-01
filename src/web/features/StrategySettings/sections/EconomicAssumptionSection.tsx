@@ -96,7 +96,7 @@ export function EconomicAssumptionSection({ params, onChangeParams, mode, change
           렌더하지 않는다. 모드를 낮춰도 값은 보존되어 scenarioGoverns는 참으로 남는다. */}
       {scenarioGoverns
         && (isFieldVisible(mode, 'inflationRate') || isFieldVisible(mode, 'baseExchangeRate')) && (
-        <p className="text-xs text-amber-500">
+        <p className="text-xs leading-relaxed text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-xl p-3 my-1">
           「투자 전략」에서 고른 경제 시나리오가 아래 물가상승률과 환율은 물론,
           보유 자산과 사적연금의 수익률까지 일괄 대체합니다.
           직접 정하려면 시나리오를 &ldquo;AI 추천&rdquo;으로 두세요.
@@ -114,7 +114,7 @@ export function EconomicAssumptionSection({ params, onChangeParams, mode, change
         />
       )}
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 items-end gap-3.5 sm:gap-4">
         {isFieldVisible(mode, 'inflationRate') && (
           <FieldRow label="물가상승률" changed={changed.has('inflationRate')}>
             <InputField
@@ -196,9 +196,14 @@ export function EconomicAssumptionSection({ params, onChangeParams, mode, change
 
       {healthcareEnabled && (
         <>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 items-end gap-3.5 sm:gap-4">
             {isFieldVisible(mode, 'healthcare.baseMonthlyCost') && (
-              <FieldRow label="은퇴 시점 월 의료비" changed={changed.has('healthcare.baseMonthlyCost')}>
+              // 금액 입력은 한 줄을 다 쓴다 — 격자 반 칸(126px)에서는 백만 단위가 잘린다.
+              <FieldRow
+                className="col-span-2"
+                label="은퇴 시점 월 의료비"
+                changed={changed.has('healthcare.baseMonthlyCost')}
+              >
                 <InputField
                   label="" aria-label="은퇴 시점 월 의료비" type="text"
                   suffixText={currencySuffix(params.displayCurrency)}
@@ -238,7 +243,7 @@ export function EconomicAssumptionSection({ params, onChangeParams, mode, change
           )}
 
           {healthcare?.longTermCareEnabled && (
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 items-end gap-3.5 sm:gap-4">
               {isFieldVisible(mode, 'healthcare.longTermCareStartAge') && (
                 <FieldRow label="장기요양 시작 나이" changed={changed.has('healthcare.longTermCareStartAge')}>
                   <InputField
@@ -259,6 +264,7 @@ export function EconomicAssumptionSection({ params, onChangeParams, mode, change
                 // 기준 시점을 라벨에 적는다. 옆의 "은퇴 시점 월 의료비"와 시점이 다르므로
                 // 시점 표기가 없으면 두 값이 같은 기준인 줄 오해한다(healthcareCosts.ts 참조).
                 <FieldRow
+                  className="col-span-2"
                   label="장기요양 시작 시점 월 비용"
                   tooltipText="요양이 시작되는 나이 기준 금액입니다. 그 이후에는 의료비 증가율만큼 오릅니다."
                   changed={changed.has('healthcare.longTermCareMonthlyCost')}
@@ -290,7 +296,7 @@ export function EconomicAssumptionSection({ params, onChangeParams, mode, change
           )}
 
           {healthcare?.shockEnabled && (
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 items-end gap-3.5 sm:gap-4">
               {isFieldVisible(mode, 'healthcare.shockAge') && (
                 <FieldRow label="급증 발생 나이" changed={changed.has('healthcare.shockAge')}>
                   <InputField
@@ -308,6 +314,7 @@ export function EconomicAssumptionSection({ params, onChangeParams, mode, change
                 // 옆의 두 금액 필드가 "월" 기준임을 라벨에 밝히고 있다. 이 값만 1회성인데
                 // 라벨에 시점 표기가 없으면 같은 격자 안에서 월 금액으로 오해된다.
                 <FieldRow
+                  className="col-span-2"
                   label="급증 시 1회 금액"
                   tooltipText="증가율을 곱하지 않고 입력한 금액 그대로 그 해에 한 번 나갑니다."
                   changed={changed.has('healthcare.shockAmount')}

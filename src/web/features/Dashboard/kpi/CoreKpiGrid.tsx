@@ -25,7 +25,7 @@ export function CoreKpiGrid({
   formatValue,
 }: CoreKpiGridProps) {
   return (
-    <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
+    <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
       <KpiCard label={`${expectancy}세까지 은퇴 준비도`} icon={<ShieldCheck size={16} aria-hidden="true" />}>
         <RetirementLikelihoodStars score={survivalScore} />
       </KpiCard>

@@ -14,17 +14,61 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+// 모드를 지정한 params. 기본값(strategy 미지정)은 간편 모드로 해석된다.
+const withMode = (mode: 'simple' | 'standard' | 'expert') => ({
+  ...initialParams,
+  strategy: { ...DEFAULT_RETIREMENT_STRATEGY, mode },
+});
+
 describe('StrategySettingsPanel', () => {
-  test('전략 모드 3개와 6개 섹션 제목을 렌더링한다', () => {
+  test('전략 모드 3개를 렌더링한다', () => {
     render(<StrategySettingsPanel params={initialParams} onChangeParams={vi.fn()} {...noRecommendation} />);
 
     expect(screen.getByRole('radio', { name: /간편/ })).toBeInTheDocument();
     expect(screen.getByRole('radio', { name: /표준/ })).toBeInTheDocument();
     expect(screen.getByRole('radio', { name: /전문가/ })).toBeInTheDocument();
+  });
 
-    for (const title of ['기본 정보', '은퇴 목표', '연금 전략', '투자 전략', '경제 가정', '고급 설정']) {
-      expect(screen.getByText(title)).toBeInTheDocument();
-    }
+  // 모드에서 손댈 수 있는 필드가 하나도 없는 섹션은 열어봐야 빈 껍데기라 고장으로 읽힌다.
+  describe('설정 가능한 필드가 없는 섹션은 렌더링하지 않는다', () => {
+    // 섹션 헤더는 aria-expanded를 가진 유일한 버튼이다. 제목 텍스트로 찾으면
+    // 같은 이름을 가진 AI 추천 버튼('투자 전략 AI 추천')에 걸려 거짓 통과한다.
+    const sectionTitles = (container: HTMLElement) =>
+      [...container.querySelectorAll('button[aria-expanded]')].map((b) => b.textContent ?? '');
+
+    const renderIn = (mode: 'simple' | 'standard' | 'expert') => {
+      const { container } = render(
+        <StrategySettingsPanel params={withMode(mode)} onChangeParams={vi.fn()} {...noRecommendation} />
+      );
+      return (title: string) => sectionTitles(container).some((t) => t.includes(title));
+    };
+
+    test('간편 모드에서는 투자 전략·경제 가정·고급 설정이 없다', () => {
+      const has = renderIn('simple');
+
+      expect(has('기본 정보')).toBe(true);
+      expect(has('은퇴 목표')).toBe(true);
+      expect(has('연금 전략')).toBe(true);
+      expect(has('투자 전략')).toBe(false);
+      expect(has('경제 가정')).toBe(false);
+      expect(has('고급 설정')).toBe(false);
+    });
+
+    test('표준 모드에서는 고급 설정만 없다', () => {
+      const has = renderIn('standard');
+
+      expect(has('투자 전략')).toBe(true);
+      expect(has('경제 가정')).toBe(true);
+      expect(has('고급 설정')).toBe(false);
+    });
+
+    test('전문가 모드에서는 6개 섹션이 모두 보인다', () => {
+      const has = renderIn('expert');
+
+      for (const title of ['기본 정보', '은퇴 목표', '연금 전략', '투자 전략', '경제 가정', '고급 설정']) {
+        expect(has(title), title).toBe(true);
+      }
+    });
   });
 
   test('strategy가 없으면 간편 모드가 선택된다', () => {
@@ -56,15 +100,52 @@ describe('StrategySettingsPanel', () => {
     expect(screen.getByText('1개 변경')).toBeInTheDocument();
   });
 
-  test('간편 모드에서 고급 설정 변경이 있으면 숨겨진 설정 개수를 알린다', () => {
-    const params = {
+  // 숨긴 섹션의 값도 계산에는 그대로 들어간다. 섹션을 통째로 없애면 그 사실을 알릴
+  // 자리가 사라지므로, 모드 선택 바로 아래에 합계를 한 줄로 요약한다.
+  describe('숨긴 섹션에 남아 있는 사용자 설정 알림', () => {
+    const withTaxRate = (usDividendTaxRate: number) => ({
       ...initialParams,
-      taxSettings: { ...initialParams.taxSettings, usDividendTaxRate: 20 } as never,
-    };
+      taxSettings: { ...initialParams.taxSettings, usDividendTaxRate } as never,
+    });
 
-    render(<StrategySettingsPanel params={params} onChangeParams={vi.fn()} {...noRecommendation} />);
+    const notice = () => screen.queryByTestId('hidden-section-notice');
 
-    expect(screen.getByText('숨겨진 사용자 설정 1개')).toBeInTheDocument();
+    test('간편 모드에서 고급 설정 값이 기본과 다르면 합계를 알린다', () => {
+      render(<StrategySettingsPanel params={withTaxRate(20)} onChangeParams={vi.fn()} {...noRecommendation} />);
+
+      expect(notice()).toHaveTextContent('숨겨진 사용자 설정 1개');
+    });
+
+    test('숨긴 섹션이 전부 기본값이면 알림이 없다', () => {
+      render(<StrategySettingsPanel params={initialParams} onChangeParams={vi.fn()} {...noRecommendation} />);
+
+      expect(notice()).not.toBeInTheDocument();
+    });
+
+    test('전문가 모드에서는 숨긴 섹션이 없으므로 알림이 없다', () => {
+      const params = {
+        ...withTaxRate(20),
+        strategy: { ...DEFAULT_RETIREMENT_STRATEGY, mode: 'expert' as const },
+      };
+
+      render(<StrategySettingsPanel params={params} onChangeParams={vi.fn()} {...noRecommendation} />);
+
+      expect(notice()).not.toBeInTheDocument();
+    });
+
+    // 보이는 섹션 안의 숨은 필드(간편 모드의 '목표 상속자산' 등)는 예전처럼 그 섹션
+    // 헤더 배지가 맡는다. 요약 줄이 그것까지 세면 같은 변경이 두 번 보고된다.
+    test('보이는 섹션의 숨은 필드는 요약이 아니라 섹션 헤더 배지가 알린다', () => {
+      const params = {
+        ...initialParams,
+        userProfile: { ...initialParams.userProfile, targetBequest: 100000000 },
+      };
+
+      render(<StrategySettingsPanel params={params} onChangeParams={vi.fn()} {...noRecommendation} />);
+
+      expect(screen.getByText('숨겨진 사용자 설정 1개')).toBeInTheDocument();
+      expect(notice()).not.toBeInTheDocument();
+    });
   });
 
   test('AI가 60세(조기수령)를 추천하면 적용 시 조기 수령 전략으로 역매핑된다', () => {
@@ -150,7 +231,7 @@ describe('StrategySettingsPanel', () => {
         />
       );
 
-      expect(screen.getByRole('button', { name: '연금 전략 이미 최적' })).toBeDisabled();
+      expect(screen.queryByRole('button', { name: new RegExp('^연금 전략 ') })).not.toBeInTheDocument();
     });
 
     test('적용할 값이 있으면 그 섹션만 활성화된다', () => {
@@ -173,14 +254,14 @@ describe('StrategySettingsPanel', () => {
       );
 
       expect(screen.getByRole('button', { name: '연금 전략 AI 추천' })).toBeEnabled();
-      // 은퇴 목표는 생활비 배수가 없으므로 적용할 것이 없다.
-      expect(screen.getByRole('button', { name: '은퇴 목표 이미 최적' })).toBeDisabled();
+      // 은퇴 목표는 생활비 배수가 없으므로 적용할 것이 없다 — 버튼 자체를 내지 않는다.
+      expect(screen.queryByRole('button', { name: new RegExp('^은퇴 목표 ') })).not.toBeInTheDocument();
     });
 
-    test('배당 재투자 권장이 현재 설정과 같으면 투자 전략 버튼도 비활성화된다', () => {
+    test('배당 재투자 권장이 현재 설정과 같으면 투자 전략 버튼도 나오지 않는다', () => {
       const params = {
-        ...initialParams,
-        strategy: DEFAULT_RETIREMENT_STRATEGY,
+        // 투자 전략 섹션은 간편 모드에서 렌더되지 않으므로 표준 모드로 올린다.
+        ...withMode('standard'),
         assets: [{
           id: 'a1', type: 'etf' as const, ticker: 'AAA', name: '자산1', quantity: 1, averagePrice: 1000,
           annualGrowthRate: 6, dividendYield: 2, monthlyContribution: 0,
@@ -200,7 +281,7 @@ describe('StrategySettingsPanel', () => {
         />
       );
 
-      expect(screen.getByRole('button', { name: '투자 전략 이미 최적' })).toBeDisabled();
+      expect(screen.queryByRole('button', { name: new RegExp('^투자 전략 ') })).not.toBeInTheDocument();
     });
   });
 
@@ -255,7 +336,7 @@ describe('StrategySettingsPanel', () => {
       });
     });
 
-    test('배수가 1이면 버튼이 비활성이고 눌러도 아무 값도 바뀌지 않는다', () => {
+    test('배수가 1이면 버튼이 나오지 않는다', () => {
       const onChangeParams = vi.fn();
       render(
         <StrategySettingsPanel
@@ -264,15 +345,11 @@ describe('StrategySettingsPanel', () => {
         />
       );
 
-      const button = screen.getByRole('button', { name: '은퇴 목표 이미 최적' });
-      expect(button).toBeDisabled();
-
-      fireEvent.click(button);
-
+      expect(screen.queryByRole('button', { name: new RegExp('^은퇴 목표 ') })).not.toBeInTheDocument();
       expect(onChangeParams).not.toHaveBeenCalled();
     });
 
-    test('추천이 아직 없으면(계산 전) 버튼이 비활성이고 눌러도 호출되지 않는다', () => {
+    test('추천이 아직 없으면(계산 전) 버튼이 나오지 않는다', () => {
       // 추천 도착 전에 눌렸을 때 recommendedPlan이 undefined인 채로 곱하면
       // targetMonthlySpending이 NaN이 되어 저장되고, 디바운스 자동저장이 그 NaN을 남긴다.
       const onChangeParams = vi.fn();
@@ -282,16 +359,16 @@ describe('StrategySettingsPanel', () => {
         />
       );
 
-      const button = screen.getByRole('button', { name: '은퇴 목표 이미 최적' });
-      expect(button).toBeDisabled();
-
-      fireEvent.click(button);
-
+      expect(screen.queryByRole('button', { name: new RegExp('^은퇴 목표 ') })).not.toBeInTheDocument();
       expect(onChangeParams).not.toHaveBeenCalled();
     });
   });
 
+  // 투자 전략 섹션은 간편 모드에서 렌더되지 않는다(손댈 수 있는 필드가 없다).
+  // 이 섹션의 AI 추천 버튼을 검증하려면 표준 모드 이상이어야 한다.
   describe('AI 추천 적용 — 투자 전략', () => {
+    const standardParams = withMode('standard');
+
     // 권장값이 첫 자산에만 있고 값도 현재와 다르다. 두 번째 자산은 권장 대상이 아니다.
     const reinvestRecommendation = {
       improved: true,
@@ -303,7 +380,7 @@ describe('StrategySettingsPanel', () => {
       const onChangeParams = vi.fn();
       render(
         <StrategySettingsPanel
-          params={initialParams} onChangeParams={onChangeParams}
+          params={standardParams} onChangeParams={onChangeParams}
           recommendation={reinvestRecommendation} recommendationFailed={false}
         />
       );
@@ -312,10 +389,10 @@ describe('StrategySettingsPanel', () => {
 
       // 권장에 없는 자산까지 일괄로 뒤집거나(전역 스위치식 구현), 자산 순서를 흐트러뜨리면 깨진다.
       expect(onChangeParams).toHaveBeenCalledWith({
-        ...initialParams,
+        ...standardParams,
         assets: [
-          { ...initialParams.assets[0], reinvestDividend: false },
-          initialParams.assets[1],
+          { ...standardParams.assets[0], reinvestDividend: false },
+          standardParams.assets[1],
         ],
       });
     });
@@ -326,7 +403,7 @@ describe('StrategySettingsPanel', () => {
       const onChangeParams = vi.fn();
       render(
         <StrategySettingsPanel
-          params={initialParams} onChangeParams={onChangeParams}
+          params={standardParams} onChangeParams={onChangeParams}
           recommendation={reinvestRecommendation} recommendationFailed={false}
         />
       );
@@ -338,19 +415,15 @@ describe('StrategySettingsPanel', () => {
       expect(onChangeParams).toHaveBeenCalledTimes(1);
     });
 
-    test('추천이 아직 없으면(계산 전) 버튼이 비활성이고 눌러도 호출되지 않는다', () => {
+    test('추천이 아직 없으면(계산 전) 버튼이 나오지 않는다', () => {
       const onChangeParams = vi.fn();
       render(
         <StrategySettingsPanel
-          params={initialParams} onChangeParams={onChangeParams} {...noRecommendation}
+          params={standardParams} onChangeParams={onChangeParams} {...noRecommendation}
         />
       );
 
-      const button = screen.getByRole('button', { name: '투자 전략 이미 최적' });
-      expect(button).toBeDisabled();
-
-      fireEvent.click(button);
-
+      expect(screen.queryByRole('button', { name: new RegExp('^투자 전략 ') })).not.toBeInTheDocument();
       expect(onChangeParams).not.toHaveBeenCalled();
     });
   });
@@ -367,8 +440,11 @@ describe('StrategySettingsPanel', () => {
 
       expect(container.querySelectorAll('[data-highlighted]')).toHaveLength(1);
 
-      act(() => { vi.advanceTimersByTime(2000); });
+      // 0.8초까지는 유지된다. 강조가 너무 짧으면 어느 섹션이 바뀌었는지 못 보고 놓친다.
+      act(() => { vi.advanceTimersByTime(700); });
+      expect(container.querySelectorAll('[data-highlighted]')).toHaveLength(1);
 
+      act(() => { vi.advanceTimersByTime(200); });
       expect(container.querySelectorAll('[data-highlighted]')).toHaveLength(0);
     } finally {
       vi.useRealTimers();

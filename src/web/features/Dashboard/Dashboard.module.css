@@ -1,3 +1,8 @@
+/*
+ * 결과 영역 카드들의 세로 간격은 이 gap 하나가 정한다.
+ * 자식(AiSummaryHero, CoreKpiGrid, ExecutionRoadmap 등)에 mb-6 같은 아래 여백을
+ * 다시 붙이지 말 것 — gap과 더해져 간격이 두 배(48px)가 된다.
+ */
 .container {
   display: flex;
   flex-direction: column;

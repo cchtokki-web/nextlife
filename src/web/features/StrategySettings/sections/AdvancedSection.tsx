@@ -84,7 +84,7 @@ export function AdvancedSection({ params, onChangeParams, mode, changed }: Secti
         </FieldRow>
       )}
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 items-end gap-3.5 sm:gap-4">
         {rateField('usDividendTaxRate', '미국 배당세율',
           '해외 주식·ETF 배당에 붙는 세율입니다.')}
         {rateField('domesticDividendTaxRate', '국내 배당세율',
@@ -95,7 +95,11 @@ export function AdvancedSection({ params, onChangeParams, mode, changed }: Secti
           '기준을 넘는 소득에 추가로 붙는 건강보험료 비율입니다.')}
 
         {isFieldVisible(mode, 'taxSettings.privatePensionLimit') && (
+          // 금액 입력은 한 줄을 다 쓴다. 입력 우측에는 단위와 스테퍼 자리로 5.1rem이
+          // 비워져 있어(components.module.css의 inputWithSteppers), 격자 반 칸(126px)에서는
+          // 1,500만원이 "15,0"까지만 보인다.
           <FieldRow
+            className="col-span-2"
             label="사적연금 저율과세 한도"
             tooltipText="이 금액까지는 낮은 세율이 적용됩니다."
             changed={changed.has('taxSettings.privatePensionLimit')}

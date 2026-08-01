@@ -22,7 +22,7 @@ export function RecommendationChecklist({
 }: RecommendationChecklistProps) {
   if (isComputingRecommendation) {
     return (
-      <GlassCard className="mb-6 flex items-center gap-2 text-sm text-foreground-muted">
+      <GlassCard className="flex items-center gap-2 text-sm text-foreground-muted">
         <Loader2 size={14} className="animate-spin" aria-hidden="true" />
         <span>AI가 최적 인출 전략을 탐색하고 있습니다...</span>
       </GlassCard>
@@ -31,7 +31,7 @@ export function RecommendationChecklist({
 
   if (recommendationFailed) {
     return (
-      <GlassCard className="mb-6 text-sm text-foreground-muted">
+      <GlassCard className="text-sm text-foreground-muted">
         🤖 AI 추천 전략을 계산하지 못했습니다. 잠시 후 다시 시도해주세요.
       </GlassCard>
     );
@@ -41,7 +41,7 @@ export function RecommendationChecklist({
 
   if (!recommendation.improved || recommendation.itemizedContributions.length === 0) {
     return (
-      <GlassCard className="mb-6">
+      <GlassCard>
         <h3 className="mb-2 text-base font-semibold">🤖 AI 추천 전략</h3>
         <ul className="flex flex-col gap-1.5 pl-5 text-sm text-foreground-muted">
           {recommendation.reasons.map((reason, i) => (
@@ -55,7 +55,7 @@ export function RecommendationChecklist({
   const totalUtilityDelta = recommendation.recommendedUtility.score - recommendation.currentUtility.score;
 
   return (
-    <GlassCard className="mb-6">
+    <GlassCard>
       <div className="mb-3 flex items-center justify-between">
         <h3 className="text-base font-semibold">🤖 AI 추천 전략</h3>
         <span className="text-sm font-semibold text-success">총 효용 +{totalUtilityDelta}점</span>

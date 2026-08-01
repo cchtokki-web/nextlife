@@ -50,7 +50,7 @@ export function AiSummaryHero({
   const hasImprovement = !!recommendation?.improved;
 
   return (
-    <GlassCard className="mb-6">
+    <GlassCard>
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h2 className="font-display flex items-center gap-4 text-xl font-bold sm:text-2xl">

@@ -108,3 +108,12 @@ export function isFieldVisible(mode: StrategyMode, path: FieldPath): boolean {
   if (mode === 'standard') return !STANDARD_EXCLUDED.has(path);
   return SIMPLE_FIELDS.has(path);
 }
+
+// 이 모드에서 섹션을 화면에 낼지. 손댈 수 있는 필드가 하나도 없으면 열어봐야 빈
+// 껍데기라 고장으로 읽히므로 아예 렌더하지 않는다.
+//
+// 노출 목록을 따로 두지 않고 isFieldVisible에서 파생시킨다. 두 규칙을 각각 관리하면
+// SIMPLE_FIELDS에 필드를 하나 추가했을 때 "필드는 보이는데 섹션은 숨은" 상태가 된다.
+export function isSectionVisible(mode: StrategyMode, section: SectionId): boolean {
+  return SECTION_FIELDS[section].some((path) => isFieldVisible(mode, path));
+}

@@ -33,8 +33,8 @@ interface StrategyModeSelectorProps {
 
 export function StrategyModeSelector({ mode, onChange }: StrategyModeSelectorProps) {
   return (
-    <div className="flex flex-col gap-2">
-      <span className="text-xs font-semibold text-foreground-muted">은퇴 전략 모드</span>
+    <div className="flex flex-col gap-2.5">
+      <span className="text-xs sm:text-[13px] font-semibold text-foreground/85">은퇴 전략 모드</span>
       <RadioCardGroup name="strategy-mode" value={mode} options={MODE_OPTIONS} onChange={onChange} ariaLabel="은퇴 전략 모드" />
     </div>
   );

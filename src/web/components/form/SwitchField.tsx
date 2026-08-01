@@ -24,8 +24,10 @@ export function SwitchField({
 }: SwitchFieldProps) {
   return (
     <label
-      className={`flex items-start gap-3 rounded-xl border border-card-border p-3 ${
-        disabled ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'
+      className={`flex items-start gap-3.5 rounded-xl border border-card-border bg-[rgba(0,0,0,0.2)] p-3.5 sm:p-4 transition-all duration-200 ${
+        disabled
+          ? 'cursor-not-allowed opacity-60'
+          : 'cursor-pointer hover:bg-[rgba(255,255,255,0.05)] hover:border-card-border/80'
       }`}
     >
       <input
@@ -41,13 +43,13 @@ export function SwitchField({
           disabled ? 'cursor-not-allowed' : 'cursor-pointer'
         }`}
       />
-      <span className="flex flex-col gap-0.5">
-        <span className="flex items-center gap-1.5 text-sm font-semibold text-foreground">
+      <span className="flex flex-col gap-1 min-w-0 flex-1">
+        <span className="flex flex-wrap items-center gap-2 text-sm font-semibold text-foreground">
           {label}
           <HelpTip term={tooltipTerm} text={tooltipText} />
           <ChangedBadge changed={changed} />
         </span>
-        <span className="text-xs leading-snug text-foreground-muted">{description}</span>
+        <span className="text-xs leading-relaxed text-foreground-muted">{description}</span>
       </span>
     </label>
   );

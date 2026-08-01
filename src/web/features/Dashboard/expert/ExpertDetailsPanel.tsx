@@ -38,7 +38,7 @@ export function ExpertDetailsPanel({
   );
 
   return (
-    <GlassCard className="mb-6">
+    <GlassCard>
       <Collapse title={<span className="font-display text-base font-semibold">전문가용 상세 분석 더 보기</span>}>
         <div className="flex flex-col gap-6 pt-2">
           <section>

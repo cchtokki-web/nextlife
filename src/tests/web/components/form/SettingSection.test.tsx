@@ -37,6 +37,38 @@ describe('SettingSection', () => {
     expect(screen.getByText('본문')).toBeInTheDocument();
   });
 
+  // 헤더 우측의 chevron은 토글 버튼 바깥에 있는 형제 요소라 클릭해도 아무 일도
+  // 일어나지 않았다. 사용자에게는 그 아이콘이 곧 "펼치기" 버튼으로 보인다.
+  test('우측 chevron 아이콘을 눌러도 펼쳐진다', () => {
+    const { container } = render(
+      <SettingSection icon={<Target size={16} />} title="고급 설정">
+        <p>본문</p>
+      </SettingSection>
+    );
+
+    const chevron = container.querySelector('[data-toggle-chevron]');
+    expect(chevron).not.toBeNull();
+
+    fireEvent.click(chevron!);
+
+    expect(screen.getByRole('button', { name: /고급 설정/ })).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByText('본문')).toBeInTheDocument();
+  });
+
+  test('AI 추천 버튼이 있어도 chevron으로 토글할 수 있다', () => {
+    const onAiRecommend = vi.fn();
+    const { container } = render(
+      <SettingSection icon={<Target size={16} />} title="연금 전략" onAiRecommend={onAiRecommend}>
+        <p>본문</p>
+      </SettingSection>
+    );
+
+    fireEvent.click(container.querySelector('[data-toggle-chevron]')!);
+
+    expect(screen.getByRole('button', { name: /연금 전략$/ })).toHaveAttribute('aria-expanded', 'true');
+    expect(onAiRecommend).not.toHaveBeenCalled();
+  });
+
   test('changedCount가 0보다 크면 변경 개수 배지를 표시한다', () => {
     render(
       <SettingSection icon={<Target size={16} />} title="은퇴 목표" changedCount={3}>
@@ -45,6 +77,26 @@ describe('SettingSection', () => {
     );
 
     expect(screen.getByText('3개 변경')).toBeInTheDocument();
+  });
+
+  // 헤더 폭 308px 중 토글 버튼에 돌아오는 자리는 135px뿐이다(나머지는 AI 추천 버튼과
+  // chevron). 배지를 그 버튼 안에 함께 두면 제목과 폭을 나눠 쓰다 제목이 밀려 내려가고,
+  // 세로 중앙 정렬된 아이콘이 제목이 아니라 배지 옆에 붙어 화면이 깨져 보였다.
+  test('배지는 토글 버튼 밖 별도 줄에 렌더링된다', () => {
+    render(
+      <SettingSection icon={<Target size={16} />} title="은퇴 목표" changedCount={2} hiddenChangedCount={1}>
+        <p>본문</p>
+      </SettingSection>
+    );
+
+    const toggle = screen.getByRole('button', { name: /은퇴 목표/ });
+    expect(toggle).toHaveTextContent('은퇴 목표');
+    expect(toggle).not.toHaveTextContent('2개 변경');
+    expect(toggle).not.toHaveTextContent('숨겨진 사용자 설정 1개');
+
+    // 버튼 밖으로 옮기더라도 화면에서는 계속 보여야 한다.
+    expect(screen.getByText('2개 변경')).toBeInTheDocument();
+    expect(screen.getByText('숨겨진 사용자 설정 1개')).toBeInTheDocument();
   });
 
   test('hiddenChangedCount가 0보다 크면 숨겨진 설정을 알린다', () => {

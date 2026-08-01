@@ -10,7 +10,7 @@ interface ExecutionRoadmapProps {
 // 항상 고정된 기준(계산은 컴포넌트 밖 computeExecutionRoadmap)으로 렌더링만 담당한다.
 export function ExecutionRoadmap({ roadmap }: ExecutionRoadmapProps) {
   return (
-    <GlassCard className="mb-6">
+    <GlassCard>
       <h3 className="mb-1 text-base font-semibold">실행 로드맵</h3>
       <p className="mb-3 text-xs text-foreground-muted">AI 추천 전략 기준 — 나이별로 무엇이 바뀌는지 보여줍니다.</p>
       <div className="flex flex-col">

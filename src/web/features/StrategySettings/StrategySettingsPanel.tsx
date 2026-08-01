@@ -17,7 +17,7 @@ import { PensionStrategySection } from './sections/PensionStrategySection';
 import { RetirementGoalSection } from './sections/RetirementGoalSection';
 import { StrategyModeSelector } from './StrategyModeSelector';
 import { collectChangedPaths, countSectionChanges } from './diffDefaults';
-import { SectionId } from './fieldVisibility';
+import { SectionId, isSectionVisible } from './fieldVisibility';
 import { AiRecommendationState, SectionProps } from './strategyOptions';
 
 export interface StrategySettingsPanelProps {
@@ -32,7 +32,8 @@ export interface StrategySettingsPanelProps {
 }
 
 // 값을 바꾼 섹션을 강조하는 시간. 눈에 띄되 시선을 붙잡지 않을 정도로 짧게 둔다.
-const HIGHLIGHT_DURATION_MS = 2000;
+// 2초는 "카드 전체가 선택된 것"처럼 읽힐 만큼 길었다.
+const HIGHLIGHT_DURATION_MS = 800;
 
 // 섹션 표시 메타. 순서가 화면 순서다.
 const SECTIONS: ReadonlyArray<{ id: SectionId; title: string; icon: React.ReactNode }> = [
@@ -200,20 +201,50 @@ export function StrategySettingsPanel({
     changed,
   });
 
-  return (
-    <div className="flex flex-col gap-4">
-      <StrategyModeSelector mode={mode} onChange={handleModeChange} />
+  // 이 모드에서 손댈 수 있는 필드가 있는 섹션만 렌더한다.
+  const visibleSections = SECTIONS.filter(({ id }) => isSectionVisible(mode, id));
 
-      <div className="flex flex-col gap-2">
+  // 통째로 숨긴 섹션 안에 기본값과 다른 값이 남아 있으면, 그 값은 화면 어디에도 없는 채로
+  // 계속 계산에 들어간다. 섹션 헤더 배지가 사라진 자리를 이 요약 한 줄이 대신한다.
+  //
+  // 보이는 섹션의 숨은 필드(간편 모드의 '목표 상속자산' 등)는 여전히 그 섹션 헤더의
+  // hiddenChangedCount가 맡는다. 여기서 함께 세면 같은 변경이 두 곳에 보고된다.
+  const hiddenSectionChanges = SECTIONS
+    .filter(({ id }) => !isSectionVisible(mode, id))
+    .reduce((sum, { id }) => sum + countSectionChanges(changed, id, mode).hidden, 0);
+
+  return (
+    <div className="flex flex-col gap-5">
+      <div className="flex flex-col gap-2.5">
+        <StrategyModeSelector mode={mode} onChange={handleModeChange} />
+
+        {hiddenSectionChanges > 0 && (
+          <p
+            data-testid="hidden-section-notice"
+            className="rounded-lg border border-card-border bg-[rgba(0,0,0,0.25)] px-3.5 py-2.5 text-xs leading-relaxed text-foreground-muted"
+          >
+            이 모드에서 숨겨진 사용자 설정 {hiddenSectionChanges}개가 계산에 그대로 반영됩니다.
+            값을 확인하거나 되돌리려면 전문가 모드로 바꾸세요.
+          </p>
+        )}
+      </div>
+
+      <div className="flex flex-col gap-3.5 sm:gap-4">
         {/* react-hooks/refs 오탐: sectionPropsFor가 만드는 onChangeParams 클로저는 highlightSection을
             통해 ref(clearTimer)를 참조하지만, 실제 실행은 하위 섹션이 자기 이벤트 핸들러 안에서 이
             함수를 호출할 때뿐이다(렌더 중에는 호출되지 않는다). 컴파일러는 renderSectionBody라는
             일반 함수 인자로 전달되는 값까지는 추적하지 못해 보수적으로 에러를 낸다. */}
         {/* eslint-disable-next-line react-hooks/refs */}
-        {SECTIONS.map(({ id, title, icon }) => {
+        {visibleSections.map(({ id, title, icon }) => {
           const counts = countSectionChanges(changed, id, mode);
           // 이 섹션에서 실제로 바뀌는 값이 있을 때만 버튼을 연다.
           const canApplyAi = AI_SECTIONS.has(id) && buildAiSectionPatch(id) !== null;
+          // 적용할 것이 없으면 버튼 자체를 내지 않는다.
+          //
+          // 예전에는 '이미 최적'이라는 비활성 버튼이 그 자리를 지켰는데, 누를 수도 없고
+          // 알려 주는 것도 없으면서 헤더 폭의 3분의 1을 계속 차지했다. 추천 계산이 실패한
+          // 경우(ai.error)는 다르다 — "추천을 못 받았다"는 사실 자체를 알려야 하므로 남긴다.
+          const showAiButton = canApplyAi || !!ai.error;
           return (
             <SettingSection
               key={id}
@@ -224,9 +255,9 @@ export function StrategySettingsPanel({
               highlighted={recentSection === id}
               // 고급 설정은 전문가 모드에서만 기본으로 펼친다.
               defaultOpen={id === 'advanced' ? mode === 'expert' : false}
-              onAiRecommend={AI_SECTIONS.has(id) ? () => applyAiToSection(id) : undefined}
-              aiDisabled={!!ai.error || !canApplyAi}
-              aiLabel={ai.error ?? (canApplyAi ? 'AI 추천' : '이미 최적')}
+              onAiRecommend={showAiButton ? () => applyAiToSection(id) : undefined}
+              aiDisabled={!!ai.error}
+              aiLabel={ai.error ?? 'AI 추천'}
             >
               {renderSectionBody(id, sectionPropsFor(id))}
             </SettingSection>

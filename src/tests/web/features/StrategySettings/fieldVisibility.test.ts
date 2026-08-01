@@ -1,5 +1,7 @@
 import { describe, test, expect } from 'vitest';
-import { SECTION_FIELDS, isFieldVisible, SectionId } from '@/web/features/StrategySettings/fieldVisibility';
+import {
+  SECTION_FIELDS, isFieldVisible, isSectionVisible, SectionId,
+} from '@/web/features/StrategySettings/fieldVisibility';
 import { StrategyMode } from '@/core/entities/types';
 
 const ALL_SECTIONS: SectionId[] = ['basic', 'goal', 'pension', 'investment', 'economic', 'advanced'];
@@ -56,5 +58,40 @@ describe('fieldVisibility', () => {
 
   test('등록되지 않은 경로는 어떤 모드에서도 보이지 않는다', () => {
     expect(isFieldVisible('expert', 'nonexistent.path')).toBe(false);
+  });
+
+  describe('isSectionVisible', () => {
+    test('간편 모드에서는 투자·경제·고급 섹션이 통째로 숨는다', () => {
+      expect(isSectionVisible('simple', 'basic')).toBe(true);
+      expect(isSectionVisible('simple', 'goal')).toBe(true);
+      expect(isSectionVisible('simple', 'pension')).toBe(true);
+      expect(isSectionVisible('simple', 'investment')).toBe(false);
+      expect(isSectionVisible('simple', 'economic')).toBe(false);
+      expect(isSectionVisible('simple', 'advanced')).toBe(false);
+    });
+
+    test('표준 모드에서는 고급 설정만 숨는다', () => {
+      for (const s of ALL_SECTIONS.filter((x) => x !== 'advanced')) {
+        expect(isSectionVisible('standard', s), `${s}`).toBe(true);
+      }
+      expect(isSectionVisible('standard', 'advanced')).toBe(false);
+    });
+
+    test('전문가 모드에서는 모든 섹션이 보인다', () => {
+      for (const s of ALL_SECTIONS) {
+        expect(isSectionVisible('expert', s), `${s}`).toBe(true);
+      }
+    });
+
+    // 섹션 노출은 필드 노출에서 파생되어야 한다. 두 규칙이 따로 놀면 "보이는데 안이 빈
+    // 섹션" 또는 "숨었는데 그 안의 필드는 보인다고 답하는" 모순이 생긴다.
+    test('섹션이 보이는 것과 그 안에 보이는 필드가 있는 것은 항상 일치한다', () => {
+      for (const mode of ALL_MODES) {
+        for (const s of ALL_SECTIONS) {
+          const hasVisibleField = SECTION_FIELDS[s].some((p) => isFieldVisible(mode, p));
+          expect(isSectionVisible(mode, s), `${s} @ ${mode}`).toBe(hasVisibleField);
+        }
+      }
+    });
   });
 });

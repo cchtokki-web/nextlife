@@ -13,7 +13,7 @@ interface UtilityInsightSectionProps {
 // CurrentStrategyAnalysis/explainBequestAdequacy) 재사용하고 배치 위치만 바꾼다.
 export function UtilityInsightSection({ utility, bequestAdequacyExplanation }: UtilityInsightSectionProps) {
   return (
-    <GlassCard className="mb-6">
+    <GlassCard>
       <div className="flex flex-col gap-6">
         <section>
           <h4 className="mb-2 text-sm font-semibold">평생 효용 점수 구성</h4>
