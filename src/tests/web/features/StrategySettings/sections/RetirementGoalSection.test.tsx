@@ -133,6 +133,84 @@ describe('RetirementGoalSection', () => {
     });
   });
 
+  // C2: compileStrategy의 resolveSpendingStrategy가 'ai'를 'target'으로 내리므로, 엔진은
+  // 'ai'를 골라도 userProfile.targetMonthlySpending 전액을 인출 목표로 계속 쓴다.
+  // 입력을 숨기면 사용자가 볼 수도 고칠 수도 없는 값이 계산을 지배한다.
+  describe('생활비 전략이 AI 추천일 때', () => {
+    const aiParams: SimulationParams = {
+      ...initialParams,
+      strategy: { ...DEFAULT_RETIREMENT_STRATEGY, spendingChoice: 'ai' },
+    };
+
+    test('목표 월 생활비 입력이 계속 보인다 (엔진이 이 값을 그대로 쓰기 때문)', () => {
+      renderSection(aiParams);
+
+      expect(screen.getByLabelText('목표 월 생활비')).toBeInTheDocument();
+    });
+
+    test('AI 제안값 힌트를 볼 수 있다', () => {
+      const ai = {
+        recommendation: { improved: true, recommendedPlan: { monthlySpendingMultiplier: 1.1 } } as never,
+        error: null,
+        improved: true,
+      };
+
+      renderSection(aiParams, vi.fn(), ai);
+
+      expect(screen.getByText(/AI 추천: 385만원/)).toBeInTheDocument();
+    });
+  });
+
+  // C3: 'target_amount'를 고르면서 targetBequest를 미설정으로 두면 화면은 "0원"을 보여주는데
+  // compileStrategy는 그 키를 지워 'maximize'와 똑같이 동작한다(엔진 추정 8,400만원).
+  describe('상속 전략이 "목표 금액 유지"로 바뀔 때', () => {
+    test('목표 상속자산이 없으면 적정 상속 자산(월 생활비 × 24개월)으로 시드한다', () => {
+      const onChangeParams = renderSection();
+
+      fireEvent.click(group('상속 전략').getByRole('radio', { name: /목표 금액 유지/ }));
+
+      expect(onChangeParams).toHaveBeenCalledWith({
+        ...initialParams,
+        strategy: { ...DEFAULT_RETIREMENT_STRATEGY, bequestStrategy: 'target_amount' },
+        userProfile: {
+          ...initialParams.userProfile,
+          targetBequest: initialParams.userProfile.targetMonthlySpending * 24,
+        },
+      });
+    });
+
+    test('이미 입력한 목표 상속자산은 시드가 덮어쓰지 않는다', () => {
+      // targetBequest만 있고 strategy가 없으면 레거시 씨앗이 이미 'target_amount'를 유도해
+      // 라디오가 선택된 상태가 된다(클릭해도 change 이벤트가 없다). 다른 전략을 명시해
+      // "금액은 있지만 지금은 다른 전략" 상태를 만든다.
+      const params: SimulationParams = {
+        ...initialParams,
+        strategy: { ...DEFAULT_RETIREMENT_STRATEGY, bequestStrategy: 'leave_some' },
+        userProfile: { ...initialParams.userProfile, targetBequest: 300000000 },
+      };
+      const onChangeParams = renderSection(params);
+
+      fireEvent.click(group('상속 전략').getByRole('radio', { name: /목표 금액 유지/ }));
+
+      expect(onChangeParams).toHaveBeenCalledWith({
+        ...params,
+        strategy: { ...DEFAULT_RETIREMENT_STRATEGY, bequestStrategy: 'target_amount' },
+      });
+    });
+
+    test('다른 상속 전략을 고를 때는 targetBequest를 건드리지 않는다', () => {
+      const onChangeParams = renderSection();
+
+      // '일부 남기기'는 기본값이라 이미 선택되어 있다(클릭해도 change 이벤트가 없다).
+      fireEvent.click(group('상속 전략').getByRole('radio', { name: /모두 사용/ }));
+
+      expect(onChangeParams).toHaveBeenCalledWith({
+        ...initialParams,
+        strategy: { ...DEFAULT_RETIREMENT_STRATEGY, bequestStrategy: 'spend_all' },
+      });
+    });
+  });
+
   test('AI 추천이 개선안을 찾으면 생활비 배수 힌트를 표시한다', () => {
     const ai = {
       recommendation: {

@@ -9,6 +9,26 @@ import { FieldRow, SwitchField } from '../../../components/form';
 import { isFieldVisible } from '../fieldVisibility';
 import { DEFAULT_SPOUSE, SectionProps } from '../strategyOptions';
 
+// 나이 입력의 허용 범위. 값들 사이의 상호 관계(은퇴 나이 > 현재 나이 등)는 여기서 강제하지
+// 않는다 — 타이핑 중간 상태(예: 85 → 8 → 82)를 되돌리면 입력이 튀기 때문이며, 이 파일은
+// 이미 그런 모순을 되돌리는 대신 경고로 알리는 정책을 쓴다(아래 spouseAgeInvalid).
+const AGE_MIN = 0;
+const AGE_MAX = 120;
+const EXPECTANCY_MAX = 130;
+
+// 나이 입력 파싱. 저장하지 말아야 할 입력이면 null을 돌려준다.
+//
+// 빈 문자열을 그냥 Number()에 넣으면 0이 된다. 나이 입력은 디바운스 자동저장(useScenarios)과
+// 겹치므로, 사용자가 값을 지우고 다음 숫자를 치기 전에 저장이 걸리면 그 0이 암호화 저장소에
+// 영구히 남는다. 특히 currentAge 0은 엔진의 totalYears 가드도 통과해(0~90세 = 91년)
+// 전혀 다른 시뮬레이션이 조용히 계산된다.
+function parseAge(raw: string, max: number): number | null {
+  if (raw.trim() === '') return null;
+  const value = Number(raw);
+  if (!Number.isFinite(value)) return null;
+  return Math.min(max, Math.max(AGE_MIN, value));
+}
+
 export function BasicInfoSection({ params, onChangeParams, mode, changed }: SectionProps) {
   const { userProfile } = params;
   const spouse = params.spouse;
@@ -38,8 +58,12 @@ export function BasicInfoSection({ params, onChangeParams, mode, changed }: Sect
           <FieldRow label="현재 나이" changed={changed.has('userProfile.currentAge')}>
             <InputField
               label="" aria-label="현재 나이" type="number" suffixText="세"
+              min={AGE_MIN} max={AGE_MAX}
               value={userProfile.currentAge}
-              onChange={(e) => setProfile('currentAge', Number(e.target.value))}
+              onChange={(e) => {
+                const age = parseAge(e.target.value, AGE_MAX);
+                if (age !== null) setProfile('currentAge', age);
+              }}
             />
           </FieldRow>
         )}
@@ -51,8 +75,12 @@ export function BasicInfoSection({ params, onChangeParams, mode, changed }: Sect
           >
             <InputField
               label="" aria-label="목표 은퇴 나이" type="number" suffixText="세"
+              min={AGE_MIN} max={AGE_MAX}
               value={userProfile.retirementAge}
-              onChange={(e) => setProfile('retirementAge', Number(e.target.value))}
+              onChange={(e) => {
+                const age = parseAge(e.target.value, AGE_MAX);
+                if (age !== null) setProfile('retirementAge', age);
+              }}
             />
           </FieldRow>
         )}
@@ -64,8 +92,12 @@ export function BasicInfoSection({ params, onChangeParams, mode, changed }: Sect
           >
             <InputField
               label="" aria-label="기대수명" type="number" suffixText="세"
+              min={AGE_MIN} max={EXPECTANCY_MAX}
               value={userProfile.expectancy}
-              onChange={(e) => setProfile('expectancy', Number(e.target.value))}
+              onChange={(e) => {
+                const age = parseAge(e.target.value, EXPECTANCY_MAX);
+                if (age !== null) setProfile('expectancy', age);
+              }}
             />
           </FieldRow>
         )}
@@ -87,8 +119,12 @@ export function BasicInfoSection({ params, onChangeParams, mode, changed }: Sect
             <FieldRow label="배우자 나이" changed={changed.has('spouse.currentAge')}>
               <InputField
                 label="" aria-label="배우자 나이" type="number" suffixText="세"
+                min={AGE_MIN} max={AGE_MAX}
                 value={spouse?.currentAge ?? DEFAULT_SPOUSE.currentAge}
-                onChange={(e) => setSpouse({ currentAge: Number(e.target.value) })}
+                onChange={(e) => {
+                  const age = parseAge(e.target.value, AGE_MAX);
+                  if (age !== null) setSpouse({ currentAge: age });
+                }}
               />
             </FieldRow>
           )}
@@ -96,8 +132,12 @@ export function BasicInfoSection({ params, onChangeParams, mode, changed }: Sect
             <FieldRow label="배우자 기대수명" changed={changed.has('spouse.expectancy')}>
               <InputField
                 label="" aria-label="배우자 기대수명" type="number" suffixText="세"
+                min={AGE_MIN} max={EXPECTANCY_MAX}
                 value={spouse?.expectancy ?? DEFAULT_SPOUSE.expectancy}
-                onChange={(e) => setSpouse({ expectancy: Number(e.target.value) })}
+                onChange={(e) => {
+                  const age = parseAge(e.target.value, EXPECTANCY_MAX);
+                  if (age !== null) setSpouse({ expectancy: age });
+                }}
               />
             </FieldRow>
           )}

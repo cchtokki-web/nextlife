@@ -76,6 +76,67 @@ describe('BasicInfoSection', () => {
     expect(screen.getByText(/기대수명이 현재 나이보다 작습니다/)).toBeInTheDocument();
   });
 
+  // C1: 나이 입력은 디바운스 자동저장(useScenarios)과 겹친다. 값을 지운 상태(Number('') === 0)가
+  // 저장되면 E2EE 저장소에 0이 영구히 남고, currentAge 0은 엔진 가드를 통과해 전혀 다른 기간을
+  // 계산한다(0~90세 = 91년). 그래서 빈 값은 저장하지 않고 범위 밖 값은 클램프한다.
+  describe('나이 입력 가드', () => {
+    test.each([
+      ['현재 나이'],
+      ['목표 은퇴 나이'],
+      ['기대수명'],
+    ])('%s를 비우면 아무것도 저장하지 않는다', (label) => {
+      const onChangeParams = renderSection();
+
+      fireEvent.change(screen.getByLabelText(label), { target: { value: '' } });
+
+      expect(onChangeParams).not.toHaveBeenCalled();
+    });
+
+    test('배우자 나이·기대수명을 비워도 아무것도 저장하지 않는다', () => {
+      const params = { ...initialParams, spouse: { ...DEFAULT_SPOUSE, enabled: true } };
+      const onChangeParams = vi.fn();
+      render(
+        <BasicInfoSection params={params} onChangeParams={onChangeParams} mode="standard" changed={new Set()} />
+      );
+
+      fireEvent.change(screen.getByLabelText('배우자 나이'), { target: { value: '' } });
+      fireEvent.change(screen.getByLabelText('배우자 기대수명'), { target: { value: '' } });
+
+      expect(onChangeParams).not.toHaveBeenCalled();
+    });
+
+    test('나이 입력에 min/max 범위가 걸려 있다', () => {
+      renderSection();
+
+      expect(screen.getByLabelText('현재 나이')).toHaveAttribute('min', '0');
+      expect(screen.getByLabelText('현재 나이')).toHaveAttribute('max', '120');
+      expect(screen.getByLabelText('목표 은퇴 나이')).toHaveAttribute('max', '120');
+      expect(screen.getByLabelText('기대수명')).toHaveAttribute('max', '130');
+    });
+
+    test('범위를 벗어난 값은 클램프해서 저장한다', () => {
+      const onChangeParams = renderSection();
+
+      fireEvent.change(screen.getByLabelText('기대수명'), { target: { value: '9999' } });
+
+      expect(onChangeParams).toHaveBeenCalledWith({
+        ...initialParams,
+        userProfile: { ...initialParams.userProfile, expectancy: 130 },
+      });
+    });
+
+    test('음수는 0으로 클램프한다', () => {
+      const onChangeParams = renderSection();
+
+      fireEvent.change(screen.getByLabelText('현재 나이'), { target: { value: '-5' } });
+
+      expect(onChangeParams).toHaveBeenCalledWith({
+        ...initialParams,
+        userProfile: { ...initialParams.userProfile, currentAge: 0 },
+      });
+    });
+  });
+
   test('changed에 포함된 경로는 "사용자 설정" 배지를 받는다', () => {
     render(
       <BasicInfoSection

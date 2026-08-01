@@ -120,12 +120,14 @@ export const BEQUEST_OPTIONS: ReadonlyArray<RadioCardOption<BequestStrategy>> = 
   {
     value: 'leave_some', label: '일부 남기기',
     description: '2년치 생활비 정도를 남기는 것을 목표로 합니다.',
-    icon: <Banknote size={16} />,
+    // 기본값(DEFAULT_RETIREMENT_STRATEGY)과 같은 값에 추천 배지를 둔다. 이 앱이 상속 목표를
+    // 따로 정하지 않은 계획에 실제로 적용하는 기준이 정확히 "2년치 생활비"다.
+    icon: <Banknote size={16} />, recommended: true,
   },
   {
     value: 'maximize', label: '최대 상속',
-    description: '가능한 한 많이 남기는 방향으로 평가합니다.',
-    icon: <Gift size={16} />, recommended: true,
+    description: '가능한 한 많이 남기는 방향으로 평가합니다. 많이 남길수록 점수가 올라갑니다.',
+    icon: <Gift size={16} />,
   },
   {
     value: 'target_amount', label: '목표 금액 유지',
