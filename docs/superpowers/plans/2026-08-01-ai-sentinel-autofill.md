@@ -4,7 +4,7 @@
 
 **Goal:** 국민연금 수령 전략이 `'ai_optimized'`(미정)로 남아 있으면, 시뮬레이션 시점에만 AI 추천 나이로 채워 계산한다. 사용자 `params`는 절대 바뀌지 않는다.
 
-**Architecture:** `compileStrategy` 뒤에 순수 함수 `applyAiSentinels(compiled, recommendation)`를 한 단계 덧붙인다. 추천 계산의 입력은 항상 센티널 미적용 원본이고, 채워진 결과는 `engine.run`과 화면 표시로만 흘러가므로 되먹임 루프가 구조적으로 불가능하다. UI는 `FieldRow`의 AI 배지 접두어를 "AI 추천"/"AI 적용"으로 갈라 화면과 엔진이 어긋나지 않게 한다.
+**Architecture:** `compileStrategy` 뒤에 순수 함수 `applyAiSentinels(compiled, recommendation)`를 한 단계 덧붙인다. `compileStrategy`가 추천을 반영하려면 추천이 필요한데 `recommendStrategy`는 이미 컴파일된 params를 입력으로 요구하는 시그니처 순환이 있어 한 함수로 합칠 수 없으므로 별도 단계로 둔다. 추천 계산의 입력은 항상 센티널 미적용 원본이고, 채워진 결과는 `engine.run`과 화면 표시로만 흘러가므로 되먹임 루프가 구조적으로 불가능하다. UI는 `FieldRow`의 AI 배지 접두어를 "AI 추천"/"AI 적용"으로 갈라 화면과 엔진이 어긋나지 않게 한다.
 
 **Tech Stack:** TypeScript(strict), React 19 / Next.js App Router, Vitest + Testing Library
 
@@ -215,8 +215,9 @@ import { CompiledStrategy, resolveStrategy } from './compileStrategy';
 // 받겠다"). 이 함수가 그 후반부를 담당한다 — 추천이 도착하면 미정 축만 추천값으로 바꿔
 // 시뮬레이션에 넘긴다.
 //
-// compileStrategy 안에 넣지 않고 별도 단계로 둔 이유는 순환이다: recommendStrategy가
-// 내부적으로 compileStrategy를 호출하므로, 컴파일러가 추천을 알게 되면 무한 재귀가 된다.
+// compileStrategy 안에 넣지 않고 별도 단계로 둔 이유는 시그니처 순환이다: compileStrategy가
+// 추천을 반영하려면 추천이 필요한데, recommendStrategy는 이미 컴파일된 params를 입력으로
+// 요구한다 — 서로의 출력을 서로의 입력으로 요구하는 순환이라 한 함수로 합칠 수 없다.
 //
 // 사용자 params는 건드리지 않는다. 반환값은 engine.run과 화면 표시로만 흘러가며,
 // 추천 계산의 입력은 언제나 센티널 미적용 원본(compiled)이다 — 그래서 "적용 → 재계산 →
@@ -586,7 +587,11 @@ describe('applyAiSentinels 통합', () => {
     expect(typeof appliedResult.utility?.score).toBe('number');
 
     expect(appliedResult.utility?.score).toBe(directResult.utility?.score);
-    expect(appliedResult.endingAssets).toBe(directResult.endingAssets);
+    // score만으로는 집계값이라 변별력이 약할 수 있어 components까지 비교해 강화한다.
+    expect(appliedResult.utility?.components).toEqual(directResult.utility?.components);
+    // endingAssets는 비교하지 않는다 — 이 픽스처는 66세경 자산이 완전 소진되어 항상 0으로
+    // 고정되므로, applyAiSentinels가 완전히 망가져 no-op이 되어도 이 값은 통과해 버린다.
+    // 바로 아래 yearlyResults 비교가 이 검증을 온전히 대신한다.
     expect(JSON.stringify(appliedResult.yearlyResults)).toBe(JSON.stringify(directResult.yearlyResults));
   });
 
@@ -598,8 +603,16 @@ describe('applyAiSentinels 통합', () => {
     const applied = applyAiSentinels(compiled, makeRecommendation(plan(70)));
     const appliedResult = engine.run(applied.params, applied.utilityConfig);
 
-    // 이 단언이 실패하면 자동 채움이 실제로는 아무 효과가 없다는 뜻이다.
-    expect(appliedResult.endingAssets).not.toBe(baseline.endingAssets);
+    // 빈 배열끼리 비교하면 "[]" === "[]"로 무의미하게 통과하므로 먼저 내용이 있는지 확인한다.
+    // 한쪽만 비어 있어도 .not.toBe는 통과해 버리므로 양쪽 모두 확인해야 한다.
+    expect(baseline.yearlyResults.length).toBeGreaterThan(0);
+    expect(appliedResult.yearlyResults.length).toBeGreaterThan(0);
+
+    // endingAssets는 이 시나리오에서 지표가 되지 못한다 — 자산이 66세경 완전 소진되어
+    // 국민연금을 언제 받든 65세/70세 모두 0으로 고정된다. 연도별 결과 전체를 비교해야
+    // "자동 채움이 시뮬레이션을 실제로 바꿨다"를 검증할 수 있다.
+    expect(JSON.stringify(appliedResult.yearlyResults))
+      .not.toBe(JSON.stringify(baseline.yearlyResults));
   });
 
   test('센티널을 채워도 원본 compiled는 변형되지 않는다(되먹임 방지)', () => {
