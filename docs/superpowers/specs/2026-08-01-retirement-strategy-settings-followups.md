@@ -18,7 +18,7 @@
 
 prop을 필수로 바꾸고 기존 테스트 호출부 6곳을 고치면 구조적으로 재발 불가능해진다.
 
-### 2. C2와 같은 결함이 두 곳에 남아 있다
+### 2. C2와 같은 결함이 두 곳에 남아 있다 — **해결됨(Wave 2, B5)**
 
 Task 5가 `depletionAge`를 가구 종료 나이 기준으로 바꾼 뒤, 본인 기대수명과 비교하는 코드가 두 곳 더 있다.
 
@@ -26,6 +26,9 @@ Task 5가 `depletionAge`를 가구 종료 나이 기준으로 바꾼 뒤, 본인
 - `src/core/usecases/strategy/RecommendationEngine.ts:339` — `depletionAge >= params.userProfile.expectancy`로 게이트한다.
 
 둘 다 이제 `SimulationResult.householdEndAge`가 있으므로 수정이 저렴하다.
+
+→ Wave 2에서 둘 다 `result.householdEndAge` 기준으로 바꿨다. 같은 유형이 `UtilityEngine`
+(재유도)과 `computeExecutionRoadmap`(종료 마커)에도 있어 함께 정리했다.
 
 ### 3. `targetAssets`의 배선에 테스트가 없다
 
@@ -61,6 +64,7 @@ Task 5가 `depletionAge`를 가구 종료 나이 기준으로 바꾼 뒤, 본인
 
 - **`resolveTaxLawProfile`의 프로덕션 호출부가 0이다.** `params.taxLawVersion`을 엔진이 읽지 않아 ⑥고급 설정의 "세법 버전" 셀렉터가 장식적이다. 선택지가 `'current'` 하나뿐이라 지금은 오해를 일으키지 않지만, 셀렉터를 숨기거나 배선하거나 결정이 필요하다.
 - **`RiskProfile`의 `'custom'`과 `'ai_recommended'`가 동작상 100% 동일하다.** 둘 다 `compileStrategy`에서 no-op이며, 나이 기반 AI 프로필 선택 로직은 존재하지 않는다.
+- **`params.yieldPreset`을 `compileStrategy`가 읽지 않는다.** Wave 2(B2)에서 수익률 입력이 전략 지배 중에는 잠기므로 "직접입력 모드인 줄 알았는데 프리셋으로 계산된다"는 오해는 사라졌지만, `yieldPreset` 자체는 여전히 `customYieldSnapshot` 관리용 표식일 뿐 계산에 관여하지 않는다.
 - **비교 시나리오가 `compileStrategy`를 거치지 않는다** (`src/app/simulator/page.tsx:185`의 `engine.run(scenario.data)`). 현재는 컴파일이 동작 보존적이라 무해하다.
 - **레거시 `params.spendingStrategy`/`userProfile.targetBequest`가 `strategy` 생성 후에도 지워지지 않는다.** 영구히 가려지므로 무해하나, 미래의 import/migration 경로가 `strategy`를 떨어뜨리면 stale 값이 씨앗으로 되살아난다.
 
