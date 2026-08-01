@@ -68,6 +68,7 @@ function makeRecommendation(
       retirementGrade: '보통',
       goalAchievementRate: 100,
       retirementAssetsAtRetirement: 0,
+      householdEndAge: 90,
     },
     itemizedContributions: [],
   };
@@ -284,6 +285,7 @@ describe('selectDepletionAge', () => {
     retirementGrade: '보통',
     goalAchievementRate: 100,
     retirementAssetsAtRetirement: 0,
+    householdEndAge: 90,
   };
 
   test('recommendation이 없으면 baseline(result)의 depletionAge를 쓴다', () => {

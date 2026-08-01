@@ -3,10 +3,10 @@
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { Coins, LineChart, Settings2, Target, TrendingUp, User } from 'lucide-react';
 import {
-  NationalPensionStrategy, RetirementStrategy, SimulationParams, StrategyMode,
+  NationalPensionStrategy, SimulationParams, StrategyMode,
 } from '../../../core/entities/types';
 import {
-  DEFAULT_RETIREMENT_STRATEGY, NATIONAL_PENSION_STRATEGY_AGES,
+  NATIONAL_PENSION_STRATEGY_AGES, resolveStrategy,
 } from '../../../core/usecases/strategy/compileStrategy';
 import { SettingSection } from '../../components/form';
 import { AdvancedSection } from './sections/AdvancedSection';
@@ -39,10 +39,9 @@ const SECTIONS: ReadonlyArray<{ id: SectionId; title: string; icon: React.ReactN
   { id: 'advanced', title: '고급 설정', icon: <Settings2 size={16} /> },
 ];
 
-// 저장된 시나리오에 strategy가 없을 수 있으므로(구 데이터) 항상 기본값으로 채워 읽는다.
-export function resolveStrategy(params: SimulationParams): RetirementStrategy {
-  return { ...DEFAULT_RETIREMENT_STRATEGY, ...(params.strategy ?? {}) };
-}
+// 저장된 시나리오의 전략 읽기는 core의 resolveStrategy 하나로 모았다(레거시 저수준 필드에서
+// 씨앗을 유도하는 규칙까지 그 안에 있다). 기존 import 경로를 쓰던 코드를 위해 재수출한다.
+export { resolveStrategy };
 
 // AI 추천 버튼을 붙일 섹션. 배우자·경제 가정처럼 AI가 관여하지 않는 섹션은 제외한다.
 const AI_SECTIONS: ReadonlySet<SectionId> = new Set(['goal', 'pension', 'investment']);

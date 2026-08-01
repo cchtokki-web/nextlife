@@ -2,7 +2,7 @@
 
 import { TaxLawVersion, TaxSettings } from '../../../../core/entities/types';
 import {
-  DEFAULT_RETIREMENT_STRATEGY, resolvePrivatePensionTaxLimitOverride,
+  resolvePrivatePensionTaxLimitOverride, resolveStrategy,
 } from '../../../../core/usecases/strategy/compileStrategy';
 import { resolveTaxSettings } from '../../../../core/usecases/tax/taxRates';
 import InputField from '../../../components/InputField';
@@ -28,8 +28,7 @@ export function AdvancedSection({ params, onChangeParams, mode, changed }: Secti
   // ③연금 전략이 'ai_optimized'가 아니면 compileStrategy가 저율과세 한도 설정을
   // 덮어쓴다. 그 상태에서 스위치를 켤 수 있게 두면 "켰는데 결과가 안 바뀐다"가 되므로
   // 비활성화하고 이유를 설명문에 적는다.
-  const pensionStrategy =
-    params.strategy?.privatePensionStrategy ?? DEFAULT_RETIREMENT_STRATEGY.privatePensionStrategy;
+  const pensionStrategy = resolveStrategy(params).privatePensionStrategy;
   const limitOverride = resolvePrivatePensionTaxLimitOverride(pensionStrategy);
   const pensionStrategyGovernsLimit = limitOverride !== null;
   // 지배당하는 동안에는 저장된 값이 아니라 실제 계산에 쓰이는 값을 보여준다.

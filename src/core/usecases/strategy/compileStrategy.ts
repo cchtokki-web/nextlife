@@ -35,6 +35,49 @@ export const DEFAULT_RETIREMENT_STRATEGY: RetirementStrategy = {
   economicScenario: 'ai_recommended',
 };
 
+// 전략 컴파일러 이전에 출시되어 사용자 데이터에 남아 있는 저수준 필드에서 전략 축을 유도한다.
+//
+// 여기가 "레거시 → 전략" 매핑의 유일한 장소다. 화면(resolveStrategy)과 엔진(compileStrategy)이
+// 각자 씨앗 로직을 갖게 되면 반드시 어긋나고, 그 어긋남이 정확히 이 결함의 원인이었다:
+// 저장된 spendingStrategy='dividend_only'를 화면은 'target'으로 그리고, 사용자가 아무 필드나
+// 건드리는 순간 그 'target'이 저장돼 전략이 소리 없이 뒤집혔다.
+//
+// 반환값은 Partial이다 — 유도할 근거가 없는 축은 키 자체를 넣지 않아
+// DEFAULT_RETIREMENT_STRATEGY(=baseline)가 그대로 남게 한다.
+function seedStrategyFromLegacyParams(params: SimulationParams): Partial<RetirementStrategy> {
+  const seed: Partial<RetirementStrategy> = {};
+
+  // 엔진에 존재했던 값만 매핑한다. 알 수 없는 값은 유도하지 않고 baseline('target')에 맡긴다.
+  if (params.spendingStrategy === 'dividend_only' || params.spendingStrategy === 'max_sustainable') {
+    seed.spendingChoice = params.spendingStrategy;
+  }
+
+  // targetBequest는 0과 미설정의 의미가 다르다: 0 = "모두 사용"(명시적 목표), 미설정 = 기존
+  // UtilityEngine 추정식. 그래서 `?? undefined`가 아니라 undefined 여부로 나눠 판정한다.
+  const targetBequest = params.userProfile?.targetBequest;
+  if (targetBequest !== undefined) {
+    seed.bequestStrategy = targetBequest > 0 ? 'target_amount' : 'spend_all';
+  }
+
+  return seed;
+}
+
+// 유도할 레거시 값이 하나라도 있는지. compileStrategy의 "그대로 통과" 경로 판정에 쓴다.
+function hasLegacyStrategySeed(params: SimulationParams): boolean {
+  return Object.keys(seedStrategyFromLegacyParams(params)).length > 0;
+}
+
+// 저장된 시나리오의 전략을 읽는 단일 진입점.
+// 우선순위: 기본값 < 레거시 저수준 필드에서 유도한 값 < 사용자가 새 UI에서 명시적으로 저장한 값.
+// 설정 화면(StrategySettingsPanel/각 섹션)과 compileStrategy가 모두 이 함수를 쓴다.
+export function resolveStrategy(params: SimulationParams): RetirementStrategy {
+  return {
+    ...DEFAULT_RETIREMENT_STRATEGY,
+    ...seedStrategyFromLegacyParams(params),
+    ...(params.strategy ?? {}),
+  };
+}
+
 // 국민연금 수령 전략 → 청구 나이.
 // getNationalPensionAdjustmentFactor가 연기 1개월당 0.6%를 가산하므로
 // 70세는 +36%가 된다. 'ai_optimized'는 baseline(정상 개시)으로 내린다.
@@ -133,10 +176,14 @@ function resolveSpendingStrategy(spendingChoice: SpendingStrategyChoice): Spendi
 // 'ai_*' 값은 "아직 미정, 기본값으로 두되 AI 제안을 받겠다"는 표식이며 baseline으로
 // 내려간다. 실제 AI 값은 사용자가 추천을 명시적으로 "적용"할 때 확정 enum으로 치환된다.
 export function compileStrategy(params: SimulationParams): CompiledStrategy {
-  const strategy = params.strategy;
-  if (!strategy) {
+  // 전략도 없고 레거시 저수준 필드도 baseline이면 아무것도 번역할 것이 없다.
+  // 이 통과 경로가 "새 기능을 하나도 켜지 않은 시나리오는 입력이 비트 단위로 보존된다"를 보장한다.
+  if (!params.strategy && !hasLegacyStrategySeed(params)) {
     return { params, utilityConfig: DEFAULT_UTILITY_CONFIG };
   }
+
+  // 화면과 같은 함수로 전략을 읽는다 — 레거시 씨앗 규칙이 두 곳에 흩어지지 않게 하기 위해서다.
+  const strategy = resolveStrategy(params);
 
   const weights = OBJECTIVE_WEIGHT_PRESETS[strategy.objective] ?? DEFAULT_UTILITY_CONFIG.weights;
   const utilityConfig = createUtilityConfig(weights, UTILITY_CONFIG_REST);

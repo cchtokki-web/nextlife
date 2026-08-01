@@ -32,6 +32,7 @@ const emptyResult: SimulationResult = {
   retirementGrade: '보통',
   goalAchievementRate: 100,
   retirementAssetsAtRetirement: 0,
+  householdEndAge: 90,
 };
 
 const zeroDeltas: StrategyRecommendation['deltas'] = {
@@ -86,6 +87,29 @@ describe('AiSummaryHero', () => {
       />
     );
     expect(screen.getByText(/은퇴/)).toBeInTheDocument();
+  });
+
+  // 시뮬레이션은 "둘 중 늦게 사망하는 쪽"(가구 종료 나이)까지 돌기 때문에 depletionAge가
+  // 본인 기대수명보다 클 수 있다. 헤드라인이 본인 기대수명과 비교하면, 배우자 단독 생존
+  // 구간에서 파산하는 계획을 "고갈 위험 없음"이라고 말하게 된다(점수는 위험으로 표시되는데도).
+  test('본인 기대수명 이후·가구 종료 나이 이전에 고갈되면 헤드라인이 고갈 위험을 말한다', () => {
+    render(
+      <AiSummaryHero
+        formatValue={formatValue}
+        mode="current"
+        onToggleMode={vi.fn()}
+        canApply={false}
+        score={37}
+        monthlyTarget={3000000}
+        isPro={false}
+        depletionAge={76}
+        householdEndAge={100}
+        utility={utility}
+        userProfile={{ currentAge: 55, retirementAge: 60, expectancy: 75, targetMonthlySpending: 3000000 }}
+      />
+    );
+
+    expect(screen.getByText(/76세에 자산이 고갈될 위험이 있습니다/)).toBeInTheDocument();
   });
 
   test('improved 추천이 있으면 Before/After Utility 비교 문구와 추천 적용 버튼을 보여준다', () => {

@@ -229,6 +229,14 @@ export interface SimulationResult {
   goalAchievementRate: number; // 은퇴 후 예상 월소득 / 목표 월소득 비율 (%)
   calculatedTargetSpending?: number; // 역산된 목표 생활비 (max_sustainable 모드 등에서 사용)
   retirementAssetsAtRetirement: number; // 은퇴 시작 시점 총자산 (해석/배너 표시용)
+  // 시뮬레이션이 실제로 돈 마지막 나이(본인 나이 기준) = computeHouseholdEndAge.
+  // 배우자가 본인보다 오래 살면 userProfile.expectancy보다 크다.
+  //
+  // depletionAge는 이 나이까지의 루프에서 판정되므로 "고갈되었는가"를 묻는 모든 소비처는
+  // 반드시 이 값과 비교해야 한다. 본인 기대수명과 비교하면 배우자 단독 생존 구간의 파산이
+  // 통째로 숨어 "고갈 위험 없음"이라는 거짓 진술이 된다.
+  // 규칙(둘 중 늦게 죽는 쪽)을 소비처마다 재유도하지 않도록 엔진이 결과에 실어 보낸다.
+  householdEndAge: number;
   utility?: UtilityBreakdown; // Lifetime Utility Score
   recommendation?: StrategyRecommendation; // AI 추천 전략 (별도 계산 시에만 채워짐)
 }

@@ -41,6 +41,7 @@ const result: SimulationResult = {
   retirementGrade: '안정',
   goalAchievementRate: 100,
   retirementAssetsAtRetirement: 400000000,
+  householdEndAge: 90,
 };
 
 const params: SimulationParams = {

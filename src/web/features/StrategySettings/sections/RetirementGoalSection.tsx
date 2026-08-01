@@ -6,7 +6,7 @@ import { isFieldVisible } from '../fieldVisibility';
 import {
   BEQUEST_OPTIONS, OBJECTIVE_OPTIONS, SPENDING_STRATEGY_OPTIONS, SectionProps,
 } from '../strategyOptions';
-import { DEFAULT_RETIREMENT_STRATEGY } from '../../../../core/usecases/strategy/compileStrategy';
+import { resolveStrategy } from '../../../../core/usecases/strategy/compileStrategy';
 import { AiRecommendationState } from '../useAiRecommendation';
 
 type Props = SectionProps & { ai: AiRecommendationState };
@@ -16,7 +16,7 @@ function formatManwon(krw: number): string {
 }
 
 export function RetirementGoalSection({ params, onChangeParams, mode, changed, ai }: Props) {
-  const strategy = { ...DEFAULT_RETIREMENT_STRATEGY, ...(params.strategy ?? {}) };
+  const strategy = resolveStrategy(params);
   const spendingChoice = strategy.spendingChoice;
 
   const setStrategy = (patch: Partial<typeof strategy>) => {

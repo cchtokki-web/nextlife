@@ -15,11 +15,16 @@ interface AiSummaryHeroProps extends UseAiAdvisorInput {
   mode: BeforeAfterMode;
   onToggleMode: () => void;
   canApply: boolean;
+  // 시뮬레이션이 실제로 돈 마지막 나이(SimulationResult.householdEndAge). depletionAge가
+  // 이 나이까지의 루프에서 판정되므로 헤드라인의 고갈 여부도 이 값과 비교해야 한다.
+  householdEndAge?: number;
 }
 
 // 결과 화면 최상단 Hero. 한줄 요약(rule-based) + Before/After Utility 비교 + 절세/자산증가
 // 요약 + 추천 적용 버튼을 보여주고, LLM이 생성한 전체 AI 의견은 Collapse 안에 격리한다.
-export function AiSummaryHero({ formatValue, mode, onToggleMode, canApply, ...advisorInput }: AiSummaryHeroProps) {
+export function AiSummaryHero({
+  formatValue, mode, onToggleMode, canApply, householdEndAge, ...advisorInput
+}: AiSummaryHeroProps) {
   const { data: session } = useSession();
   const userNamePrefix = session?.user?.name ? `${session.user.name}님의 ` : '';
   const { utility, recommendation, depletionAge, userProfile } = advisorInput;
@@ -36,7 +41,13 @@ export function AiSummaryHero({ formatValue, mode, onToggleMode, canApply, ...ad
 
   if (!utility) return null;
 
-  const headline = buildHeroHeadline(utility.score, depletionAge, userProfile?.expectancy ?? 90);
+  // householdEndAge가 없는 호출(구 테스트·부분 렌더)에서만 본인 기대수명으로 폴백한다 —
+  // 배우자가 없으면 두 값이 같으므로 이 폴백은 배우자 미설정 시나리오에서 정확하다.
+  const headline = buildHeroHeadline(
+    utility.score,
+    depletionAge,
+    householdEndAge ?? userProfile?.expectancy ?? 90
+  );
   const hasImprovement = !!recommendation?.improved;
 
   return (

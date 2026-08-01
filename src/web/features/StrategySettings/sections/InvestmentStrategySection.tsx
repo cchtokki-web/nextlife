@@ -1,7 +1,7 @@
 'use client';
 
 import { FieldRow, RadioCardGroup } from '../../../components/form';
-import { DEFAULT_RETIREMENT_STRATEGY } from '../../../../core/usecases/strategy/compileStrategy';
+import { resolveStrategy } from '../../../../core/usecases/strategy/compileStrategy';
 import { isFieldVisible } from '../fieldVisibility';
 import { ECONOMIC_SCENARIO_OPTIONS, RISK_PROFILE_OPTIONS, SectionProps } from '../strategyOptions';
 import { AiRecommendationState } from '../useAiRecommendation';
@@ -9,7 +9,7 @@ import { AiRecommendationState } from '../useAiRecommendation';
 type Props = SectionProps & { ai: AiRecommendationState };
 
 export function InvestmentStrategySection({ params, onChangeParams, mode, changed, ai }: Props) {
-  const strategy = { ...DEFAULT_RETIREMENT_STRATEGY, ...(params.strategy ?? {}) };
+  const strategy = resolveStrategy(params);
 
   const setStrategy = (patch: Partial<typeof strategy>) => {
     onChangeParams({ ...params, strategy: { ...strategy, ...patch } });

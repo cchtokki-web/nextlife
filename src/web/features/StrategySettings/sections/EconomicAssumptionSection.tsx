@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import {
   AssetCurrency, HealthcareAssumptions, SimulationParams,
 } from '../../../../core/entities/types';
-import { DEFAULT_RETIREMENT_STRATEGY } from '../../../../core/usecases/strategy/compileStrategy';
+import { resolveStrategy } from '../../../../core/usecases/strategy/compileStrategy';
 import { isEconomicScenarioGoverning } from '../../../../core/usecases/scenario/economicScenarios';
 import InputField from '../../../components/InputField';
 import SelectField from '../../../components/SelectField';
@@ -18,8 +18,7 @@ const EXCHANGE_RATE_API_URL = 'https://open.er-api.com/v6/latest/USD';
 export function EconomicAssumptionSection({ params, onChangeParams, mode, changed }: SectionProps) {
   // 경제 시나리오를 명시적으로 고르면 그 프로필이 물가·환율을 지배한다. 그 상태에서
   // 입력을 열어두면 "고쳤는데 결과가 안 바뀐다"가 되므로 비활성화하고 이유를 적는다.
-  const scenario =
-    params.strategy?.economicScenario ?? DEFAULT_RETIREMENT_STRATEGY.economicScenario;
+  const scenario = resolveStrategy(params).economicScenario;
   const scenarioGoverns = isEconomicScenarioGoverning(scenario);
 
   // 미지정은 "켜짐"이다 — 구 시뮬레이션 설정 UI의 동작을 그대로 유지한다.

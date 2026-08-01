@@ -318,6 +318,7 @@ export class SimulationEngine {
       return {
         yearlyResults: [], fireAge: null, depletionAge: null,
         endingAssets: 0, retirementScore: 0, retirementGrade: '위험', goalAchievementRate: 0, retirementAssetsAtRetirement: 0,
+        householdEndAge: 0,
       };
     }
 
@@ -345,6 +346,7 @@ export class SimulationEngine {
       return {
         yearlyResults: [], fireAge: null, depletionAge: null,
         endingAssets: 0, retirementScore: 0, retirementGrade: '위험', goalAchievementRate: 0, retirementAssetsAtRetirement: 0,
+        householdEndAge: isNaN(endAge) ? 0 : endAge,
       };
     }
 
@@ -883,6 +885,7 @@ export class SimulationEngine {
       retirementGrade,
       goalAchievementRate,
       retirementAssetsAtRetirement,
+      householdEndAge: endAge,
     };
   }
 }

@@ -75,6 +75,7 @@ function makeYearlyResult(overrides: {
   otherIncomeAnnual?: number;
   spendingAnnual: number;
   healthcareSpendingAnnual?: number;
+  spendingFactor?: number;
 }): SimulationYearlyResult {
   return {
     age: overrides.age,
@@ -100,7 +101,7 @@ function makeYearlyResult(overrides: {
     healthcareSpending: overrides.healthcareSpendingAnnual ?? 0,
     hasTaxWarning: false,
     spouseAlive: false,
-    spendingFactor: 1,
+    spendingFactor: overrides.spendingFactor ?? 1,
   };
 }
 
@@ -114,6 +115,7 @@ function makeResult(yearlyResults: SimulationYearlyResult[]): SimulationResult {
     retirementGrade: '보통' as SimulationResult['retirementGrade'],
     goalAchievementRate: 100,
     retirementAssetsAtRetirement: 0,
+    householdEndAge: 90,
   };
 }
 
@@ -307,6 +309,57 @@ describe('computeMonthlySpendingComposition', () => {
       const params = makeParams({ targetMonthlySpending: 2000000 });
       const yearly = makeYearlyResult({ age: 60, spendingAnnual: 26400000 });
       const result = makeResult([yearly]);
+
+      const [composition] = computeMonthlySpendingComposition([yearly], params, result);
+
+      expect(composition.shortfall).toBe(0);
+    });
+  });
+
+  describe('가구 규모 계수(spendingFactor)', () => {
+    test('배우자 사망 후(계수 0.7)에는 축소된 필요분을 기준으로 판정해 가짜 부족분을 만들지 않는다', () => {
+      // 엔진은 한 명만 남은 해의 목표 생활비에 0.7을 곱해 실제로 월 140만원을 인출한다.
+      // 목표(분모)에도 같은 계수를 곱하지 않으면 매년 0.3 × 200만원 = 60만원의
+      // 존재하지 않는 '자산부족'이 사망 시점부터 시뮬레이션 끝까지 보고된다.
+      const params = makeParams({ targetMonthlySpending: 2000000 });
+      const yearly = makeYearlyResult({
+        age: 70,
+        spendingAnnual: 16800000, // 월 1,400,000 = 200만원 × 0.7
+        spendingFactor: 0.7,
+      });
+      const result = makeResult([yearly]);
+
+      const [composition] = computeMonthlySpendingComposition([yearly], params, result);
+
+      expect(composition.shortfall).toBe(0);
+    });
+
+    test('계수와 의료비가 함께 있으면 계수는 생활비에만, 의료비는 이미 축소된 값 그대로 더한다', () => {
+      // 목표 200만원 × 0.7 = 140만원, 의료비는 엔진이 이미 0.7을 곱해 월 35만원으로 계산해 둔 값이다.
+      // 필요분 = 175만원. 실제 지출이 155만원이면 부족분은 20만원이어야 한다.
+      // 의료비에 계수를 다시 곱하면(이중 적용) 필요분이 1,645,000원이 되어 부족분이 95,000원으로 어긋난다.
+      const params = makeParams({ targetMonthlySpending: 2000000 });
+      const yearly = makeYearlyResult({
+        age: 70,
+        spendingAnnual: 18600000, // 월 1,550,000
+        healthcareSpendingAnnual: 4200000, // 월 350,000 (계수 이미 반영됨)
+        spendingFactor: 0.7,
+      });
+      const result = makeResult([yearly]);
+
+      const [composition] = computeMonthlySpendingComposition([yearly], params, result);
+
+      expect(composition.shortfall).toBe(200000);
+    });
+
+    test('max_sustainable로 역산된 목표에도 같은 계수를 적용한다', () => {
+      const params = makeParams({ spendingStrategy: 'max_sustainable' });
+      const yearly = makeYearlyResult({
+        age: 70,
+        spendingAnnual: 21000000, // 월 1,750,000 = 250만원 × 0.7
+        spendingFactor: 0.7,
+      });
+      const result = { ...makeResult([yearly]), calculatedTargetSpending: 2500000 };
 
       const [composition] = computeMonthlySpendingComposition([yearly], params, result);
 
