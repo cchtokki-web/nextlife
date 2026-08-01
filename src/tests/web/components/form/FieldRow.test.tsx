@@ -47,6 +47,13 @@ describe('FieldRow', () => {
     expect(screen.getByText('AI 추천: 70세')).toBeInTheDocument();
   });
 
+  test('aiHintApplied가 true이면 "AI 적용" 접두어로 표시한다', () => {
+    render(<FieldRow label="수령 시작" aiHint="68세부터 수령" aiHintApplied><input /></FieldRow>);
+
+    expect(screen.getByText('AI 적용: 68세부터 수령')).toBeInTheDocument();
+    expect(screen.queryByText('AI 추천: 68세부터 수령')).not.toBeInTheDocument();
+  });
+
   test('tooltipText가 있으면 도움말 버튼을 렌더링한다', () => {
     render(<FieldRow label="실질수익률" tooltipText="물가를 뺀 수익률입니다."><input /></FieldRow>);
 
