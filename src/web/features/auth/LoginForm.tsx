@@ -8,9 +8,15 @@ import Image from "next/image";
 import styles from "./LoginForm.module.css";
 
 export default function LoginForm() {
-  const [isRuntimeDevMode, setIsRuntimeDevMode] = useState<boolean | null>(null);
+  const [isRuntimeDevMode, setIsRuntimeDevMode] = useState<boolean | null>(() => {
+    return process.env.NEXT_PUBLIC_DEV_MODE === 'true' ? true : null;
+  });
 
   useEffect(() => {
+    if (process.env.NEXT_PUBLIC_DEV_MODE === 'true') {
+      setIsRuntimeDevMode(true);
+      return;
+    }
     fetch('/api/dev-mode')
       .then(res => res.json())
       .then(data => {
@@ -26,10 +32,18 @@ export default function LoginForm() {
       });
   }, []);
 
+  const router = useRouter();
+
   useEffect(() => {
     if (isRuntimeDevMode === true) {
-      const callbackUrl = typeof window !== 'undefined' ? `${window.location.origin}/` : '/';
-      signIn('credentials', { email: 'dev', password: 'dev', callbackUrl });
+      const searchParams = new URLSearchParams(window.location.search);
+      const callbackUrl = searchParams.get('callbackUrl');
+      const target = callbackUrl && callbackUrl.startsWith('/') ? callbackUrl : '/';
+      signIn('credentials', { email: 'dev', password: 'dev', redirect: false }).then((res) => {
+        if (res?.ok) {
+          window.location.href = target;
+        }
+      });
     }
   }, [isRuntimeDevMode]);
 

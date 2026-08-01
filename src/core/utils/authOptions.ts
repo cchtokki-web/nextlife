@@ -6,18 +6,57 @@ import bcrypt from "bcrypt";
 import { prisma } from "@/infrastructure/db/prisma";
 import { isDevMode } from "@/core/utils/isDevMode";
 
+if (isDevMode()) {
+  process.env.NEXTAUTH_URL = process.env.DEV_NEXTAUTH_URL || "http://localhost:3000";
+}
+
 export const authOptions: NextAuthOptions = {
   adapter: PrismaAdapter(prisma),
-  providers: [
-    KakaoProvider({
-      clientId: process.env.KAKAO_CLIENT_ID || "",
-      clientSecret: process.env.KAKAO_CLIENT_SECRET || "",
-      authorization: {
-        params: {
-          scope: "profile_nickname,profile_image,talk_message",
+  useSecureCookies: isDevMode() ? false : undefined,
+  cookies: isDevMode()
+    ? {
+        sessionToken: {
+          name: `next-auth.session-token`,
+          options: {
+            httpOnly: true,
+            sameSite: "lax",
+            path: "/",
+            secure: false,
+          },
         },
-      },
-    }),
+        callbackUrl: {
+          name: `next-auth.callback-url`,
+          options: {
+            sameSite: "lax",
+            path: "/",
+            secure: false,
+          },
+        },
+        csrfToken: {
+          name: `next-auth.csrf-token`,
+          options: {
+            httpOnly: true,
+            sameSite: "lax",
+            path: "/",
+            secure: false,
+          },
+        },
+      }
+    : undefined,
+  providers: [
+    ...(isDevMode()
+      ? []
+      : [
+          KakaoProvider({
+            clientId: process.env.KAKAO_CLIENT_ID || "",
+            clientSecret: process.env.KAKAO_CLIENT_SECRET || "",
+            authorization: {
+              params: {
+                scope: "profile_nickname,profile_image,talk_message",
+              },
+            },
+          }),
+        ]),
     CredentialsProvider({
       name: "이메일 로그인",
       credentials: {
@@ -25,7 +64,7 @@ export const authOptions: NextAuthOptions = {
         password: { label: "비밀번호", type: "password" }
       },
       async authorize(credentials) {
-        if (isDevMode() && credentials?.email === "dev" && credentials?.password === "dev") {
+        if (isDevMode()) {
           return {
             id: "dev-user-id",
             email: "dev@example.com",
@@ -96,11 +135,9 @@ export const authOptions: NextAuthOptions = {
         if (url.startsWith("/")) return url;
         try {
           const parsedUrl = new URL(url);
-          if (parsedUrl.hostname === 'localhost' || parsedUrl.hostname === '127.0.0.1') {
-            return url;
-          }
+          return parsedUrl.pathname + parsedUrl.search + parsedUrl.hash;
         } catch (e) {
-          // ignore
+          return "/";
         }
       }
       if (url.startsWith("/")) return `${baseUrl}${url}`;

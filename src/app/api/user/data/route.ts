@@ -42,10 +42,18 @@ export async function PUT(req: Request) {
     
     // Store as JSON string in the database
     const simulationDataString = JSON.stringify(body);
+    const userId = (session.user as any).id || 'dev-user-id';
 
-    await prisma.user.update({
+    await prisma.user.upsert({
       where: { email: session.user.email },
-      data: { simulationData: simulationDataString },
+      update: { simulationData: simulationDataString },
+      create: {
+        id: userId,
+        email: session.user.email,
+        name: session.user.name || 'Dev User',
+        tier: (session.user as any).tier || 'premium',
+        simulationData: simulationDataString,
+      },
     });
 
     return NextResponse.json({ success: true }, { status: 200 });
