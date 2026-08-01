@@ -165,7 +165,11 @@ describe('applyAiSentinels 통합', () => {
     expect(typeof appliedResult.utility?.score).toBe('number');
 
     expect(appliedResult.utility?.score).toBe(directResult.utility?.score);
-    expect(appliedResult.endingAssets).toBe(directResult.endingAssets);
+    // score만으로는 집계값이라 변별력이 약할 수 있어 components까지 비교해 강화한다.
+    expect(appliedResult.utility?.components).toEqual(directResult.utility?.components);
+    // endingAssets는 비교하지 않는다 — 이 픽스처는 66세경 자산이 완전 소진되어 항상 0으로
+    // 고정되므로, applyAiSentinels가 완전히 망가져 no-op이 되어도 이 값은 통과해 버린다.
+    // 바로 아래 yearlyResults 비교가 이 검증을 온전히 대신한다.
     expect(JSON.stringify(appliedResult.yearlyResults)).toBe(JSON.stringify(directResult.yearlyResults));
   });
 
@@ -178,7 +182,9 @@ describe('applyAiSentinels 통합', () => {
     const appliedResult = engine.run(applied.params, applied.utilityConfig);
 
     // 빈 배열끼리 비교하면 "[]" === "[]"로 무의미하게 통과하므로 먼저 내용이 있는지 확인한다.
+    // 한쪽만 비어 있어도 .not.toBe는 통과해 버리므로 양쪽 모두 확인해야 한다.
     expect(baseline.yearlyResults.length).toBeGreaterThan(0);
+    expect(appliedResult.yearlyResults.length).toBeGreaterThan(0);
 
     // endingAssets는 이 시나리오에서 지표가 되지 못한다 — 자산이 66세경 완전 소진되어
     // 국민연금을 언제 받든 65세/70세 모두 0으로 고정된다. 연도별 결과 전체를 비교해야
