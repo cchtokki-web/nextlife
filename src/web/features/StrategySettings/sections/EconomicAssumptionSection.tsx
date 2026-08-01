@@ -9,6 +9,7 @@ import { isEconomicScenarioGoverning } from '../../../../core/usecases/scenario/
 import InputField from '../../../components/InputField';
 import SelectField from '../../../components/SelectField';
 import { FieldRow, SwitchField } from '../../../components/form';
+import { AGE_MAX, AGE_MIN, parseAge } from '../ageInput';
 import { isFieldVisible } from '../fieldVisibility';
 import { DEFAULT_HEALTHCARE, SectionProps } from '../strategyOptions';
 
@@ -240,8 +241,15 @@ export function EconomicAssumptionSection({ params, onChangeParams, mode, change
                 <FieldRow label="장기요양 시작 나이" changed={changed.has('healthcare.longTermCareStartAge')}>
                   <InputField
                     label="" aria-label="장기요양 시작 나이" type="number" suffixText="세"
+                    min={AGE_MIN} max={AGE_MAX}
                     value={healthcare.longTermCareStartAge}
-                    onChange={(e) => setHealthcare({ longTermCareStartAge: Number(e.target.value) })}
+                    // BasicInfoSection과 같은 규약(ageInput.parseAge)을 쓴다. 맨 Number()는
+                    // 빈 입력을 0으로 저장해 "0세부터 장기요양"이 되고, 디바운스 자동저장이
+                    // 그 값을 암호화 저장소에 영구화한다.
+                    onChange={(e) => {
+                      const age = parseAge(e.target.value, AGE_MAX);
+                      if (age !== null) setHealthcare({ longTermCareStartAge: age });
+                    }}
                   />
                 </FieldRow>
               )}
@@ -284,8 +292,12 @@ export function EconomicAssumptionSection({ params, onChangeParams, mode, change
                 <FieldRow label="급증 발생 나이" changed={changed.has('healthcare.shockAge')}>
                   <InputField
                     label="" aria-label="급증 발생 나이" type="number" suffixText="세"
+                    min={AGE_MIN} max={AGE_MAX}
                     value={healthcare.shockAge}
-                    onChange={(e) => setHealthcare({ shockAge: Number(e.target.value) })}
+                    onChange={(e) => {
+                      const age = parseAge(e.target.value, AGE_MAX);
+                      if (age !== null) setHealthcare({ shockAge: age });
+                    }}
                   />
                 </FieldRow>
               )}

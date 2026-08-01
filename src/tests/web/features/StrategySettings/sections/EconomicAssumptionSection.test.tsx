@@ -104,6 +104,65 @@ describe('EconomicAssumptionSection', () => {
   });
 });
 
+// A4: 의료비 나이 입력도 BasicInfoSection과 같은 parseAge 규약을 따라야 한다.
+// 빈 문자열이 Number()로 0이 되어 저장되면 디바운스 자동저장이 그 0을 영구화한다.
+describe('EconomicAssumptionSection - 의료비 나이 입력', () => {
+  const withHealthcare = {
+    ...noAutoRate,
+    healthcare: {
+      enabled: true, costGrowthRate: 5, baseMonthlyCost: 300000,
+      longTermCareEnabled: true, longTermCareStartAge: 80, longTermCareMonthlyCost: 1500000,
+      shockEnabled: true, shockAge: 75, shockAmount: 30000000,
+    },
+  };
+
+  test('장기요양 시작 나이를 비우면 저장하지 않는다', () => {
+    const onChangeParams = vi.fn();
+    render(
+      <EconomicAssumptionSection
+        params={withHealthcare} onChangeParams={onChangeParams}
+        mode="expert" changed={new Set()}
+      />
+    );
+
+    fireEvent.change(screen.getByLabelText('장기요양 시작 나이'), { target: { value: '' } });
+
+    expect(onChangeParams).not.toHaveBeenCalled();
+  });
+
+  test('급증 발생 나이를 비우면 저장하지 않는다', () => {
+    const onChangeParams = vi.fn();
+    render(
+      <EconomicAssumptionSection
+        params={withHealthcare} onChangeParams={onChangeParams}
+        mode="expert" changed={new Set()}
+      />
+    );
+
+    fireEvent.change(screen.getByLabelText('급증 발생 나이'), { target: { value: '' } });
+
+    expect(onChangeParams).not.toHaveBeenCalled();
+  });
+
+  test('나이 입력은 허용 범위로 클램프된다', () => {
+    const onChangeParams = vi.fn();
+    render(
+      <EconomicAssumptionSection
+        params={withHealthcare} onChangeParams={onChangeParams}
+        mode="expert" changed={new Set()}
+      />
+    );
+
+    fireEvent.change(screen.getByLabelText('급증 발생 나이'), { target: { value: '999' } });
+
+    expect(onChangeParams).toHaveBeenCalledWith(
+      expect.objectContaining({
+        healthcare: expect.objectContaining({ shockAge: 120 }),
+      })
+    );
+  });
+});
+
 describe('EconomicAssumptionSection - 최신 환율 자동 조회', () => {
   test('useLatestExchangeRate가 미지정이면 마운트 시 조회해 환율에 반영한다', async () => {
     stubFetch(async () => ({ ok: true, json: async () => ({ rates: { KRW: 1400.44 } }) }));

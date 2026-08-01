@@ -280,6 +280,14 @@ export function compileStrategy(params: SimulationParams): CompiledStrategy {
   return {
     params: {
       ...economyApplied,
+      // 결과에 전략을 함께 찍는다. 이 함수는 저수준 필드를 "실체화"하는데
+      // (leave_some → userProfile.targetBequest = 월생활비 * 24 등), strategy를 남기지 않으면
+      // 컴파일 결과를 다시 읽는 쪽(resolveStrategy)이 그 값을 레거시 씨앗으로 재해석해
+      // 전략을 되돌린다 — 방금 실체화한 7,200만원이 '목표 금액 유지'로 읽혀, 금액을 입력한
+      // 적도 없는 사용자에게 상속 부족 경고가 뜨고 설명 문구가 표류했다.
+      // strategy는 seedStrategyFromLegacyParams보다 우선순위가 높으므로 재유도가 불가능해지고,
+      // 동시에 compileStrategy가 멱등이 된다.
+      strategy,
       userProfile,
       spendingStrategy,
       assets,

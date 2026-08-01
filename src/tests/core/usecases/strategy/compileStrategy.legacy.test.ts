@@ -3,6 +3,8 @@ import {
   compileStrategy, DEFAULT_RETIREMENT_STRATEGY, resolveStrategy,
 } from '@/core/usecases/strategy/compileStrategy';
 import { SimulationEngine } from '@/core/usecases/SimulationEngine';
+import { computeRiskAlerts } from '@/core/usecases/dashboard/computeRiskAlerts';
+import { explainBequestAdequacy } from '@/core/usecases/utility/utilityAnalysis';
 import { SimulationParams } from '@/core/entities/types';
 
 // 전략 컴파일러 이전에 출시되어 있던 저수준 필드(spendingStrategy / userProfile.targetBequest)를
@@ -132,6 +134,61 @@ describe('레거시 시나리오의 엔진 결과 불변성', () => {
     const touched: SimulationParams = { ...params, strategy: resolveStrategy(params) };
 
     expect(compileStrategy(touched).params.userProfile.targetBequest).toBe(0);
+  });
+});
+
+// compileStrategy가 실체화한 저수준 값(userProfile.targetBequest 등)이 컴파일 결과를 다시
+// 읽는 소비처에서 "레거시 씨앗"으로 재해석되면 안 된다. 반환 params에 strategy를 함께 찍어
+// 두면 seedStrategyFromLegacyParams보다 우선순위가 높아 재유도 자체가 불가능해진다.
+describe('컴파일 결과의 전략 실체화', () => {
+  // 레거시 씨앗(spendingStrategy)만 있고 상속 목표는 입력한 적이 없는 시나리오.
+  // 'max_sustainable'은 기대수명 시점 잔액을 0에 가깝게 맞추므로, 실체화된
+  // targetBequest(월생활비 * 24 = 7,200만원)보다 잔액이 확실히 작아진다.
+  const legacyMaxSustainable: SimulationParams = {
+    ...legacyBase,
+    spendingStrategy: 'max_sustainable',
+  };
+
+  test('반환 params에 strategy가 찍힌다', () => {
+    const compiled = compileStrategy(legacyMaxSustainable);
+
+    expect(compiled.params.strategy).toEqual(resolveStrategy(legacyMaxSustainable));
+  });
+
+  test('실체화한 targetBequest가 다시 레거시 씨앗으로 읽히지 않는다', () => {
+    const compiled = compileStrategy(legacyMaxSustainable);
+
+    // 컴파일 전 화면이 보여주는 상속 전략은 '일부 남기기'다. 컴파일 결과를 다시 읽어도 같아야 한다.
+    expect(resolveStrategy(legacyMaxSustainable).bequestStrategy).toBe('leave_some');
+    expect(resolveStrategy(compiled.params).bequestStrategy).toBe('leave_some');
+  });
+
+  test('두 번 컴파일해도 결과가 같다(멱등)', () => {
+    const once = compileStrategy(legacyMaxSustainable);
+    const twice = compileStrategy(once.params);
+
+    expect(twice.params).toEqual(once.params);
+    expect(twice.utilityConfig).toEqual(once.utilityConfig);
+  });
+
+  test('computeRiskAlerts가 원본 params와 컴파일된 params에서 같은 결과를 낸다', () => {
+    const compiled = compileStrategy(legacyMaxSustainable);
+    const result = engine.run(compiled.params, compiled.utilityConfig);
+
+    const fromRaw = computeRiskAlerts(result, legacyMaxSustainable, compiled.utilityConfig);
+    const fromCompiled = computeRiskAlerts(result, compiled.params, compiled.utilityConfig);
+
+    // 설정 화면에 금액 입력이 아예 없는 사용자에게 상속 부족 경고가 뜨면 안 된다.
+    expect(fromRaw.map((a) => a.key)).not.toContain('bequestShortfall');
+    expect(fromCompiled).toEqual(fromRaw);
+  });
+
+  test('explainBequestAdequacy가 원본 params와 컴파일된 params에서 같은 문구를 낸다', () => {
+    const compiled = compileStrategy(legacyMaxSustainable);
+    const result = engine.run(compiled.params, compiled.utilityConfig);
+
+    expect(explainBequestAdequacy(compiled.params, result, compiled.utilityConfig))
+      .toBe(explainBequestAdequacy(legacyMaxSustainable, result, compiled.utilityConfig));
   });
 });
 

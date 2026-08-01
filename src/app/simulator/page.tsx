@@ -8,6 +8,7 @@ import { computeRiskAlerts } from '../../core/usecases/dashboard/computeRiskAler
 import { computeExecutionRoadmap, selectDepletionAge } from '../../core/usecases/dashboard/computeExecutionRoadmap';
 import { computeSensitivityAnalysis } from '../../core/usecases/dashboard/computeSensitivityAnalysis';
 import { describeFireAge } from '../../core/usecases/dashboard/describeFireAge';
+import { describeDepletionAge } from '../../core/usecases/dashboard/describeDepletionAge';
 import { renderRiskAlertsSection, renderItemizedChecklistSection, renderExecutionRoadmapSection, renderSensitivityTableSection } from '../../web/features/Pdf/pdfReportSections';
 import { recommendStrategy } from '../../core/usecases/strategy/RecommendationEngine';
 import { compileStrategy } from '../../core/usecases/strategy/compileStrategy';
@@ -226,7 +227,7 @@ export default function Home() {
       const jsPDF = (await import('jspdf')).default;
       const html2canvas = (await import('html2canvas')).default;
 
-      const { retirementScore, retirementGrade, goalAchievementRate, fireAge, depletionAge, endingAssets, yearlyResults, utility } = result;
+      const { retirementScore, retirementGrade, goalAchievementRate, fireAge, depletionAge, endingAssets, householdEndAge, yearlyResults, utility } = result;
       // 리포트가 인쇄하는 모든 값은 "결과를 만든 params"에서 읽는다.
       // activeParams(사용자가 입력한 원본)를 읽으면 경제 시나리오·리스크 성향·연금 전략이
       // 지배하는 필드에서 화면에 찍힌 숫자와 실제 시뮬레이션이 쓴 숫자가 달라진다
@@ -368,10 +369,10 @@ export default function Home() {
                 </div>
                 <div style="font-size: 13.5px; border-bottom: 1px dashed #e2e8f0; padding-bottom: 8px;">
                   <span style="font-weight: 600; color: #475569;">자산 고갈 예상 나이</span>
-                  <span style="float: right; font-size: 15px; color: #0f172a; font-weight: 700;">${depletionAge ? `${depletionAge}세` : '기대수명 내 고갈 없음'}</span>
+                  <span style="float: right; font-size: 15px; color: #0f172a; font-weight: 700;">${describeDepletionAge(depletionAge, householdEndAge, userProfile.expectancy)}</span>
                 </div>
                 <div style="grid-column: span 2; font-size: 13.5px; padding-top: 8px;">
-                  <span style="font-weight: 600; color: #475569;">사망 시(기대수명 ${userProfile.expectancy}세) 잔여 자산</span>
+                  <span style="font-weight: 600; color: #475569;">사망 시(${householdEndAge > userProfile.expectancy ? `배우자 기대수명 시점, 본인 나이 ${householdEndAge}세` : `기대수명 ${householdEndAge}세`}) 잔여 자산</span>
                   <span style="float: right; font-size: 16px; color: #3b82f6; font-weight: 700;">${formatValuePrint(endingAssets)}</span>
                 </div>
               </div>
