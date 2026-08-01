@@ -128,6 +128,17 @@ export default function Home() {
   // Run simulation engine for active scenario. cfg를 넘겨야 대시보드 헤드라인 효용
   // 점수(result.utility)가 사용자가 고른 목표 우선순위를 반영한다 — 생략하면 항상
   // 기본 가중치로 계산되어 목표 우선순위를 아무리 바꿔도 점수가 그대로다.
+  // engine.run에는 try/catch를 두지 않는다. 예외는 simulator/error.tsx(App Router 에러
+  // 바운더리)가 받는다.
+  //
+  // "직전 성공 결과를 폴백으로 유지" 방식을 검토했지만 택하지 않았다. (1) 그러려면 렌더 간
+  // 살아남는 가변 캐시를 렌더 중에 갱신해야 하는데 이 저장소의 lint 규칙(react-hooks/refs)이
+  // 정당하게 금지한다. 상태로 대신하면 이 화면에서 가장 무거운 렌더가 매번 한 번 더 돈다.
+  // (2) 더 중요하게는, 살아 있는 설정 패널 옆에 옛 결과를 보여주는 것 자체가 "화면이 말하는
+  // 값과 엔진이 실제로 쓴 값이 다른" 상태다 — 이 브랜치가 반복해서 제거해 온 결함 유형이다.
+  // recommendStrategy의 try/catch와 비대칭인 것도 의도적이다: 그쪽 실패는 부분적이고
+  // (나머지 대시보드는 여전히 옳다) 전용 "계산하지 못했습니다" 상태가 있지만,
+  // engine.run이 실패하면 진실하게 보여줄 결과가 하나도 없다.
   const result = useMemo(
     () => engine.run(compiled.params, compiled.utilityConfig),
     [engine, compiled.params, compiled.utilityConfig]
