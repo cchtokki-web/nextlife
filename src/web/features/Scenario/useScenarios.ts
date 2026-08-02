@@ -167,7 +167,11 @@ export function useScenarios() {
   const [scenarios, setScenarios] = useState<ScenarioModel[]>([]);
   const [activeScenarioId, setActiveScenarioId] = useState<string | null>(null);
   const [compareScenarioIds, setCompareScenarioIds] = useState<string[]>([]);
-  const [isLoaded, setIsLoaded] = useState(false);
+  // 로딩 상태는 "무엇을 불러오려 했는가(loadRequestKey)"와 "무엇까지 불러왔는가"의 비교로
+  // 얻는다. 상태로 들고 있으면 요청 조건이 바뀔 때마다 이펙트에서 false로 되돌려야 하는데,
+  // 그 되돌림이 곧 렌더를 한 번 더 만든다(React Compiler의 set-state-in-effect).
+  // 키가 바뀌는 순간 isLoaded는 저절로 false가 되므로 되돌릴 일이 없다.
+  const [loadedRequestKey, setLoadedRequestKey] = useState<string | null>(null);
   const [etfTickers, setEtfTickers] = useState<string[]>(['VOO', 'QQQ', 'SCHD', 'SPY', 'JEPI', 'TLT', 'VNQ', 'SPLG']);
   const lastSavedParamsRef = useRef<Record<string, string>>({});
   // handleRestoreKey에서 "키는 맞는데 이 시나리오만 데이터가 손상됨"으로 확인된 시나리오 ID.
@@ -176,7 +180,9 @@ export function useScenarios() {
   const corruptedScenarioIdsRef = useRef<Set<string>>(new Set());
 
   // Error & Retry States
-  const [loadError, setLoadError] = useState<string | null>(null);
+  // 오류도 같은 방식이다. 어느 요청에서 난 오류인지 함께 들고 있으면, 요청 조건이 바뀐 뒤에
+  // 낡은 오류가 화면에 남아 있는 일이 없다.
+  const [loadErrorState, setLoadErrorState] = useState<{ key: string; message: string } | null>(null);
   const [retryCount, setRetryCount] = useState(0);
 
   // E2EE States
@@ -189,6 +195,12 @@ export function useScenarios() {
   const [isSaving, setIsSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'success' | 'error'>('idle');
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
+
+  // 이번에 불러와야 할 대상을 식별하는 키. 아래 로딩 이펙트의 의존성과 정확히 같은 값으로
+  // 만들어야 한다 — 어긋나면 이펙트는 다시 도는데 isLoaded는 true로 남거나 그 반대가 된다.
+  const loadRequestKey = `${status}:${localKey ?? ''}:${retryCount}`;
+  const isLoaded = loadedRequestKey === loadRequestKey;
+  const loadError = loadErrorState?.key === loadRequestKey ? loadErrorState.message : null;
 
   // E2EE 키를 localStorage에서 읽어 온다.
   //
@@ -337,7 +349,7 @@ export function useScenarios() {
       updatedAt: new Date().toISOString(),
     }]);
     setActiveScenarioId('local-default');
-    setIsLoaded(true);
+    setLoadedRequestKey(loadRequestKey);
   }, [status, isLoaded]);
 
   // Fetch scenarios when logged in
@@ -350,9 +362,6 @@ export function useScenarios() {
           return; // Wait for localKey state to be populated by the initialization effect
         }
       }
-      setIsLoaded(false);
-      setLoadError(null);
-
       // Helper for retrying fetches (helps with NextJS rebuild/compilation delay)
       const fetchWithRetry = async (url: string, retries = 3, delay = 1500): Promise<ScenarioListResponse> => {
         try {
@@ -422,7 +431,7 @@ export function useScenarios() {
               if (!activeScenarioId || !decryptedList.find((s: ScenarioModel) => s.id === activeScenarioId)) {
                 setActiveScenarioId(decryptedList[0].id);
               }
-              setIsLoaded(true);
+              setLoadedRequestKey(loadRequestKey);
             };
             decryptAll();
           } else {
@@ -435,7 +444,7 @@ export function useScenarios() {
               if (!storedKey) {
                 // Let the user set their own 6-digit password instead of auto-generating one
                 setNeedsKeySetup(true);
-                setIsLoaded(true);
+                setLoadedRequestKey(loadRequestKey);
                 return;
               }
               
@@ -451,13 +460,13 @@ export function useScenarios() {
                 handleCreateScenario('기본 시나리오', migrated, true, storedKey);
               });
             }
-            setIsLoaded(true);
+            setLoadedRequestKey(loadRequestKey);
           }
         })
         .catch(err => {
           console.error('[useScenarios] Failed to load scenarios:', err);
-          setLoadError(err.message || '시나리오 데이터를 가져오지 못했습니다.');
-          setIsLoaded(true);
+          setLoadErrorState({ key: loadRequestKey, message: err.message || '시나리오 데이터를 가져오지 못했습니다.' });
+          setLoadedRequestKey(loadRequestKey);
         });
     }
   }, [status, localKey, retryCount]);
@@ -727,7 +736,7 @@ export function useScenarios() {
       setLocalKey(cleanKey);
       setIsBackupKeyBackedUp(true);
       setNeedsKeyRestore(false);
-      setIsLoaded(false); // will trigger refetching
+      setLoadedRequestKey(null); // 다음 렌더에서 isLoaded가 false가 되어 재적재된다
       return true;
     },
     loadError,

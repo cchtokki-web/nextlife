@@ -297,3 +297,55 @@ describe('useScenarios — 로그인 사용자의 자동저장', () => {
     expect(body.data).toEqual(encrypted);
   }, 10000);
 });
+
+// isLoaded/loadError는 상태가 아니라 "이번에 불러올 대상(loadRequestKey)"과 "어디까지
+// 불러왔는가"의 비교로 얻는다. 요청 조건이 바뀌면 저절로 false가 되어야 한다.
+describe('useScenarios — 재적재', () => {
+  test('재시도를 요청하면 다시 불러오고 이전 오류가 남지 않는다', async () => {
+    signedIn();
+    localStorage.setItem(KEY_NAME, 'KEY123');
+    let failing = true;
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url === '/api/scenarios' && failing) {
+        return { ok: false, status: 500, json: async () => ({}) } as unknown as Response;
+      }
+      if (url === '/api/scenarios') {
+        return {
+          ok: true,
+          json: async () => ({ data: [{ id: 's1', name: 'x', isDefault: true, data: initialParams }] }),
+        } as unknown as Response;
+      }
+      return { ok: true, json: async () => ({ success: true }) } as unknown as Response;
+    }));
+
+    const { result } = renderHook(() => useScenarios());
+    await waitFor(() => expect(result.current.loadError).not.toBeNull(), { timeout: 8000 });
+
+    failing = false;
+    act(() => { result.current.handleRetryLoad(); });
+
+    // 재시도 키가 바뀌는 순간 오류와 로딩 완료 표시가 함께 풀린다.
+    await waitFor(() => expect(result.current.loadError).toBeNull());
+    await waitFor(() => expect(result.current.isLoaded).toBe(true), { timeout: 8000 });
+    expect(result.current.scenarios).toHaveLength(1);
+  }, 20000);
+
+  test('키를 복구하면 다시 불러온다', async () => {
+    signedIn();
+    decryptData.mockResolvedValue(initialParams);
+    vi.stubGlobal('fetch', mockFetch({
+      '/api/scenarios': {
+        data: [{ id: 's1', name: 'x', isDefault: true, data: encrypted }],
+      },
+    }));
+
+    const { result } = renderHook(() => useScenarios());
+    // 키가 없어 복구가 필요한 상태로 시작한다.
+    await waitFor(() => expect(result.current.needsKeyRestore).toBe(true));
+
+    await act(async () => { await result.current.handleRestoreKey('ABC123'); });
+
+    await waitFor(() => expect(result.current.needsKeyRestore).toBe(false));
+    await waitFor(() => expect(result.current.isLoaded).toBe(true), { timeout: 8000 });
+  }, 20000);
+});
