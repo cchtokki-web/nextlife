@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSession } from 'next-auth/react';
 import { SimulationParams, ScenarioModel } from '../../../core/entities/types';
 import type { EncryptedData } from '../../../core/utils/crypto';
+import { useIsHydrated } from '../../hooks/useBrowserEnvironment';
 
 // GET /api/scenarios 응답. data의 각 항목은 평문(SimulationParams)일 수도, E2EE로 암호화된
 // 형태일 수도 있어 소비처가 복호화를 시도하며 좁힌다.
@@ -189,17 +190,21 @@ export function useScenarios() {
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'success' | 'error'>('idle');
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
 
-  // Initialize/Load E2EE Key
-  useEffect(() => {
+  // E2EE 키를 localStorage에서 읽어 온다.
+  //
+  // 이펙트가 아니라 세션이 바뀐 순간 렌더 중에 조정한다. 이펙트로 하면 키가 없는 상태로 한 번
+  // 커밋되어, 그 사이에 도는 아래 로딩 이펙트가 "키 없음"으로 잘못 분기한다.
+  // 서버에는 localStorage가 없으므로 하이드레이션이 끝난 뒤부터 읽는다.
+  const hydrated = useIsHydrated();
+  const sessionKey = `${status}:${session?.user?.id ?? ''}`;
+  const [syncedSessionKey, setSyncedSessionKey] = useState<string | null>(null);
+  if (hydrated && syncedSessionKey !== sessionKey) {
+    setSyncedSessionKey(sessionKey);
     const userId = session?.user?.id;
     if (status === 'authenticated' && userId) {
-      const keyName = `nextlife_e2ee_key_${userId}`;
-      const backupName = `nextlife_e2ee_backed_up_${userId}`;
-      
-      const key = localStorage.getItem(keyName);
+      const key = localStorage.getItem(`nextlife_e2ee_key_${userId}`);
       if (key) {
-        const backedUp = localStorage.getItem(backupName) === 'true';
-        setIsBackupKeyBackedUp(backedUp);
+        setIsBackupKeyBackedUp(localStorage.getItem(`nextlife_e2ee_backed_up_${userId}`) === 'true');
         setLocalKey(key);
       } else {
         setLocalKey(null);
@@ -208,7 +213,76 @@ export function useScenarios() {
       setLocalKey(null);
       setNeedsKeyRestore(false);
     }
-  }, [status, session]);
+  }
+
+  // 아래 로딩 이펙트가 이 함수를 부르므로 그보다 앞에 둔다. 뒤에 두면 const 선언 전에
+  // 참조하게 되어(런타임에는 호출 시점이 늦어 동작했지만) React Compiler가 막는다.
+  // 이 함수가 읽는 값은 모두 위쪽 상태 선언부에 있어 위치를 옮겨도 안전하다.
+  const handleCreateScenario = async (name: string, data: SimulationParams, isDefault = false, overrideKey?: string) => {
+    console.log('[E2EE] handleCreateScenario called:', name, 'isDefault:', isDefault, 'status:', status);
+    if (!isDefault && scenarios.length >= 3) {
+      alert('시나리오는 최대 3개까지만 생성할 수 있습니다.');
+      return;
+    }
+
+    if (status === 'authenticated') {
+      try {
+        let payloadToSave: SimulationParams | EncryptedData = data;
+        const keyToUse = overrideKey || localKey;
+        const userId = session?.user?.id;
+        if (keyToUse && userId) {
+          payloadToSave = await encryptData(data, keyToUse, userId);
+        }
+        const res = await fetch('/api/scenarios', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, data: payloadToSave, isDefault }),
+        });
+        const { data: newScenario } = await res.json();
+        if (newScenario) {
+          // 서버가 반환한 payload는 방금 우리가 암호화해서 보낸 것과 동일하므로, 복호화에
+          // 실패해도 암호문 blob을 그대로 SimulationParams 자리에 남기지 않고 원본 평문(data)으로
+          // 폴백한다 (로드 경로의 initialParams 폴백과 동일한 안전장치).
+          let decryptedData = newScenario.data;
+          const decryptionKey = overrideKey || localKey;
+          if (isEncryptedPayload(newScenario.data)) {
+            if (decryptionKey && userId) {
+              try {
+                decryptedData = await decryptData<SimulationParams>(newScenario.data, decryptionKey, userId);
+              } catch (err) {
+                console.error('Failed to decrypt created scenario:', err);
+                decryptedData = data;
+                setNeedsKeyRestore(true);
+              }
+            } else {
+              decryptedData = data;
+              setNeedsKeyRestore(true);
+            }
+          }
+          lastSavedParamsRef.current[newScenario.id] = JSON.stringify(decryptedData);
+          setScenarios(prev => {
+            const filtered = prev.filter(s => s.id !== newScenario.id && !(isDefault && s.isDefault));
+            return [...filtered, { ...newScenario, data: decryptedData }];
+          });
+          setActiveScenarioId(newScenario.id);
+        }
+      } catch (err) {
+        console.error('Failed to create scenario:', err);
+      }
+    } else {
+      const newId = 'local-' + generateId();
+      const newScenario: ScenarioModel = {
+        id: newId,
+        name,
+        isDefault,
+        data,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      setScenarios(prev => [...prev, newScenario]);
+      setActiveScenarioId(newId);
+    }
+  };
 
   // Fetch dynamic ETF tickers from API
   useEffect(() => {
@@ -481,71 +555,6 @@ export function useScenarios() {
     }));
   }, [activeScenarioId]);
 
-  const handleCreateScenario = async (name: string, data: SimulationParams, isDefault = false, overrideKey?: string) => {
-    console.log('[E2EE] handleCreateScenario called:', name, 'isDefault:', isDefault, 'status:', status);
-    if (!isDefault && scenarios.length >= 3) {
-      alert('시나리오는 최대 3개까지만 생성할 수 있습니다.');
-      return;
-    }
-
-    if (status === 'authenticated') {
-      try {
-        let payloadToSave: SimulationParams | EncryptedData = data;
-        const keyToUse = overrideKey || localKey;
-        const userId = session?.user?.id;
-        if (keyToUse && userId) {
-          payloadToSave = await encryptData(data, keyToUse, userId);
-        }
-        const res = await fetch('/api/scenarios', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name, data: payloadToSave, isDefault }),
-        });
-        const { data: newScenario } = await res.json();
-        if (newScenario) {
-          // 서버가 반환한 payload는 방금 우리가 암호화해서 보낸 것과 동일하므로, 복호화에
-          // 실패해도 암호문 blob을 그대로 SimulationParams 자리에 남기지 않고 원본 평문(data)으로
-          // 폴백한다 (로드 경로의 initialParams 폴백과 동일한 안전장치).
-          let decryptedData = newScenario.data;
-          const decryptionKey = overrideKey || localKey;
-          if (isEncryptedPayload(newScenario.data)) {
-            if (decryptionKey && userId) {
-              try {
-                decryptedData = await decryptData<SimulationParams>(newScenario.data, decryptionKey, userId);
-              } catch (err) {
-                console.error('Failed to decrypt created scenario:', err);
-                decryptedData = data;
-                setNeedsKeyRestore(true);
-              }
-            } else {
-              decryptedData = data;
-              setNeedsKeyRestore(true);
-            }
-          }
-          lastSavedParamsRef.current[newScenario.id] = JSON.stringify(decryptedData);
-          setScenarios(prev => {
-            const filtered = prev.filter(s => s.id !== newScenario.id && !(isDefault && s.isDefault));
-            return [...filtered, { ...newScenario, data: decryptedData }];
-          });
-          setActiveScenarioId(newScenario.id);
-        }
-      } catch (err) {
-        console.error('Failed to create scenario:', err);
-      }
-    } else {
-      const newId = 'local-' + generateId();
-      const newScenario: ScenarioModel = {
-        id: newId,
-        name,
-        isDefault,
-        data,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
-      setScenarios(prev => [...prev, newScenario]);
-      setActiveScenarioId(newId);
-    }
-  };
 
   const handleDuplicateScenario = (id: string) => {
     console.log('[E2EE] handleDuplicateScenario called with ID:', id);

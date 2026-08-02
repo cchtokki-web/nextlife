@@ -1,9 +1,10 @@
 "use client";
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect } from 'react';
 import { Header } from '../web/components/Header/Header';
 import { SimpleSimulator } from '../web/features/Landing/SimpleSimulator';
 import styles from './page.module.css';
+import { useIsHydrated } from '../web/hooks/useBrowserEnvironment';
 
 const HERO_PHRASES = [
   <>은퇴 후에도<br />생활비 걱정 없이<br />살 수 있을까요?</>,
@@ -18,19 +19,23 @@ const HERO_PHRASES = [
   <>은퇴 후에도<br />돈 때문에 하고 싶은 것을<br />포기하지 않을 수 있을까요?</>
 ];
 
+// 페이지 로드마다 한 번 고른다. 렌더 중에 Math.random()을 부르면 같은 입력에 다른 결과가
+// 나와(purity 위반) 리렌더마다 문구가 바뀐다.
+//
+// 서버 번들에서도 값이 정해지지만 쓰이지 않는다 — 아래에서 하이드레이션 전에는 고정 문구를
+// 쓰기 때문이다. 서버와 클라이언트의 첫 렌더가 같은 문구를 봐야 하이드레이션이 어긋나지 않는다.
+const RANDOM_HERO_INDEX = Math.floor(Math.random() * HERO_PHRASES.length);
+const SSR_HERO_INDEX = 6; // <>60세 이후에도 …</>
+
 export default function LandingPage() {
-  const [heroText, setHeroText] = useState<React.ReactNode>(
-    <>60세 이후에도<br />지금의 생활 수준을<br />유지할 수 있을까요?</>
-  );
+  // 하이드레이션 전에는 서버가 그린 문구를 그대로 두고, 끝난 뒤에만 랜덤 문구로 바꾼다.
+  // 예전에는 이 교체를 마운트 이펙트의 setState로 했는데, 그 형태는 커밋을 한 번 더 만든다.
+  const hydrated = useIsHydrated();
+  const heroText = HERO_PHRASES[hydrated ? RANDOM_HERO_INDEX : SSR_HERO_INDEX];
 
-  // 기본 테마(색상, 글로우 등) 설정
+  // data-preset은 DOM 부수 효과라 이펙트가 제자리다(상태를 만들지 않는다).
   useEffect(() => {
-    // 하이드레이션 이후 랜덤 문구로 교체 (hydration mismatch 방지)
-    setHeroText(HERO_PHRASES[Math.floor(Math.random() * HERO_PHRASES.length)]);
-
-    if (typeof document !== 'undefined') {
-      document.body.setAttribute('data-preset', 'base');
-    }
+    document.body.setAttribute('data-preset', 'base');
   }, []);
 
   return (

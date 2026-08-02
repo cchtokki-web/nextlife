@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { StrategyRecommendation } from '../../../../core/entities/types';
 
 export type BeforeAfterMode = 'current' | 'after';
@@ -36,13 +36,24 @@ export function useBeforeAfterToggle({
     && (currentUtilityScore === undefined
       || recommendation.recommendedUtility.score > currentUtilityScore);
 
-  useEffect(() => {
-    if (!canApply) setMode('current');
-  }, [canApply]);
-
-  useEffect(() => {
+  // 이펙트가 아니라 렌더 중에 조정한다.
+  //
+  // 이펙트로 되돌리면 "옛 모드로 한 번 커밋 → 이펙트 → 다시 커밋"이 되어 사용자가 옛 화면을
+  // 한 프레임 본다. 렌더 중 setState는 React가 커밋 전에 즉시 다시 렌더하므로 그 깜빡임이
+  // 없고, React Compiler도 이 형태를 권장한다("props가 바뀔 때 state 조정하기").
+  //
+  // params가 바뀌면 current로 되돌리는 이유: after 모드의 recommendedResult는 사용자가 방금
+  // 편집한 값이 아니라 AI가 자체 탐색한 후보 기준이라, 편집 직후에는 방금 바꾼 내용이 실제로
+  // 반영된 화면을 보여줘야 한다.
+  const [prevParams, setPrevParams] = useState(params);
+  if (params !== prevParams) {
+    setPrevParams(params);
     setMode('current');
-  }, [params]);
+  }
+  // 추천이 사라지거나 더 나을 게 없어지면 존재하지 않는 추천을 계속 보여주지 않는다.
+  if (!canApply && mode !== 'current') {
+    setMode('current');
+  }
 
   return {
     mode: canApply ? mode : 'current',

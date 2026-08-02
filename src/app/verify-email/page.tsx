@@ -9,15 +9,13 @@ import styles from "@/web/features/auth/LoginForm.module.css";
 function VerifyEmailContent() {
   const searchParams = useSearchParams();
   const token = searchParams.get("token");
-  const [status, setStatus] = useState<"loading" | "success" | "error">("loading");
-  const [message, setMessage] = useState("");
+  // 토큰 유무는 URL에서 바로 알 수 있다. 이펙트에서 setState로 되돌리면 "인증 중" 화면을
+  // 한 프레임 보여준 뒤 오류로 바뀐다.
+  const [status, setStatus] = useState<"loading" | "success" | "error">(token ? "loading" : "error");
+  const [message, setMessage] = useState(token ? "" : "토큰이 유효하지 않습니다.");
 
   useEffect(() => {
-    if (!token) {
-      setStatus("error");
-      setMessage("토큰이 유효하지 않습니다.");
-      return;
-    }
+    if (!token) return;
 
     const verify = async () => {
       try {

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useSession } from 'next-auth/react';
 import GlassCard from '../../../components/GlassCard';
 import { Collapse } from '../../../components/ui';
@@ -37,12 +37,17 @@ export function AiSummaryHero({
 
   // 에러/rule-based 폴백은 사용자가 반드시 알아야 할 신호라, 접힌 패널 안에 숨어있지 않도록
   // 발생 즉시 자동으로 펼친다(닫는 것은 여전히 사용자가 직접 할 수 있음 — controlled 모드).
+  //
+  // 이펙트가 아니라 렌더 중에 조정한다. 이펙트로 열면 접힌 상태로 한 번 커밋된 뒤 다시
+  // 렌더되어 패널이 깜빡인다. 또 "신호가 생긴 순간"이 아니라 의존성이 바뀔 때마다 다시
+  // 열려서, 사용자가 닫아 둔 패널이 관계없는 갱신에 다시 열리는 일이 있었다.
   const [isAdviceOpen, setIsAdviceOpen] = useState(false);
-  useEffect(() => {
-    if (aiAdvisor.error || (aiAdvisor.isRuleBased && !aiAdvisor.isLoading)) {
-      setIsAdviceOpen(true);
-    }
-  }, [aiAdvisor.error, aiAdvisor.isRuleBased, aiAdvisor.isLoading]);
+  const shouldAnnounce = !!aiAdvisor.error || (aiAdvisor.isRuleBased && !aiAdvisor.isLoading);
+  const [wasAnnouncing, setWasAnnouncing] = useState(shouldAnnounce);
+  if (shouldAnnounce !== wasAnnouncing) {
+    setWasAnnouncing(shouldAnnounce);
+    if (shouldAnnounce) setIsAdviceOpen(true);
+  }
 
   if (!utility) return null;
 

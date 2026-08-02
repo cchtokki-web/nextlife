@@ -15,6 +15,7 @@ import { analyzeCurrentStrategy, explainBequestAdequacy } from '../../core/useca
 import { resolveTaxSettings } from '../../core/usecases/tax/taxRates';
 import { NATIONAL_PENSION_NORMAL_START_AGE } from '../../core/usecases/pension/nationalPensionRules';
 import { useStrategyPipeline } from '../../web/hooks/useStrategyPipeline';
+import { useMediaQuery } from '../../web/hooks/useBrowserEnvironment';
 import { runCompiledScenario } from '../../core/usecases/strategy/runCompiledScenario';
 import { UTILITY_COMPONENT_META } from '../../web/features/Dashboard/utilityComponentMeta';
 import { initialParams } from '../../infrastructure/storage/localStore';
@@ -95,17 +96,18 @@ export default function Home() {
 
   const isPro = session?.user?.tier === 'pro' || isDevMode();
 
-  const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(true);
+  // 좁은 화면에서는 사이드바를 접어 둔다. 사용자가 직접 접거나 편 뒤에는 그 선택이 이긴다.
+  //
+  // 예전에는 마운트 이펙트에서 window.innerWidth를 읽어 setState했는데, 그러면 펼친 상태로
+  // 한 번 커밋한 뒤 접혀서 모바일에서 사이드바가 깜빡였다. 미디어 쿼리를 구독하면 첫 렌더부터
+  // 올바르고, 창 크기가 바뀔 때도 따라간다.
+  const isNarrowScreen = useMediaQuery('(max-width: 1023px)');
+  const [sidebarOverride, setSidebarOverride] = useState<boolean | null>(null);
+  const isSidebarOpen = sidebarOverride ?? !isNarrowScreen;
+  const setIsSidebarOpen = setSidebarOverride;
   const [engine] = useState(() => new SimulationEngine());
   const [hoveredBtn, setHoveredBtn] = useState<string | null>(null);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState<boolean>(false);
-
-  // Auto-collapse sidebar on mobile devices
-  useEffect(() => {
-    if (typeof window !== 'undefined' && window.innerWidth < 1024) {
-      setIsSidebarOpen(false);
-    }
-  }, []);
 
   // Dynamically update document body preset attribute for dynamic styling/glows
   useEffect(() => {

@@ -10,6 +10,27 @@ import type { AdminStatsResponse, AdminStatsPeriod } from '../api/admin/stats/ro
 type StatsResponse = AdminStatsResponse['stats'];
 type StatsData = AdminStatsPeriod;
 
+// 렌더 안에서 정의하면 부모가 리렌더될 때마다 새 컴포넌트 타입이 되어 자식 상태가 초기화된다.
+// 이 카드는 props만 쓰고 부모 클로저를 참조하지 않으므로 모듈 스코프가 제자리다.
+function StatCard({ title, data, icon: Icon }: { title: string; data: StatsData; icon: LucideIcon }) {
+  return (
+    <GlassCard className={styles.statCard}>
+      <div className={styles.statHeader}>
+        <Icon size={20} color="var(--primary)" />
+        {title}
+      </div>
+      <div className={styles.statRow}>
+        <span className={styles.statLabel}>접속자 (세션)</span>
+        <span className={styles.statValue}>{data.visitors.toLocaleString()} <span style={{fontSize:'1rem', color:'var(--foreground-muted)', fontWeight:'normal'}}>명</span></span>
+      </div>
+      <div className={styles.statRow}>
+        <span className={styles.statLabel}>시뮬레이션 실행</span>
+        <span className={`${styles.statValue} ${styles.highlight}`}>{data.simulationRuns.toLocaleString()} <span style={{fontSize:'1rem', color:'var(--foreground-muted)', fontWeight:'normal'}}>회</span></span>
+      </div>
+    </GlassCard>
+  );
+}
+
 export default function AdminPage() {
   const [adminKey, setAdminKey] = useState('');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -71,23 +92,6 @@ export default function AdminPage() {
       </div>
     );
   }
-
-  const StatCard = ({ title, data, icon: Icon }: { title: string, data: StatsData, icon: LucideIcon }) => (
-    <GlassCard className={styles.statCard}>
-      <div className={styles.statHeader}>
-        <Icon size={20} color="var(--primary)" />
-        {title}
-      </div>
-      <div className={styles.statRow}>
-        <span className={styles.statLabel}>접속자 (세션)</span>
-        <span className={styles.statValue}>{data.visitors.toLocaleString()} <span style={{fontSize:'1rem', color:'var(--foreground-muted)', fontWeight:'normal'}}>명</span></span>
-      </div>
-      <div className={styles.statRow}>
-        <span className={styles.statLabel}>시뮬레이션 실행</span>
-        <span className={`${styles.statValue} ${styles.highlight}`}>{data.simulationRuns.toLocaleString()} <span style={{fontSize:'1rem', color:'var(--foreground-muted)', fontWeight:'normal'}}>회</span></span>
-      </div>
-    </GlassCard>
-  );
 
   return (
     <div className={styles.container}>

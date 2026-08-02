@@ -13,6 +13,24 @@ import { isDevMode } from '../../../core/utils/isDevMode';
 
 import { ScenarioComparisonCards } from './ScenarioComparisonCards';
 import styles from './SimpleSimulator.module.css';
+import { useIsHydrated } from '../../hooks/useBrowserEnvironment';
+
+const INPUT_STORAGE_KEY = 'nextlife_simple_simulator_input';
+const HAS_RUN_STORAGE_KEY = 'nextlife_simple_simulator_has_run';
+
+function readSavedInput(): Partial<SimpleSimulationInput> | null {
+  try {
+    const saved = localStorage.getItem(INPUT_STORAGE_KEY);
+    return saved ? (JSON.parse(saved) as Partial<SimpleSimulationInput>) : null;
+  } catch (err) {
+    console.error('Failed to parse saved input', err);
+    return null;
+  }
+}
+
+function readHasRun(): boolean {
+  return sessionStorage.getItem(HAS_RUN_STORAGE_KEY) === 'true';
+}
 
 export function SimpleSimulator() {
   const [input, setInput] = useState<SimpleSimulationInput>({
@@ -42,31 +60,36 @@ export function SimpleSimulator() {
       .catch(err => console.error('Failed to fetch dev mode:', err));
   }, []);
 
+  // 로그인하면 결과를 바로 보여준다. 이펙트가 아니라 상태 전이에 맞춰 렌더 중에 조정한다 —
+  // 이펙트로 하면 입력 화면으로 한 번 커밋한 뒤 결과로 바뀌어 화면이 튄다.
+  // hasRun은 "다시 계산하기"로 되돌릴 수 있어야 하므로 파생값이 아니라 상태로 남긴다.
+  const [prevStatus, setPrevStatus] = useState(status);
+  if (status !== prevStatus) {
+    setPrevStatus(status);
+    if (status === 'authenticated') setHasRun(true);
+  }
+
   useEffect(() => {
     if (status === 'authenticated') {
-      setHasRun(true);
-      sessionStorage.setItem('nextlife_simple_simulator_has_run', 'true');
+      sessionStorage.setItem(HAS_RUN_STORAGE_KEY, 'true');
     }
   }, [status]);
 
-  useEffect(() => {
-    const saved = localStorage.getItem('nextlife_simple_simulator_input');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        setInput(prev => ({ ...prev, ...parsed }));
-      } catch (e) {
-        console.error('Failed to parse saved input', e);
-      }
-    }
-    
-    if (sessionStorage.getItem('nextlife_simple_simulator_has_run') === 'true') {
-      setHasRun(true);
-    }
-  }, []);
+  // 지난 방문의 입력값과 실행 여부를 되살린다.
+  //
+  // 서버에는 저장소가 없으므로 첫 렌더는 기본값으로 그려야 하이드레이션이 어긋나지 않는다.
+  // 그래서 하이드레이션이 끝난 뒤 딱 한 번 조정한다. 이펙트 대신 렌더 중에 하는 이유는 위와 같다.
+  const hydrated = useIsHydrated();
+  const [restored, setRestored] = useState(false);
+  if (hydrated && !restored) {
+    setRestored(true);
+    const saved = readSavedInput();
+    if (saved) setInput(prev => ({ ...prev, ...saved }));
+    if (readHasRun()) setHasRun(true);
+  }
 
   useEffect(() => {
-    localStorage.setItem('nextlife_simple_simulator_input', JSON.stringify(input));
+    localStorage.setItem(INPUT_STORAGE_KEY, JSON.stringify(input));
   }, [input]);
 
   const engine = useMemo(() => new SimulationEngine(), []);
@@ -106,7 +129,7 @@ export function SimpleSimulator() {
 
   const handleRun = () => {
     setHasRun(true);
-    sessionStorage.setItem('nextlife_simple_simulator_has_run', 'true');
+    sessionStorage.setItem(HAS_RUN_STORAGE_KEY, 'true');
     const sessionId = sessionStorage.getItem('analytics_session_id');
     fetch('/api/analytics', {
       method: 'POST',

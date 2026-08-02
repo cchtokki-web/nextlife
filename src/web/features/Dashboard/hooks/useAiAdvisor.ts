@@ -156,11 +156,17 @@ export function useAiAdvisor(input: UseAiAdvisorInput): UseAiAdvisorResult {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [triggerFetch]);
 
-  useEffect(() => {
-    if (isStale && (isRuleBased || advice === '')) {
-      setTriggerFetch((prev) => prev + 1);
-    }
-  }, [isStale, isRuleBased, advice]);
+  // 입력이 바뀌었는데 아직 rule-based 폴백이거나 의견이 비어 있으면 다시 받아 온다.
+  //
+  // 이펙트가 아니라 렌더 중에 조정한다. 이펙트로 하면 낡은 의견으로 한 번 커밋한 뒤 재요청이
+  // 시작되고, 세 의존성 중 아무거나 바뀔 때마다 조건이 참인 동안 계속 재요청이 걸렸다.
+  // 조건이 거짓→참으로 넘어가는 순간에만 한 번 올리면 그 반복이 사라진다.
+  const shouldRefetch = isStale && (isRuleBased || advice === '');
+  const [wasRefetchNeeded, setWasRefetchNeeded] = useState(shouldRefetch);
+  if (shouldRefetch !== wasRefetchNeeded) {
+    setWasRefetchNeeded(shouldRefetch);
+    if (shouldRefetch) setTriggerFetch((prev) => prev + 1);
+  }
 
   return {
     advice,

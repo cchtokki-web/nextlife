@@ -1,6 +1,13 @@
 import React, { useState } from 'react';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
 
+// 잠금 해제 시각. Date.now()는 같은 입력에 다른 값을 주는 impure 호출이라 컴파일러가
+// 렌더 경로에서 부르는 것을 막는다. 실제로는 이벤트 핸들러에서만 부르지만 컴파일러가
+// 그 경로를 따라가지 못하므로, 모듈 스코프로 빼 의도를 분명히 한다.
+function lockoutDeadline(durationMs: number): number {
+  return Date.now() + durationMs;
+}
+
 // 어두운 모달 배경(--card-bg) 위에서도 박스 경계가 뚜렷이 보이도록 배경/테두리 대비를 높게 잡는다.
 const pinBoxStyle: React.CSSProperties = {
   width: '45px',
@@ -87,7 +94,7 @@ export const E2eeKeyManager: React.FC<E2eeKeyManagerProps> = ({
       const nextAttempts = failedRestoreAttempts + 1;
       if (nextAttempts >= MAX_RESTORE_ATTEMPTS) {
         setFailedRestoreAttempts(0);
-        setRestoreLockedUntil(Date.now() + RESTORE_LOCKOUT_MS);
+        setRestoreLockedUntil(lockoutDeadline(RESTORE_LOCKOUT_MS));
         alert(`보안 백업 키를 ${MAX_RESTORE_ATTEMPTS}회 잘못 입력했습니다. ${RESTORE_LOCKOUT_MS / 1000}초 후 다시 시도해 주세요.`);
       } else {
         setFailedRestoreAttempts(nextAttempts);

@@ -48,6 +48,18 @@ const calculateMonthlyFromPeriod = (amount: number, period: 'daily' | 'weekly' |
   }
 };
 
+// 새로 추가하는 항목의 id.
+//
+// 예전에는 `asset-${Date.now()}`였다. 두 가지가 문제다 — 같은 밀리초에 두 번 추가하면 id가
+// 겹치고(React key 충돌), Date.now()는 같은 입력에 다른 값을 주는 impure 호출이라 컴파일러가
+// 렌더 경로에서 부르는 것을 막는다. 모듈 스코프 카운터를 함께 붙여 둘 다 해결한다.
+let entitySequence = 0;
+
+function createEntityId(prefix: 'asset' | 'pension' | 'isa' | 'income'): string {
+  entitySequence += 1;
+  return `${prefix}-${Date.now()}-${entitySequence}`;
+}
+
 interface AssetFormSectionProps {
   params: SimulationParams;
   // updater 형태를 함께 받는다. 실제 구현(useScenarios의 handleUpdateActiveParams)이 이미
@@ -141,62 +153,6 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
     return [...matchingPredefined, ...additionalRealtime].slice(0, 8);
   }, [realtimeSuggestions]);
 
-  const handleAutocompleteKeyDown = useCallback((e: React.KeyboardEvent, id: string, name: string | undefined, type: 'asset' | 'pension' | 'isa') => {
-    if (!focusedAssetId || focusedAssetId !== id || !name) return;
-    const combined = getCombinedOptions(id, name);
-    if (combined.length === 0) return;
-
-    if (e.key === 'ArrowDown') {
-      e.preventDefault();
-      setAutocompleteIndex(prev => Math.min(prev + 1, combined.length - 1));
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault();
-      setAutocompleteIndex(prev => Math.max(prev - 1, -1));
-    } else if (e.key === 'Enter') {
-      e.preventDefault();
-      if (autocompleteIndex >= 0 && autocompleteIndex < combined.length) {
-        const pa = combined[autocompleteIndex];
-        isSelectingRef.current[id] = true;
-        
-        if (type === 'asset') {
-          const isUsEtf = pa.type === 'etf' && pa.currency === 'USD';
-          handleUpdateAsset(id, {
-            name: isUsEtf ? pa.ticker : pa.name,
-            ticker: pa.ticker,
-            type: pa.type,
-            currency: pa.currency,
-            annualGrowthRate: pa.annualGrowthRate,
-            dividendYield: pa.dividendYield,
-          });
-          fetchAssetInfo(id, pa.ticker);
-          fetchAssetPrice(id, pa.ticker);
-        } else if (type === 'pension') {
-          handleUpdatePrivatePension(id, {
-            name: pa.name,
-            ticker: pa.ticker,
-            currency: pa.currency,
-            annualReturn: Math.round((pa.annualGrowthRate + pa.dividendYield) * 10) / 10,
-          });
-          fetchPensionInfo(id, pa.ticker);
-        } else if (type === 'isa') {
-          handleUpdateIsaAccount(id, {
-            name: pa.name,
-            ticker: pa.ticker,
-            currency: pa.currency,
-            annualReturn: Math.round((pa.annualGrowthRate + pa.dividendYield) * 10) / 10,
-          });
-          fetchIsaInfo(id, pa.ticker);
-        }
-        
-        setFocusedAssetId(null);
-        setAutocompleteIndex(-1);
-        setTimeout(() => { isSelectingRef.current[id] = false; }, 200);
-      }
-    } else if (e.key === 'Escape') {
-      setFocusedAssetId(null);
-      setAutocompleteIndex(-1);
-    }
-  }, [focusedAssetId, autocompleteIndex, getCombinedOptions]);
 
   const fetchRealtimeSuggestions = useCallback(async (id: string, query: string) => {
     if (!query || query.length < 1) {
@@ -377,7 +333,7 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
 
   // 3. Investment Assets actions
   const handleAddCustomAsset = () => {
-    const newId = `asset-${Date.now()}`;
+    const newId = createEntityId('asset');
     
     const newAsset: InvestmentAsset = {
       id: newId,
@@ -461,7 +417,7 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
   // 4. Private Pension actions
   const handleAddPrivatePension = () => {
     const newPension: PrivatePension = {
-      id: `pension-${Date.now()}`,
+      id: createEntityId('pension'),
       type: 'irp',
       investmentType: 'custom',
       balance: 0,
@@ -524,7 +480,7 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
   // 4-1. ISA Account actions
   const handleAddIsaAccount = () => {
     const newIsa: IsaAccount = {
-      id: `isa-${Date.now()}`,
+      id: createEntityId('isa'),
       type: 'general',
       investmentType: 'custom',
       balance: 0,
@@ -566,7 +522,7 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
   // 5. Other Incomes actions
   const handleAddOtherIncome = () => {
     const newIncome: OtherIncome = {
-      id: `income-${Date.now()}`,
+      id: createEntityId('income'),
       label: '신규 월 소득',
       monthlyAmount: 0,
       currency: 'KRW',
@@ -601,6 +557,67 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
       return { ...prevParams, otherIncomes: updated };
     });
   };
+
+  // 이 핸들러는 아래의 handleUpdate*/fetch* 들을 부르므로 그 선언 뒤에 둔다.
+  // 위쪽에 두면 const 선언보다 앞서 참조하게 되어(런타임에는 호출 시점이 늦어 동작하지만)
+  // React Compiler가 "선언 전 접근"으로 막는다 — 그 값이 나중에 바뀌어도 앞선 참조가
+  // 따라가지 못하는 형태이기 때문이다.
+  const handleAutocompleteKeyDown = useCallback((e: React.KeyboardEvent, id: string, name: string | undefined, type: 'asset' | 'pension' | 'isa') => {
+    if (!focusedAssetId || focusedAssetId !== id || !name) return;
+    const combined = getCombinedOptions(id, name);
+    if (combined.length === 0) return;
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setAutocompleteIndex(prev => Math.min(prev + 1, combined.length - 1));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setAutocompleteIndex(prev => Math.max(prev - 1, -1));
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (autocompleteIndex >= 0 && autocompleteIndex < combined.length) {
+        const pa = combined[autocompleteIndex];
+        isSelectingRef.current[id] = true;
+        
+        if (type === 'asset') {
+          const isUsEtf = pa.type === 'etf' && pa.currency === 'USD';
+          handleUpdateAsset(id, {
+            name: isUsEtf ? pa.ticker : pa.name,
+            ticker: pa.ticker,
+            type: pa.type,
+            currency: pa.currency,
+            annualGrowthRate: pa.annualGrowthRate,
+            dividendYield: pa.dividendYield,
+          });
+          fetchAssetInfo(id, pa.ticker);
+          fetchAssetPrice(id, pa.ticker);
+        } else if (type === 'pension') {
+          handleUpdatePrivatePension(id, {
+            name: pa.name,
+            ticker: pa.ticker,
+            currency: pa.currency,
+            annualReturn: Math.round((pa.annualGrowthRate + pa.dividendYield) * 10) / 10,
+          });
+          fetchPensionInfo(id, pa.ticker);
+        } else if (type === 'isa') {
+          handleUpdateIsaAccount(id, {
+            name: pa.name,
+            ticker: pa.ticker,
+            currency: pa.currency,
+            annualReturn: Math.round((pa.annualGrowthRate + pa.dividendYield) * 10) / 10,
+          });
+          fetchIsaInfo(id, pa.ticker);
+        }
+        
+        setFocusedAssetId(null);
+        setAutocompleteIndex(-1);
+        setTimeout(() => { isSelectingRef.current[id] = false; }, 200);
+      }
+    } else if (e.key === 'Escape') {
+      setFocusedAssetId(null);
+      setAutocompleteIndex(-1);
+    }
+  }, [focusedAssetId, autocompleteIndex, getCombinedOptions]);
 
   const handleDeleteOtherIncome = (id: string) => {
     onChangeParams({
