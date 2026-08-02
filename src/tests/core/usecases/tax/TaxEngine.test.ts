@@ -69,8 +69,18 @@ describe('getPrivatePensionIncomeTaxRate', () => {
 });
 
 describe('calculateNationalPensionTaxKRW', () => {
-  test('세전액의 2%를 세금으로 반환한다', () => {
-    expect(calculateNationalPensionTaxKRW(1000000, baseCtx)).toBeCloseTo(20000);
+  // 세율표·손계산 검증은 pensionIncomeTaxGolden.test.ts에 있다. 여기서는 계약만 고정한다:
+  // 인자는 **연간** 수령액이고, 세액은 연금소득공제와 누진세율을 거쳐 나온다.
+  test('연간 수령액을 받아 연금소득공제 후 누진세율로 과세한다', () => {
+    // 연 600만원은 공제(450만)와 기본공제(150만)만으로 과세표준이 0이 된다.
+    expect(calculateNationalPensionTaxKRW(6000000, baseCtx)).toBe(0);
+    // 연 1,200만원부터는 세금이 발생한다.
+    expect(calculateNationalPensionTaxKRW(12000000, baseCtx)).toBeGreaterThan(0);
+  });
+
+  test('수령액이 커질수록 실효세율이 올라간다 (고정 세율이 아니다)', () => {
+    const rateAt = (annual: number) => calculateNationalPensionTaxKRW(annual, baseCtx) / annual;
+    expect(rateAt(36000000)).toBeGreaterThan(rateAt(12000000));
   });
 });
 
@@ -197,10 +207,12 @@ describe('calculatePrivatePensionExcessTaxNeededKRW', () => {
   });
 
   test('한도 초과 & 종합소득세가 더 유리하면 종합과세(누진세율) 선택', () => {
-    // 분리과세: 20,000,000 * 16.5% = 3,300,000
-    // 종합과세: 20,000,000 * 15% - 1,260,000 = 1,740,000 (더 유리)
+    // 분리과세: 20,000,000 × 16.5%                    = 3,300,000
+    // 종합과세: 연금소득공제 6,900,000 + 기본공제 1,500,000을 뺀
+    //           과세표준 11,600,000 × 6% × 1.1(지방세) =   765,600  (더 유리)
+    // (손계산 상세는 pensionIncomeTaxGolden.test.ts 참고)
     const r = calculatePrivatePensionExcessTaxNeededKRW(20000000, baseCtx);
-    expect(r.taxKRW).toBeCloseTo(1740000);
+    expect(r.taxKRW).toBeCloseTo(765600, -2);
     expect(r.method).toBe('comprehensive');
   });
 

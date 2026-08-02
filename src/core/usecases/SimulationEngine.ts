@@ -540,11 +540,15 @@ export class SimulationEngine {
           }
         }
 
-        const natTax = calculateNationalPensionTaxKRW(natAmountRaw, taxCtx);
+        // 연금소득세는 연 단위로 계산해야 한다 — 연금소득공제와 누진세율이 모두 연간 총액
+        // 기준이기 때문이다. natAmountRaw는 이 해 동안 고정이므로(연도 루프에서 한 번 계산)
+        // 연간 세액을 구한 뒤 12로 나누면 월별 표시가 정확해진다.
+        annualNationalPensionPreTaxKRW = natAmountRaw * 12;
+        const annualNatTax = calculateNationalPensionTaxKRW(annualNationalPensionPreTaxKRW, taxCtx);
+        const natTax = annualNatTax / 12;
         monthlyNationalPensionDisplay = this.convertValue(natAmountRaw - natTax, 'KRW', displayCurrency, exchangeRate);
         monthlyNatTaxDisplay = this.convertValue(natTax, 'KRW', displayCurrency, exchangeRate);
         monthlyNatPreTaxTotalDisplay = this.convertValue(natAmountRaw, 'KRW', displayCurrency, exchangeRate);
-        annualNationalPensionPreTaxKRW = natAmountRaw * 12;
       }
 
       let monthlyOtherIncomeTotalDisplay = 0;
@@ -907,7 +911,11 @@ export class SimulationEngine {
       // Private pension high tax threshold adjustment
       let privatePensionTaxMethod: PrivatePensionTaxationMethod = 'none';
       {
-        const { taxKRW: totalPensionTaxNeededKRW, method } = calculatePrivatePensionExcessTaxNeededKRW(annualPrivatePensionPreTaxKRW, taxCtx);
+        // 국민연금 수령액을 함께 넘긴다 — 종합과세를 고를 때 두 연금은 합산되어 하나의
+        // 과세표준을 이루므로, 연금소득공제·기본공제가 두 연금에 걸쳐 한 번만 적용되어야 한다.
+        const { taxKRW: totalPensionTaxNeededKRW, method } = calculatePrivatePensionExcessTaxNeededKRW(
+          annualPrivatePensionPreTaxKRW, taxCtx, annualNationalPensionPreTaxKRW
+        );
         privatePensionTaxMethod = method;
         const totalPensionTaxNeededDisplay = this.convertValue(totalPensionTaxNeededKRW, 'KRW', displayCurrency, exchangeRate);
         const pensionTaxAdjustmentDisplay = Math.max(0, totalPensionTaxNeededDisplay - annualPensionTaxPaid);

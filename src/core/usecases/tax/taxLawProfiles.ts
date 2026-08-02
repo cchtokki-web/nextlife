@@ -18,6 +18,14 @@ export interface PrivatePensionTaxBracket {
   rate: number;
 }
 
+// 연금소득공제(소득세법 §47의2) 구간.
+// 공제액 = baseDeductionKRW + (총연금액 − minKRW) × rate, 단 pensionIncomeDeductionCapKRW 한도.
+export interface PensionIncomeDeductionBracket {
+  minKRW: number; // 이 구간의 하한(이상)
+  baseDeductionKRW: number; // 하한까지 누적된 공제액
+  rate: number; // 하한 초과분에 적용되는 공제율
+}
+
 // 한 세법 버전이 정하는 세율·한도의 전체 집합.
 // 개정안이 확정되면 이 인터페이스를 만족하는 프로필을 하나 더 추가하면 된다.
 export interface TaxLawProfile {
@@ -32,6 +40,9 @@ export interface TaxLawProfile {
   privatePensionExcessTaxRate: number;
   comprehensiveIncomeBrackets: ProgressiveTaxBracket[];
   localIncomeTaxRate: number;
+  pensionIncomeDeductionBrackets: PensionIncomeDeductionBracket[];
+  pensionIncomeDeductionCapKRW: number;
+  basicIncomeDeductionKRW: number;
 }
 
 // 현행 세법(2024년 기준). taxRates.ts에 있던 값을 그대로 옮긴 것이며 값 변경은 없다
@@ -48,7 +59,31 @@ const CURRENT_PROFILE: TaxLawProfile = {
   isaExemptionLowIncomeKRW: 4000000, // ISA 서민형 비과세 한도
   isaMaturityTaxRate: 0.099, // ISA 만기 비과세 한도 초과분 분리과세율
 
-  nationalPensionTaxRate: 0.02, // 국민연금 세율(고정, 단순화)
+  // 국민연금 세율(고정 2%). 지금은 쓰이지 않는다 — 연금소득공제 기반 종합과세로 대체됐다.
+  // 저장된 옛 시나리오와의 호환을 위해 필드는 남기지만, 계산 경로에는 연결되어 있지 않다.
+  //
+  // 왜 대체했나: 고정 세율은 정확도만의 문제가 아니었다. 이 앱은 국민연금 개시 나이를
+  // 60~70에서 최적화해 추천하는데, 연기수령으로 연금액이 36% 늘어도 세부담이 선형으로만
+  // 늘면 연기 전략이 체계적으로 과대평가된다. 실제 실효세율은 월 100만원 수령 시 약 2.5%,
+  // 월 300만원 수령 시 약 8.1%로 크게 달라진다.
+  nationalPensionTaxRate: 0.02,
+
+  // 연금소득공제(소득세법 §47의2). 공적연금·사적연금을 **합산한** 총연금액에 한 번만 적용된다.
+  //   350만원 이하        → 전액
+  //   350만 ~ 700만       → 350만 + 초과분 × 40%
+  //   700만 ~ 1,400만     → 490만 + 초과분 × 20%
+  //   1,400만 초과        → 630만 + 초과분 × 10%   (한도 900만원)
+  pensionIncomeDeductionBrackets: [
+    { minKRW: 0, baseDeductionKRW: 0, rate: 1 },
+    { minKRW: 3500000, baseDeductionKRW: 3500000, rate: 0.4 },
+    { minKRW: 7000000, baseDeductionKRW: 4900000, rate: 0.2 },
+    { minKRW: 14000000, baseDeductionKRW: 6300000, rate: 0.1 },
+  ],
+  pensionIncomeDeductionCapKRW: 9000000,
+
+  // 종합소득 기본공제(본인 1인분). 연금소득공제와 마찬가지로 합산 소득에 한 번만 적용된다.
+  // 부양가족·추가공제는 입력이 없어 반영하지 않는다(실제보다 세금이 높게 나오는 방향).
+  basicIncomeDeductionKRW: 1500000,
 
   // 사적연금 소득세 연령별 슬라이딩 세율 구간. 상한 미포함(다음 구간의 하한부터 적용).
   // minAge:0인 첫 구간은 "55세 이상" 전용이 아니라 55세 미만 호출까지 포함하는 캐치올이다

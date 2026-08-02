@@ -57,8 +57,51 @@ export function getPrivatePensionIncomeTaxRate(age: number, ctx: TaxContext): nu
   return bracket ? bracket.rate : brackets[brackets.length - 1].rate;
 }
 
-export function calculateNationalPensionTaxKRW(amountRawKRW: number, ctx: TaxContext): number {
-  return amountRawKRW * ctx.profile.nationalPensionTaxRate;
+// 연금소득공제(소득세법 §47의2). 공적연금과 사적연금을 **합산한** 총연금액에 한 번만 적용된다.
+//
+// 국민연금분과 사적연금분에 각각 따로 적용하면 공제를 두 번 주게 되어, 고정 세율 모델보다
+// 오히려 더 틀린다. 그래서 이 함수는 항상 합산액을 받는다.
+export function getPensionIncomeDeductionKRW(totalPensionIncomeKRW: number, ctx: TaxContext): number {
+  if (totalPensionIncomeKRW <= 0) return 0;
+
+  const brackets = ctx.profile.pensionIncomeDeductionBrackets;
+  let bracket = brackets[0];
+  for (const b of brackets) {
+    if (totalPensionIncomeKRW > b.minKRW) bracket = b;
+    else break;
+  }
+
+  const deduction = bracket.baseDeductionKRW + (totalPensionIncomeKRW - bracket.minKRW) * bracket.rate;
+  return Math.min(deduction, ctx.profile.pensionIncomeDeductionCapKRW);
+}
+
+// 연금소득(공적 + 사적) 합산액에 대한 종합소득세액. 지방소득세를 포함한 총부담이다.
+//
+// 과세표준 = 총연금액 − 연금소득공제 − 종합소득 기본공제
+//
+// **알려진 과대 계상**: 국민연금은 실제로 2002년 이후 납입분에 대응하는 부분만 과세되는데,
+// 이 시뮬레이터에는 납입 이력 입력이 없어 전액을 과세 대상으로 본다. 즉 국민연금 세액이
+// 실제보다 높게 나온다 — 이 모델의 가장 큰 오차원이다.
+export function calculatePensionIncomeTaxKRW(totalPensionIncomeKRW: number, ctx: TaxContext): number {
+  if (totalPensionIncomeKRW <= 0) return 0;
+
+  const deduction = getPensionIncomeDeductionKRW(totalPensionIncomeKRW, ctx);
+  const taxableKRW = Math.max(
+    0,
+    totalPensionIncomeKRW - deduction - ctx.profile.basicIncomeDeductionKRW
+  );
+
+  return getComprehensiveIncomeTaxKRW(taxableKRW, ctx) * (1 + ctx.profile.localIncomeTaxRate);
+}
+
+// 국민연금(공적연금) 연간 수령액에 대한 소득세.
+//
+// 예전에는 수령액에 고정 2%를 곱했다. 그러면 월 50만원 수령자와 월 300만원 수령자가 같은
+// 실효세율을 갖는데, 실제로는 연금소득공제와 누진세율 때문에 각각 약 0%와 8%대로 갈린다.
+// 이 앱이 국민연금 개시 나이를 최적화해 추천한다는 점에서 정확도만의 문제가 아니었다 —
+// 연기수령으로 연금액이 늘 때의 세부담 증가를 과소평가해 연기 전략을 과대평가했다.
+export function calculateNationalPensionTaxKRW(annualAmountRawKRW: number, ctx: TaxContext): number {
+  return calculatePensionIncomeTaxKRW(annualAmountRawKRW, ctx);
 }
 
 export function getIsaExemptionLimitKRW(isaType: IsaAccountType, ctx: TaxContext): number {
@@ -182,7 +225,11 @@ export interface PrivatePensionExcessTaxResult {
 
 export function calculatePrivatePensionExcessTaxNeededKRW(
   annualPrivatePensionPreTaxKRW: number,
-  ctx: TaxContext
+  ctx: TaxContext,
+  // 같은 해의 국민연금 수령액(세전). 종합과세를 고를 때 두 연금은 합산되어 하나의
+  // 과세표준을 이루므로, 사적연금분의 세부담은 "국민연금이 이미 채운 구간 위에 얹히는
+  // 증분"이다. 0으로 두면 사적연금만 단독 과세되는 근사가 된다.
+  annualNationalPensionPreTaxKRW: number = 0
 ): PrivatePensionExcessTaxResult {
   if (annualPrivatePensionPreTaxKRW < 0) {
     throw new InvalidTaxInputError('사적연금 인출액은 음수일 수 없습니다.');
@@ -199,9 +246,16 @@ export function calculatePrivatePensionExcessTaxNeededKRW(
   const compareEnabled = ctx.settings.enablePensionComprehensiveComparison ?? true;
   if (!compareEnabled) return { taxKRW: separateTaxKRW, method: 'separate' };
 
-  // 단순 비교 모델: 사적연금 인출액 "그 자체만" 종합소득세 누진세율에 단독 적용했을 때의 세액과
-  // 비교해 더 유리한(낮은) 쪽을 선택한다. 다른 종합소득과의 합산은 반영하지 않는 근사치다.
-  const comprehensiveTaxKRW = getComprehensiveIncomeTaxKRW(annualPrivatePensionPreTaxKRW, ctx);
+  // 종합과세를 고를 때의 세부담은 "국민연금까지 합산한 세액 − 국민연금만의 세액"이다.
+  // 이렇게 증분으로 구해야 연금소득공제(한도 900만원)와 기본공제(150만원)가 두 연금에
+  // 걸쳐 정확히 한 번만 적용된다. 예전에는 사적연금 인출액을 그대로 과세표준으로 삼아
+  // (공제 없이, 국민연금과 무관하게) 계산했다.
+  const nationalOnlyTaxKRW = calculatePensionIncomeTaxKRW(annualNationalPensionPreTaxKRW, ctx);
+  const combinedTaxKRW = calculatePensionIncomeTaxKRW(
+    annualNationalPensionPreTaxKRW + annualPrivatePensionPreTaxKRW,
+    ctx
+  );
+  const comprehensiveTaxKRW = Math.max(0, combinedTaxKRW - nationalOnlyTaxKRW);
 
   return comprehensiveTaxKRW < separateTaxKRW
     ? { taxKRW: comprehensiveTaxKRW, method: 'comprehensive' }

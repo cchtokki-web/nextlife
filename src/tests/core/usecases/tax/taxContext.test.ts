@@ -31,12 +31,13 @@ describe('resolveTaxContext', () => {
   test('TaxEngine은 넘겨받은 프로필의 값을 실제로 사용한다', () => {
     const base = resolveTaxContext();
 
-    const doubledNationalPensionRate = {
+    // 연금소득공제 한도를 0으로 낮추면 과세표준이 커져 세액이 늘어야 한다.
+    const noPensionDeduction = {
       ...base,
-      profile: { ...base.profile, nationalPensionTaxRate: base.profile.nationalPensionTaxRate * 2 },
+      profile: { ...base.profile, pensionIncomeDeductionCapKRW: 0 },
     };
-    expect(calculateNationalPensionTaxKRW(10_000_000, doubledNationalPensionRate))
-      .toBeCloseTo(calculateNationalPensionTaxKRW(10_000_000, base) * 2);
+    expect(calculateNationalPensionTaxKRW(30_000_000, noPensionDeduction))
+      .toBeGreaterThan(calculateNationalPensionTaxKRW(30_000_000, base));
 
     const flatTenPercent = {
       ...base,

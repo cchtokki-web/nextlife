@@ -1,7 +1,8 @@
 import { describe, test, expect } from 'vitest';
 import { SimulationEngine } from '@/core/usecases/SimulationEngine';
 import { SINGLE_SURVIVOR_SPENDING_FACTOR } from '@/core/usecases/spouse/spouseRules';
-import { NATIONAL_PENSION_TAX_RATE } from '@/core/usecases/tax/taxRates';
+import { calculateNationalPensionTaxKRW } from '@/core/usecases/tax/TaxEngine';
+import { resolveTaxContext } from '@/core/usecases/tax/taxContext';
 import { DEFAULT_UTILITY_CONFIG } from '@/core/usecases/utility/utilityWeights';
 import { SimulationParams } from '@/core/entities/types';
 
@@ -136,8 +137,14 @@ describe('SimulationEngine 배우자 통합', () => {
   });
 });
 
-// 국민연금 세율은 고정 2%(taxRates.ts). 월 수령액 → 연간 세후 표시액 환산에 쓴다.
-const annualNetFromMonthly = (monthly: number) => monthly * (1 - NATIONAL_PENSION_TAX_RATE) * 12;
+// 월 수령액 → 연간 세후 표시액. 국민연금 실효세율은 수령액에 따라 달라지므로
+// (연금소득공제 + 누진세율) 상수로 박지 않고 세금 계산 함수로 유도한다 — 이 파일의
+// 주제는 세율이 아니라 배우자 합산·유족연금 중복조정·물가 모드가 수령액에 어떻게
+// 반영되는가다.
+const annualNetFromMonthly = (monthly: number) => {
+  const grossAnnual = monthly * 12;
+  return grossAnnual - calculateNationalPensionTaxKRW(grossAnnual, resolveTaxContext());
+};
 
 describe('SimulationEngine 유족연금 중복조정 배선', () => {
   // computeSurvivorPensionMonthly의 공식은 단위 테스트가 증명한다. 여기서 증명할 것은 엔진이
@@ -371,17 +378,16 @@ describe('SimulationEngine 배우자 국민연금의 물가 반영 모드', () =
       .nationalPensionIncome;
 
   test('실질 모드에서는 배우자 국민연금에 물가상승이 누적되지 않는다', () => {
-    // 월 1,000,000 × 12 × (1 - 0.02) = 11,760,000원. 물가 10%가 10년 지나도 그대로다 —
+    // 월 1,000,000 × 12 = 연 1,200만원(세전). 물가 10%가 10년 지나도 그대로다 —
     // 실질 모드의 모든 금액은 오늘 화폐가치로 표시되기 때문이다.
-    expect(incomeAt70('real')).toBeCloseTo(11760000, 2);
+    expect(incomeAt70('real')).toBeCloseTo(annualNetFromMonthly(1000000), 2);
   });
 
   test('명목 모드에서는 배우자 국민연금에 시작 시점부터의 물가상승이 누적된다', () => {
     // 1,000,000 × 1.1^10 = 1,000,000 × 2.5937424601 = 2,593,742.4601원/월
-    //   × 12개월 = 31,124,909.5212원
-    //   × (1 - 0.02) = 30,502,411.330776원
-    // 복리를 빼먹으면 11,760,000원, 두 번 곱하면 1.1^20 배가 되어 둘 다 여기서 걸린다.
-    expect(incomeAt70('nominal')).toBeCloseTo(30502411.330776, 2);
+    //   × 12개월 = 31,124,909.5212원(세전)
+    // 복리를 빼먹으면 연 1,200만원 수준, 두 번 곱하면 1.1^20 배가 되어 둘 다 여기서 걸린다.
+    expect(incomeAt70('nominal')).toBeCloseTo(annualNetFromMonthly(1000000 * Math.pow(1.1, 10)), 2);
   });
 });
 
@@ -407,16 +413,15 @@ describe('SimulationEngine 본인+배우자 국민연금 합산액', () => {
 
   test('배우자 개시 전에는 본인 몫만 나온다', () => {
     // 본인 68세 = 배우자 68세 < 개시 70세 → 배우자 몫 0.
-    // 1,000,000 × 12 × (1 - 0.02) = 11,760,000원.
-    expect(incomeAt(68)).toBeCloseTo(11760000, 2);
+    expect(incomeAt(68)).toBeCloseTo(annualNetFromMonthly(1000000), 2);
   });
 
   test('둘 다 수령 중인 해의 가구 합산액이 절대값으로 고정된다', () => {
     // 본인   1,000,000 × 1.00 = 1,000,000
     // 배우자   800,000 × 1.36 = 1,088,000
-    // 합계 월 2,088,000 → × 12 × (1 - 0.02) = 24,554,880원.
-    // 조정계수 누락이면 21,168,000원, 생존 중 0.6 적용이면 14,732,928원이 되어 구분된다.
-    expect(incomeAt(70)).toBeCloseTo(24554880, 2);
+    // 합계 월 2,088,000 → 연 25,056,000원(세전).
+    // 조정계수 누락이면 월 1,800,000, 생존 중 0.6 적용이면 월 1,252,800이 되어 구분된다.
+    expect(incomeAt(70)).toBeCloseTo(annualNetFromMonthly(2088000), 2);
   });
 });
 
