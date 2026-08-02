@@ -275,36 +275,31 @@ describe('applyAiSentinels 통합 — 실제 추천 엔진', () => {
 });
 
 describe('applyAiSentinels 통합', () => {
-  test('센티널을 채운 결과가 나이를 직접 지정한 params의 결과와 동일하다', () => {
+  test("센티널을 채운 결과가 같은 나이의 확정 전략과 동일하다", () => {
     const engine = new SimulationEngine();
 
-    const sentinel = compiledFor('ai_optimized');
-    const { compiled: applied } = applyAiSentinels(sentinel, makeRecommendation(plan(68)));
-    const appliedResult = engine.run(applied.params, applied.utilityConfig);
+    // 기대값을 프로덕션 코드와 같은 스프레드로 손수 만들면 미러 구현이 되어, 두 코드가
+    // 나란히 틀려도 통과한다. 대신 완전히 다른 경로로 같은 계획에 도달한다 —
+    // 'defer_max'는 compileStrategy가 70세로 컴파일하는 확정 전략이고,
+    // 'ai_optimized' + 추천 70세는 applyAiSentinels가 70세로 채우는 경로다.
+    // 두 계획은 국민연금 개시 나이 말고 다른 축이 모두 같으므로 결과가 일치해야 한다.
+    const viaSentinel = applyAiSentinels(compiledFor('ai_optimized'), makeRecommendation(plan(70))).compiled;
+    const viaExplicit = compiledFor('defer_max');
 
-    // 같은 나이를 withdrawalPlan에 직접 넣은 경우. compileStrategy가 센티널을 65로 덮으므로
-    // 컴파일 뒤에 넣어야 한다 — 컴파일 전에 넣으면 그 값이 다시 65로 뒤집힌다.
-    const direct = compiledFor('ai_optimized');
-    const directResult = engine.run(
-      {
-        ...direct.params,
-        withdrawalPlan: { ...(direct.params.withdrawalPlan ?? {}), nationalPensionStartAge: 68 },
-      },
-      direct.utilityConfig
-    );
+    expect(viaSentinel.params.withdrawalPlan?.nationalPensionStartAge).toBe(70);
+    expect(viaExplicit.params.withdrawalPlan?.nationalPensionStartAge).toBe(70);
 
-    // 필드가 실제로 존재하는지 먼저 확인한다. SimulationResult.utility는 UtilityBreakdown
-    // ({ score, components })이고 totalScore 같은 필드는 없다 — 없는 필드를 비교하면
-    // undefined === undefined로 무의미하게 통과한다.
-    expect(typeof appliedResult.utility?.score).toBe('number');
+    const fromSentinel = engine.run(viaSentinel.params, viaSentinel.utilityConfig);
+    const fromExplicit = engine.run(viaExplicit.params, viaExplicit.utilityConfig);
 
-    expect(appliedResult.utility?.score).toBe(directResult.utility?.score);
-    // score만으로는 집계값이라 변별력이 약할 수 있어 components까지 비교해 강화한다.
-    expect(appliedResult.utility?.components).toEqual(directResult.utility?.components);
-    // endingAssets는 비교하지 않는다 — 이 픽스처는 66세경 자산이 완전 소진되어 항상 0으로
-    // 고정되므로, applyAiSentinels가 완전히 망가져 no-op이 되어도 이 값은 통과해 버린다.
-    // 바로 아래 yearlyResults 비교가 이 검증을 온전히 대신한다.
-    expect(JSON.stringify(appliedResult.yearlyResults)).toBe(JSON.stringify(directResult.yearlyResults));
+    // 필드가 실제로 존재하는지 먼저 확인한다. 없는 필드를 비교하면 undefined === undefined로
+    // 무의미하게 통과한다.
+    expect(typeof fromSentinel.utility?.score).toBe('number');
+    expect(fromSentinel.utility?.score).toBe(fromExplicit.utility?.score);
+    expect(fromSentinel.utility?.components).toEqual(fromExplicit.utility?.components);
+
+    expect(fromSentinel.yearlyResults.length).toBeGreaterThan(0);
+    expect(JSON.stringify(fromSentinel.yearlyResults)).toBe(JSON.stringify(fromExplicit.yearlyResults));
   });
 
   test('센티널을 채우면 baseline(65세)과 결과가 달라진다', () => {

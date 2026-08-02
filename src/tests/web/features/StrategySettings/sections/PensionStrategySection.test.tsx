@@ -242,4 +242,36 @@ describe('PensionStrategySection', () => {
       expect(screen.queryByText(/68세부터 수령/)).not.toBeInTheDocument();
     });
   });
+
+  // 추천 계산이 실패하면 'AI 최적화'는 채워질 값이 없어 baseline으로 계산된다. 그 사실을
+  // 말하지 않으면 정상적으로 "개선 여지 없음"이 나온 경우와 화면이 픽셀 단위로 같아진다.
+  describe('추천 계산 실패 안내', () => {
+    const failed = { recommendation: null, error: '추천을 계산하지 못했습니다.', improved: false } as never;
+
+    test("'AI 최적화' 상태에서 추천이 실패하면 기본값으로 계산했다고 알린다", () => {
+      render(
+        <PensionStrategySection
+          params={{ ...initialParams, strategy: { ...DEFAULT_RETIREMENT_STRATEGY, nationalPensionStrategy: 'ai_optimized' } }}
+          onChangeParams={vi.fn()}
+          mode="standard" changed={new Set()} ai={failed}
+        />
+      );
+
+      expect(screen.getByText(/기본값\(65세\)으로 계산했습니다/)).toBeInTheDocument();
+    });
+
+    test('확정 전략을 고른 상태면 추천이 실패해도 안내하지 않는다', () => {
+      // 사용자가 직접 고른 나이로 도는 중이라 알릴 것이 없다.
+      render(
+        <PensionStrategySection
+          params={{ ...initialParams, strategy: { ...DEFAULT_RETIREMENT_STRATEGY, nationalPensionStrategy: 'defer_max' } }}
+          onChangeParams={vi.fn()}
+          mode="standard" changed={new Set()} ai={failed}
+        />
+      );
+
+      // '기본값'만으로 찾으면 사적연금 선택지 설명("…엔진 기본값을 그대로 따릅니다")에 걸린다.
+      expect(screen.queryByText(/계산했습니다/)).not.toBeInTheDocument();
+    });
+  });
 });

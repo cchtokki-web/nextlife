@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { signIn } from "next-auth/react";
 import Image from "next/image";
+import { resolveDevCallbackUrl } from "./resolveDevCallbackUrl";
 import styles from "./LoginForm.module.css";
 
 export default function LoginForm() {
@@ -30,17 +31,26 @@ export default function LoginForm() {
       });
   }, []);
 
+  // 자동 로그인이 실패하면 알린다. 예전에는 res.ok가 false일 때 아무 처리가 없어
+  // "개발 모드 자동 로그인 중..." 화면에 영구히 머물렀다.
+  const [devLoginError, setDevLoginError] = useState<string | null>(null);
+
   useEffect(() => {
-    if (isRuntimeDevMode === true) {
-      const searchParams = new URLSearchParams(window.location.search);
-      const callbackUrl = searchParams.get('callbackUrl');
-      const target = callbackUrl && callbackUrl.startsWith('/') ? callbackUrl : '/';
-      signIn('credentials', { email: 'dev', password: 'dev', redirect: false }).then((res) => {
+    if (isRuntimeDevMode !== true) return;
+
+    const target = resolveDevCallbackUrl(window.location.search);
+    signIn('credentials', { email: 'dev', password: 'dev', redirect: false })
+      .then((res) => {
         if (res?.ok) {
           window.location.href = target;
+          return;
         }
+        setDevLoginError(res?.error ?? '자동 로그인에 실패했습니다.');
+      })
+      .catch((err) => {
+        console.error('Dev auto sign-in failed:', err);
+        setDevLoginError('자동 로그인 중 오류가 발생했습니다.');
       });
-    }
   }, [isRuntimeDevMode]);
 
   if (isRuntimeDevMode === null) {
@@ -54,7 +64,21 @@ export default function LoginForm() {
   if (isRuntimeDevMode === true) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '1rem', color: '#fff', textAlign: 'center' }}>
-        <div className="animate-pulse" style={{ fontSize: '1.2rem', fontWeight: 600 }}>개발 모드 자동 로그인 중...</div>
+        {devLoginError ? (
+          <>
+            <div style={{ fontSize: '1.2rem', fontWeight: 600 }}>개발 모드 자동 로그인 실패</div>
+            <div style={{ fontSize: '0.9rem', opacity: 0.8 }}>{devLoginError}</div>
+            <button
+              type="button"
+              onClick={() => window.location.reload()}
+              style={{ padding: '8px 20px', borderRadius: 9999, border: '1px solid rgba(255,255,255,0.4)' }}
+            >
+              다시 시도
+            </button>
+          </>
+        ) : (
+          <div className="animate-pulse" style={{ fontSize: '1.2rem', fontWeight: 600 }}>개발 모드 자동 로그인 중...</div>
+        )}
       </div>
     );
   }

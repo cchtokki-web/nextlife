@@ -8,7 +8,7 @@ const MODE_OPTIONS: ReadonlyArray<RadioCardOption<StrategyMode>> = [
   {
     value: 'simple',
     label: '간편 모드',
-    description: '꼭 필요한 것만 고르면 나머지는 AI가 추천합니다.',
+    description: '꼭 필요한 항목만 보여줍니다. 나머지는 기본값으로 계산합니다.',
     icon: <Wand2 size={16} />,
     recommended: true,
   },

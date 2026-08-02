@@ -2,6 +2,7 @@
 
 import { FieldRow, RadioCardGroup, SwitchField } from '../../../components/form';
 import { resolveStrategy } from '../../../../core/usecases/strategy/compileStrategy';
+import { NATIONAL_PENSION_NORMAL_START_AGE } from '../../../../core/usecases/pension/nationalPensionRules';
 import { isFieldVisible } from '../fieldVisibility';
 import {
   AiRecommendationState, NATIONAL_PENSION_OPTIONS, PRIVATE_PENSION_OPTIONS, SectionProps,
@@ -54,6 +55,14 @@ export function PensionStrategySection({
     plan?.nationalPensionStartAge !== undefined
     && plan.nationalPensionStartAge === effectiveNationalPensionStartAge;
 
+  // 추천 계산이 실패하면 'AI 최적화'는 채워질 값이 없어 baseline(65세)으로 계산된다.
+  // 그 사실을 말하지 않으면 화면은 정상적으로 "개선 여지 없음"이 나온 경우와 픽셀 단위로
+  // 같아서, 사용자는 AI가 골라 준 나이로 돌고 있다고 믿게 된다.
+  const nationalFallbackNotice =
+    ai.error && strategy.nationalPensionStrategy === 'ai_optimized'
+      ? `${ai.error} 국민연금은 기본값(${NATIONAL_PENSION_NORMAL_START_AGE}세)으로 계산했습니다.`
+      : undefined;
+
   // 사적연금 인출 전략에는 AI 힌트를 붙이지 않는다.
   //
   // 추천이 내놓는 privatePensionMonthlyTarget은 이 화면의 선택지로 표현할 수 없다:
@@ -80,6 +89,9 @@ export function PensionStrategySection({
             options={NATIONAL_PENSION_OPTIONS}
             onChange={(v) => setStrategy({ nationalPensionStrategy: v })}
           />
+          {nationalFallbackNotice && (
+            <p className="text-xs text-warning">{nationalFallbackNotice}</p>
+          )}
         </FieldRow>
       )}
 

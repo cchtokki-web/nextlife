@@ -240,13 +240,15 @@ export function StrategySettingsPanel({
   // 이 모드에서 손댈 수 있는 필드가 있는 섹션만 렌더한다.
   const visibleSections = SECTIONS.filter(({ id }) => isSectionVisible(mode, id));
 
-  // 통째로 숨긴 섹션 안에 기본값과 다른 값이 남아 있으면, 그 값은 화면 어디에도 없는 채로
-  // 계속 계산에 들어간다. 섹션 헤더 배지가 사라진 자리를 이 요약 한 줄이 대신한다.
+  // 이 모드에서 화면에 없는 채로 계산에 들어가는 값의 총합. 통째로 숨긴 섹션뿐 아니라
+  // 보이는 섹션 안의 숨은 필드(간편 모드의 '목표 상속자산' 등)까지 센다.
   //
-  // 보이는 섹션의 숨은 필드(간편 모드의 '목표 상속자산' 등)는 그 섹션 헤더의 변경 개수에
-  // 합산된다. 여기서 함께 세면 같은 변경이 두 곳에 보고된다.
-  const hiddenSectionChanges = SECTIONS
-    .filter(({ id }) => !isSectionVisible(mode, id))
+  // 예전에는 후자를 섹션 헤더의 '개 변경' 배지에 합산했다. 그러면 "1개 변경"이 떠 있는데
+  // 펼쳐도 '사용자 설정' 배지가 붙은 항목이 하나도 없는 상태가 된다 — 사용자가 찾을 수 없는
+  // 개수를 세는 셈이다. 지금은 역할을 나눈다: 섹션 배지는 "여기서 보고 되돌릴 수 있는 것",
+  // 이 요약은 "화면에 없지만 계산에 들어가는 것". 두 곳이 같은 변경을 이중 보고하지 않으면서
+  // 숨은 값의 존재도 감추지 않는다.
+  const hiddenChanges = SECTIONS
     .reduce((sum, { id }) => sum + countSectionChanges(changed, id, mode).hidden, 0);
 
   return (
@@ -254,12 +256,12 @@ export function StrategySettingsPanel({
       <div className="flex flex-col gap-2.5">
         <StrategyModeSelector mode={mode} onChange={handleModeChange} />
 
-        {hiddenSectionChanges > 0 && (
+        {hiddenChanges > 0 && (
           <p
             data-testid="hidden-section-notice"
             className="rounded-lg border border-card-border bg-[rgba(0,0,0,0.25)] px-3.5 py-2.5 text-xs leading-relaxed text-foreground-muted"
           >
-            이 모드에서 숨겨진 사용자 설정 {hiddenSectionChanges}개가 계산에 그대로 반영됩니다.
+            이 모드에서 숨겨진 사용자 설정 {hiddenChanges}개가 계산에 그대로 반영됩니다.
             값을 확인하거나 되돌리려면 전문가 모드로 바꾸세요.
           </p>
         )}
@@ -288,11 +290,10 @@ export function StrategySettingsPanel({
               key={id}
               icon={icon}
               title={title}
-              // 보이는 변경과 숨겨진 변경을 하나의 개수로 합친다. 예전에는 배지를 둘로
-              // 나눠 "숨겨진 사용자 설정 N개"를 따로 보여줬지만, 사용자에게는 "이 섹션에서
-              // 기본값과 다른 것이 몇 개인가"가 하나의 질문이다. 숨겨진 값도 계산에는
-              // 그대로 들어가므로 개수에서 빼면 안 된다.
-              changedCount={counts.visible + counts.hidden}
+              // 이 섹션을 펼쳤을 때 실제로 보이고 되돌릴 수 있는 개수만 센다. 숨은 필드까지
+              // 합치면 펼쳐도 찾을 수 없는 개수를 배지가 말하게 된다. 숨은 값의 존재는
+              // 위 요약 한 줄이 책임진다(hiddenChanges).
+              changedCount={counts.visible}
               highlighted={recentSection === id}
               // 고급 설정은 전문가 모드에서만 기본으로 펼친다.
               defaultOpen={id === 'advanced' ? mode === 'expert' : false}

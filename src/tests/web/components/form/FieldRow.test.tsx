@@ -23,10 +23,9 @@ describe('FieldRow', () => {
       </FieldRow>
     );
 
-    const root = container.firstElementChild!;
-    expect(root).toHaveClass('col-span-2');
-    // 기존 레이아웃 클래스를 덮어쓰면 라벨과 입력이 가로로 붙는다.
-    expect(root).toHaveClass('flex', 'flex-col');
+    // 호출부가 준 배치 클래스가 살아남는지만 본다. 내부 레이아웃 유틸(flex/flex-col)까지
+    // 단언하면 CSS 모듈이나 grid로 리팩터링할 때 동작 변화 없이 깨진다.
+    expect(container.firstElementChild!).toHaveClass('col-span-2');
   });
 
   test('changed가 true면 "사용자 설정" 배지를 표시한다', () => {

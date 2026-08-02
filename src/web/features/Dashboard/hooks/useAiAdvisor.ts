@@ -25,6 +25,9 @@ export interface UseAiAdvisorInput {
   assets?: InvestmentAsset[];
   privatePensions?: PrivatePension[];
   nationalPension?: NationalPension;
+  // 시뮬레이션에 실제로 들어간 국민연금 개시 나이(effective 기준). 이 값을 넘기지 않으면
+  // 이미 70세로 계산 중인 계획에 LLM이 "연기 수령을 검토해 보세요"라고 쓴다.
+  nationalPensionStartAge?: number;
   otherIncomes?: OtherIncome[];
   taxSettings?: TaxSettings;
   spendingStrategy?: SpendingStrategy;

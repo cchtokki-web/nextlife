@@ -152,6 +152,7 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
         assets={params.assets}
         privatePensions={params.privatePensions}
         nationalPension={params.nationalPension}
+        nationalPensionStartAge={params.withdrawalPlan?.nationalPensionStartAge}
         otherIncomes={params.otherIncomes}
         taxSettings={params.taxSettings}
         spendingStrategy={params.spendingStrategy}

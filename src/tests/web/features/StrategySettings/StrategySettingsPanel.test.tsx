@@ -133,9 +133,10 @@ describe('StrategySettingsPanel', () => {
       expect(notice()).not.toBeInTheDocument();
     });
 
-    // 보이는 섹션 안의 숨은 필드(간편 모드의 '목표 상속자산' 등)는 그 섹션 헤더의 변경
-    // 개수에 합산된다. 요약 줄이 그것까지 세면 같은 변경이 두 번 보고된다.
-    test('보이는 섹션의 숨은 필드는 요약이 아니라 섹션 헤더 개수에 합산된다', () => {
+    // 보이는 섹션 안의 숨은 필드('목표 상속자산'은 간편 모드에서 렌더되지 않는다)는
+    // 섹션 헤더가 아니라 요약이 책임진다. 헤더에 합산하면 "1개 변경"이 떠 있는데 펼쳐도
+    // 되돌릴 항목이 하나도 없는 상태가 된다 — 사용자가 찾을 수 없는 개수를 세는 셈이다.
+    test('보이는 섹션의 숨은 필드는 섹션 헤더가 아니라 요약이 센다', () => {
       const params = {
         ...initialParams,
         userProfile: { ...initialParams.userProfile, targetBequest: 100000000 },
@@ -143,13 +144,14 @@ describe('StrategySettingsPanel', () => {
 
       render(<StrategySettingsPanel params={params} onChangeParams={vi.fn()} {...noRecommendation} />);
 
-      expect(screen.getByText('1개 변경')).toBeInTheDocument();
-      expect(notice()).not.toBeInTheDocument();
+      expect(screen.queryByText('1개 변경')).not.toBeInTheDocument();
+      expect(notice()).toHaveTextContent('숨겨진 사용자 설정 1개');
     });
 
-    // 한 섹션에 보이는 변경과 숨은 변경이 함께 있으면 하나의 개수로 합쳐진다.
-    // '목표 월 생활비'(간편 모드에서 보임) + '목표 상속자산'(간편 모드에서 숨김) = 2개.
-    test('보이는 변경과 숨은 변경이 같은 섹션에 있으면 합산해 표시한다', () => {
+    // 한 섹션에 보이는 변경과 숨은 변경이 함께 있으면 각자 제 자리에서 보고된다.
+    // '목표 월 생활비'(간편 모드에서 보임) → 섹션 배지 1개,
+    // '목표 상속자산'(간편 모드에서 숨김) → 요약 1개.
+    test('보이는 변경은 섹션 배지가, 숨은 변경은 요약이 각각 센다', () => {
       const params = {
         ...initialParams,
         userProfile: {
@@ -161,7 +163,8 @@ describe('StrategySettingsPanel', () => {
 
       render(<StrategySettingsPanel params={params} onChangeParams={vi.fn()} {...noRecommendation} />);
 
-      expect(screen.getByText('2개 변경')).toBeInTheDocument();
+      expect(screen.getByText('1개 변경')).toBeInTheDocument();
+      expect(notice()).toHaveTextContent('숨겨진 사용자 설정 1개');
     });
   });
 
@@ -428,7 +431,9 @@ describe('StrategySettingsPanel', () => {
       );
 
       expect(screen.queryByRole('button', { name: new RegExp('^은퇴 목표 ') })).not.toBeInTheDocument();
-      expect(onChangeParams).not.toHaveBeenCalled();
+      // 버튼 부재 단언이 "섹션 자체가 렌더되지 않아서" 통과하는 경우와 구분한다.
+      // (onChangeParams는 누를 대상이 없으니 호출될 수 없어 단언해도 공허하다.)
+      expect(screen.getByRole('button', { expanded: false, name: /은퇴 목표/ })).toBeInTheDocument();
     });
 
     test('추천이 아직 없으면(계산 전) 버튼이 나오지 않는다', () => {
@@ -442,7 +447,9 @@ describe('StrategySettingsPanel', () => {
       );
 
       expect(screen.queryByRole('button', { name: new RegExp('^은퇴 목표 ') })).not.toBeInTheDocument();
-      expect(onChangeParams).not.toHaveBeenCalled();
+      // 버튼 부재 단언이 "섹션 자체가 렌더되지 않아서" 통과하는 경우와 구분한다.
+      // (onChangeParams는 누를 대상이 없으니 호출될 수 없어 단언해도 공허하다.)
+      expect(screen.getByRole('button', { expanded: false, name: /은퇴 목표/ })).toBeInTheDocument();
     });
   });
 
@@ -557,7 +564,7 @@ describe('StrategySettingsPanel', () => {
       );
 
       expect(screen.queryByRole('button', { name: new RegExp('^투자 전략 ') })).not.toBeInTheDocument();
-      expect(onChangeParams).not.toHaveBeenCalled();
+      expect(screen.getByRole('button', { expanded: false, name: /투자 전략/ })).toBeInTheDocument();
     });
   });
 

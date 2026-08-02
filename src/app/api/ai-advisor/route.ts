@@ -27,6 +27,7 @@ export interface AiAdvisorRequestBody {
   assets?: InvestmentAsset[];
   privatePensions?: PrivatePension[];
   nationalPension?: NationalPension;
+  nationalPensionStartAge?: number;
   otherIncomes?: OtherIncome[];
   taxSettings?: TaxSettings;
   spendingStrategy?: SpendingStrategy;
@@ -43,7 +44,7 @@ function toManwon(val?: number): string {
 
 export function buildSimulationContextText(body: AiAdvisorRequestBody): string {
   const {
-    userProfile, assets, privatePensions, nationalPension, otherIncomes,
+    userProfile, assets, privatePensions, nationalPension, nationalPensionStartAge, otherIncomes,
     taxSettings, spendingStrategy, inflationRate, inflationMode,
     goalAchievementRate, fireAge, endingAssets, monthlyTarget, score, depletionAge,
     retirementGrade, utility, recommendation,
@@ -116,6 +117,10 @@ export function buildSimulationContextText(body: AiAdvisorRequestBody): string {
   }
   if (nationalPension?.expectedMonthlyAmount !== undefined) {
     lines.push(`- 국민연금 예상 월 수령액: ${Number(nationalPension.expectedMonthlyAmount).toLocaleString()}원`);
+  }
+  // 개시 나이를 함께 알려야 이미 반영된 연기 수령을 다시 권하지 않는다.
+  if (typeof nationalPensionStartAge === 'number') {
+    lines.push(`- 국민연금 수령 개시 나이: ${nationalPensionStartAge}세 (이 시뮬레이션에 이미 반영된 값)`);
   }
 
   if (Array.isArray(privatePensions) && privatePensions.length > 0) {

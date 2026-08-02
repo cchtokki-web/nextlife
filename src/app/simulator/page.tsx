@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useSession, signOut } from 'next-auth/react';
 import { SimulationEngine } from '../../core/usecases/SimulationEngine';
+import { SimulationResult } from '../../core/entities/types';
 import { computeMonthlySpendingComposition } from '../../core/usecases/MonthlySpendingComposition';
 import { computeRiskAlerts } from '../../core/usecases/dashboard/computeRiskAlerts';
 import { computeExecutionRoadmap, selectDepletionAge } from '../../core/usecases/dashboard/computeExecutionRoadmap';
@@ -14,6 +15,7 @@ import { analyzeCurrentStrategy, explainBequestAdequacy } from '../../core/useca
 import { resolveTaxSettings } from '../../core/usecases/tax/taxRates';
 import { NATIONAL_PENSION_NORMAL_START_AGE } from '../../core/usecases/pension/nationalPensionRules';
 import { useStrategyPipeline } from '../../web/hooks/useStrategyPipeline';
+import { runCompiledScenario } from '../../core/usecases/strategy/runCompiledScenario';
 import { UTILITY_COMPONENT_META } from '../../web/features/Dashboard/utilityComponentMeta';
 import { initialParams } from '../../infrastructure/storage/localStore';
 import { AssetFormSection } from '../../web/features/AssetForm/AssetFormSection';
@@ -137,7 +139,8 @@ export default function Home() {
     return () => clearTimeout(timer);
   }, [result]);
 
-  // Run simulation engine for compared scenarios
+  // 비교 시나리오도 활성 시나리오와 같은 경로(전략 컴파일)로 실행한다 — 자세한 근거와
+  // 남은 한계는 runCompiledScenario 주석 참고.
   const compareResults = useMemo(() => {
     return compareScenarioIds.map(id => {
       const scenario = scenarios.find(s => s.id === id);
@@ -145,9 +148,9 @@ export default function Home() {
       return {
         id,
         name: scenario.name,
-        result: engine.run(scenario.data)
+        result: runCompiledScenario(engine, scenario.data),
       };
-    }).filter(Boolean) as { id: string, name: string, result: any }[];
+    }).filter(Boolean) as { id: string, name: string, result: SimulationResult }[];
   }, [engine, scenarios, compareScenarioIds]);
 
   const formatValue = (val: number): string => {
