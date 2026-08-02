@@ -150,7 +150,7 @@ describe('PensionStrategySection', () => {
     expect(screen.getByRole('radio', { name: /절세 우선/ })).toBeInTheDocument();
   });
 
-  test('간편 모드에서는 ISA/배당 재투자 스위치가 숨겨진다', () => {
+  test('간편 모드에서는 ISA 스위치가 숨겨진다', () => {
     render(
       <PensionStrategySection
         params={initialParams} onChangeParams={vi.fn()}

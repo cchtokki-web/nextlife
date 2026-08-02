@@ -23,7 +23,7 @@ export interface SectionProps {
 
 // AI 추천을 쓰는 섹션들이 공유하는 표면.
 //
-// 추천 계산(recommendStrategy, 최대 162개 후보 시뮬레이션)은 이 앱에서 가장 무거운 계산이라
+// 추천 계산(recommendStrategy, 최대 218개 후보 시뮬레이션)은 이 앱에서 가장 무거운 계산이라
 // 화면 전체에서 딱 한 번만 돌아야 한다. 계산은 page.tsx가 하고(useDeferredValue로 한 번,
 // useBackgroundValue로 한 번 더 미뤄 트랜지션 우선순위에서 돈다) 그 결과가 이 형태로 패널을
 // 거쳐 각 섹션에 내려온다 — 패널 안에서 다시 계산하면 같은 결과를 두 번 만든다.

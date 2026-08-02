@@ -269,8 +269,15 @@ export function optimizePrivatePensionChanneling(
   // "계좌 이전" 문구가 실제로 시뮬레이션된 행동이 된다(buildChannelingParams 참조).
   const hasAccountTransfer = params.privatePensions.some((p) => p.monthlyContribution > 0);
 
-  const makeItem = (label: string, evaluation: LegEvaluation): ItemizedContribution => ({
-    field: 'privatePensionChanneling',
+  // 축을 인자로 받는다. 둘 다 'privatePensionChanneling'으로 뭉개면, 나중에 이 축이 센티널로
+  // 채워질 때 적용되지 않은 신규 납입 항목까지 "이미 반영됨"으로 표시된다
+  // (RecommendationChecklist가 appliedFields.includes(field)로 가른다).
+  const makeItem = (
+    field: ItemizedContribution['field'],
+    label: string,
+    evaluation: LegEvaluation
+  ): ItemizedContribution => ({
+    field,
     label,
     // 각 항목은 "그 레그 하나만 baseline에 적용했을 때"의 독립(marginal) 효과다. 두 레그를 함께
     // 채택해도 이 값은 각자의 단독 측정치를 유지하므로 합계가 총 개선분과 정확히 일치하지는 않는다.
@@ -284,7 +291,7 @@ export function optimizePrivatePensionChanneling(
     recommendedPrivatePensionChanneling: true,
     recommendedNewPensionContribution: null,
     channelingIncludesAccountTransfer: hasAccountTransfer,
-    itemizedContributions: [makeItem(buildChannelingLabel(hasAccountTransfer), evaluation)],
+    itemizedContributions: [makeItem('privatePensionChanneling', buildChannelingLabel(hasAccountTransfer), evaluation)],
     finalResult: evaluation.result,
     finalUtility: evaluation.utility,
     attemptedCount,
@@ -295,7 +302,7 @@ export function optimizePrivatePensionChanneling(
     recommendedPrivatePensionChanneling: null,
     recommendedNewPensionContribution: true,
     channelingIncludesAccountTransfer: false,
-    itemizedContributions: [makeItem(NEW_PENSION_LABEL, evaluation)],
+    itemizedContributions: [makeItem('newPensionContribution', NEW_PENSION_LABEL, evaluation)],
     finalResult: evaluation.result,
     finalUtility: evaluation.utility,
     attemptedCount,
@@ -336,8 +343,8 @@ export function optimizePrivatePensionChanneling(
     recommendedNewPensionContribution: true,
     channelingIncludesAccountTransfer: hasAccountTransfer,
     itemizedContributions: [
-      makeItem(buildChannelingLabel(hasAccountTransfer), channelingEval!),
-      makeItem(NEW_PENSION_LABEL, newPensionEval!),
+      makeItem('privatePensionChanneling', buildChannelingLabel(hasAccountTransfer), channelingEval!),
+      makeItem('newPensionContribution', NEW_PENSION_LABEL, newPensionEval!),
     ],
     finalResult: combinedEval.result,
     finalUtility: combinedEval.utility,

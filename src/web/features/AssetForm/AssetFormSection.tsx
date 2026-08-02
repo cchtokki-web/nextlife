@@ -50,9 +50,10 @@ const calculateMonthlyFromPeriod = (amount: number, period: 'daily' | 'weekly' |
 
 // 새로 추가하는 항목의 id.
 //
-// 예전에는 `asset-${Date.now()}`였다. 두 가지가 문제다 — 같은 밀리초에 두 번 추가하면 id가
-// 겹치고(React key 충돌), Date.now()는 같은 입력에 다른 값을 주는 impure 호출이라 컴파일러가
-// 렌더 경로에서 부르는 것을 막는다. 모듈 스코프 카운터를 함께 붙여 둘 다 해결한다.
+// 예전에는 컴포넌트 안에서 `asset-${Date.now()}`로 만들었다. 두 가지가 문제였다.
+// 카운터는 같은 밀리초에 두 번 추가할 때의 id 충돌(React key 충돌)을 없앤다.
+// purity 검사를 벗어난 것은 카운터가 아니라 이 함수를 컴포넌트 밖으로 옮긴 덕이다 —
+// Date.now()는 여전히 호출되므로 렌더 경로에서 부르면 안 된다.
 let entitySequence = 0;
 
 function createEntityId(prefix: 'asset' | 'pension' | 'isa' | 'income'): string {

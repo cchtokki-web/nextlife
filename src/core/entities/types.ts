@@ -372,7 +372,8 @@ export interface StrategyRecommendation {
 export type ItemizedContributionField =
   | keyof CompleteWithdrawalPlan
   | 'assetReinvestment'
-  | 'privatePensionChanneling';
+  | 'privatePensionChanneling'
+  | 'newPensionContribution';
 
 export interface ItemizedContribution {
   field: ItemizedContributionField;

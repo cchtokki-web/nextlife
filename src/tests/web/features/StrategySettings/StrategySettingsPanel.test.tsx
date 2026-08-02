@@ -198,7 +198,7 @@ describe('StrategySettingsPanel', () => {
   });
 
   // page.tsx가 이미 recommendStrategy를 돌린다. 패널이 또 돌리면 이 앱에서 가장 무거운
-  // 계산(최대 162개 후보 시뮬레이션)이 params 변경마다 두 번 실행된다.
+  // 계산(최대 218개 후보 시뮬레이션)이 params 변경마다 두 번 실행된다.
   test('패널은 추천을 직접 계산하지 않는다 (prop으로 받은 값만 쓴다)', () => {
     const spy = vi.spyOn(RecommendationEngine, 'recommendStrategy');
 
@@ -589,5 +589,68 @@ describe('StrategySettingsPanel', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  // 배지의 '적용/추천' 판정은 패널이 계산해 섹션에 내려준다. PensionStrategySection 테스트는
+  // 그 값을 직접 주입하므로 컴포넌트 계약만 검증하고 이 배선은 덮지 못한다.
+  describe('AI 배지 판정 배선', () => {
+    const deferRecommendation = {
+      improved: true,
+      recommendedPlan: { nationalPensionStartAge: 70, isaMaturityDestination: 'pension', monthlySpendingMultiplier: 1 },
+      recommendedAssetReinvestment: null,
+    } as unknown as StrategyRecommendation;
+
+    const expandPension = () => {
+      const toggles = screen.getAllByRole('button', { expanded: false });
+      fireEvent.click(toggles.find((b) => b.textContent?.includes('연금 전략'))!);
+    };
+
+    test("확정 전략을 고르면 자동 채움이 없어도 '적용'으로 표시한다", () => {
+      // 사용자가 「AI 추천」 버튼으로 defer_max(70세)를 고른 직후의 상태다. 센티널은 더 이상
+      // 개입하지 않지만 엔진은 70세로 돈다 — 방금 적용한 값을 '추천'이라 부르면 안 된다.
+      render(
+        <StrategySettingsPanel
+          params={{ ...initialParams, strategy: { ...DEFAULT_RETIREMENT_STRATEGY, nationalPensionStrategy: 'defer_max' } }}
+          onChangeParams={vi.fn()}
+          recommendation={deferRecommendation}
+          recommendationFailed={false}
+          sentinels={{ compiled: {} as never, appliedFields: [], nationalPensionStartAge: null }}
+        />
+      );
+      expandPension();
+
+      expect(screen.getByText('AI 적용: 70세부터 수령')).toBeInTheDocument();
+    });
+
+    test("센티널이 걸러 baseline으로 돌면 '추천'으로 표시한다", () => {
+      // 'ai_optimized'인데 자동 채움이 악화를 이유로 채우지 않은 경우. 엔진은 65세로 돈다.
+      render(
+        <StrategySettingsPanel
+          params={{ ...initialParams, strategy: { ...DEFAULT_RETIREMENT_STRATEGY, nationalPensionStrategy: 'ai_optimized' } }}
+          onChangeParams={vi.fn()}
+          recommendation={deferRecommendation}
+          recommendationFailed={false}
+          sentinels={{ compiled: {} as never, appliedFields: [], nationalPensionStartAge: null }}
+        />
+      );
+      expandPension();
+
+      expect(screen.getByText('AI 추천: 70세부터 수령')).toBeInTheDocument();
+    });
+
+    test('자동 채움이 일어나면 그 값으로 판정한다', () => {
+      render(
+        <StrategySettingsPanel
+          params={{ ...initialParams, strategy: { ...DEFAULT_RETIREMENT_STRATEGY, nationalPensionStrategy: 'ai_optimized' } }}
+          onChangeParams={vi.fn()}
+          recommendation={deferRecommendation}
+          recommendationFailed={false}
+          sentinels={{ compiled: {} as never, appliedFields: ['nationalPensionStartAge'], nationalPensionStartAge: 70 }}
+        />
+      );
+      expandPension();
+
+      expect(screen.getByText('AI 적용: 70세부터 수령')).toBeInTheDocument();
+    });
   });
 });

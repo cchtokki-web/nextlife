@@ -75,12 +75,19 @@ describe('useStrategyPipeline', () => {
     // 되먹임에는 두 모양이 있고 이 테스트가 둘 다 잡는다.
     //   수렴형 — 나이가 70(최대 연기)에서 멈춘다. 렌더는 끝나지만 추천이 이미 적용된 값
     //            위에서 계산되므로 아래 나이 단언이 실패한다.
-    //   발산형 — 렌더가 멈추지 않는다. 이 경우 테스트는 단언 실패가 아니라 타임아웃으로
-    //            떨어진다(실제로 배선을 되먹임으로 바꿔 확인했다).
+    //   발산형 — 렌더가 멈추지 않는다. 되먹임이 시작되려면 채워진 값이 최소 한 번
+    //            recommendStrategy로 들어가야 하므로 대개 아래 나이 단언이 먼저 잡고,
+    //            그마저 놓치면 바로 아래 호출 횟수 상한이 1차 방어선이다. 타임아웃은
+    //            그 둘이 모두 실패했을 때의 최후 폴백이지 주된 감지기가 아니다.
+
+    // 이 픽스처에 검증력이 있으려면 채워진 값이 65와 달라야 한다.
+    expect(appliedAge).not.toBe(65);
+
     for (const call of spy.mock.calls) {
       const passed = call[0] as SimulationParams;
-      expect(passed.withdrawalPlan?.nationalPensionStartAge ?? 65).toBe(65);
-      expect(passed.withdrawalPlan?.nationalPensionStartAge ?? 65).not.toBe(appliedAge);
+      // `?? 65` 폴백을 두면 필드가 통째로 사라지는 회귀에도 통과한다. compiled는
+      // 'ai_optimized'에서 65를 명시적으로 넣으므로 폴백이 발동할 일이 없다.
+      expect(passed.withdrawalPlan?.nationalPensionStartAge).toBe(65);
     }
 
     // 호출 횟수도 묶어 둔다. 되먹임이 아니어도 파이프라인이 스스로를 재촉발하면 이 화면에서

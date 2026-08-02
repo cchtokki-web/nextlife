@@ -8,20 +8,16 @@ vi.mock('next-auth/react', () => ({
   useSession: () => sessionState,
 }));
 
-// 암복호화는 WebCrypto가 필요해 jsdom에서 그대로 돌릴 수 없다. 형태 판정(isEncryptedPayload)은
-// 실제 규칙을 그대로 쓰고, 암복호화만 대역으로 바꾼다 — 이 훅이 검증하려는 것은 분기이지
-// 암호 알고리즘이 아니다.
+// 암복호화는 WebCrypto가 필요해 jsdom에서 그대로 돌릴 수 없다. 그 둘만 대역으로 바꾸고
+// 나머지는 실물을 쓴다 — 특히 형태 판정(isEncryptedPayload)은 규칙을 복제하면 안 된다.
+// 복제본은 원본이 강화될 때(예: iterations 검증 추가) 조용히 어긋나고, 그러면 이 파일의
+// needsKeyRestore 테스트 전체가 실제와 다른 분기를 통과시킨다.
 const decryptData = vi.fn();
 const encryptData = vi.fn();
-vi.mock('@/core/utils/crypto', () => ({
+vi.mock('@/core/utils/crypto', async (importOriginal) => ({
+  ...await importOriginal<typeof import('@/core/utils/crypto')>(),
   decryptData: (...args: unknown[]) => decryptData(...args),
   encryptData: (...args: unknown[]) => encryptData(...args),
-  isEncryptedPayload: (data: unknown) =>
-    !!data && typeof data === 'object'
-    && (data as { isEncrypted?: boolean }).isEncrypted === true
-    && typeof (data as { ciphertext?: string }).ciphertext === 'string'
-    && typeof (data as { iv?: string }).iv === 'string',
-  generateBackupKey: () => 'ABCDEF',
 }));
 
 const loadParams = vi.fn();
@@ -348,4 +344,111 @@ describe('useScenarios — 재적재', () => {
     await waitFor(() => expect(result.current.needsKeyRestore).toBe(false));
     await waitFor(() => expect(result.current.isLoaded).toBe(true), { timeout: 8000 });
   }, 20000);
+});
+
+// 이 블록의 경로들은 실패하면 데이터가 영구히 사라진다.
+describe('useScenarios — 데이터 유실 방어', () => {
+  // 두 시나리오를 서로 다른 암호문으로 구분한다. 호출 순서(mockResolvedValueOnce)에 기대면
+  // 복구 검증과 재적재가 각각 몇 번 복호화하는지에 따라 결과가 달라져 테스트가 깨진다.
+  const good = { isEncrypted: true, ciphertext: 'GOOD', iv: 'y' };
+  const corrupt = { isEncrypted: true, ciphertext: 'CORRUPT', iv: 'y' };
+
+  async function loadedWithEncrypted(key: string | null) {
+    signedIn();
+    if (key) localStorage.setItem(KEY_NAME, key);
+    vi.stubGlobal('fetch', mockFetch({
+      '/api/scenarios': {
+        data: [
+          { id: 's1', name: 'a', isDefault: true, data: good },
+          { id: 's2', name: 'b', isDefault: false, data: corrupt },
+        ],
+      },
+    }));
+    const hook = renderHook(() => useScenarios());
+    await waitFor(() => expect(hook.result.current.isLoaded).toBe(true));
+    return hook;
+  }
+
+  // 틀린 키를 받아들이면 자동저장이 그 키로 서버 데이터를 다시 암호화해 덮어쓴다.
+  // 원래 키를 알아도 복구 불가능하다.
+  test('어느 시나리오도 복호화하지 못하는 키는 거부하고 저장하지 않는다', async () => {
+    decryptData.mockRejectedValue(new Error('bad key'));
+    const { result } = await loadedWithEncrypted(null);
+    await waitFor(() => expect(result.current.needsKeyRestore).toBe(true));
+
+    let accepted: boolean | undefined;
+    await act(async () => { accepted = await result.current.handleRestoreKey('WRONG1'); });
+
+    expect(accepted).toBe(false);
+    expect(localStorage.getItem(KEY_NAME)).toBeNull();
+    expect(result.current.needsKeyRestore).toBe(true);
+  });
+
+  // 하나만 복호화돼도 키는 맞는 것이다. 이때 키를 다시 요구하면 무한 복구 루프가 된다.
+  test('일부만 복호화되면 키를 받아들이고 손상 시나리오를 기억한다', async () => {
+    decryptData.mockRejectedValue(new Error('corrupt'));
+    const { result } = await loadedWithEncrypted(null);
+    await waitFor(() => expect(result.current.needsKeyRestore).toBe(true));
+
+    // s1은 언제나 복호화되고 s2는 언제나 실패한다 — 키는 맞고 s2 데이터만 손상된 상태.
+    decryptData.mockReset();
+    decryptData.mockImplementation(async (payload: { ciphertext: string }) => {
+      if (payload.ciphertext === 'GOOD') return initialParams;
+      throw new Error('corrupt');
+    });
+
+    let accepted: boolean | undefined;
+    await act(async () => { accepted = await result.current.handleRestoreKey('RIGHT1'); });
+
+    expect(accepted).toBe(true);
+    expect(localStorage.getItem(KEY_NAME)).toBe('RIGHT1');
+    await waitFor(() => expect(result.current.needsKeyRestore).toBe(false));
+  });
+
+  test('클라우드 저장이 실패하면 성공으로 표시하지 않는다', async () => {
+    signedIn();
+    localStorage.setItem(KEY_NAME, 'KEY123');
+    encryptData.mockResolvedValue(encrypted);
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      if (init?.method === 'PUT') {
+        return { ok: false, status: 500, json: async () => ({}) } as unknown as Response;
+      }
+      if (url === '/api/scenarios') {
+        return {
+          ok: true,
+          json: async () => ({ data: [{ id: 's1', name: 'x', isDefault: true, data: initialParams }] }),
+        } as unknown as Response;
+      }
+      return { ok: true, json: async () => ({ success: true }) } as unknown as Response;
+    }));
+
+    const { result } = renderHook(() => useScenarios());
+    await waitFor(() => expect(result.current.isLoaded).toBe(true));
+
+    act(() => {
+      result.current.handleUpdateActiveParams((prev) => ({
+        ...prev,
+        userProfile: { ...prev.userProfile, currentAge: 55 },
+      }));
+    });
+
+    await waitFor(() => expect(result.current.saveStatus).toBe('error'), { timeout: 5000 });
+    // 저장 실패인데 lastSaved가 갱신되면 beforeunload 경고까지 사라진다.
+    expect(result.current.lastSaved).toBeNull();
+  }, 10000);
+
+  // 숫자 6자리만 허용하면 10^6(약 20비트)로 시스템 생성 키보다 훨씬 약하다.
+  test('약한 보안키는 거부한다', async () => {
+    signedIn();
+    vi.stubGlobal('fetch', mockFetch({ '/api/scenarios': { data: [] } }));
+    const { result } = renderHook(() => useScenarios());
+    await waitFor(() => expect(result.current.needsKeySetup).toBe(true));
+
+    for (const weak of ['', '12345', '1234567', 'AB!DEF']) {
+      let accepted: boolean | undefined;
+      await act(async () => { accepted = await result.current.handleSetupKey(weak); });
+      expect(accepted, `"${weak}"가 통과했다`).toBe(false);
+    }
+    expect(localStorage.getItem(KEY_NAME)).toBeNull();
+  }, 10000);
 });

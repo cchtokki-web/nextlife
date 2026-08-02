@@ -37,9 +37,11 @@ function none(compiled: CompiledStrategy): SentinelApplication {
 // 추천을 반영하려면 추천이 필요한데, recommendStrategy는 이미 컴파일된 params를 입력으로
 // 요구한다 — 서로의 출력을 서로의 입력으로 요구하는 순환이라 한 함수로 합칠 수 없다.
 //
-// 사용자 params는 건드리지 않는다. 반환값은 engine.run과 화면 표시로만 흘러가며,
-// 추천 계산의 입력은 언제나 센티널 미적용 원본(compiled)이다 — 그래서 "적용 → 재계산 →
-// 재적용" 되먹임이 구조적으로 불가능하다.
+// 이 함수는 입력을 변형하지 않는다. "추천의 입력은 언제나 센티널 미적용 compiled"라는
+// 배선 불변식은 이 파일이 아니라 useStrategyPipeline이 지키고, 그 테스트가 고정한다 —
+// 코어에서 웹 계층의 배선을 근거로 단정하면 배선이 바뀔 때 이 주석부터 거짓이 된다.
+//
+// 지금 채우는 축은 국민연금 개시 나이 하나뿐이다(이름은 복수형이지만).
 export function applyAiSentinels(
   compiled: CompiledStrategy,
   recommendation: StrategyRecommendation | undefined
@@ -50,15 +52,26 @@ export function applyAiSentinels(
   const recommendedPlan = recommendation.recommendedPlan;
   if (!recommendedPlan) return none(compiled);
 
-  // resolveStrategy가 아니라 params.strategy를 직접 본다.
+  // 채워도 되는 상태인지 판정한다. 막으려는 것은 "사용자가 직접 정해 둔 개시 나이를 덮어쓰는
+  // 것"이지 "전략을 저장한 적 없는 새 시나리오"가 아니다.
   //
-  // resolveStrategy는 params.strategy가 없으면 DEFAULT_RETIREMENT_STRATEGY로 폴백하는데,
-  // 그 기본값의 nationalPensionStrategy가 'ai_optimized'다. 그래서 폴백된 값으로 판정하면
-  // "AI에게 맡기겠다고 고른 적이 한 번도 없는" 레거시 시나리오까지 센티널 사용자로 오인한다.
-  // compileStrategy의 통과 경로(strategy 없음 + 레거시 씨앗 없음)는 입력을 비트 단위로
-  // 보존하겠다고 보장하는데, 그 보장이 바로 여기서 깨졌다 — 사용자가 직접 저장해 둔
-  // withdrawalPlan.nationalPensionStartAge가 추천값으로 덮어써졌다.
-  if (compiled.params.strategy?.nationalPensionStrategy !== 'ai_optimized') return none(compiled);
+  // resolveStrategy로 판정하면 안 된다. params.strategy가 없을 때 DEFAULT_RETIREMENT_STRATEGY로
+  // 폴백하는데 그 기본값이 'ai_optimized'라, 레거시 시나리오가 저장해 둔
+  // withdrawalPlan.nationalPensionStartAge까지 추천값으로 덮어썼다(compileStrategy의 통과 경로가
+  // 보장하는 "입력 비트 단위 보존"이 깨졌다).
+  //
+  // 그렇다고 params.strategy만 보면 반대로 과하다. initialParams에는 strategy가 없어 새
+  // 시나리오는 항상 통과 경로를 타는데, 그러면 설정 패널을 한 번도 열지 않은 사용자 — 즉 가장
+  // 흔한 상태 — 에게 자동 채움이 통째로 꺼진다. 화면은 「AI 최적화」를 선택된 채로 보여주므로
+  // 다시 "화면이 말하는 값 ≠ 엔진이 쓴 값"이 된다.
+  //
+  // 그래서 두 경우를 허용한다: 사용자가 명시적으로 센티널을 고른 경우, 그리고 전략도 저장된
+  // 나이도 없어 덮어쓸 것이 애초에 없는 경우.
+  const explicitlyAi = compiled.params.strategy?.nationalPensionStrategy === 'ai_optimized';
+  const nothingToOverwrite =
+    !compiled.params.strategy
+    && compiled.params.withdrawalPlan?.nationalPensionStartAge === undefined;
+  if (!explicitlyAi && !nothingToOverwrite) return none(compiled);
 
   const recommendedAge = recommendedPlan.nationalPensionStartAge;
   // withdrawalPlan이 없는 것(compileStrategy의 통과 경로 등)은 엔진 기본값 65세와

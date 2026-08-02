@@ -7,8 +7,8 @@ import { ChevronDown, Sparkles } from 'lucide-react';
 interface SettingSectionProps {
   icon: ReactNode;
   title: string;
-  // 기본값과 다른 필드 수. 호출부가 "현재 모드에서 보이는 것"과 "숨겨진 것"을 합산해
-  // 넘긴다 — 안 보이는 값도 결과에 영향을 주므로 개수에서 빠지면 안 된다.
+  // 이 섹션에서 지금 모드에 보이고 되돌릴 수 있는 변경 개수. 숨은 값의 존재는 패널 상단
+  // 요약이 따로 책임진다 — 여기서 합치면 펼쳐도 찾을 수 없는 개수를 배지가 말하게 된다.
   changedCount?: number;
   defaultOpen?: boolean;
   // 방금 값이 바뀐 섹션이면 true. 테두리를 잠깐 강조해 "무엇이 결과를 바꿨는지"를 알린다.

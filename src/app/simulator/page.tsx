@@ -244,11 +244,17 @@ export default function Home() {
         ? currentStrategyAnalysis.weaknesses.map(w => `<li style="margin-bottom: 4px;">${w}</li>`).join('')
         : '';
 
-      const hasImprovement = !!recommendation?.improved;
+      // 화면(AiSummaryHero·useBeforeAfterToggle)과 같은 규칙을 쓴다. improved만 보면 센티널
+      // 자동 채움이 이미 개선분을 반영한 뒤에도 true라, 같은 장에 "평생 효용 71"과
+      // "효용 65점 → 71점"이 나란히 인쇄된다.
+      const currentUtilityScore = utility?.score ?? recommendation?.currentUtility.score;
+      const hasImprovement = !!recommendation?.improved
+        && currentUtilityScore !== undefined
+        && recommendation.recommendedUtility.score > currentUtilityScore;
       const recommendationSummaryText = !recommendation
         ? 'AI 추천 전략을 계산할 수 없습니다.'
         : hasImprovement
-          ? `효용 ${recommendation.currentUtility.score}점 → ${recommendation.recommendedUtility.score}점`
+          ? `효용 ${currentUtilityScore}점 → ${recommendation.recommendedUtility.score}점`
           : '현재 전략 유지 권장';
       // 리포트가 인쇄하는 숫자는 effective 기준이므로, 체크리스트도 "이미 반영된 축"을
       // 알아야 한다. 넘기지 않으면 70세로 계산한 리포트가 같은 장에서 "70세로 바꾸세요"라고
@@ -899,7 +905,7 @@ export default function Home() {
             {/* 내 은퇴 전략 = 6개 섹션 (기본 정보 / 은퇴 목표 / 연금 / 투자 / 경제 가정 / 고급 설정) */}
             <GlassCard>
               {/* 추천은 여기서 한 번만 계산해 내려보낸다. 패널이 자체적으로 계산하면
-                  이 앱에서 가장 무거운 계산(최대 162개 후보 시뮬레이션)이 두 배가 된다. */}
+                  이 앱에서 가장 무거운 계산(최대 218개 후보 시뮬레이션)이 두 배가 된다. */}
               <StrategySettingsPanel
                 params={activeParams}
                 onChangeParams={handleUpdateActiveParams}

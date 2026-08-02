@@ -486,7 +486,7 @@ export function recommendStrategy(
   // bestPlan이 null이면 여기서도 null을 그대로 돌려준다. identityPlan을 채워 넣으면 안 된다 —
   // 그 경우 채널링 후보는 `{ ...params.withdrawalPlan(=대개 undefined), isaMaturityDestination: 'asset' }`
   // 으로 평가됐으므로, identityPlan 기반 plan은 한 번도 시뮬레이션되지 않은 전혀 다른 계획이다
-  // (위 :385~389 주석대로 두 계획은 동일 params에서 72점 vs 65점으로 갈린다). ISA 만기 목적지를
+  // (위 baseParamsAfterPhase3 주석대로 두 계획은 동일 params에서 72점 vs 65점으로 갈린다). ISA 만기 목적지를
   // 바꿔야 한다는 사실 자체는 채널링 항목 라벨(CHANNELING_LABEL)이 체크리스트·PDF·AI 프롬프트로
   // 전달하므로, 사용자가 안내를 못 받는 상황은 생기지 않는다.
   //
@@ -509,7 +509,7 @@ export function recommendStrategy(
   //
   // computeItemizedContributions의 동명 항목으로 대신할 수 없다. 그쪽 기준점은 identityPlan이라
   // privatePensionMonthlyTarget이 항상 채워진 상태인데(getIdentityPlan), 'ai_optimized' 전략의
-  // compiled params는 그 키를 아예 지운다 — 위 :385~389 주석대로 두 계획은 동일 params에서
+  // compiled params는 그 키를 아예 지운다 — 위 baseParamsAfterPhase3 주석대로 두 계획은 동일 params에서
   // 72점 vs 65점으로 갈린다. 즉 그 값은 나이 효과와 인출계획 차이가 섞인 수치다.
   //
   // 비용은 runForUtility 1회다. 이미 최대 218개 후보를 돌리는 함수이고 호출부가 이 계산을

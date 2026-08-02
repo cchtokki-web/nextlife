@@ -58,6 +58,9 @@
 <details>
 <summary>원래 분석 (기록 보존)</summary>
 
+> 아래는 해결 이전의 기록이다. 최종 결론과 다를 수 있고, 인용된 줄 번호는 이후 이동으로
+> 낡았다. 현재 동작은 위 요약과 코드를 보라.
+
 #### 자동 채움 결과는 추천 엔진이 평가한 적 없는 계획이라 "개선"이 보장되지 않는다
 
 `src/core/usecases/strategy/applyAiSentinels.ts:48-58`
@@ -112,6 +115,9 @@ KPI·토글 Before와 어긋난다. 지금은 `result.utility`(지금 화면 값
 <details>
 <summary>원래 분석 (기록 보존)</summary>
 
+> 아래는 해결 이전의 기록이다. 최종 결론과 다를 수 있고, 인용된 줄 번호는 이후 이동으로
+> 낡았다. 현재 동작은 위 요약과 코드를 보라.
+
 
 `src/web/features/Dashboard/recommendation/RecommendationChecklist.tsx:56` ·
 `src/web/features/Dashboard/hero/AiSummaryHero.tsx:68`
@@ -127,8 +133,9 @@ KPI·토글 Before와 어긋난다. 지금은 `result.utility`(지금 화면 값
 | 체크리스트 (`totalUtilityDelta`) | `recommendedUtility.score − currentUtility.score` — `currentUtility`는 **센티널 미적용(65세)** | A |
 | 히어로 (`{utility.score} → {recommendedUtility.score}`) | `utility`는 `result.utility` — **자동 채움된(70세)** | B |
 
-**이 표의 히어로 쪽은 2026-08-02 해결됐다** — 왼쪽 항을 `recommendation.currentUtility.score`로
-바꿔 체크리스트와 같은 기준선을 쓰게 했다(`AiSummaryHero.tsx`). 이제 두 표면의 산술이 맞는다.
+**이 표의 히어로 쪽은 2026-08-02 해결됐다.** 다만 방식은 아래 8번에 적힌 대로 두 번 바뀌었다 —
+한때 `recommendation.currentUtility.score`로 옮겼다가 되돌렸고, 최종적으로는 히어로·토글·
+체크리스트가 모두 `result.utility`(지금 화면 값)를 공통 출발점으로 쓴다.
 
 **남은 것은 "이미 적용된 항목을 할 일로 제시한다"는 본래 문제다.** 개별 항목 문구가
 `identityPlan`(65세) 대비로 생성되므로(`RecommendationEngine.ts:213-215`), 엔진이 이미 70세로
@@ -159,6 +166,9 @@ KPI·토글 Before와 어긋난다. 지금은 `result.utility`(지금 화면 값
 
 <details>
 <summary>원래 분석 (기록 보존)</summary>
+
+> 아래는 해결 이전의 기록이다. 최종 결론과 다를 수 있고, 인용된 줄 번호는 이후 이동으로
+> 낡았다. 현재 동작은 위 요약과 코드를 보라.
 
 
 `src/web/features/StrategySettings/StrategySettingsPanel.tsx:159-182` ·
@@ -200,6 +210,9 @@ AI 버튼이 사라졌다. 대신 재투자 권장이 있을 때 「연금 전�
 <details>
 <summary>원래 분석 (기록 보존)</summary>
 
+> 아래는 해결 이전의 기록이다. 최종 결론과 다를 수 있고, 인용된 줄 번호는 이후 이동으로
+> 낡았다. 현재 동작은 위 요약과 코드를 보라.
+
 
 `src/web/features/StrategySettings/fieldVisibility.ts:36-44, 79-93`
 
@@ -220,6 +233,9 @@ AI 버튼이 사라졌다. 대신 재투자 권장이 있을 때 「연금 전�
 
 <details>
 <summary>원래 분석 (기록 보존)</summary>
+
+> 아래는 해결 이전의 기록이다. 최종 결론과 다를 수 있고, 인용된 줄 번호는 이후 이동으로
+> 낡았다. 현재 동작은 위 요약과 코드를 보라.
 
 
 신규 사용자는 기본값이 `'ai_optimized'`라 아무것도 고르지 않아도 센티널 상태다. 추천이 70세를 내면
@@ -243,6 +259,9 @@ FieldRow 배지다(모든 섹션이 접힌 채 마운트 — `StrategySettingsPa
 
 <details>
 <summary>원래 분석 (기록 보존)</summary>
+
+> 아래는 해결 이전의 기록이다. 최종 결론과 다를 수 있고, 인용된 줄 번호는 이후 이동으로
+> 낡았다. 현재 동작은 위 요약과 코드를 보라.
 
 
 `src/web/features/Dashboard/DashboardSection.tsx:81`
@@ -286,9 +305,8 @@ baseline 위에서 계산). 국민연금 나이는 이미 양쪽이 같으므로
 | 목표 우선순위 · 리스크 성향 · 경제 시나리오 | 미정 | (기존 문구 유지 — 이미 정직했다) |
 
 `sentinelOptionCopy.test.ts`가 이 계약을 고정한다. 문구를 한 자씩 고정하지는 않고, **"가장 유리한"
-같은 최적화 약속이 실제로 아무것도 하지 않는 축에 붙는 것**만 막는다. 각 테스트는 `compileStrategy`를
-직접 돌려 그 축이 정말 baseline으로 내려가는지 확인한 뒤 문구를 검사하므로, 나중에 실제로 그 축을
-채우게 되면 테스트가 함께 갱신을 요구한다.
+같은 최적화 약속이 실제로 아무것도 하지 않는 축에 붙는 것**만 막는다. 일부 테스트는 `compileStrategy`를 직접 돌려 그 축이
+정말 baseline으로 내려가는지 확인한 뒤 문구를 검사한다(사적연금·생활비). 나머지 둘은 문구만 본다.
 
 **라벨·아이콘·⭐추천 배지는 그대로 뒀다.** 정적 배지로 "자동 적용"을 표시하는 방안을 검토했으나,
 국민연금의 자동 적용은 조건부다(추천이 있고, 단일 축 효용이 개선일 때만 — 4번 참고). 정적 표시는
@@ -297,6 +315,9 @@ baseline 위에서 계산). 국민연금 나이는 이미 양쪽이 같으므로
 
 <details>
 <summary>원래 분석 (기록 보존)</summary>
+
+> 아래는 해결 이전의 기록이다. 최종 결론과 다를 수 있고, 인용된 줄 번호는 이후 이동으로
+> 낡았다. 현재 동작은 위 요약과 코드를 보라.
 
 
 「연금 전략」 섹션에서 국민연금 `ai_optimized`(자동 적용됨)와 사적연금 `ai_optimized`(무동작)가 위아래
@@ -344,6 +365,9 @@ baseline 위에서 계산). 국민연금 나이는 이미 양쪽이 같으므로
 <details>
 <summary>원래 분석 (기록 보존)</summary>
 
+> 아래는 해결 이전의 기록이다. 최종 결론과 다를 수 있고, 인용된 줄 번호는 이후 이동으로
+> 낡았다. 현재 동작은 위 요약과 코드를 보라.
+
 
 `src/web/components/form/FieldRow.tsx:37-41`
 
@@ -362,7 +386,7 @@ baseline 위에서 계산). 국민연금 나이는 이미 양쪽이 같으므로
 `src/web/hooks/useStrategyPipeline.ts`로 추출하고 `src/tests/web/hooks/useStrategyPipeline.test.tsx`를
 붙였다. `page.tsx`는 1000줄이 넘고 세션·시나리오·PDF·차트에 얽혀 있어 통째로 렌더하는 테스트를
 붙이기 어려웠는데, 파이프라인만 떼어 내니 `renderHook`으로 곧바로 검증된다(부수 효과로 page.tsx가
-65줄 줄었다).
+62줄 줄었다).
 
 핵심 테스트는 `recommendStrategy`를 spy로 감싸 **실제로 넘어간 params의
 `withdrawalPlan.nationalPensionStartAge`가 단 한 번도 자동 채움된 값이 아님**을 단언한다.
@@ -382,6 +406,9 @@ baseline 위에서 계산). 국민연금 나이는 이미 양쪽이 같으므로
 
 <details>
 <summary>원래 분석 (기록 보존)</summary>
+
+> 아래는 해결 이전의 기록이다. 최종 결론과 다를 수 있고, 인용된 줄 번호는 이후 이동으로
+> 낡았다. 현재 동작은 위 요약과 코드를 보라.
 
 
 설계 문서 테스트 계획 #10("되먹임 회귀 — `recommendStrategy`에 넘어가는 params가 센티널 미적용

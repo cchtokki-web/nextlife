@@ -25,7 +25,7 @@ export interface StrategySettingsPanelProps {
   params: SimulationParams;
   onChangeParams: (params: SimulationParams) => void;
   // page.tsx가 이미 계산해 둔 AI 추천. 패널이 직접 recommendStrategy를 부르면 화면 전체에서
-  // 가장 무거운 계산(최대 162개 후보 시뮬레이션)이 params 변경마다 두 번 돈다.
+  // 가장 무거운 계산(최대 218개 후보 시뮬레이션)이 params 변경마다 두 번 돈다.
   recommendation: StrategyRecommendation | undefined;
   // 추천이 없는 이유가 "계산 실패"인지 "개선 여지 없음"인지 구분한다. 실패일 때만
   // 섹션의 AI 추천 버튼에 에러 문구를 보여준다.
@@ -53,7 +53,6 @@ const SECTIONS: ReadonlyArray<{ id: SectionId; title: string; icon: React.ReactN
 // 씨앗을 유도하는 규칙까지 그 안에 있다). 기존 import 경로를 쓰던 코드를 위해 재수출한다.
 export { resolveStrategy };
 
-// AI 추천 버튼을 붙일 섹션. 배우자·경제 가정처럼 AI가 관여하지 않는 섹션은 제외한다.
 // AI 추천 버튼을 붙일 섹션. 그 섹션이 렌더하는 필드를 바꾸는 버튼만 둔다.
 // 'investment'는 빠져 있다 — 그 섹션의 riskProfile/economicScenario는 RecommendationEngine이
 // 추천을 생산하지 않는 축이고, 예전에 이 버튼이 적용하던 배당 재투자는 실제 컨트롤이 있는
@@ -63,11 +62,19 @@ const AI_SECTIONS: ReadonlySet<SectionId> = new Set(['goal', 'pension']);
 export function StrategySettingsPanel({
   params, onChangeParams, recommendation, recommendationFailed, sentinels,
 }: StrategySettingsPanelProps) {
-  // 엔진에 실제로 들어간 국민연금 개시 나이. 자동 채움이 있으면 그 값, 없으면 사용자가 고른
-  // 전략이 컴파일되는 값이다. AI 배지의 '적용/추천'과 「AI 추천」 버튼 노출을 이 값으로 판정한다.
-  const effectiveNationalPensionStartAge = sentinels?.nationalPensionStartAge ?? undefined;
   const strategy = resolveStrategy(params);
   const mode = strategy.mode;
+
+  // 엔진에 실제로 들어간 국민연금 개시 나이. AI 배지의 '적용/추천'과 「AI 추천」 버튼 노출이
+  // 모두 이 한 값을 본다.
+  //
+  // 자동 채움이 없을 때 undefined로 두면 안 된다. 사용자가 「AI 추천」 버튼으로 확정 전략을
+  // 고르면 센티널은 더 이상 개입하지 않는데(그래서 sentinels가 비어 있는데) 엔진은 그 전략이
+  // 컴파일한 나이로 돌고 있다. undefined로 두면 배지가 "방금 적용한 값"을 '추천'이라고
+  // 말하게 된다 — 두 소비처가 같은 값을 각자 계산하다 어긋난 자리다.
+  const effectiveNationalPensionStartAge =
+    sentinels?.nationalPensionStartAge
+    ?? NATIONAL_PENSION_STRATEGY_AGES[strategy.nationalPensionStrategy];
 
   const changed = useMemo(() => collectChangedPaths(params), [params]);
   // 추천 계산은 page.tsx가 한다(그쪽이 useDeferredValue + useBackgroundValue 파이프라인으로
@@ -200,11 +207,10 @@ export function StrategySettingsPanel({
       // nearest('defer_max' 등)와 다르다는 이유로 버튼이 계속 열린다. 눌러도 컴파일 결과가
       // 같아 대시보드 숫자는 하나도 움직이지 않고, 배지만 '적용'에서 '추천'으로 내려간다.
       const nearestAge = NATIONAL_PENSION_STRATEGY_AGES[nearest];
-      const effectiveAge = effectiveNationalPensionStartAge
-        ?? NATIONAL_PENSION_STRATEGY_AGES[currentStrategy.nationalPensionStrategy];
 
       // 연금 축에 바꿀 것이 없어도 배당 재투자만 개선된 경우가 있다. 그때도 버튼은 열려야 한다.
-      if (effectiveAge === nearestAge && currentStrategy.preferIsaFirst === preferIsaFirst) {
+      if (effectiveNationalPensionStartAge === nearestAge
+        && currentStrategy.preferIsaFirst === preferIsaFirst) {
         return applyReinvest();
       }
 

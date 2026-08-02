@@ -250,6 +250,13 @@ export function useScenarios() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ name, data: payloadToSave, isDefault }),
         });
+        // res.ok를 먼저 본다. 서버가 500을 주면 본문이 { error: ... }라 newScenario가
+        // undefined가 되고, if 블록을 조용히 건너뛴 채 함수가 정상 종료했다. 그러면 시나리오가
+        // 없는데 화면은 정상으로 보이고(activeParams가 initialParams로 폴백) 자동저장은
+        // activeScenarioId가 null이라 한 번도 돌지 않는다 — 사용자가 입력한 것이 전부 사라진다.
+        if (!res.ok) {
+          throw new Error(`시나리오를 만들지 못했습니다 (HTTP ${res.status})`);
+        }
         const { data: newScenario } = await res.json();
         if (newScenario) {
           // 서버가 반환한 payload는 방금 우리가 암호화해서 보낸 것과 동일하므로, 복호화에
@@ -280,6 +287,9 @@ export function useScenarios() {
         }
       } catch (err) {
         console.error('Failed to create scenario:', err);
+        // 조용히 넘어가면 사용자는 저장되고 있다고 믿은 채 계속 입력한다.
+        setSaveStatus('error');
+        alert('시나리오를 만들지 못했습니다. 잠시 후 다시 시도해 주세요.');
       }
     } else {
       const newId = 'local-' + generateId();
@@ -312,7 +322,7 @@ export function useScenarios() {
   //
   // 이펙트가 아니라 티커 목록이 바뀐 순간 렌더 중에 조정한다. 이펙트로 하면 옛 분류로 한 번
   // 커밋한 뒤 다시 렌더되어, 그 사이 대시보드가 잘못 분류된 자산으로 계산된다.
-  // scenarios는 조건에 넣지 않는다 — 넣으면 자기가 만든 갱신에 다시 반응해 무한 루프가 된다.
+  // 루프는 migratedForTickers 래치가 막는다 — 같은 etfTickers 참조에 대해 한 번만 돈다.
   const [migratedForTickers, setMigratedForTickers] = useState<string[] | null>(null);
   if (isLoaded && scenarios.length > 0 && etfTickers.length > 10 && migratedForTickers !== etfTickers) {
     setMigratedForTickers(etfTickers);
@@ -355,6 +365,13 @@ export function useScenarios() {
   // Fetch scenarios when logged in
   useEffect(() => {
     const userId = session?.user?.id;
+    // isLoaded를 가드와 의존성에 함께 둔다(바로 위 비로그인 이펙트와 같은 형태).
+    //
+    // 이게 없으면 handleRestoreKey가 요청 키를 무효화해도 이 이펙트를 다시 돌릴 방법이 없다.
+    // 보통은 같은 함수의 setLocalKey가 의존성을 바꿔 주지만, 복구한 키가 이미 들고 있던 키와
+    // 같으면(시나리오 하나만 손상돼 키 자체는 맞는 경우 — corruptedScenarioIdsRef가 다루는
+    // 바로 그 상황) React가 bail-out해 의존성이 그대로다. 그러면 화면이 로딩에 갇힌다.
+    if (isLoaded) return;
     if (status === 'authenticated') {
       if (userId) {
         const storedKey = localStorage.getItem(`nextlife_e2ee_key_${userId}`);
@@ -469,7 +486,7 @@ export function useScenarios() {
           setLoadedRequestKey(loadRequestKey);
         });
     }
-  }, [status, localKey, retryCount]);
+  }, [status, localKey, retryCount, isLoaded]);
 
   // Get current active params
   const activeParams = scenarios.find(s => s.id === activeScenarioId)?.data || initialParams;
@@ -736,7 +753,9 @@ export function useScenarios() {
       setLocalKey(cleanKey);
       setIsBackupKeyBackedUp(true);
       setNeedsKeyRestore(false);
-      setLoadedRequestKey(null); // 다음 렌더에서 isLoaded가 false가 되어 재적재된다
+      // 요청 키를 무효화해 재적재를 촉발한다. 로딩 이펙트가 isLoaded를 의존성으로 갖고
+      // 있으므로, 위 setLocalKey가 값을 바꾸지 않는 경우(같은 키로 복구)에도 다시 돈다.
+      setLoadedRequestKey(null);
       return true;
     },
     loadError,

@@ -63,7 +63,10 @@ export function SimpleSimulator() {
   // 로그인하면 결과를 바로 보여준다. 이펙트가 아니라 상태 전이에 맞춰 렌더 중에 조정한다 —
   // 이펙트로 하면 입력 화면으로 한 번 커밋한 뒤 결과로 바뀌어 화면이 튄다.
   // hasRun은 "다시 계산하기"로 되돌릴 수 있어야 하므로 파생값이 아니라 상태로 남긴다.
-  const [prevStatus, setPrevStatus] = useState(status);
+  // 초깃값을 null로 둔다. status를 그대로 넣으면 "첫 렌더부터 이미 authenticated"인 경우
+  // (SPA 내비게이션, 개발 모드의 mockSession)에 전이가 없어 hasRun이 켜지지 않는다 —
+  // 원래 이펙트는 마운트 시에도 한 번 돌았으므로 그 경우를 덮었다.
+  const [prevStatus, setPrevStatus] = useState<typeof status | null>(null);
   if (status !== prevStatus) {
     setPrevStatus(status);
     if (status === 'authenticated') setHasRun(true);

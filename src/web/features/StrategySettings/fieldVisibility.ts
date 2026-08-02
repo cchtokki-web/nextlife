@@ -74,8 +74,8 @@ export const SECTION_FIELDS: Record<SectionId, ReadonlyArray<FieldPath>> = {
   ],
 };
 
-// 간편 모드에서 보이는 필드. "필수 입력만, 나머지는 AI가 추천" 원칙에 따라
-// 나이 3개 + 생활비 전략 + 목표 우선순위 + 연금 전략 2개로 제한한다.
+// 간편 모드에서 보이는 필드. 나이 3개 + 생활비 전략 + 목표 우선순위 + 연금 전략 2개
+// + 배당 재투자. "필수 입력만" 원칙의 예외는 배당 재투자 하나이며 근거는 아래 주석에 있다.
 const SIMPLE_FIELDS: ReadonlySet<FieldPath> = new Set([
   'userProfile.currentAge',
   'userProfile.retirementAge',

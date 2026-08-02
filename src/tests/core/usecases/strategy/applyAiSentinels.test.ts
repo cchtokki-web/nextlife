@@ -171,21 +171,19 @@ describe('applyAiSentinels', () => {
     expect(applyAiSentinels(compiled, makeRecommendation(plan(65))).compiled).toBe(compiled);
   });
 
-  test('strategy 필드가 없는 통과 경로(compileStrategy)에서는 센티널을 채우지 않는다', () => {
-    // baseParams에는 strategy가 없으므로 compileStrategy는 통과 경로를 타 params를
-    // 그대로 반환한다(withdrawalPlan도 undefined).
-    //
-    // 이때 params.strategy가 아니라 resolveStrategy로 판정하면 안 된다 —
-    // DEFAULT_RETIREMENT_STRATEGY의 nationalPensionStrategy가 'ai_optimized'라서
-    // "AI에게 맡기겠다고 고른 적 없는" 시나리오까지 센티널 사용자로 오인하게 된다.
+  test('전략도 저장된 나이도 없는 새 시나리오는 채운다', () => {
+    // initialParams에는 strategy가 없어 새 시나리오는 항상 compileStrategy의 통과 경로를
+    // 탄다. 여기서 채우지 않으면 설정 패널을 한 번도 열지 않은 사용자 — 가장 흔한 상태 —
+    // 에게 자동 채움이 통째로 꺼진다. 화면은 「AI 최적화」를 선택된 채로 보여주므로
+    // "화면이 말하는 값 ≠ 엔진이 쓴 값"이 된다.
     const compiled = compileStrategy(baseParams);
+    expect(compiled.params.strategy).toBeUndefined();
     expect(compiled.params.withdrawalPlan).toBeUndefined();
 
-    // 65세(= 엔진 기본값)가 아닌 나이를 추천해야 "조건에서 걸러졌는가"와 "나이가 같아서
-    // 반환됐는가"가 구분된다. plan(65)로는 두 경로가 같은 결과를 내 검증력이 없다.
-    const { compiled: applied } = applyAiSentinels(compiled, makeRecommendation(plan(70)));
+    const applied = applyAiSentinels(compiled, makeRecommendation(plan(70)));
 
-    expect(applied).toBe(compiled);
+    expect(applied.compiled.params.withdrawalPlan?.nationalPensionStartAge).toBe(70);
+    expect(applied.appliedFields).toEqual(['nationalPensionStartAge']);
   });
 
   test('통과 경로에 사용자가 저장해 둔 수령 나이가 있으면 추천값으로 덮어쓰지 않는다', () => {
