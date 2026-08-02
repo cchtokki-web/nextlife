@@ -6,7 +6,6 @@ import {
   PrivatePension,
   IsaAccount,
   AssetCurrency,
-  TaxSettings,
   PrivatePensionTaxationMethod,
   UtilityConfig,
 } from '../entities/types';
@@ -23,7 +22,7 @@ import {
   calculateComprehensiveTaxAndHealthInsuranceKRW,
   calculatePrivatePensionExcessTaxNeededKRW,
 } from './tax/TaxEngine';
-import { resolveTaxSettings } from './tax/taxRates';
+import { TaxContext, resolveTaxContext } from './tax/taxContext';
 import {
   getNationalPensionAdjustmentFactor,
   NATIONAL_PENSION_NORMAL_START_AGE,
@@ -235,7 +234,7 @@ export class SimulationEngine {
     return amountDisplay - remaining;
   }
 
-  private initializeAssets(params: SimulationParams, currentTaxSettings: TaxSettings): { activeAssets: ActiveAsset[], activePensions: ActivePension[], activeIsas: ActiveIsa[], infRateAnnual: number } {
+  private initializeAssets(params: SimulationParams, taxCtx: TaxContext): { activeAssets: ActiveAsset[], activePensions: ActivePension[], activeIsas: ActiveIsa[], infRateAnnual: number } {
     const { assets = [], privatePensions = [], isaAccounts = [], inflationRate = 2, inflationMode = 'real' } = params;
     
     const infRateAnnual = inflationRate / 100;
@@ -247,7 +246,7 @@ export class SimulationEngine {
       const growthRateMonthly = Math.pow(Math.max(0, 1 + growthRateAnnual), 1 / 12) - 1;
       const divRateMonthly = (asset.dividendYield / 100) / 12;
       
-      const taxRate = getDividendTaxRate(asset.assetMarket, asset.currency, currentTaxSettings);
+      const taxRate = getDividendTaxRate(asset.assetMarket, asset.currency, taxCtx);
 
       return {
         ...asset,
@@ -408,10 +407,14 @@ export class SimulationEngine {
       withdrawalPlan
     } = params;
 
-    const currentTaxSettings: TaxSettings = resolveTaxSettings(taxSettings);
+    // 세법 프로필 + 사용자 설정을 한 번만 확정해 전 계산 경로가 같은 것을 본다.
+    // params.taxLawVersion이 계산에 실제로 도달하는 유일한 지점이다(taxContext.ts 주석 참고).
+    const taxCtx = resolveTaxContext(taxSettings, params.taxLawVersion);
+    // 아래 로직 다수가 설정만 참조하므로 별칭을 둔다. 프로필이 필요한 곳은 taxCtx를 직접 쓴다.
+    const currentTaxSettings = taxCtx.settings;
 
     const exchangeRate = this.getExchangeRate(baseExchangeRate, exchangeScenario);
-    const { activeAssets, activePensions, activeIsas, infRateAnnual } = this.initializeAssets(params, currentTaxSettings);
+    const { activeAssets, activePensions, activeIsas, infRateAnnual } = this.initializeAssets(params, taxCtx);
     // dividendYield는 시간에 따라 변하지 않으므로 인출 순서를 한 번만 계산해 재사용한다.
     // 원본 activeAssets 배열(순서)은 잉여현금 재투자·ISA 만기 이동 등 다른 로직에서 그대로 쓰인다.
     const withdrawalOrderedAssets = sortAssetsForWithdrawal(activeAssets, withdrawalPlan?.assetSellOrderStrategy);
@@ -530,7 +533,7 @@ export class SimulationEngine {
           }
         }
 
-        const natTax = calculateNationalPensionTaxKRW(natAmountRaw);
+        const natTax = calculateNationalPensionTaxKRW(natAmountRaw, taxCtx);
         monthlyNationalPensionDisplay = this.convertValue(natAmountRaw - natTax, 'KRW', displayCurrency, exchangeRate);
         monthlyNatTaxDisplay = this.convertValue(natTax, 'KRW', displayCurrency, exchangeRate);
         monthlyNatPreTaxTotalDisplay = this.convertValue(natAmountRaw, 'KRW', displayCurrency, exchangeRate);
@@ -561,7 +564,7 @@ export class SimulationEngine {
           if (isa.currentBalance < 0) isa.currentBalance = 0;
           const growth = isa.currentBalance * isa.returnRateMonthly;
           const dividend = isa.currentBalance * isa.divRateMonthly;
-          const monthlyLimit = this.convertValue(20000000 / 12, 'KRW', isa.currency, exchangeRate);
+          const monthlyLimit = this.convertValue(taxCtx.profile.isaAnnualLimitKRW / 12, 'KRW', isa.currency, exchangeRate);
           let contribution = isRetired ? 0 : isa.monthlyContribution;
           if (contribution > monthlyLimit) contribution = monthlyLimit;
           if (isaIdx === 0) {
@@ -578,8 +581,8 @@ export class SimulationEngine {
 
           if (isa.monthsSinceInception >= isa.maturityYears * 12) {
             const totalProfit = isa.currentBalance - isa.totalInvested;
-            const exemptionLimit = this.convertValue(getIsaExemptionLimitKRW(isa.type), 'KRW', isa.currency, exchangeRate);
-            const taxAmount = calculateIsaMaturityTax(totalProfit, exemptionLimit);
+            const exemptionLimit = this.convertValue(getIsaExemptionLimitKRW(isa.type, taxCtx), 'KRW', isa.currency, exchangeRate);
+            const taxAmount = calculateIsaMaturityTax(totalProfit, exemptionLimit, taxCtx);
             const netBalance = isa.currentBalance - taxAmount;
             const preferPension = (withdrawalPlan?.isaMaturityDestination ?? 'pension') === 'pension';
 
@@ -625,7 +628,7 @@ export class SimulationEngine {
 
         // Pensions Processing
         let monthlyPensionIncomeNetDisplay = 0;
-        let monthlyPensionPreTaxLimitRemainingKRW = (currentTaxSettings.privatePensionLimit ?? 15000000) / 12;
+        let monthlyPensionPreTaxLimitRemainingKRW = (currentTaxSettings.privatePensionLimit ?? taxCtx.profile.privatePensionLimitKRW) / 12;
         // privatePensionMonthlyTarget은 계좌 개별이 아닌 "전체 사적연금 계좌 합산" 목표액이다.
         // 계좌를 순서대로 처리하며 이 잔여 목표액만큼만 인출하도록 공유 상태로 관리한다.
         let remainingMonthlyPensionTargetKRW = withdrawalPlan?.privatePensionMonthlyTarget;
@@ -645,7 +648,7 @@ export class SimulationEngine {
         // 보정된다. 이 브릿지 분기는 !isRetired, 정상/후행 인출 분기는 isRetired(또는 은퇴 전엔
         // monthlyTargetSpending이 0으로 강제돼 shortfall이 발생하지 않음)로 갈리므로, 실제로는
         // 두 캡이 같은 해에 함께 소진되는 일은 없다.
-        let remainingBridgeLimitKRW = (currentTaxSettings.privatePensionLimit ?? 15000000) / 12;
+        let remainingBridgeLimitKRW = (currentTaxSettings.privatePensionLimit ?? taxCtx.profile.privatePensionLimitKRW) / 12;
 
         activePensions.forEach((pension) => {
           if (pension.currentBalance < 0) pension.currentBalance = 0;
@@ -686,7 +689,7 @@ export class SimulationEngine {
             // pensionWithdrawalsStarted가 false면 drawAmountRaw는 항상 0이라 세율 값 자체는 결과에
             // 영향을 주지 않지만, getPrivatePensionIncomeTaxRate는 "55세 미만으로 호출되지 않는다"는
             // 불변식을 전제하므로(taxRates.ts 주석 참고) 그 불변식을 실제로 지키기 위해 게이트를 건다.
-            const taxRate = pensionWithdrawalsStarted ? getPrivatePensionIncomeTaxRate(currentAge) : 0;
+            const taxRate = pensionWithdrawalsStarted ? getPrivatePensionIncomeTaxRate(currentAge, taxCtx) : 0;
 
             const drawAmountTax = drawAmountRaw * taxRate;
             const drawAmountNet = drawAmountRaw - drawAmountTax;
@@ -709,7 +712,7 @@ export class SimulationEngine {
             const limitInPensionCurrency = this.convertValue(
               Math.max(0, remainingBridgeLimitKRW), 'KRW', pension.currency, exchangeRate
             );
-            const taxRate = getPrivatePensionIncomeTaxRate(currentAge);
+            const taxRate = getPrivatePensionIncomeTaxRate(currentAge, taxCtx);
 
             // 인출액은 ISA가 이번 달 실제로 받을 수 있는 만큼으로 제한한다 — 놓을 곳이 없는 돈을
             // 먼저 빼서 과세한 뒤 버리면 자금이 소멸한다(총자산 보존 위반). 이 엔진의 다른 캡들
@@ -786,7 +789,7 @@ export class SimulationEngine {
           // 55세 이상이면 법정 최저 나이(55세)부터 바로 후행 인출한다 — 부족분이 생긴 응급
           // 상황에서는 있는 돈을 최대한 활용하는 쪽(조기에라도 인출)이 맞다.
           if (remainingShortfall > 0 && currentAge >= PRIVATE_PENSION_MIN_START_AGE) {
-            const taxRate = getPrivatePensionIncomeTaxRate(currentAge);
+            const taxRate = getPrivatePensionIncomeTaxRate(currentAge, taxCtx);
             for (const pension of activePensions) {
               let pensionValueNetDisplay = this.convertValue(pension.currentBalance, pension.currency, displayCurrency, exchangeRate) * (1 - taxRate);
               
@@ -846,7 +849,7 @@ export class SimulationEngine {
           annualRawFinancialIncomeKRW,
           annualRawPensionIncomeKRW: annualPrivatePensionPreTaxKRW + annualNationalPensionPreTaxKRW,
         },
-        currentTaxSettings
+        taxCtx
       );
       // 부과액이 아니라 실제 징수액을 기록한다(collectTax 주석 참조).
       let annualComprehensiveTaxPaidDisplay = this.convertValue(comprehensiveTaxKRW, 'KRW', displayCurrency, exchangeRate);
@@ -872,7 +875,7 @@ export class SimulationEngine {
       // Private pension high tax threshold adjustment
       let privatePensionTaxMethod: PrivatePensionTaxationMethod = 'none';
       {
-        const { taxKRW: totalPensionTaxNeededKRW, method } = calculatePrivatePensionExcessTaxNeededKRW(annualPrivatePensionPreTaxKRW, currentTaxSettings);
+        const { taxKRW: totalPensionTaxNeededKRW, method } = calculatePrivatePensionExcessTaxNeededKRW(annualPrivatePensionPreTaxKRW, taxCtx);
         privatePensionTaxMethod = method;
         const totalPensionTaxNeededDisplay = this.convertValue(totalPensionTaxNeededKRW, 'KRW', displayCurrency, exchangeRate);
         const pensionTaxAdjustmentDisplay = Math.max(0, totalPensionTaxNeededDisplay - annualPensionTaxPaid);
@@ -890,7 +893,7 @@ export class SimulationEngine {
       const isaAssetsDisplay = activeIsas.reduce((sum, i) => sum + this.convertValue(i.currentBalance, i.currency, displayCurrency, exchangeRate), 0);
       const totalAssetsDisplay = stockAssetsDisplay + pensionAssetsDisplay + isaAssetsDisplay;
 
-      const hasTaxWarning = annualRawFinancialIncomeKRW > 20000000;
+      const hasTaxWarning = annualRawFinancialIncomeKRW > taxCtx.profile.financialIncomeThresholdKRW;
       const pensionIncome = annualNationalPensionIncome + annualPrivatePensionIncome;
       const totalIncome = annualDividendIncome + pensionIncome + annualOtherIncome;
 
