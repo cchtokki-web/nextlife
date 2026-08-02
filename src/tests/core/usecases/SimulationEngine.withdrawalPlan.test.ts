@@ -53,10 +53,70 @@ describe('SimulationEngine withdrawalPlan (인출 정책 파라미터화)', () =
     displayCurrency: 'KRW',
   };
 
-  test('회귀 가드: withdrawalPlan 미지정 시 결과가 기존 스냅샷과 완전히 동일해야 한다', () => {
+  // 회귀 가드 스냅샷을 둘로 나눈 이유.
+  //
+  // 예전에는 result 객체를 통째로 찍었다(32KB, 36개 연도 × 25개 필드). 그 형태에서는
+  // 세율을 하나만 바꿔도 스냅샷 전체가 깨지고, diff를 읽어도 "계획 자체가 달라진 것"인지
+  // "세금 항목만 조정된 것"인지 구분할 수 없다. 그래서 실무적으로는 -u로 통째 갱신하게
+  // 되고, 그 순간 회귀 가드로서의 값어치가 사라진다.
+  //
+  // 요약 스칼라와 세금 상세를 분리하면 신호가 나뉜다:
+  //   - 요약이 깨졌다  → 인출 계획·자산 곡선이 실제로 달라졌다. 반드시 근거를 따져야 한다.
+  //   - 세금만 깨졌다  → 세율/과세 로직 변경의 예상된 결과. 방향만 확인하면 된다.
+  //
+  // 연도별 전체를 버리지 않기 위해 세금 상세는 대표 3개 연도(첫 해 / 은퇴 시점 /
+  // 마지막 해)를 찍는다. 축적기·인출기·종료 시점에서 각각 다른 세금 경로가 살아 있다.
+
+  test('회귀 가드(요약): withdrawalPlan 미지정 시 계획 수준 지표가 동일해야 한다', () => {
     const engine = new SimulationEngine();
     const result = engine.run(baseParams);
-    expect(result).toMatchSnapshot();
+
+    expect({
+      endingAssets: result.endingAssets,
+      depletionAge: result.depletionAge,
+      fireAge: result.fireAge,
+      retirementScore: result.retirementScore,
+      retirementGrade: result.retirementGrade,
+      goalAchievementRate: result.goalAchievementRate,
+      householdEndAge: result.householdEndAge,
+      retirementAssetsAtRetirement: result.retirementAssetsAtRetirement,
+      yearCount: result.yearlyResults.length,
+    }).toMatchSnapshot();
+  });
+
+  test('회귀 가드(세금 상세): 대표 3개 연도의 세금·소득 내역이 동일해야 한다', () => {
+    const engine = new SimulationEngine();
+    const result = engine.run(baseParams);
+
+    const { retirementAge } = baseParams.userProfile;
+    const first = result.yearlyResults[0];
+    const atRetirement = result.yearlyResults.find((r) => r.age === retirementAge);
+    const last = result.yearlyResults[result.yearlyResults.length - 1];
+
+    expect(atRetirement).toBeDefined();
+
+    const detail = (r: (typeof result.yearlyResults)[number]) => ({
+      age: r.age,
+      totalAssets: r.totalAssets,
+      stockAssets: r.stockAssets,
+      pensionAssets: r.pensionAssets,
+      preTaxTotalIncome: r.preTaxTotalIncome,
+      totalIncome: r.totalIncome,
+      spending: r.spending,
+      dividendTaxPaid: r.dividendTaxPaid,
+      pensionTaxPaid: r.pensionTaxPaid,
+      nationalPensionTaxPaid: r.nationalPensionTaxPaid,
+      comprehensiveTaxPaid: r.comprehensiveTaxPaid,
+      healthInsurancePaid: r.healthInsurancePaid,
+      privatePensionTaxMethod: r.privatePensionTaxMethod,
+      hasTaxWarning: r.hasTaxWarning,
+    });
+
+    expect({
+      첫해: detail(first),
+      은퇴시점: detail(atRetirement!),
+      마지막해: detail(last),
+    }).toMatchSnapshot();
   });
 
   test('withdrawalPlan.privatePensionMonthlyTarget으로 사적연금 세전 인출액이 목표치 근방으로 제한된다', () => {
