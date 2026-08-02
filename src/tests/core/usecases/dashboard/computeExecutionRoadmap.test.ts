@@ -43,6 +43,7 @@ function makeRecommendation(
 ): StrategyRecommendation {
   return {
     currentUtility: utility,
+    nationalPensionOnlyUtility: null,
     recommendedUtility: utility,
     recommendedPlan,
     recommendedAssetReinvestment: null,

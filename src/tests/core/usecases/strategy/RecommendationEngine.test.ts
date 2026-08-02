@@ -303,6 +303,53 @@ describe('recommendStrategy - recommendedResult', () => {
   });
 });
 
+describe('recommendStrategy - nationalPensionOnlyUtility', () => {
+  test('추천 나이만 사용자의 실제 인출계획에 얹은 효용을 계산한다', () => {
+    const engine = new SimulationEngine();
+    const recommendation = recommendStrategy(paramsWithLargePension, engine);
+    expect(recommendation.improved).toBe(true);
+
+    const recommendedAge = recommendation.recommendedPlan?.nationalPensionStartAge;
+    expect(typeof recommendedAge).toBe('number');
+
+    const currentAge = paramsWithLargePension.withdrawalPlan?.nationalPensionStartAge ?? 65;
+    // 이 픽스처에서 추천 나이가 baseline과 같아지면 아래 단언이 무의미해진다.
+    expect(recommendedAge).not.toBe(currentAge);
+    expect(recommendation.nationalPensionOnlyUtility).not.toBeNull();
+
+    // 기준점이 identityPlan이 아니라 "사용자의 params + 나이만 교체"임을 직접 재현해 확인한다.
+    // identityPlan 기준이면 privatePensionMonthlyTarget 등 다른 필드까지 함께 바뀌어
+    // 다른 점수가 나온다.
+    const onlyAgeParams: SimulationParams = {
+      ...paramsWithLargePension,
+      withdrawalPlan: {
+        ...(paramsWithLargePension.withdrawalPlan ?? {}),
+        nationalPensionStartAge: recommendedAge,
+      },
+    };
+    const expected = computeLifetimeUtility(
+      engine.runForUtility(onlyAgeParams),
+      onlyAgeParams,
+      DEFAULT_UTILITY_CONFIG
+    );
+
+    expect(recommendation.nationalPensionOnlyUtility?.score).toBe(expected.score);
+    expect(recommendation.nationalPensionOnlyUtility?.components).toEqual(expected.components);
+  });
+
+  test('개선안이 없으면 null이다', () => {
+    const engine = new SimulationEngine();
+    const noOptimizableDimensionParams: SimulationParams = {
+      ...paramsWithLargePension,
+      privatePensions: [],
+      nationalPension: { expectedMonthlyAmount: 0 },
+    };
+    const recommendation = recommendStrategy(noOptimizableDimensionParams, engine);
+    expect(recommendation.improved).toBe(false);
+    expect(recommendation.nationalPensionOnlyUtility).toBeNull();
+  });
+});
+
 describe('recommendStrategy - itemizedContributions', () => {
   test('improved가 false면 itemizedContributions는 빈 배열이다', () => {
     const engine = new SimulationEngine();

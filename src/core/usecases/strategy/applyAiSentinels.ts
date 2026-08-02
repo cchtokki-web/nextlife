@@ -45,6 +45,21 @@ export function applyAiSentinels(
   // 무효화되어 이 화면에서 가장 무거운 렌더(engine.run)가 매번 다시 돈다.
   if (recommendedAge === currentAge) return compiled;
 
+  // 개선이 확인된 경우에만 채운다.
+  //
+  // recommendedPlan은 6개 필드를 함께 최적화한 결과이고, 후보 평가는 withdrawalPlan을 통째로
+  // 교체해 이뤄진다. 그중 나이 하나만 사용자의 계획에 이식하면 추천 엔진이 한 번도 평가한 적
+  // 없는 조합이 되므로 "추천 = 개선"이 그대로 옮겨오지 않는다. 예를 들어 그리드가 "60세
+  // 조기수령 + 일반자산 인출 70세 연기"를 묶어서 고른 경우, 나이만 떼어 오면 일반자산은 은퇴
+  // 즉시 인출되는 채로 국민연금만 평생 30% 깎인 계획이 된다.
+  //
+  // nationalPensionOnlyUtility가 정확히 그 조합을 currentUtility와 같은 기준선에서 채점한
+  // 값이다(RecommendationEngine이 계산한다). null이면 판단 근거가 없다는 뜻이므로 보수적으로
+  // 사용자 계획을 그대로 둔다.
+  const onlyUtility = recommendation.nationalPensionOnlyUtility;
+  if (!onlyUtility) return compiled;
+  if (onlyUtility.score <= recommendation.currentUtility.score) return compiled;
+
   return {
     ...compiled,
     params: {

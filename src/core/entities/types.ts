@@ -300,6 +300,20 @@ export interface UtilityBreakdown {
 
 export interface StrategyRecommendation {
   currentUtility: UtilityBreakdown; // 기존 로직(baseline) Utility
+  // recommendedPlan의 nationalPensionStartAge "하나만" 사용자의 현재 인출계획 위에 얹었을 때의
+  // Utility. currentUtility와 같은 기준선에서 측정되므로 두 값을 직접 비교할 수 있다.
+  //
+  // itemizedContributions의 동명 항목과 다르다. 그쪽은 기준점이 identityPlan이라
+  // privatePensionMonthlyTarget 등 다른 필드까지 함께 바뀐 상태의 효과를 재는 반면
+  // (getIdentityPlan은 그 값을 항상 채우는데 'ai_optimized' 전략의 compiled params는 그 키를
+  // 아예 지운다 — 동일 params에서 72점 vs 65점으로 갈리는 것이 확인돼 있다), 이 값은
+  // 사용자의 실제 계획에서 나이 축만 움직인 결과다.
+  //
+  // 용도는 AI 센티널 자동 채움(applyAiSentinels)의 안전 판정이다. 추천 격자는 6개 필드를
+  // 함께 최적화하므로 그중 하나만 떼어 이식하면 평가된 적 없는 조합이 되고, 그 조합이
+  // baseline보다 나쁠 수 있다. 나이가 baseline과 같아 계산할 필요가 없거나 시뮬레이션이
+  // 실패하면 null이다.
+  nationalPensionOnlyUtility: UtilityBreakdown | null;
   recommendedUtility: UtilityBreakdown; // 최고점 후보 Utility
   // baseline보다 Utility가 개선되는 후보를 찾았을 때만 해당 WithdrawalPlan이 채워지고, 그렇지
   // 않으면 null(= baseline 유지 권장). "부분 override 패치"인 WithdrawalPlan과 달리 여기서는

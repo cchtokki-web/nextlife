@@ -97,6 +97,7 @@ const zeroDeltas: StrategyRecommendation['deltas'] = {
 
 const recommendation: StrategyRecommendation = {
   currentUtility: utility,
+  nationalPensionOnlyUtility: null,
   recommendedUtility: { ...utility, score: 81 },
   recommendedPlan: null,
   recommendedAssetReinvestment: null,

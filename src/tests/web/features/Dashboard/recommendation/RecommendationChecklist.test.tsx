@@ -33,6 +33,7 @@ const zeroDeltas: StrategyRecommendation['deltas'] = {
 function makeRecommendation(overrides: Partial<StrategyRecommendation>): StrategyRecommendation {
   return {
     currentUtility: utility,
+    nationalPensionOnlyUtility: null,
     recommendedUtility: { ...utility, score: 81 },
     recommendedPlan: null,
     recommendedAssetReinvestment: null,

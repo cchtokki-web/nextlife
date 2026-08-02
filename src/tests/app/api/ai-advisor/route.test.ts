@@ -47,6 +47,7 @@ describe('buildSimulationContextText - Utility Score 반영', () => {
   test('recommendation이 baseline보다 개선되면 추천 이유를 포함한다', () => {
     const recommendation: StrategyRecommendation = {
       currentUtility: { ...baseUtility, score: 83 },
+      nationalPensionOnlyUtility: null,
       recommendedUtility: { ...baseUtility, score: 87 },
       recommendedPlan: {
         privatePensionMonthlyTarget: 0,
@@ -82,6 +83,7 @@ describe('buildSimulationContextText - Utility Score 반영', () => {
   test('recommendedNewPensionContribution이 true면 신규 납입 가정 캐비트를 포함한다', () => {
     const recommendation: StrategyRecommendation = {
       currentUtility: { ...baseUtility, score: 70 },
+      nationalPensionOnlyUtility: null,
       recommendedUtility: { ...baseUtility, score: 85 },
       recommendedPlan: null,
       recommendedAssetReinvestment: null,
@@ -106,6 +108,7 @@ describe('buildSimulationContextText - Utility Score 반영', () => {
   test('recommendation이 baseline과 동일하면(개선 없음) 추천 관련 줄을 추가하지 않는다', () => {
     const recommendation: StrategyRecommendation = {
       currentUtility: { ...baseUtility, score: 83 },
+      nationalPensionOnlyUtility: null,
       recommendedUtility: { ...baseUtility, score: 83 },
       recommendedPlan: null,
       recommendedAssetReinvestment: null,

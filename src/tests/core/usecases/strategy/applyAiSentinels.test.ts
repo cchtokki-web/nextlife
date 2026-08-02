@@ -2,6 +2,7 @@ import { describe, test, expect } from 'vitest';
 import { applyAiSentinels } from '@/core/usecases/strategy/applyAiSentinels';
 import { compileStrategy, DEFAULT_RETIREMENT_STRATEGY } from '@/core/usecases/strategy/compileStrategy';
 import { SimulationEngine } from '@/core/usecases/SimulationEngine';
+import { recommendStrategy } from '@/core/usecases/strategy/RecommendationEngine';
 import {
   CompleteWithdrawalPlan, NationalPensionStrategy, SimulationParams, StrategyRecommendation,
   UtilityBreakdown,
@@ -49,12 +50,18 @@ const plan = (nationalPensionStartAge: number): CompleteWithdrawalPlan => ({
   monthlySpendingMultiplier: 1,
 });
 
+const utilityWithScore = (score: number): UtilityBreakdown => ({ ...utility, score });
+
 function makeRecommendation(
   recommendedPlan: CompleteWithdrawalPlan | null,
-  improved = true
+  improved = true,
+  // 추천 나이만 사용자의 실제 인출계획에 얹었을 때의 효용. 기본값은 baseline(utility)보다
+  // 높게 둬서, 이 인자를 신경 쓰지 않는 기존 테스트들이 "적용되는" 경로를 그대로 타게 한다.
+  nationalPensionOnlyUtility: UtilityBreakdown | null = utilityWithScore(utility.score + 1)
 ): StrategyRecommendation {
   return {
     currentUtility: utility,
+    nationalPensionOnlyUtility,
     recommendedUtility: utility,
     recommendedPlan,
     recommendedAssetReinvestment: null,
@@ -86,6 +93,33 @@ describe('applyAiSentinels', () => {
     const applied = applyAiSentinels(compiled, makeRecommendation(plan(68)));
 
     expect(applied.params.withdrawalPlan?.nationalPensionStartAge).toBe(68);
+  });
+
+  test('추천 나이만 얹었을 때 효용이 baseline보다 낮으면 채우지 않는다', () => {
+    // 추천 격자는 6개 필드를 함께 최적화하므로, 그중 국민연금 나이 하나만 떼어 사용자의
+    // 계획에 이식하면 한 번도 시뮬레이션된 적 없는 조합이 된다. 그 조합이 baseline보다
+    // 나쁠 수 있고, 그때 자동 채움은 "AI 적용"이라는 이름으로 결과를 악화시킨다.
+    const compiled = compiledFor('ai_optimized');
+    const worse = makeRecommendation(plan(60), true, utilityWithScore(utility.score - 1));
+
+    expect(applyAiSentinels(compiled, worse)).toBe(compiled);
+  });
+
+  test('추천 나이만 얹었을 때 효용이 baseline과 같으면 채우지 않는다', () => {
+    // 개선이 없는데 참조를 새로 만들면 page.tsx의 하위 useMemo가 전부 무효화되어
+    // 이 화면에서 가장 무거운 렌더가 이유 없이 다시 돈다.
+    const compiled = compiledFor('ai_optimized');
+    const flat = makeRecommendation(plan(60), true, utilityWithScore(utility.score));
+
+    expect(applyAiSentinels(compiled, flat)).toBe(compiled);
+  });
+
+  test('단일 축 효용을 계산하지 못했으면(null) 채우지 않는다', () => {
+    // 시뮬레이션 실패 등으로 판단 근거가 없을 때는 보수적으로 사용자 계획을 그대로 둔다.
+    const compiled = compiledFor('ai_optimized');
+    const unknown = makeRecommendation(plan(68), true, null);
+
+    expect(applyAiSentinels(compiled, unknown)).toBe(compiled);
   });
 
   test('확정 enum이면 추천이 있어도 채우지 않는다', () => {
@@ -171,6 +205,51 @@ describe('applyAiSentinels', () => {
     expect(applied.params.userProfile).toBe(compiled.params.userProfile);
     expect(applied.params.assets).toBe(compiled.params.assets);
     expect(applied.params.strategy).toBe(compiled.params.strategy);
+  });
+});
+
+describe('applyAiSentinels 통합 — 실제 추천 엔진', () => {
+  // 합성 utility가 아니라 recommendStrategy가 실제로 만든 추천으로 검증한다.
+  // 위 단위 테스트들은 게이트 "로직"이 맞는지만 보고, 이 테스트는 게이트가 실제 데이터에서
+  // 걸리는 일이 있는지 — 즉 이 방어가 무의미한 항상-참이 아닌지 — 를 지킨다.
+  const engineParams: SimulationParams = {
+    ...baseParams,
+    // 조기 은퇴 + 높은 생활비. 그리드는 전체 조합으로 큰 개선(39 → 60)을 찾지만, 그 조합에서
+    // 국민연금 나이만 떼어 내면 오히려 baseline보다 나빠진다. 자동 채움이 막아야 하는 경우다.
+    userProfile: { currentAge: 45, retirementAge: 50, expectancy: 90, targetMonthlySpending: 4000000 },
+    strategy: { ...DEFAULT_RETIREMENT_STRATEGY, nationalPensionStrategy: 'ai_optimized' },
+  };
+
+  test('나이 축만 떼어 내면 악화되는 추천은 자동 채움하지 않는다', () => {
+    const engine = new SimulationEngine();
+    const compiled = compileStrategy(engineParams);
+    const recommendation = recommendStrategy(compiled.params, engine, compiled.utilityConfig);
+
+    // 전제: 추천은 개선을 주장하고, 그 나이는 baseline과 다르다.
+    expect(recommendation.improved).toBe(true);
+    expect(recommendation.recommendedPlan?.nationalPensionStartAge)
+      .not.toBe(compiled.params.withdrawalPlan?.nationalPensionStartAge);
+
+    // 전제: 단일 축만 적용하면 실제로 개선이 아니다(이 테스트의 존재 이유).
+    const only = recommendation.nationalPensionOnlyUtility;
+    expect(only).not.toBeNull();
+    expect(only!.score).toBeLessThanOrEqual(recommendation.currentUtility.score);
+
+    // 그러므로 채우지 않는다 — 참조까지 그대로다.
+    expect(applyAiSentinels(compiled, recommendation)).toBe(compiled);
+  });
+
+  test('자동 채움을 거른 계획의 효용은 baseline보다 낮아지지 않는다', () => {
+    const engine = new SimulationEngine();
+    const compiled = compileStrategy(engineParams);
+    const recommendation = recommendStrategy(compiled.params, engine, compiled.utilityConfig);
+    const effective = applyAiSentinels(compiled, recommendation);
+
+    const baseline = engine.run(compiled.params, compiled.utilityConfig);
+    const applied = engine.run(effective.params, effective.utilityConfig);
+
+    expect(typeof baseline.utility?.score).toBe('number');
+    expect(applied.utility!.score).toBeGreaterThanOrEqual(baseline.utility!.score);
   });
 });
 

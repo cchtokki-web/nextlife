@@ -117,6 +117,7 @@ describe('AiSummaryHero', () => {
   test('improved 추천이 있으면 Before/After Utility 비교 문구와 추천 적용 버튼을 보여준다', () => {
     const recommendation: StrategyRecommendation = {
       currentUtility: utility,
+      nationalPensionOnlyUtility: null,
       recommendedUtility: { ...utility, score: 81 },
       recommendedPlan: null,
       recommendedAssetReinvestment: null,
