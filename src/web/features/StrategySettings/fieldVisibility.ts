@@ -90,6 +90,10 @@ const SIMPLE_FIELDS: ReadonlySet<FieldPath> = new Set([
   'strategy.objective',
   'strategy.nationalPensionStrategy',
   'strategy.privatePensionStrategy',
+  // 배당 재투자는 "필수 입력"은 아니지만 여기 있어야 한다. AI 추천이 이 값을 자주 권하고
+  // (Phase 3가 자산별로 독립 평가한다) 대시보드 체크리스트가 간편 모드에서도 그 항목을
+  // 제시하는데, 숨기면 지시를 실행할 컨트롤이 화면에 하나도 없게 된다.
+  'assets.reinvestDividend',
 ]);
 
 // 표준 모드는 간편 + 상속 전략 + 투자 전략 + 경제 가정 주요 항목.

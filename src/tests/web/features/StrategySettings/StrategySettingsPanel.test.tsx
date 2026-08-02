@@ -446,9 +446,60 @@ describe('StrategySettingsPanel', () => {
     });
   });
 
-  // 투자 전략 섹션은 간편 모드에서 렌더되지 않는다(손댈 수 있는 필드가 없다).
-  // 이 섹션의 AI 추천 버튼을 검증하려면 표준 모드 이상이어야 한다.
-  describe('AI 추천 적용 — 투자 전략', () => {
+  // 배당 재투자는 「연금 전략」 섹션의 스위치가 실제 컨트롤이고, 그 섹션은 모든 모드에서
+  // 보인다. 적용 버튼도 같은 섹션에 있어야 한다 — 예전에는 「투자 전략」 헤더에 있었는데,
+  // 그 섹션이 간편 모드에서 통째로 사라지면서 기본 모드 사용자에게 적용 경로가 0개가 됐다.
+  describe('AI 추천 적용 — 배당 재투자', () => {
+    const reinvestOnly = {
+      improved: true,
+      recommendedPlan: null,
+      recommendedAssetReinvestment: { 'asset-kodex200': false },
+    } as unknown as StrategyRecommendation;
+
+    test('간편 모드에서도 배당 재투자 추천을 적용할 수 있다', () => {
+      const onChangeParams = vi.fn();
+      const simpleParams = withMode('simple');
+
+      render(
+        <StrategySettingsPanel
+          params={simpleParams} onChangeParams={onChangeParams}
+          recommendation={reinvestOnly} recommendationFailed={false}
+        />
+      );
+
+      // 대시보드는 간편 모드에서도 "배당을 재투자로 전환합니다"를 제시한다.
+      // 그 지시를 실행할 컨트롤이 화면에 있어야 한다.
+      fireEvent.click(screen.getByRole('button', { name: '연금 전략 AI 추천' }));
+
+      expect(onChangeParams).toHaveBeenCalledWith({
+        ...simpleParams,
+        assets: [
+          { ...simpleParams.assets[0], reinvestDividend: false },
+          simpleParams.assets[1],
+        ],
+      });
+    });
+
+    test('간편 모드에서도 「연금 전략」을 펼치면 배당 재투자 스위치가 있다', () => {
+      render(
+        <StrategySettingsPanel
+          params={withMode('simple')} onChangeParams={vi.fn()}
+          recommendation={reinvestOnly} recommendationFailed={false}
+        />
+      );
+
+      // 섹션은 접힌 채 마운트되므로 펼쳐야 본문이 렌더된다. 제목 텍스트로 조회하면 동명의
+      // AI 추천 버튼에 걸리므로 토글 버튼(aria-expanded)으로 찾는다.
+      const toggles = screen.getAllByRole('button', { expanded: false });
+      const pensionToggle = toggles.find((b) => b.textContent?.includes('연금 전략'));
+      fireEvent.click(pensionToggle!);
+
+      expect(screen.getByText('배당금 재투자')).toBeInTheDocument();
+    });
+  });
+
+  // 배당 재투자 적용은 「연금 전략」 헤더 버튼이 담당한다(실제 스위치가 그 섹션에 있다).
+  describe('AI 추천 적용 — 배당 재투자 세부', () => {
     const standardParams = withMode('standard');
 
     // 권장값이 첫 자산에만 있고 값도 현재와 다르다. 두 번째 자산은 권장 대상이 아니다.
@@ -467,7 +518,7 @@ describe('StrategySettingsPanel', () => {
         />
       );
 
-      fireEvent.click(screen.getByRole('button', { name: '투자 전략 AI 추천' }));
+      fireEvent.click(screen.getByRole('button', { name: '연금 전략 AI 추천' }));
 
       // 권장에 없는 자산까지 일괄로 뒤집거나(전역 스위치식 구현), 자산 순서를 흐트러뜨리면 깨진다.
       expect(onChangeParams).toHaveBeenCalledWith({
@@ -490,9 +541,9 @@ describe('StrategySettingsPanel', () => {
         />
       );
 
-      expect(screen.getByRole('button', { name: '투자 전략 AI 추천' })).toBeEnabled();
+      expect(screen.getByRole('button', { name: '연금 전략 AI 추천' })).toBeEnabled();
 
-      fireEvent.click(screen.getByRole('button', { name: '투자 전략 AI 추천' }));
+      fireEvent.click(screen.getByRole('button', { name: '연금 전략 AI 추천' }));
 
       expect(onChangeParams).toHaveBeenCalledTimes(1);
     });

@@ -54,7 +54,11 @@ const SECTIONS: ReadonlyArray<{ id: SectionId; title: string; icon: React.ReactN
 export { resolveStrategy };
 
 // AI 추천 버튼을 붙일 섹션. 배우자·경제 가정처럼 AI가 관여하지 않는 섹션은 제외한다.
-const AI_SECTIONS: ReadonlySet<SectionId> = new Set(['goal', 'pension', 'investment']);
+// AI 추천 버튼을 붙일 섹션. 그 섹션이 렌더하는 필드를 바꾸는 버튼만 둔다.
+// 'investment'는 빠져 있다 — 그 섹션의 riskProfile/economicScenario는 RecommendationEngine이
+// 추천을 생산하지 않는 축이고, 예전에 이 버튼이 적용하던 배당 재투자는 실제 컨트롤이 있는
+// 「연금 전략」으로 옮겼다.
+const AI_SECTIONS: ReadonlySet<SectionId> = new Set(['goal', 'pension']);
 
 export function StrategySettingsPanel({
   params, onChangeParams, recommendation, recommendationFailed, sentinels,
@@ -130,10 +134,17 @@ export function StrategySettingsPanel({
   // 눌러도 조용히 아무 일이 일어나지 않는다. 게다가 추천에는 이 화면이 적용할 수 없는
   // 축(사적연금 월 인출 목표 등)이 섞여 있어 improved가 사실상 영구히 true다.
   const buildAiSectionPatch = (id: SectionId): SimulationParams | null => {
-    if (id === 'investment') {
+    // 배당 재투자는 「연금 전략」이 담당한다. 실제 컨트롤('배당금 재투자' 스위치)이 그 섹션에
+    // 있고, 그 섹션은 모든 모드에서 보이기 때문이다.
+    //
+    // 예전에는 「투자 전략」 헤더 버튼이 이 축을 적용했다. 그런데 그 섹션은 riskProfile/
+    // economicScenario만 담고 있어 간편 모드에서 통째로 사라지고(isSectionVisible), 그래서
+    // 기본 모드인 간편 모드 사용자에게는 대시보드가 권하는 배당 재투자를 적용할 경로가
+    // 하나도 없었다. 게다가 그 축은 애초에 「투자 전략」이 렌더하는 필드가 아니었다.
+    const applyReinvest = (): SimulationParams | null => {
       // recommendedAssetReinvestment는 recommendedPlan과 독립적으로 계산된다(Phase 3).
-      // 아래 plan 널 체크보다 앞에 두지 않으면, 인출계획은 개선이 없고 배당 재투자만
-      // 개선된 경우에도 이 섹션의 AI 추천 버튼이 조용히 아무 일도 하지 않게 된다.
+      // plan 널 체크보다 앞에서 판정해야, 인출계획은 개선이 없고 배당 재투자만 개선된
+      // 경우에도 버튼이 조용히 아무 일도 하지 않는 일이 없다.
       const recommended = ai.recommendation?.recommendedAssetReinvestment;
       if (!recommended) return null;
 
@@ -151,10 +162,10 @@ export function StrategySettingsPanel({
           a.id in recommended ? { ...a, reinvestDividend: recommended[a.id] } : a
         ),
       };
-    }
+    };
 
     const plan = ai.recommendation?.recommendedPlan;
-    if (!plan) return null;
+    if (!plan) return id === 'pension' ? applyReinvest() : null;
 
     if (id === 'goal') {
       if (plan.monthlySpendingMultiplier === 1) return null;
@@ -192,14 +203,18 @@ export function StrategySettingsPanel({
       const effectiveAge = effectiveNationalPensionStartAge
         ?? NATIONAL_PENSION_STRATEGY_AGES[currentStrategy.nationalPensionStrategy];
 
+      // 연금 축에 바꿀 것이 없어도 배당 재투자만 개선된 경우가 있다. 그때도 버튼은 열려야 한다.
       if (effectiveAge === nearestAge && currentStrategy.preferIsaFirst === preferIsaFirst) {
-        return null;
+        return applyReinvest();
       }
 
-      return {
+      const withPension: SimulationParams = {
         ...params,
         strategy: { ...currentStrategy, nationalPensionStrategy: nearest, preferIsaFirst },
       };
+      // 두 축을 한 번에 적용한다. 사용자에게는 「연금 전략」의 「AI 추천」 한 번이다.
+      const reinvested = applyReinvest();
+      return reinvested ? { ...withPension, assets: reinvested.assets } : withPension;
     }
 
     return null;
