@@ -7,6 +7,7 @@ import {
 } from '../../entities/types';
 import { DEFAULT_UTILITY_CONFIG } from './utilityWeights';
 import { isMaximizeBequestStrategy } from '../strategy/compileStrategy';
+import { sumTotalTaxesAndLevies } from '../tax/annualTaxTotals';
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
@@ -194,11 +195,7 @@ function computeBequestAdequacyRaw(params: SimulationParams, result: SimulationR
 }
 
 function computeTaxEfficiencyRaw(yearlyResults: SimulationYearlyResult[], cfg: UtilityConfig): number {
-  const totalTaxPaid = sum(
-    yearlyResults.map(
-      (r) => r.dividendTaxPaid + r.pensionTaxPaid + r.nationalPensionTaxPaid + r.healthInsurancePaid + r.comprehensiveTaxPaid
-    )
-  );
+  const totalTaxPaid = sumTotalTaxesAndLevies(yearlyResults);
   const totalGrossIncome = sum(yearlyResults.map((r) => r.preTaxTotalIncome));
   if (totalGrossIncome <= 0) return 1;
 

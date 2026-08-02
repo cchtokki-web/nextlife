@@ -1,14 +1,12 @@
 import { SimulationResult, StrategyRecommendation } from '../../entities/types';
+import { sumYearTaxesAndLevies } from '../tax/annualTaxTotals';
 
 function sumYears(result: SimulationResult, pick: (y: SimulationResult['yearlyResults'][number]) => number): number {
   return result.yearlyResults.reduce((sum, y) => sum + pick(y), 0);
 }
 
 function totalTaxPaid(result: SimulationResult): number {
-  return sumYears(
-    result,
-    (y) => y.dividendTaxPaid + y.pensionTaxPaid + y.nationalPensionTaxPaid + y.healthInsurancePaid + y.comprehensiveTaxPaid
-  );
+  return sumYears(result, sumYearTaxesAndLevies);
 }
 
 function pensionEndingBalance(result: SimulationResult): number {
