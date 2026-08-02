@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '@/core/utils/authOptions';
+import { Prisma } from '@prisma/client';
 import { prisma } from '@/infrastructure/db/prisma';
 
 export async function PUT(
@@ -11,12 +12,12 @@ export async function PUT(
     const { id } = await params;
     const session = await getServerSession(authOptions);
 
-    if (!session || !session.user || !(session.user as any).id) {
+    if (!session || !session.user || !session.user.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     const user = await prisma.user.findUnique({
-      where: { id: (session.user as any).id },
+      where: { id: session.user.id },
     });
 
     if (!user) {
@@ -35,7 +36,7 @@ export async function PUT(
     const body = await req.json();
     const { name, data, isDefault } = body;
 
-    const updateData: any = {};
+    const updateData: Prisma.ScenarioUpdateInput = {};
     if (name !== undefined) updateData.name = name;
     if (data !== undefined) updateData.data = JSON.stringify(data);
     if (isDefault !== undefined) updateData.isDefault = isDefault;
@@ -57,7 +58,7 @@ export async function PUT(
       { data: { ...updatedScenario, data: JSON.parse(updatedScenario.data) } },
       { status: 200 }
     );
-  } catch (error: any) {
+  } catch (error) {
     console.error('Error updating scenario:', error);
     return NextResponse.json({ error: 'Failed to update scenario' }, { status: 500 });
   }
@@ -71,12 +72,12 @@ export async function DELETE(
     const { id } = await params;
     const session = await getServerSession(authOptions);
 
-    if (!session || !session.user || !(session.user as any).id) {
+    if (!session || !session.user || !session.user.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     const user = await prisma.user.findUnique({
-      where: { id: (session.user as any).id },
+      where: { id: session.user.id },
     });
 
     if (!user) {
@@ -100,7 +101,7 @@ export async function DELETE(
     });
 
     return NextResponse.json({ success: true }, { status: 200 });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Error deleting scenario:', error);
     return NextResponse.json({ error: 'Failed to delete scenario' }, { status: 500 });
   }

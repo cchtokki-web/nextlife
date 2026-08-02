@@ -1,11 +1,8 @@
 'use client';
 
 import { useEffect } from 'react';
-import { usePathname } from 'next/navigation';
 
 export default function AnalyticsTracker() {
-  const pathname = usePathname();
-
   useEffect(() => {
     // Generate or retrieve a session ID for tracking unique visits
     let sessionId = sessionStorage.getItem('analytics_session_id');

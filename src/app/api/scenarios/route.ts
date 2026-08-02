@@ -3,15 +3,15 @@ import { getServerSession } from 'next-auth/next';
 import { authOptions } from '@/core/utils/authOptions';
 import { prisma } from '@/infrastructure/db/prisma';
 
-export async function GET(req: Request) {
+export async function GET(_req: Request) {
   try {
     const session = await getServerSession(authOptions);
 
-    if (!session || !session.user || !(session.user as any).id) {
+    if (!session || !session.user || !session.user.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const userId = (session.user as any).id;
+    const userId = session.user.id;
 
     let user = await prisma.user.findUnique({
       where: { id: userId },
@@ -25,7 +25,7 @@ export async function GET(req: Request) {
           id: userId,
           email: session.user.email || null,
           name: session.user.name || null,
-          tier: (session.user as any).tier || 'basic'
+          tier: session.user.tier || 'basic'
         },
         include: { scenarios: { orderBy: { createdAt: 'asc' } } },
       });
@@ -36,7 +36,7 @@ export async function GET(req: Request) {
     // Cleanup duplicate default scenarios (keep the oldest, delete the newer duplicates)
     const defaultScenarios = scenarios.filter(s => s.isDefault);
     if (defaultScenarios.length > 1) {
-      const [oldest, ...duplicates] = defaultScenarios;
+      const [, ...duplicates] = defaultScenarios;
       const duplicateIds = duplicates.map(d => d.id);
       await prisma.scenario.deleteMany({
         where: {
@@ -70,7 +70,7 @@ export async function GET(req: Request) {
     }));
 
     return NextResponse.json({ data: formattedScenarios }, { status: 200 });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Error fetching scenarios:', error);
     return NextResponse.json({ error: 'Failed to fetch scenarios' }, { status: 500 });
   }
@@ -80,11 +80,11 @@ export async function POST(req: Request) {
   try {
     const session = await getServerSession(authOptions);
 
-    if (!session || !session.user || !(session.user as any).id) {
+    if (!session || !session.user || !session.user.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const userId = (session.user as any).id;
+    const userId = session.user.id;
 
     let user = await prisma.user.findUnique({
       where: { id: userId },
@@ -97,7 +97,7 @@ export async function POST(req: Request) {
           id: userId,
           email: session.user.email || null,
           name: session.user.name || null,
-          tier: (session.user as any).tier || 'basic'
+          tier: session.user.tier || 'basic'
         }
       });
     }
@@ -144,7 +144,7 @@ export async function POST(req: Request) {
       { data: { ...newScenario, data: JSON.parse(newScenario.data) } },
       { status: 201 }
     );
-  } catch (error: any) {
+  } catch (error) {
     console.error('Error creating scenario:', error);
     return NextResponse.json({ error: 'Failed to create scenario' }, { status: 500 });
   }

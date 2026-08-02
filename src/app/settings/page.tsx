@@ -58,7 +58,7 @@ export default function SettingsPage() {
         setNewPassword('');
         setConfirmPassword('');
       }
-    } catch (err) {
+    } catch {
       setError('서버와 통신하는 중 오류가 발생했습니다.');
     } finally {
       setIsLoading(false);

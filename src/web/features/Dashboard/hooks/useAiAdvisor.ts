@@ -113,7 +113,7 @@ export function useAiAdvisor(input: UseAiAdvisorInput): UseAiAdvisorResult {
               receivedContent = true;
               setAdvice((prev) => prev + chunk);
             }
-          } catch (e) {
+          } catch {
             hadParseFailure = true;
             console.warn('Failed to parse JSON line:', line);
           }

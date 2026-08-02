@@ -54,7 +54,7 @@ export default function ResetPasswordForm() {
           router.push("/login");
         }, 3000);
       }
-    } catch (err) {
+    } catch {
       setStatus("error");
       setMessage("요청 처리 중 오류가 발생했습니다.");
     }

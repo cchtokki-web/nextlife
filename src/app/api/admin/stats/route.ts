@@ -62,7 +62,6 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    const now = new Date();
     const today = getStartOfToday();
     const thisWeek = getStartOfWeek();
     const thisMonth = getStartOfMonth();

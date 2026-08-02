@@ -9,11 +9,11 @@ export async function POST(req: Request) {
   try {
     const session = await getServerSession(authOptions);
 
-    if (!session || !session.user || !(session.user as any).id) {
+    if (!session || !session.user || !session.user.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const userId = (session.user as any).id;
+    const userId = session.user.id;
 
     if (isRateLimited(`send-backup-key:${userId}`, 3, 5 * 60 * 1000)) {
       return NextResponse.json({ error: '너무 많은 요청입니다. 잠시 후 다시 시도해 주세요.' }, { status: 429 });
@@ -118,7 +118,7 @@ export async function POST(req: Request) {
     }
 
     return NextResponse.json({ error: `Kakao API failed: ${JSON.stringify(resData)}` }, { status: 400 });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Error sending backup key via Kakao:', error);
     return NextResponse.json({ error: 'Failed to send backup key' }, { status: 500 });
   }

@@ -26,27 +26,23 @@ import { DashboardSection } from '../../web/features/Dashboard/DashboardSection'
 import GlassCard from '../../web/components/GlassCard';
 import { Header } from '../../web/components/Header/Header';
 import styles from './page.module.css';
-import { AlertCircle, Activity, Download, RotateCcw, PanelLeftClose, PanelLeftOpen, LogOut, FileText } from 'lucide-react';
+import { AlertCircle, RotateCcw, PanelLeftClose, PanelLeftOpen, LogOut, FileText } from 'lucide-react';
 import { useScenarios } from '../../web/features/Scenario/useScenarios';
 import { E2eeKeyManager } from '../../web/components/E2eeKeyManager';
 import { generateBackupKey, encryptData } from '../../core/utils/crypto';
 import { isDevMode } from '../../core/utils/isDevMode';
+
 export default function Home() {
-  const { data: session, status } = useSession();
+  const { data: session } = useSession();
   const scenarioState = useScenarios();
   const { 
     scenarios, 
-    activeScenarioId, 
     activeParams, 
     handleUpdateActiveParams, 
     compareScenarioIds, 
     isLoaded,
-    handleCreateScenario,
-    localKey,
     needsKeyRestore,
-    isBackupKeyBackedUp,
     handleRestoreKey,
-    handleAcknowledgeBackup,
     isSaving,
     saveStatus,
     lastSaved,
@@ -60,7 +56,7 @@ export default function Home() {
   const handleResetAllScenarios = async () => {
     if (confirm('모든 기존 데이터를 초기화하고 새로운 보안 키로 다시 시작하시겠습니까? 이 작업은 되돌릴 수 없으며 기본 시나리오를 제외한 나머지 시나리오는 모두 삭제되고, 기본 시나리오의 데이터는 기본값으로 초기화됩니다.')) {
       const newKey = generateBackupKey();
-      const userId = (session?.user as any)?.id;
+      const userId = session?.user?.id;
       if (userId) {
         localStorage.setItem(`nextlife_e2ee_key_${userId}`, newKey);
         localStorage.setItem(`nextlife_e2ee_backed_up_${userId}`, 'false');
@@ -861,13 +857,9 @@ export default function Home() {
       </Header>
 
       <E2eeKeyManager
-        localKey={localKey}
         needsKeyRestore={needsKeyRestore}
-        isBackupKeyBackedUp={isBackupKeyBackedUp}
         handleRestoreKey={handleRestoreKey}
-        handleAcknowledgeBackup={handleAcknowledgeBackup}
         onResetScenarios={handleResetAllScenarios}
-        handleSendKeyToKakao={handleSendKeyToKakao}
         needsKeySetup={needsKeySetup}
         handleSetupKey={handleSetupKey}
       />

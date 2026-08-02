@@ -2,6 +2,16 @@ import React from 'react';
 import styles from '../styles/components.module.css';
 import { ChevronUp, ChevronDown } from 'lucide-react';
 
+// React가 제어 컴포넌트의 값 변경을 감지하려고 DOM 노드에 몰래 붙여 두는 내부 필드.
+// 공개 타입에 없으므로 여기서만 최소한으로 좁혀 쓴다 — 프로그램적으로 stepUp()을 부른 뒤
+// 이 트래커를 되돌려 놓아야 React가 onChange를 실제로 발화시킨다.
+interface ValueTracker { setValue(value: string): void }
+
+function valueTrackerOf(input: HTMLInputElement): ValueTracker | undefined {
+  return (input as HTMLInputElement & { _valueTracker?: ValueTracker })._valueTracker;
+}
+
+
 interface InputFieldProps extends React.InputHTMLAttributes<HTMLInputElement> {
   label: string;
   labelSecondary?: string;
@@ -35,14 +45,14 @@ export const InputField = React.forwardRef<HTMLInputElement, InputFieldProps>(({
   const inputId = id ?? generatedId;
 
   // Combine forwarded ref and local ref
+  // localRef는 이 컴포넌트가 만든 ref라 쓰기가 안전하다. React가 주는 RefObject 타입이
+  // readonly current로 선언돼 있어 MutableRefObject로 좁혀 쓴다.
   const setRef = React.useCallback((node: HTMLInputElement | null) => {
-    (localRef as any).current = node;
-    if (ref) {
-      if (typeof ref === 'function') {
-        ref(node);
-      } else {
-        (ref as any).current = node;
-      }
+    (localRef as React.MutableRefObject<HTMLInputElement | null>).current = node;
+    if (typeof ref === 'function') {
+      ref(node);
+    } else if (ref) {
+      (ref as React.MutableRefObject<HTMLInputElement | null>).current = node;
     }
   }, [ref]);
 
@@ -66,14 +76,14 @@ export const InputField = React.forwardRef<HTMLInputElement, InputFieldProps>(({
       try {
         input.stepUp();
         if (input.value !== prevValue) {
-          const tracker = (input as any)._valueTracker;
+          const tracker = valueTrackerOf(input);
           if (tracker) {
             tracker.setValue(prevValue);
           }
           const event = new Event('input', { bubbles: true });
           input.dispatchEvent(event);
         }
-      } catch (err) {
+      } catch {
         // Fallback for non-numeric/text input fallback stepping
         const step = parseFloat(input.step) || 1;
         const currentVal = parseFloat(input.value.replace(/,/g, '')) || 0;
@@ -105,14 +115,14 @@ export const InputField = React.forwardRef<HTMLInputElement, InputFieldProps>(({
       try {
         input.stepDown();
         if (input.value !== prevValue) {
-          const tracker = (input as any)._valueTracker;
+          const tracker = valueTrackerOf(input);
           if (tracker) {
             tracker.setValue(prevValue);
           }
           const event = new Event('input', { bubbles: true });
           input.dispatchEvent(event);
         }
-      } catch (err) {
+      } catch {
         // Fallback
         const step = parseFloat(input.step) || 1;
         const currentVal = parseFloat(input.value.replace(/,/g, '')) || 0;

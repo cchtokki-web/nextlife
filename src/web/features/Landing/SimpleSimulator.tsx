@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useState, useMemo, useEffect } from 'react';
-import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { SimpleSimulationAdapter, SimpleSimulationInput, InvestmentPropensity } from '../../../core/usecases/SimpleSimulationAdapter';
 import { SimulationEngine } from '../../../core/usecases/SimulationEngine';
@@ -128,12 +127,6 @@ export function SimpleSimulator() {
       resultPlus50: engine.run(paramsPlus50)
     };
   }, [hasRun, input, engine]);
-
-  const getScoreColor = (score: number) => {
-    if (score >= 90) return '#10B981'; // Green
-    if (score >= 70) return '#F59E0B'; // Orange
-    return '#EF4444'; // Red
-  };
 
   return (
     <GlassCard className={styles.container}>
@@ -378,8 +371,8 @@ export function SimpleSimulator() {
                         try {
                           const res = await fetch('/api/scenarios');
                           if (res.ok) {
-                            const { data } = await res.json();
-                            const defaultScenario = data?.find((s: any) => s.isDefault) || (data && data.length > 0 ? data[0] : null);
+                            const { data }: { data?: Array<{ id: string; isDefault?: boolean }> } = await res.json();
+                            const defaultScenario = data?.find((s) => s.isDefault) || (data && data.length > 0 ? data[0] : null);
                             if (defaultScenario) {
                               await fetch(`/api/scenarios/${defaultScenario.id}`, {
                                 method: 'PUT',

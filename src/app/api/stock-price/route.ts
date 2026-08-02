@@ -38,7 +38,7 @@ export async function GET(request: NextRequest) {
     }
 
     return Response.json({ ticker, price, currency });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Error fetching stock price:', error);
     return Response.json({ error: 'Internal Server Error' }, { status: 500 });
   }

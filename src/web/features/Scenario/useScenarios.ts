@@ -1,8 +1,15 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSession } from 'next-auth/react';
 import { SimulationParams, ScenarioModel } from '../../../core/entities/types';
+import type { EncryptedData } from '../../../core/utils/crypto';
+
+// GET /api/scenarios 응답. data의 각 항목은 평문(SimulationParams)일 수도, E2EE로 암호화된
+// 형태일 수도 있어 소비처가 복호화를 시도하며 좁힌다.
+interface ScenarioListResponse {
+  data?: Array<Omit<ScenarioModel, 'data'> & { data: unknown }>;
+}
 import { loadParams, saveParams, initialParams } from '../../../infrastructure/storage/localStore';
-import { generateBackupKey, encryptData, decryptData, isEncryptedPayload } from '../../../core/utils/crypto';
+import { encryptData, decryptData, isEncryptedPayload } from '../../../core/utils/crypto';
 
 const convertToRepresentativeAssets = (params: SimulationParams): SimulationParams => {
   if (!params.assets) return params;
@@ -184,7 +191,7 @@ export function useScenarios() {
 
   // Initialize/Load E2EE Key
   useEffect(() => {
-    const userId = (session?.user as any)?.id;
+    const userId = session?.user?.id;
     if (status === 'authenticated' && userId) {
       const keyName = `nextlife_e2ee_key_${userId}`;
       const backupName = `nextlife_e2ee_backed_up_${userId}`;
@@ -260,7 +267,7 @@ export function useScenarios() {
 
   // Fetch scenarios when logged in
   useEffect(() => {
-    const userId = (session?.user as any)?.id;
+    const userId = session?.user?.id;
     if (status === 'authenticated') {
       if (userId) {
         const storedKey = localStorage.getItem(`nextlife_e2ee_key_${userId}`);
@@ -272,14 +279,14 @@ export function useScenarios() {
       setLoadError(null);
 
       // Helper for retrying fetches (helps with NextJS rebuild/compilation delay)
-      const fetchWithRetry = async (url: string, retries = 3, delay = 1500): Promise<any> => {
+      const fetchWithRetry = async (url: string, retries = 3, delay = 1500): Promise<ScenarioListResponse> => {
         try {
           const res = await fetch(url);
           if (!res.ok) {
             throw new Error(`서버 응답 오류 (HTTP ${res.status})`);
           }
           return await res.json();
-        } catch (err: any) {
+        } catch (err) {
           if (retries > 0) {
             console.warn(`[useScenarios] Fetch failed, retrying in ${delay}ms... (${retries} left). Error:`, err);
             await new Promise(resolve => setTimeout(resolve, delay));
@@ -324,8 +331,12 @@ export function useScenarios() {
                     lastSavedParamsRef.current[s.id] = JSON.stringify(initialParams);
                   }
                 } else {
-                  // Backwards compatibility for plain text simulation data
-                  const migrated = convertToRepresentativeAssets(migrateParams(s.data, etfTickers));
+                  // Backwards compatibility for plain text simulation data.
+                  // isEncryptedPayload가 이미 암호화 형태를 걸러냈으므로 여기 남는 것은
+                  // E2EE 도입 이전에 저장된 평문 params다. 타입 시스템은 그 가드의 else를
+                  // 좁혀 주지 못하므로 이 지점에서만 명시한다.
+                  const plainData = s.data as SimulationParams;
+                  const migrated = convertToRepresentativeAssets(migrateParams(plainData, etfTickers));
                   decryptedList.push({ ...s, name: displayName, data: migrated });
                   lastSavedParamsRef.current[s.id] = JSON.stringify(migrated);
                 }
@@ -341,7 +352,7 @@ export function useScenarios() {
             decryptAll();
           } else {
             // First-time user: No scenarios exist in the database!
-            const userId = (session?.user as any)?.id;
+            const userId = session?.user?.id;
             if (userId) {
               const keyName = `nextlife_e2ee_key_${userId}`;
               const storedKey = localStorage.getItem(keyName);
@@ -401,8 +412,8 @@ export function useScenarios() {
           setIsSaving(true);
           const timeoutId = setTimeout(async () => {
             try {
-              let payloadToSave: any = activeScenario.data;
-              const userId = (session?.user as any)?.id;
+              let payloadToSave: SimulationParams | EncryptedData = activeScenario.data;
+              const userId = session?.user?.id;
               if (localKey && userId) {
                 payloadToSave = await encryptData(activeScenario.data, localKey, userId);
               }
@@ -479,9 +490,9 @@ export function useScenarios() {
 
     if (status === 'authenticated') {
       try {
-        let payloadToSave: any = data;
+        let payloadToSave: SimulationParams | EncryptedData = data;
         const keyToUse = overrideKey || localKey;
-        const userId = (session?.user as any)?.id;
+        const userId = session?.user?.id;
         if (keyToUse && userId) {
           payloadToSave = await encryptData(data, keyToUse, userId);
         }
@@ -612,8 +623,8 @@ export function useScenarios() {
 
     if (status === 'authenticated' && !id.startsWith('local-')) {
       try {
-        let payloadToSave: any = newData;
-        const userId = (session?.user as any)?.id;
+        let payloadToSave: SimulationParams | EncryptedData = newData;
+        const userId = session?.user?.id;
         if (localKey && userId) {
           payloadToSave = await encryptData(newData, localKey, userId);
         }
@@ -655,7 +666,7 @@ export function useScenarios() {
         alert('올바른 6자리 보안 백업 키가 아닙니다.');
         return false;
       }
-      const userId = (session?.user as any)?.id;
+      const userId = session?.user?.id;
       if (!userId) return false;
 
       // Verify key correctness by attempting to decrypt the encrypted scenarios on the server
@@ -675,7 +686,7 @@ export function useScenarios() {
               try {
                 await decryptData(s.data, cleanKey, userId);
                 decryptedSuccessfully = true;
-              } catch (e) {
+              } catch {
                 // 이 시나리오만 복호화 실패 — 키가 틀렸는지 이 시나리오만 손상됐는지는
                 // 아래에서 "다른 시나리오가 하나라도 복호화됐는지"로 판별한다.
                 failedScenarioIds.push(s.id);
@@ -717,7 +728,7 @@ export function useScenarios() {
     saveStatus,
     lastSaved,
     handleAcknowledgeBackup: () => {
-      const userId = (session?.user as any)?.id;
+      const userId = session?.user?.id;
       if (userId) {
         localStorage.setItem(`nextlife_e2ee_backed_up_${userId}`, 'true');
         setIsBackupKeyBackedUp(true);
@@ -733,7 +744,7 @@ export function useScenarios() {
         alert('보안 비밀번호는 영문·숫자 6자리여야 합니다.');
         return false;
       }
-      const userId = (session?.user as any)?.id;
+      const userId = session?.user?.id;
       if (!userId) return false;
 
       const keyName = `nextlife_e2ee_key_${userId}`;
@@ -792,7 +803,7 @@ export function useScenarios() {
         });
         const data = await res.json();
         if (res.ok && data.success) {
-          const userId = (session?.user as any)?.id;
+          const userId = session?.user?.id;
           if (userId) {
             localStorage.setItem(`nextlife_e2ee_backed_up_${userId}`, 'true');
             setIsBackupKeyBackedUp(true);

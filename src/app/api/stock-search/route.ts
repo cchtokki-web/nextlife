@@ -1,5 +1,17 @@
 import { type NextRequest } from 'next/server';
 
+// 네이버 증권 검색 응답에서 이 라우트가 읽는 필드만 좁혀 둔다. 외부 스키마 전체를 옮겨
+// 적으면 상대가 필드를 늘릴 때마다 어긋나므로, 실제로 쓰는 것만 선언한다.
+interface NaverSearchItem {
+  code: string;
+  name: string;
+  url?: string;
+  nationCode?: string;
+  nationName?: string;
+  typeCode?: string;
+  typeName?: string;
+}
+
 export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl;
   const q = searchParams.get('q');
@@ -28,7 +40,7 @@ export async function GET(request: NextRequest) {
 
     const items = data.result.items;
 
-    const results = items.map((item: any) => {
+    const results = items.map((item: NaverSearchItem) => {
       let ticker = item.code;
       let currency = 'USD';
       
@@ -64,7 +76,7 @@ export async function GET(request: NextRequest) {
     });
 
     return Response.json({ results });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Error fetching stock search:', error);
     return Response.json({ error: 'Internal Server Error' }, { status: 500 });
   }

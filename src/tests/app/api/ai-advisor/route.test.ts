@@ -1,6 +1,7 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest';
 import { buildSimulationContextText, POST } from '@/app/api/ai-advisor/route';
 import { SimulationResult, StrategyRecommendation, UtilityBreakdown } from '@/core/entities/types';
+import type { NextRequest } from 'next/server';
 
 const baseUtility: UtilityBreakdown = {
   score: 76,
@@ -192,7 +193,7 @@ describe('POST /api/ai-advisor - Ollama 요청 시 think:false 전달', () => {
       body: JSON.stringify({ score: 80, monthlyTarget: 3000000, depletionAge: null }),
     });
 
-    await POST(req as any);
+    await POST(req as unknown as NextRequest);
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [calledUrl, options] = fetchMock.mock.calls[0];

@@ -33,7 +33,7 @@ export default function ForgotPasswordForm() {
         setStatus("success");
         setMessage("비밀번호 재설정 이메일이 발송되었습니다. 메일함을 확인해주세요.");
       }
-    } catch (err) {
+    } catch {
       setStatus("error");
       setMessage("요청 처리 중 오류가 발생했습니다.");
     }

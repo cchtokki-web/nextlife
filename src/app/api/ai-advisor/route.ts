@@ -196,7 +196,7 @@ export async function POST(req: NextRequest) {
 
     const simulationContextText = buildSimulationContextText(body);
 
-    let systemPrompt = `당신은 핵심 요점만 전달하는 AI 노후 설계사입니다.
+    const systemPrompt = `당신은 핵심 요점만 전달하는 AI 노후 설계사입니다.
 아래 [시뮬레이션 결과 전체]를 빠짐없이 종합적으로 참고하여 노후 자산 상태와 핵심 조언을 전달하세요.
 
 [답변 규칙]
@@ -260,7 +260,7 @@ ${simulationContextText}
         'Connection': 'keep-alive',
       },
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Ollama API error:', error);
     return new Response(JSON.stringify({ error: 'Internal Server Error' }), {
       status: 500,

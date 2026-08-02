@@ -107,7 +107,7 @@ export async function GET(request: NextRequest) {
       dividendYield: Math.round(dividendYield * 10) / 10,
     });
 
-  } catch (error: any) {
+  } catch (error) {
     console.error('Error fetching stock info:', error);
     return Response.json({ error: 'Internal Server Error' }, { status: 500 });
   }

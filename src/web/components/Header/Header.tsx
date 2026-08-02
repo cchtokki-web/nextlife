@@ -3,7 +3,7 @@
 import React from 'react';
 import Image from 'next/image';
 import styles from './Header.module.css';
-import { Lock, Cloud, Check, Loader2, AlertCircle, Sun, Moon } from 'lucide-react';
+import { Check, Loader2, AlertCircle, Sun, Moon } from 'lucide-react';
 import { useTheme } from '@/web/components/providers/ThemeProvider';
 
 interface HeaderProps {

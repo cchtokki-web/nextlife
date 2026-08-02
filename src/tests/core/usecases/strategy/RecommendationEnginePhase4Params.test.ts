@@ -1,4 +1,4 @@
-import { describe, test, expect, vi, afterEach } from 'vitest';
+import { test, expect, vi, afterEach } from 'vitest';
 import { SimulationEngine } from '@/core/usecases/SimulationEngine';
 import { InvestmentAsset, SimulationParams, SimulationResult } from '@/core/entities/types';
 

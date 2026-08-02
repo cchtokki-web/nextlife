@@ -5,9 +5,21 @@ import { SelectField } from '../../components/SelectField';
 import styles from './AssetForm.module.css';
 import compStyles from '../../styles/components.module.css';
 import { Plus, Trash2, Wallet, Landmark, PiggyBank, DollarSign, ExternalLink, ChevronDown, ChevronUp, RefreshCw } from 'lucide-react';
-import { PredefinedAsset, predefinedAssets } from './predefinedAssets';
+import { predefinedAssets } from './predefinedAssets';
 import { resolveRiskProfileYieldPreset, resolveStrategy } from '../../../core/usecases/strategy/compileStrategy';
 import { isEconomicScenarioGoverning } from '../../../core/usecases/scenario/economicScenarios';
+
+// /api/stock-search가 돌려주는 항목 중 이 화면이 쓰는 필드. 자동완성 목록을 predefinedAssets와
+// 같은 모양으로 합치기 위해 필요한 것만 선언한다.
+interface StockSuggestion {
+  ticker: string;
+  name: string;
+  // 자산 폼이 그대로 InvestmentAsset에 넣으므로 도메인 유니온과 같은 폭이어야 한다.
+  // 넓은 string으로 두면 여기서는 통과하고 자산을 만들 때 어긋난다.
+  type: 'stock' | 'etf';
+  currency: AssetCurrency;
+  exchDisp?: string;
+}
 
 const convertAmountOnPeriodChange = (amount: number, fromPeriod: 'daily' | 'weekly' | 'monthly', toPeriod: 'daily' | 'weekly' | 'monthly'): number => {
   let monthlyAmount = amount;
@@ -38,7 +50,12 @@ const calculateMonthlyFromPeriod = (amount: number, period: 'daily' | 'weekly' |
 
 interface AssetFormSectionProps {
   params: SimulationParams;
-  onChangeParams: (newParams: SimulationParams) => void;
+  // updater 형태를 함께 받는다. 실제 구현(useScenarios의 handleUpdateActiveParams)이 이미
+  // 둘 다 받는데 여기 타입만 좁게 선언돼 있어서, 호출부마다 `as any`로 뚫고 쓰고 있었다.
+  // 이 화면은 연속 편집이 잦아 updater가 필요하다 — 값을 넘기면 직전 상태를 덮어쓴다.
+  onChangeParams: (
+    newParams: SimulationParams | ((prev: SimulationParams) => SimulationParams)
+  ) => void;
 }
 
 type TabType = 'stocks' | 'pensions' | 'isa' | 'other';
@@ -99,7 +116,7 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
   const [fetchingPriceMap, setFetchingPriceMap] = useState<Record<string, boolean>>({});
   const [fetchingInfoMap, setFetchingInfoMap] = useState<Record<string, boolean>>({});
   const [focusedAssetId, setFocusedAssetId] = useState<string | null>(null);
-  const [realtimeSuggestions, setRealtimeSuggestions] = useState<Record<string, any[]>>({});
+  const [realtimeSuggestions, setRealtimeSuggestions] = useState<Record<string, StockSuggestion[]>>({});
   const [isSearching, setIsSearching] = useState<Record<string, boolean>>({});
   const [autocompleteIndex, setAutocompleteIndex] = useState<number>(-1);
 
@@ -115,8 +132,8 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
     const rsList = realtimeSuggestions[id] || [];
     const predefinedTickers = new Set(matchingPredefined.map(p => p.ticker));
     const additionalRealtime = rsList
-      .filter((rs: any) => !predefinedTickers.has(rs.ticker))
-      .map((rs: any) => ({
+      .filter((rs) => !predefinedTickers.has(rs.ticker))
+      .map((rs) => ({
         ...rs,
         annualGrowthRate: rs.type === 'etf' ? 7.0 : 6.0,
         dividendYield: rs.type === 'etf' ? 1.5 : 1.0,
@@ -211,7 +228,7 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
       }
       const data = await res.json();
       if (typeof data.price === 'number') {
-        (onChangeParams as any)((prevParams: SimulationParams) => {
+        onChangeParams((prevParams: SimulationParams) => {
           const updated = prevParams.assets.map((asset) => {
             if (asset.id === id) {
               let fetchedPrice = data.price;
@@ -244,7 +261,7 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
       if (res.ok) {
         const data = await res.json();
         if (data.annualGrowthRate !== undefined || data.dividendYield !== undefined) {
-          (onChangeParams as any)((prevParams: SimulationParams) => {
+          onChangeParams((prevParams: SimulationParams) => {
             const updated = prevParams.assets.map((asset) => {
               if (asset.id === id) {
                 return {
@@ -277,7 +294,7 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
           const annualGrowthRate = data.annualGrowthRate || 0;
           const dividendYield = data.dividendYield || 0;
           
-          (onChangeParams as any)((prevParams: SimulationParams) => {
+          onChangeParams((prevParams: SimulationParams) => {
             const updated = prevParams.privatePensions.map((p) => {
               if (p.id === id) {
                 return { ...p, annualReturn: annualGrowthRate, dividendYield };
@@ -306,7 +323,7 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
           const annualReturn = data.annualGrowthRate || 0;
           const dividendYield = data.dividendYield || 0;
           
-          (onChangeParams as any)((prevParams: SimulationParams) => {
+          onChangeParams((prevParams: SimulationParams) => {
             const updated = (prevParams.isaAccounts || []).map((isa) => {
               if (isa.id === id) {
                 return { ...isa, annualReturn, dividendYield };
@@ -386,8 +403,8 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
   };
 
 
-  const handleUpdateAsset = (id: string, updates: Partial<InvestmentAsset> | keyof InvestmentAsset, value?: any) => {
-    (onChangeParams as any)((prevParams: SimulationParams) => {
+  const handleUpdateAsset = (id: string, updates: Partial<InvestmentAsset> | keyof InvestmentAsset, value?: InvestmentAsset[keyof InvestmentAsset]) => {
+    onChangeParams((prevParams: SimulationParams) => {
       const updated = prevParams.assets.map((asset) => {
         if (asset.id === id) {
           if (typeof updates === 'string') {
@@ -459,8 +476,8 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
     });
   };
 
-  const handleUpdatePrivatePension = (id: string, updates: Partial<PrivatePension> | keyof PrivatePension, value?: any) => {
-    (onChangeParams as any)((prevParams: SimulationParams) => {
+  const handleUpdatePrivatePension = (id: string, updates: Partial<PrivatePension> | keyof PrivatePension, value?: PrivatePension[keyof PrivatePension]) => {
+    onChangeParams((prevParams: SimulationParams) => {
       const updated = prevParams.privatePensions.map((p) => {
         if (p.id === id) {
           if (typeof updates === 'string') {
@@ -523,8 +540,8 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
     });
   };
 
-  const handleUpdateIsaAccount = (id: string, updates: Partial<IsaAccount> | keyof IsaAccount, value?: any) => {
-    (onChangeParams as any)((prevParams: SimulationParams) => {
+  const handleUpdateIsaAccount = (id: string, updates: Partial<IsaAccount> | keyof IsaAccount, value?: IsaAccount[keyof IsaAccount]) => {
+    onChangeParams((prevParams: SimulationParams) => {
       const updated = (prevParams.isaAccounts || []).map((isa) => {
         if (isa.id === id) {
           if (typeof updates === 'string') {
@@ -560,8 +577,8 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
     });
   };
 
-  const handleUpdateOtherIncome = (id: string, key: keyof OtherIncome, value: any) => {
-    (onChangeParams as any)((prevParams: SimulationParams) => {
+  const handleUpdateOtherIncome = (id: string, key: keyof OtherIncome, value: OtherIncome[keyof OtherIncome]) => {
+    onChangeParams((prevParams: SimulationParams) => {
       const updated = prevParams.otherIncomes.map((income) => {
         if (income.id === id) {
           if (key === 'currency') {

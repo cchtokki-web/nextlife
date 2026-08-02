@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
 import styles from "./LoginForm.module.css";
@@ -45,7 +44,7 @@ export default function RegisterForm() {
         setPassword("");
         setConfirmPassword("");
       }
-    } catch (err) {
+    } catch {
       setError("요청 중 오류가 발생했습니다.");
     } finally {
       setLoading(false);

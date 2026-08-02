@@ -1,10 +1,16 @@
 import React, { useState } from 'react';
 import styles from './Scenario.module.css';
-import { FolderGit2, ChevronDown, ChevronUp, Copy, Trash2, Edit2, CheckSquare, Square, FileJson, Upload, Download } from 'lucide-react';
+import { FolderGit2, ChevronDown, ChevronUp, Copy, Trash2, Edit2, CheckSquare, Square, Upload, Download } from 'lucide-react';
 import compStyles from '../../styles/components.module.css';
+import type { ScenarioModel } from '../../../core/entities/types';
+import type { useScenarios } from './useScenarios';
+
+// 이 패널은 useScenarios가 돌려주는 상태 뭉치를 통째로 받는다. 훅의 반환 타입을 그대로
+// 따라가면 필드를 늘리거나 이름을 바꿀 때 여기서도 바로 어긋남이 드러난다.
+type ScenarioState = ReturnType<typeof useScenarios>;
 
 interface ScenarioItemProps {
-  scenario: any;
+  scenario: ScenarioModel;
   isActive: boolean;
   isCompared: boolean;
   isDuplicateDisabled: boolean;
@@ -105,7 +111,7 @@ const ScenarioItem: React.FC<ScenarioItemProps> = ({
   );
 };
 
-export const ScenarioManager: React.FC<{ scenarioState: any }> = ({ scenarioState }) => {
+export const ScenarioManager: React.FC<{ scenarioState: ScenarioState }> = ({ scenarioState }) => {
   const [isExpanded, setIsExpanded] = useState(true);
   const [importTargetId, setImportTargetId] = useState<string | null>(null);
 
@@ -141,7 +147,7 @@ export const ScenarioManager: React.FC<{ scenarioState: any }> = ({ scenarioStat
     reader.readAsText(file);
   };
 
-  const handleExportScenario = (e: React.MouseEvent, scenario: any) => {
+  const handleExportScenario = (e: React.MouseEvent, scenario: ScenarioModel) => {
     e.stopPropagation();
     const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(scenario.data, null, 2));
     const downloadAnchorNode = document.createElement('a');
@@ -189,7 +195,7 @@ export const ScenarioManager: React.FC<{ scenarioState: any }> = ({ scenarioStat
             />
           </div>
           <div className={styles.scenarioList}>
-            {scenarios.map((s: any) => (
+            {scenarios.map((s: ScenarioModel) => (
               <ScenarioItem
                 key={s.id}
                 scenario={s}

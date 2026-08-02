@@ -14,5 +14,5 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
     expires: "9999-12-31T23:59:59.999Z",
   } : undefined;
 
-  return <SessionProvider session={mockSession as any}>{children}</SessionProvider>;
+  return <SessionProvider session={mockSession}>{children}</SessionProvider>;
 }

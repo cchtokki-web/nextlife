@@ -2,8 +2,10 @@ import React, { useState } from 'react';
 import { SimulationResult, SimulationParams } from '../../../core/entities/types';
 import GlassCard from '../../components/GlassCard';
 import styles from './Dashboard.module.css';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ComposedChart, Line } from 'recharts';
-import { Table, BarChart2 } from 'lucide-react';
+import { Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ComposedChart, Line } from 'recharts';
+import { BarChart2 } from 'lucide-react';
+import type { ValueType, NameType } from 'recharts/types/component/DefaultTooltipContent';
+import { type LegendPayload } from 'recharts';
 
 interface YearlyChartProps {
   params: SimulationParams;
@@ -16,8 +18,9 @@ export const YearlyChart: React.FC<YearlyChartProps> = ({ params, result }) => {
   
   const [hiddenKeys, setHiddenKeys] = useState<Record<string, boolean>>({});
 
-  const handleLegendClick = (e: any) => {
-    const dataKey = e.dataKey;
+  const handleLegendClick = (e: LegendPayload) => {
+    // dataKey는 함수 형태도 허용하는 타입이지만 이 차트는 문자열 키만 쓴다.
+    const dataKey = typeof e.dataKey === 'string' ? e.dataKey : undefined;
     if (dataKey) {
       setHiddenKeys((prev) => ({
         ...prev,
@@ -62,8 +65,22 @@ export const YearlyChart: React.FC<YearlyChartProps> = ({ params, result }) => {
     }
   };
 
-  const MultilineYAxisTick = (props: any) => {
-    const { x, y, payload, textAnchor, fill } = props;
+  // recharts가 커스텀 tick 렌더러에 넘기는 값 중 이 컴포넌트가 쓰는 것만 선언한다.
+  // 라이브러리 내부 타입(CartesianTickItem 등)은 버전마다 이름이 바뀌어 직접 의존하지 않는다.
+  interface YAxisTickProps {
+    // recharts는 x/y를 number로 넘기지만 타입상 string도 허용한다. 좌표 계산에 쓰므로
+    // 받는 쪽에서 Number()로 좁힌다.
+    x?: string | number;
+    y?: string | number;
+    payload: { value: number };
+    textAnchor?: 'inherit' | 'end' | 'start' | 'middle';
+    fill?: string;
+  }
+
+  const MultilineYAxisTick = (props: YAxisTickProps) => {
+    const { payload, textAnchor, fill } = props;
+    const x = Number(props.x ?? 0);
+    const y = Number(props.y ?? 0);
     const formatted = formatShortValue(payload.value);
     
     let numPart = formatted;
@@ -161,7 +178,7 @@ export const YearlyChart: React.FC<YearlyChartProps> = ({ params, result }) => {
                 fontFamily: 'var(--font-main)',
                 fontSize: '0.8rem',
               }}
-              formatter={(value: any, name: any) => [formatValue(Number(value)), name]}
+              formatter={(value?: ValueType, name?: NameType) => [formatValue(Number(value ?? 0)), name ?? '']}
               labelFormatter={(label, payload) => {
                 const year = payload && payload.length > 0 ? payload[0].payload.year : '';
                 return `${label}세 (${year}년)`;

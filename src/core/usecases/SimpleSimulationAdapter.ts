@@ -1,4 +1,4 @@
-import { SimulationParams, InvestmentAsset, PrivatePension, UserProfile } from '../entities/types';
+import { SimulationParams, InvestmentAsset, UserProfile } from '../entities/types';
 import { v4 as uuidv4 } from 'uuid';
 import { resolveTaxSettings } from './tax/taxRates';
 

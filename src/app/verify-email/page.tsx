@@ -31,7 +31,7 @@ function VerifyEmailContent() {
           setStatus("error");
           setMessage(data.error || "이메일 인증에 실패했습니다.");
         }
-      } catch (err) {
+      } catch {
         setStatus("error");
         setMessage("인증 처리 중 오류가 발생했습니다.");
       }

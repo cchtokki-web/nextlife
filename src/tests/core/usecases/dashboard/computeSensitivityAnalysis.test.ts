@@ -1,5 +1,5 @@
 import { describe, test, expect, vi } from 'vitest';
-import { computeSensitivityAnalysis, SensitivityScenario } from '@/core/usecases/dashboard/computeSensitivityAnalysis';
+import { computeSensitivityAnalysis } from '@/core/usecases/dashboard/computeSensitivityAnalysis';
 import { SimulationEngine } from '@/core/usecases/SimulationEngine';
 import { SimulationParams, SimulationResult } from '@/core/entities/types';
 
@@ -91,7 +91,7 @@ describe('computeSensitivityAnalysis', () => {
       ...baseParams,
       userProfile: { currentAge: 58, retirementAge: 60, expectancy: 90, targetMonthlySpending: 3000000 },
     };
-    const runForUtility = vi.fn((p: SimulationParams) => makeResult(85));
+    const runForUtility = vi.fn((_p: SimulationParams) => makeResult(85));
     const engine = { runForUtility } as unknown as SimulationEngine;
 
     computeSensitivityAnalysis(params, makeResult(88), engine);
@@ -106,7 +106,7 @@ describe('computeSensitivityAnalysis', () => {
       ...baseParams,
       userProfile: { currentAge: 40, retirementAge: 88, expectancy: 90, targetMonthlySpending: 3000000 },
     };
-    const runForUtility = vi.fn((p: SimulationParams) => makeResult(85));
+    const runForUtility = vi.fn((_p: SimulationParams) => makeResult(85));
     const engine = { runForUtility } as unknown as SimulationEngine;
 
     computeSensitivityAnalysis(params, makeResult(88), engine);

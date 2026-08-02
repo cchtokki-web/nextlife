@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
-import { Copy, Check, AlertTriangle, RefreshCw } from 'lucide-react';
-import { formatBackupKey } from '../../core/utils/crypto';
+import { AlertTriangle, RefreshCw } from 'lucide-react';
 
 // 어두운 모달 배경(--card-bg) 위에서도 박스 경계가 뚜렷이 보이도록 배경/테두리 대비를 높게 잡는다.
 const pinBoxStyle: React.CSSProperties = {
@@ -17,33 +16,22 @@ const pinBoxStyle: React.CSSProperties = {
 };
 
 interface E2eeKeyManagerProps {
-  localKey: string | null;
   needsKeyRestore: boolean;
-  isBackupKeyBackedUp: boolean;
   handleRestoreKey: (key: string) => Promise<boolean>;
-  handleAcknowledgeBackup: () => void;
   onResetScenarios?: () => void;
-  handleSendKeyToKakao?: (key: string) => Promise<{ success: boolean; error?: string }>;
   needsKeySetup?: boolean;
   handleSetupKey?: (key: string) => Promise<boolean>;
 }
 
 export const E2eeKeyManager: React.FC<E2eeKeyManagerProps> = ({
-  localKey,
   needsKeyRestore,
-  isBackupKeyBackedUp,
   handleRestoreKey,
-  handleAcknowledgeBackup,
   onResetScenarios,
-  handleSendKeyToKakao,
   needsKeySetup,
   handleSetupKey
 }) => {
-  const [copied, setCopied] = useState(false);
   const [pinInputs, setPinInputs] = useState<string[]>(['', '', '', '', '', '']);
   const [isRestoring, setIsRestoring] = useState(false);
-  const [isSendingKakao, setIsSendingKakao] = useState(false);
-  const [kakaoSentStatus, setKakaoSentStatus] = useState<'idle' | 'success' | 'error'>('idle');
 
   // 복구 실패 시도 제한 (온라인 브루트포스 억제용 speed bump)
   const MAX_RESTORE_ATTEMPTS = 5;
@@ -259,30 +247,6 @@ export const E2eeKeyManager: React.FC<E2eeKeyManagerProps> = ({
     } else {
       alert('보안키 설정에 실패했습니다.');
     }
-  };
-
-  const handleSendKakao = async () => {
-    if (!localKey || !handleSendKeyToKakao) return;
-    setIsSendingKakao(true);
-    setKakaoSentStatus('idle');
-    const result = await handleSendKeyToKakao(localKey);
-    setIsSendingKakao(false);
-    if (result.success) {
-      setKakaoSentStatus('success');
-      setTimeout(() => setKakaoSentStatus('idle'), 3000);
-    } else {
-      setKakaoSentStatus('error');
-      alert(result.error || '카카오톡 전송에 실패했습니다. 카카오 로그인을 확인해 주세요.');
-      setTimeout(() => setKakaoSentStatus('idle'), 3000);
-    }
-  };
-
-  const handleCopyKey = () => {
-    if (!localKey) return;
-    navigator.clipboard.writeText(localKey);
-    setCopied(true);
-    handleAcknowledgeBackup();
-    setTimeout(() => setCopied(false), 2000);
   };
 
   const handleRestoreSubmit = async (e: React.FormEvent) => {
@@ -530,7 +494,7 @@ export const E2eeKeyManager: React.FC<E2eeKeyManagerProps> = ({
                   </svg>
                   보안키 안내
                 </div>
-                보안키는 최초 설정 및 로그인 시 회원님의 카카오톡 <strong>'나와의 채팅방'</strong>으로 자동 발송되었습니다. 카카오톡에서 <strong>'NextLife'</strong> 또는 <strong>'보안키'</strong>를 검색하여 확인해 주세요!
+                보안키는 최초 설정 및 로그인 시 회원님의 카카오톡 <strong>&lsquo;나와의 채팅방&rsquo;</strong>으로 자동 발송되었습니다. 카카오톡에서 <strong>&lsquo;NextLife&rsquo;</strong> 또는 <strong>&lsquo;보안키&rsquo;</strong>를 검색하여 확인해 주세요!
               </div>
             </div>
 

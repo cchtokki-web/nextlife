@@ -114,7 +114,7 @@ export const authOptions: NextAuthOptions = {
       }
       if (user) {
         token.id = user.id;
-        token.tier = (user as any).tier || 'basic';
+        token.tier = user.tier || 'basic';
       }
       return token;
     },
@@ -136,7 +136,7 @@ export const authOptions: NextAuthOptions = {
         try {
           const parsedUrl = new URL(url);
           return parsedUrl.pathname + parsedUrl.search + parsedUrl.hash;
-        } catch (e) {
+        } catch {
           return "/";
         }
       }

@@ -3,9 +3,10 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 import { useSession, signIn } from 'next-auth/react';
-import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
+import { AreaChart, Area, XAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import styles from './ScenarioComparisonCards.module.css';
 import { isDevMode } from '@/core/utils/isDevMode';
+import type { ValueType } from 'recharts/types/component/DefaultTooltipContent';
 
 interface ScenarioResult {
   age: number;
@@ -72,7 +73,7 @@ const ScenarioCard: React.FC<ScenarioCardProps> = ({ title, subtitle, highlightC
                   padding={{ left: 15, right: 15 }}
                 />
                 <Tooltip 
-                  formatter={(value: any) => [formatValue(Number(value) || 0), '자산']}
+                  formatter={(value?: ValueType) => [formatValue(Number(value) || 0), '자산']}
                   labelFormatter={(label) => `${label}세`}
                   contentStyle={{ backgroundColor: 'var(--card-bg)', border: '1px solid var(--card-border)', borderRadius: '8px', color: 'var(--foreground)' }}
                   itemStyle={{ color: highlightColor, fontWeight: 'bold' }}

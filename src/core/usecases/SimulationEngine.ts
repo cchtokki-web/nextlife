@@ -495,7 +495,7 @@ export class SimulationEngine {
       let monthlyOtherIncomeTotalDisplay = 0;
       let monthlyOtherPreTaxTotalDisplay = 0;
       otherIncomes.forEach((income) => {
-        let amount = inflationMode === 'nominal'
+        const amount = inflationMode === 'nominal'
           ? income.monthlyAmount * Math.pow(1 + infRateAnnual, y)
           : income.monthlyAmount;
         const amountDisplay = this.convertValue(amount, income.currency, displayCurrency, exchangeRate);
@@ -850,9 +850,9 @@ export class SimulationEngine {
         annualPrivatePensionIncome = Math.max(0, annualPrivatePensionIncome - pensionTaxAdjustmentDisplay);
       }
 
-      let stockAssetsDisplay = activeAssets.reduce((sum, a) => sum + this.convertValue(a.currentValue, a.currency, displayCurrency, exchangeRate), 0);
-      let pensionAssetsDisplay = activePensions.reduce((sum, p) => sum + this.convertValue(p.currentBalance, p.currency, displayCurrency, exchangeRate), 0);
-      let isaAssetsDisplay = activeIsas.reduce((sum, i) => sum + this.convertValue(i.currentBalance, i.currency, displayCurrency, exchangeRate), 0);
+      const stockAssetsDisplay = activeAssets.reduce((sum, a) => sum + this.convertValue(a.currentValue, a.currency, displayCurrency, exchangeRate), 0);
+      const pensionAssetsDisplay = activePensions.reduce((sum, p) => sum + this.convertValue(p.currentBalance, p.currency, displayCurrency, exchangeRate), 0);
+      const isaAssetsDisplay = activeIsas.reduce((sum, i) => sum + this.convertValue(i.currentBalance, i.currency, displayCurrency, exchangeRate), 0);
       const totalAssetsDisplay = stockAssetsDisplay + pensionAssetsDisplay + isaAssetsDisplay;
 
       const hasTaxWarning = annualRawFinancialIncomeKRW > 20000000;

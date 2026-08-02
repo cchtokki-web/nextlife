@@ -41,7 +41,6 @@ import { ThemeProvider } from "@/web/components/providers/ThemeProvider";
 
 export default function RootLayout({
   children,
-  ...props
 }: Readonly<{
   children: React.ReactNode;
 }>) {

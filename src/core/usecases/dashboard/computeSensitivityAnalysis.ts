@@ -99,5 +99,5 @@ export function computeSensitivityAnalysis(
 
   return withSortKey
     .sort((a, b) => a.sortAge - b.sortAge)
-    .map(({ sortAge, ...scenario }) => scenario);
+    .map(({ sortAge: _sortAge, ...scenario }) => scenario);
 }

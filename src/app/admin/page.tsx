@@ -3,7 +3,8 @@
 import React, { useState } from 'react';
 import GlassCard from '../../web/components/GlassCard';
 import styles from './AdminDashboard.module.css';
-import { Activity, Users, Calendar, Clock, BarChart3, ShieldCheck } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
+import { Activity, Calendar, Clock, BarChart3, ShieldCheck } from 'lucide-react';
 import type { AdminStatsResponse, AdminStatsPeriod } from '../api/admin/stats/route';
 
 type StatsResponse = AdminStatsResponse['stats'];
@@ -35,7 +36,7 @@ export default function AdminPage() {
       } else {
         setError('유효하지 않은 어드민 키입니다.');
       }
-    } catch (err) {
+    } catch {
       setError('서버 연결 중 오류가 발생했습니다.');
     } finally {
       setIsLoading(false);
@@ -71,7 +72,7 @@ export default function AdminPage() {
     );
   }
 
-  const StatCard = ({ title, data, icon: Icon }: { title: string, data: StatsData, icon: any }) => (
+  const StatCard = ({ title, data, icon: Icon }: { title: string, data: StatsData, icon: LucideIcon }) => (
     <GlassCard className={styles.statCard}>
       <div className={styles.statHeader}>
         <Icon size={20} color="var(--primary)" />
