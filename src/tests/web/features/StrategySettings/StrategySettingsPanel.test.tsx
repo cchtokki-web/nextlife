@@ -133,9 +133,9 @@ describe('StrategySettingsPanel', () => {
       expect(notice()).not.toBeInTheDocument();
     });
 
-    // 보이는 섹션 안의 숨은 필드(간편 모드의 '목표 상속자산' 등)는 예전처럼 그 섹션
-    // 헤더 배지가 맡는다. 요약 줄이 그것까지 세면 같은 변경이 두 번 보고된다.
-    test('보이는 섹션의 숨은 필드는 요약이 아니라 섹션 헤더 배지가 알린다', () => {
+    // 보이는 섹션 안의 숨은 필드(간편 모드의 '목표 상속자산' 등)는 그 섹션 헤더의 변경
+    // 개수에 합산된다. 요약 줄이 그것까지 세면 같은 변경이 두 번 보고된다.
+    test('보이는 섹션의 숨은 필드는 요약이 아니라 섹션 헤더 개수에 합산된다', () => {
       const params = {
         ...initialParams,
         userProfile: { ...initialParams.userProfile, targetBequest: 100000000 },
@@ -143,8 +143,25 @@ describe('StrategySettingsPanel', () => {
 
       render(<StrategySettingsPanel params={params} onChangeParams={vi.fn()} {...noRecommendation} />);
 
-      expect(screen.getByText('숨겨진 사용자 설정 1개')).toBeInTheDocument();
+      expect(screen.getByText('1개 변경')).toBeInTheDocument();
       expect(notice()).not.toBeInTheDocument();
+    });
+
+    // 한 섹션에 보이는 변경과 숨은 변경이 함께 있으면 하나의 개수로 합쳐진다.
+    // '목표 월 생활비'(간편 모드에서 보임) + '목표 상속자산'(간편 모드에서 숨김) = 2개.
+    test('보이는 변경과 숨은 변경이 같은 섹션에 있으면 합산해 표시한다', () => {
+      const params = {
+        ...initialParams,
+        userProfile: {
+          ...initialParams.userProfile,
+          targetMonthlySpending: initialParams.userProfile.targetMonthlySpending + 500000,
+          targetBequest: 100000000,
+        },
+      };
+
+      render(<StrategySettingsPanel params={params} onChangeParams={vi.fn()} {...noRecommendation} />);
+
+      expect(screen.getByText('2개 변경')).toBeInTheDocument();
     });
   });
 

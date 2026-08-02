@@ -79,12 +79,12 @@ describe('SettingSection', () => {
     expect(screen.getByText('3개 변경')).toBeInTheDocument();
   });
 
-  // 헤더 폭 308px 중 토글 버튼에 돌아오는 자리는 135px뿐이다(나머지는 AI 추천 버튼과
-  // chevron). 배지를 그 버튼 안에 함께 두면 제목과 폭을 나눠 쓰다 제목이 밀려 내려가고,
-  // 세로 중앙 정렬된 아이콘이 제목이 아니라 배지 옆에 붙어 화면이 깨져 보였다.
-  test('배지는 토글 버튼 밖 별도 줄에 렌더링된다', () => {
+  // 배지는 제목 오른쪽에 오지만 토글 버튼 "안"에 들어가면 안 된다. 버튼 안에 두면 제목과
+  // 폭을 나눠 쓰다 제목이 밀려 내려가고, 세로 중앙 정렬된 아이콘이 제목이 아니라 배지
+  // 옆에 붙어 화면이 깨져 보였다.
+  test('배지는 토글 버튼 밖에 렌더링된다', () => {
     render(
-      <SettingSection icon={<Target size={16} />} title="은퇴 목표" changedCount={2} hiddenChangedCount={1}>
+      <SettingSection icon={<Target size={16} />} title="은퇴 목표" changedCount={2}>
         <p>본문</p>
       </SettingSection>
     );
@@ -92,21 +92,9 @@ describe('SettingSection', () => {
     const toggle = screen.getByRole('button', { name: /은퇴 목표/ });
     expect(toggle).toHaveTextContent('은퇴 목표');
     expect(toggle).not.toHaveTextContent('2개 변경');
-    expect(toggle).not.toHaveTextContent('숨겨진 사용자 설정 1개');
 
-    // 버튼 밖으로 옮기더라도 화면에서는 계속 보여야 한다.
+    // 버튼 밖이더라도 화면에서는 계속 보여야 한다.
     expect(screen.getByText('2개 변경')).toBeInTheDocument();
-    expect(screen.getByText('숨겨진 사용자 설정 1개')).toBeInTheDocument();
-  });
-
-  test('hiddenChangedCount가 0보다 크면 숨겨진 설정을 알린다', () => {
-    render(
-      <SettingSection icon={<Target size={16} />} title="경제 가정" hiddenChangedCount={2}>
-        <p>본문</p>
-      </SettingSection>
-    );
-
-    expect(screen.getByText('숨겨진 사용자 설정 2개')).toBeInTheDocument();
   });
 
   test('onAiRecommend가 있으면 AI 추천 버튼을 렌더링하고, 눌러도 섹션이 토글되지 않는다', () => {

@@ -7,10 +7,9 @@ import { ChevronDown, Sparkles } from 'lucide-react';
 interface SettingSectionProps {
   icon: ReactNode;
   title: string;
+  // 기본값과 다른 필드 수. 호출부가 "현재 모드에서 보이는 것"과 "숨겨진 것"을 합산해
+  // 넘긴다 — 안 보이는 값도 결과에 영향을 주므로 개수에서 빠지면 안 된다.
   changedCount?: number;
-  // 현재 모드에서 숨겨져 있지만 기본값과 다른 필드 수. 안 보이는 값이 결과에
-  // 영향을 준다는 사실을 숨기지 않기 위해 표시한다.
-  hiddenChangedCount?: number;
   defaultOpen?: boolean;
   // 방금 값이 바뀐 섹션이면 true. 테두리를 잠깐 강조해 "무엇이 결과를 바꿨는지"를 알린다.
   highlighted?: boolean;
@@ -24,7 +23,7 @@ interface SettingSectionProps {
 // ui/Collapse를 쓰지 않는 이유: 헤더 안에 별도 클릭 대상(AI 추천 버튼)이 필요한데
 // Collapse는 헤더 전체가 하나의 <button>이라 버튼 중첩이 된다.
 export function SettingSection({
-  icon, title, changedCount = 0, hiddenChangedCount = 0,
+  icon, title, changedCount = 0,
   defaultOpen = false, highlighted = false,
   onAiRecommend, aiDisabled = false, aiLabel = 'AI 추천', children,
 }: SettingSectionProps) {
@@ -55,9 +54,6 @@ export function SettingSection({
     setIsOpen(defaultOpen);
   }
 
-  // 배지가 있으면 헤더가 2줄이 된다. 제목 줄의 아래 여백을 줄여 두 줄이 한 덩어리로 보이게 한다.
-  const hasBadges = changedCount > 0 || hiddenChangedCount > 0;
-
   return (
     <div
       data-highlighted={highlighted || undefined}
@@ -77,11 +73,33 @@ export function SettingSection({
           aria-expanded={isOpen}
           aria-controls={contentId}
           onClick={() => setIsOpen((v) => !v)}
-          className={`flex flex-1 items-center gap-2.5 pt-4 text-left ${hasBadges ? 'pb-1.5' : 'pb-4'}`}
+          className="flex min-w-0 shrink items-center gap-2.5 py-4 text-left"
         >
           <span className="shrink-0 text-primary" aria-hidden="true">{icon}</span>
           <span className="text-sm font-bold text-foreground break-keep">{title}</span>
         </button>
+
+        {/*
+          배지는 제목 오른쪽에, 토글 버튼 "밖"에 둔다.
+
+          버튼 안에 넣으면 안 된다: 제목과 폭을 나눠 쓰다 제목이 밀려 내려가고, 세로 중앙
+          정렬된 아이콘이 제목이 아니라 배지 옆에 붙는다(예전에 그렇게 깨졌다).
+
+          이 컨테이너가 flex-1을 갖는 이유는 두 가지다. 배지가 제목 바로 옆에 붙게 하고
+          (컨테이너 안에서 왼쪽 정렬), 동시에 남은 폭을 흡수해 AI 추천 버튼과 chevron을
+          오른쪽 끝으로 밀어낸다. 배지가 없을 때도 렌더해야 그 밀어내기가 유지된다.
+
+          예전에는 이 배지들이 제목 아래 별도 줄에 있었다. 그때는 헤더에 '이미 최적'
+          비활성 버튼이 항상 떠 있어 제목에 돌아오는 자리가 135px뿐이었기 때문이다.
+          그 버튼을 없애 자리가 생겼으므로 한 줄로 되돌린다.
+        */}
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
+          {changedCount > 0 && (
+            <span className="rounded-full border border-primary/40 bg-primary/15 px-2 py-0.5 text-[10px] font-semibold text-primary whitespace-nowrap">
+              {changedCount}개 변경
+            </span>
+          )}
+        </div>
 
         {onAiRecommend && (
           <button
@@ -92,9 +110,18 @@ export function SettingSection({
             // 6개 섹션 중 셋(연금·투자 등)이 모두 같은 aiLabel을 쓰므로, 이 이름이 없으면
             // 스크린리더 사용자가 role+name으로 이동할 때 버튼을 구분할 수 없다.
             aria-label={`${title} ${aiLabel}`}
-            className="flex shrink-0 items-center gap-1.5 rounded-full border border-primary/40 px-3.5 py-1.5 text-xs font-semibold text-primary transition disabled:cursor-not-allowed disabled:border-card-border disabled:text-foreground-muted"
+            // 크기는 왼쪽 '개 변경' 배지와 맞추되(px-2 py-0.5 text-[10px]), 색은 반대로 간다.
+            //
+            // 이 저장소에서 'primary 아웃라인 pill'은 이미 "정보"를 뜻한다 — 섹션의 '개 변경'
+            // 배지, 필드의 '사용자 설정' 배지(ChangedBadge), AI 힌트 배지가 모두 같은 옷을
+            // 입는다. 버튼이 그 옷을 함께 입으면 나란히 놓였을 때 누를 수 있는 것과 읽기만
+            // 하는 것이 구분되지 않는다. 채운 배경으로 "이건 액션"임을 드러낸다.
+            //
+            // 테두리는 평소 transparent로 둔다. 비활성일 때만 색을 주면 1px만큼 크기가
+            // 변하는데, 처음부터 자리를 잡아 두면 상태가 바뀌어도 헤더가 흔들리지 않는다.
+            className="flex shrink-0 items-center gap-1 rounded-full border border-transparent bg-primary px-2 py-0.5 text-[10px] font-semibold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:border-card-border disabled:bg-transparent disabled:text-foreground-muted disabled:hover:opacity-100"
           >
-            <Sparkles size={13} aria-hidden="true" />
+            <Sparkles size={11} aria-hidden="true" />
             {aiLabel}
           </button>
         )}
@@ -126,30 +153,6 @@ export function SettingSection({
         </button>
         </div>
 
-        {/*
-          배지는 토글 버튼 밖, 제목 아래 줄에 둔다.
-
-          헤더 308px 중 토글 버튼에 돌아오는 자리는 135px뿐이라(나머지는 AI 추천 버튼과
-          chevron), 배지를 버튼 안에 함께 두면 제목과 폭을 나눠 쓰다 제목이 밀려 내려가고
-          세로 중앙 정렬된 아이콘이 제목이 아닌 배지 옆에 붙었다. 여기서는 헤더 전체 폭을
-          쓰므로 배지 둘이 한 줄에 들어간다.
-
-          왼쪽 여백 26px = 아이콘 16px + 버튼의 gap-2.5(10px). 제목과 세로로 맞춘다.
-        */}
-        {hasBadges && (
-          <div className="flex flex-wrap items-center gap-1.5 pb-3.5 pl-[26px]">
-            {changedCount > 0 && (
-              <span className="rounded-full border border-primary/40 bg-primary/15 px-2 py-0.5 text-[10px] font-semibold text-primary whitespace-nowrap">
-                {changedCount}개 변경
-              </span>
-            )}
-            {hiddenChangedCount > 0 && (
-              <span className="rounded-full border border-card-border bg-[rgba(0,0,0,0.3)] px-2 py-0.5 text-[10px] text-foreground-muted whitespace-nowrap">
-                숨겨진 사용자 설정 {hiddenChangedCount}개
-              </span>
-            )}
-          </div>
-        )}
       </div>
 
       <AnimatePresence initial={false}>

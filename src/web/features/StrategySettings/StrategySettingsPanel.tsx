@@ -207,8 +207,8 @@ export function StrategySettingsPanel({
   // 통째로 숨긴 섹션 안에 기본값과 다른 값이 남아 있으면, 그 값은 화면 어디에도 없는 채로
   // 계속 계산에 들어간다. 섹션 헤더 배지가 사라진 자리를 이 요약 한 줄이 대신한다.
   //
-  // 보이는 섹션의 숨은 필드(간편 모드의 '목표 상속자산' 등)는 여전히 그 섹션 헤더의
-  // hiddenChangedCount가 맡는다. 여기서 함께 세면 같은 변경이 두 곳에 보고된다.
+  // 보이는 섹션의 숨은 필드(간편 모드의 '목표 상속자산' 등)는 그 섹션 헤더의 변경 개수에
+  // 합산된다. 여기서 함께 세면 같은 변경이 두 곳에 보고된다.
   const hiddenSectionChanges = SECTIONS
     .filter(({ id }) => !isSectionVisible(mode, id))
     .reduce((sum, { id }) => sum + countSectionChanges(changed, id, mode).hidden, 0);
@@ -250,8 +250,11 @@ export function StrategySettingsPanel({
               key={id}
               icon={icon}
               title={title}
-              changedCount={counts.visible}
-              hiddenChangedCount={counts.hidden}
+              // 보이는 변경과 숨겨진 변경을 하나의 개수로 합친다. 예전에는 배지를 둘로
+              // 나눠 "숨겨진 사용자 설정 N개"를 따로 보여줬지만, 사용자에게는 "이 섹션에서
+              // 기본값과 다른 것이 몇 개인가"가 하나의 질문이다. 숨겨진 값도 계산에는
+              // 그대로 들어가므로 개수에서 빼면 안 된다.
+              changedCount={counts.visible + counts.hidden}
               highlighted={recentSection === id}
               // 고급 설정은 전문가 모드에서만 기본으로 펼친다.
               defaultOpen={id === 'advanced' ? mode === 'expert' : false}
