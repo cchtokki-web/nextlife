@@ -270,6 +270,7 @@ export function optimizePrivatePensionChanneling(
   const hasAccountTransfer = params.privatePensions.some((p) => p.monthlyContribution > 0);
 
   const makeItem = (label: string, evaluation: LegEvaluation): ItemizedContribution => ({
+    field: 'privatePensionChanneling',
     label,
     // 각 항목은 "그 레그 하나만 baseline에 적용했을 때"의 독립(marginal) 효과다. 두 레그를 함께
     // 채택해도 이 값은 각자의 단독 측정치를 유지하므로 합계가 총 개선분과 정확히 일치하지는 않는다.

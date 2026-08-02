@@ -161,10 +161,11 @@ export default function Home() {
   // 미정으로 남은 센티널 축을 추천값으로 채운다. 사용자 params는 그대로 두고 계산에만
   // 반영하므로, 추천의 입력(compiled)과 시뮬레이션의 입력(effective)이 분리된다 —
   // 이 분리가 "적용 → 재계산 → 재적용" 되먹임을 구조적으로 막는다.
-  const effective = useMemo(
+  const sentinels = useMemo(
     () => applyAiSentinels(compiled, recommendation),
     [compiled, recommendation]
   );
+  const effective = sentinels.compiled;
 
   // Run simulation engine for active scenario. cfg를 넘겨야 대시보드 헤드라인 효용
   // 점수(result.utility)가 사용자가 고른 목표 우선순위를 반영한다 — 생략하면 항상
@@ -310,7 +311,10 @@ export default function Home() {
         : hasImprovement
           ? `효용 ${recommendation.currentUtility.score}점 → ${recommendation.recommendedUtility.score}점`
           : '현재 전략 유지 권장';
-      const itemizedChecklistHtml = renderItemizedChecklistSection(recommendation);
+      // 리포트가 인쇄하는 숫자는 effective 기준이므로, 체크리스트도 "이미 반영된 축"을
+      // 알아야 한다. 넘기지 않으면 70세로 계산한 리포트가 같은 장에서 "70세로 바꾸세요"라고
+      // 시키게 된다.
+      const itemizedChecklistHtml = renderItemizedChecklistSection(recommendation, sentinels.appliedFields);
       const deltaRowsHtml = (recommendation && hasImprovement)
         ? `
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; font-size: 12px;">
@@ -966,6 +970,7 @@ export default function Home() {
                 onChangeParams={handleUpdateActiveParams}
                 recommendation={recommendation}
                 recommendationFailed={recommendationFailed}
+                sentinels={sentinels}
               />
             </GlassCard>
 
@@ -1020,6 +1025,7 @@ export default function Home() {
               recommendation={recommendation}
               recommendationFailed={recommendationFailed}
               isComputingRecommendation={isComputingRecommendation}
+              sentinels={sentinels}
             />
           </section>
 

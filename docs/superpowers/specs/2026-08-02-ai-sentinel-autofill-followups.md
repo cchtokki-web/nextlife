@@ -12,9 +12,12 @@
 인증 우회, `upsert`의 premium 기본값, AI 버튼 섹션 게이트 누락, 히어로 기준선 불일치**는 즉시
 수정했고, 아래 항목들은 설계 판단이 필요해 남겼다.
 
-**4번(자동 채움의 개선 미보장)도 2026-08-02 해결했다** — 이 묶음의 뿌리였다. 다만 그 수정은
-"악화되면 채우지 않는다"는 안전장치일 뿐이라, 채워진 경우의 **표시** 문제(1·5·7·8번)는 그대로
-남아 있다.
+**4번(자동 채움의 개선 미보장)과 표시 문제 1·5·7·8번을 2026-08-02 모두 해결했다.**
+`applyAiSentinels`가 `SentinelApplication`(compiled + appliedFields + 채운 나이)을 돌려주도록
+확장해, "무엇이 이미 계산에 들어갔는가"를 표시 계층이 추측하지 않고 한 곳에서 받아 가게 했다.
+`ItemizedContribution.field`를 추가해 라벨 문자열 매칭 없이 축을 식별한다.
+
+남은 항목은 2·3·6·9번이다.
 
 ---
 
@@ -91,7 +94,21 @@
 
 </details>
 
-### 1. 대시보드 AI 추천 체크리스트가 이미 적용된 변경을 "할 일"로 계속 제시한다
+### 1. ~~대시보드 AI 추천 체크리스트가 이미 적용된 변경을 "할 일"로 계속 제시한다~~ (2026-08-02 해결)
+
+**해결됨.** `applyAiSentinels`가 `SentinelApplication`을 돌려주고, 체크리스트가 `appliedFields`로
+항목을 「이미 반영됨」과 「남은 할 일」로 가른다(`RecommendationChecklist.tsx`). 자동 적용된 항목에는
+"이 값으로 계산 중"을 붙이고, 헤드라인은 baseline 대비 총 개선폭이 아니라 **지금 화면 값 대비 남은
+개선폭**을 말한다 — 이미 가진 몫까지 앞으로 얻을 것처럼 말하지 않기 위해서다. 남은 할 일이 없으면
+"추가로 하실 일은 없습니다"로 끝낸다. PDF 리포트(`pdfReportSections.ts`)도 같은 규칙을 쓴다.
+
+아래 표의 히어로 쪽은 한때 `currentUtility` 기준으로 바꿨다가 **되돌렸다.** 그러면 출발점이 화면
+KPI·토글 Before와 어긋난다. 지금은 `result.utility`(지금 화면 값)에서 출발하되, 추천이 그보다 나을
+게 없으면 그 줄 자체를 렌더하지 않는다(8번 참고).
+
+<details>
+<summary>원래 분석 (기록 보존)</summary>
+
 
 `src/web/features/Dashboard/recommendation/RecommendationChecklist.tsx:56` ·
 `src/web/features/Dashboard/hero/AiSummaryHero.tsx:68`
@@ -126,9 +143,20 @@
 `CompiledStrategy` 하나만 반환하는 것이 합리적이지만, 두 번째 축(사적연금·ISA)이 붙는 순간
 이 확장이 필요해진다.
 
+</details>
+
 ---
 
-### 5. 「AI 추천」 버튼을 눌러도 결과가 안 바뀌는데 배지는 '적용' → '추천'으로 강등된다
+### 5. ~~「AI 추천」 버튼을 눌러도 결과가 안 바뀌는데 배지는 '적용' → '추천'으로 강등된다~~ (2026-08-02 해결)
+
+**해결됨.** 판정 기준을 전략 enum에서 **"엔진에 실제로 들어간 나이"**로 바꿨다
+(`effectiveNationalPensionStartAge`). 배지는 그 값이 추천 나이와 같을 때 '적용'이므로, 자동 채움이
+걸러 채우지 않으면 '추천'으로, 사용자가 버튼을 눌러 확정 전략으로 바꾼 직후에도 '적용'으로 남는다.
+「AI 추천」 버튼도 같은 기준으로 판정해, 눌러도 컴파일 결과가 같은 경우에는 아예 나오지 않는다.
+
+<details>
+<summary>원래 분석 (기록 보존)</summary>
+
 
 `src/web/features/StrategySettings/StrategySettingsPanel.tsx:159-182` ·
 `src/web/features/StrategySettings/sections/PensionStrategySection.tsx:40`
@@ -145,6 +173,8 @@
 방금 명시적으로 적용했는데 라벨이 강등되고 결과는 그대로다. 자동 채움 이전에는 이 클릭이 65→70을
 만들어 숫자가 실제로 움직였다.
 
+</details>
+
 ### 6. 간편 모드에 배당 재투자 추천을 적용할 경로가 0개다
 
 `src/web/features/StrategySettings/fieldVisibility.ts:36-44, 79-93`
@@ -156,14 +186,38 @@
 `SIMPLE_FIELDS`에 없어 숨겨진다. 브랜치 이전에는 6개 섹션이 항상 렌더돼 빈 「투자 전략」의 AI 버튼을
 누를 수 있었다. **간편 모드가 기본 모드**(`DEFAULT_RETIREMENT_STRATEGY.mode = 'simple'`)다.
 
-### 7. 자동 적용 사실이 대시보드 어디에도 문장으로 없다
+### 7. ~~자동 적용 사실이 대시보드 어디에도 문장으로 없다~~ (2026-08-02 해결)
+
+**해결됨.** 체크리스트의 「이미 반영됨」 그룹이 이 역할을 한다 — "국민연금을 70세까지 연기
+수령합니다 · 이 값으로 계산 중"이 대시보드 본문에 문장으로 나온다. 접힌 섹션을 펼쳐 작은 배지를
+찾을 필요가 없다. PDF 리포트에도 같은 구분이 인쇄된다.
+
+<details>
+<summary>원래 분석 (기록 보존)</summary>
+
 
 신규 사용자는 기본값이 `'ai_optimized'`라 아무것도 고르지 않아도 센티널 상태다. 추천이 70세를 내면
 별점·효용 점수·자산곡선·PDF가 전부 70세 기준이 되는데, 이를 알리는 유일한 표면이 접힌 섹션 안의
 FieldRow 배지다(모든 섹션이 접힌 채 마운트 — `StrategySettingsPanel.tsx:259-260`).
 `nationalPensionStartAge`를 문장으로 말하는 대시보드 컴포넌트는 `src/web/` 전체에 없다.
 
-### 8. Before/After 토글이 서로 다른 기준선을 비교한다
+</details>
+
+### 8. ~~Before/After 토글이 서로 다른 기준선을 비교한다~~ (2026-08-02 해결)
+
+**해결됨 — 단, 접근 방식을 바꿨다.** 아래 적어 둔 "`currentResult`를 노출해 Before를 바꾼다"는
+방법은 여전히 틀렸다(기본 대시보드가 엔진이 돌리지 않은 결과를 보여주게 된다). 대신 **모든 표면이
+`result`(지금 화면 값)를 공통 출발점으로 쓰도록** 맞췄다:
+
+- 히어로: `result.utility → recommendedUtility`. 토글 Before/After와 같은 기준이다.
+- 히어로·토글 모두 `recommendedUtility > result.utility`일 때만 열린다. `improved`만 보면 자동
+  채움이 이미 개선분을 반영한 뒤에도 true로 남아, "추천 적용하기"가 지금보다 나쁜 결과를 열거나
+  "80 → 78"을 초록색 개선으로 표시하게 된다.
+- 체크리스트 헤드라인도 같은 기준의 "남은 개선"이다.
+
+<details>
+<summary>원래 분석 (기록 보존)</summary>
+
 
 `src/web/features/Dashboard/DashboardSection.tsx:81`
 
@@ -181,6 +235,8 @@ baseline 위에서 계산). 국민연금 나이는 이미 양쪽이 같으므로
 기준선이 다르다. 근본 해법은 추천을 `effective` 기준으로 다시 측정하거나, 자동 채움된 축을
 추천 항목에서 제외해 After가 "여기서 더 갈 수 있는 곳"을 뜻하게 만드는 것이다. 1·5번과 같은
 설계 묶음이다.
+
+</details>
 
 ### 9. 센티널 5개 중 1개만 동작하는데 UI 언어가 동일하다
 

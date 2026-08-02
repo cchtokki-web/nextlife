@@ -7,9 +7,15 @@ import {
   AiRecommendationState, NATIONAL_PENSION_OPTIONS, PRIVATE_PENSION_OPTIONS, SectionProps,
 } from '../strategyOptions';
 
-type Props = SectionProps & { ai: AiRecommendationState };
+type Props = SectionProps & {
+  ai: AiRecommendationState;
+  // 엔진에 실제로 들어간 국민연금 개시 나이. AI 배지의 '적용/추천' 판정에 쓴다.
+  effectiveNationalPensionStartAge?: number;
+};
 
-export function PensionStrategySection({ params, onChangeParams, mode, changed, ai }: Props) {
+export function PensionStrategySection({
+  params, onChangeParams, mode, changed, ai, effectiveNationalPensionStartAge,
+}: Props) {
   const strategy = resolveStrategy(params);
 
   const setStrategy = (patch: Partial<typeof strategy>) => {
@@ -35,9 +41,18 @@ export function PensionStrategySection({ params, onChangeParams, mode, changed, 
   const nationalHint = plan?.nationalPensionStartAge !== undefined
     ? `${plan.nationalPensionStartAge}세부터 수령`
     : undefined;
-  // 전략이 'ai_optimized'(미정)로 남아 있으면 applyAiSentinels가 이 나이를 시뮬레이션에
-  // 실제로 넣는다. 확정 전략을 고른 사용자에게는 같은 값이 단순 제안일 뿐이다.
-  const nationalHintApplied = strategy.nationalPensionStrategy === 'ai_optimized';
+  // "이 값이 지금 계산에 들어가 있는가"로 판정한다. 전략이 'ai_optimized'인지로 판정하면 안 된다.
+  //
+  // 두 방향으로 틀린다. (1) 센티널이어도 자동 채움이 개선을 확인하지 못하면 채우지 않으므로
+  // 엔진은 65세로 돈다. (2) 사용자가 「AI 추천」 버튼을 눌러 확정 전략으로 바꾸면 그 값이 실제로
+  // 계산에 들어가는데도 배지가 '적용'에서 '추천'으로 내려간다 — 방금 적용한 사용자에게
+  // 정반대 신호다.
+  //
+  // effectiveNationalPensionStartAge는 엔진에 실제로 들어간 나이(page.tsx의 effective)라
+  // 두 경우 모두 옳게 판정된다.
+  const nationalHintApplied =
+    plan?.nationalPensionStartAge !== undefined
+    && plan.nationalPensionStartAge === effectiveNationalPensionStartAge;
 
   // 사적연금 인출 전략에는 AI 힌트를 붙이지 않는다.
   //

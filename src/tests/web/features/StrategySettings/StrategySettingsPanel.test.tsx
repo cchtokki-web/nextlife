@@ -251,6 +251,71 @@ describe('StrategySettingsPanel', () => {
       expect(screen.queryByRole('button', { name: new RegExp('^연금 전략 ') })).not.toBeInTheDocument();
     });
 
+    test('AI 센티널이 이미 추천 나이를 채워 넣었으면 연금 전략 버튼을 내지 않는다', () => {
+      // 센티널 사용자('ai_optimized')는 전략 enum이 nearest('defer_max')와 항상 달라서,
+      // enum으로 판정하면 버튼이 계속 열린다. 눌러도 컴파일 결과가 같아 대시보드 숫자는
+      // 하나도 움직이지 않고 배지만 '적용'에서 '추천'으로 내려간다.
+      const deferRecommendation = {
+        improved: true,
+        recommendedPlan: {
+          nationalPensionStartAge: 70, isaMaturityDestination: 'pension',
+          monthlySpendingMultiplier: 1,
+        },
+        recommendedAssetReinvestment: null,
+      } as unknown as StrategyRecommendation;
+
+      const sentinelParams = {
+        ...initialParams,
+        strategy: { ...DEFAULT_RETIREMENT_STRATEGY, nationalPensionStrategy: 'ai_optimized' as const },
+      };
+
+      render(
+        <StrategySettingsPanel
+          params={sentinelParams}
+          onChangeParams={vi.fn()}
+          recommendation={deferRecommendation}
+          recommendationFailed={false}
+          sentinels={{
+            compiled: {} as never,
+            appliedFields: ['nationalPensionStartAge'],
+            nationalPensionStartAge: 70,
+          }}
+        />
+      );
+
+      expect(screen.queryByRole('button', { name: new RegExp('^연금 전략 ') })).not.toBeInTheDocument();
+    });
+
+    test('센티널이 걸러 채우지 않았으면 연금 전략 버튼은 그대로 나온다', () => {
+      // 자동 채움이 악화를 이유로 채우지 않은 경우. 엔진은 65세로 돌고 있으므로
+      // 사용자가 직접 70세를 고를 여지가 남아 있다.
+      const deferRecommendation = {
+        improved: true,
+        recommendedPlan: {
+          nationalPensionStartAge: 70, isaMaturityDestination: 'pension',
+          monthlySpendingMultiplier: 1,
+        },
+        recommendedAssetReinvestment: null,
+      } as unknown as StrategyRecommendation;
+
+      const sentinelParams = {
+        ...initialParams,
+        strategy: { ...DEFAULT_RETIREMENT_STRATEGY, nationalPensionStrategy: 'ai_optimized' as const },
+      };
+
+      render(
+        <StrategySettingsPanel
+          params={sentinelParams}
+          onChangeParams={vi.fn()}
+          recommendation={deferRecommendation}
+          recommendationFailed={false}
+          sentinels={{ compiled: {} as never, appliedFields: [], nationalPensionStartAge: null }}
+        />
+      );
+
+      expect(screen.getByRole('button', { name: '연금 전략 AI 추천' })).toBeEnabled();
+    });
+
     test('적용할 값이 있으면 그 섹션만 활성화된다', () => {
       const recommendation = {
         improved: true,

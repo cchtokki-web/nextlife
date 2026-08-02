@@ -111,7 +111,7 @@ const recommendation: StrategyRecommendation = {
   failedCandidateCount: 0,
   recommendedResult: result,
   itemizedContributions: [
-    { label: '국민연금을 70세까지 연기 수령합니다.', utilityDelta: 5, deltas: { ...zeroDeltas, totalTax: -1000000 } },
+    { field: 'nationalPensionStartAge', label: '국민연금을 70세까지 연기 수령합니다.', utilityDelta: 5, deltas: { ...zeroDeltas, totalTax: -1000000 } },
   ],
 };
 

@@ -200,4 +200,64 @@ describe('AiSummaryHero', () => {
 
     await waitFor(() => expect(screen.getByText('AI 서버 연결 불가 · 기본 안내 표시 중')).toBeInTheDocument());
   });
+
+  describe('추천 개선 문구의 기준선', () => {
+    const withRecommendedScore = (score: number): StrategyRecommendation => ({
+      currentUtility: utility,
+      nationalPensionOnlyUtility: null,
+      recommendedUtility: { ...utility, score },
+      recommendedPlan: null,
+      recommendedAssetReinvestment: null,
+      recommendedPrivatePensionChanneling: null,
+      recommendedNewPensionContribution: null,
+      channelingIncludesAccountTransfer: false,
+      improved: true,
+      reasons: [],
+      deltas: zeroDeltas,
+      totalCandidateCount: 12,
+      failedCandidateCount: 0,
+      recommendedResult: emptyResult,
+      itemizedContributions: [],
+    });
+
+    const renderWith = (recommendation: StrategyRecommendation, currentScore: number) =>
+      render(
+        <AiSummaryHero
+          formatValue={formatValue}
+          mode="current"
+          onToggleMode={vi.fn()}
+          canApply
+          score={80}
+          monthlyTarget={3000000}
+          isPro={false}
+          depletionAge={null}
+          householdEndAge={90}
+          utility={{ ...utility, score: currentScore }}
+          recommendation={recommendation}
+          userProfile={{ currentAge: 55, retirementAge: 60, expectancy: 90, targetMonthlySpending: 3000000 }}
+        />
+      );
+
+    test('출발점은 baseline이 아니라 지금 화면이 보여주는 효용이다', () => {
+      // 자동 채움이 이미 반영된 상태. baseline(76)을 출발점으로 쓰면 사용자가 이미 가진
+      // 몫까지 앞으로 얻을 것처럼 말하게 된다.
+      renderWith(withRecommendedScore(84), 79);
+
+      expect(screen.getByText('79 → 84')).toBeInTheDocument();
+    });
+
+    test('추천이 지금보다 나을 게 없으면 개선 문구를 아예 내지 않는다', () => {
+      // improved는 baseline 대비 판정이라 여전히 true다. 그대로 그리면 "80 → 78"처럼
+      // 감소를 초록색 개선으로 표시하게 된다.
+      renderWith(withRecommendedScore(78), 80);
+
+      expect(screen.queryByText(/추천 전략 적용 시 평생 효용/)).not.toBeInTheDocument();
+    });
+
+    test('추천과 지금 값이 같아도 개선 문구를 내지 않는다', () => {
+      renderWith(withRecommendedScore(81), 81);
+
+      expect(screen.queryByText(/추천 전략 적용 시 평생 효용/)).not.toBeInTheDocument();
+    });
+  });
 });

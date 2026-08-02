@@ -8,6 +8,7 @@ import {
 import {
   NATIONAL_PENSION_STRATEGY_AGES, resolveStrategy,
 } from '../../../core/usecases/strategy/compileStrategy';
+import { SentinelApplication } from '../../../core/usecases/strategy/applyAiSentinels';
 import { SettingSection } from '../../components/form';
 import { AdvancedSection } from './sections/AdvancedSection';
 import { BasicInfoSection } from './sections/BasicInfoSection';
@@ -29,6 +30,9 @@ export interface StrategySettingsPanelProps {
   // 추천이 없는 이유가 "계산 실패"인지 "개선 여지 없음"인지 구분한다. 실패일 때만
   // 섹션의 AI 추천 버튼에 에러 문구를 보여준다.
   recommendationFailed: boolean;
+  // AI 센티널이 실제로 계산에 넣은 값. 배지의 '적용/추천' 판정과 「AI 추천」 버튼 노출이
+  // 전략 enum이 아니라 이 값을 따라야 화면과 엔진이 어긋나지 않는다.
+  sentinels?: SentinelApplication;
 }
 
 // 값을 바꾼 섹션을 강조하는 시간. 눈에 띄되 시선을 붙잡지 않을 정도로 짧게 둔다.
@@ -53,8 +57,11 @@ export { resolveStrategy };
 const AI_SECTIONS: ReadonlySet<SectionId> = new Set(['goal', 'pension', 'investment']);
 
 export function StrategySettingsPanel({
-  params, onChangeParams, recommendation, recommendationFailed,
+  params, onChangeParams, recommendation, recommendationFailed, sentinels,
 }: StrategySettingsPanelProps) {
+  // 엔진에 실제로 들어간 국민연금 개시 나이. 자동 채움이 있으면 그 값, 없으면 사용자가 고른
+  // 전략이 컴파일되는 값이다. AI 배지의 '적용/추천'과 「AI 추천」 버튼 노출을 이 값으로 판정한다.
+  const effectiveNationalPensionStartAge = sentinels?.nationalPensionStartAge ?? undefined;
   const strategy = resolveStrategy(params);
   const mode = strategy.mode;
 
@@ -98,7 +105,13 @@ export function StrategySettingsPanel({
       case 'goal':
         return <RetirementGoalSection {...sectionProps} ai={ai} />;
       case 'pension':
-        return <PensionStrategySection {...sectionProps} ai={ai} />;
+        return (
+          <PensionStrategySection
+            {...sectionProps}
+            ai={ai}
+            effectiveNationalPensionStartAge={effectiveNationalPensionStartAge}
+          />
+        );
       case 'investment':
         return <InvestmentStrategySection {...sectionProps} ai={ai} />;
       case 'economic':
@@ -170,8 +183,16 @@ export function StrategySettingsPanel({
       );
       const preferIsaFirst = plan.isaMaturityDestination === 'asset';
 
-      if (currentStrategy.nationalPensionStrategy === nearest
-        && currentStrategy.preferIsaFirst === preferIsaFirst) {
+      // 판정 기준은 전략 enum이 아니라 "엔진에 실제로 들어간 나이"다.
+      //
+      // enum으로 보면, AI 센티널이 이미 추천 나이를 채워 넣은 사용자('ai_optimized')에게도
+      // nearest('defer_max' 등)와 다르다는 이유로 버튼이 계속 열린다. 눌러도 컴파일 결과가
+      // 같아 대시보드 숫자는 하나도 움직이지 않고, 배지만 '적용'에서 '추천'으로 내려간다.
+      const nearestAge = NATIONAL_PENSION_STRATEGY_AGES[nearest];
+      const effectiveAge = effectiveNationalPensionStartAge
+        ?? NATIONAL_PENSION_STRATEGY_AGES[currentStrategy.nationalPensionStrategy];
+
+      if (effectiveAge === nearestAge && currentStrategy.preferIsaFirst === preferIsaFirst) {
         return null;
       }
 

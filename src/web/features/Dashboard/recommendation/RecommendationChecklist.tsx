@@ -1,13 +1,19 @@
 'use client';
 
-import { Check, Loader2 } from 'lucide-react';
-import { StrategyRecommendation } from '../../../../core/entities/types';
+import { Check, Loader2, Square } from 'lucide-react';
+import { ItemizedContribution, StrategyRecommendation } from '../../../../core/entities/types';
+import { SentinelApplication } from '../../../../core/usecases/strategy/applyAiSentinels';
 import GlassCard from '../../../components/GlassCard';
 
 interface RecommendationChecklistProps {
   recommendation?: StrategyRecommendation;
   recommendationFailed?: boolean;
   isComputingRecommendation?: boolean;
+  // AI 센티널이 이미 계산에 넣은 축. 이 항목들은 "할 일"이 아니라 "이미 반영됨"이다.
+  sentinels?: SentinelApplication;
+  // 지금 화면이 보여주는 효용 점수(result.utility.score). 헤드라인을 "여기서 더 얻을 수
+  // 있는 것"으로 만들기 위해 필요하다 — 자동 채움분은 이미 이 값에 들어 있다.
+  currentUtilityScore?: number;
   formatValue: (val: number) => string;
 }
 
@@ -18,6 +24,8 @@ export function RecommendationChecklist({
   recommendation,
   recommendationFailed = false,
   isComputingRecommendation = false,
+  sentinels,
+  currentUtilityScore,
   formatValue,
 }: RecommendationChecklistProps) {
   if (isComputingRecommendation) {
@@ -52,49 +60,99 @@ export function RecommendationChecklist({
     );
   }
 
-  const totalUtilityDelta = recommendation.recommendedUtility.score - recommendation.currentUtility.score;
+  // AI 센티널이 이미 계산에 넣은 축은 "할 일"이 아니다.
+  //
+  // 이 분리가 없으면 엔진이 이미 70세로 도는데 체크리스트는 "국민연금을 70세까지 연기
+  // 수령하세요"를 체크 아이콘과 함께 할 일로 계속 제시한다. 사용자가 그 지시를 따라 버튼을
+  // 눌러도 숫자는 하나도 움직이지 않는다.
+  //
+  // 라벨 문자열이 아니라 field로 가른다 — 문구에는 수치가 섞여 있어 매칭 기준이 될 수 없다.
+  const appliedFields = sentinels?.appliedFields ?? [];
+  const alreadyApplied = recommendation.itemizedContributions.filter((i) => appliedFields.includes(i.field));
+  const remaining = recommendation.itemizedContributions.filter((i) => !appliedFields.includes(i.field));
+
+  // 헤드라인은 "여기서 더 얻을 수 있는 것"이다. 자동 채움분은 이미 화면의 KPI에 반영돼
+  // 있으므로, baseline 대비 총 개선폭을 쓰면 사용자가 이미 가진 몫까지 앞으로 얻을 것처럼
+  // 말하게 된다. currentScore는 지금 화면이 보여주는 효용 점수다.
+  const currentScore = currentUtilityScore ?? recommendation.currentUtility.score;
+  const furtherUtilityDelta = recommendation.recommendedUtility.score - currentScore;
+
+  const renderItem = (item: ItemizedContribution, i: number, applied: boolean) => (
+    <li key={i} className="border-b border-card-border pb-3 last:border-none">
+      <div className="flex items-start justify-between gap-2">
+        <span className="flex items-start gap-2 text-sm">
+          {applied ? (
+            <Check size={16} className="mt-0.5 shrink-0 text-success" aria-hidden="true" />
+          ) : (
+            <Square size={16} className="mt-0.5 shrink-0 text-foreground-muted" aria-hidden="true" />
+          )}
+          {item.label}
+        </span>
+        <span className={`shrink-0 text-sm font-semibold ${item.utilityDelta >= 0 ? 'text-success' : 'text-danger'}`}>
+          효용 {item.utilityDelta >= 0 ? '+' : ''}
+          {item.utilityDelta}점
+        </span>
+      </div>
+      <div className="ml-6 mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-foreground-muted">
+        {applied && <span className="text-primary">이 값으로 계산 중</span>}
+        {item.deltas.totalTax !== 0 && (
+          <span>
+            절세 {item.deltas.totalTax <= 0 ? formatValue(-item.deltas.totalTax) : `-${formatValue(item.deltas.totalTax)}`}
+          </span>
+        )}
+        {item.deltas.endingAssets !== 0 && (
+          <span>
+            자산 {item.deltas.endingAssets >= 0 ? '+' : '-'}
+            {formatValue(Math.abs(item.deltas.endingAssets))}
+          </span>
+        )}
+        {item.deltas.lifetimeConsumption !== 0 && (
+          <span>
+            생활비 {item.deltas.lifetimeConsumption >= 0 ? '+' : '-'}
+            {formatValue(Math.abs(item.deltas.lifetimeConsumption))}
+          </span>
+        )}
+      </div>
+    </li>
+  );
 
   return (
     <GlassCard>
-      <div className="mb-3 flex items-center justify-between">
+      <div className="mb-3 flex items-center justify-between gap-2">
         <h3 className="text-base font-semibold">🤖 AI 추천 전략</h3>
-        <span className="text-sm font-semibold text-success">총 효용 +{totalUtilityDelta}점</span>
+        {furtherUtilityDelta > 0 && (
+          <span className="shrink-0 text-sm font-semibold text-success">
+            {alreadyApplied.length > 0 ? '남은 개선' : '총 효용'} +{furtherUtilityDelta}점
+          </span>
+        )}
       </div>
-      <ul className="flex flex-col gap-3">
-        {recommendation.itemizedContributions.map((item, i) => (
-          <li key={i} className="border-b border-card-border pb-3 last:border-none">
-            <div className="flex items-start justify-between gap-2">
-              <span className="flex items-start gap-2 text-sm">
-                <Check size={16} className="mt-0.5 shrink-0 text-success" aria-hidden="true" />
-                {item.label}
-              </span>
-              <span className={`shrink-0 text-sm font-semibold ${item.utilityDelta >= 0 ? 'text-success' : 'text-danger'}`}>
-                효용 {item.utilityDelta >= 0 ? '+' : ''}
-                {item.utilityDelta}점
-              </span>
-            </div>
-            <div className="ml-6 mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-foreground-muted">
-              {item.deltas.totalTax !== 0 && (
-                <span>
-                  절세 {item.deltas.totalTax <= 0 ? formatValue(-item.deltas.totalTax) : `-${formatValue(item.deltas.totalTax)}`}
-                </span>
-              )}
-              {item.deltas.endingAssets !== 0 && (
-                <span>
-                  자산 {item.deltas.endingAssets >= 0 ? '+' : '-'}
-                  {formatValue(Math.abs(item.deltas.endingAssets))}
-                </span>
-              )}
-              {item.deltas.lifetimeConsumption !== 0 && (
-                <span>
-                  생활비 {item.deltas.lifetimeConsumption >= 0 ? '+' : '-'}
-                  {formatValue(Math.abs(item.deltas.lifetimeConsumption))}
-                </span>
-              )}
-            </div>
-          </li>
-        ))}
-      </ul>
+
+      {alreadyApplied.length > 0 && (
+        <>
+          <h4 className="mb-2 text-xs font-semibold text-primary">이미 반영됨</h4>
+          <ul className="mb-4 flex flex-col gap-3">
+            {alreadyApplied.map((item, i) => renderItem(item, i, true))}
+          </ul>
+        </>
+      )}
+
+      {remaining.length > 0 && (
+        <>
+          {alreadyApplied.length > 0 && (
+            <h4 className="mb-2 text-xs font-semibold text-foreground-muted">남은 할 일</h4>
+          )}
+          <ul className="flex flex-col gap-3">
+            {remaining.map((item, i) => renderItem(item, i, false))}
+          </ul>
+        </>
+      )}
+
+      {remaining.length === 0 && alreadyApplied.length > 0 && (
+        <p className="text-sm text-foreground-muted">
+          AI가 찾은 개선안은 이미 모두 계산에 반영되어 있습니다. 추가로 하실 일은 없습니다.
+        </p>
+      )}
+
       <p className="mt-2 text-xs text-foreground-muted">
         * 항목별 효용 점수는 단독 적용 기준이라 합계가 총 개선폭과 다를 수 있고, 이미 만점·바닥에
         가까운 항목은 절세·자산 효과가 있어도 +0점으로 보일 수 있습니다.

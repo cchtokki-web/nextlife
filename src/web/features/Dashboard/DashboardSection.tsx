@@ -21,6 +21,7 @@ import { computeRiskAlerts } from '../../../core/usecases/dashboard/computeRiskA
 import { useBeforeAfterToggle } from './hooks/useBeforeAfterToggle';
 import { ExecutionRoadmap } from './roadmap/ExecutionRoadmap';
 import { computeExecutionRoadmap, selectDepletionAge } from '../../../core/usecases/dashboard/computeExecutionRoadmap';
+import { SentinelApplication } from '../../../core/usecases/strategy/applyAiSentinels';
 
 interface DashboardSectionProps {
   params: SimulationParams;
@@ -30,6 +31,9 @@ interface DashboardSectionProps {
   recommendation?: StrategyRecommendation;
   recommendationFailed?: boolean;
   isComputingRecommendation?: boolean;
+  // AI 센티널이 자동으로 계산에 넣은 축. 체크리스트가 "이미 반영됨"과 "남은 할 일"을
+  // 가르는 데 쓴다.
+  sentinels?: SentinelApplication;
 }
 
 // 결과 화면 오케스트레이터. 하위 조각(Hero/KPI/체크리스트/차트/전문가상세)을 IA 순서대로
@@ -42,6 +46,7 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
   recommendation,
   recommendationFailed = false,
   isComputingRecommendation = false,
+  sentinels,
 }) => {
   const [hiddenKeys, setHiddenKeys] = React.useState<Record<string, boolean>>({});
   // 자산 추이 차트 기본 단순화 모드: 켜지기 전까지는 주식자산/연금자산 breakdown을 숨기고
@@ -77,7 +82,9 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
   const currency = params.displayCurrency;
   const formatValue = (val: number) => formatValueForCurrency(val, currency);
 
-  const { mode, toggle, canApply } = useBeforeAfterToggle({ recommendation, params: rawParams });
+  const { mode, toggle, canApply } = useBeforeAfterToggle({
+    recommendation, params: rawParams, currentUtilityScore: result.utility?.score,
+  });
   const displayedResult = mode === 'after' && recommendation ? recommendation.recommendedResult : result;
 
   // baseline(현재 설정) 기준 월 목표 생활비 — AI 노후 설계사 의견은 Before/After 미리보기와
@@ -177,6 +184,8 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
         recommendation={recommendation}
         recommendationFailed={recommendationFailed}
         isComputingRecommendation={isComputingRecommendation}
+        sentinels={sentinels}
+        currentUtilityScore={result.utility?.score}
         formatValue={formatValue}
       />
 

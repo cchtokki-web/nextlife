@@ -81,6 +81,7 @@ describe('RecommendationChecklist', () => {
       improved: true,
       itemizedContributions: [
         {
+          field: 'nationalPensionStartAge',
           label: '국민연금을 70세까지 연기 수령합니다.',
           utilityDelta: 2,
           deltas: { ...zeroDeltas, totalTax: -1000000, endingAssets: 5000000 },
@@ -100,6 +101,7 @@ describe('RecommendationChecklist', () => {
       improved: true,
       itemizedContributions: [
         {
+          field: 'nationalPensionStartAge',
           label: '국민연금을 60세부터 조기 수령합니다.',
           utilityDelta: -1,
           deltas: { ...zeroDeltas, totalTax: 500000 },
@@ -117,6 +119,7 @@ describe('RecommendationChecklist', () => {
       improved: true,
       itemizedContributions: [
         {
+          field: 'assetSellOrderStrategy',
           label: '배당수익률이 높은 자산부터 매도해 향후 금융소득종합과세 위험을 낮춥니다.',
           utilityDelta: 0,
           deltas: { ...zeroDeltas, totalTax: -14820000, endingAssets: 235550000 },
@@ -126,5 +129,102 @@ describe('RecommendationChecklist', () => {
     render(<RecommendationChecklist recommendation={recommendation} formatValue={formatValue} />);
 
     expect(screen.getByText('효용 +0점')).toBeInTheDocument();
+  });
+
+  describe('AI 센티널로 이미 자동 적용된 항목', () => {
+    const twoItems = makeRecommendation({
+      improved: true,
+      recommendedUtility: { ...utility, score: 84 },
+      itemizedContributions: [
+        {
+          field: 'nationalPensionStartAge',
+          label: '국민연금을 70세까지 연기 수령합니다.',
+          utilityDelta: 8,
+          deltas: zeroDeltas,
+        },
+        {
+          field: 'assetReinvestment',
+          label: '"삼성전자"의 배당을 재투자로 전환합니다.',
+          utilityDelta: 5,
+          deltas: zeroDeltas,
+        },
+      ],
+    });
+
+    const appliedNationalPension = {
+      compiled: {} as never,
+      appliedFields: ['nationalPensionStartAge'] as const,
+      nationalPensionStartAge: 70,
+    };
+
+    test('자동 적용된 항목은 "이미 반영됨"으로, 나머지는 "남은 할 일"로 나눈다', () => {
+      render(
+        <RecommendationChecklist
+          recommendation={twoItems}
+          sentinels={appliedNationalPension}
+          currentUtilityScore={79}
+          formatValue={formatValue}
+        />
+      );
+
+      expect(screen.getByText('이미 반영됨')).toBeInTheDocument();
+      expect(screen.getByText('남은 할 일')).toBeInTheDocument();
+      expect(screen.getByText('이 값으로 계산 중')).toBeInTheDocument();
+    });
+
+    test('헤드라인은 baseline이 아니라 지금 화면 값 대비 남은 개선폭을 말한다', () => {
+      // recommendedUtility 84, 화면 값 79 → 남은 개선은 5점.
+      // baseline(76) 대비 8점을 쓰면 이미 가진 몫까지 앞으로 얻을 것처럼 말하게 된다.
+      render(
+        <RecommendationChecklist
+          recommendation={twoItems}
+          sentinels={appliedNationalPension}
+          currentUtilityScore={79}
+          formatValue={formatValue}
+        />
+      );
+
+      expect(screen.getByText('남은 개선 +5점')).toBeInTheDocument();
+      expect(screen.queryByText('총 효용 +8점')).not.toBeInTheDocument();
+    });
+
+    test('남은 할 일이 없으면 추가로 할 일이 없다고 알린다', () => {
+      const onlyApplied = makeRecommendation({
+        improved: true,
+        itemizedContributions: [
+          {
+            field: 'nationalPensionStartAge',
+            label: '국민연금을 70세까지 연기 수령합니다.',
+            utilityDelta: 8,
+            deltas: zeroDeltas,
+          },
+        ],
+      });
+
+      render(
+        <RecommendationChecklist
+          recommendation={onlyApplied}
+          sentinels={appliedNationalPension}
+          currentUtilityScore={81}
+          formatValue={formatValue}
+        />
+      );
+
+      expect(screen.getByText(/추가로 하실 일은 없습니다/)).toBeInTheDocument();
+      expect(screen.queryByText('남은 할 일')).not.toBeInTheDocument();
+    });
+
+    test('센티널이 없으면 종전대로 전부 할 일로 보여준다', () => {
+      render(
+        <RecommendationChecklist
+          recommendation={twoItems}
+          currentUtilityScore={76}
+          formatValue={formatValue}
+        />
+      );
+
+      expect(screen.queryByText('이미 반영됨')).not.toBeInTheDocument();
+      expect(screen.getByText('총 효용 +8점')).toBeInTheDocument();
+    });
   });
 });

@@ -1,6 +1,31 @@
-import { StrategyRecommendation } from '../../entities/types';
+import { ItemizedContributionField, StrategyRecommendation } from '../../entities/types';
 import { CompiledStrategy } from './compileStrategy';
 import { NATIONAL_PENSION_NORMAL_START_AGE } from '../pension/nationalPensionRules';
+
+const NATIONAL_PENSION_START_AGE_FIELD: ItemizedContributionField = 'nationalPensionStartAge';
+
+// 자동 채움 결과. compiled(시뮬레이션 입력)와 "무엇을 채웠는가"를 함께 돌려준다.
+//
+// 채운 축 목록을 함께 내는 이유: 표시 계층이 같은 판정을 각자 다시 하면 반드시 어긋난다.
+// 실제로 그랬다 — 설정 패널의 배지는 "전략이 ai_optimized인가"로, 대시보드 체크리스트는
+// 아무 판정도 없이 추천 항목을 전부 "할 일"로 그렸다. 그래서 엔진이 이미 70세로 도는데
+// 체크리스트는 "70세로 바꾸세요"라고 시키고, 배지는 버튼을 누르면 오히려 '적용'에서
+// '추천'으로 내려갔다. 판정은 여기 한 곳에서만 한다.
+export interface SentinelApplication {
+  compiled: CompiledStrategy;
+  // 자동 채움이 실제로 계산에 넣은 축. 비어 있으면 compiled는 입력과 동일한 참조다.
+  appliedFields: ReadonlyArray<ItemizedContributionField>;
+  // 계산에 들어간 국민연금 개시 나이. 채우지 않았으면 null.
+  nationalPensionStartAge: number | null;
+}
+
+// 아무것도 채우지 않은 결과. appliedFields를 공유 상수로 두어, 채우지 않는 흔한 경로에서
+// 매번 새 배열이 만들어져 소비처의 메모이제이션이 깨지는 일을 막는다.
+const NO_APPLIED_FIELDS: ReadonlyArray<ItemizedContributionField> = Object.freeze([]);
+
+function none(compiled: CompiledStrategy): SentinelApplication {
+  return { compiled, appliedFields: NO_APPLIED_FIELDS, nationalPensionStartAge: null };
+}
 
 // 'ai_*' 센티널이 남아 있는 축을 AI 추천값으로 채운다.
 //
@@ -18,12 +43,12 @@ import { NATIONAL_PENSION_NORMAL_START_AGE } from '../pension/nationalPensionRul
 export function applyAiSentinels(
   compiled: CompiledStrategy,
   recommendation: StrategyRecommendation | undefined
-): CompiledStrategy {
+): SentinelApplication {
   // improved가 false이면 recommendedPlan은 "baseline 유지 권장"이라 채울 것이 없다.
-  if (!recommendation?.improved) return compiled;
+  if (!recommendation?.improved) return none(compiled);
 
   const recommendedPlan = recommendation.recommendedPlan;
-  if (!recommendedPlan) return compiled;
+  if (!recommendedPlan) return none(compiled);
 
   // resolveStrategy가 아니라 params.strategy를 직접 본다.
   //
@@ -33,7 +58,7 @@ export function applyAiSentinels(
   // compileStrategy의 통과 경로(strategy 없음 + 레거시 씨앗 없음)는 입력을 비트 단위로
   // 보존하겠다고 보장하는데, 그 보장이 바로 여기서 깨졌다 — 사용자가 직접 저장해 둔
   // withdrawalPlan.nationalPensionStartAge가 추천값으로 덮어써졌다.
-  if (compiled.params.strategy?.nationalPensionStrategy !== 'ai_optimized') return compiled;
+  if (compiled.params.strategy?.nationalPensionStrategy !== 'ai_optimized') return none(compiled);
 
   const recommendedAge = recommendedPlan.nationalPensionStartAge;
   // withdrawalPlan이 없는 것(compileStrategy의 통과 경로 등)은 엔진 기본값 65세와
@@ -43,7 +68,7 @@ export function applyAiSentinels(
     ?? NATIONAL_PENSION_NORMAL_START_AGE;
   // 값이 같으면 새 객체를 만들지 않는다. 참조가 바뀌면 page.tsx의 하위 useMemo가 전부
   // 무효화되어 이 화면에서 가장 무거운 렌더(engine.run)가 매번 다시 돈다.
-  if (recommendedAge === currentAge) return compiled;
+  if (recommendedAge === currentAge) return none(compiled);
 
   // 개선이 확인된 경우에만 채운다.
   //
@@ -57,17 +82,21 @@ export function applyAiSentinels(
   // 값이다(RecommendationEngine이 계산한다). null이면 판단 근거가 없다는 뜻이므로 보수적으로
   // 사용자 계획을 그대로 둔다.
   const onlyUtility = recommendation.nationalPensionOnlyUtility;
-  if (!onlyUtility) return compiled;
-  if (onlyUtility.score <= recommendation.currentUtility.score) return compiled;
+  if (!onlyUtility) return none(compiled);
+  if (onlyUtility.score <= recommendation.currentUtility.score) return none(compiled);
 
   return {
-    ...compiled,
-    params: {
-      ...compiled.params,
-      withdrawalPlan: {
-        ...(compiled.params.withdrawalPlan ?? {}),
-        nationalPensionStartAge: recommendedAge,
+    compiled: {
+      ...compiled,
+      params: {
+        ...compiled.params,
+        withdrawalPlan: {
+          ...(compiled.params.withdrawalPlan ?? {}),
+          nationalPensionStartAge: recommendedAge,
+        },
       },
     },
+    appliedFields: [NATIONAL_PENSION_START_AGE_FIELD],
+    nationalPensionStartAge: recommendedAge,
   };
 }

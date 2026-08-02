@@ -105,11 +105,10 @@ describe('PensionStrategySection', () => {
 
     render(
       <PensionStrategySection
-        // initialParams는 strategy를 지정하지 않아 resolveStrategy가 DEFAULT_RETIREMENT_STRATEGY로
-        // 채운다. nationalPensionStrategy의 기본값이 센티널('ai_optimized')이라 이 추천은
-        // "제안"이 아니라 이미 시뮬레이션에 반영되는 "적용"이다.
+        // 엔진에 실제로 들어간 나이가 추천 나이와 같으므로 "제안"이 아니라 "적용"이다.
         params={initialParams} onChangeParams={vi.fn()}
         mode="standard" changed={new Set()} ai={ai}
+        effectiveNationalPensionStartAge={70}
       />
     );
 
@@ -176,22 +175,56 @@ describe('PensionStrategySection', () => {
       strategy: { ...DEFAULT_RETIREMENT_STRATEGY, nationalPensionStrategy },
     });
 
-    test("'AI 최적화'(센티널)이면 '적용' 문구로 표시한다", () => {
+    // 판정 기준은 전략 enum이 아니라 "엔진에 실제로 들어간 나이"다. enum으로 판정하면
+    // 자동 채움이 개선을 확인하지 못해 채우지 않은 경우에도 '적용'이라 말하고, 반대로
+    // 사용자가 「AI 추천」 버튼으로 확정 전략을 고른 직후에는 그 값이 실제로 계산에
+    // 들어가는데도 '추천'으로 내려간다.
+    test("추천 나이가 실제로 계산에 들어가 있으면 '적용'으로 표시한다", () => {
       render(
         <PensionStrategySection
           params={paramsWith('ai_optimized')} onChangeParams={vi.fn()}
           mode="standard" changed={new Set()} ai={aiWithAge(68)}
+          effectiveNationalPensionStartAge={68}
         />
       );
 
       expect(screen.getByText('AI 적용: 68세부터 수령')).toBeInTheDocument();
     });
 
-    test('확정 전략을 고른 상태면 "추천" 문구로 표시한다', () => {
+    test("센티널이어도 자동 채움이 걸러 baseline으로 돌면 '추천'으로 표시한다", () => {
+      // 나이 축만 떼어 내면 악화되는 추천은 applyAiSentinels가 채우지 않는다.
+      // 그때 엔진은 65세로 돌고 있으므로 68세는 아직 제안일 뿐이다.
+      render(
+        <PensionStrategySection
+          params={paramsWith('ai_optimized')} onChangeParams={vi.fn()}
+          mode="standard" changed={new Set()} ai={aiWithAge(68)}
+          effectiveNationalPensionStartAge={65}
+        />
+      );
+
+      expect(screen.getByText('AI 추천: 68세부터 수령')).toBeInTheDocument();
+    });
+
+    test("확정 전략이라도 그 값이 추천과 같으면 '적용'으로 표시한다", () => {
+      // 「AI 추천」 버튼을 눌러 defer_max(70세)로 바꾼 직후의 상태. 방금 적용했는데
+      // 배지가 '추천'으로 내려가면 사용자 멘탈 모델의 정반대다.
+      render(
+        <PensionStrategySection
+          params={paramsWith('defer_max')} onChangeParams={vi.fn()}
+          mode="standard" changed={new Set()} ai={aiWithAge(70)}
+          effectiveNationalPensionStartAge={70}
+        />
+      );
+
+      expect(screen.getByText('AI 적용: 70세부터 수령')).toBeInTheDocument();
+    });
+
+    test('확정 전략이 추천과 다르면 "추천" 문구로 표시한다', () => {
       render(
         <PensionStrategySection
           params={paramsWith('defer_max')} onChangeParams={vi.fn()}
           mode="standard" changed={new Set()} ai={aiWithAge(68)}
+          effectiveNationalPensionStartAge={70}
         />
       );
 

@@ -90,9 +90,30 @@ describe('applyAiSentinels', () => {
     const compiled = compiledFor('ai_optimized');
     expect(compiled.params.withdrawalPlan?.nationalPensionStartAge).toBe(65);
 
-    const applied = applyAiSentinels(compiled, makeRecommendation(plan(68)));
+    const { compiled: applied } = applyAiSentinels(compiled, makeRecommendation(plan(68)));
 
     expect(applied.params.withdrawalPlan?.nationalPensionStartAge).toBe(68);
+  });
+
+  test('채운 축을 appliedFields와 나이로 보고한다', () => {
+    // 표시 계층("이미 반영됨" 그룹, 설정 패널 배지)이 이 값 하나만 보고 판정한다.
+    // 각자 다시 판정하면 어긋나므로 여기가 단일 소스다.
+    const compiled = compiledFor('ai_optimized');
+    const applied = applyAiSentinels(compiled, makeRecommendation(plan(68)));
+
+    expect(applied.appliedFields).toEqual(['nationalPensionStartAge']);
+    expect(applied.nationalPensionStartAge).toBe(68);
+  });
+
+  test('채우지 않았으면 appliedFields가 비어 있고 참조가 매번 같다', () => {
+    // 빈 배열을 매번 새로 만들면 소비처의 메모이제이션이 이유 없이 깨진다.
+    const compiled = compiledFor('defer_max');
+    const a = applyAiSentinels(compiled, makeRecommendation(plan(68)));
+    const b = applyAiSentinels(compiled, makeRecommendation(plan(68)));
+
+    expect(a.appliedFields).toEqual([]);
+    expect(a.nationalPensionStartAge).toBeNull();
+    expect(a.appliedFields).toBe(b.appliedFields);
   });
 
   test('추천 나이만 얹었을 때 효용이 baseline보다 낮으면 채우지 않는다', () => {
@@ -102,7 +123,7 @@ describe('applyAiSentinels', () => {
     const compiled = compiledFor('ai_optimized');
     const worse = makeRecommendation(plan(60), true, utilityWithScore(utility.score - 1));
 
-    expect(applyAiSentinels(compiled, worse)).toBe(compiled);
+    expect(applyAiSentinels(compiled, worse).compiled).toBe(compiled);
   });
 
   test('추천 나이만 얹었을 때 효용이 baseline과 같으면 채우지 않는다', () => {
@@ -111,7 +132,7 @@ describe('applyAiSentinels', () => {
     const compiled = compiledFor('ai_optimized');
     const flat = makeRecommendation(plan(60), true, utilityWithScore(utility.score));
 
-    expect(applyAiSentinels(compiled, flat)).toBe(compiled);
+    expect(applyAiSentinels(compiled, flat).compiled).toBe(compiled);
   });
 
   test('단일 축 효용을 계산하지 못했으면(null) 채우지 않는다', () => {
@@ -119,12 +140,12 @@ describe('applyAiSentinels', () => {
     const compiled = compiledFor('ai_optimized');
     const unknown = makeRecommendation(plan(68), true, null);
 
-    expect(applyAiSentinels(compiled, unknown)).toBe(compiled);
+    expect(applyAiSentinels(compiled, unknown).compiled).toBe(compiled);
   });
 
   test('확정 enum이면 추천이 있어도 채우지 않는다', () => {
     const compiled = compiledFor('defer_max');
-    const applied = applyAiSentinels(compiled, makeRecommendation(plan(68)));
+    const { compiled: applied } = applyAiSentinels(compiled, makeRecommendation(plan(68)));
 
     expect(applied).toBe(compiled);
     expect(applied.params.withdrawalPlan?.nationalPensionStartAge).toBe(70);
@@ -132,22 +153,22 @@ describe('applyAiSentinels', () => {
 
   test('추천이 없으면 입력 참조를 그대로 반환한다', () => {
     const compiled = compiledFor('ai_optimized');
-    expect(applyAiSentinels(compiled, undefined)).toBe(compiled);
+    expect(applyAiSentinels(compiled, undefined).compiled).toBe(compiled);
   });
 
   test('recommendedPlan이 null이면 입력 참조를 그대로 반환한다', () => {
     const compiled = compiledFor('ai_optimized');
-    expect(applyAiSentinels(compiled, makeRecommendation(null))).toBe(compiled);
+    expect(applyAiSentinels(compiled, makeRecommendation(null)).compiled).toBe(compiled);
   });
 
   test('improved가 false이면 입력 참조를 그대로 반환한다', () => {
     const compiled = compiledFor('ai_optimized');
-    expect(applyAiSentinels(compiled, makeRecommendation(plan(68), false))).toBe(compiled);
+    expect(applyAiSentinels(compiled, makeRecommendation(plan(68), false)).compiled).toBe(compiled);
   });
 
   test('추천 나이가 이미 컴파일된 값과 같으면 입력 참조를 그대로 반환한다', () => {
     const compiled = compiledFor('ai_optimized');
-    expect(applyAiSentinels(compiled, makeRecommendation(plan(65)))).toBe(compiled);
+    expect(applyAiSentinels(compiled, makeRecommendation(plan(65))).compiled).toBe(compiled);
   });
 
   test('strategy 필드가 없는 통과 경로(compileStrategy)에서는 센티널을 채우지 않는다', () => {
@@ -162,7 +183,7 @@ describe('applyAiSentinels', () => {
 
     // 65세(= 엔진 기본값)가 아닌 나이를 추천해야 "조건에서 걸러졌는가"와 "나이가 같아서
     // 반환됐는가"가 구분된다. plan(65)로는 두 경로가 같은 결과를 내 검증력이 없다.
-    const applied = applyAiSentinels(compiled, makeRecommendation(plan(70)));
+    const { compiled: applied } = applyAiSentinels(compiled, makeRecommendation(plan(70)));
 
     expect(applied).toBe(compiled);
   });
@@ -178,7 +199,7 @@ describe('applyAiSentinels', () => {
     expect(compiled.params.strategy).toBeUndefined();
     expect(compiled.params.withdrawalPlan?.nationalPensionStartAge).toBe(62);
 
-    const applied = applyAiSentinels(compiled, makeRecommendation(plan(68)));
+    const { compiled: applied } = applyAiSentinels(compiled, makeRecommendation(plan(68)));
 
     expect(applied).toBe(compiled);
     expect(applied.params.withdrawalPlan?.nationalPensionStartAge).toBe(62);
@@ -191,7 +212,7 @@ describe('applyAiSentinels', () => {
       strategy: { ...DEFAULT_RETIREMENT_STRATEGY, nationalPensionStrategy: 'ai_optimized' },
     });
 
-    const applied = applyAiSentinels(compiled, makeRecommendation(plan(68)));
+    const { compiled: applied } = applyAiSentinels(compiled, makeRecommendation(plan(68)));
 
     expect(applied.params.withdrawalPlan?.generalAssetWithdrawalStartAge).toBe(62);
     expect(applied.params.withdrawalPlan?.isaMaturityDestination).toBe('pension');
@@ -200,7 +221,7 @@ describe('applyAiSentinels', () => {
 
   test('params의 다른 최상위 필드는 그대로 유지된다', () => {
     const compiled = compiledFor('ai_optimized');
-    const applied = applyAiSentinels(compiled, makeRecommendation(plan(68)));
+    const { compiled: applied } = applyAiSentinels(compiled, makeRecommendation(plan(68)));
 
     expect(applied.params.userProfile).toBe(compiled.params.userProfile);
     expect(applied.params.assets).toBe(compiled.params.assets);
@@ -236,14 +257,14 @@ describe('applyAiSentinels 통합 — 실제 추천 엔진', () => {
     expect(only!.score).toBeLessThanOrEqual(recommendation.currentUtility.score);
 
     // 그러므로 채우지 않는다 — 참조까지 그대로다.
-    expect(applyAiSentinels(compiled, recommendation)).toBe(compiled);
+    expect(applyAiSentinels(compiled, recommendation).compiled).toBe(compiled);
   });
 
   test('자동 채움을 거른 계획의 효용은 baseline보다 낮아지지 않는다', () => {
     const engine = new SimulationEngine();
     const compiled = compileStrategy(engineParams);
     const recommendation = recommendStrategy(compiled.params, engine, compiled.utilityConfig);
-    const effective = applyAiSentinels(compiled, recommendation);
+    const { compiled: effective } = applyAiSentinels(compiled, recommendation);
 
     const baseline = engine.run(compiled.params, compiled.utilityConfig);
     const applied = engine.run(effective.params, effective.utilityConfig);
@@ -258,7 +279,7 @@ describe('applyAiSentinels 통합', () => {
     const engine = new SimulationEngine();
 
     const sentinel = compiledFor('ai_optimized');
-    const applied = applyAiSentinels(sentinel, makeRecommendation(plan(68)));
+    const { compiled: applied } = applyAiSentinels(sentinel, makeRecommendation(plan(68)));
     const appliedResult = engine.run(applied.params, applied.utilityConfig);
 
     // 같은 나이를 withdrawalPlan에 직접 넣은 경우. compileStrategy가 센티널을 65로 덮으므로
@@ -291,7 +312,7 @@ describe('applyAiSentinels 통합', () => {
     const compiled = compiledFor('ai_optimized');
 
     const baseline = engine.run(compiled.params, compiled.utilityConfig);
-    const applied = applyAiSentinels(compiled, makeRecommendation(plan(70)));
+    const { compiled: applied } = applyAiSentinels(compiled, makeRecommendation(plan(70)));
     const appliedResult = engine.run(applied.params, applied.utilityConfig);
 
     // 빈 배열끼리 비교하면 "[]" === "[]"로 무의미하게 통과하므로 먼저 내용이 있는지 확인한다.

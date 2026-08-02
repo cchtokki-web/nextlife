@@ -253,6 +253,7 @@ export function computeItemizedContributions(
       const singleFieldUtility = computeLifetimeUtility(singleFieldResult, overrideParams, cfg);
       const itemDeltas = computeDeltas(baselineResult, singleFieldResult);
       contributions.push({
+        field,
         label: labelForSingleFieldChange(
           field,
           recommendedPlan,
@@ -404,6 +405,7 @@ export function recommendStrategy(
   // bestPlan 자체는 바꾸지 않고, 최종 결과와 추가 itemized 항목/reasons만 병합한다.
   const reinvestOpt = optimizeDividendReinvestment(params, bestPlan, bestResult, bestUtility, engine, cfg);
   const additionalItemizedContributions: ItemizedContribution[] = reinvestOpt.perAssetResults.map((r) => ({
+    field: 'assetReinvestment',
     label: r.flippedValue
       ? `"${r.assetName}"의 배당을 재투자로 전환합니다.`
       : `"${r.assetName}"의 배당 재투자를 중단하고 현금으로 인출합니다.`,

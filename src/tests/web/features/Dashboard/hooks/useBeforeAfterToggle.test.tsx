@@ -83,4 +83,33 @@ describe('useBeforeAfterToggle', () => {
     rerender({ recommendation: makeRecommendation(true), params: sameParams });
     expect(result.current.mode).toBe('after');
   });
+
+  test('추천이 지금 화면 값보다 나을 게 없으면 canApply가 false다', () => {
+    // improved는 센티널 미적용 baseline 대비 판정이라, 자동 채움이 이미 개선분을 반영한
+    // 뒤에도 true로 남는다. 그대로 두면 "추천 적용하기"가 지금보다 나쁜 결과를 연다.
+    const recommendation = {
+      improved: true,
+      recommendedUtility: { score: 78 },
+    } as unknown as StrategyRecommendation;
+
+    const { result } = renderHook(() =>
+      useBeforeAfterToggle({ recommendation, currentUtilityScore: 80 })
+    );
+
+    expect(result.current.canApply).toBe(false);
+    expect(result.current.mode).toBe('current');
+  });
+
+  test('추천이 지금 값보다 나으면 canApply가 true다', () => {
+    const recommendation = {
+      improved: true,
+      recommendedUtility: { score: 84 },
+    } as unknown as StrategyRecommendation;
+
+    const { result } = renderHook(() =>
+      useBeforeAfterToggle({ recommendation, currentUtilityScore: 79 })
+    );
+
+    expect(result.current.canApply).toBe(true);
+  });
 });

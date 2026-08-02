@@ -1,7 +1,9 @@
 import { RiskAlert } from '../../../core/usecases/dashboard/computeRiskAlerts';
 import { ExecutionRoadmap } from '../../../core/usecases/dashboard/computeExecutionRoadmap';
 import { SensitivityScenario } from '../../../core/usecases/dashboard/computeSensitivityAnalysis';
-import { StrategyRecommendation } from '../../../core/entities/types';
+import {
+  ItemizedContribution, ItemizedContributionField, StrategyRecommendation,
+} from '../../../core/entities/types';
 
 // PDF는 화면과 별개로 완전히 독립된 정적 HTML 문자열을 html2canvas로 캡처하는 구조라(page.tsx의
 // handleDownload), 화면 컴포넌트를 재사용할 수 없다 — 동일한 usecase 데이터를 받아 PDF 전용
@@ -26,23 +28,46 @@ export function renderRiskAlertsSection(alerts: RiskAlert[]): string {
   `;
 }
 
-export function renderItemizedChecklistSection(recommendation: StrategyRecommendation | undefined): string {
+// 리포트의 항목별 체크리스트. 화면의 RecommendationChecklist와 같은 규칙을 따라야 한다 —
+// AI 센티널이 이미 계산에 넣은 축은 "할 일"이 아니라 "이미 반영됨"이다. 이 구분이 없으면
+// 리포트가 인쇄한 숫자는 70세 기준인데 같은 장에서 "70세로 바꾸세요"라고 시키게 된다.
+export function renderItemizedChecklistSection(
+  recommendation: StrategyRecommendation | undefined,
+  appliedFields: ReadonlyArray<ItemizedContributionField> = []
+): string {
   const items = recommendation?.itemizedContributions ?? [];
   if (!recommendation || !recommendation.improved || items.length === 0) {
     return '<p style="font-size: 12px; color: #64748b;">현재 설정이 이미 최적입니다. 추가로 추천할 변경 사항이 없습니다.</p>';
   }
-  return items
-    .map((item) => {
-      const sign = item.utilityDelta >= 0 ? '+' : '';
-      const color = item.utilityDelta >= 0 ? '#10B981' : '#EF4444';
-      return `
+
+  const renderItem = (item: ItemizedContribution, applied: boolean) => {
+    const sign = item.utilityDelta >= 0 ? '+' : '';
+    const color = item.utilityDelta >= 0 ? '#10B981' : '#EF4444';
+    const appliedNote = applied
+      ? '<span style="color: #2563eb; font-size: 10px; margin-left: 6px;">이 값으로 계산 중</span>'
+      : '';
+    return `
         <div style="display: flex; justify-content: space-between; align-items: baseline; padding: 6px 0; border-bottom: 1px dashed #e2e8f0; font-size: 12px;">
-          <span>✓ ${item.label}</span>
+          <span>${applied ? '✓' : '☐'} ${item.label}${appliedNote}</span>
           <span style="font-weight: 700; color: ${color}; white-space: nowrap; margin-left: 10px;">효용 ${sign}${item.utilityDelta}점</span>
         </div>
       `;
-    })
-    .join('');
+  };
+
+  const alreadyApplied = items.filter((i) => appliedFields.includes(i.field));
+  const remaining = items.filter((i) => !appliedFields.includes(i.field));
+  const heading = (text: string) =>
+    `<p style="font-size: 11px; font-weight: 700; color: #475569; margin: 8px 0 2px;">${text}</p>`;
+
+  if (alreadyApplied.length === 0) {
+    return remaining.map((i) => renderItem(i, false)).join('');
+  }
+
+  return [
+    heading('이미 반영됨'),
+    ...alreadyApplied.map((i) => renderItem(i, true)),
+    ...(remaining.length > 0 ? [heading('남은 할 일'), ...remaining.map((i) => renderItem(i, false))] : []),
+  ].join('');
 }
 
 export function renderExecutionRoadmapSection(roadmap: ExecutionRoadmap): string {

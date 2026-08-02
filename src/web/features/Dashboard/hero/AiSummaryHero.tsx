@@ -47,7 +47,15 @@ export function AiSummaryHero({
   if (!utility) return null;
 
   const headline = buildHeroHeadline(utility.score, depletionAge, householdEndAge);
-  const hasImprovement = !!recommendation?.improved;
+  // "여기서 더 갈 수 있는가"를 지금 화면의 값(utility = result.utility) 기준으로 판정한다.
+  //
+  // recommendation.improved만 보면 안 된다. 그 값은 센티널 미적용 baseline 대비 판정이라,
+  // 자동 채움이 이미 개선분의 일부(또는 전부)를 반영한 뒤에도 true로 남는다. 그 상태에서
+  // "utility → recommendedUtility"를 그리면 두 값이 같거나(71 → 71) 심지어 줄어드는 경우
+  // (80 → 78)를 초록색 개선으로 표시하게 된다 — baseline + 나이 조합은 후보 격자에 없던
+  // 조합이라 recommendedUtility를 넘어설 수 있다.
+  const hasImprovement =
+    !!recommendation?.improved && recommendation.recommendedUtility.score > utility.score;
 
   return (
     <GlassCard>
@@ -66,16 +74,15 @@ export function AiSummaryHero({
                 추천 전략 적용 시 평생 효용{' '}
                 <strong className="text-success">
                   {/*
-                    왼쪽 항은 utility(= result.utility)가 아니라 recommendation.currentUtility다.
+                    왼쪽 항은 utility(= result.utility) — 지금 이 화면이 보여주는 값이고
+                    KPI 카드의 '평생 효용', Before/After 토글의 Before와 같은 기준이다.
+                    자동 채움이 이미 반영된 상태에서 출발점을 baseline으로 쓰면, 사용자가
+                    이미 가진 몫까지 앞으로 얻을 것처럼 말하게 된다.
 
-                    result는 AI 센티널이 적용된 params(effective)로 돌린 결과인 반면
-                    recommendedUtility는 센티널 미적용 baseline(compiled) 위에서 측정된 값이라,
-                    둘을 나란히 놓으면 한 문장 안에서 기준선이 갈린다. 센티널이 이미 추천 나이를
-                    적용해 둔 경우 왼쪽이 오른쪽에 근접하거나 넘어서서 "80 → 78"처럼 감소를
-                    개선으로 표시하게 된다. 두 항을 같은 baseline에서 읽으면 아래 체크리스트의
-                    '총 효용 +N점'(= recommendedUtility - currentUtility)과도 산술이 맞는다.
+                    이 줄은 hasImprovement가 true일 때만 렌더된다 — 즉 오른쪽이 왼쪽보다
+                    반드시 크다.
                   */}
-                  {recommendation.currentUtility.score} → {recommendation.recommendedUtility.score}
+                  {utility.score} → {recommendation.recommendedUtility.score}
                 </strong>
               </span>
               {recommendation.deltas.totalTax !== 0 && (

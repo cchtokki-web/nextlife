@@ -366,7 +366,16 @@ export interface StrategyRecommendation {
   itemizedContributions: ItemizedContribution[];
 }
 
+// 항목이 건드리는 축. 표시 계층이 "AI 센티널로 이미 자동 적용된 축"을 라벨 문자열 매칭 없이
+// 가려내기 위해 필요하다 — 문구는 수치가 섞여 계속 바뀌므로 매칭 기준이 될 수 없다.
+// 인출계획 필드 외에 Phase 3(배당 재투자)·Phase 4(사적연금 채널링/신규 납입) 항목이 있다.
+export type ItemizedContributionField =
+  | keyof CompleteWithdrawalPlan
+  | 'assetReinvestment'
+  | 'privatePensionChanneling';
+
 export interface ItemizedContribution {
+  field: ItemizedContributionField;
   label: string; // 사용자 친화적 문구 (예: "국민연금을 70세까지 연기 수령")
   // 이 변경 하나만 적용했을 때의 Utility 증가분(marginal). 기준점은 항목 종류에 따라 다르다:
   // 인출계획(Phase 1/2) 항목은 진짜 baseline 대비, 배당 재투자(Phase 3) 항목은 인출계획이

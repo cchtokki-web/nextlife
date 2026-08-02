@@ -99,8 +99,8 @@ describe('renderItemizedChecklistSection', () => {
       failedCandidateCount: 0,
       recommendedResult: baseRecommendedResult,
       itemizedContributions: [
-        { label: '국민연금을 70세까지 연기 수령합니다.', utilityDelta: 5, deltas: { ...zeroDeltas, totalTax: -1000000 } },
-        { label: '사적연금을 63세부터 인출합니다.', utilityDelta: -1.2, deltas: zeroDeltas },
+        { field: 'nationalPensionStartAge', label: '국민연금을 70세까지 연기 수령합니다.', utilityDelta: 5, deltas: { ...zeroDeltas, totalTax: -1000000 } },
+        { field: 'privatePensionMonthlyTarget', label: '사적연금을 63세부터 인출합니다.', utilityDelta: -1.2, deltas: zeroDeltas },
       ],
     };
     const html = renderItemizedChecklistSection(recommendation);
@@ -162,5 +162,36 @@ describe('renderSensitivityTableSection', () => {
     expect(html).toContain('82세');
     expect(html).toContain('투자수익률 +2%p');
     expect(html).toContain('평생 유지');
+  });
+});
+
+describe('renderItemizedChecklistSection - AI 센티널 자동 적용 구분', () => {
+  const zeroDeltas: StrategyRecommendation['deltas'] = {
+    lifetimeConsumption: 0, totalTax: 0, endingAssets: 0, pensionEndingBalance: 0,
+    comprehensiveTaxYears: 0, healthInsuranceTotal: 0, nationalPensionTotal: 0,
+  };
+
+  const recommendation = {
+    improved: true,
+    itemizedContributions: [
+      { field: 'nationalPensionStartAge', label: '국민연금을 70세까지 연기 수령합니다.', utilityDelta: 8, deltas: zeroDeltas },
+      { field: 'assetReinvestment', label: '"삼성전자"의 배당을 재투자로 전환합니다.', utilityDelta: 5, deltas: zeroDeltas },
+    ],
+  } as unknown as StrategyRecommendation;
+
+  test('자동 적용된 축은 "이미 반영됨"으로 분리해 인쇄한다', () => {
+    const html = renderItemizedChecklistSection(recommendation, ['nationalPensionStartAge']);
+
+    expect(html).toContain('이미 반영됨');
+    expect(html).toContain('남은 할 일');
+    expect(html).toContain('이 값으로 계산 중');
+  });
+
+  test('자동 적용이 없으면 종전대로 구분 없이 인쇄한다', () => {
+    const html = renderItemizedChecklistSection(recommendation);
+
+    expect(html).not.toContain('이미 반영됨');
+    expect(html).not.toContain('이 값으로 계산 중');
+    expect(html).toContain('국민연금을 70세까지 연기 수령합니다.');
   });
 });
