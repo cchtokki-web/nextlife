@@ -125,9 +125,11 @@ describe('getComprehensiveIncomeTaxKRW', () => {
 });
 
 describe('calculateComprehensiveTaxAndHealthInsuranceKRW', () => {
+  // 원천징수액은 전액 국내 배당(15.4%)이라고 가정한다. 비교과세의 기납부세액 공제에 쓰인다.
   const basis = (financial: number, pension: number = 0) => ({
     annualRawFinancialIncomeKRW: financial,
     annualRawPensionIncomeKRW: pension,
+    annualWithheldFinancialTaxKRW: financial * 0.154,
   });
 
   test('금융소득이 2천만원 이하, 연금소득 없음이면 세금·건보료 모두 0', () => {
@@ -136,10 +138,20 @@ describe('calculateComprehensiveTaxAndHealthInsuranceKRW', () => {
     expect(result.healthInsuranceKRW).toBe(0);
   });
 
-  test('2천만원 초과분에 대해 종합과세율·건보료율을 각각 적용한다 (연금소득 0)', () => {
-    // 3천만원 -> 초과분 1천만원
-    const result = calculateComprehensiveTaxAndHealthInsuranceKRW(basis(30000000), baseCtx);
+  test('flat 모드에서는 2천만원 초과분에 지정 세율을 그대로 적용한다 (연금소득 0)', () => {
+    // 3천만원 -> 초과분 1천만원.
+    // 기본 모드(progressive_credit)에서는 원천징수액을 공제해 추가 납부가 0이 된다
+    // (comprehensiveTaxGolden.test.ts 참고). 여기서는 예전 단순 모델의 계약을 고정한다.
+    const result = calculateComprehensiveTaxAndHealthInsuranceKRW(
+      basis(30000000),
+      ctx({ comprehensiveTaxMode: 'flat' })
+    );
     expect(result.comprehensiveTaxKRW).toBeCloseTo(10000000 * 0.15);
+    expect(result.healthInsuranceKRW).toBeCloseTo(10000000 * 0.05);
+  });
+
+  test('건보료율은 모드와 무관하게 초과분에 그대로 적용된다', () => {
+    const result = calculateComprehensiveTaxAndHealthInsuranceKRW(basis(30000000), baseCtx);
     expect(result.healthInsuranceKRW).toBeCloseTo(10000000 * 0.05);
   });
 
@@ -163,8 +175,10 @@ describe('calculateComprehensiveTaxAndHealthInsuranceKRW', () => {
   });
 
   test('enableHealthInsurance가 false면 건보료만 0, 종합과세는 정상 부과', () => {
-    const result = calculateComprehensiveTaxAndHealthInsuranceKRW(basis(30000000, 10000000), ctx({ enableHealthInsurance: false }));
-    expect(result.comprehensiveTaxKRW).toBeCloseTo(10000000 * 0.15);
+    // 기본 모드에서 추가 납부가 실제로 발생하는 규모(1억)로 잡는다 — 3천만원이면
+    // 원천징수 공제로 0이 되어 "정상 부과"를 확인할 수 없다.
+    const result = calculateComprehensiveTaxAndHealthInsuranceKRW(basis(100000000, 10000000), ctx({ enableHealthInsurance: false }));
+    expect(result.comprehensiveTaxKRW).toBeGreaterThan(0);
     expect(result.healthInsuranceKRW).toBe(0);
   });
 

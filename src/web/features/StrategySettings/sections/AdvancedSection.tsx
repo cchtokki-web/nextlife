@@ -1,6 +1,6 @@
 'use client';
 
-import { TaxLawVersion, TaxSettings } from '../../../../core/entities/types';
+import { ComprehensiveTaxMode, TaxLawVersion, TaxSettings } from '../../../../core/entities/types';
 import {
   resolvePrivatePensionTaxLimitOverride, resolveStrategy,
 } from '../../../../core/usecases/strategy/compileStrategy';
@@ -41,6 +41,10 @@ export function AdvancedSection({ params, onChangeParams, mode, changed }: Secti
     onChangeParams({ ...params, taxSettings: { ...tax, ...patch } });
   };
 
+  // 비교과세 모드에서는 누진세율표와 원천징수 공제가 세액을 정하므로 comprehensiveTaxRate가
+  // 계산에 쓰이지 않는다. 위 limitPrivatePensionToTaxLimit과 같은 이유로 비활성화한다.
+  const comprehensiveTaxModeGovernsRate = tax.comprehensiveTaxMode !== 'flat';
+
   // 이 섹션의 필드는 전부 전문가 전용이라 간편/표준에서는 본문이 통째로 빈다. 아코디언은
   // 여전히 열리므로, 왜 비어 있는지 알려 주지 않으면 고장으로 읽힌다.
   const hasVisibleField = SECTION_FIELDS.advanced.some((path) => isFieldVisible(mode, path));
@@ -52,13 +56,14 @@ export function AdvancedSection({ params, onChangeParams, mode, changed }: Secti
     );
   }
 
-  const rateField = (key: RateKey, label: string, tooltip?: string) => {
+  const rateField = (key: RateKey, label: string, tooltip?: string, disabled = false) => {
     const path = `taxSettings.${key}`;
     return isFieldVisible(mode, path) && (
       <FieldRow label={label} tooltipText={tooltip} changed={changed.has(path)}>
         <InputField
           label="" aria-label={label} type="number" step="0.1" suffixText="%"
           value={tax[key]}
+          disabled={disabled}
           onChange={(e) => setTax({ [key]: Number(e.target.value) })}
         />
       </FieldRow>
@@ -84,13 +89,38 @@ export function AdvancedSection({ params, onChangeParams, mode, changed }: Secti
         </FieldRow>
       )}
 
+      {isFieldVisible(mode, 'taxSettings.comprehensiveTaxMode') && (
+        <FieldRow
+          label="금융소득종합과세 계산 방식"
+          tooltipText="연 2천만원을 넘는 금융소득에 세금을 얼마나 더 매길지 정하는 방식입니다."
+          changed={changed.has('taxSettings.comprehensiveTaxMode')}
+        >
+          <SelectField
+            label="" aria-label="금융소득종합과세 계산 방식"
+            value={tax.comprehensiveTaxMode}
+            onChange={(e) => setTax({ comprehensiveTaxMode: e.target.value as ComprehensiveTaxMode })}
+            options={[
+              { value: 'progressive_credit', label: '비교과세 (실제 세법)' },
+              { value: 'flat', label: '단순 세율 직접 지정' },
+            ]}
+          />
+        </FieldRow>
+      )}
+
       <div className="grid grid-cols-2 items-end gap-3.5 sm:gap-4">
         {rateField('usDividendTaxRate', '미국 배당세율',
           '해외 주식·ETF 배당에 붙는 세율입니다.')}
         {rateField('domesticDividendTaxRate', '국내 배당세율',
           '국내 주식·ETF 배당에 붙는 세율입니다.')}
+        {/* 이 세율은 '단순 세율 직접 지정' 모드에서만 계산에 쓰인다. 비교과세 모드에서는
+            누진세율표와 원천징수 공제로 세액이 정해지므로 여기를 고쳐도 결과가 바뀌지 않는다.
+            숨기지 않고 비활성화하는 것은 바로 위 저율과세 한도 스위치와 같은 방식이다 —
+            사라진 필드는 "어디 갔지"가 되고, 비활성화된 필드는 이유를 함께 읽힌다. */}
         {rateField('comprehensiveTaxRate', '금융소득종합과세 세율',
-          '연 2천만원을 넘는 금융소득에 추가로 붙는 세율입니다.')}
+          comprehensiveTaxModeGovernsRate
+            ? '비교과세 모드에서는 누진세율표를 쓰므로 이 값이 계산에 반영되지 않습니다. 계산 방식을 「단순 세율 직접 지정」으로 바꾸면 사용됩니다.'
+            : '연 2천만원을 넘는 금융소득에 추가로 붙는 세율입니다.',
+          comprehensiveTaxModeGovernsRate)}
         {rateField('healthInsuranceRate', '건강보험료율',
           '기준을 넘는 소득에 추가로 붙는 건강보험료 비율입니다.')}
 

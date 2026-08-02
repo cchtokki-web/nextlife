@@ -467,6 +467,8 @@ export class SimulationEngine {
       let annualNationalPensionTaxPaid = 0;
       let annualPreTaxTotalIncome = 0;
       let annualRawFinancialIncomeKRW = 0;
+      // 위 금융소득에서 실제로 원천징수된 세액(KRW). 비교과세의 기납부세액 공제에 쓴다.
+      let annualWithheldFinancialTaxKRW = 0;
       let annualPrivatePensionPreTaxKRW = 0;
       let annualNationalPensionPreTaxKRW = 0;
 
@@ -634,6 +636,9 @@ export class SimulationEngine {
           // 판정 기준액에 넣지 않는다. 배당세율 0%와 같은 판정에서 나온 값이다(getMarketTaxTreatment).
           if (asset.includedInFinancialIncome) {
             annualRawFinancialIncomeKRW += this.convertValue(dividendRaw, asset.currency, 'KRW', exchangeRate);
+            // 비교과세의 기납부세액. 비율이 아니라 실제 징수액을 누적하므로 자산별 세율 차이
+            // (미국 15% / 국내 15.4%)가 그대로 반영된다.
+            annualWithheldFinancialTaxKRW += this.convertValue(dividendTax, asset.currency, 'KRW', exchangeRate);
           }
 
           const contribution = isRetired ? 0 : asset.monthlyContribution;
@@ -874,6 +879,7 @@ export class SimulationEngine {
         {
           annualRawFinancialIncomeKRW,
           annualRawPensionIncomeKRW: annualPrivatePensionPreTaxKRW + annualNationalPensionPreTaxKRW,
+          annualWithheldFinancialTaxKRW,
         },
         taxCtx
       );

@@ -51,6 +51,7 @@ export const DEFAULT_TAX_SETTINGS: Required<TaxSettings> = {
   enableHealthInsurance: true,
   usDividendTaxRate: 15,
   domesticDividendTaxRate: 15.4,
+  comprehensiveTaxMode: 'progressive_credit',
   comprehensiveTaxRate: DEFAULT_COMPREHENSIVE_TAX_RATE,
   healthInsuranceRate: DEFAULT_HEALTH_INSURANCE_RATE,
   enablePrivatePensionTax: true,

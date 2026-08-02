@@ -79,13 +79,53 @@ export function calculateIsaMaturityTax(
 export interface TaxableIncomeBasis {
   annualRawFinancialIncomeKRW: number; // 종합과세 판정 기준: 배당+이자 등 금융소득만(세전)
   annualRawPensionIncomeKRW: number; // 건보료 판정에만 "추가로" 합산되는 연금소득(국민+사적, 세전)
+  // 위 금융소득에서 이미 원천징수된 세액(세전 소득에 대응하는 실제 징수액, KRW).
+  //
+  // 비율(15%/15.4%)이 아니라 실제 금액을 받는 이유: 자산마다 원천징수율이 다르다.
+  // 미국 배당은 한미 조세조약 제한세율 15%, 국내 배당은 15.4%다. 실제 징수액을 그대로
+  // 기납부세액으로 공제하면 두 세율 차이가 자동으로 정확히 반영된다 — 외국납부세액공제를
+  // 따로 모델링하지 않고도 근사가 성립한다.
+  annualWithheldFinancialTaxKRW: number;
+}
+
+// 금융소득종합과세 초과분에 대한 추가 납부세액(비교과세).
+//
+// 소득세법 §62의 비교과세는 다음 둘 중 큰 쪽을 산출세액으로 한다:
+//   (a) 2천만원 × 14% + [2천만 초과 금융소득 + 다른 종합소득]에 대한 누진세액
+//   (b) 금융소득 전액 × 14% + [다른 종합소득]에 대한 누진세액
+// 그리고 원천징수된 세액을 기납부세액으로 공제한다.
+//
+// 이 앱은 은퇴 후 금융소득만 가정하므로(다른 종합소득 0), (a)에서 기납부세액을 뺀 것이
+// 곧 "초과분의 누진세액 − 초과분에 대한 원천징수액"으로 정리된다. 2천만원 이하 구간은
+// 원천징수 14%와 산출세액 14%가 상쇄되어 사라지기 때문이다.
+//
+// **예전 모델의 결함**: 초과분에 그냥 15%를 더 물렸다. 이미 15.4%를 원천징수해 놓고
+// 공제하지 않았으므로 초과분 실효세율이 약 30.4%가 됐다. 배당 3,000만원인 사용자는
+// 실제로는 추가 납부가 0원인데 150만원을 내는 것으로 계산됐다.
+function calculateProgressiveCreditTaxKRW(
+  excessKRW: number,
+  withheldOnExcessKRW: number,
+  ctx: TaxContext
+): number {
+  if (excessKRW <= 0) return 0;
+
+  // 누진세율표는 국세 기준이고 원천징수율(15.4%)은 지방세를 포함한 값이라, 지방소득세를
+  // 얹어 두 값의 기준을 맞춘다.
+  const progressiveWithLocalKRW =
+    getComprehensiveIncomeTaxKRW(excessKRW, ctx) * (1 + ctx.profile.localIncomeTaxRate);
+
+  return Math.max(0, progressiveWithLocalKRW - withheldOnExcessKRW);
 }
 
 export function calculateComprehensiveTaxAndHealthInsuranceKRW(
   incomeBasis: TaxableIncomeBasis,
   ctx: TaxContext
 ): { comprehensiveTaxKRW: number; healthInsuranceKRW: number } {
-  const { annualRawFinancialIncomeKRW, annualRawPensionIncomeKRW } = incomeBasis;
+  const {
+    annualRawFinancialIncomeKRW,
+    annualRawPensionIncomeKRW,
+    annualWithheldFinancialTaxKRW,
+  } = incomeBasis;
   if (annualRawFinancialIncomeKRW < 0 || annualRawPensionIncomeKRW < 0) {
     throw new InvalidTaxInputError('과세 대상 소득은 음수일 수 없습니다.');
   }
@@ -97,10 +137,17 @@ export function calculateComprehensiveTaxAndHealthInsuranceKRW(
   const thresholdKRW = ctx.profile.financialIncomeThresholdKRW;
 
   // 금융소득종합과세 판정: 배당+이자 소득만(연금소득은 세법상 별도 과세이므로 제외)
-  const comprehensiveTaxKRW =
-    annualRawFinancialIncomeKRW > thresholdKRW
-      ? (annualRawFinancialIncomeKRW - thresholdKRW) * (ctx.settings.comprehensiveTaxRate / 100)
-      : 0;
+  const excessKRW = Math.max(0, annualRawFinancialIncomeKRW - thresholdKRW);
+
+  // 초과분에 대응하는 원천징수액. 자산마다 세율이 달라도(미국 15% / 국내 15.4%) 총 징수액을
+  // 소득 비율로 안분하면 실효 원천징수율이 자연히 반영된다.
+  const withheldOnExcessKRW = annualRawFinancialIncomeKRW > 0
+    ? annualWithheldFinancialTaxKRW * (excessKRW / annualRawFinancialIncomeKRW)
+    : 0;
+
+  const comprehensiveTaxKRW = ctx.settings.comprehensiveTaxMode === 'flat'
+    ? excessKRW * (ctx.settings.comprehensiveTaxRate / 100)
+    : calculateProgressiveCreditTaxKRW(excessKRW, withheldOnExcessKRW, ctx);
 
   // 건강보험료 판정: 금융소득 + 연금소득(국민+사적) 합산 기준(단순 확장 — 실제 피부양자/지역가입자
   // 판정 기준과는 다른 근사치)

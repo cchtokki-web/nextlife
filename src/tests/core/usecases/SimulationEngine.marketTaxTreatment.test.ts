@@ -15,8 +15,10 @@ function paramsWithMarket(market: AssetMarket): SimulationParams {
     assets: [
       {
         id: 'a1', type: 'etf', ticker: 'A', name: '고배당 자산',
-        // 평가액 10억 × 배당 5% = 연 5,000만원. 종합과세 문턱(2,000만원)을 확실히 넘긴다.
-        quantity: 10000, averagePrice: 100000,
+        // 평가액 20억 × 배당 5% = 연 1억원. 초과분 8,000만원이면 비교과세에서도
+        // 누진세액이 원천징수액을 넘어 추가 납부가 실제로 발생한다(더 낮은 금액에서는
+        // 원천징수 공제로 0이 되어 "합산되었는가"를 종합과세로는 확인할 수 없다).
+        quantity: 20000, averagePrice: 100000,
         annualGrowthRate: 0, dividendYield: 5,
         monthlyContribution: 0, reinvestDividend: false,
         currency: 'KRW', assetMarket: market,

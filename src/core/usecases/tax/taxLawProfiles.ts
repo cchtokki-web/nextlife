@@ -31,6 +31,7 @@ export interface TaxLawProfile {
   privatePensionLimitKRW: number;
   privatePensionExcessTaxRate: number;
   comprehensiveIncomeBrackets: ProgressiveTaxBracket[];
+  localIncomeTaxRate: number;
 }
 
 // 현행 세법(2024년 기준). taxRates.ts에 있던 값을 그대로 옮긴 것이며 값 변경은 없다
@@ -74,6 +75,13 @@ const CURRENT_PROFILE: TaxLawProfile = {
     { minKRW: 500000000, rate: 0.42, deductionKRW: 35940000 },
     { minKRW: 1000000000, rate: 0.45, deductionKRW: 65940000 },
   ],
+
+  // 지방소득세(소득분). 소득세액의 10%가 별도로 붙는다.
+  //
+  // comprehensiveIncomeBrackets는 국세만 담고 있는데, 배당 원천징수율 15.4%는 국세 14% +
+  // 지방세 1.4%를 합한 값이다. 비교과세에서 누진세액과 원천징수액을 견주려면 두 값의 기준이
+  // 같아야 하므로, 누진세액 쪽에 이 비율을 곱해 세후 총부담 기준으로 맞춘다.
+  localIncomeTaxRate: 0.1,
 };
 
 export const TAX_LAW_PROFILES: Record<TaxLawVersion, TaxLawProfile> = {

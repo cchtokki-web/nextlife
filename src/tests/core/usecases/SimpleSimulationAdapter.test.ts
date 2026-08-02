@@ -188,6 +188,7 @@ describe('SimpleSimulationAdapter', () => {
         enableHealthInsurance: true,
         usDividendTaxRate: 15,
         domesticDividendTaxRate: 15.4,
+        comprehensiveTaxMode: 'progressive_credit',
         comprehensiveTaxRate: 15,
         healthInsuranceRate: 5,
         enablePrivatePensionTax: true,

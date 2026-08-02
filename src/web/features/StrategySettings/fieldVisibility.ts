@@ -65,6 +65,7 @@ export const SECTION_FIELDS: Record<SectionId, ReadonlyArray<FieldPath>> = {
     'taxSettings.enableHealthInsurance',
     'taxSettings.usDividendTaxRate',
     'taxSettings.domesticDividendTaxRate',
+    'taxSettings.comprehensiveTaxMode',
     'taxSettings.comprehensiveTaxRate',
     'taxSettings.healthInsuranceRate',
     'taxSettings.enablePrivatePensionTax',

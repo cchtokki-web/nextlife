@@ -95,12 +95,23 @@ export interface WithdrawalPlan {
 // 컴파일 타임에 구분하기 위한 것이다 (예: StrategyRecommendation.recommendedPlan).
 export type CompleteWithdrawalPlan = Required<WithdrawalPlan>;
 
+export type ComprehensiveTaxMode = 'progressive_credit' | 'flat';
+
 export interface TaxSettings {
   enableComprehensiveTax: boolean;
   enableHealthInsurance: boolean;
   usDividendTaxRate: number; // % (default: 15)
   domesticDividendTaxRate: number; // % (default: 15.4)
-  comprehensiveTaxRate: number; // % (초과분 단순화 세율, default: 15)
+  // 금융소득종합과세 초과분을 어떻게 계산할 것인가.
+  //
+  // 'progressive_credit'(기본): 실제 세법과 같은 비교과세 구조. 초과분에 종합소득세 누진세율을
+  //   적용한 뒤, 이미 원천징수된 세액을 기납부세액으로 공제한다. 배당 3,000만원이면 초과분
+  //   1,000만원 × 6% = 60만원인데 원천징수 상당액이 154만원이라 추가 납부는 0원이다.
+  // 'flat': 초과분에 comprehensiveTaxRate를 그대로 곱하는 예전 단순 모델. 원천징수를 공제하지
+  //   않아 초과분에 이중으로 세금이 붙는다(15.4% + 15%). 값을 직접 지정해 비교해 보고 싶은
+  //   사용자를 위해 남겨 둔다.
+  comprehensiveTaxMode?: ComprehensiveTaxMode; // default: 'progressive_credit'
+  comprehensiveTaxRate: number; // % (초과분 단순화 세율, 'flat' 모드에서만 쓰임, default: 15)
   healthInsuranceRate: number; // % (초과분 건보료 비율, default: 5)
   enablePrivatePensionTax?: boolean; // 사적연금 고세율 과세 반영 여부 (default: true)
   privatePensionLimit?: number; // 사적연금 저율과세 한도 (원, default: 15000000)
