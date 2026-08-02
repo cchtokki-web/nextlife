@@ -296,47 +296,48 @@ export function useScenarios() {
       .catch(err => console.error('Failed to load dynamic ETF tickers:', err));
   }, []);
 
-  // Run migration again if ETF tickers list expands
-  useEffect(() => {
-    if (isLoaded && scenarios.length > 0 && etfTickers.length > 10) {
-      let changedAny = false;
-      const updated = scenarios.map(s => {
-        const migrated = migrateParams(s.data, etfTickers);
-        if (migrated !== s.data) {
-          changedAny = true;
-          return { ...s, data: migrated };
-        }
-        return s;
-      });
-      if (changedAny) {
-        setScenarios(updated);
-      }
+  // ETF 티커 목록이 서버에서 도착하면 이미 불러온 시나리오를 다시 마이그레이션한다.
+  //
+  // 이펙트가 아니라 티커 목록이 바뀐 순간 렌더 중에 조정한다. 이펙트로 하면 옛 분류로 한 번
+  // 커밋한 뒤 다시 렌더되어, 그 사이 대시보드가 잘못 분류된 자산으로 계산된다.
+  // scenarios는 조건에 넣지 않는다 — 넣으면 자기가 만든 갱신에 다시 반응해 무한 루프가 된다.
+  const [migratedForTickers, setMigratedForTickers] = useState<string[] | null>(null);
+  if (isLoaded && scenarios.length > 0 && etfTickers.length > 10 && migratedForTickers !== etfTickers) {
+    setMigratedForTickers(etfTickers);
+    const updated = scenarios.map(s => {
+      const migrated = migrateParams(s.data, etfTickers);
+      return migrated === s.data ? s : { ...s, data: migrated };
+    });
+    // 변형 가능한 플래그를 쌓지 않고 결과만 비교한다 — 렌더 중 변수 변형은 컴파일러가 막는다.
+    if (updated.some((next, i) => next !== scenarios[i])) {
+      setScenarios(updated);
     }
-  }, [etfTickers, isLoaded]); // Omitting scenarios to prevent infinite loops, only run when etfTickers load
+  }
 
   // Helper to generate a local mock scenario ID
   const generateId = () => Math.random().toString(36).substr(2, 9);
 
-  // Initialize from local storage if not logged in
+  // 비로그인 사용자는 로컬 저장소의 값으로 기본 시나리오 하나를 만든다.
+  //
+  // 렌더 중 조정으로 옮겨 보았으나 되돌렸다. 이 블록은 lastSavedParamsRef에 "방금 불러온
+  // 값"을 적어 둬야 하는데(그래야 로드 직후 불필요한 저장이 나가지 않는다) 렌더 중 ref 쓰기는
+  // 컴파일러가 막는다(react-hooks/refs). 즉 setState만의 문제가 아니라 이 초기화가 본질적으로
+  // 부수 효과를 포함한다 — 이펙트가 제자리다.
   useEffect(() => {
-    if (status === 'unauthenticated') {
-      if (!isLoaded) {
-        const loaded = loadParams();
-        const migrated = migrateParams(loaded || initialParams, etfTickers);
-        const defaultScenario: ScenarioModel = {
-          id: 'local-default',
-          name: '기본 시나리오',
-          isDefault: true,
-          data: migrated,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        };
-        lastSavedParamsRef.current['local-default'] = JSON.stringify(migrated);
-        setScenarios([defaultScenario]);
-        setActiveScenarioId('local-default');
-        setIsLoaded(true);
-      }
-    }
+    if (status !== 'unauthenticated' || isLoaded) return;
+    const loaded = loadParams();
+    const migrated = migrateParams(loaded || initialParams, etfTickers);
+    lastSavedParamsRef.current['local-default'] = JSON.stringify(migrated);
+    setScenarios([{
+      id: 'local-default',
+      name: '기본 시나리오',
+      isDefault: true,
+      data: migrated,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    }]);
+    setActiveScenarioId('local-default');
+    setIsLoaded(true);
   }, [status, isLoaded]);
 
   // Fetch scenarios when logged in
