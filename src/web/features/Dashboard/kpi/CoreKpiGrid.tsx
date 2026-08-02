@@ -37,10 +37,12 @@ export function CoreKpiGrid({
       </KpiCard>
       {utilityScore !== undefined && (
         <KpiCard label="평생 효용" icon={<Award size={16} aria-hidden="true" />}>
-          <div className="flex items-center gap-2">
-            <RetirementLikelihoodStars score={utilityScore} />
-            <span className="text-sm text-foreground-muted">{Math.round(utilityScore)}점</span>
-          </div>
+          {/* 점수를 별 옆이 아니라 등급 텍스트 옆(별 아래 줄)에 붙인다. 카드 폭이 좁아
+              별 5개와 "보통 71점"을 한 줄에 두면 글자가 세로로 쪼개진다. */}
+          <RetirementLikelihoodStars
+            score={utilityScore}
+            suffix={<span>{Math.round(utilityScore)}점</span>}
+          />
         </KpiCard>
       )}
     </div>
