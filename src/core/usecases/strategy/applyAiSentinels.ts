@@ -1,5 +1,5 @@
 import { StrategyRecommendation } from '../../entities/types';
-import { CompiledStrategy, resolveStrategy } from './compileStrategy';
+import { CompiledStrategy } from './compileStrategy';
 import { NATIONAL_PENSION_NORMAL_START_AGE } from '../pension/nationalPensionRules';
 
 // 'ai_*' 센티널이 남아 있는 축을 AI 추천값으로 채운다.
@@ -25,8 +25,15 @@ export function applyAiSentinels(
   const recommendedPlan = recommendation.recommendedPlan;
   if (!recommendedPlan) return compiled;
 
-  const strategy = resolveStrategy(compiled.params);
-  if (strategy.nationalPensionStrategy !== 'ai_optimized') return compiled;
+  // resolveStrategy가 아니라 params.strategy를 직접 본다.
+  //
+  // resolveStrategy는 params.strategy가 없으면 DEFAULT_RETIREMENT_STRATEGY로 폴백하는데,
+  // 그 기본값의 nationalPensionStrategy가 'ai_optimized'다. 그래서 폴백된 값으로 판정하면
+  // "AI에게 맡기겠다고 고른 적이 한 번도 없는" 레거시 시나리오까지 센티널 사용자로 오인한다.
+  // compileStrategy의 통과 경로(strategy 없음 + 레거시 씨앗 없음)는 입력을 비트 단위로
+  // 보존하겠다고 보장하는데, 그 보장이 바로 여기서 깨졌다 — 사용자가 직접 저장해 둔
+  // withdrawalPlan.nationalPensionStartAge가 추천값으로 덮어써졌다.
+  if (compiled.params.strategy?.nationalPensionStrategy !== 'ai_optimized') return compiled;
 
   const recommendedAge = recommendedPlan.nationalPensionStartAge;
   // withdrawalPlan이 없는 것(compileStrategy의 통과 경로 등)은 엔진 기본값 65세와

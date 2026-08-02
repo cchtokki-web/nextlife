@@ -244,7 +244,9 @@ export function StrategySettingsPanel({
           // 예전에는 '이미 최적'이라는 비활성 버튼이 그 자리를 지켰는데, 누를 수도 없고
           // 알려 주는 것도 없으면서 헤더 폭의 3분의 1을 계속 차지했다. 추천 계산이 실패한
           // 경우(ai.error)는 다르다 — "추천을 못 받았다"는 사실 자체를 알려야 하므로 남긴다.
-          const showAiButton = canApplyAi || !!ai.error;
+          // ai.error 조건에도 AI_SECTIONS 게이트가 필요하다. 빼면 추천 계산이 실패했을 때
+          // 애초에 AI 대상이 아닌 섹션(기본 정보·경제 가정·고급 설정)까지 오류 라벨 버튼을 단다.
+          const showAiButton = canApplyAi || (AI_SECTIONS.has(id) && !!ai.error);
           return (
             <SettingSection
               key={id}

@@ -65,7 +65,17 @@ export function AiSummaryHero({
               <span>
                 추천 전략 적용 시 평생 효용{' '}
                 <strong className="text-success">
-                  {utility.score} → {recommendation.recommendedUtility.score}
+                  {/*
+                    왼쪽 항은 utility(= result.utility)가 아니라 recommendation.currentUtility다.
+
+                    result는 AI 센티널이 적용된 params(effective)로 돌린 결과인 반면
+                    recommendedUtility는 센티널 미적용 baseline(compiled) 위에서 측정된 값이라,
+                    둘을 나란히 놓으면 한 문장 안에서 기준선이 갈린다. 센티널이 이미 추천 나이를
+                    적용해 둔 경우 왼쪽이 오른쪽에 근접하거나 넘어서서 "80 → 78"처럼 감소를
+                    개선으로 표시하게 된다. 두 항을 같은 baseline에서 읽으면 아래 체크리스트의
+                    '총 효용 +N점'(= recommendedUtility - currentUtility)과도 산술이 맞는다.
+                  */}
+                  {recommendation.currentUtility.score} → {recommendation.recommendedUtility.score}
                 </strong>
               </span>
               {recommendation.deltas.totalTax !== 0 && (

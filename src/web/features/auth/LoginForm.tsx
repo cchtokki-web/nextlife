@@ -2,8 +2,6 @@
 
 import { useState, useEffect } from "react";
 import { signIn } from "next-auth/react";
-import { useRouter } from "next/navigation";
-import Link from "next/link";
 import Image from "next/image";
 import styles from "./LoginForm.module.css";
 
@@ -13,10 +11,10 @@ export default function LoginForm() {
   });
 
   useEffect(() => {
-    if (process.env.NEXT_PUBLIC_DEV_MODE === 'true') {
-      setIsRuntimeDevMode(true);
-      return;
-    }
+    // 위 초기 state가 이미 true를 넣었으므로 여기서 다시 set하지 않는다.
+    // 그냥 서버 조회만 건너뛰면 된다.
+    if (process.env.NEXT_PUBLIC_DEV_MODE === 'true') return;
+
     fetch('/api/dev-mode')
       .then(res => res.json())
       .then(data => {
@@ -31,8 +29,6 @@ export default function LoginForm() {
         setIsRuntimeDevMode(false);
       });
   }, []);
-
-  const router = useRouter();
 
   useEffect(() => {
     if (isRuntimeDevMode === true) {

@@ -116,18 +116,38 @@ describe('applyAiSentinels', () => {
     expect(applyAiSentinels(compiled, makeRecommendation(plan(65)))).toBe(compiled);
   });
 
-  test('strategy 필드가 없는 통과 경로(compileStrategy)에서도 65세 추천이면 참조를 그대로 반환한다', () => {
+  test('strategy 필드가 없는 통과 경로(compileStrategy)에서는 센티널을 채우지 않는다', () => {
     // baseParams에는 strategy가 없으므로 compileStrategy는 통과 경로를 타 params를
-    // 그대로 반환한다(withdrawalPlan도 undefined). 이때 resolveStrategy는
-    // DEFAULT_RETIREMENT_STRATEGY로 폴백하는데 그 nationalPensionStrategy가
-    // 'ai_optimized'라서 센티널 조건 자체는 통과한다 — "나이가 같아서" 원본을
-    // 반환하는 경로(33번째 줄 부근의 폴백)를 검증하는 케이스다.
+    // 그대로 반환한다(withdrawalPlan도 undefined).
+    //
+    // 이때 params.strategy가 아니라 resolveStrategy로 판정하면 안 된다 —
+    // DEFAULT_RETIREMENT_STRATEGY의 nationalPensionStrategy가 'ai_optimized'라서
+    // "AI에게 맡기겠다고 고른 적 없는" 시나리오까지 센티널 사용자로 오인하게 된다.
     const compiled = compileStrategy(baseParams);
     expect(compiled.params.withdrawalPlan).toBeUndefined();
 
-    const applied = applyAiSentinels(compiled, makeRecommendation(plan(65)));
+    // 65세(= 엔진 기본값)가 아닌 나이를 추천해야 "조건에서 걸러졌는가"와 "나이가 같아서
+    // 반환됐는가"가 구분된다. plan(65)로는 두 경로가 같은 결과를 내 검증력이 없다.
+    const applied = applyAiSentinels(compiled, makeRecommendation(plan(70)));
 
     expect(applied).toBe(compiled);
+  });
+
+  test('통과 경로에 사용자가 저장해 둔 수령 나이가 있으면 추천값으로 덮어쓰지 않는다', () => {
+    // compileStrategy의 통과 경로는 "새 기능을 하나도 켜지 않은 시나리오는 입력이 비트
+    // 단위로 보존된다"를 보장한다. 이 함수가 그 보장을 깨면, 전략 컴파일러 이전에 저장된
+    // 시나리오를 열기만 해도 사용자가 직접 고른 개시 나이가 조용히 바뀐다.
+    const compiled = compileStrategy({
+      ...baseParams,
+      withdrawalPlan: { nationalPensionStartAge: 62 },
+    });
+    expect(compiled.params.strategy).toBeUndefined();
+    expect(compiled.params.withdrawalPlan?.nationalPensionStartAge).toBe(62);
+
+    const applied = applyAiSentinels(compiled, makeRecommendation(plan(68)));
+
+    expect(applied).toBe(compiled);
+    expect(applied.params.withdrawalPlan?.nationalPensionStartAge).toBe(62);
   });
 
   test('withdrawalPlan의 다른 필드와 utilityConfig는 보존된다', () => {
