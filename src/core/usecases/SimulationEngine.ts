@@ -14,7 +14,7 @@ import { computeLifetimeUtility } from './utility/UtilityEngine';
 import { computeAnnualHealthcareCostBreakdown } from './healthcare/healthcareCosts';
 import { DEFAULT_UTILITY_CONFIG } from './utility/utilityWeights';
 import {
-  getDividendTaxRate,
+  getMarketTaxTreatment,
   getPrivatePensionIncomeTaxRate,
   calculateNationalPensionTaxKRW,
   getIsaExemptionLimitKRW,
@@ -41,6 +41,9 @@ interface ActiveAsset extends InvestmentAsset {
   growthRateMonthly: number;
   divRateMonthly: number;
   taxRate: number;
+  // 이 자산의 배당이 금융소득종합과세·건보료 판정 기준액에 합산되는가
+  // (getMarketTaxTreatment가 배당세율과 함께 한 번에 정한다).
+  includedInFinancialIncome: boolean;
 }
 
 interface ActivePension extends PrivatePension {
@@ -246,14 +249,16 @@ export class SimulationEngine {
       const growthRateMonthly = Math.pow(Math.max(0, 1 + growthRateAnnual), 1 / 12) - 1;
       const divRateMonthly = (asset.dividendYield / 100) / 12;
       
-      const taxRate = getDividendTaxRate(asset.assetMarket, asset.currency, taxCtx);
+      const { dividendTaxRate, includedInFinancialIncome } =
+        getMarketTaxTreatment(asset.assetMarket, asset.currency, taxCtx);
 
       return {
         ...asset,
         currentValue: asset.quantity * asset.averagePrice,
         growthRateMonthly,
         divRateMonthly,
-        taxRate,
+        taxRate: dividendTaxRate,
+        includedInFinancialIncome,
       };
     });
 
@@ -608,7 +613,11 @@ export class SimulationEngine {
           const dividendTax = dividendRaw * asset.taxRate;
           const dividendNet = dividendRaw - dividendTax;
 
-          annualRawFinancialIncomeKRW += this.convertValue(dividendRaw, asset.currency, 'KRW', exchangeRate);
+          // 비과세 자산(OTHER)·연금계좌(IRP/PENSION)의 배당은 금융소득이 아니므로 종합과세·건보료
+          // 판정 기준액에 넣지 않는다. 배당세율 0%와 같은 판정에서 나온 값이다(getMarketTaxTreatment).
+          if (asset.includedInFinancialIncome) {
+            annualRawFinancialIncomeKRW += this.convertValue(dividendRaw, asset.currency, 'KRW', exchangeRate);
+          }
 
           const contribution = isRetired ? 0 : asset.monthlyContribution;
           asset.currentValue += growth + contribution;

@@ -9,15 +9,46 @@ import { TaxContext } from './taxContext';
 // (taxContext.ts 주석 참고). 세율표를 참조하는 함수가 어디인지 시그니처에 드러나는 것도
 // 의도한 효과다 — 개정안 프로필을 추가할 때 무엇을 고쳐야 하는지 컴파일러가 알려준다.
 
+// 한 자산의 시장 구분이 결정하는 과세 취급 전부.
+//
+// 예전에는 이 판정이 축별로 흩어져 있었고 서로 어긋나 있었다: getDividendTaxRate는
+// US_ETF/KR_ETF가 아니면 0%를 돌려주는데(= 비과세), SimulationEngine은 그 자산의 배당을
+// 금융소득종합과세 기준액에는 무조건 합산했다. 그래서 「기타 자산 (비과세 등)」을 고른
+// 사용자가 배당세는 안 내면서 종합과세 문턱과 건보료 판정에는 걸렸다 — 화면 라벨이 한
+// 약속과 정반대다.
+//
+// 한 곳에서 판정하고 모든 소비처가 그 결과를 쓰게 한다.
+export interface MarketTaxTreatment {
+  // 배당 원천징수율 (0~1)
+  dividendTaxRate: number;
+  // 이 자산의 배당이 금융소득종합과세·건강보험료 판정 기준액에 합산되는가.
+  //
+  // IRP/PENSION은 연금계좌 안의 수익이라 인출 시 연금소득으로 과세되고 금융소득이 아니다.
+  // OTHER는 UI가 "기타 자산 (비과세 등)"이라고 약속한 대로 완전 비과세로 취급한다.
+  includedInFinancialIncome: boolean;
+}
+
+export function getMarketTaxTreatment(
+  market: AssetMarket | undefined,
+  currency: AssetCurrency,
+  ctx: TaxContext
+): MarketTaxTreatment {
+  const resolvedMarket = market || (currency === 'USD' ? 'US_ETF' : 'KR_ETF');
+  if (resolvedMarket === 'US_ETF') {
+    return { dividendTaxRate: ctx.settings.usDividendTaxRate / 100, includedInFinancialIncome: true };
+  }
+  if (resolvedMarket === 'KR_ETF') {
+    return { dividendTaxRate: ctx.settings.domesticDividendTaxRate / 100, includedInFinancialIncome: true };
+  }
+  return { dividendTaxRate: 0, includedInFinancialIncome: false };
+}
+
 export function getDividendTaxRate(
   market: AssetMarket | undefined,
   currency: AssetCurrency,
   ctx: TaxContext
 ): number {
-  const resolvedMarket = market || (currency === 'USD' ? 'US_ETF' : 'KR_ETF');
-  if (resolvedMarket === 'US_ETF') return ctx.settings.usDividendTaxRate / 100;
-  if (resolvedMarket === 'KR_ETF') return ctx.settings.domesticDividendTaxRate / 100;
-  return 0;
+  return getMarketTaxTreatment(market, currency, ctx).dividendTaxRate;
 }
 
 export function getPrivatePensionIncomeTaxRate(age: number, ctx: TaxContext): number {
