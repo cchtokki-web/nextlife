@@ -17,7 +17,7 @@
 확장해, "무엇이 이미 계산에 들어갔는가"를 표시 계층이 추측하지 않고 한 곳에서 받아 가게 했다.
 `ItemizedContribution.field`를 추가해 라벨 문자열 매칭 없이 축을 식별한다.
 
-남은 항목은 2·3·6·9번이다.
+남은 항목은 2·6·9번이다. 3번(배선 통합 테스트)도 2026-08-02 해결했다.
 
 ---
 
@@ -271,7 +271,33 @@ baseline 위에서 계산). 국민연금 나이는 이미 양쪽이 같으므로
 
 ## 검증하지 못한 것
 
-### 3. `page.tsx`의 센티널 배선에 통합 테스트가 없다
+### 3. ~~`page.tsx`의 센티널 배선에 통합 테스트가 없다~~ (2026-08-02 해결)
+
+**해결됨.** 계산 파이프라인(컴파일 → 추천 → 센티널 자동 채움 → 시뮬레이션)을
+`src/web/hooks/useStrategyPipeline.ts`로 추출하고 `src/tests/web/hooks/useStrategyPipeline.test.tsx`를
+붙였다. `page.tsx`는 1000줄이 넘고 세션·시나리오·PDF·차트에 얽혀 있어 통째로 렌더하는 테스트를
+붙이기 어려웠는데, 파이프라인만 떼어 내니 `renderHook`으로 곧바로 검증된다(부수 효과로 page.tsx가
+65줄 줄었다).
+
+핵심 테스트는 `recommendStrategy`를 spy로 감싸 **실제로 넘어간 params의
+`withdrawalPlan.nationalPensionStartAge`가 단 한 번도 자동 채움된 값이 아님**을 단언한다.
+
+되먹임에는 두 모양이 있고 둘 다 잡히는 것을 배선을 실제로 망가뜨려 확인했다:
+
+| 모양 | 재현 | 테스트 반응 |
+|---|---|---|
+| 수렴형 | 추천 입력의 나이만 적용값(70)으로 오염 | `expected 70 to be 65`로 실패 |
+| 발산형 | 직전 렌더의 `effective`를 `useBackgroundValue`로 되먹임 | 렌더가 멈추지 않아 타임아웃 |
+
+같은 파일이 "`result`는 `compiled`가 아니라 `effective`로 계산한다(표시 == 실제)"와 "추천 실패 시에도
+시뮬레이션은 baseline으로 계속 돌고 실패를 알린다"도 함께 고정한다.
+
+**남은 한계:** 발산형은 단언 실패가 아니라 타임아웃으로 떨어져 원인이 한눈에 보이지 않는다.
+`recommendStrategy` 호출 횟수 상한(≤4)을 함께 단언해 완만한 재촉발은 빠르게 잡히도록 했다.
+
+<details>
+<summary>원래 분석 (기록 보존)</summary>
+
 
 설계 문서 테스트 계획 #10("되먹임 회귀 — `recommendStrategy`에 넘어가는 params가 센티널 미적용
 원본이다")은 단위 수준 불변성 테스트로 대체됐다. 그것은 "함수가 입력을 변형하지 않는다"만
@@ -280,6 +306,8 @@ baseline 위에서 계산). 국민연금 나이는 이미 양쪽이 같으므로
 누군가 `useBackgroundValue(compiled)`를 `effective`로 바꾸면 되먹임 루프가 생기는데, 이를 잡아낼
 자동 장치가 없다. `src/tests/app/simulator/`에는 `error.test.tsx`뿐이라 페이지 테스트 인프라가
 없는 상황에서의 타협이다.
+
+</details>
 
 ---
 
