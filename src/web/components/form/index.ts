@@ -1,4 +1,5 @@
 export { HelpTip } from './HelpTip';
+export { AiHintBadge } from './AiHintBadge';
 export { ChangedBadge } from './ChangedBadge';
 export { FieldRow } from './FieldRow';
 export { SwitchField } from './SwitchField';

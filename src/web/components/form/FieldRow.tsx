@@ -2,6 +2,7 @@
 
 import { type ReactNode } from 'react';
 import { GlossaryTerm } from '../ui';
+import { AiHintBadge } from './AiHintBadge';
 import { ChangedBadge } from './ChangedBadge';
 import { HelpTip } from './HelpTip';
 
@@ -34,11 +35,7 @@ export function FieldRow({
         <span className="text-xs sm:text-[13px] font-medium text-foreground/85">{label}</span>
         <HelpTip term={tooltipTerm} text={tooltipText} />
         <ChangedBadge changed={changed} />
-        {aiHint && (
-          <span className="text-xs font-semibold text-primary/90 bg-primary/10 border border-primary/20 rounded-full px-2 py-0.5">
-            {aiHintApplied ? 'AI 적용' : 'AI 추천'}: {aiHint}
-          </span>
-        )}
+        {aiHint && <AiHintBadge hint={aiHint} applied={aiHintApplied} />}
       </div>
       {children}
     </div>
