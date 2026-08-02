@@ -564,17 +564,23 @@ export class SimulationEngine {
         // 크레딧으로 한도를 초과해 납입받는 셈이 된다. activeIsas[0]의 이번 달 잔여 한도(=
         // monthlyLimit - contribution, isa.currency 기준)를 여기 기록해 뒀다가 Pensions
         // Processing에서 그대로 재사용한다. 매달(이 for-m 블록) 새로 계산되므로 자동으로 리셋된다.
-        let isaBridgeRoomRemainingInIsaCurrency = 0;
-        activeIsas.forEach((isa, isaIdx) => {
+        // ISA 납입한도는 계좌가 아니라 사람에게 붙는다(ISA는 1인 1계좌가 원칙이고 한도도 1인
+        // 기준이다). 예전에는 이 한도를 forEach 안에서 계좌마다 새로 계산해, 계좌를 2개
+        // 만드는 것만으로 연 4천만원을 납입할 수 있었다. 아래 사적연금 저율과세 한도
+        // (monthlyPensionPreTaxLimitRemainingKRW / remainingBridgeLimitKRW)가 이미 같은
+        // "계좌 간 공유 잔여 한도" 패턴을 쓰고 있고, 그쪽 주석이 계좌당 한도를 따로 주는 것을
+        // 명시적으로 세법 위반 버그라고 부른다 — 같은 논리가 여기에는 적용되지 않고 있었다.
+        //
+        // 이 for-m 블록 안에서 선언되므로 매달 자동으로 리셋된다.
+        let isaMonthlyRoomRemainingKRW = taxCtx.profile.isaAnnualLimitKRW / 12;
+        activeIsas.forEach((isa) => {
           if (isa.currentBalance < 0) isa.currentBalance = 0;
           const growth = isa.currentBalance * isa.returnRateMonthly;
           const dividend = isa.currentBalance * isa.divRateMonthly;
-          const monthlyLimit = this.convertValue(taxCtx.profile.isaAnnualLimitKRW / 12, 'KRW', isa.currency, exchangeRate);
+          const monthlyLimit = this.convertValue(Math.max(0, isaMonthlyRoomRemainingKRW), 'KRW', isa.currency, exchangeRate);
           let contribution = isRetired ? 0 : isa.monthlyContribution;
           if (contribution > monthlyLimit) contribution = monthlyLimit;
-          if (isaIdx === 0) {
-            isaBridgeRoomRemainingInIsaCurrency = Math.max(0, monthlyLimit - contribution);
-          }
+          isaMonthlyRoomRemainingKRW -= this.convertValue(contribution, isa.currency, 'KRW', exchangeRate);
 
           isa.currentBalance += growth + dividend + contribution;
           isa.totalInvested += contribution;
@@ -603,6 +609,17 @@ export class SimulationEngine {
             isa.currentBalance = 0; isa.totalInvested = 0; isa.monthsSinceInception = 0;
           }
         });
+
+        // 사적연금 조기수령 채널링(Phase 4)의 브릿지 인출은 activeIsas[0]에 별도 크레딧을
+        // 더하는데(아래 Pensions Processing), 이 크레딧도 같은 월 법정 한도를 공유해야 한다 —
+        // 그렇지 않으면 이미 한도를 다 채운 ISA가 브릿지 크레딧으로 한도를 초과해 납입받는
+        // 셈이 된다. 모든 계좌가 납입을 마친 뒤 남은 잔여 한도가 브릿지가 쓸 수 있는 전부다.
+        // (예전에는 계좌 0의 한도에서 계좌 0의 납입만 뺀 값이었다. 계좌가 하나면 같은 값이지만,
+        //  둘 이상이면 뒤 계좌들의 납입분을 세지 않아 한도를 넘겼다.)
+        // (브릿지가 실제로 채널링한 만큼 아래에서 차감되므로 let이다.)
+        let isaBridgeRoomRemainingInIsaCurrency = activeIsas.length > 0
+          ? this.convertValue(Math.max(0, isaMonthlyRoomRemainingKRW), 'KRW', activeIsas[0].currency, exchangeRate)
+          : 0;
 
         // Assets Processing
         let monthlyDividendIncomeNetDisplay = 0;
