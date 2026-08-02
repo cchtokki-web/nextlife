@@ -81,6 +81,10 @@ describe('SimulationEngine withdrawalPlan (인출 정책 파라미터화)', () =
       householdEndAge: result.householdEndAge,
       retirementAssetsAtRetirement: result.retirementAssetsAtRetirement,
       yearCount: result.yearlyResults.length,
+      // 효용 점수도 계획 수준 지표다. 채점식(가중치·분모)이 바뀌면 사용자가 보는 점수가
+      // 바뀌므로 반드시 근거를 따져야 한다 — 세금 항목만 바뀐 것과는 다른 종류의 변화다.
+      utilityScore: result.utility?.score,
+      utilityComponents: result.utility?.components,
     }).toMatchSnapshot();
   });
 

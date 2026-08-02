@@ -194,9 +194,19 @@ function computeBequestAdequacyRaw(params: SimulationParams, result: SimulationR
   return bellShapedAdequacyRaw(bequestRatio(result.endingAssets, appropriateBalance), 0.7, 0.4);
 }
 
+// 세부담 비율(총세금 / 총소득)로 세금 효율을 채점한다.
+//
+// 분모에서 기타소득을 뺀다. 이 시뮬레이터는 기타소득에 세금을 매기지 않으므로
+// (AssetFormSection이 "세후 실수령액"을 입력받기로 한 계약), 분모에 넣으면 세금이 붙지 않는
+// 소득이 비율을 희석시켜 점수를 부풀린다. 월세·임대소득을 입력한 사용자일수록 세금 효율이
+// 좋아지는 셈인데, 그 사용자가 실제로 세금을 덜 내는 것은 아니다.
+//
+// preTaxTotalIncome 자체는 건드리지 않는다 — YearlyChart가 "세전 총소득"으로 그리고
+// computeExpertAnalytics가 평균을 내므로, 필드의 정의를 바꾸면 화면 쪽이 틀어진다.
+// 여기서 분모만 좁히는 것이 국소적이고 옳다.
 function computeTaxEfficiencyRaw(yearlyResults: SimulationYearlyResult[], cfg: UtilityConfig): number {
   const totalTaxPaid = sumTotalTaxesAndLevies(yearlyResults);
-  const totalGrossIncome = sum(yearlyResults.map((r) => r.preTaxTotalIncome));
+  const totalGrossIncome = sum(yearlyResults.map((r) => r.preTaxTotalIncome - r.otherIncome));
   if (totalGrossIncome <= 0) return 1;
 
   const taxRatio = totalTaxPaid / totalGrossIncome;

@@ -435,6 +435,34 @@ describe('UtilityEngine.computeLifetimeUtility', () => {
     expect(heavyTax.components.taxEfficiency).toBe(0);
   });
 
+  test('기타소득은 세부담률의 분모에서 제외된다 (넣으면 세금 효율이 부풀려진다)', () => {
+    // 이 시뮬레이터는 기타소득에 세금을 매기지 않는다(입력 계약이 "세후 실수령액"이다).
+    // 그런 소득을 분모에 넣으면 세금이 붙지 않는 돈이 세부담률을 희석시켜, 월세·임대소득을
+    // 입력한 사용자일수록 세금 효율 점수가 좋아진다. 실제로 세금을 덜 내는 것이 아닌데도.
+    const withTax = (overrides: Partial<SimulationYearlyResult>) =>
+      makeResult(
+        Array.from({ length: 36 }, (_, i) =>
+          makeYear(60 + i, {
+            totalAssets: ANNUAL_TARGET * 2,
+            pensionAssets: ANNUAL_TARGET,
+            dividendTaxPaid: ANNUAL_TARGET * 0.15,
+            ...overrides,
+          })
+        ),
+        null
+      );
+
+    // 과세 소득과 세금은 그대로 두고, 비과세 기타소득만 얹는다.
+    const withoutOtherIncome = computeLifetimeUtility(withTax({}), baseParams);
+    const withOtherIncome = computeLifetimeUtility(
+      withTax({ otherIncome: ANNUAL_TARGET, preTaxTotalIncome: ANNUAL_TARGET * 2 }),
+      baseParams
+    );
+
+    // 실제 세부담은 한 푼도 달라지지 않았으므로 점수도 같아야 한다.
+    expect(withOtherIncome.components.taxEfficiency).toBe(withoutOtherIncome.components.taxEfficiency);
+  });
+
   test('금융소득종합과세 경고 연도 비율이 높을수록 taxationRisk 점수가 낮아진다', () => {
     const noWarningResult = makeResult(
       Array.from({ length: 36 }, (_, i) => makeYear(60 + i, { totalAssets: ANNUAL_TARGET * 2, pensionAssets: ANNUAL_TARGET })),

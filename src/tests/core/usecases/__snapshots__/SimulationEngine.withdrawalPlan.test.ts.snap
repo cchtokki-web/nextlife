@@ -63,6 +63,15 @@ exports[`SimulationEngine withdrawalPlan (인출 정책 파라미터화) > 회�
   "retirementAssetsAtRetirement": 575353241.8190752,
   "retirementGrade": "매우 안정",
   "retirementScore": 95,
+  "utilityComponents": {
+    "bequestAdequacy": 0,
+    "consumption": 27,
+    "depletionSafety": 20,
+    "pensionUtilization": 11,
+    "taxEfficiency": 6,
+    "taxationRisk": 8,
+  },
+  "utilityScore": 72,
   "yearCount": 36,
 }
 `;

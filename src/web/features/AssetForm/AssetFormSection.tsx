@@ -1624,6 +1624,11 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                   />
                   <InputField
                     label="월 예상 소득"
+                    // 이 시뮬레이터는 기타소득에 세금을 매기지 않는다. 소득원 설명이 자유 입력이라
+                    // 월세인지 근로소득인지 알 수 없고, 사용자가 세전/세후 중 무엇을 넣었는지도
+                    // 알 수 없다. 모르는 상태에서 세금을 물리면 임의로 소득을 깎는 것이므로,
+                    // "세후를 넣어 달라"고 명시해 현재 동작을 의도된 계약으로 만든다.
+                    labelSecondary="세금·공과금을 뺀 실수령액"
                     type="text"
                     value={income.monthlyAmount === 0 ? '0' : income.monthlyAmount.toLocaleString()}
                     onChange={(e) => {
