@@ -60,6 +60,40 @@ const paramsWithLargePension: SimulationParams = {
   displayCurrency: 'KRW',
 };
 
+// paramsWithLargePension + 일반자산 3천만원.
+//
+// "개선안이 존재할 때"의 동작(recommendedResult / itemizedContributions /
+// nationalPensionOnlyUtility)을 검증하는 테스트 전용 픽스처다. 일반자산이 없으면
+// improved가 false가 되어 그 테스트들이 성립하지 않는다.
+//
+// 이유: 연말 정산 세금(종합과세·건보료)은 일반자산 → 사적연금 순으로 징수되는데
+// (SimulationEngine.collectTax), 일반자산이 없으면 그 세금이 곧바로 연금 잔액을 갉아먹는다.
+// 그러면 "연금을 더 빼서 쓴다"는 후보의 이득이 늘어난 건보료에 상쇄되어 격자 탐색이
+// baseline을 이기지 못한다. 예전에는 이 세금이 일반자산에서만 징수되고 남은 금액은 그냥
+// 버려졌기 때문에(= 자산 0이면 전액 증발) 자산 없이도 개선안이 나왔다.
+//
+// paramsWithLargePension 자체에 자산을 넣지 않는 이유: 그 픽스처는
+// "privatePensions/nationalPension을 비우면 탐색 차원이 하나도 없다"를 검증하는 테스트들의
+// 기반이기도 한데, 일반자산이 하나라도 있으면 매도순서·인출개시나이 차원이 살아나 그 전제가 깨진다.
+const paramsWithOptimizableHeadroom: SimulationParams = {
+  ...paramsWithLargePension,
+  assets: [
+    {
+      id: 'general-asset',
+      type: 'stock',
+      ticker: 'GEN',
+      name: '일반자산',
+      quantity: 3000,
+      averagePrice: 10000,
+      annualGrowthRate: 4,
+      dividendYield: 4,
+      monthlyContribution: 0,
+      reinvestDividend: false,
+      currency: 'KRW',
+    },
+  ],
+};
+
 // 자산 매도 순서·ISA 만기 목적지 두 차원이 실제로 결과에 영향을 주도록, 배당률이 크게 다른
 // 자산 2개와 ISA 계좌를 함께 둔 시나리오 (사적연금은 paramsWithLargePension과 동일하게 유지)
 const paramsWithAssetsAndIsa: SimulationParams = {
@@ -281,10 +315,10 @@ describe('recommendStrategy - 생활비 증액(Phase 2) 후보', () => {
 describe('recommendStrategy - recommendedResult', () => {
   test('improved가 true면 recommendedResult가 baseline과 다른 연도별 결과를 담는다', () => {
     const engine = new SimulationEngine();
-    const recommendation = recommendStrategy(paramsWithLargePension, engine);
+    const recommendation = recommendStrategy(paramsWithOptimizableHeadroom, engine);
     expect(recommendation.improved).toBe(true);
 
-    const baseline = engine.runForUtility(paramsWithLargePension);
+    const baseline = engine.runForUtility(paramsWithOptimizableHeadroom);
     expect(recommendation.recommendedResult.endingAssets).not.toBe(baseline.endingAssets);
   });
 
@@ -306,13 +340,13 @@ describe('recommendStrategy - recommendedResult', () => {
 describe('recommendStrategy - nationalPensionOnlyUtility', () => {
   test('추천 나이만 사용자의 실제 인출계획에 얹은 효용을 계산한다', () => {
     const engine = new SimulationEngine();
-    const recommendation = recommendStrategy(paramsWithLargePension, engine);
+    const recommendation = recommendStrategy(paramsWithOptimizableHeadroom, engine);
     expect(recommendation.improved).toBe(true);
 
     const recommendedAge = recommendation.recommendedPlan?.nationalPensionStartAge;
     expect(typeof recommendedAge).toBe('number');
 
-    const currentAge = paramsWithLargePension.withdrawalPlan?.nationalPensionStartAge ?? 65;
+    const currentAge = paramsWithOptimizableHeadroom.withdrawalPlan?.nationalPensionStartAge ?? 65;
     // 이 픽스처에서 추천 나이가 baseline과 같아지면 아래 단언이 무의미해진다.
     expect(recommendedAge).not.toBe(currentAge);
     expect(recommendation.nationalPensionOnlyUtility).not.toBeNull();
@@ -321,9 +355,9 @@ describe('recommendStrategy - nationalPensionOnlyUtility', () => {
     // identityPlan 기준이면 privatePensionMonthlyTarget 등 다른 필드까지 함께 바뀌어
     // 다른 점수가 나온다.
     const onlyAgeParams: SimulationParams = {
-      ...paramsWithLargePension,
+      ...paramsWithOptimizableHeadroom,
       withdrawalPlan: {
-        ...(paramsWithLargePension.withdrawalPlan ?? {}),
+        ...(paramsWithOptimizableHeadroom.withdrawalPlan ?? {}),
         nationalPensionStartAge: recommendedAge,
       },
     };
@@ -364,7 +398,7 @@ describe('recommendStrategy - itemizedContributions', () => {
 
   test('improved가 true면 itemizedContributions에 최소 1개 이상의 항목이 있고 각 필드가 유효하다', () => {
     const engine = new SimulationEngine();
-    const recommendation = recommendStrategy(paramsWithLargePension, engine);
+    const recommendation = recommendStrategy(paramsWithOptimizableHeadroom, engine);
     expect(recommendation.improved).toBe(true);
 
     expect(recommendation.itemizedContributions.length).toBeGreaterThan(0);

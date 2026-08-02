@@ -190,6 +190,51 @@ export class SimulationEngine {
     return amount;
   }
 
+  // 세금을 계좌에서 순서대로 징수하고, **실제로 징수한 금액**(표시 통화)을 반환한다.
+  //
+  // 호출부는 부과액이 아니라 이 반환값을 결과에 기록해야 한다. 부과액을 기록하면 자산이
+  // 바닥난 해에 "내지 않은 세금"이 납부액으로 잡히고, 총자산 보존 불변식
+  // (SimulationEngine.conservation.test.ts)이 깨진다. 결과를 읽는 모든 계층 —
+  // 효용 점수의 세금효율(UtilityEngine.computeTaxEfficiencyRaw), 전문가 분석, PDF —
+  // 이 있지도 않은 지출을 세게 되므로 표시상의 문제로 끝나지도 않는다.
+  //
+  // 징수 순서는 일반자산 → 사적연금으로 고정한다. 예전에는 종합과세·건보료가 일반자산에서만
+  // 징수되고(연금 폴백 없이 잔액을 버림) 사적연금 초과세만 연금까지 폴백해, 같은 성격의 두
+  // 세금이 서로 다르게 처리됐다.
+  //
+  // ISA는 의도적으로 제외한다. ISA 잔액을 중도 인출하면 만기 정산의 과세표준
+  // (totalInvested 대비 수익)이 어긋나는데, 이 엔진에는 중도 인출 시 ISA 세제 혜택이
+  // 어떻게 되는지에 대한 모델이 없다. 근거 없는 규칙을 만드는 대신 ISA는 건드리지 않는다 —
+  // 그 결과 ISA에만 돈이 남은 해에는 세금이 과소 징수되며, 이는 알려진 근사다.
+  private collectTax(
+    amountDisplay: number,
+    assets: readonly ActiveAsset[],
+    pensions: readonly ActivePension[],
+    displayCurrency: AssetCurrency,
+    exchangeRate: number
+  ): number {
+    let remaining = amountDisplay;
+    if (remaining <= 0) return 0;
+
+    for (const asset of assets) {
+      const availableDisplay = this.convertValue(asset.currentValue, asset.currency, displayCurrency, exchangeRate);
+      const deduct = Math.min(remaining, Math.max(0, availableDisplay));
+      asset.currentValue -= this.convertValue(deduct, displayCurrency, asset.currency, exchangeRate);
+      remaining -= deduct;
+      if (remaining <= 0) return amountDisplay;
+    }
+
+    for (const pension of pensions) {
+      const availableDisplay = this.convertValue(pension.currentBalance, pension.currency, displayCurrency, exchangeRate);
+      const deduct = Math.min(remaining, Math.max(0, availableDisplay));
+      pension.currentBalance -= this.convertValue(deduct, displayCurrency, pension.currency, exchangeRate);
+      remaining -= deduct;
+      if (remaining <= 0) return amountDisplay;
+    }
+
+    return amountDisplay - remaining;
+  }
+
   private initializeAssets(params: SimulationParams, currentTaxSettings: TaxSettings): { activeAssets: ActiveAsset[], activePensions: ActivePension[], activeIsas: ActiveIsa[], infRateAnnual: number } {
     const { assets = [], privatePensions = [], isaAccounts = [], inflationRate = 2, inflationMode = 'real' } = params;
     
@@ -803,21 +848,25 @@ export class SimulationEngine {
         },
         currentTaxSettings
       );
-      const annualComprehensiveTaxPaidDisplay = this.convertValue(comprehensiveTaxKRW, 'KRW', displayCurrency, exchangeRate);
-      const annualHealthInsurancePaidDisplay = this.convertValue(healthInsuranceKRW, 'KRW', displayCurrency, exchangeRate);
+      // 부과액이 아니라 실제 징수액을 기록한다(collectTax 주석 참조).
+      let annualComprehensiveTaxPaidDisplay = this.convertValue(comprehensiveTaxKRW, 'KRW', displayCurrency, exchangeRate);
+      let annualHealthInsurancePaidDisplay = this.convertValue(healthInsuranceKRW, 'KRW', displayCurrency, exchangeRate);
 
       {
-        let remainingTax = annualComprehensiveTaxPaidDisplay + annualHealthInsurancePaidDisplay;
-        for (const asset of withdrawalOrderedAssets) {
-            const assetValueDisplay = this.convertValue(asset.currentValue, asset.currency, displayCurrency, exchangeRate);
-            const deduct = Math.min(remainingTax, assetValueDisplay);
-            asset.currentValue -= this.convertValue(deduct, displayCurrency, asset.currency, exchangeRate);
-            remainingTax -= deduct;
-            if (remainingTax <= 0) break;
+        // 두 세금은 한 번에 징수한다(원래부터 합산해 차감했다). 일부만 걷힌 해에는
+        // 부과 비율대로 나눠 배분한다 — 어느 한쪽을 먼저 채우는 규칙에는 근거가 없다.
+        const chargedDisplay = annualComprehensiveTaxPaidDisplay + annualHealthInsurancePaidDisplay;
+        const collectedDisplay = this.collectTax(
+          chargedDisplay, withdrawalOrderedAssets, activePensions, displayCurrency, exchangeRate
+        );
+        if (collectedDisplay < chargedDisplay) {
+          const collectedRatio = chargedDisplay > 0 ? collectedDisplay / chargedDisplay : 0;
+          annualComprehensiveTaxPaidDisplay *= collectedRatio;
+          annualHealthInsurancePaidDisplay *= collectedRatio;
         }
 
         // 초과세도 실질적으로 배당소득에서 빠져나가는 비용이므로 표시되는 배당소득에도 반영한다.
-        annualDividendIncome = Math.max(0, annualDividendIncome - annualComprehensiveTaxPaidDisplay - annualHealthInsurancePaidDisplay);
+        annualDividendIncome = Math.max(0, annualDividendIncome - collectedDisplay);
       }
 
       // Private pension high tax threshold adjustment
@@ -828,26 +877,12 @@ export class SimulationEngine {
         const totalPensionTaxNeededDisplay = this.convertValue(totalPensionTaxNeededKRW, 'KRW', displayCurrency, exchangeRate);
         const pensionTaxAdjustmentDisplay = Math.max(0, totalPensionTaxNeededDisplay - annualPensionTaxPaid);
 
-        let remainingTax = pensionTaxAdjustmentDisplay;
-        for (const asset of withdrawalOrderedAssets) {
-          const assetValueDisplay = this.convertValue(asset.currentValue, asset.currency, displayCurrency, exchangeRate);
-          const deduct = Math.min(remainingTax, assetValueDisplay);
-          asset.currentValue -= this.convertValue(deduct, displayCurrency, asset.currency, exchangeRate);
-          remainingTax -= deduct;
-          if (remainingTax <= 0) break;
-        }
-        if (remainingTax > 0) {
-          for (const pension of activePensions) {
-            const pensionValueDisplay = this.convertValue(pension.currentBalance, pension.currency, displayCurrency, exchangeRate);
-            const deduct = Math.min(remainingTax, pensionValueDisplay);
-            pension.currentBalance -= this.convertValue(deduct, displayCurrency, pension.currency, exchangeRate);
-            remainingTax -= deduct;
-            if (remainingTax <= 0) break;
-          }
-        }
-        annualPensionTaxPaid += pensionTaxAdjustmentDisplay;
+        const collectedAdjustmentDisplay = this.collectTax(
+          pensionTaxAdjustmentDisplay, withdrawalOrderedAssets, activePensions, displayCurrency, exchangeRate
+        );
+        annualPensionTaxPaid += collectedAdjustmentDisplay;
         // 초과세도 실질적으로 사적연금 소득에서 빠져나가는 비용이므로 표시되는 소득에도 반영한다.
-        annualPrivatePensionIncome = Math.max(0, annualPrivatePensionIncome - pensionTaxAdjustmentDisplay);
+        annualPrivatePensionIncome = Math.max(0, annualPrivatePensionIncome - collectedAdjustmentDisplay);
       }
 
       const stockAssetsDisplay = activeAssets.reduce((sum, a) => sum + this.convertValue(a.currentValue, a.currency, displayCurrency, exchangeRate), 0);
