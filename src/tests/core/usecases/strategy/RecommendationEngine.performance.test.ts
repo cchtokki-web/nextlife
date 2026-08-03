@@ -1,44 +1,15 @@
 import { describe, test, expect } from 'vitest';
 import { SimulationEngine } from '@/core/usecases/SimulationEngine';
 import { recommendStrategy } from '@/core/usecases/strategy/RecommendationEngine';
-import { SimulationParams } from '@/core/entities/types';
+import { allAxesLiveParams as worstCaseParams } from '@/tests/fixtures/allAxesLiveParams';
 
 // StrategyCandidateGenerator의 최악 시나리오(216개 후보, StrategyCandidateGenerator.test.ts 참고)에서
 // recommendStrategy가 브라우저 실시간 처리에 부적합할 만큼 느려지지 않는지 검증하는 성능 회귀 가드.
 // runForUtility() 도입 전(각 후보마다 run()의 findMaxSustainableValue 30회 이진탐색까지 포함)에는
 // 이 시나리오가 수 초 이상 걸렸다.
-const worstCaseParams: SimulationParams = {
-  userProfile: {
-    currentAge: 55,
-    retirementAge: 61,
-    expectancy: 95,
-    targetMonthlySpending: 3000000,
-  },
-  assets: [
-    { id: 'a1', type: 'etf', ticker: 'A', name: '자산1', quantity: 1, averagePrice: 100, annualGrowthRate: 5, dividendYield: 2, monthlyContribution: 0, reinvestDividend: false, currency: 'KRW' },
-    { id: 'a2', type: 'etf', ticker: 'B', name: '자산2', quantity: 1, averagePrice: 100, annualGrowthRate: 5, dividendYield: 4, monthlyContribution: 0, reinvestDividend: false, currency: 'KRW' },
-  ],
-  isaAccounts: [
-    { id: 'isa-1', type: 'general', balance: 1000000, monthlyContribution: 0, annualReturn: 5, dividendYield: 0, currency: 'KRW', maturityYears: 3 },
-  ],
-  nationalPension: { expectedMonthlyAmount: 1000000 },
-  privatePensions: [
-    {
-      id: 'pension-1',
-      type: 'irp',
-      balance: 600000000,
-      monthlyContribution: 0,
-      annualReturn: 4,
-      currency: 'KRW',
-    },
-  ],
-  otherIncomes: [],
-  inflationRate: 0,
-  inflationMode: 'real',
-  baseExchangeRate: 1350,
-  exchangeScenario: 'base',
-  displayCurrency: 'KRW',
-};
+//
+// 픽스처는 strategyAxisDelta 테스트와 공유한다 — 둘 다 "모든 전략 차원이 살아 있는
+// 파라미터"를 필요로 하고, 조건이 어긋나면 두 테스트가 서로 다른 것을 재게 된다.
 
 describe('recommendStrategy - 성능 회귀 가드', () => {
   test('최악 시나리오(216개 후보)에서도 5초 이내에 완료된다', () => {
