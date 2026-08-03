@@ -9,6 +9,7 @@ import {
   StrategyRecommendation,
   UtilityBreakdown,
 } from '@/core/entities/types';
+import { makeYearlyResult as sharedYearlyResult } from '@/tests/fixtures/yearlyResult';
 
 vi.mock('next-auth/react', () => ({
   useSession: () => ({ data: null }),
@@ -25,35 +26,17 @@ function makeStreamResponse(lines: string[]) {
   return new Response(body, { status: 200 });
 }
 
+// 공유 픽스처(전부 0) 위에 이 파일 공통의 값을 얹는다.
 function makeYearlyResult(overrides: Partial<SimulationYearlyResult>): SimulationYearlyResult {
-  return {
+  return sharedYearlyResult({
     age: 60,
     year: 2026,
     totalAssets: 500000000,
     stockAssets: 200000000,
     pensionAssets: 300000000,
-    dividendIncome: 0,
-    nationalPensionIncome: 0,
-    privatePensionIncome: 0,
-    pensionIncome: 0,
-    otherIncome: 0,
-    totalIncome: 0,
-    preTaxTotalIncome: 0,
-    dividendTaxPaid: 0,
-    pensionTaxPaid: 0,
-    nationalPensionTaxPaid: 0,
-    healthInsurancePaid: 0,
-    healthInsuranceIncomeBasis: 0,
-    capitalGainsTaxPaid: 0,
-    comprehensiveTaxPaid: 0,
-    privatePensionTaxMethod: 'none',
     spending: 36000000,
-    healthcareSpending: 0,
-    hasTaxWarning: false,
-    spouseAlive: false,
-    spendingFactor: 1,
     ...overrides,
-  };
+  });
 }
 
 const utility: UtilityBreakdown = {

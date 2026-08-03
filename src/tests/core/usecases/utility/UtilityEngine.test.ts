@@ -39,6 +39,7 @@ function makeYear(
     totalAssets: 0,
     stockAssets: 0,
     pensionAssets: 0,
+    isaAssets: 0,
     dividendIncome: 0,
     nationalPensionIncome: 0,
     privatePensionIncome: 0,
@@ -90,6 +91,7 @@ function buildDepletionScenario(): SimulationResult {
         makeYear(age, {
           totalAssets: 0,
           pensionAssets: 0,
+          isaAssets: 0,
           spending: 0,
           totalIncome: 0,
           preTaxTotalIncome: 0,

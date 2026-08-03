@@ -58,6 +58,9 @@ export function AssetGrowthChart({
       자산총액: Math.max(0, Math.round(r.totalAssets)),
       주식자산: Math.max(0, Math.round(r.stockAssets)),
       연금자산: Math.max(0, Math.round(r.pensionAssets)),
+      // ISA는 자산총액에는 들어 있는데 시리즈가 없어서, 주식+연금과 총액 사이가
+      // 라벨 없는 공백으로 보였다.
+      ISA자산: Math.max(0, Math.round(r.isaAssets)),
       월생활비: Math.max(0, Math.round(r.spending / 12)),
     };
     compareResults.forEach((comp) => {
@@ -193,6 +196,17 @@ export function AssetGrowthChart({
                 strokeDasharray="4 4"
                 strokeWidth={1.5}
                 hide={!!hiddenKeys['연금자산']}
+              />
+              <Area
+                yAxisId="left"
+                name="ISA 자산"
+                type="monotone"
+                dataKey="ISA자산"
+                stroke="var(--success)"
+                fill="transparent"
+                strokeDasharray="4 4"
+                strokeWidth={1.5}
+                hide={!!hiddenKeys['ISA자산']}
               />
               <Line
                 yAxisId="right"

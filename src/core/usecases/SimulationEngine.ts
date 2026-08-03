@@ -420,8 +420,13 @@ export class SimulationEngine {
     }
     const longevityScore = longevityScoreRaw * 0.15;
 
-    // Use total invested assets (stock + pension + ISA) to calculate inflation hedge score
-    const retirementInvestedAssets = retirementStartResult.stockAssets + retirementStartResult.pensionAssets;
+    // 인플레이션 헤지 점수의 분자 = 투자 자산(주식 + 사적연금 + ISA).
+    //
+    // 예전에는 주석만 ISA를 포함한다고 말하고 코드는 빼고 있었다. 그래서 ISA 보유자의
+    // 헤지 점수가 과소 산정됐고, 전 재산이 ISA인 사용자는 투자 비중이 0으로 잡혀 0점이었다.
+    const retirementInvestedAssets = retirementStartResult.stockAssets
+      + retirementStartResult.pensionAssets
+      + retirementStartResult.isaAssets;
     const investedRatio = retirementAssets > 0 ? (retirementInvestedAssets / retirementAssets) * 100 : 0;
     const inflationScoreRaw = Math.min(100, (investedRatio / 40) * 100);
     const inflationScore = inflationScoreRaw * 0.15;
@@ -1036,6 +1041,7 @@ export class SimulationEngine {
       yearlyResults.push({
         age: currentAge, year: currentYear, totalAssets: totalAssetsDisplay,
         stockAssets: stockAssetsDisplay, pensionAssets: pensionAssetsDisplay,
+        isaAssets: isaAssetsDisplay,
         dividendIncome: annualDividendIncome, nationalPensionIncome: annualNationalPensionIncome,
         privatePensionIncome: annualPrivatePensionIncome, pensionIncome, otherIncome: annualOtherIncome,
         totalIncome, spending: annualSpending, healthcareSpending: annualHealthcareCost,

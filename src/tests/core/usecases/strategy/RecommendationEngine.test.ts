@@ -499,6 +499,7 @@ function makeYearlyResult(overrides: Partial<SimulationYearlyResult>): Simulatio
     totalAssets: 0,
     stockAssets: 0,
     pensionAssets: 0,
+    isaAssets: 0,
     dividendIncome: 0,
     nationalPensionIncome: 0,
     privatePensionIncome: 0,

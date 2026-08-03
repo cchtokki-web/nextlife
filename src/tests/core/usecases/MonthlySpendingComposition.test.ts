@@ -86,6 +86,7 @@ function makeYearlyResult(overrides: {
     totalAssets: 0,
     stockAssets: 0,
     pensionAssets: 0,
+    isaAssets: 0,
     dividendIncome: overrides.dividendIncomeAnnual ?? 0,
     nationalPensionIncome: overrides.nationalPensionIncomeAnnual ?? 0,
     privatePensionIncome: overrides.privatePensionIncomeAnnual ?? 0,

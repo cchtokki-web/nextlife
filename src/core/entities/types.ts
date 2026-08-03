@@ -203,6 +203,10 @@ export interface SimulationYearlyResult {
   totalAssets: number; // 기말 자산액 (선택 표기 통화 기준)
   stockAssets: number; // 주식/ETF 자산
   pensionAssets: number; // 사적연금 자산
+  // ISA 계좌 잔액. totalAssets에는 원래 포함돼 있었지만 별도 필드가 없어,
+  // stockAssets + pensionAssets로 자산 구성을 재구성하는 소비처들이 ISA를 통째로 놓쳤다
+  // (인플레이션 헤지 점수의 분자, 자산 추이 차트의 시리즈).
+  isaAssets: number;
   dividendIncome: number; // 연간 세후 배당 수령액
   nationalPensionIncome: number; // 연간 세후 국민연금 수령액
   privatePensionIncome: number; // 연간 세후 사적연금 수령액
