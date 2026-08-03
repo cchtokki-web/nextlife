@@ -879,10 +879,11 @@ export class SimulationEngine {
       }
 
       // Taxes
-      const { comprehensiveTaxKRW, healthInsuranceKRW } = calculateComprehensiveTaxAndHealthInsuranceKRW(
+      const { comprehensiveTaxKRW, healthInsuranceKRW, healthInsuranceIncomeBasisKRW } = calculateComprehensiveTaxAndHealthInsuranceKRW(
         {
           annualRawFinancialIncomeKRW,
-          annualRawPensionIncomeKRW: annualPrivatePensionPreTaxKRW + annualNationalPensionPreTaxKRW,
+          // 사적연금(annualPrivatePensionPreTaxKRW)은 건보료 부과 대상이 아니라 넘기지 않는다.
+          annualPublicPensionIncomeKRW: annualNationalPensionPreTaxKRW,
           annualWithheldFinancialTaxKRW,
         },
         taxCtx
@@ -947,7 +948,9 @@ export class SimulationEngine {
         preTaxTotalIncome: annualPreTaxTotalIncome,
         dividendTaxPaid: annualDividendTaxPaid, pensionTaxPaid: annualPensionTaxPaid,
         nationalPensionTaxPaid: annualNationalPensionTaxPaid, comprehensiveTaxPaid: annualComprehensiveTaxPaidDisplay,
-        healthInsurancePaid: annualHealthInsurancePaidDisplay, privatePensionTaxMethod,
+        healthInsurancePaid: annualHealthInsurancePaidDisplay,
+        healthInsuranceIncomeBasis: this.convertValue(healthInsuranceIncomeBasisKRW, 'KRW', displayCurrency, exchangeRate),
+        privatePensionTaxMethod,
       });
 
       if (totalAssetsDisplay <= 0 && depletionAge === null) depletionAge = currentAge;

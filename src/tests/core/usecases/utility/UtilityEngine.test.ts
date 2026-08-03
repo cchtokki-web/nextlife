@@ -50,6 +50,7 @@ function makeYear(
     pensionTaxPaid: 0,
     nationalPensionTaxPaid: 0,
     healthInsurancePaid: 0,
+    healthInsuranceIncomeBasis: 0,
     comprehensiveTaxPaid: 0,
     privatePensionTaxMethod: 'none',
     spending: ANNUAL_TARGET,

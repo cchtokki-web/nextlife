@@ -138,7 +138,7 @@ describe('calculateComprehensiveTaxAndHealthInsuranceKRW', () => {
   // 원천징수액은 전액 국내 배당(15.4%)이라고 가정한다. 비교과세의 기납부세액 공제에 쓰인다.
   const basis = (financial: number, pension: number = 0) => ({
     annualRawFinancialIncomeKRW: financial,
-    annualRawPensionIncomeKRW: pension,
+    annualPublicPensionIncomeKRW: pension,
     annualWithheldFinancialTaxKRW: financial * 0.154,
   });
 
@@ -165,11 +165,24 @@ describe('calculateComprehensiveTaxAndHealthInsuranceKRW', () => {
     expect(result.healthInsuranceKRW).toBeCloseTo(10000000 * 0.05);
   });
 
-  test('금융소득 단독으로는 기준 이하지만, 연금소득을 합산하면 건보료만 발생(종합과세는 0)', () => {
-    // 금융소득 1,000만원(기준 이하) + 연금소득 1,500만원 = 합산 2,500만원 -> 초과 500만원
-    const result = calculateComprehensiveTaxAndHealthInsuranceKRW(basis(10000000, 15000000), baseCtx);
+  test('금융소득 단독으로는 기준 이하지만, 공적연금을 합산하면 건보료만 발생(종합과세는 0)', () => {
+    // 공적연금은 50%만 반영된다.
+    // 금융소득 1,000만 + 공적연금 3,000만 × 50%(=1,500만) = 2,500만 → 초과 500만
+    const result = calculateComprehensiveTaxAndHealthInsuranceKRW(basis(10000000, 30000000), baseCtx);
     expect(result.comprehensiveTaxKRW).toBe(0); // 종합과세 판정은 금융소득만 사용
     expect(result.healthInsuranceKRW).toBeCloseTo(5000000 * 0.05);
+  });
+
+  test('공적연금은 50%만 부과 기준에 들어간다', () => {
+    // 공적연금 4,000만 × 50% = 2,000만 → 문턱과 정확히 같아 초과분 0.
+    const atThreshold = calculateComprehensiveTaxAndHealthInsuranceKRW(basis(0, 40000000), baseCtx);
+    expect(atThreshold.healthInsuranceKRW).toBe(0);
+    expect(atThreshold.healthInsuranceIncomeBasisKRW).toBeCloseTo(20000000);
+
+    // 100% 반영이었다면 4,000만 − 2,000만 = 2,000만 초과분이 잡혔을 것이다.
+    const overThreshold = calculateComprehensiveTaxAndHealthInsuranceKRW(basis(0, 50000000), baseCtx);
+    expect(overThreshold.healthInsuranceIncomeBasisKRW).toBeCloseTo(25000000);
+    expect(overThreshold.healthInsuranceKRW).toBeCloseTo(5000000 * 0.05);
   });
 
   test('금융소득+연금소득 합산도 기준 이하면 둘 다 0', () => {

@@ -121,7 +121,13 @@ export function calculateIsaMaturityTax(
 
 export interface TaxableIncomeBasis {
   annualRawFinancialIncomeKRW: number; // 종합과세 판정 기준: 배당+이자 등 금융소득만(세전)
-  annualRawPensionIncomeKRW: number; // 건보료 판정에만 "추가로" 합산되는 연금소득(국민+사적, 세전)
+  // 건보료 부과 대상이 되는 **공적연금(국민연금)** 수령액(세전).
+  //
+  // 사적연금(연금저축·IRP)은 건강보험료 부과 대상 소득이 아니다. 예전에는 이 필드가
+  // annualRawPensionIncomeKRW라는 이름으로 국민연금 + 사적연금을 함께 받았고, 그래서
+  // 사적연금을 많이 인출할수록 건보료가 늘어나는 잘못된 모델이었다. 필드 이름 자체로
+  // 계약을 고정해 다시 섞이지 않게 한다.
+  annualPublicPensionIncomeKRW: number;
   // 위 금융소득에서 이미 원천징수된 세액(세전 소득에 대응하는 실제 징수액, KRW).
   //
   // 비율(15%/15.4%)이 아니라 실제 금액을 받는 이유: 자산마다 원천징수율이 다르다.
@@ -163,18 +169,18 @@ function calculateProgressiveCreditTaxKRW(
 export function calculateComprehensiveTaxAndHealthInsuranceKRW(
   incomeBasis: TaxableIncomeBasis,
   ctx: TaxContext
-): { comprehensiveTaxKRW: number; healthInsuranceKRW: number } {
+): { comprehensiveTaxKRW: number; healthInsuranceKRW: number; healthInsuranceIncomeBasisKRW: number } {
   const {
     annualRawFinancialIncomeKRW,
-    annualRawPensionIncomeKRW,
+    annualPublicPensionIncomeKRW,
     annualWithheldFinancialTaxKRW,
   } = incomeBasis;
-  if (annualRawFinancialIncomeKRW < 0 || annualRawPensionIncomeKRW < 0) {
+  if (annualRawFinancialIncomeKRW < 0 || annualPublicPensionIncomeKRW < 0) {
     throw new InvalidTaxInputError('과세 대상 소득은 음수일 수 없습니다.');
   }
 
   if (!ctx.settings.enableComprehensiveTax) {
-    return { comprehensiveTaxKRW: 0, healthInsuranceKRW: 0 };
+    return { comprehensiveTaxKRW: 0, healthInsuranceKRW: 0, healthInsuranceIncomeBasisKRW: 0 };
   }
 
   const thresholdKRW = ctx.profile.financialIncomeThresholdKRW;
@@ -192,15 +198,38 @@ export function calculateComprehensiveTaxAndHealthInsuranceKRW(
     ? excessKRW * (ctx.settings.comprehensiveTaxRate / 100)
     : calculateProgressiveCreditTaxKRW(excessKRW, withheldOnExcessKRW, ctx);
 
-  // 건강보험료 판정: 금융소득 + 연금소득(국민+사적) 합산 기준(단순 확장 — 실제 피부양자/지역가입자
-  // 판정 기준과는 다른 근사치)
-  const combinedIncomeForHealthInsuranceKRW = annualRawFinancialIncomeKRW + annualRawPensionIncomeKRW;
+  // 건강보험료 부과 기준 소득 = 금융소득 + 공적연금 × 반영비율(50%).
+  // 사적연금은 부과 대상이 아니라 제외한다.
+  //
+  // ## 이 모델이 반영하지 않는 것 (의도적)
+  //
+  // 실제 지역가입자 보험료는 문턱 초과분이 아니라 **소득 전체**에 부과되고, 피부양자
+  // 자격을 잃는 순간 계단식으로 뛴다(cliff). 재산·자동차 점수도 별도로 붙는다.
+  // 그런데도 초과분(marginal) 방식을 유지하는 이유는 두 가지다:
+  //
+  // 1. 재산 입력이 없어 절벽 양쪽이 모두 틀린다. cliff만 넣으면 아래쪽은 0원, 위쪽은
+  //    재산분 누락으로 과소가 되어, 정밀도는 그대로인 채 오차 구조만 복잡해진다.
+  // 2. 불연속이 이진탐색을 깨뜨린다. findMaxSustainableValue/findMaxSustainable은
+  //    "목표 지출이 늘면 고갈이 빨라진다"는 단조성을 30회 이진탐색으로 이용하는데,
+  //    계단이 생기면 잘못된 값에 수렴하고 추천 후보 비교도 불안정해진다.
+  //    이건 세법 문제가 아니라 아키텍처 문제라 도입 비용이 훨씬 크다.
+  //
+  // 대신 절벽 근접은 계산이 아니라 경고로 알린다(computeRiskAlerts의 healthInsuranceCliff).
+  // 그 결과 이 모델의 건보료는 실제보다 **낮게** 나올 수 있으며, 화면 문구에 명시한다.
+  const publicPensionForHealthInsuranceKRW =
+    annualPublicPensionIncomeKRW * ctx.profile.healthInsurancePublicPensionInclusionRate;
+  const combinedIncomeForHealthInsuranceKRW =
+    annualRawFinancialIncomeKRW + publicPensionForHealthInsuranceKRW;
   const healthInsuranceKRW =
     ctx.settings.enableHealthInsurance && combinedIncomeForHealthInsuranceKRW > thresholdKRW
       ? (combinedIncomeForHealthInsuranceKRW - thresholdKRW) * (ctx.settings.healthInsuranceRate / 100)
       : 0;
 
-  return { comprehensiveTaxKRW, healthInsuranceKRW };
+  return {
+    comprehensiveTaxKRW,
+    healthInsuranceKRW,
+    healthInsuranceIncomeBasisKRW: combinedIncomeForHealthInsuranceKRW,
+  };
 }
 
 // 사적연금 인출액(세전) 단독을 종합소득세 누진세율표에 그대로 적용했을 때의 세액.

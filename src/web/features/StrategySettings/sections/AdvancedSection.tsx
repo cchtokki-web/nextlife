@@ -122,7 +122,7 @@ export function AdvancedSection({ params, onChangeParams, mode, changed }: Secti
             : '연 2천만원을 넘는 금융소득에 추가로 붙는 세율입니다.',
           comprehensiveTaxModeGovernsRate)}
         {rateField('healthInsuranceRate', '건강보험료율',
-          '기준을 넘는 소득에 추가로 붙는 건강보험료 비율입니다.')}
+          '기준을 넘는 소득에 추가로 붙는 건강보험료 비율입니다. 기준 소득은 금융소득과 공적연금(50% 반영)만 세며, 사적연금은 부과 대상이 아니라 빠집니다.')}
 
         {isFieldVisible(mode, 'taxSettings.privatePensionLimit') && (
           // 금액 입력은 한 줄을 다 쓴다. 입력 우측에는 단위와 스테퍼 자리로 5.1rem이
@@ -189,7 +189,7 @@ export function AdvancedSection({ params, onChangeParams, mode, changed }: Secti
       {isFieldVisible(mode, 'taxSettings.enableHealthInsurance') && (
         <SwitchField
           label="건강보험료 반영"
-          description="은퇴 후 소득에 따라 늘어나는 건강보험료를 계산에 넣습니다."
+          description="은퇴 후 소득에 따라 늘어나는 건강보험료를 계산에 넣습니다. 피부양자 자격 상실 시의 급증과 재산 부과분은 반영하지 않아 실제 부담이 더 클 수 있습니다."
           tooltipTerm="healthInsurance"
           checked={tax.enableHealthInsurance}
           onChange={(v) => setTax({ enableHealthInsurance: v })}

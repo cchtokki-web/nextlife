@@ -2,9 +2,10 @@ import { SimulationParams, SimulationResult, SimulationYearlyResult, UtilityConf
 import { DEFAULT_UTILITY_CONFIG } from '../utility/utilityWeights';
 import { formatManwon } from '../utility/utilityAnalysis';
 import { resolveStrategy } from '../strategy/compileStrategy';
+import { resolveTaxContext } from '../tax/taxContext';
 
 export interface RiskAlert {
-  key: 'comprehensiveTax' | 'privatePensionLimit' | 'healthInsurance' | 'bequestShortfall';
+  key: 'comprehensiveTax' | 'privatePensionLimit' | 'healthInsurance' | 'healthInsuranceCliff' | 'bequestShortfall';
   title: string;
   message: string;
 }
@@ -94,6 +95,42 @@ function buildHealthInsuranceAlert(
   };
 }
 
+// 피부양자 자격 상실 절벽에 근접했는지 알린다.
+//
+// 이 시뮬레이터의 건강보험료는 "문턱 초과분에만 요율을 곱하는" 연속 함수다. 실제 제도는
+// 피부양자 자격을 잃는 순간 **소득 전체**에 부과되고 재산·자동차 점수까지 붙는 계단
+// 구조라, 문턱 근처에서 실제 부담이 계산값보다 훨씬 크게 뛸 수 있다.
+//
+// 그 계단을 계산에 넣지 않는 이유는 TaxEngine 쪽 주석에 있다(재산 입력이 없어 절벽 양쪽이
+// 모두 틀리고, 불연속이 이진탐색의 단조성 전제를 깨뜨린다). 대신 위험 자체는 사용자에게
+// 전달해야 하므로 경고로 낸다 — 계산의 정직성과 사용자에게 필요한 정보를 둘 다 지키는
+// 이 앱 수준의 최선이다.
+//
+// 판정: 건보료 부과 기준 소득이 문턱의 90~110% 구간에 들어가는 해가 있는가.
+// 이미 크게 넘어선 사용자는 위 '건강보험료 증가 구간' 경고가 담당하므로 상단을 110%로 막는다.
+const HEALTH_INSURANCE_CLIFF_LOWER_RATIO = 0.9;
+const HEALTH_INSURANCE_CLIFF_UPPER_RATIO = 1.1;
+
+function buildHealthInsuranceCliffAlert(
+  yearlyResults: SimulationYearlyResult[],
+  thresholdKRW: number
+): RiskAlertCandidate | null {
+  const range = findFirstContiguousRange(yearlyResults, (y) => {
+    const ratio = y.healthInsuranceIncomeBasis / thresholdKRW;
+    return ratio >= HEALTH_INSURANCE_CLIFF_LOWER_RATIO && ratio <= HEALTH_INSURANCE_CLIFF_UPPER_RATIO;
+  });
+  if (!range) return null;
+
+  return {
+    sortAge: range.startAge,
+    alert: {
+      key: 'healthInsuranceCliff',
+      title: '건강보험 피부양자 자격 경계 구간',
+      message: `${formatAgeRange(range.startAge, range.endAge)} 구간, 건강보험료 부과 기준 소득이 연 ${formatManwon(thresholdKRW)} 근처입니다. 이 기준을 넘어 피부양자 자격을 잃으면 실제 보험료는 초과분이 아니라 소득 전체와 재산에 부과되어 계단식으로 뜁니다. 이 시뮬레이터는 그 급증을 반영하지 않으므로 실제 부담이 더 클 수 있습니다.`,
+    },
+  };
+}
+
 // 사용자가 명시적으로 금액 목표를 세운 계획("목표 금액 유지")에서, 가구 종료 시점 예상
 // 잔여자산이 그 목표에 못 미치면 알림을 만든다. 다른 알림과 달리 연도별 시뮬레이션 조건이
 // 아니라 단일 시점 이벤트라 sortAge는 그 시점 나이로 고정한다.
@@ -157,6 +194,7 @@ export function computeRiskAlerts(
     buildComprehensiveTaxAlert(yearlyResults),
     buildPrivatePensionLimitAlert(yearlyResults, privatePensionLimit),
     buildHealthInsuranceAlert(yearlyResults, cfg.healthInsuranceCeiling),
+    buildHealthInsuranceCliffAlert(yearlyResults, resolveTaxContext(params.taxSettings, params.taxLawVersion).profile.financialIncomeThresholdKRW),
     buildBequestShortfallAlert(params, result),
   ].filter((c): c is RiskAlertCandidate => c !== null);
 

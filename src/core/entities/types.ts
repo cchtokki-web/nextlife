@@ -200,6 +200,13 @@ export interface SimulationYearlyResult {
   pensionTaxPaid: number; // 연금소득세 납부액
   nationalPensionTaxPaid: number; // 국민연금 세금 납부액
   healthInsurancePaid: number; // 건강보험료(추가분) 납부액
+  // 그 해 건강보험료 부과 기준이 된 소득 = 금융소득(세전) + 공적연금 × 반영비율(50%).
+  // 사적연금은 부과 대상이 아니라 포함되지 않는다.
+  //
+  // 납부액만으로는 이 값을 역산할 수 없다 — 문턱 이하인 해는 납부액이 0이라 "얼마나
+  // 가까운지"를 알 수 없기 때문이다. 피부양자 자격 상실 절벽 근접 경고
+  // (computeRiskAlerts)가 바로 그 구간을 봐야 해서 결과에 실어 보낸다.
+  healthInsuranceIncomeBasis: number;
   comprehensiveTaxPaid: number; // 금융소득종합과세(추가분) 납부액
   privatePensionTaxMethod: PrivatePensionTaxationMethod; // 사적연금 한도초과세 적용 방식
 

@@ -284,12 +284,17 @@ describe('SimulationEngine 배우자 단독 생존 기간의 고갈', () => {
     expect(longer.retirementScore).toBeLessThan(shorter.retirementScore);
     expect(longer.utility!.components.depletionSafety)
       .toBeLessThan(shorter.utility!.components.depletionSafety);
-    // 은퇴 등급으로 엔진의 longevityScore 정규화를 고정한다. 이 계획은 배우자가 11년을
-    // 무일푼으로 사는 계획이므로 최고 등급이어서는 안 된다 — 그런데 span을 본인 기대수명
-    // (80)으로 정규화하면 (84-60)/(80-60)=1.2가 clamp에 걸려 만점이 되고 등급이 '매우 안정'이
-    // 된다. retirementScore 비교만으로는 이 결함이 드러나지 않아(다른 항목 차이에 묻힌다)
-    // 등급으로 단언한다.
-    expect(longer.retirementGrade).not.toBe('매우 안정');
+    // 엔진의 longevityScore 정규화를 절대값으로 고정한다. 배우자가 11년을 무일푼으로 사는
+    // 계획이므로 고갈 안전성이 만점이어서는 안 된다 — span을 본인 기대수명(80)으로
+    // 정규화하면 (84-60)/(80-60)=1.2가 clamp에 걸려 만점이 나온다. 가구 종료 나이(95)로
+    // 정규화해야 감점된다.
+    //
+    // 예전에는 이 자리에서 retirementGrade가 '매우 안정'이 아님을 단언했다. 그러나 등급은
+    // 총점에서 파생되므로 세금 모델이 바뀌어 총점 수준이 오르내리면 판별력이 사라진다
+    // (건보료 과세표준 정정으로 총점이 올라 실제로 그렇게 됐다). 위 상대 비교와 달리
+    // 이쪽은 절대 기준이 필요하므로, 등급이 아니라 겨냥하는 항목 자체를 직접 본다.
+    expect(longer.utility!.components.depletionSafety)
+      .toBeLessThan(DEFAULT_UTILITY_CONFIG.weights.depletionSafety);
   });
 });
 

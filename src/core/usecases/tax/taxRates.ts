@@ -35,9 +35,12 @@ export const PRIVATE_PENSION_TAX_BRACKETS: { minAge: number; maxAge: number; rat
 export const DEFAULT_PRIVATE_PENSION_LIMIT_KRW = CURRENT.privatePensionLimitKRW; // 사적연금 저율과세 한도(연)
 export const DEFAULT_PRIVATE_PENSION_EXCESS_TAX_RATE = CURRENT.privatePensionExcessTaxRate; // 한도 초과 시 세율(%)
 
-// 아래 둘은 세법이 정한 값이 아니라 이 앱이 고른 단순화 계수라 프로필에 넣지 않는다.
+// 'flat' 모드에서만 쓰이는 단순화 세율. 세법이 정한 값이 아니라 이 앱이 고른 계수라
+// 프로필에 넣지 않는다(기본 모드는 누진세율표 + 원천징수 공제를 쓴다).
 export const DEFAULT_COMPREHENSIVE_TAX_RATE = 15; // 금융소득종합과세 초과분 단순화 세율(%)
-export const DEFAULT_HEALTH_INSURANCE_RATE = 5; // 초과분 건강보험료 비율(%)
+
+// 건강보험료 요율은 실제 지역가입자 요율에 맞춘 뒤 프로필로 옮겼다(더 이상 임의 계수가 아니다).
+export const DEFAULT_HEALTH_INSURANCE_RATE = CURRENT.healthInsuranceRateRegional; // 초과분 건강보험료 비율(%)
 
 // 한국 종합소득세 누진세율표(2024년 기준, 단순화. 상세 주석은 taxLawProfiles.ts 참고).
 export const KOREA_COMPREHENSIVE_INCOME_TAX_BRACKETS_2024 = CURRENT.comprehensiveIncomeBrackets;

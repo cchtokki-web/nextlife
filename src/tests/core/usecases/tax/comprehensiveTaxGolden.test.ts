@@ -22,7 +22,7 @@ const KR_WITHHOLDING = 0.154; // 국내 배당 원천징수율(국세 14% + 지�
 function krDividend(annualKRW: number) {
   return {
     annualRawFinancialIncomeKRW: annualKRW,
-    annualRawPensionIncomeKRW: 0,
+    annualPublicPensionIncomeKRW: 0,
     annualWithheldFinancialTaxKRW: annualKRW * KR_WITHHOLDING,
   };
 }
@@ -66,7 +66,7 @@ describe('금융소득종합과세 — 비교과세(progressive_credit) 골든',
     const excess = amount - 20_000_000;
 
     const us = calculateComprehensiveTaxAndHealthInsuranceKRW(
-      { annualRawFinancialIncomeKRW: amount, annualRawPensionIncomeKRW: 0, annualWithheldFinancialTaxKRW: amount * 0.15 },
+      { annualRawFinancialIncomeKRW: amount, annualPublicPensionIncomeKRW: 0, annualWithheldFinancialTaxKRW: amount * 0.15 },
       ctx
     );
     const kr = calculateComprehensiveTaxAndHealthInsuranceKRW(krDividend(amount), ctx);
@@ -169,7 +169,7 @@ describe('금융소득종합과세 — 건강보험료는 모드와 무관하다
     );
 
     expect(credit.healthInsuranceKRW).toBe(flat.healthInsuranceKRW);
-    // (30,000,000 − 20,000,000) × 5% = 500,000
-    expect(credit.healthInsuranceKRW).toBeCloseTo(500_000);
+    // (30,000,000 − 20,000,000) × 7.09% = 709,000
+    expect(credit.healthInsuranceKRW).toBeCloseTo(709_000);
   });
 });

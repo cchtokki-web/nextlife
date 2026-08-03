@@ -43,6 +43,8 @@ export interface TaxLawProfile {
   pensionIncomeDeductionBrackets: PensionIncomeDeductionBracket[];
   pensionIncomeDeductionCapKRW: number;
   basicIncomeDeductionKRW: number;
+  healthInsuranceRateRegional: number; // %
+  healthInsurancePublicPensionInclusionRate: number; // 0~1
 }
 
 // 현행 세법(2024년 기준). taxRates.ts에 있던 값을 그대로 옮긴 것이며 값 변경은 없다
@@ -84,6 +86,19 @@ const CURRENT_PROFILE: TaxLawProfile = {
   // 종합소득 기본공제(본인 1인분). 연금소득공제와 마찬가지로 합산 소득에 한 번만 적용된다.
   // 부양가족·추가공제는 입력이 없어 반영하지 않는다(실제보다 세금이 높게 나오는 방향).
   basicIncomeDeductionKRW: 1500000,
+
+  // 건강보험료(지역가입자 소득분) 요율.
+  //
+  // 예전에는 이 앱이 임의로 고른 5%였고 "세법이 정한 값이 아니라 단순화 계수"라 프로필 밖에
+  // 두었다. 실제 지역가입자 요율(7%대)에 맞추면 더 이상 임의 계수가 아니므로 프로필로 옮긴다.
+  //
+  // **불확실**: 2026년 실제 요율, 장기요양보험료(건보료의 12.95%) 포함 여부는 확인이 필요하다.
+  // 요율이 프로필에 있으므로 개정 시 이 값만 갈아 끼우면 된다.
+  healthInsuranceRateRegional: 7.09,
+
+  // 건강보험료 부과 시 공적연금(국민연금) 소득의 반영 비율.
+  // 지역가입자 소득월액 산정에서 연금소득은 50%만 반영된다.
+  healthInsurancePublicPensionInclusionRate: 0.5,
 
   // 사적연금 소득세 연령별 슬라이딩 세율 구간. 상한 미포함(다음 구간의 하한부터 적용).
   // minAge:0인 첫 구간은 "55세 이상" 전용이 아니라 55세 미만 호출까지 포함하는 캐치올이다
