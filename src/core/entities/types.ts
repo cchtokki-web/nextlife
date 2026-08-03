@@ -104,6 +104,16 @@ export interface WithdrawalPlan {
 // 컴파일 타임에 구분하기 위한 것이다 (예: StrategyRecommendation.recommendedPlan).
 export type CompleteWithdrawalPlan = Required<WithdrawalPlan>;
 
+// 추천 엔진이 다루는 계획. CompleteWithdrawalPlan과 달리 privatePensionMonthlyTarget만
+// 없을 수 있다.
+//
+// 그 필드가 미지정일 때 엔진의 기본 동작은 "잔여 개월 균등분할"이라 특정 금액으로 표현할
+// 수 없다. 사용자가 정액 인출을 지정하지 않았는데 임의의 값을 채우면, 기준선(identity plan)이
+// 사용자의 실제 계획과 다른 계획이 되어 그 위에 쌓인 모든 비교가 틀어진다.
+export type BaselineWithdrawalPlan =
+  Omit<CompleteWithdrawalPlan, 'privatePensionMonthlyTarget'>
+  & { privatePensionMonthlyTarget?: number };
+
 export type ComprehensiveTaxMode = 'progressive_credit' | 'flat';
 
 export interface TaxSettings {
@@ -361,7 +371,7 @@ export interface StrategyRecommendation {
   // baseline보다 Utility가 개선되는 후보를 찾았을 때만 해당 WithdrawalPlan이 채워지고, 그렇지
   // 않으면 null(= baseline 유지 권장). "부분 override 패치"인 WithdrawalPlan과 달리 여기서는
   // "AI가 확정한 완결된 결정" 또는 "결정 없음"이라는 의미로만 쓰인다.
-  recommendedPlan: CompleteWithdrawalPlan | null;
+  recommendedPlan: BaselineWithdrawalPlan | null;
   // assetId -> 권장 reinvestDividend 값(Phase 3: 배당 재투자 최적화). recommendedPlan과 달리
   // WithdrawalPlan이 아니라 은퇴 "전" 축적기 파라미터(자산 배열 내부 값)라 별도 필드로 분리했다.
   // 변경 권장이 없으면(자산 없음/개선 없음/통합 검증 실패) null.

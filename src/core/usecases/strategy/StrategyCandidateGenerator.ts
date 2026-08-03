@@ -1,4 +1,4 @@
-import { AssetSellOrderStrategy, CompleteWithdrawalPlan, IsaMaturityDestination, SimulationParams } from '../../entities/types';
+import { AssetSellOrderStrategy, BaselineWithdrawalPlan, CompleteWithdrawalPlan, IsaMaturityDestination, SimulationParams, WithdrawalPlan } from '../../entities/types';
 import { NATIONAL_PENSION_NORMAL_START_AGE } from '../pension/nationalPensionRules';
 
 // 각 그리드는 3점(또는 이진) 수준으로 유지한다 — 5개 차원의 완전 조합(cartesian product)이라
@@ -81,22 +81,51 @@ export function generateCandidatePlans(params: SimulationParams): CompleteWithdr
   return candidates;
 }
 
-// 5차원 그리드가 전혀 개선안을 찾지 못했을 때, 생활비 배수 후보(아래 generateSpendingAdjustmentCandidates)의
-// 베이스로 쓰기 위한 "baseline과 동등한" 완결 plan. 각 필드는 SimulationEngine이 WithdrawalPlan 필드
-// 미지정 시 쓰는 기본값과 동일하다.
-export function getIdentityPlan(params: SimulationParams): CompleteWithdrawalPlan {
-  const { userProfile, privatePensions = [] } = params;
-  const { retirementAge, targetMonthlySpending } = userProfile;
-  const hasPrivatePension = privatePensions.length > 0 && targetMonthlySpending > 0;
+// 추천 엔진의 기준선. 개선 여부 판정, 항목별 기여도 계산, Phase 3/4의 baseline이 전부
+// 이 계획 위에 세워지므로 사용자의 실제 계획과 정확히 같은 결과를 내야 한다
+// (identityPlan.test.ts가 결과 전체 동일성을 증명한다).
+//
+// 예전에는 params.withdrawalPlan을 **통째로 무시**하고 고정값을 반환했다:
+//   - nationalPensionStartAge를 항상 65로 두어, 「최대 연기(70세)」를 고른 사용자의
+//     기준선이 65세였다. compileStrategy가 이 필드를 항상 채우므로 전략 패널을 쓴
+//     모든 사용자에게 해당됐다.
+//   - privatePensionMonthlyTarget을 targetMonthlySpending으로 채워, 엔진 기본값(균등분할)과
+//     전혀 다른 계획을 기준선으로 삼았다. "동일 params에서 72점 vs 65점으로 갈린다"는
+//     실측이 RecommendationEngine에 기록돼 있고, 그 어긋남을 피하려는 예외 분기가
+//     세 곳에 흩어져 있었다.
+export function getIdentityPlan(params: SimulationParams): BaselineWithdrawalPlan {
+  const { userProfile, withdrawalPlan } = params;
+  const { retirementAge } = userProfile;
 
-  return {
-    privatePensionMonthlyTarget: hasPrivatePension ? targetMonthlySpending : 0,
-    nationalPensionStartAge: NATIONAL_PENSION_NORMAL_START_AGE,
-    assetSellOrderStrategy: 'input_order',
-    isaMaturityDestination: 'pension',
-    generalAssetWithdrawalStartAge: retirementAge,
-    monthlySpendingMultiplier: 1,
+  const plan: BaselineWithdrawalPlan = {
+    nationalPensionStartAge: withdrawalPlan?.nationalPensionStartAge ?? NATIONAL_PENSION_NORMAL_START_AGE,
+    assetSellOrderStrategy: withdrawalPlan?.assetSellOrderStrategy ?? 'input_order',
+    isaMaturityDestination: withdrawalPlan?.isaMaturityDestination ?? 'pension',
+    generalAssetWithdrawalStartAge: withdrawalPlan?.generalAssetWithdrawalStartAge ?? retirementAge,
+    monthlySpendingMultiplier: withdrawalPlan?.monthlySpendingMultiplier ?? 1,
   };
+
+  // 저장된 값이 있을 때만 키를 넣는다. undefined를 남기면 JSON 직렬화·구조 비교에서
+  // "키가 없는 것"과 미묘하게 달라진다(compileStrategy가 같은 이유로 delete를 쓴다).
+  if (withdrawalPlan?.privatePensionMonthlyTarget !== undefined) {
+    plan.privatePensionMonthlyTarget = withdrawalPlan.privatePensionMonthlyTarget;
+  }
+
+  return plan;
+}
+
+// baseline plan을 params에 얹는다. privatePensionMonthlyTarget이 없으면 키 자체를 넣지
+// 않아야 엔진이 기본 동작(잔여 개월 균등분할)을 그대로 쓴다 — undefined 값을 가진 키를
+// 남기면 `!== undefined` 검사는 통과시키지 않지만, 구조 비교·직렬화에서 차이를 만든다.
+export function paramsWithBaselinePlan(
+  params: SimulationParams,
+  plan: BaselineWithdrawalPlan
+): SimulationParams {
+  const withdrawalPlan: WithdrawalPlan = { ...plan };
+  if (plan.privatePensionMonthlyTarget === undefined) {
+    delete withdrawalPlan.privatePensionMonthlyTarget;
+  }
+  return { ...params, withdrawalPlan };
 }
 
 // 생활비 배수는 5차원 cartesian product에 곱해 넣지 않고(그리드 크기만큼 후보가 배증하므로),
@@ -106,9 +135,9 @@ const MONTHLY_SPENDING_MULTIPLIER_GRID = [1.1, 1.2]; // 1.0(현행)은 baseline/
 
 export function generateSpendingAdjustmentCandidates(
   params: SimulationParams,
-  basePlan: CompleteWithdrawalPlan,
+  basePlan: BaselineWithdrawalPlan,
   options: { allowIncrease: boolean }
-): CompleteWithdrawalPlan[] {
+): BaselineWithdrawalPlan[] {
   if (!options.allowIncrease) return [];
   if ((params.spendingStrategy ?? 'target') !== 'target') return [];
   if (params.userProfile.targetMonthlySpending <= 0) return [];

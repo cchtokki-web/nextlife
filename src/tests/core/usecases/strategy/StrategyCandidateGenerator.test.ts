@@ -4,7 +4,7 @@ import {
   getIdentityPlan,
   generateSpendingAdjustmentCandidates,
 } from '@/core/usecases/strategy/StrategyCandidateGenerator';
-import { CompleteWithdrawalPlan, SimulationParams } from '@/core/entities/types';
+import { SimulationParams } from '@/core/entities/types';
 
 const baseParams: SimulationParams = {
   userProfile: {
@@ -191,11 +191,15 @@ describe('generateCandidatePlans', () => {
 });
 
 describe('getIdentityPlan', () => {
-  test('baseline과 동등한 기본값으로 채워진 완결 plan을 반환한다', () => {
+  // "결과를 바꾸지 않는다"는 본질적 성질은 identityPlan.test.ts가 엔진을 돌려 증명한다.
+  // 여기서는 계획 객체의 형태만 고정한다.
+  test('저장된 인출계획이 없으면 엔진 기본값으로 채운다', () => {
     const plan = getIdentityPlan(baseParams);
 
-    expect(plan).toEqual<CompleteWithdrawalPlan>({
-      privatePensionMonthlyTarget: baseParams.userProfile.targetMonthlySpending,
+    expect(plan).toEqual({
+      // privatePensionMonthlyTarget은 **키가 없어야 한다**. 엔진의 기본 동작은 "잔여 개월
+      // 균등분할"이라 특정 금액으로 표현할 수 없고, 임의의 값을 채우는 순간 identity가 아니게 된다.
+      // 예전에는 여기에 targetMonthlySpending을 넣어 전혀 다른 계획을 기준선으로 삼았다.
       nationalPensionStartAge: 65,
       assetSellOrderStrategy: 'input_order',
       isaMaturityDestination: 'pension',
@@ -204,9 +208,34 @@ describe('getIdentityPlan', () => {
     });
   });
 
-  test('사적연금이 없으면 privatePensionMonthlyTarget은 0이다', () => {
-    const plan = getIdentityPlan({ ...baseParams, privatePensions: [] });
-    expect(plan.privatePensionMonthlyTarget).toBe(0);
+  test('저장된 인출계획이 있으면 그 값을 그대로 쓴다', () => {
+    const plan = getIdentityPlan({
+      ...baseParams,
+      withdrawalPlan: {
+        nationalPensionStartAge: 70,
+        privatePensionMonthlyTarget: 1000000,
+        assetSellOrderStrategy: 'high_dividend_first',
+        isaMaturityDestination: 'asset',
+        generalAssetWithdrawalStartAge: 68,
+      },
+    });
+
+    expect(plan).toEqual({
+      nationalPensionStartAge: 70,
+      privatePensionMonthlyTarget: 1000000,
+      assetSellOrderStrategy: 'high_dividend_first',
+      isaMaturityDestination: 'asset',
+      generalAssetWithdrawalStartAge: 68,
+      monthlySpendingMultiplier: 1,
+    });
+  });
+
+  test('사적연금 유무는 identity plan에 영향을 주지 않는다', () => {
+    // 예전에는 사적연금이 없으면 privatePensionMonthlyTarget을 0으로 채웠다. 0은 "한 푼도
+    // 인출하지 않는다"는 지시인데, 연금이 없으면 애초에 인출할 것이 없으므로 지시 자체가
+    // 무의미하고, 연금이 생기는 순간 의미가 뒤집힌다.
+    expect(getIdentityPlan({ ...baseParams, privatePensions: [] }))
+      .toEqual(getIdentityPlan(baseParams));
   });
 });
 

@@ -1,5 +1,5 @@
 import {
-  CompleteWithdrawalPlan,
+  BaselineWithdrawalPlan,
   ItemizedContribution,
   SimulationParams,
   SimulationResult,
@@ -13,7 +13,7 @@ import { computeLifetimeUtility } from '../utility/UtilityEngine';
 import { DEFAULT_UTILITY_CONFIG } from '../utility/utilityWeights';
 import { analyzeCurrentStrategy, formatManwon } from '../utility/utilityAnalysis';
 import { getRetirementGrade } from '../../entities/retirementGrade';
-import { generateCandidatePlans, generateSpendingAdjustmentCandidates, getIdentityPlan } from './StrategyCandidateGenerator';
+import { generateCandidatePlans, generateSpendingAdjustmentCandidates, getIdentityPlan, paramsWithBaselinePlan } from './StrategyCandidateGenerator';
 import { optimizeDividendReinvestment } from './DividendReinvestmentOptimizer';
 import { optimizePrivatePensionChanneling } from './PrivatePensionChannelingOptimizer';
 import { computeDeltas } from './deltas';
@@ -38,7 +38,7 @@ export interface BuildReasonsContext {
   // 그렇지 않으면 phase 2(생활비 배수)가 만드는 identity 기반 plan(getIdentityPlan)이나,
   // 우연히 기본값과 같은 phase 1 후보가 실제로는 아무것도 바뀌지 않은 필드까지 문구로
   // 노출시킨다(예: 사적연금 계좌가 아예 없는데도 privatePensionMonthlyTarget=0이 "결정"처럼 보고됨).
-  identityPlan?: CompleteWithdrawalPlan;
+  identityPlan?: BaselineWithdrawalPlan;
 }
 
 export function buildReasons(
@@ -155,22 +155,24 @@ export function buildReasons(
 // plan.monthlySpendingMultiplier(1이 아닌 값)를 실제 시뮬레이션/Utility 평가에 반영하려면
 // userProfile.targetMonthlySpending 자체를 스케일링한 params가 필요하다. multiplier===1이면
 // (기존 5차원 후보 전부 해당) params를 그대로 반환해 기존 동작을 전혀 바꾸지 않는다.
-function paramsForCandidate(params: SimulationParams, plan: CompleteWithdrawalPlan): SimulationParams {
+function paramsForCandidate(params: SimulationParams, plan: BaselineWithdrawalPlan): SimulationParams {
+  // paramsWithBaselinePlan이 privatePensionMonthlyTarget 미지정 시 키 자체를 지운다 —
+  // undefined 값을 가진 키를 남기면 엔진 동작은 같아도 구조 비교·직렬화에서 차이가 생긴다.
+  const withPlan = paramsWithBaselinePlan(params, plan);
+
   const multiplier = plan.monthlySpendingMultiplier ?? 1;
-  if (multiplier === 1) {
-    return { ...params, withdrawalPlan: plan };
-  }
+  if (multiplier === 1) return withPlan;
+
   return {
-    ...params,
+    ...withPlan,
     userProfile: {
-      ...params.userProfile,
-      targetMonthlySpending: Math.round(params.userProfile.targetMonthlySpending * multiplier),
+      ...withPlan.userProfile,
+      targetMonthlySpending: Math.round(withPlan.userProfile.targetMonthlySpending * multiplier),
     },
-    withdrawalPlan: plan,
   };
 }
 
-const PLAN_FIELDS: Array<keyof CompleteWithdrawalPlan> = [
+const PLAN_FIELDS: Array<keyof BaselineWithdrawalPlan> = [
   'privatePensionMonthlyTarget',
   'nationalPensionStartAge',
   'assetSellOrderStrategy',
@@ -184,15 +186,20 @@ const PLAN_FIELDS: Array<keyof CompleteWithdrawalPlan> = [
 // monthlySpendingMultiplier는 buildReasons가 여러 필드가 함께 바뀐 상태의 deltas를 문구에
 // 병기하는 반면, 여기서는 그 필드 하나만 바꿨을 때의 deltas(itemDeltas)를 병기한다.
 function labelForSingleFieldChange(
-  field: keyof CompleteWithdrawalPlan,
-  recommendedPlan: CompleteWithdrawalPlan,
-  identityPlan: CompleteWithdrawalPlan,
+  field: keyof BaselineWithdrawalPlan,
+  recommendedPlan: BaselineWithdrawalPlan,
+  identityPlan: BaselineWithdrawalPlan,
   itemDeltas: StrategyRecommendation['deltas'],
   originalMonthlyTarget: number
 ): string {
   switch (field) {
     case 'privatePensionMonthlyTarget':
-      return `사적연금을 월 약 ${formatManwon(recommendedPlan.privatePensionMonthlyTarget)} 수준으로 정액 인출합니다.`;
+      // 이 필드가 없으면 "잔여 개월 균등분할"(엔진 기본값)이라는 뜻이다. 추천이 정액 인출을
+      // 제안했을 때만 이 라벨이 만들어지므로 값이 있는 것이 정상이지만, 반대 방향(정액 인출을
+      // 쓰던 사용자에게 균등분할을 제안)도 타입상 가능하다.
+      return recommendedPlan.privatePensionMonthlyTarget === undefined
+        ? '사적연금을 정액 인출 대신 남은 기간에 걸쳐 균등하게 인출합니다.'
+        : `사적연금을 월 약 ${formatManwon(recommendedPlan.privatePensionMonthlyTarget)} 수준으로 정액 인출합니다.`;
     case 'generalAssetWithdrawalStartAge':
       return `${recommendedPlan.generalAssetWithdrawalStartAge}세부터 일반 자산(주식/ETF) 인출을 시작합니다.`;
     case 'assetSellOrderStrategy':
@@ -235,8 +242,8 @@ function labelForSingleFieldChange(
 // 반환하는 전체 개선폭(recommendedUtility.score - currentUtility.score)과 정확히 일치하지 않을 수 있다.
 export function computeItemizedContributions(
   params: SimulationParams,
-  identityPlan: CompleteWithdrawalPlan,
-  recommendedPlan: CompleteWithdrawalPlan,
+  identityPlan: BaselineWithdrawalPlan,
+  recommendedPlan: BaselineWithdrawalPlan,
   currentUtility: UtilityBreakdown,
   baselineResult: SimulationResult,
   engine: SimulationEngine,
@@ -247,7 +254,7 @@ export function computeItemizedContributions(
   const contributions: ItemizedContribution[] = [];
   for (const field of changedFields) {
     try {
-      const overridePlan: CompleteWithdrawalPlan = { ...identityPlan, [field]: recommendedPlan[field] };
+      const overridePlan: BaselineWithdrawalPlan = { ...identityPlan, [field]: recommendedPlan[field] };
       const overrideParams = paramsForCandidate(params, overridePlan);
       const singleFieldResult = engine.runForUtility(overrideParams);
       const singleFieldUtility = computeLifetimeUtility(singleFieldResult, overrideParams, cfg);
@@ -279,7 +286,7 @@ export function computeItemizedContributions(
 // 해석하므로, 여기서 던져 추천 전체를 무효화하는 것보다 안전하다.
 function computeNationalPensionOnlyUtility(
   params: SimulationParams,
-  recommendedPlan: CompleteWithdrawalPlan | null,
+  recommendedPlan: BaselineWithdrawalPlan | null,
   engine: SimulationEngine,
   cfg: UtilityConfig
 ): UtilityBreakdown | null {
@@ -307,7 +314,7 @@ function computeNationalPensionOnlyUtility(
 interface CandidateSearchState {
   bestResult: SimulationResult;
   bestUtility: UtilityBreakdown;
-  bestPlan: CompleteWithdrawalPlan | null;
+  bestPlan: BaselineWithdrawalPlan | null;
   failedCandidateCount: number;
 }
 
@@ -315,7 +322,7 @@ interface CandidateSearchState {
 // state를 갱신한다. 특정 조합(예: 극단적인 나이 조합)이 SimulationEngine을 깨뜨리더라도 다른
 // 후보 탐색까지 통째로 실패하지 않도록 후보 단위로 격리한다. 실패한 후보는 건너뛰고 로그만 남긴다.
 function evaluateCandidate(
-  plan: CompleteWithdrawalPlan,
+  plan: BaselineWithdrawalPlan,
   params: SimulationParams,
   engine: SimulationEngine,
   cfg: UtilityConfig,
@@ -422,22 +429,16 @@ export function recommendStrategy(
   // { ...params, withdrawalPlan: bestPlan }을 만들면 monthlySpendingMultiplier 스케일링
   // (userProfile.targetMonthlySpending 조정)이 누락되어 Phase 2가 고른 생활비 배수가 Phase 4
   // 평가에 반영되지 않는다.
-  // bestPlan이 null이면(Phase 1+2에서 개선을 찾지 못한 경우) identityPlan을 대신 끼워 넣으면
-  // 안 된다 — identityPlan은 privatePensionMonthlyTarget = targetMonthlySpending으로 항상 채워진
-  // "완결된" plan이라 withdrawalPlan을 아예 지정하지 않았을 때(엔진의 잔여월 기준 기본 인출)와
-  // 다르게 동작한다(동일 params에서 72점 vs 65점으로 갈리는 것을 확인함). 이 경우
-  // params.withdrawalPlan을 원래 값 그대로 둔다.
+  // bestPlan이 null이면(Phase 1+2에서 개선을 찾지 못한 경우) identityPlan을 끼워 넣는다.
+  // getIdentityPlan이 진짜 identity가 된 뒤로 두 방식이 같은 시뮬레이션을 만들기 때문이다
+  // (identityPlan.test.ts가 결과 전체 동일성을 증명한다). Phase 3(DividendReinvestmentOptimizer)도
+  // 같은 규칙을 쓰므로 두 단계의 baseline이 정확히 같은 계획을 가리킨다.
   //
-  // 알려진 한계(Phase 3 → Phase 4 baseline 이음매): bestPlan === null일 때 위 규칙 때문에
-  // 여기서는 params.withdrawalPlan을 원본 그대로 쓰지만, Phase 3의 DividendReinvestmentOptimizer는
-  // (`DividendReinvestmentOptimizer.ts:85`) 후보 params를 `bestPlan ?? getIdentityPlan(params)`로
-  // 만든다. 즉 Phase 3가 개선을 채택하면 Phase 4에 넘어오는 baseline(reinvestOpt.finalUtility)은
-  // identityPlan 아래에서 측정된 값인데, Phase 4의 두 레그는 원본 plan 아래에서 측정된다. 두
-  // 기준선이 같은 계획을 가리키지 않으므로 Phase 4의 marginal delta에 5~10점 규모의 계통 오차가
-  // 섞일 수 있다(이 오차는 채널링 자체와 무관하다). Phase 3의 params 구성은 이미 출시·별도 리뷰된
-  // 기능이라 이번 수정 범위 밖이며(계획 문서 §범위 밖), 고치려면 Phase 3의 baseline 규칙을
-  // 여기와 동일하게 맞추는 별도 작업이 필요하다.
-  const baseParamsAfterPhase3: SimulationParams = bestPlan ? paramsForCandidate(params, bestPlan) : params;
+  // 예전에는 identityPlan이 privatePensionMonthlyTarget을 targetMonthlySpending으로 항상 채워
+  // 엔진 기본값(잔여월 균등분할)과 다르게 동작했고("동일 params에서 72점 vs 65점"), 그래서
+  // 여기서는 원본 params를, Phase 3에서는 identityPlan을 쓰는 비대칭이 생겼다. 그 비대칭이
+  // Phase 4의 marginal delta에 5~10점 규모의 계통 오차를 섞고 있었다. 이제 사라졌다.
+  const baseParamsAfterPhase3: SimulationParams = paramsForCandidate(params, bestPlan ?? identityPlan);
   const paramsAfterPhase3: SimulationParams = {
     ...baseParamsAfterPhase3,
     assets: reinvestOpt.recommendedAssetReinvestment
@@ -496,7 +497,7 @@ export function recommendStrategy(
   // 채널링 라벨과 중복되지 않는다. 다만 Phase 1이 독립적으로 'asset'을 고르고 채널링도 채택되면
   // 두 곳(항목별 기여 + 채널링 라벨)에서 같은 지시가 언급된다 — 지시 내용이 서로 모순되지 않고
   // (둘 다 "일반 자산으로"), 항목별 기여의 점수 배분도 각자 독립 측정치라 정확하므로 그대로 둔다.
-  const recommendedPlan: CompleteWithdrawalPlan | null =
+  const recommendedPlan: BaselineWithdrawalPlan | null =
     channelingOpt.recommendedPrivatePensionChanneling && bestPlan
       ? { ...bestPlan, isaMaturityDestination: 'asset' }
       : bestPlan;

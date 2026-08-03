@@ -35,7 +35,13 @@ function findPhase4Calls(engine: RecordingEngine): SimulationParams[] {
 
 const baseParams: SimulationParams = {
   // currentAge < retirementAge여야 Phase 4의 두 레그(브릿지 인출 구간 / 납입 기간)가 평가된다.
-  userProfile: { currentAge: 50, retirementAge: 60, expectancy: 90, targetMonthlySpending: 1000000, targetBequest: 0 },
+  //
+  // 목표 생활비가 월 300만원이어야 Phase 2의 생활비 배수 후보가 실제로 승리한다. 예전에는
+  // 100만원으로도 승리했는데, 그것은 getIdentityPlan이 privatePensionMonthlyTarget을
+  // targetMonthlySpending으로 채워 기준선을 실제보다 나쁘게 만들었기 때문이다. identity가
+  // 진짜 기준선이 된 뒤로는 인출액이 잔여 개월 균등분할(훨씬 큼)이라, 목표를 조금 올리는
+  // 것만으로는 효용이 개선되지 않는다.
+  userProfile: { currentAge: 50, retirementAge: 60, expectancy: 90, targetMonthlySpending: 3000000, targetBequest: 0 },
   assets: [],
   nationalPension: { expectedMonthlyAmount: 0 },
   privatePensions: [
