@@ -26,6 +26,12 @@ export interface MarketTaxTreatment {
   // IRP/PENSION은 연금계좌 안의 수익이라 인출 시 연금소득으로 과세되고 금융소득이 아니다.
   // OTHER는 UI가 "기타 자산 (비과세 등)"이라고 약속한 대로 완전 비과세로 취급한다.
   includedInFinancialIncome: boolean;
+  // 매도차익에 양도소득세가 붙는가.
+  //
+  // 해외주식·ETF만 과세 대상이다(22%, 연 250만원 기본공제). 국내상장 주식·국내주식형 ETF의
+  // 매매차익은 대주주가 아닌 개인에게 비과세이고, 연금계좌 안의 차익은 인출 시 연금소득으로
+  // 과세되며, OTHER는 화면이 약속한 대로 비과세다.
+  capitalGainsTaxable: boolean;
 }
 
 export function getMarketTaxTreatment(
@@ -35,12 +41,20 @@ export function getMarketTaxTreatment(
 ): MarketTaxTreatment {
   const resolvedMarket = market || (currency === 'USD' ? 'US_ETF' : 'KR_ETF');
   if (resolvedMarket === 'US_ETF') {
-    return { dividendTaxRate: ctx.settings.usDividendTaxRate / 100, includedInFinancialIncome: true };
+    return {
+      dividendTaxRate: ctx.settings.usDividendTaxRate / 100,
+      includedInFinancialIncome: true,
+      capitalGainsTaxable: true,
+    };
   }
   if (resolvedMarket === 'KR_ETF') {
-    return { dividendTaxRate: ctx.settings.domesticDividendTaxRate / 100, includedInFinancialIncome: true };
+    return {
+      dividendTaxRate: ctx.settings.domesticDividendTaxRate / 100,
+      includedInFinancialIncome: true,
+      capitalGainsTaxable: false,
+    };
   }
-  return { dividendTaxRate: 0, includedInFinancialIncome: false };
+  return { dividendTaxRate: 0, includedInFinancialIncome: false, capitalGainsTaxable: false };
 }
 
 export function getDividendTaxRate(
@@ -289,4 +303,24 @@ export function calculatePrivatePensionExcessTaxNeededKRW(
   return comprehensiveTaxKRW < separateTaxKRW
     ? { taxKRW: comprehensiveTaxKRW, method: 'comprehensive' }
     : { taxKRW: separateTaxKRW, method: 'separate' };
+}
+
+// 한 해에 실현된 해외주식 양도차익에 대한 세액.
+//
+// 연간 손익통산 후 기본공제(250만원)를 빼고 세율(22%, 지방소득세 포함)을 곱한다.
+//
+// 이월결손금은 반영하지 않는다. 한국 세법상 해외주식 양도차손은 연도 내 통산만 되고
+// 이월공제가 없으며, 게다가 이 엔진은 성장률을 Math.max(0, 1+g)로 clamp해 자산가치가
+// 단조 비감소이므로 손실 경로가 사실상 존재하지 않는다.
+export function calculateCapitalGainsTaxKRW(realizedGainKRW: number, ctx: TaxContext): number {
+  if (!(ctx.settings.enableCapitalGainsTax ?? true)) return 0;
+
+  const taxableKRW = Math.max(0, realizedGainKRW - ctx.profile.overseasCapitalGainsDeductionKRW);
+  if (taxableKRW <= 0) return 0;
+
+  const rate = ctx.settings.capitalGainsTaxRate !== undefined
+    ? ctx.settings.capitalGainsTaxRate / 100
+    : ctx.profile.overseasCapitalGainsTaxRate;
+
+  return taxableKRW * rate;
 }

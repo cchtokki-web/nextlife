@@ -57,6 +57,8 @@ export const DEFAULT_TAX_SETTINGS: Required<TaxSettings> = {
   comprehensiveTaxMode: 'progressive_credit',
   comprehensiveTaxRate: DEFAULT_COMPREHENSIVE_TAX_RATE,
   healthInsuranceRate: DEFAULT_HEALTH_INSURANCE_RATE,
+  enableCapitalGainsTax: true,
+  capitalGainsTaxRate: CURRENT.overseasCapitalGainsTaxRate * 100,
   enablePrivatePensionTax: true,
   privatePensionLimit: DEFAULT_PRIVATE_PENSION_LIMIT_KRW,
   privatePensionExcessTaxRate: DEFAULT_PRIVATE_PENSION_EXCESS_TAX_RATE,

@@ -44,6 +44,7 @@ function makeYearlyResult(overrides: Partial<SimulationYearlyResult>): Simulatio
     nationalPensionTaxPaid: 0,
     healthInsurancePaid: 0,
     healthInsuranceIncomeBasis: 0,
+    capitalGainsTaxPaid: 0,
     comprehensiveTaxPaid: 0,
     privatePensionTaxMethod: 'none',
     spending: 36000000,

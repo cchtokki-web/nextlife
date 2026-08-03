@@ -111,7 +111,9 @@ describe('SimulationEngine withdrawalPlan (인출 정책 파라미터화)', () =
       pensionTaxPaid: r.pensionTaxPaid,
       nationalPensionTaxPaid: r.nationalPensionTaxPaid,
       comprehensiveTaxPaid: r.comprehensiveTaxPaid,
+      capitalGainsTaxPaid: r.capitalGainsTaxPaid,
       healthInsurancePaid: r.healthInsurancePaid,
+      healthInsuranceIncomeBasis: r.healthInsuranceIncomeBasis,
       privatePensionTaxMethod: r.privatePensionTaxMethod,
       hasTaxWarning: r.hasTaxWarning,
     });

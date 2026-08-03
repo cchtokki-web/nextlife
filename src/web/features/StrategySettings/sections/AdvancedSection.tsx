@@ -23,7 +23,8 @@ const PENSION_LIMIT_STEP = 1000000;
 // %로 입력받는 세율 필드. 키를 좁혀 두어야 setTax에 엉뚱한 필드가 들어가지 않는다.
 type RateKey =
   | 'usDividendTaxRate' | 'domesticDividendTaxRate'
-  | 'comprehensiveTaxRate' | 'healthInsuranceRate' | 'privatePensionExcessTaxRate';
+  | 'comprehensiveTaxRate' | 'healthInsuranceRate' | 'privatePensionExcessTaxRate'
+  | 'capitalGainsTaxRate';
 
 export function AdvancedSection({ params, onChangeParams, mode, changed }: SectionProps) {
   const tax = resolveTaxSettings(params.taxSettings);
@@ -121,6 +122,8 @@ export function AdvancedSection({ params, onChangeParams, mode, changed }: Secti
             ? '비교과세 모드에서는 누진세율표를 쓰므로 이 값이 계산에 반영되지 않습니다. 계산 방식을 「단순 세율 직접 지정」으로 바꾸면 사용됩니다.'
             : '연 2천만원을 넘는 금융소득에 추가로 붙는 세율입니다.',
           comprehensiveTaxModeGovernsRate)}
+        {rateField('capitalGainsTaxRate', '해외주식 양도소득세율',
+          '해외 주식·ETF를 팔아 남긴 차익에 붙는 세율입니다. 연 250만원까지는 공제되고, 실제 납부는 판 다음 해에 이뤄집니다. 국내 주식·ETF의 매매차익은 비과세라 붙지 않습니다.')}
         {rateField('healthInsuranceRate', '건강보험료율',
           '기준을 넘는 소득에 추가로 붙는 건강보험료 비율입니다. 기준 소득은 금융소득과 공적연금(50% 반영)만 세며, 사적연금은 부과 대상이 아니라 빠집니다.')}
 
@@ -172,6 +175,16 @@ export function AdvancedSection({ params, onChangeParams, mode, changed }: Secti
           onChange={(v) => setTax({ limitPrivatePensionToTaxLimit: v })}
           disabled={pensionStrategyGovernsLimit}
           changed={changed.has('taxSettings.limitPrivatePensionToTaxLimit')}
+        />
+      )}
+
+      {isFieldVisible(mode, 'taxSettings.enableCapitalGainsTax') && (
+        <SwitchField
+          label="해외주식 양도소득세 반영"
+          description="해외 주식·ETF를 팔아 생활비를 마련할 때 붙는 양도소득세를 계산에 넣습니다. 끄면 매도 차익에 세금이 붙지 않아 잔여자산이 실제보다 낙관적으로 나옵니다."
+          checked={tax.enableCapitalGainsTax}
+          onChange={(v) => setTax({ enableCapitalGainsTax: v })}
+          changed={changed.has('taxSettings.enableCapitalGainsTax')}
         />
       )}
 

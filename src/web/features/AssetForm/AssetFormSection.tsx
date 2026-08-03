@@ -878,6 +878,33 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                           />
                         </button>
                       </div>
+                      <InputField
+                        label="총 취득원가"
+                        // "현재 단가"는 시세 조회 버튼이 시장가로 덮어쓰므로 취득원가가 아니다.
+                        // 양도소득세는 (매도액 − 취득원가)에 붙으므로 별도 입력이 필요하다.
+                        // 비워 두면 지금까지의 평가차익을 과세하지 않는다 — 확정되지 않은
+                        // 숫자를 지어내는 대신 사용자가 알려주지 않은 부분에 세금을 물리지 않는다.
+                        labelSecondary="비우면 지금까지의 평가차익에 세금을 매기지 않습니다"
+                        type="text"
+                        value={
+                          asset.acquisitionCostBasis === undefined
+                            ? ''
+                            : asset.acquisitionCostBasis.toLocaleString()
+                        }
+                        placeholder={(asset.quantity * asset.averagePrice).toLocaleString()}
+                        onChange={(e) => {
+                          const rawValue = e.target.value.replace(/,/g, '');
+                          if (rawValue === '') {
+                            handleUpdateAsset(asset.id, 'acquisitionCostBasis', undefined);
+                            return;
+                          }
+                          const numValue = Number(rawValue);
+                          if (!isNaN(numValue)) {
+                            handleUpdateAsset(asset.id, 'acquisitionCostBasis', numValue);
+                          }
+                        }}
+                        suffixText={asset.currency === 'KRW' ? '원' : asset.currency}
+                      />
                       <div className={styles.priceInputWrapper}>
                         <div className={styles.priceInputGrow}>
                           <InputField

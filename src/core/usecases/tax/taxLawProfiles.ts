@@ -45,6 +45,8 @@ export interface TaxLawProfile {
   basicIncomeDeductionKRW: number;
   healthInsuranceRateRegional: number; // %
   healthInsurancePublicPensionInclusionRate: number; // 0~1
+  overseasCapitalGainsTaxRate: number; // 0~1
+  overseasCapitalGainsDeductionKRW: number; // 연간 기본공제
 }
 
 // 현행 세법(2024년 기준). taxRates.ts에 있던 값을 그대로 옮긴 것이며 값 변경은 없다
@@ -99,6 +101,21 @@ const CURRENT_PROFILE: TaxLawProfile = {
   // 건강보험료 부과 시 공적연금(국민연금) 소득의 반영 비율.
   // 지역가입자 소득월액 산정에서 연금소득은 50%만 반영된다.
   healthInsurancePublicPensionInclusionRate: 0.5,
+
+  // 해외주식·ETF 양도소득세. 22%는 지방소득세를 포함한 값이고, 연 250만원 기본공제가
+  // 손익통산 후에 적용된다.
+  //
+  // 국내상장 주식·국내주식형 ETF의 매매차익은 대주주가 아닌 개인에게 비과세이므로
+  // KR_ETF는 과세하지 않는다(getMarketTaxTreatment.capitalGainsTaxable).
+  //
+  // **불확실**: 국내상장 해외지수·채권형·파생형 ETF는 매매차익이 배당소득(15.4%)으로
+  // 과세되고 금융소득종합과세 대상이지만, 이를 구분하려면 새 시장 분류와 입력 폼·마이그레이션이
+  // 필요해 이번 범위에서 제외했다.
+  //
+  // 증권거래세(0.18%대)와 금융투자소득세는 넣지 않는다 — 전자는 22%에 비해 유의미하지 않고,
+  // 후자는 2024년 말 폐지가 확정됐다.
+  overseasCapitalGainsTaxRate: 0.22,
+  overseasCapitalGainsDeductionKRW: 2500000,
 
   // 사적연금 소득세 연령별 슬라이딩 세율 구간. 상한 미포함(다음 구간의 하한부터 적용).
   // minAge:0인 첫 구간은 "55세 이상" 전용이 아니라 55세 미만 호출까지 포함하는 캐치올이다

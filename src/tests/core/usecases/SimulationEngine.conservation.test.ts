@@ -53,6 +53,7 @@ function flowsOf(r: {
   nationalPensionTaxPaid: number;
   comprehensiveTaxPaid: number;
   healthInsurancePaid: number;
+  capitalGainsTaxPaid: number;
 }): Flows {
   const privatePensionDrawPreTax = r.privatePensionIncome + r.pensionTaxPaid;
   return {
@@ -64,7 +65,8 @@ function flowsOf(r: {
       r.pensionTaxPaid +
       r.nationalPensionTaxPaid +
       r.comprehensiveTaxPaid +
-      r.healthInsurancePaid,
+      r.healthInsurancePaid +
+      r.capitalGainsTaxPaid,
   };
 }
 
@@ -159,6 +161,47 @@ describe('SimulationEngine - 총자산 보존 불변식', () => {
     for (const year of result.yearlyResults) {
       const { externalInflow, outflow } = flowsOf(year);
       const expected = openingAssets + annualContribution(depletingParams, year.age) + externalInflow - outflow;
+      const diff = year.totalAssets - expected;
+
+      if (Math.abs(diff) > TOLERANCE_KRW) {
+        violations.push(
+          `${year.age}세: 실제 ${Math.round(year.totalAssets).toLocaleString()} vs `
+          + `기대 ${Math.round(expected).toLocaleString()} (차이 ${Math.round(diff).toLocaleString()})`
+        );
+      }
+      openingAssets = year.totalAssets;
+    }
+
+    expect(violations).toEqual([]);
+  });
+
+  test('양도소득세가 발생하는 해에도 보존이 성립한다', () => {
+    // 위 두 픽스처는 KR_ETW(비과세)라 양도세 경로를 한 번도 타지 않는다. 원가 회계
+    // (applySale)가 매도액과 원가를 비례로 깎는데, 그 계산이 틀리면 자산이 소리 없이
+    // 늘거나 줄어든다 — 세금 필드만 봐서는 드러나지 않는 종류의 결함이라 보존식으로 잡는다.
+    const overseasParams: SimulationParams = {
+      ...baseParams,
+      // 기본 픽스처는 배당·기타소득이 생활비를 덮어 매도가 한 번도 일어나지 않는다.
+      // 매도가 없으면 양도차익도 없으므로 생활비를 올려 실제로 팔게 만든다.
+      userProfile: { ...baseParams.userProfile, targetMonthlySpending: 6000000 },
+      assets: baseParams.assets.map((a) => ({
+        ...a,
+        assetMarket: 'US_ETF' as const,
+        // 평가액의 30%만 취득원가 → 매도액의 70%가 차익으로 실현된다.
+        acquisitionCostBasis: a.quantity * a.averagePrice * 0.3,
+      })),
+    };
+    const result = new SimulationEngine().run(overseasParams);
+
+    // 전제 확인: 실제로 양도세가 부과되는 해가 있어야 이 테스트가 의미를 갖는다.
+    expect(result.yearlyResults.some((y) => y.capitalGainsTaxPaid > 0)).toBe(true);
+
+    let openingAssets = initialTotalAssets(overseasParams);
+    const violations: string[] = [];
+
+    for (const year of result.yearlyResults) {
+      const { externalInflow, outflow } = flowsOf(year);
+      const expected = openingAssets + annualContribution(overseasParams, year.age) + externalInflow - outflow;
       const diff = year.totalAssets - expected;
 
       if (Math.abs(diff) > TOLERANCE_KRW) {

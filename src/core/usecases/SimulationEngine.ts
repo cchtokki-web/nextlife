@@ -21,6 +21,7 @@ import {
   calculateIsaMaturityTax,
   calculateComprehensiveTaxAndHealthInsuranceKRW,
   calculatePrivatePensionExcessTaxNeededKRW,
+  calculateCapitalGainsTaxKRW,
 } from './tax/TaxEngine';
 import { TaxContext, resolveTaxContext } from './tax/taxContext';
 import {
@@ -44,6 +45,41 @@ interface ActiveAsset extends InvestmentAsset {
   // 이 자산의 배당이 금융소득종합과세·건보료 판정 기준액에 합산되는가
   // (getMarketTaxTreatment가 배당세율과 함께 한 번에 정한다).
   includedInFinancialIncome: boolean;
+  // 매도차익에 양도소득세가 붙는가(해외주식·ETF만 해당).
+  capitalGainsTaxable: boolean;
+  // 총 취득원가(자산 통화 기준). 매도 시 비례 차감되며, 매도액과의 차이가 실현이익이다.
+  // ActiveIsa.totalInvested와 같은 패턴이다.
+  costBasis: number;
+}
+
+// 부분 매도. 자산 잔액과 취득원가를 비례적으로 줄이고 **실현이익**(자산 통화 기준)을 반환한다.
+//
+// 매도액 S, 직전 평가액 V, 취득원가 B일 때
+//   원가 차감 = S × (B / V),  실현이익 = S × (1 − B / V)
+// 즉 가중평균 원가법이다. 개별법·선입선출은 이 엔진이 매수 로트를 추적하지 않으므로
+// 쓸 수 없고, 월 적립이 계속되는 모델에서는 가중평균이 현실적인 근사다.
+//
+// 매도 경로가 네 곳(생활비 부족분, 연말 세금 징수 2곳, ISA 만기 이관 후 재매도)이라
+// 여기 한 곳으로 모은다. 예전에는 각자 asset.currentValue를 직접 깎았고, 그래서 원가 회계를
+// 붙이려면 네 곳을 모두 고쳐야 했다 — 하나라도 빠지면 원가가 남아 이익이 과소 계상된다.
+function applySale(asset: ActiveAsset, saleAmountInAssetCurrency: number): number {
+  if (saleAmountInAssetCurrency <= 0) return 0;
+
+  const value = asset.currentValue;
+  if (value <= 0) {
+    // 평가액이 0인데 파는 상황은 정상 경로에 없다. 원가만 남아 있으면 지워 정합성을 지킨다.
+    asset.costBasis = 0;
+    return 0;
+  }
+
+  const sale = Math.min(saleAmountInAssetCurrency, value);
+  const basisRatio = Math.min(1, Math.max(0, asset.costBasis / value));
+  const basisConsumed = sale * basisRatio;
+
+  asset.currentValue = value - sale;
+  asset.costBasis = Math.max(0, asset.costBasis - basisConsumed);
+
+  return sale - basisConsumed;
 }
 
 interface ActivePension extends PrivatePension {
@@ -213,7 +249,9 @@ export class SimulationEngine {
     assets: readonly ActiveAsset[],
     pensions: readonly ActivePension[],
     displayCurrency: AssetCurrency,
-    exchangeRate: number
+    exchangeRate: number,
+    // 세금을 내려고 판 자산에서도 양도차익이 실현된다. 호출부가 그 해 누적기에 더한다.
+    onRealizedGainKRW: (gainKRW: number) => void
   ): number {
     let remaining = amountDisplay;
     if (remaining <= 0) return 0;
@@ -221,7 +259,10 @@ export class SimulationEngine {
     for (const asset of assets) {
       const availableDisplay = this.convertValue(asset.currentValue, asset.currency, displayCurrency, exchangeRate);
       const deduct = Math.min(remaining, Math.max(0, availableDisplay));
-      asset.currentValue -= this.convertValue(deduct, displayCurrency, asset.currency, exchangeRate);
+      const gain = applySale(asset, this.convertValue(deduct, displayCurrency, asset.currency, exchangeRate));
+      if (asset.capitalGainsTaxable) {
+        onRealizedGainKRW(this.convertValue(gain, asset.currency, 'KRW', exchangeRate));
+      }
       remaining -= deduct;
       if (remaining <= 0) return amountDisplay;
     }
@@ -249,16 +290,25 @@ export class SimulationEngine {
       const growthRateMonthly = Math.pow(Math.max(0, 1 + growthRateAnnual), 1 / 12) - 1;
       const divRateMonthly = (asset.dividendYield / 100) / 12;
       
-      const { dividendTaxRate, includedInFinancialIncome } =
+      const { dividendTaxRate, includedInFinancialIncome, capitalGainsTaxable } =
         getMarketTaxTreatment(asset.assetMarket, asset.currency, taxCtx);
+
+      const currentValue = asset.quantity * asset.averagePrice;
 
       return {
         ...asset,
-        currentValue: asset.quantity * asset.averagePrice,
+        currentValue,
         growthRateMonthly,
         divRateMonthly,
         taxRate: dividendTaxRate,
         includedInFinancialIncome,
+        capitalGainsTaxable,
+        // 취득원가 미입력 시 현재 평가액을 원가로 본다 = 지금까지의 평가차익은 과세하지 않는다.
+        // 확정되지 않은 숫자(예: 평가액 × 0.6)를 지어내지 않는다는 이 저장소의 원칙을 따른다.
+        //
+        // 이 폴백은 엔진 초기화 한 곳에만 둔다. 시나리오 로드 정규화에 넣으면 "저장값 없음"이
+        // 소실되어 사용자가 나중에 취득원가를 입력해도 반영되지 않는다.
+        costBasis: asset.acquisitionCostBasis ?? currentValue,
       };
     });
 
@@ -424,6 +474,12 @@ export class SimulationEngine {
     // 원본 activeAssets 배열(순서)은 잉여현금 재투자·ISA 만기 이동 등 다른 로직에서 그대로 쓰인다.
     const withdrawalOrderedAssets = sortAssetsForWithdrawal(activeAssets, withdrawalPlan?.assetSellOrderStrategy);
 
+    // 해외주식 양도세는 실현 다음 해 5월에 확정신고·납부한다. 같은 해에 부과하면 순환이
+    // 생긴다 — 양도세를 내려고 자산을 팔면 그 매도가 다시 양도차익을 만든다. 고정점을
+    // 반복 계산으로 풀어야 하고, 그 반복이 findMaxSustainableValue의 30회 이진탐색 안에서
+    // 매년 돌아 비용이 곱해진다. 연 단위 손익통산과 250만원 기본공제도 연 마감이 자연스럽다.
+    let deferredCapitalGainKRW = 0;
+
     const startAge = userProfile.currentAge;
     const resolvedSpouse = resolveSpouse(params.spouse, userProfile);
     const endAge = computeHouseholdEndAge(userProfile, resolvedSpouse);
@@ -467,6 +523,8 @@ export class SimulationEngine {
       let annualNationalPensionTaxPaid = 0;
       let annualPreTaxTotalIncome = 0;
       let annualRawFinancialIncomeKRW = 0;
+      // 그 해 실현된 해외주식 양도차익(KRW). 다음 해에 과세된다.
+      let annualRealizedCapitalGainKRW = 0;
       // 위 금융소득에서 실제로 원천징수된 세액(KRW). 비교과세의 기납부세액 공제에 쓴다.
       let annualWithheldFinancialTaxKRW = 0;
       let annualPrivatePensionPreTaxKRW = 0;
@@ -606,11 +664,16 @@ export class SimulationEngine {
             if (preferPension && activePensions.length > 0) {
               activePensions[0].currentBalance += this.convertValue(netBalance, isa.currency, activePensions[0].currency, exchangeRate);
             } else if (!preferPension && activeAssets.length > 0) {
-              activeAssets[0].currentValue += this.convertValue(netBalance, isa.currency, activeAssets[0].currency, exchangeRate);
+              const transferred = this.convertValue(netBalance, isa.currency, activeAssets[0].currency, exchangeRate);
+              activeAssets[0].currentValue += transferred;
+              // ISA 만기 정산을 마친 세후 자금으로 새로 사들이는 것이므로 전액이 취득원가다.
+              activeAssets[0].costBasis += transferred;
             } else if (activePensions.length > 0) {
               activePensions[0].currentBalance += this.convertValue(netBalance, isa.currency, activePensions[0].currency, exchangeRate);
             } else if (activeAssets.length > 0) {
-              activeAssets[0].currentValue += this.convertValue(netBalance, isa.currency, activeAssets[0].currency, exchangeRate);
+              const transferred = this.convertValue(netBalance, isa.currency, activeAssets[0].currency, exchangeRate);
+              activeAssets[0].currentValue += transferred;
+              activeAssets[0].costBasis += transferred;
             }
             isa.currentBalance = 0; isa.totalInvested = 0; isa.monthsSinceInception = 0;
           }
@@ -647,9 +710,13 @@ export class SimulationEngine {
 
           const contribution = isRetired ? 0 : asset.monthlyContribution;
           asset.currentValue += growth + contribution;
+          // 적립금은 새로 취득한 금액이므로 원가에 더한다. 성장분(growth)은 평가차익이라 더하지 않는다.
+          asset.costBasis += contribution;
 
           if (!isRetired && asset.reinvestDividend) {
             asset.currentValue += dividendNet;
+            // 세후 배당으로 다시 사들인 것이므로 새 취득이다.
+            asset.costBasis += dividendNet;
             annualDividendIncome += this.convertValue(dividendNet, asset.currency, displayCurrency, exchangeRate);
             annualDividendTaxPaid += this.convertValue(dividendTax, asset.currency, displayCurrency, exchangeRate);
             annualPreTaxTotalIncome += this.convertValue(dividendRaw, asset.currency, displayCurrency, exchangeRate);
@@ -803,19 +870,22 @@ export class SimulationEngine {
 
         const shortfall = actualMonthlySpending - monthlyTotalIncome;
         if (shortfall < 0 && activeAssets.length > 0) {
-          activeAssets[0].currentValue += this.convertValue(-shortfall, displayCurrency, activeAssets[0].currency, exchangeRate);
+          const inflow = this.convertValue(-shortfall, displayCurrency, activeAssets[0].currency, exchangeRate);
+          activeAssets[0].currentValue += inflow;
+          activeAssets[0].costBasis += inflow;
         } else if (shortfall > 0) {
           let remainingShortfall = shortfall;
           const generalAssetWithdrawalStartAge = withdrawalPlan?.generalAssetWithdrawalStartAge ?? userProfile.retirementAge;
           if (currentAge >= generalAssetWithdrawalStartAge) {
             for (const asset of withdrawalOrderedAssets) {
               const assetValueDisplay = this.convertValue(asset.currentValue, asset.currency, displayCurrency, exchangeRate);
-              if (assetValueDisplay >= remainingShortfall) {
-                asset.currentValue -= this.convertValue(remainingShortfall, displayCurrency, asset.currency, exchangeRate);
-                remainingShortfall = 0; break;
-              } else {
-                remainingShortfall -= assetValueDisplay; asset.currentValue = 0;
+              const saleDisplay = Math.min(assetValueDisplay, remainingShortfall);
+              const gain = applySale(asset, this.convertValue(saleDisplay, displayCurrency, asset.currency, exchangeRate));
+              if (asset.capitalGainsTaxable) {
+                annualRealizedCapitalGainKRW += this.convertValue(gain, asset.currency, 'KRW', exchangeRate);
               }
+              remainingShortfall -= saleDisplay;
+              if (remainingShortfall <= 0) { remainingShortfall = 0; break; }
             }
           }
 
@@ -897,7 +967,8 @@ export class SimulationEngine {
         // 부과 비율대로 나눠 배분한다 — 어느 한쪽을 먼저 채우는 규칙에는 근거가 없다.
         const chargedDisplay = annualComprehensiveTaxPaidDisplay + annualHealthInsurancePaidDisplay;
         const collectedDisplay = this.collectTax(
-          chargedDisplay, withdrawalOrderedAssets, activePensions, displayCurrency, exchangeRate
+          chargedDisplay, withdrawalOrderedAssets, activePensions, displayCurrency, exchangeRate,
+          (gainKRW) => { annualRealizedCapitalGainKRW += gainKRW; }
         );
         if (collectedDisplay < chargedDisplay) {
           const collectedRatio = chargedDisplay > 0 ? collectedDisplay / chargedDisplay : 0;
@@ -922,11 +993,35 @@ export class SimulationEngine {
         const pensionTaxAdjustmentDisplay = Math.max(0, totalPensionTaxNeededDisplay - annualPensionTaxPaid);
 
         const collectedAdjustmentDisplay = this.collectTax(
-          pensionTaxAdjustmentDisplay, withdrawalOrderedAssets, activePensions, displayCurrency, exchangeRate
+          pensionTaxAdjustmentDisplay, withdrawalOrderedAssets, activePensions, displayCurrency, exchangeRate,
+          (gainKRW) => { annualRealizedCapitalGainKRW += gainKRW; }
         );
         annualPensionTaxPaid += collectedAdjustmentDisplay;
         // 초과세도 실질적으로 사적연금 소득에서 빠져나가는 비용이므로 표시되는 소득에도 반영한다.
         annualPrivatePensionIncome = Math.max(0, annualPrivatePensionIncome - collectedAdjustmentDisplay);
+      }
+
+      // 해외주식 양도소득세 — 작년에 실현한 이익을 올해 낸다(위 deferredCapitalGainKRW 주석 참고).
+      //
+      // 마지막 해에는 이월분과 당해 실현분을 함께 부과한다. 그러지 않으면 마지막 해에 실현된
+      // 이익이 영원히 과세되지 않고 사라진다.
+      let annualCapitalGainsTaxPaidDisplay = 0;
+      {
+        const isLastYear = y === totalYears - 1;
+        const taxableGainKRW = deferredCapitalGainKRW + (isLastYear ? annualRealizedCapitalGainKRW : 0);
+        const capitalGainsTaxKRW = calculateCapitalGainsTaxKRW(taxableGainKRW, taxCtx);
+
+        if (capitalGainsTaxKRW > 0) {
+          const chargedDisplay = this.convertValue(capitalGainsTaxKRW, 'KRW', displayCurrency, exchangeRate);
+          // 세금을 내려고 판 자산에서도 차익이 실현되지만, 그 몫은 다음 해로 넘어가므로
+          // 여기서 다시 올해 과세표준에 들어가지 않는다(순환이 생기지 않는 이유다).
+          annualCapitalGainsTaxPaidDisplay = this.collectTax(
+            chargedDisplay, withdrawalOrderedAssets, activePensions, displayCurrency, exchangeRate,
+            (gainKRW) => { annualRealizedCapitalGainKRW += gainKRW; }
+          );
+        }
+
+        deferredCapitalGainKRW = isLastYear ? 0 : annualRealizedCapitalGainKRW;
       }
 
       const stockAssetsDisplay = activeAssets.reduce((sum, a) => sum + this.convertValue(a.currentValue, a.currency, displayCurrency, exchangeRate), 0);
@@ -950,6 +1045,7 @@ export class SimulationEngine {
         nationalPensionTaxPaid: annualNationalPensionTaxPaid, comprehensiveTaxPaid: annualComprehensiveTaxPaidDisplay,
         healthInsurancePaid: annualHealthInsurancePaidDisplay,
         healthInsuranceIncomeBasis: this.convertValue(healthInsuranceIncomeBasisKRW, 'KRW', displayCurrency, exchangeRate),
+        capitalGainsTaxPaid: annualCapitalGainsTaxPaidDisplay,
         privatePensionTaxMethod,
       });
 

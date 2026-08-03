@@ -43,10 +43,13 @@ describe('getMarketTaxTreatment', () => {
     expect(getMarketTaxTreatment('US_ETF', 'USD', ctx)).toEqual({
       dividendTaxRate: 0.15,
       includedInFinancialIncome: true,
+      capitalGainsTaxable: true,
     });
     expect(getMarketTaxTreatment('KR_ETF', 'KRW', ctx)).toEqual({
       dividendTaxRate: 0.154,
       includedInFinancialIncome: true,
+      // 국내상장 주식·국내주식형 ETF의 매매차익은 대주주가 아닌 개인에게 비과세다.
+      capitalGainsTaxable: false,
     });
   });
 
@@ -54,6 +57,7 @@ describe('getMarketTaxTreatment', () => {
     expect(getMarketTaxTreatment('OTHER', 'KRW', ctx)).toEqual({
       dividendTaxRate: 0,
       includedInFinancialIncome: false,
+      capitalGainsTaxable: false,
     });
   });
 
@@ -67,10 +71,13 @@ describe('getMarketTaxTreatment', () => {
     expect(getMarketTaxTreatment(undefined, 'USD', ctx)).toEqual({
       dividendTaxRate: 0.15,
       includedInFinancialIncome: true,
+      capitalGainsTaxable: true,
     });
     expect(getMarketTaxTreatment(undefined, 'KRW', ctx)).toEqual({
       dividendTaxRate: 0.154,
       includedInFinancialIncome: true,
+      // 국내상장 주식·국내주식형 ETF의 매매차익은 대주주가 아닌 개인에게 비과세다.
+      capitalGainsTaxable: false,
     });
   });
 });

@@ -191,6 +191,8 @@ describe('SimpleSimulationAdapter', () => {
         comprehensiveTaxMode: 'progressive_credit',
         comprehensiveTaxRate: 15,
         healthInsuranceRate: 7.09,
+        enableCapitalGainsTax: true,
+        capitalGainsTaxRate: 22,
         enablePrivatePensionTax: true,
         privatePensionLimit: 15000000,
         privatePensionExcessTaxRate: 16.5,

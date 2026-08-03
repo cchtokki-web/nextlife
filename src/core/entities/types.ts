@@ -30,6 +30,15 @@ export interface InvestmentAsset {
   reinvestDividend: boolean;
   currency: AssetCurrency;
   assetMarket?: AssetMarket; // 과세 체계 기준
+  // 총 취득원가(자산 통화 기준). 양도소득세 과세표준(매도액 − 취득원가)에 쓴다.
+  //
+  // averagePrice는 취득단가가 **아니다** — 화면 라벨이 "현재 단가"이고 시세 조회 버튼이
+  // 시장가로 덮어쓴다. 즉 이 앱에는 원래 취득원가 데이터가 존재하지 않았다.
+  //
+  // 미지정이면 엔진이 quantity × averagePrice(= 현재 평가액)를 취득원가로 본다. 그러면
+  // 지금까지 쌓인 평가차익에는 세금이 붙지 않는다 — 확정되지 않은 숫자를 지어내는 대신
+  // 사용자가 입력하지 않은 부분을 과세하지 않는 쪽을 택했다. 입력 폼에 그 뜻을 명시한다.
+  acquisitionCostBasis?: number;
 }
 
 export type PrivatePensionType = 'irp' | 'savings' | 'retirement';
@@ -113,6 +122,13 @@ export interface TaxSettings {
   comprehensiveTaxMode?: ComprehensiveTaxMode; // default: 'progressive_credit'
   comprehensiveTaxRate: number; // % (초과분 단순화 세율, 'flat' 모드에서만 쓰임, default: 15)
   healthInsuranceRate: number; // % (초과분 건보료 비율, default: 5)
+  // 해외주식·ETF 양도소득세 반영 여부 (default: true).
+  //
+  // 기본값이 true인 이유: false로 두면 "가장 큰 누락"이 기본 경로에 그대로 남는다.
+  // 은퇴 후 생활비를 자산 매도로 충당하는 계획에서 매도차익 과세가 0원이면 잔여자산과
+  // 고갈 나이가 낙관 방향으로 계통 편향된다.
+  enableCapitalGainsTax?: boolean;
+  capitalGainsTaxRate?: number; // % (미지정 시 세법 프로필의 22%)
   enablePrivatePensionTax?: boolean; // 사적연금 고세율 과세 반영 여부 (default: true)
   privatePensionLimit?: number; // 사적연금 저율과세 한도 (원, default: 15000000)
   privatePensionExcessTaxRate?: number; // 한도 초과 시 세율 (%, default: 16.5)
@@ -208,6 +224,11 @@ export interface SimulationYearlyResult {
   // (computeRiskAlerts)가 바로 그 구간을 봐야 해서 결과에 실어 보낸다.
   healthInsuranceIncomeBasis: number;
   comprehensiveTaxPaid: number; // 금융소득종합과세(추가분) 납부액
+  // 해외주식·ETF 양도소득세 납부액. **전년도에 실현된** 차익에 대한 것이다
+  // (실제 확정신고가 다음 해 5월이고, 같은 해 부과 시 '세금 내려고 판 자산이 또 차익을
+  //  만드는' 순환이 생기기 때문 — SimulationEngine의 deferredCapitalGainKRW 참고).
+  // 마지막 해에만 이월분과 당해 실현분을 함께 낸다.
+  capitalGainsTaxPaid: number;
   privatePensionTaxMethod: PrivatePensionTaxationMethod; // 사적연금 한도초과세 적용 방식
 
   spending: number; // 연간 총 생활비 인출
