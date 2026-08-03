@@ -360,22 +360,41 @@ export type UtilityAxis = keyof UtilityBreakdown['components'];
 // 한 번 계산해 두면 여러 목표로 재채점할 수 있다(UtilityEngine.computeUtilityRaws 참고).
 export type UtilityRaws = Record<UtilityAxis, number>;
 
+// AI 센티널 자동 채움 대상 축. 생활비 배수(monthlySpendingMultiplier)는 제외한다 —
+// 그 값은 withdrawalPlan이 아니라 userProfile.targetMonthlySpending을 스케일링해야 반영되고,
+// 조용히 적용하면 화면이 보여주는 목표 생활비와 엔진이 실제로 쓴 목표가 달라진다.
+// 추천으로 제안은 하되(recommendedPlan) 적용은 사용자가 누른다.
+export type SentinelAxisField = Exclude<keyof BaselineWithdrawalPlan, 'monthlySpendingMultiplier'>;
+
+// 사용자의 인출계획 위에 얹을 값들. 키가 없으면 "건드리지 않음", 값이 undefined면
+// "그 키를 지움"(= 엔진 기본 동작으로 되돌림)을 뜻한다.
+export type SentinelOverlay = Readonly<Partial<Pick<BaselineWithdrawalPlan, SentinelAxisField>>>;
+
+// 검증된 자동 채움 오버레이 사슬의 한 단계. planOverrides는 0번 단계부터 여기까지 **누적된**
+// 값이고, utility는 그 누적 조합을 실제로 시뮬레이션해 얻은 값이다(축별 delta의 합이 아니다 —
+// 효용은 축에 대해 가산적이지 않다).
+export interface VerifiedSentinelStep {
+  field: SentinelAxisField;
+  planOverrides: SentinelOverlay;
+  utility: UtilityBreakdown;
+}
+
 export interface StrategyRecommendation {
   currentUtility: UtilityBreakdown; // 기존 로직(baseline) Utility
-  // recommendedPlan의 nationalPensionStartAge "하나만" 사용자의 현재 인출계획 위에 얹었을 때의
-  // Utility. currentUtility와 같은 기준선에서 측정되므로 두 값을 직접 비교할 수 있다.
+  // 추천안 중 "사용자의 실제 인출계획 위에 얹어도 개선이 확인된" 축들의 누적 사슬.
+  // 각 단계의 utility는 currentUtility와 같은 기준선에서 측정된 실측값이다.
   //
-  // itemizedContributions의 동명 항목과 다르다. 그쪽은 기준점이 identityPlan이라
-  // privatePensionMonthlyTarget 등 다른 필드까지 함께 바뀐 상태의 효과를 재는 반면
-  // (getIdentityPlan은 그 값을 항상 채우는데 'ai_optimized' 전략의 compiled params는 그 키를
-  // 아예 지운다 — 동일 params에서 72점 vs 65점으로 갈리는 것이 확인돼 있다), 이 값은
-  // 사용자의 실제 계획에서 나이 축만 움직인 결과다.
+  // 추천 격자는 여러 필드를 **함께** 최적화하고 후보 평가는 withdrawalPlan을 통째로 교체하며
+  // 이뤄지므로, 그중 일부만 떼어 사용자 계획에 이식하면 한 번도 평가된 적 없는 조합이 된다.
+  // 그 조합이 baseline보다 나쁠 수 있어 별도 검증이 필요하다.
   //
-  // 용도는 AI 센티널 자동 채움(applyAiSentinels)의 안전 판정이다. 추천 격자는 6개 필드를
-  // 함께 최적화하므로 그중 하나만 떼어 이식하면 평가된 적 없는 조합이 되고, 그 조합이
-  // baseline보다 나쁠 수 있다. 나이가 baseline과 같아 계산할 필요가 없거나 시뮬레이션이
-  // 실패하면 null이다.
-  nationalPensionOnlyUtility: UtilityBreakdown | null;
+  // 사슬(집합이 아니라 순서 있는 누적)인 이유: 자동 채움 시점의 params가 추천 계산 시점과
+  // 다를 수 있어(화면이 추천을 한 커밋 뒤로 미룬다) 일부 축을 채우지 못할 수 있다. 그때
+  // 앞에서부터 잘라 쓰면 남는 것이 여전히 "엔진이 실제로 평가한 조합"이다.
+  // 중간을 건너뛰고 뒤의 축만 적용하면 다시 미검증 조합이 된다.
+  //
+  // 개선이 확인된 축이 하나도 없으면 빈 배열이다.
+  verifiedSentinelPlan: readonly VerifiedSentinelStep[];
   recommendedUtility: UtilityBreakdown; // 최고점 후보 Utility
   // baseline보다 Utility가 개선되는 후보를 찾았을 때만 해당 WithdrawalPlan이 채워지고, 그렇지
   // 않으면 null(= baseline 유지 권장). "부분 override 패치"인 WithdrawalPlan과 달리 여기서는

@@ -45,10 +45,10 @@ describe('useStrategyPipeline', () => {
 
     // 자동 채움은 추천이 도착한 뒤(한 커밋 지연) 일어난다.
     await waitFor(() => {
-      expect(result.current.sentinels.nationalPensionStartAge).not.toBeNull();
+      expect(result.current.sentinels.appliedValues.nationalPensionStartAge).toBeDefined();
     });
 
-    const appliedAge = result.current.sentinels.nationalPensionStartAge;
+    const appliedAge = result.current.sentinels.appliedValues.nationalPensionStartAge;
     expect(result.current.effective.params.withdrawalPlan?.nationalPensionStartAge).toBe(appliedAge);
     // compiled는 건드리지 않는다 — 센티널은 baseline(65세)으로 남아 있어야 한다.
     expect(result.current.compiled.params.withdrawalPlan?.nationalPensionStartAge).toBe(65);
@@ -63,10 +63,10 @@ describe('useStrategyPipeline', () => {
     const { result } = renderHook(() => useStrategyPipeline(sentinelParams, engine));
 
     await waitFor(() => {
-      expect(result.current.sentinels.nationalPensionStartAge).not.toBeNull();
+      expect(result.current.sentinels.appliedValues.nationalPensionStartAge).toBeDefined();
     });
 
-    const appliedAge = result.current.sentinels.nationalPensionStartAge;
+    const appliedAge = result.current.sentinels.appliedValues.nationalPensionStartAge;
     expect(spy).toHaveBeenCalled();
 
     // 지금까지의 모든 호출을 검사한다. 한 번이라도 채워진 값이 들어갔다면 그 시점부터
@@ -106,7 +106,7 @@ describe('useStrategyPipeline', () => {
 
     expect(result.current.recommendation).toBeUndefined();
     // 판단 근거가 없으므로 채우지 않는다 — 사용자 계획 그대로다.
-    expect(result.current.sentinels.nationalPensionStartAge).toBeNull();
+    expect(result.current.sentinels.appliedValues.nationalPensionStartAge).toBeUndefined();
     expect(result.current.effective).toBe(result.current.compiled);
     // 결과는 여전히 진짜 시뮬레이션이다(빈 화면이 되지 않는다).
     expect(result.current.result.yearlyResults.length).toBeGreaterThan(0);
@@ -119,7 +119,7 @@ describe('useStrategyPipeline', () => {
     const { result } = renderHook(() => useStrategyPipeline(sentinelParams, engine));
 
     await waitFor(() => {
-      expect(result.current.sentinels.nationalPensionStartAge).not.toBeNull();
+      expect(result.current.sentinels.appliedValues.nationalPensionStartAge).toBeDefined();
     });
 
     const { effective, compiled } = result.current;

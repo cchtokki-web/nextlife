@@ -7,6 +7,7 @@ import {
   computeItemizedContributions,
 } from '@/core/usecases/strategy/RecommendationEngine';
 import { generateCandidatePlans, getIdentityPlan } from '@/core/usecases/strategy/StrategyCandidateGenerator';
+import { paramsWithSentinelOverlay } from '@/core/usecases/strategy/verifiedSentinelPlan';
 import { computeLifetimeUtility } from '@/core/usecases/utility/UtilityEngine';
 import { DEFAULT_UTILITY_CONFIG } from '@/core/usecases/utility/utilityWeights';
 import {
@@ -337,41 +338,31 @@ describe('recommendStrategy - recommendedResult', () => {
   });
 });
 
-describe('recommendStrategy - nationalPensionOnlyUtility', () => {
-  test('추천 나이만 사용자의 실제 인출계획에 얹은 효용을 계산한다', () => {
+describe('recommendStrategy - verifiedSentinelPlan', () => {
+  test('사슬의 각 단계 효용은 그 조합을 실제로 시뮬레이션한 값이다', () => {
     const engine = new SimulationEngine();
     const recommendation = recommendStrategy(paramsWithOptimizableHeadroom, engine);
     expect(recommendation.improved).toBe(true);
+    // 이 픽스처에서 검증된 축이 하나도 없어지면 아래 단언이 통째로 무의미해진다.
+    expect(recommendation.verifiedSentinelPlan.length).toBeGreaterThan(0);
 
-    const recommendedAge = recommendation.recommendedPlan?.nationalPensionStartAge;
-    expect(typeof recommendedAge).toBe('number');
+    // 기준점이 identityPlan이 아니라 "사용자의 params + 해당 축들만 교체"임을 직접 재현한다.
+    // 이것이 "검증된 오버레이"라는 주장의 전부다 — 추정치를 실으면 화면이 계산하는 값과
+    // 어긋나고, 그 어긋남은 사용자에게 "적용했더니 점수가 내려갔다"로 나타난다.
+    for (const step of recommendation.verifiedSentinelPlan) {
+      const overlaid = paramsWithSentinelOverlay(paramsWithOptimizableHeadroom, step.planOverrides);
+      const expected = computeLifetimeUtility(
+        engine.runForUtility(overlaid),
+        overlaid,
+        DEFAULT_UTILITY_CONFIG
+      );
 
-    const currentAge = paramsWithOptimizableHeadroom.withdrawalPlan?.nationalPensionStartAge ?? 65;
-    // 이 픽스처에서 추천 나이가 baseline과 같아지면 아래 단언이 무의미해진다.
-    expect(recommendedAge).not.toBe(currentAge);
-    expect(recommendation.nationalPensionOnlyUtility).not.toBeNull();
-
-    // 기준점이 identityPlan이 아니라 "사용자의 params + 나이만 교체"임을 직접 재현해 확인한다.
-    // identityPlan 기준이면 privatePensionMonthlyTarget 등 다른 필드까지 함께 바뀌어
-    // 다른 점수가 나온다.
-    const onlyAgeParams: SimulationParams = {
-      ...paramsWithOptimizableHeadroom,
-      withdrawalPlan: {
-        ...(paramsWithOptimizableHeadroom.withdrawalPlan ?? {}),
-        nationalPensionStartAge: recommendedAge,
-      },
-    };
-    const expected = computeLifetimeUtility(
-      engine.runForUtility(onlyAgeParams),
-      onlyAgeParams,
-      DEFAULT_UTILITY_CONFIG
-    );
-
-    expect(recommendation.nationalPensionOnlyUtility?.score).toBe(expected.score);
-    expect(recommendation.nationalPensionOnlyUtility?.components).toEqual(expected.components);
+      expect(step.utility, `${step.field} 단계의 효용이 실측과 다르다`).toEqual(expected);
+      expect(step.utility.score).toBeGreaterThan(recommendation.currentUtility.score);
+    }
   });
 
-  test('개선안이 없으면 null이다', () => {
+  test('개선안이 없으면 빈 배열이다', () => {
     const engine = new SimulationEngine();
     const noOptimizableDimensionParams: SimulationParams = {
       ...paramsWithLargePension,
@@ -380,7 +371,7 @@ describe('recommendStrategy - nationalPensionOnlyUtility', () => {
     };
     const recommendation = recommendStrategy(noOptimizableDimensionParams, engine);
     expect(recommendation.improved).toBe(false);
-    expect(recommendation.nationalPensionOnlyUtility).toBeNull();
+    expect(recommendation.verifiedSentinelPlan).toEqual([]);
   });
 });
 

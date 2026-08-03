@@ -73,7 +73,7 @@ export function StrategySettingsPanel({
   // 컴파일한 나이로 돌고 있다. undefined로 두면 배지가 "방금 적용한 값"을 '추천'이라고
   // 말하게 된다 — 두 소비처가 같은 값을 각자 계산하다 어긋난 자리다.
   const effectiveNationalPensionStartAge =
-    sentinels?.nationalPensionStartAge
+    sentinels?.appliedValues.nationalPensionStartAge
     ?? NATIONAL_PENSION_STRATEGY_AGES[strategy.nationalPensionStrategy];
 
   const changed = useMemo(() => collectChangedPaths(params), [params]);

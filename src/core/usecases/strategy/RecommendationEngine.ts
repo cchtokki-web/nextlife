@@ -17,7 +17,11 @@ import { generateCandidatePlans, generateSpendingAdjustmentCandidates, getIdenti
 import { optimizeDividendReinvestment } from './DividendReinvestmentOptimizer';
 import { optimizePrivatePensionChanneling } from './PrivatePensionChannelingOptimizer';
 import { computeDeltas } from './deltas';
-import { NATIONAL_PENSION_NORMAL_START_AGE } from '../pension/nationalPensionRules';
+import { buildVerifiedSentinelPlan } from './verifiedSentinelPlan';
+
+// 검증된 축이 하나도 없을 때 돌려주는 공유 상수. 매번 새 배열을 만들면 소비처(화면)의
+// 메모이제이션이 흔한 경로에서 계속 깨진다.
+const NO_VERIFIED_SENTINEL_STEPS: StrategyRecommendation['verifiedSentinelPlan'] = Object.freeze([]);
 
 // 하위 호환: 기존에 computeDeltas를 이 모듈에서 import하던 코드(테스트 등)를 위해 재노출한다.
 export { computeDeltas } from './deltas';
@@ -278,39 +282,6 @@ export function computeItemizedContributions(
   return contributions;
 }
 
-// 추천 나이만 사용자의 현재 인출계획 위에 얹었을 때의 Utility. 자세한 용도와 근거는 호출부
-// 주석과 StrategyRecommendation.nationalPensionOnlyUtility 참고.
-//
-// 나이가 현재 값과 같으면 계산할 것이 없어 null이다(호출부가 어차피 적용하지 않는다).
-// 시뮬레이션이 실패해도 null을 돌려준다 — 소비처가 "판단 근거 없음"을 "적용하지 않음"으로
-// 해석하므로, 여기서 던져 추천 전체를 무효화하는 것보다 안전하다.
-function computeNationalPensionOnlyUtility(
-  params: SimulationParams,
-  recommendedPlan: BaselineWithdrawalPlan | null,
-  engine: SimulationEngine,
-  cfg: UtilityConfig
-): UtilityBreakdown | null {
-  if (!recommendedPlan) return null;
-
-  const recommendedAge = recommendedPlan.nationalPensionStartAge;
-  const currentAge = params.withdrawalPlan?.nationalPensionStartAge ?? NATIONAL_PENSION_NORMAL_START_AGE;
-  if (recommendedAge === currentAge) return null;
-
-  // paramsForCandidate가 아니라 직접 병합한다. 그쪽은 withdrawalPlan을 통째로 교체하는데,
-  // 여기서 재려는 것은 정확히 "사용자 계획에서 나이 축만 움직였을 때"다.
-  const onlyAgeParams: SimulationParams = {
-    ...params,
-    withdrawalPlan: { ...(params.withdrawalPlan ?? {}), nationalPensionStartAge: recommendedAge },
-  };
-
-  try {
-    return computeLifetimeUtility(engine.runForUtility(onlyAgeParams), onlyAgeParams, cfg);
-  } catch (err) {
-    console.warn('Skipping national-pension-only utility that failed to simulate', err);
-    return null;
-  }
-}
-
 interface CandidateSearchState {
   bestResult: SimulationResult;
   bestUtility: UtilityBreakdown;
@@ -502,26 +473,25 @@ export function recommendStrategy(
       ? { ...bestPlan, isaMaturityDestination: 'asset' }
       : bestPlan;
 
-  // 추천 나이 "하나만" 사용자의 실제 인출계획에 얹었을 때의 효용.
+  // 추천안의 각 축을 사용자의 실제 인출계획 위에 얹었을 때 정말로 개선이 되는지 검증한다.
   //
-  // AI 센티널 자동 채움(applyAiSentinels)이 정확히 이 조합을 시뮬레이션에 넣는데, 후보 평가는
+  // AI 센티널 자동 채움(applyAiSentinels)이 넣는 것이 정확히 이 조합인데, 후보 평가는
   // withdrawalPlan을 통째로 교체하며 이뤄지므로 이 조합 자체는 위 그리드에서 한 번도 평가되지
   // 않았다. 그래서 "추천이 개선을 준다"가 이 조합에는 그대로 옮겨오지 않는다.
   //
-  // computeItemizedContributions의 동명 항목으로 대신할 수 없다. 그쪽 기준점은 identityPlan이라
-  // privatePensionMonthlyTarget이 항상 채워진 상태인데(getIdentityPlan), 'ai_optimized' 전략의
-  // compiled params는 그 키를 아예 지운다 — 위 baseParamsAfterPhase3 주석대로 두 계획은 동일 params에서
-  // 72점 vs 65점으로 갈린다. 즉 그 값은 나이 효과와 인출계획 차이가 섞인 수치다.
+  // computeItemizedContributions의 동명 항목으로 대신할 수 없다. 그쪽은 화면 설명용이라
+  // 생활비 배수(자동 채움 대상이 아님)와 Phase 3/4 항목까지 섞여 있고, 축별 단독 효과만
+  // 재기 때문에 "각각 +1인데 합치면 −3"인 조합을 걸러내지 못한다.
   //
-  // 비용은 runForUtility 1회다. 이미 최대 218개 후보를 돌리는 함수이고 호출부가 이 계산을
-  // 트랜지션(비긴급) 우선순위에서 실행하므로, 화면 반응성에 미치는 영향은 없다.
-  const nationalPensionOnlyUtility = computeNationalPensionOnlyUtility(
-    params, recommendedPlan, engine, cfg
-  );
+  // 비용은 축 N개(≤5)에 대해 runForUtility 최대 2N−1회다. 이미 최대 218개 후보를 돌리는
+  // 함수이고 호출부가 이 계산을 트랜지션(비긴급) 우선순위에서 실행한다.
+  const verifiedSentinelPlan = recommendedPlan
+    ? buildVerifiedSentinelPlan(params, identityPlan, recommendedPlan, currentUtility, engine, cfg)
+    : NO_VERIFIED_SENTINEL_STEPS;
 
   return {
     currentUtility,
-    nationalPensionOnlyUtility,
+    verifiedSentinelPlan,
     recommendedUtility: channelingOpt.finalUtility,
     recommendedPlan,
     recommendedAssetReinvestment: reinvestOpt.recommendedAssetReinvestment,

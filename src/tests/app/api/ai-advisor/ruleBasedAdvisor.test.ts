@@ -31,7 +31,7 @@ function makeRecommendation(
   const improved = recommendedScore > currentScore;
   return {
     currentUtility: { ...baseUtility, score: currentScore },
-    nationalPensionOnlyUtility: null,
+    verifiedSentinelPlan: [],
     recommendedUtility: { ...baseUtility, score: recommendedScore },
     recommendedPlan: improved ? {
       privatePensionMonthlyTarget: 0,

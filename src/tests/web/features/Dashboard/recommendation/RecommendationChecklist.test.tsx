@@ -33,7 +33,7 @@ const zeroDeltas: StrategyRecommendation['deltas'] = {
 function makeRecommendation(overrides: Partial<StrategyRecommendation>): StrategyRecommendation {
   return {
     currentUtility: utility,
-    nationalPensionOnlyUtility: null,
+    verifiedSentinelPlan: [],
     recommendedUtility: { ...utility, score: 81 },
     recommendedPlan: null,
     recommendedAssetReinvestment: null,
@@ -154,7 +154,7 @@ describe('RecommendationChecklist', () => {
     const appliedNationalPension = {
       compiled: {} as never,
       appliedFields: ['nationalPensionStartAge'] as const,
-      nationalPensionStartAge: 70,
+      appliedValues: { nationalPensionStartAge: 70 },
     };
 
     test('자동 적용된 항목은 "이미 반영됨"으로, 나머지는 "남은 할 일"로 나눈다', () => {
