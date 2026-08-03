@@ -351,6 +351,15 @@ export interface UtilityBreakdown {
   };
 }
 
+export type UtilityAxis = keyof UtilityBreakdown['components'];
+
+// 가중치를 곱하기 전의 축별 원점수(각 0~1). UtilityBreakdown['components']에서 키를 파생시켜
+// 두 타입이 따로 놀 수 없게 한다 — 축을 추가하면 양쪽이 동시에 바뀐다.
+//
+// components(=round(raw × weight))와 의미가 다르다. raw는 목표(objective)와 무관하므로
+// 한 번 계산해 두면 여러 목표로 재채점할 수 있다(UtilityEngine.computeUtilityRaws 참고).
+export type UtilityRaws = Record<UtilityAxis, number>;
+
 export interface StrategyRecommendation {
   currentUtility: UtilityBreakdown; // 기존 로직(baseline) Utility
   // recommendedPlan의 nationalPensionStartAge "하나만" 사용자의 현재 인출계획 위에 얹었을 때의

@@ -2,8 +2,10 @@ import {
   SimulationParams,
   SimulationResult,
   SimulationYearlyResult,
+  UtilityAxis,
   UtilityBreakdown,
   UtilityConfig,
+  UtilityRaws,
 } from '../../entities/types';
 import { DEFAULT_UTILITY_CONFIG } from './utilityWeights';
 import { isMaximizeBequestStrategy } from '../strategy/compileStrategy';
@@ -225,49 +227,89 @@ function computeTaxationRiskRaw(yearlyResults: SimulationYearlyResult[], cfg: Ut
   return clamp(1 - penalty, 0, 1);
 }
 
+// 6개 축의 순서. 채점·순회에서 필드를 손으로 나열하지 않도록 한 곳에 둔다.
+export const UTILITY_AXES = [
+  'consumption',
+  'depletionSafety',
+  'pensionUtilization',
+  'taxEfficiency',
+  'taxationRisk',
+  'bequestAdequacy',
+] as const satisfies readonly UtilityAxis[];
+
+// 축을 추가하고 UTILITY_AXES에 넣는 것을 잊으면 그 축은 score 합산에서 조용히 빠진다
+// (components에는 있는데 총점에는 없는 상태 — 화면에서 "항목 합 ≠ 총점"으로 나타난다).
+// annualTaxTotals가 세금 필드에 쓰는 것과 같은 컴파일 타임 누락 검사다.
+type MissingUtilityAxes = Exclude<UtilityAxis, (typeof UTILITY_AXES)[number]>;
+type UtilityAxesExhaustive = MissingUtilityAxes extends never
+  ? true
+  : ['UTILITY_AXES에 빠진 축이 있습니다', MissingUtilityAxes];
+const _utilityAxesAreExhaustive: UtilityAxesExhaustive = true;
+void _utilityAxesAreExhaustive;
+
+const ZERO_RAWS: UtilityRaws = {
+  consumption: 0,
+  depletionSafety: 0,
+  pensionUtilization: 0,
+  taxEfficiency: 0,
+  taxationRisk: 0,
+  bequestAdequacy: 0,
+};
+
+// 가중치를 곱하기 전의 원점수 6개(각 0~1).
+//
+// **이 값들은 cfg.weights와 무관하다.** 목표(objective)가 바꾸는 것은 weights뿐이고
+// (OBJECTIVE_WEIGHT_PRESETS), 나머지 설정은 compileStrategy가 UTILITY_CONFIG_REST로 고정한다.
+// 따라서 raw를 한 번 계산해 두면 **같은 시뮬레이션 결과를 5개 목표 전부로 재시뮬 없이
+// 채점**할 수 있다 — 목표 우선순위 축과 강건성 모드가 서 있는 지렛대가 이것이다.
+//
+// computeLifetimeUtility가 돌려주는 components로는 이걸 대신할 수 없다. 그쪽은 이미
+// Math.round(raw × weight)라서 weight로 나눠도 반올림 손실 때문에 원본이 복원되지 않고,
+// weight가 0인 축은 아예 정보가 사라진다.
+export function computeUtilityRaws(
+  result: SimulationResult,
+  params: SimulationParams,
+  cfg: UtilityConfig = DEFAULT_UTILITY_CONFIG
+): UtilityRaws {
+  if (!result.yearlyResults || result.yearlyResults.length === 0) return { ...ZERO_RAWS };
+
+  const retirementYears = result.yearlyResults.filter((r) => r.age >= params.userProfile.retirementAge);
+
+  return {
+    consumption: computeConsumptionRaw(params, retirementYears),
+    depletionSafety: computeDepletionSafetyRaw(params, result),
+    pensionUtilization: computePensionUtilizationRaw(params, retirementYears, cfg),
+    taxEfficiency: computeTaxEfficiencyRaw(result.yearlyResults, cfg),
+    taxationRisk: computeTaxationRiskRaw(result.yearlyResults, cfg),
+    bequestAdequacy: computeBequestAdequacyRaw(params, result, cfg),
+  };
+}
+
+// 원점수에 가중치를 곱해 최종 점수로 만든다. 축별 반올림 후 합산하는 순서를 지킨다 —
+// 합산 후 반올림하면 components의 합과 score가 어긋난다(화면이 둘을 나란히 보여준다).
+export function scoreUtilityRaws(raws: UtilityRaws, weights: UtilityConfig['weights']): UtilityBreakdown {
+  const components = {
+    consumption: Math.round(raws.consumption * weights.consumption),
+    depletionSafety: Math.round(raws.depletionSafety * weights.depletionSafety),
+    pensionUtilization: Math.round(raws.pensionUtilization * weights.pensionUtilization),
+    taxEfficiency: Math.round(raws.taxEfficiency * weights.taxEfficiency),
+    taxationRisk: Math.round(raws.taxationRisk * weights.taxationRisk),
+    bequestAdequacy: Math.round(raws.bequestAdequacy * weights.bequestAdequacy),
+  };
+
+  const score = clamp(
+    UTILITY_AXES.reduce((total, axis) => total + components[axis], 0),
+    0,
+    100
+  );
+
+  return { score, components };
+}
+
 export function computeLifetimeUtility(
   result: SimulationResult,
   params: SimulationParams,
   cfg: UtilityConfig = DEFAULT_UTILITY_CONFIG
 ): UtilityBreakdown {
-  if (!result.yearlyResults || result.yearlyResults.length === 0) {
-    return {
-      score: 0,
-      components: {
-        consumption: 0,
-        depletionSafety: 0,
-        pensionUtilization: 0,
-        taxEfficiency: 0,
-        taxationRisk: 0,
-        bequestAdequacy: 0,
-      },
-    };
-  }
-
-  const retirementYears = result.yearlyResults.filter((r) => r.age >= params.userProfile.retirementAge);
-
-  const consumption = Math.round(computeConsumptionRaw(params, retirementYears) * cfg.weights.consumption);
-  const depletionSafety = Math.round(computeDepletionSafetyRaw(params, result) * cfg.weights.depletionSafety);
-  const pensionUtilization = Math.round(computePensionUtilizationRaw(params, retirementYears, cfg) * cfg.weights.pensionUtilization);
-  const taxEfficiency = Math.round(computeTaxEfficiencyRaw(result.yearlyResults, cfg) * cfg.weights.taxEfficiency);
-  const taxationRisk = Math.round(computeTaxationRiskRaw(result.yearlyResults, cfg) * cfg.weights.taxationRisk);
-  const bequestAdequacy = Math.round(computeBequestAdequacyRaw(params, result, cfg) * cfg.weights.bequestAdequacy);
-
-  const score = clamp(
-    consumption + depletionSafety + pensionUtilization + taxEfficiency + taxationRisk + bequestAdequacy,
-    0,
-    100
-  );
-
-  return {
-    score,
-    components: {
-      consumption,
-      depletionSafety,
-      pensionUtilization,
-      taxEfficiency,
-      taxationRisk,
-      bequestAdequacy,
-    },
-  };
+  return scoreUtilityRaws(computeUtilityRaws(result, params, cfg), cfg.weights);
 }
