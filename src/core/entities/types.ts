@@ -228,6 +228,13 @@ export interface SimulationYearlyResult {
   // stockAssets + pensionAssets로 자산 구성을 재구성하는 소비처들이 ISA를 통째로 놓쳤다
   // (인플레이션 헤지 점수의 분자, 자산 추이 차트의 시리즈).
   isaAssets: number;
+  // 쓰고 남은 현금. 성장하지 않고 표시 통화 그대로 쌓이며, 부족분이 생기면 가장 먼저 쓴다.
+  //
+  // 예전에는 잉여 현금을 assets[0]에 도로 집어넣었다. 그래서 "배당 재투자 끄기"가 실제로는
+  // "첫 번째 자산에 재투자하기"였고, 자산이 하나면 켜나 끄나 결과가 비트 단위로 같았다 —
+  // 화면의 스위치가 아무것도 하지 않았다. 성장률·원가까지 그 자산의 것으로 잡히는 부작용도
+  // 있었다(팔지도 않은 배당금이 취득원가를 부풀렸다).
+  cashAssets: number;
   dividendIncome: number; // 연간 세후 배당 수령액
   nationalPensionIncome: number; // 연간 세후 국민연금 수령액
   privatePensionIncome: number; // 연간 세후 사적연금 수령액

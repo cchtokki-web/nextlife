@@ -246,8 +246,13 @@ describe('SimulationEngine 배우자 사망 후 점수 분모', () => {
 describe('SimulationEngine 배우자 단독 생존 기간의 고갈', () => {
   // 본인 기대수명 80, 배우자는 본인 나이 기준 95세까지 생존. 자산은 84세에 고갈된다 —
   // 즉 본인 사후 배우자가 11년을 무일푼으로 사는 계획이다.
+  //
+  // 목표 생활비를 소득(국민연금 100만 + 사적연금 인출 150만)보다 높게 잡아 잉여가 남지
+  // 않게 한다. 예전에는 이 픽스처가 잉여를 내면서도 고갈했는데, 그건 잉여 현금을 넣을
+  // 자산(assets: [])이 없어 그 돈이 **증발**했기 때문이다 — 현금 버킷이 그 소실을 고쳤다.
   const depleting: SimulationParams = {
     ...baseParams,
+    userProfile: { ...baseParams.userProfile, targetMonthlySpending: 4000000 },
     withdrawalPlan: { privatePensionMonthlyTarget: 1500000 },
   };
   const longLivedSpouse = {
@@ -279,9 +284,9 @@ describe('SimulationEngine 배우자 단독 생존 기간의 고갈', () => {
 
     // 인출액이 privatePensionMonthlyTarget으로 고정되어 있어 두 시나리오의 현금흐름이
     // 고갈 시점까지 완전히 같다 — 고갈 나이가 동일하고 종료 나이만 다르다.
-    // 짧은 쪽의 배우자 기대수명(88)은 고갈 나이보다 뒤여야 한다. 앞이면 그 시나리오는
+    // 짧은 쪽의 배우자 기대수명(90)은 고갈 나이보다 뒤여야 한다. 앞이면 그 시나리오는
     // 고갈 전에 끝나 버려(depletionAge = null) 비교 자체가 성립하지 않는다.
-    const shorter = engine.run({ ...depleting, spouse: { ...longLivedSpouse, expectancy: 88 } });
+    const shorter = engine.run({ ...depleting, spouse: { ...longLivedSpouse, expectancy: 90 } });
     const longer = engine.run({ ...depleting, spouse: longLivedSpouse });
 
     expect(shorter.depletionAge).not.toBeNull();

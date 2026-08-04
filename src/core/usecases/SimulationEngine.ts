@@ -486,10 +486,20 @@ export class SimulationEngine {
     // 상속 하한선. 총자산 정의(stock + pension + isa)는 연말에 yearlyResults에 싣는 것과
     // 정확히 같아야 한다 — 다르면 "하한선을 지켰다"는 판정과 화면이 보여주는 총자산이 갈린다.
     const assetFloorDisplay = Math.max(0, params.assetFloor ?? 0);
+
+    // 쓰고 남은 현금. 성장하지 않고 표시 통화 그대로 쌓인다.
+    //
+    // 예전에는 잉여 현금을 activeAssets[0]에 도로 집어넣었다. 그래서 "배당 재투자 끄기"가
+    // 실제로는 "첫 번째 자산에 재투자하기"였고, 자산이 하나뿐이면 스위치를 켜나 끄나 결과가
+    // 비트 단위로 같았다. 게다가 그 돈이 자산의 성장률로 불어나고 취득원가까지 부풀렸다 —
+    // 팔지도 않은 배당금이 양도차익 계산의 원가에 들어갔다는 뜻이다.
+    let cashBucketDisplay = 0;
+
     const currentTotalAssetsDisplay = () =>
       activeAssets.reduce((sum, a) => sum + this.convertValue(a.currentValue, a.currency, displayCurrency, exchangeRate), 0)
       + activePensions.reduce((sum, p) => sum + this.convertValue(p.currentBalance, p.currency, displayCurrency, exchangeRate), 0)
-      + activeIsas.reduce((sum, i) => sum + this.convertValue(i.currentBalance, i.currency, displayCurrency, exchangeRate), 0);
+      + activeIsas.reduce((sum, i) => sum + this.convertValue(i.currentBalance, i.currency, displayCurrency, exchangeRate), 0)
+      + cashBucketDisplay;
 
     // 해외주식 양도세는 실현 다음 해 5월에 확정신고·납부한다. 같은 해에 부과하면 순환이
     // 생긴다 — 양도세를 내려고 자산을 팔면 그 매도가 다시 양도차익을 만든다. 고정점을
@@ -730,7 +740,17 @@ export class SimulationEngine {
           // 적립금은 새로 취득한 금액이므로 원가에 더한다. 성장분(growth)은 평가차익이라 더하지 않는다.
           asset.costBasis += contribution;
 
-          if (!isRetired && asset.reinvestDividend) {
+          // 은퇴 후에도 자산별 재투자 설정을 존중한다.
+          //
+          // 예전에는 `!isRetired`가 앞에 붙어 있어 은퇴하는 순간 이 스위치가 무시됐다.
+          // 화면은 "받은 배당을 쓰지 않고 다시 사들여 복리로 굴립니다"라고 말하는데,
+          // 정작 그 복리가 가장 오래 작동할 은퇴 후 30여 년 동안 꺼져 있었다.
+          //
+          // 재투자한 배당은 소득이 아니므로 그만큼 생활비 부족분이 늘고, 필요하면 자산을
+          // 매도해 충당한다. 그 매도에는 양도세가 붙으므로 "배당으로 받아 쓰기"와 완전히
+          // 같지는 않다 — 어느 쪽이 유리한지는 시나리오에 따라 다르고, 그 판단이 바로
+          // 이 스위치가 존재하는 이유다.
+          if (asset.reinvestDividend) {
             asset.currentValue += dividendNet;
             // 세후 배당으로 다시 사들인 것이므로 새 취득이다.
             asset.costBasis += dividendNet;
@@ -900,10 +920,10 @@ export class SimulationEngine {
           : monthlyTargetSpending;
 
         const shortfall = actualMonthlySpending - monthlyTotalIncome;
-        if (shortfall < 0 && activeAssets.length > 0) {
-          const inflow = this.convertValue(-shortfall, displayCurrency, activeAssets[0].currency, exchangeRate);
-          activeAssets[0].currentValue += inflow;
-          activeAssets[0].costBasis += inflow;
+        if (shortfall < 0) {
+          // 쓰고 남은 돈은 현금으로 둔다. 자산에 도로 집어넣으면 "재투자하지 않겠다"는
+          // 선택이 조용히 재투자가 된다(cashBucketDisplay 선언부 주석 참고).
+          cashBucketDisplay += -shortfall;
         } else if (shortfall > 0) {
           // 상속 하한선. 총자산이 이 선 아래로 내려가는 인출은 하지 않는다.
           //
@@ -921,6 +941,13 @@ export class SimulationEngine {
           const blockedByFloor = Math.max(0, shortfall - withdrawableDisplay);
 
           let remainingShortfall = shortfall - blockedByFloor;
+
+          // 현금이 1순위다. 팔면 세금이 붙는 자산보다 먼저 쓰는 것이 자연스럽고,
+          // 일반자산 인출 개시 나이 제한도 받지 않는다(이미 손에 있는 돈이다).
+          const fromCash = Math.min(cashBucketDisplay, remainingShortfall);
+          cashBucketDisplay -= fromCash;
+          remainingShortfall -= fromCash;
+
           const generalAssetWithdrawalStartAge = withdrawalPlan?.generalAssetWithdrawalStartAge ?? userProfile.retirementAge;
           if (currentAge >= generalAssetWithdrawalStartAge) {
             for (const asset of withdrawalOrderedAssets) {
@@ -1096,7 +1123,7 @@ export class SimulationEngine {
       const stockAssetsDisplay = activeAssets.reduce((sum, a) => sum + this.convertValue(a.currentValue, a.currency, displayCurrency, exchangeRate), 0);
       const pensionAssetsDisplay = activePensions.reduce((sum, p) => sum + this.convertValue(p.currentBalance, p.currency, displayCurrency, exchangeRate), 0);
       const isaAssetsDisplay = activeIsas.reduce((sum, i) => sum + this.convertValue(i.currentBalance, i.currency, displayCurrency, exchangeRate), 0);
-      const totalAssetsDisplay = stockAssetsDisplay + pensionAssetsDisplay + isaAssetsDisplay;
+      const totalAssetsDisplay = stockAssetsDisplay + pensionAssetsDisplay + isaAssetsDisplay + cashBucketDisplay;
 
       const hasTaxWarning = annualRawFinancialIncomeKRW > taxCtx.profile.financialIncomeThresholdKRW;
       const pensionIncome = annualNationalPensionIncome + annualPrivatePensionIncome;
@@ -1106,6 +1133,7 @@ export class SimulationEngine {
         age: currentAge, year: currentYear, totalAssets: totalAssetsDisplay,
         stockAssets: stockAssetsDisplay, pensionAssets: pensionAssetsDisplay,
         isaAssets: isaAssetsDisplay,
+        cashAssets: cashBucketDisplay,
         dividendIncome: annualDividendIncome, nationalPensionIncome: annualNationalPensionIncome,
         privatePensionIncome: annualPrivatePensionIncome, pensionIncome, otherIncome: annualOtherIncome,
         totalIncome, spending: annualSpending, healthcareSpending: annualHealthcareCost,

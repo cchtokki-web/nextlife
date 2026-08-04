@@ -506,6 +506,7 @@ function makeYearlyResult(overrides: Partial<SimulationYearlyResult>): Simulatio
     stockAssets: 0,
     pensionAssets: 0,
     isaAssets: 0,
+    cashAssets: 0,
     dividendIncome: 0,
     nationalPensionIncome: 0,
     privatePensionIncome: 0,
@@ -882,8 +883,12 @@ describe('recommendStrategy - Phase 3 배당 재투자 통합', () => {
       ],
     };
     const result = recommendStrategy(paramsWithAssets, engine);
-    // 이 fixture는 실제 엔진에서 결정론적으로 asset-1만 재투자 중단(false)이 유리하다고 판단한다
-    // (asset-0은 index 0이라 flip해도 무효과이므로 beneficial 목록에 들어가지 않는다).
+    // 이 fixture에서는 asset-1(저성장·고배당)의 재투자 중단만 유리하다 — 배당을 연 1%짜리
+    // 자산 안에서 굴리는 것보다 현금으로 빼 두는 편이 사망 시 잔여자산 과다를 덜 만든다.
+    // asset-0은 배당이 0이라 스위치를 뒤집어도 아무 일도 일어나지 않는다.
+    //
+    // 예전 주석은 "asset-0은 index 0이라 flip해도 무효과"라고 적혀 있었다. 그건 잉여 현금이
+    // activeAssets[0]으로 되돌아가던 시절의 이야기이고, 현금 버킷이 생기면서 근거가 사라졌다.
     expect(result.recommendedAssetReinvestment).not.toBeNull();
     expect(Object.keys(result.recommendedAssetReinvestment ?? {})).toEqual(['asset-1']);
     expect(result.itemizedContributions.some((c) => c.label.includes('테스트자산'))).toBe(true);
@@ -915,11 +920,16 @@ describe('recommendStrategy - Phase 3 배당 재투자 통합', () => {
   });
 
   test('WithdrawalPlan(Phase 1/2) 개선은 없지만 Phase 3(배당 재투자) 개선만 있으면 reasons에 Phase 3 문구만 담고 "이미 합리적" 폴백은 담지 않는다', () => {
-    // 인출계획 그리드로는 개선이 없도록(사적연금·국민연금·ISA 없음, 두 자산의 배당수익률을 동일하게
-    // 두어 매도순서 차원도 무효화, 은퇴기간을 짧게 두어 매도순서 절세 효과도 없음) 설계하되,
-    // 축적기(currentAge 25 < retirementAge 65)가 길어 asset-1(저성장·고배당)의 배당을 고성장
-    // asset-0으로 흘려보내는 재투자 중단이 유리해지도록 성장률 격차를 크게 둔다. 그 결과 bestPlan은
-    // null(인출계획 미개선)이지만 Phase 3는 asset-1 재투자 중단을 추천한다 —
+    // 인출계획 그리드로는 개선이 없도록 설계한다: 사적연금·국민연금·ISA 없음, 두 자산의
+    // 배당수익률을 **실제로** 동일하게 두어 매도순서 차원 무효화(주석은 예전부터 그렇게
+    // 말했지만 값은 0과 8이었다 — 잉여 현금이 자산으로 되돌아가던 시절에는 그 차이가
+    // 가려져 있었을 뿐이다), 은퇴기간을 짧게 두어 매도순서 절세 효과도 제거.
+    //
+    // 그 위에서 Phase 3만 개선을 찾는다: 축적기가 40년이라 배당을 자산 안에서 굴리면
+    // 사망 시 잔여자산이 적정선(월생활비 × 24)을 크게 초과해 bequestAdequacy가 감점된다.
+    // 재투자를 끄면 그만큼이 현금으로 남아 초과가 줄어든다.
+    //
+    // 결과: bestPlan은 null(인출계획 미개선)이고 Phase 3만 개선 —
     // reasons 3-way 병합의 가운데 분기(withdrawalPlanImproved===false && additionalReasons.length>0).
     const engine = new SimulationEngine();
     const phase3OnlyParams: SimulationParams = {
@@ -929,11 +939,11 @@ describe('recommendStrategy - Phase 3 배당 재투자 통합', () => {
           id: 'asset-0',
           type: 'etf',
           ticker: 'GROWTH',
-          name: '성장자산',
+          name: '테스트자산',
           quantity: 1,
           averagePrice: 30000000,
           annualGrowthRate: 12,
-          dividendYield: 0,
+          dividendYield: 8,
           monthlyContribution: 0,
           reinvestDividend: true,
           currency: 'KRW',
@@ -942,13 +952,13 @@ describe('recommendStrategy - Phase 3 배당 재투자 통합', () => {
           id: 'asset-1',
           type: 'etf',
           ticker: 'SPY',
-          name: '테스트자산',
+          name: '저성장자산',
           quantity: 1,
           averagePrice: 30000000,
           annualGrowthRate: 1,
           dividendYield: 8,
           monthlyContribution: 0,
-          reinvestDividend: true,
+          reinvestDividend: false,
           currency: 'KRW',
         },
       ],
@@ -965,7 +975,7 @@ describe('recommendStrategy - Phase 3 배당 재투자 통합', () => {
 
     // 인출계획 차원은 개선 없음(bestPlan null), Phase 3만 개선.
     expect(result.recommendedPlan).toBeNull();
-    expect(result.recommendedAssetReinvestment).toEqual({ 'asset-1': false });
+    expect(result.recommendedAssetReinvestment).toEqual({ 'asset-0': false });
     expect(result.improved).toBe(true);
 
     // reasons는 Phase 3 문구만 포함하고, buildReasons의 "이미 합리적"/"충분히 합리적" 및

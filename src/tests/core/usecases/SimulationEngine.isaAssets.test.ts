@@ -37,7 +37,7 @@ function params(overrides: Partial<SimulationParams> = {}): SimulationParams {
 }
 
 describe('SimulationEngine - isaAssets', () => {
-  test('자산 구성 3종의 합이 총자산과 같다', () => {
+  test('자산 구성 4종의 합이 총자산과 같다', () => {
     const result = new SimulationEngine().run(params({
       assets: [stock],
       isaAccounts: [isa],
@@ -47,7 +47,10 @@ describe('SimulationEngine - isaAssets', () => {
     }));
 
     for (const year of result.yearlyResults) {
-      expect(year.stockAssets + year.pensionAssets + year.isaAssets).toBeCloseTo(year.totalAssets, 6);
+      // 현금(cashAssets)까지 포함해야 총액이 맞는다. 쓰고 남은 돈을 자산에 도로 넣지 않고
+      // 별도 버킷에 두기 때문이다 — 넣으면 "배당 재투자 끄기"가 조용히 재투자가 된다.
+      expect(year.stockAssets + year.pensionAssets + year.isaAssets + year.cashAssets)
+        .toBeCloseTo(year.totalAssets, 6);
     }
   });
 
