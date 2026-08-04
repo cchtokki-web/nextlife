@@ -302,6 +302,15 @@ function evaluateCandidate(
   try {
     const candidateParams = paramsForCandidate(params, plan);
     const candidateResult = engine.runForUtility(candidateParams);
+
+    // 상속 하한선을 못 지키는 후보는 점수와 무관하게 탈락시킨다. 하한선은 선호가 아니라
+    // 제약이므로, 효용 점수로 다른 축과 맞바꿀 수 있는 대상이 아니다.
+    //
+    // 엔진이 인출 경로에서 이미 하한선을 지키지만 세금과 배당 소비까지 막을 수는 없어
+    // 미세하게 밑돌 수 있다. 그 오차로 정상적인 후보가 전멸하지 않도록 여유(1%)를 둔다.
+    const assetFloor = candidateParams.assetFloor ?? 0;
+    if (assetFloor > 0 && candidateResult.endingAssets < assetFloor * 0.99) return;
+
     const candidateUtility = computeLifetimeUtility(candidateResult, candidateParams, cfg);
     if (candidateUtility.score > state.bestUtility.score) {
       state.bestUtility = candidateUtility;

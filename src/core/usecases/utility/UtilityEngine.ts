@@ -8,7 +8,7 @@ import {
   UtilityRaws,
 } from '../../entities/types';
 import { DEFAULT_UTILITY_CONFIG } from './utilityWeights';
-import { isMaximizeBequestStrategy } from '../strategy/compileStrategy';
+import { usesMaximizeBequestScoring } from '../strategy/compileStrategy';
 import { sumTotalTaxesAndLevies } from '../tax/annualTaxTotals';
 
 function clamp(value: number, min: number, max: number): number {
@@ -175,10 +175,10 @@ function bequestRatio(endingAssets: number, appropriateBalance: number): number 
 function computeBequestAdequacyRaw(params: SimulationParams, result: SimulationResult, cfg: UtilityConfig): number {
   const { targetBequest } = params.userProfile;
 
-  // "최대 상속" 판정이 가장 먼저다. compileStrategy는 이 전략에서 targetBequest 키를 지우지만,
-  // 컴파일을 거치지 않은 params(레거시 저장값 등)에는 옛 금액이 남아 있을 수 있어 아래
-  // targetBequest 분기에 먼저 걸리면 전략과 다른 곡선으로 채점된다.
-  if (isMaximizeBequestStrategy(params)) {
+  // 단조증가 채점("많이 남길수록 좋다") 판정이 가장 먼저다. compileStrategy는 'maximize'에서
+  // targetBequest 키를 지우지만, 컴파일을 거치지 않은 params(레거시 저장값 등)에는 옛 금액이
+  // 남아 있을 수 있어 아래 targetBequest 분기에 먼저 걸리면 전략과 다른 곡선으로 채점된다.
+  if (usesMaximizeBequestScoring(params)) {
     return monotonicAdequacyRaw(bequestRatio(result.endingAssets, appropriateBequestBalance(params, cfg)));
   }
 

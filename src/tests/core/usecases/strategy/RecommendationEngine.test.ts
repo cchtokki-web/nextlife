@@ -6,7 +6,11 @@ import {
   computeDeltas,
   computeItemizedContributions,
 } from '@/core/usecases/strategy/RecommendationEngine';
-import { generateCandidatePlans, getIdentityPlan } from '@/core/usecases/strategy/StrategyCandidateGenerator';
+import {
+  generateCandidatePlans,
+  generateSpendingAdjustmentCandidates,
+  getIdentityPlan,
+} from '@/core/usecases/strategy/StrategyCandidateGenerator';
 import { paramsWithSentinelOverlay } from '@/core/usecases/strategy/verifiedSentinelPlan';
 import { computeLifetimeUtility } from '@/core/usecases/utility/UtilityEngine';
 import { DEFAULT_UTILITY_CONFIG } from '@/core/usecases/utility/utilityWeights';
@@ -267,13 +271,20 @@ describe('recommendStrategy - 생활비 증액(Phase 2) 후보', () => {
     expect(baseline.depletionAge!).toBeLessThan(paramsWithDepletionRisk.userProfile.expectancy);
 
     const recommendation = recommendStrategy(paramsWithDepletionRisk, engine);
-    // Phase 2(생활비 증액) 후보가 0개임을 확인하는 것이 이 테스트의 취지다. totalCandidateCount에는
-    // Phase 3(배당 재투자)의 시도량(assets.length)이 더해진다. Phase 4는 실제로 실행한 시뮬레이션
-    // 횟수만 더하는데, 이 시나리오는 사적연금이 없어 두 레그 모두 평가되지 않으므로 0이다.
+    // Phase 2의 **증액** 후보가 0개임을 확인하는 것이 이 테스트의 취지다(하강 후보는 고갈
+    // 위험과 무관하게 항상 생성된다 — 오히려 이런 상황에서 필요한 후보다).
+    // totalCandidateCount에는 Phase 3(배당 재투자)의 시도량(assets.length)이 더해진다.
+    // Phase 4는 실제로 실행한 시뮬레이션 횟수만 더하는데, 이 시나리오는 사적연금이 없어
+    // 두 레그 모두 평가되지 않으므로 0이다.
     const baseCandidateCount = generateCandidatePlans(paramsWithDepletionRisk).length;
+    const decreaseOnlyCount = generateSpendingAdjustmentCandidates(
+      paramsWithDepletionRisk, getIdentityPlan(paramsWithDepletionRisk), { allowIncrease: false }
+    ).length;
 
-    expect(recommendation.totalCandidateCount).toBe(baseCandidateCount + paramsWithDepletionRisk.assets.length);
-    expect(recommendation.recommendedPlan?.monthlySpendingMultiplier ?? 1).toBe(1);
+    expect(recommendation.totalCandidateCount)
+      .toBe(baseCandidateCount + decreaseOnlyCount + paramsWithDepletionRisk.assets.length);
+    // 증액은 추천되지 않는다.
+    expect(recommendation.recommendedPlan?.monthlySpendingMultiplier ?? 1).toBeLessThanOrEqual(1);
   });
 
   test("spendingStrategy가 'target'이 아니면 생활비 증액 후보를 생성하지 않는다", () => {
@@ -308,8 +319,12 @@ describe('recommendStrategy - 생활비 증액(Phase 2) 후보', () => {
 
     const recommendation = recommendStrategy(params, engine);
     const baseCandidateCount = generateCandidatePlans(params).length;
+    const decreaseOnlyCount = generateSpendingAdjustmentCandidates(
+      params, getIdentityPlan(params), { allowIncrease: false }
+    ).length;
 
-    expect(recommendation.totalCandidateCount).toBe(baseCandidateCount + params.assets.length);
+    expect(recommendation.totalCandidateCount)
+      .toBe(baseCandidateCount + decreaseOnlyCount + params.assets.length);
   });
 });
 
@@ -699,7 +714,7 @@ describe('recommendStrategy - totalCandidateCount/failedCandidateCount', () => {
     expect(recommendation.failedCandidateCount).toBe(0);
   });
 
-  test('탐색할 차원이 전혀 없으면 총 후보 수는 0이다', () => {
+  test('인출 차원이 전혀 없으면 생활비 하강 후보만 남는다', () => {
     const engine = new SimulationEngine();
     const noOptimizableDimensionParams: SimulationParams = {
       ...paramsWithLargePension,
@@ -708,10 +723,19 @@ describe('recommendStrategy - totalCandidateCount/failedCandidateCount', () => {
     };
     const recommendation = recommendStrategy(noOptimizableDimensionParams, engine);
 
-    // Phase 1/2/3은 탐색할 차원이 전혀 없어 0개이고, Phase 4도 사적연금이 없어(hasPension false)
-    // 시뮬레이션을 한 번도 실행하지 않으므로 0이다. 예전에는 Phase 4가 전제 조건 미충족이어도
-    // 무조건 +1을 더해, AI advisor의 "전부 실패" 판정(failed === total)이 성립할 수 없었다.
-    expect(recommendation.totalCandidateCount).toBe(0);
+    // Phase 1(인출 시점/순서 격자)과 Phase 3은 탐색할 차원이 없어 0개이고, Phase 4도
+    // 사적연금이 없어(hasPension false) 시뮬레이션을 한 번도 실행하지 않으므로 0이다.
+    // 예전에는 Phase 4가 전제 조건 미충족이어도 무조건 +1을 더해, AI advisor의
+    // "전부 실패" 판정(failed === total)이 성립할 수 없었다.
+    //
+    // Phase 2의 하강 후보는 인출 격자와 무관하게 항상 생성된다 — "덜 쓴다"는 선택지는
+    // 자산이 하나뿐이어도 존재한다.
+    const decreaseOnlyCount = generateSpendingAdjustmentCandidates(
+      noOptimizableDimensionParams, getIdentityPlan(noOptimizableDimensionParams), { allowIncrease: false }
+    ).length;
+
+    expect(generateCandidatePlans(noOptimizableDimensionParams)).toEqual([]);
+    expect(recommendation.totalCandidateCount).toBe(decreaseOnlyCount);
     expect(recommendation.failedCandidateCount).toBe(0);
   });
 });
@@ -1039,10 +1063,14 @@ describe('recommendStrategy - Phase 4 사적연금 채널링 통합', () => {
       displayCurrency: 'KRW',
     };
 
-    // 목표 연간 생활비(2,000,000 * 12 = 24,000,000)를 정확히 충족하는 결과 — baseline과 모든
-    // Phase 1/2/신규계좌 후보에 대해 이 값을 반환해 서로 동점(개선 없음)으로 묶는다.
-    const tiedResult: SimulationResult = makeSimulationResult(
-      [makeYearlyResult({ age: 60, spending: 24000000 })],
+    // 목표 연간 생활비를 정확히 충족하는 결과 — baseline과 모든 Phase 1/2/신규계좌 후보를
+    // 서로 동점(개선 없음)으로 묶는다.
+    //
+    // 고정된 spending을 돌려주면 안 된다. Phase 2의 생활비 배수 후보는 목표 자체를
+    // 스케일링하므로(0.8배 후보의 목표는 1,600,000원), 고정값은 그 후보에서 목표 대비 125%
+    // 소비로 읽혀 자동으로 이겨 버린다 — 이 테스트가 세우려는 "동점" 전제가 깨진다.
+    const tiedResultFor = (candidateParams: SimulationParams): SimulationResult => makeSimulationResult(
+      [makeYearlyResult({ age: 60, spending: candidateParams.userProfile.targetMonthlySpending * 12 })],
       0
     );
     // 목표 대비 125% 소비(consumption 컴포넌트만 더 높음, 다른 컴포넌트는 동일하게 유지)로
@@ -1058,7 +1086,7 @@ describe('recommendStrategy - Phase 4 사적연금 채널링 통합', () => {
     // 이 필드로 채널링 후보만 식별해 다른 결과를 반환한다.
     engine.runForUtility = vi.fn((candidateParams: SimulationParams): SimulationResult => {
       const isChannelingCandidate = candidateParams.privatePensions.some((p) => p.earlyChannelingEnabled === true);
-      return isChannelingCandidate ? channelingResult : tiedResult;
+      return isChannelingCandidate ? channelingResult : tiedResultFor(candidateParams);
     });
 
     const result = recommendStrategy(params, engine);

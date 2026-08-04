@@ -242,9 +242,11 @@ describe('getIdentityPlan', () => {
 describe('generateSpendingAdjustmentCandidates', () => {
   const basePlan = getIdentityPlan(baseParams);
 
-  test('allowIncrease가 false이면 후보를 생성하지 않는다', () => {
+  test('allowIncrease가 false여도 하강 후보는 생성한다', () => {
+    // 고갈 위험이 있어 증액을 막는 상황이야말로 "덜 쓰는" 후보가 필요한 상황이다.
     const candidates = generateSpendingAdjustmentCandidates(baseParams, basePlan, { allowIncrease: false });
-    expect(candidates).toEqual([]);
+
+    expect(candidates.map((c) => c.monthlySpendingMultiplier)).toEqual([0.8, 0.9]);
   });
 
   test("spendingStrategy가 'target'이 아니면 후보를 생성하지 않는다", () => {
@@ -265,10 +267,12 @@ describe('generateSpendingAdjustmentCandidates', () => {
     expect(candidates).toEqual([]);
   });
 
-  test('정상 조건이면 배수 후보 2개(1.1, 1.2)를 생성하고 나머지 필드는 basePlan을 유지한다', () => {
+  test('정상 조건이면 하강·상승 배수 후보 4개를 생성하고 나머지 필드는 basePlan을 유지한다', () => {
+    // 예전에는 증가 방향만 있어서 「자산 최대화」·「상속 최대화」를 고른 사용자에게 최적일 수
+    // 있는 후보가 아예 생성되지 않았다 — 목표를 바꿔도 argmax가 움직일 여지가 없었다.
     const candidates = generateSpendingAdjustmentCandidates(baseParams, basePlan, { allowIncrease: true });
 
-    expect(candidates.map((c) => c.monthlySpendingMultiplier)).toEqual([1.1, 1.2]);
+    expect(candidates.map((c) => c.monthlySpendingMultiplier)).toEqual([0.8, 0.9, 1.1, 1.2]);
     for (const c of candidates) {
       expect(c.assetSellOrderStrategy).toBe(basePlan.assetSellOrderStrategy);
     }

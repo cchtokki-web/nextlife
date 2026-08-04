@@ -150,24 +150,39 @@ export class SimulationEngine {
     return { ...result, utility };
   }
 
+  // 이진탐색 한 회의 시행 params. 목표 생활비만 바꾸고, **상속 하한선은 떼어 낸다.**
+  //
+  // 하한선을 인출 경로에 건 채로 탐색하면 이진탐색이 깨진다: 인출이 막힐 뿐 자산은 늘
+  // 하한선 위에 남으므로 어떤 생활비를 넣어도 "성공"으로 읽혀 탐색이 상한(5천만원)까지
+  // 올라간다. 여기서는 생활비 자체가 자유변수이므로, 하한선은 인출 제약이 아니라
+  // **탐색의 성공 조건**(meetsSustainabilityGoal)으로 표현하는 것이 옳다.
+  private sustainabilityTrialParams(params: SimulationParams, targetMonthlySpending: number): SimulationParams {
+    const trial: SimulationParams = {
+      ...params,
+      userProfile: { ...params.userProfile, targetMonthlySpending },
+    };
+    delete trial.assetFloor;
+    return trial;
+  }
+
+  // 이 시행이 "지속 가능"한가. 하한선이 없으면 기존 판정("고갈되지 않았거나 기말자산이 남음")을
+  // 비트 단위로 그대로 쓴다.
+  private meetsSustainabilityGoal(result: SimulationResult, assetFloor: number): boolean {
+    if (assetFloor > 0) return result.endingAssets >= assetFloor;
+    return result.depletionAge === null || result.endingAssets > 0;
+  }
+
   private findMaxSustainableValue(params: SimulationParams): number {
+    const assetFloor = Math.max(0, params.assetFloor ?? 0);
     let low = 0;
     let high = 50000000; // 5천만원/월
     let bestTarget = 0;
 
     for (let i = 0; i < 30; i++) {
       const mid = (low + high) / 2;
-      const trialParams = {
-        ...params,
-        userProfile: {
-          ...params.userProfile,
-          targetMonthlySpending: mid,
-        },
-      };
-      
-      const result = this.runSingle(trialParams);
-      
-      if (result.depletionAge === null || result.endingAssets > 0) {
+      const result = this.runSingle(this.sustainabilityTrialParams(params, mid));
+
+      if (this.meetsSustainabilityGoal(result, assetFloor)) {
         bestTarget = mid;
         low = mid;
       } else {
@@ -178,6 +193,7 @@ export class SimulationEngine {
   }
 
   private findMaxSustainable(params: SimulationParams): SimulationResult {
+    const assetFloor = Math.max(0, params.assetFloor ?? 0);
     let low = 0;
     let high = 50000000; // 5천만원/월
     let bestResult: SimulationResult | null = null;
@@ -185,17 +201,9 @@ export class SimulationEngine {
 
     for (let i = 0; i < 30; i++) {
       const mid = (low + high) / 2;
-      const trialParams = {
-        ...params,
-        userProfile: {
-          ...params.userProfile,
-          targetMonthlySpending: mid,
-        },
-      };
-      
-      const result = this.runSingle(trialParams);
-      
-      if (result.depletionAge === null || result.endingAssets > 0) {
+      const result = this.runSingle(this.sustainabilityTrialParams(params, mid));
+
+      if (this.meetsSustainabilityGoal(result, assetFloor)) {
         bestResult = result;
         bestTarget = mid;
         low = mid;
@@ -205,13 +213,9 @@ export class SimulationEngine {
     }
 
     if (!bestResult) {
-      const trialParams = {
-        ...params,
-        userProfile: { ...params.userProfile, targetMonthlySpending: 0 },
-      };
-      bestResult = this.runSingle(trialParams);
+      bestResult = this.runSingle(this.sustainabilityTrialParams(params, 0));
     }
-    
+
     return { ...bestResult, calculatedTargetSpending: bestTarget };
   }
 
@@ -478,6 +482,14 @@ export class SimulationEngine {
     // dividendYield는 시간에 따라 변하지 않으므로 인출 순서를 한 번만 계산해 재사용한다.
     // 원본 activeAssets 배열(순서)은 잉여현금 재투자·ISA 만기 이동 등 다른 로직에서 그대로 쓰인다.
     const withdrawalOrderedAssets = sortAssetsForWithdrawal(activeAssets, withdrawalPlan?.assetSellOrderStrategy);
+
+    // 상속 하한선. 총자산 정의(stock + pension + isa)는 연말에 yearlyResults에 싣는 것과
+    // 정확히 같아야 한다 — 다르면 "하한선을 지켰다"는 판정과 화면이 보여주는 총자산이 갈린다.
+    const assetFloorDisplay = Math.max(0, params.assetFloor ?? 0);
+    const currentTotalAssetsDisplay = () =>
+      activeAssets.reduce((sum, a) => sum + this.convertValue(a.currentValue, a.currency, displayCurrency, exchangeRate), 0)
+      + activePensions.reduce((sum, p) => sum + this.convertValue(p.currentBalance, p.currency, displayCurrency, exchangeRate), 0)
+      + activeIsas.reduce((sum, i) => sum + this.convertValue(i.currentBalance, i.currency, displayCurrency, exchangeRate), 0);
 
     // 해외주식 양도세는 실현 다음 해 5월에 확정신고·납부한다. 같은 해에 부과하면 순환이
     // 생긴다 — 양도세를 내려고 자산을 팔면 그 매도가 다시 양도차익을 만든다. 고정점을
@@ -791,6 +803,20 @@ export class SimulationEngine {
               monthlyPensionPreTaxLimitRemainingKRW -= this.convertValue(drawAmountRaw, pension.currency, 'KRW', exchangeRate);
             }
 
+            // 상속 하한선은 정상 인출도 막는다. 이 인출은 부족분과 무관하게 매달 일어나므로
+            // (잔액 ÷ 잔여개월), 여기서 막지 않으면 아래 부족분 경로를 아무리 조여도 연금이
+            // 계속 소득으로 바뀌어 소비되고 총자산이 새어 나간다 — 실제로 그랬다.
+            //
+            // 인출한 돈이 소비되지 않으면 잉여현금으로 자산에 되돌아오므로, 막아서 손해 볼 일은
+            // 없다. 오히려 인출 시 연금소득세를 내지 않게 되어 하한선 유지에 유리하다.
+            if (assetFloorDisplay > 0) {
+              const headroomInPensionCurrency = this.convertValue(
+                Math.max(0, currentTotalAssetsDisplay() - assetFloorDisplay),
+                displayCurrency, pension.currency, exchangeRate
+              );
+              drawAmountRaw = Math.min(drawAmountRaw, headroomInPensionCurrency);
+            }
+
             pension.currentBalance -= drawAmountRaw;
 
             // pensionWithdrawalsStarted가 false면 drawAmountRaw는 항상 0이라 세율 값 자체는 결과에
@@ -879,7 +905,22 @@ export class SimulationEngine {
           activeAssets[0].currentValue += inflow;
           activeAssets[0].costBasis += inflow;
         } else if (shortfall > 0) {
-          let remainingShortfall = shortfall;
+          // 상속 하한선. 총자산이 이 선 아래로 내려가는 인출은 하지 않는다.
+          //
+          // 막힌 금액은 아래 `actualMonthlySpending -= ...`로 흘러 소비가 깎인다 —
+          // "상속을 지키려면 생활비를 줄여야 한다"가 새 메커니즘 없이 consumption 원점수
+          // 하락으로 정직하게 나타난다.
+          //
+          // 사적연금 인출은 세전 잔액이 세후 충당액보다 많이 줄어들므로, 마지막 구간에서
+          // 그 세액만큼 하한선을 넘어설 수 있다. 다음 달에는 여유가 0이 되어 인출이 멈추므로
+          // 오차가 누적되지 않고, 후보 탐색은 실제 기말자산으로 하한선을 다시 판정한다
+          // (RecommendationEngine.evaluateCandidate).
+          const withdrawableDisplay = assetFloorDisplay > 0
+            ? Math.max(0, currentTotalAssetsDisplay() - assetFloorDisplay)
+            : Infinity;
+          const blockedByFloor = Math.max(0, shortfall - withdrawableDisplay);
+
+          let remainingShortfall = shortfall - blockedByFloor;
           const generalAssetWithdrawalStartAge = withdrawalPlan?.generalAssetWithdrawalStartAge ?? userProfile.retirementAge;
           if (currentAge >= generalAssetWithdrawalStartAge) {
             for (const asset of withdrawalOrderedAssets) {
@@ -909,13 +950,32 @@ export class SimulationEngine {
                 pensionValueNetDisplay = Math.min(pensionValueNetDisplay, Math.max(0, maxAllowedDrawNetDisplay));
               }
 
+              // 월 인출 목표를 정했으면 후행 인출도 그 한도 안에서만 한다.
+              //
+              // 이것이 빠져 있어서 「연금 전략」의 인출 비율(100%/50%/25%)이 **총액을 바꾸지
+              // 못했다.** 정상 인출에서 25%만 뽑아도 남은 75%를 이 경로가 곧바로 채워, 세 선택지가
+              // 인출 "순서"만 다르고 결과는 같은 두 종류로 뭉쳤다. 화면은 세 개의 다른 전략을
+              // 보여주는데 엔진에는 두 개만 있었다.
+              //
+              // 목표를 정하지 않은 경우(spending_first / ai_optimized)에는 이 캡이 걸리지 않고
+              // 기존대로 잔액 전체가 후행 인출 대상이다.
+              if (remainingMonthlyPensionTargetKRW !== undefined) {
+                const remainingTargetNetDisplay = this.convertValue(
+                  Math.max(0, remainingMonthlyPensionTargetKRW), 'KRW', displayCurrency, exchangeRate
+                ) * (1 - taxRate);
+                pensionValueNetDisplay = Math.min(pensionValueNetDisplay, Math.max(0, remainingTargetNetDisplay));
+              }
+
               if (pensionValueNetDisplay >= remainingShortfall) {
                 const drawPreTax = remainingShortfall / (1 - taxRate);
                 pension.currentBalance -= this.convertValue(drawPreTax, displayCurrency, pension.currency, exchangeRate);
                 if (currentTaxSettings.limitPrivatePensionToTaxLimit) {
                   monthlyPensionPreTaxLimitRemainingKRW -= this.convertValue(drawPreTax, displayCurrency, 'KRW', exchangeRate);
                 }
-                
+                if (remainingMonthlyPensionTargetKRW !== undefined) {
+                  remainingMonthlyPensionTargetKRW -= this.convertValue(drawPreTax, displayCurrency, 'KRW', exchangeRate);
+                }
+
                 // Update pension income variables with the shortfall drawing
                 const drawAmountTax = drawPreTax * taxRate;
                 const drawAmountNet = drawPreTax - drawAmountTax;
@@ -935,6 +995,9 @@ export class SimulationEngine {
                   if (currentTaxSettings.limitPrivatePensionToTaxLimit) {
                     monthlyPensionPreTaxLimitRemainingKRW -= this.convertValue(drawPreTax, displayCurrency, 'KRW', exchangeRate);
                   }
+                  if (remainingMonthlyPensionTargetKRW !== undefined) {
+                    remainingMonthlyPensionTargetKRW -= this.convertValue(drawPreTax, displayCurrency, 'KRW', exchangeRate);
+                  }
 
                   const drawAmountTax = drawPreTax * taxRate;
                   const drawAmountNet = drawPreTax - drawAmountTax;
@@ -948,7 +1011,8 @@ export class SimulationEngine {
               }
             }
           }
-          if (remainingShortfall > 0) actualMonthlySpending -= remainingShortfall;
+          const unmet = remainingShortfall + blockedByFloor;
+          if (unmet > 0) actualMonthlySpending -= unmet;
         }
         annualSpending += actualMonthlySpending;
       }

@@ -8,6 +8,7 @@ import {
   canFillSentinelAxis,
   paramsWithSentinelOverlay,
 } from '@/core/usecases/strategy/verifiedSentinelPlan';
+import { recommendStrategy } from '@/core/usecases/strategy/RecommendationEngine';
 import { computeLifetimeUtility } from '@/core/usecases/utility/UtilityEngine';
 import { DEFAULT_UTILITY_CONFIG } from '@/core/usecases/utility/utilityWeights';
 import { BaselineWithdrawalPlan, SentinelAxisField, SimulationParams } from '@/core/entities/types';
@@ -120,15 +121,10 @@ describe('buildVerifiedSentinelPlan — 탐욕적 전진 선택', () => {
   const identityPlan = getIdentityPlan(params);
   const currentUtility = computeLifetimeUtility(engine.runForUtility(params), params, cfg);
 
-  // 모든 축을 identity와 다르게 바꾼 "추천안". 실제 추천 결과와 무관하게 절차 자체를 검증한다.
-  const recommendedPlan: BaselineWithdrawalPlan = {
-    ...identityPlan,
-    nationalPensionStartAge: 70,
-    assetSellOrderStrategy: 'high_dividend_first',
-    generalAssetWithdrawalStartAge: 70,
-    isaMaturityDestination: 'asset',
-    privatePensionMonthlyTarget: 2000000,
-  };
+  // 실제 추천 엔진이 만든 추천안을 쓴다. 합성 계획으로 하면 "개선되는 축이 하나도 없는"
+  // 조합을 우연히 고를 수 있고, 그러면 사슬이 비어 아래 단언들이 통째로 무의미해진다.
+  const recommendedPlan: BaselineWithdrawalPlan =
+    recommendStrategy(params, engine, cfg).recommendedPlan ?? identityPlan;
 
   const steps = buildVerifiedSentinelPlan(params, identityPlan, recommendedPlan, currentUtility, engine, cfg);
 

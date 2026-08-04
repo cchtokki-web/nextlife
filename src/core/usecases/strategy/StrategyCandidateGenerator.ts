@@ -131,16 +131,29 @@ export function paramsWithBaselinePlan(
 // 생활비 배수는 5차원 cartesian product에 곱해 넣지 않고(그리드 크기만큼 후보가 배증하므로),
 // 5차원 탐색 결과(또는 개선안이 없으면 identity plan) 위에 배수만 얹은 별도의 소규모 후보로 평가한다.
 // 추가 비용은 그리드 크기가 아니라 고정 O(그리드 크기)다.
-const MONTHLY_SPENDING_MULTIPLIER_GRID = [1.1, 1.2]; // 1.0(현행)은 baseline/basePlan으로 이미 평가되므로 제외
+// 1.0(현행)은 baseline/basePlan으로 이미 평가되므로 양쪽 격자에서 모두 제외한다.
+const SPENDING_INCREASE_GRID = [1.1, 1.2];
+
+// 하강 후보. 예전에는 증가 방향만 있어서 「자산 최대화」·「상속 최대화」를 고른 사용자에게
+// **최적일 수 있는 후보가 아예 생성되지 않았다** — 목표를 바꿔도 argmax가 움직일 여지가 없었다.
+//
+// 목표별로 분기하지 않고 항상 생성한다. 어느 목표에서든 "덜 쓰는 대신 오래 버틴다"는
+// 맞바꿈은 평가할 가치가 있고, 채택 여부는 점수가 정한다. 분기를 두면 목표 개수만큼
+// 규칙이 늘고 그 규칙들이 objectivePresets와 조용히 어긋난다.
+const SPENDING_DECREASE_GRID = [0.8, 0.9];
 
 export function generateSpendingAdjustmentCandidates(
   params: SimulationParams,
   basePlan: BaselineWithdrawalPlan,
   options: { allowIncrease: boolean }
 ): BaselineWithdrawalPlan[] {
-  if (!options.allowIncrease) return [];
+  // 목표 생활비가 인출액을 결정하지 않는 전략에서는 배수 자체가 무의미하다.
   if ((params.spendingStrategy ?? 'target') !== 'target') return [];
   if (params.userProfile.targetMonthlySpending <= 0) return [];
 
-  return MONTHLY_SPENDING_MULTIPLIER_GRID.map((multiplier) => ({ ...basePlan, monthlySpendingMultiplier: multiplier }));
+  const grid = options.allowIncrease
+    ? [...SPENDING_DECREASE_GRID, ...SPENDING_INCREASE_GRID]
+    : SPENDING_DECREASE_GRID;
+
+  return grid.map((multiplier) => ({ ...basePlan, monthlySpendingMultiplier: multiplier }));
 }

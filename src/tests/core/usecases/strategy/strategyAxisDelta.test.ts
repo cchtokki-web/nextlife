@@ -74,20 +74,8 @@ describe('전략 축이 현금흐름을 바꾼다', () => {
   // 다만 **하나뿐이면 그 축은 죽어 있다.**
   const AXIS_EXPECTATIONS = [
     {
-      axis: 'objective' as const,
-      values: ['lifetime_spending', 'tax_minimization', 'wealth_maximization', 'bequest_maximization', 'ai_recommended'],
-      // 목표가 다르면 탐색의 argmax가 달라져 인출 계획이 달라져야 한다.
-      minDistinct: 3,
-    },
-    {
       axis: 'spendingChoice' as const,
       values: ['target', 'dividend_only', 'max_sustainable'],
-      minDistinct: 3,
-    },
-    {
-      axis: 'bequestStrategy' as const,
-      values: ['spend_all', 'leave_some', 'maximize', 'target_amount'],
-      // "모두 사용"과 "최대 상속"이 같은 금액을 남기면 안 된다.
       minDistinct: 3,
     },
     {
@@ -135,6 +123,79 @@ describe('전략 축이 현금흐름을 바꾼다', () => {
   });
 });
 
+// **선호 축(목표 우선순위·상속 전략)은 결정 축과 다른 방식으로 검증한다.**
+//
+// 결정 축(국민연금 개시 나이 등)은 "미정"이면 AI가 값을 채우므로 선택지 수만큼 곡선이 갈린다.
+// 선호 축은 값을 채우지 않고 **탐색의 채점 기준을 바꿔 argmax를 옮긴다**. 그래서 효과가
+// 나타나는 자리가 셋으로 나뉜다:
+//
+//   1. 추천안(recommendedPlan) — 여기가 선호가 가장 직접적으로 드러나는 곳이다.
+//   2. 그 추천안 중 자동 채움이 검증한 결정 축 → 자산 곡선.
+//   3. 생활비 배수 — **자동 적용하지 않는다.** 목표 생활비는 사용자의 삶의 결정이지
+//      "미정 상태로 남은 계산 파라미터"가 아니다. 조용히 20% 올리면 화면이 보여주는
+//      목표 생활비와 엔진이 쓴 값이 갈린다(이 저장소가 반복해서 제거해 온 결함 유형).
+//      추천 체크리스트로 제안하고 적용은 사용자가 누른다.
+//
+// 3번 때문에 선호 축의 곡선 종수는 선택지 수만큼 나올 수 없다. 그래서 곡선은 "죽지 않았는가"
+// (2종 이상)로 보고, 살아 있음의 강도는 추천안 종수로 잰다.
+describe('선호 축이 추천과 현금흐름을 바꾼다', () => {
+  function distinctRecommendations(
+    params: SimulationParams,
+    axis: keyof RetirementStrategy,
+    values: readonly unknown[]
+  ): number {
+    const engine = new SimulationEngine();
+    return new Set(
+      values.map((value) => {
+        const compiled = compileStrategy({
+          ...params,
+          strategy: { ...DEFAULT_RETIREMENT_STRATEGY, [axis]: value } as RetirementStrategy,
+        });
+        return JSON.stringify(recommendStrategy(compiled.params, engine, compiled.utilityConfig).recommendedPlan);
+      })
+    ).size;
+  }
+
+  // 상속 목표 금액이 실제로 제약이 되려면 자연스러운 기말자산보다 높아야 한다.
+  // 낮으면 하한선이 한 번도 걸리지 않아 'target_amount'가 무동작으로 보인다.
+  const withBequestTarget: SimulationParams = {
+    ...allAxesLiveParams,
+    userProfile: { ...allAxesLiveParams.userProfile, targetBequest: 900_000_000 },
+  };
+
+  const OBJECTIVES = [
+    'lifetime_spending', 'tax_minimization', 'wealth_maximization', 'bequest_maximization', 'ai_recommended',
+  ] as const;
+  const BEQUEST_STRATEGIES = ['spend_all', 'leave_some', 'maximize', 'target_amount'] as const;
+
+  test('목표 우선순위를 바꾸면 자산 곡선이 갈린다', () => {
+    expect(distinctCashflows(allAxesLiveParams, 'objective', OBJECTIVES)).toBeGreaterThanOrEqual(2);
+  });
+
+  test('상속 전략을 바꾸면 자산 곡선이 갈린다', () => {
+    expect(distinctCashflows(withBequestTarget, 'bequestStrategy', BEQUEST_STRATEGIES)).toBeGreaterThanOrEqual(2);
+  });
+
+  test('추천안 자체가 상속 목표를 지킨다', () => {
+    // 하한선은 인출계획(recommendedPlan)이 아니라 params에 실리므로 추천안 객체로는
+    // 드러나지 않는다. 대신 추천이 실제로 도달한 결과가 목표를 지켜야 한다 —
+    // 지키지 못하는 후보는 evaluateCandidate가 점수와 무관하게 탈락시킨다.
+    const engine = new SimulationEngine();
+    const compiled = compileStrategy({
+      ...withBequestTarget,
+      strategy: { ...DEFAULT_RETIREMENT_STRATEGY, bequestStrategy: 'target_amount' },
+    });
+    const recommendation = recommendStrategy(compiled.params, engine, compiled.utilityConfig);
+
+    expect(compiled.params.assetFloor).toBe(900_000_000);
+    expect(recommendation.recommendedResult.endingAssets).toBeGreaterThanOrEqual(900_000_000 * 0.99);
+  });
+
+  test('목표 우선순위를 바꾸면 추천안이 갈린다', () => {
+    expect(distinctRecommendations(allAxesLiveParams, 'objective', OBJECTIVES)).toBeGreaterThanOrEqual(2);
+  });
+});
+
 describe('전략 축의 방향성', () => {
   // 절대값이 아니라 부등식으로 고정한다. 세율이나 가중치가 조정돼도 "많이 남기려는 계획이
   // 더 많이 남긴다"는 성질은 유지되어야 한다.
@@ -142,14 +203,19 @@ describe('전략 축의 방향성', () => {
     runWithStrategy(params, { ...DEFAULT_RETIREMENT_STRATEGY, ...overrides } as RetirementStrategy);
 
   test('상속 목표 금액을 세우면 다 쓰고 가는 계획보다 많이 남긴다', () => {
-    const target = 500_000_000;
+    const spendAll = run({ bequestStrategy: 'spend_all' });
+
+    // 목표는 "그냥 두면 남을 금액"보다 커야 제약이 실제로 걸린다. 작으면 하한선이 한 번도
+    // 닿지 않아 두 계획이 같은 곡선을 만들고, 이 단언은 무의미하게 실패한다.
+    const target = Math.round(spendAll.endingAssets * 1.2);
     const withTarget = runWithStrategy(
       { ...allAxesLiveParams, userProfile: { ...allAxesLiveParams.userProfile, targetBequest: target } },
       { ...DEFAULT_RETIREMENT_STRATEGY, bequestStrategy: 'target_amount' }
     );
-    const spendAll = run({ bequestStrategy: 'spend_all' });
 
     expect(withTarget.endingAssets).toBeGreaterThan(spendAll.endingAssets);
+    // 목표를 실제로 지켜야 한다 — "조금 더 남았다"로는 부족하다.
+    expect(withTarget.endingAssets).toBeGreaterThanOrEqual(target * 0.99);
   });
 
   test('상속 최대화가 평생 생활비 최대화보다 많이 남긴다', () => {

@@ -194,6 +194,17 @@ export interface SimulationParams {
   yieldPreset?: 'conservative' | 'base' | 'aggressive' | 'custom';
   customYieldSnapshot?: CustomYieldSnapshot; // "사용자 프리셋" 복원용 저장값
   spendingStrategy?: SpendingStrategy; // 목표 생활비 달성 전략
+  // 상속 하한선(displayCurrency 기준). 총자산이 이 금액 아래로 내려가는 인출을 하지 않는다.
+  // 미지정·0이면 하한선 없음(= 기존 동작과 비트 단위로 동일).
+  //
+  // withdrawalPlan이 아니라 최상위에 두는 이유: 이것은 "언제/어떤 순서로 인출하느냐"는
+  // 결정이 아니라 시뮬레이션 전체에 걸린 제약이다. 후보 탐색은 withdrawalPlan을 통째로
+  // 교체하므로(paramsWithBaselinePlan) 그 안에 두면 모든 후보 평가에서 조용히 사라진다.
+  //
+  // userProfile.targetBequest와 다르다. 그쪽은 채점 기준(적정선)이고 이쪽은 엔진 제약이다.
+  // 기본 상속 전략('leave_some')은 targetBequest를 채우지만 하한선은 세우지 않는다 —
+  // 세우면 전략을 저장한 적 없는 모든 시나리오의 곡선이 조용히 바뀐다.
+  assetFloor?: number;
   taxSettings?: TaxSettings; // 고급 세금 설정
   withdrawalPlan?: WithdrawalPlan; // 인출 정책 및 생활비 조정 (미지정 시 기존 균등분할 인출 로직 사용)
   // 은퇴 전략 설정. 미지정이면 compileStrategy가 baseline 전략으로 컴파일한다.

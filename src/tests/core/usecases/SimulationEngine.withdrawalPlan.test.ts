@@ -246,26 +246,51 @@ describe('SimulationEngine withdrawalPlan (인출 정책 파라미터화)', () =
     expect(at55!.privatePensionIncome).toBeGreaterThan(0);
   });
 
-  test('withdrawalPlan이 있어도 shortfall 발생 시 기존처럼 사적연금이 후행 인출된다', () => {
+  test('월 인출 목표를 정하면 후행 인출도 그 한도를 넘지 않는다', () => {
+    // **예전에는 넘었다.** 정상 인출에서 목표만큼 뽑고, 부족분이 남으면 후행 인출이 잔액에서
+    // 더 뽑아 갔다. 그래서 「연금 전략」의 인출 비율(100%/50%/25%)이 총액을 전혀 바꾸지 못하고
+    // 인출 "순서"만 바꿨다 — 화면은 세 개의 다른 전략을 보여주는데 엔진에는 두 개만 있었다.
+    //
+    // 목표는 "이만큼 뽑겠다"가 아니라 "이 이상은 뽑지 않겠다"이기도 하다. 부족분은 사적연금
+    // 대신 일반자산에서 충당되고, 그래도 모자라면 소비가 깎인다.
     const engine = new SimulationEngine();
-    // 목표 생활비를 매우 낮은 사적연금 목표보다 훨씬 높게 잡아 shortfall이 발생하도록 함
+    const monthlyTarget = 1000000;
     const result = engine.run({
       ...baseParams,
-      assets: [], // 일반자산 없음 -> shortfall 시 바로 연금으로 감
+      assets: [], // 일반자산 없음 -> 부족분을 메울 다른 재원이 없다
       userProfile: {
         ...baseParams.userProfile,
-        targetMonthlySpending: 5000000, // 500만 원(사적연금 목표 100만원보다 훨씬 큼)
+        targetMonthlySpending: 5000000, // 목표(월 100만원)보다 훨씬 큰 생활비 -> 부족분 발생
       },
-      withdrawalPlan: {
-        privatePensionMonthlyTarget: 1000000,
-      },
+      withdrawalPlan: { privatePensionMonthlyTarget: monthlyTarget },
     });
 
     const resultAtRetirement = result.yearlyResults.find(
       (r) => r.age === baseParams.userProfile.retirementAge
     );
     expect(resultAtRetirement).toBeDefined();
-    // shortfall 충당으로 목표(연 1200만원)를 초과하는 사적연금 인출이 발생해야 한다.
+    // 세후 수령액이므로 세전 한도(연 1200만원)를 넘을 수 없다.
+    expect(resultAtRetirement!.privatePensionIncome).toBeLessThanOrEqual(monthlyTarget * 12);
+    // 그래도 한도만큼은 실제로 인출된다(0으로 막혀 버린 것이 아니다).
+    expect(resultAtRetirement!.privatePensionIncome).toBeGreaterThan(0);
+    // 부족분을 메울 재원이 없으므로 소비가 목표에 못 미친다 — 정직하게 드러나야 한다.
+    expect(resultAtRetirement!.spending).toBeLessThan(5000000 * 12);
+  });
+
+  test('월 인출 목표를 정하지 않으면 후행 인출이 잔액 전체를 쓴다', () => {
+    // 캡은 목표를 명시한 경우에만 걸린다. 목표가 없으면(spending_first / ai_optimized)
+    // 예전처럼 부족분을 최대한 충당한다.
+    const engine = new SimulationEngine();
+    const result = engine.run({
+      ...baseParams,
+      assets: [],
+      userProfile: { ...baseParams.userProfile, targetMonthlySpending: 5000000 },
+    });
+
+    const resultAtRetirement = result.yearlyResults.find(
+      (r) => r.age === baseParams.userProfile.retirementAge
+    );
+    expect(resultAtRetirement).toBeDefined();
     expect(resultAtRetirement!.privatePensionIncome).toBeGreaterThan(1000000 * 12);
   });
 });

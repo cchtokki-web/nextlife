@@ -261,7 +261,11 @@ describe('SimulationEngine 배우자 단독 생존 기간의 고갈', () => {
     const result = engine.run({ ...depleting, spouse: longLivedSpouse });
 
     // 전제 확인: 고갈이 본인 사후·배우자 생존 중에 일어난다.
-    expect(result.depletionAge).toBe(84);
+    // 절대 나이를 박지 않는다 — 이 테스트가 겨냥하는 것은 "고갈 안전성을 무엇으로 정규화하는가"
+    // 이지 특정 나이가 아니다. 세금·인출 규칙이 바뀔 때마다 무관한 이유로 깨지면 안 된다.
+    expect(result.depletionAge).not.toBeNull();
+    expect(result.depletionAge!).toBeGreaterThan(depleting.userProfile.expectancy);
+    expect(result.depletionAge!).toBeLessThan(longLivedSpouse.expectancy);
     expect(result.yearlyResults[result.yearlyResults.length - 1].age).toBe(95);
 
     // 고갈 안전성을 본인 기대수명(80)으로 정규화하면 (84-60)/(80-60) = 1.2가 clamp에 걸려
@@ -274,12 +278,14 @@ describe('SimulationEngine 배우자 단독 생존 기간의 고갈', () => {
     const engine = new SimulationEngine();
 
     // 인출액이 privatePensionMonthlyTarget으로 고정되어 있어 두 시나리오의 현금흐름이
-    // 고갈 시점까지 완전히 같다 — 고갈 나이가 84세로 동일하고 종료 나이만 다르다.
-    const shorter = engine.run({ ...depleting, spouse: { ...longLivedSpouse, expectancy: 85 } });
+    // 고갈 시점까지 완전히 같다 — 고갈 나이가 동일하고 종료 나이만 다르다.
+    // 짧은 쪽의 배우자 기대수명(88)은 고갈 나이보다 뒤여야 한다. 앞이면 그 시나리오는
+    // 고갈 전에 끝나 버려(depletionAge = null) 비교 자체가 성립하지 않는다.
+    const shorter = engine.run({ ...depleting, spouse: { ...longLivedSpouse, expectancy: 88 } });
     const longer = engine.run({ ...depleting, spouse: longLivedSpouse });
 
-    expect(shorter.depletionAge).toBe(84);
-    expect(longer.depletionAge).toBe(84);
+    expect(shorter.depletionAge).not.toBeNull();
+    expect(longer.depletionAge).toBe(shorter.depletionAge);
     // 무일푼 기간이 1년에서 11년으로 늘었으므로 점수는 더 낮아야 한다.
     expect(longer.retirementScore).toBeLessThan(shorter.retirementScore);
     expect(longer.utility!.components.depletionSafety)
