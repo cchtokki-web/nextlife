@@ -6,10 +6,11 @@ import {
   StrategyRecommendation,
   UtilityBreakdown,
   UtilityConfig,
+  UtilityRaws,
   WithdrawalPlan,
 } from '../../entities/types';
 import { SimulationEngine } from '../SimulationEngine';
-import { computeLifetimeUtility } from '../utility/UtilityEngine';
+import { computeLifetimeUtility, computeUtilityRaws, scoreUtilityRaws } from '../utility/UtilityEngine';
 import { DEFAULT_UTILITY_CONFIG } from '../utility/utilityWeights';
 import { analyzeCurrentStrategy, formatManwon } from '../utility/utilityAnalysis';
 import { getRetirementGrade } from '../../entities/retirementGrade';
@@ -18,6 +19,10 @@ import { optimizeDividendReinvestment } from './DividendReinvestmentOptimizer';
 import { optimizePrivatePensionChanneling } from './PrivatePensionChannelingOptimizer';
 import { computeDeltas } from './deltas';
 import { buildVerifiedSentinelPlan } from './verifiedSentinelPlan';
+import { resolveStrategy } from './compileStrategy';
+import {
+  isObjectivePresetConfig, pickLowestRegret, pickMostRobust, resolveAssumptionVariants,
+} from './robustness';
 
 // 검증된 축이 하나도 없을 때 돌려주는 공유 상수. 매번 새 배열을 만들면 소비처(화면)의
 // 메모이제이션이 흔한 경로에서 계속 깨진다.
@@ -287,6 +292,29 @@ interface CandidateSearchState {
   bestUtility: UtilityBreakdown;
   bestPlan: BaselineWithdrawalPlan | null;
   failedCandidateCount: number;
+  // 강건성 모드 재평가 대상. 점수 상위 몇 개만 남긴다 — 재평가는 후보 하나당 국면 수만큼
+  // 시뮬레이션을 돌리므로 전수로 하면 비용이 곱해진다.
+  topCandidates: ScoredCandidate[];
+}
+
+// 강건성 재평가에 필요한 최소 정보. raws를 함께 보관하는 이유는 목표 우선순위 후회 계산이
+// **재시뮬레이션 없이** 5개 목표 전부를 채점할 수 있기 때문이다(UtilityEngine.computeUtilityRaws).
+interface ScoredCandidate {
+  // null이면 baseline(사용자의 현재 계획). 강건성 판정에서도 후보의 하나로 남아야
+  // "모든 개선안이 특정 국면에서 무너지면 현행 유지"가 표현된다.
+  plan: BaselineWithdrawalPlan | null;
+  result: SimulationResult;
+  utility: UtilityBreakdown;
+  raws: UtilityRaws;
+}
+
+// 상위 후보 보관 개수. 국면 수(최대 7)와 곱해지므로 작게 유지한다 — 5면 최대 35회다.
+const ROBUSTNESS_TOP_K = 5;
+
+function rememberCandidate(state: CandidateSearchState, candidate: ScoredCandidate): void {
+  state.topCandidates.push(candidate);
+  state.topCandidates.sort((a, b) => b.utility.score - a.utility.score);
+  if (state.topCandidates.length > ROBUSTNESS_TOP_K) state.topCandidates.length = ROBUSTNESS_TOP_K;
 }
 
 // 후보 하나를 시뮬레이션 + Utility 평가하고, baseline(또는 지금까지의 최선) 대비 더 나으면
@@ -311,7 +339,10 @@ function evaluateCandidate(
     const assetFloor = candidateParams.assetFloor ?? 0;
     if (assetFloor > 0 && candidateResult.endingAssets < assetFloor * 0.99) return;
 
-    const candidateUtility = computeLifetimeUtility(candidateResult, candidateParams, cfg);
+    const raws = computeUtilityRaws(candidateResult, candidateParams, cfg);
+    const candidateUtility = scoreUtilityRaws(raws, cfg.weights);
+    rememberCandidate(state, { plan, result: candidateResult, utility: candidateUtility, raws });
+
     if (candidateUtility.score > state.bestUtility.score) {
       state.bestUtility = candidateUtility;
       state.bestResult = candidateResult;
@@ -321,6 +352,60 @@ function evaluateCandidate(
     state.failedCandidateCount++;
     console.warn('Skipping withdrawal plan candidate that failed to simulate', plan, err);
   }
+}
+
+// 강건성 모드. 사용자가 미정으로 둔 축에 대해 상위 후보를 다시 서열화하고, 이긴 후보를
+// state의 최선으로 승격한다.
+//
+// 여기서 돌린 시뮬레이션은 totalCandidateCount에 더하지 않는다. 이미 평가한 후보를 다른
+// 국면에서 다시 재는 것이지 새 후보가 아니고, 그 수는 AI advisor의 "후보를 전부 실패했다"
+// 판정(failed === total)에 섞이면 안 된다.
+//
+// **사용자의 가정을 절대 덮어쓰지 않는다.** 국면 params는 평가에만 쓰고 버리며,
+// state에 남는 result/utility는 언제나 사용자 가정으로 계산한 값이다 — 화면에 그려지는
+// 곡선과 점수가 사용자가 입력한 미래 그대로여야 하기 때문이다.
+function applyRobustness(
+  state: CandidateSearchState,
+  params: SimulationParams,
+  engine: SimulationEngine,
+  cfg: UtilityConfig
+): void {
+  // 후보가 baseline 하나뿐이면 서열화할 것이 없다.
+  if (state.topCandidates.length <= 1) return;
+
+  // (1) 가정 축 — 여러 국면에서 최악이 가장 나은 계획.
+  const variants = resolveAssumptionVariants(params);
+  if (variants.length > 0) {
+    const winner = pickMostRobust(state.topCandidates, variants, (candidate, variant) => {
+      const candidateParams = variant.apply(
+        candidate.plan ? paramsForCandidate(params, candidate.plan) : params
+      );
+      try {
+        return computeLifetimeUtility(engine.runForUtility(candidateParams), candidateParams, cfg).score;
+      } catch (err) {
+        console.warn('Skipping robustness variant that failed to simulate', variant.label, err);
+        return null;
+      }
+    });
+    if (winner) promoteCandidate(state, winner);
+  }
+
+  // (2) 목표 우선순위 — 정규화된 최대 후회의 최소화. 원점수를 이미 갖고 있으므로
+  // 추가 시뮬레이션이 0회다.
+  //
+  // cfg가 목표 프리셋 표 위에 있지 않으면(사용자 정의 가중치) 후회 계산의 전제가 없다.
+  if (resolveStrategy(params).objective === 'ai_recommended' && isObjectivePresetConfig(cfg)) {
+    const winner = pickLowestRegret(state.topCandidates);
+    if (winner) promoteCandidate(state, winner);
+  }
+}
+
+// 강건성 판정이 고른 후보를 최선으로 승격한다. utility/result는 국면 평가값이 아니라
+// **사용자 가정으로 계산한 원래 값**이다(applyRobustness 주석 참고).
+function promoteCandidate(state: CandidateSearchState, winner: ScoredCandidate): void {
+  state.bestPlan = winner.plan;
+  state.bestResult = winner.result;
+  state.bestUtility = winner.utility;
 }
 
 // 후보 전략 생성(StrategyCandidateGenerator) + Utility 평가(UtilityEngine)를 결합해
@@ -336,13 +421,17 @@ export function recommendStrategy(
   // 필요 없는 runForUtility()로 실행한다. run()을 그대로 썼다면 후보 1개당 runSingle이 최대
   // 31회 호출되는 낭비가 있었다.
   const baselineResult = engine.runForUtility(params);
-  const currentUtility: UtilityBreakdown = computeLifetimeUtility(baselineResult, params, cfg);
+  const baselineRaws = computeUtilityRaws(baselineResult, params, cfg);
+  const currentUtility: UtilityBreakdown = scoreUtilityRaws(baselineRaws, cfg.weights);
 
   const state: CandidateSearchState = {
     bestResult: baselineResult,
     bestUtility: currentUtility,
     bestPlan: null,
     failedCandidateCount: 0,
+    // baseline도 강건성 재평가의 후보다. 모든 개선안이 특정 국면에서 무너지면
+    // "현행 유지"가 답이어야 하는데, 여기 없으면 그 답을 고를 수 없다.
+    topCandidates: [{ plan: null, result: baselineResult, utility: currentUtility, raws: baselineRaws }],
   };
 
   // Phase 1: 인출 시점/순서/목적지 5차원 그리드 탐색 (기존 로직, 변경 없음)
@@ -371,6 +460,10 @@ export function recommendStrategy(
   for (const plan of spendingCandidates) {
     evaluateCandidate(plan, params, engine, cfg, state);
   }
+
+  // Phase 2.5: 강건성 모드. 사용자가 미정으로 둔 가정 축(경제 시나리오·리스크 성향)과
+  // 목표 우선순위에 대해, 상위 후보를 다시 서열화한다. 자세한 근거는 robustness.ts.
+  applyRobustness(state, params, engine, cfg);
 
   const { bestResult, bestUtility, bestPlan } = state;
   const withdrawalPlanDeltas = computeDeltas(baselineResult, bestResult);
