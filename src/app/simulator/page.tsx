@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useDeferredValue } from 'react';
 import { useSession, signOut } from 'next-auth/react';
 import { SimulationEngine } from '../../core/usecases/SimulationEngine';
 import { SimulationResult } from '../../core/entities/types';
@@ -137,19 +137,27 @@ export default function Home() {
     return () => clearTimeout(timer);
   }, [result]);
 
-  // 비교 시나리오도 활성 시나리오와 같은 경로(전략 컴파일)로 실행한다 — 자세한 근거와
-  // 남은 한계는 runCompiledScenario 주석 참고.
+  // 비교 시나리오도 활성 시나리오와 **완전히 같은 경로**로 실행한다 — 전략 컴파일 +
+  // AI 센티널 자동 채움까지. 자동 채움을 건너뛰면 같은 시나리오를 복제해 나란히 놓아도
+  // 두 곡선이 다르게 그려진다(활성 쪽만 AI가 채운 값으로 돌기 때문이다).
+  //
+  // 비용이 만만치 않다. 시나리오당 recommendStrategy 한 번(최대 218개 후보 시뮬레이션)이
+  // 추가되므로 비교 카드 수만큼 곱해진다. 그래서 입력을 useDeferredValue로 미뤄
+  // 트랜지션(비긴급) 우선순위에서 계산하게 한다 — 자동저장 때문에 scenarios 참조는 타이핑마다
+  // 바뀌는데, 미루지 않으면 그 계산이 매 키 입력의 렌더를 막는다.
+  const deferredScenarios = useDeferredValue(scenarios);
+  const deferredCompareIds = useDeferredValue(compareScenarioIds);
   const compareResults = useMemo(() => {
-    return compareScenarioIds.map(id => {
-      const scenario = scenarios.find(s => s.id === id);
+    return deferredCompareIds.map(id => {
+      const scenario = deferredScenarios.find(s => s.id === id);
       if (!scenario) return null;
       return {
         id,
         name: scenario.name,
-        result: runCompiledScenario(engine, scenario.data),
+        result: runCompiledScenario(engine, scenario.data, { applySentinels: true }),
       };
     }).filter(Boolean) as { id: string, name: string, result: SimulationResult }[];
-  }, [engine, scenarios, compareScenarioIds]);
+  }, [engine, deferredScenarios, deferredCompareIds]);
 
   const formatValue = (val: number): string => {
     const currency = activeParams.displayCurrency;
