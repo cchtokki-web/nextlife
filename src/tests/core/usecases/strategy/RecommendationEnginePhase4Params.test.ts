@@ -35,11 +35,22 @@ function findPhase4Calls(engine: RecordingEngine): SimulationParams[] {
 
 const baseParams: SimulationParams = {
   // currentAge < retirementAge여야 Phase 4의 두 레그(브릿지 인출 구간 / 납입 기간)가 평가된다.
-  userProfile: { currentAge: 50, retirementAge: 60, expectancy: 90, targetMonthlySpending: 1000000, targetBequest: 0 },
+  //
+  // 목표 생활비가 월 300만원이어야 Phase 2의 생활비 배수 후보가 실제로 승리한다. 예전에는
+  // 100만원으로도 승리했는데, 그것은 getIdentityPlan이 privatePensionMonthlyTarget을
+  // targetMonthlySpending으로 채워 기준선을 실제보다 나쁘게 만들었기 때문이다. identity가
+  // 진짜 기준선이 된 뒤로는 인출액이 잔여 개월 균등분할(훨씬 큼)이라, 목표를 조금 올리는
+  // 것만으로는 효용이 개선되지 않는다.
+  //
+  // 연금 잔액도 50억에서 5억으로 낮췄다. 50억이면 강제 인출액(잔여 개월 균등분할)이 월
+  // 1,300만원대라 목표 생활비를 20% 올려도 잉여가 거의 그대로 남아, 배수 후보가 baseline을
+  // 이기지 못한다. 예전에는 그 잉여가 **증발했기 때문에**(잉여 현금을 넣을 자산이 없으면
+  // 그냥 버려졌다) 기말자산이 작게 나와 배수 후보가 이겼다. 현금 버킷이 그 소실을 고쳤다.
+  userProfile: { currentAge: 50, retirementAge: 60, expectancy: 90, targetMonthlySpending: 3000000, targetBequest: 0 },
   assets: [],
   nationalPension: { expectedMonthlyAmount: 0 },
   privatePensions: [
-    { id: 'pension-1', type: 'irp', balance: 5000000000, monthlyContribution: 0, annualReturn: 4, currency: 'KRW' },
+    { id: 'pension-1', type: 'irp', balance: 500000000, monthlyContribution: 0, annualReturn: 4, currency: 'KRW' },
   ],
   isaAccounts: [
     { id: 'isa-1', type: 'general', balance: 10000000, monthlyContribution: 0, annualReturn: 6, dividendYield: 0, currency: 'KRW', maturityYears: 99 },

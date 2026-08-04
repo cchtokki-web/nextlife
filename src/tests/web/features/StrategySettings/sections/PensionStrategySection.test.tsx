@@ -48,7 +48,7 @@ describe('PensionStrategySection', () => {
     });
   });
 
-  test('ISA 우선 사용과 배당 재투자 스위치를 렌더링한다', () => {
+  test('ISA 만기 행선지 3택과 배당 재투자 스위치를 렌더링한다', () => {
     render(
       <PensionStrategySection
         params={initialParams} onChangeParams={vi.fn()}
@@ -56,7 +56,12 @@ describe('PensionStrategySection', () => {
       />
     );
 
-    expect(screen.getByRole('switch', { name: /ISA 먼저 사용/ })).toBeInTheDocument();
+    // 예전에는 boolean 스위치였다. boolean에는 "미정"을 담을 자리가 없어 이 축만
+    // AI 자동 채움에서 통째로 빠져 있었다.
+    const isa = within(screen.getByRole('radiogroup', { name: 'ISA 만기 자금 행선지' }));
+    for (const label of [/연금 계좌로/, /일반 자산으로/, /AI 최적화/]) {
+      expect(isa.getByRole('radio', { name: label })).toBeInTheDocument();
+    }
     expect(screen.getByRole('switch', { name: /배당금 재투자/ })).toBeInTheDocument();
   });
 

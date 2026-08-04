@@ -1,6 +1,14 @@
 import { describe, test, expect } from 'vitest';
 import { SimulationEngine } from '@/core/usecases/SimulationEngine';
+import { calculateNationalPensionTaxKRW } from '@/core/usecases/tax/TaxEngine';
+import { resolveTaxContext } from '@/core/usecases/tax/taxContext';
 import { SimulationParams } from '@/core/entities/types';
+
+// 세후 국민연금액. 실효세율은 수령액에 따라 달라지므로(연금소득공제 + 누진세율) 상수로
+// 박지 않고 세금 계산 함수로 유도한다 — 이 파일의 주제는 세율이 아니라 조기/연기수령
+// 감액·가산이 수령액에 어떻게 반영되는가다.
+const netAnnual = (grossAnnualKRW: number) =>
+  grossAnnualKRW - calculateNationalPensionTaxKRW(grossAnnualKRW, resolveTaxContext());
 
 describe('SimulationEngine 국민연금 조기/연기수령', () => {
   const baseParams: SimulationParams = {
@@ -31,7 +39,7 @@ describe('SimulationEngine 국민연금 조기/연기수령', () => {
     const resultAt65 = result.yearlyResults.find((r) => r.age === 65);
     expect(resultAt64!.nationalPensionIncome).toBe(0);
 
-    const expectedAnnualNet = 1000000 * 12 * 0.98;
+    const expectedAnnualNet = netAnnual(1000000 * 12);
     expect(Math.abs(resultAt65!.nationalPensionIncome - expectedAnnualNet)).toBeLessThan(1);
   });
 
@@ -46,7 +54,7 @@ describe('SimulationEngine 국민연금 조기/연기수령', () => {
     const resultAt60 = result.yearlyResults.find((r) => r.age === 60);
     expect(resultAt59!.nationalPensionIncome).toBe(0);
 
-    const expectedAnnualNet = 1000000 * 0.7 * 12 * 0.98; // 30% 감액
+    const expectedAnnualNet = netAnnual(1000000 * 0.7 * 12); // 30% 감액
     expect(Math.abs(resultAt60!.nationalPensionIncome - expectedAnnualNet)).toBeLessThan(1);
   });
 
@@ -61,7 +69,7 @@ describe('SimulationEngine 국민연금 조기/연기수령', () => {
     const resultAt70 = result.yearlyResults.find((r) => r.age === 70);
     expect(resultAt69!.nationalPensionIncome).toBe(0);
 
-    const expectedAnnualNet = 1000000 * 1.36 * 12 * 0.98; // 36% 가산
+    const expectedAnnualNet = netAnnual(1000000 * 1.36 * 12); // 36% 가산
     expect(Math.abs(resultAt70!.nationalPensionIncome - expectedAnnualNet)).toBeLessThan(1);
   });
 
@@ -73,7 +81,7 @@ describe('SimulationEngine 국민연금 조기/연기수령', () => {
     });
 
     const resultAt70 = result.yearlyResults.find((r) => r.age === 70);
-    const expectedAnnualNet = 1000000 * 1.36 * 12 * 0.98;
+    const expectedAnnualNet = netAnnual(1000000 * 1.36 * 12);
     expect(Math.abs(resultAt70!.nationalPensionIncome - expectedAnnualNet)).toBeLessThan(1);
   });
 });

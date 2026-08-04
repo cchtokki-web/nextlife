@@ -1,5 +1,5 @@
 import {
-  CompleteWithdrawalPlan,
+  BaselineWithdrawalPlan,
   SimulationParams,
   SimulationResult,
   StrategyRecommendation,
@@ -43,7 +43,7 @@ interface BeneficialCandidate {
 
 function buildParamsWithReinvestmentOverrides(
   params: SimulationParams,
-  plan: CompleteWithdrawalPlan,
+  plan: BaselineWithdrawalPlan,
   overrides: Record<string, boolean>
 ): SimulationParams {
   return {
@@ -74,7 +74,7 @@ function noOpResult(
 // 값을 소비할 수 있게 한다.
 export function optimizeDividendReinvestment(
   params: SimulationParams,
-  bestPlan: CompleteWithdrawalPlan | null,
+  bestPlan: BaselineWithdrawalPlan | null,
   bestResult: SimulationResult,
   bestUtility: UtilityBreakdown,
   engine: SimulationEngine,

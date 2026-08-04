@@ -1,5 +1,5 @@
 import {
-  BequestStrategy, NationalPensionStrategy, PrivatePensionStrategy, RetirementStrategy, RiskProfile,
+  BequestStrategy, IsaFirstChoice, NationalPensionStrategy, PrivatePensionStrategy, RetirementStrategy, RiskProfile,
   SimulationParams, SpendingStrategy, SpendingStrategyChoice, UtilityConfig, WithdrawalPlan,
 } from '../../entities/types';
 import {
@@ -42,7 +42,10 @@ export const DEFAULT_RETIREMENT_STRATEGY: RetirementStrategy = {
   bequestStrategy: 'leave_some',
   nationalPensionStrategy: 'ai_optimized',
   privatePensionStrategy: 'ai_optimized',
-  preferIsaFirst: false,
+  // 'pension_first'는 예전 boolean 기본값(false)과 같은 동작이다.
+  // 'ai_optimized'를 기본값으로 두면 전략을 저장한 적 없는 모든 시나리오에서 이 축이
+  // 자동 채움 대상이 되어 곡선이 조용히 바뀐다.
+  preferIsaFirst: 'pension_first',
   riskProfile: 'ai_recommended',
   economicScenario: 'ai_recommended',
 };
@@ -83,20 +86,55 @@ function hasLegacyStrategySeed(params: SimulationParams): boolean {
 // 우선순위: 기본값 < 레거시 저수준 필드에서 유도한 값 < 사용자가 새 UI에서 명시적으로 저장한 값.
 // 설정 화면(StrategySettingsPanel/각 섹션)과 compileStrategy가 모두 이 함수를 쓴다.
 export function resolveStrategy(params: SimulationParams): RetirementStrategy {
-  return {
+  const resolved: RetirementStrategy = {
     ...DEFAULT_RETIREMENT_STRATEGY,
     ...seedStrategyFromLegacyParams(params),
     ...(params.strategy ?? {}),
   };
+  return { ...resolved, preferIsaFirst: normalizeIsaFirstChoice(resolved.preferIsaFirst) };
 }
 
-// 이 시나리오가 "최대 상속"(가능한 한 많이 남기기)을 선택한 상태인가.
+// preferIsaFirst가 boolean이던 시절에 저장된 값을 3값 enum으로 옮긴다.
+//
+// **정규화는 여기 한 곳에서만 한다.** ScenarioModel.data가 E2EE로 암호화되어 저장되므로
+// 서버가 복호화할 수 없고, 따라서 데이터 마이그레이션이라는 선택지가 없다. 읽는 시점의
+// 정규화가 유일한 경로이며, resolveStrategy는 화면과 엔진이 공유하는 단일 진입점이다.
+//
+// **false를 'ai_optimized'로 승격하지 않는다.** false는 "연금으로 옮긴다"는 사용자의 선택
+// (또는 그 선택과 동일한 기본값)이었다. 승격하면 저장된 선택이 AI 추천값으로 조용히 덮어써진다.
+function normalizeIsaFirstChoice(value: RetirementStrategy['preferIsaFirst']): IsaFirstChoice {
+  // 타입에는 없지만 저장된 옛 시나리오에는 실제로 boolean이 들어 있다.
+  if (typeof value === 'boolean') return value ? 'isa_first' : 'pension_first';
+  if (value === 'isa_first' || value === 'ai_optimized') return value;
+  // 알 수 없는 값도 baseline으로 폴백한다(다른 축들과 같은 규칙).
+  return 'pension_first';
+}
+
+// 상속 자산을 "많이 남길수록 좋다"(단조증가)로 채점해야 하는 상태인가.
 // UtilityEngine(채점)과 utilityAnalysis(설명 문구)가 반드시 같은 판정을 쓰도록 여기서 한 번만
 // 정의한다. 판정은 화면과 동일한 진입점(resolveStrategy)을 쓰므로 레거시 씨앗을 거친 값이든
-// 새 UI가 저장한 값이든 결과가 같다 — 'maximize'는 기본값도 레거시 유도값도 아니라서
-// 사용자가 명시적으로 고른 경우에만 참이 된다.
-export function isMaximizeBequestStrategy(params: SimulationParams): boolean {
-  return resolveStrategy(params).bequestStrategy === 'maximize';
+// 새 UI가 저장한 값이든 결과가 같다.
+//
+// 두 경로가 있다.
+//
+//  1. 상속 전략 = '최대 상속'. 사용자가 명시적으로 고른 경우에만 참이다
+//     ('maximize'는 기본값도 레거시 유도값도 아니다).
+//
+//  2. 목표 우선순위 = '상속 최대화'이고, 상속 전략이 구체적인 금액을 정하지 않은 경우.
+//     이 경로가 빠져 있던 것이 결함이었다. 「상속 최대화」를 고르면 bequestAdequacy 가중치가
+//     10점에서 35점으로 뛰는데, 채점 곡선은 여전히 "적정선(월생활비×24)을 넘으면 감점"인
+//     종형이었다. 적정선의 10배쯤 남기는 흔한 시나리오에서 그 곡선은 이미 0에 포화돼 있어,
+//     **가중치를 3.5배로 키워도 0 × 35 = 0이라 목표가 아무 일도 하지 않았다.** 게다가 포화
+//     구간에서는 더 남기는 계획과 덜 남기는 계획을 구분조차 못 해, 상속을 최우선으로 고른
+//     사용자가 오히려 상속이 적은 계획을 추천받았다.
+//
+// 상속 전략이 금액을 명시한 경우('target_amount'/'spend_all')에는 그쪽이 이긴다 —
+// 구체적인 금액은 목표 우선순위보다 강한 의사표시다.
+export function usesMaximizeBequestScoring(params: SimulationParams): boolean {
+  const strategy = resolveStrategy(params);
+  if (strategy.bequestStrategy === 'maximize') return true;
+  if (strategy.bequestStrategy === 'target_amount' || strategy.bequestStrategy === 'spend_all') return false;
+  return strategy.objective === 'bequest_maximization';
 }
 
 // 국민연금 수령 전략 → 청구 나이.
@@ -204,6 +242,21 @@ function resolveTargetBequest(
   }
 }
 
+// bequestStrategy → 엔진 상속 하한선(SimulationParams.assetFloor).
+//
+// targetBequest(채점 기준)와 의도적으로 다르다. **'leave_some'(기본값)에는 하한선을 세우지
+// 않는다** — 그 값은 UtilityEngine이 targetBequest 미지정일 때 쓰는 추정식과 같은 값이라
+// 채점에는 영향이 없지만, 엔진 제약으로 걸면 전략을 저장한 적 없는 모든 시나리오의 자산
+// 곡선이 조용히 바뀐다("기본값으로 컴파일해도 결과가 안 바뀐다"는 불변식이 깨진다).
+//
+// 'maximize'도 하한선이 없다. "가능한 한 많이 남긴다"에는 지켜야 할 특정 금액이 없고,
+// 채점 곡선(monotonicAdequacyRaw)이 이미 많이 남기는 계획을 서열 위로 올린다.
+function resolveAssetFloor(strategy: BequestStrategy, targetBequest: number | undefined): number | undefined {
+  if (strategy !== 'target_amount') return undefined;
+  if (targetBequest === undefined || targetBequest <= 0) return undefined;
+  return targetBequest;
+}
+
 // spendingChoice → 엔진 SpendingStrategy.
 // 'ai'는 엔진에 없는 값이므로 baseline인 'target'으로 내린다. 알 수 없는 값(저장된 옛
 // 시나리오에 남은, 지금은 없어진 값 등)도 같은 이유로 baseline인 'target'으로 폴백한다.
@@ -267,6 +320,7 @@ export function compileStrategy(params: SimulationParams): CompiledStrategy {
   }
 
   const spendingStrategy = resolveSpendingStrategy(strategy.spendingChoice);
+  const assetFloor = resolveAssetFloor(strategy.bequestStrategy, targetBequest);
 
   // 경제 시나리오 → 리스크 성향 순으로 적용한다. 둘 다 수익률을 건드리므로
   // 순서가 결과를 결정한다: 시나리오는 물가·환율을, 리스크 성향은 수익률을 지배한다.
@@ -287,14 +341,19 @@ export function compileStrategy(params: SimulationParams): CompiledStrategy {
     : monthlyPensionLimit * pensionRule.withdrawalRatio;
 
   // 사용자가 직접 넣어둔 withdrawalPlan 필드(일반자산 인출 개시 나이 등)는 보존하고,
-  // 전략이 지배하는 3개 필드만 덮어쓴다.
+  // 전략이 지배하는 필드만 덮어쓴다.
   const withdrawalPlan: WithdrawalPlan = {
     ...(economyApplied.withdrawalPlan ?? {}),
     nationalPensionStartAge:
       NATIONAL_PENSION_STRATEGY_AGES[strategy.nationalPensionStrategy]
       ?? NATIONAL_PENSION_NORMAL_START_AGE,
-    isaMaturityDestination: strategy.preferIsaFirst ? 'asset' : 'pension',
   };
+  // 'ai_optimized'이면 키를 아예 쓰지 않는다 — 그래야 applyAiSentinels가 "미정"으로 보고
+  // 추천값을 채울 수 있다(limitPrivatePensionToTaxLimit의 null 센티널과 같은 처리다).
+  // 예전에는 boolean이라 미정을 표현할 자리가 없어 이 축만 자동 채움에서 빠져 있었다.
+  if (strategy.preferIsaFirst === 'isa_first') withdrawalPlan.isaMaturityDestination = 'asset';
+  else if (strategy.preferIsaFirst === 'pension_first') withdrawalPlan.isaMaturityDestination = 'pension';
+  else delete withdrawalPlan.isaMaturityDestination;
   if (privatePensionMonthlyTarget === undefined) {
     delete withdrawalPlan.privatePensionMonthlyTarget;
   } else {
@@ -306,9 +365,10 @@ export function compileStrategy(params: SimulationParams): CompiledStrategy {
   // 덮어쓰면 AssetFormSection의 자산별 토글이 조용히 뭉개진다.
   const assets = economyApplied.assets;
 
-  return {
-    params: {
-      ...economyApplied,
+  // targetBequest와 같은 이유로 undefined일 때는 키 자체를 지운다 —
+  // `assetFloor: undefined`를 남기면 구조 비교·직렬화에서 "키가 없는 것"과 달라진다.
+  const compiledParams: SimulationParams = {
+    ...economyApplied,
       // 결과에 전략을 함께 찍는다. 이 함수는 저수준 필드를 "실체화"하는데
       // (leave_some → userProfile.targetBequest = 월생활비 * 24 등), strategy를 남기지 않으면
       // 컴파일 결과를 다시 읽는 쪽(resolveStrategy)이 그 값을 레거시 씨앗으로 재해석해
@@ -327,7 +387,9 @@ export function compileStrategy(params: SimulationParams): CompiledStrategy {
         limitPrivatePensionToTaxLimit:
           limitOverride ?? taxSettings.limitPrivatePensionToTaxLimit,
       },
-    },
-    utilityConfig,
   };
+  if (assetFloor === undefined) delete compiledParams.assetFloor;
+  else compiledParams.assetFloor = assetFloor;
+
+  return { params: compiledParams, utilityConfig };
 }

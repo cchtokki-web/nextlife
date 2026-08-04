@@ -1,4 +1,5 @@
 import { SimulationParams, SimulationResult } from '../../entities/types';
+import { sumYearTaxes } from '../tax/annualTaxTotals';
 
 export interface ExpertAnalytics {
   avgPreTaxIncome: number;
@@ -27,7 +28,8 @@ export function computeExpertAnalytics(result: SimulationResult, params: Simulat
       : 0;
 
   const avgPreTaxIncome = avg((r) => r.preTaxTotalIncome);
-  const avgTotalTax = avg((r) => r.dividendTaxPaid + r.pensionTaxPaid + r.nationalPensionTaxPaid + r.comprehensiveTaxPaid);
+  // 여기만 건강보험료를 제외한다 — 바로 아래 avgHealthInsurance로 따로 보여주기 때문이다.
+  const avgTotalTax = avg(sumYearTaxes);
   const avgHealthInsurance = avg((r) => r.healthInsurancePaid);
   const avgNetIncome = avg((r) => r.totalIncome);
   const avgYearlyDividend = avg((r) => r.dividendIncome);

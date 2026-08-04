@@ -6,7 +6,6 @@ import {
   PrivatePension,
   IsaAccount,
   AssetCurrency,
-  TaxSettings,
   PrivatePensionTaxationMethod,
   UtilityConfig,
 } from '../entities/types';
@@ -15,15 +14,16 @@ import { computeLifetimeUtility } from './utility/UtilityEngine';
 import { computeAnnualHealthcareCostBreakdown } from './healthcare/healthcareCosts';
 import { DEFAULT_UTILITY_CONFIG } from './utility/utilityWeights';
 import {
-  getDividendTaxRate,
+  getMarketTaxTreatment,
   getPrivatePensionIncomeTaxRate,
   calculateNationalPensionTaxKRW,
   getIsaExemptionLimitKRW,
   calculateIsaMaturityTax,
   calculateComprehensiveTaxAndHealthInsuranceKRW,
   calculatePrivatePensionExcessTaxNeededKRW,
+  calculateCapitalGainsTaxKRW,
 } from './tax/TaxEngine';
-import { resolveTaxSettings } from './tax/taxRates';
+import { TaxContext, resolveTaxContext } from './tax/taxContext';
 import {
   getNationalPensionAdjustmentFactor,
   NATIONAL_PENSION_NORMAL_START_AGE,
@@ -42,6 +42,44 @@ interface ActiveAsset extends InvestmentAsset {
   growthRateMonthly: number;
   divRateMonthly: number;
   taxRate: number;
+  // 이 자산의 배당이 금융소득종합과세·건보료 판정 기준액에 합산되는가
+  // (getMarketTaxTreatment가 배당세율과 함께 한 번에 정한다).
+  includedInFinancialIncome: boolean;
+  // 매도차익에 양도소득세가 붙는가(해외주식·ETF만 해당).
+  capitalGainsTaxable: boolean;
+  // 총 취득원가(자산 통화 기준). 매도 시 비례 차감되며, 매도액과의 차이가 실현이익이다.
+  // ActiveIsa.totalInvested와 같은 패턴이다.
+  costBasis: number;
+}
+
+// 부분 매도. 자산 잔액과 취득원가를 비례적으로 줄이고 **실현이익**(자산 통화 기준)을 반환한다.
+//
+// 매도액 S, 직전 평가액 V, 취득원가 B일 때
+//   원가 차감 = S × (B / V),  실현이익 = S × (1 − B / V)
+// 즉 가중평균 원가법이다. 개별법·선입선출은 이 엔진이 매수 로트를 추적하지 않으므로
+// 쓸 수 없고, 월 적립이 계속되는 모델에서는 가중평균이 현실적인 근사다.
+//
+// 매도 경로가 네 곳(생활비 부족분, 연말 세금 징수 2곳, ISA 만기 이관 후 재매도)이라
+// 여기 한 곳으로 모은다. 예전에는 각자 asset.currentValue를 직접 깎았고, 그래서 원가 회계를
+// 붙이려면 네 곳을 모두 고쳐야 했다 — 하나라도 빠지면 원가가 남아 이익이 과소 계상된다.
+function applySale(asset: ActiveAsset, saleAmountInAssetCurrency: number): number {
+  if (saleAmountInAssetCurrency <= 0) return 0;
+
+  const value = asset.currentValue;
+  if (value <= 0) {
+    // 평가액이 0인데 파는 상황은 정상 경로에 없다. 원가만 남아 있으면 지워 정합성을 지킨다.
+    asset.costBasis = 0;
+    return 0;
+  }
+
+  const sale = Math.min(saleAmountInAssetCurrency, value);
+  const basisRatio = Math.min(1, Math.max(0, asset.costBasis / value));
+  const basisConsumed = sale * basisRatio;
+
+  asset.currentValue = value - sale;
+  asset.costBasis = Math.max(0, asset.costBasis - basisConsumed);
+
+  return sale - basisConsumed;
 }
 
 interface ActivePension extends PrivatePension {
@@ -112,24 +150,39 @@ export class SimulationEngine {
     return { ...result, utility };
   }
 
+  // 이진탐색 한 회의 시행 params. 목표 생활비만 바꾸고, **상속 하한선은 떼어 낸다.**
+  //
+  // 하한선을 인출 경로에 건 채로 탐색하면 이진탐색이 깨진다: 인출이 막힐 뿐 자산은 늘
+  // 하한선 위에 남으므로 어떤 생활비를 넣어도 "성공"으로 읽혀 탐색이 상한(5천만원)까지
+  // 올라간다. 여기서는 생활비 자체가 자유변수이므로, 하한선은 인출 제약이 아니라
+  // **탐색의 성공 조건**(meetsSustainabilityGoal)으로 표현하는 것이 옳다.
+  private sustainabilityTrialParams(params: SimulationParams, targetMonthlySpending: number): SimulationParams {
+    const trial: SimulationParams = {
+      ...params,
+      userProfile: { ...params.userProfile, targetMonthlySpending },
+    };
+    delete trial.assetFloor;
+    return trial;
+  }
+
+  // 이 시행이 "지속 가능"한가. 하한선이 없으면 기존 판정("고갈되지 않았거나 기말자산이 남음")을
+  // 비트 단위로 그대로 쓴다.
+  private meetsSustainabilityGoal(result: SimulationResult, assetFloor: number): boolean {
+    if (assetFloor > 0) return result.endingAssets >= assetFloor;
+    return result.depletionAge === null || result.endingAssets > 0;
+  }
+
   private findMaxSustainableValue(params: SimulationParams): number {
+    const assetFloor = Math.max(0, params.assetFloor ?? 0);
     let low = 0;
     let high = 50000000; // 5천만원/월
     let bestTarget = 0;
 
     for (let i = 0; i < 30; i++) {
       const mid = (low + high) / 2;
-      const trialParams = {
-        ...params,
-        userProfile: {
-          ...params.userProfile,
-          targetMonthlySpending: mid,
-        },
-      };
-      
-      const result = this.runSingle(trialParams);
-      
-      if (result.depletionAge === null || result.endingAssets > 0) {
+      const result = this.runSingle(this.sustainabilityTrialParams(params, mid));
+
+      if (this.meetsSustainabilityGoal(result, assetFloor)) {
         bestTarget = mid;
         low = mid;
       } else {
@@ -140,6 +193,7 @@ export class SimulationEngine {
   }
 
   private findMaxSustainable(params: SimulationParams): SimulationResult {
+    const assetFloor = Math.max(0, params.assetFloor ?? 0);
     let low = 0;
     let high = 50000000; // 5천만원/월
     let bestResult: SimulationResult | null = null;
@@ -147,17 +201,9 @@ export class SimulationEngine {
 
     for (let i = 0; i < 30; i++) {
       const mid = (low + high) / 2;
-      const trialParams = {
-        ...params,
-        userProfile: {
-          ...params.userProfile,
-          targetMonthlySpending: mid,
-        },
-      };
-      
-      const result = this.runSingle(trialParams);
-      
-      if (result.depletionAge === null || result.endingAssets > 0) {
+      const result = this.runSingle(this.sustainabilityTrialParams(params, mid));
+
+      if (this.meetsSustainabilityGoal(result, assetFloor)) {
         bestResult = result;
         bestTarget = mid;
         low = mid;
@@ -167,13 +213,9 @@ export class SimulationEngine {
     }
 
     if (!bestResult) {
-      const trialParams = {
-        ...params,
-        userProfile: { ...params.userProfile, targetMonthlySpending: 0 },
-      };
-      bestResult = this.runSingle(trialParams);
+      bestResult = this.runSingle(this.sustainabilityTrialParams(params, 0));
     }
-    
+
     return { ...bestResult, calculatedTargetSpending: bestTarget };
   }
 
@@ -190,7 +232,57 @@ export class SimulationEngine {
     return amount;
   }
 
-  private initializeAssets(params: SimulationParams, currentTaxSettings: TaxSettings): { activeAssets: ActiveAsset[], activePensions: ActivePension[], activeIsas: ActiveIsa[], infRateAnnual: number } {
+  // 세금을 계좌에서 순서대로 징수하고, **실제로 징수한 금액**(표시 통화)을 반환한다.
+  //
+  // 호출부는 부과액이 아니라 이 반환값을 결과에 기록해야 한다. 부과액을 기록하면 자산이
+  // 바닥난 해에 "내지 않은 세금"이 납부액으로 잡히고, 총자산 보존 불변식
+  // (SimulationEngine.conservation.test.ts)이 깨진다. 결과를 읽는 모든 계층 —
+  // 효용 점수의 세금효율(UtilityEngine.computeTaxEfficiencyRaw), 전문가 분석, PDF —
+  // 이 있지도 않은 지출을 세게 되므로 표시상의 문제로 끝나지도 않는다.
+  //
+  // 징수 순서는 일반자산 → 사적연금으로 고정한다. 예전에는 종합과세·건보료가 일반자산에서만
+  // 징수되고(연금 폴백 없이 잔액을 버림) 사적연금 초과세만 연금까지 폴백해, 같은 성격의 두
+  // 세금이 서로 다르게 처리됐다.
+  //
+  // ISA는 의도적으로 제외한다. ISA 잔액을 중도 인출하면 만기 정산의 과세표준
+  // (totalInvested 대비 수익)이 어긋나는데, 이 엔진에는 중도 인출 시 ISA 세제 혜택이
+  // 어떻게 되는지에 대한 모델이 없다. 근거 없는 규칙을 만드는 대신 ISA는 건드리지 않는다 —
+  // 그 결과 ISA에만 돈이 남은 해에는 세금이 과소 징수되며, 이는 알려진 근사다.
+  private collectTax(
+    amountDisplay: number,
+    assets: readonly ActiveAsset[],
+    pensions: readonly ActivePension[],
+    displayCurrency: AssetCurrency,
+    exchangeRate: number,
+    // 세금을 내려고 판 자산에서도 양도차익이 실현된다. 호출부가 그 해 누적기에 더한다.
+    onRealizedGainKRW: (gainKRW: number) => void
+  ): number {
+    let remaining = amountDisplay;
+    if (remaining <= 0) return 0;
+
+    for (const asset of assets) {
+      const availableDisplay = this.convertValue(asset.currentValue, asset.currency, displayCurrency, exchangeRate);
+      const deduct = Math.min(remaining, Math.max(0, availableDisplay));
+      const gain = applySale(asset, this.convertValue(deduct, displayCurrency, asset.currency, exchangeRate));
+      if (asset.capitalGainsTaxable) {
+        onRealizedGainKRW(this.convertValue(gain, asset.currency, 'KRW', exchangeRate));
+      }
+      remaining -= deduct;
+      if (remaining <= 0) return amountDisplay;
+    }
+
+    for (const pension of pensions) {
+      const availableDisplay = this.convertValue(pension.currentBalance, pension.currency, displayCurrency, exchangeRate);
+      const deduct = Math.min(remaining, Math.max(0, availableDisplay));
+      pension.currentBalance -= this.convertValue(deduct, displayCurrency, pension.currency, exchangeRate);
+      remaining -= deduct;
+      if (remaining <= 0) return amountDisplay;
+    }
+
+    return amountDisplay - remaining;
+  }
+
+  private initializeAssets(params: SimulationParams, taxCtx: TaxContext): { activeAssets: ActiveAsset[], activePensions: ActivePension[], activeIsas: ActiveIsa[], infRateAnnual: number } {
     const { assets = [], privatePensions = [], isaAccounts = [], inflationRate = 2, inflationMode = 'real' } = params;
     
     const infRateAnnual = inflationRate / 100;
@@ -202,14 +294,25 @@ export class SimulationEngine {
       const growthRateMonthly = Math.pow(Math.max(0, 1 + growthRateAnnual), 1 / 12) - 1;
       const divRateMonthly = (asset.dividendYield / 100) / 12;
       
-      const taxRate = getDividendTaxRate(asset.assetMarket, asset.currency, currentTaxSettings);
+      const { dividendTaxRate, includedInFinancialIncome, capitalGainsTaxable } =
+        getMarketTaxTreatment(asset.assetMarket, asset.currency, taxCtx);
+
+      const currentValue = asset.quantity * asset.averagePrice;
 
       return {
         ...asset,
-        currentValue: asset.quantity * asset.averagePrice,
+        currentValue,
         growthRateMonthly,
         divRateMonthly,
-        taxRate,
+        taxRate: dividendTaxRate,
+        includedInFinancialIncome,
+        capitalGainsTaxable,
+        // 취득원가 미입력 시 현재 평가액을 원가로 본다 = 지금까지의 평가차익은 과세하지 않는다.
+        // 확정되지 않은 숫자(예: 평가액 × 0.6)를 지어내지 않는다는 이 저장소의 원칙을 따른다.
+        //
+        // 이 폴백은 엔진 초기화 한 곳에만 둔다. 시나리오 로드 정규화에 넣으면 "저장값 없음"이
+        // 소실되어 사용자가 나중에 취득원가를 입력해도 반영되지 않는다.
+        costBasis: asset.acquisitionCostBasis ?? currentValue,
       };
     });
 
@@ -321,8 +424,13 @@ export class SimulationEngine {
     }
     const longevityScore = longevityScoreRaw * 0.15;
 
-    // Use total invested assets (stock + pension + ISA) to calculate inflation hedge score
-    const retirementInvestedAssets = retirementStartResult.stockAssets + retirementStartResult.pensionAssets;
+    // 인플레이션 헤지 점수의 분자 = 투자 자산(주식 + 사적연금 + ISA).
+    //
+    // 예전에는 주석만 ISA를 포함한다고 말하고 코드는 빼고 있었다. 그래서 ISA 보유자의
+    // 헤지 점수가 과소 산정됐고, 전 재산이 ISA인 사용자는 투자 비중이 0으로 잡혀 0점이었다.
+    const retirementInvestedAssets = retirementStartResult.stockAssets
+      + retirementStartResult.pensionAssets
+      + retirementStartResult.isaAssets;
     const investedRatio = retirementAssets > 0 ? (retirementInvestedAssets / retirementAssets) * 100 : 0;
     const inflationScoreRaw = Math.min(100, (investedRatio / 40) * 100);
     const inflationScore = inflationScoreRaw * 0.15;
@@ -363,13 +471,41 @@ export class SimulationEngine {
       withdrawalPlan
     } = params;
 
-    const currentTaxSettings: TaxSettings = resolveTaxSettings(taxSettings);
+    // 세법 프로필 + 사용자 설정을 한 번만 확정해 전 계산 경로가 같은 것을 본다.
+    // params.taxLawVersion이 계산에 실제로 도달하는 유일한 지점이다(taxContext.ts 주석 참고).
+    const taxCtx = resolveTaxContext(taxSettings, params.taxLawVersion);
+    // 아래 로직 다수가 설정만 참조하므로 별칭을 둔다. 프로필이 필요한 곳은 taxCtx를 직접 쓴다.
+    const currentTaxSettings = taxCtx.settings;
 
     const exchangeRate = this.getExchangeRate(baseExchangeRate, exchangeScenario);
-    const { activeAssets, activePensions, activeIsas, infRateAnnual } = this.initializeAssets(params, currentTaxSettings);
+    const { activeAssets, activePensions, activeIsas, infRateAnnual } = this.initializeAssets(params, taxCtx);
     // dividendYield는 시간에 따라 변하지 않으므로 인출 순서를 한 번만 계산해 재사용한다.
     // 원본 activeAssets 배열(순서)은 잉여현금 재투자·ISA 만기 이동 등 다른 로직에서 그대로 쓰인다.
     const withdrawalOrderedAssets = sortAssetsForWithdrawal(activeAssets, withdrawalPlan?.assetSellOrderStrategy);
+
+    // 상속 하한선. 총자산 정의(stock + pension + isa)는 연말에 yearlyResults에 싣는 것과
+    // 정확히 같아야 한다 — 다르면 "하한선을 지켰다"는 판정과 화면이 보여주는 총자산이 갈린다.
+    const assetFloorDisplay = Math.max(0, params.assetFloor ?? 0);
+
+    // 쓰고 남은 현금. 성장하지 않고 표시 통화 그대로 쌓인다.
+    //
+    // 예전에는 잉여 현금을 activeAssets[0]에 도로 집어넣었다. 그래서 "배당 재투자 끄기"가
+    // 실제로는 "첫 번째 자산에 재투자하기"였고, 자산이 하나뿐이면 스위치를 켜나 끄나 결과가
+    // 비트 단위로 같았다. 게다가 그 돈이 자산의 성장률로 불어나고 취득원가까지 부풀렸다 —
+    // 팔지도 않은 배당금이 양도차익 계산의 원가에 들어갔다는 뜻이다.
+    let cashBucketDisplay = 0;
+
+    const currentTotalAssetsDisplay = () =>
+      activeAssets.reduce((sum, a) => sum + this.convertValue(a.currentValue, a.currency, displayCurrency, exchangeRate), 0)
+      + activePensions.reduce((sum, p) => sum + this.convertValue(p.currentBalance, p.currency, displayCurrency, exchangeRate), 0)
+      + activeIsas.reduce((sum, i) => sum + this.convertValue(i.currentBalance, i.currency, displayCurrency, exchangeRate), 0)
+      + cashBucketDisplay;
+
+    // 해외주식 양도세는 실현 다음 해 5월에 확정신고·납부한다. 같은 해에 부과하면 순환이
+    // 생긴다 — 양도세를 내려고 자산을 팔면 그 매도가 다시 양도차익을 만든다. 고정점을
+    // 반복 계산으로 풀어야 하고, 그 반복이 findMaxSustainableValue의 30회 이진탐색 안에서
+    // 매년 돌아 비용이 곱해진다. 연 단위 손익통산과 250만원 기본공제도 연 마감이 자연스럽다.
+    let deferredCapitalGainKRW = 0;
 
     const startAge = userProfile.currentAge;
     const resolvedSpouse = resolveSpouse(params.spouse, userProfile);
@@ -414,6 +550,10 @@ export class SimulationEngine {
       let annualNationalPensionTaxPaid = 0;
       let annualPreTaxTotalIncome = 0;
       let annualRawFinancialIncomeKRW = 0;
+      // 그 해 실현된 해외주식 양도차익(KRW). 다음 해에 과세된다.
+      let annualRealizedCapitalGainKRW = 0;
+      // 위 금융소득에서 실제로 원천징수된 세액(KRW). 비교과세의 기납부세액 공제에 쓴다.
+      let annualWithheldFinancialTaxKRW = 0;
       let annualPrivatePensionPreTaxKRW = 0;
       let annualNationalPensionPreTaxKRW = 0;
 
@@ -485,11 +625,15 @@ export class SimulationEngine {
           }
         }
 
-        const natTax = calculateNationalPensionTaxKRW(natAmountRaw);
+        // 연금소득세는 연 단위로 계산해야 한다 — 연금소득공제와 누진세율이 모두 연간 총액
+        // 기준이기 때문이다. natAmountRaw는 이 해 동안 고정이므로(연도 루프에서 한 번 계산)
+        // 연간 세액을 구한 뒤 12로 나누면 월별 표시가 정확해진다.
+        annualNationalPensionPreTaxKRW = natAmountRaw * 12;
+        const annualNatTax = calculateNationalPensionTaxKRW(annualNationalPensionPreTaxKRW, taxCtx);
+        const natTax = annualNatTax / 12;
         monthlyNationalPensionDisplay = this.convertValue(natAmountRaw - natTax, 'KRW', displayCurrency, exchangeRate);
         monthlyNatTaxDisplay = this.convertValue(natTax, 'KRW', displayCurrency, exchangeRate);
         monthlyNatPreTaxTotalDisplay = this.convertValue(natAmountRaw, 'KRW', displayCurrency, exchangeRate);
-        annualNationalPensionPreTaxKRW = natAmountRaw * 12;
       }
 
       let monthlyOtherIncomeTotalDisplay = 0;
@@ -511,17 +655,23 @@ export class SimulationEngine {
         // 크레딧으로 한도를 초과해 납입받는 셈이 된다. activeIsas[0]의 이번 달 잔여 한도(=
         // monthlyLimit - contribution, isa.currency 기준)를 여기 기록해 뒀다가 Pensions
         // Processing에서 그대로 재사용한다. 매달(이 for-m 블록) 새로 계산되므로 자동으로 리셋된다.
-        let isaBridgeRoomRemainingInIsaCurrency = 0;
-        activeIsas.forEach((isa, isaIdx) => {
+        // ISA 납입한도는 계좌가 아니라 사람에게 붙는다(ISA는 1인 1계좌가 원칙이고 한도도 1인
+        // 기준이다). 예전에는 이 한도를 forEach 안에서 계좌마다 새로 계산해, 계좌를 2개
+        // 만드는 것만으로 연 4천만원을 납입할 수 있었다. 아래 사적연금 저율과세 한도
+        // (monthlyPensionPreTaxLimitRemainingKRW / remainingBridgeLimitKRW)가 이미 같은
+        // "계좌 간 공유 잔여 한도" 패턴을 쓰고 있고, 그쪽 주석이 계좌당 한도를 따로 주는 것을
+        // 명시적으로 세법 위반 버그라고 부른다 — 같은 논리가 여기에는 적용되지 않고 있었다.
+        //
+        // 이 for-m 블록 안에서 선언되므로 매달 자동으로 리셋된다.
+        let isaMonthlyRoomRemainingKRW = taxCtx.profile.isaAnnualLimitKRW / 12;
+        activeIsas.forEach((isa) => {
           if (isa.currentBalance < 0) isa.currentBalance = 0;
           const growth = isa.currentBalance * isa.returnRateMonthly;
           const dividend = isa.currentBalance * isa.divRateMonthly;
-          const monthlyLimit = this.convertValue(20000000 / 12, 'KRW', isa.currency, exchangeRate);
+          const monthlyLimit = this.convertValue(Math.max(0, isaMonthlyRoomRemainingKRW), 'KRW', isa.currency, exchangeRate);
           let contribution = isRetired ? 0 : isa.monthlyContribution;
           if (contribution > monthlyLimit) contribution = monthlyLimit;
-          if (isaIdx === 0) {
-            isaBridgeRoomRemainingInIsaCurrency = Math.max(0, monthlyLimit - contribution);
-          }
+          isaMonthlyRoomRemainingKRW -= this.convertValue(contribution, isa.currency, 'KRW', exchangeRate);
 
           isa.currentBalance += growth + dividend + contribution;
           isa.totalInvested += contribution;
@@ -533,23 +683,39 @@ export class SimulationEngine {
 
           if (isa.monthsSinceInception >= isa.maturityYears * 12) {
             const totalProfit = isa.currentBalance - isa.totalInvested;
-            const exemptionLimit = this.convertValue(getIsaExemptionLimitKRW(isa.type), 'KRW', isa.currency, exchangeRate);
-            const taxAmount = calculateIsaMaturityTax(totalProfit, exemptionLimit);
+            const exemptionLimit = this.convertValue(getIsaExemptionLimitKRW(isa.type, taxCtx), 'KRW', isa.currency, exchangeRate);
+            const taxAmount = calculateIsaMaturityTax(totalProfit, exemptionLimit, taxCtx);
             const netBalance = isa.currentBalance - taxAmount;
             const preferPension = (withdrawalPlan?.isaMaturityDestination ?? 'pension') === 'pension';
 
             if (preferPension && activePensions.length > 0) {
               activePensions[0].currentBalance += this.convertValue(netBalance, isa.currency, activePensions[0].currency, exchangeRate);
             } else if (!preferPension && activeAssets.length > 0) {
-              activeAssets[0].currentValue += this.convertValue(netBalance, isa.currency, activeAssets[0].currency, exchangeRate);
+              const transferred = this.convertValue(netBalance, isa.currency, activeAssets[0].currency, exchangeRate);
+              activeAssets[0].currentValue += transferred;
+              // ISA 만기 정산을 마친 세후 자금으로 새로 사들이는 것이므로 전액이 취득원가다.
+              activeAssets[0].costBasis += transferred;
             } else if (activePensions.length > 0) {
               activePensions[0].currentBalance += this.convertValue(netBalance, isa.currency, activePensions[0].currency, exchangeRate);
             } else if (activeAssets.length > 0) {
-              activeAssets[0].currentValue += this.convertValue(netBalance, isa.currency, activeAssets[0].currency, exchangeRate);
+              const transferred = this.convertValue(netBalance, isa.currency, activeAssets[0].currency, exchangeRate);
+              activeAssets[0].currentValue += transferred;
+              activeAssets[0].costBasis += transferred;
             }
             isa.currentBalance = 0; isa.totalInvested = 0; isa.monthsSinceInception = 0;
           }
         });
+
+        // 사적연금 조기수령 채널링(Phase 4)의 브릿지 인출은 activeIsas[0]에 별도 크레딧을
+        // 더하는데(아래 Pensions Processing), 이 크레딧도 같은 월 법정 한도를 공유해야 한다 —
+        // 그렇지 않으면 이미 한도를 다 채운 ISA가 브릿지 크레딧으로 한도를 초과해 납입받는
+        // 셈이 된다. 모든 계좌가 납입을 마친 뒤 남은 잔여 한도가 브릿지가 쓸 수 있는 전부다.
+        // (예전에는 계좌 0의 한도에서 계좌 0의 납입만 뺀 값이었다. 계좌가 하나면 같은 값이지만,
+        //  둘 이상이면 뒤 계좌들의 납입분을 세지 않아 한도를 넘겼다.)
+        // (브릿지가 실제로 채널링한 만큼 아래에서 차감되므로 let이다.)
+        let isaBridgeRoomRemainingInIsaCurrency = activeIsas.length > 0
+          ? this.convertValue(Math.max(0, isaMonthlyRoomRemainingKRW), 'KRW', activeIsas[0].currency, exchangeRate)
+          : 0;
 
         // Assets Processing
         let monthlyDividendIncomeNetDisplay = 0;
@@ -560,13 +726,34 @@ export class SimulationEngine {
           const dividendTax = dividendRaw * asset.taxRate;
           const dividendNet = dividendRaw - dividendTax;
 
-          annualRawFinancialIncomeKRW += this.convertValue(dividendRaw, asset.currency, 'KRW', exchangeRate);
+          // 비과세 자산(OTHER)·연금계좌(IRP/PENSION)의 배당은 금융소득이 아니므로 종합과세·건보료
+          // 판정 기준액에 넣지 않는다. 배당세율 0%와 같은 판정에서 나온 값이다(getMarketTaxTreatment).
+          if (asset.includedInFinancialIncome) {
+            annualRawFinancialIncomeKRW += this.convertValue(dividendRaw, asset.currency, 'KRW', exchangeRate);
+            // 비교과세의 기납부세액. 비율이 아니라 실제 징수액을 누적하므로 자산별 세율 차이
+            // (미국 15% / 국내 15.4%)가 그대로 반영된다.
+            annualWithheldFinancialTaxKRW += this.convertValue(dividendTax, asset.currency, 'KRW', exchangeRate);
+          }
 
           const contribution = isRetired ? 0 : asset.monthlyContribution;
           asset.currentValue += growth + contribution;
+          // 적립금은 새로 취득한 금액이므로 원가에 더한다. 성장분(growth)은 평가차익이라 더하지 않는다.
+          asset.costBasis += contribution;
 
-          if (!isRetired && asset.reinvestDividend) {
+          // 은퇴 후에도 자산별 재투자 설정을 존중한다.
+          //
+          // 예전에는 `!isRetired`가 앞에 붙어 있어 은퇴하는 순간 이 스위치가 무시됐다.
+          // 화면은 "받은 배당을 쓰지 않고 다시 사들여 복리로 굴립니다"라고 말하는데,
+          // 정작 그 복리가 가장 오래 작동할 은퇴 후 30여 년 동안 꺼져 있었다.
+          //
+          // 재투자한 배당은 소득이 아니므로 그만큼 생활비 부족분이 늘고, 필요하면 자산을
+          // 매도해 충당한다. 그 매도에는 양도세가 붙으므로 "배당으로 받아 쓰기"와 완전히
+          // 같지는 않다 — 어느 쪽이 유리한지는 시나리오에 따라 다르고, 그 판단이 바로
+          // 이 스위치가 존재하는 이유다.
+          if (asset.reinvestDividend) {
             asset.currentValue += dividendNet;
+            // 세후 배당으로 다시 사들인 것이므로 새 취득이다.
+            asset.costBasis += dividendNet;
             annualDividendIncome += this.convertValue(dividendNet, asset.currency, displayCurrency, exchangeRate);
             annualDividendTaxPaid += this.convertValue(dividendTax, asset.currency, displayCurrency, exchangeRate);
             annualPreTaxTotalIncome += this.convertValue(dividendRaw, asset.currency, displayCurrency, exchangeRate);
@@ -580,7 +767,7 @@ export class SimulationEngine {
 
         // Pensions Processing
         let monthlyPensionIncomeNetDisplay = 0;
-        let monthlyPensionPreTaxLimitRemainingKRW = (currentTaxSettings.privatePensionLimit ?? 15000000) / 12;
+        let monthlyPensionPreTaxLimitRemainingKRW = (currentTaxSettings.privatePensionLimit ?? taxCtx.profile.privatePensionLimitKRW) / 12;
         // privatePensionMonthlyTarget은 계좌 개별이 아닌 "전체 사적연금 계좌 합산" 목표액이다.
         // 계좌를 순서대로 처리하며 이 잔여 목표액만큼만 인출하도록 공유 상태로 관리한다.
         let remainingMonthlyPensionTargetKRW = withdrawalPlan?.privatePensionMonthlyTarget;
@@ -600,7 +787,7 @@ export class SimulationEngine {
         // 보정된다. 이 브릿지 분기는 !isRetired, 정상/후행 인출 분기는 isRetired(또는 은퇴 전엔
         // monthlyTargetSpending이 0으로 강제돼 shortfall이 발생하지 않음)로 갈리므로, 실제로는
         // 두 캡이 같은 해에 함께 소진되는 일은 없다.
-        let remainingBridgeLimitKRW = (currentTaxSettings.privatePensionLimit ?? 15000000) / 12;
+        let remainingBridgeLimitKRW = (currentTaxSettings.privatePensionLimit ?? taxCtx.profile.privatePensionLimitKRW) / 12;
 
         activePensions.forEach((pension) => {
           if (pension.currentBalance < 0) pension.currentBalance = 0;
@@ -636,12 +823,26 @@ export class SimulationEngine {
               monthlyPensionPreTaxLimitRemainingKRW -= this.convertValue(drawAmountRaw, pension.currency, 'KRW', exchangeRate);
             }
 
+            // 상속 하한선은 정상 인출도 막는다. 이 인출은 부족분과 무관하게 매달 일어나므로
+            // (잔액 ÷ 잔여개월), 여기서 막지 않으면 아래 부족분 경로를 아무리 조여도 연금이
+            // 계속 소득으로 바뀌어 소비되고 총자산이 새어 나간다 — 실제로 그랬다.
+            //
+            // 인출한 돈이 소비되지 않으면 잉여현금으로 자산에 되돌아오므로, 막아서 손해 볼 일은
+            // 없다. 오히려 인출 시 연금소득세를 내지 않게 되어 하한선 유지에 유리하다.
+            if (assetFloorDisplay > 0) {
+              const headroomInPensionCurrency = this.convertValue(
+                Math.max(0, currentTotalAssetsDisplay() - assetFloorDisplay),
+                displayCurrency, pension.currency, exchangeRate
+              );
+              drawAmountRaw = Math.min(drawAmountRaw, headroomInPensionCurrency);
+            }
+
             pension.currentBalance -= drawAmountRaw;
 
             // pensionWithdrawalsStarted가 false면 drawAmountRaw는 항상 0이라 세율 값 자체는 결과에
             // 영향을 주지 않지만, getPrivatePensionIncomeTaxRate는 "55세 미만으로 호출되지 않는다"는
             // 불변식을 전제하므로(taxRates.ts 주석 참고) 그 불변식을 실제로 지키기 위해 게이트를 건다.
-            const taxRate = pensionWithdrawalsStarted ? getPrivatePensionIncomeTaxRate(currentAge) : 0;
+            const taxRate = pensionWithdrawalsStarted ? getPrivatePensionIncomeTaxRate(currentAge, taxCtx) : 0;
 
             const drawAmountTax = drawAmountRaw * taxRate;
             const drawAmountNet = drawAmountRaw - drawAmountTax;
@@ -664,7 +865,7 @@ export class SimulationEngine {
             const limitInPensionCurrency = this.convertValue(
               Math.max(0, remainingBridgeLimitKRW), 'KRW', pension.currency, exchangeRate
             );
-            const taxRate = getPrivatePensionIncomeTaxRate(currentAge);
+            const taxRate = getPrivatePensionIncomeTaxRate(currentAge, taxCtx);
 
             // 인출액은 ISA가 이번 달 실제로 받을 수 있는 만큼으로 제한한다 — 놓을 곳이 없는 돈을
             // 먼저 빼서 과세한 뒤 버리면 자금이 소멸한다(총자산 보존 위반). 이 엔진의 다른 캡들
@@ -719,20 +920,45 @@ export class SimulationEngine {
           : monthlyTargetSpending;
 
         const shortfall = actualMonthlySpending - monthlyTotalIncome;
-        if (shortfall < 0 && activeAssets.length > 0) {
-          activeAssets[0].currentValue += this.convertValue(-shortfall, displayCurrency, activeAssets[0].currency, exchangeRate);
+        if (shortfall < 0) {
+          // 쓰고 남은 돈은 현금으로 둔다. 자산에 도로 집어넣으면 "재투자하지 않겠다"는
+          // 선택이 조용히 재투자가 된다(cashBucketDisplay 선언부 주석 참고).
+          cashBucketDisplay += -shortfall;
         } else if (shortfall > 0) {
-          let remainingShortfall = shortfall;
+          // 상속 하한선. 총자산이 이 선 아래로 내려가는 인출은 하지 않는다.
+          //
+          // 막힌 금액은 아래 `actualMonthlySpending -= ...`로 흘러 소비가 깎인다 —
+          // "상속을 지키려면 생활비를 줄여야 한다"가 새 메커니즘 없이 consumption 원점수
+          // 하락으로 정직하게 나타난다.
+          //
+          // 사적연금 인출은 세전 잔액이 세후 충당액보다 많이 줄어들므로, 마지막 구간에서
+          // 그 세액만큼 하한선을 넘어설 수 있다. 다음 달에는 여유가 0이 되어 인출이 멈추므로
+          // 오차가 누적되지 않고, 후보 탐색은 실제 기말자산으로 하한선을 다시 판정한다
+          // (RecommendationEngine.evaluateCandidate).
+          const withdrawableDisplay = assetFloorDisplay > 0
+            ? Math.max(0, currentTotalAssetsDisplay() - assetFloorDisplay)
+            : Infinity;
+          const blockedByFloor = Math.max(0, shortfall - withdrawableDisplay);
+
+          let remainingShortfall = shortfall - blockedByFloor;
+
+          // 현금이 1순위다. 팔면 세금이 붙는 자산보다 먼저 쓰는 것이 자연스럽고,
+          // 일반자산 인출 개시 나이 제한도 받지 않는다(이미 손에 있는 돈이다).
+          const fromCash = Math.min(cashBucketDisplay, remainingShortfall);
+          cashBucketDisplay -= fromCash;
+          remainingShortfall -= fromCash;
+
           const generalAssetWithdrawalStartAge = withdrawalPlan?.generalAssetWithdrawalStartAge ?? userProfile.retirementAge;
           if (currentAge >= generalAssetWithdrawalStartAge) {
             for (const asset of withdrawalOrderedAssets) {
               const assetValueDisplay = this.convertValue(asset.currentValue, asset.currency, displayCurrency, exchangeRate);
-              if (assetValueDisplay >= remainingShortfall) {
-                asset.currentValue -= this.convertValue(remainingShortfall, displayCurrency, asset.currency, exchangeRate);
-                remainingShortfall = 0; break;
-              } else {
-                remainingShortfall -= assetValueDisplay; asset.currentValue = 0;
+              const saleDisplay = Math.min(assetValueDisplay, remainingShortfall);
+              const gain = applySale(asset, this.convertValue(saleDisplay, displayCurrency, asset.currency, exchangeRate));
+              if (asset.capitalGainsTaxable) {
+                annualRealizedCapitalGainKRW += this.convertValue(gain, asset.currency, 'KRW', exchangeRate);
               }
+              remainingShortfall -= saleDisplay;
+              if (remainingShortfall <= 0) { remainingShortfall = 0; break; }
             }
           }
 
@@ -741,7 +967,7 @@ export class SimulationEngine {
           // 55세 이상이면 법정 최저 나이(55세)부터 바로 후행 인출한다 — 부족분이 생긴 응급
           // 상황에서는 있는 돈을 최대한 활용하는 쪽(조기에라도 인출)이 맞다.
           if (remainingShortfall > 0 && currentAge >= PRIVATE_PENSION_MIN_START_AGE) {
-            const taxRate = getPrivatePensionIncomeTaxRate(currentAge);
+            const taxRate = getPrivatePensionIncomeTaxRate(currentAge, taxCtx);
             for (const pension of activePensions) {
               let pensionValueNetDisplay = this.convertValue(pension.currentBalance, pension.currency, displayCurrency, exchangeRate) * (1 - taxRate);
               
@@ -751,13 +977,32 @@ export class SimulationEngine {
                 pensionValueNetDisplay = Math.min(pensionValueNetDisplay, Math.max(0, maxAllowedDrawNetDisplay));
               }
 
+              // 월 인출 목표를 정했으면 후행 인출도 그 한도 안에서만 한다.
+              //
+              // 이것이 빠져 있어서 「연금 전략」의 인출 비율(100%/50%/25%)이 **총액을 바꾸지
+              // 못했다.** 정상 인출에서 25%만 뽑아도 남은 75%를 이 경로가 곧바로 채워, 세 선택지가
+              // 인출 "순서"만 다르고 결과는 같은 두 종류로 뭉쳤다. 화면은 세 개의 다른 전략을
+              // 보여주는데 엔진에는 두 개만 있었다.
+              //
+              // 목표를 정하지 않은 경우(spending_first / ai_optimized)에는 이 캡이 걸리지 않고
+              // 기존대로 잔액 전체가 후행 인출 대상이다.
+              if (remainingMonthlyPensionTargetKRW !== undefined) {
+                const remainingTargetNetDisplay = this.convertValue(
+                  Math.max(0, remainingMonthlyPensionTargetKRW), 'KRW', displayCurrency, exchangeRate
+                ) * (1 - taxRate);
+                pensionValueNetDisplay = Math.min(pensionValueNetDisplay, Math.max(0, remainingTargetNetDisplay));
+              }
+
               if (pensionValueNetDisplay >= remainingShortfall) {
                 const drawPreTax = remainingShortfall / (1 - taxRate);
                 pension.currentBalance -= this.convertValue(drawPreTax, displayCurrency, pension.currency, exchangeRate);
                 if (currentTaxSettings.limitPrivatePensionToTaxLimit) {
                   monthlyPensionPreTaxLimitRemainingKRW -= this.convertValue(drawPreTax, displayCurrency, 'KRW', exchangeRate);
                 }
-                
+                if (remainingMonthlyPensionTargetKRW !== undefined) {
+                  remainingMonthlyPensionTargetKRW -= this.convertValue(drawPreTax, displayCurrency, 'KRW', exchangeRate);
+                }
+
                 // Update pension income variables with the shortfall drawing
                 const drawAmountTax = drawPreTax * taxRate;
                 const drawAmountNet = drawPreTax - drawAmountTax;
@@ -777,6 +1022,9 @@ export class SimulationEngine {
                   if (currentTaxSettings.limitPrivatePensionToTaxLimit) {
                     monthlyPensionPreTaxLimitRemainingKRW -= this.convertValue(drawPreTax, displayCurrency, 'KRW', exchangeRate);
                   }
+                  if (remainingMonthlyPensionTargetKRW !== undefined) {
+                    remainingMonthlyPensionTargetKRW -= this.convertValue(drawPreTax, displayCurrency, 'KRW', exchangeRate);
+                  }
 
                   const drawAmountTax = drawPreTax * taxRate;
                   const drawAmountNet = drawPreTax - drawAmountTax;
@@ -790,78 +1038,102 @@ export class SimulationEngine {
               }
             }
           }
-          if (remainingShortfall > 0) actualMonthlySpending -= remainingShortfall;
+          const unmet = remainingShortfall + blockedByFloor;
+          if (unmet > 0) actualMonthlySpending -= unmet;
         }
         annualSpending += actualMonthlySpending;
       }
 
       // Taxes
-      const { comprehensiveTaxKRW, healthInsuranceKRW } = calculateComprehensiveTaxAndHealthInsuranceKRW(
+      const { comprehensiveTaxKRW, healthInsuranceKRW, healthInsuranceIncomeBasisKRW } = calculateComprehensiveTaxAndHealthInsuranceKRW(
         {
           annualRawFinancialIncomeKRW,
-          annualRawPensionIncomeKRW: annualPrivatePensionPreTaxKRW + annualNationalPensionPreTaxKRW,
+          // 사적연금(annualPrivatePensionPreTaxKRW)은 건보료 부과 대상이 아니라 넘기지 않는다.
+          annualPublicPensionIncomeKRW: annualNationalPensionPreTaxKRW,
+          annualWithheldFinancialTaxKRW,
         },
-        currentTaxSettings
+        taxCtx
       );
-      const annualComprehensiveTaxPaidDisplay = this.convertValue(comprehensiveTaxKRW, 'KRW', displayCurrency, exchangeRate);
-      const annualHealthInsurancePaidDisplay = this.convertValue(healthInsuranceKRW, 'KRW', displayCurrency, exchangeRate);
+      // 부과액이 아니라 실제 징수액을 기록한다(collectTax 주석 참조).
+      let annualComprehensiveTaxPaidDisplay = this.convertValue(comprehensiveTaxKRW, 'KRW', displayCurrency, exchangeRate);
+      let annualHealthInsurancePaidDisplay = this.convertValue(healthInsuranceKRW, 'KRW', displayCurrency, exchangeRate);
 
       {
-        let remainingTax = annualComprehensiveTaxPaidDisplay + annualHealthInsurancePaidDisplay;
-        for (const asset of withdrawalOrderedAssets) {
-            const assetValueDisplay = this.convertValue(asset.currentValue, asset.currency, displayCurrency, exchangeRate);
-            const deduct = Math.min(remainingTax, assetValueDisplay);
-            asset.currentValue -= this.convertValue(deduct, displayCurrency, asset.currency, exchangeRate);
-            remainingTax -= deduct;
-            if (remainingTax <= 0) break;
+        // 두 세금은 한 번에 징수한다(원래부터 합산해 차감했다). 일부만 걷힌 해에는
+        // 부과 비율대로 나눠 배분한다 — 어느 한쪽을 먼저 채우는 규칙에는 근거가 없다.
+        const chargedDisplay = annualComprehensiveTaxPaidDisplay + annualHealthInsurancePaidDisplay;
+        const collectedDisplay = this.collectTax(
+          chargedDisplay, withdrawalOrderedAssets, activePensions, displayCurrency, exchangeRate,
+          (gainKRW) => { annualRealizedCapitalGainKRW += gainKRW; }
+        );
+        if (collectedDisplay < chargedDisplay) {
+          const collectedRatio = chargedDisplay > 0 ? collectedDisplay / chargedDisplay : 0;
+          annualComprehensiveTaxPaidDisplay *= collectedRatio;
+          annualHealthInsurancePaidDisplay *= collectedRatio;
         }
 
         // 초과세도 실질적으로 배당소득에서 빠져나가는 비용이므로 표시되는 배당소득에도 반영한다.
-        annualDividendIncome = Math.max(0, annualDividendIncome - annualComprehensiveTaxPaidDisplay - annualHealthInsurancePaidDisplay);
+        annualDividendIncome = Math.max(0, annualDividendIncome - collectedDisplay);
       }
 
       // Private pension high tax threshold adjustment
       let privatePensionTaxMethod: PrivatePensionTaxationMethod = 'none';
       {
-        const { taxKRW: totalPensionTaxNeededKRW, method } = calculatePrivatePensionExcessTaxNeededKRW(annualPrivatePensionPreTaxKRW, currentTaxSettings);
+        // 국민연금 수령액을 함께 넘긴다 — 종합과세를 고를 때 두 연금은 합산되어 하나의
+        // 과세표준을 이루므로, 연금소득공제·기본공제가 두 연금에 걸쳐 한 번만 적용되어야 한다.
+        const { taxKRW: totalPensionTaxNeededKRW, method } = calculatePrivatePensionExcessTaxNeededKRW(
+          annualPrivatePensionPreTaxKRW, taxCtx, annualNationalPensionPreTaxKRW
+        );
         privatePensionTaxMethod = method;
         const totalPensionTaxNeededDisplay = this.convertValue(totalPensionTaxNeededKRW, 'KRW', displayCurrency, exchangeRate);
         const pensionTaxAdjustmentDisplay = Math.max(0, totalPensionTaxNeededDisplay - annualPensionTaxPaid);
 
-        let remainingTax = pensionTaxAdjustmentDisplay;
-        for (const asset of withdrawalOrderedAssets) {
-          const assetValueDisplay = this.convertValue(asset.currentValue, asset.currency, displayCurrency, exchangeRate);
-          const deduct = Math.min(remainingTax, assetValueDisplay);
-          asset.currentValue -= this.convertValue(deduct, displayCurrency, asset.currency, exchangeRate);
-          remainingTax -= deduct;
-          if (remainingTax <= 0) break;
-        }
-        if (remainingTax > 0) {
-          for (const pension of activePensions) {
-            const pensionValueDisplay = this.convertValue(pension.currentBalance, pension.currency, displayCurrency, exchangeRate);
-            const deduct = Math.min(remainingTax, pensionValueDisplay);
-            pension.currentBalance -= this.convertValue(deduct, displayCurrency, pension.currency, exchangeRate);
-            remainingTax -= deduct;
-            if (remainingTax <= 0) break;
-          }
-        }
-        annualPensionTaxPaid += pensionTaxAdjustmentDisplay;
+        const collectedAdjustmentDisplay = this.collectTax(
+          pensionTaxAdjustmentDisplay, withdrawalOrderedAssets, activePensions, displayCurrency, exchangeRate,
+          (gainKRW) => { annualRealizedCapitalGainKRW += gainKRW; }
+        );
+        annualPensionTaxPaid += collectedAdjustmentDisplay;
         // 초과세도 실질적으로 사적연금 소득에서 빠져나가는 비용이므로 표시되는 소득에도 반영한다.
-        annualPrivatePensionIncome = Math.max(0, annualPrivatePensionIncome - pensionTaxAdjustmentDisplay);
+        annualPrivatePensionIncome = Math.max(0, annualPrivatePensionIncome - collectedAdjustmentDisplay);
+      }
+
+      // 해외주식 양도소득세 — 작년에 실현한 이익을 올해 낸다(위 deferredCapitalGainKRW 주석 참고).
+      //
+      // 마지막 해에는 이월분과 당해 실현분을 함께 부과한다. 그러지 않으면 마지막 해에 실현된
+      // 이익이 영원히 과세되지 않고 사라진다.
+      let annualCapitalGainsTaxPaidDisplay = 0;
+      {
+        const isLastYear = y === totalYears - 1;
+        const taxableGainKRW = deferredCapitalGainKRW + (isLastYear ? annualRealizedCapitalGainKRW : 0);
+        const capitalGainsTaxKRW = calculateCapitalGainsTaxKRW(taxableGainKRW, taxCtx);
+
+        if (capitalGainsTaxKRW > 0) {
+          const chargedDisplay = this.convertValue(capitalGainsTaxKRW, 'KRW', displayCurrency, exchangeRate);
+          // 세금을 내려고 판 자산에서도 차익이 실현되지만, 그 몫은 다음 해로 넘어가므로
+          // 여기서 다시 올해 과세표준에 들어가지 않는다(순환이 생기지 않는 이유다).
+          annualCapitalGainsTaxPaidDisplay = this.collectTax(
+            chargedDisplay, withdrawalOrderedAssets, activePensions, displayCurrency, exchangeRate,
+            (gainKRW) => { annualRealizedCapitalGainKRW += gainKRW; }
+          );
+        }
+
+        deferredCapitalGainKRW = isLastYear ? 0 : annualRealizedCapitalGainKRW;
       }
 
       const stockAssetsDisplay = activeAssets.reduce((sum, a) => sum + this.convertValue(a.currentValue, a.currency, displayCurrency, exchangeRate), 0);
       const pensionAssetsDisplay = activePensions.reduce((sum, p) => sum + this.convertValue(p.currentBalance, p.currency, displayCurrency, exchangeRate), 0);
       const isaAssetsDisplay = activeIsas.reduce((sum, i) => sum + this.convertValue(i.currentBalance, i.currency, displayCurrency, exchangeRate), 0);
-      const totalAssetsDisplay = stockAssetsDisplay + pensionAssetsDisplay + isaAssetsDisplay;
+      const totalAssetsDisplay = stockAssetsDisplay + pensionAssetsDisplay + isaAssetsDisplay + cashBucketDisplay;
 
-      const hasTaxWarning = annualRawFinancialIncomeKRW > 20000000;
+      const hasTaxWarning = annualRawFinancialIncomeKRW > taxCtx.profile.financialIncomeThresholdKRW;
       const pensionIncome = annualNationalPensionIncome + annualPrivatePensionIncome;
       const totalIncome = annualDividendIncome + pensionIncome + annualOtherIncome;
 
       yearlyResults.push({
         age: currentAge, year: currentYear, totalAssets: totalAssetsDisplay,
         stockAssets: stockAssetsDisplay, pensionAssets: pensionAssetsDisplay,
+        isaAssets: isaAssetsDisplay,
+        cashAssets: cashBucketDisplay,
         dividendIncome: annualDividendIncome, nationalPensionIncome: annualNationalPensionIncome,
         privatePensionIncome: annualPrivatePensionIncome, pensionIncome, otherIncome: annualOtherIncome,
         totalIncome, spending: annualSpending, healthcareSpending: annualHealthcareCost,
@@ -869,7 +1141,10 @@ export class SimulationEngine {
         preTaxTotalIncome: annualPreTaxTotalIncome,
         dividendTaxPaid: annualDividendTaxPaid, pensionTaxPaid: annualPensionTaxPaid,
         nationalPensionTaxPaid: annualNationalPensionTaxPaid, comprehensiveTaxPaid: annualComprehensiveTaxPaidDisplay,
-        healthInsurancePaid: annualHealthInsurancePaidDisplay, privatePensionTaxMethod,
+        healthInsurancePaid: annualHealthInsurancePaidDisplay,
+        healthInsuranceIncomeBasis: this.convertValue(healthInsuranceIncomeBasisKRW, 'KRW', displayCurrency, exchangeRate),
+        capitalGainsTaxPaid: annualCapitalGainsTaxPaidDisplay,
+        privatePensionTaxMethod,
       });
 
       if (totalAssetsDisplay <= 0 && depletionAge === null) depletionAge = currentAge;

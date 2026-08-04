@@ -44,7 +44,7 @@ const allEnabledParams: SimulationParams = {
     bequestStrategy: 'target_amount',
     nationalPensionStrategy: 'ai_optimized',
     privatePensionStrategy: 'ai_optimized',
-    preferIsaFirst: false,
+    preferIsaFirst: 'pension_first',
     riskProfile: 'ai_recommended',
     economicScenario: 'ai_recommended',
   },

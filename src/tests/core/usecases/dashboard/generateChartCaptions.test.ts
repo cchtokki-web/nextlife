@@ -1,35 +1,7 @@
 import { describe, test, expect } from 'vitest';
 import { generateChartCaptions } from '@/core/usecases/dashboard/generateChartCaptions';
 import { SimulationParams, SimulationResult, SimulationYearlyResult } from '@/core/entities/types';
-
-function makeYearlyResult(overrides: Partial<SimulationYearlyResult>): SimulationYearlyResult {
-  return {
-    age: 60,
-    year: 2026,
-    totalAssets: 0,
-    stockAssets: 0,
-    pensionAssets: 0,
-    dividendIncome: 0,
-    nationalPensionIncome: 0,
-    privatePensionIncome: 0,
-    pensionIncome: 0,
-    otherIncome: 0,
-    totalIncome: 0,
-    preTaxTotalIncome: 0,
-    dividendTaxPaid: 0,
-    pensionTaxPaid: 0,
-    nationalPensionTaxPaid: 0,
-    healthInsurancePaid: 0,
-    comprehensiveTaxPaid: 0,
-    privatePensionTaxMethod: 'none',
-    spending: 0,
-    healthcareSpending: 0,
-    hasTaxWarning: false,
-    spouseAlive: false,
-    spendingFactor: 1,
-    ...overrides,
-  };
-}
+import { makeYearlyResult } from '@/tests/fixtures/yearlyResult';
 
 function makeResult(yearlyResults: SimulationYearlyResult[], overrides: Partial<SimulationResult> = {}): SimulationResult {
   return {

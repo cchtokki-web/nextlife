@@ -2,34 +2,18 @@ import { describe, test, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { AssetGrowthChart } from '@/web/features/Dashboard/charts/AssetGrowthChart';
 import { SimulationParams, SimulationResult, SimulationYearlyResult } from '@/core/entities/types';
+import { makeYearlyResult as sharedYearlyResult } from '@/tests/fixtures/yearlyResult';
 
+// 차트 테스트는 "자산이 있는" 상태가 기본이라야 시리즈가 그려진다. 공유 픽스처(전부 0) 위에
+// 이 파일 공통의 잔액을 얹는다.
 function makeYearlyResult(overrides: Partial<SimulationYearlyResult>): SimulationYearlyResult {
-  return {
-    age: 60,
-    year: 2026,
+  return sharedYearlyResult({
     totalAssets: 500000000,
     stockAssets: 200000000,
     pensionAssets: 300000000,
-    dividendIncome: 0,
-    nationalPensionIncome: 0,
-    privatePensionIncome: 0,
-    pensionIncome: 0,
-    otherIncome: 0,
-    totalIncome: 0,
-    preTaxTotalIncome: 0,
-    dividendTaxPaid: 0,
-    pensionTaxPaid: 0,
-    nationalPensionTaxPaid: 0,
-    healthInsurancePaid: 0,
-    comprehensiveTaxPaid: 0,
-    privatePensionTaxMethod: 'none',
     spending: 36000000,
-    healthcareSpending: 0,
-    hasTaxWarning: false,
-    spouseAlive: false,
-    spendingFactor: 1,
     ...overrides,
-  };
+  });
 }
 
 const result: SimulationResult = {

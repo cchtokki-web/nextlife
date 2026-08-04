@@ -63,7 +63,7 @@ describe('renderItemizedChecklistSection', () => {
   test('improved가 false이면 폴백 문구를 반환한다', () => {
     const recommendation: StrategyRecommendation = {
       currentUtility: utility,
-      nationalPensionOnlyUtility: null,
+      verifiedSentinelPlan: [],
       recommendedUtility: utility,
       recommendedPlan: null,
       recommendedAssetReinvestment: null,
@@ -85,7 +85,7 @@ describe('renderItemizedChecklistSection', () => {
   test('itemizedContributions를 항목별 +/-효용 점수와 함께 렌더링한다', () => {
     const recommendation: StrategyRecommendation = {
       currentUtility: utility,
-      nationalPensionOnlyUtility: null,
+      verifiedSentinelPlan: [],
       recommendedUtility: { ...utility, score: 81 },
       recommendedPlan: null,
       recommendedAssetReinvestment: null,

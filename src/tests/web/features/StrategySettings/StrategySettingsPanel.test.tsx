@@ -192,7 +192,7 @@ describe('StrategySettingsPanel', () => {
     expect(onChangeParams).toHaveBeenCalledWith({
       ...initialParams,
       strategy: {
-        ...DEFAULT_RETIREMENT_STRATEGY, nationalPensionStrategy: 'early', preferIsaFirst: false,
+        ...DEFAULT_RETIREMENT_STRATEGY, nationalPensionStrategy: 'early', preferIsaFirst: 'pension_first',
       },
     });
   });
@@ -281,7 +281,7 @@ describe('StrategySettingsPanel', () => {
           sentinels={{
             compiled: {} as never,
             appliedFields: ['nationalPensionStartAge'],
-            nationalPensionStartAge: 70,
+            appliedValues: { nationalPensionStartAge: 70 },
           }}
         />
       );
@@ -312,7 +312,7 @@ describe('StrategySettingsPanel', () => {
           onChangeParams={vi.fn()}
           recommendation={deferRecommendation}
           recommendationFailed={false}
-          sentinels={{ compiled: {} as never, appliedFields: [], nationalPensionStartAge: null }}
+          sentinels={{ compiled: {} as never, appliedFields: [], appliedValues: {} }}
         />
       );
 
@@ -614,7 +614,7 @@ describe('StrategySettingsPanel', () => {
           onChangeParams={vi.fn()}
           recommendation={deferRecommendation}
           recommendationFailed={false}
-          sentinels={{ compiled: {} as never, appliedFields: [], nationalPensionStartAge: null }}
+          sentinels={{ compiled: {} as never, appliedFields: [], appliedValues: {} }}
         />
       );
       expandPension();
@@ -630,7 +630,7 @@ describe('StrategySettingsPanel', () => {
           onChangeParams={vi.fn()}
           recommendation={deferRecommendation}
           recommendationFailed={false}
-          sentinels={{ compiled: {} as never, appliedFields: [], nationalPensionStartAge: null }}
+          sentinels={{ compiled: {} as never, appliedFields: [], appliedValues: {} }}
         />
       );
       expandPension();
@@ -645,7 +645,7 @@ describe('StrategySettingsPanel', () => {
           onChangeParams={vi.fn()}
           recommendation={deferRecommendation}
           recommendationFailed={false}
-          sentinels={{ compiled: {} as never, appliedFields: ['nationalPensionStartAge'], nationalPensionStartAge: 70 }}
+          sentinels={{ compiled: {} as never, appliedFields: ['nationalPensionStartAge'], appliedValues: { nationalPensionStartAge: 70 } }}
         />
       );
       expandPension();

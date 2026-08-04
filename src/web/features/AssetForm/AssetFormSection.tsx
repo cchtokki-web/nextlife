@@ -878,6 +878,33 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                           />
                         </button>
                       </div>
+                      <InputField
+                        label="총 취득원가"
+                        // "현재 단가"는 시세 조회 버튼이 시장가로 덮어쓰므로 취득원가가 아니다.
+                        // 양도소득세는 (매도액 − 취득원가)에 붙으므로 별도 입력이 필요하다.
+                        // 비워 두면 지금까지의 평가차익을 과세하지 않는다 — 확정되지 않은
+                        // 숫자를 지어내는 대신 사용자가 알려주지 않은 부분에 세금을 물리지 않는다.
+                        labelSecondary="비우면 지금까지의 평가차익에 세금을 매기지 않습니다"
+                        type="text"
+                        value={
+                          asset.acquisitionCostBasis === undefined
+                            ? ''
+                            : asset.acquisitionCostBasis.toLocaleString()
+                        }
+                        placeholder={(asset.quantity * asset.averagePrice).toLocaleString()}
+                        onChange={(e) => {
+                          const rawValue = e.target.value.replace(/,/g, '');
+                          if (rawValue === '') {
+                            handleUpdateAsset(asset.id, 'acquisitionCostBasis', undefined);
+                            return;
+                          }
+                          const numValue = Number(rawValue);
+                          if (!isNaN(numValue)) {
+                            handleUpdateAsset(asset.id, 'acquisitionCostBasis', numValue);
+                          }
+                        }}
+                        suffixText={asset.currency === 'KRW' ? '원' : asset.currency}
+                      />
                       <div className={styles.priceInputWrapper}>
                         <div className={styles.priceInputGrow}>
                           <InputField
@@ -1624,6 +1651,11 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                   />
                   <InputField
                     label="월 예상 소득"
+                    // 이 시뮬레이터는 기타소득에 세금을 매기지 않는다. 소득원 설명이 자유 입력이라
+                    // 월세인지 근로소득인지 알 수 없고, 사용자가 세전/세후 중 무엇을 넣었는지도
+                    // 알 수 없다. 모르는 상태에서 세금을 물리면 임의로 소득을 깎는 것이므로,
+                    // "세후를 넣어 달라"고 명시해 현재 동작을 의도된 계약으로 만든다.
+                    labelSecondary="세금·공과금을 뺀 실수령액"
                     type="text"
                     value={income.monthlyAmount === 0 ? '0' : income.monthlyAmount.toLocaleString()}
                     onChange={(e) => {

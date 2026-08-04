@@ -1,10 +1,16 @@
-// 세율/한도 상수 단일 소스. 기존 SimulationEngine.ts에 흩어져 있던 하드코딩 값을
-// 그대로(값 변경 없이) 상수화한 것으로, 여기 값을 바꾸면 시뮬레이션 결과가 바뀐다.
+// 세법이 정하는 값(세율표·한도)의 단일 소스는 taxLawProfiles.ts다.
+// 계산 경로는 전부 TaxContext(taxContext.ts)를 통해 그 프로필을 받는다.
 //
-// 세법이 정하는 값(세율표·한도)의 실제 단일 소스는 taxLawProfiles.ts로 옮겼다.
-// 이 파일은 그 프로필에서 파생된 이름들을 기존 이름 그대로 재노출해, 이미 이 모듈을
-// import하고 있는 호출부가 세법 버전 구조를 몰라도 되게 한다.
-// 값을 고치려면 taxLawProfiles.ts를 고쳐야 한다.
+// **아래 상수들은 계산에 쓰지 말 것.** 모듈 로드 시점에 'current' 프로필을 붙박이로
+// 읽으므로, 여기서 값을 읽는 코드는 사용자가 고른 세법 버전을 무시하게 된다. 실제로
+// 예전에는 TaxEngine이 이 상수들을 import했고, 그래서 params.taxLawVersion이 고급
+// 설정에 저장은 되면서 계산에는 한 번도 도달하지 않았다.
+//
+// 지금 남아 있는 용도는 테스트뿐이다:
+//   - taxLawProfiles.test.ts가 "프로필 값 == 예전 상수 값"을 검증하는 동치 가드
+//   - 다른 테스트들이 기대값을 쓸 때의 편의 참조
+// 프로덕션 코드에서 이 모듈에 필요한 것은 resolveTaxSettings와 DEFAULT_TAX_SETTINGS뿐이다.
+// 새 계산 코드는 반드시 ctx.profile을 통해 값을 읽어야 한다.
 
 import { TaxSettings } from '../../entities/types';
 import { TAX_LAW_PROFILES } from './taxLawProfiles';
@@ -29,9 +35,12 @@ export const PRIVATE_PENSION_TAX_BRACKETS: { minAge: number; maxAge: number; rat
 export const DEFAULT_PRIVATE_PENSION_LIMIT_KRW = CURRENT.privatePensionLimitKRW; // 사적연금 저율과세 한도(연)
 export const DEFAULT_PRIVATE_PENSION_EXCESS_TAX_RATE = CURRENT.privatePensionExcessTaxRate; // 한도 초과 시 세율(%)
 
-// 아래 둘은 세법이 정한 값이 아니라 이 앱이 고른 단순화 계수라 프로필에 넣지 않는다.
+// 'flat' 모드에서만 쓰이는 단순화 세율. 세법이 정한 값이 아니라 이 앱이 고른 계수라
+// 프로필에 넣지 않는다(기본 모드는 누진세율표 + 원천징수 공제를 쓴다).
 export const DEFAULT_COMPREHENSIVE_TAX_RATE = 15; // 금융소득종합과세 초과분 단순화 세율(%)
-export const DEFAULT_HEALTH_INSURANCE_RATE = 5; // 초과분 건강보험료 비율(%)
+
+// 건강보험료 요율은 실제 지역가입자 요율에 맞춘 뒤 프로필로 옮겼다(더 이상 임의 계수가 아니다).
+export const DEFAULT_HEALTH_INSURANCE_RATE = CURRENT.healthInsuranceRateRegional; // 초과분 건강보험료 비율(%)
 
 // 한국 종합소득세 누진세율표(2024년 기준, 단순화. 상세 주석은 taxLawProfiles.ts 참고).
 export const KOREA_COMPREHENSIVE_INCOME_TAX_BRACKETS_2024 = CURRENT.comprehensiveIncomeBrackets;
@@ -45,8 +54,11 @@ export const DEFAULT_TAX_SETTINGS: Required<TaxSettings> = {
   enableHealthInsurance: true,
   usDividendTaxRate: 15,
   domesticDividendTaxRate: 15.4,
+  comprehensiveTaxMode: 'progressive_credit',
   comprehensiveTaxRate: DEFAULT_COMPREHENSIVE_TAX_RATE,
   healthInsuranceRate: DEFAULT_HEALTH_INSURANCE_RATE,
+  enableCapitalGainsTax: true,
+  capitalGainsTaxRate: CURRENT.overseasCapitalGainsTaxRate * 100,
   enablePrivatePensionTax: true,
   privatePensionLimit: DEFAULT_PRIVATE_PENSION_LIMIT_KRW,
   privatePensionExcessTaxRate: DEFAULT_PRIVATE_PENSION_EXCESS_TAX_RATE,

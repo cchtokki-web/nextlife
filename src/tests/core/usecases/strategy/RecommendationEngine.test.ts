@@ -6,7 +6,12 @@ import {
   computeDeltas,
   computeItemizedContributions,
 } from '@/core/usecases/strategy/RecommendationEngine';
-import { generateCandidatePlans, getIdentityPlan } from '@/core/usecases/strategy/StrategyCandidateGenerator';
+import {
+  generateCandidatePlans,
+  generateSpendingAdjustmentCandidates,
+  getIdentityPlan,
+} from '@/core/usecases/strategy/StrategyCandidateGenerator';
+import { paramsWithSentinelOverlay } from '@/core/usecases/strategy/verifiedSentinelPlan';
 import { computeLifetimeUtility } from '@/core/usecases/utility/UtilityEngine';
 import { DEFAULT_UTILITY_CONFIG } from '@/core/usecases/utility/utilityWeights';
 import {
@@ -58,6 +63,40 @@ const paramsWithLargePension: SimulationParams = {
   baseExchangeRate: 1350,
   exchangeScenario: 'base',
   displayCurrency: 'KRW',
+};
+
+// paramsWithLargePension + 일반자산 3천만원.
+//
+// "개선안이 존재할 때"의 동작(recommendedResult / itemizedContributions /
+// nationalPensionOnlyUtility)을 검증하는 테스트 전용 픽스처다. 일반자산이 없으면
+// improved가 false가 되어 그 테스트들이 성립하지 않는다.
+//
+// 이유: 연말 정산 세금(종합과세·건보료)은 일반자산 → 사적연금 순으로 징수되는데
+// (SimulationEngine.collectTax), 일반자산이 없으면 그 세금이 곧바로 연금 잔액을 갉아먹는다.
+// 그러면 "연금을 더 빼서 쓴다"는 후보의 이득이 늘어난 건보료에 상쇄되어 격자 탐색이
+// baseline을 이기지 못한다. 예전에는 이 세금이 일반자산에서만 징수되고 남은 금액은 그냥
+// 버려졌기 때문에(= 자산 0이면 전액 증발) 자산 없이도 개선안이 나왔다.
+//
+// paramsWithLargePension 자체에 자산을 넣지 않는 이유: 그 픽스처는
+// "privatePensions/nationalPension을 비우면 탐색 차원이 하나도 없다"를 검증하는 테스트들의
+// 기반이기도 한데, 일반자산이 하나라도 있으면 매도순서·인출개시나이 차원이 살아나 그 전제가 깨진다.
+const paramsWithOptimizableHeadroom: SimulationParams = {
+  ...paramsWithLargePension,
+  assets: [
+    {
+      id: 'general-asset',
+      type: 'stock',
+      ticker: 'GEN',
+      name: '일반자산',
+      quantity: 3000,
+      averagePrice: 10000,
+      annualGrowthRate: 4,
+      dividendYield: 4,
+      monthlyContribution: 0,
+      reinvestDividend: false,
+      currency: 'KRW',
+    },
+  ],
 };
 
 // 자산 매도 순서·ISA 만기 목적지 두 차원이 실제로 결과에 영향을 주도록, 배당률이 크게 다른
@@ -232,13 +271,20 @@ describe('recommendStrategy - 생활비 증액(Phase 2) 후보', () => {
     expect(baseline.depletionAge!).toBeLessThan(paramsWithDepletionRisk.userProfile.expectancy);
 
     const recommendation = recommendStrategy(paramsWithDepletionRisk, engine);
-    // Phase 2(생활비 증액) 후보가 0개임을 확인하는 것이 이 테스트의 취지다. totalCandidateCount에는
-    // Phase 3(배당 재투자)의 시도량(assets.length)이 더해진다. Phase 4는 실제로 실행한 시뮬레이션
-    // 횟수만 더하는데, 이 시나리오는 사적연금이 없어 두 레그 모두 평가되지 않으므로 0이다.
+    // Phase 2의 **증액** 후보가 0개임을 확인하는 것이 이 테스트의 취지다(하강 후보는 고갈
+    // 위험과 무관하게 항상 생성된다 — 오히려 이런 상황에서 필요한 후보다).
+    // totalCandidateCount에는 Phase 3(배당 재투자)의 시도량(assets.length)이 더해진다.
+    // Phase 4는 실제로 실행한 시뮬레이션 횟수만 더하는데, 이 시나리오는 사적연금이 없어
+    // 두 레그 모두 평가되지 않으므로 0이다.
     const baseCandidateCount = generateCandidatePlans(paramsWithDepletionRisk).length;
+    const decreaseOnlyCount = generateSpendingAdjustmentCandidates(
+      paramsWithDepletionRisk, getIdentityPlan(paramsWithDepletionRisk), { allowIncrease: false }
+    ).length;
 
-    expect(recommendation.totalCandidateCount).toBe(baseCandidateCount + paramsWithDepletionRisk.assets.length);
-    expect(recommendation.recommendedPlan?.monthlySpendingMultiplier ?? 1).toBe(1);
+    expect(recommendation.totalCandidateCount)
+      .toBe(baseCandidateCount + decreaseOnlyCount + paramsWithDepletionRisk.assets.length);
+    // 증액은 추천되지 않는다.
+    expect(recommendation.recommendedPlan?.monthlySpendingMultiplier ?? 1).toBeLessThanOrEqual(1);
   });
 
   test("spendingStrategy가 'target'이 아니면 생활비 증액 후보를 생성하지 않는다", () => {
@@ -273,18 +319,22 @@ describe('recommendStrategy - 생활비 증액(Phase 2) 후보', () => {
 
     const recommendation = recommendStrategy(params, engine);
     const baseCandidateCount = generateCandidatePlans(params).length;
+    const decreaseOnlyCount = generateSpendingAdjustmentCandidates(
+      params, getIdentityPlan(params), { allowIncrease: false }
+    ).length;
 
-    expect(recommendation.totalCandidateCount).toBe(baseCandidateCount + params.assets.length);
+    expect(recommendation.totalCandidateCount)
+      .toBe(baseCandidateCount + decreaseOnlyCount + params.assets.length);
   });
 });
 
 describe('recommendStrategy - recommendedResult', () => {
   test('improved가 true면 recommendedResult가 baseline과 다른 연도별 결과를 담는다', () => {
     const engine = new SimulationEngine();
-    const recommendation = recommendStrategy(paramsWithLargePension, engine);
+    const recommendation = recommendStrategy(paramsWithOptimizableHeadroom, engine);
     expect(recommendation.improved).toBe(true);
 
-    const baseline = engine.runForUtility(paramsWithLargePension);
+    const baseline = engine.runForUtility(paramsWithOptimizableHeadroom);
     expect(recommendation.recommendedResult.endingAssets).not.toBe(baseline.endingAssets);
   });
 
@@ -303,41 +353,31 @@ describe('recommendStrategy - recommendedResult', () => {
   });
 });
 
-describe('recommendStrategy - nationalPensionOnlyUtility', () => {
-  test('추천 나이만 사용자의 실제 인출계획에 얹은 효용을 계산한다', () => {
+describe('recommendStrategy - verifiedSentinelPlan', () => {
+  test('사슬의 각 단계 효용은 그 조합을 실제로 시뮬레이션한 값이다', () => {
     const engine = new SimulationEngine();
-    const recommendation = recommendStrategy(paramsWithLargePension, engine);
+    const recommendation = recommendStrategy(paramsWithOptimizableHeadroom, engine);
     expect(recommendation.improved).toBe(true);
+    // 이 픽스처에서 검증된 축이 하나도 없어지면 아래 단언이 통째로 무의미해진다.
+    expect(recommendation.verifiedSentinelPlan.length).toBeGreaterThan(0);
 
-    const recommendedAge = recommendation.recommendedPlan?.nationalPensionStartAge;
-    expect(typeof recommendedAge).toBe('number');
+    // 기준점이 identityPlan이 아니라 "사용자의 params + 해당 축들만 교체"임을 직접 재현한다.
+    // 이것이 "검증된 오버레이"라는 주장의 전부다 — 추정치를 실으면 화면이 계산하는 값과
+    // 어긋나고, 그 어긋남은 사용자에게 "적용했더니 점수가 내려갔다"로 나타난다.
+    for (const step of recommendation.verifiedSentinelPlan) {
+      const overlaid = paramsWithSentinelOverlay(paramsWithOptimizableHeadroom, step.planOverrides);
+      const expected = computeLifetimeUtility(
+        engine.runForUtility(overlaid),
+        overlaid,
+        DEFAULT_UTILITY_CONFIG
+      );
 
-    const currentAge = paramsWithLargePension.withdrawalPlan?.nationalPensionStartAge ?? 65;
-    // 이 픽스처에서 추천 나이가 baseline과 같아지면 아래 단언이 무의미해진다.
-    expect(recommendedAge).not.toBe(currentAge);
-    expect(recommendation.nationalPensionOnlyUtility).not.toBeNull();
-
-    // 기준점이 identityPlan이 아니라 "사용자의 params + 나이만 교체"임을 직접 재현해 확인한다.
-    // identityPlan 기준이면 privatePensionMonthlyTarget 등 다른 필드까지 함께 바뀌어
-    // 다른 점수가 나온다.
-    const onlyAgeParams: SimulationParams = {
-      ...paramsWithLargePension,
-      withdrawalPlan: {
-        ...(paramsWithLargePension.withdrawalPlan ?? {}),
-        nationalPensionStartAge: recommendedAge,
-      },
-    };
-    const expected = computeLifetimeUtility(
-      engine.runForUtility(onlyAgeParams),
-      onlyAgeParams,
-      DEFAULT_UTILITY_CONFIG
-    );
-
-    expect(recommendation.nationalPensionOnlyUtility?.score).toBe(expected.score);
-    expect(recommendation.nationalPensionOnlyUtility?.components).toEqual(expected.components);
+      expect(step.utility, `${step.field} 단계의 효용이 실측과 다르다`).toEqual(expected);
+      expect(step.utility.score).toBeGreaterThan(recommendation.currentUtility.score);
+    }
   });
 
-  test('개선안이 없으면 null이다', () => {
+  test('개선안이 없으면 빈 배열이다', () => {
     const engine = new SimulationEngine();
     const noOptimizableDimensionParams: SimulationParams = {
       ...paramsWithLargePension,
@@ -346,7 +386,7 @@ describe('recommendStrategy - nationalPensionOnlyUtility', () => {
     };
     const recommendation = recommendStrategy(noOptimizableDimensionParams, engine);
     expect(recommendation.improved).toBe(false);
-    expect(recommendation.nationalPensionOnlyUtility).toBeNull();
+    expect(recommendation.verifiedSentinelPlan).toEqual([]);
   });
 });
 
@@ -364,7 +404,7 @@ describe('recommendStrategy - itemizedContributions', () => {
 
   test('improved가 true면 itemizedContributions에 최소 1개 이상의 항목이 있고 각 필드가 유효하다', () => {
     const engine = new SimulationEngine();
-    const recommendation = recommendStrategy(paramsWithLargePension, engine);
+    const recommendation = recommendStrategy(paramsWithOptimizableHeadroom, engine);
     expect(recommendation.improved).toBe(true);
 
     expect(recommendation.itemizedContributions.length).toBeGreaterThan(0);
@@ -465,6 +505,8 @@ function makeYearlyResult(overrides: Partial<SimulationYearlyResult>): Simulatio
     totalAssets: 0,
     stockAssets: 0,
     pensionAssets: 0,
+    isaAssets: 0,
+    cashAssets: 0,
     dividendIncome: 0,
     nationalPensionIncome: 0,
     privatePensionIncome: 0,
@@ -476,6 +518,8 @@ function makeYearlyResult(overrides: Partial<SimulationYearlyResult>): Simulatio
     pensionTaxPaid: 0,
     nationalPensionTaxPaid: 0,
     healthInsurancePaid: 0,
+    healthInsuranceIncomeBasis: 0,
+    capitalGainsTaxPaid: 0,
     comprehensiveTaxPaid: 0,
     privatePensionTaxMethod: 'none',
     spending: 0,
@@ -671,7 +715,7 @@ describe('recommendStrategy - totalCandidateCount/failedCandidateCount', () => {
     expect(recommendation.failedCandidateCount).toBe(0);
   });
 
-  test('탐색할 차원이 전혀 없으면 총 후보 수는 0이다', () => {
+  test('인출 차원이 전혀 없으면 생활비 하강 후보만 남는다', () => {
     const engine = new SimulationEngine();
     const noOptimizableDimensionParams: SimulationParams = {
       ...paramsWithLargePension,
@@ -680,10 +724,19 @@ describe('recommendStrategy - totalCandidateCount/failedCandidateCount', () => {
     };
     const recommendation = recommendStrategy(noOptimizableDimensionParams, engine);
 
-    // Phase 1/2/3은 탐색할 차원이 전혀 없어 0개이고, Phase 4도 사적연금이 없어(hasPension false)
-    // 시뮬레이션을 한 번도 실행하지 않으므로 0이다. 예전에는 Phase 4가 전제 조건 미충족이어도
-    // 무조건 +1을 더해, AI advisor의 "전부 실패" 판정(failed === total)이 성립할 수 없었다.
-    expect(recommendation.totalCandidateCount).toBe(0);
+    // Phase 1(인출 시점/순서 격자)과 Phase 3은 탐색할 차원이 없어 0개이고, Phase 4도
+    // 사적연금이 없어(hasPension false) 시뮬레이션을 한 번도 실행하지 않으므로 0이다.
+    // 예전에는 Phase 4가 전제 조건 미충족이어도 무조건 +1을 더해, AI advisor의
+    // "전부 실패" 판정(failed === total)이 성립할 수 없었다.
+    //
+    // Phase 2의 하강 후보는 인출 격자와 무관하게 항상 생성된다 — "덜 쓴다"는 선택지는
+    // 자산이 하나뿐이어도 존재한다.
+    const decreaseOnlyCount = generateSpendingAdjustmentCandidates(
+      noOptimizableDimensionParams, getIdentityPlan(noOptimizableDimensionParams), { allowIncrease: false }
+    ).length;
+
+    expect(generateCandidatePlans(noOptimizableDimensionParams)).toEqual([]);
+    expect(recommendation.totalCandidateCount).toBe(decreaseOnlyCount);
     expect(recommendation.failedCandidateCount).toBe(0);
   });
 });
@@ -830,8 +883,12 @@ describe('recommendStrategy - Phase 3 배당 재투자 통합', () => {
       ],
     };
     const result = recommendStrategy(paramsWithAssets, engine);
-    // 이 fixture는 실제 엔진에서 결정론적으로 asset-1만 재투자 중단(false)이 유리하다고 판단한다
-    // (asset-0은 index 0이라 flip해도 무효과이므로 beneficial 목록에 들어가지 않는다).
+    // 이 fixture에서는 asset-1(저성장·고배당)의 재투자 중단만 유리하다 — 배당을 연 1%짜리
+    // 자산 안에서 굴리는 것보다 현금으로 빼 두는 편이 사망 시 잔여자산 과다를 덜 만든다.
+    // asset-0은 배당이 0이라 스위치를 뒤집어도 아무 일도 일어나지 않는다.
+    //
+    // 예전 주석은 "asset-0은 index 0이라 flip해도 무효과"라고 적혀 있었다. 그건 잉여 현금이
+    // activeAssets[0]으로 되돌아가던 시절의 이야기이고, 현금 버킷이 생기면서 근거가 사라졌다.
     expect(result.recommendedAssetReinvestment).not.toBeNull();
     expect(Object.keys(result.recommendedAssetReinvestment ?? {})).toEqual(['asset-1']);
     expect(result.itemizedContributions.some((c) => c.label.includes('테스트자산'))).toBe(true);
@@ -863,11 +920,16 @@ describe('recommendStrategy - Phase 3 배당 재투자 통합', () => {
   });
 
   test('WithdrawalPlan(Phase 1/2) 개선은 없지만 Phase 3(배당 재투자) 개선만 있으면 reasons에 Phase 3 문구만 담고 "이미 합리적" 폴백은 담지 않는다', () => {
-    // 인출계획 그리드로는 개선이 없도록(사적연금·국민연금·ISA 없음, 두 자산의 배당수익률을 동일하게
-    // 두어 매도순서 차원도 무효화, 은퇴기간을 짧게 두어 매도순서 절세 효과도 없음) 설계하되,
-    // 축적기(currentAge 25 < retirementAge 65)가 길어 asset-1(저성장·고배당)의 배당을 고성장
-    // asset-0으로 흘려보내는 재투자 중단이 유리해지도록 성장률 격차를 크게 둔다. 그 결과 bestPlan은
-    // null(인출계획 미개선)이지만 Phase 3는 asset-1 재투자 중단을 추천한다 —
+    // 인출계획 그리드로는 개선이 없도록 설계한다: 사적연금·국민연금·ISA 없음, 두 자산의
+    // 배당수익률을 **실제로** 동일하게 두어 매도순서 차원 무효화(주석은 예전부터 그렇게
+    // 말했지만 값은 0과 8이었다 — 잉여 현금이 자산으로 되돌아가던 시절에는 그 차이가
+    // 가려져 있었을 뿐이다), 은퇴기간을 짧게 두어 매도순서 절세 효과도 제거.
+    //
+    // 그 위에서 Phase 3만 개선을 찾는다: 축적기가 40년이라 배당을 자산 안에서 굴리면
+    // 사망 시 잔여자산이 적정선(월생활비 × 24)을 크게 초과해 bequestAdequacy가 감점된다.
+    // 재투자를 끄면 그만큼이 현금으로 남아 초과가 줄어든다.
+    //
+    // 결과: bestPlan은 null(인출계획 미개선)이고 Phase 3만 개선 —
     // reasons 3-way 병합의 가운데 분기(withdrawalPlanImproved===false && additionalReasons.length>0).
     const engine = new SimulationEngine();
     const phase3OnlyParams: SimulationParams = {
@@ -877,11 +939,11 @@ describe('recommendStrategy - Phase 3 배당 재투자 통합', () => {
           id: 'asset-0',
           type: 'etf',
           ticker: 'GROWTH',
-          name: '성장자산',
+          name: '테스트자산',
           quantity: 1,
           averagePrice: 30000000,
           annualGrowthRate: 12,
-          dividendYield: 0,
+          dividendYield: 8,
           monthlyContribution: 0,
           reinvestDividend: true,
           currency: 'KRW',
@@ -890,13 +952,13 @@ describe('recommendStrategy - Phase 3 배당 재투자 통합', () => {
           id: 'asset-1',
           type: 'etf',
           ticker: 'SPY',
-          name: '테스트자산',
+          name: '저성장자산',
           quantity: 1,
           averagePrice: 30000000,
           annualGrowthRate: 1,
           dividendYield: 8,
           monthlyContribution: 0,
-          reinvestDividend: true,
+          reinvestDividend: false,
           currency: 'KRW',
         },
       ],
@@ -913,7 +975,7 @@ describe('recommendStrategy - Phase 3 배당 재투자 통합', () => {
 
     // 인출계획 차원은 개선 없음(bestPlan null), Phase 3만 개선.
     expect(result.recommendedPlan).toBeNull();
-    expect(result.recommendedAssetReinvestment).toEqual({ 'asset-1': false });
+    expect(result.recommendedAssetReinvestment).toEqual({ 'asset-0': false });
     expect(result.improved).toBe(true);
 
     // reasons는 Phase 3 문구만 포함하고, buildReasons의 "이미 합리적"/"충분히 합리적" 및
@@ -1011,10 +1073,14 @@ describe('recommendStrategy - Phase 4 사적연금 채널링 통합', () => {
       displayCurrency: 'KRW',
     };
 
-    // 목표 연간 생활비(2,000,000 * 12 = 24,000,000)를 정확히 충족하는 결과 — baseline과 모든
-    // Phase 1/2/신규계좌 후보에 대해 이 값을 반환해 서로 동점(개선 없음)으로 묶는다.
-    const tiedResult: SimulationResult = makeSimulationResult(
-      [makeYearlyResult({ age: 60, spending: 24000000 })],
+    // 목표 연간 생활비를 정확히 충족하는 결과 — baseline과 모든 Phase 1/2/신규계좌 후보를
+    // 서로 동점(개선 없음)으로 묶는다.
+    //
+    // 고정된 spending을 돌려주면 안 된다. Phase 2의 생활비 배수 후보는 목표 자체를
+    // 스케일링하므로(0.8배 후보의 목표는 1,600,000원), 고정값은 그 후보에서 목표 대비 125%
+    // 소비로 읽혀 자동으로 이겨 버린다 — 이 테스트가 세우려는 "동점" 전제가 깨진다.
+    const tiedResultFor = (candidateParams: SimulationParams): SimulationResult => makeSimulationResult(
+      [makeYearlyResult({ age: 60, spending: candidateParams.userProfile.targetMonthlySpending * 12 })],
       0
     );
     // 목표 대비 125% 소비(consumption 컴포넌트만 더 높음, 다른 컴포넌트는 동일하게 유지)로
@@ -1030,7 +1096,7 @@ describe('recommendStrategy - Phase 4 사적연금 채널링 통합', () => {
     // 이 필드로 채널링 후보만 식별해 다른 결과를 반환한다.
     engine.runForUtility = vi.fn((candidateParams: SimulationParams): SimulationResult => {
       const isChannelingCandidate = candidateParams.privatePensions.some((p) => p.earlyChannelingEnabled === true);
-      return isChannelingCandidate ? channelingResult : tiedResult;
+      return isChannelingCandidate ? channelingResult : tiedResultFor(candidateParams);
     });
 
     const result = recommendStrategy(params, engine);

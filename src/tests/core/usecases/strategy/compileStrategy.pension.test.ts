@@ -1,5 +1,5 @@
 import { describe, test, expect } from 'vitest';
-import { compileStrategy, DEFAULT_RETIREMENT_STRATEGY } from '@/core/usecases/strategy/compileStrategy';
+import { compileStrategy, DEFAULT_RETIREMENT_STRATEGY, resolveStrategy } from '@/core/usecases/strategy/compileStrategy';
 import { DEFAULT_PRIVATE_PENSION_LIMIT_KRW } from '@/core/usecases/tax/taxRates';
 import { NATIONAL_PENSION_NORMAL_START_AGE } from '@/core/usecases/pension/nationalPensionRules';
 import { RetirementStrategy, SimulationParams } from '@/core/entities/types';
@@ -155,16 +155,35 @@ describe('compileStrategy 연금 축', () => {
     expect(r.params.withdrawalPlan?.privatePensionMonthlyTarget).toBe(1000000);
   });
 
-  test('ISA 우선 사용을 켜면 만기 자금이 일반 자산으로 간다', () => {
-    const r = compileStrategy(withStrategy({ preferIsaFirst: true }));
+  test("'일반 자산으로'를 고르면 만기 자금이 일반 자산으로 간다", () => {
+    const r = compileStrategy(withStrategy({ preferIsaFirst: 'isa_first' }));
 
     expect(r.params.withdrawalPlan?.isaMaturityDestination).toBe('asset');
   });
 
-  test('ISA 우선 사용이 꺼져 있으면 만기 자금이 연금으로 간다 (기존 동작)', () => {
-    const r = compileStrategy(withStrategy({ preferIsaFirst: false }));
+  test("'연금 계좌로'를 고르면 만기 자금이 연금으로 간다 (기존 기본 동작)", () => {
+    const r = compileStrategy(withStrategy({ preferIsaFirst: 'pension_first' }));
 
     expect(r.params.withdrawalPlan?.isaMaturityDestination).toBe('pension');
+  });
+
+  test("'AI 최적화'는 행선지 키 자체를 쓰지 않는다 (미정)", () => {
+    // 키가 남아 있으면 applyAiSentinels가 "사용자가 정한 값"으로 보고 채우지 않는다.
+    // 예전에는 boolean이라 미정을 표현할 자리가 없어 이 축만 자동 채움에서 빠져 있었다.
+    const r = compileStrategy(withStrategy({ preferIsaFirst: 'ai_optimized' }));
+
+    expect('isaMaturityDestination' in (r.params.withdrawalPlan ?? {})).toBe(false);
+  });
+
+  test('저장된 boolean은 3값으로 정규화되며 false가 AI로 승격되지 않는다', () => {
+    // E2EE라 서버 마이그레이션이 불가능하므로 읽는 시점의 정규화가 유일한 경로다.
+    // false를 'ai_optimized'로 올리면 사용자가 저장한 "연금으로" 선택이 추천값으로
+    // 조용히 덮어써진다.
+    const legacyFalse = resolveStrategy(withStrategy({ preferIsaFirst: false as never }));
+    const legacyTrue = resolveStrategy(withStrategy({ preferIsaFirst: true as never }));
+
+    expect(legacyFalse.preferIsaFirst).toBe('pension_first');
+    expect(legacyTrue.preferIsaFirst).toBe('isa_first');
   });
 
   test('compileStrategy는 자산별 reinvestDividend를 건드리지 않는다', () => {

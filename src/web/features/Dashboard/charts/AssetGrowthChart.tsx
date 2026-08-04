@@ -58,6 +58,12 @@ export function AssetGrowthChart({
       자산총액: Math.max(0, Math.round(r.totalAssets)),
       주식자산: Math.max(0, Math.round(r.stockAssets)),
       연금자산: Math.max(0, Math.round(r.pensionAssets)),
+      // ISA는 자산총액에는 들어 있는데 시리즈가 없어서, 주식+연금과 총액 사이가
+      // 라벨 없는 공백으로 보였다.
+      ISA자산: Math.max(0, Math.round(r.isaAssets)),
+      // 쓰고 남은 현금. 성장하지 않으므로 이 띠가 두꺼워진다는 것은 "굴리지 않고 쌓아 두는
+      // 돈이 늘고 있다"는 뜻이다 — 자산 총액만 봐서는 보이지 않는 정보다.
+      현금: Math.max(0, Math.round(r.cashAssets)),
       월생활비: Math.max(0, Math.round(r.spending / 12)),
     };
     compareResults.forEach((comp) => {
@@ -193,6 +199,28 @@ export function AssetGrowthChart({
                 strokeDasharray="4 4"
                 strokeWidth={1.5}
                 hide={!!hiddenKeys['연금자산']}
+              />
+              <Area
+                yAxisId="left"
+                name="ISA 자산"
+                type="monotone"
+                dataKey="ISA자산"
+                stroke="var(--success)"
+                fill="transparent"
+                strokeDasharray="4 4"
+                strokeWidth={1.5}
+                hide={!!hiddenKeys['ISA자산']}
+              />
+              <Area
+                yAxisId="left"
+                name="현금"
+                type="monotone"
+                dataKey="현금"
+                stroke="var(--foreground-muted)"
+                fill="transparent"
+                strokeDasharray="2 3"
+                strokeWidth={1.5}
+                hide={!!hiddenKeys['현금']}
               />
               <Line
                 yAxisId="right"

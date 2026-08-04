@@ -2,35 +2,7 @@ import { describe, test, expect } from 'vitest';
 import { computeRiskAlerts } from '@/core/usecases/dashboard/computeRiskAlerts';
 import { compileStrategy, DEFAULT_RETIREMENT_STRATEGY } from '@/core/usecases/strategy/compileStrategy';
 import { SimulationParams, SimulationResult, SimulationYearlyResult } from '@/core/entities/types';
-
-function makeYearlyResult(overrides: Partial<SimulationYearlyResult>): SimulationYearlyResult {
-  return {
-    age: 60,
-    year: 2026,
-    totalAssets: 0,
-    stockAssets: 0,
-    pensionAssets: 0,
-    dividendIncome: 0,
-    nationalPensionIncome: 0,
-    privatePensionIncome: 0,
-    pensionIncome: 0,
-    otherIncome: 0,
-    totalIncome: 0,
-    preTaxTotalIncome: 0,
-    dividendTaxPaid: 0,
-    pensionTaxPaid: 0,
-    nationalPensionTaxPaid: 0,
-    healthInsurancePaid: 0,
-    comprehensiveTaxPaid: 0,
-    privatePensionTaxMethod: 'none',
-    spending: 0,
-    healthcareSpending: 0,
-    hasTaxWarning: false,
-    spouseAlive: false,
-    spendingFactor: 1,
-    ...overrides,
-  };
-}
+import { makeYearlyResult } from '@/tests/fixtures/yearlyResult';
 
 function makeResult(yearlyResults: SimulationYearlyResult[]): SimulationResult {
   return {
@@ -247,6 +219,39 @@ describe('computeRiskAlerts', () => {
       const alerts = computeRiskAlerts(result, params);
 
       expect(alerts.map((a) => a.key)).toEqual(['comprehensiveTax', 'bequestShortfall']);
+    });
+  });
+
+  describe('건강보험 피부양자 자격 경계 알림', () => {
+    // 이 경고는 계산이 아니라 정직성 장치다. 이 시뮬레이터의 건보료는 문턱 초과분에만
+    // 요율을 곱하는 연속 함수지만, 실제 제도는 피부양자 자격을 잃는 순간 소득 전체와
+    // 재산에 부과되어 계단식으로 뛴다. 그 계단을 계산에 넣으면 이진탐색의 단조성 전제가
+    // 깨지므로(TaxEngine 주석 참고), 위험은 경고로만 전달한다.
+    const THRESHOLD = 20000000;
+
+    test('부과 기준 소득이 문턱 근처인 해가 있으면 경고한다', () => {
+      const yearlyResults = [
+        makeYearlyResult({ age: 65, healthInsuranceIncomeBasis: 10000000 }),
+        makeYearlyResult({ age: 66, healthInsuranceIncomeBasis: THRESHOLD * 0.95 }),
+        makeYearlyResult({ age: 67, healthInsuranceIncomeBasis: THRESHOLD * 1.05 }),
+      ];
+
+      const alerts = computeRiskAlerts(makeResult(yearlyResults), baseParams);
+      const cliff = alerts.find((a) => a.key === 'healthInsuranceCliff');
+
+      expect(cliff).toBeDefined();
+      expect(cliff!.message).toContain('66~67세');
+    });
+
+    test('문턱에서 충분히 떨어져 있으면 경고하지 않는다', () => {
+      const farBelow = [makeYearlyResult({ age: 65, healthInsuranceIncomeBasis: THRESHOLD * 0.5 })];
+      const farAbove = [makeYearlyResult({ age: 65, healthInsuranceIncomeBasis: THRESHOLD * 3 })];
+
+      expect(computeRiskAlerts(makeResult(farBelow), baseParams).map((a) => a.key))
+        .not.toContain('healthInsuranceCliff');
+      // 이미 크게 넘어선 사용자는 '건강보험료 증가 구간' 경고가 담당한다.
+      expect(computeRiskAlerts(makeResult(farAbove), baseParams).map((a) => a.key))
+        .not.toContain('healthInsuranceCliff');
     });
   });
 });

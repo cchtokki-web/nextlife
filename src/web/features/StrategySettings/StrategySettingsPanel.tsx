@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Coins, LineChart, Settings2, Target, TrendingUp, User } from 'lucide-react';
 import {
-  NationalPensionStrategy, SimulationParams, StrategyMode, StrategyRecommendation,
+  IsaFirstChoice, NationalPensionStrategy, SimulationParams, StrategyMode, StrategyRecommendation,
 } from '../../../core/entities/types';
 import {
   NATIONAL_PENSION_STRATEGY_AGES, resolveStrategy,
@@ -73,7 +73,7 @@ export function StrategySettingsPanel({
   // 컴파일한 나이로 돌고 있다. undefined로 두면 배지가 "방금 적용한 값"을 '추천'이라고
   // 말하게 된다 — 두 소비처가 같은 값을 각자 계산하다 어긋난 자리다.
   const effectiveNationalPensionStartAge =
-    sentinels?.nationalPensionStartAge
+    sentinels?.appliedValues.nationalPensionStartAge
     ?? NATIONAL_PENSION_STRATEGY_AGES[strategy.nationalPensionStrategy];
 
   const changed = useMemo(() => collectChangedPaths(params), [params]);
@@ -199,7 +199,10 @@ export function StrategySettingsPanel({
         Math.abs(NATIONAL_PENSION_STRATEGY_AGES[k] - targetAge)
           < Math.abs(NATIONAL_PENSION_STRATEGY_AGES[best] - targetAge) ? k : best
       );
-      const preferIsaFirst = plan.isaMaturityDestination === 'asset';
+      // 추천안의 ISA 만기 행선지를 확정 enum으로 옮긴다. 'ai_optimized'로 두면
+      // "적용했는데 여전히 미정"이 되어 버튼을 눌러도 상태가 바뀌지 않는다.
+      const preferIsaFirst: IsaFirstChoice =
+        plan.isaMaturityDestination === 'asset' ? 'isa_first' : 'pension_first';
 
       // 판정 기준은 전략 enum이 아니라 "엔진에 실제로 들어간 나이"다.
       //

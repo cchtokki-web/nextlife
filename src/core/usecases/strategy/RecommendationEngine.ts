@@ -1,23 +1,32 @@
 import {
-  CompleteWithdrawalPlan,
+  BaselineWithdrawalPlan,
   ItemizedContribution,
   SimulationParams,
   SimulationResult,
   StrategyRecommendation,
   UtilityBreakdown,
   UtilityConfig,
+  UtilityRaws,
   WithdrawalPlan,
 } from '../../entities/types';
 import { SimulationEngine } from '../SimulationEngine';
-import { computeLifetimeUtility } from '../utility/UtilityEngine';
+import { computeLifetimeUtility, computeUtilityRaws, scoreUtilityRaws } from '../utility/UtilityEngine';
 import { DEFAULT_UTILITY_CONFIG } from '../utility/utilityWeights';
 import { analyzeCurrentStrategy, formatManwon } from '../utility/utilityAnalysis';
 import { getRetirementGrade } from '../../entities/retirementGrade';
-import { generateCandidatePlans, generateSpendingAdjustmentCandidates, getIdentityPlan } from './StrategyCandidateGenerator';
+import { generateCandidatePlans, generateSpendingAdjustmentCandidates, getIdentityPlan, paramsWithBaselinePlan } from './StrategyCandidateGenerator';
 import { optimizeDividendReinvestment } from './DividendReinvestmentOptimizer';
 import { optimizePrivatePensionChanneling } from './PrivatePensionChannelingOptimizer';
 import { computeDeltas } from './deltas';
-import { NATIONAL_PENSION_NORMAL_START_AGE } from '../pension/nationalPensionRules';
+import { buildVerifiedSentinelPlan } from './verifiedSentinelPlan';
+import { resolveStrategy } from './compileStrategy';
+import {
+  isObjectivePresetConfig, pickLowestRegret, pickMostRobust, resolveAssumptionVariants,
+} from './robustness';
+
+// 검증된 축이 하나도 없을 때 돌려주는 공유 상수. 매번 새 배열을 만들면 소비처(화면)의
+// 메모이제이션이 흔한 경로에서 계속 깨진다.
+const NO_VERIFIED_SENTINEL_STEPS: StrategyRecommendation['verifiedSentinelPlan'] = Object.freeze([]);
 
 // 하위 호환: 기존에 computeDeltas를 이 모듈에서 import하던 코드(테스트 등)를 위해 재노출한다.
 export { computeDeltas } from './deltas';
@@ -38,7 +47,7 @@ export interface BuildReasonsContext {
   // 그렇지 않으면 phase 2(생활비 배수)가 만드는 identity 기반 plan(getIdentityPlan)이나,
   // 우연히 기본값과 같은 phase 1 후보가 실제로는 아무것도 바뀌지 않은 필드까지 문구로
   // 노출시킨다(예: 사적연금 계좌가 아예 없는데도 privatePensionMonthlyTarget=0이 "결정"처럼 보고됨).
-  identityPlan?: CompleteWithdrawalPlan;
+  identityPlan?: BaselineWithdrawalPlan;
 }
 
 export function buildReasons(
@@ -155,22 +164,24 @@ export function buildReasons(
 // plan.monthlySpendingMultiplier(1이 아닌 값)를 실제 시뮬레이션/Utility 평가에 반영하려면
 // userProfile.targetMonthlySpending 자체를 스케일링한 params가 필요하다. multiplier===1이면
 // (기존 5차원 후보 전부 해당) params를 그대로 반환해 기존 동작을 전혀 바꾸지 않는다.
-function paramsForCandidate(params: SimulationParams, plan: CompleteWithdrawalPlan): SimulationParams {
+function paramsForCandidate(params: SimulationParams, plan: BaselineWithdrawalPlan): SimulationParams {
+  // paramsWithBaselinePlan이 privatePensionMonthlyTarget 미지정 시 키 자체를 지운다 —
+  // undefined 값을 가진 키를 남기면 엔진 동작은 같아도 구조 비교·직렬화에서 차이가 생긴다.
+  const withPlan = paramsWithBaselinePlan(params, plan);
+
   const multiplier = plan.monthlySpendingMultiplier ?? 1;
-  if (multiplier === 1) {
-    return { ...params, withdrawalPlan: plan };
-  }
+  if (multiplier === 1) return withPlan;
+
   return {
-    ...params,
+    ...withPlan,
     userProfile: {
-      ...params.userProfile,
-      targetMonthlySpending: Math.round(params.userProfile.targetMonthlySpending * multiplier),
+      ...withPlan.userProfile,
+      targetMonthlySpending: Math.round(withPlan.userProfile.targetMonthlySpending * multiplier),
     },
-    withdrawalPlan: plan,
   };
 }
 
-const PLAN_FIELDS: Array<keyof CompleteWithdrawalPlan> = [
+const PLAN_FIELDS: Array<keyof BaselineWithdrawalPlan> = [
   'privatePensionMonthlyTarget',
   'nationalPensionStartAge',
   'assetSellOrderStrategy',
@@ -184,15 +195,20 @@ const PLAN_FIELDS: Array<keyof CompleteWithdrawalPlan> = [
 // monthlySpendingMultiplier는 buildReasons가 여러 필드가 함께 바뀐 상태의 deltas를 문구에
 // 병기하는 반면, 여기서는 그 필드 하나만 바꿨을 때의 deltas(itemDeltas)를 병기한다.
 function labelForSingleFieldChange(
-  field: keyof CompleteWithdrawalPlan,
-  recommendedPlan: CompleteWithdrawalPlan,
-  identityPlan: CompleteWithdrawalPlan,
+  field: keyof BaselineWithdrawalPlan,
+  recommendedPlan: BaselineWithdrawalPlan,
+  identityPlan: BaselineWithdrawalPlan,
   itemDeltas: StrategyRecommendation['deltas'],
   originalMonthlyTarget: number
 ): string {
   switch (field) {
     case 'privatePensionMonthlyTarget':
-      return `사적연금을 월 약 ${formatManwon(recommendedPlan.privatePensionMonthlyTarget)} 수준으로 정액 인출합니다.`;
+      // 이 필드가 없으면 "잔여 개월 균등분할"(엔진 기본값)이라는 뜻이다. 추천이 정액 인출을
+      // 제안했을 때만 이 라벨이 만들어지므로 값이 있는 것이 정상이지만, 반대 방향(정액 인출을
+      // 쓰던 사용자에게 균등분할을 제안)도 타입상 가능하다.
+      return recommendedPlan.privatePensionMonthlyTarget === undefined
+        ? '사적연금을 정액 인출 대신 남은 기간에 걸쳐 균등하게 인출합니다.'
+        : `사적연금을 월 약 ${formatManwon(recommendedPlan.privatePensionMonthlyTarget)} 수준으로 정액 인출합니다.`;
     case 'generalAssetWithdrawalStartAge':
       return `${recommendedPlan.generalAssetWithdrawalStartAge}세부터 일반 자산(주식/ETF) 인출을 시작합니다.`;
     case 'assetSellOrderStrategy':
@@ -235,8 +251,8 @@ function labelForSingleFieldChange(
 // 반환하는 전체 개선폭(recommendedUtility.score - currentUtility.score)과 정확히 일치하지 않을 수 있다.
 export function computeItemizedContributions(
   params: SimulationParams,
-  identityPlan: CompleteWithdrawalPlan,
-  recommendedPlan: CompleteWithdrawalPlan,
+  identityPlan: BaselineWithdrawalPlan,
+  recommendedPlan: BaselineWithdrawalPlan,
   currentUtility: UtilityBreakdown,
   baselineResult: SimulationResult,
   engine: SimulationEngine,
@@ -247,7 +263,7 @@ export function computeItemizedContributions(
   const contributions: ItemizedContribution[] = [];
   for (const field of changedFields) {
     try {
-      const overridePlan: CompleteWithdrawalPlan = { ...identityPlan, [field]: recommendedPlan[field] };
+      const overridePlan: BaselineWithdrawalPlan = { ...identityPlan, [field]: recommendedPlan[field] };
       const overrideParams = paramsForCandidate(params, overridePlan);
       const singleFieldResult = engine.runForUtility(overrideParams);
       const singleFieldUtility = computeLifetimeUtility(singleFieldResult, overrideParams, cfg);
@@ -271,51 +287,41 @@ export function computeItemizedContributions(
   return contributions;
 }
 
-// 추천 나이만 사용자의 현재 인출계획 위에 얹었을 때의 Utility. 자세한 용도와 근거는 호출부
-// 주석과 StrategyRecommendation.nationalPensionOnlyUtility 참고.
-//
-// 나이가 현재 값과 같으면 계산할 것이 없어 null이다(호출부가 어차피 적용하지 않는다).
-// 시뮬레이션이 실패해도 null을 돌려준다 — 소비처가 "판단 근거 없음"을 "적용하지 않음"으로
-// 해석하므로, 여기서 던져 추천 전체를 무효화하는 것보다 안전하다.
-function computeNationalPensionOnlyUtility(
-  params: SimulationParams,
-  recommendedPlan: CompleteWithdrawalPlan | null,
-  engine: SimulationEngine,
-  cfg: UtilityConfig
-): UtilityBreakdown | null {
-  if (!recommendedPlan) return null;
-
-  const recommendedAge = recommendedPlan.nationalPensionStartAge;
-  const currentAge = params.withdrawalPlan?.nationalPensionStartAge ?? NATIONAL_PENSION_NORMAL_START_AGE;
-  if (recommendedAge === currentAge) return null;
-
-  // paramsForCandidate가 아니라 직접 병합한다. 그쪽은 withdrawalPlan을 통째로 교체하는데,
-  // 여기서 재려는 것은 정확히 "사용자 계획에서 나이 축만 움직였을 때"다.
-  const onlyAgeParams: SimulationParams = {
-    ...params,
-    withdrawalPlan: { ...(params.withdrawalPlan ?? {}), nationalPensionStartAge: recommendedAge },
-  };
-
-  try {
-    return computeLifetimeUtility(engine.runForUtility(onlyAgeParams), onlyAgeParams, cfg);
-  } catch (err) {
-    console.warn('Skipping national-pension-only utility that failed to simulate', err);
-    return null;
-  }
-}
-
 interface CandidateSearchState {
   bestResult: SimulationResult;
   bestUtility: UtilityBreakdown;
-  bestPlan: CompleteWithdrawalPlan | null;
+  bestPlan: BaselineWithdrawalPlan | null;
   failedCandidateCount: number;
+  // 강건성 모드 재평가 대상. 점수 상위 몇 개만 남긴다 — 재평가는 후보 하나당 국면 수만큼
+  // 시뮬레이션을 돌리므로 전수로 하면 비용이 곱해진다.
+  topCandidates: ScoredCandidate[];
+}
+
+// 강건성 재평가에 필요한 최소 정보. raws를 함께 보관하는 이유는 목표 우선순위 후회 계산이
+// **재시뮬레이션 없이** 5개 목표 전부를 채점할 수 있기 때문이다(UtilityEngine.computeUtilityRaws).
+interface ScoredCandidate {
+  // null이면 baseline(사용자의 현재 계획). 강건성 판정에서도 후보의 하나로 남아야
+  // "모든 개선안이 특정 국면에서 무너지면 현행 유지"가 표현된다.
+  plan: BaselineWithdrawalPlan | null;
+  result: SimulationResult;
+  utility: UtilityBreakdown;
+  raws: UtilityRaws;
+}
+
+// 상위 후보 보관 개수. 국면 수(최대 7)와 곱해지므로 작게 유지한다 — 5면 최대 35회다.
+const ROBUSTNESS_TOP_K = 5;
+
+function rememberCandidate(state: CandidateSearchState, candidate: ScoredCandidate): void {
+  state.topCandidates.push(candidate);
+  state.topCandidates.sort((a, b) => b.utility.score - a.utility.score);
+  if (state.topCandidates.length > ROBUSTNESS_TOP_K) state.topCandidates.length = ROBUSTNESS_TOP_K;
 }
 
 // 후보 하나를 시뮬레이션 + Utility 평가하고, baseline(또는 지금까지의 최선) 대비 더 나으면
 // state를 갱신한다. 특정 조합(예: 극단적인 나이 조합)이 SimulationEngine을 깨뜨리더라도 다른
 // 후보 탐색까지 통째로 실패하지 않도록 후보 단위로 격리한다. 실패한 후보는 건너뛰고 로그만 남긴다.
 function evaluateCandidate(
-  plan: CompleteWithdrawalPlan,
+  plan: BaselineWithdrawalPlan,
   params: SimulationParams,
   engine: SimulationEngine,
   cfg: UtilityConfig,
@@ -324,7 +330,19 @@ function evaluateCandidate(
   try {
     const candidateParams = paramsForCandidate(params, plan);
     const candidateResult = engine.runForUtility(candidateParams);
-    const candidateUtility = computeLifetimeUtility(candidateResult, candidateParams, cfg);
+
+    // 상속 하한선을 못 지키는 후보는 점수와 무관하게 탈락시킨다. 하한선은 선호가 아니라
+    // 제약이므로, 효용 점수로 다른 축과 맞바꿀 수 있는 대상이 아니다.
+    //
+    // 엔진이 인출 경로에서 이미 하한선을 지키지만 세금과 배당 소비까지 막을 수는 없어
+    // 미세하게 밑돌 수 있다. 그 오차로 정상적인 후보가 전멸하지 않도록 여유(1%)를 둔다.
+    const assetFloor = candidateParams.assetFloor ?? 0;
+    if (assetFloor > 0 && candidateResult.endingAssets < assetFloor * 0.99) return;
+
+    const raws = computeUtilityRaws(candidateResult, candidateParams, cfg);
+    const candidateUtility = scoreUtilityRaws(raws, cfg.weights);
+    rememberCandidate(state, { plan, result: candidateResult, utility: candidateUtility, raws });
+
     if (candidateUtility.score > state.bestUtility.score) {
       state.bestUtility = candidateUtility;
       state.bestResult = candidateResult;
@@ -334,6 +352,60 @@ function evaluateCandidate(
     state.failedCandidateCount++;
     console.warn('Skipping withdrawal plan candidate that failed to simulate', plan, err);
   }
+}
+
+// 강건성 모드. 사용자가 미정으로 둔 축에 대해 상위 후보를 다시 서열화하고, 이긴 후보를
+// state의 최선으로 승격한다.
+//
+// 여기서 돌린 시뮬레이션은 totalCandidateCount에 더하지 않는다. 이미 평가한 후보를 다른
+// 국면에서 다시 재는 것이지 새 후보가 아니고, 그 수는 AI advisor의 "후보를 전부 실패했다"
+// 판정(failed === total)에 섞이면 안 된다.
+//
+// **사용자의 가정을 절대 덮어쓰지 않는다.** 국면 params는 평가에만 쓰고 버리며,
+// state에 남는 result/utility는 언제나 사용자 가정으로 계산한 값이다 — 화면에 그려지는
+// 곡선과 점수가 사용자가 입력한 미래 그대로여야 하기 때문이다.
+function applyRobustness(
+  state: CandidateSearchState,
+  params: SimulationParams,
+  engine: SimulationEngine,
+  cfg: UtilityConfig
+): void {
+  // 후보가 baseline 하나뿐이면 서열화할 것이 없다.
+  if (state.topCandidates.length <= 1) return;
+
+  // (1) 가정 축 — 여러 국면에서 최악이 가장 나은 계획.
+  const variants = resolveAssumptionVariants(params);
+  if (variants.length > 0) {
+    const winner = pickMostRobust(state.topCandidates, variants, (candidate, variant) => {
+      const candidateParams = variant.apply(
+        candidate.plan ? paramsForCandidate(params, candidate.plan) : params
+      );
+      try {
+        return computeLifetimeUtility(engine.runForUtility(candidateParams), candidateParams, cfg).score;
+      } catch (err) {
+        console.warn('Skipping robustness variant that failed to simulate', variant.label, err);
+        return null;
+      }
+    });
+    if (winner) promoteCandidate(state, winner);
+  }
+
+  // (2) 목표 우선순위 — 정규화된 최대 후회의 최소화. 원점수를 이미 갖고 있으므로
+  // 추가 시뮬레이션이 0회다.
+  //
+  // cfg가 목표 프리셋 표 위에 있지 않으면(사용자 정의 가중치) 후회 계산의 전제가 없다.
+  if (resolveStrategy(params).objective === 'ai_recommended' && isObjectivePresetConfig(cfg)) {
+    const winner = pickLowestRegret(state.topCandidates);
+    if (winner) promoteCandidate(state, winner);
+  }
+}
+
+// 강건성 판정이 고른 후보를 최선으로 승격한다. utility/result는 국면 평가값이 아니라
+// **사용자 가정으로 계산한 원래 값**이다(applyRobustness 주석 참고).
+function promoteCandidate(state: CandidateSearchState, winner: ScoredCandidate): void {
+  state.bestPlan = winner.plan;
+  state.bestResult = winner.result;
+  state.bestUtility = winner.utility;
 }
 
 // 후보 전략 생성(StrategyCandidateGenerator) + Utility 평가(UtilityEngine)를 결합해
@@ -349,13 +421,17 @@ export function recommendStrategy(
   // 필요 없는 runForUtility()로 실행한다. run()을 그대로 썼다면 후보 1개당 runSingle이 최대
   // 31회 호출되는 낭비가 있었다.
   const baselineResult = engine.runForUtility(params);
-  const currentUtility: UtilityBreakdown = computeLifetimeUtility(baselineResult, params, cfg);
+  const baselineRaws = computeUtilityRaws(baselineResult, params, cfg);
+  const currentUtility: UtilityBreakdown = scoreUtilityRaws(baselineRaws, cfg.weights);
 
   const state: CandidateSearchState = {
     bestResult: baselineResult,
     bestUtility: currentUtility,
     bestPlan: null,
     failedCandidateCount: 0,
+    // baseline도 강건성 재평가의 후보다. 모든 개선안이 특정 국면에서 무너지면
+    // "현행 유지"가 답이어야 하는데, 여기 없으면 그 답을 고를 수 없다.
+    topCandidates: [{ plan: null, result: baselineResult, utility: currentUtility, raws: baselineRaws }],
   };
 
   // Phase 1: 인출 시점/순서/목적지 5차원 그리드 탐색 (기존 로직, 변경 없음)
@@ -384,6 +460,10 @@ export function recommendStrategy(
   for (const plan of spendingCandidates) {
     evaluateCandidate(plan, params, engine, cfg, state);
   }
+
+  // Phase 2.5: 강건성 모드. 사용자가 미정으로 둔 가정 축(경제 시나리오·리스크 성향)과
+  // 목표 우선순위에 대해, 상위 후보를 다시 서열화한다. 자세한 근거는 robustness.ts.
+  applyRobustness(state, params, engine, cfg);
 
   const { bestResult, bestUtility, bestPlan } = state;
   const withdrawalPlanDeltas = computeDeltas(baselineResult, bestResult);
@@ -422,22 +502,16 @@ export function recommendStrategy(
   // { ...params, withdrawalPlan: bestPlan }을 만들면 monthlySpendingMultiplier 스케일링
   // (userProfile.targetMonthlySpending 조정)이 누락되어 Phase 2가 고른 생활비 배수가 Phase 4
   // 평가에 반영되지 않는다.
-  // bestPlan이 null이면(Phase 1+2에서 개선을 찾지 못한 경우) identityPlan을 대신 끼워 넣으면
-  // 안 된다 — identityPlan은 privatePensionMonthlyTarget = targetMonthlySpending으로 항상 채워진
-  // "완결된" plan이라 withdrawalPlan을 아예 지정하지 않았을 때(엔진의 잔여월 기준 기본 인출)와
-  // 다르게 동작한다(동일 params에서 72점 vs 65점으로 갈리는 것을 확인함). 이 경우
-  // params.withdrawalPlan을 원래 값 그대로 둔다.
+  // bestPlan이 null이면(Phase 1+2에서 개선을 찾지 못한 경우) identityPlan을 끼워 넣는다.
+  // getIdentityPlan이 진짜 identity가 된 뒤로 두 방식이 같은 시뮬레이션을 만들기 때문이다
+  // (identityPlan.test.ts가 결과 전체 동일성을 증명한다). Phase 3(DividendReinvestmentOptimizer)도
+  // 같은 규칙을 쓰므로 두 단계의 baseline이 정확히 같은 계획을 가리킨다.
   //
-  // 알려진 한계(Phase 3 → Phase 4 baseline 이음매): bestPlan === null일 때 위 규칙 때문에
-  // 여기서는 params.withdrawalPlan을 원본 그대로 쓰지만, Phase 3의 DividendReinvestmentOptimizer는
-  // (`DividendReinvestmentOptimizer.ts:85`) 후보 params를 `bestPlan ?? getIdentityPlan(params)`로
-  // 만든다. 즉 Phase 3가 개선을 채택하면 Phase 4에 넘어오는 baseline(reinvestOpt.finalUtility)은
-  // identityPlan 아래에서 측정된 값인데, Phase 4의 두 레그는 원본 plan 아래에서 측정된다. 두
-  // 기준선이 같은 계획을 가리키지 않으므로 Phase 4의 marginal delta에 5~10점 규모의 계통 오차가
-  // 섞일 수 있다(이 오차는 채널링 자체와 무관하다). Phase 3의 params 구성은 이미 출시·별도 리뷰된
-  // 기능이라 이번 수정 범위 밖이며(계획 문서 §범위 밖), 고치려면 Phase 3의 baseline 규칙을
-  // 여기와 동일하게 맞추는 별도 작업이 필요하다.
-  const baseParamsAfterPhase3: SimulationParams = bestPlan ? paramsForCandidate(params, bestPlan) : params;
+  // 예전에는 identityPlan이 privatePensionMonthlyTarget을 targetMonthlySpending으로 항상 채워
+  // 엔진 기본값(잔여월 균등분할)과 다르게 동작했고("동일 params에서 72점 vs 65점"), 그래서
+  // 여기서는 원본 params를, Phase 3에서는 identityPlan을 쓰는 비대칭이 생겼다. 그 비대칭이
+  // Phase 4의 marginal delta에 5~10점 규모의 계통 오차를 섞고 있었다. 이제 사라졌다.
+  const baseParamsAfterPhase3: SimulationParams = paramsForCandidate(params, bestPlan ?? identityPlan);
   const paramsAfterPhase3: SimulationParams = {
     ...baseParamsAfterPhase3,
     assets: reinvestOpt.recommendedAssetReinvestment
@@ -496,31 +570,30 @@ export function recommendStrategy(
   // 채널링 라벨과 중복되지 않는다. 다만 Phase 1이 독립적으로 'asset'을 고르고 채널링도 채택되면
   // 두 곳(항목별 기여 + 채널링 라벨)에서 같은 지시가 언급된다 — 지시 내용이 서로 모순되지 않고
   // (둘 다 "일반 자산으로"), 항목별 기여의 점수 배분도 각자 독립 측정치라 정확하므로 그대로 둔다.
-  const recommendedPlan: CompleteWithdrawalPlan | null =
+  const recommendedPlan: BaselineWithdrawalPlan | null =
     channelingOpt.recommendedPrivatePensionChanneling && bestPlan
       ? { ...bestPlan, isaMaturityDestination: 'asset' }
       : bestPlan;
 
-  // 추천 나이 "하나만" 사용자의 실제 인출계획에 얹었을 때의 효용.
+  // 추천안의 각 축을 사용자의 실제 인출계획 위에 얹었을 때 정말로 개선이 되는지 검증한다.
   //
-  // AI 센티널 자동 채움(applyAiSentinels)이 정확히 이 조합을 시뮬레이션에 넣는데, 후보 평가는
+  // AI 센티널 자동 채움(applyAiSentinels)이 넣는 것이 정확히 이 조합인데, 후보 평가는
   // withdrawalPlan을 통째로 교체하며 이뤄지므로 이 조합 자체는 위 그리드에서 한 번도 평가되지
   // 않았다. 그래서 "추천이 개선을 준다"가 이 조합에는 그대로 옮겨오지 않는다.
   //
-  // computeItemizedContributions의 동명 항목으로 대신할 수 없다. 그쪽 기준점은 identityPlan이라
-  // privatePensionMonthlyTarget이 항상 채워진 상태인데(getIdentityPlan), 'ai_optimized' 전략의
-  // compiled params는 그 키를 아예 지운다 — 위 baseParamsAfterPhase3 주석대로 두 계획은 동일 params에서
-  // 72점 vs 65점으로 갈린다. 즉 그 값은 나이 효과와 인출계획 차이가 섞인 수치다.
+  // computeItemizedContributions의 동명 항목으로 대신할 수 없다. 그쪽은 화면 설명용이라
+  // 생활비 배수(자동 채움 대상이 아님)와 Phase 3/4 항목까지 섞여 있고, 축별 단독 효과만
+  // 재기 때문에 "각각 +1인데 합치면 −3"인 조합을 걸러내지 못한다.
   //
-  // 비용은 runForUtility 1회다. 이미 최대 218개 후보를 돌리는 함수이고 호출부가 이 계산을
-  // 트랜지션(비긴급) 우선순위에서 실행하므로, 화면 반응성에 미치는 영향은 없다.
-  const nationalPensionOnlyUtility = computeNationalPensionOnlyUtility(
-    params, recommendedPlan, engine, cfg
-  );
+  // 비용은 축 N개(≤5)에 대해 runForUtility 최대 2N−1회다. 이미 최대 218개 후보를 돌리는
+  // 함수이고 호출부가 이 계산을 트랜지션(비긴급) 우선순위에서 실행한다.
+  const verifiedSentinelPlan = recommendedPlan
+    ? buildVerifiedSentinelPlan(params, identityPlan, recommendedPlan, currentUtility, engine, cfg)
+    : NO_VERIFIED_SENTINEL_STEPS;
 
   return {
     currentUtility,
-    nationalPensionOnlyUtility,
+    verifiedSentinelPlan,
     recommendedUtility: channelingOpt.finalUtility,
     recommendedPlan,
     recommendedAssetReinvestment: reinvestOpt.recommendedAssetReinvestment,

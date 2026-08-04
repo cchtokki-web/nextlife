@@ -5,7 +5,7 @@ import { resolveStrategy } from '../../../../core/usecases/strategy/compileStrat
 import { NATIONAL_PENSION_NORMAL_START_AGE } from '../../../../core/usecases/pension/nationalPensionRules';
 import { isFieldVisible } from '../fieldVisibility';
 import {
-  AiRecommendationState, NATIONAL_PENSION_OPTIONS, PRIVATE_PENSION_OPTIONS, SectionProps,
+  AiRecommendationState, ISA_FIRST_OPTIONS, NATIONAL_PENSION_OPTIONS, PRIVATE_PENSION_OPTIONS, SectionProps,
 } from '../strategyOptions';
 
 type Props = SectionProps & {
@@ -110,14 +110,17 @@ export function PensionStrategySection({
       )}
 
       {isFieldVisible(mode, 'strategy.preferIsaFirst') && (
-        <SwitchField
-          label="ISA 먼저 사용"
-          description="ISA 만기 자금을 연금으로 옮기지 않고 생활비로 먼저 씁니다."
+        <FieldRow
+          label="ISA 만기 자금"
           tooltipTerm="isa"
-          checked={strategy.preferIsaFirst}
-          onChange={(v) => setStrategy({ preferIsaFirst: v })}
           changed={changed.has('strategy.preferIsaFirst')}
-        />
+        >
+          <RadioCardGroup
+            name="isa-first-choice" ariaLabel="ISA 만기 자금 행선지" value={strategy.preferIsaFirst}
+            options={ISA_FIRST_OPTIONS}
+            onChange={(v) => setStrategy({ preferIsaFirst: v })}
+          />
+        </FieldRow>
       )}
 
       {isFieldVisible(mode, 'assets.reinvestDividend') && params.assets.length > 0 && (

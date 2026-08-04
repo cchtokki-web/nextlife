@@ -1,7 +1,8 @@
 import { describe, test, expect } from 'vitest';
 import { SimulationEngine } from '@/core/usecases/SimulationEngine';
 import { SINGLE_SURVIVOR_SPENDING_FACTOR } from '@/core/usecases/spouse/spouseRules';
-import { NATIONAL_PENSION_TAX_RATE } from '@/core/usecases/tax/taxRates';
+import { calculateNationalPensionTaxKRW } from '@/core/usecases/tax/TaxEngine';
+import { resolveTaxContext } from '@/core/usecases/tax/taxContext';
 import { DEFAULT_UTILITY_CONFIG } from '@/core/usecases/utility/utilityWeights';
 import { SimulationParams } from '@/core/entities/types';
 
@@ -136,8 +137,14 @@ describe('SimulationEngine 배우자 통합', () => {
   });
 });
 
-// 국민연금 세율은 고정 2%(taxRates.ts). 월 수령액 → 연간 세후 표시액 환산에 쓴다.
-const annualNetFromMonthly = (monthly: number) => monthly * (1 - NATIONAL_PENSION_TAX_RATE) * 12;
+// 월 수령액 → 연간 세후 표시액. 국민연금 실효세율은 수령액에 따라 달라지므로
+// (연금소득공제 + 누진세율) 상수로 박지 않고 세금 계산 함수로 유도한다 — 이 파일의
+// 주제는 세율이 아니라 배우자 합산·유족연금 중복조정·물가 모드가 수령액에 어떻게
+// 반영되는가다.
+const annualNetFromMonthly = (monthly: number) => {
+  const grossAnnual = monthly * 12;
+  return grossAnnual - calculateNationalPensionTaxKRW(grossAnnual, resolveTaxContext());
+};
 
 describe('SimulationEngine 유족연금 중복조정 배선', () => {
   // computeSurvivorPensionMonthly의 공식은 단위 테스트가 증명한다. 여기서 증명할 것은 엔진이
@@ -239,8 +246,13 @@ describe('SimulationEngine 배우자 사망 후 점수 분모', () => {
 describe('SimulationEngine 배우자 단독 생존 기간의 고갈', () => {
   // 본인 기대수명 80, 배우자는 본인 나이 기준 95세까지 생존. 자산은 84세에 고갈된다 —
   // 즉 본인 사후 배우자가 11년을 무일푼으로 사는 계획이다.
+  //
+  // 목표 생활비를 소득(국민연금 100만 + 사적연금 인출 150만)보다 높게 잡아 잉여가 남지
+  // 않게 한다. 예전에는 이 픽스처가 잉여를 내면서도 고갈했는데, 그건 잉여 현금을 넣을
+  // 자산(assets: [])이 없어 그 돈이 **증발**했기 때문이다 — 현금 버킷이 그 소실을 고쳤다.
   const depleting: SimulationParams = {
     ...baseParams,
+    userProfile: { ...baseParams.userProfile, targetMonthlySpending: 4000000 },
     withdrawalPlan: { privatePensionMonthlyTarget: 1500000 },
   };
   const longLivedSpouse = {
@@ -254,7 +266,11 @@ describe('SimulationEngine 배우자 단독 생존 기간의 고갈', () => {
     const result = engine.run({ ...depleting, spouse: longLivedSpouse });
 
     // 전제 확인: 고갈이 본인 사후·배우자 생존 중에 일어난다.
-    expect(result.depletionAge).toBe(84);
+    // 절대 나이를 박지 않는다 — 이 테스트가 겨냥하는 것은 "고갈 안전성을 무엇으로 정규화하는가"
+    // 이지 특정 나이가 아니다. 세금·인출 규칙이 바뀔 때마다 무관한 이유로 깨지면 안 된다.
+    expect(result.depletionAge).not.toBeNull();
+    expect(result.depletionAge!).toBeGreaterThan(depleting.userProfile.expectancy);
+    expect(result.depletionAge!).toBeLessThan(longLivedSpouse.expectancy);
     expect(result.yearlyResults[result.yearlyResults.length - 1].age).toBe(95);
 
     // 고갈 안전성을 본인 기대수명(80)으로 정규화하면 (84-60)/(80-60) = 1.2가 clamp에 걸려
@@ -267,22 +283,29 @@ describe('SimulationEngine 배우자 단독 생존 기간의 고갈', () => {
     const engine = new SimulationEngine();
 
     // 인출액이 privatePensionMonthlyTarget으로 고정되어 있어 두 시나리오의 현금흐름이
-    // 고갈 시점까지 완전히 같다 — 고갈 나이가 84세로 동일하고 종료 나이만 다르다.
-    const shorter = engine.run({ ...depleting, spouse: { ...longLivedSpouse, expectancy: 85 } });
+    // 고갈 시점까지 완전히 같다 — 고갈 나이가 동일하고 종료 나이만 다르다.
+    // 짧은 쪽의 배우자 기대수명(90)은 고갈 나이보다 뒤여야 한다. 앞이면 그 시나리오는
+    // 고갈 전에 끝나 버려(depletionAge = null) 비교 자체가 성립하지 않는다.
+    const shorter = engine.run({ ...depleting, spouse: { ...longLivedSpouse, expectancy: 90 } });
     const longer = engine.run({ ...depleting, spouse: longLivedSpouse });
 
-    expect(shorter.depletionAge).toBe(84);
-    expect(longer.depletionAge).toBe(84);
+    expect(shorter.depletionAge).not.toBeNull();
+    expect(longer.depletionAge).toBe(shorter.depletionAge);
     // 무일푼 기간이 1년에서 11년으로 늘었으므로 점수는 더 낮아야 한다.
     expect(longer.retirementScore).toBeLessThan(shorter.retirementScore);
     expect(longer.utility!.components.depletionSafety)
       .toBeLessThan(shorter.utility!.components.depletionSafety);
-    // 은퇴 등급으로 엔진의 longevityScore 정규화를 고정한다. 이 계획은 배우자가 11년을
-    // 무일푼으로 사는 계획이므로 최고 등급이어서는 안 된다 — 그런데 span을 본인 기대수명
-    // (80)으로 정규화하면 (84-60)/(80-60)=1.2가 clamp에 걸려 만점이 되고 등급이 '매우 안정'이
-    // 된다. retirementScore 비교만으로는 이 결함이 드러나지 않아(다른 항목 차이에 묻힌다)
-    // 등급으로 단언한다.
-    expect(longer.retirementGrade).not.toBe('매우 안정');
+    // 엔진의 longevityScore 정규화를 절대값으로 고정한다. 배우자가 11년을 무일푼으로 사는
+    // 계획이므로 고갈 안전성이 만점이어서는 안 된다 — span을 본인 기대수명(80)으로
+    // 정규화하면 (84-60)/(80-60)=1.2가 clamp에 걸려 만점이 나온다. 가구 종료 나이(95)로
+    // 정규화해야 감점된다.
+    //
+    // 예전에는 이 자리에서 retirementGrade가 '매우 안정'이 아님을 단언했다. 그러나 등급은
+    // 총점에서 파생되므로 세금 모델이 바뀌어 총점 수준이 오르내리면 판별력이 사라진다
+    // (건보료 과세표준 정정으로 총점이 올라 실제로 그렇게 됐다). 위 상대 비교와 달리
+    // 이쪽은 절대 기준이 필요하므로, 등급이 아니라 겨냥하는 항목 자체를 직접 본다.
+    expect(longer.utility!.components.depletionSafety)
+      .toBeLessThan(DEFAULT_UTILITY_CONFIG.weights.depletionSafety);
   });
 });
 
@@ -371,17 +394,16 @@ describe('SimulationEngine 배우자 국민연금의 물가 반영 모드', () =
       .nationalPensionIncome;
 
   test('실질 모드에서는 배우자 국민연금에 물가상승이 누적되지 않는다', () => {
-    // 월 1,000,000 × 12 × (1 - 0.02) = 11,760,000원. 물가 10%가 10년 지나도 그대로다 —
+    // 월 1,000,000 × 12 = 연 1,200만원(세전). 물가 10%가 10년 지나도 그대로다 —
     // 실질 모드의 모든 금액은 오늘 화폐가치로 표시되기 때문이다.
-    expect(incomeAt70('real')).toBeCloseTo(11760000, 2);
+    expect(incomeAt70('real')).toBeCloseTo(annualNetFromMonthly(1000000), 2);
   });
 
   test('명목 모드에서는 배우자 국민연금에 시작 시점부터의 물가상승이 누적된다', () => {
     // 1,000,000 × 1.1^10 = 1,000,000 × 2.5937424601 = 2,593,742.4601원/월
-    //   × 12개월 = 31,124,909.5212원
-    //   × (1 - 0.02) = 30,502,411.330776원
-    // 복리를 빼먹으면 11,760,000원, 두 번 곱하면 1.1^20 배가 되어 둘 다 여기서 걸린다.
-    expect(incomeAt70('nominal')).toBeCloseTo(30502411.330776, 2);
+    //   × 12개월 = 31,124,909.5212원(세전)
+    // 복리를 빼먹으면 연 1,200만원 수준, 두 번 곱하면 1.1^20 배가 되어 둘 다 여기서 걸린다.
+    expect(incomeAt70('nominal')).toBeCloseTo(annualNetFromMonthly(1000000 * Math.pow(1.1, 10)), 2);
   });
 });
 
@@ -407,16 +429,15 @@ describe('SimulationEngine 본인+배우자 국민연금 합산액', () => {
 
   test('배우자 개시 전에는 본인 몫만 나온다', () => {
     // 본인 68세 = 배우자 68세 < 개시 70세 → 배우자 몫 0.
-    // 1,000,000 × 12 × (1 - 0.02) = 11,760,000원.
-    expect(incomeAt(68)).toBeCloseTo(11760000, 2);
+    expect(incomeAt(68)).toBeCloseTo(annualNetFromMonthly(1000000), 2);
   });
 
   test('둘 다 수령 중인 해의 가구 합산액이 절대값으로 고정된다', () => {
     // 본인   1,000,000 × 1.00 = 1,000,000
     // 배우자   800,000 × 1.36 = 1,088,000
-    // 합계 월 2,088,000 → × 12 × (1 - 0.02) = 24,554,880원.
-    // 조정계수 누락이면 21,168,000원, 생존 중 0.6 적용이면 14,732,928원이 되어 구분된다.
-    expect(incomeAt(70)).toBeCloseTo(24554880, 2);
+    // 합계 월 2,088,000 → 연 25,056,000원(세전).
+    // 조정계수 누락이면 월 1,800,000, 생존 중 0.6 적용이면 월 1,252,800이 되어 구분된다.
+    expect(incomeAt(70)).toBeCloseTo(annualNetFromMonthly(2088000), 2);
   });
 });
 

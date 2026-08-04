@@ -30,6 +30,15 @@ export interface InvestmentAsset {
   reinvestDividend: boolean;
   currency: AssetCurrency;
   assetMarket?: AssetMarket; // 과세 체계 기준
+  // 총 취득원가(자산 통화 기준). 양도소득세 과세표준(매도액 − 취득원가)에 쓴다.
+  //
+  // averagePrice는 취득단가가 **아니다** — 화면 라벨이 "현재 단가"이고 시세 조회 버튼이
+  // 시장가로 덮어쓴다. 즉 이 앱에는 원래 취득원가 데이터가 존재하지 않았다.
+  //
+  // 미지정이면 엔진이 quantity × averagePrice(= 현재 평가액)를 취득원가로 본다. 그러면
+  // 지금까지 쌓인 평가차익에는 세금이 붙지 않는다 — 확정되지 않은 숫자를 지어내는 대신
+  // 사용자가 입력하지 않은 부분을 과세하지 않는 쪽을 택했다. 입력 폼에 그 뜻을 명시한다.
+  acquisitionCostBasis?: number;
 }
 
 export type PrivatePensionType = 'irp' | 'savings' | 'retirement';
@@ -95,13 +104,41 @@ export interface WithdrawalPlan {
 // 컴파일 타임에 구분하기 위한 것이다 (예: StrategyRecommendation.recommendedPlan).
 export type CompleteWithdrawalPlan = Required<WithdrawalPlan>;
 
+// 추천 엔진이 다루는 계획. CompleteWithdrawalPlan과 달리 privatePensionMonthlyTarget만
+// 없을 수 있다.
+//
+// 그 필드가 미지정일 때 엔진의 기본 동작은 "잔여 개월 균등분할"이라 특정 금액으로 표현할
+// 수 없다. 사용자가 정액 인출을 지정하지 않았는데 임의의 값을 채우면, 기준선(identity plan)이
+// 사용자의 실제 계획과 다른 계획이 되어 그 위에 쌓인 모든 비교가 틀어진다.
+export type BaselineWithdrawalPlan =
+  Omit<CompleteWithdrawalPlan, 'privatePensionMonthlyTarget'>
+  & { privatePensionMonthlyTarget?: number };
+
+export type ComprehensiveTaxMode = 'progressive_credit' | 'flat';
+
 export interface TaxSettings {
   enableComprehensiveTax: boolean;
   enableHealthInsurance: boolean;
   usDividendTaxRate: number; // % (default: 15)
   domesticDividendTaxRate: number; // % (default: 15.4)
-  comprehensiveTaxRate: number; // % (초과분 단순화 세율, default: 15)
+  // 금융소득종합과세 초과분을 어떻게 계산할 것인가.
+  //
+  // 'progressive_credit'(기본): 실제 세법과 같은 비교과세 구조. 초과분에 종합소득세 누진세율을
+  //   적용한 뒤, 이미 원천징수된 세액을 기납부세액으로 공제한다. 배당 3,000만원이면 초과분
+  //   1,000만원 × 6% = 60만원인데 원천징수 상당액이 154만원이라 추가 납부는 0원이다.
+  // 'flat': 초과분에 comprehensiveTaxRate를 그대로 곱하는 예전 단순 모델. 원천징수를 공제하지
+  //   않아 초과분에 이중으로 세금이 붙는다(15.4% + 15%). 값을 직접 지정해 비교해 보고 싶은
+  //   사용자를 위해 남겨 둔다.
+  comprehensiveTaxMode?: ComprehensiveTaxMode; // default: 'progressive_credit'
+  comprehensiveTaxRate: number; // % (초과분 단순화 세율, 'flat' 모드에서만 쓰임, default: 15)
   healthInsuranceRate: number; // % (초과분 건보료 비율, default: 5)
+  // 해외주식·ETF 양도소득세 반영 여부 (default: true).
+  //
+  // 기본값이 true인 이유: false로 두면 "가장 큰 누락"이 기본 경로에 그대로 남는다.
+  // 은퇴 후 생활비를 자산 매도로 충당하는 계획에서 매도차익 과세가 0원이면 잔여자산과
+  // 고갈 나이가 낙관 방향으로 계통 편향된다.
+  enableCapitalGainsTax?: boolean;
+  capitalGainsTaxRate?: number; // % (미지정 시 세법 프로필의 22%)
   enablePrivatePensionTax?: boolean; // 사적연금 고세율 과세 반영 여부 (default: true)
   privatePensionLimit?: number; // 사적연금 저율과세 한도 (원, default: 15000000)
   privatePensionExcessTaxRate?: number; // 한도 초과 시 세율 (%, default: 16.5)
@@ -157,6 +194,17 @@ export interface SimulationParams {
   yieldPreset?: 'conservative' | 'base' | 'aggressive' | 'custom';
   customYieldSnapshot?: CustomYieldSnapshot; // "사용자 프리셋" 복원용 저장값
   spendingStrategy?: SpendingStrategy; // 목표 생활비 달성 전략
+  // 상속 하한선(displayCurrency 기준). 총자산이 이 금액 아래로 내려가는 인출을 하지 않는다.
+  // 미지정·0이면 하한선 없음(= 기존 동작과 비트 단위로 동일).
+  //
+  // withdrawalPlan이 아니라 최상위에 두는 이유: 이것은 "언제/어떤 순서로 인출하느냐"는
+  // 결정이 아니라 시뮬레이션 전체에 걸린 제약이다. 후보 탐색은 withdrawalPlan을 통째로
+  // 교체하므로(paramsWithBaselinePlan) 그 안에 두면 모든 후보 평가에서 조용히 사라진다.
+  //
+  // userProfile.targetBequest와 다르다. 그쪽은 채점 기준(적정선)이고 이쪽은 엔진 제약이다.
+  // 기본 상속 전략('leave_some')은 targetBequest를 채우지만 하한선은 세우지 않는다 —
+  // 세우면 전략을 저장한 적 없는 모든 시나리오의 곡선이 조용히 바뀐다.
+  assetFloor?: number;
   taxSettings?: TaxSettings; // 고급 세금 설정
   withdrawalPlan?: WithdrawalPlan; // 인출 정책 및 생활비 조정 (미지정 시 기존 균등분할 인출 로직 사용)
   // 은퇴 전략 설정. 미지정이면 compileStrategy가 baseline 전략으로 컴파일한다.
@@ -176,6 +224,17 @@ export interface SimulationYearlyResult {
   totalAssets: number; // 기말 자산액 (선택 표기 통화 기준)
   stockAssets: number; // 주식/ETF 자산
   pensionAssets: number; // 사적연금 자산
+  // ISA 계좌 잔액. totalAssets에는 원래 포함돼 있었지만 별도 필드가 없어,
+  // stockAssets + pensionAssets로 자산 구성을 재구성하는 소비처들이 ISA를 통째로 놓쳤다
+  // (인플레이션 헤지 점수의 분자, 자산 추이 차트의 시리즈).
+  isaAssets: number;
+  // 쓰고 남은 현금. 성장하지 않고 표시 통화 그대로 쌓이며, 부족분이 생기면 가장 먼저 쓴다.
+  //
+  // 예전에는 잉여 현금을 assets[0]에 도로 집어넣었다. 그래서 "배당 재투자 끄기"가 실제로는
+  // "첫 번째 자산에 재투자하기"였고, 자산이 하나면 켜나 끄나 결과가 비트 단위로 같았다 —
+  // 화면의 스위치가 아무것도 하지 않았다. 성장률·원가까지 그 자산의 것으로 잡히는 부작용도
+  // 있었다(팔지도 않은 배당금이 취득원가를 부풀렸다).
+  cashAssets: number;
   dividendIncome: number; // 연간 세후 배당 수령액
   nationalPensionIncome: number; // 연간 세후 국민연금 수령액
   privatePensionIncome: number; // 연간 세후 사적연금 수령액
@@ -189,7 +248,19 @@ export interface SimulationYearlyResult {
   pensionTaxPaid: number; // 연금소득세 납부액
   nationalPensionTaxPaid: number; // 국민연금 세금 납부액
   healthInsurancePaid: number; // 건강보험료(추가분) 납부액
+  // 그 해 건강보험료 부과 기준이 된 소득 = 금융소득(세전) + 공적연금 × 반영비율(50%).
+  // 사적연금은 부과 대상이 아니라 포함되지 않는다.
+  //
+  // 납부액만으로는 이 값을 역산할 수 없다 — 문턱 이하인 해는 납부액이 0이라 "얼마나
+  // 가까운지"를 알 수 없기 때문이다. 피부양자 자격 상실 절벽 근접 경고
+  // (computeRiskAlerts)가 바로 그 구간을 봐야 해서 결과에 실어 보낸다.
+  healthInsuranceIncomeBasis: number;
   comprehensiveTaxPaid: number; // 금융소득종합과세(추가분) 납부액
+  // 해외주식·ETF 양도소득세 납부액. **전년도에 실현된** 차익에 대한 것이다
+  // (실제 확정신고가 다음 해 5월이고, 같은 해 부과 시 '세금 내려고 판 자산이 또 차익을
+  //  만드는' 순환이 생기기 때문 — SimulationEngine의 deferredCapitalGainKRW 참고).
+  // 마지막 해에만 이월분과 당해 실현분을 함께 낸다.
+  capitalGainsTaxPaid: number;
   privatePensionTaxMethod: PrivatePensionTaxationMethod; // 사적연금 한도초과세 적용 방식
 
   spending: number; // 연간 총 생활비 인출
@@ -298,27 +369,55 @@ export interface UtilityBreakdown {
   };
 }
 
+export type UtilityAxis = keyof UtilityBreakdown['components'];
+
+// 가중치를 곱하기 전의 축별 원점수(각 0~1). UtilityBreakdown['components']에서 키를 파생시켜
+// 두 타입이 따로 놀 수 없게 한다 — 축을 추가하면 양쪽이 동시에 바뀐다.
+//
+// components(=round(raw × weight))와 의미가 다르다. raw는 목표(objective)와 무관하므로
+// 한 번 계산해 두면 여러 목표로 재채점할 수 있다(UtilityEngine.computeUtilityRaws 참고).
+export type UtilityRaws = Record<UtilityAxis, number>;
+
+// AI 센티널 자동 채움 대상 축. 생활비 배수(monthlySpendingMultiplier)는 제외한다 —
+// 그 값은 withdrawalPlan이 아니라 userProfile.targetMonthlySpending을 스케일링해야 반영되고,
+// 조용히 적용하면 화면이 보여주는 목표 생활비와 엔진이 실제로 쓴 목표가 달라진다.
+// 추천으로 제안은 하되(recommendedPlan) 적용은 사용자가 누른다.
+export type SentinelAxisField = Exclude<keyof BaselineWithdrawalPlan, 'monthlySpendingMultiplier'>;
+
+// 사용자의 인출계획 위에 얹을 값들. 키가 없으면 "건드리지 않음", 값이 undefined면
+// "그 키를 지움"(= 엔진 기본 동작으로 되돌림)을 뜻한다.
+export type SentinelOverlay = Readonly<Partial<Pick<BaselineWithdrawalPlan, SentinelAxisField>>>;
+
+// 검증된 자동 채움 오버레이 사슬의 한 단계. planOverrides는 0번 단계부터 여기까지 **누적된**
+// 값이고, utility는 그 누적 조합을 실제로 시뮬레이션해 얻은 값이다(축별 delta의 합이 아니다 —
+// 효용은 축에 대해 가산적이지 않다).
+export interface VerifiedSentinelStep {
+  field: SentinelAxisField;
+  planOverrides: SentinelOverlay;
+  utility: UtilityBreakdown;
+}
+
 export interface StrategyRecommendation {
   currentUtility: UtilityBreakdown; // 기존 로직(baseline) Utility
-  // recommendedPlan의 nationalPensionStartAge "하나만" 사용자의 현재 인출계획 위에 얹었을 때의
-  // Utility. currentUtility와 같은 기준선에서 측정되므로 두 값을 직접 비교할 수 있다.
+  // 추천안 중 "사용자의 실제 인출계획 위에 얹어도 개선이 확인된" 축들의 누적 사슬.
+  // 각 단계의 utility는 currentUtility와 같은 기준선에서 측정된 실측값이다.
   //
-  // itemizedContributions의 동명 항목과 다르다. 그쪽은 기준점이 identityPlan이라
-  // privatePensionMonthlyTarget 등 다른 필드까지 함께 바뀐 상태의 효과를 재는 반면
-  // (getIdentityPlan은 그 값을 항상 채우는데 'ai_optimized' 전략의 compiled params는 그 키를
-  // 아예 지운다 — 동일 params에서 72점 vs 65점으로 갈리는 것이 확인돼 있다), 이 값은
-  // 사용자의 실제 계획에서 나이 축만 움직인 결과다.
+  // 추천 격자는 여러 필드를 **함께** 최적화하고 후보 평가는 withdrawalPlan을 통째로 교체하며
+  // 이뤄지므로, 그중 일부만 떼어 사용자 계획에 이식하면 한 번도 평가된 적 없는 조합이 된다.
+  // 그 조합이 baseline보다 나쁠 수 있어 별도 검증이 필요하다.
   //
-  // 용도는 AI 센티널 자동 채움(applyAiSentinels)의 안전 판정이다. 추천 격자는 6개 필드를
-  // 함께 최적화하므로 그중 하나만 떼어 이식하면 평가된 적 없는 조합이 되고, 그 조합이
-  // baseline보다 나쁠 수 있다. 나이가 baseline과 같아 계산할 필요가 없거나 시뮬레이션이
-  // 실패하면 null이다.
-  nationalPensionOnlyUtility: UtilityBreakdown | null;
+  // 사슬(집합이 아니라 순서 있는 누적)인 이유: 자동 채움 시점의 params가 추천 계산 시점과
+  // 다를 수 있어(화면이 추천을 한 커밋 뒤로 미룬다) 일부 축을 채우지 못할 수 있다. 그때
+  // 앞에서부터 잘라 쓰면 남는 것이 여전히 "엔진이 실제로 평가한 조합"이다.
+  // 중간을 건너뛰고 뒤의 축만 적용하면 다시 미검증 조합이 된다.
+  //
+  // 개선이 확인된 축이 하나도 없으면 빈 배열이다.
+  verifiedSentinelPlan: readonly VerifiedSentinelStep[];
   recommendedUtility: UtilityBreakdown; // 최고점 후보 Utility
   // baseline보다 Utility가 개선되는 후보를 찾았을 때만 해당 WithdrawalPlan이 채워지고, 그렇지
   // 않으면 null(= baseline 유지 권장). "부분 override 패치"인 WithdrawalPlan과 달리 여기서는
   // "AI가 확정한 완결된 결정" 또는 "결정 없음"이라는 의미로만 쓰인다.
-  recommendedPlan: CompleteWithdrawalPlan | null;
+  recommendedPlan: BaselineWithdrawalPlan | null;
   // assetId -> 권장 reinvestDividend 값(Phase 3: 배당 재투자 최적화). recommendedPlan과 달리
   // WithdrawalPlan이 아니라 은퇴 "전" 축적기 파라미터(자산 배열 내부 값)라 별도 필드로 분리했다.
   // 변경 권장이 없으면(자산 없음/개선 없음/통합 검증 실패) null.
@@ -422,6 +521,17 @@ export type RiskProfile = 'conservative' | 'neutral' | 'aggressive' | 'custom' |
 export type EconomicScenario =
   | 'long_term_average' | 'recession' | 'high_inflation' | 'low_growth' | 'ai_recommended';
 
+// ISA 만기 자금의 행선지. 예전에는 boolean(preferIsaFirst)이었다.
+//
+// boolean에는 "미정"을 담을 자리가 없어서, 이 축만 AI 자동 채움에서 통째로 빠져 있었다 —
+// 다른 축들이 'ai_*' 센티널로 미정을 표현하는 동안 여기만 false가 "연금으로"라는 확정
+// 선택과 "아직 안 정했다"를 겸했다.
+//
+// 저장된 boolean은 resolveStrategy에서만 정규화한다(E2EE라 서버 마이그레이션이 불가능하다).
+// **false는 'pension_first'로 보존하며 'ai_optimized'로 승격하지 않는다** —
+// 승격하면 그 사용자의 저장된 선택이 AI 추천값으로 조용히 덮어써진다.
+export type IsaFirstChoice = 'isa_first' | 'pension_first' | 'ai_optimized';
+
 // 현재는 'current' 하나뿐이다. 실제 개정안이 확정되면 프로필을 추가한다
 // (허구의 개정안을 지어내지 않는다는 것이 설계 결정이다).
 export type TaxLawVersion = 'current';
@@ -433,7 +543,7 @@ export interface RetirementStrategy {
   bequestStrategy: BequestStrategy;
   nationalPensionStrategy: NationalPensionStrategy;
   privatePensionStrategy: PrivatePensionStrategy;
-  preferIsaFirst: boolean;
+  preferIsaFirst: IsaFirstChoice;
   riskProfile: RiskProfile;
   economicScenario: EconomicScenario;
 }

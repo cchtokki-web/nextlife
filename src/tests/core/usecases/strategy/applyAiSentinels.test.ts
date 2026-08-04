@@ -52,16 +52,30 @@ const plan = (nationalPensionStartAge: number): CompleteWithdrawalPlan => ({
 
 const utilityWithScore = (score: number): UtilityBreakdown => ({ ...utility, score });
 
+// 국민연금 나이 한 축짜리 검증 사슬. 실제 recommendStrategy가 만드는 것과 같은 형태다.
+// 점수 기본값을 baseline보다 1점 높게 둬서, 이 인자를 신경 쓰지 않는 테스트들이
+// "적용되는" 경로를 그대로 타게 한다.
+const ageChain = (
+  nationalPensionStartAge: number,
+  score = utility.score + 1
+): StrategyRecommendation['verifiedSentinelPlan'] => [
+  {
+    field: 'nationalPensionStartAge',
+    planOverrides: { nationalPensionStartAge },
+    utility: utilityWithScore(score),
+  },
+];
+
 function makeRecommendation(
   recommendedPlan: CompleteWithdrawalPlan | null,
   improved = true,
-  // 추천 나이만 사용자의 실제 인출계획에 얹었을 때의 효용. 기본값은 baseline(utility)보다
-  // 높게 둬서, 이 인자를 신경 쓰지 않는 기존 테스트들이 "적용되는" 경로를 그대로 타게 한다.
-  nationalPensionOnlyUtility: UtilityBreakdown | null = utilityWithScore(utility.score + 1)
+  // 자동 채움이 검증한 축들의 누적 사슬.
+  verifiedSentinelPlan: StrategyRecommendation['verifiedSentinelPlan'] =
+    recommendedPlan ? ageChain(recommendedPlan.nationalPensionStartAge) : []
 ): StrategyRecommendation {
   return {
     currentUtility: utility,
-    nationalPensionOnlyUtility,
+    verifiedSentinelPlan,
     recommendedUtility: utility,
     recommendedPlan,
     recommendedAssetReinvestment: null,
@@ -95,14 +109,14 @@ describe('applyAiSentinels', () => {
     expect(applied.params.withdrawalPlan?.nationalPensionStartAge).toBe(68);
   });
 
-  test('채운 축을 appliedFields와 나이로 보고한다', () => {
+  test('채운 축을 appliedFields와 appliedValues로 보고한다', () => {
     // 표시 계층("이미 반영됨" 그룹, 설정 패널 배지)이 이 값 하나만 보고 판정한다.
     // 각자 다시 판정하면 어긋나므로 여기가 단일 소스다.
     const compiled = compiledFor('ai_optimized');
     const applied = applyAiSentinels(compiled, makeRecommendation(plan(68)));
 
     expect(applied.appliedFields).toEqual(['nationalPensionStartAge']);
-    expect(applied.nationalPensionStartAge).toBe(68);
+    expect(applied.appliedValues.nationalPensionStartAge).toBe(68);
   });
 
   test('채우지 않았으면 appliedFields가 비어 있고 참조가 매번 같다', () => {
@@ -112,35 +126,79 @@ describe('applyAiSentinels', () => {
     const b = applyAiSentinels(compiled, makeRecommendation(plan(68)));
 
     expect(a.appliedFields).toEqual([]);
-    expect(a.nationalPensionStartAge).toBeNull();
+    expect(a.appliedValues).toEqual({});
     expect(a.appliedFields).toBe(b.appliedFields);
+    expect(a.appliedValues).toBe(b.appliedValues);
   });
 
-  test('추천 나이만 얹었을 때 효용이 baseline보다 낮으면 채우지 않는다', () => {
-    // 추천 격자는 6개 필드를 함께 최적화하므로, 그중 국민연금 나이 하나만 떼어 사용자의
-    // 계획에 이식하면 한 번도 시뮬레이션된 적 없는 조합이 된다. 그 조합이 baseline보다
-    // 나쁠 수 있고, 그때 자동 채움은 "AI 적용"이라는 이름으로 결과를 악화시킨다.
+  test('검증된 조합의 효용이 baseline보다 낮으면 채우지 않는다', () => {
+    // 추천 격자는 여러 필드를 함께 최적화하므로, 그중 일부만 떼어 사용자의 계획에 이식하면
+    // 한 번도 시뮬레이션된 적 없는 조합이 된다. 그 조합이 baseline보다 나쁠 수 있고,
+    // 그때 자동 채움은 "AI 적용"이라는 이름으로 결과를 악화시킨다.
+    //
+    // 정상 경로에서는 recommendStrategy가 이런 사슬을 애초에 만들지 않지만, 판정을 이 함수
+    // 안에도 두어 "적용하는 것은 반드시 기준선보다 나은 것"을 국소적으로 읽을 수 있게 한다.
     const compiled = compiledFor('ai_optimized');
-    const worse = makeRecommendation(plan(60), true, utilityWithScore(utility.score - 1));
+    const worse = makeRecommendation(plan(60), true, ageChain(60, utility.score - 1));
 
     expect(applyAiSentinels(compiled, worse).compiled).toBe(compiled);
   });
 
-  test('추천 나이만 얹었을 때 효용이 baseline과 같으면 채우지 않는다', () => {
+  test('검증된 조합의 효용이 baseline과 같으면 채우지 않는다', () => {
     // 개선이 없는데 참조를 새로 만들면 page.tsx의 하위 useMemo가 전부 무효화되어
     // 이 화면에서 가장 무거운 렌더가 이유 없이 다시 돈다.
     const compiled = compiledFor('ai_optimized');
-    const flat = makeRecommendation(plan(60), true, utilityWithScore(utility.score));
+    const flat = makeRecommendation(plan(60), true, ageChain(60, utility.score));
 
     expect(applyAiSentinels(compiled, flat).compiled).toBe(compiled);
   });
 
-  test('단일 축 효용을 계산하지 못했으면(null) 채우지 않는다', () => {
+  test('검증된 축이 하나도 없으면 채우지 않는다', () => {
     // 시뮬레이션 실패 등으로 판단 근거가 없을 때는 보수적으로 사용자 계획을 그대로 둔다.
     const compiled = compiledFor('ai_optimized');
-    const unknown = makeRecommendation(plan(68), true, null);
+    const unknown = makeRecommendation(plan(68), true, []);
 
     expect(applyAiSentinels(compiled, unknown).compiled).toBe(compiled);
+  });
+
+  test('채울 수 없는 축을 만나면 사슬을 거기서 자른다', () => {
+    // 중간을 건너뛰고 뒤의 축만 적용하면 안 된다 — 각 단계의 효용은 "0번부터 여기까지"를
+    // 함께 시뮬레이션한 값이라, 앞 축을 빼면 그 수치가 근거를 잃는다.
+    // 여기서는 국민연금이 확정 전략('defer_max')이라 0번 단계부터 막힌다.
+    const compiled = compiledFor('defer_max');
+    const chain: StrategyRecommendation['verifiedSentinelPlan'] = [
+      { field: 'nationalPensionStartAge', planOverrides: { nationalPensionStartAge: 68 }, utility: utilityWithScore(80) },
+      {
+        field: 'generalAssetWithdrawalStartAge',
+        planOverrides: { nationalPensionStartAge: 68, generalAssetWithdrawalStartAge: 65 },
+        utility: utilityWithScore(85),
+      },
+    ];
+
+    const applied = applyAiSentinels(compiled, makeRecommendation(plan(68), true, chain));
+
+    expect(applied.compiled).toBe(compiled);
+    expect(applied.appliedFields).toEqual([]);
+  });
+
+  test('지배하는 전략 축이 없는 필드는 저장값이 없으면 채운다', () => {
+    // 매도 순서·일반자산 인출 개시 나이는 UI도 전략 축도 없어 컴파일 후에도 미정으로 남는다.
+    // 추가 설계 없이 이 두 축이 살아나는 자리다.
+    const compiled = compiledFor('defer_max');
+    const chain: StrategyRecommendation['verifiedSentinelPlan'] = [
+      {
+        field: 'generalAssetWithdrawalStartAge',
+        planOverrides: { generalAssetWithdrawalStartAge: 65 },
+        utility: utilityWithScore(utility.score + 3),
+      },
+    ];
+
+    const applied = applyAiSentinels(compiled, makeRecommendation(plan(70), true, chain));
+
+    expect(applied.appliedFields).toEqual(['generalAssetWithdrawalStartAge']);
+    expect(applied.compiled.params.withdrawalPlan?.generalAssetWithdrawalStartAge).toBe(65);
+    // 확정 전략인 국민연금 나이는 그대로 유지된다.
+    expect(applied.compiled.params.withdrawalPlan?.nationalPensionStartAge).toBe(70);
   });
 
   test('확정 enum이면 추천이 있어도 채우지 않는다', () => {
@@ -239,7 +297,7 @@ describe('applyAiSentinels 통합 — 실제 추천 엔진', () => {
     strategy: { ...DEFAULT_RETIREMENT_STRATEGY, nationalPensionStrategy: 'ai_optimized' },
   };
 
-  test('나이 축만 떼어 내면 악화되는 추천은 자동 채움하지 않는다', () => {
+  test('나이 축만 떼어 내면 악화되는 추천은 그 축을 자동 채움하지 않는다', () => {
     const engine = new SimulationEngine();
     const compiled = compileStrategy(engineParams);
     const recommendation = recommendStrategy(compiled.params, engine, compiled.utilityConfig);
@@ -249,13 +307,20 @@ describe('applyAiSentinels 통합 — 실제 추천 엔진', () => {
     expect(recommendation.recommendedPlan?.nationalPensionStartAge)
       .not.toBe(compiled.params.withdrawalPlan?.nationalPensionStartAge);
 
-    // 전제: 단일 축만 적용하면 실제로 개선이 아니다(이 테스트의 존재 이유).
-    const only = recommendation.nationalPensionOnlyUtility;
-    expect(only).not.toBeNull();
-    expect(only!.score).toBeLessThanOrEqual(recommendation.currentUtility.score);
+    // 전제: 나이 축만 얹으면 실제로 개선이 아니다(이 테스트의 존재 이유).
+    // 검증을 거치지 않고 그리드 결과를 그대로 이식했다면 여기서 악화가 발생한다.
+    const onlyAgeParams = {
+      ...compiled.params,
+      withdrawalPlan: {
+        ...(compiled.params.withdrawalPlan ?? {}),
+        nationalPensionStartAge: recommendation.recommendedPlan!.nationalPensionStartAge,
+      },
+    };
+    const onlyAge = engine.run(onlyAgeParams, compiled.utilityConfig);
+    expect(onlyAge.utility!.score).toBeLessThanOrEqual(recommendation.currentUtility.score);
 
-    // 그러므로 채우지 않는다 — 참조까지 그대로다.
-    expect(applyAiSentinels(compiled, recommendation).compiled).toBe(compiled);
+    // 그러므로 그 축은 검증 사슬에 들어가지 않는다.
+    expect(recommendation.verifiedSentinelPlan.map((s) => s.field)).not.toContain('nationalPensionStartAge');
   });
 
   test('자동 채움을 거른 계획의 효용은 baseline보다 낮아지지 않는다', () => {

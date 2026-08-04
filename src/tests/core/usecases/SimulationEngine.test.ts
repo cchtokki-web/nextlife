@@ -380,42 +380,56 @@ describe('SimulationEngine TDD Tests', () => {
     expect(result.retirementGrade).not.toBe('매우 안정');
   });
 
-  test('금융소득은 2천만원 이하이지만 연금소득(국민+사적) 합산 시 건강보험료가 발생하는지 검증', () => {
-    const engine = new SimulationEngine();
-    const params: SimulationParams = {
-      userProfile: {
-        currentAge: 65,
-        retirementAge: 65,
-        expectancy: 65,
-        targetMonthlySpending: 1500000,
-      },
-      assets: [], // 금융소득(배당) 자체가 없어 종합과세 판정 기준은 항상 0
-      nationalPension: { expectedMonthlyAmount: 1000000 }, // 연 1,200만 원
-      privatePensions: [
-        {
-          id: 'pension-1',
-          type: 'irp',
-          balance: 50000000,
-          monthlyContribution: 0,
-          annualReturn: 3,
-          currency: 'KRW',
-        },
-      ],
-      otherIncomes: [],
-      inflationRate: 0,
-      inflationMode: 'real',
-      baseExchangeRate: 1350,
-      exchangeScenario: 'base',
-      displayCurrency: 'KRW',
-      withdrawalPlan: { privatePensionMonthlyTarget: 900000 }, // 연 1,080만 원 (저율과세 한도 이하)
-    };
+  // 건강보험료 부과 기준 소득 = 금융소득(세전) + 공적연금 × 50%.
+  // 사적연금(연금저축·IRP)은 부과 대상 소득이 아니다.
+  //
+  // 예전에는 국민연금과 사적연금을 그대로 더해 기준액을 만들었다. 그래서 사적연금을 많이
+  // 인출할수록 건보료가 늘어났는데, 이는 제도와 다르며 "연금을 아껴 인출하라"는 잘못된
+  // 방향으로 최적화를 밀었다.
+  const healthInsuranceParams = (
+    overrides: Partial<SimulationParams> = {}
+  ): SimulationParams => ({
+    userProfile: { currentAge: 65, retirementAge: 65, expectancy: 65, targetMonthlySpending: 1500000 },
+    assets: [], // 금융소득(배당) 자체가 없어 종합과세 판정 기준은 항상 0
+    nationalPension: { expectedMonthlyAmount: 1000000 }, // 연 1,200만 원
+    privatePensions: [
+      { id: 'pension-1', type: 'irp', balance: 50000000, monthlyContribution: 0, annualReturn: 3, currency: 'KRW' },
+    ],
+    otherIncomes: [],
+    inflationRate: 0,
+    inflationMode: 'real',
+    baseExchangeRate: 1350,
+    exchangeScenario: 'base',
+    displayCurrency: 'KRW',
+    withdrawalPlan: { privatePensionMonthlyTarget: 900000 }, // 연 1,080만 원 (저율과세 한도 이하)
+    ...overrides,
+  });
 
-    const result = engine.run(params);
+  test('사적연금은 아무리 많이 인출해도 건강보험료를 발생시키지 않는다', () => {
+    const engine = new SimulationEngine();
+
+    // 공적연금 1,200만 × 50% = 600만 < 2,000만 → 사적연금이 얼마든 기준을 넘지 못한다.
+    const modest = engine.run(healthInsuranceParams()).yearlyResults[0];
+    const heavy = engine.run(
+      healthInsuranceParams({ withdrawalPlan: { privatePensionMonthlyTarget: 3000000 } })
+    ).yearlyResults[0];
+
+    expect(heavy.privatePensionIncome).toBeGreaterThan(modest.privatePensionIncome);
+    expect(modest.healthInsurancePaid).toBe(0);
+    expect(heavy.healthInsurancePaid).toBe(0);
+  });
+
+  test('공적연금이 크면 금융소득이 없어도 건강보험료가 발생한다 (종합과세는 여전히 0)', () => {
+    const engine = new SimulationEngine();
+
+    // 공적연금 월 400만 = 연 4,800만 × 50% = 2,400만 > 2,000만 → 초과분 400만에 요율 적용.
+    const result = engine.run(
+      healthInsuranceParams({ nationalPension: { expectedMonthlyAmount: 4000000 } })
+    );
     const yr = result.yearlyResults[0];
 
-    // 국민연금(1,200만) + 사적연금(1,080만) = 2,280만 원 > 2천만 원 기준 초과
     expect(yr.comprehensiveTaxPaid).toBe(0); // 종합과세 판정은 금융소득(배당)만 사용 -> 0
-    expect(yr.healthInsurancePaid).toBeGreaterThan(0); // 건보료는 연금소득 합산 기준이라 발생
+    expect(yr.healthInsurancePaid).toBeGreaterThan(0);
   });
 
   test('명목(nominal) 모드에서 국민연금 수령액이 매년 물가상승률만큼 증가하는지 검증', () => {
