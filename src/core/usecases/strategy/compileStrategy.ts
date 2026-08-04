@@ -1,5 +1,5 @@
 import {
-  BequestStrategy, NationalPensionStrategy, PrivatePensionStrategy, RetirementStrategy, RiskProfile,
+  BequestStrategy, IsaFirstChoice, NationalPensionStrategy, PrivatePensionStrategy, RetirementStrategy, RiskProfile,
   SimulationParams, SpendingStrategy, SpendingStrategyChoice, UtilityConfig, WithdrawalPlan,
 } from '../../entities/types';
 import {
@@ -42,7 +42,10 @@ export const DEFAULT_RETIREMENT_STRATEGY: RetirementStrategy = {
   bequestStrategy: 'leave_some',
   nationalPensionStrategy: 'ai_optimized',
   privatePensionStrategy: 'ai_optimized',
-  preferIsaFirst: false,
+  // 'pension_first'는 예전 boolean 기본값(false)과 같은 동작이다.
+  // 'ai_optimized'를 기본값으로 두면 전략을 저장한 적 없는 모든 시나리오에서 이 축이
+  // 자동 채움 대상이 되어 곡선이 조용히 바뀐다.
+  preferIsaFirst: 'pension_first',
   riskProfile: 'ai_recommended',
   economicScenario: 'ai_recommended',
 };
@@ -83,11 +86,28 @@ function hasLegacyStrategySeed(params: SimulationParams): boolean {
 // 우선순위: 기본값 < 레거시 저수준 필드에서 유도한 값 < 사용자가 새 UI에서 명시적으로 저장한 값.
 // 설정 화면(StrategySettingsPanel/각 섹션)과 compileStrategy가 모두 이 함수를 쓴다.
 export function resolveStrategy(params: SimulationParams): RetirementStrategy {
-  return {
+  const resolved: RetirementStrategy = {
     ...DEFAULT_RETIREMENT_STRATEGY,
     ...seedStrategyFromLegacyParams(params),
     ...(params.strategy ?? {}),
   };
+  return { ...resolved, preferIsaFirst: normalizeIsaFirstChoice(resolved.preferIsaFirst) };
+}
+
+// preferIsaFirst가 boolean이던 시절에 저장된 값을 3값 enum으로 옮긴다.
+//
+// **정규화는 여기 한 곳에서만 한다.** ScenarioModel.data가 E2EE로 암호화되어 저장되므로
+// 서버가 복호화할 수 없고, 따라서 데이터 마이그레이션이라는 선택지가 없다. 읽는 시점의
+// 정규화가 유일한 경로이며, resolveStrategy는 화면과 엔진이 공유하는 단일 진입점이다.
+//
+// **false를 'ai_optimized'로 승격하지 않는다.** false는 "연금으로 옮긴다"는 사용자의 선택
+// (또는 그 선택과 동일한 기본값)이었다. 승격하면 저장된 선택이 AI 추천값으로 조용히 덮어써진다.
+function normalizeIsaFirstChoice(value: RetirementStrategy['preferIsaFirst']): IsaFirstChoice {
+  // 타입에는 없지만 저장된 옛 시나리오에는 실제로 boolean이 들어 있다.
+  if (typeof value === 'boolean') return value ? 'isa_first' : 'pension_first';
+  if (value === 'isa_first' || value === 'ai_optimized') return value;
+  // 알 수 없는 값도 baseline으로 폴백한다(다른 축들과 같은 규칙).
+  return 'pension_first';
 }
 
 // 상속 자산을 "많이 남길수록 좋다"(단조증가)로 채점해야 하는 상태인가.
@@ -321,14 +341,19 @@ export function compileStrategy(params: SimulationParams): CompiledStrategy {
     : monthlyPensionLimit * pensionRule.withdrawalRatio;
 
   // 사용자가 직접 넣어둔 withdrawalPlan 필드(일반자산 인출 개시 나이 등)는 보존하고,
-  // 전략이 지배하는 3개 필드만 덮어쓴다.
+  // 전략이 지배하는 필드만 덮어쓴다.
   const withdrawalPlan: WithdrawalPlan = {
     ...(economyApplied.withdrawalPlan ?? {}),
     nationalPensionStartAge:
       NATIONAL_PENSION_STRATEGY_AGES[strategy.nationalPensionStrategy]
       ?? NATIONAL_PENSION_NORMAL_START_AGE,
-    isaMaturityDestination: strategy.preferIsaFirst ? 'asset' : 'pension',
   };
+  // 'ai_optimized'이면 키를 아예 쓰지 않는다 — 그래야 applyAiSentinels가 "미정"으로 보고
+  // 추천값을 채울 수 있다(limitPrivatePensionToTaxLimit의 null 센티널과 같은 처리다).
+  // 예전에는 boolean이라 미정을 표현할 자리가 없어 이 축만 자동 채움에서 빠져 있었다.
+  if (strategy.preferIsaFirst === 'isa_first') withdrawalPlan.isaMaturityDestination = 'asset';
+  else if (strategy.preferIsaFirst === 'pension_first') withdrawalPlan.isaMaturityDestination = 'pension';
+  else delete withdrawalPlan.isaMaturityDestination;
   if (privatePensionMonthlyTarget === undefined) {
     delete withdrawalPlan.privatePensionMonthlyTarget;
   } else {

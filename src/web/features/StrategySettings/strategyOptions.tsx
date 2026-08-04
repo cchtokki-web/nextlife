@@ -4,7 +4,7 @@ import {
   TrendingDown, TrendingUp, Wallet,
 } from 'lucide-react';
 import {
-  BequestStrategy, EconomicScenario, HealthcareAssumptions, NationalPensionStrategy, ObjectivePriority,
+  BequestStrategy, EconomicScenario, HealthcareAssumptions, IsaFirstChoice, NationalPensionStrategy, ObjectivePriority,
   PrivatePensionStrategy, RiskProfile, SimulationParams, SpendingStrategyChoice, SpouseProfile,
   StrategyMode, StrategyRecommendation,
 } from '../../../core/entities/types';
@@ -125,7 +125,7 @@ export const OBJECTIVE_OPTIONS: ReadonlyArray<RadioCardOption<ObjectivePriority>
   },
   {
     value: 'ai_recommended', label: 'AI 추천',
-    description: '목표를 정하지 않고 균형 잡힌 기본 기준으로 계산합니다.',
+    description: '목표를 하나로 정하지 않고, 어느 목표로 봐도 크게 아쉽지 않은 계획을 고릅니다.',
     icon: <Sparkles size={16} />, recommended: true,
   },
 ];
@@ -133,12 +133,14 @@ export const OBJECTIVE_OPTIONS: ReadonlyArray<RadioCardOption<ObjectivePriority>
 export const BEQUEST_OPTIONS: ReadonlyArray<RadioCardOption<BequestStrategy>> = [
   {
     value: 'spend_all', label: '모두 사용',
-    description: '남기지 않고 다 쓰는 것을 목표로 합니다.',
+    description: '남기지 않고 다 쓰는 것을 목표로 평가합니다.',
     icon: <HandCoins size={16} />,
   },
   {
     value: 'leave_some', label: '일부 남기기',
-    description: '2년치 생활비 정도를 남기는 것을 목표로 합니다.',
+    // "목표로 합니다"가 아니다. 이 값은 엔진에 하한선을 걸지 않고 채점 기준만 정한다 —
+    // 기본값이라 하한선을 걸면 전략을 저장한 적 없는 모든 시나리오의 곡선이 조용히 바뀐다.
+    description: '2년치 생활비 정도를 적정선으로 보고 평가합니다. 인출을 따로 제한하지는 않습니다.',
     // 기본값(DEFAULT_RETIREMENT_STRATEGY)과 같은 값에 추천 배지를 둔다. 이 앱이 상속 목표를
     // 따로 정하지 않은 계획에 실제로 적용하는 기준이 정확히 "2년치 생활비"다.
     icon: <Banknote size={16} />, recommended: true,
@@ -150,8 +152,34 @@ export const BEQUEST_OPTIONS: ReadonlyArray<RadioCardOption<BequestStrategy>> = 
   },
   {
     value: 'target_amount', label: '목표 금액 유지',
-    description: '남기고 싶은 금액을 직접 정합니다.',
+    // 이 값만 엔진에 실제 제약(assetFloor)을 건다. 남은 자산이 그 금액 밑으로 내려가는
+    // 인출을 하지 않으므로, 지키려면 생활비가 줄어든다. 그 대가를 문구가 밝혀야 한다.
+    description: '남기고 싶은 금액을 정하면 그 금액이 남도록 인출을 조절합니다. 모자라면 생활비가 줄어듭니다.',
     icon: <PiggyBank size={16} />,
+  },
+];
+
+// ISA 만기 자금의 행선지.
+//
+// 예전에는 "ISA 먼저 사용 / ISA 만기 자금을 연금으로 옮기지 않고 생활비로 먼저 씁니다"라는
+// 스위치였다. **엔진은 그런 일을 하지 않는다.** SimulationEngine이 실제로 하는 것은 만기 자금의
+// 이동처를 정하는 것뿐이고(연금 계좌 vs 일반 자산), 인출 순서를 앞당기지는 않는다.
+// 일반 자산으로 옮기면 연금 인출 나이 제한 없이 바로 쓸 수 있다는 것이 실질적인 차이다.
+export const ISA_FIRST_OPTIONS: ReadonlyArray<RadioCardOption<IsaFirstChoice>> = [
+  {
+    value: 'pension_first', label: '연금 계좌로',
+    description: 'ISA 만기 자금을 사적연금 계좌로 옮깁니다. 과세가 미뤄지는 대신 연금 인출 나이 제한을 받습니다.',
+    icon: <PiggyBank size={16} />,
+  },
+  {
+    value: 'isa_first', label: '일반 자산으로',
+    description: 'ISA 만기 자금을 일반 자산으로 옮깁니다. 나이 제한 없이 바로 쓸 수 있습니다.',
+    icon: <Wallet size={16} />,
+  },
+  {
+    value: 'ai_optimized', label: 'AI 최적화',
+    description: '행선지를 정하지 않고, 두 쪽을 모두 계산해 더 나은 쪽을 찾아 적용합니다.',
+    icon: <Sparkles size={16} />, recommended: true,
   },
 ];
 
@@ -252,7 +280,7 @@ export const RISK_PROFILE_OPTIONS: ReadonlyArray<RadioCardOption<RiskProfile>> =
     // 나이·은퇴 시점을 보고 프리셋을 고르는 로직은 코드베이스에 없다. compileStrategy의
     // RISK_PROFILE_PRESETS에 'ai_recommended' 항목이 없어 applyYieldPreset이 호출되지
     // 않는 것이 전부다 — 즉 "미정"이며, 아무것도 덮어쓰지 않는다.
-    description: '특정 수익률을 강제하지 않고, 직접 입력했거나 경제 시나리오가 정한 수익률을 그대로 둡니다.',
+    description: '수익률을 강제하지 않고 입력값을 그대로 둡니다. 대신 높고 낮은 수익률 가정 모두에서 견디는 인출 계획을 고릅니다.',
     icon: <Sparkles size={16} />, recommended: true,
   },
 ];
@@ -285,7 +313,7 @@ export const ECONOMIC_SCENARIO_OPTIONS: ReadonlyArray<RadioCardOption<EconomicSc
     // 아무것도 대체하지 않는다. 둘을 "같은 뜻"으로 적어 두면 언젠가 프로필을 채우게 되고,
     // 그 순간 사용자가 경제 가정에 직접 입력한 물가상승률이 조용히 덮어써진다
     // (economicScenarios.ts의 경고 참조).
-    description: '특정 국면을 강제하지 않고 경제 가정에 직접 입력한 값을 그대로 사용합니다.',
+    description: '특정 국면을 강제하지 않고 입력한 값을 그대로 사용합니다. 대신 네 가지 경기 국면 모두에서 견디는 인출 계획을 고릅니다.',
     icon: <Sparkles size={16} />, recommended: true,
   },
 ];

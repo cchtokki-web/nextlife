@@ -114,12 +114,11 @@ describe('전략 축이 현금흐름을 바꾼다', () => {
     }
   );
 
-  test('ISA 우선 선택이 현금흐름을 바꾼다', () => {
-    // preferIsaFirst는 boolean이라 위 표와 형태가 달라 따로 둔다.
-    const off = runWithStrategy(allAxesLiveParams, { ...DEFAULT_RETIREMENT_STRATEGY, preferIsaFirst: false });
-    const on = runWithStrategy(allAxesLiveParams, { ...DEFAULT_RETIREMENT_STRATEGY, preferIsaFirst: true });
+  test('ISA 만기 행선지 선택이 현금흐름을 바꾼다', () => {
+    const toPension = runWithStrategy(allAxesLiveParams, { ...DEFAULT_RETIREMENT_STRATEGY, preferIsaFirst: 'pension_first' });
+    const toAsset = runWithStrategy(allAxesLiveParams, { ...DEFAULT_RETIREMENT_STRATEGY, preferIsaFirst: 'isa_first' });
 
-    expect(cashflowFingerprint(on)).not.toBe(cashflowFingerprint(off));
+    expect(cashflowFingerprint(toAsset)).not.toBe(cashflowFingerprint(toPension));
   });
 });
 

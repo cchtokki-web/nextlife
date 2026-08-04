@@ -192,7 +192,7 @@ describe('StrategySettingsPanel', () => {
     expect(onChangeParams).toHaveBeenCalledWith({
       ...initialParams,
       strategy: {
-        ...DEFAULT_RETIREMENT_STRATEGY, nationalPensionStrategy: 'early', preferIsaFirst: false,
+        ...DEFAULT_RETIREMENT_STRATEGY, nationalPensionStrategy: 'early', preferIsaFirst: 'pension_first',
       },
     });
   });

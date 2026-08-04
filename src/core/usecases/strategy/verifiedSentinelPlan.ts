@@ -31,10 +31,8 @@ export const SENTINEL_AXES = [
     isSentinel: (s) => s.privatePensionStrategy === 'ai_optimized',
   },
   {
-    // preferIsaFirst가 아직 boolean이라 "미정"을 표현할 값이 없다. 3값화되면
-    // 여기 한 줄만 s.preferIsaFirst === 'ai_optimized'로 바뀐다.
     field: 'isaMaturityDestination',
-    isSentinel: () => false,
+    isSentinel: (s) => s.preferIsaFirst === 'ai_optimized',
   },
   // 아래 둘은 UI도 전략 축도 없어 컴파일 후에도 미정으로 남는다. 지배 축이 없으므로
   // "저장된 값이 없으면 채운다" 규칙만 적용된다 — 추가 설계 없이 두 축이 살아난다.

@@ -514,6 +514,17 @@ export type RiskProfile = 'conservative' | 'neutral' | 'aggressive' | 'custom' |
 export type EconomicScenario =
   | 'long_term_average' | 'recession' | 'high_inflation' | 'low_growth' | 'ai_recommended';
 
+// ISA 만기 자금의 행선지. 예전에는 boolean(preferIsaFirst)이었다.
+//
+// boolean에는 "미정"을 담을 자리가 없어서, 이 축만 AI 자동 채움에서 통째로 빠져 있었다 —
+// 다른 축들이 'ai_*' 센티널로 미정을 표현하는 동안 여기만 false가 "연금으로"라는 확정
+// 선택과 "아직 안 정했다"를 겸했다.
+//
+// 저장된 boolean은 resolveStrategy에서만 정규화한다(E2EE라 서버 마이그레이션이 불가능하다).
+// **false는 'pension_first'로 보존하며 'ai_optimized'로 승격하지 않는다** —
+// 승격하면 그 사용자의 저장된 선택이 AI 추천값으로 조용히 덮어써진다.
+export type IsaFirstChoice = 'isa_first' | 'pension_first' | 'ai_optimized';
+
 // 현재는 'current' 하나뿐이다. 실제 개정안이 확정되면 프로필을 추가한다
 // (허구의 개정안을 지어내지 않는다는 것이 설계 결정이다).
 export type TaxLawVersion = 'current';
@@ -525,7 +536,7 @@ export interface RetirementStrategy {
   bequestStrategy: BequestStrategy;
   nationalPensionStrategy: NationalPensionStrategy;
   privatePensionStrategy: PrivatePensionStrategy;
-  preferIsaFirst: boolean;
+  preferIsaFirst: IsaFirstChoice;
   riskProfile: RiskProfile;
   economicScenario: EconomicScenario;
 }
