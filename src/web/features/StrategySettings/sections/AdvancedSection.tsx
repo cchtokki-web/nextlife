@@ -42,6 +42,12 @@ export function AdvancedSection({ params, onChangeParams, mode, changed }: Secti
     onChangeParams({ ...params, taxSettings: { ...tax, ...patch } });
   };
 
+  // 남는 현금 수익률은 다른 자산과 같은 규칙으로 물가를 반영한다. 그래서 실질 기준일 때는
+  // "0%면 그대로"가 아니라 "0%면 물가만큼 구매력이 줄어든다"가 된다 — 그 뜻을 설명문에
+  // 적어 두지 않으면 같은 숫자가 모드에 따라 다른 의미를 갖는 것으로만 보인다.
+  const isRealBasis = (params.inflationMode ?? 'real') === 'real';
+  const inflationRate = params.inflationRate ?? 2;
+
   // 비교과세 모드에서는 누진세율표와 원천징수 공제가 세액을 정하므로 comprehensiveTaxRate가
   // 계산에 쓰이지 않는다. 위 limitPrivatePensionToTaxLimit과 같은 이유로 비활성화한다.
   const comprehensiveTaxModeGovernsRate = tax.comprehensiveTaxMode !== 'flat';
@@ -86,6 +92,28 @@ export function AdvancedSection({ params, onChangeParams, mode, changed }: Secti
               onChangeParams({ ...params, taxLawVersion: e.target.value as TaxLawVersion })
             }
             options={TAX_LAW_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
+          />
+        </FieldRow>
+      )}
+
+      {isFieldVisible(mode, 'cashYieldRate') && (
+        <FieldRow
+          label="남는 현금 수익률"
+          tooltipText={
+            isRealBasis
+              ? '쓰고 남은 돈에 붙는 연 이자율입니다. 지금은 실질(물가 반영) 기준으로 계산 중이라'
+                + ` 물가상승률(${inflationRate}%)을 뺀 만큼만 실제로 불어납니다.`
+                + ' 0%로 두면 물가만큼 구매력이 줄어듭니다.'
+              : '쓰고 남은 돈에 붙는 연 이자율입니다. 0%로 두면 이자 없이 그대로 남습니다.'
+          }
+          changed={changed.has('cashYieldRate')}
+        >
+          <InputField
+            label="" aria-label="남는 현금 수익률" type="number" step="0.1" suffixText="%"
+            value={params.cashYieldRate ?? 0}
+            onChange={(e) =>
+              onChangeParams({ ...params, cashYieldRate: Number(e.target.value) })
+            }
           />
         </FieldRow>
       )}

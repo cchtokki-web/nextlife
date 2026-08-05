@@ -1,5 +1,5 @@
 import { describe, test, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, within } from '@testing-library/react';
 import { AdvancedSection } from '@/web/features/StrategySettings/sections/AdvancedSection';
 import { initialParams } from '@/infrastructure/storage/localStore';
 import { DEFAULT_RETIREMENT_STRATEGY } from '@/core/usecases/strategy/compileStrategy';
@@ -229,8 +229,67 @@ describe('AdvancedSection', () => {
 
     expect(screen.queryByLabelText('미국 배당세율')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('세법 버전')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('남는 현금 수익률')).not.toBeInTheDocument();
     expect(screen.queryByRole('switch', { name: /금융소득종합과세 반영/ })).not.toBeInTheDocument();
     expect(screen.getByText(/전문가 모드에서 세율·한도를 직접 조정할 수 있습니다/))
       .toBeInTheDocument();
+  });
+});
+
+// 남는 현금 수익률은 이 섹션에서 유일하게 taxSettings가 아니라 최상위 params에 저장되는 값이다.
+// 그리고 물가 처리를 다른 자산과 똑같이 따르므로, 같은 "0%"가 모드에 따라 다른 뜻을 갖는다:
+// 명목 기준이면 "이자 없이 그대로", 실질 기준이면 "물가만큼 구매력 감소". 그 차이를 설명문이
+// 말해 주지 않으면 사용자가 알 방법이 없다.
+describe('AdvancedSection — 남는 현금 수익률', () => {
+  const renderWith = (params: SimulationParams, onChangeParams = vi.fn()) => {
+    render(
+      <AdvancedSection
+        params={params} onChangeParams={onChangeParams}
+        mode="expert" changed={new Set()}
+      />
+    );
+    return onChangeParams;
+  };
+
+  test('기본값은 0%다 (저장된 시나리오의 결과를 바꾸지 않는 값)', () => {
+    renderWith({ ...initialParams, cashYieldRate: undefined });
+
+    expect(screen.getByLabelText('남는 현금 수익률')).toHaveValue(0);
+  });
+
+  test('taxSettings가 아니라 최상위 params에 저장한다', () => {
+    const onChangeParams = renderWith({ ...initialParams, inflationMode: 'nominal' });
+
+    fireEvent.change(screen.getByLabelText('남는 현금 수익률'), { target: { value: '2.5' } });
+
+    expect(onChangeParams).toHaveBeenCalledWith(
+      expect.objectContaining({ cashYieldRate: 2.5 })
+    );
+  });
+
+  // 설명문은 "?" 도움말(HelpTip → Tooltip) 뒤에 있고, 툴팁은 hover할 때만 렌더된다.
+  // 사용자가 실제로 읽는 경로를 그대로 밟아야 "화면에 있다"를 검증한 것이 된다.
+  const openHelpFor = (fieldLabel: string) => {
+    const row = screen.getByLabelText(fieldLabel).closest('div.flex.flex-col');
+    expect(row, `${fieldLabel} 행을 찾지 못했다`).not.toBeNull();
+    fireEvent.mouseEnter(within(row as HTMLElement).getByLabelText('도움말'));
+  };
+
+  test('실질 기준일 때는 물가를 뺀다는 사실과 그 물가상승률을 함께 밝힌다', () => {
+    renderWith({ ...initialParams, inflationMode: 'real', inflationRate: 3.5 });
+
+    openHelpFor('남는 현금 수익률');
+
+    expect(screen.getByText(/물가상승률\(3\.5%\)을 뺀 만큼만/)).toBeInTheDocument();
+    expect(screen.getByText(/0%로 두면 물가만큼 구매력이 줄어듭니다/)).toBeInTheDocument();
+  });
+
+  test('명목 기준일 때는 "이자 없이 그대로"라고 말한다', () => {
+    renderWith({ ...initialParams, inflationMode: 'nominal', inflationRate: 3.5 });
+
+    openHelpFor('남는 현금 수익률');
+
+    expect(screen.getByText(/0%로 두면 이자 없이 그대로 남습니다/)).toBeInTheDocument();
+    expect(screen.queryByText(/물가상승률/)).not.toBeInTheDocument();
   });
 });

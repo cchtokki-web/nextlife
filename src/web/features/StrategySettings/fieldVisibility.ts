@@ -60,6 +60,7 @@ export const SECTION_FIELDS: Record<SectionId, ReadonlyArray<FieldPath>> = {
   ],
   advanced: [
     'taxLawVersion',
+    'cashYieldRate',
     'taxSettings.limitPrivatePensionToTaxLimit',
     'taxSettings.enableComprehensiveTax',
     'taxSettings.enableHealthInsurance',

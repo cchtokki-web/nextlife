@@ -205,6 +205,15 @@ export interface SimulationParams {
   // 기본 상속 전략('leave_some')은 targetBequest를 채우지만 하한선은 세우지 않는다 —
   // 세우면 전략을 저장한 적 없는 모든 시나리오의 곡선이 조용히 바뀐다.
   assetFloor?: number;
+  // 쓰고 남은 현금(SimulationYearlyResult.cashAssets)에 붙는 연 수익률 %.
+  // 미지정·0이면 이자가 붙지 않는다(= 기존 동작과 비트 단위로 동일).
+  //
+  // **기본값을 0이 아닌 값으로 바꾸면 안 된다.** 저장된 모든 시나리오가 0으로 계산돼 있어,
+  // 기본값을 올리는 순간 사용자가 아무것도 건드리지 않았는데 숫자가 달라진다.
+  //
+  // inflationMode를 다른 자산과 똑같이 따른다: 실질 기준이면 물가를 뺀 만큼만 불어나고,
+  // 물가보다 낮은 이율이면 실제로 줄어든다. 현금을 쌓아 두는 대가가 그대로 드러나야 한다.
+  cashYieldRate?: number;
   taxSettings?: TaxSettings; // 고급 세금 설정
   withdrawalPlan?: WithdrawalPlan; // 인출 정책 및 생활비 조정 (미지정 시 기존 균등분할 인출 로직 사용)
   // 은퇴 전략 설정. 미지정이면 compileStrategy가 baseline 전략으로 컴파일한다.

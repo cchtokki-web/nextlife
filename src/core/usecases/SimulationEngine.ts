@@ -495,6 +495,17 @@ export class SimulationEngine {
     // 팔지도 않은 배당금이 양도차익 계산의 원가에 들어갔다는 뜻이다.
     let cashBucketDisplay = 0;
 
+    // 현금 이자율. 물가 처리를 자산·연금·ISA와 똑같이 맞춘다(initializeAssets 참고) —
+    // 실질 기준인데 현금만 명목 이율로 굴리면 같은 화면의 다른 자산과 기준이 어긋나고,
+    // 물가에 지는 현금이 오히려 불어나는 것처럼 보인다.
+    //
+    // Math.max(0, ...)은 연 −100%보다 더 나쁜 값만 막는다. 물가보다 낮은 이율에서
+    // 실질 수익률이 음수가 되는 것은 정상이고, 그 손실이 드러나야 한다.
+    const cashYieldAnnual = inflationMode === 'real'
+      ? ((params.cashYieldRate ?? 0) - inflationRate) / 100
+      : (params.cashYieldRate ?? 0) / 100;
+    const cashYieldRateMonthly = Math.pow(Math.max(0, 1 + cashYieldAnnual), 1 / 12) - 1;
+
     const currentTotalAssetsDisplay = () =>
       activeAssets.reduce((sum, a) => sum + this.convertValue(a.currentValue, a.currency, displayCurrency, exchangeRate), 0)
       + activePensions.reduce((sum, p) => sum + this.convertValue(p.currentBalance, p.currency, displayCurrency, exchangeRate), 0)
@@ -648,6 +659,13 @@ export class SimulationEngine {
       });
 
       for (let m = 0; m < 12; m++) {
+        // 쌓아 둔 현금에 이자를 붙인다. 다른 자산과 같은 월 복리 규칙이며, 이자율이 0이면
+        // 곱이 1이라 결과가 비트 단위로 보존된다(기본값이 0인 이유).
+        //
+        // 다음 달치 잉여가 들어오기 **전에** 굴린다 — 이번 달에 막 생긴 현금에 이달치 이자를
+        // 주면 하루도 두지 않은 돈에 한 달치가 붙는다.
+        cashBucketDisplay *= 1 + cashYieldRateMonthly;
+
         // ISA Processing
         // 사적연금 조기수령 채널링(Phase 4)의 브릿지 인출은 activeIsas[0]에 별도 크레딧을
         // 더하는데(Pensions Processing 블록, 이달 뒤에서 실행), 이 크레딧도 월 법정 한도
