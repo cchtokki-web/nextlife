@@ -112,3 +112,103 @@ describe('authOptions — 개발 모드', () => {
     expect(authOptions.cookies?.sessionToken?.options?.secure).toBe(false);
   });
 });
+
+// **redirect 콜백은 반드시 절대 URL을 돌려줘야 한다.**
+//
+// next-auth 클라이언트의 signIn()이 응답의 url을 `new URL(...)`로 파싱한다. 상대 경로를
+// 주면 거기서 TypeError가 나고, 개발 모드 자동 로그인이 "자동 로그인 중 오류가 발생했습니다"
+// 화면에 멈춘다 — 서버 측 인증은 정상인데(HTTP 200) 브라우저에서 진입이 통째로 막혔다.
+//
+// 그런데 origin을 NEXTAUTH_URL에 그대로 맡길 수도 없다. 그 값은 모듈 로드 시점에 한 번
+// 정해지는데(기본 http://localhost:3000) dev 서버는 다른 포트로 띄우는 일이 흔하고,
+// 그러면 로그인 후 매번 죽은 포트로 튕긴다. 예전에 이 분기가 상대 경로를 돌려주던 이유가
+// 정확히 그것이었다 — 한쪽을 고치려다 다른 쪽을 깨뜨린 자리다.
+describe('authOptions — redirect 콜백', () => {
+  type RedirectFn = (params: { url: string; baseUrl: string }) => Promise<string>;
+  const redirectOf = (options: NextAuthOptions): RedirectFn =>
+    options.callbacks!.redirect as unknown as RedirectFn;
+
+  const BASE = 'http://localhost:3000';
+
+  describe('개발 모드', () => {
+    test('상대 경로를 받아도 절대 URL을 돌려준다', async () => {
+      const redirect = redirectOf(await loadAuthOptions(true));
+
+      const result = await redirect({ url: '/simulator', baseUrl: BASE });
+
+      // 이 한 줄이 결함의 정의다. 예전에는 '/simulator'를 그대로 돌려줬다.
+      expect(() => new URL(result)).not.toThrow();
+      expect(new URL(result).pathname).toBe('/simulator');
+    });
+
+    test('절대 URL을 받아도 경로를 보존한 절대 URL을 돌려준다', async () => {
+      const redirect = redirectOf(await loadAuthOptions(true));
+
+      const result = await redirect({ url: 'http://localhost:9999/simulator?a=1#b', baseUrl: BASE });
+
+      const parsed = new URL(result);
+      expect(parsed.pathname).toBe('/simulator');
+      expect(parsed.search).toBe('?a=1');
+      expect(parsed.hash).toBe('#b');
+    });
+
+    test('실제 실행 중인 포트(PORT)를 origin으로 쓴다', async () => {
+      // dev 서버를 3000이 아닌 포트로 띄우면 next dev가 process.env.PORT에 실제 포트를
+      // 넣어 준다. NEXTAUTH_URL(baseUrl)만 믿으면 로그인 후 죽은 포트로 보내게 된다.
+      vi.stubEnv('PORT', '3101');
+      const redirect = redirectOf(await loadAuthOptions(true));
+
+      const result = await redirect({ url: '/simulator', baseUrl: BASE });
+
+      expect(new URL(result).port).toBe('3101');
+    });
+
+    test('DEV_NEXTAUTH_URL을 지정했으면 그 값이 PORT보다 우선한다', async () => {
+      // 터널·호스트 별칭을 쓰는 경우다. 명시적으로 지정한 값을 포트 추론이 덮으면 안 된다.
+      vi.stubEnv('PORT', '3101');
+      vi.stubEnv('DEV_NEXTAUTH_URL', 'http://my-tunnel.test');
+      const redirect = redirectOf(await loadAuthOptions(true));
+
+      const result = await redirect({ url: '/simulator', baseUrl: BASE });
+
+      expect(new URL(result).origin).toBe('http://my-tunnel.test');
+    });
+
+    test('파싱할 수 없는 값이면 루트로 보낸다', async () => {
+      const redirect = redirectOf(await loadAuthOptions(true));
+
+      const result = await redirect({ url: 'not a url', baseUrl: BASE });
+
+      expect(new URL(result).pathname).toBe('/');
+    });
+
+    test.each(['//evil.com', '/\\evil.com', '//evil.com/steal'])(
+      '프로토콜 상대 URL(%s)은 외부로 나가지 않는다',
+      async (hostile) => {
+        // `startsWith('/')`만 보면 통과하는 형태다. 앞에 origin을 붙이므로 실제로는 같은
+        // 출처의 경로가 되지만, 그 안전성을 읽을 때마다 다시 따지게 두지 않는다.
+        vi.stubEnv('PORT', '3102');
+        const redirect = redirectOf(await loadAuthOptions(true));
+
+        const result = await redirect({ url: hostile, baseUrl: BASE });
+
+        expect(new URL(result).origin).toBe('http://localhost:3102');
+        expect(new URL(result).pathname).toBe('/');
+      }
+    );
+  });
+
+  describe('프로덕션 모드', () => {
+    test('같은 출처의 상대 경로는 baseUrl을 붙여 돌려준다', async () => {
+      const redirect = redirectOf(await loadAuthOptions(false));
+
+      expect(await redirect({ url: '/simulator', baseUrl: BASE })).toBe(`${BASE}/simulator`);
+    });
+
+    test('다른 출처로 나가는 URL은 baseUrl로 되돌린다 (오픈 리다이렉트 방지)', async () => {
+      const redirect = redirectOf(await loadAuthOptions(false));
+
+      expect(await redirect({ url: 'https://evil.com/steal', baseUrl: BASE })).toBe(BASE);
+    });
+  });
+});
