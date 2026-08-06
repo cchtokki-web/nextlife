@@ -4,6 +4,7 @@ import { SensitivityScenario } from '../../../core/usecases/dashboard/computeSen
 import {
   ItemizedContribution, ItemizedContributionField, StrategyRecommendation,
 } from '../../../core/entities/types';
+import { formatManwon } from '../../../core/usecases/utility/utilityAnalysis';
 
 // PDF는 화면과 별개로 완전히 독립된 정적 HTML 문자열을 html2canvas로 캡처하는 구조라(page.tsx의
 // handleDownload), 화면 컴포넌트를 재사용할 수 없다 — 동일한 usecase 데이터를 받아 PDF 전용
@@ -101,14 +102,28 @@ export function renderExecutionRoadmapSection(roadmap: ExecutionRoadmap): string
   `;
 }
 
+// 민감도 분석 표.
+//
+// 예전에는 "자산 고갈 나이" 한 열뿐이었다. 여유 있는 계획에서는 6행이 전부 "평생 유지"로
+// 찍혀 표 전체가 아무 정보도 주지 않았다(실제 리포트가 그랬다). 기말자산 열을 함께 실어
+// 고갈 여부와 무관하게 시나리오가 구분되게 한다 — 화면의 SensitivityAnalysisSection과
+// 같은 판단이다.
 export function renderSensitivityTableSection(scenarios: SensitivityScenario[]): string {
   if (scenarios.length === 0) return '';
   const rowsHtml = scenarios
     .map((s) => {
       const depletionText = s.depletionAge === null ? '평생 유지' : `${s.depletionAge}세`;
+      const deltaColor = s.endingAssetsDelta < 0 ? '#dc2626' : '#059669';
+      const deltaText = s.endingAssetsDelta === 0
+        ? ''
+        : ` <span style="color: ${deltaColor};">(${s.endingAssetsDelta > 0 ? '+' : ''}${formatManwon(s.endingAssetsDelta)})</span>`;
+      const unmetText = s.unmetSpendingYears > 0
+        ? `<br/><span style="color: #dc2626; font-size: 10px;">생활비 부족 ${s.unmetSpendingYears}년</span>`
+        : '';
       return `
         <tr>
           <td style="border: 1px solid #cbd5e1; padding: 6px 8px; font-size: 11px;">${s.label}</td>
+          <td style="border: 1px solid #cbd5e1; padding: 6px 8px; font-size: 11px; text-align: right;">${formatManwon(s.endingAssets)}${deltaText}${unmetText}</td>
           <td style="border: 1px solid #cbd5e1; padding: 6px 8px; font-size: 11px; text-align: right;">${depletionText}</td>
         </tr>
       `;
@@ -119,6 +134,7 @@ export function renderSensitivityTableSection(scenarios: SensitivityScenario[]):
       <thead>
         <tr>
           <th style="border: 1px solid #cbd5e1; padding: 6px 8px; text-align: left; background-color: #f1f5f9; font-size: 11px; font-weight: 700; color: #334155;">시나리오</th>
+          <th style="border: 1px solid #cbd5e1; padding: 6px 8px; text-align: right; background-color: #f1f5f9; font-size: 11px; font-weight: 700; color: #334155;">기말 잔여자산</th>
           <th style="border: 1px solid #cbd5e1; padding: 6px 8px; text-align: right; background-color: #f1f5f9; font-size: 11px; font-weight: 700; color: #334155;">자산 고갈 나이</th>
         </tr>
       </thead>

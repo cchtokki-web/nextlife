@@ -556,6 +556,10 @@ export class SimulationEngine {
       let annualPrivatePensionIncome = 0;
       let annualOtherIncome = 0;
       let annualSpending = 0;
+      // 목표 생활비 중 재원이 모자라 채우지 못한 금액. 인출 경로가 잔액을 넘겨 인출하지
+      // 않으므로 부족분은 자산을 마이너스로 만드는 대신 지출에서 조용히 깎인다 —
+      // 그 깎인 양을 여기 남긴다(SimulationYearlyResult.unmetSpending 주석 참조).
+      let annualUnmetSpending = 0;
       let annualDividendTaxPaid = 0;
       let annualPensionTaxPaid = 0;
       let annualNationalPensionTaxPaid = 0;
@@ -1057,7 +1061,10 @@ export class SimulationEngine {
             }
           }
           const unmet = remainingShortfall + blockedByFloor;
-          if (unmet > 0) actualMonthlySpending -= unmet;
+          if (unmet > 0) {
+            actualMonthlySpending -= unmet;
+            annualUnmetSpending += unmet;
+          }
         }
         annualSpending += actualMonthlySpending;
       }
@@ -1154,7 +1161,8 @@ export class SimulationEngine {
         cashAssets: cashBucketDisplay,
         dividendIncome: annualDividendIncome, nationalPensionIncome: annualNationalPensionIncome,
         privatePensionIncome: annualPrivatePensionIncome, pensionIncome, otherIncome: annualOtherIncome,
-        totalIncome, spending: annualSpending, healthcareSpending: annualHealthcareCost,
+        totalIncome, spending: annualSpending, unmetSpending: annualUnmetSpending,
+        healthcareSpending: annualHealthcareCost,
         hasTaxWarning, spouseAlive, spendingFactor,
         preTaxTotalIncome: annualPreTaxTotalIncome,
         dividendTaxPaid: annualDividendTaxPaid, pensionTaxPaid: annualPensionTaxPaid,

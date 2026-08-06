@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { type LegendPayload } from 'recharts';
-import { Award, Zap } from 'lucide-react';
+import { Award, Zap, TrendingUp, AlertTriangle } from 'lucide-react';
 import { SimulationParams, SimulationResult, StrategyRecommendation } from '../../../core/entities/types';
 import { explainBequestAdequacy } from '../../../core/usecases/utility/utilityAnalysis';
 import { generateChartCaptions } from '../../../core/usecases/dashboard/generateChartCaptions';
@@ -18,6 +18,7 @@ import { ExpertDetailsPanel } from './expert/ExpertDetailsPanel';
 import { RiskAlertCards } from './risk/RiskAlertCards';
 import { UtilityInsightSection } from './insights/UtilityInsightSection';
 import { computeRiskAlerts } from '../../../core/usecases/dashboard/computeRiskAlerts';
+import { computeSustainableSpendingAdvice } from '../../../core/usecases/dashboard/computeSustainableSpendingAdvice';
 import { useBeforeAfterToggle } from './hooks/useBeforeAfterToggle';
 import { ExecutionRoadmap } from './roadmap/ExecutionRoadmap';
 import { computeExecutionRoadmap, selectDepletionAge } from '../../../core/usecases/dashboard/computeExecutionRoadmap';
@@ -103,6 +104,13 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
 
   const captions = generateChartCaptions(displayedResult, params);
   const riskAlerts = computeRiskAlerts(displayedResult, params);
+  // 다른 배너와 같은 이유로 baseline(현재 설정)을 쓴다 — 이 제안은 "지금 설정을 이렇게
+  // 바꿔 보라"는 말이므로 Before/After 미리보기를 따라가면 자기 자신을 근거로 삼게 된다.
+  const sustainableSpendingAdvice = computeSustainableSpendingAdvice(
+    params.spendingStrategy,
+    params.userProfile.targetMonthlySpending,
+    result.calculatedTargetSpending
+  );
   const bequestAdequacyExplanation = React.useMemo(
     () => (displayedResult.utility ? explainBequestAdequacy(params, displayedResult) : undefined),
     [params, displayedResult]
@@ -118,6 +126,36 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
             <span className={styles.warningTitle} style={{ color: 'var(--success)' }}>최대 고정 생활비 산출 완료</span>
             <span className={styles.warningText}>
               시뮬레이션 결과, 고갈 없이 유지 가능한 <strong>최대 월 생활비는 {formatValue(result.calculatedTargetSpending)}</strong>입니다. 모든 차트는 이 금액을 목표로 다시 그려졌습니다.
+            </span>
+          </div>
+        </div>
+      )}
+      {/* 고정 목표 생활비('target') 계획에서, 엔진이 이미 계산해 둔 지속가능 생활비를
+          현재 목표와 비교해 제안한다. 양방향인 이유는 computeSustainableSpendingAdvice 주석 참고. */}
+      {sustainableSpendingAdvice?.kind === 'can_spend_more' && (
+        <div className={styles.warningCard} style={{ background: 'rgba(16, 185, 129, 0.1)', borderColor: 'rgba(16, 185, 129, 0.3)' }}>
+          <TrendingUp size={22} className={styles.warningIcon} color="var(--success)" />
+          <div className={styles.warningContent}>
+            <span className={styles.warningTitle} style={{ color: 'var(--success)' }}>지금보다 더 쓸 수 있습니다</span>
+            <span className={styles.warningText}>
+              현재 목표는 월 {formatValue(sustainableSpendingAdvice.currentMonthly)}이지만, 자산을 고갈시키지 않고{' '}
+              <strong>월 {formatValue(sustainableSpendingAdvice.sustainableMonthly)}까지</strong> 쓸 수 있습니다
+              (월 {formatValue(sustainableSpendingAdvice.difference)} 여유). 목표 생활비를 올리거나, 남는 자산을
+              상속·증여 계획에 반영해 보세요.
+            </span>
+          </div>
+        </div>
+      )}
+      {sustainableSpendingAdvice?.kind === 'overspending' && (
+        <div className={styles.warningCard} style={{ background: 'rgba(239, 68, 68, 0.1)', borderColor: 'rgba(239, 68, 68, 0.3)' }}>
+          <AlertTriangle size={22} className={styles.warningIcon} color="var(--danger)" />
+          <div className={styles.warningContent}>
+            <span className={styles.warningTitle} style={{ color: 'var(--danger)' }}>현재 목표 생활비는 지속하기 어렵습니다</span>
+            <span className={styles.warningText}>
+              현재 목표는 월 {formatValue(sustainableSpendingAdvice.currentMonthly)}이지만, 자산을 고갈시키지 않으려면{' '}
+              <strong>월 {formatValue(sustainableSpendingAdvice.sustainableMonthly)} 수준</strong>이 한계입니다
+              (월 {formatValue(sustainableSpendingAdvice.difference)} 초과). 생활비를 조정하거나 은퇴 시점·인출 전략을
+              다시 검토해 보세요.
             </span>
           </div>
         </div>

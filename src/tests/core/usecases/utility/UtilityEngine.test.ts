@@ -1,4 +1,5 @@
 import { describe, test, expect } from 'vitest';
+import { makeYearlyResult as makeYearlyResultFixture } from '@/tests/fixtures/yearlyResult';
 import { computeLifetimeUtility } from '@/core/usecases/utility/UtilityEngine';
 import { DEFAULT_UTILITY_CONFIG } from '@/core/usecases/utility/utilityWeights';
 import { DEFAULT_RETIREMENT_STRATEGY } from '@/core/usecases/strategy/compileStrategy';
@@ -33,36 +34,16 @@ function makeYear(
   age: number,
   overrides: Partial<SimulationYearlyResult> = {}
 ): SimulationYearlyResult {
-  return {
+  // 공용 픽스처에 이 스위트 고유의 기본값(목표를 정확히 채우는 소득·지출)만 얹는다.
+  // 필수 필드가 추가될 때 여기서 다시 깨지지 않도록 복제 대신 위임한다.
+  return makeYearlyResultFixture({
     age,
     year: 2026 + (age - userProfile.currentAge),
-    totalAssets: 0,
-    stockAssets: 0,
-    pensionAssets: 0,
-    isaAssets: 0,
-    cashAssets: 0,
-    dividendIncome: 0,
-    nationalPensionIncome: 0,
-    privatePensionIncome: 0,
-    pensionIncome: 0,
-    otherIncome: 0,
     totalIncome: ANNUAL_TARGET,
     preTaxTotalIncome: ANNUAL_TARGET,
-    dividendTaxPaid: 0,
-    pensionTaxPaid: 0,
-    nationalPensionTaxPaid: 0,
-    healthInsurancePaid: 0,
-    healthInsuranceIncomeBasis: 0,
-    capitalGainsTaxPaid: 0,
-    comprehensiveTaxPaid: 0,
-    privatePensionTaxMethod: 'none',
     spending: ANNUAL_TARGET,
-    healthcareSpending: 0,
-    hasTaxWarning: false,
-    spouseAlive: false,
-    spendingFactor: 1,
     ...overrides,
-  };
+  });
 }
 
 function makeResult(yearlyResults: SimulationYearlyResult[], depletionAge: number | null): SimulationResult {

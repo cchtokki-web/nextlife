@@ -215,3 +215,50 @@ describe('DashboardSection - IA 순서', () => {
     expect(screen.queryByText('금융소득종합과세 진입 가능성')).not.toBeInTheDocument();
   });
 });
+
+// **엔진이 계산해 두고도 화면이 침묵하던 값.**
+//
+// SimulationEngine.run은 'target' 전략에서도 findMaxSustainableValue로 "월 얼마까지 쓸 수
+// 있는가"를 계산해 calculatedTargetSpending에 담는다. 그런데 배너 조건이
+// spendingStrategy === 'max_sustainable'로 묶여 있어, 고정 생활비로 계획한 사용자는
+// 상속 목표가 0원인데 수억을 남기거나 반대로 자산이 고갈되는데도 아무 말을 듣지 못했다.
+describe('DashboardSection - 지속가능 생활비 제안 배너', () => {
+  test('더 쓸 수 있으면 그 금액을 제안한다', () => {
+    const richResult: SimulationResult = { ...result, calculatedTargetSpending: 4420000 };
+
+    render(<DashboardSection params={params} result={richResult} />);
+
+    expect(screen.getByText(/442만원/)).toBeInTheDocument();
+    expect(screen.getByText(/더 쓸 수 있습니다/)).toBeInTheDocument();
+  });
+
+  test('목표가 지속 불가능하면 줄여야 할 금액을 경고한다', () => {
+    const tightResult: SimulationResult = { ...result, calculatedTargetSpending: 2400000 };
+
+    render(<DashboardSection params={params} result={tightResult} />);
+
+    expect(screen.getByText(/240만원/)).toBeInTheDocument();
+    expect(screen.getByText(/지속하기 어렵습니다/)).toBeInTheDocument();
+  });
+
+  test('차이가 미미하면 배너를 띄우지 않는다', () => {
+    const closeResult: SimulationResult = { ...result, calculatedTargetSpending: 3100000 };
+
+    render(<DashboardSection params={params} result={closeResult} />);
+
+    expect(screen.queryByText(/더 쓸 수 있습니다/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/지속하기 어렵습니다/)).not.toBeInTheDocument();
+  });
+
+  // max_sustainable은 이미 그 값이 실제 생활비로 적용된 상태라, 기존 "최대 고정 생활비
+  // 산출 완료" 배너가 담당한다. 두 배너가 같은 숫자를 두 번 말하면 안 된다.
+  test('max_sustainable 전략에서는 제안 배너 대신 기존 적용 배너만 보여준다', () => {
+    const maxSusParams: SimulationParams = { ...params, spendingStrategy: 'max_sustainable' };
+    const maxSusResult: SimulationResult = { ...result, calculatedTargetSpending: 4420000 };
+
+    render(<DashboardSection params={maxSusParams} result={maxSusResult} />);
+
+    expect(screen.queryByText(/더 쓸 수 있습니다/)).not.toBeInTheDocument();
+    expect(screen.getByText('최대 고정 생활비 산출 완료')).toBeInTheDocument();
+  });
+});

@@ -154,14 +154,42 @@ describe('renderSensitivityTableSection', () => {
 
   test('시나리오를 표 행으로 렌더링하며, depletionAge가 null이면 "평생 유지"를 표시한다', () => {
     const scenarios: SensitivityScenario[] = [
-      { key: 'returnDown', label: '투자수익률 -2%p', depletionAge: 82, deltaYears: -6 },
-      { key: 'returnUp', label: '투자수익률 +2%p', depletionAge: null, deltaYears: 4 },
+      { key: 'returnDown', label: '투자수익률 -2%p', depletionAge: 82, deltaYears: -6,
+        endingAssets: 0, endingAssetsDelta: -2500000000, unmetSpendingYears: 8 },
+      { key: 'returnUp', label: '투자수익률 +2%p', depletionAge: null, deltaYears: 4,
+        endingAssets: 5000000000, endingAssetsDelta: 2500000000, unmetSpendingYears: 0 },
     ];
     const html = renderSensitivityTableSection(scenarios);
     expect(html).toContain('투자수익률 -2%p');
     expect(html).toContain('82세');
     expect(html).toContain('투자수익률 +2%p');
     expect(html).toContain('평생 유지');
+  });
+
+  // 고갈이 전혀 없는 계획에서 예전 표는 6행이 모두 "평생 유지" 한 단어뿐이라 아무 정보도
+  // 주지 못했다. 기말자산 열이 그 구분을 만든다.
+  test('고갈이 없어도 기말자산과 증감으로 시나리오가 구분된다', () => {
+    const scenarios: SensitivityScenario[] = [
+      { key: 'returnDown', label: '투자수익률 -2%p', depletionAge: null, deltaYears: null,
+        endingAssets: 820000000, endingAssetsDelta: -1680000000, unmetSpendingYears: 0 },
+      { key: 'returnUp', label: '투자수익률 +2%p', depletionAge: null, deltaYears: null,
+        endingAssets: 5100000000, endingAssetsDelta: 2600000000, unmetSpendingYears: 0 },
+    ];
+    const html = renderSensitivityTableSection(scenarios);
+
+    expect(html).toContain('8억 2,000만원');
+    expect(html).toContain('51억원');
+    expect(html).toContain('-16억 8,000만원');
+    expect(html).toContain('+26억원');
+  });
+
+  test('생활비를 채우지 못한 해가 있으면 표에 함께 적는다', () => {
+    const scenarios: SensitivityScenario[] = [
+      { key: 'returnDown', label: '투자수익률 -2%p', depletionAge: null, deltaYears: null,
+        endingAssets: 100000000, endingAssetsDelta: -500000000, unmetSpendingYears: 5 },
+    ];
+
+    expect(renderSensitivityTableSection(scenarios)).toContain('생활비 부족 5년');
   });
 });
 

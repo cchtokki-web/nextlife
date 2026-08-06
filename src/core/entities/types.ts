@@ -273,6 +273,14 @@ export interface SimulationYearlyResult {
   privatePensionTaxMethod: PrivatePensionTaxationMethod; // 사적연금 한도초과세 적용 방식
 
   spending: number; // 연간 총 생활비 인출
+  // 그 해 목표 생활비 중 재원이 모자라 채우지 못한 금액. 0이면 완전 충족이다.
+  // spending에서 이미 깎여 나갔으므로 spending + unmetSpending = 그 해에 쓰려 했던 금액이다.
+  //
+  // 이 필드가 없으면 "자산은 남았는데 생활비를 못 쓴 해"가 보이지 않는다 — 인출 경로가
+  // 잔액을 넘겨 인출하지 않아(모든 매도가 Math.min으로 막혀 있다) totalAssets가 음수가
+  // 되지 않으므로, depletionAge만으로는 결손이 드러나지 않고 '고갈 위험 없음'으로 보고된다.
+  // 민감도 분석이 여유 있는 계획에서 아무 정보도 주지 못했던 원인 중 하나다.
+  unmetSpending: number;
   // 연간 의료비 지출. spending에 이미 포함된 금액 중 의료비분을 분해해 보여주기
   // 위한 정보성 필드다 (spending에서 빼면 안 된다).
   //

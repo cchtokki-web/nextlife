@@ -1,40 +1,11 @@
 import { describe, test, expect } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { ExpertDetailsPanel } from '@/web/features/Dashboard/expert/ExpertDetailsPanel';
-import { SimulationParams, SimulationResult, SimulationYearlyResult } from '@/core/entities/types';
+import { SimulationParams, SimulationResult } from '@/core/entities/types';
+import { makeYearlyResult as makeYearlyResultFixture } from '@/tests/fixtures/yearlyResult';
 
-function makeYearlyResult(overrides: Partial<SimulationYearlyResult>): SimulationYearlyResult {
-  return {
-    age: 60,
-    year: 2026,
-    totalAssets: 0,
-    stockAssets: 0,
-    pensionAssets: 0,
-    isaAssets: 0,
-    cashAssets: 0,
-    dividendIncome: 0,
-    nationalPensionIncome: 0,
-    privatePensionIncome: 0,
-    pensionIncome: 0,
-    otherIncome: 0,
-    totalIncome: 0,
-    preTaxTotalIncome: 0,
-    dividendTaxPaid: 0,
-    pensionTaxPaid: 0,
-    nationalPensionTaxPaid: 0,
-    healthInsurancePaid: 0,
-    healthInsuranceIncomeBasis: 0,
-    capitalGainsTaxPaid: 0,
-    comprehensiveTaxPaid: 0,
-    privatePensionTaxMethod: 'none',
-    spending: 0,
-    healthcareSpending: 0,
-    hasTaxWarning: false,
-    spouseAlive: false,
-    spendingFactor: 1,
-    ...overrides,
-  };
-}
+// 기본값이 공용 픽스처와 완전히 같았다(복제본을 없애려고 그 픽스처를 만들었다).
+const makeYearlyResult = makeYearlyResultFixture;
 
 const result: SimulationResult = {
   yearlyResults: [makeYearlyResult({ age: 65, nationalPensionIncome: 12000000 })],
@@ -112,7 +83,9 @@ describe('ExpertDetailsPanel', () => {
     render(<ExpertDetailsPanel result={result} params={params} formatValue={formatValue} isPro={false} />);
     fireEvent.click(screen.getByRole('button', { name: '전문가용 상세 분석 더 보기' }));
 
-    expect(screen.getByText('민감도 분석 (핵심 가정 변화에 따른 자산 고갈 나이)')).toBeInTheDocument();
+    // 제목이 "자산 고갈 나이"에서 바뀐 이유: 고갈이 없는 계획에서도 기말자산으로
+    // 시나리오를 구분해 보여주게 되어, 고갈 나이는 여러 지표 중 하나가 되었다.
+    expect(screen.getByText('민감도 분석 (핵심 가정 변화에 따른 영향)')).toBeInTheDocument();
     expect(screen.getByText('투자수익률 -2%p')).toBeInTheDocument();
     expect(screen.getByText('은퇴시점 +3년')).toBeInTheDocument();
   });

@@ -1,4 +1,5 @@
 import { describe, test, expect } from 'vitest';
+import { makeYearlyResult as makeYearlyResultFixture } from '@/tests/fixtures/yearlyResult';
 import { computeMonthlySpendingComposition } from '@/core/usecases/MonthlySpendingComposition';
 import { SimulationEngine } from '@/core/usecases/SimulationEngine';
 import { SINGLE_SURVIVOR_SPENDING_FACTOR } from '@/core/usecases/spouse/spouseRules';
@@ -80,36 +81,22 @@ function makeYearlyResult(overrides: {
   healthcareSpendingAnnual?: number;
   spendingFactor?: SpendingFactor;
 }): SimulationYearlyResult {
-  return {
+  // 이 스위트가 실제로 보는 필드(소득 항목별 금액과 지출)만 지정하고 나머지 기본값은
+  // 공용 픽스처에 맡긴다. 전체 리터럴을 복제하면 SimulationYearlyResult에 필수 필드가
+  // 추가될 때마다 여기서도 컴파일이 깨진다.
+  return makeYearlyResultFixture({
     age: overrides.age,
     year: overrides.age, // 테스트에서 의미 없음
-    totalAssets: 0,
-    stockAssets: 0,
-    pensionAssets: 0,
-    isaAssets: 0,
-    cashAssets: 0,
     dividendIncome: overrides.dividendIncomeAnnual ?? 0,
     nationalPensionIncome: overrides.nationalPensionIncomeAnnual ?? 0,
     privatePensionIncome: overrides.privatePensionIncomeAnnual ?? 0,
     pensionIncome:
       (overrides.nationalPensionIncomeAnnual ?? 0) + (overrides.privatePensionIncomeAnnual ?? 0),
     otherIncome: overrides.otherIncomeAnnual ?? 0,
-    totalIncome: 0,
-    preTaxTotalIncome: 0,
-    dividendTaxPaid: 0,
-    pensionTaxPaid: 0,
-    nationalPensionTaxPaid: 0,
-    healthInsurancePaid: 0,
-    healthInsuranceIncomeBasis: 0,
-    capitalGainsTaxPaid: 0,
-    comprehensiveTaxPaid: 0,
-    privatePensionTaxMethod: 'none',
     spending: overrides.spendingAnnual,
     healthcareSpending: overrides.healthcareSpendingAnnual ?? 0,
-    hasTaxWarning: false,
-    spouseAlive: false,
     spendingFactor: overrides.spendingFactor ?? 1,
-  };
+  });
 }
 
 function makeResult(yearlyResults: SimulationYearlyResult[]): SimulationResult {

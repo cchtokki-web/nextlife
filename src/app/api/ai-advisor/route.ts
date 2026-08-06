@@ -97,7 +97,7 @@ export function buildSimulationContextText(body: AiAdvisorRequestBody): string {
   // userProfile이 없으면 비교 기준이 없으므로 단서 없이 나이만 적는다(이 경우 프롬프트에
   // 기대수명 줄 자체가 없어 모순이 생기지 않는다).
   lines.push(
-    `- FIRE 조기은퇴 가능 나이: ${userProfile ? describeFireAge(fireAge, userProfile.expectancy) : (fireAge ? `${fireAge}세` : '달성 불가능')}`
+    `- 소득만으로 생활비 충당 가능 시점: ${userProfile ? describeFireAge(fireAge, userProfile.expectancy, userProfile.retirementAge) : (fireAge ? `${fireAge}세` : '달성 불가능')}`
   );
   lines.push(`- 자산 고갈 예상 나이: ${depletionAge === null || depletionAge === undefined ? '고갈 위험 없음' : `${depletionAge}세`}`);
   lines.push(

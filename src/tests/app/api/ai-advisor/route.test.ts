@@ -151,12 +151,23 @@ describe('buildSimulationContextText - Utility Score 반영', () => {
     expect(text).toContain('배우자 생존 기간');
   });
 
-  test('FIRE 나이가 본인 기대수명 이내면 단서를 붙이지 않는다', () => {
+  test('FIRE 나이가 본인 기대수명 이내면 배우자 단서를 붙이지 않는다', () => {
     const userProfile = { currentAge: 55, retirementAge: 60, expectancy: 90, targetMonthlySpending: 3000000 };
     const text = buildSimulationContextText({ ...baseBody, userProfile, fireAge: 65 });
 
-    expect(text).toContain('FIRE 조기은퇴 가능 나이: 65세');
+    expect(text).toContain('소득만으로 생활비 충당 가능 시점: 65세');
     expect(text).not.toContain('배우자 생존 기간');
+  });
+
+  // 라벨이 "FIRE 조기은퇴 가능 나이"였을 때는, 60세 은퇴를 계획한 사용자에게 65라는 숫자가
+  // 그대로 전달되어 LLM이 "65세에 조기은퇴할 수 있다"고 답했다. 은퇴 계획보다 늦은 시점은
+  // 조기은퇴가 아니므로 상대 위치를 함께 넣는다.
+  test('FIRE 나이가 은퇴 계획보다 늦으면 몇 년 늦는지 함께 넣는다', () => {
+    const userProfile = { currentAge: 55, retirementAge: 60, expectancy: 90, targetMonthlySpending: 3000000 };
+    const text = buildSimulationContextText({ ...baseBody, userProfile, fireAge: 65 });
+
+    expect(text).toContain('5년 늦음');
+    expect(text).not.toContain('조기은퇴');
   });
 });
 

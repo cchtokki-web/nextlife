@@ -79,7 +79,11 @@ export function ExpertDetailsPanel({
             </ul>
           </section>
 
-          <SensitivityAnalysisSection baselineDepletionAge={sensitivityBaseline.depletionAge} scenarios={sensitivityScenarios} />
+          <SensitivityAnalysisSection
+            baselineDepletionAge={sensitivityBaseline.depletionAge}
+            baselineEndingAssets={sensitivityBaseline.endingAssets}
+            scenarios={sensitivityScenarios}
+          />
 
           {isPro && (
             <section>

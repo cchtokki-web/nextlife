@@ -1,4 +1,5 @@
 import { describe, test, expect, vi } from 'vitest';
+import { makeYearlyResult as makeYearlyResultFixture } from '@/tests/fixtures/yearlyResult';
 import { SimulationEngine } from '@/core/usecases/SimulationEngine';
 import {
   recommendStrategy,
@@ -498,38 +499,10 @@ describe('computeItemizedContributions', () => {
   });
 });
 
-function makeYearlyResult(overrides: Partial<SimulationYearlyResult>): SimulationYearlyResult {
-  return {
-    age: 60,
-    year: 2026,
-    totalAssets: 0,
-    stockAssets: 0,
-    pensionAssets: 0,
-    isaAssets: 0,
-    cashAssets: 0,
-    dividendIncome: 0,
-    nationalPensionIncome: 0,
-    privatePensionIncome: 0,
-    pensionIncome: 0,
-    otherIncome: 0,
-    totalIncome: 0,
-    preTaxTotalIncome: 0,
-    dividendTaxPaid: 0,
-    pensionTaxPaid: 0,
-    nationalPensionTaxPaid: 0,
-    healthInsurancePaid: 0,
-    healthInsuranceIncomeBasis: 0,
-    capitalGainsTaxPaid: 0,
-    comprehensiveTaxPaid: 0,
-    privatePensionTaxMethod: 'none',
-    spending: 0,
-    healthcareSpending: 0,
-    hasTaxWarning: false,
-    spouseAlive: false,
-    spendingFactor: 1,
-    ...overrides,
-  };
-}
+// 기본값은 공용 픽스처(@/tests/fixtures/yearlyResult)와 완전히 같았다. 복제본을 남겨 두면
+// SimulationYearlyResult에 필수 필드가 추가될 때마다 여기서도 컴파일이 깨진다 —
+// 그 복제를 없애려고 공용 픽스처를 만들었다.
+const makeYearlyResult = makeYearlyResultFixture;
 
 function makeSimulationResult(yearlyResults: SimulationYearlyResult[], endingAssets: number): SimulationResult {
   return {

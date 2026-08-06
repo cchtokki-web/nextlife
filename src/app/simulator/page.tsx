@@ -344,8 +344,8 @@ export default function Home() {
                   <span style="float: right; font-size: 15px; color: #0f172a; font-weight: 700;">${goalAchievementRate}%</span>
                 </div>
                 <div style="font-size: 13.5px; border-bottom: 1px dashed #e2e8f0; padding-bottom: 8px;">
-                  <span style="font-weight: 600; color: #475569;">FIRE 조기은퇴 가능 나이</span>
-                  <span style="float: right; font-size: 15px; color: #0f172a; font-weight: 700;">${describeFireAge(fireAge, userProfile.expectancy)}</span>
+                  <span style="font-weight: 600; color: #475569;">소득만으로 생활비 충당 가능 시점<br/><span style="font-size: 10px; color: #94a3b8; font-weight: 400;">(배당·연금 등 그 해 소득이 목표 생활비를 넘어서는 나이)</span></span>
+                  <span style="float: right; font-size: 15px; color: #0f172a; font-weight: 700;">${describeFireAge(fireAge, userProfile.expectancy, userProfile.retirementAge)}</span>
                 </div>
                 <div style="font-size: 13.5px; border-bottom: 1px dashed #e2e8f0; padding-bottom: 8px;">
                   <span style="font-weight: 600; color: #475569;">자산 고갈 예상 나이</span>
