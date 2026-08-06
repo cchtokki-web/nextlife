@@ -83,6 +83,27 @@ export interface OtherIncome {
 
 export type SpendingStrategy = 'target' | 'dividend_only' | 'max_sustainable';
 
+// 연도별 시장 수익률 충격(%p). 인덱스 y = 시뮬레이션 y번째 해(0 = 현재 나이).
+//
+// 모든 주식/ETF 자산·사적연금·ISA의 **연 수익률에 가산**된다. 배당수익률·현금 이자율·
+// 물가·환율은 건드리지 않는다:
+//   - 배당률: 주가보다 훨씬 안정적이고, 흔들면 소득 라인을 타고 종합과세·건보료·FIRE
+//     판정까지 파급되어 폭발반경이 크다. 자산 평가액이 흔들리면 배당액은 어차피 함께 움직인다.
+//   - 현금 이자율: 예금 이자이지 시장 수익률이 아니다.
+//   - 물가: 8곳 이상(생활비·연금·기타소득·의료비·실질 차감)에 파급되어 별도 경로가 필요하다.
+//   - 환율: exchangeScenario라는 3값 이산 모델이 이미 있다.
+//
+// 자산별로 다른 충격을 주지 않고 시장 요인 하나를 공유하는 이유: 이 앱에는 상관행렬
+// 입력이 없다. 자산별 독립 충격을 주면 자산을 잘게 쪼갠 사용자일수록 분산 효과로 자동으로
+// 안전해지는 가짜 결과가 나온다. computeSensitivityAnalysis.shiftReturn이 이미 쓰는
+// "시장 전체가 함께 움직인다"는 관례를 따르되, 값을 고정하는 대신 해마다 다르게 한다.
+//
+// 가산(%p)이라 inflationMode와 무관하게 동작한다: 실질 모드의 (기본 − 물가) + 충격은
+// 명목 모드의 (기본 + 충격) − 물가와 같다.
+//
+// 길이가 시뮬레이션 연수보다 짧으면 남은 해는 충격 0으로 본다(던지지 않는다).
+export type ReturnShockPath = readonly number[];
+
 export type AssetSellOrderStrategy = 'input_order' | 'low_dividend_first' | 'high_dividend_first';
 export type IsaMaturityDestination = 'pension' | 'asset';
 
