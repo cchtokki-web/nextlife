@@ -97,3 +97,37 @@ describe('ExpertDetailsPanel', () => {
     expect(screen.queryByText(/999세/)).not.toBeInTheDocument();
   });
 });
+
+// 경고 카드(computeRiskAlerts)는 부과 기준 소득이 문턱의 90~110%일 때만 뜬다. 이미 크게
+// 넘어선 사용자는 그 카드를 못 보므로, 전문가 패널에서는 조건 없이 금액을 보여준다.
+describe('ExpertDetailsPanel - 피부양자 자격 상실 시 건강보험료', () => {
+  const overThresholdResult: SimulationResult = {
+    ...result,
+    yearlyResults: [
+      makeYearlyResult({ age: 65, healthInsuranceIncomeBasis: 25000000 }),
+      makeYearlyResult({ age: 70, healthInsuranceIncomeBasis: 40000000 }),
+    ],
+  };
+
+  test('부과 기준 소득이 문턱을 넘으면 자격 상실 시 보험료를 함께 보여준다', () => {
+    render(<ExpertDetailsPanel result={overThresholdResult} params={params} formatValue={formatValue} isPro={false} />);
+    fireEvent.click(screen.getByRole('button', { name: '전문가용 상세 분석 더 보기' }));
+
+    expect(screen.getByText(/피부양자 자격 상실 시/)).toBeInTheDocument();
+    expect(screen.getByText(/70세/)).toBeInTheDocument();
+  });
+
+  test('재산·자동차분이 빠져 있다는 사실을 함께 밝힌다', () => {
+    render(<ExpertDetailsPanel result={overThresholdResult} params={params} formatValue={formatValue} isPro={false} />);
+    fireEvent.click(screen.getByRole('button', { name: '전문가용 상세 분석 더 보기' }));
+
+    expect(screen.getByText(/재산·자동차분/)).toBeInTheDocument();
+  });
+
+  test('문턱을 넘는 해가 없으면 아무것도 보여주지 않는다', () => {
+    render(<ExpertDetailsPanel result={result} params={params} formatValue={formatValue} isPro={false} />);
+    fireEvent.click(screen.getByRole('button', { name: '전문가용 상세 분석 더 보기' }));
+
+    expect(screen.queryByText(/피부양자 자격 상실 시/)).not.toBeInTheDocument();
+  });
+});

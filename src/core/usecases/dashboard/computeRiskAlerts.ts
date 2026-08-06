@@ -2,7 +2,8 @@ import { SimulationParams, SimulationResult, SimulationYearlyResult, UtilityConf
 import { DEFAULT_UTILITY_CONFIG } from '../utility/utilityWeights';
 import { formatManwon } from '../utility/utilityAnalysis';
 import { resolveStrategy } from '../strategy/compileStrategy';
-import { resolveTaxContext } from '../tax/taxContext';
+import { resolveTaxContext, TaxContext } from '../tax/taxContext';
+import { estimateHealthInsuranceCliff } from '../healthcare/estimateHealthInsuranceCliff';
 
 export interface RiskAlert {
   key: 'comprehensiveTax' | 'privatePensionLimit' | 'healthInsurance' | 'healthInsuranceCliff' | 'bequestShortfall';
@@ -113,20 +114,34 @@ const HEALTH_INSURANCE_CLIFF_UPPER_RATIO = 1.1;
 
 function buildHealthInsuranceCliffAlert(
   yearlyResults: SimulationYearlyResult[],
-  thresholdKRW: number
+  ctx: TaxContext
 ): RiskAlertCandidate | null {
+  const thresholdKRW = ctx.profile.financialIncomeThresholdKRW;
   const range = findFirstContiguousRange(yearlyResults, (y) => {
     const ratio = y.healthInsuranceIncomeBasis / thresholdKRW;
     return ratio >= HEALTH_INSURANCE_CLIFF_LOWER_RATIO && ratio <= HEALTH_INSURANCE_CLIFF_UPPER_RATIO;
   });
   if (!range) return null;
 
+  // "계단식으로 뜁니다"만으로는 사용자가 대비할 수 없다 — 얼마나 뛰는지를 알아야 전략을
+  // 바꿀지 판단할 수 있다. 추정은 별도 순수 함수가 맡고(시뮬레이션 본체는 건드리지 않는
+  // 이유는 estimateHealthInsuranceCliff 주석 참고), 여기서는 문구로 옮기기만 한다.
+  //
+  // 추정이 없으면(건보료 스위치가 꺼졌거나 문턱을 넘는 해가 없으면) 금액 문장을 생략하고
+  // 기존 경고만 낸다 — 경계 구간 판정과 추정의 조건이 서로 독립이라 한쪽만 성립할 수 있다.
+  const estimate = estimateHealthInsuranceCliff(yearlyResults, ctx);
+  const amountSentence = estimate === null
+    ? ''
+    : ` ${estimate.peakAge}세 기준으로 보면 현재 계산상 월 ${formatManwon(estimate.currentMonthly)}이지만, `
+      + `자격을 잃으면 월 ${formatManwon(estimate.ifDependentLostMonthly)}(연 ${formatManwon(estimate.ifDependentLostAnnual)})까지 오릅니다 `
+      + `— 연 ${formatManwon(estimate.annualIncrease)}의 추가 부담입니다. 이 금액은 소득분만 계산한 것이라 재산·자동차분이 더 붙습니다.`;
+
   return {
     sortAge: range.startAge,
     alert: {
       key: 'healthInsuranceCliff',
       title: '건강보험 피부양자 자격 경계 구간',
-      message: `${formatAgeRange(range.startAge, range.endAge)} 구간, 건강보험료 부과 기준 소득이 연 ${formatManwon(thresholdKRW)} 근처입니다. 이 기준을 넘어 피부양자 자격을 잃으면 실제 보험료는 초과분이 아니라 소득 전체와 재산에 부과되어 계단식으로 뜁니다. 이 시뮬레이터는 그 급증을 반영하지 않으므로 실제 부담이 더 클 수 있습니다.`,
+      message: `${formatAgeRange(range.startAge, range.endAge)} 구간, 건강보험료 부과 기준 소득이 연 ${formatManwon(thresholdKRW)} 근처입니다. 이 기준을 넘어 피부양자 자격을 잃으면 실제 보험료는 초과분이 아니라 소득 전체와 재산에 부과되어 계단식으로 뜁니다.${amountSentence}`,
     },
   };
 }
@@ -194,7 +209,7 @@ export function computeRiskAlerts(
     buildComprehensiveTaxAlert(yearlyResults),
     buildPrivatePensionLimitAlert(yearlyResults, privatePensionLimit),
     buildHealthInsuranceAlert(yearlyResults, cfg.healthInsuranceCeiling),
-    buildHealthInsuranceCliffAlert(yearlyResults, resolveTaxContext(params.taxSettings, params.taxLawVersion).profile.financialIncomeThresholdKRW),
+    buildHealthInsuranceCliffAlert(yearlyResults, resolveTaxContext(params.taxSettings, params.taxLawVersion)),
     buildBequestShortfallAlert(params, result),
   ].filter((c): c is RiskAlertCandidate => c !== null);
 

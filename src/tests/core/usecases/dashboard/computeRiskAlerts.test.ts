@@ -253,5 +253,37 @@ describe('computeRiskAlerts', () => {
       expect(computeRiskAlerts(makeResult(farAbove), baseParams).map((a) => a.key))
         .not.toContain('healthInsuranceCliff');
     });
+
+    // "계단식으로 뜁니다"만으로는 사용자가 대비할 수 없다. 얼마나 뛰는지를 금액으로
+    // 말해야 전략을 바꿀지 판단할 수 있다(estimateHealthInsuranceCliff).
+    test('자격 상실 시 보험료를 금액으로 함께 알린다', () => {
+      const yearlyResults = [
+        makeYearlyResult({ age: 66, healthInsuranceIncomeBasis: THRESHOLD * 0.95 }),
+        makeYearlyResult({ age: 67, healthInsuranceIncomeBasis: THRESHOLD * 1.05 }),
+      ];
+
+      const cliff = computeRiskAlerts(makeResult(yearlyResults), baseParams)
+        .find((a) => a.key === 'healthInsuranceCliff')!;
+
+      // 기준소득 2,100만원 · 요율 7.09% 기준
+      //   현재 모델 = (2,100만 − 2,000만) × 7.09% =   7.09만원/년 →   0.6만원/월
+      //   자격 상실 =  2,100만          × 7.09% = 148.89만원/년 →  12.4만원/월
+      expect(cliff.message).toContain('월 12만원');
+      expect(cliff.message).toContain('67세');
+    });
+
+    // 재산·자동차 점수는 입력이 없어 계산하지 않는다. 그 사실을 말하지 않으면 사용자는
+    // 이 금액을 실제 부담 전액으로 오해한다 — 실제로는 이보다 더 낸다.
+    test('재산·자동차분이 빠져 있다는 사실을 함께 밝힌다', () => {
+      const yearlyResults = [
+        makeYearlyResult({ age: 66, healthInsuranceIncomeBasis: THRESHOLD * 0.95 }),
+        makeYearlyResult({ age: 67, healthInsuranceIncomeBasis: THRESHOLD * 1.05 }),
+      ];
+
+      const cliff = computeRiskAlerts(makeResult(yearlyResults), baseParams)
+        .find((a) => a.key === 'healthInsuranceCliff')!;
+
+      expect(cliff.message).toContain('재산');
+    });
   });
 });
