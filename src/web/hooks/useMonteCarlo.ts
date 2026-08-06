@@ -53,8 +53,14 @@ export function useMonteCarlo(
 
   // 옵션을 ref로 들고 있는 이유: 호출부가 인라인 객체로 넘기면 매 렌더 새 참조가 되어
   // 의존성 배열에 넣는 순간 이펙트가 무한히 재실행된다.
+  //
+  // 갱신을 이펙트에서 하는 이유: 렌더 중 ref 쓰기는 동시성 렌더에서 버려질 수 있는 작업에
+  // 부수효과를 남긴다(react-hooks 규칙). 이 이펙트는 아래 메인 이펙트보다 먼저 선언되어
+  // 먼저 실행되고, 첫 렌더에서는 useRef 초기값이 이미 옳다.
   const createWorkerRef = useRef(createWorker);
-  createWorkerRef.current = createWorker;
+  useEffect(() => {
+    createWorkerRef.current = createWorker;
+  });
 
   // params 전체를 의존성으로 쓰면 참조가 매번 바뀌어 디바운스가 무의미해진다. 내용이
   // 같으면 같은 문자열이 되도록 직렬화한 값을 키로 쓴다 — MC 입력은 전부 평문 JSON이라
@@ -62,10 +68,9 @@ export function useMonteCarlo(
   const paramsKey = params ? JSON.stringify(params) : '';
 
   useEffect(() => {
-    if (!params) {
-      setStatus('idle');
-      return;
-    }
+    // params가 없으면 계산할 것이 없다. 여기서 setStatus를 부르지 않는 이유는 반환값
+    // 주석 참고 — 이펙트 내 직접 setState는 연쇄 렌더를 만든다.
+    if (!params) return;
 
     const timer = setTimeout(() => {
       // 이전 워커가 살아 있으면 종료한다. 입력이 바뀐 뒤의 계산 결과는 어차피 버려진다.
@@ -119,5 +124,8 @@ export function useMonteCarlo(
     };
   }, []);
 
-  return { result, status };
+  // params가 없는 동안의 'idle'은 상태로 저장하지 않고 렌더 시점에 파생한다.
+  // 이펙트에서 setStatus('idle')을 부르면 렌더 → 이펙트 → 렌더의 연쇄가 생기고,
+  // React 19의 set-state-in-effect 규칙이 정확히 그것을 금지한다.
+  return { result, status: params ? status : 'idle' };
 }

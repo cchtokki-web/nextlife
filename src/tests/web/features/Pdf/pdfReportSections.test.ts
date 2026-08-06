@@ -4,9 +4,12 @@ import {
   renderItemizedChecklistSection,
   renderExecutionRoadmapSection,
   renderSensitivityTableSection,
+  renderMonteCarloSection,
 } from '@/web/features/Pdf/pdfReportSections';
 import { RiskAlert } from '@/core/usecases/dashboard/computeRiskAlerts';
 import { ExecutionRoadmap } from '@/core/usecases/dashboard/computeExecutionRoadmap';
+import { MonteCarloResult } from '@/core/entities/montecarlo';
+import { SequenceRiskResult } from '@/core/usecases/montecarlo/sequenceRisk';
 import { SensitivityScenario } from '@/core/usecases/dashboard/computeSensitivityAnalysis';
 import { StrategyRecommendation, UtilityBreakdown } from '@/core/entities/types';
 
@@ -221,5 +224,71 @@ describe('renderItemizedChecklistSection - AI 센티널 자동 적용 구분', (
     expect(html).not.toContain('이미 반영됨');
     expect(html).not.toContain('이 값으로 계산 중');
     expect(html).toContain('국민연금을 70세까지 연기 수령합니다.');
+  });
+});
+
+describe('renderMonteCarloSection', () => {
+  const monteCarlo: MonteCarloResult = {
+    trials: 1000, seed: 1, successAge: 90, successRate: 0.87, fullSpendingRate: 0.81,
+    endingAssets: { p10: 200000000, p50: 1800000000, p90: 5200000000, mean: 2100000000 },
+    assetBand: [
+      { age: 60, p10: 400000000, p50: 480000000, p90: 560000000 },
+      { age: 70, p10: 350000000, p50: 900000000, p90: 1600000000 },
+      { age: 90, p10: 200000000, p50: 1800000000, p90: 5200000000 },
+    ],
+    depletion: { count: 130, earliestAge: 79, medianAge: 86 },
+    deterministicEndingAssets: 2500000000,
+    worstDecilePath: [],
+  };
+
+  const sequenceRisk: SequenceRiskResult = {
+    cases: [
+      { key: 'deterministic', label: '변동 없음 (기준)', endingAssets: 2500000000, depletionAge: null, yearlyTotalAssets: [] },
+      { key: 'bestFirst', label: '좋은 해가 먼저', endingAssets: 4100000000, depletionAge: null, yearlyTotalAssets: [] },
+      { key: 'worstFirst', label: '나쁜 해가 먼저', endingAssets: 600000000, depletionAge: 88, yearlyTotalAssets: [] },
+    ],
+    orderingSpread: 3500000000,
+    sharedMeanShock: 0.02,
+  };
+
+  // 데이터가 없으면 빈 문자열을 준다 — 워커가 아직 끝나지 않았거나 실패한 경우다.
+  // 개별 실패를 무시하고 나머지 리포트는 계속 만든다(computeSensitivityAnalysis와 같은 관례).
+  test('몬테카를로 결과가 없으면 빈 문자열을 반환한다', () => {
+    expect(renderMonteCarloSection(undefined, sequenceRisk)).toBe('');
+  });
+
+  test('성공률과 시행 횟수를 표기한다', () => {
+    const html = renderMonteCarloSection(monteCarlo, sequenceRisk);
+
+    expect(html).toContain('87%');
+    expect(html).toContain('1,000');
+    expect(html).toContain('90세');
+  });
+
+  test('잔여자산 분위수를 표로 싣는다', () => {
+    const html = renderMonteCarloSection(monteCarlo, sequenceRisk);
+
+    expect(html).toContain('하위 10%');
+    expect(html).toContain('중앙값');
+    expect(html).toContain('상위 10%');
+  });
+
+  // 변동성 손실은 화면과 PDF 모두에서 드러나야 한다.
+  test('변동 없음 가정과 나란히 놓아 변동성 손실을 드러낸다', () => {
+    expect(renderMonteCarloSection(monteCarlo, sequenceRisk)).toContain('변동 없음');
+  });
+
+  test('순서 리스크가 있으면 경우별 비교를 싣는다', () => {
+    const html = renderMonteCarloSection(monteCarlo, sequenceRisk);
+
+    expect(html).toContain('나쁜 해가 먼저');
+    expect(html).toContain('연평균');
+  });
+
+  test('순서 리스크가 없어도 몬테카를로 부분은 렌더한다', () => {
+    const html = renderMonteCarloSection(monteCarlo, undefined);
+
+    expect(html).toContain('87%');
+    expect(html).not.toContain('나쁜 해가 먼저');
   });
 });

@@ -9,8 +9,11 @@ import { computeRiskAlerts } from '../../core/usecases/dashboard/computeRiskAler
 import { computeExecutionRoadmap, selectDepletionAge } from '../../core/usecases/dashboard/computeExecutionRoadmap';
 import { computeSensitivityAnalysis } from '../../core/usecases/dashboard/computeSensitivityAnalysis';
 import { describeFireAge } from '../../core/usecases/dashboard/describeFireAge';
+import { useMonteCarlo } from '../../web/hooks/useMonteCarlo';
+import { computeSequenceRisk } from '../../core/usecases/montecarlo/sequenceRisk';
+import { resolveMonteCarloConfig } from '../../core/usecases/montecarlo/volatilityPresets';
 import { describeDepletionAge } from '../../core/usecases/dashboard/describeDepletionAge';
-import { renderRiskAlertsSection, renderItemizedChecklistSection, renderExecutionRoadmapSection, renderSensitivityTableSection } from '../../web/features/Pdf/pdfReportSections';
+import { renderRiskAlertsSection, renderItemizedChecklistSection, renderExecutionRoadmapSection, renderSensitivityTableSection, renderMonteCarloSection } from '../../web/features/Pdf/pdfReportSections';
 import { analyzeCurrentStrategy, explainBequestAdequacy } from '../../core/usecases/utility/utilityAnalysis';
 import { resolveTaxSettings } from '../../core/usecases/tax/taxRates';
 import { NATIONAL_PENSION_NORMAL_START_AGE } from '../../core/usecases/pension/nationalPensionRules';
@@ -123,6 +126,20 @@ export default function Home() {
     effective, sentinels, recommendation, recommendationFailed,
     isComputingRecommendation, result,
   } = useStrategyPipeline(activeParams, engine);
+
+  // 몬테카를로는 워커에서, 시퀀스 리스크는 메인 스레드에서 돈다.
+  //
+  // **둘 다 effective.params를 쓴다** — 엔진이 실제로 계산에 쓴 값이다. activeParams나
+  // compiled.params를 주면 화면의 결정론 곡선과 확률 밴드가 서로 다른 세계를 그린다
+  // (PDF가 reportParams로 effective.params를 쓰는 것과 같은 이유).
+  //
+  // 시퀀스 리스크를 워커로 보내지 않는 이유: runSingle 5회뿐이라 이미 동기로 도는
+  // 민감도 분석 6회보다 싸다. 순서 리스크 패널은 즉시 뜨고 확률 카드만 늦게 채워진다.
+  const { result: monteCarlo, status: monteCarloStatus } = useMonteCarlo(effective.params);
+  const sequenceRisk = useMemo(
+    () => computeSequenceRisk(effective.params, engine, resolveMonteCarloConfig(effective.params)),
+    [effective.params, engine]
+  );
 
   // Track simulation runs with a simple debounce
   useEffect(() => {
@@ -526,6 +543,29 @@ export default function Home() {
         </div>
       `;
 
+      // 시장 변동성 페이지. 워커가 아직 끝나지 않았으면 통째로 생략한다 —
+      // 그때는 FIXED_PAGE_COUNT도 5로 돌아가 페이지 번호가 자동으로 맞는다.
+      //
+      // 고정 페이지 수를 상수로 뽑는 이유: 예전에는 총 페이지 수와 각 표 페이지의 번호가
+      // 5와 6을 리터럴로 따로 들고 있었다. 섹션을 하나 넣으려면 세 곳을 동시에 고쳐야 했고,
+      // 한 곳만 고치면 "페이지 6 / 10"과 실제 장수가 어긋나도 아무도 알아채지 못한다.
+      const monteCarloHtml = renderMonteCarloSection(monteCarlo, sequenceRisk);
+      const FIXED_PAGE_COUNT = 5 + (monteCarloHtml !== '' ? 1 : 0);
+      if (monteCarloHtml !== '') {
+        pagesHtml += `
+          <div class="pdf-page">
+            <div class="pdf-content">
+              <h2 style="font-size: 16px; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; color: #0f172a; margin-top: 0; margin-bottom: 10px;">7. 시장 변동성 분석</h2>
+              ${monteCarloHtml}
+            </div>
+            <div class="pdf-footer">
+              <span>NextLife 은퇴 자산 시뮬레이션 리포트</span>
+              <span>페이지 ${FIXED_PAGE_COUNT} / {total_pages}</span>
+            </div>
+          </div>
+        `;
+      }
+
       // Page 5+: Tables
       const chunks: typeof yearlyResults[] = [];
       const rowsPerPage = 30; // Fits A4 page beautifully with comfortable vertical rhythm
@@ -557,7 +597,7 @@ export default function Home() {
         : '<p style="font-size: 9.5px; color: #94a3b8; margin: 0 0 8px;">* 아래 금액은 물가상승률이 매년 누적 반영된 명목 가치입니다.</p>';
 
       chunks.forEach((chunk, chunkIdx) => {
-        const pageNum = chunkIdx + 6;
+        const pageNum = chunkIdx + FIXED_PAGE_COUNT + 1;
         const isLastChunk = chunkIdx === chunks.length - 1 && !hasSpendingSection;
         pagesHtml += `
           <div class="pdf-page">
@@ -627,7 +667,7 @@ export default function Home() {
       });
 
       spendingChunks.forEach((chunk, chunkIdx) => {
-        const pageNum = chunks.length + 6 + chunkIdx;
+        const pageNum = chunks.length + FIXED_PAGE_COUNT + 1 + chunkIdx;
         const isLastChunk = chunkIdx === spendingChunks.length - 1;
         pagesHtml += `
           <div class="pdf-page">
@@ -692,7 +732,7 @@ export default function Home() {
         `;
       });
 
-      const totalPages = 5 + chunks.length + spendingChunks.length;
+      const totalPages = FIXED_PAGE_COUNT + chunks.length + spendingChunks.length;
       pagesHtml = pagesHtml.replaceAll('{total_pages}', totalPages.toString());
 
       // Append pages html
@@ -975,6 +1015,9 @@ export default function Home() {
               recommendationFailed={recommendationFailed}
               isComputingRecommendation={isComputingRecommendation}
               sentinels={sentinels}
+              monteCarlo={monteCarlo}
+              monteCarloStatus={monteCarloStatus}
+              sequenceRisk={sequenceRisk}
             />
           </section>
 

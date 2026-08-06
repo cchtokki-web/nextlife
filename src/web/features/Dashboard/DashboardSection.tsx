@@ -17,6 +17,10 @@ import { AiSummaryHero } from './hero/AiSummaryHero';
 import { ExpertDetailsPanel } from './expert/ExpertDetailsPanel';
 import { RiskAlertCards } from './risk/RiskAlertCards';
 import { UtilityInsightSection } from './insights/UtilityInsightSection';
+import { MonteCarloSection } from './montecarlo/MonteCarloSection';
+import { MonteCarloResult } from '../../../core/entities/montecarlo';
+import { MonteCarloStatus } from '../../hooks/useMonteCarlo';
+import { SequenceRiskResult } from '../../../core/usecases/montecarlo/sequenceRisk';
 import { computeRiskAlerts } from '../../../core/usecases/dashboard/computeRiskAlerts';
 import { computeSustainableSpendingAdvice } from '../../../core/usecases/dashboard/computeSustainableSpendingAdvice';
 import { useBeforeAfterToggle } from './hooks/useBeforeAfterToggle';
@@ -35,6 +39,12 @@ interface DashboardSectionProps {
   // AI 센티널이 자동으로 계산에 넣은 축. 체크리스트가 "이미 반영됨"과 "남은 할 일"을
   // 가르는 데 쓴다.
   sentinels?: SentinelApplication;
+  // 몬테카를로는 워커에서 돌아 결과가 늦게 도착한다. 여기서 훅을 부르지 않고 위에서
+  // 내려받는 이유: 이 컴포넌트는 Before/After 토글로 자주 리렌더되는데, 그때마다 워커를
+  // 다시 띄우면 스켈레톤이 깜빡인다. 훅은 params가 실제로 바뀌는 곳(page.tsx)에 둔다.
+  monteCarlo?: MonteCarloResult;
+  monteCarloStatus?: MonteCarloStatus;
+  sequenceRisk?: SequenceRiskResult;
 }
 
 // 결과 화면 오케스트레이터. 하위 조각(Hero/KPI/체크리스트/차트/전문가상세)을 IA 순서대로
@@ -48,6 +58,9 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
   recommendationFailed = false,
   isComputingRecommendation = false,
   sentinels,
+  monteCarlo,
+  monteCarloStatus = 'idle',
+  sequenceRisk,
 }) => {
   const [hiddenKeys, setHiddenKeys] = React.useState<Record<string, boolean>>({});
   // 자산 추이 차트 기본 단순화 모드: 켜지기 전까지는 주식자산/연금자산 breakdown을 숨기고
@@ -212,6 +225,20 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
 
       {/* 리스크 알림 (해당되는 것만, 0~3개) */}
       <RiskAlertCards alerts={riskAlerts} />
+
+      {/* 확률·순서 리스크는 리스크 경고 바로 다음에 둔다. 둘 다 "이 계획이 어떻게 실패할 수
+          있는가"를 말하므로 같은 자리에 모이는 것이 자연스럽고, 효용 점수·체크리스트 같은
+          "어떻게 개선할까" 블록보다 앞서야 개선 제안을 읽을 근거가 된다.
+
+          몬테카를로는 워커에서 돌아 늦게 도착하므로 params와 함께 위에서 내려받는다
+          (여기서 훅을 부르면 Before/After 토글이 바뀔 때마다 재계산된다). */}
+      <MonteCarloSection
+        status={monteCarloStatus}
+        monteCarlo={monteCarlo}
+        sequenceRisk={sequenceRisk}
+        formatValue={formatValue}
+        isPro={isPro}
+      />
 
       {/* 평생 효용 점수 구성 + 현재 전략 강점/약점 (항상 노출, Collapse 아님) */}
       {displayedResult.utility && (
