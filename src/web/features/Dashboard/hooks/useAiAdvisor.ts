@@ -9,8 +9,10 @@ import {
   TaxSettings,
   UserProfile,
   UtilityBreakdown,
+  UtilityConfig,
 } from '../../../../core/entities/types';
 import { RetirementGrade } from '../../../../core/entities/retirementGrade';
+import { PlanAssetStatus } from '../../../../core/usecases/dashboard/resolvePlanAssetStatus';
 
 export interface UseAiAdvisorInput {
   score: number;
@@ -19,6 +21,12 @@ export interface UseAiAdvisorInput {
   isPro: boolean;
   userProfile?: UserProfile;
   depletionAge: number | null;
+  // 자산 고갈과 자산 미보유를 가르는 값. 이것 없이 depletionAge만 넘기면 LLM도 규칙 기반
+  // 폴백도 "51세에 자산이 고갈됩니다"라고 쓴다 — 투자자산을 등록하지 않은 사용자는 엔진이
+  // 첫 해에 고갈로 판정하기 때문이다.
+  planAssetStatus: PlanAssetStatus;
+  // 자산 미보유 계획에서 "고정소득이 목표 생활비의 몇 %를 충당하는가"를 말하는 데 쓴다.
+  sustainableMonthlySpending?: number;
   goalAchievementRate?: number;
   fireAge?: number | null;
   endingAssets?: number;
@@ -34,6 +42,9 @@ export interface UseAiAdvisorInput {
   inflationRate?: number;
   inflationMode?: 'nominal' | 'real';
   utility?: UtilityBreakdown;
+  // utility.components의 배점. 목표 우선순위가 이 값을 갈아끼우므로, 넘기지 않으면 서버가
+  // 기본 배점으로 강점/약점을 계산해 화면의 막대와 다른 분모를 말한다.
+  utilityWeights?: UtilityConfig['weights'];
   recommendation?: StrategyRecommendation;
 }
 

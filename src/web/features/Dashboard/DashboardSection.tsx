@@ -26,6 +26,10 @@ import { computeSustainableSpendingAdvice } from '../../../core/usecases/dashboa
 import { useBeforeAfterToggle } from './hooks/useBeforeAfterToggle';
 import { ExecutionRoadmap } from './roadmap/ExecutionRoadmap';
 import { computeExecutionRoadmap, selectDepletionAge } from '../../../core/usecases/dashboard/computeExecutionRoadmap';
+import { resolvePlanAssetStatus } from '../../../core/usecases/dashboard/resolvePlanAssetStatus';
+import { computePensionStartMarkers } from '../../../core/usecases/dashboard/computePensionStartMarkers';
+import { NATIONAL_PENSION_NORMAL_START_AGE } from '../../../core/usecases/pension/nationalPensionRules';
+import { compileStrategy } from '../../../core/usecases/strategy/compileStrategy';
 import { SentinelApplication } from '../../../core/usecases/strategy/applyAiSentinels';
 
 interface DashboardSectionProps {
@@ -117,6 +121,26 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
 
   const captions = generateChartCaptions(displayedResult, params);
   const riskAlerts = computeRiskAlerts(displayedResult, params);
+
+  // 차트·캡션·헤드라인이 전부 이 하나의 판정을 근거로 삼는다. 화면에 실제로 표시 중인
+  // 결과(displayedResult)를 쓰는 것은 captions/riskAlerts와 같은 이유다 — After 모드에서
+  // 추천안이 자산 상태 자체를 바꾸면 그 결과를 따라가야 한다.
+  const planAssetStatus = resolvePlanAssetStatus(displayedResult);
+  // baseline(현재 설정) 기준 상태. AI 노후 설계사 의견·과소비 배너처럼 "지금 설정이 어떤가"를
+  // 말하는 조각은 Before/After 미리보기를 따라가면 자기 자신을 근거로 삼게 된다.
+  const baselinePlanAssetStatus = resolvePlanAssetStatus(result);
+
+  // 소득 차트의 연금 개시 기준선. 차트가 그리는 결과(displayedResult)와 같은 계획이어야 하므로
+  // After 모드에서는 추천안의 국민연금 개시 나이를 쓴다.
+  const displayedNationalPensionStartAge =
+    (mode === 'after' ? recommendation?.recommendedPlan?.nationalPensionStartAge : undefined)
+    ?? params.withdrawalPlan?.nationalPensionStartAge
+    ?? NATIONAL_PENSION_NORMAL_START_AGE;
+  const pensionStartMarkers = React.useMemo(
+    () => computePensionStartMarkers(params, displayedNationalPensionStartAge),
+    [params, displayedNationalPensionStartAge]
+  );
+
   // 다른 배너와 같은 이유로 baseline(현재 설정)을 쓴다 — 이 제안은 "지금 설정을 이렇게
   // 바꿔 보라"는 말이므로 Before/After 미리보기를 따라가면 자기 자신을 근거로 삼게 된다.
   const sustainableSpendingAdvice = computeSustainableSpendingAdvice(
@@ -124,6 +148,10 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
     params.userProfile.targetMonthlySpending,
     result.calculatedTargetSpending
   );
+  // 효용 점수를 실제로 계산한 config. 목표 우선순위(strategy.objective)가 6개 항목의 배점을
+  // 통째로 갈아끼우므로, 화면이 기본 배점을 가정하면 "세금 효율 21/10"처럼 만점을 넘긴
+  // 분수가 나온다(compileStrategy는 전략이 없는 계획에서 기본 config를 그대로 반환한다).
+  const utilityConfig = React.useMemo(() => compileStrategy(params).utilityConfig, [params]);
   const bequestAdequacyExplanation = React.useMemo(
     () => (displayedResult.utility ? explainBequestAdequacy(params, displayedResult) : undefined),
     [params, displayedResult]
@@ -165,10 +193,14 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
           <div className={styles.warningContent}>
             <span className={styles.warningTitle} style={{ color: 'var(--danger)' }}>현재 목표 생활비는 지속하기 어렵습니다</span>
             <span className={styles.warningText}>
-              현재 목표는 월 {formatValue(sustainableSpendingAdvice.currentMonthly)}이지만, 자산을 고갈시키지 않으려면{' '}
+              현재 목표는 월 {formatValue(sustainableSpendingAdvice.currentMonthly)}이지만,{' '}
+              {baselinePlanAssetStatus === 'no_investable_asset' ? '연금 등 고정소득만으로는' : '자산을 고갈시키지 않으려면'}{' '}
               <strong>월 {formatValue(sustainableSpendingAdvice.sustainableMonthly)} 수준</strong>이 한계입니다
-              (월 {formatValue(sustainableSpendingAdvice.difference)} 초과). 생활비를 조정하거나 은퇴 시점·인출 전략을
-              다시 검토해 보세요.
+              (월 {formatValue(sustainableSpendingAdvice.difference)} 초과).{' '}
+              {/* 인출할 자산이 없는 계획에 "인출 전략을 검토하라"고 하면 할 수 없는 일을 시키는 것이 된다. */}
+              {baselinePlanAssetStatus === 'no_investable_asset'
+                ? '생활비를 줄이거나, 은퇴 시점을 늦추거나, 추가 저축·투자로 자산을 마련해야 합니다.'
+                : '생활비를 조정하거나 은퇴 시점·인출 전략을 다시 검토해 보세요.'}
             </span>
           </div>
         </div>
@@ -210,7 +242,10 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
         inflationRate={params.inflationRate}
         inflationMode={params.inflationMode}
         utility={result.utility}
+        utilityWeights={utilityConfig.weights}
         recommendation={recommendation}
+        planAssetStatus={baselinePlanAssetStatus}
+        sustainableMonthlySpending={result.calculatedTargetSpending}
       />
 
       {/* STEP 2: 핵심 KPI */}
@@ -242,7 +277,11 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
 
       {/* 평생 효용 점수 구성 + 현재 전략 강점/약점 (항상 노출, Collapse 아님) */}
       {displayedResult.utility && (
-        <UtilityInsightSection utility={displayedResult.utility} bequestAdequacyExplanation={bequestAdequacyExplanation} />
+        <UtilityInsightSection
+          utility={displayedResult.utility}
+          utilityConfig={utilityConfig}
+          bequestAdequacyExplanation={bequestAdequacyExplanation}
+        />
       )}
 
       {/* STEP 3: AI 추천 전략 체크리스트 */}
@@ -253,6 +292,7 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
         sentinels={sentinels}
         currentUtilityScore={result.utility?.score}
         formatValue={formatValue}
+        planAssetStatus={baselinePlanAssetStatus}
       />
 
       {/* AI 추천 전략 실행 로드맵 (Before/After 토글과 무관하게 항상 고정 기준) */}
@@ -260,7 +300,12 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
           같은 시나리오를 가리킨다 — 선택 로직은 selectDepletionAge(computeExecutionRoadmap.ts)
           참고. 화면(여기)과 PDF(simulator/page.tsx) 양쪽이 같은 함수를 써서 동일하게 동작한다. */}
       <ExecutionRoadmap
-        roadmap={computeExecutionRoadmap(params, recommendation, selectDepletionAge(recommendation, result))}
+        roadmap={computeExecutionRoadmap(
+          params,
+          recommendation,
+          selectDepletionAge(recommendation, result),
+          baselinePlanAssetStatus
+        )}
       />
 
       {/* STEP 4: 그래프 3종 (각 상단에 rule-based AI 캡션) */}
@@ -273,6 +318,7 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
         caption={captions.assetGrowth}
         showBreakdown={showAssetBreakdown}
         onToggleBreakdown={() => setShowAssetBreakdown((v) => !v)}
+        planAssetStatus={planAssetStatus}
       />
       <IncomeCompositionChart
         params={params}
@@ -280,6 +326,7 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
         hiddenKeys={hiddenKeys}
         onLegendClick={handleLegendClick}
         caption={captions.incomeComposition}
+        pensionStartMarkers={pensionStartMarkers}
       />
       <SpendingCompositionChart
         params={params}

@@ -480,6 +480,31 @@ describe('computeItemizedContributions', () => {
     expect(nationalPensionItem!.deltas).not.toEqual(privatePensionItem!.deltas);
   });
 
+  // buildReasons와 마찬가지로 항목 라벨도 배수의 방향을 따라야 한다. 자산이 부족한 계획에서는
+  // 오히려 감액이 추천되는 것이 정상이라, 이 경로가 실제 사용자 화면에 그대로 노출된다.
+  test('monthlySpendingMultiplier가 1보다 작으면 항목 라벨도 감액 문구를 쓴다', () => {
+    const engine = new SimulationEngine();
+    const identityPlan = getIdentityPlan(paramsWithLargePension);
+    const baselineResult = engine.runForUtility(paramsWithLargePension);
+    const currentUtility = computeLifetimeUtility(baselineResult, paramsWithLargePension, DEFAULT_UTILITY_CONFIG);
+    const recommendedPlan = { ...identityPlan, monthlySpendingMultiplier: 0.8 };
+
+    const items = computeItemizedContributions(
+      paramsWithLargePension,
+      identityPlan,
+      recommendedPlan,
+      currentUtility,
+      baselineResult,
+      engine,
+      DEFAULT_UTILITY_CONFIG
+    );
+
+    expect(items).toHaveLength(1);
+    expect(items[0].label).toContain('감액');
+    expect(items[0].label).toContain('줄입니다');
+    expect(items[0].label).not.toContain('증액');
+  });
+
   test('recommendedPlan이 identityPlan과 완전히 같으면 빈 배열을 반환한다', () => {
     const engine = new SimulationEngine();
     const identityPlan = getIdentityPlan(paramsWithLargePension);
@@ -585,6 +610,22 @@ describe('buildReasons - context 인자로 전달되는 신규 문구', () => {
     expect(reasons[0]).toContain('생활비');
     expect(reasons[0]).toContain('늘리면');
     expect(reasons[0]).toContain('70점 → 80점');
+  });
+
+  // 생활비 배수가 1 미만이면 감액이다. 예전에는 '증액'/'늘리면'이 하드코딩돼 있어
+  // "350만원 → 280만원(약 -70만원 증액)로 늘리면"이라는, 방향이 뒤집힌 문장이 나왔다.
+  test('monthlySpendingMultiplier가 1보다 작으면 감액 문구를 쓴다', () => {
+    const reasons = buildReasons({ monthlySpendingMultiplier: 0.8 }, zeroDeltas, true, undefined, {
+      currentUtility: makeUtility(55),
+      recommendedUtility: makeUtility(58),
+      originalMonthlyTarget: 3500000,
+    });
+
+    expect(reasons[0]).toContain('350만원 → 280만원');
+    expect(reasons[0]).toContain('70만원 감액');
+    expect(reasons[0]).toContain('줄이면');
+    expect(reasons[0]).not.toContain('증액');
+    expect(reasons[0]).not.toContain('-70만원');
   });
 
   test('monthlySpendingMultiplier가 1이면(변경 없음) 생활비 증액 문구를 생성하지 않는다', () => {

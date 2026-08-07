@@ -51,7 +51,7 @@ export function AiSummaryHero({
 
   if (!utility) return null;
 
-  const headline = buildHeroHeadline(utility.score, depletionAge, householdEndAge);
+  const headline = buildHeroHeadline(utility.score, depletionAge, householdEndAge, advisorInput.planAssetStatus);
   // "여기서 더 갈 수 있는가"를 지금 화면의 값(utility = result.utility) 기준으로 판정한다.
   //
   // recommendation.improved만 보면 안 된다. 그 값은 센티널 미적용 baseline 대비 판정이라,

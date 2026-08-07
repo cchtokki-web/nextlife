@@ -13,7 +13,7 @@ function makeStreamResponse(lines: string[]) {
   return new Response(body, { status: 200 });
 }
 
-const baseInput = { score: 80, monthlyTarget: 3000000, isPro: false, depletionAge: null };
+const baseInput = { score: 80, monthlyTarget: 3000000, isPro: false, depletionAge: null, planAssetStatus: 'sustained' as const };
 
 describe('useAiAdvisor', () => {
   beforeEach(() => {

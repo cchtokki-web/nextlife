@@ -1,4 +1,4 @@
-import { AssetSellOrderStrategy, BaselineWithdrawalPlan, CompleteWithdrawalPlan, IsaMaturityDestination, SimulationParams, WithdrawalPlan } from '../../entities/types';
+import { AssetSellOrderStrategy, BaselineWithdrawalPlan, IsaMaturityDestination, SimulationParams, WithdrawalPlan } from '../../entities/types';
 import { NATIONAL_PENSION_NORMAL_START_AGE } from '../pension/nationalPensionRules';
 
 // 각 그리드는 3점(또는 이진) 수준으로 유지한다 — 5개 차원의 완전 조합(cartesian product)이라
@@ -15,15 +15,27 @@ const NATIONAL_PENSION_START_AGE_GRID = [60, 65, 70]; // 조기~기본~연기수
 const ASSET_SELL_ORDER_GRID: AssetSellOrderStrategy[] = ['input_order', 'low_dividend_first', 'high_dividend_first'];
 const ISA_MATURITY_DESTINATION_GRID: IsaMaturityDestination[] = ['pension', 'asset'];
 const GENERAL_ASSET_WITHDRAWAL_START_AGE_GRID = [62, 65, 70];
-export function generateCandidatePlans(params: SimulationParams): CompleteWithdrawalPlan[] {
+export function generateCandidatePlans(params: SimulationParams): BaselineWithdrawalPlan[] {
   const { userProfile, privatePensions = [], nationalPension, assets = [], isaAccounts = [] } = params;
   const { retirementAge, expectancy, targetMonthlySpending } = userProfile;
 
   const hasPrivatePension = privatePensions.length > 0 && targetMonthlySpending > 0;
 
-  const monthlyTargetCandidates = hasPrivatePension
-    ? MONTHLY_TARGET_MULTIPLIERS.map((m) => Math.round(targetMonthlySpending * m))
-    : [0];
+  // 사적연금 계좌가 **아예 없으면** 이 필드는 값이 무엇이든 시뮬레이션 결과가 같으므로
+  // undefined(= 키 없음, 엔진 기본값)를 쓴다. 예전처럼 0을 명시하면 getIdentityPlan이
+  // 저장값 없을 때 키를 넣지 않는 것(undefined)과 `0 !== undefined`로 어긋나,
+  // computeItemizedContributions가 이를 "바뀐 필드"로 잡고 "사적연금을 월 약 0만원 수준으로
+  // 정액 인출합니다 (효용 +0점)"라는 존재하지 않는 할 일을 체크리스트에 띄운다.
+  //
+  // 조건이 hasPrivatePension이 아니라 `privatePensions.length === 0`인 것은 의도적이다.
+  // 계좌는 있는데 목표 생활비만 0인 경우까지 키를 지우면 "정액 0원"이 엔진 기본값(잔여 개월
+  // 균등분할)으로 바뀌어 **시뮬레이션 동작 자체가 달라진다** — 두 값이 결과적으로 동등한 것은
+  // 계좌가 하나도 없을 때뿐이다.
+  const monthlyTargetCandidates: (number | undefined)[] = privatePensions.length === 0
+    ? [undefined]
+    : hasPrivatePension
+      ? MONTHLY_TARGET_MULTIPLIERS.map((m) => Math.round(targetMonthlySpending * m))
+      : [0];
 
   // 국민연금 수령액이 0이면 시점을 바꿔도 의미가 없으므로 기본값(65세) 단일 후보만 사용해
   // 불필요한 후보 폭증을 막는다.
@@ -57,14 +69,13 @@ export function generateCandidatePlans(params: SimulationParams): CompleteWithdr
     assetSellOrderCandidates.length * isaMaturityDestinationCandidates.length * generalAssetWithdrawalStartAgeCandidates.length;
   if (totalCombinations <= 1) return []; // 탐색할 만한 차원이 전혀 없는 시나리오
 
-  const candidates: CompleteWithdrawalPlan[] = [];
+  const candidates: BaselineWithdrawalPlan[] = [];
   for (const nationalPensionStartAge of nationalPensionStartAgeCandidates) {
     for (const privatePensionMonthlyTarget of monthlyTargetCandidates) {
       for (const assetSellOrderStrategy of assetSellOrderCandidates) {
         for (const isaMaturityDestination of isaMaturityDestinationCandidates) {
           for (const generalAssetWithdrawalStartAge of generalAssetWithdrawalStartAgeCandidates) {
-            candidates.push({
-              privatePensionMonthlyTarget,
+            const candidate: BaselineWithdrawalPlan = {
               nationalPensionStartAge,
               assetSellOrderStrategy,
               isaMaturityDestination,
@@ -72,7 +83,14 @@ export function generateCandidatePlans(params: SimulationParams): CompleteWithdr
               monthlySpendingMultiplier: 1, // 생활비 배수는 이 cartesian product에 포함되지 않는다 (별도의
               // generateSpendingAdjustmentCandidates가 담당). 여기서 곱셈 차원으로 끼워 넣으면
               // 후보 수가 그리드 크기만큼 배로 늘어나므로 절대 이 루프에 추가하지 않는다.
-            });
+            };
+            // undefined면 키 자체를 넣지 않는다 — `privatePensionMonthlyTarget: undefined`를
+            // 남기면 getIdentityPlan/paramsWithBaselinePlan이 지키는 "키 없음" 규약과
+            // 구조 비교·직렬화에서 미묘하게 달라진다.
+            if (privatePensionMonthlyTarget !== undefined) {
+              candidate.privatePensionMonthlyTarget = privatePensionMonthlyTarget;
+            }
+            candidates.push(candidate);
           }
         }
       }

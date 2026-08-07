@@ -7,6 +7,7 @@ import { SimulationParams, SimulationResult } from '../../../../core/entities/ty
 import { SimulationEngine } from '../../../../core/usecases/SimulationEngine';
 import { computeExpertAnalytics } from '../../../../core/usecases/dashboard/computeExpertAnalytics';
 import { computeSensitivityAnalysis } from '../../../../core/usecases/dashboard/computeSensitivityAnalysis';
+import { resolvePlanAssetStatus } from '../../../../core/usecases/dashboard/resolvePlanAssetStatus';
 import { estimateHealthInsuranceCliff } from '../../../../core/usecases/healthcare/estimateHealthInsuranceCliff';
 import { resolveTaxContext } from '../../../../core/usecases/tax/taxContext';
 import { YearlyChart } from '../YearlyChart';
@@ -37,6 +38,12 @@ export function ExpertDetailsPanel({
   const sensitivityScenarios = useMemo(
     () => computeSensitivityAnalysis(params, sensitivityBaseline, engine),
     [params, sensitivityBaseline, engine]
+  );
+  // 시나리오의 unmetSpendingYears와 같은 식으로 세야 "결과가 baseline과 같은가" 판정이
+  // 성립한다(computeSensitivityAnalysis 참조).
+  const baselineUnmetSpendingYears = useMemo(
+    () => sensitivityBaseline.yearlyResults.filter((y) => y.unmetSpending > 0).length,
+    [sensitivityBaseline]
   );
   // 위 연평균 건보료와 같은 result를 근거로 삼는다 — 두 숫자가 나란히 놓이므로 서로 다른
   // 실행에서 온 값이면 안 된다(민감도 기준선이 params로 재계산하는 것과는 반대 이유다).
@@ -109,7 +116,9 @@ export function ExpertDetailsPanel({
           <SensitivityAnalysisSection
             baselineDepletionAge={sensitivityBaseline.depletionAge}
             baselineEndingAssets={sensitivityBaseline.endingAssets}
+            baselineUnmetSpendingYears={baselineUnmetSpendingYears}
             scenarios={sensitivityScenarios}
+            planAssetStatus={resolvePlanAssetStatus(sensitivityBaseline)}
           />
 
           {isPro && (

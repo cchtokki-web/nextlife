@@ -39,6 +39,40 @@ describe('generateCandidatePlans', () => {
     expect(candidates).toEqual([]);
   });
 
+  // 사적연금 계좌가 없으면 이 필드는 어떤 값이어도 시뮬레이션 결과가 같다. 그런데 예전에는
+  // 후보가 0을 **명시**했고, getIdentityPlan은 저장값이 없으면 키 자체를 넣지 않아
+  // (0 !== undefined) computeItemizedContributions가 "바뀐 필드"로 잡았다. 그 결과 사적연금이
+  // 없는 사용자의 AI 추천 체크리스트에 "사적연금을 월 약 0만원 수준으로 정액 인출합니다
+  // (효용 +0점)"라는 할 일이 떴다.
+  test('사적연금 계좌가 없으면 후보에 privatePensionMonthlyTarget 키 자체를 넣지 않는다', () => {
+    // 사적연금은 없지만 다른 차원(국민연금 시점)이 살아 있어 후보가 생성되는 경우
+    const candidates = generateCandidatePlans({
+      ...baseParams,
+      privatePensions: [],
+      nationalPension: { expectedMonthlyAmount: 1800000 },
+    });
+
+    expect(candidates.length).toBeGreaterThan(0);
+    for (const c of candidates) {
+      expect('privatePensionMonthlyTarget' in c).toBe(false);
+    }
+  });
+
+  // 사적연금은 있는데 목표 생활비가 0인 경우까지 키를 지우면 "정액 0원"이 엔진 기본값
+  // (잔여 개월 균등분할)로 바뀌어 시뮬레이션 동작 자체가 달라진다. 이 경우는 0을 유지한다.
+  test('사적연금이 있고 목표 생활비만 0이면 정액 0원 후보를 유지한다', () => {
+    const candidates = generateCandidatePlans({
+      ...baseParams,
+      userProfile: { ...baseParams.userProfile, targetMonthlySpending: 0 },
+      nationalPension: { expectedMonthlyAmount: 1800000 },
+    });
+
+    expect(candidates.length).toBeGreaterThan(0);
+    for (const c of candidates) {
+      expect(c.privatePensionMonthlyTarget).toBe(0);
+    }
+  });
+
   test('사적연금이 있으면 유효 범위 내의 월 인출액 조합을 생성한다', () => {
     const candidates = generateCandidatePlans(baseParams);
 

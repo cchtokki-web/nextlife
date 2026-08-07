@@ -213,3 +213,54 @@ describe('POST /api/ai-advisor - Ollama 요청 시 think:false 전달', () => {
     expect(sentBody.think).toBe(false);
   });
 });
+
+// 투자자산이 없는 계획에서 LLM이 "51세에 자산이 고갈됩니다"라고 쓰지 않도록, 프롬프트
+// 컨텍스트가 그 사실과 금지 사항을 명시해야 한다.
+describe('buildSimulationContextText - 투자자산 미보유 계획', () => {
+  test('고갈 나이 대신 미보유임을 밝히고 고갈 표현을 금지한다', () => {
+    const text = buildSimulationContextText({
+      score: 32,
+      monthlyTarget: 3500000,
+      depletionAge: 51,
+      planAssetStatus: 'no_investable_asset',
+      sustainableMonthlySpending: 1910000,
+    });
+
+    expect(text).toContain('투자자산 미보유');
+    expect(text).toContain('고갈이라는 표현을 쓰지 말 것');
+    expect(text).not.toContain('자산 고갈 예상 나이: 51세');
+    expect(text).toContain('유지 가능한 월 생활비: 191만원');
+  });
+
+  test('투자자산이 있으면 기존처럼 고갈 나이를 그대로 싣는다', () => {
+    const text = buildSimulationContextText({
+      score: 45,
+      monthlyTarget: 3000000,
+      depletionAge: 80,
+      planAssetStatus: 'depleted',
+    });
+
+    expect(text).toContain('자산 고갈 예상 나이: 80세');
+    expect(text).not.toContain('투자자산 미보유');
+  });
+
+  // 목표 우선순위가 배점을 갈아끼우므로, 가중치를 넘기지 않으면 강점/약점 문장이
+  // "세금 효율이(가) 21/10점으로 우수합니다"처럼 만점을 넘긴 분수를 인용한다.
+  test('utilityWeights를 넘기면 강점/약점 문장이 그 배점을 분모로 쓴다', () => {
+    const taxMinUtility: UtilityBreakdown = {
+      score: 55,
+      components: { consumption: 6, depletionSafety: 0, pensionUtilization: 8, taxEfficiency: 21, taxationRisk: 15, bequestAdequacy: 5 },
+    };
+
+    const text = buildSimulationContextText({
+      score: 32,
+      monthlyTarget: 3500000,
+      depletionAge: null,
+      utility: taxMinUtility,
+      utilityWeights: { consumption: 25, depletionSafety: 15, pensionUtilization: 15, taxEfficiency: 25, taxationRisk: 15, bequestAdequacy: 5 },
+    });
+
+    expect(text).toContain('21/25');
+    expect(text).not.toContain('21/10');
+  });
+});

@@ -1,4 +1,5 @@
 import { SimulationParams, SimulationResult } from '../../entities/types';
+import { PlanAssetStatus, resolvePlanAssetStatus } from './resolvePlanAssetStatus';
 
 export interface ChartCaptions {
   assetGrowth: string; // 자산 추이 차트 위에 표시할 한 줄 요약
@@ -16,7 +17,9 @@ export function generateChartCaptions(result: SimulationResult, params: Simulati
   // 고갈 판정 기준은 본인 기대수명이 아니라 시뮬레이션이 실제로 돈 마지막 나이다.
   // 배우자가 본인보다 오래 살면 depletionAge > expectancy가 정상적으로 발생하며,
   // 기대수명과 비교하면 배우자 단독 생존 구간의 파산이 "고갈되지 않음"으로 뒤집힌다.
-  const isDepleted = depletionAge !== null && depletionAge < householdEndAge;
+  // 규칙을 여기서 재유도하지 않고 resolvePlanAssetStatus 한 곳에 맡긴다 — 같은 result에서
+  // 파생되므로 화면의 다른 조각(헤드라인·로드맵)과 반드시 같은 상태를 본다.
+  const status = resolvePlanAssetStatus(result);
   const firstAgeWithNationalPension = yearlyResults.find((y) => y.nationalPensionIncome > 0)?.age ?? null;
 
   const pensionLimit = params.taxSettings?.privatePensionLimit ?? 15000000;
@@ -26,7 +29,7 @@ export function generateChartCaptions(result: SimulationResult, params: Simulati
 
   return {
     assetGrowth: buildAssetGrowthCaption(
-      isDepleted, depletionAge, firstAgeWithNationalPension, householdEndAge, expectancy
+      status, depletionAge, firstAgeWithNationalPension, householdEndAge, expectancy
     ),
     incomeComposition: buildIncomeCompositionCaption(firstAgeWithNationalPension),
     spendingComposition: buildSpendingCompositionCaption(hasHighPrivatePensionRisk),
@@ -34,13 +37,18 @@ export function generateChartCaptions(result: SimulationResult, params: Simulati
 }
 
 function buildAssetGrowthCaption(
-  isDepleted: boolean,
+  status: PlanAssetStatus,
   depletionAge: number | null,
   firstAgeWithNationalPension: number | null,
   householdEndAge: number,
   expectancy: number
 ): string {
-  if (isDepleted && depletionAge !== null) {
+  // 자산이 하나도 없으면 "고갈"도 "유지"도 성립하지 않는다. 예전에는 엔진이 첫 해에 잡은
+  // depletionAge가 그대로 "51세에 자산이 고갈될 것으로 예상됩니다"로 나갔다.
+  if (status === 'no_investable_asset') {
+    return '등록된 투자자산이 없어 자산 잔액은 0원으로 유지됩니다.';
+  }
+  if (status === 'depleted' && depletionAge !== null) {
     return `${depletionAge}세에 자산이 고갈될 것으로 예상됩니다.`;
   }
   if (firstAgeWithNationalPension !== null) {

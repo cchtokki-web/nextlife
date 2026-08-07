@@ -1,6 +1,7 @@
 import { RiskAlert } from '../../../core/usecases/dashboard/computeRiskAlerts';
 import { ExecutionRoadmap } from '../../../core/usecases/dashboard/computeExecutionRoadmap';
 import { SensitivityScenario } from '../../../core/usecases/dashboard/computeSensitivityAnalysis';
+import { PlanAssetStatus } from '../../../core/usecases/dashboard/resolvePlanAssetStatus';
 import {
   ItemizedContribution, ItemizedContributionField, StrategyRecommendation,
 } from '../../../core/entities/types';
@@ -110,9 +111,36 @@ export function renderExecutionRoadmapSection(roadmap: ExecutionRoadmap): string
 // 찍혀 표 전체가 아무 정보도 주지 않았다(실제 리포트가 그랬다). 기말자산 열을 함께 실어
 // 고갈 여부와 무관하게 시나리오가 구분되게 한다 — 화면의 SensitivityAnalysisSection과
 // 같은 판단이다.
-export function renderSensitivityTableSection(scenarios: SensitivityScenario[]): string {
+//
+// 투자자산이 없는 계획에서는 그 기말자산마저 전부 0원이라 6행이 글자 하나까지 같아진다.
+// 화면(SensitivityAnalysisSection)과 같은 규칙으로, baseline과 결과가 완전히 동일한 행은
+// 접고 몇 개를 접었는지 밝힌다 — 두 문서가 서로 다른 표를 보여주면 안 된다.
+export function renderSensitivityTableSection(
+  scenarios: SensitivityScenario[],
+  baseline?: {
+    depletionAge: number | null;
+    unmetSpendingYears: number;
+    planAssetStatus: PlanAssetStatus;
+  }
+): string {
   if (scenarios.length === 0) return '';
-  const rowsHtml = scenarios
+
+  const noInvestableAsset = baseline?.planAssetStatus === 'no_investable_asset';
+  const visibleScenarios = noInvestableAsset
+    ? scenarios.filter(
+        (s) => !(s.endingAssetsDelta === 0
+          && s.depletionAge === baseline.depletionAge
+          && s.unmetSpendingYears === baseline.unmetSpendingYears)
+      )
+    : scenarios;
+  const hiddenCount = scenarios.length - visibleScenarios.length;
+  const noteHtml = noInvestableAsset
+    ? `<p style="margin: 6px 0 0; font-size: 10.5px; color: #64748b;">투자자산이 없어 수익률·물가 가정을 바꿔도 기말자산은 0원으로 동일합니다.${
+        hiddenCount > 0 ? ` 결과가 동일한 ${hiddenCount}개 가정은 생략했습니다.` : ''
+      }</p>`
+    : '';
+
+  const rowsHtml = visibleScenarios
     .map((s) => {
       const depletionText = s.depletionAge === null ? '평생 유지' : `${s.depletionAge}세`;
       const deltaColor = s.endingAssetsDelta < 0 ? '#dc2626' : '#059669';
@@ -142,6 +170,7 @@ export function renderSensitivityTableSection(scenarios: SensitivityScenario[]):
       </thead>
       <tbody>${rowsHtml}</tbody>
     </table>
+    ${noteHtml}
   `;
 }
 

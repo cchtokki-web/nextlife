@@ -91,3 +91,51 @@ describe('generateRuleBasedAdvice - Utility Score 반영', () => {
     expect(sentenceCount).toBe(2);
   });
 });
+
+// 국민연금만 등록한 사용자. 엔진은 자산 0을 첫 해에 고갈로 판정하므로, 이 분기가 없으면
+// 폴백 문구가 "51세 무렵 자산이 고갈될 위험이 있어"로 시작한다 — 고갈시킬 자산이 없는데도.
+describe('generateRuleBasedAdvice - 투자자산 미보유 계획', () => {
+  test('고갈이 아니라 미보유로 진단하고, 충당률과 유지 가능액을 함께 말한다', () => {
+    const advice = generateRuleBasedAdvice(32, 3500000, false, undefined, 51, '위험', undefined, undefined, {
+      planAssetStatus: 'no_investable_asset',
+      goalAchievementRate: 55,
+      sustainableMonthlySpending: 1910000,
+    });
+
+    expect(advice).toContain('등록된 투자자산이 없어');
+    expect(advice).toContain('**위험** 등급(32점)');
+    expect(advice).toContain('약 **55%**');
+    expect(advice).toContain('월 **191만원**');
+    expect(advice).not.toContain('고갈');
+    expect(advice).not.toContain('51세');
+  });
+
+  test('충당률·유지 가능액을 모르면 대신 무엇을 해야 하는지 말한다', () => {
+    const advice = generateRuleBasedAdvice(32, 3500000, false, undefined, 51, '위험', undefined, undefined, {
+      planAssetStatus: 'no_investable_asset',
+    });
+
+    expect(advice).toContain('등록된 투자자산이 없어');
+    expect(advice).toContain('추가 저축');
+    expect(advice).not.toContain('고갈');
+  });
+
+  // 재배치할 자산이 없는 계획에 "인출 전략을 조정하면"이라고 쓰면 할 수 없는 일을 가리킨다.
+  test('개선안이 있어도 인출 전략이 아니라 연금 시점·생활비를 가리킨다', () => {
+    const recommendation = makeRecommendation(55, 58);
+    const advice = generateRuleBasedAdvice(32, 3500000, false, undefined, 51, '위험', baseUtility, recommendation, {
+      planAssetStatus: 'no_investable_asset',
+      goalAchievementRate: 55,
+    });
+
+    expect(advice).toContain('국민연금 수령 시점과 목표 생활비를 조정하면');
+    expect(advice).not.toContain('인출 전략을 조정하면');
+  });
+
+  test('투자자산이 있으면(status 미지정 포함) 기존 문구를 그대로 쓴다', () => {
+    const advice = generateRuleBasedAdvice(32, 3500000, false, undefined, 80, '위험');
+
+    expect(advice).toContain('**80세** 무렵 자산이 고갈될 위험이 있어');
+    expect(advice).toContain('투자금을 늘리거나');
+  });
+});

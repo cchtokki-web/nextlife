@@ -107,3 +107,78 @@ describe('SensitivityAnalysisSection - 고갈이 전혀 없는 계획', () => {
     expect(screen.queryByText(/세 고갈/)).not.toBeInTheDocument();
   });
 });
+
+// 투자자산이 없는 계획에서는 수익률·물가 가정을 어떻게 흔들어도 기말자산이 0원으로 같다.
+// 예전에는 6행이 전부 "0원 · 51세 고갈 · 생활비 부족 31년"으로 똑같이 찍혀, 분석이 있는데
+// 아무것도 구분하지 못하는 화면이 됐다. 실제로 갈리는 것은 은퇴시점뿐이다.
+describe('SensitivityAnalysisSection - 투자자산 미보유 계획', () => {
+  const noAssetScenarios: SensitivityScenario[] = [
+    scenario({ key: 'returnDown', label: '투자수익률 -2%p', depletionAge: 51, unmetSpendingYears: 31 }),
+    scenario({ key: 'returnUp', label: '투자수익률 +2%p', depletionAge: 51, unmetSpendingYears: 31 }),
+    scenario({ key: 'inflationUp', label: '물가상승률 +1%p', depletionAge: 51, unmetSpendingYears: 31 }),
+    scenario({ key: 'inflationDown', label: '물가상승률 -1%p', depletionAge: 51, unmetSpendingYears: 31 }),
+    scenario({ key: 'retirementEarlier', label: '은퇴시점 -3년', depletionAge: 51, unmetSpendingYears: 34 }),
+    scenario({ key: 'retirementLater', label: '은퇴시점 +3년', depletionAge: 51, unmetSpendingYears: 28 }),
+  ];
+
+  function renderNoAsset() {
+    return render(
+      <SensitivityAnalysisSection
+        baselineDepletionAge={51}
+        baselineEndingAssets={0}
+        baselineUnmetSpendingYears={31}
+        scenarios={noAssetScenarios}
+        planAssetStatus="no_investable_asset"
+      />
+    );
+  }
+
+  test('수익률·물가처럼 결과가 baseline과 완전히 같은 행은 숨긴다', () => {
+    renderNoAsset();
+
+    expect(screen.queryByText('투자수익률 -2%p')).not.toBeInTheDocument();
+    expect(screen.queryByText('물가상승률 +1%p')).not.toBeInTheDocument();
+    expect(screen.getByText('은퇴시점 -3년')).toBeInTheDocument();
+    expect(screen.getByText('은퇴시점 +3년')).toBeInTheDocument();
+  });
+
+  test('왜 그런지와 몇 개를 생략했는지를 밝힌다 (조용히 자르지 않는다)', () => {
+    renderNoAsset();
+
+    expect(screen.getByText(/투자자산이 없어/)).toBeInTheDocument();
+    expect(screen.getByText(/4개 가정은 결과가 동일해 생략/)).toBeInTheDocument();
+  });
+
+  // 기말자산이 전부 0원이라 금액 막대는 길이도 값도 무의미하다. 실제로 갈리는 축인
+  // 생활비 부족 연수로 막대를 그린다.
+  test('막대와 값이 기말자산 대신 생활비 부족 연수를 기준으로 표시된다', () => {
+    const { container } = renderNoAsset();
+
+    const bars = container.querySelectorAll('[data-testid="sensitivity-bar"]');
+    expect(bars).toHaveLength(2);
+
+    const worse = Array.from(bars).find((b) => b.getAttribute('data-key') === 'retirementEarlier')!;
+    expect(worse.className).toContain('bg-danger');
+    const better = Array.from(bars).find((b) => b.getAttribute('data-key') === 'retirementLater')!;
+    expect(better.className).toContain('bg-success');
+
+    expect(screen.getByText('생활비 부족 34년')).toBeInTheDocument();
+    expect(screen.getByText('생활비 부족 28년')).toBeInTheDocument();
+    expect(screen.queryByText(/51세 고갈/)).not.toBeInTheDocument();
+  });
+
+  test('투자자산이 있으면(기존 계획) 기존과 동일하게 6행 전부를 금액 기준으로 보여준다', () => {
+    const { container } = render(
+      <SensitivityAnalysisSection
+        baselineDepletionAge={88}
+        baselineEndingAssets={2500000000}
+        baselineUnmetSpendingYears={0}
+        scenarios={scenarios}
+        planAssetStatus="sustained"
+      />
+    );
+
+    expect(container.querySelectorAll('[data-testid="sensitivity-bar"]')).toHaveLength(6);
+    expect(screen.queryByText(/생략/)).not.toBeInTheDocument();
+  });
+});

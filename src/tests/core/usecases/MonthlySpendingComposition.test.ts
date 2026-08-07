@@ -346,6 +346,23 @@ describe('computeMonthlySpendingComposition', () => {
       expect(composition.shortfall).toBe(200000);
     });
 
+    test('targetMonthly에도 계수가 반영된 값이 실린다', () => {
+      // 화면(생활비 구성 차트 툴팁)이 "목표 얼마 중 얼마 부족"을 말하려면 shortfall과
+      // **같은 분모**를 받아야 한다. 이 값을 화면에서 다시 계산하면(물가·계수·의료비 규칙을
+      // 복제하면) 배우자 사망 이후 구간에서 반드시 어긋난다.
+      const params = makeParams({ targetMonthlySpending: 2000000 });
+      const yearly = makeYearlyResult({
+        age: 70,
+        spendingAnnual: 16800000,
+        spendingFactor: 0.7,
+      });
+      const result = makeResult([yearly]);
+
+      const [composition] = computeMonthlySpendingComposition([yearly], params, result);
+
+      expect(composition.targetMonthly).toBe(1400000); // 200만원 × 0.7
+    });
+
     test('max_sustainable로 역산된 목표에도 같은 계수를 적용한다', () => {
       const params = makeParams({ spendingStrategy: 'max_sustainable' });
       const yearly = makeYearlyResult({

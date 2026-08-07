@@ -1,10 +1,11 @@
 'use client';
 
 import React from 'react';
-import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Legend, CartesianGrid, type LegendPayload, type YAxisTickContentProps } from 'recharts';
+import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Legend, CartesianGrid, ReferenceLine, type LegendPayload, type YAxisTickContentProps } from 'recharts';
 import GlassCard from '../../../components/GlassCard';
 import styles from '../Dashboard.module.css';
 import { SimulationParams, SimulationResult } from '../../../../core/entities/types';
+import { PensionStartMarker } from '../../../../core/usecases/dashboard/computePensionStartMarkers';
 import { formatValue, MultilineYAxisTick, RECHARTS_TOOLTIP_STYLE } from './chartFormatters';
 import { ChartCaption } from './ChartCaption';
 
@@ -23,9 +24,15 @@ interface IncomeCompositionChartProps {
   hiddenKeys: Record<string, boolean>;
   onLegendClick: (data: LegendPayload) => void;
   caption: string;
+  // 국민연금 개시 시점(본인/배우자). 막대는 두 사람의 국민연금을 합산해 그리기 때문에,
+  // 배우자가 먼저 받기 시작하는 계획에서는 어느 해에 작은 막대가 생겼다가 다음 해에
+  // 갑자기 커진다 — 기준선이 없으면 그 이유를 차트에서 읽을 방법이 없다.
+  pensionStartMarkers?: PensionStartMarker[];
 }
 
-export function IncomeCompositionChart({ params, result, hiddenKeys, onLegendClick, caption }: IncomeCompositionChartProps) {
+export function IncomeCompositionChart({
+  params, result, hiddenKeys, onLegendClick, caption, pensionStartMarkers = [],
+}: IncomeCompositionChartProps) {
   const currency = params.displayCurrency;
   const pensionChartData = result.yearlyResults.map((r) => ({
     age: r.age,
@@ -82,6 +89,24 @@ export function IncomeCompositionChart({ params, result, hiddenKeys, onLegendCli
                 wrapperStyle={{ fontSize: '0.8rem', cursor: 'pointer' }}
                 onClick={onLegendClick}
               />
+              {/* 기준선은 막대보다 먼저 선언해 막대 뒤에 깔리게 한다(recharts는 선언 순서대로 쌓는다).
+                  차트 데이터에 없는 나이(예: 시뮬레이션 구간 밖)는 recharts가 조용히 무시한다. */}
+              {pensionStartMarkers.map((marker) => (
+                <ReferenceLine
+                  key={marker.age}
+                  x={marker.age}
+                  stroke="var(--foreground-muted)"
+                  strokeDasharray="4 4"
+                  strokeWidth={1.5}
+                  label={{
+                    value: `${marker.age}세 ${marker.label}`,
+                    fill: 'var(--foreground-muted)',
+                    position: 'top',
+                    fontSize: '0.65rem',
+                    fontWeight: 600,
+                  }}
+                />
+              ))}
               <Bar name="국민연금" dataKey="국민연금" stackId="a" fill="#10B981" hide={!!hiddenKeys['국민연금']} />
               <Bar name="사적연금" dataKey="사적연금" stackId="a" fill="#A855F7" hide={!!hiddenKeys['사적연금']} />
               <Bar name="배당소득" dataKey="배당소득" stackId="a" fill="#3B82F6" hide={!!hiddenKeys['배당소득']} />

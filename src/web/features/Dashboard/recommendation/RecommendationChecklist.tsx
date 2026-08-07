@@ -3,6 +3,7 @@
 import { Check, Loader2, Square } from 'lucide-react';
 import { ItemizedContribution, StrategyRecommendation } from '../../../../core/entities/types';
 import { SentinelApplication } from '../../../../core/usecases/strategy/applyAiSentinels';
+import { PlanAssetStatus } from '../../../../core/usecases/dashboard/resolvePlanAssetStatus';
 import GlassCard from '../../../components/GlassCard';
 
 interface RecommendationChecklistProps {
@@ -15,6 +16,7 @@ interface RecommendationChecklistProps {
   // 있는 것"으로 만들기 위해 필요하다 — 자동 채움분은 이미 이 값에 들어 있다.
   currentUtilityScore?: number;
   formatValue: (val: number) => string;
+  planAssetStatus?: PlanAssetStatus;
 }
 
 // AI 추천 전략을 긴 문장 나열 대신 체크리스트로 보여준다. itemizedContributions(항목별 marginal
@@ -27,6 +29,7 @@ export function RecommendationChecklist({
   sentinels,
   currentUtilityScore,
   formatValue,
+  planAssetStatus,
 }: RecommendationChecklistProps) {
   if (isComputingRecommendation) {
     return (
@@ -77,6 +80,16 @@ export function RecommendationChecklist({
   const currentScore = currentUtilityScore ?? recommendation.currentUtility.score;
   const furtherUtilityDelta = recommendation.recommendedUtility.score - currentScore;
 
+  // 국민연금 조기 수령은 "평생 총 수령액이 줄어드는" 제안이라, 왜 그게 더 나은지를 밝히지
+  // 않으면 손해 보는 조언으로만 읽힌다. 투자자산이 없는 계획에서는 그 이유가 분명하고
+  // 데이터로 뒷받침되므로(은퇴 직후를 메울 다른 재원이 없다) 한 줄 덧붙인다.
+  const earlyPensionRationale = (item: ItemizedContribution): string | null => {
+    if (planAssetStatus !== 'no_investable_asset') return null;
+    if (item.field !== 'nationalPensionStartAge') return null;
+    if (!item.label.includes('조기 수령')) return null;
+    return '투자자산이 없어 은퇴 직후 생활비를 메울 재원이 국민연금뿐이므로, 평생 총 수령액이 줄더라도 수령을 앞당겨 초기 공백을 줄이는 쪽이 평생 효용에서 앞섭니다.';
+  };
+
   const renderItem = (item: ItemizedContribution, i: number, applied: boolean) => (
     <li key={i} className="border-b border-card-border pb-3 last:border-none">
       <div className="flex items-start justify-between gap-2">
@@ -93,6 +106,9 @@ export function RecommendationChecklist({
           {item.utilityDelta}점
         </span>
       </div>
+      {earlyPensionRationale(item) && (
+        <p className="ml-6 mt-1 text-xs text-foreground-muted">{earlyPensionRationale(item)}</p>
+      )}
       <div className="ml-6 mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-foreground-muted">
         {applied && <span className="text-primary">이 값으로 계산 중</span>}
         {item.deltas.totalTax !== 0 && (

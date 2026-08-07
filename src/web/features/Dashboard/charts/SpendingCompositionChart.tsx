@@ -28,10 +28,69 @@ interface SpendingCompositionChartProps {
   caption: string;
 }
 
+// 스택 순서와 같은 순서로 나열해야 툴팁과 그래프가 같은 이야기를 한다.
+const SOURCE_KEYS = ['사적연금', '국민연금', '배당소득', '기타소득', '자산인출', '자산부족'] as const;
+
+export interface SpendingChartRow {
+  age: number;
+  목표생활비: number;
+  사적연금: number;
+  국민연금: number;
+  배당소득: number;
+  기타소득: number;
+  자산인출: number;
+  자산부족: number;
+}
+
+// recharts 기본 툴팁은 시리즈를 그대로 나열할 뿐이라, 사용자가 큰 빨간 '자산부족' 띠를 봐도
+// "목표가 얼마인데 얼마가 부족한지"를 알 수 없었다(0원짜리 재원 줄까지 함께 나열돼 더 읽기
+// 어려웠다). 목표 금액과 충당률을 함께 보여주고, 0원인 재원은 생략한다.
+export function SpendingCompositionTooltip({
+  active, label, rows, currency,
+}: {
+  active?: boolean;
+  label?: string | number;
+  rows: SpendingChartRow[];
+  currency: SimulationParams['displayCurrency'];
+}) {
+  if (!active) return null;
+  const row = rows.find((r) => r.age === Number(label));
+  if (!row) return null;
+
+  const covered = Math.max(0, row.목표생활비 - row.자산부족);
+  // 목표가 0인 해(예: 가구 전원 사망 이후 구간)에는 비율이 성립하지 않는다.
+  const coverageRate = row.목표생활비 > 0 ? Math.round((covered / row.목표생활비) * 100) : null;
+
+  return (
+    <div style={{ ...RECHARTS_TOOLTIP_STYLE, padding: '10px 12px' }}>
+      <div style={{ fontWeight: 700, marginBottom: 6 }}>{row.age}세 (월 생활비 구성)</div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16 }}>
+        <span>목표 생활비</span>
+        <strong>{formatValue(row.목표생활비, currency)}</strong>
+      </div>
+      {SOURCE_KEYS.filter((key) => row[key] > 0).map((key) => (
+        <div key={key} style={{ display: 'flex', justifyContent: 'space-between', gap: 16 }}>
+          <span style={key === '자산부족' ? { color: '#F87171' } : undefined}>{key}</span>
+          <span style={key === '자산부족' ? { color: '#F87171' } : undefined}>{formatValue(row[key], currency)}</span>
+        </div>
+      ))}
+      {coverageRate !== null && (
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, marginTop: 6 }}>
+          <span>충당률</span>
+          <strong>{coverageRate}%</strong>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function SpendingCompositionChart({ params, result, hiddenKeys, onLegendClick, caption }: SpendingCompositionChartProps) {
   const currency = params.displayCurrency;
-  const spendingChartData = computeMonthlySpendingComposition(result.yearlyResults, params, result).map((d) => ({
+  const spendingChartData: SpendingChartRow[] = computeMonthlySpendingComposition(result.yearlyResults, params, result).map((d) => ({
     age: d.age,
+    // 차트에 그리지는 않는다(재원을 쌓은 높이가 곧 목표라 선을 겹쳐도 정보가 늘지 않는다).
+    // 툴팁이 "얼마 중 얼마"를 말하기 위해서만 싣는다.
+    목표생활비: d.targetMonthly,
     사적연금: d.privatePenUsed,
     국민연금: d.nationalUsed,
     배당소득: d.dividendUsed,
@@ -75,9 +134,14 @@ export function SpendingCompositionChart({ params, result, hiddenKeys, onLegendC
                 tick={(props: YAxisTickContentProps) => <MultilineYAxisTick {...props} currency={currency} />}
               />
               <Tooltip
-                contentStyle={RECHARTS_TOOLTIP_STYLE}
-                formatter={(value: unknown) => [formatValue(Number(value), currency), '']}
-                labelFormatter={(label) => (label.toString().includes('세') ? label : `${label}세 (월 생활비 구성)`)}
+                content={(props) => (
+                  <SpendingCompositionTooltip
+                    active={props.active}
+                    label={props.label}
+                    rows={spendingChartData}
+                    currency={currency}
+                  />
+                )}
               />
               <Legend
                 verticalAlign="top"

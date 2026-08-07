@@ -79,8 +79,21 @@ describe('ExpertDetailsPanel', () => {
     expect(screen.queryByText(/65세부터 수령/)).not.toBeInTheDocument();
   });
 
+  // 투자자산이 있어야 수익률 시나리오가 baseline과 다른 결과를 낸다 — 자산이 없으면
+  // 6개 시나리오가 전부 동일해져 그 행들이 의도적으로 접힌다(SensitivityAnalysisSection).
+  const paramsWithAssets: SimulationParams = {
+    ...params,
+    assets: [
+      {
+        id: 'a1', type: 'etf', ticker: 'KODEX', name: '국내 ETF', quantity: 10000,
+        averagePrice: 100000, annualGrowthRate: 6, dividendYield: 2,
+        monthlyContribution: 0, reinvestDividend: false, currency: 'KRW',
+      },
+    ],
+  };
+
   test('민감도 분석 섹션(SensitivityAnalysisSection)이 렌더된다', () => {
-    render(<ExpertDetailsPanel result={result} params={params} formatValue={formatValue} isPro={false} />);
+    render(<ExpertDetailsPanel result={result} params={paramsWithAssets} formatValue={formatValue} isPro={false} />);
     fireEvent.click(screen.getByRole('button', { name: '전문가용 상세 분석 더 보기' }));
 
     // 제목이 "자산 고갈 나이"에서 바뀐 이유: 고갈이 없는 계획에서도 기말자산으로
@@ -88,6 +101,16 @@ describe('ExpertDetailsPanel', () => {
     expect(screen.getByText('민감도 분석 (핵심 가정 변화에 따른 영향)')).toBeInTheDocument();
     expect(screen.getByText('투자수익률 -2%p')).toBeInTheDocument();
     expect(screen.getByText('은퇴시점 +3년')).toBeInTheDocument();
+  });
+
+  // 국민연금만 등록한 계획: 수익률·물가를 흔들어도 굴릴 원금이 없어 결과가 전부 같다.
+  // 예전에는 6행이 "0원 · 51세 고갈 · 생활비 부족 N년"으로 똑같이 찍혔다.
+  test('투자자산이 없으면 결과가 동일한 시나리오를 접고 그 이유를 밝힌다', () => {
+    render(<ExpertDetailsPanel result={result} params={params} formatValue={formatValue} isPro={false} />);
+    fireEvent.click(screen.getByRole('button', { name: '전문가용 상세 분석 더 보기' }));
+
+    expect(screen.getByText(/투자자산이 없어/)).toBeInTheDocument();
+    expect(screen.queryByText('투자수익률 -2%p')).not.toBeInTheDocument();
   });
 
   test('민감도 분석 기준선은 result prop이 아니라 params로 직접 재계산한 값을 사용한다 (Before/After 토글과 무관)', () => {

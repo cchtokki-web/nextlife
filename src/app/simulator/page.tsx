@@ -8,6 +8,7 @@ import { computeMonthlySpendingComposition } from '../../core/usecases/MonthlySp
 import { computeRiskAlerts } from '../../core/usecases/dashboard/computeRiskAlerts';
 import { computeExecutionRoadmap, selectDepletionAge } from '../../core/usecases/dashboard/computeExecutionRoadmap';
 import { computeSensitivityAnalysis } from '../../core/usecases/dashboard/computeSensitivityAnalysis';
+import { resolvePlanAssetStatus } from '../../core/usecases/dashboard/resolvePlanAssetStatus';
 import { describeFireAge } from '../../core/usecases/dashboard/describeFireAge';
 import { useMonteCarlo } from '../../web/hooks/useMonteCarlo';
 import { computeSequenceRisk } from '../../core/usecases/montecarlo/sequenceRisk';
@@ -20,7 +21,7 @@ import { NATIONAL_PENSION_NORMAL_START_AGE } from '../../core/usecases/pension/n
 import { useStrategyPipeline } from '../../web/hooks/useStrategyPipeline';
 import { useMediaQuery } from '../../web/hooks/useBrowserEnvironment';
 import { runCompiledScenario } from '../../core/usecases/strategy/runCompiledScenario';
-import { UTILITY_COMPONENT_META } from '../../web/features/Dashboard/utilityComponentMeta';
+import { buildUtilityComponentMeta } from '../../web/features/Dashboard/utilityComponentMeta';
 import { initialParams } from '../../infrastructure/storage/localStore';
 import { AssetFormSection } from '../../web/features/AssetForm/AssetFormSection';
 import { ScenarioManager } from '../../web/features/Scenario/ScenarioManager';
@@ -242,7 +243,9 @@ export default function Home() {
 
       // Lifetime Utility Score / AI 추천 전략 PDF 섹션(페이지 2)용 데이터 준비
       const utilityComponentRowsHtml = utility
-        ? UTILITY_COMPONENT_META.map(({ key, label, max, color }) => {
+        // 같은 화면의 강점/약점 문장(analyzeCurrentStrategy)이 이미 effective.utilityConfig를
+        // 쓰고 있었는데 막대만 기본 배점을 고정하고 있었다 — 두 숫자의 분모가 어긋났다.
+        ? buildUtilityComponentMeta(effective.utilityConfig.weights).map(({ key, label, max, color }) => {
             const value = utility.components[key];
             const pct = max > 0 ? Math.max(0, Math.min(100, (value / max) * 100)) : 0;
             return `
@@ -298,10 +301,19 @@ export default function Home() {
 
       const riskAlerts = computeRiskAlerts(result, reportParams, effective.utilityConfig);
       const riskAlertsSectionHtml = renderRiskAlertsSection(riskAlerts);
-      const roadmap = computeExecutionRoadmap(reportParams, recommendation, selectDepletionAge(recommendation, result));
+      // 화면(DashboardSection)과 같은 함수로 자산 상태를 판정한다 — PDF와 화면이 서로 다른
+      // 근거로 "고갈"과 "미보유"를 말하면 같은 계획의 두 문서가 어긋난다.
+      const planAssetStatus = resolvePlanAssetStatus(result);
+      const roadmap = computeExecutionRoadmap(reportParams, recommendation, selectDepletionAge(recommendation, result), planAssetStatus);
       const executionRoadmapSectionHtml = renderExecutionRoadmapSection(roadmap);
       const sensitivityScenarios = computeSensitivityAnalysis(reportParams, result, engine);
-      const sensitivityTableSectionHtml = renderSensitivityTableSection(sensitivityScenarios);
+      const sensitivityTableSectionHtml = renderSensitivityTableSection(sensitivityScenarios, {
+        depletionAge: result.depletionAge,
+        // computeSensitivityAnalysis가 시나리오별로 세는 것과 같은 식이어야 "결과가 baseline과
+        // 같은가" 판정이 성립한다.
+        unmetSpendingYears: result.yearlyResults.filter((y) => y.unmetSpending > 0).length,
+        planAssetStatus,
+      });
 
       // Create a temporary container
       const container = document.createElement('div');
@@ -366,7 +378,7 @@ export default function Home() {
                 </div>
                 <div style="font-size: 13.5px; border-bottom: 1px dashed #e2e8f0; padding-bottom: 8px;">
                   <span style="font-weight: 600; color: #475569;">자산 고갈 예상 나이</span>
-                  <span style="float: right; font-size: 15px; color: #0f172a; font-weight: 700;">${describeDepletionAge(depletionAge, householdEndAge, userProfile.expectancy)}</span>
+                  <span style="float: right; font-size: 15px; color: #0f172a; font-weight: 700;">${describeDepletionAge(depletionAge, householdEndAge, userProfile.expectancy, planAssetStatus)}</span>
                 </div>
                 <div style="grid-column: span 2; font-size: 13.5px; padding-top: 8px;">
                   <span style="font-weight: 600; color: #475569;">사망 시(${householdEndAge > userProfile.expectancy ? `배우자 기대수명 시점, 본인 나이 ${householdEndAge}세` : `기대수명 ${householdEndAge}세`}) 잔여 자산</span>

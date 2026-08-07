@@ -36,9 +36,13 @@ const WEAKNESS_THRESHOLD = 0.5;
 
 // 현재(baseline) 전략의 Utility 구성요소 점수를 근거로 강점/약점을 텍스트로 요약한다.
 // AI 추천 전략(RecommendationEngine)과 달리 baseline 자체의 특성을 설명하는 용도다.
+// cfg를 Pick<..., 'weights'>로 좁혀 둔 이유: 이 함수가 실제로 읽는 것은 배점(weights)뿐이고,
+// AI 어드바이저 라우트처럼 UtilityConfig 전체를 들고 있지 않은 호출부(요청 본문으로 가중치만
+// 받는다)도 정확한 분모를 넘길 수 있어야 하기 때문이다. 전체 config를 넘기던 기존 호출부는
+// 구조적 타이핑으로 그대로 통과한다.
 export function analyzeCurrentStrategy(
   utility: UtilityBreakdown,
-  cfg: UtilityConfig = DEFAULT_UTILITY_CONFIG
+  cfg: Pick<UtilityConfig, 'weights'> = DEFAULT_UTILITY_CONFIG
 ): CurrentStrategyAnalysis {
   const strengths: string[] = [];
   const weaknesses: string[] = [];

@@ -1,4 +1,5 @@
 import { getRetirementGrade, getRetirementGradeColorTier } from '../../../../core/entities/retirementGrade';
+import { PlanAssetStatus } from '../../../../core/usecases/dashboard/resolvePlanAssetStatus';
 
 export interface HeroHeadline {
   emoji: '🟢' | '🟡' | '🔴';
@@ -13,18 +14,27 @@ const TIER_EMOJI = { green: '🟢', orange: '🟡', red: '🔴' } as const;
 // 세 번째 인자는 본인 기대수명이 아니라 가구 종료 나이(SimulationResult.householdEndAge)다.
 // depletionAge는 그 나이까지 도는 루프에서 판정되므로, 본인 기대수명과 비교하면 배우자 단독
 // 생존 구간에서 파산하는 계획이 "고갈 위험 없음"으로 표시된다(점수는 위험인데 헤드라인은 안전).
+//
+// status가 optional이 아닌 이유: 폴백이 있으면 새 호출부가 이 인자를 빠뜨려도 조용히 통과하고,
+// 투자자산이 없는 계획에 "51세에 자산이 고갈될 위험이 있습니다"가 다시 표시된다. 이 값은 항상
+// SimulationResult로부터 얻을 수 있으므로(resolvePlanAssetStatus) 호출부에 부담이 없다.
 export function buildHeroHeadline(
   utilityScore: number,
   depletionAge: number | null,
-  householdEndAge: number
+  householdEndAge: number,
+  status: PlanAssetStatus
 ): HeroHeadline {
   const grade = getRetirementGrade(utilityScore);
   const tier = getRetirementGradeColorTier(utilityScore);
-  const isDepleted = depletionAge !== null && depletionAge < householdEndAge;
 
-  const survivalClause = isDepleted
-    ? `${depletionAge}세에 자산이 고갈될 위험이 있습니다.`
-    : `${householdEndAge}세까지 자산 고갈 위험이 없습니다.`;
+  // 고갈 여부는 status가 이미 가구 종료 나이 기준으로 판정해 두었다 — 여기서 다시 유도하면
+  // 두 규칙이 어긋날 수 있다.
+  const survivalClause =
+    status === 'no_investable_asset'
+      ? '등록된 투자자산이 없어, 연금 등 고정소득만으로 생활하는 계획입니다.'
+      : status === 'depleted'
+        ? `${depletionAge}세에 자산이 고갈될 위험이 있습니다.`
+        : `${householdEndAge}세까지 자산 고갈 위험이 없습니다.`;
 
   return {
     emoji: TIER_EMOJI[tier],

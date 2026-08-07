@@ -186,6 +186,47 @@ describe('renderSensitivityTableSection', () => {
     expect(html).toContain('+26억원');
   });
 
+  // 화면(SensitivityAnalysisSection)과 같은 규칙이어야 한다 — 두 문서가 서로 다른 표를
+  // 보여주면 안 된다.
+  test('투자자산이 없으면 결과가 baseline과 동일한 행을 접고 몇 개를 접었는지 밝힌다', () => {
+    const scenarios: SensitivityScenario[] = [
+      { key: 'returnDown', label: '투자수익률 -2%p', depletionAge: 51, deltaYears: 0,
+        endingAssets: 0, endingAssetsDelta: 0, unmetSpendingYears: 31 },
+      { key: 'returnUp', label: '투자수익률 +2%p', depletionAge: 51, deltaYears: 0,
+        endingAssets: 0, endingAssetsDelta: 0, unmetSpendingYears: 31 },
+      { key: 'retirementLater', label: '은퇴시점 +3년', depletionAge: 51, deltaYears: 0,
+        endingAssets: 0, endingAssetsDelta: 0, unmetSpendingYears: 28 },
+    ];
+
+    const html = renderSensitivityTableSection(scenarios, {
+      depletionAge: 51,
+      unmetSpendingYears: 31,
+      planAssetStatus: 'no_investable_asset',
+    });
+
+    expect(html).not.toContain('투자수익률 -2%p');
+    expect(html).not.toContain('투자수익률 +2%p');
+    expect(html).toContain('은퇴시점 +3년');
+    expect(html).toContain('투자자산이 없어');
+    expect(html).toContain('2개 가정은 생략');
+  });
+
+  test('투자자산이 있으면 baseline 정보를 넘겨도 행을 접지 않는다', () => {
+    const scenarios: SensitivityScenario[] = [
+      { key: 'returnDown', label: '투자수익률 -2%p', depletionAge: null, deltaYears: null,
+        endingAssets: 820000000, endingAssetsDelta: -1680000000, unmetSpendingYears: 0 },
+    ];
+
+    const html = renderSensitivityTableSection(scenarios, {
+      depletionAge: null,
+      unmetSpendingYears: 0,
+      planAssetStatus: 'sustained',
+    });
+
+    expect(html).toContain('투자수익률 -2%p');
+    expect(html).not.toContain('생략');
+  });
+
   test('생활비를 채우지 못한 해가 있으면 표에 함께 적는다', () => {
     const scenarios: SensitivityScenario[] = [
       { key: 'returnDown', label: '투자수익률 -2%p', depletionAge: null, deltaYears: null,
