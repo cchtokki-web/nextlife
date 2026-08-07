@@ -1,7 +1,8 @@
 import { describe, test, expect, vi } from 'vitest';
 import { computeSensitivityAnalysis } from '@/core/usecases/dashboard/computeSensitivityAnalysis';
 import { SimulationEngine } from '@/core/usecases/SimulationEngine';
-import { SimulationParams, SimulationResult } from '@/core/entities/types';
+import { SimulationParams, SimulationResult, SimulationYearlyResult } from '@/core/entities/types';
+import { makeYearlyResult } from '@/tests/fixtures/yearlyResult';
 
 const baseParams: SimulationParams = {
   userProfile: { currentAge: 40, retirementAge: 60, expectancy: 90, targetMonthlySpending: 3000000 },
@@ -25,12 +26,16 @@ const baseParams: SimulationParams = {
   displayCurrency: 'KRW',
 };
 
-function makeResult(depletionAge: number | null, householdEndAge = 90): SimulationResult {
+function makeResult(
+  depletionAge: number | null,
+  householdEndAge = 90,
+  extras: { endingAssets?: number; yearlyResults?: SimulationYearlyResult[] } = {}
+): SimulationResult {
   return {
-    yearlyResults: [],
+    yearlyResults: extras.yearlyResults ?? [],
     fireAge: 60,
     depletionAge,
-    endingAssets: 0,
+    endingAssets: extras.endingAssets ?? 0,
     retirementScore: 70,
     retirementGrade: '보통',
     goalAchievementRate: 100,
@@ -175,6 +180,122 @@ describe('computeSensitivityAnalysis', () => {
     const scenarios = computeSensitivityAnalysis(baseParams, makeResult(null, 100), engine);
 
     expect(scenarios.find((s) => s.key === 'returnDown')!.deltaYears).toBe(-5);
+  });
+
+  // **왜 연속형 지표가 필요한가.**
+  //
+  // depletionAge만 보고하면 여유 있는 계획에서는 6개 시나리오가 전부 null이 되어 화면이
+  // "고갈 위험 없습니다" 한 줄로 접힌다. 실제 리포트에서 수익률 ±2%p가 기말자산을 수억 원
+  // 갈라놓는데도 사용자는 "아무 차이 없음"을 봤다. 재계산은 이미 하고 있었고, 그 결과에서
+  // 버려지던 값을 함께 싣는다.
+  describe('연속형 지표', () => {
+    test('기말자산과 baseline 대비 증감을 함께 보고한다', () => {
+      const runForUtility = vi.fn((params: SimulationParams) => {
+        if (params.assets[0]?.annualGrowthRate === 5) return makeResult(null, 90, { endingAssets: 820000000 });
+        return makeResult(null, 90, { endingAssets: 3000000000 });
+      });
+      const engine = { runForUtility } as unknown as SimulationEngine;
+
+      const scenarios = computeSensitivityAnalysis(
+        baseParams, makeResult(null, 90, { endingAssets: 2500000000 }), engine
+      );
+
+      const returnDown = scenarios.find((s) => s.key === 'returnDown')!;
+      expect(returnDown.endingAssets).toBe(820000000);
+      expect(returnDown.endingAssetsDelta).toBe(820000000 - 2500000000);
+
+      const returnUp = scenarios.find((s) => s.key === 'returnUp')!;
+      expect(returnUp.endingAssetsDelta).toBe(3000000000 - 2500000000);
+    });
+
+    // 자산이 남아 있어도 목표 생활비를 못 채운 해는 계획이 실패한 해다. depletionAge는
+    // 그 해를 잡지 못한다(인출 경로가 잔액을 넘겨 인출하지 않아 totalAssets가 0이 되지 않는다).
+    test('목표 생활비를 채우지 못한 해의 수를 보고한다', () => {
+      const yearlyResults = [
+        makeYearlyResult({ age: 80, unmetSpending: 0 }),
+        makeYearlyResult({ age: 81, unmetSpending: 1200000 }),
+        makeYearlyResult({ age: 82, unmetSpending: 3600000 }),
+      ];
+      const runForUtility = vi.fn(() => makeResult(null, 90, { yearlyResults }));
+      const engine = { runForUtility } as unknown as SimulationEngine;
+
+      const scenarios = computeSensitivityAnalysis(baseParams, makeResult(null), engine);
+
+      expect(scenarios[0].unmetSpendingYears).toBe(2);
+    });
+  });
+
+  // **은퇴시점 시나리오가 무효였던 이유.**
+  //
+  // 엔진은 일반자산 매도 개시를 withdrawalPlan.generalAssetWithdrawalStartAge ?? retirementAge로
+  // 읽는다. 그런데 센티널 단계(verifiedSentinelPlan의 SENTINEL_AXES)가 이 필드를 항상 채우므로,
+  // retirementAge만 3년 옮긴 시나리오는 은퇴만 당겨지고 자산 인출은 옛 나이에 그대로 머물렀다.
+  test('은퇴시점 시나리오는 일반자산 인출 개시 나이도 함께 옮긴다', () => {
+    const params: SimulationParams = {
+      ...baseParams,
+      withdrawalPlan: { generalAssetWithdrawalStartAge: 60 },
+    };
+    const runForUtility = vi.fn((_p: SimulationParams) => makeResult(85));
+    const engine = { runForUtility } as unknown as SimulationEngine;
+
+    computeSensitivityAnalysis(params, makeResult(88), engine);
+
+    const calls = (runForUtility as unknown as { mock: { calls: SimulationParams[][] } }).mock.calls;
+    const earlier = calls.find((c) => c[0].userProfile.retirementAge === 57)![0];
+    expect(earlier.withdrawalPlan?.generalAssetWithdrawalStartAge).toBe(57);
+
+    const later = calls.find((c) => c[0].userProfile.retirementAge === 63)![0];
+    expect(later.withdrawalPlan?.generalAssetWithdrawalStartAge).toBe(63);
+  });
+
+  test('일반자산 인출 개시 나이가 설정되지 않았으면 만들어 내지 않는다', () => {
+    // 미설정은 "은퇴 나이를 따른다"는 뜻이라(엔진의 ?? 폴백) 이미 함께 움직인다.
+    // 여기서 값을 채워 넣으면 사용자가 설정하지 않은 계획을 시나리오가 지어내는 셈이다.
+    const runForUtility = vi.fn((_p: SimulationParams) => makeResult(85));
+    const engine = { runForUtility } as unknown as SimulationEngine;
+
+    computeSensitivityAnalysis(baseParams, makeResult(88), engine);
+
+    const calls = (runForUtility as unknown as { mock: { calls: SimulationParams[][] } }).mock.calls;
+    const earlier = calls.find((c) => c[0].userProfile.retirementAge === 57)![0];
+    expect(earlier.withdrawalPlan?.generalAssetWithdrawalStartAge).toBeUndefined();
+  });
+
+  // mock이 아닌 실제 엔진으로 "재계산이 실제로 일어나고 방향이 맞는가"를 고정한다.
+  // 위 테스트들은 전부 mock engine이라 엔진이 통째로 바뀌어도 통과한다.
+  //
+  // 자산을 넉넉하게 잡는 이유가 이 테스트의 요점이다: 고갈이 전혀 없어(depletionAge가 모두
+  // null) 예전 구현으로는 6개 시나리오가 구분되지 않던 계획에서도, 기말자산은 뚜렷하게
+  // 갈린다는 것을 보인다. 리포트가 보고한 상황(잔여자산 25억, 민감도 전부 "평생 유지")이
+  // 정확히 이 형태였다.
+  test('[통합] 고갈이 없는 계획에서도 수익률에 따라 기말자산이 갈린다', () => {
+    const engine = new SimulationEngine();
+    const richParams: SimulationParams = {
+      ...baseParams,
+      assets: [
+        { id: 'a1', type: 'etf', ticker: 'SPY', name: 'S&P500', quantity: 500, averagePrice: 400000,
+          annualGrowthRate: 7, dividendYield: 1.5, monthlyContribution: 2000000, reinvestDividend: true, currency: 'KRW' },
+      ],
+      nationalPension: { expectedMonthlyAmount: 2000000 },
+    };
+    const baseline = engine.runForUtility(richParams);
+
+    // 전제 확인: 이 계획은 고갈되지 않는다. 고갈되면 아래 비교가 "0 대 0"이 되어 무의미해진다.
+    expect(baseline.depletionAge).toBeNull();
+    expect(baseline.endingAssets).toBeGreaterThan(0);
+
+    const scenarios = computeSensitivityAnalysis(richParams, baseline, engine);
+
+    // 예전 구현이라면 여기서 멈췄다 — 6개 전부 "평생 유지"라 구분되는 정보가 없었다.
+    expect(scenarios.every((s) => s.depletionAge === null)).toBe(true);
+
+    const down = scenarios.find((s) => s.key === 'returnDown')!;
+    const up = scenarios.find((s) => s.key === 'returnUp')!;
+
+    expect(down.endingAssets).toBeLessThan(baseline.endingAssets);
+    expect(up.endingAssets).toBeGreaterThan(baseline.endingAssets);
+    expect(down.endingAssetsDelta).toBeLessThan(0);
+    expect(up.endingAssetsDelta).toBeGreaterThan(0);
   });
 
   test('특정 시나리오가 예외를 던져도 나머지 5개는 정상 반환된다', () => {

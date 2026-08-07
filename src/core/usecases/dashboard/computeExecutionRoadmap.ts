@@ -1,8 +1,9 @@
 import { getIdentityPlan } from '../strategy/StrategyCandidateGenerator';
 import { NATIONAL_PENSION_NORMAL_START_AGE } from '../pension/nationalPensionRules';
 import { clampPrivatePensionStartAge, PRIVATE_PENSION_MIN_START_AGE } from '../pension/privatePensionRules';
-import { computeHouseholdEndAge, resolveSpouse } from '../spouse/spouseRules';
+import { computeHouseholdEndAge, resolveSpouse, spouseNationalPensionStartSelfAge } from '../spouse/spouseRules';
 import { SimulationParams, SimulationResult, StrategyRecommendation } from '../../entities/types';
+import { PlanAssetStatus } from './resolvePlanAssetStatus';
 
 // 로드맵(computeExecutionRoadmap)에 넘길 depletionAge를 고르는 단일 지점. 화면(DashboardSection)과
 // PDF(simulator/page.tsx) 양쪽에서 이 함수로 호출부를 통일해, 로드맵의 나이 마일스톤과 자산 고갈
@@ -60,21 +61,32 @@ function describeNationalPensionTitle(age: number): string {
 export function computeExecutionRoadmap(
   params: SimulationParams,
   recommendation: StrategyRecommendation | undefined,
-  depletionAge: number | null
+  depletionAge: number | null,
+  status: PlanAssetStatus
 ): ExecutionRoadmap {
   const plan = recommendation?.recommendedPlan ?? getIdentityPlan(params);
   const { retirementAge, expectancy } = params.userProfile;
+  const spouse = resolveSpouse(params.spouse, params.userProfile);
 
   const rawEvents: { age: number; item: RoadmapEventItem }[] = [
     {
       age: retirementAge,
       item: { title: '퇴직', description: '상용소득이 종료되고 자산 인출 계획이 시작됩니다.' },
     },
-    {
+  ];
+
+  // 인출할 대상이 실제로 있는 이벤트만 그린다. 예전에는 자산·사적연금을 하나도 등록하지 않은
+  // 사용자의 로드맵에도 "일반자산 인출 개시"·"사적연금 수령 개시"가 마일스톤으로 찍혀,
+  // 존재하지 않는 계좌에서 인출을 시작한다고 말했다.
+  if ((params.assets?.length ?? 0) > 0) {
+    rawEvents.push({
       age: plan.generalAssetWithdrawalStartAge,
       item: { title: '일반자산 인출 개시', description: '주식/ETF 등 일반 자산의 인출을 시작합니다.' },
-    },
-    {
+    });
+  }
+
+  if ((params.privatePensions?.length ?? 0) > 0) {
+    rawEvents.push({
       // 사적연금 개시 나이는 원칙적으로 법정 최저 나이(55세)로 하한된 retirementAge다 —
       // SimulationEngine.ts의 planStartAge 계산과 동일한 식이어야 한다. 다만 Phase 4(사적연금
       // 조기수령 채널링)가 채택된 경우에는 실제로 55세부터(재직 중) 조기 수령이 시작되므로,
@@ -104,17 +116,40 @@ export function computeExecutionRoadmap(
                 : ''),
           }
         : { title: '사적연금 수령 개시', description: '사적연금(퇴직연금·연금저축 등) 인출을 시작합니다.' },
-    },
-    {
+    });
+  }
+
+  if ((params.nationalPension?.expectedMonthlyAmount ?? 0) > 0) {
+    rawEvents.push({
       age: plan.nationalPensionStartAge,
       item: { title: describeNationalPensionTitle(plan.nationalPensionStartAge), description: '국민연금 수령을 시작합니다.' },
-    },
-  ];
+    });
+  }
+
+  // 배우자 국민연금은 본인보다 몇 년 먼저(또는 나중에) 시작될 수 있고, 그 시점에 소득 차트의
+  // 막대가 갑자기 나타난다. 로드맵에 없으면 "왜 64세부터 연금이 생기지?"에 답할 곳이 없다.
+  // 개시 나이는 배우자 나이로 저장되므로 본인 나이로 환산한다(spouseNationalPensionStartSelfAge).
+  if (spouse && spouse.nationalPensionMonthlyAmount > 0) {
+    const spouseStartSelfAge = spouseNationalPensionStartSelfAge(spouse);
+    // 이미 수령 중이면(환산 결과가 시뮬레이션 시작 시점 이전) 앞으로 일어날 일이 아니다.
+    if (spouseStartSelfAge > params.userProfile.currentAge) {
+      rawEvents.push({
+        age: spouseStartSelfAge,
+        item: {
+          title: '배우자 국민연금 수령 개시',
+          description: '배우자 명의의 국민연금 수령이 시작됩니다.',
+        },
+      });
+    }
+  }
 
   // 자산 고갈이 예상되면 다른 마일스톤과 함께 정확히 몇 세에 고갈되는지도 타임라인에
   // 표시한다 — 위험 신호이므로 severity로 구분해 강조한다. 고갈 나이는 가구 종료 나이까지의
   // 어느 시점이든 될 수 있으므로(배우자 단독 생존 구간 포함) 나이 조건 없이 항상 넣는다.
-  if (depletionAge !== null) {
+  //
+  // 단, 투자자산이 하나도 없는 계획은 제외한다. 엔진이 첫 해에 depletionAge를 잡으므로
+  // (자산 0 <= 0) 로드맵 맨 앞에 "51세 자산 고갈 예상" 노드가 찍히는데, 소진될 자산 자체가 없다.
+  if (depletionAge !== null && status !== 'no_investable_asset') {
     rawEvents.push({
       age: depletionAge,
       item: {
@@ -136,7 +171,7 @@ export function computeExecutionRoadmap(
     .map(([age, items]) => ({ age, items }))
     .sort((a, b) => a.age - b.age);
 
-  const endAge = computeHouseholdEndAge(params.userProfile, resolveSpouse(params.spouse, params.userProfile));
+  const endAge = computeHouseholdEndAge(params.userProfile, spouse);
 
   return {
     events,

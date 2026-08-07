@@ -36,6 +36,7 @@ export function makeYearlyResult(
     comprehensiveTaxPaid: 0,
     privatePensionTaxMethod: 'none',
     spending: 0,
+    unmetSpending: 0,
     healthcareSpending: 0,
     hasTaxWarning: false,
     spouseAlive: false,

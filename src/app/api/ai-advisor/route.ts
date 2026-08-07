@@ -2,11 +2,12 @@ import { NextRequest } from 'next/server';
 import { generateRuleBasedAdvice } from './ruleBasedAdvisor';
 import {
   UserProfile, InvestmentAsset, PrivatePension, NationalPension,
-  OtherIncome, TaxSettings, SpendingStrategy, UtilityBreakdown, StrategyRecommendation,
+  OtherIncome, TaxSettings, SpendingStrategy, UtilityBreakdown, UtilityConfig, StrategyRecommendation,
 } from '../../../core/entities/types';
 import { RetirementGrade } from '../../../core/entities/retirementGrade';
 import { analyzeCurrentStrategy, formatManwon } from '../../../core/usecases/utility/utilityAnalysis';
 import { describeFireAge } from '../../../core/usecases/dashboard/describeFireAge';
+import { PlanAssetStatus } from '../../../core/usecases/dashboard/resolvePlanAssetStatus';
 
 export const runtime = 'edge';
 
@@ -34,7 +35,13 @@ export interface AiAdvisorRequestBody {
   inflationRate?: number;
   inflationMode?: 'nominal' | 'real';
   utility?: UtilityBreakdown;
+  // utility.components의 배점. 목표 우선순위가 이 값을 갈아끼우므로, 없으면 강점/약점
+  // 문장이 "세금 효율이(가) 21/10점으로 우수합니다"처럼 만점을 넘긴 분수를 인용한다.
+  utilityWeights?: UtilityConfig['weights'];
   recommendation?: StrategyRecommendation;
+  // 자산 고갈과 자산 미보유를 가른다. 없으면(옛 클라이언트) 기존 문구를 그대로 쓴다.
+  planAssetStatus?: PlanAssetStatus;
+  sustainableMonthlySpending?: number;
 }
 
 function toManwon(val?: number): string {
@@ -47,7 +54,7 @@ export function buildSimulationContextText(body: AiAdvisorRequestBody): string {
     userProfile, assets, privatePensions, nationalPension, nationalPensionStartAge, otherIncomes,
     taxSettings, spendingStrategy, inflationRate, inflationMode,
     goalAchievementRate, fireAge, endingAssets, monthlyTarget, score, depletionAge,
-    retirementGrade, utility, recommendation,
+    retirementGrade, utility, utilityWeights, recommendation, planAssetStatus, sustainableMonthlySpending,
   } = body;
 
   const lines: string[] = [];
@@ -63,7 +70,8 @@ export function buildSimulationContextText(body: AiAdvisorRequestBody): string {
       `- 평생 효용 점수(은퇴 준비도 점수와는 별개의 지표로 "자산을 얼마나 잘 ` +
       `활용하는가"를 종합 평가): ${utility.score}점/100점`
     );
-    const analysis = analyzeCurrentStrategy(utility);
+    // 가중치를 넘기지 않으면 기본 배점이 쓰여 화면(UtilityBreakdownBars)과 다른 분모를 말하게 된다.
+    const analysis = analyzeCurrentStrategy(utility, utilityWeights ? { weights: utilityWeights } : undefined);
     lines.push(`  - 강점: ${analysis.strengths.join(' ')}`);
     lines.push(`  - 약점: ${analysis.weaknesses.join(' ')}`);
   }
@@ -97,9 +105,21 @@ export function buildSimulationContextText(body: AiAdvisorRequestBody): string {
   // userProfile이 없으면 비교 기준이 없으므로 단서 없이 나이만 적는다(이 경우 프롬프트에
   // 기대수명 줄 자체가 없어 모순이 생기지 않는다).
   lines.push(
-    `- FIRE 조기은퇴 가능 나이: ${userProfile ? describeFireAge(fireAge, userProfile.expectancy) : (fireAge ? `${fireAge}세` : '달성 불가능')}`
+    `- 소득만으로 생활비 충당 가능 시점: ${userProfile ? describeFireAge(fireAge, userProfile.expectancy, userProfile.retirementAge) : (fireAge ? `${fireAge}세` : '달성 불가능')}`
   );
-  lines.push(`- 자산 고갈 예상 나이: ${depletionAge === null || depletionAge === undefined ? '고갈 위험 없음' : `${depletionAge}세`}`);
+  // 투자자산이 없는 계획은 엔진이 첫 해에 depletionAge를 잡는다. 그 나이를 그냥 넘기면
+  // LLM이 "51세에 자산이 고갈됩니다"라고 쓰는데, 고갈시킬 자산이 애초에 없다.
+  if (planAssetStatus === 'no_investable_asset') {
+    lines.push(
+      '- 자산 고갈 예상 나이: 해당 없음 — 등록된 투자자산·사적연금·ISA가 전혀 없어 ' +
+      '"자산 고갈"이 아니라 "투자자산 미보유" 상태임. 고갈이라는 표현을 쓰지 말 것.'
+    );
+    if (typeof sustainableMonthlySpending === 'number' && sustainableMonthlySpending > 0) {
+      lines.push(`- 추가 저축 없이 유지 가능한 월 생활비: ${formatManwon(sustainableMonthlySpending)}`);
+    }
+  } else {
+    lines.push(`- 자산 고갈 예상 나이: ${depletionAge === null || depletionAge === undefined ? '고갈 위험 없음' : `${depletionAge}세`}`);
+  }
   lines.push(
     `- 기대수명 시점 잔여 자산: ${typeof endingAssets === 'number' && !isNaN(endingAssets) ? formatManwon(endingAssets) : '정보 없음'}`
   );
@@ -184,13 +204,19 @@ function buildRuleBasedStream(adviceText: string) {
 export async function POST(req: NextRequest) {
   try {
     const body: AiAdvisorRequestBody = await req.json();
-    const { score, monthlyTarget, isPro, userProfile, depletionAge, retirementGrade, utility, recommendation } = body;
+    const {
+      score, monthlyTarget, isPro, userProfile, depletionAge, retirementGrade, utility, recommendation,
+      planAssetStatus, goalAchievementRate, sustainableMonthlySpending,
+    } = body;
+    // 규칙 기반 폴백도 LLM과 같은 근거를 봐야 한다 — 두 경로가 서로 다른 진단을 내면
+    // 같은 계획인데 Ollama 가용 여부에 따라 화면 문구가 달라진다.
+    const ruleBasedContext = { planAssetStatus, goalAchievementRate, sustainableMonthlySpending };
 
     const OLLAMA_ENDPOINT = process.env.OLLAMA_ENDPOINT;
     const OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'gemma4-12b';
 
     if (!OLLAMA_ENDPOINT || OLLAMA_ENDPOINT.trim() === '') {
-      const adviceText = generateRuleBasedAdvice(score, monthlyTarget, !!isPro, userProfile, depletionAge, retirementGrade, utility, recommendation);
+      const adviceText = generateRuleBasedAdvice(score, monthlyTarget, !!isPro, userProfile, depletionAge, retirementGrade, utility, recommendation, ruleBasedContext);
       return buildRuleBasedStream(adviceText);
     }
 
@@ -205,6 +231,7 @@ export async function POST(req: NextRequest) {
 3. <think> 태그나 내부 사고 과정을 절대 출력하지 마세요. 곧바로 최종 답변만 출력하세요.
 4. 종합 진단은 반드시 "은퇴 준비도 점수/등급"과 "자산 고갈 예상 나이"를 1차 기준으로 삼으세요. "고정소득 커버율"은 배당·연금 등 원금 인출을 제외한 보조 지표이므로, 이 값이 100% 미만이라는 이유만으로 위험하다고 단정하지 마세요. 자산 고갈 예상 나이가 없고 기대수명 시점 잔여 자산이 충분하다면, 고정소득 커버율이 낮아도 안정적인 은퇴로 해석하세요.
 5. [시뮬레이션 결과 전체]에 "AI 추천 전략"이 포함되어 있다면(=평생 효용 점수를 더 높일 수 있는 인출 전략이 존재한다는 뜻), 두 번째 문장의 액션 플랜에 이를 우선적으로 반영하세요. 없다면 언급하지 마세요.
+6. "투자자산 미보유" 상태라고 명시되어 있으면, "자산 고갈"·"자산이 고갈된다"는 표현을 절대 쓰지 마세요. 인출 순서 조정·자산 재배치·매도 전략처럼 존재하지 않는 자산을 전제로 한 조언도 하지 마세요. 대신 목표 생활비 조정, 은퇴 시점, 국민연금 수령 시점, 추가 저축·투자만 제안하세요.
 
 [시뮬레이션 결과 전체]
 ${simulationContextText}
@@ -241,7 +268,7 @@ ${simulationContextText}
       }
     } catch (fetchError) {
       console.warn('Failed to connect to Ollama, falling back to rule-based advice:', fetchError);
-      const adviceText = generateRuleBasedAdvice(score, monthlyTarget, !!isPro, userProfile, depletionAge, retirementGrade, utility, recommendation);
+      const adviceText = generateRuleBasedAdvice(score, monthlyTarget, !!isPro, userProfile, depletionAge, retirementGrade, utility, recommendation, ruleBasedContext);
       return buildRuleBasedStream(adviceText);
     }
 

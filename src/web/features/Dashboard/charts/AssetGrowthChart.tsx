@@ -17,6 +17,7 @@ import { TrendingDown } from 'lucide-react';
 import GlassCard from '../../../components/GlassCard';
 import styles from '../Dashboard.module.css';
 import { SimulationParams, SimulationResult } from '../../../../core/entities/types';
+import { PlanAssetStatus } from '../../../../core/usecases/dashboard/resolvePlanAssetStatus';
 import { formatValue, MultilineYAxisTick, RECHARTS_TOOLTIP_STYLE } from './chartFormatters';
 import { ChartCaption } from './ChartCaption';
 
@@ -35,6 +36,7 @@ interface AssetGrowthChartProps {
   caption: string;
   showBreakdown: boolean;
   onToggleBreakdown: () => void;
+  planAssetStatus: PlanAssetStatus;
 }
 
 const COMPARE_COLORS = ['#10B981', '#F59E0B', '#EF4444', '#8B5CF6'];
@@ -48,9 +50,13 @@ export function AssetGrowthChart({
   caption,
   showBreakdown,
   onToggleBreakdown,
+  planAssetStatus,
 }: AssetGrowthChartProps) {
   const currency = params.displayCurrency;
   const { yearlyResults, depletionAge } = result;
+  // 전 구간 0원인 축은 정보를 주지 않는다 — 게다가 "51세 자산 고갈 발생" 배지까지 함께
+  // 붙어 있어, 고갈시킬 자산이 없는 사용자에게 존재하지 않는 사건을 알린다.
+  const hasNoInvestableAsset = planAssetStatus === 'no_investable_asset';
 
   const assetChartData = yearlyResults.map((r) => {
     const dataPoint: Record<string, number> = {
@@ -92,7 +98,11 @@ export function AssetGrowthChart({
           </span>
         </span>
         <div className="flex items-center gap-2">
-          {depletionAge ? (
+          {hasNoInvestableAsset ? (
+            <span className="rounded-full border border-card-border px-3 py-1 text-xs font-semibold text-foreground-muted">
+              투자자산 없음
+            </span>
+          ) : depletionAge ? (
             <span className={styles.depletionAlertBadge}>
               <TrendingDown size={12} style={{ marginRight: '0.25rem', verticalAlign: 'middle' }} />
               {depletionAge}세 자산 고갈 발생
@@ -100,16 +110,26 @@ export function AssetGrowthChart({
           ) : (
             <span className={styles.successBadge}>안정적인 노후 자산 유지됨</span>
           )}
-          <button
-            type="button"
-            onClick={onToggleBreakdown}
-            className="rounded-full border border-card-border px-3 py-1 text-xs font-semibold text-foreground-muted hover:bg-foreground/5"
-          >
-            {showBreakdown ? '간단히 보기' : '자산 구성 상세보기'}
-          </button>
+          {/* 펼칠 구성(주식/연금/ISA/현금)이 전부 0이므로 토글도 의미가 없다. */}
+          {!hasNoInvestableAsset && (
+            <button
+              type="button"
+              onClick={onToggleBreakdown}
+              className="rounded-full border border-card-border px-3 py-1 text-xs font-semibold text-foreground-muted hover:bg-foreground/5"
+            >
+              {showBreakdown ? '간단히 보기' : '자산 구성 상세보기'}
+            </button>
+          )}
         </div>
       </div>
       <ChartCaption>{caption}</ChartCaption>
+      {hasNoInvestableAsset ? (
+        <p className="rounded-2xl border border-card-border bg-foreground/5 px-6 py-10 text-center text-sm text-foreground-muted">
+          등록된 투자자산이 없어 자산 추이를 표시할 수 없습니다.
+          <br />
+          국민연금 등 고정소득만으로 생활하는 계획입니다.
+        </p>
+      ) : (
       <div className={styles.chartScrollWrapper}>
         <div className={styles.chartContainer}>
           <ResponsiveContainer width="100%" height="100%">
@@ -236,6 +256,7 @@ export function AssetGrowthChart({
           </ResponsiveContainer>
         </div>
       </div>
+      )}
     </GlassCard>
   );
 }

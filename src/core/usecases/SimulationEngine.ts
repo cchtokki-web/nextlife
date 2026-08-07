@@ -8,6 +8,7 @@ import {
   AssetCurrency,
   PrivatePensionTaxationMethod,
   UtilityConfig,
+  ReturnShockPath,
 } from '../entities/types';
 import { getRetirementGrade, RetirementGrade } from '../entities/retirementGrade';
 import { computeLifetimeUtility } from './utility/UtilityEngine';
@@ -37,8 +38,20 @@ import {
   computeSurvivorPensionMonthly, resolveSpouse,
 } from './spouse/spouseRules';
 
+// 연 수익률(소수)을 월 복리율로. initializeAssets가 네 곳에서 같은 식을 반복하고 있었고,
+// 연도별 시장 충격을 얹으려면 같은 식이 다섯 번째로 필요해져 한 곳으로 모은다.
+//
+// Math.max(0, ...)은 연 −100%보다 나쁜 값만 막는다(현금 이자율과 같은 규칙). 그 아래로
+// 내려가면 월 복리율이 NaN이 되고 자산이 음수가 된다.
+function toMonthlyCompoundRate(annualRate: number): number {
+  return Math.pow(Math.max(0, 1 + annualRate), 1 / 12) - 1;
+}
+
 interface ActiveAsset extends InvestmentAsset {
   currentValue: number;
+  // 물가 처리(실질 모드의 차감)까지 끝난 **연** 성장률(소수). growthRateMonthly는 이 값에서
+  // 파생된 캐시다. 연도별 충격을 가산하려면 월 복리율에서 역산할 수 없으므로 원본을 남긴다.
+  growthRateAnnual: number;
   growthRateMonthly: number;
   divRateMonthly: number;
   taxRate: number;
@@ -84,6 +97,8 @@ function applySale(asset: ActiveAsset, saleAmountInAssetCurrency: number): numbe
 
 interface ActivePension extends PrivatePension {
   currentBalance: number;
+  // ActiveAsset.growthRateAnnual과 같은 이유로 보존한다.
+  returnRateAnnual: number;
   returnRateMonthly: number;
 }
 
@@ -91,6 +106,8 @@ interface ActiveIsa extends IsaAccount {
   currentBalance: number;
   totalInvested: number;
   monthsSinceInception: number;
+  // ActiveAsset.growthRateAnnual과 같은 이유로 보존한다.
+  returnRateAnnual: number;
   returnRateMonthly: number;
   divRateMonthly: number;
 }
@@ -219,6 +236,34 @@ export class SimulationEngine {
     return { ...bestResult, calculatedTargetSpending: bestTarget };
   }
 
+  // 그 해의 시장 충격(%p)을 각 계좌의 월 복리율에 반영한다.
+  //
+  // **곱해지는 지점(현금·ISA·일반자산·사적연금의 성장 계산)은 건드리지 않는다.** 그 네 곳은
+  // 배당·적립·취득원가 회계와 얽혀 있고 골든 테스트(tax/)와 총자산 보존 테스트가 정확히 그
+  // 경로를 지킨다. 대신 그들이 읽는 요율 필드만 연초에 갈아 끼운다. Active* 객체는 이미 이
+  // 실행 전용 가변 사본이라(currentValue·costBasis·totalInvested를 매달 고친다) 요율을 해마다
+  // 고치는 것도 같은 성격의 변경이다.
+  //
+  // returnPath가 없으면 이 메서드는 **호출조차 되지 않는다** — 결정론 실행은 예전과 완전히
+  // 같은 명령 순서를 돈다. 이것이 "경로 미지정 시 비트 단위 동일"의 근거다.
+  private applyReturnShock(
+    activeAssets: readonly ActiveAsset[],
+    activePensions: readonly ActivePension[],
+    activeIsas: readonly ActiveIsa[],
+    shockAnnualPercentPoints: number
+  ): void {
+    const shock = shockAnnualPercentPoints / 100;
+    for (const asset of activeAssets) {
+      asset.growthRateMonthly = toMonthlyCompoundRate(asset.growthRateAnnual + shock);
+    }
+    for (const pension of activePensions) {
+      pension.returnRateMonthly = toMonthlyCompoundRate(pension.returnRateAnnual + shock);
+    }
+    for (const isa of activeIsas) {
+      isa.returnRateMonthly = toMonthlyCompoundRate(isa.returnRateAnnual + shock);
+    }
+  }
+
   private getExchangeRate(baseExchangeRate: number, exchangeScenario: string): number {
     if (exchangeScenario === 'usd_up') return baseExchangeRate * 1.1;
     if (exchangeScenario === 'usd_down') return baseExchangeRate * 0.9;
@@ -291,7 +336,7 @@ export class SimulationEngine {
       const growthRateAnnual = inflationMode === 'real'
         ? (asset.annualGrowthRate - inflationRate) / 100
         : asset.annualGrowthRate / 100;
-      const growthRateMonthly = Math.pow(Math.max(0, 1 + growthRateAnnual), 1 / 12) - 1;
+      const growthRateMonthly = toMonthlyCompoundRate(growthRateAnnual);
       const divRateMonthly = (asset.dividendYield / 100) / 12;
       
       const { dividendTaxRate, includedInFinancialIncome, capitalGainsTaxable } =
@@ -302,6 +347,7 @@ export class SimulationEngine {
       return {
         ...asset,
         currentValue,
+        growthRateAnnual,
         growthRateMonthly,
         divRateMonthly,
         taxRate: dividendTaxRate,
@@ -324,11 +370,12 @@ export class SimulationEngine {
       const returnRateAnnual = inflationMode === 'real'
         ? (totalReturnAnnual - inflationRate) / 100
         : totalReturnAnnual / 100;
-      const returnRateMonthly = Math.pow(Math.max(0, 1 + returnRateAnnual), 1 / 12) - 1;
+      const returnRateMonthly = toMonthlyCompoundRate(returnRateAnnual);
 
       return {
         ...p,
         currentBalance: p.balance,
+        returnRateAnnual,
         returnRateMonthly,
       };
     });
@@ -337,7 +384,7 @@ export class SimulationEngine {
       const returnRateAnnual = inflationMode === 'real'
         ? (isa.annualReturn - inflationRate) / 100
         : isa.annualReturn / 100;
-      const returnRateMonthly = Math.pow(Math.max(0, 1 + returnRateAnnual), 1 / 12) - 1;
+      const returnRateMonthly = toMonthlyCompoundRate(returnRateAnnual);
       const divRateMonthly = (isa.dividendYield / 100) / 12;
 
       return {
@@ -345,6 +392,7 @@ export class SimulationEngine {
         currentBalance: isa.balance,
         totalInvested: isa.balance,
         monthsSinceInception: 0,
+        returnRateAnnual,
         returnRateMonthly,
         divRateMonthly,
       };
@@ -455,7 +503,12 @@ export class SimulationEngine {
     return { retirementScore, retirementGrade, retirementAssetsAtRetirement: retirementAssets };
   }
 
-  runSingle(params: SimulationParams): SimulationResult {
+  // returnPath는 몬테카를로·시퀀스 리스크 전용 통로다(ReturnShockPath 주석 참고).
+  //
+  // run()/runForUtility()/findMaxSustainableValue()는 이 인자를 넘기지 않는다 — 저장된
+  // 시나리오의 숫자를 한 자리도 바꾸지 않기 위해서다. 확률 경로가 필요한 호출부는
+  // runSingle을 직접 부른다(run()은 시행당 이진탐색 30회를 더 돌아 1000시행이면 31,000회가 된다).
+  runSingle(params: SimulationParams, returnPath?: ReturnShockPath): SimulationResult {
     if (!params || !params.userProfile) {
       return {
         yearlyResults: [], fireAge: null, depletionAge: null,
@@ -541,6 +594,11 @@ export class SimulationEngine {
     let depletionAge: number | null = null;
 
     for (let y = 0; y < totalYears; y++) {
+      // 경로가 없으면 아예 호출하지 않는다(applyReturnShock 주석 참고). 경로가 짧으면
+      // 남은 해는 충격 0으로 본다 — 던지지 않는다.
+      if (returnPath !== undefined) {
+        this.applyReturnShock(activeAssets, activePensions, activeIsas, returnPath[y] ?? 0);
+      }
       const currentAge = startAge + y;
       const currentYear = new Date().getFullYear() + y;
       const isRetired = currentAge >= userProfile.retirementAge;
@@ -556,6 +614,10 @@ export class SimulationEngine {
       let annualPrivatePensionIncome = 0;
       let annualOtherIncome = 0;
       let annualSpending = 0;
+      // 목표 생활비 중 재원이 모자라 채우지 못한 금액. 인출 경로가 잔액을 넘겨 인출하지
+      // 않으므로 부족분은 자산을 마이너스로 만드는 대신 지출에서 조용히 깎인다 —
+      // 그 깎인 양을 여기 남긴다(SimulationYearlyResult.unmetSpending 주석 참조).
+      let annualUnmetSpending = 0;
       let annualDividendTaxPaid = 0;
       let annualPensionTaxPaid = 0;
       let annualNationalPensionTaxPaid = 0;
@@ -1057,7 +1119,10 @@ export class SimulationEngine {
             }
           }
           const unmet = remainingShortfall + blockedByFloor;
-          if (unmet > 0) actualMonthlySpending -= unmet;
+          if (unmet > 0) {
+            actualMonthlySpending -= unmet;
+            annualUnmetSpending += unmet;
+          }
         }
         annualSpending += actualMonthlySpending;
       }
@@ -1154,7 +1219,8 @@ export class SimulationEngine {
         cashAssets: cashBucketDisplay,
         dividendIncome: annualDividendIncome, nationalPensionIncome: annualNationalPensionIncome,
         privatePensionIncome: annualPrivatePensionIncome, pensionIncome, otherIncome: annualOtherIncome,
-        totalIncome, spending: annualSpending, healthcareSpending: annualHealthcareCost,
+        totalIncome, spending: annualSpending, unmetSpending: annualUnmetSpending,
+        healthcareSpending: annualHealthcareCost,
         hasTaxWarning, spouseAlive, spendingFactor,
         preTaxTotalIncome: annualPreTaxTotalIncome,
         dividendTaxPaid: annualDividendTaxPaid, pensionTaxPaid: annualPensionTaxPaid,

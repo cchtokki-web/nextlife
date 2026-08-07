@@ -215,3 +215,116 @@ describe('DashboardSection - IA 순서', () => {
     expect(screen.queryByText('금융소득종합과세 진입 가능성')).not.toBeInTheDocument();
   });
 });
+
+// **엔진이 계산해 두고도 화면이 침묵하던 값.**
+//
+// SimulationEngine.run은 'target' 전략에서도 findMaxSustainableValue로 "월 얼마까지 쓸 수
+// 있는가"를 계산해 calculatedTargetSpending에 담는다. 그런데 배너 조건이
+// spendingStrategy === 'max_sustainable'로 묶여 있어, 고정 생활비로 계획한 사용자는
+// 상속 목표가 0원인데 수억을 남기거나 반대로 자산이 고갈되는데도 아무 말을 듣지 못했다.
+describe('DashboardSection - 지속가능 생활비 제안 배너', () => {
+  test('더 쓸 수 있으면 그 금액을 제안한다', () => {
+    const richResult: SimulationResult = { ...result, calculatedTargetSpending: 4420000 };
+
+    render(<DashboardSection params={params} result={richResult} />);
+
+    expect(screen.getByText(/442만원/)).toBeInTheDocument();
+    expect(screen.getByText(/더 쓸 수 있습니다/)).toBeInTheDocument();
+  });
+
+  test('목표가 지속 불가능하면 줄여야 할 금액을 경고한다', () => {
+    const tightResult: SimulationResult = { ...result, calculatedTargetSpending: 2400000 };
+
+    render(<DashboardSection params={params} result={tightResult} />);
+
+    expect(screen.getByText(/240만원/)).toBeInTheDocument();
+    expect(screen.getByText(/지속하기 어렵습니다/)).toBeInTheDocument();
+  });
+
+  test('차이가 미미하면 배너를 띄우지 않는다', () => {
+    const closeResult: SimulationResult = { ...result, calculatedTargetSpending: 3100000 };
+
+    render(<DashboardSection params={params} result={closeResult} />);
+
+    expect(screen.queryByText(/더 쓸 수 있습니다/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/지속하기 어렵습니다/)).not.toBeInTheDocument();
+  });
+
+  // max_sustainable은 이미 그 값이 실제 생활비로 적용된 상태라, 기존 "최대 고정 생활비
+  // 산출 완료" 배너가 담당한다. 두 배너가 같은 숫자를 두 번 말하면 안 된다.
+  test('max_sustainable 전략에서는 제안 배너 대신 기존 적용 배너만 보여준다', () => {
+    const maxSusParams: SimulationParams = { ...params, spendingStrategy: 'max_sustainable' };
+    const maxSusResult: SimulationResult = { ...result, calculatedTargetSpending: 4420000 };
+
+    render(<DashboardSection params={maxSusParams} result={maxSusResult} />);
+
+    expect(screen.queryByText(/더 쓸 수 있습니다/)).not.toBeInTheDocument();
+    expect(screen.getByText('최대 고정 생활비 산출 완료')).toBeInTheDocument();
+  });
+});
+
+// 국민연금(본인 180만/배우자 20만)만 등록하고 투자자산을 하나도 넣지 않은 계획.
+// 엔진이 첫 해에 depletionAge를 잡으므로, 화면 전체가 "51세에 자산이 고갈될 위험"이라고
+// 말하던 것이 이 스위트가 막는 회귀다.
+describe('DashboardSection - 투자자산 미보유 계획', () => {
+  const noAssetParams: SimulationParams = {
+    ...params,
+    userProfile: { currentAge: 50, retirementAge: 60, expectancy: 90, targetMonthlySpending: 3500000 },
+    assets: [],
+    privatePensions: [],
+    nationalPension: { expectedMonthlyAmount: 1800000 },
+  };
+
+  const noAssetResult: SimulationResult = {
+    ...result,
+    yearlyResults: [
+      sharedYearlyResult({ age: 51, totalAssets: 0 }),
+      sharedYearlyResult({ age: 65, totalAssets: 0, nationalPensionIncome: 21600000 }),
+      sharedYearlyResult({ age: 90, totalAssets: 0 }),
+    ],
+    depletionAge: 51,
+    endingAssets: 0,
+    retirementScore: 32,
+    retirementGrade: '위험',
+    goalAchievementRate: 55,
+    utility: { ...utility, score: 32 },
+  };
+
+  test('헤드라인이 고갈이 아니라 투자자산 미보유로 말한다', () => {
+    render(<DashboardSection params={noAssetParams} result={noAssetResult} />);
+
+    // 헤드라인·차트 캡션·차트 빈 상태가 모두 같은 사실을 말하므로 헤드라인 문장 전체로 좁힌다.
+    expect(
+      screen.getAllByText(/위험 수준의 은퇴 준비 상태입니다\. 등록된 투자자산이 없어, 연금 등 고정소득만으로/).length
+    ).toBeGreaterThan(0);
+    expect(screen.queryByText(/51세에 자산이 고갈될 위험/)).not.toBeInTheDocument();
+  });
+
+  test('자산 추이 차트가 0원 축 대신 안내를 보여주고 상세보기 토글을 숨긴다', () => {
+    render(<DashboardSection params={noAssetParams} result={noAssetResult} />);
+
+    expect(screen.getByText(/자산 추이를 표시할 수 없습니다/)).toBeInTheDocument();
+    expect(screen.getByText('투자자산 없음')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '자산 구성 상세보기' })).not.toBeInTheDocument();
+  });
+
+  test('실행 로드맵에서 없는 계좌의 인출 개시와 고갈 노드를 그리지 않는다', () => {
+    render(<DashboardSection params={noAssetParams} result={noAssetResult} />);
+
+    expect(screen.queryByText('일반자산 인출 개시')).not.toBeInTheDocument();
+    expect(screen.queryByText('사적연금 수령 개시')).not.toBeInTheDocument();
+    expect(screen.queryByText('자산 고갈 예상')).not.toBeInTheDocument();
+    expect(screen.getByText('퇴직')).toBeInTheDocument();
+  });
+
+  // 인출할 자산이 없는 계획에 "인출 전략을 검토하라"고 하면 할 수 없는 일을 시키는 것이 된다.
+  test('과소비 배너가 인출 전략 대신 저축·은퇴 시점을 제안한다', () => {
+    const overspendingResult: SimulationResult = { ...noAssetResult, calculatedTargetSpending: 1910000 };
+
+    render(<DashboardSection params={noAssetParams} result={overspendingResult} />);
+
+    expect(screen.getByText(/지속하기 어렵습니다/)).toBeInTheDocument();
+    expect(screen.getByText(/추가 저축·투자로 자산을 마련해야 합니다/)).toBeInTheDocument();
+    expect(screen.queryByText(/인출 전략을 다시 검토/)).not.toBeInTheDocument();
+  });
+});

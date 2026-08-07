@@ -2,6 +2,7 @@ import { describe, test, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { CurrentStrategyAnalysis } from '@/web/features/Dashboard/expert/CurrentStrategyAnalysis';
 import { UtilityBreakdown } from '@/core/entities/types';
+import { DEFAULT_UTILITY_CONFIG } from '@/core/usecases/utility/utilityWeights';
 
 // depletionSafety 20/20(비율 1.0, 강점) / bequestAdequacy 0/10(비율 0, 약점)이 되도록 구성
 const utility: UtilityBreakdown = {
@@ -11,7 +12,7 @@ const utility: UtilityBreakdown = {
 
 describe('CurrentStrategyAnalysis', () => {
   test('강점/약점 제목과 analyzeCurrentStrategy 결과 문구를 렌더링한다', () => {
-    render(<CurrentStrategyAnalysis utility={utility} />);
+    render(<CurrentStrategyAnalysis utility={utility} cfg={DEFAULT_UTILITY_CONFIG} />);
 
     expect(screen.getByText('장점')).toBeInTheDocument();
     expect(screen.getByText('단점')).toBeInTheDocument();

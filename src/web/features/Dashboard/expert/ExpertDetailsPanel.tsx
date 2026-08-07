@@ -7,6 +7,9 @@ import { SimulationParams, SimulationResult } from '../../../../core/entities/ty
 import { SimulationEngine } from '../../../../core/usecases/SimulationEngine';
 import { computeExpertAnalytics } from '../../../../core/usecases/dashboard/computeExpertAnalytics';
 import { computeSensitivityAnalysis } from '../../../../core/usecases/dashboard/computeSensitivityAnalysis';
+import { resolvePlanAssetStatus } from '../../../../core/usecases/dashboard/resolvePlanAssetStatus';
+import { estimateHealthInsuranceCliff } from '../../../../core/usecases/healthcare/estimateHealthInsuranceCliff';
+import { resolveTaxContext } from '../../../../core/usecases/tax/taxContext';
 import { YearlyChart } from '../YearlyChart';
 import { SensitivityAnalysisSection } from './SensitivityAnalysisSection';
 
@@ -36,6 +39,21 @@ export function ExpertDetailsPanel({
     () => computeSensitivityAnalysis(params, sensitivityBaseline, engine),
     [params, sensitivityBaseline, engine]
   );
+  // 시나리오의 unmetSpendingYears와 같은 식으로 세야 "결과가 baseline과 같은가" 판정이
+  // 성립한다(computeSensitivityAnalysis 참조).
+  const baselineUnmetSpendingYears = useMemo(
+    () => sensitivityBaseline.yearlyResults.filter((y) => y.unmetSpending > 0).length,
+    [sensitivityBaseline]
+  );
+  // 위 연평균 건보료와 같은 result를 근거로 삼는다 — 두 숫자가 나란히 놓이므로 서로 다른
+  // 실행에서 온 값이면 안 된다(민감도 기준선이 params로 재계산하는 것과는 반대 이유다).
+  const healthInsuranceCliff = useMemo(
+    () => estimateHealthInsuranceCliff(
+      result.yearlyResults,
+      resolveTaxContext(params.taxSettings, params.taxLawVersion)
+    ),
+    [result.yearlyResults, params.taxSettings, params.taxLawVersion]
+  );
 
   return (
     <GlassCard>
@@ -61,6 +79,22 @@ export function ExpertDetailsPanel({
                 <dd className="font-semibold">{formatValue(analytics.avgNetIncome)}</dd>
               </div>
             </dl>
+            {/* 위 건강보험료는 이 시뮬레이터의 모델(문턱 초과분 × 요율)이 부과한 값이다.
+                실제 제도는 피부양자 자격을 잃는 순간 소득 전체에 부과되므로 훨씬 크다.
+                그 계단을 계산에 넣지 않는 이유는 estimateHealthInsuranceCliff 주석 참고.
+
+                리스크 경고 카드는 부과 기준 소득이 문턱의 90~110%인 "경계 구간"에서만 뜨므로,
+                이미 문턱을 크게 넘어선 사용자는 그 카드를 보지 못한다. 여기서는 조건 없이 보여준다. */}
+            {healthInsuranceCliff && (
+              <p className="mt-3 rounded-md bg-danger/5 px-3 py-2 text-xs text-foreground-muted">
+                <strong className="text-danger">피부양자 자격 상실 시</strong>{' '}
+                부담이 가장 큰 {healthInsuranceCliff.peakAge}세 기준으로, 위 계산상 월{' '}
+                {formatValue(Math.round(healthInsuranceCliff.currentMonthly))}인 보험료가 월{' '}
+                <strong>{formatValue(Math.round(healthInsuranceCliff.ifDependentLostMonthly))}</strong>까지 오릅니다
+                (연 {formatValue(Math.round(healthInsuranceCliff.annualIncrease))} 추가 부담).
+                이 추정은 소득분만 계산한 것이라 <strong>재산·자동차분</strong>이 더 붙습니다.
+              </p>
+            )}
           </section>
 
           <section>
@@ -79,7 +113,13 @@ export function ExpertDetailsPanel({
             </ul>
           </section>
 
-          <SensitivityAnalysisSection baselineDepletionAge={sensitivityBaseline.depletionAge} scenarios={sensitivityScenarios} />
+          <SensitivityAnalysisSection
+            baselineDepletionAge={sensitivityBaseline.depletionAge}
+            baselineEndingAssets={sensitivityBaseline.endingAssets}
+            baselineUnmetSpendingYears={baselineUnmetSpendingYears}
+            scenarios={sensitivityScenarios}
+            planAssetStatus={resolvePlanAssetStatus(sensitivityBaseline)}
+          />
 
           {isPro && (
             <section>

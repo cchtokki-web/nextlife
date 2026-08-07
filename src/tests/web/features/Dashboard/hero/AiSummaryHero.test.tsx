@@ -67,6 +67,7 @@ describe('AiSummaryHero', () => {
         isPro={false}
         depletionAge={null}
         householdEndAge={90}
+        planAssetStatus="sustained"
       />
     );
     expect(container).toBeEmptyDOMElement();
@@ -84,6 +85,7 @@ describe('AiSummaryHero', () => {
         isPro={false}
         depletionAge={null}
         householdEndAge={90}
+        planAssetStatus="sustained"
         utility={utility}
         userProfile={{ currentAge: 55, retirementAge: 60, expectancy: 90, targetMonthlySpending: 3000000 }}
       />
@@ -106,6 +108,7 @@ describe('AiSummaryHero', () => {
         isPro={false}
         depletionAge={76}
         householdEndAge={100}
+        planAssetStatus="depleted"
         utility={utility}
         userProfile={{ currentAge: 55, retirementAge: 60, expectancy: 75, targetMonthlySpending: 3000000 }}
       />
@@ -144,6 +147,7 @@ describe('AiSummaryHero', () => {
         isPro={false}
         depletionAge={null}
         householdEndAge={90}
+        planAssetStatus="sustained"
         utility={utility}
         recommendation={recommendation}
         userProfile={{ currentAge: 55, retirementAge: 60, expectancy: 90, targetMonthlySpending: 3000000 }}
@@ -168,6 +172,7 @@ describe('AiSummaryHero', () => {
         isPro={false}
         depletionAge={null}
         householdEndAge={90}
+        planAssetStatus="sustained"
         utility={utility}
         userProfile={{ currentAge: 55, retirementAge: 60, expectancy: 90, targetMonthlySpending: 3000000 }}
       />
@@ -193,6 +198,7 @@ describe('AiSummaryHero', () => {
         isPro={false}
         depletionAge={null}
         householdEndAge={90}
+        planAssetStatus="sustained"
         utility={utility}
         userProfile={{ currentAge: 55, retirementAge: 60, expectancy: 90, targetMonthlySpending: 3000000 }}
       />
@@ -232,6 +238,7 @@ describe('AiSummaryHero', () => {
           isPro={false}
           depletionAge={null}
           householdEndAge={90}
+          planAssetStatus="sustained"
           utility={{ ...utility, score: currentScore }}
           recommendation={recommendation}
           userProfile={{ currentAge: 55, retirementAge: 60, expectancy: 90, targetMonthlySpending: 3000000 }}

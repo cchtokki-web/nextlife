@@ -37,6 +37,22 @@ function assertNever(x: never): never {
   throw new Error(`Unhandled variant: ${x}`);
 }
 
+// 생활비 배수 변경을 "얼마에서 얼마로, 얼마만큼 늘/줄었는지"로 옮긴다.
+//
+// 방향을 하드코딩하면 안 된다. 배수는 1보다 클 수도(잔여자산 과다 해소) 작을 수도(자산이
+// 부족해 목표를 낮춰야 하는 계획) 있는데, 예전에는 '증액'과 '늘리다'가 문장에 박혀 있어
+// "350만원 → 280만원(약 -70만원 증액)로 늘립니다"라는 뒤집힌 문장이 화면에 나왔다.
+// buildReasons와 labelForSingleFieldChange 두 곳이 같은 규칙을 쓰므로 여기 한 곳에 둔다.
+function describeSpendingChange(before: number, after: number): { phrase: string; increases: boolean } {
+  const increases = after > before;
+  return {
+    increases,
+    phrase:
+      `월 약 ${formatManwon(before)} → ${formatManwon(after)}` +
+      `(약 ${formatManwon(Math.abs(after - before))} ${increases ? '증액' : '감액'})`,
+  };
+}
+
 // buildReasons의 5번째 인자. 없으면(하위 호환) 기존 동작(정형 문구 2종)만 사용한다.
 export interface BuildReasonsContext {
   currentUtility: UtilityBreakdown;
@@ -86,8 +102,9 @@ export function buildReasons(
   ) {
     const before = context.originalMonthlyTarget;
     const after = Math.round(before * plan.monthlySpendingMultiplier);
+    const { phrase, increases } = describeSpendingChange(before, after);
     reasons.push(
-      `목표 생활비를 월 약 ${formatManwon(before)} → ${formatManwon(after)}(약 ${formatManwon(after - before)} 증액)로 늘리면 ` +
+      `목표 생활비를 ${phrase}로 ${increases ? '늘리면' : '줄이면'} ` +
         `평생 효용이 ${context.currentUtility.score}점 → ${context.recommendedUtility.score}점으로 개선됩니다.`
     );
   }
@@ -234,10 +251,8 @@ function labelForSingleFieldChange(
     case 'monthlySpendingMultiplier': {
       const before = originalMonthlyTarget;
       const after = Math.round(before * recommendedPlan.monthlySpendingMultiplier);
-      return (
-        `목표 생활비를 월 약 ${formatManwon(before)} → ${formatManwon(after)}` +
-        `(약 ${formatManwon(after - before)} 증액)로 늘립니다.`
-      );
+      const { phrase, increases } = describeSpendingChange(before, after);
+      return `목표 생활비를 ${phrase}로 ${increases ? '늘립니다' : '줄입니다'}.`;
     }
     default:
       return assertNever(field);

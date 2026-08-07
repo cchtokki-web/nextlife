@@ -6,6 +6,17 @@ export interface SensitivityScenario {
   label: string;
   depletionAge: number | null;
   deltaYears: number | null;
+  // 가구 종료 시점의 잔여자산과 baseline 대비 증감.
+  //
+  // depletionAge만으로는 여유 있는 계획에서 6개 시나리오가 전부 null이 되어 화면이
+  // "고갈 위험 없습니다" 한 줄로 접힌다. 실제로는 수익률 ±2%p가 기말자산을 수억 원
+  // 갈라놓는데도 사용자는 아무 차이도 보지 못했다. 재계산은 이미 하고 있었으므로
+  // 추가 비용 없이 결과에서 이 값을 함께 싣는다.
+  endingAssets: number;
+  endingAssetsDelta: number;
+  // 목표 생활비를 채우지 못한 해의 수. 자산이 남아 있어도 계획이 실패한 해다.
+  // depletionAge는 이 해를 잡지 못한다(SimulationYearlyResult.unmetSpending 주석 참조).
+  unmetSpendingYears: number;
 }
 
 interface ScenarioDefinition {
@@ -33,10 +44,33 @@ function shiftInflation(params: SimulationParams, delta: number): SimulationPara
 // currentAge+1 미만, expectancy-1 초과로 은퇴시점이 넘어가지 않도록 clamp한다 — 그렇지 않으면
 // "은퇴 기간이 없거나(현재나이보다 빠른 은퇴)" "은퇴 후 생존 기간이 없는(기대수명 이후 은퇴)"
 // 무의미한 시나리오가 만들어진다.
+//
+// **일반자산 인출 개시 나이도 함께 옮긴다.** 엔진은 일반자산 매도 시작을
+// `withdrawalPlan.generalAssetWithdrawalStartAge ?? userProfile.retirementAge`로 읽는데,
+// 센티널 단계(verifiedSentinelPlan의 SENTINEL_AXES)가 이 필드를 항상 채워 넣는다. 그래서
+// retirementAge만 옮긴 예전 구현에서는 은퇴만 3년 당겨지고 자산 인출은 옛 나이에 그대로
+// 머물러, "은퇴시점 ±3년" 시나리오가 사실상 아무것도 검증하지 못했다.
+//
+// clamp된 실제 이동량(clamped − retirementAge)을 쓴다. delta를 그대로 더하면 은퇴 나이는
+// clamp에 걸려 멈췄는데 인출 나이만 계속 움직여 둘의 간격이 벌어진다.
+//
+// 미설정(undefined)이면 채워 넣지 않는다 — 미설정은 "은퇴 나이를 따른다"는 뜻이라 이미
+// 함께 움직이고, 여기서 값을 만들면 사용자가 세우지 않은 계획을 시나리오가 지어내게 된다.
 function shiftRetirementAge(params: SimulationParams, delta: number): SimulationParams {
   const { currentAge, expectancy, retirementAge } = params.userProfile;
   const clamped = Math.min(expectancy - 1, Math.max(currentAge + 1, retirementAge + delta));
-  return { ...params, userProfile: { ...params.userProfile, retirementAge: clamped } };
+  const appliedDelta = clamped - retirementAge;
+
+  const generalAssetWithdrawalStartAge = params.withdrawalPlan?.generalAssetWithdrawalStartAge;
+  const withdrawalPlan = generalAssetWithdrawalStartAge === undefined
+    ? params.withdrawalPlan
+    : { ...params.withdrawalPlan, generalAssetWithdrawalStartAge: generalAssetWithdrawalStartAge + appliedDelta };
+
+  return {
+    ...params,
+    userProfile: { ...params.userProfile, retirementAge: clamped },
+    withdrawalPlan,
+  };
 }
 
 const SCENARIO_DEFINITIONS: ScenarioDefinition[] = [
@@ -89,6 +123,9 @@ export function computeSensitivityAnalysis(
         label: def.label,
         depletionAge,
         deltaYears: computeDeltaYears(baselineDepletionAge, depletionAge, householdEndAge),
+        endingAssets: result.endingAssets,
+        endingAssetsDelta: result.endingAssets - baselineResult.endingAssets,
+        unmetSpendingYears: result.yearlyResults.filter((y) => y.unmetSpending > 0).length,
         sortAge: depletionAge ?? Infinity,
       });
     } catch {

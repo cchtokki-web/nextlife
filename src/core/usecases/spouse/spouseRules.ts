@@ -69,6 +69,15 @@ export function computeSpendingFactor(selfAlive: boolean, spouseAlive: boolean):
   return SINGLE_SURVIVOR_SPENDING_FACTOR;
 }
 
+// 배우자의 국민연금 개시 시점을 **본인 나이로** 환산한 값.
+//
+// 화면(로드맵 마일스톤, 소득 차트의 기준선)은 전부 본인 나이 축으로 그려지는데, 배우자
+// 개시 나이는 배우자 나이로 저장된다. 그 환산 규칙을 소비처마다 다시 쓰면(현재 나이 차이를
+// 빼고 더하는 식) 한 곳만 어긋나도 조용히 몇 년 밀린 기준선이 그려진다 — 한 곳에 둔다.
+export function spouseNationalPensionStartSelfAge(resolved: ResolvedSpouse): number {
+  return resolved.selfStartAge + (resolved.nationalPensionStartAge - resolved.currentAge);
+}
+
 // 배우자 본인 명의 국민연금 월 수령액(실질, 조정계수 반영). 개시 전이면 0.
 // selfAge는 본인 나이이며, 배우자 나이로 환산해 판정한다.
 export function computeSpouseNationalPensionMonthly(

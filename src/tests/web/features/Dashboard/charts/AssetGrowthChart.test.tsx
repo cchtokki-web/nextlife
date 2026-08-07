@@ -53,6 +53,7 @@ describe('AssetGrowthChart - 단순화 모드 토글', () => {
         caption=""
         showBreakdown={false}
         onToggleBreakdown={() => {}}
+        planAssetStatus="sustained"
       />
     );
     expect(screen.getByRole('button', { name: '자산 구성 상세보기' })).toBeInTheDocument();
@@ -67,6 +68,7 @@ describe('AssetGrowthChart - 단순화 모드 토글', () => {
         caption=""
         showBreakdown={true}
         onToggleBreakdown={() => {}}
+        planAssetStatus="sustained"
       />
     );
     expect(screen.getByRole('button', { name: '간단히 보기' })).toBeInTheDocument();
@@ -84,6 +86,7 @@ describe('AssetGrowthChart - 단순화 모드 토글', () => {
         caption=""
         showBreakdown={false}
         onToggleBreakdown={onToggleBreakdown}
+        planAssetStatus="sustained"
       />
     );
 

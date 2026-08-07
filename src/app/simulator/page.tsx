@@ -8,16 +8,20 @@ import { computeMonthlySpendingComposition } from '../../core/usecases/MonthlySp
 import { computeRiskAlerts } from '../../core/usecases/dashboard/computeRiskAlerts';
 import { computeExecutionRoadmap, selectDepletionAge } from '../../core/usecases/dashboard/computeExecutionRoadmap';
 import { computeSensitivityAnalysis } from '../../core/usecases/dashboard/computeSensitivityAnalysis';
+import { resolvePlanAssetStatus } from '../../core/usecases/dashboard/resolvePlanAssetStatus';
 import { describeFireAge } from '../../core/usecases/dashboard/describeFireAge';
+import { useMonteCarlo } from '../../web/hooks/useMonteCarlo';
+import { computeSequenceRisk } from '../../core/usecases/montecarlo/sequenceRisk';
+import { resolveMonteCarloConfig } from '../../core/usecases/montecarlo/volatilityPresets';
 import { describeDepletionAge } from '../../core/usecases/dashboard/describeDepletionAge';
-import { renderRiskAlertsSection, renderItemizedChecklistSection, renderExecutionRoadmapSection, renderSensitivityTableSection } from '../../web/features/Pdf/pdfReportSections';
+import { renderRiskAlertsSection, renderItemizedChecklistSection, renderExecutionRoadmapSection, renderSensitivityTableSection, renderMonteCarloSection } from '../../web/features/Pdf/pdfReportSections';
 import { analyzeCurrentStrategy, explainBequestAdequacy } from '../../core/usecases/utility/utilityAnalysis';
 import { resolveTaxSettings } from '../../core/usecases/tax/taxRates';
 import { NATIONAL_PENSION_NORMAL_START_AGE } from '../../core/usecases/pension/nationalPensionRules';
 import { useStrategyPipeline } from '../../web/hooks/useStrategyPipeline';
 import { useMediaQuery } from '../../web/hooks/useBrowserEnvironment';
 import { runCompiledScenario } from '../../core/usecases/strategy/runCompiledScenario';
-import { UTILITY_COMPONENT_META } from '../../web/features/Dashboard/utilityComponentMeta';
+import { buildUtilityComponentMeta } from '../../web/features/Dashboard/utilityComponentMeta';
 import { initialParams } from '../../infrastructure/storage/localStore';
 import { AssetFormSection } from '../../web/features/AssetForm/AssetFormSection';
 import { ScenarioManager } from '../../web/features/Scenario/ScenarioManager';
@@ -124,6 +128,20 @@ export default function Home() {
     isComputingRecommendation, result,
   } = useStrategyPipeline(activeParams, engine);
 
+  // 몬테카를로는 워커에서, 시퀀스 리스크는 메인 스레드에서 돈다.
+  //
+  // **둘 다 effective.params를 쓴다** — 엔진이 실제로 계산에 쓴 값이다. activeParams나
+  // compiled.params를 주면 화면의 결정론 곡선과 확률 밴드가 서로 다른 세계를 그린다
+  // (PDF가 reportParams로 effective.params를 쓰는 것과 같은 이유).
+  //
+  // 시퀀스 리스크를 워커로 보내지 않는 이유: runSingle 5회뿐이라 이미 동기로 도는
+  // 민감도 분석 6회보다 싸다. 순서 리스크 패널은 즉시 뜨고 확률 카드만 늦게 채워진다.
+  const { result: monteCarlo, status: monteCarloStatus } = useMonteCarlo(effective.params);
+  const sequenceRisk = useMemo(
+    () => computeSequenceRisk(effective.params, engine, resolveMonteCarloConfig(effective.params)),
+    [effective.params, engine]
+  );
+
   // Track simulation runs with a simple debounce
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -225,7 +243,9 @@ export default function Home() {
 
       // Lifetime Utility Score / AI 추천 전략 PDF 섹션(페이지 2)용 데이터 준비
       const utilityComponentRowsHtml = utility
-        ? UTILITY_COMPONENT_META.map(({ key, label, max, color }) => {
+        // 같은 화면의 강점/약점 문장(analyzeCurrentStrategy)이 이미 effective.utilityConfig를
+        // 쓰고 있었는데 막대만 기본 배점을 고정하고 있었다 — 두 숫자의 분모가 어긋났다.
+        ? buildUtilityComponentMeta(effective.utilityConfig.weights).map(({ key, label, max, color }) => {
             const value = utility.components[key];
             const pct = max > 0 ? Math.max(0, Math.min(100, (value / max) * 100)) : 0;
             return `
@@ -281,10 +301,19 @@ export default function Home() {
 
       const riskAlerts = computeRiskAlerts(result, reportParams, effective.utilityConfig);
       const riskAlertsSectionHtml = renderRiskAlertsSection(riskAlerts);
-      const roadmap = computeExecutionRoadmap(reportParams, recommendation, selectDepletionAge(recommendation, result));
+      // 화면(DashboardSection)과 같은 함수로 자산 상태를 판정한다 — PDF와 화면이 서로 다른
+      // 근거로 "고갈"과 "미보유"를 말하면 같은 계획의 두 문서가 어긋난다.
+      const planAssetStatus = resolvePlanAssetStatus(result);
+      const roadmap = computeExecutionRoadmap(reportParams, recommendation, selectDepletionAge(recommendation, result), planAssetStatus);
       const executionRoadmapSectionHtml = renderExecutionRoadmapSection(roadmap);
       const sensitivityScenarios = computeSensitivityAnalysis(reportParams, result, engine);
-      const sensitivityTableSectionHtml = renderSensitivityTableSection(sensitivityScenarios);
+      const sensitivityTableSectionHtml = renderSensitivityTableSection(sensitivityScenarios, {
+        depletionAge: result.depletionAge,
+        // computeSensitivityAnalysis가 시나리오별로 세는 것과 같은 식이어야 "결과가 baseline과
+        // 같은가" 판정이 성립한다.
+        unmetSpendingYears: result.yearlyResults.filter((y) => y.unmetSpending > 0).length,
+        planAssetStatus,
+      });
 
       // Create a temporary container
       const container = document.createElement('div');
@@ -344,12 +373,12 @@ export default function Home() {
                   <span style="float: right; font-size: 15px; color: #0f172a; font-weight: 700;">${goalAchievementRate}%</span>
                 </div>
                 <div style="font-size: 13.5px; border-bottom: 1px dashed #e2e8f0; padding-bottom: 8px;">
-                  <span style="font-weight: 600; color: #475569;">FIRE 조기은퇴 가능 나이</span>
-                  <span style="float: right; font-size: 15px; color: #0f172a; font-weight: 700;">${describeFireAge(fireAge, userProfile.expectancy)}</span>
+                  <span style="font-weight: 600; color: #475569;">소득만으로 생활비 충당 가능 시점<br/><span style="font-size: 10px; color: #94a3b8; font-weight: 400;">(배당·연금 등 그 해 소득이 목표 생활비를 넘어서는 나이)</span></span>
+                  <span style="float: right; font-size: 15px; color: #0f172a; font-weight: 700;">${describeFireAge(fireAge, userProfile.expectancy, userProfile.retirementAge)}</span>
                 </div>
                 <div style="font-size: 13.5px; border-bottom: 1px dashed #e2e8f0; padding-bottom: 8px;">
                   <span style="font-weight: 600; color: #475569;">자산 고갈 예상 나이</span>
-                  <span style="float: right; font-size: 15px; color: #0f172a; font-weight: 700;">${describeDepletionAge(depletionAge, householdEndAge, userProfile.expectancy)}</span>
+                  <span style="float: right; font-size: 15px; color: #0f172a; font-weight: 700;">${describeDepletionAge(depletionAge, householdEndAge, userProfile.expectancy, planAssetStatus)}</span>
                 </div>
                 <div style="grid-column: span 2; font-size: 13.5px; padding-top: 8px;">
                   <span style="font-weight: 600; color: #475569;">사망 시(${householdEndAge > userProfile.expectancy ? `배우자 기대수명 시점, 본인 나이 ${householdEndAge}세` : `기대수명 ${householdEndAge}세`}) 잔여 자산</span>
@@ -526,6 +555,29 @@ export default function Home() {
         </div>
       `;
 
+      // 시장 변동성 페이지. 워커가 아직 끝나지 않았으면 통째로 생략한다 —
+      // 그때는 FIXED_PAGE_COUNT도 5로 돌아가 페이지 번호가 자동으로 맞는다.
+      //
+      // 고정 페이지 수를 상수로 뽑는 이유: 예전에는 총 페이지 수와 각 표 페이지의 번호가
+      // 5와 6을 리터럴로 따로 들고 있었다. 섹션을 하나 넣으려면 세 곳을 동시에 고쳐야 했고,
+      // 한 곳만 고치면 "페이지 6 / 10"과 실제 장수가 어긋나도 아무도 알아채지 못한다.
+      const monteCarloHtml = renderMonteCarloSection(monteCarlo, sequenceRisk);
+      const FIXED_PAGE_COUNT = 5 + (monteCarloHtml !== '' ? 1 : 0);
+      if (monteCarloHtml !== '') {
+        pagesHtml += `
+          <div class="pdf-page">
+            <div class="pdf-content">
+              <h2 style="font-size: 16px; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; color: #0f172a; margin-top: 0; margin-bottom: 10px;">7. 시장 변동성 분석</h2>
+              ${monteCarloHtml}
+            </div>
+            <div class="pdf-footer">
+              <span>NextLife 은퇴 자산 시뮬레이션 리포트</span>
+              <span>페이지 ${FIXED_PAGE_COUNT} / {total_pages}</span>
+            </div>
+          </div>
+        `;
+      }
+
       // Page 5+: Tables
       const chunks: typeof yearlyResults[] = [];
       const rowsPerPage = 30; // Fits A4 page beautifully with comfortable vertical rhythm
@@ -557,7 +609,7 @@ export default function Home() {
         : '<p style="font-size: 9.5px; color: #94a3b8; margin: 0 0 8px;">* 아래 금액은 물가상승률이 매년 누적 반영된 명목 가치입니다.</p>';
 
       chunks.forEach((chunk, chunkIdx) => {
-        const pageNum = chunkIdx + 6;
+        const pageNum = chunkIdx + FIXED_PAGE_COUNT + 1;
         const isLastChunk = chunkIdx === chunks.length - 1 && !hasSpendingSection;
         pagesHtml += `
           <div class="pdf-page">
@@ -627,7 +679,7 @@ export default function Home() {
       });
 
       spendingChunks.forEach((chunk, chunkIdx) => {
-        const pageNum = chunks.length + 6 + chunkIdx;
+        const pageNum = chunks.length + FIXED_PAGE_COUNT + 1 + chunkIdx;
         const isLastChunk = chunkIdx === spendingChunks.length - 1;
         pagesHtml += `
           <div class="pdf-page">
@@ -692,7 +744,7 @@ export default function Home() {
         `;
       });
 
-      const totalPages = 5 + chunks.length + spendingChunks.length;
+      const totalPages = FIXED_PAGE_COUNT + chunks.length + spendingChunks.length;
       pagesHtml = pagesHtml.replaceAll('{total_pages}', totalPages.toString());
 
       // Append pages html
@@ -975,6 +1027,9 @@ export default function Home() {
               recommendationFailed={recommendationFailed}
               isComputingRecommendation={isComputingRecommendation}
               sentinels={sentinels}
+              monteCarlo={monteCarlo}
+              monteCarloStatus={monteCarloStatus}
+              sequenceRisk={sequenceRisk}
             />
           </section>
 
