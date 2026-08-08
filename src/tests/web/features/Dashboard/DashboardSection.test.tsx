@@ -393,7 +393,7 @@ describe('DashboardSection - 실행 로드맵이 Before/After 토글을 따른�
   test('추천 적용 시 추천 기준으로 바뀌고 옮겨진 나이를 배지로 밝힌다', () => {
     render(<DashboardSection params={params} result={result} recommendation={rec} />);
 
-    fireEvent.click(screen.getByRole('button', { name: '추천 적용하기' }));
+    fireEvent.click(screen.getByRole('button', { name: '추천안 결과 보기' }));
 
     expect(screen.getByText(/AI 추천 전략 기준/)).toBeInTheDocument();
     expect(screen.getByText('현재 65세 → 추천 60세')).toBeInTheDocument();
