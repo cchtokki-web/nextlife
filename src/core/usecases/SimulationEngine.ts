@@ -183,11 +183,35 @@ export class SimulationEngine {
 
   // 이 시행이 "지속 가능"한가. 하한선이 없으면 기존 판정("고갈되지 않았거나 기말자산이 남음")을
   // 비트 단위로 그대로 쓴다.
-  private meetsSustainabilityGoal(result: SimulationResult, assetFloor: number): boolean {
+  private meetsSustainabilityGoal(
+    result: SimulationResult,
+    assetFloor: number,
+    trialParams: SimulationParams
+  ): boolean {
     // 잔액이 아주 조금 남았더라도 목표 생활비를 못 쓴 해가 있으면 그 금액은 "지속 가능한
     // 생활비"가 아니다. depletionAge만 보면 인출 가능한 잔액만 쓰고 멈춘 경로가 성공으로
     // 오인되어 탐색 상한(월 5천만원)까지 치솟는다.
     if (result.yearlyResults.some((year) => year.unmetSpending > 0)) return false;
+
+    // unmetSpending은 인출 경로가 남긴 진단값이다. 특정 소득/연금 조합에서 그 값이 0으로
+    // 남더라도 실제 spending이 목표보다 작으면 지속 가능하다고 볼 수 없다. 탐색이 시험한
+    // 월 목표액으로 연도별 필요액을 직접 재구성해 이 두 번째 불변식으로 검증한다.
+    const { userProfile, inflationMode, inflationRate } = trialParams;
+    const fullyFunded = result.yearlyResults
+      .filter((year) => year.age >= userProfile.retirementAge)
+      .every((year) => {
+        const elapsedYears = year.age - userProfile.currentAge;
+        const baseAnnualTarget = userProfile.targetMonthlySpending * 12
+          * (inflationMode === 'nominal'
+            ? Math.pow(1 + inflationRate / 100, elapsedYears)
+            : 1)
+          * year.spendingFactor;
+        const requiredAnnualSpending = baseAnnualTarget + year.healthcareSpending;
+        // 월별 부동소수 계산을 12회 합산하므로 표시 통화 1원 미만의 오차만 허용한다.
+        return year.spending + 1 >= requiredAnnualSpending;
+      });
+    if (!fullyFunded) return false;
+
     if (assetFloor > 0) return result.endingAssets >= assetFloor;
     return result.depletionAge === null || result.endingAssets > 0;
   }
@@ -200,9 +224,10 @@ export class SimulationEngine {
 
     for (let i = 0; i < 30; i++) {
       const mid = (low + high) / 2;
-      const result = this.runSingle(this.sustainabilityTrialParams(params, mid));
+      const trialParams = this.sustainabilityTrialParams(params, mid);
+      const result = this.runSingle(trialParams);
 
-      if (this.meetsSustainabilityGoal(result, assetFloor)) {
+      if (this.meetsSustainabilityGoal(result, assetFloor, trialParams)) {
         bestTarget = mid;
         low = mid;
       } else {
@@ -221,9 +246,10 @@ export class SimulationEngine {
 
     for (let i = 0; i < 30; i++) {
       const mid = (low + high) / 2;
-      const result = this.runSingle(this.sustainabilityTrialParams(params, mid));
+      const trialParams = this.sustainabilityTrialParams(params, mid);
+      const result = this.runSingle(trialParams);
 
-      if (this.meetsSustainabilityGoal(result, assetFloor)) {
+      if (this.meetsSustainabilityGoal(result, assetFloor, trialParams)) {
         bestResult = result;
         bestTarget = mid;
         low = mid;
