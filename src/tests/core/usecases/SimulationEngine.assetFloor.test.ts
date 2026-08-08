@@ -119,4 +119,11 @@ describe('SimulationEngine - assetFloor와 max_sustainable', () => {
 
     expect(zero.calculatedTargetSpending).toBe(none.calculatedTargetSpending);
   });
+
+  test('목표 생활비를 못 쓴 해가 생기는 상한값을 지속 가능하다고 판정하지 않는다', () => {
+    const result = engine.run(params({ spendingStrategy: 'max_sustainable' }));
+
+    expect(result.calculatedTargetSpending).toBeLessThan(50000000);
+    expect(result.yearlyResults.every((year) => year.unmetSpending === 0)).toBe(true);
+  });
 });

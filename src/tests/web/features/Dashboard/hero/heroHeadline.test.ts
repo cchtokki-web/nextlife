@@ -38,6 +38,19 @@ describe('buildHeroHeadline', () => {
     expect(headline.text).not.toContain('고갈될 위험');
   });
 
+  test('기준 시나리오가 유지돼도 몬테카를로 위험이 있으면 확률과 노란 신호를 표시한다', () => {
+    const headline = buildHeroHeadline(92, null, 90, 'sustained', {
+      successRate: 0.8,
+      fullSpendingRate: 0.47,
+    });
+
+    expect(headline.emoji).toBe('🟡');
+    expect(headline.text).toContain('기준 시나리오에서는');
+    expect(headline.text).toContain('80%');
+    expect(headline.text).toContain('47%');
+    expect(headline.text).not.toContain('고갈 위험이 없습니다');
+  });
+
   // 투자자산을 하나도 등록하지 않은 사용자는 엔진이 첫 해에 depletionAge를 잡아
   // "51세에 자산이 고갈될 위험이 있습니다"가 나왔다. 그에게는 고갈시킬 자산 자체가 없다.
   test('투자자산 미보유면 고갈 나이가 있어도 고갈이라고 말하지 않는다', () => {

@@ -15,7 +15,7 @@ import { useMonteCarlo } from '../../web/hooks/useMonteCarlo';
 import { computeSequenceRisk } from '../../core/usecases/montecarlo/sequenceRisk';
 import { resolveMonteCarloConfig } from '../../core/usecases/montecarlo/volatilityPresets';
 import { describeDepletionAge } from '../../core/usecases/dashboard/describeDepletionAge';
-import { renderRiskAlertsSection, renderItemizedChecklistSection, renderExecutionRoadmapSection, renderSensitivityTableSection, renderMonteCarloSection, renderShortfallSummarySection } from '../../web/features/Pdf/pdfReportSections';
+import { formatCurrencyUnit, renderRiskAlertsSection, renderItemizedChecklistSection, renderExecutionRoadmapSection, renderSensitivityTableSection, renderMonteCarloSection, renderShortfallSummarySection } from '../../web/features/Pdf/pdfReportSections';
 import { analyzeCurrentStrategy, explainBequestAdequacy } from '../../core/usecases/utility/utilityAnalysis';
 import { explainUtilityComponents } from '../../core/usecases/utility/explainUtilityComponents';
 import { resolveTaxSettings } from '../../core/usecases/tax/taxRates';
@@ -181,7 +181,7 @@ export default function Home() {
 
   const formatValue = (val: number): string => {
     const currency = activeParams.displayCurrency;
-    if (val <= 0) return '0원';
+    if (val <= 0) return currency === 'KRW' ? '0원' : '$ 0';
     if (currency === 'KRW') {
       const valueInMan = Math.round(val / 10000);
       if (valueInMan === 0) return '0원';
@@ -240,6 +240,7 @@ export default function Home() {
       } = reportParams;
 
       const currentTaxSettings = resolveTaxSettings(taxSettings);
+      const displayCurrencyUnit = formatCurrencyUnit(displayCurrency);
 
       const formatValuePrint = (val: number): string => formatValue(val);
 
@@ -369,6 +370,47 @@ export default function Home() {
         .pdf-page ul {
           list-style: disc;
         }
+        .summary-grid {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          column-gap: 22px;
+          margin-top: 15px;
+        }
+        .summary-item {
+          display: grid;
+          grid-template-columns: minmax(0, 1fr) auto;
+          grid-template-rows: auto minmax(30px, auto);
+          column-gap: 14px;
+          min-height: 78px;
+          padding: 10px 0;
+          border-bottom: 1px dashed #e2e8f0;
+          box-sizing: border-box;
+        }
+        .summary-label {
+          margin: 0;
+          font-size: 13.5px;
+          font-weight: 600;
+          color: #475569;
+          line-height: 1.35;
+        }
+        .summary-note {
+          margin: 5px 0 0;
+          font-size: 9.5px;
+          font-weight: 400;
+          color: #94a3b8;
+          line-height: 1.45;
+        }
+        .summary-value {
+          grid-column: 2;
+          grid-row: 1 / span 2;
+          align-self: center;
+          max-width: 235px;
+          font-size: 15px;
+          color: #0f172a;
+          font-weight: 700;
+          line-height: 1.35;
+          text-align: right;
+        }
       `;
       container.appendChild(styleBlock);
 
@@ -381,22 +423,26 @@ export default function Home() {
             
             <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 24px; margin-bottom: 30px;">
               <h2 style="margin-top: 0; font-size: 17px; color: #0f172a; border-bottom: none; padding-bottom: 0;">1. 종합 결과 요약</h2>
-              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 15px;">
-                <div style="font-size: 13.5px; border-bottom: 1px dashed #e2e8f0; padding-bottom: 8px;">
-                  <span style="font-weight: 600; color: #475569;">은퇴 준비도 점수</span>
-                  <span style="float: right; font-size: 15px; color: #0f172a; font-weight: 700;">${retirementScore}점 <span style="font-size: 11.5px; color: #64748b; font-weight: 600;">(${retirementGrade})</span></span>
+              <div class="summary-grid">
+                <div class="summary-item">
+                  <p class="summary-label">은퇴 준비도 점수</p>
+                  <p class="summary-note"></p>
+                  <span class="summary-value">${retirementScore}점 <span style="font-size: 11.5px; color: #64748b; font-weight: 600;">(${retirementGrade})</span></span>
                 </div>
-                <div style="font-size: 13.5px; border-bottom: 1px dashed #e2e8f0; padding-bottom: 8px;">
-                  <span style="font-weight: 600; color: #475569;">은퇴 소득 달성률<br/><span style="font-size: 10px; color: #94a3b8; font-weight: 400;">(배당·연금 등 고정소득만 반영, 자산 인출분 제외 · 2페이지 평생 효용 점수와는 별도로 계산되는 지표입니다)</span></span>
-                  <span style="float: right; font-size: 15px; color: #0f172a; font-weight: 700;">${goalAchievementRate}%</span>
+                <div class="summary-item">
+                  <p class="summary-label">은퇴 소득 달성률</p>
+                  <p class="summary-note">배당·연금 등 고정소득만 반영, 자산 인출분 제외<br/>2페이지 평생 효용 점수와는 별도로 계산되는 지표입니다.</p>
+                  <span class="summary-value">${goalAchievementRate}%</span>
                 </div>
-                <div style="font-size: 13.5px; border-bottom: 1px dashed #e2e8f0; padding-bottom: 8px;">
-                  <span style="font-weight: 600; color: #475569;">소득만으로 생활비 충당 가능 시점<br/><span style="font-size: 10px; color: #94a3b8; font-weight: 400;">(배당·연금 등 그 해 소득이 목표 생활비를 넘어서는 나이)</span></span>
-                  <span style="float: right; font-size: 15px; color: #0f172a; font-weight: 700;">${describeFireAge(fireAge, userProfile.expectancy, userProfile.retirementAge)}</span>
+                <div class="summary-item">
+                  <p class="summary-label">소득만으로 생활비 충당 가능 시점</p>
+                  <p class="summary-note">배당·연금 등 그 해 소득이 목표 생활비를 넘어서는 나이</p>
+                  <span class="summary-value">${describeFireAge(fireAge, userProfile.expectancy, userProfile.retirementAge)}</span>
                 </div>
-                <div style="font-size: 13.5px; border-bottom: 1px dashed #e2e8f0; padding-bottom: 8px;">
-                  <span style="font-weight: 600; color: #475569;">자산 고갈 예상 나이</span>
-                  <span style="float: right; font-size: 15px; color: #0f172a; font-weight: 700;">${describeDepletionAge(depletionAge, householdEndAge, userProfile.expectancy, planAssetStatus)}</span>
+                <div class="summary-item">
+                  <p class="summary-label">자산 고갈 예상 나이</p>
+                  <p class="summary-note"></p>
+                  <span class="summary-value">${describeDepletionAge(depletionAge, householdEndAge, userProfile.expectancy, planAssetStatus)}</span>
                 </div>
                 <div style="grid-column: span 2; font-size: 13.5px; padding-top: 8px;">
                   <span style="font-weight: 600; color: #475569;">사망 시(${householdEndAge > userProfile.expectancy ? `배우자 기대수명 시점, 본인 나이 ${householdEndAge}세` : `기대수명 ${householdEndAge}세`}) 잔여 자산</span>
@@ -410,10 +456,10 @@ export default function Home() {
             <h2 style="font-size: 16px; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; color: #0f172a; margin-top: 25px; margin-bottom: 10px;">2. 시뮬레이션 설정 상태</h2>
             <ul style="padding-left: 20px; margin-top: 5px; margin-bottom: 25px; font-size: 13px; line-height: 1.6;">
               <li style="margin-bottom: 6px;"><strong>현재 나이:</strong> ${userProfile.currentAge}세 / <strong>은퇴 목표 나이:</strong> ${userProfile.retirementAge}세 / <strong>기대 수명:</strong> ${userProfile.expectancy}세</li>
-              <li style="margin-bottom: 6px;"><strong>목표 월 생활비:</strong> ${userProfile.targetMonthlySpending.toLocaleString()} ${displayCurrency}</li>
+              <li style="margin-bottom: 6px;"><strong>목표 월 생활비:</strong> ${userProfile.targetMonthlySpending.toLocaleString()} ${displayCurrencyUnit}</li>
               <li style="margin-bottom: 6px;"><strong>인출 전략:</strong> ${reportParams.spendingStrategy === 'dividend_only' ? '배당금(이자) 100% 소비' : reportParams.spendingStrategy === 'max_sustainable' ? '최대 가능 생활비 자동계산' : '고정 목표 생활비'}</li>
               <li style="margin-bottom: 6px;"><strong>물가 상승률:</strong> ${inflationRate}% (${inflationMode === 'real' ? '실질 가치 기준 — 아래 모든 표의 생활비·연금 금액은 오늘 화폐가치로 고정 표시되며, 인플레이션은 자산 성장률에 사전 차감 반영되었습니다' : '명목 가치 기준 — 아래 모든 표의 생활비·연금 금액에 물가상승률이 매년 누적 반영되어 있습니다'})</li>
-              <li style="margin-bottom: 6px;"><strong>표시 통화 / 기준 환율:</strong> ${displayCurrency} / 1 USD = ${baseExchangeRate} KRW</li>
+              <li style="margin-bottom: 6px;"><strong>표시 통화 / 기준 환율:</strong> ${displayCurrencyUnit} / 1 $ = ${baseExchangeRate.toLocaleString()}원</li>
             </ul>
           </div>
           <div class="pdf-footer">
@@ -490,7 +536,7 @@ export default function Home() {
 
       if (privatePensions && privatePensions.length > 0) {
         privatePensions.forEach(p => {
-          pagesHtml += `<li style="margin-bottom: 4px;"><strong>${p.name}</strong> (${p.type === 'irp' ? 'IRP' : p.type === 'savings' ? '연금저축' : '기타'}): 현재 잔액 ${p.balance.toLocaleString()} ${p.currency}, 매월 ${p.monthlyContribution.toLocaleString()} ${p.currency} 납입, 예상 연 수익률 ${p.annualReturn}%</li>`;
+          pagesHtml += `<li style="margin-bottom: 4px;"><strong>${p.name}</strong> (${p.type === 'irp' ? 'IRP' : p.type === 'savings' ? '연금저축' : '기타'}): 현재 잔액 ${p.balance.toLocaleString()} ${formatCurrencyUnit(p.currency)}, 매월 ${p.monthlyContribution.toLocaleString()} ${formatCurrencyUnit(p.currency)} 납입, 예상 연 수익률 ${p.annualReturn}%</li>`;
         });
       } else {
         pagesHtml += `<li>등록된 사적연금 없음</li>`;
@@ -506,7 +552,7 @@ export default function Home() {
 
       if (assets && assets.length > 0) {
         assets.forEach(a => {
-          pagesHtml += `<li style="margin-bottom: 4px;"><strong>${a.name}</strong> (${a.type}): ${a.quantity}주(개) x 평균단가 ${a.averagePrice.toLocaleString()} ${a.currency}, 매월 ${a.monthlyContribution.toLocaleString()} ${a.currency} 납입, 예상 연 수익률 ${a.annualGrowthRate}%, 배당률 ${a.dividendYield}%, 배당 재투자 ${a.reinvestDividend ? 'O' : 'X'}</li>`;
+          pagesHtml += `<li style="margin-bottom: 4px;"><strong>${a.name}</strong> (${a.type}): ${a.quantity}주(개) x 평균단가 ${a.averagePrice.toLocaleString()} ${formatCurrencyUnit(a.currency)}, 매월 ${a.monthlyContribution.toLocaleString()} ${formatCurrencyUnit(a.currency)} 납입, 예상 연 수익률 ${a.annualGrowthRate}%, 배당률 ${a.dividendYield}%, 배당 재투자 ${a.reinvestDividend ? 'O' : 'X'}</li>`;
         });
       } else {
         pagesHtml += `<li>등록된 투자 자산 없음</li>`;
@@ -522,7 +568,7 @@ export default function Home() {
 
       if (isaAccounts && isaAccounts.length > 0) {
         isaAccounts.forEach(isa => {
-          pagesHtml += `<li style="margin-bottom: 4px;"><strong>${isa.name || 'ISA 계좌'}</strong> (${isa.type === 'general' ? '일반형' : '서민형'}): 현재 잔액 ${isa.balance.toLocaleString()} ${isa.currency}, 매월 ${isa.monthlyContribution.toLocaleString()} ${isa.currency} 납입, 예상 연 수익률 ${isa.annualReturn}%, 배당률 ${isa.dividendYield}%, 만기 ${isa.maturityYears}년</li>`;
+          pagesHtml += `<li style="margin-bottom: 4px;"><strong>${isa.name || 'ISA 계좌'}</strong> (${isa.type === 'general' ? '일반형' : '서민형'}): 현재 잔액 ${isa.balance.toLocaleString()} ${formatCurrencyUnit(isa.currency)}, 매월 ${isa.monthlyContribution.toLocaleString()} ${formatCurrencyUnit(isa.currency)} 납입, 예상 연 수익률 ${isa.annualReturn}%, 배당률 ${isa.dividendYield}%, 만기 ${isa.maturityYears}년</li>`;
         });
       } else {
         pagesHtml += `<li>등록된 ISA 계좌 없음</li>`;
@@ -538,7 +584,7 @@ export default function Home() {
 
       if (otherIncomes && otherIncomes.length > 0) {
         otherIncomes.forEach(i => {
-          pagesHtml += `<li style="margin-bottom: 4px;"><strong>${i.label}</strong>: 매월 ${i.monthlyAmount.toLocaleString()} ${i.currency}</li>`;
+          pagesHtml += `<li style="margin-bottom: 4px;"><strong>${i.label}</strong>: 매월 ${i.monthlyAmount.toLocaleString()} ${formatCurrencyUnit(i.currency)}</li>`;
         });
       } else {
         pagesHtml += `<li>등록된 기타 소득 없음</li>`;

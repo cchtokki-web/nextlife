@@ -27,6 +27,8 @@ export interface UseAiAdvisorInput {
   planAssetStatus: PlanAssetStatus;
   // 자산 미보유 계획에서 "고정소득이 목표 생활비의 몇 %를 충당하는가"를 말하는 데 쓴다.
   sustainableMonthlySpending?: number;
+  monteCarloSuccessRate?: number;
+  monteCarloFullSpendingRate?: number;
   goalAchievementRate?: number;
   fireAge?: number | null;
   endingAssets?: number;

@@ -13,6 +13,7 @@ interface CoreKpiGridProps {
   monthlyTarget: number;
   utilityScore?: number; // Lifetime Utility Score. 없으면(계산 실패 등) 카드 자체를 숨긴다.
   formatValue: (val: number) => string;
+  resultBasis?: 'current' | 'recommended';
 }
 
 // 결과 화면 최상단 핵심 KPI 4장.
@@ -23,13 +24,14 @@ export function CoreKpiGrid({
   monthlyTarget,
   utilityScore,
   formatValue,
+  resultBasis = 'current',
 }: CoreKpiGridProps) {
   return (
     <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
       <KpiCard label={`${expectancy}세까지 은퇴 준비도`} icon={<ShieldCheck size={16} aria-hidden="true" />}>
         <RetirementLikelihoodStars score={survivalScore} />
       </KpiCard>
-      <KpiCard label="예상 순자산" icon={<Wallet size={16} aria-hidden="true" />}>
+      <KpiCard label={`${expectancy}세 예상 순자산 · ${resultBasis === 'recommended' ? '추천 결과' : '현재 계획'}`} icon={<Wallet size={16} aria-hidden="true" />}>
         <span className="font-display text-2xl font-semibold">{formatValue(endingAssets)}</span>
       </KpiCard>
       <KpiCard label="예상 월 생활비" icon={<Landmark size={16} aria-hidden="true" />}>

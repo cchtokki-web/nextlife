@@ -22,22 +22,36 @@ export function buildHeroHeadline(
   utilityScore: number,
   depletionAge: number | null,
   householdEndAge: number,
-  status: PlanAssetStatus
+  status: PlanAssetStatus,
+  monteCarlo?: { successRate: number; fullSpendingRate: number }
 ): HeroHeadline {
   const grade = getRetirementGrade(utilityScore);
   const tier = getRetirementGradeColorTier(utilityScore);
 
   // 고갈 여부는 status가 이미 가구 종료 나이 기준으로 판정해 두었다 — 여기서 다시 유도하면
   // 두 규칙이 어긋날 수 있다.
-  const survivalClause =
+  const deterministicSurvivalClause =
     status === 'no_investable_asset'
       ? '등록된 투자자산이 없어, 연금 등 고정소득만으로 생활하는 계획입니다.'
       : status === 'depleted'
         ? `${depletionAge}세에 자산이 고갈될 위험이 있습니다.`
         : `${householdEndAge}세까지 자산 고갈 위험이 없습니다.`;
 
+  const survivalClause = status === 'sustained' && monteCarlo && monteCarlo.successRate < 0.95
+    ? `기준 시나리오에서는 ${householdEndAge}세까지 유지되지만, 시장 변동 반영 시 자산 유지 확률은 ${Math.round(monteCarlo.successRate * 100)}%, 목표 생활비 완전 유지 확률은 ${Math.round(monteCarlo.fullSpendingRate * 100)}%입니다.`
+    : deterministicSurvivalClause;
+
+  const headlineTier = status === 'sustained' && monteCarlo && monteCarlo.successRate < 0.95
+    ? 'orange'
+    : tier;
+  const statusPrefix = status === 'sustained' && monteCarlo && monteCarlo.successRate < 0.95
+    ? '기준 시나리오는 안정적이나 시장 변동성 대응이 필요합니다.'
+    : grade === '위험' || grade === '주의'
+      ? `${grade} 수준의 은퇴 준비 상태입니다.`
+      : `${grade === '매우 안정' ? '매우 안정적인' : '안정적인'} 은퇴입니다.`;
+
   return {
-    emoji: TIER_EMOJI[tier],
-    text: `${grade === '위험' || grade === '주의' ? `${grade} 수준의 은퇴 준비 상태입니다.` : `${grade === '매우 안정' ? '매우 안정적인' : '안정적인'} 은퇴입니다.`} ${survivalClause}`,
+    emoji: TIER_EMOJI[headlineTier],
+    text: `${statusPrefix} ${survivalClause}`,
   };
 }

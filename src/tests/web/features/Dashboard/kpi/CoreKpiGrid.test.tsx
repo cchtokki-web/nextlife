@@ -17,7 +17,7 @@ describe('CoreKpiGrid', () => {
 
     expect(screen.getByText('90세까지 은퇴 준비도')).toBeInTheDocument();
     expect(screen.queryByText(/기대수명/)).not.toBeInTheDocument();
-    expect(screen.getByText('예상 순자산')).toBeInTheDocument();
+    expect(screen.getByText('90세 예상 순자산 · 현재 계획')).toBeInTheDocument();
     expect(screen.getByText('예상 월 생활비')).toBeInTheDocument();
     expect(screen.getByText('평생 효용')).toBeInTheDocument();
     expect(screen.getByText('500000000원')).toBeInTheDocument();

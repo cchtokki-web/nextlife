@@ -10,6 +10,10 @@ import { formatManwon } from '../../../core/usecases/utility/utilityAnalysis';
 import { MonteCarloResult } from '../../../core/entities/montecarlo';
 import { SequenceRiskResult } from '../../../core/usecases/montecarlo/sequenceRisk';
 
+export function formatCurrencyUnit(currency: 'KRW' | 'USD'): '원' | '$' {
+  return currency === 'KRW' ? '원' : '$';
+}
+
 // PDF는 화면과 별개로 완전히 독립된 정적 HTML 문자열을 html2canvas로 캡처하는 구조라(page.tsx의
 // handleDownload), 화면 컴포넌트를 재사용할 수 없다 — 동일한 usecase 데이터를 받아 PDF 전용
 // 인라인 스타일 HTML 문자열로 변환하는 순수 함수만 여기 둔다. 기존 handleDownload가 이미 자산/
@@ -111,17 +115,17 @@ export function renderExecutionRoadmapSection(roadmap: ExecutionRoadmap): string
       const itemsHtml = event.items
         .map(
           (item) => `
-            <div style="margin-bottom: 2px;">
-              <strong style="font-size: 12px; color: ${item.severity === 'warning' ? '#EF4444' : '#0f172a'};">${item.title}</strong>
-              ${item.changedFromAge === undefined ? '' : `<span style="font-size: 10.5px; font-weight: 700; color: #6366f1; border: 1px solid #c7d2fe; border-radius: 999px; padding: 1px 6px; margin-left: 4px;">현재 ${item.changedFromAge}세 → 추천 ${event.age}세</span>`}
-              <span style="font-size: 11px; color: #64748b;"> — ${item.description}</span>
+            <div style="display: grid; grid-template-columns: max-content minmax(0, 1fr); column-gap: 8px; row-gap: 3px; align-items: start; margin-bottom: 8px;">
+              <strong style="font-size: 12px; line-height: 1.5; color: ${item.severity === 'warning' ? '#EF4444' : '#0f172a'}; white-space: nowrap;">${item.title}</strong>
+              <span style="font-size: 11px; line-height: 1.55; color: #64748b; min-width: 0;">${item.description}</span>
+              ${item.changedFromAge === undefined ? '' : `<span style="grid-column: 1 / span 2; justify-self: start; display: inline-block; font-size: 10.5px; line-height: 1.4; font-weight: 700; color: #6366f1; border: 1px solid #c7d2fe; border-radius: 999px; padding: 2px 7px; box-sizing: border-box; white-space: nowrap;">현재 ${item.changedFromAge}세 → 추천 ${event.age}세</span>`}
             </div>
           `
         )
         .join('');
       return `
-        <div style="display: flex; gap: 10px; margin-bottom: 10px;">
-          <div style="width: 50px; flex-shrink: 0; font-size: 13px; font-weight: 700; color: ${hasWarning ? '#EF4444' : '#3b82f6'};">${event.age}세</div>
+        <div style="display: flex; gap: 12px; margin-bottom: 12px; align-items: flex-start;">
+          <div style="width: 52px; flex-shrink: 0; padding-top: 1px; font-size: 13px; line-height: 1.5; font-weight: 700; color: ${hasWarning ? '#EF4444' : '#3b82f6'};">${event.age}세</div>
           <div style="flex-grow: 1;">${itemsHtml}</div>
         </div>
       `;
@@ -179,24 +183,29 @@ export function renderSensitivityTableSection(
         ? ''
         : ` <span style="color: ${deltaColor};">(${s.endingAssetsDelta > 0 ? '+' : ''}${formatManwon(s.endingAssetsDelta)})</span>`;
       const unmetText = s.unmetSpendingYears > 0
-        ? `<br/><span style="color: #dc2626; font-size: 10px;">생활비 부족 ${s.unmetSpendingYears}년</span>`
+        ? `<div style="margin-top: 3px; color: #dc2626; font-size: 10px; line-height: 1.35;">생활비 부족 ${s.unmetSpendingYears}년</div>`
         : '';
       return `
         <tr>
-          <td style="border: 1px solid #cbd5e1; padding: 6px 8px; font-size: 11px;">${s.label}</td>
-          <td style="border: 1px solid #cbd5e1; padding: 6px 8px; font-size: 11px; text-align: right;">${formatManwon(s.endingAssets)}${deltaText}${unmetText}</td>
-          <td style="border: 1px solid #cbd5e1; padding: 6px 8px; font-size: 11px; text-align: right;">${depletionText}</td>
+          <td style="border: 1px solid #cbd5e1; padding: 8px 9px; font-size: 11px; line-height: 1.4; vertical-align: middle;">${s.label}</td>
+          <td style="border: 1px solid #cbd5e1; padding: 8px 9px; font-size: 11px; line-height: 1.4; text-align: right; vertical-align: middle;"><div style="white-space: nowrap;">${formatManwon(s.endingAssets)}${deltaText}</div>${unmetText}</td>
+          <td style="border: 1px solid #cbd5e1; padding: 8px 9px; font-size: 11px; line-height: 1.4; text-align: right; vertical-align: middle; white-space: nowrap;">${depletionText}</td>
         </tr>
       `;
     })
     .join('');
   return `
-    <table style="width: 100%; border-collapse: collapse; margin-top: 8px;">
+    <table style="width: 100%; table-layout: fixed; border-collapse: collapse; margin-top: 8px;">
+      <colgroup>
+        <col style="width: 28%;" />
+        <col style="width: 50%;" />
+        <col style="width: 22%;" />
+      </colgroup>
       <thead>
         <tr>
-          <th style="border: 1px solid #cbd5e1; padding: 6px 8px; text-align: left; background-color: #f1f5f9; font-size: 11px; font-weight: 700; color: #334155;">시나리오</th>
-          <th style="border: 1px solid #cbd5e1; padding: 6px 8px; text-align: right; background-color: #f1f5f9; font-size: 11px; font-weight: 700; color: #334155;">기말 잔여자산</th>
-          <th style="border: 1px solid #cbd5e1; padding: 6px 8px; text-align: right; background-color: #f1f5f9; font-size: 11px; font-weight: 700; color: #334155;">자산 고갈 나이</th>
+          <th style="border: 1px solid #cbd5e1; padding: 7px 9px; line-height: 1.4; text-align: left; vertical-align: middle; background-color: #f1f5f9; font-size: 11px; font-weight: 700; color: #334155;">시나리오</th>
+          <th style="border: 1px solid #cbd5e1; padding: 7px 9px; line-height: 1.4; text-align: right; vertical-align: middle; background-color: #f1f5f9; font-size: 11px; font-weight: 700; color: #334155;">기말 잔여자산</th>
+          <th style="border: 1px solid #cbd5e1; padding: 7px 9px; line-height: 1.4; text-align: right; vertical-align: middle; background-color: #f1f5f9; font-size: 11px; font-weight: 700; color: #334155; white-space: nowrap;">자산 고갈 나이</th>
         </tr>
       </thead>
       <tbody>${rowsHtml}</tbody>

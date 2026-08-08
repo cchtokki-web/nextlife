@@ -12,6 +12,8 @@ export interface RuleBasedAdviceContext {
   // 고갈 없이 유지 가능한 월 생활비(SimulationResult.calculatedTargetSpending).
   // 화면의 과소비 배너가 쓰는 값과 같아야 두 문구가 같은 근거를 말한다.
   sustainableMonthlySpending?: number;
+  monteCarloSuccessRate?: number;
+  monteCarloFullSpendingRate?: number;
 }
 
 export function generateRuleBasedAdvice(
@@ -27,7 +29,10 @@ export function generateRuleBasedAdvice(
 ): string {
   const targetInManwon = Math.round(monthlyTarget / 10000);
   const grade = retirementGrade ?? getRetirementGrade(score);
-  const { planAssetStatus, goalAchievementRate, sustainableMonthlySpending } = context;
+  const {
+    planAssetStatus, goalAchievementRate, sustainableMonthlySpending,
+    monteCarloSuccessRate, monteCarloFullSpendingRate,
+  } = context;
 
   let statusText: string;
   let isFavorable: boolean;
@@ -43,7 +48,9 @@ export function generateRuleBasedAdvice(
     switch (grade) {
       case '매우 안정':
       case '안정':
-        statusText = `은퇴 준비도가 **${grade}** 등급(${score}점)으로, 자산이 고갈되지 않고 안정적으로 유지될 것으로 예상됩니다.`;
+        statusText = typeof monteCarloSuccessRate === 'number' && monteCarloSuccessRate < 0.95
+          ? `은퇴 준비도는 **${grade}** 등급(${score}점)이고 기준 시나리오에서는 자산이 유지되지만, 시장 변동 반영 시 자산 유지 확률은 **${Math.round(monteCarloSuccessRate * 100)}%**${typeof monteCarloFullSpendingRate === 'number' ? `, 목표 생활비 완전 유지 확률은 **${Math.round(monteCarloFullSpendingRate * 100)}%**` : ''}입니다.`
+          : `은퇴 준비도가 **${grade}** 등급(${score}점)으로, 기준 시나리오에서 자산이 안정적으로 유지될 것으로 예상됩니다.`;
         isFavorable = true;
         break;
       case '보통':
