@@ -121,6 +121,11 @@ describe('compileStrategy', () => {
 });
 
 describe('compileStrategy - 연령대별 생활비 곡선', () => {
+  // 소비 성향·안전마진은 「평생 소비 최적화」 전용 하위 입력이다. 아래 픽스처들이
+  // spendingChoice를 함께 주는 것은 편의가 아니라 그 조건 자체를 테스트하는 것이다.
+  const withLifetimeMode = (patch: Partial<RetirementStrategy>): SimulationParams =>
+    withStrategy({ spendingChoice: 'max_sustainable', ...patch });
+
   test("기본값('flat')은 spendingCurve 키 자체를 만들지 않는다", () => {
     // 기본 전략으로 컴파일해도 결과가 안 바뀐다는 불변식. 키가 남으면 곡선 코드 경로를
     // 타게 되고, `{ spendingCurve: undefined }`는 JSON 직렬화에서 "키가 없는 것"과 달라
@@ -131,17 +136,36 @@ describe('compileStrategy - 연령대별 생활비 곡선', () => {
   });
 
   test('활동기 집중형은 감소하는 배수 곡선으로 해소된다', () => {
-    const result = compileStrategy(withStrategy({ spendingShape: 'front_loaded' }));
+    const result = compileStrategy(withLifetimeMode({ spendingShape: 'front_loaded' }));
     const curve = result.params.spendingCurve!;
 
     expect(curve.multipliers[0]).toBeGreaterThan(curve.multipliers[curve.multipliers.length - 1]);
     expect(curve.multipliers.length).toBe(curve.breakpointAges.length + 1);
   });
+
+  test('평생 소비 최적화가 아니면 소비 성향을 골라 두었어도 곡선이 생기지 않는다', () => {
+    // 화면(RetirementGoalSection)이 소비 성향 입력을 max_sustainable에서만 보여주므로,
+    // 컴파일도 같은 조건이어야 한다. 어긋나면 되돌릴 수 없는 유령 상태가 된다: 평생 소비
+    // 최적화에서 활동기 집중형을 고른 뒤 「목표 생활비 유지」로 되돌리면, 입력은 화면에서
+    // 사라지지만 60대 목표는 계속 1.2배로 계산되고 그 설정을 볼 방법이 없다.
+    for (const choice of ['target', 'ai', 'dividend_only'] as const) {
+      const result = compileStrategy(withStrategy({
+        spendingChoice: choice,
+        spendingShape: 'front_loaded',
+      }));
+
+      expect('spendingCurve' in result.params).toBe(false);
+    }
+  });
 });
 
 describe('compileStrategy - 상속 안전마진', () => {
   const withTarget = (patch: Partial<RetirementStrategy>): SimulationParams => ({
-    ...withStrategy({ bequestStrategy: 'target_amount', ...patch }),
+    ...withStrategy({
+      bequestStrategy: 'target_amount',
+      spendingChoice: 'max_sustainable',
+      ...patch,
+    }),
     userProfile: { ...baseParams.userProfile, targetBequest: 100_000_000 },
   });
 
@@ -171,6 +195,21 @@ describe('compileStrategy - 상속 안전마진', () => {
     }));
 
     expect('assetFloor' in result.params).toBe(false);
+  });
+
+  test('평생 소비 최적화가 아니면 마진을 줘도 하한선이 부풀지 않는다', () => {
+    // 곡선과 같은 이유다. 다만 하한선 자체(= 목표 상속자산)는 모든 전략에서 유효하므로,
+    // 마진만 빠지고 하한선은 남아야 한다 — 통째로 지우면 상속 목표가 사라진다.
+    const result = compileStrategy({
+      ...withStrategy({
+        bequestStrategy: 'target_amount',
+        spendingChoice: 'target',
+        bequestSafetyMarginRate: 20,
+      }),
+      userProfile: { ...baseParams.userProfile, targetBequest: 100_000_000 },
+    });
+
+    expect(result.params.assetFloor).toBe(100_000_000);
   });
 
   test('음수 마진은 하한선을 낮추지 않는다', () => {

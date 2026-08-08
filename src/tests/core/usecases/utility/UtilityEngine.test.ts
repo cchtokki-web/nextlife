@@ -383,6 +383,38 @@ describe('UtilityEngine.computeLifetimeUtility', () => {
     expect(utility.components.consumption).toBe(DEFAULT_UTILITY_CONFIG.weights.consumption);
   });
 
+  test('초과 소비는 다른 해의 결손을 상쇄하지 못한다', () => {
+    // consumptionYearUtility에서 초과 보상(옛 코드: `1 + 0.3 * Math.sqrt(ratio - 1)`, 최대 1.3)을
+    // 제거한 것을 잠근다. **전 구간이 ratio ≥ 1인 결과로는 이 계약을 잴 수 없다** — 정규화가
+    // clamp(x, 0, 1)이라 옛 구현과 새 구현이 똑같이 1로 clamp되기 때문이다. 초과 해와 결손
+    // 해가 섞여야 차이가 드러난다.
+    //
+    // 옛 곡선이면 목표의 2배를 쓴 해가 1.3을 받아 50%만 쓴 해의 0.354를 끌어올려
+    // 평균 0.827이 되고, 이 단언이 깨진다.
+    const halfOverHalfUnder = makeResult(
+      Array.from({ length: 36 }, (_, i) =>
+        makeYear(60 + i, { spending: i % 2 === 0 ? ANNUAL_TARGET * 2 : ANNUAL_TARGET * 0.5 })),
+      null
+    );
+
+    const mixed = computeLifetimeUtility(halfOverHalfUnder, baseParams);
+    const balanced = computeLifetimeUtility(buildBalancedScenario(), baseParams);
+
+    // 절반이 결손인 계획이 전 구간 목표를 채운 계획보다 나을 수 없다.
+    // (이 단언만으로는 부족하다 — 옛 곡선에서도 성립했다.)
+    expect(mixed.components.consumption).toBeLessThan(balanced.components.consumption);
+
+    // 초과분이 보상되지 않으므로 결손 해의 효용만 평균에 남는다:
+    //   연도별 효용 평균 = (1.0 + 0.5^1.5) / 2 ≈ 0.677
+    //   stabilityFactor = 1 - stdev([2.0, 0.5]) = 0.25 → 계수 0.85 + 0.15×0.25 = 0.8875
+    //   → 0.677 × 0.8875 ≈ 0.601
+    // 옛 곡선이면 초과 해가 1.3을 받아 평균이 0.827로 올라가고 결과는 ≈ 0.734가 된다.
+    // 0.65는 그 둘 사이를 가르는 선이다.
+    const ratio = mixed.components.consumption / DEFAULT_UTILITY_CONFIG.weights.consumption;
+    expect(ratio).toBeCloseTo(0.601, 2);
+    expect(ratio).toBeLessThan(0.65);
+  });
+
   test('소비 효용 분모에 의료비가 포함된다 — 목표를 넘긴 지출이 만점으로 clamp되지 않는다', () => {
     // 엔진은 의료비를 spending에 합산한다. 그 금액을 목표(분모)에도 더하지 않으면 ratio가
     // 1을 넘어 만점으로 clamp되고, 의료비를 켠 계획이 오히려 "목표를 다 채웠다"로 읽힌다.

@@ -52,19 +52,37 @@ describe('CoreKpiGrid - 몬테카를로 성공률 병기', () => {
     monteCarloStatus: 'done' as const,
   };
 
+  // 경고 여부는 아이콘과 색으로만 드러난다. aria-label과 '시장변동 N%' 텍스트는 충돌
+  // 여부와 무관하게 **언제나** 렌더되므로, 그것들만 확인하면 임계값을 0으로 내리든
+  // 1.5로 올리든(= 항상 경고) 테스트가 통과한다. 실제로 그런 상태였다.
+  const warningIcon = (container: HTMLElement) => container.querySelector('svg.lucide-triangle-alert');
+
   test('결정론 등급과 어긋나는 성공률에는 경고 표시가 붙는다', () => {
     // 51인 실측의 핵심: "매우 안정" 등급인데 시장 변동을 반영하면 성공률이 55%인 계획이
     // 흔하다. 등급만 보여 주면 사용자가 그 사실을 알 길이 없다.
-    render(<CoreKpiGrid {...baseProps} monteCarlo={{ successRate: 0.78 }} />);
+    const { container } = render(<CoreKpiGrid {...baseProps} monteCarlo={{ successRate: 0.78 }} />);
 
     expect(screen.getByText('시장변동 78%')).toBeInTheDocument();
     expect(screen.getByLabelText('시장 변동 반영 시 자산 유지 확률 78%')).toBeInTheDocument();
+    expect(warningIcon(container)).toBeInTheDocument();
   });
 
-  test('성공률이 문턱 이상이면 숫자만 표시한다', () => {
-    render(<CoreKpiGrid {...baseProps} monteCarlo={{ successRate: 0.98 }} />);
+  test('성공률이 문턱 이상이면 경고 없이 숫자만 표시한다', () => {
+    const { container } = render(<CoreKpiGrid {...baseProps} monteCarlo={{ successRate: 0.98 }} />);
 
     expect(screen.getByText('시장변동 98%')).toBeInTheDocument();
+    // 여기가 핵심이다 — 부재를 단언하지 않으면 "항상 경고"가 통과한다.
+    expect(warningIcon(container)).not.toBeInTheDocument();
+  });
+
+  test('결정론 판정이 고갈이면 성공률이 낮아도 충돌로 표시하지 않는다', () => {
+    // 충돌은 "결정론은 괜찮다는데 확률은 아니다"라는 어긋남을 알리는 것이다. 결정론도
+    // 이미 고갈을 말하고 있으면 어긋남이 없고, 그 경고는 고갈 알림이 따로 담당한다.
+    const { container } = render(
+      <CoreKpiGrid {...baseProps} planAssetStatus="depleted" monteCarlo={{ successRate: 0.4 }} />
+    );
+
+    expect(warningIcon(container)).not.toBeInTheDocument();
   });
 
   test('계산 중이거나 워커를 쓸 수 없으면 아무것도 표시하지 않는다', () => {

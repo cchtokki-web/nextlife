@@ -60,11 +60,17 @@ test('페르소나 하니스', { timeout: 3_600_000 }, () => {
     const baseResult = engine.run(baseParams, compiled.utilityConfig);
 
     let rec;
+    // 실패를 삼키면 안 되는 이유: 이 하니스의 출력이 곧 SPENDING_INCREASE_GATE 임계값의
+    // 근거다. 몇 명이 조용히 실패해도 "악화 N명"과 applicableRows.length는 그냥 줄어들 뿐,
+    // 분모가 오염된 사실이 드러나지 않아 튜닝 근거가 편향된다. 그래서 CSV 컬럼과 요약
+    // 양쪽에 남긴다(0명이어도 출력한다 — 없다는 사실 자체가 정보다).
+    let recFailure: string | undefined;
     try {
       rec = recommendStrategy(baseParams, engine, compiled.utilityConfig);
     } catch (err) {
       rec = undefined;
-      details.push(`### ${persona.no}. ${persona.name}\n추천 실패: ${String(err)}\n`);
+      recFailure = String(err);
+      details.push(`### ${persona.no}. ${persona.name}\n추천 실패: ${recFailure}\n`);
     }
 
     const mcCfg = resolveMonteCarloConfig(baseParams);
@@ -136,6 +142,7 @@ test('페르소나 하니스', { timeout: 3_600_000 }, () => {
       u_bequest: baseResult.utility?.components.bequestAdequacy ?? '',
       recImproved: rec?.improved ? 1 : 0,
       recApplicable: applicable ? 1 : 0,
+      recFailed: recFailure ? 1 : 0,
       recUtility: rec?.recommendedUtility.score ?? '',
       recUtilityDelta: rec ? +(rec.recommendedUtility.score - rec.currentUtility.score).toFixed(2) : '',
       recDepletionAge: recResult.depletionAge ?? '',
@@ -186,6 +193,7 @@ test('페르소나 하니스', { timeout: 3_600_000 }, () => {
   const worsened = rows.filter((r) => num(r, 'mcRecSuccess') < num(r, 'mcSuccess') - 0.05);
   const improved = rows.filter((r) => num(r, 'mcRecSuccess') > num(r, 'mcSuccess') + 0.05);
   const applicableRows = rows.filter((r) => num(r, 'recApplicable') === 1);
+  const failedRows = rows.filter((r) => num(r, 'recFailed') === 1);
   const increased = applicableRows.filter((r) => Number(r.spendMultiplier || 1) > 1);
   const consumptions = rows.map((r) => num(r, 'u_consumption')).filter((v) => !Number.isNaN(v));
 
@@ -193,6 +201,8 @@ test('페르소나 하니스', { timeout: 3_600_000 }, () => {
     '## 요약',
     '',
     `- 페르소나: ${rows.length}명 (그중 사용자에게 실제로 제시되는 추천: ${applicableRows.length}명)`,
+    `- **추천 계산 실패: ${failedRows.length}명**` +
+      (failedRows.length > 0 ? ` (${failedRows.map((r) => r.no).join(', ')}번 — 아래 수치의 분모가 오염됐다)` : ''),
     `- **추천 적용 후 MC 성공률 하락: ${worsened.length}명** / 상승 ${improved.length}명 / 무변화 ${rows.length - worsened.length - improved.length}명`,
     `- 생활비 증액 추천: ${increased.length}명` +
       (increased.length > 0

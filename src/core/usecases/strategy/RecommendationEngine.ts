@@ -42,7 +42,9 @@ import {
 // 넣으면 채점과 무관한 값이 채점 설정에 섞이고, "raw는 한 번 계산해 목표별로 재채점한다"는
 // 불변식(utilityRaws.test.ts)과 isObjectivePresetConfig 판정이 오염된다. MonteCarloConfig를
 // SimulationParams에 넣지 않은 이유(montecarlo.ts 상단 주석)와 같은 논리다.
-const SPENDING_INCREASE_GATE = {
+// export하는 이유: 테스트가 300·0.8을 그대로 베껴 쓰면 상수를 바꿔도 테스트가 따라 통과해
+// 아무것도 잠그지 못한다(문턱을 0으로 내려도 통과하는 상태였다).
+export const SPENDING_INCREASE_GATE = {
   // 1000 시행은 여기서 과하다. 게이트가 필요한 정밀도는 "임계 근처인가"라는 이진 판정이고,
   // 300 시행에서 성공률의 표준오차는 √(0.9×0.1/300) ≈ 1.7%p다. 시드가 고정이라 표본오차는
   // 흔들림이 아니라 고정 편향으로 남고, 같은 입력은 언제나 같은 추천을 낸다.
@@ -52,9 +54,31 @@ const SPENDING_INCREASE_GATE = {
   baselineMinSuccessRate: 0.9,
   // 후보 자체의 **적용 후** 수준. 기준이 "하락 여부"가 아니라 "적용 후 수준"인 이유:
   // 더 쓰면 성공률은 예외 없이 내려간다(정의상 그렇다). 물어야 할 것은 내려간 뒤에도
-  // 계획이 성립하느냐다. 실측에서 baseline 90%를 통과한 6건의 적용 후 수준은 82.7~100%였다.
+  // 계획이 성립하느냐다.
+  //
+  // 실측에서 이 게이트는 **한 번도 발동하지 않았다** — baseline 90%를 통과한 6건의 적용 후
+  // 수준이 82.7~100%로 전부 이 선 위였다. 즉 실측으로 보정된 값이 아니라, baseline 게이트가
+  // 놓치는 입력을 대비한 하드 제약이다. 실측 근거가 있는 것은 baselineMinSuccessRate뿐이다.
   candidateMinSuccessRate: 0.8,
 } as const;
+
+// 위 수치의 출처: `npm run harness:personas` (scripts/harness/personas.ts, 페르소나 54명).
+// 시드가 고정(DEFAULT_MONTE_CARLO_SEED)이라 재현 가능하다. 인용된 "51인"은 이 하니스가
+// 페르소나 51명이던 시점의 측정이며, 이후 평생소비 페르소나 3명이 더해져 현재는 54명이다.
+// 출력(scripts/harness/out/)은 .gitignore 대상이라 저장소에 남지 않는다.
+
+// 게이트용 MC 추정은 절대 던지지 않는다. 게이트는 "증액해도 되는가"만 판정하므로, 추정에
+// 실패했을 때 취할 수 있는 답은 "모르겠으니 증액하지 않는다"(= 0)뿐이다.
+function safeEstimateSuccessRate(
+  ...args: Parameters<typeof estimateSuccessRate>
+): number {
+  try {
+    return estimateSuccessRate(...args);
+  } catch (err) {
+    console.warn('생활비 증액 게이트의 몬테카를로 추정에 실패해 증액을 보류합니다', err);
+    return 0;
+  }
+}
 
 // 검증된 축이 하나도 없을 때 돌려주는 공유 상수. 매번 새 배열을 만들면 소비처(화면)의
 // 메모이제이션이 흔한 경로에서 계속 깨진다.
@@ -532,16 +556,24 @@ export function recommendStrategy(
   const gateConfig = spendingIncreaseEligible
     ? { ...resolveMonteCarloConfig(params), trials: SPENDING_INCREASE_GATE.trials }
     : null;
-  const allowSpendingIncrease =
-    gateConfig !== null &&
-    estimateSuccessRate(params, engine, gateConfig) >= SPENDING_INCREASE_GATE.baselineMinSuccessRate;
+  // 후보별 평가와 달리 이 호출은 Phase 1~4 **전체 앞단**에 있다. 여기서 던지면 국민연금
+  // 개시 나이·매도 순서·배당 재투자·사적연금 채널링 추천까지 통째로 사라져, 부분 실패가
+  // 전면 실패("AI 추천 전략을 계산하지 못했습니다")로 승격된다. 증액 검토만 포기하는 쪽이
+  // 언제나 낫고, 그 방향(증액 금지)이 안전한 쪽이기도 하다.
+  const allowSpendingIncrease = gateConfig !== null && safeEstimateSuccessRate(params, engine, gateConfig)
+    >= SPENDING_INCREASE_GATE.baselineMinSuccessRate;
 
   // 후보별 게이트. 감액 후보(배수 ≤ 1)에는 MC를 돌리지 않는다 — 덜 쓰는 계획이 더 빨리
   // 고갈될 수 없어 언제나 통과하고, 비용만 두 배가 된다.
+  //
+  // safeEstimateSuccessRate를 쓰는 두 번째 이유: 이 클로저는 evaluateCandidate의 try 안에서
+  // 불리므로, 던지면 failedCandidateCount가 올라가 "엔진이 후보를 못 돌렸다"로 집계된다.
+  // 그 카운터는 AI 어드바이저의 "전부 실패" 판정 입력이라, 게이트 문제가 엔진 문제로
+  // 사용자에게 전달된다.
   const spendingGate: CandidateGate | undefined = allowSpendingIncrease && gateConfig
     ? (plan, candidateParams) =>
         (plan.monthlySpendingMultiplier ?? 1) <= 1 ||
-        estimateSuccessRate(candidateParams, engine, gateConfig) >=
+        safeEstimateSuccessRate(candidateParams, engine, gateConfig) >=
           SPENDING_INCREASE_GATE.candidateMinSuccessRate
     : undefined;
 

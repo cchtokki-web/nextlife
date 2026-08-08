@@ -2,6 +2,7 @@ import { SimulationParams, SimulationResult, UtilityAxis, UtilityConfig } from '
 import { DEFAULT_UTILITY_CONFIG } from './utilityWeights';
 import { explainBequestAdequacy, formatManwon } from './utilityAnalysis';
 import { sumTotalTaxesAndLevies } from '../tax/annualTaxTotals';
+import { spendingMultiplierForAge } from '../spending/spendingCurve';
 
 export type UtilityComponentExplanations = Record<UtilityAxis, string>;
 
@@ -39,9 +40,15 @@ function explainConsumption(params: SimulationParams, retirementYears: YearlyRes
 
   const avgActualMonthly =
     retirementYears.reduce((sum, r) => sum + r.spending, 0) / retirementYears.length / 12;
+  // 곡선 배수는 UtilityEngine.targetAnnualSpendingForYear와 **같은 함수로** 곱해야 한다.
+  // 빠뜨리면 매년 목표를 정확히 채운 계획(소비 만점)의 설명 문장이 100%가 아닌 값을 말한다 —
+  // 설명이 자기가 설명하는 막대와 모순된다.
   const avgTargetMonthly =
     retirementYears.reduce(
-      (sum, r) => sum + params.userProfile.targetMonthlySpending + r.healthcareSpending / 12,
+      (sum, r) =>
+        sum +
+        params.userProfile.targetMonthlySpending * spendingMultiplierForAge(params.spendingCurve, r.age) +
+        r.healthcareSpending / 12,
       0
     ) / retirementYears.length;
 

@@ -3,6 +3,7 @@ import { makeYearlyResult as makeYearlyResultFixture } from '@/tests/fixtures/ye
 import { SimulationEngine } from '@/core/usecases/SimulationEngine';
 import {
   recommendStrategy,
+  SPENDING_INCREASE_GATE,
   buildReasons,
   computeDeltas,
   computeItemizedContributions,
@@ -285,6 +286,18 @@ const paramsWithSurplusButFragile: SimulationParams = {
   yieldPreset: undefined,
 };
 
+// baseline 게이트는 통과하지만(93%) 증액 후보 중 큰 쪽만 후보 게이트(80%)에 걸리는 계획.
+// 실측(trials=300, 고정 시드): baseline 93.0% / 배수 1.1 → 84.3% / 배수 1.2 → 75.0%.
+//
+// **두 문턱을 따로 재려면 이런 입력이 반드시 필요하다.** paramsWithSurplusAssetOnly는
+// 최대 배수(1.2)도 82.7%라 후보 게이트가 아무것도 거르지 않고, paramsWithSurplusButFragile은
+// baseline에서 먼저 탈락해 증액 후보 자체가 만들어지지 않는다. 둘 중 어느 쪽으로도
+// candidateMinSuccessRate를 잠글 수 없다(문턱을 0으로 내려도 결과가 같다).
+const paramsWithSurplusButCappedIncrease: SimulationParams = {
+  ...paramsWithSurplusAssetOnly,
+  assets: [{ ...paramsWithSurplusAssetOnly.assets[0], quantity: 15000 }],
+};
+
 describe('recommendStrategy - 생활비 증액(Phase 2) 후보', () => {
   test('5차원 탐색으로 해소되지 않는 잔여자산 과다는 생활비 증액 후보로 개선된다', () => {
     const engine = new SimulationEngine();
@@ -342,14 +355,44 @@ describe('recommendStrategy - 생활비 증액(Phase 2) 후보', () => {
     expect(recommendation.recommendedPlan?.monthlySpendingMultiplier ?? 1).toBeLessThanOrEqual(1);
   });
 
-  test('게이트에 걸린 증액 후보는 강건성 승격 경로로도 되살아나지 않는다', () => {
-    const engine = new SimulationEngine();
-
-    // 게이트를 evaluateCandidate의 rememberCandidate **뒤로** 옮기면 이 단언이 깨진다:
-    // 탈락한 후보가 topCandidates에 남아 applyRobustness의 promoteCandidate가 그것을
-    // 최선으로 승격할 수 있기 때문이다. argmax만 막는 것으로는 부족하다는 것을 고정한다.
+  test('증액은 허용하되, 성공률이 후보 문턱 아래로 떨어지는 배수는 고르지 않는다', () => {
+    // candidateMinSuccessRate를 잠근다. 문턱을 0으로 내리면 배수 1.2(성공률 75%)가
+    // 효용 argmax로 선택되어 이 단언이 깨진다.
     //
-    // 강건성 승격이 실제로 도는 조건(objective가 'ai_recommended')을 명시적으로 준다.
+    // 단언에 SPENDING_INCREASE_GATE.candidateMinSuccessRate를 쓰지 않는 이유: 상수를
+    // 참조하면 상수를 바꿨을 때 기대값도 같이 움직여 테스트가 아무것도 잠그지 못한다.
+    // 여기서는 "어느 배수가 선택되는가"라는 관측 가능한 결과로 고정한다.
+    const engine = new SimulationEngine();
+    const recommendation = recommendStrategy(paramsWithSurplusButCappedIncrease, engine);
+
+    const multiplier = recommendation.recommendedPlan?.monthlySpendingMultiplier ?? 1;
+    expect(multiplier).toBeGreaterThan(1); // 전제: baseline 게이트는 통과해 증액이 검토된다
+    expect(multiplier).toBeLessThanOrEqual(1.1);
+  });
+
+  test('게이트에 걸린 증액 후보는 강건성 승격 경로로도 되살아나지 않는다', () => {
+    // 게이트를 evaluateCandidate의 rememberCandidate **뒤로** 옮기면 이 단언이 깨진다:
+    // 탈락한 배수 1.2가 topCandidates에 남아 applyRobustness의 promoteCandidate가 그것을
+    // 최선으로 승격한다. argmax만 막는 것으로는 부족하다는 것을 고정한다.
+    //
+    // 픽스처가 paramsWithSurplusButFragile이 아닌 이유: 그쪽은 baseline 게이트에서 먼저
+    // 탈락해 증액 후보가 **하나도 생성되지 않으므로**, 게이트 호출부에 throw를 심어도
+    // 통과한다. 승격 경로를 재려면 후보가 실제로 만들어지고 그중 일부가 거절되어야 한다.
+    const engine = new SimulationEngine();
+    const params: SimulationParams = {
+      ...paramsWithSurplusButCappedIncrease,
+      // 강건성 승격이 실제로 도는 조건(objective가 'ai_recommended')을 명시적으로 준다.
+      strategy: { ...DEFAULT_RETIREMENT_STRATEGY, objective: 'ai_recommended' },
+    };
+    const compiled = compileStrategy(params);
+    const recommendation = recommendStrategy(compiled.params, engine, compiled.utilityConfig);
+
+    expect(recommendation.recommendedPlan?.monthlySpendingMultiplier ?? 1).toBeLessThanOrEqual(1.1);
+  });
+
+  test('결정론상 여유로워 보여도 성공률이 낮으면 증액 자체를 제안하지 않는다', () => {
+    // baseline 게이트가 막는 쪽. 위 두 테스트와 달리 증액 후보가 아예 만들어지지 않는다.
+    const engine = new SimulationEngine();
     const params: SimulationParams = {
       ...paramsWithSurplusButFragile,
       strategy: { ...DEFAULT_RETIREMENT_STRATEGY, objective: 'ai_recommended' },

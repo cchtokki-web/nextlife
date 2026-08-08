@@ -340,14 +340,24 @@ export function compileStrategy(params: SimulationParams): CompiledStrategy {
   }
 
   const spendingStrategy = resolveSpendingStrategy(strategy.spendingChoice);
-  const assetFloor = resolveAssetFloor(
-    strategy.bequestStrategy,
-    targetBequest,
-    strategy.bequestSafetyMarginRate
-  );
+
+  // 소비 성향·안전마진은 「평생 소비 최적화」 전용 하위 입력이며, 그 조건은 화면
+  // (RetirementGoalSection의 `spendingChoice === 'max_sustainable'` 가드)과 **정확히 같아야 한다**.
+  //
+  // 어긋나면 되돌릴 수 없는 유령 상태가 된다: 평생 소비 최적화에서 활동기 집중형과 마진 30%를
+  // 고른 뒤 「목표 생활비 유지」로 되돌리면, 두 입력은 화면에서 사라지지만 계산에는 계속 남아
+  // 60대 목표가 1.2배로 부풀고 하한선이 1.3배로 유지된다. 사용자에게는 원인 불명의 결손으로만
+  // 보이고, 값을 되돌리려면 전략을 다시 max_sustainable로 바꿔야 한다는 걸 알아낼 방법이 없다.
+  // 이 값들은 시나리오에 저장되므로 다시 열어도 그대로 살아난다.
+  const lifetimeOptimization = spendingStrategy === 'max_sustainable';
+  const assetFloor = lifetimeOptimization
+    ? resolveAssetFloor(strategy.bequestStrategy, targetBequest, strategy.bequestSafetyMarginRate)
+    : resolveAssetFloor(strategy.bequestStrategy, targetBequest, 0);
   // 'flat'·미지정이면 undefined다 — 그때는 아래에서 키 자체를 지워, 곡선을 설정한 적 없는
   // 시나리오가 곡선 코드 경로를 아예 타지 않게 한다.
-  const spendingCurve = resolveSpendingCurve(strategy.spendingShape);
+  const spendingCurve = lifetimeOptimization
+    ? resolveSpendingCurve(strategy.spendingShape)
+    : undefined;
 
   // 경제 시나리오 → 리스크 성향 순으로 적용한다. 둘 다 수익률을 건드리므로
   // 순서가 결과를 결정한다: 시나리오는 물가·환율을, 리스크 성향은 수익률을 지배한다.

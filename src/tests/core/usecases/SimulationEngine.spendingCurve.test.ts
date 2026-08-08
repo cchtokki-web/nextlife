@@ -115,9 +115,16 @@ describe('max_sustainable 역산과 곡선의 공존', () => {
       assetFloor: floor,
     }));
 
-    expect(result.calculatedTargetSpending).toBeGreaterThan(0);
+    // `> 0`으로는 아무것도 잡지 못한다 — 이진탐색이 붕괴하면 값이 **0.37원**이라 통과한다.
+    // 하한선 단언도 마찬가지다: 붕괴하면 거의 안 쓰므로 기말자산이 29억이 되어 1억 하한을
+    // 압도적으로 넘긴다. 그래서 "충분히 크다"와 "하한선 근처에서 멈춘다"를 함께 본다.
+    const flat = engine.run(params({ spendingStrategy: 'max_sustainable', assetFloor: floor }));
+    expect(result.calculatedTargetSpending!).toBeGreaterThan(flat.calculatedTargetSpending! * 0.5);
     // 월별 부동소수 누적 오차를 감안해 1% 여유를 둔다(assetFloor.test.ts와 같은 규약).
     expect(result.endingAssets).toBeGreaterThanOrEqual(floor * 0.99);
+    // 하한선을 "지키는" 것과 "안 써서 한참 남기는" 것은 다르다. 이진탐색은 하한선에
+    // 최대한 붙어야 한다.
+    expect(result.endingAssets).toBeLessThan(floor * 1.5);
   });
 
   test('하한선이 높을수록 역산된 생활비가 낮아진다', () => {

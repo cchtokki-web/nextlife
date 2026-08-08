@@ -111,10 +111,18 @@ interface ActiveIsa extends IsaAccount {
 
 // 은퇴 준비도 점수의 자산 항목(100점 중 25점)의 분모. 4% 룰(연 필요액 × 25)로 환산한 목표 자산.
 //
-// 분모는 "그 계획이 실제로 감당해야 할 필요"여야 한다. 다른 목표 분모 세 곳
+// 분모는 "그 계획이 실제로 감당해야 할 필요"여야 한다. 다른 목표 분모들
 // (goalAchievementRate / UtilityEngine / MonthlySpendingComposition)과 마찬가지로 의료비를
 // 포함한다 — 켜면 실제로 필요한 자산이 늘어나는데 분모가 그대로면 의료비를 켠 계획이
 // "자산이 충분하다"는 같은 점수를 받는다(FIRE 판정 목표에 의료비를 넣은 것과 같은 이유).
+//
+// 연령대별 생활비 곡선(spendingCurve)은 **일부러 반영하지 않는다.** 4% 룰은 "이 필요가
+// 영구히 반복된다"는 가정 위에 서 있어서 특정 연령 구간의 배수를 25배로 곱하는 것이
+// 의미가 없다 — 활동기 배수 1.2를 넣으면 80세 이후에도 그 소비가 영원히 계속된다는
+// 목표 자산을 요구하게 되고, 반대로 은퇴 시점 배수가 0.9인 의료·돌봄 대비형은 후반
+// 지출이 더 큰데도 목표 자산이 낮아진다. 어느 쪽이든 곡선의 의미와 반대다.
+// 대신 곡선의 실제 영향은 assetScore가 아니라 고갈 판정·달성률·효용 소비 축에서 드러난다.
+// (일회성 의료비 쇼크를 제외하는 아래 recurringHealthcare 처리와 같은 성격의 판단이다.)
 export function computeRetirementTargetAssets(
   targetMonthlyAtRetirement: number,
   annualHealthcareAtRetirement: number
@@ -1216,9 +1224,16 @@ export class SimulationEngine {
       if (totalAssetsDisplay <= 0 && depletionAge === null) depletionAge = currentAge;
 
       // 의료비도 소득으로 감당해야 할 지출이다. 빼면 "의료비를 못 내는데 FIRE 달성"이 된다.
+      //
+      // 곡선 배수는 은퇴 후에만 곱한다 — 엔진의 monthlyTargetSpending이 isRetired일 때만
+      // 곡선을 타는 것과 같은 규칙이다. 은퇴 전에도 곱하면 활동기 배수 1.2가 아직 목표
+      // 생활비로 살지 않는 구간까지 밀고 들어와, 엔진이 쓴 적 없는 목표로 FIRE를 판정한다.
+      const fireCurveMultiplier = currentAge >= userProfile.retirementAge
+        ? spendingMultiplierForAge(params.spendingCurve, currentAge)
+        : 1;
       const targetSpendingForFIRE = (inflationMode === 'nominal'
-        ? userProfile.targetMonthlySpending * 12 * Math.pow(1 + inflationRate / 100, y)
-        : userProfile.targetMonthlySpending * 12) + annualHealthcareCost;
+        ? userProfile.targetMonthlySpending * 12 * fireCurveMultiplier * Math.pow(1 + inflationRate / 100, y)
+        : userProfile.targetMonthlySpending * 12 * fireCurveMultiplier) + annualHealthcareCost;
 
       if (totalIncome >= targetSpendingForFIRE && fireAge === null) fireAge = currentAge;
     }
@@ -1231,7 +1246,10 @@ export class SimulationEngine {
       const totalIncomeSum = retirementYearsResults.reduce((sum, r) => sum + r.totalIncome, 0);
       let totalTargetSum = 0;
       retirementYearsResults.forEach(r => {
-          let annualTarget = userProfile.targetMonthlySpending * 12;
+          // 연령대별 곡선을 쓰면 그 해의 목표도 배수만큼 달라진다. 빼면 배수 0.8 구간이
+          // "목표 초과 달성"으로, 1.2 구간이 미달로 잡혀 달성률이 실제와 어긋난다.
+          let annualTarget = userProfile.targetMonthlySpending * 12
+            * spendingMultiplierForAge(params.spendingCurve, r.age);
           if (inflationMode === 'nominal') {
               annualTarget = annualTarget * Math.pow(1 + inflationRate / 100, r.age - startAge);
           }

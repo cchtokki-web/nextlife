@@ -36,8 +36,9 @@ function sum(values: number[]): number {
 // 동일한 규칙(명목: 매년 물가상승률 복리 반영 / 실질: 고정)을 따른다.
 //
 // 의료비(r.healthcareSpending)도 목표에 더한다. 엔진이 의료비를 spending에 합산하므로,
-// 분모에 더하지 않으면 의료비를 켠 계획이 "목표를 초과 소비했다"로 잘못 보상받는다
-// (consumptionYearUtility가 ratio > 1을 보너스로 처리한다). 의료비는 생활수준을 높이는
+// 분모에 더하지 않으면 의료비를 켠 계획의 결손이 만점 뒤에 숨는다 — ratio가 1을 넘어도
+// consumptionYearUtility가 1로 clamp하므로, 의료비만큼 부풀려진 분자가 다른 해의 결손을
+// 가리지는 않지만 그 해 자체는 "목표를 다 채웠다"로 읽힌다. 의료비는 생활수준을 높이는
 // 재량 소비가 아니라 반드시 나가는 비용이므로 목표(=필요) 쪽에 들어가는 것이 맞다.
 // 이미 엔진이 inflationMode를 반영해 계산한 실제 지출액이라 물가 보정을 다시 적용하지 않는다.
 function targetAnnualSpendingForYear(params: SimulationParams, r: SimulationYearlyResult): number {

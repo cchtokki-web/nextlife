@@ -242,11 +242,15 @@ export interface SimulationParams {
   // withdrawalPlan을 통째로 교체하므로(paramsWithBaselinePlan) 그 안에 두면 모든 후보
   // 평가에서 조용히 사라진다.
   //
-  // 이 값을 읽는 곳은 네 군데이며 **반드시 같은 함수(spendingMultiplierForAge)를 써야 한다**:
-  // 엔진의 목표 산출, meetsSustainabilityGoal의 충당 검증, UtilityEngine의 채점 분모,
-  // MonthlySpendingComposition의 차트 목표선. 하나라도 빠지면 조용히 어긋난다 —
-  // 특히 meetsSustainabilityGoal에서 빠지면 배수가 1을 넘는 구간이 항상 미충당으로 읽혀
-  // max_sustainable 이진탐색이 0으로 붕괴한다.
+  // **이 값을 읽는 곳은 전부 같은 함수(spendingMultiplierForAge)를 써야 한다.** 엔진의 목표
+  // 산출과 충당 검증, 채점 분모와 그 설명 문장, 달성률·FIRE 판정, 차트 목표선, KPI 금액이
+  // 전부 그 함수를 거친다. 하나라도 빠지면 조용히 어긋난다 — 특히 meetsSustainabilityGoal에서
+  // 빠지면 배수가 1을 넘는 구간이 항상 미충당으로 읽혀 max_sustainable 이진탐색이 0으로
+  // 붕괴한다(실측: 월 438만원 → 0.37원).
+  //
+  // 호출부 개수를 여기 적지 않는 이유: 화면 쪽 소비처가 계속 늘어나므로 숫자를 적으면
+  // 반드시 낡는다. 새 소비처를 만들 때는 `grep spendingMultiplierForAge`로 선례를 볼 것.
+  // 유일한 의도적 예외는 computeRetirementTargetAssets(4% 룰)이며 그 이유는 그쪽 주석에 있다.
   spendingCurve?: SpendingCurve;
   // 상속 하한선(displayCurrency 기준). 총자산이 이 금액 아래로 내려가는 인출을 하지 않는다.
   // 미지정·0이면 하한선 없음(= 기존 동작과 비트 단위로 동일).
@@ -580,8 +584,12 @@ export interface RetirementStrategy {
   riskProfile: RiskProfile;
   economicScenario: EconomicScenario;
   // 아래 셋은 optional이다. 필수로 만들면 이미 저장된 시나리오의 strategy 객체가 타입과
-  // 어긋나고, 전체 객체를 하드코딩한 테스트 픽스처가 전부 깨진다. resolveStrategy가
-  // DEFAULT_RETIREMENT_STRATEGY로 메우므로 런타임에는 언제나 값이 있다.
+  // 어긋나고, 전체 객체를 하드코딩한 테스트 픽스처가 전부 깨진다.
+  //
+  // 앞의 둘(spendingShape·bequestSafetyMarginRate)은 DEFAULT_RETIREMENT_STRATEGY가 메우므로
+  // resolveStrategy를 거친 뒤에는 언제나 값이 있다. **minMonthlySpending은 일부러 메우지
+  // 않는다** — undefined가 "경고 없음"이라는 유효한 상태이기 때문이다(compileStrategy.ts의
+  // DEFAULT_RETIREMENT_STRATEGY 주석 참고). 이 셋을 싸잡아 non-null로 다루지 말 것.
 
   // 은퇴 후 생활비를 연령대별로 어떻게 배분할지. 미지정·'flat'이면 기존 동작(전 구간 균등).
   spendingShape?: SpendingShapePreset;
