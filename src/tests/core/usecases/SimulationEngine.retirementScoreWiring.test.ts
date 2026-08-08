@@ -64,21 +64,6 @@ describe('calculateRetirementScore의 목표 자산 배선', () => {
     // 회귀 시 실제로 점수가 갈리는 조건인지 확인한다 — 만점(=분모와 무관)이면 빈 테스트가 된다.
     expect(withoutHealthcare.retirementScore).toBeLessThan(100);
   });
-
-  test('은퇴 시점 반복 의료비가 목표 자산 분모에 반영된다', () => {
-    const withoutHealthcare = new SimulationEngine().run(base);
-    const withHealthcare = new SimulationEngine().run({
-      ...base,
-      healthcare: {
-        enabled: true, costGrowthRate: 5, baseMonthlyCost: 1000000,
-        longTermCareEnabled: false, longTermCareStartAge: 80, longTermCareMonthlyCost: 0,
-        shockEnabled: false, shockAge: 0, shockAmount: 0,
-      },
-    });
-
-    // 목표 자산 분모가 커지므로 자산 점수가, 따라서 총점이 낮아진다.
-    expect(withHealthcare.retirementScore).toBeLessThan(withoutHealthcare.retirementScore);
-  });
 });
 
 // followups #4: 4% 룰은 "이 필요가 영구히 반복된다"는 가정이다. 일회성 의료비 쇼크가

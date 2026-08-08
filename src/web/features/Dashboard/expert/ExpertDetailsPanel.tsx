@@ -118,7 +118,7 @@ export function ExpertDetailsPanel({
             baselineEndingAssets={sensitivityBaseline.endingAssets}
             baselineUnmetSpendingYears={baselineUnmetSpendingYears}
             scenarios={sensitivityScenarios}
-            planAssetStatus={resolvePlanAssetStatus(sensitivityBaseline, params.userProfile.expectancy)}
+            planAssetStatus={resolvePlanAssetStatus(sensitivityBaseline, params)}
           />
 
           {isPro && (

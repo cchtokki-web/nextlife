@@ -128,10 +128,10 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
   // 차트·캡션·헤드라인이 전부 이 하나의 판정을 근거로 삼는다. 화면에 실제로 표시 중인
   // 결과(displayedResult)를 쓰는 것은 captions/riskAlerts와 같은 이유다 — After 모드에서
   // 추천안이 자산 상태 자체를 바꾸면 그 결과를 따라가야 한다.
-  const planAssetStatus = resolvePlanAssetStatus(displayedResult, params.userProfile.expectancy);
+  const planAssetStatus = resolvePlanAssetStatus(displayedResult, params);
   // baseline(현재 설정) 기준 상태. AI 노후 설계사 의견·과소비 배너처럼 "지금 설정이 어떤가"를
   // 말하는 조각은 Before/After 미리보기를 따라가면 자기 자신을 근거로 삼게 된다.
-  const baselinePlanAssetStatus = resolvePlanAssetStatus(result, params.userProfile.expectancy);
+  const baselinePlanAssetStatus = resolvePlanAssetStatus(result, params);
 
   // 로드맵이 볼 추천안. After 모드에서만 넘긴다 — computeExecutionRoadmap은 undefined면
   // getIdentityPlan(현재 설정)으로 폴백하므로, Before에서는 사용자의 실제 계획이 그려진다.

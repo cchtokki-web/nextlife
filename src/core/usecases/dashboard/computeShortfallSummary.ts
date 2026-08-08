@@ -20,7 +20,7 @@ export interface ShortfallSummary {
 // "현재 계획을 유지하면 얼마가 모자라고, 그걸 메우려면 얼마가 필요한가"를 집계한다.
 //
 // 새 시뮬레이션을 돌리지 않는다. computeMonthlySpendingComposition이 이미 연도별로 계산해 둔
-// shortfall/targetMonthly를 읽을 뿐이다 — 물가·가구 규모 계수·의료비 규칙을 여기서 다시
+// shortfall/targetMonthly를 읽을 뿐이다 — 물가·의료비 규칙을 여기서 다시
 // 유도하면 화면의 생활비 재원 구성 차트와 반드시 어긋난다.
 export function computeShortfallSummary(
   params: SimulationParams,

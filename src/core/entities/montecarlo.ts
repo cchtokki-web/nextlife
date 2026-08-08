@@ -28,6 +28,11 @@ export interface MonteCarloResult {
   seed: number;
   // 성공 판정 기준 나이 = 시뮬레이션 종료 나이(본인 기대수명). 결정론 시뮬레이션의
   // 고갈 판정과 같은 나이를 써야 성공률과 화면 문구가 어긋나지 않는다.
+  //
+  // 다만 나이는 같아졌어도 경계 연산자는 아직 다르다. 성공 판정은 depletionAge > successAge,
+  // 화면의 상태 판정(resolvePlanAssetStatus)은 depletionAge < expectancy를 고갈로 본다.
+  // 그래서 정확히 expectancy에 고갈되는 경로는 몬테카를로에서 실패, 화면에서는 유지로 갈린다.
+  // 어느 쪽 경계가 옳은지는 아직 정하지 않았다.
   successAge: number;
   // successAge까지 자산이 고갈되지 않은 시행의 비율(0~1).
   successRate: number;

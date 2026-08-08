@@ -111,9 +111,9 @@ interface ActiveIsa extends IsaAccount {
 // 은퇴 준비도 점수의 자산 항목(100점 중 25점)의 분모. 4% 룰(연 필요액 × 25)로 환산한 목표 자산.
 //
 // 분모는 "그 계획이 실제로 감당해야 할 필요"여야 한다. 다른 목표 분모 세 곳
-// (goalAchievementRate / UtilityEngine / MonthlySpendingComposition)과 같은 규칙을 쓴다:
-//   - 의료비: 켜면 실제로 필요한 자산이 늘어난다. 분모가 그대로면 의료비를 켠 계획이
-//     "자산이 충분하다"는 같은 점수를 받는다(FIRE 판정 목표에 의료비를 넣은 것과 같은 이유).
+// (goalAchievementRate / UtilityEngine / MonthlySpendingComposition)과 마찬가지로 의료비를
+// 포함한다 — 켜면 실제로 필요한 자산이 늘어나는데 분모가 그대로면 의료비를 켠 계획이
+// "자산이 충분하다"는 같은 점수를 받는다(FIRE 판정 목표에 의료비를 넣은 것과 같은 이유).
 export function computeRetirementTargetAssets(
   targetMonthlyAtRetirement: number,
   annualHealthcareAtRetirement: number
@@ -1254,8 +1254,9 @@ export class SimulationEngine {
     return {
       yearlyResults,
       // 종료 판정은 같은 반환 객체의 depletionAge/endingAssets와 같은 기준(시뮬레이션
-      // 종료 나이 = 본인 기대수명)을 써야 한다. 셋이 서로 다른 나이를 보면 같은 결과 안에서
-      // "고갈 없음"과 "FIRE 달성 불가"가 어긋난다.
+      // 종료 나이 = 본인 기대수명)을 쓴다. endAge가 userProfile.expectancy 하나에서만 오므로
+      // 셋은 구조적으로 같은 나이를 본다 — 종료 나이의 출처가 늘어나면 이 대응도 함께 유지해야
+      // 한 결과 안에서 "고갈 없음"과 "FIRE 달성 불가"가 어긋나지 않는다.
       fireAge: fireAge === null || fireAge >= endAge ? null : fireAge,
       depletionAge,
       endingAssets,

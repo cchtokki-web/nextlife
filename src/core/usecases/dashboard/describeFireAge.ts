@@ -6,8 +6,8 @@
 // 바꾸는 대신(원금 인출이 소득에 포함되는 구조적 한계는 그대로 남는다) 은퇴 계획 대비
 // 상대 위치를 함께 인쇄해 오해를 없앤다.
 //
-// 인쇄되는 모든 지점이 이 함수를 거치게 해서 문구를 한 곳에서만 정의한다 — 같은 리포트와
-// 같은 AI 프롬프트가 서로 다른 표현으로 같은 숫자를 말하면 LLM이 둘을 별개 사실로 받는다.
+// 이 함수는 retirementAge 비교 문구의 단일 정의점이다. 다만 모든 인쇄 지점이 여기를 거치지는
+// 않는다 — ai-advisor route는 userProfile이 없어 비교 기준을 못 만드는 경우 숫자만 직접 적는다.
 export function describeFireAge(
   fireAge: number | null | undefined,
   retirementAge: number

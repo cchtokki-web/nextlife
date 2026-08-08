@@ -39,7 +39,7 @@ export interface IncomeChartRow {
   기타소득: number;
   hasTaxWarning: boolean;
   // 그해 목표 월 생활비(은퇴 후에만 존재). 소득이 목표의 몇 %인지 말하기 위한 것이고,
-  // 물가·가구 규모 계수·의료비 규칙은 computeMonthlySpendingComposition이 이미 반영해 둔다.
+  // 물가·의료비 규칙은 computeMonthlySpendingComposition이 이미 반영해 둔다.
   targetMonthly?: number;
 }
 
@@ -88,7 +88,7 @@ export function IncomeCompositionChart({
 }: IncomeCompositionChartProps) {
   const currency = params.displayCurrency;
   // 목표 생활비는 은퇴 후 구간에만 정의된다. 나이로 색인해 두고 툴팁에서 찾아 쓴다 —
-  // 화면이 물가·가구 규모 계수·의료비 규칙을 복제하지 않게 하기 위해 이 usecase를 재사용한다.
+  // 화면이 물가·의료비 규칙을 복제하지 않게 하기 위해 이 usecase를 재사용한다.
   const targetByAge = new Map(
     computeMonthlySpendingComposition(result.yearlyResults, params, result).map((d) => [d.age, d.targetMonthly])
   );

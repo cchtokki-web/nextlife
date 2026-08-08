@@ -19,7 +19,12 @@ describe('computeRetirementTargetAssets (4% 룰 목표 자산)', () => {
       .toBe((monthly * 12 + annualHealthcare) * 25);
   });
 
-  test('음수가 되지 않는다', () => {
-    expect(computeRetirementTargetAssets(0, 0)).toBe(0);
+  // 연 필요액이 음수로 나오는 입력에서도 목표 자산은 0으로 잘린다. 0을 넣으면
+  // 클램프를 거치지 않고도 0이 나오므로, 클램프가 실제로 걸리는 음수 입력으로 건다.
+  test('연 필요액이 음수여도 목표 자산은 0으로 잘린다', () => {
+    expect(computeRetirementTargetAssets(-1000000, 0)).toBe(0);
+    expect(computeRetirementTargetAssets(0, -6000000)).toBe(0);
+    // 월 목표가 의료비 음수를 상쇄하지 못하는 경우도 마찬가지다.
+    expect(computeRetirementTargetAssets(100000, -6000000)).toBe(0);
   });
 });

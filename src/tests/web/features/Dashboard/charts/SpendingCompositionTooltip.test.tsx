@@ -42,7 +42,8 @@ describe('SpendingCompositionTooltip', () => {
     expect(screen.queryByText('자산인출')).not.toBeInTheDocument();
   });
 
-  // 가구 전원 사망 이후 구간처럼 목표가 0인 해에는 비율이 성립하지 않는다(0으로 나누기).
+  // 사용자가 목표 생활비를 0으로 입력했거나 max_sustainable이 0으로 수렴한 해처럼
+  // 목표가 0인 해에는 비율이 성립하지 않는다(0으로 나누기).
   test('목표 생활비가 0이면 충당률을 표시하지 않는다', () => {
     render(
       <SpendingCompositionTooltip

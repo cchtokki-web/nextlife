@@ -44,7 +44,7 @@ export function ExecutionRoadmap({ roadmap, isRecommendedPlan = false }: Executi
                     <p className={`text-sm font-medium ${item.severity === 'warning' ? 'text-danger' : ''}`}>
                       {item.title}
                       {/* 추천이 옮긴 나이임을 그 자리에서 밝힌다. 없으면 추천이 건드리지 않는
-                          항목(퇴직, 자산 고갈 예상 등)과 섞여 "왜 이 순서지?"가 된다. */}
+                          항목(퇴직 등)과 섞여 "왜 이 순서지?"가 된다. */}
                       {item.changedFromAge !== undefined && (
                         <span className="ml-2 rounded-full border border-primary/40 px-2 py-0.5 text-[11px] font-semibold text-primary">
                           현재 {item.changedFromAge}세 → 추천 {event.age}세

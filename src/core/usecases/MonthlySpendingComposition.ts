@@ -2,12 +2,12 @@ import { SimulationParams, SimulationResult, SimulationYearlyResult } from '../e
 
 export interface MonthlySpendingComposition {
   age: number;
-  // 그해에 필요한 월 생활비(물가·가구 규모 계수·의료비까지 반영한 최종값). 아래 재원들의
+  // 그해에 필요한 월 생활비(물가·의료비까지 반영한 최종값). 아래 재원들의
   // 합계가 이 값에 못 미친 몫이 shortfall이다.
   //
   // 이 필드가 필요한 이유: 차트는 재원을 쌓아 보여줄 뿐 "얼마 중 얼마"인지는 말하지 않아,
   // 사용자가 빨간 '자산부족' 띠를 봐도 그게 몇 %인지 알 수 없었다. 화면이 목표 금액을
-  // 직접 다시 계산하면(물가·계수·의료비 규칙을 복제하면) 반드시 이 함수와 어긋난다.
+  // 직접 다시 계산하면(물가·의료비 규칙을 복제하면) 반드시 이 함수와 어긋난다.
   targetMonthly: number;
   nationalUsed: number;
   privatePenUsed: number;

@@ -58,7 +58,8 @@ export function SpendingCompositionTooltip({
   if (!row) return null;
 
   const covered = Math.max(0, row.목표생활비 - row.자산부족);
-  // 목표가 0인 해(예: 가구 전원 사망 이후 구간)에는 비율이 성립하지 않는다.
+  // 목표가 0인 해(예: 목표 생활비를 0으로 입력했거나, max_sustainable이 0으로 수렴한 계획)에는
+  // 비율이 성립하지 않는다.
   const coverageRate = row.목표생활비 > 0 ? Math.round((covered / row.목표생활비) * 100) : null;
 
   return (

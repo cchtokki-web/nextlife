@@ -77,8 +77,11 @@ export function runMonteCarlo(
   const endingSorted = trials.map((t) => t.endingAssets).sort((a, b) => a - b);
   const mean = endingSorted.reduce((a, b) => a + b, 0) / (endingSorted.length || 1);
 
-  // 성공 = successAge까지 고갈되지 않음. depletionAge가 그 나이보다 뒤면 시뮬레이션이
-  // 끝난 뒤의 일이므로 성공으로 본다.
+  // 성공 = successAge까지 고갈되지 않음, 즉 depletionAge가 null인 시행.
+  //
+  // depletionAge > successAge 조건은 지금은 도달할 수 없다 — 시뮬레이션 루프가 expectancy에서
+  // 끝나므로 depletionAge는 successAge를 넘을 수 없다. 루프 종료 나이와 successAge가 다시
+  // 갈라지는 날을 대비한 방어선으로만 남겨 둔다.
   const succeeded = trials.filter((t) => t.depletionAge === null || t.depletionAge > successAge);
   // 목표 생활비를 온전히 쓴 시행 = 고갈도 없고 결손도 없는 시행.
   const fullSpending = succeeded.filter((t) => !t.hasUnmetSpending);

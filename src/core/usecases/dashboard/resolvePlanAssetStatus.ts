@@ -1,4 +1,4 @@
-import { SimulationResult } from '../../entities/types';
+import { SimulationParams, SimulationResult } from '../../entities/types';
 
 // 계획이 놓인 자산 상태. 화면 문구·차트·추천 카드가 전부 이 하나의 판정을 근거로 삼는다.
 //
@@ -10,8 +10,13 @@ import { SimulationResult } from '../../entities/types';
 // (인출 전략 조정이 아니라 저축·생활비·은퇴 시점이다).
 export type PlanAssetStatus = 'no_investable_asset' | 'depleted' | 'sustained';
 
-export function resolvePlanAssetStatus(result: SimulationResult, expectancy: number): PlanAssetStatus {
+// 두 번째 인자를 expectancy(number) 하나가 아니라 SimulationParams 전체로 받는 이유:
+// 이 저장소의 다른 대시보드 유즈케이스(generateChartCaptions·computeRiskAlerts·
+// computeShortfallSummary 등)와 시그니처를 맞추기 위해서이기도 하지만, number 두 개
+// (expectancy와 retirementAge)를 바꿔 넘겨도 컴파일이 통과하는 위험을 없애기 위해서다.
+export function resolvePlanAssetStatus(result: SimulationResult, params: SimulationParams): PlanAssetStatus {
   const { yearlyResults, depletionAge } = result;
+  const { expectancy } = params.userProfile;
 
   // 판정 근거를 "시작 시점 자산이 0인가"가 아니라 시뮬레이션이 실제로 돈 결과 전체로 둔다.
   // 시작 시점만 보면 잔액 0에서 월 납입으로 자산을 쌓다가 나중에 고갈되는 적립식 계획까지

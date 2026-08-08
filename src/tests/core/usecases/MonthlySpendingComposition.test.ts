@@ -387,9 +387,7 @@ describe('실제 SimulationEngine 출력과의 계약', () => {
   });
 
   test('구성 대상 연도가 엔진이 실제로 돈 은퇴 후 전 기간과 일치한다', () => {
-    // 엔진이 실제로 시뮬레이션을 기대수명(expectancy)까지 도는지를 건다. 예전에는
-    // result.householdEndAge로 이 계약을 검증했으나, 해당 필드가 제거되면서 엔진이
-    // userProfile.expectancy를 직접 종료 나이로 쓰게 되었다.
+    // 엔진이 실제로 시뮬레이션을 userProfile.expectancy까지 도는지를 건다.
     expect(result.yearlyResults[result.yearlyResults.length - 1].age).toBe(
       params.userProfile.expectancy
     );

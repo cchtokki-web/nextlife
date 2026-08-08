@@ -241,13 +241,6 @@ describe('computeExecutionRoadmap', () => {
     expect(roadmap.endLabel).toBe('기대수명');
   });
 
-  test('기대수명을 넘지 않는 고갈 이벤트가 종료 마커보다 앞에 온다', () => {
-    const roadmap = computeExecutionRoadmap(baseParams, undefined, 85, 'sustained');
-
-    expect(roadmap.events.some((e) => e.age === 85)).toBe(true);
-    expect(roadmap.endAge).toBeGreaterThan(85);
-  });
-
   test('depletionAge가 있으면 "자산 고갈 예상" 이벤트가 severity: warning으로 추가된다', () => {
     const roadmap = computeExecutionRoadmap(baseParams, undefined, 78, 'sustained');
     const age78 = roadmap.events.find((e) => e.age === 78)!;

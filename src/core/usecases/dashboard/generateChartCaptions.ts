@@ -16,7 +16,7 @@ export function generateChartCaptions(result: SimulationResult, params: Simulati
 
   // 고갈 판정 규칙을 여기서 재유도하지 않고 resolvePlanAssetStatus 한 곳에 맡긴다 —
   // 같은 result에서 파생되므로 화면의 다른 조각(헤드라인·로드맵)과 반드시 같은 상태를 본다.
-  const status = resolvePlanAssetStatus(result, expectancy);
+  const status = resolvePlanAssetStatus(result, params);
   const firstAgeWithNationalPension = yearlyResults.find((y) => y.nationalPensionIncome > 0)?.age ?? null;
 
   const pensionLimit = params.taxSettings?.privatePensionLimit ?? 15000000;

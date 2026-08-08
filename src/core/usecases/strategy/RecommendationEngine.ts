@@ -20,6 +20,7 @@ import { optimizePrivatePensionChanneling } from './PrivatePensionChannelingOpti
 import { computeDeltas } from './deltas';
 import { buildVerifiedSentinelPlan } from './verifiedSentinelPlan';
 import { resolveStrategy } from './compileStrategy';
+import { resolvePlanAssetStatus } from '../dashboard/resolvePlanAssetStatus';
 import {
   isObjectivePresetConfig, pickLowestRegret, pickMostRobust, resolveAssumptionVariants,
 } from './robustness';
@@ -472,11 +473,13 @@ export function recommendStrategy(
   // 결정하지 않는 전략(dividend_only/max_sustainable)이거나, 목표 생활비가 0 이하이면 생활비를
   // 늘리는 후보를 생성하지 않는다.
   //
-  // 고갈 판정 기준은 시뮬레이션이 실제로 돈 마지막 나이(= 본인 기대수명)다. 그보다 이른
-  // 나이로 판정하면 그 사이 구간의 파산이 숨어, 파산하는 계획에 "생활비를 더 쓰라"고 권한다.
+  // 고갈 판정 규칙을 여기서 다시 쓰지 않고 resolvePlanAssetStatus 한 곳에 맡긴다.
+  // 'sustained'만 허용하는 것(= 'depleted'가 아님이 아니라)이 중요하다: 투자자산을 하나도
+  // 등록하지 않은 계획은 첫 해에 곧바로 고갈이 잡혀 'no_investable_asset'으로 분류되는데,
+  // 그런 계획에 "생활비를 더 쓰라"고 권해서는 안 되기 때문이다.
   const allowSpendingIncrease =
     (params.spendingStrategy ?? 'target') === 'target' &&
-    (baselineResult.depletionAge === null || baselineResult.depletionAge >= params.userProfile.expectancy);
+    resolvePlanAssetStatus(baselineResult, params) === 'sustained';
   const identityPlan = getIdentityPlan(params);
   const spendingBasePlan = state.bestPlan ?? identityPlan;
   const spendingCandidates = generateSpendingAdjustmentCandidates(params, spendingBasePlan, {

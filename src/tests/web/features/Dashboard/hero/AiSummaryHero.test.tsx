@@ -113,6 +113,31 @@ describe('AiSummaryHero', () => {
     expect(screen.getByText(/76세에 자산이 고갈될 위험이 있습니다/)).toBeInTheDocument();
   });
 
+  // 기대수명이 expectancy prop과 userProfile.expectancy 두 경로로 들어온다. 두 값이 항상
+  // 같은 케이스만 있으면 호출부(DashboardSection)가 엉뚱한 값을 넘겨도 잡히지 않으므로,
+  // 어느 쪽이 헤드라인을 지배하는지 고정한다 — 헤드라인은 expectancy prop만 본다.
+  test('expectancy prop과 userProfile.expectancy가 다르면 헤드라인은 prop을 쓴다', () => {
+    render(
+      <AiSummaryHero
+        formatValue={formatValue}
+        mode="current"
+        onToggleMode={vi.fn()}
+        canApply={false}
+        expectancy={95}
+        score={80}
+        monthlyTarget={3000000}
+        isPro={false}
+        depletionAge={null}
+        planAssetStatus="sustained"
+        utility={utility}
+        userProfile={{ currentAge: 55, retirementAge: 60, expectancy: 90, targetMonthlySpending: 3000000 }}
+      />
+    );
+
+    expect(screen.getByText(/95세까지 자산 고갈 위험이 없습니다/)).toBeInTheDocument();
+    expect(screen.queryByText(/90세까지 자산 고갈 위험이 없습니다/)).not.toBeInTheDocument();
+  });
+
   test('improved 추천이 있으면 Before/After Utility 비교 문구와 추천 적용 버튼을 보여준다', () => {
     const recommendation: StrategyRecommendation = {
       currentUtility: utility,

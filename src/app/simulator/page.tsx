@@ -278,7 +278,7 @@ export default function Home() {
       // planAssetStatus는 아래에서 계산되므로 여기서 다시 판정한다 — 같은 result에서
       // 파생되므로 값이 어긋날 수 없다.
       const currentStrategyAnalysis = utility
-        ? analyzeCurrentStrategy(utility, effective.utilityConfig, { planAssetStatus: resolvePlanAssetStatus(result, reportParams.userProfile.expectancy) })
+        ? analyzeCurrentStrategy(utility, effective.utilityConfig, { planAssetStatus: resolvePlanAssetStatus(result, reportParams) })
         : null;
       const strengthsHtml = currentStrategyAnalysis
         ? currentStrategyAnalysis.strengths.map(s => `<li style="margin-bottom: 4px;">${s}</li>`).join('')
@@ -322,7 +322,7 @@ export default function Home() {
       );
       // 화면(DashboardSection)과 같은 함수로 자산 상태를 판정한다 — PDF와 화면이 서로 다른
       // 근거로 "고갈"과 "미보유"를 말하면 같은 계획의 두 문서가 어긋난다.
-      const planAssetStatus = resolvePlanAssetStatus(result, reportParams.userProfile.expectancy);
+      const planAssetStatus = resolvePlanAssetStatus(result, reportParams);
       const roadmap = computeExecutionRoadmap(reportParams, recommendation, selectDepletionAge(recommendation, result), planAssetStatus);
       const executionRoadmapSectionHtml = renderExecutionRoadmapSection(roadmap);
       const sensitivityScenarios = computeSensitivityAnalysis(reportParams, result, engine);

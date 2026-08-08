@@ -1,7 +1,21 @@
 import { describe, test, expect } from 'vitest';
 import { resolvePlanAssetStatus } from '@/core/usecases/dashboard/resolvePlanAssetStatus';
-import { SimulationResult } from '@/core/entities/types';
+import { SimulationParams, SimulationResult } from '@/core/entities/types';
 import { makeYearlyResult } from '@/tests/fixtures/yearlyResult';
+
+// 기대수명 90을 기준으로 판정을 확인한다. 다른 필드는 판정에 관여하지 않으므로 최소값만 채운다.
+const paramsWithExpectancy90: SimulationParams = {
+  userProfile: { currentAge: 51, retirementAge: 60, expectancy: 90, targetMonthlySpending: 3000000 },
+  assets: [],
+  nationalPension: { expectedMonthlyAmount: 0 },
+  privatePensions: [],
+  otherIncomes: [],
+  inflationRate: 0,
+  inflationMode: 'real',
+  baseExchangeRate: 1350,
+  exchangeScenario: 'base',
+  displayCurrency: 'KRW',
+};
 
 // 자산이 하나도 없는 계획에서 엔진은 첫 해에 곧바로 depletionAge를 잡는다
 // (totalAssets <= 0이 고갈 조건이므로 0원으로 시작하면 첫 해가 곧 고갈이다).
@@ -28,7 +42,7 @@ describe('resolvePlanAssetStatus', () => {
       yearlyResults: [51, 60, 90].map((age) => makeYearlyResult({ age, totalAssets: 0 })),
     });
 
-    expect(resolvePlanAssetStatus(result, 90)).toBe('no_investable_asset');
+    expect(resolvePlanAssetStatus(result, paramsWithExpectancy90)).toBe('no_investable_asset');
   });
 
   // 잔액 0에서 월 납입으로 자산을 쌓다가 나중에 고갈되는 적립식 계획을 "미보유"로
@@ -44,7 +58,7 @@ describe('resolvePlanAssetStatus', () => {
       ],
     });
 
-    expect(resolvePlanAssetStatus(result, 90)).toBe('depleted');
+    expect(resolvePlanAssetStatus(result, paramsWithExpectancy90)).toBe('depleted');
   });
 
   test('고갈 없이 자산이 남으면 유지다', () => {
@@ -54,7 +68,7 @@ describe('resolvePlanAssetStatus', () => {
       yearlyResults: [makeYearlyResult({ age: 60, totalAssets: 100000000 })],
     });
 
-    expect(resolvePlanAssetStatus(result, 90)).toBe('sustained');
+    expect(resolvePlanAssetStatus(result, paramsWithExpectancy90)).toBe('sustained');
   });
 
   // 기대수명에 도달해서야 잔액이 0이 된 것은 "계획대로 다 쓰고 감"이지 실패가 아니다.
@@ -67,12 +81,12 @@ describe('resolvePlanAssetStatus', () => {
       ],
     });
 
-    expect(resolvePlanAssetStatus(result, 90)).toBe('sustained');
+    expect(resolvePlanAssetStatus(result, paramsWithExpectancy90)).toBe('sustained');
   });
 
   // yearlyResults가 비어 있으면(엔진의 조기 반환 경로) "모든 해가 0 이하"가 공허하게
   // 참이 되어 자산이 있는 계획까지 미보유로 뒤집힌다.
   test('연도별 결과가 비어 있으면 미보유로 단정하지 않는다', () => {
-    expect(resolvePlanAssetStatus(makeResult({ yearlyResults: [] }), 90)).toBe('sustained');
+    expect(resolvePlanAssetStatus(makeResult({ yearlyResults: [] }), paramsWithExpectancy90)).toBe('sustained');
   });
 });
