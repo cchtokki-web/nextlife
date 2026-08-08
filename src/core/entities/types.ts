@@ -304,12 +304,9 @@ export interface SimulationYearlyResult {
   // 연간 의료비 지출. spending에 이미 포함된 금액 중 의료비분을 분해해 보여주기
   // 위한 정보성 필드다 (spending에서 빼면 안 된다).
   //
-  // 생활비와 동일하게 그 해의 spendingFactor(생존 인원 계수)가 이미 곱해져 있다.
-  // 소비처에서 다시 곱하면 이중 축소가 된다.
-  //
   // 점수·효용 계산이 "목표 대비 얼마나 충족했는가"의 분모를 만들 때는 이 값을 목표에
   // 더해야 한다. 더하지 않으면 의료비를 켠 사용자의 spending만 커져서 "목표를 초과해
-  // 소비했다"로 잘못 채점된다(spendingFactor와 같은 이유다).
+  // 소비했다"로 잘못 채점된다.
   //
   // 예외 — 자산이 고갈된 해: 인출할 자산이 없으면 엔진이 실제 지출(spending)을 인출
   // 가능한 만큼으로 깎으므로 spending < healthcareSpending이 될 수 있다. 즉 이 해에는
@@ -319,19 +316,7 @@ export interface SimulationYearlyResult {
   // 표시 목적으로 쓰는 곳은 Math.min(spending, healthcareSpending)을 고려할 것.
   healthcareSpending: number;
   hasTaxWarning: boolean; // 연간 금융소득이 2,000만원 초과 여부
-
-  // 배우자 개념이 제거되어 항상 false다. 다음 태스크에서 필드째 제거될 예정이라
-  // 과도기적으로 남아 있다.
-  spouseAlive: boolean;
-  // 배우자 개념이 제거되어 항상 1이다. 다음 태스크에서 필드째 제거될 예정이라
-  // 과도기적으로 남아 있다.
-  spendingFactor: SpendingFactor;
 }
-
-// SimulationYearlyResult.spendingFactor가 가질 수 있는 값. 배우자 개념이 있던 시절에는
-// 생존 인원에 따라 0 | 0.7 | 1을 가졌지만, 지금은 항상 1이다. 필드와 함께 다음 태스크에서
-// 제거될 예정이라 과도기적으로 남아 있다.
-export type SpendingFactor = 0 | 0.7 | 1;
 
 export interface SimulationResult {
   yearlyResults: SimulationYearlyResult[];

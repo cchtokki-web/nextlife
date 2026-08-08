@@ -39,11 +39,9 @@ function explainConsumption(params: SimulationParams, retirementYears: YearlyRes
 
   const avgActualMonthly =
     retirementYears.reduce((sum, r) => sum + r.spending, 0) / retirementYears.length / 12;
-  // 목표는 엔진이 실제로 쓴 가구 규모 계수를 그대로 곱한다 — 규칙을 재유도하지 않는다
-  // (UtilityEngine.targetAnnualSpendingForYear와 같은 이유).
   const avgTargetMonthly =
     retirementYears.reduce(
-      (sum, r) => sum + params.userProfile.targetMonthlySpending * r.spendingFactor + r.healthcareSpending / 12,
+      (sum, r) => sum + params.userProfile.targetMonthlySpending + r.healthcareSpending / 12,
       0
     ) / retirementYears.length;
 

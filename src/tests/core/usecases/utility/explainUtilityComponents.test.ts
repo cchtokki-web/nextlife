@@ -50,17 +50,6 @@ describe('explainUtilityComponents - 소비 만족도', () => {
     expect(consumption).toContain('55%');
   });
 
-  // 엔진이 실제로 곱한 가구 규모 계수를 그대로 써야 한다 — 배우자 사망 이후 구간에서
-  // 목표에 계수를 곱하지 않으면 존재하지 않는 부족분이 비율에 섞인다.
-  test('가구 규모 계수가 목표에도 반영된다', () => {
-    const yearly = [makeYearlyResult({ age: 60, spending: 2450000 * 12, spendingFactor: 0.7 })];
-
-    const { consumption } = explainUtilityComponents(makeParams(), makeResult(yearly));
-
-    // 목표 350만원 × 0.7 = 245만원 → 100%
-    expect(consumption).toContain('245만원');
-    expect(consumption).toContain('100%');
-  });
 });
 
 describe('explainUtilityComponents - 자산 고갈 방지', () => {

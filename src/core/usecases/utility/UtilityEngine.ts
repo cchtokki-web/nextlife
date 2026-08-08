@@ -31,12 +31,8 @@ function sum(values: number[]): number {
   return values.reduce((s, v) => s + v, 0);
 }
 
-// 해당 연도의 목표 연간 생활비(인플레이션 + 가구 규모 반영). SimulationEngine의 목표 생활비
-// 산출 로직과 동일한 규칙(명목: 매년 물가상승률 복리 반영 / 실질: 고정)을 따른다.
-//
-// 가구 규모 계수는 여기서 다시 유도하지 않고 엔진이 실제로 곱한 값(r.spendingFactor)을 그대로
-// 쓴다 — 규칙을 두 곳에 두면 반드시 어긋나고, 이 주석의 "동일한 규칙" 문구가 배우자 기능
-// 추가 때 한 번 stale해진 것이 그 증거다.
+// 해당 연도의 목표 연간 생활비(인플레이션 반영). SimulationEngine의 목표 생활비 산출 로직과
+// 동일한 규칙(명목: 매년 물가상승률 복리 반영 / 실질: 고정)을 따른다.
 //
 // 의료비(r.healthcareSpending)도 목표에 더한다. 엔진이 의료비를 spending에 합산하므로,
 // 분모에 더하지 않으면 의료비를 켠 계획이 "목표를 초과 소비했다"로 잘못 보상받는다
@@ -46,7 +42,7 @@ function sum(values: number[]): number {
 function targetAnnualSpendingForYear(params: SimulationParams, r: SimulationYearlyResult): number {
   const { userProfile, inflationRate = 2, inflationMode = 'real' } = params;
   const yearIndex = r.age - userProfile.currentAge;
-  const base = userProfile.targetMonthlySpending * 12 * r.spendingFactor;
+  const base = userProfile.targetMonthlySpending * 12;
   const target = inflationMode === 'nominal'
     ? base * Math.pow(1 + inflationRate / 100, yearIndex)
     : base;

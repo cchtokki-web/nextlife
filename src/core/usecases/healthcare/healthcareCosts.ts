@@ -11,9 +11,6 @@ interface HealthcareCostInput {
   yearsSinceRetirement: number;
   inflationMode: 'nominal' | 'real';
   inflationRate: number; // %
-  // 생존 인원에 따른 생활비 축소 계수(spouseRules.computeSpendingFactor). 배우자
-  // 미설정이면 항상 1이다. 의료비도 생활비와 같은 규칙으로 줄어야 한다.
-  spendingFactor: number;
 }
 
 // 그 해 의료비의 구성. 4% 룰(연 필요액 × 25)처럼 "이 필요가 영구히 반복된다"고 가정하는
@@ -35,12 +32,6 @@ export interface HealthcareCostBreakdown {
 //
 // 실질 모드에서는 물가 초과분만 적용한다. 시뮬레이션 전체가 오늘 화폐가치로
 // 표시되므로, 여기서도 "물가보다 얼마나 더 빨리 오르는가"만 반영해야 일관된다.
-//
-// spendingFactor(생존 인원에 따른 축소 계수)를 곱한다. 의료비는 생활비와 같은
-// 성격의 반복 가구 지출이므로 한 명만 남으면 함께 줄어야 한다. 곱하지 않으면
-// 연도 루프가 둘 중 늦게 죽는 쪽까지 도는 탓에(computeHouseholdEndAge) 본인 사후에도
-// 본인 기준 의료비·장기요양비가 전액 계속 인출되고, shockAge가 본인 기대수명을
-// 넘으면 사망 후에 쇼크가 발생한다.
 export function computeAnnualHealthcareCost(input: HealthcareCostInput): number {
   return computeAnnualHealthcareCostBreakdown(input).total;
 }
@@ -48,7 +39,7 @@ export function computeAnnualHealthcareCost(input: HealthcareCostInput): number 
 // 반복 지출과 일회성 지출을 나눠 계산한다. 계산 규칙 자체는 위 설명과 같다.
 export function computeAnnualHealthcareCostBreakdown({
   healthcare, currentAge, retirementAge, simulationStartAge, yearsSinceRetirement,
-  inflationMode, inflationRate, spendingFactor,
+  inflationMode, inflationRate,
 }: HealthcareCostInput): HealthcareCostBreakdown {
   const none: HealthcareCostBreakdown = { recurring: 0, oneTime: 0, total: 0 };
   if (!healthcare || !healthcare.enabled) return none;
@@ -104,8 +95,8 @@ export function computeAnnualHealthcareCostBreakdown({
   }
 
   return {
-    recurring: recurring * spendingFactor,
-    oneTime: oneTime * spendingFactor,
-    total: (recurring + oneTime) * spendingFactor,
+    recurring,
+    oneTime,
+    total: recurring + oneTime,
   };
 }

@@ -13,8 +13,8 @@ import { SimulationParams } from '@/core/entities/types';
 // 필요로 한다.
 const engine = new SimulationEngine();
 
-// spendingFactor를 1로 고정하기 위해 배우자를 두지 않고, 의료비도 끄고(기본값 미설정),
-// 목표 생활비만 남긴다 — 그래야 spending + unmetSpending을 목표와 직접 비교할 수 있다.
+// 의료비도 끄고(기본값 미설정) 목표 생활비만 남긴다 — 그래야 spending + unmetSpending을
+// 목표와 직접 비교할 수 있다.
 function params(overrides: Partial<SimulationParams> = {}): SimulationParams {
   return {
     userProfile: { currentAge: 60, retirementAge: 60, expectancy: 65, targetMonthlySpending: 1000000 },

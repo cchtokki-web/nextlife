@@ -3,10 +3,10 @@ import { SimulationEngine } from '@/core/usecases/SimulationEngine';
 import { HealthcareAssumptions, SimulationParams } from '@/core/entities/types';
 
 // followups #3: computeRetirementTargetAssets는 순수 함수로 분리되어 산술 계약은 테스트되지만,
-// calculateRetirementScore가 실제로 retirementStartResult.spendingFactor/.healthcareSpending을
-// 넘기는지는 아무도 검증하지 않았다. `computeRetirementTargetAssets(target, 1, 0)`으로
-// 회귀시켜도 기존 테스트가 전부 통과하고 스냅샷도 깨지지 않는다(해당 fixture는 factor 1 /
-// healthcare 0). 배선을 end-to-end로 건다.
+// calculateRetirementScore가 실제로 retirementStartResult.healthcareSpending을 넘기는지는
+// 아무도 검증하지 않았다. `computeRetirementTargetAssets(target, 0)`으로 회귀시켜도 기존
+// 테스트가 전부 통과하고 스냅샷도 깨지지 않는다(해당 fixture는 healthcare 0). 배선을
+// end-to-end로 건다.
 //
 // 방법: "분모가 같아야 하는 두 시나리오"를 만들고 은퇴 준비도가 같은지 본다.
 // 물가상승률 0 + 실질 모드 + 의료비 증가율 0으로 두면 의료비는 은퇴 후 매년 같은 금액이라
