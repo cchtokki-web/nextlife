@@ -1,5 +1,6 @@
 import { getRetirementGrade, getRetirementGradeColorTier } from '../../../../core/entities/retirementGrade';
 import { PlanAssetStatus } from '../../../../core/usecases/dashboard/resolvePlanAssetStatus';
+import { isMonteCarloConflict } from '../../../../core/usecases/montecarlo/monteCarloConflict';
 
 export interface HeroHeadline {
   emoji: '🟢' | '🟡' | '🔴';
@@ -32,14 +33,16 @@ export function buildHeroHeadline(
         ? `${depletionAge}세에 자산이 고갈될 위험이 있습니다.`
         : `${expectancy}세까지 자산 고갈 위험이 없습니다.`;
 
-  const survivalClause = status === 'sustained' && monteCarlo && monteCarlo.successRate < 0.95
+  // 판정을 세 번 반복해 쓰지 않고 한 곳에서 받는다. 같은 조건을 세 번 적어 두면 임계를
+  // 바꿀 때 한 곳만 고쳐지고, KPI 배지(CoreKpiGrid)와도 갈라진다.
+  const conflict = isMonteCarloConflict(status, monteCarlo);
+
+  const survivalClause = conflict && monteCarlo
     ? `기준 시나리오에서는 ${expectancy}세까지 유지되지만, 시장 변동 반영 시 자산 유지 확률은 ${Math.round(monteCarlo.successRate * 100)}%, 목표 생활비 완전 유지 확률은 ${Math.round(monteCarlo.fullSpendingRate * 100)}%입니다.`
     : deterministicSurvivalClause;
 
-  const headlineTier = status === 'sustained' && monteCarlo && monteCarlo.successRate < 0.95
-    ? 'orange'
-    : tier;
-  const statusPrefix = status === 'sustained' && monteCarlo && monteCarlo.successRate < 0.95
+  const headlineTier = conflict ? 'orange' : tier;
+  const statusPrefix = conflict
     ? '기준 시나리오는 안정적이나 시장 변동성 대응이 필요합니다.'
     : grade === '위험' || grade === '주의'
       ? `${grade} 수준의 은퇴 준비 상태입니다.`

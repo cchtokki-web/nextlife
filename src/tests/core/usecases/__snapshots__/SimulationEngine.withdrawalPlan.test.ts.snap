@@ -70,13 +70,13 @@ exports[`SimulationEngine withdrawalPlan (인출 정책 파라미터화) > 회�
   "retirementScore": 83,
   "utilityComponents": {
     "bequestAdequacy": 2,
-    "consumption": 27,
+    "consumption": 35,
     "depletionSafety": 20,
     "pensionUtilization": 11,
     "taxEfficiency": 6,
     "taxationRisk": 10,
   },
-  "utilityScore": 76,
+  "utilityScore": 84,
   "yearCount": 36,
 }
 `;

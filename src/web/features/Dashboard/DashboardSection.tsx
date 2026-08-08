@@ -219,6 +219,9 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
         utilityScore={displayedResult.utility?.score}
         formatValue={formatValue}
         resultBasis={mode === 'after' ? 'recommended' : 'current'}
+        monteCarlo={monteCarlo}
+        monteCarloStatus={monteCarloStatus}
+        planAssetStatus={baselinePlanAssetStatus}
         />
 
         <div className={styles.statusList} aria-label="현재 계획 상태">

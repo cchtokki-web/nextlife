@@ -13,6 +13,10 @@ import {
   getIdentityPlan,
 } from '@/core/usecases/strategy/StrategyCandidateGenerator';
 import { paramsWithSentinelOverlay } from '@/core/usecases/strategy/verifiedSentinelPlan';
+import { compileStrategy, DEFAULT_RETIREMENT_STRATEGY } from '@/core/usecases/strategy/compileStrategy';
+import { resolvePlanAssetStatus } from '@/core/usecases/dashboard/resolvePlanAssetStatus';
+import { estimateSuccessRate } from '@/core/usecases/montecarlo/MonteCarloEngine';
+import { resolveMonteCarloConfig } from '@/core/usecases/montecarlo/volatilityPresets';
 import { computeLifetimeUtility } from '@/core/usecases/utility/UtilityEngine';
 import { DEFAULT_UTILITY_CONFIG } from '@/core/usecases/utility/utilityWeights';
 import {
@@ -220,6 +224,20 @@ describe('recommendStrategy', () => {
 
 // 배당 자산만 있고 사적연금/국민연금이 없어, 5차원 그리드(인출 시점/순서)로는 사망 시
 // 잔여자산 과다를 해소할 수 없는 시나리오. 목표 생활비 증액(Phase 2)이 유일한 해소 수단이다.
+//
+// 수치가 예전(quantity 10,000 / 성장 5% / 배당 3% / 프리셋 없음)과 다른 이유:
+// 증액 후보는 이제 SPENDING_INCREASE_GATE(몬테카를로 성공률 ≥ 90%)를 통과해야 채택된다.
+// 옛 수치는 결정론상 고갈이 없고 잔여자산도 과다하지만 실제 성공률이 **49%**라, 증액을
+// 권해서는 안 되는 계획이었다(그 케이스는 paramsWithSurplusButFragile로 따로 고정한다).
+//
+// 게이트를 통과하면서 **동시에** 증액이 실제로 효용을 올리는 구간은 좁다. 잔여자산이
+// 적정선(월 목표 × 24)의 수십 배가 되면 bequestAdequacy의 exp 감쇠가 완전히 0이라 증액해도
+// 점수가 움직이지 않기 때문이다 — 단순히 자산을 불리면 게이트는 통과하지만 증액 인센티브가
+// 사라진다. 이 조합(8억 / 성장 3% / 배당 4%)이 그 두 조건을 함께 만족한다.
+//
+// yieldPreset이 'conservative'인 것은 **몬테카를로 변동성만** 낮추기 위해서다(σ 15 → 10).
+// recommendStrategy는 applyYieldPreset을 거치지 않으므로 자산의 annualGrowthRate/dividendYield는
+// 위에 적은 값 그대로 쓰인다 — resolveMonteCarloConfig만 이 필드를 본다.
 const paramsWithSurplusAssetOnly: SimulationParams = {
   userProfile: { currentAge: 60, retirementAge: 60, expectancy: 90, targetMonthlySpending: 3000000 },
   assets: [
@@ -228,10 +246,10 @@ const paramsWithSurplusAssetOnly: SimulationParams = {
       type: 'etf',
       ticker: 'AAA',
       name: '고배당 자산',
-      quantity: 10000,
+      quantity: 16000,
       averagePrice: 50000,
-      annualGrowthRate: 5,
-      dividendYield: 3,
+      annualGrowthRate: 3,
+      dividendYield: 4,
       monthlyContribution: 0,
       reinvestDividend: false,
       currency: 'KRW',
@@ -245,12 +263,26 @@ const paramsWithSurplusAssetOnly: SimulationParams = {
   baseExchangeRate: 1350,
   exchangeScenario: 'base',
   displayCurrency: 'KRW',
+  yieldPreset: 'conservative',
 };
 
 // 자산이 목표 생활비를 감당하기에 턱없이 부족해 은퇴 시작과 동시에 고갈되는 시나리오.
 const paramsWithDepletionRisk: SimulationParams = {
   ...paramsWithSurplusAssetOnly,
   assets: [{ ...paramsWithSurplusAssetOnly.assets[0], quantity: 200 }],
+};
+
+// 결정론으로는 고갈이 없고(= resolvePlanAssetStatus가 'sustained') 잔여자산도 과다해
+// "더 써도 된다"로 보이지만, 시장 변동을 반영하면 성공률이 게이트 문턱에 못 미치는 계획.
+//
+// 결정론 판정만으로 증액을 허용하던 시절 AI가 정확히 이런 계획에 "생활비를 20% 늘리라"고
+// 권했다. 51인 페르소나 실측에서 증액 추천을 받은 24명 전원의 성공률이 떨어졌고, 그 하락폭이
+// 최대 35%p였다.
+// yieldPreset을 지우면 몬테카를로 변동성이 기본값 σ=15로 돌아간다. 자산은 같은 8억이지만
+// 성공률이 80%로 떨어져 게이트 문턱(90%) 아래가 된다 — 결정론 결과는 여전히 'sustained'다.
+const paramsWithSurplusButFragile: SimulationParams = {
+  ...paramsWithSurplusAssetOnly,
+  yieldPreset: undefined,
 };
 
 describe('recommendStrategy - 생활비 증액(Phase 2) 후보', () => {
@@ -286,6 +318,69 @@ describe('recommendStrategy - 생활비 증액(Phase 2) 후보', () => {
       .toBe(baseCandidateCount + decreaseOnlyCount + paramsWithDepletionRisk.assets.length);
     // 증액은 추천되지 않는다.
     expect(recommendation.recommendedPlan?.monthlySpendingMultiplier ?? 1).toBeLessThanOrEqual(1);
+  });
+
+  test('결정론상 여유로워 보여도 몬테카를로 성공률이 낮으면 생활비 증액 후보를 만들지 않는다', () => {
+    const engine = new SimulationEngine();
+
+    // 전제: 결정론 판정만으로는 이 계획이 증액 대상으로 보인다.
+    const baseline = engine.runForUtility(paramsWithSurplusButFragile);
+    expect(resolvePlanAssetStatus(baseline, paramsWithSurplusButFragile)).toBe('sustained');
+    // 그러나 실제 성공률은 게이트 문턱(0.9)에 한참 못 미친다.
+    const mcConfig = { ...resolveMonteCarloConfig(paramsWithSurplusButFragile), trials: 300 };
+    expect(estimateSuccessRate(paramsWithSurplusButFragile, engine, mcConfig)).toBeLessThan(0.9);
+
+    const recommendation = recommendStrategy(paramsWithSurplusButFragile, engine);
+
+    // 후보 수 자체가 감액분(2개)만큼만 늘어난다 = 증액 후보가 생성되지 않았다.
+    const baseCandidateCount = generateCandidatePlans(paramsWithSurplusButFragile).length;
+    const decreaseOnlyCount = generateSpendingAdjustmentCandidates(
+      paramsWithSurplusButFragile, getIdentityPlan(paramsWithSurplusButFragile), { allowIncrease: false }
+    ).length;
+    expect(recommendation.totalCandidateCount)
+      .toBe(baseCandidateCount + decreaseOnlyCount + paramsWithSurplusButFragile.assets.length);
+    expect(recommendation.recommendedPlan?.monthlySpendingMultiplier ?? 1).toBeLessThanOrEqual(1);
+  });
+
+  test('게이트에 걸린 증액 후보는 강건성 승격 경로로도 되살아나지 않는다', () => {
+    const engine = new SimulationEngine();
+
+    // 게이트를 evaluateCandidate의 rememberCandidate **뒤로** 옮기면 이 단언이 깨진다:
+    // 탈락한 후보가 topCandidates에 남아 applyRobustness의 promoteCandidate가 그것을
+    // 최선으로 승격할 수 있기 때문이다. argmax만 막는 것으로는 부족하다는 것을 고정한다.
+    //
+    // 강건성 승격이 실제로 도는 조건(objective가 'ai_recommended')을 명시적으로 준다.
+    const params: SimulationParams = {
+      ...paramsWithSurplusButFragile,
+      strategy: { ...DEFAULT_RETIREMENT_STRATEGY, objective: 'ai_recommended' },
+    };
+    const compiled = compileStrategy(params);
+    const recommendation = recommendStrategy(compiled.params, engine, compiled.utilityConfig);
+
+    expect(recommendation.recommendedPlan?.monthlySpendingMultiplier ?? 1).toBeLessThanOrEqual(1);
+    expect(recommendation.itemizedContributions.some((c) => c.field === 'monthlySpendingMultiplier'))
+      .toBe(false);
+  });
+
+  test('생활비 증액을 검토할 자격이 없으면 몬테카를로를 한 번도 돌리지 않는다', () => {
+    // 단락 평가 확인. 증액이 애초에 불가능한 계획(고갈 위험)에서 게이트 MC를 돌리면
+    // 추천 1회의 비용이 이유 없이 300 runSingle만큼 늘어난다.
+    const engine = new SimulationEngine();
+    const spy = vi.spyOn(engine, 'runSingle');
+
+    recommendStrategy(paramsWithDepletionRisk, engine);
+    const withoutGate = spy.mock.calls.length;
+    spy.mockClear();
+
+    // 같은 규모의 계획이지만 증액 자격이 있는 쪽은 게이트 MC(300시행 × 최대 3회)만큼 더 돈다.
+    recommendStrategy(paramsWithSurplusButFragile, engine);
+    const withGate = spy.mock.calls.length;
+    spy.mockRestore();
+
+    // 자격 없는 쪽은 게이트 MC 300회조차 돌지 않았다.
+    expect(withoutGate).toBeLessThan(300);
+    // 자격 있는 쪽은 baseline 게이트 MC 300회를 돌았다(후보 게이트는 baseline에서 탈락).
+    expect(withGate).toBeGreaterThanOrEqual(300);
   });
 
   test("spendingStrategy가 'target'이 아니면 생활비 증액 후보를 생성하지 않는다", () => {
@@ -1117,11 +1212,16 @@ describe('recommendStrategy - Phase 4 사적연금 채널링 통합', () => {
       [makeYearlyResult({ age: 60, spending: candidateParams.userProfile.targetMonthlySpending * 12 })],
       0
     );
-    // 목표 대비 125% 소비(consumption 컴포넌트만 더 높음, 다른 컴포넌트는 동일하게 유지)로
     // baseline보다 Utility 점수가 확실히 높은 결과 — 채널링 후보 전용.
+    //
+    // 예전에는 목표 대비 125% 소비(spending 30,000,000)로 consumption 축을 올렸다. 지금은
+    // 목표를 채운 해가 만점이고 초과 소비에 보상이 없어(consumptionYearUtility) 그 방법으로는
+    // baseline과 동점이 된다. 대신 잔여자산을 적정선(월 목표 × appropriateBequestMonths = 24)에
+    // 정확히 맞춰 bequestAdequacy 축에서 이기게 한다. 배수 후보들은 endingAssets가 0이라
+    // 이 축에서 baseline과 계속 동점이므로 "채널링만 유일하게 개선"이라는 전제가 유지된다.
     const channelingResult: SimulationResult = makeSimulationResult(
-      [makeYearlyResult({ age: 60, spending: 30000000 })],
-      0
+      [makeYearlyResult({ age: 60, spending: userProfile.targetMonthlySpending * 12 })],
+      userProfile.targetMonthlySpending * DEFAULT_UTILITY_CONFIG.appropriateBequestMonths
     );
 
     const engine = new SimulationEngine();

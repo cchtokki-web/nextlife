@@ -129,17 +129,15 @@ describe('SimulationEngine 의료비 통합', () => {
       expect(withHc.goalAchievementRate).toBeGreaterThan(without.goalAchievementRate - 15);
     });
 
-    test('의료비를 켜도 소비 효용이 "목표 초과 소비" 보너스를 받지 않는다', () => {
-      const engine = new SimulationEngine();
-
-      const without = engine.run(shortfallFunded);
-      const withHc = engine.run({ ...shortfallFunded, healthcare });
-
-      // 분모에 의료비를 더하지 않으면 spending만 커져 ratio > 1이 되고,
-      // consumptionYearUtility가 이를 보너스로 처리해 점수가 올라간다.
-      expect(withHc.utility!.components.consumption)
-        .toBeLessThanOrEqual(without.utility!.components.consumption + 1e-9);
-    });
+    // 소비 효용의 분모에 의료비가 들어가는지는 여기서 검증하지 않는다.
+    //
+    // 예전에는 "의료비를 켜도 목표 초과 소비 보너스를 받지 않는다"(≤ 비교)가 그 자리를
+    // 지켰는데, consumptionYearUtility에서 초과 보상 자체가 사라진 뒤로는 그 단언이 자동으로
+    // 참이라 아무것도 못 지킨다. 방향을 뒤집어(점수가 실제로 내려간다) 다시 쓰려 해도
+    // 이 픽스처는 양쪽 모두 consumption이 0으로 바닥이라 차이가 드러나지 않는다.
+    //
+    // 대신 UtilityEngine.test.ts의 '소비 효용 분모에 의료비가 포함된다'가 같은 계약을
+    // 결손이 실제로 드러나는 입력으로 직접 고정한다.
 
     test('FIRE 판정도 의료비를 감당할 수 있어야 성립한다', () => {
       const engine = new SimulationEngine();

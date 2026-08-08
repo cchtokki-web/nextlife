@@ -50,11 +50,25 @@ function targetAnnualSpendingForYear(params: SimulationParams, r: SimulationYear
 }
 
 // 목표 대비 소비 충족률(ratio)의 연도별 효용. 부족분은 볼록(convex) 페널티로 강하게 반영하고,
-// 초과분은 한계효용 체감(√)으로 완만하게만 보상한다.
+// **목표를 채운 해는 만점**이다.
+//
+// 예전에는 초과분을 √로 완만하게 보상해 ratio 2.0에서 상한 1.3을 줬고, computeConsumptionRaw이
+// 그 1.3으로 나눠 정규화했다. 그래서 **목표를 정확히 100% 달성한 계획이 영원히 1/1.3 = 77%
+// (35점 만점에 27점)를 받고, 만점을 받으려면 목표의 두 배를 써야 했다.** 51인 페르소나에서
+// 소비축 만점자가 0명이고 최댓값이 정확히 27점으로 상수화된 것이 그 결과다 — 사용자가 정한
+// 목표를 채점 곡선이 "아직 부족하다"고 판정한 셈이다.
+//
+// 초과 보상을 되살리면 안 되는 이유가 하나 더 있다: 'target' 전략에서는 실제 지출이 목표를
+// 넘을 수 없다(SimulationEngine의 actualMonthlySpending = monthlyTargetSpending). 초과 가지는
+// dividend_only에서만 살아 있는데, 그쪽에서도 "목표의 두 배를 쓰면 만점"은 목표라는 개념
+// 자체를 부정한다.
+//
+// 정규화 분모만 1.0으로 낮추고 초과 보상을 남기는 안은 택하지 않았다. 그러면 좋은 해의
+// 초과가 나쁜 해의 결손을 상쇄해(ratio 2.0인 해 + 0.5인 해 = 0.827) 결손을 볼록 페널티로
+// 강하게 벌한다는 이 축의 설계와 충돌하고, 아래 stabilityFactor(변동성 페널티)와 역할이
+// 겹쳐 서로를 상쇄한다.
 function consumptionYearUtility(ratio: number): number {
-  if (ratio >= 1) {
-    return Math.min(1.3, 1 + 0.3 * Math.sqrt(ratio - 1));
-  }
+  if (ratio >= 1) return 1;
   return Math.pow(Math.max(0, ratio), 1.5);
 }
 
@@ -67,7 +81,8 @@ function computeConsumptionRaw(params: SimulationParams, retirementYears: Simula
   });
 
   const avgUtility = mean(ratios.map(consumptionYearUtility));
-  const normalized = clamp(avgUtility / 1.3, 0, 1);
+  // consumptionYearUtility의 상한이 1이므로 clamp는 사실상 방어선이다(음수 ratio 방어).
+  const normalized = clamp(avgUtility, 0, 1);
 
   const volatility = stdev(ratios);
   const stabilityFactor = clamp(1 - volatility, 0, 1);
@@ -162,6 +177,28 @@ function bequestRatio(endingAssets: number, appropriateBalance: number): number 
   return endingAssets > 0 ? 2 : 0;
 }
 
+// **이 축을 몬테카를로 기반으로 바꾸려는 시도를 한 번 검토하고 접었다. 기록해 둔다.**
+//
+// 51인 페르소나에서 AI가 "생활비를 20% 더 쓰라"고 권한 이유가 이 축이었다: 결정론 기말자산이
+// 적정선의 수십 배라 exp 감쇠로 0점인데, 자산을 더 쓰면 그 벌점이 조금 풀린다. 효용 1~3점을
+// 벌자고 MC 성공률 15~35%p를 지불하는 거래였다. 그리고 그 "과다 잔여"는 중앙값 환상이다 —
+// 결정론 기말 45억인 계획의 MC p10 기말자산이 0원이었다.
+//
+// 그럼에도 이 축을 MC로 재정의하지 않은 이유:
+//   1. **비용.** computeUtilityRaws는 후보마다 불린다(RecommendationEngine, 최악 216+4개).
+//      후보당 300시행 MC를 붙이면 24초로 5초 예산의 5배다. 게다가 SimulationEngine.run도
+//      이 함수를 부르므로 대시보드의 모든 리렌더가 MC를 기다리게 된다.
+//   2. **불변식.** raw는 result·params만으로 결정되어야 "한 번 계산해 5개 목표로 재채점"이
+//      성립한다(utilityRaws.test.ts). MC 결과를 optional 인자로 받으면 같은 result에 두 가지
+//      raw가 생기고, pickLowestRegret이 서로 다른 기준의 raw를 한 표에서 비교하게 된다.
+//   3. **역할.** 효용은 선호를 서열화하고, 몬테카를로는 실현 가능성을 제약한다. 제약을 효용
+//      안에 넣으면 다른 축과 교환 가능해진다(세금 효율 3점이 생존 확률 10%p를 사게 된다).
+//      이 축의 정의 자체는 결정론 세계 안에서 내적으로 일관되며, 잘못된 것은 "중앙값을 근거로
+//      여유가 있다고 판정한 것"이다. 그 판정은 RecommendationEngine의 SPENDING_INCREASE_GATE가
+//      막는다(assetFloor 탈락과 같은 하드 제약 자리).
+//
+// 참고로 "적정선 분모를 배수 적용 전 목표로 고정한다"는 국소 수정은 효과가 없다: ratio가
+// 25~70인 구간에서 exp(-0.4×(ratio-1))은 이미 0이라 분모를 20% 움직여도 점수가 안 바뀐다.
 function computeBequestAdequacyRaw(params: SimulationParams, result: SimulationResult, cfg: UtilityConfig): number {
   const { targetBequest } = params.userProfile;
 

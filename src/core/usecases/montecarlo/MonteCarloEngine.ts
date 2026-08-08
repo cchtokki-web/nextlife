@@ -52,6 +52,46 @@ function pathForTrial(years: number, config: MonteCarloConfig, index: number) {
   return buildReturnShockPath(years, config.annualStdDev, mulberry32(deriveSeed(config.seed, index)));
 }
 
+// 한 시행의 성공 판정. runMonteCarlo와 estimateSuccessRate가 **반드시** 같은 식을 써야 하므로
+// 함수로 뽑는다 — 두 곳에 복사해 두면 한쪽만 바뀐 채로 조용히 갈라진다.
+//
+// depletionAge > successAge 조건은 지금은 도달할 수 없다: 시뮬레이션 루프가 expectancy에서
+// 끝나므로 depletionAge는 successAge를 넘을 수 없다. 루프 종료 나이와 successAge가 다시
+// 갈라지는 날을 대비한 방어선으로만 남겨 둔다.
+export function isSuccessfulTrial(depletionAge: number | null, successAge: number): boolean {
+  return depletionAge === null || depletionAge > successAge;
+}
+
+// 성공률만 필요한 호출자를 위한 경량 진입점(추천 엔진의 생활비 증액 게이트).
+//
+// runMonteCarlo가 만드는 것 중 게이트가 쓰지 않는 것 — assetBand(연도별 분위수 정렬),
+// worstDecilePath(추가 runSingle 1회), 결정론 기준선(추가 runSingle 1회), 시행별
+// totalAssetsByYear 배열 — 을 전부 만들지 않는다. 성능보다 **계약**이 이유다: 게이트가
+// MonteCarloResult 전체를 받으면 나중에 누군가 assetBand나 worstDecilePath를 판정에
+// 끌어다 쓰고, 그 순간 게이트의 비용과 의미가 조용히 바뀐다.
+//
+// 시드와 시행 인덱스 규칙이 runMonteCarlo와 같으므로(pathForTrial이 인덱스로만 결정된다)
+// trials가 작아도 이 표본은 화면 패널(1000 시행)의 앞부분 그대로다 — 게이트가 본 확률과
+// 화면이 보여주는 확률이 표본오차 이상으로 어긋나지 않는다.
+export function estimateSuccessRate(
+  params: SimulationParams,
+  engine: SimulationEngine,
+  config: MonteCarloConfig
+): number {
+  if (config.trials <= 0) return 0;
+
+  const planned = resolvePlannedParams(params, engine);
+  const years = simulationYearCount(planned);
+  const successAge = planned.userProfile.expectancy;
+
+  let succeeded = 0;
+  for (let i = 0; i < config.trials; i++) {
+    const { depletionAge } = engine.runSingle(planned, pathForTrial(years, config, i));
+    if (isSuccessfulTrial(depletionAge, successAge)) succeeded++;
+  }
+  return succeeded / config.trials;
+}
+
 export function runMonteCarlo(
   params: SimulationParams,
   engine: SimulationEngine,
@@ -77,12 +117,8 @@ export function runMonteCarlo(
   const endingSorted = trials.map((t) => t.endingAssets).sort((a, b) => a - b);
   const mean = endingSorted.reduce((a, b) => a + b, 0) / (endingSorted.length || 1);
 
-  // 성공 = successAge까지 고갈되지 않음, 즉 depletionAge가 null인 시행.
-  //
-  // depletionAge > successAge 조건은 지금은 도달할 수 없다 — 시뮬레이션 루프가 expectancy에서
-  // 끝나므로 depletionAge는 successAge를 넘을 수 없다. 루프 종료 나이와 successAge가 다시
-  // 갈라지는 날을 대비한 방어선으로만 남겨 둔다.
-  const succeeded = trials.filter((t) => t.depletionAge === null || t.depletionAge > successAge);
+  // 성공 = successAge까지 고갈되지 않음. 판정식은 isSuccessfulTrial 한 곳에만 둔다.
+  const succeeded = trials.filter((t) => isSuccessfulTrial(t.depletionAge, successAge));
   // 목표 생활비를 온전히 쓴 시행 = 고갈도 없고 결손도 없는 시행.
   const fullSpending = succeeded.filter((t) => !t.hasUnmetSpending);
 

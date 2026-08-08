@@ -376,6 +376,40 @@ describe('UtilityEngine.computeLifetimeUtility', () => {
     expect(fullyFunded.components.consumption).toBeGreaterThan(underfunded.components.consumption);
   });
 
+  test('목표를 정확히 채운 계획은 consumption이 만점이다', () => {
+    // 예전에는 목표를 100% 채워도 1/1.3 = 77%(35점 중 27점)였고, 만점을 받으려면 목표의
+    // 두 배를 써야 했다. 그래서 소비축이 사실상 상수가 되어 후보 서열화에 기여하지 못했다.
+    const utility = computeLifetimeUtility(buildBalancedScenario(), baseParams);
+    expect(utility.components.consumption).toBe(DEFAULT_UTILITY_CONFIG.weights.consumption);
+  });
+
+  test('소비 효용 분모에 의료비가 포함된다 — 목표를 넘긴 지출이 만점으로 clamp되지 않는다', () => {
+    // 엔진은 의료비를 spending에 합산한다. 그 금액을 목표(분모)에도 더하지 않으면 ratio가
+    // 1을 넘어 만점으로 clamp되고, 의료비를 켠 계획이 오히려 "목표를 다 채웠다"로 읽힌다.
+    //
+    // 아래 두 결과는 spending이 같다(목표 + 의료비 600만). 다른 것은 그 초과분이 의료비로
+    // 태그되어 있는지뿐이다. 의료비 쪽은 ratio가 정확히 1(= 만점)이어야 하고, 태그가 없는
+    // 쪽은 목표를 넘겨 쓴 것이라 역시 1로 clamp된다 — 그래서 이 둘만으로는 계약이 안 잡힌다.
+    // 결손이 드러나려면 재원이 부족한 경우를 봐야 한다.
+    const HEALTHCARE = 6_000_000;
+
+    // 재원이 목표만큼만 있는데 의료비가 추가로 나가는 계획: spending은 목표에 묶여 있고
+    // 그중 의료비 600만이 섞여 있다 → 실제 생활비는 목표에 600만 모자란다.
+    const withHealthcare = makeResult(
+      Array.from({ length: 36 }, (_, i) =>
+        makeYear(60 + i, { spending: ANNUAL_TARGET, healthcareSpending: HEALTHCARE })),
+      null
+    );
+    const withoutHealthcare = makeResult(
+      Array.from({ length: 36 }, (_, i) => makeYear(60 + i, { spending: ANNUAL_TARGET })),
+      null
+    );
+
+    // 분모가 (목표 + 의료비)이므로 ratio = 3600/(3600+600) = 0.857 < 1 → 만점 미달.
+    expect(computeLifetimeUtility(withHealthcare, baseParams).components.consumption)
+      .toBeLessThan(computeLifetimeUtility(withoutHealthcare, baseParams).components.consumption);
+  });
+
   test('구성요소 점수의 합은 score와 일치해야 한다', () => {
     const utility = computeLifetimeUtility(buildBalancedScenario(), baseParams);
     const sum = Object.values(utility.components).reduce((a, b) => a + b, 0);

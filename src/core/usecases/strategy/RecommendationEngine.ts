@@ -21,9 +21,40 @@ import { computeDeltas } from './deltas';
 import { buildVerifiedSentinelPlan } from './verifiedSentinelPlan';
 import { resolveStrategy } from './compileStrategy';
 import { resolvePlanAssetStatus } from '../dashboard/resolvePlanAssetStatus';
+import { estimateSuccessRate } from '../montecarlo/MonteCarloEngine';
+import { resolveMonteCarloConfig } from '../montecarlo/volatilityPresets';
 import {
   isObjectivePresetConfig, pickLowestRegret, pickMostRobust, resolveAssumptionVariants,
 } from './robustness';
+
+// 생활비 증액 후보 전용 게이트.
+//
+// **왜 필요한가**: 51인 페르소나 실측에서 생활비 증액을 추천받은 24명 **전원**의 몬테카를로
+// 성공률이 떨어졌다(배수 1.2 그룹 17명 평균 -16.3%p, 최악 78.1% → 42.8%). 증액이 효용을
+// 올리는 경로는 상속축(bequestAdequacy)이다 — 결정론 기말자산이 적정선의 수십 배라 그 축이
+// 0점인데, 자산을 더 쓰면 그 벌점이 조금 풀린다. 효용 1~3점을 벌자고 생존 확률 15~35%p를
+// 지불하는 거래였다.
+//
+// 근본 문제는 "여유가 있다"는 판정을 결정론 **중앙값** 한 경로로 내렸다는 것이다. 결정론
+// 기말자산 45억인 계획의 MC p10 기말자산이 0원이었다.
+//
+// **왜 UtilityConfig가 아니라 상수인가**: 이것은 선호(가중치)가 아니라 제약이다. UtilityConfig에
+// 넣으면 채점과 무관한 값이 채점 설정에 섞이고, "raw는 한 번 계산해 목표별로 재채점한다"는
+// 불변식(utilityRaws.test.ts)과 isObjectivePresetConfig 판정이 오염된다. MonteCarloConfig를
+// SimulationParams에 넣지 않은 이유(montecarlo.ts 상단 주석)와 같은 논리다.
+const SPENDING_INCREASE_GATE = {
+  // 1000 시행은 여기서 과하다. 게이트가 필요한 정밀도는 "임계 근처인가"라는 이진 판정이고,
+  // 300 시행에서 성공률의 표준오차는 √(0.9×0.1/300) ≈ 1.7%p다. 시드가 고정이라 표본오차는
+  // 흔들림이 아니라 고정 편향으로 남고, 같은 입력은 언제나 같은 추천을 낸다.
+  trials: 300,
+  // baseline 스크리닝. 실측: 임계 90%에서 증액 추천 24건 중 18건이 차단되고, 그 18건은
+  // 전부 적용 후 성공률이 하락한 사례였다.
+  baselineMinSuccessRate: 0.9,
+  // 후보 자체의 **적용 후** 수준. 기준이 "하락 여부"가 아니라 "적용 후 수준"인 이유:
+  // 더 쓰면 성공률은 예외 없이 내려간다(정의상 그렇다). 물어야 할 것은 내려간 뒤에도
+  // 계획이 성립하느냐다. 실측에서 baseline 90%를 통과한 6건의 적용 후 수준은 82.7~100%였다.
+  candidateMinSuccessRate: 0.8,
+} as const;
 
 // 검증된 축이 하나도 없을 때 돌려주는 공유 상수. 매번 새 배열을 만들면 소비처(화면)의
 // 메모이제이션이 흔한 경로에서 계속 깨진다.
@@ -344,6 +375,10 @@ function rememberCandidate(state: CandidateSearchState, candidate: ScoredCandida
   if (state.topCandidates.length > ROBUSTNESS_TOP_K) state.topCandidates.length = ROBUSTNESS_TOP_K;
 }
 
+// 점수와 무관하게 후보를 탈락시키는 하드 제약. false를 돌려주면 그 후보는 서열화에서도
+// 강건성 재평가 풀(topCandidates)에서도 완전히 빠진다.
+type CandidateGate = (plan: BaselineWithdrawalPlan, candidateParams: SimulationParams) => boolean;
+
 // 후보 하나를 시뮬레이션 + Utility 평가하고, baseline(또는 지금까지의 최선) 대비 더 나으면
 // state를 갱신한다. 특정 조합(예: 극단적인 나이 조합)이 SimulationEngine을 깨뜨리더라도 다른
 // 후보 탐색까지 통째로 실패하지 않도록 후보 단위로 격리한다. 실패한 후보는 건너뛰고 로그만 남긴다.
@@ -352,7 +387,8 @@ function evaluateCandidate(
   params: SimulationParams,
   engine: SimulationEngine,
   cfg: UtilityConfig,
-  state: CandidateSearchState
+  state: CandidateSearchState,
+  gate?: CandidateGate
 ): void {
   try {
     const candidateParams = paramsForCandidate(params, plan);
@@ -365,6 +401,11 @@ function evaluateCandidate(
     // 미세하게 밑돌 수 있다. 그 오차로 정상적인 후보가 전멸하지 않도록 여유(1%)를 둔다.
     const assetFloor = candidateParams.assetFloor ?? 0;
     if (assetFloor > 0 && candidateResult.endingAssets < assetFloor * 0.99) return;
+
+    // 게이트도 위 assetFloor와 같은 성질의 하드 제약이다. **rememberCandidate보다 앞에**
+    // 있어야 한다 — 뒤에 두면 탈락한 후보가 topCandidates에 남아 applyRobustness의
+    // promoteCandidate가 그것을 최선으로 되살린다(argmax만 막는 것으로는 새어 나간다).
+    if (gate && !gate(plan, candidateParams)) return;
 
     const raws = computeUtilityRaws(candidateResult, candidateParams, cfg);
     const candidateUtility = scoreUtilityRaws(raws, cfg.weights);
@@ -437,8 +478,11 @@ function promoteCandidate(state: CandidateSearchState, winner: ScoredCandidate):
 
 // 후보 전략 생성(StrategyCandidateGenerator) + Utility 평가(UtilityEngine)를 결합해
 // 기존 로직(baseline) 대비 Lifetime Utility가 가장 높은 인출 전략을 찾는다.
-// MC(Monte Carlo) 확장 시에는 이 함수 내부의 engine.runForUtility() 호출을 시나리오 평균으로
-// 교체하는 방식으로 확장 가능하다.
+//
+// 서열화는 결정론 단일 경로로 한다. 몬테카를로는 **점수가 아니라 제약**으로만 들어온다
+// (SPENDING_INCREASE_GATE). 후보마다 MC를 돌려 효용에 섞으면 최악 216+4 후보 × 300시행
+// ≈ 24초로 5초 예산의 5배가 되고, computeUtilityRaws가 MC 결과를 받게 되는 순간
+// "raw는 result·params만으로 결정된다"는 재채점 불변식이 깨진다.
 export function recommendStrategy(
   params: SimulationParams,
   engine: SimulationEngine,
@@ -477,16 +521,37 @@ export function recommendStrategy(
   // 'sustained'만 허용하는 것(= 'depleted'가 아님이 아니라)이 중요하다: 투자자산을 하나도
   // 등록하지 않은 계획은 첫 해에 곧바로 고갈이 잡혀 'no_investable_asset'으로 분류되는데,
   // 그런 계획에 "생활비를 더 쓰라"고 권해서는 안 되기 때문이다.
-  const allowSpendingIncrease =
+  // 결정론 판정은 "증액을 **검토할 자격**"까지만 정한다. 자격이 있는 계획에 대해서만
+  // 몬테카를로가 실제 여유를 확인한다(SPENDING_INCREASE_GATE 주석 참고).
+  const spendingIncreaseEligible =
     (params.spendingStrategy ?? 'target') === 'target' &&
     resolvePlanAssetStatus(baselineResult, params) === 'sustained';
+
+  // 단락 평가: 자격이 없으면 MC를 한 번도 돌리지 않는다. 감액만 필요한 계획,
+  // dividend_only/max_sustainable, 투자자산 미보유가 전부 이 경로로 빠져 추가 비용이 0이다.
+  const gateConfig = spendingIncreaseEligible
+    ? { ...resolveMonteCarloConfig(params), trials: SPENDING_INCREASE_GATE.trials }
+    : null;
+  const allowSpendingIncrease =
+    gateConfig !== null &&
+    estimateSuccessRate(params, engine, gateConfig) >= SPENDING_INCREASE_GATE.baselineMinSuccessRate;
+
+  // 후보별 게이트. 감액 후보(배수 ≤ 1)에는 MC를 돌리지 않는다 — 덜 쓰는 계획이 더 빨리
+  // 고갈될 수 없어 언제나 통과하고, 비용만 두 배가 된다.
+  const spendingGate: CandidateGate | undefined = allowSpendingIncrease && gateConfig
+    ? (plan, candidateParams) =>
+        (plan.monthlySpendingMultiplier ?? 1) <= 1 ||
+        estimateSuccessRate(candidateParams, engine, gateConfig) >=
+          SPENDING_INCREASE_GATE.candidateMinSuccessRate
+    : undefined;
+
   const identityPlan = getIdentityPlan(params);
   const spendingBasePlan = state.bestPlan ?? identityPlan;
   const spendingCandidates = generateSpendingAdjustmentCandidates(params, spendingBasePlan, {
     allowIncrease: allowSpendingIncrease,
   });
   for (const plan of spendingCandidates) {
-    evaluateCandidate(plan, params, engine, cfg, state);
+    evaluateCandidate(plan, params, engine, cfg, state, spendingGate);
   }
 
   // Phase 2.5: 강건성 모드. 사용자가 미정으로 둔 가정 축(경제 시나리오·리스크 성향)과
