@@ -306,6 +306,21 @@ describe('computeMonthlySpendingComposition', () => {
     });
   });
 
+  describe('max_sustainable로 역산된 목표', () => {
+    test('result.calculatedTargetSpending이 목표 생활비로 쓰인다', () => {
+      // spendingStrategy가 max_sustainable이면 params.userProfile.targetMonthlySpending이
+      // 아니라 이진탐색으로 역산된 result.calculatedTargetSpending이 필요분의 기준이 된다.
+      // 실제 지출(월 250만원)이 역산된 목표(월 250만원)와 정확히 같으므로 부족분은 0이어야 한다.
+      const params = makeParams({ spendingStrategy: 'max_sustainable' });
+      const yearly = makeYearlyResult({ age: 70, spendingAnnual: 30000000 }); // 월 2,500,000
+      const result = { ...makeResult([yearly]), calculatedTargetSpending: 2500000 };
+
+      const [composition] = computeMonthlySpendingComposition([yearly], params, result);
+
+      expect(composition.shortfall).toBe(0);
+    });
+  });
+
 });
 
 // 위의 모든 테스트는 makeYearlyResult가 손으로 만든 SimulationYearlyResult를 먹인다.
