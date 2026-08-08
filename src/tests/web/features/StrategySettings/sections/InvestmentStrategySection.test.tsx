@@ -17,12 +17,12 @@ describe('InvestmentStrategySection', () => {
 
     // 두 그룹 모두 'AI 추천' 옵션을 가지므로 그룹으로 좁혀 찾는다.
     const risk = within(screen.getByRole('radiogroup', { name: '리스크 성향' }));
-    for (const label of [/안정형/, /중립형/, /공격형/, /사용자 직접입력/, /AI 추천/]) {
+    for (const label of [/안정형/, /중립형/, /공격형/, /사용자 직접입력/, /입력 수익률 유지/]) {
       expect(risk.getByRole('radio', { name: label })).toBeInTheDocument();
     }
 
     const scenario = within(screen.getByRole('radiogroup', { name: '경제 시나리오' }));
-    for (const label of [/장기 평균/, /장기 침체/, /고물가/, /저성장/, /AI 추천/]) {
+    for (const label of [/장기 평균/, /장기 침체/, /고물가/, /저성장/, /직접 입력값 유지/]) {
       expect(scenario.getByRole('radio', { name: label })).toBeInTheDocument();
     }
   });
@@ -79,7 +79,7 @@ describe('InvestmentStrategySection', () => {
 
     expect(screen.getByText(/경제 시나리오는 물가·환율뿐 아니라 보유 자산과 사적연금의 수익률까지 함께 바꿉니다/))
       .toBeInTheDocument();
-    expect(screen.getByText(/AI 추천.*이 아닌 값으로 고른 경우에만/)).toBeInTheDocument();
+    expect(screen.getByText(/입력 수익률 유지.*가 아닌 값으로 고른 경우에만/)).toBeInTheDocument();
   });
 
   test('간편 모드에서는 두 필드가 모두 숨겨지므로 역할 구분 설명문도 렌더되지 않는다', () => {

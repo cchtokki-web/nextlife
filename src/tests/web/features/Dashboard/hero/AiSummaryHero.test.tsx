@@ -155,7 +155,8 @@ describe('AiSummaryHero', () => {
     );
 
     expect(screen.getByText(/76.*→.*81/)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '추천 적용하기' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '추천안 결과 보기' })).toBeInTheDocument();
+    expect(screen.getByText('결과 비교용이며 설정은 변경되지 않습니다.')).toBeInTheDocument();
   });
 
   test('AI 의견 fetch가 실패하면 상세 의견 패널이 자동으로 펼쳐져 클릭 없이 에러 문구가 보인다', async () => {

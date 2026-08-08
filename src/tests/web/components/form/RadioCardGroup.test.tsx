@@ -43,9 +43,9 @@ describe('RadioCardGroup', () => {
     expect(screen.getByRole('radiogroup', { name: '과일 선택' })).toBeInTheDocument();
   });
 
-  test('recommended 옵션에는 추천 표식이 붙는다', () => {
+  test('recommended 옵션에는 권장 표식이 붙는다', () => {
     render(<RadioCardGroup name="fruit" value="banana" options={options} onChange={vi.fn()} />);
 
-    expect(screen.getByRole('radio', { name: /사과/ })).toHaveAccessibleName(/추천/);
+    expect(screen.getByRole('radio', { name: /사과/ })).toHaveAccessibleName(/권장/);
   });
 });

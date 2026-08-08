@@ -16,14 +16,14 @@ describe('PensionStrategySection', () => {
       />
     );
 
-    // 두 그룹 모두 'AI 최적화' 옵션을 가지므로 그룹으로 좁혀 찾는다.
+    // 두 그룹 모두 '자동으로 선택' 옵션을 가지므로 그룹으로 좁혀 찾는다.
     const national = within(screen.getByRole('radiogroup', { name: '국민연금 수령 시작' }));
-    for (const label of [/조기 수령/, /예상 수령/, /1년 연기/, /2년 연기/, /최대 연기/, /AI 최적화/]) {
+    for (const label of [/조기 수령/, /예상 수령/, /1년 연기/, /2년 연기/, /최대 연기/, /자동으로 선택/]) {
       expect(national.getByRole('radio', { name: label })).toBeInTheDocument();
     }
 
     const priv = within(screen.getByRole('radiogroup', { name: '사적연금 인출 전략' }));
-    for (const label of [/절세 우선/, /생활비 우선/, /자산 성장 우선/, /최소 인출/, /AI 최적화/]) {
+    for (const label of [/절세 우선/, /생활비 우선/, /자산 성장 우선/, /최소 인출/, /자동으로 선택/]) {
       expect(priv.getByRole('radio', { name: label })).toBeInTheDocument();
     }
   });
@@ -59,7 +59,7 @@ describe('PensionStrategySection', () => {
     // 예전에는 boolean 스위치였다. boolean에는 "미정"을 담을 자리가 없어 이 축만
     // AI 자동 채움에서 통째로 빠져 있었다.
     const isa = within(screen.getByRole('radiogroup', { name: 'ISA 만기 자금 행선지' }));
-    for (const label of [/연금 계좌로/, /일반 자산으로/, /AI 최적화/]) {
+    for (const label of [/연금 계좌로/, /일반 자산으로/, /자동으로 선택/]) {
       expect(isa.getByRole('radio', { name: label })).toBeInTheDocument();
     }
     expect(screen.getByRole('switch', { name: /배당금 재투자/ })).toBeInTheDocument();
@@ -117,7 +117,7 @@ describe('PensionStrategySection', () => {
       />
     );
 
-    expect(screen.getByText('AI 적용: 70세부터 수령')).toBeInTheDocument();
+    expect(screen.getByText('자동 반영 중: 70세부터 수령')).toBeInTheDocument();
   });
 
   // B2: 사적연금 월 인출 목표는 적용되지 않을 뿐 아니라 이 화면의 선택지로는 표현조차 되지
@@ -193,7 +193,7 @@ describe('PensionStrategySection', () => {
         />
       );
 
-      expect(screen.getByText('AI 적용: 68세부터 수령')).toBeInTheDocument();
+      expect(screen.getByText('자동 반영 중: 68세부터 수령')).toBeInTheDocument();
     });
 
     test("센티널이어도 자동 채움이 걸러 baseline으로 돌면 '추천'으로 표시한다", () => {
@@ -207,7 +207,7 @@ describe('PensionStrategySection', () => {
         />
       );
 
-      expect(screen.getByText('AI 추천: 68세부터 수령')).toBeInTheDocument();
+      expect(screen.getByText('추천값 있음: 68세부터 수령')).toBeInTheDocument();
     });
 
     test("확정 전략이라도 그 값이 추천과 같으면 '적용'으로 표시한다", () => {
@@ -221,7 +221,7 @@ describe('PensionStrategySection', () => {
         />
       );
 
-      expect(screen.getByText('AI 적용: 70세부터 수령')).toBeInTheDocument();
+      expect(screen.getByText('자동 반영 중: 70세부터 수령')).toBeInTheDocument();
     });
 
     test('확정 전략이 추천과 다르면 "추천" 문구로 표시한다', () => {
@@ -233,7 +233,7 @@ describe('PensionStrategySection', () => {
         />
       );
 
-      expect(screen.getByText('AI 추천: 68세부터 수령')).toBeInTheDocument();
+      expect(screen.getByText('추천값 있음: 68세부터 수령')).toBeInTheDocument();
     });
 
     test('추천이 없으면 힌트를 표시하지 않는다', () => {
@@ -248,12 +248,12 @@ describe('PensionStrategySection', () => {
     });
   });
 
-  // 추천 계산이 실패하면 'AI 최적화'는 채워질 값이 없어 baseline으로 계산된다. 그 사실을
+  // 추천 계산이 실패하면 '자동으로 선택'는 채워질 값이 없어 baseline으로 계산된다. 그 사실을
   // 말하지 않으면 정상적으로 "개선 여지 없음"이 나온 경우와 화면이 픽셀 단위로 같아진다.
   describe('추천 계산 실패 안내', () => {
     const failed = { recommendation: null, error: '추천을 계산하지 못했습니다.', improved: false } as never;
 
-    test("'AI 최적화' 상태에서 추천이 실패하면 기본값으로 계산했다고 알린다", () => {
+    test("'자동으로 선택' 상태에서 추천이 실패하면 기본값으로 계산했다고 알린다", () => {
       render(
         <PensionStrategySection
           params={{ ...initialParams, strategy: { ...DEFAULT_RETIREMENT_STRATEGY, nationalPensionStrategy: 'ai_optimized' } }}

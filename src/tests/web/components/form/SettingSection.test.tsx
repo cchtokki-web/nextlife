@@ -105,7 +105,7 @@ describe('SettingSection', () => {
       </SettingSection>
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /AI 추천/ }));
+    fireEvent.click(screen.getByRole('button', { name: /추천값 반영/ }));
 
     expect(onAiRecommend).toHaveBeenCalledTimes(1);
     expect(screen.queryByText('본문')).not.toBeInTheDocument();
@@ -120,7 +120,7 @@ describe('SettingSection', () => {
       </SettingSection>
     );
 
-    expect(screen.getByRole('button', { name: '연금 전략 AI 추천' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '연금 전략 추천값 반영' })).toBeInTheDocument();
   });
 
   test('highlighted면 강조 표식이 붙고, 아니면 붙지 않는다', () => {

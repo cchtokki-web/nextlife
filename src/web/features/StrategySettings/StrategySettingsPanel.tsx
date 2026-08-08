@@ -53,6 +53,42 @@ const SECTIONS: ReadonlyArray<{ id: SectionId; title: string; icon: React.ReactN
 // 씨앗을 유도하는 규칙까지 그 안에 있다). 기존 import 경로를 쓰던 코드를 위해 재수출한다.
 export { resolveStrategy };
 
+interface AiSectionPatch {
+  params: SimulationParams;
+  changes: string[];
+}
+
+function describeAutomaticApplication(
+  field: StrategyRecommendation['itemizedContributions'][number]['field'],
+  values: SentinelApplication['appliedValues']
+): string | null {
+  switch (field) {
+    case 'nationalPensionStartAge':
+      return values.nationalPensionStartAge === undefined
+        ? null : `국민연금: ${values.nationalPensionStartAge}세부터 수령`;
+    case 'privatePensionMonthlyTarget':
+      return values.privatePensionMonthlyTarget === undefined
+        ? null : `사적연금: 월 ${Math.round(values.privatePensionMonthlyTarget / 10000).toLocaleString()}만원 인출`;
+    case 'isaMaturityDestination':
+      return values.isaMaturityDestination === undefined
+        ? null : `ISA 만기 자금: ${values.isaMaturityDestination === 'asset' ? '일반 자산으로' : '연금 계좌로'}`;
+    case 'assetSellOrderStrategy': {
+      const labels = {
+        input_order: '입력한 순서대로',
+        low_dividend_first: '배당률이 낮은 자산부터',
+        high_dividend_first: '배당률이 높은 자산부터',
+      } as const;
+      return values.assetSellOrderStrategy === undefined
+        ? null : `자산 매도 순서: ${labels[values.assetSellOrderStrategy]}`;
+    }
+    case 'generalAssetWithdrawalStartAge':
+      return values.generalAssetWithdrawalStartAge === undefined
+        ? null : `일반 자산 인출: ${values.generalAssetWithdrawalStartAge}세부터`;
+    default:
+      return null;
+  }
+}
+
 // AI 추천 버튼을 붙일 섹션. 그 섹션이 렌더하는 필드를 바꾸는 버튼만 둔다.
 // 'investment'는 빠져 있다 — 그 섹션의 riskProfile/economicScenario는 RecommendationEngine이
 // 추천을 생산하지 않는 축이고, 예전에 이 버튼이 적용하던 배당 재투자는 실제 컨트롤이 있는
@@ -75,6 +111,10 @@ export function StrategySettingsPanel({
   const effectiveNationalPensionStartAge =
     sentinels?.appliedValues.nationalPensionStartAge
     ?? NATIONAL_PENSION_STRATEGY_AGES[strategy.nationalPensionStrategy];
+  const effectivePreferIsaFirst: IsaFirstChoice =
+    sentinels?.appliedValues.isaMaturityDestination === 'asset' ? 'isa_first'
+      : sentinels?.appliedValues.isaMaturityDestination === 'pension' ? 'pension_first'
+        : strategy.preferIsaFirst;
 
   const changed = useMemo(() => collectChangedPaths(params), [params]);
   // 추천 계산은 page.tsx가 한다(그쪽이 useDeferredValue + useBackgroundValue 파이프라인으로
@@ -90,6 +130,7 @@ export function StrategySettingsPanel({
   // 방금 바뀐 섹션을 잠깐 강조한다. 어떤 필드가 바뀌었는지는 changed 집합의 변화로
   // 알 수 있지만, "언제" 바뀌었는지는 상태가 없으면 알 수 없어 로컬 state로 둔다.
   const [recentSection, setRecentSection] = useState<SectionId | null>(null);
+  const [pendingAiPatch, setPendingAiPatch] = useState<AiSectionPatch | null>(null);
   const clearTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const highlightSection = useCallback((id: SectionId) => {
@@ -140,7 +181,7 @@ export function StrategySettingsPanel({
   // (!ai.improved) 판정이면, 이 섹션에서 바뀔 것이 하나도 없는데도 버튼이 활성으로 남아
   // 눌러도 조용히 아무 일이 일어나지 않는다. 게다가 추천에는 이 화면이 적용할 수 없는
   // 축(사적연금 월 인출 목표 등)이 섞여 있어 improved가 사실상 영구히 true다.
-  const buildAiSectionPatch = (id: SectionId): SimulationParams | null => {
+  const buildAiSectionPatch = (id: SectionId): AiSectionPatch | null => {
     // 배당 재투자는 「연금 전략」이 담당한다. 실제 컨트롤('배당금 재투자' 스위치)이 그 섹션에
     // 있고, 그 섹션은 모든 모드에서 보이기 때문이다.
     //
@@ -148,7 +189,7 @@ export function StrategySettingsPanel({
     // economicScenario만 담고 있어 간편 모드에서 통째로 사라지고(isSectionVisible), 그래서
     // 기본 모드인 간편 모드 사용자에게는 대시보드가 권하는 배당 재투자를 적용할 경로가
     // 하나도 없었다. 게다가 그 축은 애초에 「투자 전략」이 렌더하는 필드가 아니었다.
-    const applyReinvest = (): SimulationParams | null => {
+    const applyReinvest = (): AiSectionPatch | null => {
       // recommendedAssetReinvestment는 recommendedPlan과 독립적으로 계산된다(Phase 3).
       // plan 널 체크보다 앞에서 판정해야, 인출계획은 개선이 없고 배당 재투자만 개선된
       // 경우에도 버튼이 조용히 아무 일도 하지 않는 일이 없다.
@@ -163,11 +204,17 @@ export function StrategySettingsPanel({
 
       // 자산별 권장값을 그대로 적용한다. 전역 스위치는 표시 상태를 자산에서 파생하므로
       // 별도로 갱신할 필요가 없다.
+      const changedAssetCount = params.assets.filter(
+        (a) => a.id in recommended && a.reinvestDividend !== recommended[a.id]
+      ).length;
       return {
-        ...params,
-        assets: params.assets.map((a) =>
-          a.id in recommended ? { ...a, reinvestDividend: recommended[a.id] } : a
-        ),
+        params: {
+          ...params,
+          assets: params.assets.map((a) =>
+            a.id in recommended ? { ...a, reinvestDividend: recommended[a.id] } : a
+          ),
+        },
+        changes: [`자산 ${changedAssetCount}개의 배당 재투자 설정`],
       };
     };
 
@@ -176,14 +223,20 @@ export function StrategySettingsPanel({
 
     if (id === 'goal') {
       if (plan.monthlySpendingMultiplier === 1) return null;
+      const nextSpending = Math.round(
+        params.userProfile.targetMonthlySpending * plan.monthlySpendingMultiplier
+      );
       return {
-        ...params,
-        userProfile: {
-          ...params.userProfile,
-          targetMonthlySpending: Math.round(
-            params.userProfile.targetMonthlySpending * plan.monthlySpendingMultiplier
-          ),
+        params: {
+          ...params,
+          userProfile: {
+            ...params.userProfile,
+            targetMonthlySpending: nextSpending,
+          },
         },
+        changes: [
+          `목표 월 생활비 ${Math.round(params.userProfile.targetMonthlySpending / 10000).toLocaleString()}만원 → ${Math.round(nextSpending / 10000).toLocaleString()}만원`,
+        ],
       };
     }
 
@@ -213,7 +266,7 @@ export function StrategySettingsPanel({
 
       // 연금 축에 바꿀 것이 없어도 배당 재투자만 개선된 경우가 있다. 그때도 버튼은 열려야 한다.
       if (effectiveNationalPensionStartAge === nearestAge
-        && currentStrategy.preferIsaFirst === preferIsaFirst) {
+        && effectivePreferIsaFirst === preferIsaFirst) {
         return applyReinvest();
       }
 
@@ -223,7 +276,21 @@ export function StrategySettingsPanel({
       };
       // 두 축을 한 번에 적용한다. 사용자에게는 「연금 전략」의 「AI 추천」 한 번이다.
       const reinvested = applyReinvest();
-      return reinvested ? { ...withPension, assets: reinvested.assets } : withPension;
+      const changes: string[] = [];
+      if (effectiveNationalPensionStartAge !== nearestAge) {
+        changes.push(`국민연금 수령 시작 ${effectiveNationalPensionStartAge}세 → ${nearestAge}세`);
+      }
+      if (effectivePreferIsaFirst !== preferIsaFirst) {
+        const destination = preferIsaFirst === 'isa_first' ? '일반 자산' : '연금 계좌';
+        changes.push(`ISA 만기 자금 → ${destination}`);
+      }
+      if (reinvested) changes.push(...reinvested.changes);
+      return {
+        params: reinvested
+          ? { ...withPension, assets: reinvested.params.assets }
+          : withPension,
+        changes,
+      };
     }
 
     return null;
@@ -231,7 +298,7 @@ export function StrategySettingsPanel({
 
   const applyAiToSection = (id: SectionId) => {
     const next = buildAiSectionPatch(id);
-    if (next) onChangeParams(next);
+    if (next) setPendingAiPatch(next);
   };
 
   // 섹션이 값을 바꾸면 그 섹션을 잠깐 강조한다. 각 섹션이 highlightSection을
@@ -248,6 +315,16 @@ export function StrategySettingsPanel({
 
   // 이 모드에서 손댈 수 있는 필드가 있는 섹션만 렌더한다.
   const visibleSections = SECTIONS.filter(({ id }) => isSectionVisible(mode, id));
+  const availableAiPatches = visibleSections
+    .filter(({ id }) => AI_SECTIONS.has(id))
+    .map(({ id }) => buildAiSectionPatch(id))
+    .filter((patch): patch is AiSectionPatch => patch !== null);
+  const availableRecommendationCount = availableAiPatches
+    .reduce((sum, patch) => sum + patch.changes.length, 0);
+  const automaticallyAppliedCount = sentinels?.appliedFields.length ?? 0;
+  const automaticApplicationDescriptions = sentinels?.appliedFields
+    .map((field) => describeAutomaticApplication(field, sentinels.appliedValues))
+    .filter((description): description is string => description !== null) ?? [];
 
   // 이 모드에서 화면에 없는 채로 계산에 들어가는 값의 총합. 통째로 숨긴 섹션뿐 아니라
   // 보이는 섹션 안의 숨은 필드(간편 모드의 '목표 상속자산' 등)까지 센다.
@@ -264,6 +341,23 @@ export function StrategySettingsPanel({
     <div className="flex flex-col gap-5">
       <div className="flex flex-col gap-2.5">
         <StrategyModeSelector mode={mode} onChange={handleModeChange} />
+
+        {(automaticallyAppliedCount > 0 || availableRecommendationCount > 0) && (
+          <div className="rounded-xl border border-primary/30 bg-primary/10 px-3.5 py-3 text-xs leading-relaxed">
+            <p className="font-semibold text-foreground">추천 설정 현황</p>
+            <p className="mt-1 text-foreground-muted">
+              자동 반영 중 {automaticallyAppliedCount}개
+              {' · '}반영 가능한 추천 {availableRecommendationCount}개
+            </p>
+            {automaticApplicationDescriptions.length > 0 && (
+              <ul className="mt-2 flex flex-col gap-1 text-primary">
+                {automaticApplicationDescriptions.map((description) => (
+                  <li key={description}>현재 계산값 · {description}</li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
 
         {hiddenChanges > 0 && (
           <p
@@ -285,7 +379,8 @@ export function StrategySettingsPanel({
         {visibleSections.map(({ id, title, icon }) => {
           const counts = countSectionChanges(changed, id, mode);
           // 이 섹션에서 실제로 바뀌는 값이 있을 때만 버튼을 연다.
-          const canApplyAi = AI_SECTIONS.has(id) && buildAiSectionPatch(id) !== null;
+          const aiPatch = AI_SECTIONS.has(id) ? buildAiSectionPatch(id) : null;
+          const canApplyAi = aiPatch !== null;
           // 적용할 것이 없으면 버튼 자체를 내지 않는다.
           //
           // 예전에는 '이미 최적'이라는 비활성 버튼이 그 자리를 지켰는데, 누를 수도 없고
@@ -308,13 +403,56 @@ export function StrategySettingsPanel({
               defaultOpen={id === 'advanced' ? mode === 'expert' : false}
               onAiRecommend={showAiButton ? () => applyAiToSection(id) : undefined}
               aiDisabled={!!ai.error}
-              aiLabel={ai.error ?? 'AI 추천'}
+              aiLabel={ai.error ?? (aiPatch ? `추천값 ${aiPatch.changes.length}개 반영` : '추천값 반영')}
             >
               {renderSectionBody(id, sectionPropsFor(id))}
             </SettingSection>
           );
         })}
       </div>
+
+      {pendingAiPatch && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="recommendation-review-title"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+        >
+          <div
+            className="w-full max-w-md rounded-2xl border border-card-border p-5 shadow-2xl"
+            style={{ background: 'var(--card-bg)' }}
+          >
+            <h2 id="recommendation-review-title" className="text-base font-bold text-foreground">
+              추천값을 반영할까요?
+            </h2>
+            <p className="mt-2 text-sm text-foreground-muted">다음 설정이 변경됩니다.</p>
+            <ul className="mt-3 flex flex-col gap-2 text-sm text-foreground">
+              {pendingAiPatch.changes.map((change) => (
+                <li key={change} className="rounded-lg bg-foreground/5 px-3 py-2">{change}</li>
+              ))}
+            </ul>
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setPendingAiPatch(null)}
+                className="rounded-lg border border-card-border px-4 py-2 text-sm text-foreground-muted"
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  onChangeParams(pendingAiPatch.params);
+                  setPendingAiPatch(null);
+                }}
+                className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white"
+              >
+                추천값 반영
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
