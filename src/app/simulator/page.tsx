@@ -217,7 +217,7 @@ export default function Home() {
       const jsPDF = (await import('jspdf')).default;
       const html2canvas = (await import('html2canvas')).default;
 
-      const { retirementScore, retirementGrade, goalAchievementRate, fireAge, depletionAge, endingAssets, householdEndAge, yearlyResults, utility } = result;
+      const { retirementScore, retirementGrade, goalAchievementRate, fireAge, depletionAge, endingAssets, yearlyResults, utility } = result;
       // 리포트가 인쇄하는 모든 값은 "결과(result)를 만든 params", 즉 effective.params에서 읽는다.
       // compiled.params(AI 센티널 적용 전)나 activeParams(사용자가 입력한 원본)를 읽으면
       // 경제 시나리오·리스크 성향·연금 전략이 지배하는 필드에서 화면에 찍힌 숫자와
@@ -278,7 +278,7 @@ export default function Home() {
       // planAssetStatus는 아래에서 계산되므로 여기서 다시 판정한다 — 같은 result에서
       // 파생되므로 값이 어긋날 수 없다.
       const currentStrategyAnalysis = utility
-        ? analyzeCurrentStrategy(utility, effective.utilityConfig, { planAssetStatus: resolvePlanAssetStatus(result) })
+        ? analyzeCurrentStrategy(utility, effective.utilityConfig, { planAssetStatus: resolvePlanAssetStatus(result, reportParams.userProfile.expectancy) })
         : null;
       const strengthsHtml = currentStrategyAnalysis
         ? currentStrategyAnalysis.strengths.map(s => `<li style="margin-bottom: 4px;">${s}</li>`).join('')
@@ -322,7 +322,7 @@ export default function Home() {
       );
       // 화면(DashboardSection)과 같은 함수로 자산 상태를 판정한다 — PDF와 화면이 서로 다른
       // 근거로 "고갈"과 "미보유"를 말하면 같은 계획의 두 문서가 어긋난다.
-      const planAssetStatus = resolvePlanAssetStatus(result);
+      const planAssetStatus = resolvePlanAssetStatus(result, reportParams.userProfile.expectancy);
       const roadmap = computeExecutionRoadmap(reportParams, recommendation, selectDepletionAge(recommendation, result), planAssetStatus);
       const executionRoadmapSectionHtml = renderExecutionRoadmapSection(roadmap);
       const sensitivityScenarios = computeSensitivityAnalysis(reportParams, result, engine);
@@ -437,15 +437,15 @@ export default function Home() {
                 <div class="summary-item">
                   <p class="summary-label">소득만으로 생활비 충당 가능 시점</p>
                   <p class="summary-note">배당·연금 등 그 해 소득이 목표 생활비를 넘어서는 나이</p>
-                  <span class="summary-value">${describeFireAge(fireAge, userProfile.expectancy, userProfile.retirementAge)}</span>
+                  <span class="summary-value">${describeFireAge(fireAge, userProfile.retirementAge)}</span>
                 </div>
                 <div class="summary-item">
                   <p class="summary-label">자산 고갈 예상 나이</p>
                   <p class="summary-note"></p>
-                  <span class="summary-value">${describeDepletionAge(depletionAge, householdEndAge, userProfile.expectancy, planAssetStatus)}</span>
+                  <span class="summary-value">${describeDepletionAge(depletionAge, userProfile.expectancy, planAssetStatus)}</span>
                 </div>
                 <div style="grid-column: span 2; font-size: 13.5px; padding-top: 8px;">
-                  <span style="font-weight: 600; color: #475569;">사망 시(${householdEndAge > userProfile.expectancy ? `배우자 기대수명 시점, 본인 나이 ${householdEndAge}세` : `기대수명 ${householdEndAge}세`}) 잔여 자산</span>
+                  <span style="font-weight: 600; color: #475569;">사망 시(기대수명 ${userProfile.expectancy}세) 잔여 자산</span>
                   <span style="float: right; font-size: 16px; color: #3b82f6; font-weight: 700;">${formatValuePrint(endingAssets)}</span>
                 </div>
               </div>

@@ -26,11 +26,8 @@ export interface MonteCarloBandYear {
 export interface MonteCarloResult {
   trials: number;
   seed: number;
-  // 성공 판정 기준 나이 = 가구 종료 나이(householdEndAge).
-  //
-  // 본인 기대수명을 쓰면 배우자가 더 오래 사는 계획에서 배우자 단독 생존 구간의 파산이
-  // 통째로 숨어 "고갈 위험 없음"이라는 거짓 진술이 된다. 배우자가 없으면 이 값이
-  // 기대수명과 같으므로 화면 문구는 자연히 "90세까지"가 된다.
+  // 성공 판정 기준 나이 = 시뮬레이션 종료 나이(본인 기대수명). 결정론 시뮬레이션의
+  // 고갈 판정과 같은 나이를 써야 성공률과 화면 문구가 어긋나지 않는다.
   successAge: number;
   // successAge까지 자산이 고갈되지 않은 시행의 비율(0~1).
   successRate: number;

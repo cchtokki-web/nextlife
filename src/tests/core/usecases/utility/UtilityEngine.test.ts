@@ -57,8 +57,6 @@ function makeResult(yearlyResults: SimulationYearlyResult[], depletionAge: numbe
     retirementGrade: '보통',
     goalAchievementRate: 100,
     retirementAssetsAtRetirement: 0,
-    // 배우자가 없는 공통 프로필이므로 가구 종료 나이는 본인 기대수명과 같다.
-    householdEndAge: userProfile.expectancy,
   };
 }
 
@@ -343,18 +341,26 @@ describe('UtilityEngine.computeLifetimeUtility', () => {
     expect(noDepletion.components.depletionSafety).toBeGreaterThan(depletion.components.depletionSafety);
   });
 
-  // B6: result.householdEndAge는 엔진이 실제로 돌린 종료 나이다. 채점이 이를 무시하고
-  // params에서 다시 유도하면, 두 값이 어긋나는 순간(엔진을 거치지 않은 결과, 저장된 결과 등)
-  // 화면이 보여주는 기간과 다른 기준으로 점수가 매겨진다.
-  test('depletionSafety는 params에서 재유도하지 않고 result.householdEndAge를 쓴다', () => {
+  // B6: depletionSafety의 정규화 분모는 은퇴 후 기간(기대수명 - 은퇴 나이)이다. 같은
+  // 고갈 나이라도 기대수명이 길수록 버티지 못한 기간이 길어지므로 점수가 낮아야 한다.
+  test('depletionSafety는 은퇴 후 기간을 기대수명에서 잡는다', () => {
     const years = Array.from({ length: 36 }, (_, i) =>
       makeYear(60 + i, { totalAssets: ANNUAL_TARGET * 2, pensionAssets: ANNUAL_TARGET })
     );
-    const shortHousehold = computeLifetimeUtility({ ...makeResult(years, 85), householdEndAge: 90 }, baseParams);
-    const longHousehold = computeLifetimeUtility({ ...makeResult(years, 85), householdEndAge: 110 }, baseParams);
+    const shortSpanParams: SimulationParams = {
+      ...baseParams,
+      userProfile: { ...baseParams.userProfile, expectancy: 90 },
+    };
+    const longSpanParams: SimulationParams = {
+      ...baseParams,
+      userProfile: { ...baseParams.userProfile, expectancy: 110 },
+    };
 
-    expect(longHousehold.components.depletionSafety)
-      .toBeLessThan(shortHousehold.components.depletionSafety);
+    const shortSpan = computeLifetimeUtility(makeResult(years, 85), shortSpanParams);
+    const longSpan = computeLifetimeUtility(makeResult(years, 85), longSpanParams);
+
+    expect(longSpan.components.depletionSafety)
+      .toBeLessThan(shortSpan.components.depletionSafety);
   });
 
   test('생활비 충족률이 낮을수록(지속적 부족) consumption 점수가 낮아진다', () => {

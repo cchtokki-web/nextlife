@@ -10,8 +10,8 @@ import { SimulationResult } from '../../entities/types';
 // (인출 전략 조정이 아니라 저축·생활비·은퇴 시점이다).
 export type PlanAssetStatus = 'no_investable_asset' | 'depleted' | 'sustained';
 
-export function resolvePlanAssetStatus(result: SimulationResult): PlanAssetStatus {
-  const { yearlyResults, depletionAge, householdEndAge } = result;
+export function resolvePlanAssetStatus(result: SimulationResult, expectancy: number): PlanAssetStatus {
+  const { yearlyResults, depletionAge } = result;
 
   // 판정 근거를 "시작 시점 자산이 0인가"가 아니라 시뮬레이션이 실제로 돈 결과 전체로 둔다.
   // 시작 시점만 보면 잔액 0에서 월 납입으로 자산을 쌓다가 나중에 고갈되는 적립식 계획까지
@@ -24,10 +24,8 @@ export function resolvePlanAssetStatus(result: SimulationResult): PlanAssetStatu
     return 'no_investable_asset';
   }
 
-  // 고갈 여부는 본인 기대수명이 아니라 가구 종료 나이와 비교한다(heroHeadline·
-  // generateChartCaptions와 같은 관례). 가구 종료 나이에 이르러서야 잔액이 0이 된 것은
-  // 계획대로 다 쓰고 간 것이지 실패가 아니다.
-  if (depletionAge !== null && depletionAge < householdEndAge) return 'depleted';
+  // 기대수명에 이르러서야 잔액이 0이 된 것은 계획대로 다 쓰고 간 것이지 실패가 아니다.
+  if (depletionAge !== null && depletionAge < expectancy) return 'depleted';
 
   return 'sustained';
 }

@@ -120,13 +120,17 @@ describe('runMonteCarlo', () => {
     expect(Number.isFinite(mc.endingAssets.p50)).toBe(true);
   });
 
-  // 성공 기준 나이는 엔진이 실제로 돌린 종료 나이(householdEndAge)다.
-  test('성공 기준 나이는 가구 종료 나이다', () => {
+  // 성공 기준 나이는 결정론 시뮬레이션이 실제로 돌린 종료 나이와 같아야 한다 —
+  // 두 판정이 다른 나이를 보면 몬테카를로의 성공률과 화면의 고갈 문구가 어긋난다.
+  test('성공 기준 나이는 결정론 시뮬레이션의 종료 나이(본인 기대수명)와 같다', () => {
     const p = params();
 
     const mc = runMonteCarlo(p, engine, config({ trials: 10 }));
 
-    expect(mc.successAge).toBe(engine.runSingle(p).householdEndAge);
+    const deterministic = engine.runSingle(p);
+    const lastSimulatedAge = deterministic.yearlyResults[deterministic.yearlyResults.length - 1].age;
+    expect(mc.successAge).toBe(lastSimulatedAge);
+    expect(mc.successAge).toBe(p.userProfile.expectancy);
   });
 
   test('고갈된 시행이 없으면 고갈 통계는 비어 있다', () => {

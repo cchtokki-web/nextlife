@@ -53,7 +53,6 @@ const result: SimulationResult = {
   retirementGrade: '안정',
   goalAchievementRate: 100,
   retirementAssetsAtRetirement: 400000000,
-  householdEndAge: 90,
   utility,
 };
 
@@ -354,7 +353,6 @@ describe('DashboardSection - 현재 계획을 유지하면 요약 카드', () =>
 
   const shortResult: SimulationResult = {
     ...result,
-    householdEndAge: 62,
     yearlyResults: [60, 61, 62].map((age) =>
       makeYearlyResult({ age, spending: 1910000 * 12 })
     ),

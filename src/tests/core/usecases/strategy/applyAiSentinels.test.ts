@@ -93,7 +93,7 @@ function makeRecommendation(
     recommendedResult: {
       yearlyResults: [], fireAge: null, depletionAge: null, endingAssets: 0,
       retirementScore: 0, retirementGrade: '보통', goalAchievementRate: 100,
-      retirementAssetsAtRetirement: 0, householdEndAge: 90,
+      retirementAssetsAtRetirement: 0,
     },
     itemizedContributions: [],
   };

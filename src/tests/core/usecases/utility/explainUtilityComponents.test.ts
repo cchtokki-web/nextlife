@@ -34,7 +34,6 @@ function makeResult(
     retirementGrade: '보통',
     goalAchievementRate: 100,
     retirementAssetsAtRetirement: 0,
-    householdEndAge: 62,
     ...overrides,
   };
 }
@@ -74,7 +73,7 @@ describe('explainUtilityComponents - 자산 고갈 방지', () => {
     const params = makeParams({
       userProfile: { currentAge: 50, retirementAge: 60, expectancy: 90, targetMonthlySpending: 3500000 },
     });
-    const result = makeResult([makeYearlyResult({ age: 60 })], { depletionAge: 82, householdEndAge: 90 });
+    const result = makeResult([makeYearlyResult({ age: 60 })], { depletionAge: 82 });
 
     const { depletionSafety } = explainUtilityComponents(params, result);
 

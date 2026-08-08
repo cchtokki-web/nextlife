@@ -60,7 +60,6 @@ function makeResult(retirementScore: number): SimulationResult {
     retirementGrade: '보통',
     goalAchievementRate: 100,
     retirementAssetsAtRetirement: 0,
-    householdEndAge: 90,
   };
 }
 

@@ -63,7 +63,6 @@ describe('renderItemizedChecklistSection', () => {
     retirementGrade: '보통' as const,
     goalAchievementRate: 100,
     retirementAssetsAtRetirement: 0,
-    householdEndAge: 90,
   };
 
   test('recommendation이 undefined이면 폴백 문구를 반환한다', () => {

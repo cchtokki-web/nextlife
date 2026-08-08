@@ -105,7 +105,6 @@ function makeResult(yearlyResults: SimulationYearlyResult[]): SimulationResult {
     retirementGrade: '보통' as SimulationResult['retirementGrade'],
     goalAchievementRate: 100,
     retirementAssetsAtRetirement: 0,
-    householdEndAge: 90,
   };
 }
 
@@ -388,8 +387,8 @@ describe('실제 SimulationEngine 출력과의 계약', () => {
   });
 
   test('구성 대상 연도가 엔진이 실제로 돈 은퇴 후 전 기간과 일치한다', () => {
-    // 가구 종료 나이(=본인 기대수명 85)까지다.
-    expect(result.householdEndAge).toBe(85);
+    // 기대수명 85세까지다.
+    expect(params.userProfile.expectancy).toBe(85);
     expect(composition.map((c) => c.age))
       .toEqual(result.yearlyResults.filter((y) => y.age >= 60).map((y) => y.age));
     expect(composition[composition.length - 1].age).toBe(85);

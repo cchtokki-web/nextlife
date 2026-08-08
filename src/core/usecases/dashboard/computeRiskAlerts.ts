@@ -146,7 +146,7 @@ function buildHealthInsuranceCliffAlert(
   };
 }
 
-// 사용자가 명시적으로 금액 목표를 세운 계획("목표 금액 유지")에서, 가구 종료 시점 예상
+// 사용자가 명시적으로 금액 목표를 세운 계획("목표 금액 유지")에서, 기대수명 시점 예상
 // 잔여자산이 그 목표에 못 미치면 알림을 만든다. 다른 알림과 달리 연도별 시뮬레이션 조건이
 // 아니라 단일 시점 이벤트라 sortAge는 그 시점 나이로 고정한다.
 //
@@ -160,24 +160,18 @@ function buildHealthInsuranceCliffAlert(
 // 'spend_all'(0원, 다 쓰고 가기)은 미달이라는 개념 자체가 성립하지 않으므로(잔여자산이
 // 0 이상이면 항상 목표를 만족) 대상이 아니다.
 //
-// 기준 나이는 본인 기대수명이 아니라 result.householdEndAge다 — endingAssets가 "둘 중 늦게
-// 사망하는 쪽" 시점의 잔액이기 때문이다(types.ts). 배우자가 더 오래 사는 계획에서 본인
-// 기대수명을 라벨로 쓰면, 몇 년치 더 인출된 잔액을 그보다 이른 시점의 값으로 제시해 부족분을
-// 실제보다 크게 보고하고, 그 사이에 발생하는 다른 알림보다 앞으로 정렬된다.
-// 문구는 generateChartCaptions와 같은 관례를 따른다(가구 종료가 더 늦을 때만 배우자를 언급).
+// 라벨과 정렬 기준 나이는 endingAssets가 관측된 시점, 즉 시뮬레이션 종료 나이
+// (= 본인 기대수명)다(types.ts). 다른 나이를 쓰면 그 시점에 없던 잔액을 제시하게 된다.
 function buildBequestShortfallAlert(params: SimulationParams, result: SimulationResult): RiskAlertCandidate | null {
   const { targetBequest, expectancy } = params.userProfile;
   if (resolveStrategy(params).bequestStrategy !== 'target_amount') return null;
   if (targetBequest === undefined || targetBequest <= 0) return null;
   if (result.endingAssets >= targetBequest) return null;
 
-  const endAge = result.householdEndAge;
-  const timing = endAge > expectancy
-    ? `배우자 기대수명 시점(본인 나이 ${endAge}세)`
-    : `기대수명(${endAge}세) 시점`;
+  const timing = `기대수명(${expectancy}세) 시점`;
   const shortfall = targetBequest - result.endingAssets;
   return {
-    sortAge: endAge,
+    sortAge: expectancy,
     alert: {
       key: 'bequestShortfall',
       title: '목표 상속자산에 못 미칠 것으로 예상됩니다',

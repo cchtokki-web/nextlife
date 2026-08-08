@@ -427,9 +427,6 @@ export class SimulationEngine {
     depletionAge: number | null,
     inflationMode: 'nominal' | 'real',
     inflationRate: number,
-    // 시뮬레이션이 실제로 돈 종료 나이(= userProfile.expectancy). 호출부가 루프에 쓴 값을
-    // 그대로 넘겨받아 재유도하지 않는다.
-    householdEndAge: number,
     // 나이 → 그 해 의료비 중 반복 구성요소. 4% 룰 분모에는 이 값만 들어간다.
     recurringHealthcareByAge: ReadonlyMap<number, number>
   ): { retirementScore: number, retirementGrade: RetirementGrade, retirementAssetsAtRetirement: number } {
@@ -481,9 +478,7 @@ export class SimulationEngine {
       if (depletionAge <= userProfile.retirementAge) {
         longevityScoreRaw = 0;
       } else {
-        // 본인 기대수명이 아니라 가구 종료 나이로 정규화한다. 배우자 단독 생존 기간에
-        // 고갈되는 계획이 clamp(=100) 때문에 "고갈 없음"과 같은 점수를 받으면 안 된다.
-        const retirementSpan = householdEndAge - userProfile.retirementAge;
+        const retirementSpan = userProfile.expectancy - userProfile.retirementAge;
         const survivalSpan = depletionAge - userProfile.retirementAge;
         longevityScoreRaw = Math.min(100, Math.max(0, (survivalSpan / retirementSpan) * 100));
       }
@@ -531,7 +526,6 @@ export class SimulationEngine {
       return {
         yearlyResults: [], fireAge: null, depletionAge: null,
         endingAssets: 0, retirementScore: 0, retirementGrade: '위험', goalAchievementRate: 0, retirementAssetsAtRetirement: 0,
-        householdEndAge: 0,
       };
     }
 
@@ -597,7 +591,6 @@ export class SimulationEngine {
       return {
         yearlyResults: [], fireAge: null, depletionAge: null,
         endingAssets: 0, retirementScore: 0, retirementGrade: '위험', goalAchievementRate: 0, retirementAssetsAtRetirement: 0,
-        householdEndAge: isNaN(endAge) ? 0 : endAge,
       };
     }
 
@@ -1254,16 +1247,15 @@ export class SimulationEngine {
     const endingAssets = yearlyResults.length > 0 ? yearlyResults[yearlyResults.length - 1].totalAssets : 0;
 
     const { retirementScore, retirementGrade, retirementAssetsAtRetirement } = this.calculateRetirementScore(
-      yearlyResults, userProfile, goalAchievementRate, depletionAge, inflationMode, inflationRate, endAge,
+      yearlyResults, userProfile, goalAchievementRate, depletionAge, inflationMode, inflationRate,
       recurringHealthcareByAge
     );
 
     return {
       yearlyResults,
-      // 종료 판정은 같은 반환 객체의 depletionAge/endingAssets/householdEndAge와 같은 기준
-      // (가구 종료 나이)을 써야 한다. 본인 기대수명으로 게이트하면 배우자 단독 생존 기간에
-      // 달성한 FIRE가 "달성 불가(null)"로 지워진다. 배우자가 없으면 endAge === expectancy라
-      // 기존 동작과 완전히 동일하다.
+      // 종료 판정은 같은 반환 객체의 depletionAge/endingAssets와 같은 기준(시뮬레이션
+      // 종료 나이 = 본인 기대수명)을 써야 한다. 셋이 서로 다른 나이를 보면 같은 결과 안에서
+      // "고갈 없음"과 "FIRE 달성 불가"가 어긋난다.
       fireAge: fireAge === null || fireAge >= endAge ? null : fireAge,
       depletionAge,
       endingAssets,
@@ -1271,7 +1263,6 @@ export class SimulationEngine {
       retirementGrade,
       goalAchievementRate,
       retirementAssetsAtRetirement,
-      householdEndAge: endAge,
     };
   }
 }

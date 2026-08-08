@@ -56,17 +56,17 @@ function explainDepletionSafety(
   result: SimulationResult,
   retirementYearCount: number
 ): string {
-  const { retirementAge } = params.userProfile;
-  const { depletionAge, householdEndAge } = result;
+  const { retirementAge, expectancy } = params.userProfile;
+  const { depletionAge } = result;
 
   if (depletionAge === null) {
-    return `${householdEndAge}세까지 자산이 고갈되지 않아 만점입니다.`;
+    return `${expectancy}세까지 자산이 고갈되지 않아 만점입니다.`;
   }
   // 은퇴 시점 이전에 이미 0이면 자산으로 메울 수 있는 기간 자체가 없다(raw = 0).
   if (depletionAge <= retirementAge) {
     return `은퇴 시점에 이미 인출할 자산이 없어, 은퇴 후 ${retirementYearCount}년 동안 자산으로 메울 수 있는 기간이 없습니다.`;
   }
-  const span = householdEndAge - retirementAge;
+  const span = expectancy - retirementAge;
   const survived = depletionAge - retirementAge;
   return `은퇴 후 ${span}년 중 ${survived}년까지만 자산으로 버티고 ${depletionAge}세에 고갈됩니다.`;
 }

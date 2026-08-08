@@ -11,15 +11,12 @@ export interface ChartCaptions {
 // pensionGapYears/everComprehensiveTax/hasHighPrivatePensionRisk 등)과 동일한 규칙으로 캡션을
 // 생성한다. 새 LLM 호출을 추가하지 않고 이미 계산된 yearlyResults만으로 rule-based하게 만든다.
 export function generateChartCaptions(result: SimulationResult, params: SimulationParams): ChartCaptions {
-  const { yearlyResults, depletionAge, householdEndAge } = result;
+  const { yearlyResults, depletionAge } = result;
   const { expectancy } = params.userProfile;
 
-  // 고갈 판정 기준은 본인 기대수명이 아니라 시뮬레이션이 실제로 돈 마지막 나이다.
-  // 배우자가 본인보다 오래 살면 depletionAge > expectancy가 정상적으로 발생하며,
-  // 기대수명과 비교하면 배우자 단독 생존 구간의 파산이 "고갈되지 않음"으로 뒤집힌다.
-  // 규칙을 여기서 재유도하지 않고 resolvePlanAssetStatus 한 곳에 맡긴다 — 같은 result에서
-  // 파생되므로 화면의 다른 조각(헤드라인·로드맵)과 반드시 같은 상태를 본다.
-  const status = resolvePlanAssetStatus(result);
+  // 고갈 판정 규칙을 여기서 재유도하지 않고 resolvePlanAssetStatus 한 곳에 맡긴다 —
+  // 같은 result에서 파생되므로 화면의 다른 조각(헤드라인·로드맵)과 반드시 같은 상태를 본다.
+  const status = resolvePlanAssetStatus(result, expectancy);
   const firstAgeWithNationalPension = yearlyResults.find((y) => y.nationalPensionIncome > 0)?.age ?? null;
 
   const pensionLimit = params.taxSettings?.privatePensionLimit ?? 15000000;
@@ -29,7 +26,7 @@ export function generateChartCaptions(result: SimulationResult, params: Simulati
 
   return {
     assetGrowth: buildAssetGrowthCaption(
-      status, depletionAge, firstAgeWithNationalPension, householdEndAge, expectancy
+      status, depletionAge, firstAgeWithNationalPension, expectancy
     ),
     incomeComposition: buildIncomeCompositionCaption(firstAgeWithNationalPension),
     spendingComposition: buildSpendingCompositionCaption(hasHighPrivatePensionRisk),
@@ -40,7 +37,6 @@ function buildAssetGrowthCaption(
   status: PlanAssetStatus,
   depletionAge: number | null,
   firstAgeWithNationalPension: number | null,
-  householdEndAge: number,
   expectancy: number
 ): string {
   // 자산이 하나도 없으면 "고갈"도 "유지"도 성립하지 않는다. 예전에는 엔진이 첫 해에 잡은
@@ -54,12 +50,7 @@ function buildAssetGrowthCaption(
   if (firstAgeWithNationalPension !== null) {
     return `${firstAgeWithNationalPension}세부터 국민연금 수령이 시작되며 자산 감소세가 완화됩니다.`;
   }
-  // 배우자가 본인보다 오래 살면 "기대수명까지"라는 표현이 실제 검증 구간(가구 종료 나이)보다
-  // 짧아 오해를 만든다. 비교 기준과 문구가 같은 값을 가리키도록 두 경우를 나눠 쓴다.
-  if (householdEndAge > expectancy) {
-    return `배우자 기대수명까지(본인 나이 ${householdEndAge}세) 자산이 고갈되지 않고 유지됩니다.`;
-  }
-  return `기대수명(${householdEndAge}세)까지 자산이 고갈되지 않고 유지됩니다.`;
+  return `기대수명(${expectancy}세)까지 자산이 고갈되지 않고 유지됩니다.`;
 }
 
 function buildIncomeCompositionCaption(firstAgeWithNationalPension: number | null): string {
