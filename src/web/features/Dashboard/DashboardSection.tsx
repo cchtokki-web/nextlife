@@ -207,6 +207,8 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
         recommendation={recommendation}
         planAssetStatus={baselinePlanAssetStatus}
         sustainableMonthlySpending={result.calculatedTargetSpending}
+        monteCarloSuccessRate={monteCarlo?.successRate}
+        monteCarloFullSpendingRate={monteCarlo?.fullSpendingRate}
         />
 
         <CoreKpiGrid
@@ -216,6 +218,7 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
         monthlyTarget={displayedMonthlyTarget}
         utilityScore={displayedResult.utility?.score}
         formatValue={formatValue}
+        resultBasis={mode === 'after' ? 'recommended' : 'current'}
         />
 
         <div className={styles.statusList} aria-label="현재 계획 상태">

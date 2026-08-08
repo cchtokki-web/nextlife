@@ -184,6 +184,10 @@ export class SimulationEngine {
   // 이 시행이 "지속 가능"한가. 하한선이 없으면 기존 판정("고갈되지 않았거나 기말자산이 남음")을
   // 비트 단위로 그대로 쓴다.
   private meetsSustainabilityGoal(result: SimulationResult, assetFloor: number): boolean {
+    // 잔액이 아주 조금 남았더라도 목표 생활비를 못 쓴 해가 있으면 그 금액은 "지속 가능한
+    // 생활비"가 아니다. depletionAge만 보면 인출 가능한 잔액만 쓰고 멈춘 경로가 성공으로
+    // 오인되어 탐색 상한(월 5천만원)까지 치솟는다.
+    if (result.yearlyResults.some((year) => year.unmetSpending > 0)) return false;
     if (assetFloor > 0) return result.endingAssets >= assetFloor;
     return result.depletionAge === null || result.endingAssets > 0;
   }

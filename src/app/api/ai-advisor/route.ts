@@ -42,6 +42,8 @@ export interface AiAdvisorRequestBody {
   // 자산 고갈과 자산 미보유를 가른다. 없으면(옛 클라이언트) 기존 문구를 그대로 쓴다.
   planAssetStatus?: PlanAssetStatus;
   sustainableMonthlySpending?: number;
+  monteCarloSuccessRate?: number;
+  monteCarloFullSpendingRate?: number;
 }
 
 function toManwon(val?: number): string {
@@ -55,6 +57,7 @@ export function buildSimulationContextText(body: AiAdvisorRequestBody): string {
     taxSettings, spendingStrategy, inflationRate, inflationMode,
     goalAchievementRate, fireAge, endingAssets, monthlyTarget, score, depletionAge,
     retirementGrade, utility, utilityWeights, recommendation, planAssetStatus, sustainableMonthlySpending,
+    monteCarloSuccessRate, monteCarloFullSpendingRate,
   } = body;
 
   const lines: string[] = [];
@@ -64,6 +67,13 @@ export function buildSimulationContextText(body: AiAdvisorRequestBody): string {
   }
   lines.push(`- 목표 월 생활비: ${toManwon(monthlyTarget)}만원`);
   lines.push(`- 은퇴 준비도 점수: ${score}점 (등급: ${retirementGrade ?? '정보 없음'})`);
+  if (typeof monteCarloSuccessRate === 'number') {
+    lines.push(
+      `- 시장 변동성 분석: 자산 유지 확률 ${Math.round(monteCarloSuccessRate * 100)}%` +
+      `${typeof monteCarloFullSpendingRate === 'number' ? ` / 목표 생활비 완전 유지 확률 ${Math.round(monteCarloFullSpendingRate * 100)}%` : ''}. ` +
+      '결정론적 기준 시나리오와 구분해서 설명할 것.'
+    );
+  }
 
   if (utility) {
     lines.push(
@@ -211,10 +221,14 @@ export async function POST(req: NextRequest) {
     const {
       score, monthlyTarget, isPro, userProfile, depletionAge, retirementGrade, utility, recommendation,
       planAssetStatus, goalAchievementRate, sustainableMonthlySpending,
+      monteCarloSuccessRate, monteCarloFullSpendingRate,
     } = body;
     // 규칙 기반 폴백도 LLM과 같은 근거를 봐야 한다 — 두 경로가 서로 다른 진단을 내면
     // 같은 계획인데 Ollama 가용 여부에 따라 화면 문구가 달라진다.
-    const ruleBasedContext = { planAssetStatus, goalAchievementRate, sustainableMonthlySpending };
+    const ruleBasedContext = {
+      planAssetStatus, goalAchievementRate, sustainableMonthlySpending,
+      monteCarloSuccessRate, monteCarloFullSpendingRate,
+    };
 
     const OLLAMA_ENDPOINT = process.env.OLLAMA_ENDPOINT;
     const OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'gemma4-12b';

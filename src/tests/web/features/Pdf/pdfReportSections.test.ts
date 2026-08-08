@@ -1,11 +1,19 @@
 import { describe, test, expect } from 'vitest';
 import {
+  formatCurrencyUnit,
   renderRiskAlertsSection,
   renderItemizedChecklistSection,
   renderExecutionRoadmapSection,
   renderSensitivityTableSection,
   renderMonteCarloSection,
 } from '@/web/features/Pdf/pdfReportSections';
+
+describe('formatCurrencyUnit', () => {
+  test('replaces currency codes with report-facing symbols', () => {
+    expect(formatCurrencyUnit('KRW')).toBe('원');
+    expect(formatCurrencyUnit('USD')).toBe('$');
+  });
+});
 import { RiskAlert } from '@/core/usecases/dashboard/computeRiskAlerts';
 import { ExecutionRoadmap } from '@/core/usecases/dashboard/computeExecutionRoadmap';
 import { MonteCarloResult } from '@/core/entities/montecarlo';

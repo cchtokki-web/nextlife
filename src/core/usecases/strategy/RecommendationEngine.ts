@@ -113,14 +113,14 @@ export function buildReasons(
     plan.privatePensionMonthlyTarget !== undefined &&
     plan.privatePensionMonthlyTarget !== context?.identityPlan?.privatePensionMonthlyTarget
   ) {
-    reasons.push(`사적연금을 월 약 ${formatManwon(plan.privatePensionMonthlyTarget)} 수준으로 정액 인출합니다.`);
+    reasons.push(`사적연금의 월 정액 인출 상한을 약 ${formatManwon(plan.privatePensionMonthlyTarget)}으로 설정합니다. 실제 인출액은 해당 연도의 생활비 부족분을 넘지 않습니다.`);
   }
   switch (plan.assetSellOrderStrategy) {
     case 'low_dividend_first':
       reasons.push('배당수익률이 낮은 자산부터 매도해 배당 소득원을 오래 유지합니다.');
       break;
     case 'high_dividend_first':
-      reasons.push('배당수익률이 높은 자산부터 매도해 향후 금융소득종합과세 위험을 낮춥니다.');
+      reasons.push('자산 매도 순서를 배당수익률이 높은 자산 우선으로 조정합니다. 현재 금융소득종합과세 위험이 낮다면 세금 회피를 위한 즉시 매도는 필요하지 않습니다.');
       break;
     case 'input_order':
     case undefined:
@@ -225,7 +225,7 @@ function labelForSingleFieldChange(
       // 쓰던 사용자에게 균등분할을 제안)도 타입상 가능하다.
       return recommendedPlan.privatePensionMonthlyTarget === undefined
         ? '사적연금을 정액 인출 대신 남은 기간에 걸쳐 균등하게 인출합니다.'
-        : `사적연금을 월 약 ${formatManwon(recommendedPlan.privatePensionMonthlyTarget)} 수준으로 정액 인출합니다.`;
+        : `사적연금의 월 정액 인출 상한을 약 ${formatManwon(recommendedPlan.privatePensionMonthlyTarget)}으로 설정합니다. 실제 인출액은 생활비 부족분을 넘지 않습니다.`;
     case 'generalAssetWithdrawalStartAge':
       return `${recommendedPlan.generalAssetWithdrawalStartAge}세부터 일반 자산(주식/ETF) 인출을 시작합니다.`;
     case 'assetSellOrderStrategy':
@@ -233,7 +233,7 @@ function labelForSingleFieldChange(
         return '배당수익률이 낮은 자산부터 매도해 배당 소득원을 오래 유지합니다.';
       }
       if (recommendedPlan.assetSellOrderStrategy === 'high_dividend_first') {
-        return '배당수익률이 높은 자산부터 매도해 향후 금융소득종합과세 위험을 낮춥니다.';
+        return '자산 매도 순서를 고배당 자산 우선으로 조정합니다. 금융소득종합과세 위험이 낮다면 즉시 매도할 필요는 없습니다.';
       }
       return '자산 매도 순서를 조정합니다.';
     case 'isaMaturityDestination':
