@@ -308,16 +308,26 @@ describe('computeMonthlySpendingComposition', () => {
 
   describe('max_sustainable로 역산된 목표', () => {
     test('result.calculatedTargetSpending이 목표 생활비로 쓰인다', () => {
-      // spendingStrategy가 max_sustainable이면 params.userProfile.targetMonthlySpending이
-      // 아니라 이진탐색으로 역산된 result.calculatedTargetSpending이 필요분의 기준이 된다.
-      // 실제 지출(월 250만원)이 역산된 목표(월 250만원)와 정확히 같으므로 부족분은 0이어야 한다.
+      // spendingStrategy가 max_sustainable이면 params.userProfile.targetMonthlySpending
+      // (makeParams 기본값 200만원)이 아니라 이진탐색으로 역산된 result.calculatedTargetSpending
+      // (250만원)이 필요분의 기준이 되어야 한다.
+      //
+      // 실제 지출을 두 후보 사이(월 220만원)로 잡아 분기가 실제로 작동하는지 구분한다:
+      //   - 분기 정상 작동: targetMonthly = 250만원 → shortfall = 250만원 - 220만원 = 30만원
+      //   - 분기가 없어 params.userProfile.targetMonthlySpending(200만원)으로 폴백:
+      //     targetMonthly = 200만원 → shortfall = max(0, 200만원 - 220만원) = 0
+      // 실제 지출이 역산 목표와 같은 값(250만원)이면 두 경우 모두 shortfall이 0으로 나와
+      // 분기를 통째로 지워도 테스트가 초록이 되므로(회귀를 못 잡음), 반드시 두 후보 사이의
+      // 값을 써야 한다.
       const params = makeParams({ spendingStrategy: 'max_sustainable' });
-      const yearly = makeYearlyResult({ age: 70, spendingAnnual: 30000000 }); // 월 2,500,000
+      const yearly = makeYearlyResult({ age: 70, spendingAnnual: 26400000 }); // 월 2,200,000
       const result = { ...makeResult([yearly]), calculatedTargetSpending: 2500000 };
 
       const [composition] = computeMonthlySpendingComposition([yearly], params, result);
 
-      expect(composition.shortfall).toBe(0);
+      // targetMonthly 자체도 직접 단언해 역산값이 그대로 실렸는지 확인한다.
+      expect(composition.targetMonthly).toBe(2500000);
+      expect(composition.shortfall).toBe(300000);
     });
   });
 
