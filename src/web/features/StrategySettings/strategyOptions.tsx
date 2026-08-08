@@ -5,11 +5,10 @@ import {
 } from 'lucide-react';
 import {
   BequestStrategy, EconomicScenario, HealthcareAssumptions, IsaFirstChoice, NationalPensionStrategy, ObjectivePriority,
-  PrivatePensionStrategy, RiskProfile, SimulationParams, SpendingStrategyChoice, SpouseProfile,
+  PrivatePensionStrategy, RiskProfile, SimulationParams, SpendingStrategyChoice,
   StrategyMode, StrategyRecommendation,
 } from '../../../core/entities/types';
 import { RadioCardOption } from '../../components/form';
-import { EXPECTANCY_MAX } from './ageInput';
 import { FieldPath } from './fieldVisibility';
 
 // 6개 섹션이 공유하는 props. 섹션은 자기 값 읽기/쓰기와 노출 판정에 필요한 것만 받는다.
@@ -31,30 +30,6 @@ export interface AiRecommendationState {
   error: string | null;
   // recommendation?.improved의 안전한 별칭. 섹션들이 매번 옵셔널 체이닝하지 않도록 미리 편다.
   improved: boolean;
-}
-
-// 배우자 기대수명을 본인 기대수명보다 몇 년 길게 잡을지. 여성 기대수명이 더 길다는
-// 통계를 반영한 값이며, 예전 고정 기본값(본인 85 / 배우자 90)의 간격과 같다.
-export const SPOUSE_EXPECTANCY_BONUS = 5;
-
-// 배우자 스위치를 처음 켤 때 채워 넣는 값. 나이는 반드시 본인 값에서 유도한다.
-//
-// 예전에는 고정값(currentAge 50 / expectancy 90)이었고 "BasicInfoSection이 본인 값을 기준으로
-// 덮어쓴다"는 주석이 붙어 있었지만 그런 로직은 없었다. 그 결과 65세 사용자가 스위치를 켜면
-// 배우자가 50세·90세로 저장되어 deathAtSelfAge = 65 + (90 - 50) = 105가 되고, 시뮬레이션이
-// 105세까지 돌았다. householdEndAge가 depletionAge·endingAssets·depletionSafety를 좌우하므로
-// 이 한 번의 스위치가 결과 전체를 바꿔 놓는다.
-//
-// 배우자 나이를 본인 나이와 같게 두는 것은 "모른다"에 대한 가장 중립적인 시작점이며,
-// 사용자가 곧바로 옆 입력에서 고칠 수 있다.
-export function createDefaultSpouse(
-  userProfile: Pick<SimulationParams['userProfile'], 'currentAge' | 'expectancy'>
-): SpouseProfile {
-  return {
-    enabled: false,
-    currentAge: userProfile.currentAge,
-    expectancy: Math.min(EXPECTANCY_MAX, userProfile.expectancy + SPOUSE_EXPECTANCY_BONUS),
-  };
 }
 
 // 의료비 스위치를 처음 켤 때 채워 넣는 값.
