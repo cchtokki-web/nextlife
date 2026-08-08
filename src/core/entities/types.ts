@@ -243,7 +243,6 @@ export interface SimulationParams {
   // 없을 때뿐이다 — 그 씨앗이 하나라도 있으면 전략이 유도되어 저수준 필드가 실체화된다
   // (compileStrategy.seedStrategyFromLegacyParams 참조).
   strategy?: RetirementStrategy;
-  spouse?: SpouseProfile;
   healthcare?: HealthcareAssumptions;
   taxLawVersion?: TaxLawVersion;
 }
@@ -321,30 +320,17 @@ export interface SimulationYearlyResult {
   healthcareSpending: number;
   hasTaxWarning: boolean; // 연간 금융소득이 2,000만원 초과 여부
 
-  // 해당 연도 배우자 생존 여부. 배우자 미설정이면 항상 false다
-  // (배우자가 없는 것과 사망한 것을 결과 타입에서 구분하지 않는다 —
-  //  구분이 필요한 소비처는 params.spouse를 함께 본다).
+  // 배우자 개념이 제거되어 항상 false다. 다음 태스크에서 필드째 제거될 예정이라
+  // 과도기적으로 남아 있다.
   spouseAlive: boolean;
-  // 해당 연도에 적용된 가구 생활비 규모 계수(2인=1, 1인 생존=0.7, 배우자 미설정=1).
-  // SimulationEngine이 목표 생활비에 곱한 바로 그 값을 그대로 노출한다.
-  //
-  // 점수·효용 계산이 "목표 대비 얼마나 충족했는가"의 분모를 만들 때 반드시 이 값을 곱해야 한다.
-  // 곱하지 않으면 배우자 사망으로 줄어든 필요를 완벽히 충족한 계획이 영구적 결손으로 채점된다.
-  // 계수를 소비처에서 재유도(resolveSpouse 재호출 등)하지 않고 결과에 실어 나르는 이유는,
-  // 계수를 계산하는 곳을 엔진 한 곳으로 묶어 두 로직이 다시 어긋나지 못하게 하기 위해서다.
+  // 배우자 개념이 제거되어 항상 1이다. 다음 태스크에서 필드째 제거될 예정이라
+  // 과도기적으로 남아 있다.
   spendingFactor: SpendingFactor;
 }
 
-// 생존 인원에 따른 가구 생활비 규모 계수가 실제로 가질 수 있는 값. number로 두면 오타
-// (0.75 등)가 조용히 통과한다.
-//
-// 값의 출처는 usecases/spouse/spouseRules.computeSpendingFactor다:
-//   1   = 본인·배우자 모두 생존(또는 배우자 미설정)
-//   0.7 = 한 명만 생존(SINGLE_SURVIVOR_SPENDING_FACTOR)
-//   0   = 모두 사망
-// 여기서 SINGLE_SURVIVOR_SPENDING_FACTOR를 import하지 않고 리터럴을 직접 쓰는 이유는
-// 계층 방향 때문이다 — entities가 usecases를 참조하면 의존 방향이 역전된다.
-// 두 곳이 어긋나면 spouseRules 쪽에서 컴파일 에러가 난다(반환 타입이 이 타입이다).
+// SimulationYearlyResult.spendingFactor가 가질 수 있는 값. 배우자 개념이 있던 시절에는
+// 생존 인원에 따라 0 | 0.7 | 1을 가졌지만, 지금은 항상 1이다. 필드와 함께 다음 태스크에서
+// 제거될 예정이라 과도기적으로 남아 있다.
 export type SpendingFactor = 0 | 0.7 | 1;
 
 export interface SimulationResult {
@@ -584,18 +570,6 @@ export interface RetirementStrategy {
   preferIsaFirst: IsaFirstChoice;
   riskProfile: RiskProfile;
   economicScenario: EconomicScenario;
-}
-
-// 배우자. 자산/ISA/사적연금 계좌는 가구 합산 하나로 유지하고, 여기서는 생존 기간과
-// 국민연금만 분리한다(설계 결정: 계좌 소유자 분리는 이번 범위 밖).
-// 배우자 **명의**의 국민연금은 다루지 않는다. 설정 항목이 다섯 개로 늘면서 간편 모드까지
-// 복잡해졌고, 그 대가로 얻는 것이 "배우자도 연금을 받는다"는 한 가지뿐이었다.
-// 배우자 축이 실제로 결과를 바꾸는 지점(가구 종료 나이, 생활비 축소 계수, 본인 연금의
-// 유족연금 승계)은 아래 세 필드만으로 전부 성립한다.
-export interface SpouseProfile {
-  enabled: boolean;
-  currentAge: number;
-  expectancy: number;
 }
 
 export interface HealthcareAssumptions {

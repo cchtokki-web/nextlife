@@ -2,7 +2,6 @@ import { describe, test, expect } from 'vitest';
 import { makeYearlyResult as makeYearlyResultFixture } from '@/tests/fixtures/yearlyResult';
 import { computeMonthlySpendingComposition } from '@/core/usecases/MonthlySpendingComposition';
 import { SimulationEngine } from '@/core/usecases/SimulationEngine';
-import { SINGLE_SURVIVOR_SPENDING_FACTOR } from '@/core/usecases/spouse/spouseRules';
 import {
   SimulationParams,
   SimulationResult,
@@ -389,8 +388,7 @@ describe('computeMonthlySpendingComposition', () => {
 // 가장 최근에 추가된 두 필드라 계약이 가장 깨지기 쉽고, 둘 다 목표(분모) 쪽 보정이
 // 필요해서 한쪽만 반영하면 즉시 가짜 부족분으로 드러나기 때문이다.
 describe('실제 SimulationEngine 출력과의 계약', () => {
-  // 본인 60세 은퇴·85세 기대수명, 배우자는 5살 어리고 85세까지 → 본인 나이 기준 90세 사망.
-  // 즉 가구는 본인 사후 5년(86~90세)을 배우자 단독으로 더 산다.
+  // 본인 60세 은퇴·85세 기대수명.
   // 자산은 넉넉히 두어 전 기간 목표 생활비를 전액 충당하게 한다(고갈되면 spending이 깎여
   // 아래 shortfall 단정의 의미가 사라진다 — 전제로 depletionAge === null을 함께 건다).
   const params: SimulationParams = {
@@ -418,9 +416,6 @@ describe('실제 SimulationEngine 출력과의 계약', () => {
     exchangeScenario: 'base',
     displayCurrency: 'KRW',
     spendingStrategy: 'target',
-    spouse: {
-      enabled: true, currentAge: 55, expectancy: 85,
-    },
     healthcare: {
       enabled: true, costGrowthRate: 5, baseMonthlyCost: 400000,
       longTermCareEnabled: true, longTermCareStartAge: 80, longTermCareMonthlyCost: 1000000,
@@ -431,20 +426,18 @@ describe('실제 SimulationEngine 출력과의 계약', () => {
   const result = new SimulationEngine().run(params);
   const composition = computeMonthlySpendingComposition(result.yearlyResults, params, result);
 
-  test('전제: 시나리오가 고갈되지 않고 배우자·의료비가 실제로 켜져 있다', () => {
+  test('전제: 시나리오가 고갈되지 않고 의료비가 실제로 켜져 있다', () => {
     // 아래 단정들이 "아무 일도 일어나지 않아서" 통과하는 상태로 조용히 퇴화하는 것을 막는다.
     expect(result.depletionAge).toBeNull();
-    expect(result.yearlyResults.some((y) => y.spendingFactor === SINGLE_SURVIVOR_SPENDING_FACTOR)).toBe(true);
     expect(result.yearlyResults.every((y) => y.age < 60 || y.healthcareSpending > 0)).toBe(true);
   });
 
   test('구성 대상 연도가 엔진이 실제로 돈 은퇴 후 전 기간과 일치한다', () => {
-    // 가구 종료 나이(90)까지다. 소비처가 본인 기대수명(85)에서 끊으면 배우자 단독 생존
-    // 구간 5년이 차트에서 통째로 사라진다.
-    expect(result.householdEndAge).toBe(90);
+    // 가구 종료 나이(=본인 기대수명 85)까지다.
+    expect(result.householdEndAge).toBe(85);
     expect(composition.map((c) => c.age))
       .toEqual(result.yearlyResults.filter((y) => y.age >= 60).map((y) => y.age));
-    expect(composition[composition.length - 1].age).toBe(90);
+    expect(composition[composition.length - 1].age).toBe(85);
   });
 
   test('모든 해에서 재원 구성의 합이 엔진의 실제 월 지출과 정확히 일치한다', () => {
@@ -469,10 +462,8 @@ describe('실제 SimulationEngine 출력과의 계약', () => {
 
   test('자산이 충분한 계획에서는 어떤 해에도 가짜 부족분이 생기지 않는다', () => {
     // 목표(분모)는 여기서 다시 계산되고 실제 지출(분자)은 엔진이 계산한다. 두 계산이
-    // spendingFactor·healthcareSpending에 대해 같은 규약을 쓰지 않으면 즉시 벌어진다:
-    //   - 목표에만 계수를 안 곱하면 86세부터 (1-0.7) × 200만 = 60만원의 가짜 부족분
-    //   - 목표에 의료비를 안 더하면 부족분이 음수로 눌려 0으로 숨는 대신, 반대로
-    //     의료비에 계수를 이중 적용하면 다시 벌어진다
+    // healthcareSpending에 대해 같은 규약을 쓰지 않으면 즉시 벌어진다:
+    //   - 목표에 의료비를 안 더하면 부족분이 음수로 눌려 0으로 숨는다
     //   - 75세 의료비 쇼크(3천만원)가 목표에 안 들어가면 그 해만 250만원어치가 어긋난다
     // 남는 오차는 실제 지출을 원 단위로 반올림한 것뿐이므로 1원 미만이어야 한다.
     for (const c of composition) {

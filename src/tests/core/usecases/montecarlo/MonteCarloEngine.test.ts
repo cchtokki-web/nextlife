@@ -120,16 +120,13 @@ describe('runMonteCarlo', () => {
     expect(Number.isFinite(mc.endingAssets.p50)).toBe(true);
   });
 
-  // 성공 기준 나이는 본인 기대수명이 아니라 가구 종료 나이다. 배우자가 더 오래 사는
-  // 계획에서 본인 기대수명을 쓰면 배우자 단독 생존 구간의 파산이 통째로 숨는다.
+  // 성공 기준 나이는 엔진이 실제로 돌린 종료 나이(householdEndAge)다.
   test('성공 기준 나이는 가구 종료 나이다', () => {
-    const withSpouse = params({
-      spouse: { enabled: true, currentAge: 50, expectancy: 95 },
-    });
+    const p = params();
 
-    const mc = runMonteCarlo(withSpouse, engine, config({ trials: 10 }));
+    const mc = runMonteCarlo(p, engine, config({ trials: 10 }));
 
-    expect(mc.successAge).toBe(engine.runSingle(withSpouse).householdEndAge);
+    expect(mc.successAge).toBe(engine.runSingle(p).householdEndAge);
   });
 
   test('고갈된 시행이 없으면 고갈 통계는 비어 있다', () => {

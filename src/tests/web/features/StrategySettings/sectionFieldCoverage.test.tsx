@@ -32,7 +32,7 @@ const { InvestmentStrategySection } = await import('@/web/features/StrategySetti
 const { EconomicAssumptionSection } = await import('@/web/features/StrategySettings/sections/EconomicAssumptionSection');
 const { AdvancedSection } = await import('@/web/features/StrategySettings/sections/AdvancedSection');
 
-// 조건부로만 렌더되는 필드(배우자·의료비 하위 항목, 상속 목표 금액 등)까지 모두 나타나도록
+// 조건부로만 렌더되는 필드(의료비 하위 항목, 상속 목표 금액 등)까지 모두 나타나도록
 // 모든 하위 토글을 켠 params. 이 fixture가 불완전하면 테스트가 거짓 실패한다.
 const allEnabledParams: SimulationParams = {
   ...initialParams,
@@ -49,9 +49,6 @@ const allEnabledParams: SimulationParams = {
     economicScenario: 'ai_recommended',
   },
   userProfile: { ...initialParams.userProfile, targetBequest: 100000000 },
-  spouse: {
-    enabled: true, currentAge: 50, expectancy: 90,
-  },
   healthcare: {
     enabled: true, costGrowthRate: 3, baseMonthlyCost: 500000,
     longTermCareEnabled: true, longTermCareStartAge: 80, longTermCareMonthlyCost: 1500000,

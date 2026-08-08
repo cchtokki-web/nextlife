@@ -33,9 +33,6 @@ import {
 } from './pension/nationalPensionRules';
 import { PRIVATE_PENSION_MIN_START_AGE, clampPrivatePensionStartAge } from './pension/privatePensionRules';
 import { sortAssetsForWithdrawal } from './strategy/assetOrdering';
-import {
-  computeHouseholdEndAge, computeSpendingFactor, inheritSurvivorPension, resolveSpouse,
-} from './spouse/spouseRules';
 
 // 연 수익률(소수)을 월 복리율로. initializeAssets가 네 곳에서 같은 식을 반복하고 있었고,
 // 연도별 시장 충격을 얹으려면 같은 식이 다섯 번째로 필요해져 한 곳으로 모은다.
@@ -437,8 +434,8 @@ export class SimulationEngine {
     depletionAge: number | null,
     inflationMode: 'nominal' | 'real',
     inflationRate: number,
-    // 시뮬레이션이 실제로 돈 종료 나이(= computeHouseholdEndAge). 배우자가 본인보다 오래 살면
-    // userProfile.expectancy보다 크다. 호출부가 루프에 쓴 값을 그대로 넘겨받아 재유도하지 않는다.
+    // 시뮬레이션이 실제로 돈 종료 나이(= userProfile.expectancy). 호출부가 루프에 쓴 값을
+    // 그대로 넘겨받아 재유도하지 않는다.
     householdEndAge: number,
     // 나이 → 그 해 의료비 중 반복 구성요소. 4% 룰 분모에는 이 값만 들어간다.
     recurringHealthcareByAge: ReadonlyMap<number, number>
@@ -601,8 +598,7 @@ export class SimulationEngine {
     let deferredCapitalGainKRW = 0;
 
     const startAge = userProfile.currentAge;
-    const resolvedSpouse = resolveSpouse(params.spouse, userProfile);
-    const endAge = computeHouseholdEndAge(userProfile, resolvedSpouse);
+    const endAge = userProfile.expectancy;
     const totalYears = endAge - startAge + 1;
 
     if (isNaN(totalYears) || totalYears <= 0) {
@@ -632,11 +628,9 @@ export class SimulationEngine {
       const currentYear = new Date().getFullYear() + y;
       const isRetired = currentAge >= userProfile.retirementAge;
 
-      // 생존 판정. 기대수명 "까지"는 생존으로 본다(기존 endAge 포함 루프와 일관).
-      const selfAlive = currentAge <= userProfile.expectancy;
-      const spouseAlive = resolvedSpouse !== null && currentAge <= resolvedSpouse.deathAtSelfAge;
-      // 배우자가 없으면 본인 생존 기간만 돌므로 계수는 항상 1이다.
-      const spendingFactor = resolvedSpouse === null ? 1 : computeSpendingFactor(selfAlive, spouseAlive);
+      // 배우자 개념이 없으므로 루프는 본인 기대수명까지만 돈다 — 전 구간 생존이다.
+      const spouseAlive = false;
+      const spendingFactor = 1;
 
       let annualDividendIncome = 0;
       let annualNationalPensionIncome = 0;
@@ -696,24 +690,11 @@ export class SimulationEngine {
         NATIONAL_PENSION_DEFERRED_MAX_AGE,
         Math.max(NATIONAL_PENSION_EARLY_MIN_AGE, withdrawalPlan?.nationalPensionStartAge ?? NATIONAL_PENSION_NORMAL_START_AGE)
       );
-      // 본인과 배우자는 각자의 개시 나이로 따로 판정한다. 배우자가 본인보다 나이가 많으면
-      // 본인이 아직 개시 전이어도 배우자는 이미 수령 중일 수 있으므로, 이 블록의 진입 조건을
-      // 본인 개시 나이에만 걸면 그 기간의 배우자 연금이 조용히 사라진다.
-      // 배우자가 없으면(resolvedSpouse === null) 조건은 기존과 완전히 동일하다.
-      const selfNationalPensionStarted = currentAge >= nationalPensionStartAge;
-      // 배우자 명의 국민연금은 다루지 않으므로, 본인이 아직 개시 전이면 지급할 것도
-      // 승계할 것도 없다(예전에는 배우자 몫 때문에 `|| resolvedSpouse !== null`이 필요했다).
-      if (selfNationalPensionStarted) {
+      if (currentAge >= nationalPensionStartAge) {
         const nationalPensionAdjustmentFactor = getNationalPensionAdjustmentFactor(nationalPensionStartAge);
-        let natAmountRaw = (inflationMode === 'nominal'
+        const natAmountRaw = (inflationMode === 'nominal'
           ? nationalPension.expectedMonthlyAmount * Math.pow(1 + infRateAnnual, y)
           : nationalPension.expectedMonthlyAmount) * nationalPensionAdjustmentFactor;
-
-        // 본인 사망 → 배우자가 본인 국민연금을 유족연금으로 이어받는다.
-        // 배우자가 먼저 사망한 경우에는 본인 연금이 그대로 유지되므로 분기가 필요 없다.
-        if (resolvedSpouse !== null && !selfAlive && spouseAlive) {
-          natAmountRaw = inheritSurvivorPension(natAmountRaw);
-        }
 
         // 연금소득세는 연 단위로 계산해야 한다 — 연금소득공제와 누진세율이 모두 연간 총액
         // 기준이기 때문이다. natAmountRaw는 이 해 동안 고정이므로(연도 루프에서 한 번 계산)
