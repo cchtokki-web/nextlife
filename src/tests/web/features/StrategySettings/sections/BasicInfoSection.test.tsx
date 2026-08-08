@@ -24,6 +24,13 @@ describe('BasicInfoSection', () => {
     expect(screen.getByLabelText('기대수명')).toHaveValue(85);
   });
 
+  test('본인 나이 입력 3개 외에는 스위치나 다른 입력을 렌더하지 않는다', () => {
+    renderSection();
+
+    expect(screen.queryAllByRole('switch')).toHaveLength(0);
+    expect(screen.getAllByRole('spinbutton')).toHaveLength(3);
+  });
+
   test('현재 나이를 바꾸면 userProfile.currentAge만 바뀐 params로 호출된다', () => {
     const onChangeParams = renderSection();
 
