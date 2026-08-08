@@ -108,23 +108,23 @@ describe('DashboardSection - IA 순서', () => {
     vi.unstubAllGlobals();
   });
 
-  test('Hero → KPI → 추천 체크리스트 → 차트 → 전문가 상세 순서로 렌더링된다', () => {
+  test('결과 요약 → 위험 분석 → 실행 계획 → 자산 흐름 → 상세 분석 순서로 렌더링된다', () => {
     const { container } = render(
       <DashboardSection params={params} result={result} recommendation={recommendation} />
     );
 
     const text = container.textContent ?? '';
-    const heroIdx = text.indexOf('은퇴');
-    const kpiIdx = text.indexOf('예상 순자산');
-    const checklistIdx = text.indexOf('AI 추천 전략');
-    const chartIdx = text.indexOf('자산 추이 시뮬레이션');
-    const expertIdx = text.indexOf('전문가용 상세 분석 더 보기');
+    const summaryIdx = text.indexOf('결과 요약');
+    const riskIdx = text.indexOf('위험 분석');
+    const actionIdx = text.indexOf('실행 계획');
+    const chartIdx = text.indexOf('자산 흐름');
+    const detailIdx = text.indexOf('상세 분석');
 
-    expect(heroIdx).toBeGreaterThanOrEqual(0);
-    expect(kpiIdx).toBeGreaterThan(heroIdx);
-    expect(checklistIdx).toBeGreaterThan(kpiIdx);
-    expect(chartIdx).toBeGreaterThan(checklistIdx);
-    expect(expertIdx).toBeGreaterThan(chartIdx);
+    expect(summaryIdx).toBeGreaterThanOrEqual(0);
+    expect(riskIdx).toBeGreaterThan(summaryIdx);
+    expect(actionIdx).toBeGreaterThan(riskIdx);
+    expect(chartIdx).toBeGreaterThan(actionIdx);
+    expect(detailIdx).toBeGreaterThan(chartIdx);
   });
 
   test('실행 로드맵이 렌더링되고 체크리스트 다음, 차트 이전에 위치한다', () => {
@@ -149,6 +149,21 @@ describe('DashboardSection - IA 순서', () => {
   test('자산 추이 차트는 기본으로 단순화 모드이며, "자산 구성 상세보기" 버튼을 제공한다', () => {
     render(<DashboardSection params={params} result={result} recommendation={recommendation} />);
     expect(screen.getByRole('button', { name: '자산 구성 상세보기' })).toBeInTheDocument();
+  });
+
+  test('소득·지출 구성은 한 자리에서 탭으로 전환된다', () => {
+    render(<DashboardSection params={params} result={result} recommendation={recommendation} />);
+
+    const incomeTab = screen.getByRole('tab', { name: '소득 구성' });
+    const spendingTab = screen.getByRole('tab', { name: '지출 구성' });
+    expect(incomeTab).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByText(/연령별 소득원 구성/)).toBeInTheDocument();
+
+    fireEvent.click(spendingTab);
+
+    expect(spendingTab).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByText(/은퇴 후 연령별 월 생활비 재원 구성/)).toBeInTheDocument();
+    expect(screen.queryByText(/연령별 소득원 구성/)).not.toBeInTheDocument();
   });
 
   test('핵심 KPI 4장(은퇴준비도/순자산/월생활비/Utility)이 모두 노출된다', () => {

@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { type ReactNode } from 'react';
 import { type LegendPayload } from 'recharts';
 import { Award, Zap, TrendingUp, AlertTriangle } from 'lucide-react';
 import { SimulationParams, SimulationResult, StrategyRecommendation } from '../../../core/entities/types';
@@ -70,6 +70,7 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
   sequenceRisk,
 }) => {
   const [hiddenKeys, setHiddenKeys] = React.useState<Record<string, boolean>>({});
+  const [compositionChart, setCompositionChart] = React.useState<'income' | 'spending'>('income');
   // 자산 추이 차트 기본 단순화 모드: 켜지기 전까지는 주식자산/연금자산 breakdown을 숨기고
   // 자산총액/월생활비만 보여준다. 범례 클릭으로 저장된 hiddenKeys는 그대로 두고 덮어씌우기만 한다.
   const [showAssetBreakdown, setShowAssetBreakdown] = React.useState(false);
@@ -178,65 +179,8 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
 
   return (
     <div className={styles.container}>
-      {/* Strategy Indicator Banners — 항상 baseline(현재 설정) 기준, Before/After 토글과 무관 */}
-      {params.spendingStrategy === 'max_sustainable' && result.calculatedTargetSpending !== undefined && (
-        <div className={styles.warningCard} style={{ background: 'rgba(16, 185, 129, 0.1)', borderColor: 'rgba(16, 185, 129, 0.3)' }}>
-          <Award size={22} className={styles.warningIcon} color="var(--success)" />
-          <div className={styles.warningContent}>
-            <span className={styles.warningTitle} style={{ color: 'var(--success)' }}>최대 고정 생활비 산출 완료</span>
-            <span className={styles.warningText}>
-              시뮬레이션 결과, 고갈 없이 유지 가능한 <strong>최대 월 생활비는 {formatValue(result.calculatedTargetSpending)}</strong>입니다. 모든 차트는 이 금액을 목표로 다시 그려졌습니다.
-            </span>
-          </div>
-        </div>
-      )}
-      {/* 고정 목표 생활비('target') 계획에서, 엔진이 이미 계산해 둔 지속가능 생활비를
-          현재 목표와 비교해 제안한다. 양방향인 이유는 computeSustainableSpendingAdvice 주석 참고. */}
-      {sustainableSpendingAdvice?.kind === 'can_spend_more' && (
-        <div className={styles.warningCard} style={{ background: 'rgba(16, 185, 129, 0.1)', borderColor: 'rgba(16, 185, 129, 0.3)' }}>
-          <TrendingUp size={22} className={styles.warningIcon} color="var(--success)" />
-          <div className={styles.warningContent}>
-            <span className={styles.warningTitle} style={{ color: 'var(--success)' }}>지금보다 더 쓸 수 있습니다</span>
-            <span className={styles.warningText}>
-              현재 목표는 월 {formatValue(sustainableSpendingAdvice.currentMonthly)}이지만, 자산을 고갈시키지 않고{' '}
-              <strong>월 {formatValue(sustainableSpendingAdvice.sustainableMonthly)}까지</strong> 쓸 수 있습니다
-              (월 {formatValue(sustainableSpendingAdvice.difference)} 여유). 목표 생활비를 올리거나, 남는 자산을
-              상속·증여 계획에 반영해 보세요.
-            </span>
-          </div>
-        </div>
-      )}
-      {sustainableSpendingAdvice?.kind === 'overspending' && (
-        <div className={styles.warningCard} style={{ background: 'rgba(239, 68, 68, 0.1)', borderColor: 'rgba(239, 68, 68, 0.3)' }}>
-          <AlertTriangle size={22} className={styles.warningIcon} color="var(--danger)" />
-          <div className={styles.warningContent}>
-            <span className={styles.warningTitle} style={{ color: 'var(--danger)' }}>현재 목표 생활비는 지속하기 어렵습니다</span>
-            <span className={styles.warningText}>
-              현재 목표는 월 {formatValue(sustainableSpendingAdvice.currentMonthly)}이지만,{' '}
-              {baselinePlanAssetStatus === 'no_investable_asset' ? '연금 등 고정소득만으로는' : '자산을 고갈시키지 않으려면'}{' '}
-              <strong>월 {formatValue(sustainableSpendingAdvice.sustainableMonthly)} 수준</strong>이 한계입니다
-              (월 {formatValue(sustainableSpendingAdvice.difference)} 초과).{' '}
-              {/* 인출할 자산이 없는 계획에 "인출 전략을 검토하라"고 하면 할 수 없는 일을 시키는 것이 된다. */}
-              {baselinePlanAssetStatus === 'no_investable_asset'
-                ? '생활비를 줄이거나, 은퇴 시점을 늦추거나, 추가 저축·투자로 자산을 마련해야 합니다.'
-                : '생활비를 조정하거나 은퇴 시점·인출 전략을 다시 검토해 보세요.'}
-            </span>
-          </div>
-        </div>
-      )}
-      {params.spendingStrategy === 'dividend_only' && (
-        <div className={styles.warningCard} style={{ background: 'rgba(59, 130, 246, 0.1)', borderColor: 'rgba(59, 130, 246, 0.3)' }}>
-          <Zap size={22} className={styles.warningIcon} color="#3B82F6" />
-          <div className={styles.warningContent}>
-            <span className={styles.warningTitle} style={{ color: '#3B82F6' }}>배당금 100% 소비 모드 적용 중</span>
-            <span className={styles.warningText}>
-              은퇴 후 매월 발생하는 배당금 및 연금(이자)만 100% 소비하며, 원금은 전혀 매도하지 않도록 시뮬레이션 되었습니다.
-            </span>
-          </div>
-        </div>
-      )}
-      {/* STEP 1: AI Summary Hero */}
-      <AiSummaryHero
+      <DashboardGroup title="결과 요약" description="현재 계획의 결론과 가장 중요한 숫자를 한곳에서 확인하세요.">
+        <AiSummaryHero
         formatValue={formatValue}
         mode={mode}
         onToggleMode={toggle}
@@ -265,52 +209,61 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
         recommendation={recommendation}
         planAssetStatus={baselinePlanAssetStatus}
         sustainableMonthlySpending={result.calculatedTargetSpending}
-      />
+        />
 
-      {/* 부족액이 있을 때만. 다른 KPI가 전부 "결과가 이렇다"만 말하고 행동으로 옮길 숫자를
-          주지 않아, 이미 계산된 값으로 그 빈자리를 메운다. */}
-      {shortfallSummary && <ShortfallSummaryCard summary={shortfallSummary} formatValue={formatValue} />}
-
-      {/* STEP 2: 핵심 KPI */}
-      <CoreKpiGrid
+        <CoreKpiGrid
         survivalScore={displayedResult.retirementScore}
         expectancy={params.userProfile.expectancy}
         endingAssets={displayedResult.endingAssets}
         monthlyTarget={displayedMonthlyTarget}
         utilityScore={displayedResult.utility?.score}
         formatValue={formatValue}
-      />
+        />
 
-      {/* 리스크 알림 (해당되는 것만, 0~3개) */}
-      <RiskAlertCards alerts={riskAlerts} />
+        <div className={styles.statusList} aria-label="현재 계획 상태">
+          {params.spendingStrategy === 'max_sustainable' && result.calculatedTargetSpending !== undefined && (
+            <StatusNotice tone="success" icon={<Award size={19} aria-hidden="true" />} title="최대 고정 생활비 산출 완료">
+              고갈 없이 유지 가능한 최대 월 생활비는 <strong>{formatValue(result.calculatedTargetSpending)}</strong>입니다.
+            </StatusNotice>
+          )}
+          {sustainableSpendingAdvice?.kind === 'can_spend_more' && (
+            <StatusNotice tone="success" icon={<TrendingUp size={19} aria-hidden="true" />} title="지금보다 더 쓸 수 있습니다">
+              현재 목표보다 월 <strong>{formatValue(sustainableSpendingAdvice.difference)}</strong> 여유가 있습니다.
+              지속 가능한 한도는 월 {formatValue(sustainableSpendingAdvice.sustainableMonthly)}입니다.
+            </StatusNotice>
+          )}
+          {sustainableSpendingAdvice?.kind === 'overspending' && (
+            <StatusNotice tone="danger" icon={<AlertTriangle size={19} aria-hidden="true" />} title="현재 목표 생활비는 지속하기 어렵습니다">
+              지속 가능한 한도는 월 <strong>{formatValue(sustainableSpendingAdvice.sustainableMonthly)}</strong>으로,
+              현재 목표보다 월 {formatValue(sustainableSpendingAdvice.difference)} 낮습니다.
+              {baselinePlanAssetStatus === 'no_investable_asset'
+                ? ' 생활비를 줄이거나, 은퇴 시점을 늦추거나, 추가 저축·투자로 자산을 마련해야 합니다.'
+                : ' 생활비·은퇴 시점·인출 전략을 조정해 보세요.'}
+            </StatusNotice>
+          )}
+          {params.spendingStrategy === 'dividend_only' && (
+            <StatusNotice tone="info" icon={<Zap size={19} aria-hidden="true" />} title="배당금 100% 소비 모드 적용 중">
+              은퇴 후 배당금과 연금만 소비하며 원금은 매도하지 않습니다.
+            </StatusNotice>
+          )}
+        </div>
 
-      {/* 확률·순서 리스크는 리스크 경고 바로 다음에 둔다. 둘 다 "이 계획이 어떻게 실패할 수
-          있는가"를 말하므로 같은 자리에 모이는 것이 자연스럽고, 효용 점수·체크리스트 같은
-          "어떻게 개선할까" 블록보다 앞서야 개선 제안을 읽을 근거가 된다.
+        {shortfallSummary && <ShortfallSummaryCard summary={shortfallSummary} formatValue={formatValue} />}
+      </DashboardGroup>
 
-          몬테카를로는 워커에서 돌아 늦게 도착하므로 params와 함께 위에서 내려받는다
-          (여기서 훅을 부르면 Before/After 토글이 바뀔 때마다 재계산된다). */}
-      <MonteCarloSection
+      <DashboardGroup title="위험 분석" description="계획이 실패할 수 있는 조건과 시장 변동의 영향을 함께 봅니다.">
+        <RiskAlertCards alerts={riskAlerts} />
+        <MonteCarloSection
         status={monteCarloStatus}
         monteCarlo={monteCarlo}
         sequenceRisk={sequenceRisk}
         formatValue={formatValue}
         isPro={isPro}
-      />
-
-      {/* 평생 효용 점수 구성 + 현재 전략 강점/약점 (항상 노출, Collapse 아님) */}
-      {displayedResult.utility && (
-        <UtilityInsightSection
-          utility={displayedResult.utility}
-          utilityConfig={utilityConfig}
-          planAssetStatus={planAssetStatus}
-          utilityExplanations={utilityExplanations}
-          bequestAdequacyExplanation={bequestAdequacyExplanation}
         />
-      )}
+      </DashboardGroup>
 
-      {/* STEP 3: AI 추천 전략 체크리스트 */}
-      <RecommendationChecklist
+      <DashboardGroup title="실행 계획" description="추천 변경 사항과 실행 시점을 이어서 확인하세요.">
+        <RecommendationChecklist
         recommendation={recommendation}
         recommendationFailed={recommendationFailed}
         isComputingRecommendation={isComputingRecommendation}
@@ -318,7 +271,7 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
         currentUtilityScore={result.utility?.score}
         formatValue={formatValue}
         planAssetStatus={baselinePlanAssetStatus}
-      />
+        />
 
       {/* 실행 로드맵.
 
@@ -330,7 +283,7 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
 
           자산 고갈 나이·자산 상태도 반드시 같은 기준을 써야 한다 — 셋이 어긋나면 마일스톤과
           고갈 시점이 서로 다른 시나리오를 가리킨다(selectDepletionAge 주석 참고). */}
-      <ExecutionRoadmap
+        <ExecutionRoadmap
         roadmap={computeExecutionRoadmap(
           params,
           roadmapRecommendation,
@@ -338,10 +291,11 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
           roadmapPlanAssetStatus
         )}
         isRecommendedPlan={!!roadmapRecommendation?.recommendedPlan}
-      />
+        />
+      </DashboardGroup>
 
-      {/* STEP 4: 그래프 3종 (각 상단에 rule-based AI 캡션) */}
-      <AssetGrowthChart
+      <DashboardGroup title="자산 흐름" description="전체 자산 추이와 연령별 소득·지출 구성을 살펴보세요.">
+        <AssetGrowthChart
         params={params}
         result={displayedResult}
         compareResults={compareResults}
@@ -351,26 +305,75 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
         showBreakdown={showAssetBreakdown}
         onToggleBreakdown={() => setShowAssetBreakdown((v) => !v)}
         planAssetStatus={planAssetStatus}
-      />
-      <IncomeCompositionChart
-        params={params}
-        result={displayedResult}
-        hiddenKeys={hiddenKeys}
-        onLegendClick={handleLegendClick}
-        caption={captions.incomeComposition}
-        pensionStartMarkers={pensionStartMarkers}
-      />
-      <SpendingCompositionChart
-        params={params}
-        result={displayedResult}
-        hiddenKeys={hiddenKeys}
-        onLegendClick={handleLegendClick}
-        caption={captions.spendingComposition}
-      />
+        />
+        <div className={styles.chartTabs} role="tablist" aria-label="현금흐름 차트 선택">
+          <button type="button" role="tab" aria-selected={compositionChart === 'income'} onClick={() => setCompositionChart('income')}>소득 구성</button>
+          <button type="button" role="tab" aria-selected={compositionChart === 'spending'} onClick={() => setCompositionChart('spending')}>지출 구성</button>
+        </div>
+        <div role="tabpanel">
+          {compositionChart === 'income' ? (
+            <IncomeCompositionChart
+              params={params}
+              result={displayedResult}
+              hiddenKeys={hiddenKeys}
+              onLegendClick={handleLegendClick}
+              caption={captions.incomeComposition}
+              pensionStartMarkers={pensionStartMarkers}
+            />
+          ) : (
+            <SpendingCompositionChart
+              params={params}
+              result={displayedResult}
+              hiddenKeys={hiddenKeys}
+              onLegendClick={handleLegendClick}
+              caption={captions.spendingComposition}
+            />
+          )}
+        </div>
+      </DashboardGroup>
 
-      {/* STEP 5: 전문가용 상세 분석 (기본 Collapse) */}
-      <ExpertDetailsPanel result={displayedResult} params={params} isPro={isPro} formatValue={formatValue} />
+      <DashboardGroup title="상세 분석" description="평생 효용의 근거와 세금·연금 세부 내용을 확인하세요.">
+        {displayedResult.utility && (
+          <UtilityInsightSection
+            utility={displayedResult.utility}
+            utilityConfig={utilityConfig}
+            planAssetStatus={planAssetStatus}
+            utilityExplanations={utilityExplanations}
+            bequestAdequacyExplanation={bequestAdequacyExplanation}
+          />
+        )}
+        <ExpertDetailsPanel result={displayedResult} params={params} isPro={isPro} formatValue={formatValue} />
+      </DashboardGroup>
     </div>
   );
 };
+
+function DashboardGroup({ title, description, children }: { title: string; description: string; children: ReactNode }) {
+  return (
+    <section className={styles.dashboardGroup} aria-labelledby={`dashboard-${title}`}>
+      <header className={styles.groupHeader}>
+        <h2 id={`dashboard-${title}`} className={styles.groupTitle}>{title}</h2>
+        <p className={styles.groupDescription}>{description}</p>
+      </header>
+      <div className={styles.groupContent}>{children}</div>
+    </section>
+  );
+}
+
+function StatusNotice({ tone, icon, title, children }: {
+  tone: 'success' | 'danger' | 'info';
+  icon: ReactNode;
+  title: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className={`${styles.statusNotice} ${styles[tone]}`}>
+      <span className={styles.statusIcon}>{icon}</span>
+      <div>
+        <p className={styles.statusTitle}>{title}</p>
+        <p className={styles.statusText}>{children}</p>
+      </div>
+    </div>
+  );
+}
 export default DashboardSection;
