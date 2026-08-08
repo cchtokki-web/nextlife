@@ -25,7 +25,7 @@ interface SettingSectionProps {
 export function SettingSection({
   icon, title, changedCount = 0,
   defaultOpen = false, highlighted = false,
-  onAiRecommend, aiDisabled = false, aiLabel = 'AI 추천', children,
+  onAiRecommend, aiDisabled = false, aiLabel = '추천값 반영', children,
 }: SettingSectionProps) {
   const [isOpen, setIsOpen] = useState(defaultOpen);
   // 펼침 애니메이션이 끝났는지. 끝난 뒤에는 본문의 overflow 잘라내기를 푼다(툴팁이
@@ -36,6 +36,7 @@ export function SettingSection({
   // 오지 않아 영영 잘라낸 상태로 남는다(전문가 모드로 올릴 때의 「고급 설정」이 그랬다).
   const [isSettled, setIsSettled] = useState(defaultOpen);
   const contentId = useId();
+  const accessibleAiLabel = aiLabel.startsWith('추천값') ? '추천값 반영' : aiLabel;
 
   // defaultOpen이 바뀌면 열림 상태를 따라간다.
   //
@@ -109,7 +110,7 @@ export function SettingSection({
             // 화면에는 aiLabel("AI 추천")만 보이지만, 접근성 이름에는 섹션 제목을 덧붙인다.
             // 6개 섹션 중 셋(연금·투자 등)이 모두 같은 aiLabel을 쓰므로, 이 이름이 없으면
             // 스크린리더 사용자가 role+name으로 이동할 때 버튼을 구분할 수 없다.
-            aria-label={`${title} ${aiLabel}`}
+            aria-label={`${title} ${accessibleAiLabel}`}
             // 크기는 왼쪽 '개 변경' 배지와 맞추되(px-2 py-0.5 text-[10px]), 색은 반대로 간다.
             //
             // 이 저장소에서 'primary 아웃라인 pill'은 이미 "정보"를 뜻한다 — 섹션의 '개 변경'

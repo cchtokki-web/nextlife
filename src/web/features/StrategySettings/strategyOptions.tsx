@@ -91,7 +91,7 @@ export const SPENDING_STRATEGY_OPTIONS: ReadonlyArray<RadioCardOption<SpendingSt
     icon: <TrendingUp size={16} />,
   },
   {
-    value: 'ai', label: 'AI 추천',
+    value: 'ai', label: '생활비 제안 받기',
     // compileStrategy가 'ai'를 baseline인 'target'으로 내린다. 즉 제안은 옆 필드에 힌트로만
     // 뜨고, 계산에 들어가는 것은 사용자가 입력한 목표 생활비다.
     description: '지금 자산과 목표를 보고 무리 없는 생활비를 제안합니다. 계산에는 입력한 목표 생활비가 그대로 쓰입니다.',
@@ -121,7 +121,7 @@ export const OBJECTIVE_OPTIONS: ReadonlyArray<RadioCardOption<ObjectivePriority>
     icon: <Gift size={16} />,
   },
   {
-    value: 'ai_recommended', label: 'AI 추천',
+    value: 'ai_recommended', label: '균형 있게 평가',
     description: '목표를 하나로 정하지 않고, 어느 목표로 봐도 크게 아쉽지 않은 계획을 고릅니다.',
     icon: <Sparkles size={16} />, recommended: true,
   },
@@ -174,8 +174,8 @@ export const ISA_FIRST_OPTIONS: ReadonlyArray<RadioCardOption<IsaFirstChoice>> =
     icon: <Wallet size={16} />,
   },
   {
-    value: 'ai_optimized', label: 'AI 최적화',
-    description: '행선지를 정하지 않고, 두 쪽을 모두 계산해 더 나은 쪽을 찾아 적용합니다.',
+    value: 'ai_optimized', label: '자동으로 선택',
+    description: '두 행선지를 비교해 더 나은 쪽을 계산에 자동 반영합니다. 조건이 바뀌면 다시 선택합니다.',
     icon: <Sparkles size={16} />, recommended: true,
   },
 ];
@@ -207,12 +207,10 @@ export const NATIONAL_PENSION_OPTIONS: ReadonlyArray<RadioCardOption<NationalPen
     icon: <CalendarPlus size={16} />,
   },
   {
-    value: 'ai_optimized', label: 'AI 최적화',
-    // 다섯 개 'ai_*' 센티널 중 유일하게 값이 실제로 시뮬레이션에 들어가는 축이다
-    // (applyAiSentinels). 나머지 넷은 "미정"으로 남아 baseline으로 계산된다.
-    // 문구가 그 차이를 드러내야 한다 — 같은 라벨·아이콘·⭐추천을 달고 있어서 화면만으로는
-    // 구분할 단서가 여기밖에 없다.
-    description: '연기 가산과 평생 수령액을 따져 더 나은 시점을 찾고, 찾으면 그 나이로 계산합니다.',
+    value: 'ai_optimized', label: '자동으로 선택',
+    // compileStrategy 단계에서는 정상 개시 나이를 기준선으로 쓰고, 추천이 도착하면
+    // applyAiSentinels가 개선이 검증된 나이를 실제 시뮬레이션 입력에 덮어쓴다.
+    description: '수령 시점을 비교해 더 나은 나이를 계산에 자동 반영합니다. 조건이 바뀌면 다시 선택합니다.',
     icon: <Sparkles size={16} />, recommended: true,
   },
 ];
@@ -241,12 +239,12 @@ export const PRIVATE_PENSION_OPTIONS: ReadonlyArray<RadioCardOption<PrivatePensi
     icon: <Leaf size={16} />,
   },
   {
-    value: 'ai_optimized', label: 'AI 최적화',
-    // 예전 문구는 "가장 유리한 인출량을 찾습니다"였는데 사실이 아니다.
-    // PRIVATE_PENSION_RULES.ai_optimized는 { limitToTaxLimit: null, withdrawalRatio: null }로
-    // 아무것도 지배하지 않으며, applyAiSentinels도 이 축은 채우지 않는다(추천 격자의
-    // privatePensionMonthlyTarget이 이 화면 선택지로 역매핑되지 않는다 — PensionStrategySection 참고).
-    description: '인출량을 정하지 않고 고급 설정과 엔진 기본값을 그대로 따릅니다. 이 축은 아직 AI가 값을 정해 주지 않습니다.',
+    value: 'ai_optimized', label: '자동으로 선택',
+    // compileStrategy 단계에서는 명시적 인출량을 두지 않고, 추천이 도착하면
+    // applyAiSentinels가 개선이 검증된 월 인출 목표를 실제 시뮬레이션 입력에 덮어쓴다.
+    // 섹션의 수동 「추천값 반영」 버튼은 격자값을 네 개의 확정 전략으로 역매핑할 수 없어
+    // 이 축을 확정하지 않지만, 자동 선택 상태에서는 저수준 계산값으로 안전하게 반영할 수 있다.
+    description: '여러 인출 금액을 비교해 더 나은 금액을 계산에 자동 반영합니다. 조건이 바뀌면 다시 선택합니다.',
     icon: <Sparkles size={16} />, recommended: true,
   },
 ];
@@ -273,7 +271,7 @@ export const RISK_PROFILE_OPTIONS: ReadonlyArray<RadioCardOption<RiskProfile>> =
     icon: <SlidersHorizontal size={16} />,
   },
   {
-    value: 'ai_recommended', label: 'AI 추천',
+    value: 'ai_recommended', label: '입력 수익률 유지',
     // 나이·은퇴 시점을 보고 프리셋을 고르는 로직은 코드베이스에 없다. compileStrategy의
     // RISK_PROFILE_PRESETS에 'ai_recommended' 항목이 없어 applyYieldPreset이 호출되지
     // 않는 것이 전부다 — 즉 "미정"이며, 아무것도 덮어쓰지 않는다.
@@ -304,7 +302,7 @@ export const ECONOMIC_SCENARIO_OPTIONS: ReadonlyArray<RadioCardOption<EconomicSc
     icon: <TrendingDown size={16} />,
   },
   {
-    value: 'ai_recommended', label: 'AI 추천',
+    value: 'ai_recommended', label: '직접 입력값 유지',
     // 이 선택지는 '장기 평균'과 의미가 다르다. '장기 평균'은 프로필이 있어 물가·환율·수익률을
     // 일괄 대체하지만, 'ai_recommended'는 ECONOMIC_SCENARIO_PROFILES에 항목이 없어(=미정)
     // 아무것도 대체하지 않는다. 둘을 "같은 뜻"으로 적어 두면 언젠가 프로필을 채우게 되고,

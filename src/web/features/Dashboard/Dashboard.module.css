@@ -6,7 +6,96 @@
 .container {
   display: flex;
   flex-direction: column;
-  gap: 1.5rem;
+  gap: 2rem;
+}
+
+.dashboardGroup {
+  min-width: 0;
+}
+
+.groupHeader {
+  margin-bottom: 0.875rem;
+  padding: 0 0.25rem;
+}
+
+.groupTitle {
+  font-family: var(--font-display);
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--foreground);
+}
+
+.groupDescription {
+  margin-top: 0.2rem;
+  font-size: 0.8rem;
+  color: var(--foreground-muted);
+}
+
+.groupContent {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1rem;
+  border: 1px solid var(--panel-border);
+  border-radius: 28px;
+  background: color-mix(in srgb, var(--panel-bg) 38%, transparent);
+}
+
+.statusList {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.statusNotice {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid;
+  border-radius: 14px;
+}
+
+.statusNotice.success { border-color: rgba(16, 185, 129, 0.3); background: rgba(16, 185, 129, 0.07); }
+.statusNotice.danger { border-color: rgba(239, 68, 68, 0.3); background: rgba(239, 68, 68, 0.07); }
+.statusNotice.info { border-color: rgba(59, 130, 246, 0.3); background: rgba(59, 130, 246, 0.07); }
+.success .statusIcon, .success .statusTitle { color: var(--success); }
+.danger .statusIcon, .danger .statusTitle { color: var(--danger); }
+.info .statusIcon, .info .statusTitle { color: #3b82f6; }
+
+.statusIcon { flex-shrink: 0; margin-top: 0.1rem; }
+.statusTitle { font-size: 0.875rem; font-weight: 700; }
+.statusText { margin-top: 0.15rem; font-size: 0.8rem; line-height: 1.5; color: var(--foreground-muted); }
+
+.chartTabs {
+  display: inline-flex;
+  align-self: flex-start;
+  gap: 0.25rem;
+  padding: 0.25rem;
+  border: 1px solid var(--card-border);
+  border-radius: 12px;
+  background: var(--panel-bg);
+}
+
+.chartTabs button {
+  border: 0;
+  border-radius: 9px;
+  padding: 0.5rem 0.9rem;
+  background: transparent;
+  color: var(--foreground-muted);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.chartTabs button[aria-selected='true'] {
+  background: var(--primary);
+  color: white;
+}
+
+@media (max-width: 768px) {
+  .container { gap: 1.5rem; }
+  .groupContent { padding: 0.5rem; border-radius: 20px; }
+  .groupHeader { padding: 0 0.1rem; }
 }
 
 .checkIcon {
@@ -208,5 +297,4 @@
   border: 1px solid rgba(16, 185, 129, 0.2);
   font-weight: 600;
 }
-
 

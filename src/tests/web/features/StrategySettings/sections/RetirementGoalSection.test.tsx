@@ -26,7 +26,7 @@ describe('RetirementGoalSection', () => {
     renderSection();
 
     const spending = group('생활비 전략');
-    for (const label of [/원하는 생활비 직접 입력/, /배당금만 소비/, /최대 생활비 자동 계산/, /AI 추천/]) {
+    for (const label of [/원하는 생활비 직접 입력/, /배당금만 소비/, /최대 생활비 자동 계산/, /생활비 제안 받기/]) {
       expect(spending.getByRole('radio', { name: label })).toBeInTheDocument();
     }
   });
@@ -35,7 +35,7 @@ describe('RetirementGoalSection', () => {
     renderSection();
 
     const objective = group('목표 우선순위');
-    for (const label of [/평생 생활비 확보/, /세금 최소화/, /자산 최대화/, /상속 최대화/, /AI 추천/]) {
+    for (const label of [/평생 생활비 확보/, /세금 최소화/, /자산 최대화/, /상속 최대화/, /균형 있게 평가/]) {
       expect(objective.getByRole('radio', { name: label })).toBeInTheDocument();
     }
   });
@@ -83,7 +83,7 @@ describe('RetirementGoalSection', () => {
   test('AI 추천을 고르면 그 선택 상태가 유지된다', () => {
     const onChangeParams = renderSection();
 
-    fireEvent.click(group('생활비 전략').getByRole('radio', { name: /AI 추천/ }));
+    fireEvent.click(group('생활비 전략').getByRole('radio', { name: /생활비 제안 받기/ }));
 
     expect(onChangeParams).toHaveBeenCalledWith({
       ...initialParams,
@@ -166,7 +166,7 @@ describe('RetirementGoalSection', () => {
 
       renderSection(aiParams, vi.fn(), ai);
 
-      expect(screen.getByText(/AI 추천: 385만원/)).toBeInTheDocument();
+      expect(screen.getByText(/추천값 있음: 385만원/)).toBeInTheDocument();
     });
   });
 
@@ -329,6 +329,6 @@ describe('RetirementGoalSection', () => {
 
     renderSection(initialParams, vi.fn(), ai);
 
-    expect(screen.getByText(/AI 추천: 385만원/)).toBeInTheDocument();
+    expect(screen.getByText(/추천값 있음: 385만원/)).toBeInTheDocument();
   });
 });

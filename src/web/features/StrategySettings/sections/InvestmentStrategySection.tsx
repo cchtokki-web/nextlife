@@ -21,7 +21,7 @@ export function InvestmentStrategySection({ params, onChangeParams, mode, change
   // 모든 모드에서 보이고, 이 섹션은 간편 모드에서 통째로 사라진다).
   // 리스크 성향과는 무관한 값이라 FieldRow의 aiHint(특정 필드용)에 붙이지 않고 별도 문구로 둔다.
   const reinvestHint = ai.improved && ai.recommendation?.recommendedAssetReinvestment
-    ? '배당 재투자 설정 변경을 함께 권장합니다. 「연금 전략」의 AI 추천 버튼으로 적용할 수 있습니다.'
+    ? '배당 재투자 설정 변경을 함께 권장합니다. 「연금 전략」의 추천값 반영 버튼으로 적용할 수 있습니다.'
     : undefined;
 
   return (
@@ -48,14 +48,14 @@ export function InvestmentStrategySection({ params, onChangeParams, mode, change
       )}
 
       {reinvestHint && (
-        <p className="text-xs text-primary">AI 추천: {reinvestHint}</p>
+        <p className="text-xs text-primary">추천값 있음: {reinvestHint}</p>
       )}
 
       {(isFieldVisible(mode, 'strategy.riskProfile')
         || isFieldVisible(mode, 'strategy.economicScenario')) && (
         <p className="text-xs leading-relaxed text-foreground-muted/90 pt-1">
           경제 시나리오는 물가·환율뿐 아니라 보유 자산과 사적연금의 수익률까지 함께 바꿉니다.
-          리스크 성향을 &ldquo;AI 추천&rdquo;이 아닌 값으로 고른 경우에만, 그 수익률을 리스크 성향이 다시 덮어씁니다.
+          리스크 성향을 &ldquo;입력 수익률 유지&rdquo;가 아닌 값으로 고른 경우에만, 그 수익률을 리스크 성향이 다시 덮어씁니다.
         </p>
       )}
     </>

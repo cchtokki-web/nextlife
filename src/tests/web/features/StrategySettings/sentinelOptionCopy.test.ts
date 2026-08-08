@@ -15,7 +15,7 @@ import { BequestStrategy, RetirementStrategy, SimulationParams } from '@/core/en
 //
 //   - 결정 축(국민연금 개시 나이·ISA 만기 행선지 등): 검증된 값을 **실제로 채운다**.
 //   - 가정 축(리스크 성향·경제 시나리오): 값을 채우지 않고, 여러 국면에서 견디는 계획을 고른다.
-//   - 사적연금 인출량: 지금도 아무것도 지배하지 않는다.
+//   - 사적연금 인출량: 추천이 도착하면 검증된 값을 실제 계산에 자동 반영한다.
 //
 // 그 차이를 사용자에게 전달하는 단서는 설명 문구밖에 없다. 이 테스트는 문구를 한 자 한 자
 // 고정하지 않고, **계약과 어긋나는 약속**만 막는다.
@@ -49,16 +49,16 @@ const compiledWith = (overrides: Partial<RetirementStrategy>) =>
   compileStrategy({ ...baseParams, strategy: { ...DEFAULT_RETIREMENT_STRATEGY, ...overrides } });
 
 describe('AI 센티널 선택지 문구', () => {
-  test('사적연금 AI 최적화는 실제로 아무것도 지배하지 않으므로 값을 약속하지 않는다', () => {
+  test('사적연금 자동 선택은 추천값을 채울 수 있음을 정확히 설명한다', () => {
     const compiled = compiledWith({ privatePensionStrategy: 'ai_optimized' });
+    const axis = SENTINEL_AXES.find((a) => a.field === 'privatePensionMonthlyTarget')!;
     expect(compiled.params.withdrawalPlan?.privatePensionMonthlyTarget).toBeUndefined();
-
-    expect(optionFor(PRIVATE_PENSION_OPTIONS, 'ai_optimized').description).not.toMatch(PROMISES_A_VALUE);
+    expect(canFillSentinelAxis(axis, compiled.params)).toBe(true);
+    expect(optionFor(PRIVATE_PENSION_OPTIONS, 'ai_optimized').description).toMatch(/자동 반영/);
   });
 
   test('값을 채우지 않는 축들은 값을 약속하지 않는다', () => {
     const undecided = [
-      optionFor(PRIVATE_PENSION_OPTIONS, 'ai_optimized'),
       optionFor(OBJECTIVE_OPTIONS, 'ai_recommended'),
       optionFor(RISK_PROFILE_OPTIONS, 'ai_recommended'),
       optionFor(ECONOMIC_SCENARIO_OPTIONS, 'ai_recommended'),
@@ -73,8 +73,8 @@ describe('AI 센티널 선택지 문구', () => {
   test('값을 실제로 채우는 축은 "찾아서 적용한다"고 말한다', () => {
     // 국민연금 개시 나이와 ISA 만기 행선지는 applyAiSentinels가 검증 후 실제로 채운다.
     // 문구가 그 사실을 담아야 값을 채우지 않는 축들과 구분된다.
-    expect(optionFor(NATIONAL_PENSION_OPTIONS, 'ai_optimized').description).toMatch(/찾|계산합니다/);
-    expect(optionFor(ISA_FIRST_OPTIONS, 'ai_optimized').description).toMatch(/찾|계산합니다/);
+    expect(optionFor(NATIONAL_PENSION_OPTIONS, 'ai_optimized').description).toMatch(/찾|계산에 자동 반영|계산합니다/);
+    expect(optionFor(ISA_FIRST_OPTIONS, 'ai_optimized').description).toMatch(/찾|계산에 자동 반영|계산합니다/);
   });
 
   test('ISA 만기 행선지의 AI 최적화는 실제로 자동 채움 대상이다', () => {

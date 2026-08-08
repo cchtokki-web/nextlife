@@ -89,7 +89,7 @@ export function RetirementGoalSection({ params, onChangeParams, mode, changed, a
         <FieldRow
           label="목표 월 생활비"
           tooltipText={spendingChoice === 'ai'
-            ? 'AI 추천을 고르셨어도 계산은 이 금액을 인출 목표로 사용합니다. 옆에 표시되는 AI 제안값을 참고해 직접 조정하세요.'
+            ? '생활비 제안을 받아도 계산은 이 금액을 인출 목표로 사용합니다. 옆의 추천값을 확인한 뒤 직접 조정하거나 섹션의 추천값 반영 버튼을 누르세요.'
             : undefined}
           changed={changed.has('userProfile.targetMonthlySpending')}
           aiHint={spendingHint}

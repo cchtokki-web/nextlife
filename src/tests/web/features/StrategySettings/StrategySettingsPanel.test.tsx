@@ -20,6 +20,12 @@ const withMode = (mode: 'simple' | 'standard' | 'expert') => ({
   strategy: { ...DEFAULT_RETIREMENT_STRATEGY, mode },
 });
 
+const reviewAndApplyRecommendation = (section: '은퇴 목표' | '연금 전략') => {
+  fireEvent.click(screen.getByRole('button', { name: `${section} 추천값 반영` }));
+  expect(screen.getByRole('dialog', { name: '추천값을 반영할까요?' })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: '추천값 반영' }));
+};
+
 describe('StrategySettingsPanel', () => {
   test('전략 모드 3개를 렌더링한다', () => {
     render(<StrategySettingsPanel params={initialParams} onChangeParams={vi.fn()} {...noRecommendation} />);
@@ -187,7 +193,7 @@ describe('StrategySettingsPanel', () => {
       />
     );
 
-    fireEvent.click(screen.getByRole('button', { name: '연금 전략 AI 추천' }));
+    reviewAndApplyRecommendation('연금 전략');
 
     expect(onChangeParams).toHaveBeenCalledWith({
       ...initialParams,
@@ -219,6 +225,63 @@ describe('StrategySettingsPanel', () => {
 
     expect(screen.getByRole('button', { name: '연금 전략 추천을 계산하지 못했습니다.' }))
       .toBeDisabled();
+  });
+
+  test('자동 반영값과 아직 반영할 수 있는 추천을 한곳에서 요약한다', () => {
+    const recommendation = {
+      improved: true,
+      recommendedPlan: {
+        nationalPensionStartAge: 70,
+        isaMaturityDestination: 'asset',
+        monthlySpendingMultiplier: 1.1,
+      },
+      recommendedAssetReinvestment: null,
+    } as unknown as StrategyRecommendation;
+
+    render(
+      <StrategySettingsPanel
+        params={initialParams} onChangeParams={vi.fn()}
+        recommendation={recommendation} recommendationFailed={false}
+        sentinels={{
+          compiled: {} as never,
+          appliedFields: ['nationalPensionStartAge', 'isaMaturityDestination'],
+          appliedValues: { nationalPensionStartAge: 70, isaMaturityDestination: 'asset' },
+        }}
+      />
+    );
+
+    expect(screen.getByText('추천 설정 현황')).toBeInTheDocument();
+    expect(screen.getByText(/자동 반영 중 2개 · 반영 가능한 추천 1개/)).toBeInTheDocument();
+    expect(screen.getByText('현재 계산값 · 국민연금: 70세부터 수령')).toBeInTheDocument();
+    expect(screen.getByText('현재 계산값 · ISA 만기 자금: 일반 자산으로')).toBeInTheDocument();
+  });
+
+  test('추천값 반영 전 변경 내용을 보여주고 취소하면 설정을 바꾸지 않는다', () => {
+    const onChangeParams = vi.fn();
+    const recommendation = {
+      improved: true,
+      recommendedPlan: {
+        nationalPensionStartAge: 65,
+        isaMaturityDestination: 'pension',
+        monthlySpendingMultiplier: 1.1,
+      },
+      recommendedAssetReinvestment: null,
+    } as unknown as StrategyRecommendation;
+
+    render(
+      <StrategySettingsPanel
+        params={initialParams} onChangeParams={onChangeParams}
+        recommendation={recommendation} recommendationFailed={false}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '은퇴 목표 추천값 반영' }));
+    expect(screen.getByText('목표 월 생활비 350만원 → 385만원')).toBeInTheDocument();
+    expect(onChangeParams).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: '취소' }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(onChangeParams).not.toHaveBeenCalled();
   });
 
   // B2: aiDisabled가 패널 전역(!ai.improved) 판정이라, 적용해도 이 섹션에서 바뀔 것이
@@ -316,7 +379,7 @@ describe('StrategySettingsPanel', () => {
         />
       );
 
-      expect(screen.getByRole('button', { name: '연금 전략 AI 추천' })).toBeEnabled();
+      expect(screen.getByRole('button', { name: '연금 전략 추천값 반영' })).toBeEnabled();
     });
 
     test('적용할 값이 있으면 그 섹션만 활성화된다', () => {
@@ -338,7 +401,7 @@ describe('StrategySettingsPanel', () => {
         />
       );
 
-      expect(screen.getByRole('button', { name: '연금 전략 AI 추천' })).toBeEnabled();
+      expect(screen.getByRole('button', { name: '연금 전략 추천값 반영' })).toBeEnabled();
       // 은퇴 목표는 생활비 배수가 없으므로 적용할 것이 없다 — 버튼 자체를 내지 않는다.
       expect(screen.queryByRole('button', { name: new RegExp('^은퇴 목표 ') })).not.toBeInTheDocument();
     });
@@ -394,7 +457,7 @@ describe('StrategySettingsPanel', () => {
         />
       );
 
-      fireEvent.click(screen.getByRole('button', { name: '은퇴 목표 AI 추천' }));
+      reviewAndApplyRecommendation('은퇴 목표');
 
       // 350만 × 1.1 = 385만. params 전체를 단정하므로 strategy나 자산을 함께 건드리면 깨진다.
       expect(onChangeParams).toHaveBeenCalledWith({
@@ -413,7 +476,7 @@ describe('StrategySettingsPanel', () => {
         />
       );
 
-      fireEvent.click(screen.getByRole('button', { name: '은퇴 목표 AI 추천' }));
+      reviewAndApplyRecommendation('은퇴 목표');
 
       expect(onChangeParams).toHaveBeenCalledWith({
         ...initialParams,
@@ -476,7 +539,7 @@ describe('StrategySettingsPanel', () => {
 
       // 대시보드는 간편 모드에서도 "배당을 재투자로 전환합니다"를 제시한다.
       // 그 지시를 실행할 컨트롤이 화면에 있어야 한다.
-      fireEvent.click(screen.getByRole('button', { name: '연금 전략 AI 추천' }));
+      reviewAndApplyRecommendation('연금 전략');
 
       expect(onChangeParams).toHaveBeenCalledWith({
         ...simpleParams,
@@ -525,7 +588,7 @@ describe('StrategySettingsPanel', () => {
         />
       );
 
-      fireEvent.click(screen.getByRole('button', { name: '연금 전략 AI 추천' }));
+      reviewAndApplyRecommendation('연금 전략');
 
       // 권장에 없는 자산까지 일괄로 뒤집거나(전역 스위치식 구현), 자산 순서를 흐트러뜨리면 깨진다.
       expect(onChangeParams).toHaveBeenCalledWith({
@@ -548,9 +611,9 @@ describe('StrategySettingsPanel', () => {
         />
       );
 
-      expect(screen.getByRole('button', { name: '연금 전략 AI 추천' })).toBeEnabled();
+      expect(screen.getByRole('button', { name: '연금 전략 추천값 반영' })).toBeEnabled();
 
-      fireEvent.click(screen.getByRole('button', { name: '연금 전략 AI 추천' }));
+      reviewAndApplyRecommendation('연금 전략');
 
       expect(onChangeParams).toHaveBeenCalledTimes(1);
     });
@@ -619,7 +682,7 @@ describe('StrategySettingsPanel', () => {
       );
       expandPension();
 
-      expect(screen.getByText('AI 적용: 70세부터 수령')).toBeInTheDocument();
+      expect(screen.getByText('자동 반영 중: 70세부터 수령')).toBeInTheDocument();
     });
 
     test("센티널이 걸러 baseline으로 돌면 '추천'으로 표시한다", () => {
@@ -635,7 +698,7 @@ describe('StrategySettingsPanel', () => {
       );
       expandPension();
 
-      expect(screen.getByText('AI 추천: 70세부터 수령')).toBeInTheDocument();
+      expect(screen.getByText('추천값 있음: 70세부터 수령')).toBeInTheDocument();
     });
 
     test('자동 채움이 일어나면 그 값으로 판정한다', () => {
@@ -650,7 +713,7 @@ describe('StrategySettingsPanel', () => {
       );
       expandPension();
 
-      expect(screen.getByText('AI 적용: 70세부터 수령')).toBeInTheDocument();
+      expect(screen.getByText('자동 반영 중: 70세부터 수령')).toBeInTheDocument();
     });
   });
 });

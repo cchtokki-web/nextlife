@@ -36,7 +36,7 @@ export function AiHintBadge({ hint, applied }: AiHintBadgeProps) {
     >
       {/* 아이콘은 장식이다. 접두어 문구가 이미 '적용'/'추천'을 말하므로 중복 낭독을 막는다. */}
       <Icon size={11} aria-hidden="true" />
-      {applied ? 'AI 적용' : 'AI 추천'}: {hint}
+      {applied ? '자동 반영 중' : '추천값 있음'}: {hint}
     </span>
   );
 }

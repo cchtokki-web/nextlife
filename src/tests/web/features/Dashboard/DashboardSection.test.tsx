@@ -108,23 +108,23 @@ describe('DashboardSection - IA 순서', () => {
     vi.unstubAllGlobals();
   });
 
-  test('Hero → KPI → 추천 체크리스트 → 차트 → 전문가 상세 순서로 렌더링된다', () => {
+  test('결과 요약 → 위험 분석 → 실행 계획 → 자산 흐름 → 상세 분석 순서로 렌더링된다', () => {
     const { container } = render(
       <DashboardSection params={params} result={result} recommendation={recommendation} />
     );
 
     const text = container.textContent ?? '';
-    const heroIdx = text.indexOf('은퇴');
-    const kpiIdx = text.indexOf('예상 순자산');
-    const checklistIdx = text.indexOf('AI 추천 전략');
-    const chartIdx = text.indexOf('자산 추이 시뮬레이션');
-    const expertIdx = text.indexOf('전문가용 상세 분석 더 보기');
+    const summaryIdx = text.indexOf('결과 요약');
+    const riskIdx = text.indexOf('위험 분석');
+    const actionIdx = text.indexOf('실행 계획');
+    const chartIdx = text.indexOf('자산 흐름');
+    const detailIdx = text.indexOf('상세 분석');
 
-    expect(heroIdx).toBeGreaterThanOrEqual(0);
-    expect(kpiIdx).toBeGreaterThan(heroIdx);
-    expect(checklistIdx).toBeGreaterThan(kpiIdx);
-    expect(chartIdx).toBeGreaterThan(checklistIdx);
-    expect(expertIdx).toBeGreaterThan(chartIdx);
+    expect(summaryIdx).toBeGreaterThanOrEqual(0);
+    expect(riskIdx).toBeGreaterThan(summaryIdx);
+    expect(actionIdx).toBeGreaterThan(riskIdx);
+    expect(chartIdx).toBeGreaterThan(actionIdx);
+    expect(detailIdx).toBeGreaterThan(chartIdx);
   });
 
   test('실행 로드맵이 렌더링되고 체크리스트 다음, 차트 이전에 위치한다', () => {
@@ -151,6 +151,21 @@ describe('DashboardSection - IA 순서', () => {
     expect(screen.getByRole('button', { name: '자산 구성 상세보기' })).toBeInTheDocument();
   });
 
+  test('소득·지출 구성은 한 자리에서 탭으로 전환된다', () => {
+    render(<DashboardSection params={params} result={result} recommendation={recommendation} />);
+
+    const incomeTab = screen.getByRole('tab', { name: '소득 구성' });
+    const spendingTab = screen.getByRole('tab', { name: '지출 구성' });
+    expect(incomeTab).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByText(/연령별 소득원 구성/)).toBeInTheDocument();
+
+    fireEvent.click(spendingTab);
+
+    expect(spendingTab).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByText(/은퇴 후 연령별 월 생활비 재원 구성/)).toBeInTheDocument();
+    expect(screen.queryByText(/연령별 소득원 구성/)).not.toBeInTheDocument();
+  });
+
   test('핵심 KPI 4장(은퇴준비도/순자산/월생활비/Utility)이 모두 노출된다', () => {
     render(<DashboardSection params={params} result={result} recommendation={recommendation} />);
     expect(screen.getByText(/은퇴 준비도/)).toBeInTheDocument();
@@ -159,7 +174,7 @@ describe('DashboardSection - IA 순서', () => {
     expect(screen.getByText('평생 효용')).toBeInTheDocument();
   });
 
-  test('추천 적용하기 버튼 클릭 시 KPI가 Before에서 After(추천) 값으로 전환된다', () => {
+  test('추천안 결과 보기 버튼 클릭 시 KPI가 Before에서 After(추천) 값으로 전환된다', () => {
     const afterResult: SimulationResult = { ...result, endingAssets: 999000000, utility: { ...utility, score: 81 } };
     const rec: StrategyRecommendation = { ...recommendation, recommendedResult: afterResult };
 
@@ -168,7 +183,7 @@ describe('DashboardSection - IA 순서', () => {
     expect(screen.queryByText('81점')).not.toBeInTheDocument();
     expect(screen.getByText('5억원')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: '추천 적용하기' }));
+    fireEvent.click(screen.getByRole('button', { name: '추천안 결과 보기' }));
 
     expect(screen.getByText('81점')).toBeInTheDocument();
     // 순자산 KPI도 endingAssets(자산증가분)를 그대로 반영해야 한다 — utilityScore 하나만으로는
@@ -192,7 +207,7 @@ describe('DashboardSection - IA 순서', () => {
 
     expect(screen.getByText('300만원')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: '추천 적용하기' }));
+    fireEvent.click(screen.getByRole('button', { name: '추천안 결과 보기' }));
 
     expect(screen.getByText('360만원')).toBeInTheDocument();
     expect(screen.queryByText('300만원')).not.toBeInTheDocument();
@@ -210,7 +225,7 @@ describe('DashboardSection - IA 순서', () => {
 
     expect(screen.getByText('금융소득종합과세 진입 가능성')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: '추천 적용하기' }));
+    fireEvent.click(screen.getByRole('button', { name: '추천안 결과 보기' }));
 
     expect(screen.queryByText('금융소득종합과세 진입 가능성')).not.toBeInTheDocument();
   });
@@ -393,7 +408,7 @@ describe('DashboardSection - 실행 로드맵이 Before/After 토글을 따른�
   test('추천 적용 시 추천 기준으로 바뀌고 옮겨진 나이를 배지로 밝힌다', () => {
     render(<DashboardSection params={params} result={result} recommendation={rec} />);
 
-    fireEvent.click(screen.getByRole('button', { name: '추천 적용하기' }));
+    fireEvent.click(screen.getByRole('button', { name: '추천안 결과 보기' }));
 
     expect(screen.getByText(/AI 추천 전략 기준/)).toBeInTheDocument();
     expect(screen.getByText('현재 65세 → 추천 60세')).toBeInTheDocument();

@@ -653,7 +653,7 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
           {yieldGovernedBy && (
             <p style={{ fontSize: '0.75rem', color: 'var(--warning, #f59e0b)', margin: '0 0 0.75rem' }}>
               「투자 전략」의 {yieldGovernedBy}이(가) 아래 수익률 값을 결정합니다. 직접 입력하려면
-              투자 전략에서 리스크 성향과 경제 시나리오를 모두 &ldquo;AI 추천&rdquo;으로 두세요.
+              투자 전략에서 리스크 성향은 &ldquo;입력 수익률 유지&rdquo;, 경제 시나리오는 &ldquo;직접 입력값 유지&rdquo;로 두세요.
             </p>
           )}
           {/* Tab Menu */}
