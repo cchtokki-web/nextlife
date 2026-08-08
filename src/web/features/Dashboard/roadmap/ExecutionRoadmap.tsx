@@ -3,16 +3,23 @@ import GlassCard from '../../../components/GlassCard';
 
 interface ExecutionRoadmapProps {
   roadmap: ExecutionRoadmapData;
+  // 지금 그려진 로드맵이 추천안 기준인가. Before/After 토글을 따라간다 — 예전에는 토글과
+  // 무관하게 항상 추천안을 그려서, 추천을 적용하지 않은 화면에서 KPI·차트는 현재 설정을
+  // 보여주는데 로드맵만 다른 기준을 말했다.
+  isRecommendedPlan?: boolean;
 }
 
-// AI 추천(또는 현재 설정 폴백) 계획 기준으로 "언제 무슨 일이 일어나는지"를 수직 타임라인으로
-// 보여준다. RecommendationChecklist("무엇을")와 짝을 이루며, Before/After 토글과는 무관하게
-// 항상 고정된 기준(계산은 컴포넌트 밖 computeExecutionRoadmap)으로 렌더링만 담당한다.
-export function ExecutionRoadmap({ roadmap }: ExecutionRoadmapProps) {
+// "언제 무슨 일이 일어나는지"를 수직 타임라인으로 보여준다. RecommendationChecklist("무엇을")와
+// 짝을 이루며, 계산은 컴포넌트 밖(computeExecutionRoadmap)에서 하고 여기서는 렌더링만 담당한다.
+export function ExecutionRoadmap({ roadmap, isRecommendedPlan = false }: ExecutionRoadmapProps) {
   return (
     <GlassCard>
       <h3 className="mb-1 text-base font-semibold">실행 로드맵</h3>
-      <p className="mb-3 text-xs text-foreground-muted">AI 추천 전략 기준 — 나이별로 무엇이 바뀌는지 보여줍니다.</p>
+      <p className="mb-3 text-xs text-foreground-muted">
+        {isRecommendedPlan
+          ? 'AI 추천 전략 기준 — 나이별로 무엇이 바뀌는지 보여줍니다.'
+          : '현재 설정 기준 — 나이별로 무엇이 일어나는지 보여줍니다.'}
+      </p>
       <div className="flex flex-col">
         {roadmap.events.map((event) => {
           const hasWarning = event.items.some((item) => item.severity === 'warning');
@@ -34,7 +41,16 @@ export function ExecutionRoadmap({ roadmap }: ExecutionRoadmapProps) {
                 <p className="text-sm font-semibold leading-5">{event.age}세</p>
                 {event.items.map((item) => (
                   <div key={item.title} className="mt-1">
-                    <p className={`text-sm font-medium ${item.severity === 'warning' ? 'text-danger' : ''}`}>{item.title}</p>
+                    <p className={`text-sm font-medium ${item.severity === 'warning' ? 'text-danger' : ''}`}>
+                      {item.title}
+                      {/* 추천이 옮긴 나이임을 그 자리에서 밝힌다. 없으면 추천이 건드리지 않는
+                          항목(배우자 국민연금 등)과 섞여 "왜 이 순서지?"가 된다. */}
+                      {item.changedFromAge !== undefined && (
+                        <span className="ml-2 rounded-full border border-primary/40 px-2 py-0.5 text-[11px] font-semibold text-primary">
+                          현재 {item.changedFromAge}세 → 추천 {event.age}세
+                        </span>
+                      )}
+                    </p>
                     <p className="text-xs text-foreground-muted">{item.description}</p>
                   </div>
                 ))}

@@ -2,6 +2,7 @@ import { RiskAlert } from '../../../core/usecases/dashboard/computeRiskAlerts';
 import { ExecutionRoadmap } from '../../../core/usecases/dashboard/computeExecutionRoadmap';
 import { SensitivityScenario } from '../../../core/usecases/dashboard/computeSensitivityAnalysis';
 import { PlanAssetStatus } from '../../../core/usecases/dashboard/resolvePlanAssetStatus';
+import { ShortfallSummary } from '../../../core/usecases/dashboard/computeShortfallSummary';
 import {
   ItemizedContribution, ItemizedContributionField, StrategyRecommendation,
 } from '../../../core/entities/types';
@@ -13,6 +14,35 @@ import { SequenceRiskResult } from '../../../core/usecases/montecarlo/sequenceRi
 // handleDownload), 화면 컴포넌트를 재사용할 수 없다 — 동일한 usecase 데이터를 받아 PDF 전용
 // 인라인 스타일 HTML 문자열로 변환하는 순수 함수만 여기 둔다. 기존 handleDownload가 이미 자산/
 // 연금 이름 등을 이스케이프 없이 직접 보간하는 것과 동일한 관례를 따른다(신규 도입 아님).
+
+// "현재 계획을 유지하면" 세 줄. 화면의 ShortfallSummaryCard와 같은 값·같은 각주를 쓴다 —
+// 리포트만 가정을 빼면 사용자가 확정된 목표 금액으로 읽는다.
+export function renderShortfallSummarySection(
+  summary: ShortfallSummary | null,
+  formatValue: (val: number) => string
+): string {
+  if (!summary) return '';
+  const cell = (label: string, value: string) => `
+    <div style="flex: 1;">
+      <p style="margin: 0; font-size: 11px; color: #64748b;">${label}</p>
+      <p style="margin: 2px 0 0; font-size: 15px; font-weight: 700; color: #dc2626;">${value}</p>
+    </div>
+  `;
+  return `
+    <div style="border: 1px solid #fecaca; background-color: #fef2f2; border-radius: 8px; padding: 12px 14px; margin-top: 12px;">
+      <p style="margin: 0 0 8px; font-size: 12.5px; font-weight: 700; color: #0f172a;">현재 계획을 유지하면</p>
+      <div style="display: flex; gap: 14px;">
+        ${cell('부족 생활비', `월 평균 ${formatValue(summary.averageMonthlyShortfall)}`)}
+        ${cell('부족 기간', `${summary.shortfallYears}년 (${summary.firstShortfallAge}세 ~ ${summary.lastShortfallAge}세)`)}
+        ${cell('추가로 필요한 자산', `약 ${formatValue(summary.totalShortfallInTodayValue)}`)}
+      </div>
+      <p style="margin: 8px 0 0; font-size: 10px; color: #64748b; line-height: 1.5;">
+        * 추가로 필요한 자산은 부족분을 그대로 채우는 데 드는 금액입니다. 수익률이 물가상승률과 같다고 볼 때의
+        현재 구매력 기준이며, 투자 수익을 가정하면 더 적은 금액으로도 가능합니다.
+      </p>
+    </div>
+  `;
+}
 
 export function renderRiskAlertsSection(alerts: RiskAlert[]): string {
   if (alerts.length === 0) return '';
@@ -83,6 +113,7 @@ export function renderExecutionRoadmapSection(roadmap: ExecutionRoadmap): string
           (item) => `
             <div style="margin-bottom: 2px;">
               <strong style="font-size: 12px; color: ${item.severity === 'warning' ? '#EF4444' : '#0f172a'};">${item.title}</strong>
+              ${item.changedFromAge === undefined ? '' : `<span style="font-size: 10.5px; font-weight: 700; color: #6366f1; border: 1px solid #c7d2fe; border-radius: 999px; padding: 1px 6px; margin-left: 4px;">현재 ${item.changedFromAge}세 → 추천 ${event.age}세</span>`}
               <span style="font-size: 11px; color: #64748b;"> — ${item.description}</span>
             </div>
           `

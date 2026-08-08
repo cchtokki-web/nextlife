@@ -112,7 +112,7 @@ export function generateCandidatePlans(params: SimulationParams): BaselineWithdr
 //     실측이 RecommendationEngine에 기록돼 있고, 그 어긋남을 피하려는 예외 분기가
 //     세 곳에 흩어져 있었다.
 export function getIdentityPlan(params: SimulationParams): BaselineWithdrawalPlan {
-  const { userProfile, withdrawalPlan } = params;
+  const { userProfile, withdrawalPlan, privatePensions = [] } = params;
   const { retirementAge } = userProfile;
 
   const plan: BaselineWithdrawalPlan = {
@@ -125,7 +125,14 @@ export function getIdentityPlan(params: SimulationParams): BaselineWithdrawalPla
 
   // 저장된 값이 있을 때만 키를 넣는다. undefined를 남기면 JSON 직렬화·구조 비교에서
   // "키가 없는 것"과 미묘하게 달라진다(compileStrategy가 같은 이유로 delete를 쓴다).
-  if (withdrawalPlan?.privatePensionMonthlyTarget !== undefined) {
+  //
+  // 사적연금 계좌가 하나도 없으면 저장된 값이 있어도 넣지 않는다 — generateCandidatePlans와
+  // 같은 규칙이다. compileStrategy는 계좌 유무를 보지 않고 이 필드를 채우므로(저율과세 한도 ×
+  // 전략 비율), 계좌가 없는 사용자의 기준선에도 값이 들어간다. 그 값은 시뮬레이션에 아무
+  // 영향도 주지 않지만, 키를 넣지 않는 후보와 비교하면 "바뀐 필드"로 잡혀 AI 추천
+  // 체크리스트에 "사적연금을 정액 인출 대신 균등하게 인출합니다 (효용 +0점)"라는 존재하지
+  // 않는 할 일이 뜬다. 두 곳이 같은 규칙을 써야 방향과 무관하게 그 소음이 사라진다.
+  if (privatePensions.length > 0 && withdrawalPlan?.privatePensionMonthlyTarget !== undefined) {
     plan.privatePensionMonthlyTarget = withdrawalPlan.privatePensionMonthlyTarget;
   }
 

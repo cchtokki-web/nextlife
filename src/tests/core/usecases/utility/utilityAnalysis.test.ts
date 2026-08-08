@@ -44,6 +44,36 @@ describe('analyzeCurrentStrategy', () => {
     expect(analysis.weaknesses.some((s) => s.includes('자산 고갈 방지'))).toBe(true);
   });
 
+  // 투자자산이 없으면 남길 자산도 없어 '다 쓰고 가기' 목표를 자동으로 만족한다. 총점이
+  // '위험'인 화면에서 이것만 "우수합니다"로 올라오면 "상속은 완벽한데 왜 위험하지?"가 된다.
+  test('투자자산 미보유면 상속 자산 적정성 만점을 "남길 자산이 없어서"라고 밝힌다', () => {
+    const utility = makeUtility({
+      consumption: 6, depletionSafety: 0, pensionUtilization: 8,
+      taxEfficiency: 5, taxationRisk: 5, bequestAdequacy: 10, // 10/10 만점
+    });
+
+    const analysis = analyzeCurrentStrategy(utility, DEFAULT_UTILITY_CONFIG, {
+      planAssetStatus: 'no_investable_asset',
+    });
+
+    const bequestLine = analysis.strengths.find((s) => s.includes('상속 자산 적정성'))!;
+    expect(bequestLine).toContain('남길 자산 자체가 없는 상태');
+    expect(bequestLine).not.toContain('우수합니다');
+  });
+
+  test('투자자산이 있으면 상속 자산 적정성도 기존 강점 문구를 쓴다', () => {
+    const utility = makeUtility({
+      consumption: 6, depletionSafety: 0, pensionUtilization: 8,
+      taxEfficiency: 5, taxationRisk: 5, bequestAdequacy: 10,
+    });
+
+    const analysis = analyzeCurrentStrategy(utility, DEFAULT_UTILITY_CONFIG, {
+      planAssetStatus: 'sustained',
+    });
+
+    expect(analysis.strengths.some((s) => s.includes('상속 자산 적정성이(가) 10/10점으로 우수합니다.'))).toBe(true);
+  });
+
   test('배점 대비 50% 이하인 항목은 약점으로 분류한다', () => {
     const utility = makeUtility({
       consumption: 17, // 17/35 = 48.57% -> 약점

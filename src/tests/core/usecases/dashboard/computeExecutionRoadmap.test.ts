@@ -321,6 +321,52 @@ describe('computeExecutionRoadmap', () => {
   });
 });
 
+// 로드맵에는 추천이 건드리지 않는 항목(배우자 국민연금 등)도 함께 그려진다. 어떤 나이가
+// 추천으로 옮겨진 것인지 표시가 없으면 한 타임라인 안에 두 기준이 섞인 것으로 읽힌다 —
+// 실제로 "본인 60세(추천) / 배우자 64세(현재 설정)"가 "본인이 배우자보다 먼저 받는다"는
+// 잘못된 인상을 만들었다.
+describe('computeExecutionRoadmap - 추천으로 옮겨진 나이 표시', () => {
+  const plan: CompleteWithdrawalPlan = {
+    privatePensionMonthlyTarget: 0,
+    nationalPensionStartAge: 60, // 현재 설정(65)에서 조기수령으로 당겨짐
+    assetSellOrderStrategy: 'input_order',
+    isaMaturityDestination: 'pension',
+    generalAssetWithdrawalStartAge: 60, // 현재 설정(retirementAge=60)과 동일
+    monthlySpendingMultiplier: 1,
+  };
+
+  test('추천이 옮긴 나이에는 옮기기 전 나이를 함께 싣는다', () => {
+    const roadmap = computeExecutionRoadmap(baseParams, makeRecommendation(plan), null, 'sustained');
+
+    const nationalPensionItem = roadmap.events
+      .find((e) => e.age === 60)!
+      .items.find((i) => i.title.includes('국민연금'))!;
+
+    expect(nationalPensionItem.changedFromAge).toBe(65);
+  });
+
+  test('추천이 건드리지 않은 나이에는 표시하지 않는다', () => {
+    const roadmap = computeExecutionRoadmap(baseParams, makeRecommendation(plan), null, 'sustained');
+
+    const generalAssetItem = roadmap.events
+      .flatMap((e) => e.items)
+      .find((i) => i.title === '일반자산 인출 개시')!;
+
+    expect(generalAssetItem.changedFromAge).toBeUndefined();
+  });
+
+  // 호출부가 추천을 넘기지 않으면(= 현재 설정 기준 모드) plan === identityPlan이므로
+  // 어떤 항목에도 "옮겨졌다"는 표시가 붙으면 안 된다.
+  test('추천을 넘기지 않으면 어떤 항목에도 표시가 붙지 않는다', () => {
+    const roadmap = computeExecutionRoadmap(baseParams, undefined, null, 'sustained');
+
+    expect(roadmap.events.flatMap((e) => e.items).every((i) => i.changedFromAge === undefined)).toBe(true);
+    // 그리고 국민연금은 현재 설정인 65세에 그려진다.
+    expect(roadmap.events.some((e) => e.age === 65)).toBe(true);
+    expect(roadmap.events.some((e) => e.age === 60 && e.items.some((i) => i.title.includes('국민연금')))).toBe(false);
+  });
+});
+
 // 국민연금만 등록한 사용자의 로드맵. 예전에는 존재하지 않는 계좌의 인출 개시가 마일스톤으로
 // 찍히고, 엔진이 첫 해에 잡은 depletionAge가 "자산 고갈 예상" 노드로 맨 앞에 놓였다.
 describe('computeExecutionRoadmap - 투자자산 미보유 계획', () => {

@@ -28,6 +28,13 @@ export interface RoadmapEventItem {
   description: string;
   // 위험 신호(예: 자산 고갈)를 다른 이벤트와 시각적으로 구분해 강조하기 위한 선택적 플래그.
   severity?: 'warning';
+  // 이 마일스톤이 AI 추천으로 현재 설정에서 옮겨진 것이면, 옮겨지기 전 나이.
+  //
+  // 추천에는 배우자 국민연금처럼 최적화 축이 아닌 항목도 함께 그려지므로, 표시가 없으면
+  // 한 타임라인 안에 "추천 기준"과 "현재 설정 기준"이 섞인 것으로 읽힌다 —
+  // 실제로 "본인 60세(추천) / 배우자 64세(현재 설정)"가 "본인이 배우자보다 먼저 받는다"는
+  // 잘못된 인상을 만들었다.
+  changedFromAge?: number;
 }
 
 export interface RoadmapEvent {
@@ -64,9 +71,15 @@ export function computeExecutionRoadmap(
   depletionAge: number | null,
   status: PlanAssetStatus
 ): ExecutionRoadmap {
-  const plan = recommendation?.recommendedPlan ?? getIdentityPlan(params);
+  const identityPlan = getIdentityPlan(params);
+  const plan = recommendation?.recommendedPlan ?? identityPlan;
   const { retirementAge, expectancy } = params.userProfile;
   const spouse = resolveSpouse(params.spouse, params.userProfile);
+
+  // 추천이 이 나이를 옮겼으면 옮기기 전 나이를 함께 싣는다. 호출부가 추천을 넘기지 않는
+  // (= 현재 설정 기준) 모드에서는 plan === identityPlan이라 항상 undefined다.
+  const changedFrom = (recommendedAge: number, currentAge: number): number | undefined =>
+    recommendedAge === currentAge ? undefined : currentAge;
 
   const rawEvents: { age: number; item: RoadmapEventItem }[] = [
     {
@@ -81,7 +94,11 @@ export function computeExecutionRoadmap(
   if ((params.assets?.length ?? 0) > 0) {
     rawEvents.push({
       age: plan.generalAssetWithdrawalStartAge,
-      item: { title: '일반자산 인출 개시', description: '주식/ETF 등 일반 자산의 인출을 시작합니다.' },
+      item: {
+        title: '일반자산 인출 개시',
+        description: '주식/ETF 등 일반 자산의 인출을 시작합니다.',
+        changedFromAge: changedFrom(plan.generalAssetWithdrawalStartAge, identityPlan.generalAssetWithdrawalStartAge),
+      },
     });
   }
 
@@ -122,7 +139,11 @@ export function computeExecutionRoadmap(
   if ((params.nationalPension?.expectedMonthlyAmount ?? 0) > 0) {
     rawEvents.push({
       age: plan.nationalPensionStartAge,
-      item: { title: describeNationalPensionTitle(plan.nationalPensionStartAge), description: '국민연금 수령을 시작합니다.' },
+      item: {
+        title: describeNationalPensionTitle(plan.nationalPensionStartAge),
+        description: '국민연금 수령을 시작합니다.',
+        changedFromAge: changedFrom(plan.nationalPensionStartAge, identityPlan.nationalPensionStartAge),
+      },
     });
   }
 

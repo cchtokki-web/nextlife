@@ -18,7 +18,7 @@ const baseParams: SimulationParams = {
 describe('computePensionStartMarkers', () => {
   test('본인 국민연금 수령액이 있으면 개시 나이에 마커를 만든다', () => {
     expect(computePensionStartMarkers(baseParams, 65)).toEqual([
-      { age: 65, label: '본인 국민연금 시작' },
+      { age: 65, label: '본인 연금' },
     ]);
   });
 
@@ -39,8 +39,8 @@ describe('computePensionStartMarkers', () => {
     };
 
     expect(computePensionStartMarkers(params, 65)).toEqual([
-      { age: 64, label: '배우자 국민연금 시작' },
-      { age: 65, label: '본인 국민연금 시작' },
+      { age: 64, label: '배우자 연금' },
+      { age: 65, label: '본인 연금' },
     ]);
   });
 
@@ -54,7 +54,7 @@ describe('computePensionStartMarkers', () => {
     };
 
     expect(computePensionStartMarkers(params, 65)).toEqual([
-      { age: 65, label: '본인 국민연금 시작' },
+      { age: 65, label: '본인 연금' },
     ]);
   });
 
@@ -68,7 +68,7 @@ describe('computePensionStartMarkers', () => {
     };
 
     expect(computePensionStartMarkers(params, 65)).toEqual([
-      { age: 65, label: '본인 국민연금 시작 · 배우자 국민연금 시작' },
+      { age: 65, label: '본인 연금 · 배우자 연금' },
     ]);
   });
 
@@ -83,7 +83,7 @@ describe('computePensionStartMarkers', () => {
     };
 
     expect(computePensionStartMarkers(params, 65)).toEqual([
-      { age: 65, label: '본인 국민연금 시작' },
+      { age: 65, label: '본인 연금' },
     ]);
   });
 });
