@@ -116,10 +116,11 @@ export function buildSimulationContextText(body: AiAdvisorRequestBody): string {
     `- 고정소득 커버율(배당·연금·기타소득 등, 자산 매도·인출분 제외): ${goalAchievementRate ?? '정보 없음'}% ` +
     `※ 이 값이 100% 미만이어도 "자산 고갈 예상 나이"가 없다면 원금을 정상적으로 인출하며 사는 안정적인 은퇴일 수 있음`
   );
-  // userProfile이 없으면 비교 기준이 없으므로 단서 없이 나이만 적는다(이 경우 프롬프트에
-  // 기대수명 줄 자체가 없어 모순이 생기지 않는다).
+  // describeFireAge는 fireAge를 retirementAge와 비교해 문구를 만든다. userProfile이
+  // 없으면 비교 기준인 retirementAge 자체가 없으므로 describeFireAge를 호출하지 않고
+  // fireAge 숫자만(비교 없이) 적는다.
   lines.push(
-    `- 소득만으로 생활비 충당 가능 시점: ${userProfile ? describeFireAge(fireAge, userProfile.expectancy, userProfile.retirementAge) : (fireAge ? `${fireAge}세` : '달성 불가능')}`
+    `- 소득만으로 생활비 충당 가능 시점: ${userProfile ? describeFireAge(fireAge, userProfile.retirementAge) : (fireAge ? `${fireAge}세` : '달성 불가능')}`
   );
   // 투자자산이 없는 계획은 엔진이 첫 해에 depletionAge를 잡는다. 그 나이를 그냥 넘기면
   // LLM이 "51세에 자산이 고갈됩니다"라고 쓰는데, 고갈시킬 자산이 애초에 없다.

@@ -31,12 +31,8 @@ function sum(values: number[]): number {
   return values.reduce((s, v) => s + v, 0);
 }
 
-// 해당 연도의 목표 연간 생활비(인플레이션 + 가구 규모 반영). SimulationEngine의 목표 생활비
-// 산출 로직과 동일한 규칙(명목: 매년 물가상승률 복리 반영 / 실질: 고정)을 따른다.
-//
-// 가구 규모 계수는 여기서 다시 유도하지 않고 엔진이 실제로 곱한 값(r.spendingFactor)을 그대로
-// 쓴다 — 규칙을 두 곳에 두면 반드시 어긋나고, 이 주석의 "동일한 규칙" 문구가 배우자 기능
-// 추가 때 한 번 stale해진 것이 그 증거다.
+// 해당 연도의 목표 연간 생활비(인플레이션 반영). SimulationEngine의 목표 생활비 산출 로직과
+// 동일한 규칙(명목: 매년 물가상승률 복리 반영 / 실질: 고정)을 따른다.
 //
 // 의료비(r.healthcareSpending)도 목표에 더한다. 엔진이 의료비를 spending에 합산하므로,
 // 분모에 더하지 않으면 의료비를 켠 계획이 "목표를 초과 소비했다"로 잘못 보상받는다
@@ -46,7 +42,7 @@ function sum(values: number[]): number {
 function targetAnnualSpendingForYear(params: SimulationParams, r: SimulationYearlyResult): number {
   const { userProfile, inflationRate = 2, inflationMode = 'real' } = params;
   const yearIndex = r.age - userProfile.currentAge;
-  const base = userProfile.targetMonthlySpending * 12 * r.spendingFactor;
+  const base = userProfile.targetMonthlySpending * 12;
   const target = inflationMode === 'nominal'
     ? base * Math.pow(1 + inflationRate / 100, yearIndex)
     : base;
@@ -84,15 +80,9 @@ function computeDepletionSafetyRaw(params: SimulationParams, result: SimulationR
   if (result.depletionAge === null) return 1;
   if (result.depletionAge <= retirementAge) return 0;
 
-  // 본인 기대수명이 아니라 가구 종료 나이로 정규화한다. 본인 기대수명으로 나누면
-  // 배우자 단독 생존 기간에 고갈되는 계획도 ratio > 1이 되어 clamp에 걸려 "고갈 없음"
-  // 조기 반환과 바이트 단위로 같은 만점이 나온다 — 파산 계획이 만점을 받는다.
-  //
-  // 규칙을 다시 유도(computeHouseholdEndAge 재호출)하지 않고 엔진이 결과에 실어 보낸
-  // 값을 그대로 쓴다. depletionAge가 바로 그 루프에서 판정된 값이므로 분자와 분모가
-  // 반드시 같은 기간을 가리켜야 하고, 재유도는 두 값이 어긋날 여지를 남긴다
-  // (SimulationResult.householdEndAge가 존재하는 이유가 이것이다).
-  const span = result.householdEndAge - retirementAge;
+  // 분모는 시뮬레이션이 실제로 돈 은퇴 후 기간, 즉 본인 기대수명까지다. depletionAge가
+  // 바로 그 루프에서 판정된 값이므로 분자와 분모가 같은 기간을 가리켜야 한다.
+  const span = params.userProfile.expectancy - retirementAge;
   if (span <= 0) return 0;
   return clamp((result.depletionAge - retirementAge) / span, 0, 1);
 }

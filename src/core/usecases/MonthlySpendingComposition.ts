@@ -45,19 +45,10 @@ export function computeMonthlySpendingComposition(
       targetMonthly = targetMonthly * Math.pow(1 + infRateAnnual, y);
     }
 
-    // 그해의 가구 규모 계수를 목표에도 곱한다. actualSpendingMonthly(= r.spending / 12)에는
-    // 엔진이 이미 이 계수를 곱해 두었으므로, 목표에만 곱하지 않으면 배우자 사망 이후
-    // 모든 해에 (1 - factor) × 목표생활비의 존재하지 않는 부족분이 보고된다.
-    // 계수를 여기서 재유도하지 않고 엔진이 실제로 쓴 값(r.spendingFactor)을 그대로 쓰는 이유는
-    // SimulationEngine·UtilityEngine의 같은 분모 계산과 동일하다 — 규칙을 복제하지 않기 위해서다.
-    targetMonthly *= r.spendingFactor;
-
     // 의료비도 그해에 반드시 나가야 하는 필요분이다. r.spending에는 이미 포함되어 있으므로
     // 여기 targetMonthly에 더하지 않으면, 의료비만큼 커진 실제 지출이 목표를 넘어서면서
     // 실제로는 생활비가 모자란 해까지 shortfall = 0으로 숨는다.
     // 이미 엔진이 inflationMode를 반영해 계산한 금액이라 물가 보정을 다시 적용하지 않는다.
-    // 가구 규모 계수도 이미 곱해져 있으므로 반드시 위 targetMonthly *= r.spendingFactor 이후에
-    // 더해야 한다(먼저 더하면 의료비에 계수가 이중 적용된다).
     targetMonthly += r.healthcareSpending / 12;
 
     const national = Math.round(r.nationalPensionIncome / 12);

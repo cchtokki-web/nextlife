@@ -128,10 +128,10 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
   // 차트·캡션·헤드라인이 전부 이 하나의 판정을 근거로 삼는다. 화면에 실제로 표시 중인
   // 결과(displayedResult)를 쓰는 것은 captions/riskAlerts와 같은 이유다 — After 모드에서
   // 추천안이 자산 상태 자체를 바꾸면 그 결과를 따라가야 한다.
-  const planAssetStatus = resolvePlanAssetStatus(displayedResult);
+  const planAssetStatus = resolvePlanAssetStatus(displayedResult, params.userProfile.expectancy);
   // baseline(현재 설정) 기준 상태. AI 노후 설계사 의견·과소비 배너처럼 "지금 설정이 어떤가"를
   // 말하는 조각은 Before/After 미리보기를 따라가면 자기 자신을 근거로 삼게 된다.
-  const baselinePlanAssetStatus = resolvePlanAssetStatus(result);
+  const baselinePlanAssetStatus = resolvePlanAssetStatus(result, params.userProfile.expectancy);
 
   // 로드맵이 볼 추천안. After 모드에서만 넘긴다 — computeExecutionRoadmap은 undefined면
   // getIdentityPlan(현재 설정)으로 폴백하므로, Before에서는 사용자의 실제 계획이 그려진다.
@@ -189,7 +189,7 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
         isPro={isPro}
         userProfile={params.userProfile}
         depletionAge={result.depletionAge}
-        householdEndAge={result.householdEndAge}
+        expectancy={params.userProfile.expectancy}
         goalAchievementRate={result.goalAchievementRate}
         fireAge={result.fireAge}
         endingAssets={result.endingAssets}
@@ -278,9 +278,7 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
 
           **Before/After 토글을 따른다.** 예전에는 토글과 무관하게 항상 추천안을 그렸고, 그래서
           추천을 적용하지 않은 화면(Hero 버튼이 "추천 적용하기" 상태)에서 KPI·차트는 현재 설정을
-          보여주는데 로드맵만 추천안(예: 국민연금 60세 조기수령)을 보여줬다. 게다가 배우자
-          국민연금은 추천 엔진의 최적화 축이 아니라 현재 설정 그대로 그려져, 한 타임라인 안에
-          두 기준이 섞여 "본인이 배우자보다 먼저 받는다"는 잘못된 인상을 만들었다.
+          보여주는데 로드맵만 추천안(예: 국민연금 60세 조기수령)을 보여줬다.
 
           자산 고갈 나이·자산 상태도 반드시 같은 기준을 써야 한다 — 셋이 어긋나면 마일스톤과
           고갈 시점이 서로 다른 시나리오를 가리킨다(selectDepletionAge 주석 참고). */}

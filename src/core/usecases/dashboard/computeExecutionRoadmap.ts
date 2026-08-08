@@ -1,7 +1,6 @@
 import { getIdentityPlan } from '../strategy/StrategyCandidateGenerator';
 import { NATIONAL_PENSION_NORMAL_START_AGE } from '../pension/nationalPensionRules';
 import { clampPrivatePensionStartAge, PRIVATE_PENSION_MIN_START_AGE } from '../pension/privatePensionRules';
-import { computeHouseholdEndAge, resolveSpouse } from '../spouse/spouseRules';
 import { SimulationParams, SimulationResult, StrategyRecommendation } from '../../entities/types';
 import { PlanAssetStatus } from './resolvePlanAssetStatus';
 
@@ -30,10 +29,8 @@ export interface RoadmapEventItem {
   severity?: 'warning';
   // 이 마일스톤이 AI 추천으로 현재 설정에서 옮겨진 것이면, 옮겨지기 전 나이.
   //
-  // 추천에는 배우자 국민연금처럼 최적화 축이 아닌 항목도 함께 그려지므로, 표시가 없으면
-  // 한 타임라인 안에 "추천 기준"과 "현재 설정 기준"이 섞인 것으로 읽힌다 —
-  // 실제로 "본인 60세(추천) / 배우자 64세(현재 설정)"가 "본인이 배우자보다 먼저 받는다"는
-  // 잘못된 인상을 만들었다.
+  // 추천에는 최적화 축이 아닌 항목도 함께 그려지므로, 표시가 없으면 한 타임라인 안에
+  // "추천 기준"과 "현재 설정 기준"이 섞인 것으로 읽힌다.
   changedFromAge?: number;
 }
 
@@ -44,13 +41,8 @@ export interface RoadmapEvent {
 
 export interface ExecutionRoadmap {
   events: RoadmapEvent[];
-  // 타임라인의 종점(본인 나이 기준). 본인 기대수명이 아니라 가구 종료 나이
-  // (computeHouseholdEndAge)다 — depletionAge가 이 나이까지의 루프에서 판정되므로
-  // 본인 기대수명을 종점으로 쓰면 "95세 자산 고갈" 노드가 "90세 기대수명" 종점보다
-  // 뒤에 놓이는 타임라인이 만들어진다.
+  // 타임라인의 종점(본인 나이 기준) = 본인 기대수명.
   endAge: number;
-  // 종점 마커에 붙일 이름. 배우자가 더 오래 살 때만 배우자를 언급하는 것은
-  // generateChartCaptions·computeRiskAlerts와 같은 관례다.
   endLabel: string;
 }
 
@@ -74,7 +66,6 @@ export function computeExecutionRoadmap(
   const identityPlan = getIdentityPlan(params);
   const plan = recommendation?.recommendedPlan ?? identityPlan;
   const { retirementAge, expectancy } = params.userProfile;
-  const spouse = resolveSpouse(params.spouse, params.userProfile);
 
   // 추천이 이 나이를 옮겼으면 옮기기 전 나이를 함께 싣는다. 호출부가 추천을 넘기지 않는
   // (= 현재 설정 기준) 모드에서는 plan === identityPlan이라 항상 undefined다.
@@ -148,8 +139,7 @@ export function computeExecutionRoadmap(
   }
 
   // 자산 고갈이 예상되면 다른 마일스톤과 함께 정확히 몇 세에 고갈되는지도 타임라인에
-  // 표시한다 — 위험 신호이므로 severity로 구분해 강조한다. 고갈 나이는 가구 종료 나이까지의
-  // 어느 시점이든 될 수 있으므로(배우자 단독 생존 구간 포함) 나이 조건 없이 항상 넣는다.
+  // 표시한다 — 위험 신호이므로 severity로 구분해 강조한다. 나이 조건 없이 항상 넣는다.
   //
   // 단, 투자자산이 하나도 없는 계획은 제외한다. 엔진이 첫 해에 depletionAge를 잡으므로
   // (자산 0 <= 0) 로드맵 맨 앞에 "51세 자산 고갈 예상" 노드가 찍히는데, 소진될 자산 자체가 없다.
@@ -175,11 +165,9 @@ export function computeExecutionRoadmap(
     .map(([age, items]) => ({ age, items }))
     .sort((a, b) => a.age - b.age);
 
-  const endAge = computeHouseholdEndAge(params.userProfile, spouse);
-
   return {
     events,
-    endAge,
-    endLabel: endAge > expectancy ? '배우자 기대수명 (가구 종료)' : '기대수명',
+    endAge: expectancy,
+    endLabel: '기대수명',
   };
 }

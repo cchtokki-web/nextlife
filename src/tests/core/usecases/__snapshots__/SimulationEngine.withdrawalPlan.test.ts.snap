@@ -65,7 +65,6 @@ exports[`SimulationEngine withdrawalPlan (인출 정책 파라미터화) > 회�
   "endingAssets": 398809548.764397,
   "fireAge": 81,
   "goalAchievementRate": 94,
-  "householdEndAge": 90,
   "retirementAssetsAtRetirement": 563995420.2198206,
   "retirementGrade": "안정",
   "retirementScore": 83,

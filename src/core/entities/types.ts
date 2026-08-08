@@ -243,7 +243,6 @@ export interface SimulationParams {
   // 없을 때뿐이다 — 그 씨앗이 하나라도 있으면 전략이 유도되어 저수준 필드가 실체화된다
   // (compileStrategy.seedStrategyFromLegacyParams 참조).
   strategy?: RetirementStrategy;
-  spouse?: SpouseProfile;
   healthcare?: HealthcareAssumptions;
   taxLawVersion?: TaxLawVersion;
 }
@@ -305,12 +304,9 @@ export interface SimulationYearlyResult {
   // 연간 의료비 지출. spending에 이미 포함된 금액 중 의료비분을 분해해 보여주기
   // 위한 정보성 필드다 (spending에서 빼면 안 된다).
   //
-  // 생활비와 동일하게 그 해의 spendingFactor(생존 인원 계수)가 이미 곱해져 있다.
-  // 소비처에서 다시 곱하면 이중 축소가 된다.
-  //
   // 점수·효용 계산이 "목표 대비 얼마나 충족했는가"의 분모를 만들 때는 이 값을 목표에
   // 더해야 한다. 더하지 않으면 의료비를 켠 사용자의 spending만 커져서 "목표를 초과해
-  // 소비했다"로 잘못 채점된다(spendingFactor와 같은 이유다).
+  // 소비했다"로 잘못 채점된다.
   //
   // 예외 — 자산이 고갈된 해: 인출할 자산이 없으면 엔진이 실제 지출(spending)을 인출
   // 가능한 만큼으로 깎으므로 spending < healthcareSpending이 될 수 있다. 즉 이 해에는
@@ -320,52 +316,18 @@ export interface SimulationYearlyResult {
   // 표시 목적으로 쓰는 곳은 Math.min(spending, healthcareSpending)을 고려할 것.
   healthcareSpending: number;
   hasTaxWarning: boolean; // 연간 금융소득이 2,000만원 초과 여부
-
-  // 해당 연도 배우자 생존 여부. 배우자 미설정이면 항상 false다
-  // (배우자가 없는 것과 사망한 것을 결과 타입에서 구분하지 않는다 —
-  //  구분이 필요한 소비처는 params.spouse를 함께 본다).
-  spouseAlive: boolean;
-  // 해당 연도에 적용된 가구 생활비 규모 계수(2인=1, 1인 생존=0.7, 배우자 미설정=1).
-  // SimulationEngine이 목표 생활비에 곱한 바로 그 값을 그대로 노출한다.
-  //
-  // 점수·효용 계산이 "목표 대비 얼마나 충족했는가"의 분모를 만들 때 반드시 이 값을 곱해야 한다.
-  // 곱하지 않으면 배우자 사망으로 줄어든 필요를 완벽히 충족한 계획이 영구적 결손으로 채점된다.
-  // 계수를 소비처에서 재유도(resolveSpouse 재호출 등)하지 않고 결과에 실어 나르는 이유는,
-  // 계수를 계산하는 곳을 엔진 한 곳으로 묶어 두 로직이 다시 어긋나지 못하게 하기 위해서다.
-  spendingFactor: SpendingFactor;
 }
-
-// 생존 인원에 따른 가구 생활비 규모 계수가 실제로 가질 수 있는 값. number로 두면 오타
-// (0.75 등)가 조용히 통과한다.
-//
-// 값의 출처는 usecases/spouse/spouseRules.computeSpendingFactor다:
-//   1   = 본인·배우자 모두 생존(또는 배우자 미설정)
-//   0.7 = 한 명만 생존(SINGLE_SURVIVOR_SPENDING_FACTOR)
-//   0   = 모두 사망
-// 여기서 SINGLE_SURVIVOR_SPENDING_FACTOR를 import하지 않고 리터럴을 직접 쓰는 이유는
-// 계층 방향 때문이다 — entities가 usecases를 참조하면 의존 방향이 역전된다.
-// 두 곳이 어긋나면 spouseRules 쪽에서 컴파일 에러가 난다(반환 타입이 이 타입이다).
-export type SpendingFactor = 0 | 0.7 | 1;
 
 export interface SimulationResult {
   yearlyResults: SimulationYearlyResult[];
   fireAge: number | null; // FIRE 달성(소득 >= 생활비) 가능 나이
   depletionAge: number | null; // 자산 고갈 나이 (0 이하가 되는 시점)
-  endingAssets: number; // 시뮬레이션 종료 시점 잔여 자산. 배우자가 본인보다 오래 살면
-                        // 본인 기대수명이 아니라 "둘 중 늦게 사망하는 쪽" 시점의 잔액이다.
+  endingAssets: number; // 시뮬레이션 종료(기대수명) 시점 잔여 자산
   retirementScore: number; // 0 ~ 100 점
   retirementGrade: RetirementGrade; // 점수 등급 (매우 안정, 안정, 보통, 주의, 위험)
   goalAchievementRate: number; // 은퇴 후 예상 월소득 / 목표 월소득 비율 (%)
   calculatedTargetSpending?: number; // 역산된 목표 생활비 (max_sustainable 모드 등에서 사용)
   retirementAssetsAtRetirement: number; // 은퇴 시작 시점 총자산 (해석/배너 표시용)
-  // 시뮬레이션이 실제로 돈 마지막 나이(본인 나이 기준) = computeHouseholdEndAge.
-  // 배우자가 본인보다 오래 살면 userProfile.expectancy보다 크다.
-  //
-  // depletionAge는 이 나이까지의 루프에서 판정되므로 "고갈되었는가"를 묻는 모든 소비처는
-  // 반드시 이 값과 비교해야 한다. 본인 기대수명과 비교하면 배우자 단독 생존 구간의 파산이
-  // 통째로 숨어 "고갈 위험 없음"이라는 거짓 진술이 된다.
-  // 규칙(둘 중 늦게 죽는 쪽)을 소비처마다 재유도하지 않도록 엔진이 결과에 실어 보낸다.
-  householdEndAge: number;
   utility?: UtilityBreakdown; // Lifetime Utility Score
   recommendation?: StrategyRecommendation; // AI 추천 전략 (별도 계산 시에만 채워짐)
 }
@@ -584,18 +546,6 @@ export interface RetirementStrategy {
   preferIsaFirst: IsaFirstChoice;
   riskProfile: RiskProfile;
   economicScenario: EconomicScenario;
-}
-
-// 배우자. 자산/ISA/사적연금 계좌는 가구 합산 하나로 유지하고, 여기서는 생존 기간과
-// 국민연금만 분리한다(설계 결정: 계좌 소유자 분리는 이번 범위 밖).
-// 배우자 **명의**의 국민연금은 다루지 않는다. 설정 항목이 다섯 개로 늘면서 간편 모드까지
-// 복잡해졌고, 그 대가로 얻는 것이 "배우자도 연금을 받는다"는 한 가지뿐이었다.
-// 배우자 축이 실제로 결과를 바꾸는 지점(가구 종료 나이, 생활비 축소 계수, 본인 연금의
-// 유족연금 승계)은 아래 세 필드만으로 전부 성립한다.
-export interface SpouseProfile {
-  enabled: boolean;
-  currentAge: number;
-  expectancy: number;
 }
 
 export interface HealthcareAssumptions {

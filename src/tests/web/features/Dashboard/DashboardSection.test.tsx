@@ -53,7 +53,6 @@ const result: SimulationResult = {
   retirementGrade: '안정',
   goalAchievementRate: 100,
   retirementAssetsAtRetirement: 400000000,
-  householdEndAge: 90,
   utility,
 };
 
@@ -278,7 +277,7 @@ describe('DashboardSection - 지속가능 생활비 제안 배너', () => {
   });
 });
 
-// 국민연금(본인 180만/배우자 20만)만 등록하고 투자자산을 하나도 넣지 않은 계획.
+// 국민연금(월 180만)만 등록하고 투자자산을 하나도 넣지 않은 계획.
 // 엔진이 첫 해에 depletionAge를 잡으므로, 화면 전체가 "51세에 자산이 고갈될 위험"이라고
 // 말하던 것이 이 스위트가 막는 회귀다.
 describe('DashboardSection - 투자자산 미보유 계획', () => {
@@ -354,7 +353,6 @@ describe('DashboardSection - 현재 계획을 유지하면 요약 카드', () =>
 
   const shortResult: SimulationResult = {
     ...result,
-    householdEndAge: 62,
     yearlyResults: [60, 61, 62].map((age) =>
       makeYearlyResult({ age, spending: 1910000 * 12 })
     ),

@@ -1,6 +1,5 @@
 import { describe, test, expect } from 'vitest';
 import { SimulationEngine } from '@/core/usecases/SimulationEngine';
-import { SINGLE_SURVIVOR_SPENDING_FACTOR } from '@/core/usecases/spouse/spouseRules';
 import { HealthcareAssumptions, SimulationParams } from '@/core/entities/types';
 
 const baseParams: SimulationParams = {
@@ -110,7 +109,7 @@ describe('SimulationEngine 의료비 통합', () => {
   });
 
   // 아래 세 개는 브리프에 없지만, 의료비를 "지출 라인"으로만 넣고 목표(분모) 쪽을 손대지
-  // 않으면 점수가 뒤집히는 문제를 막기 위해 추가한 것이다(spendingFactor와 동형).
+  // 않으면 점수가 뒤집히는 문제를 막기 위해 추가한 것이다.
   describe('목표(분모) 처리', () => {
     // 사적연금 정상 인출을 0으로 막아 부족분을 전부 사적연금 후행 인출로 메우게 한다.
     // 이 경로의 인출액은 totalIncome에 집계되므로, 의료비를 켜면 분자(소득)가 커진다.
@@ -155,46 +154,6 @@ describe('SimulationEngine 의료비 통합', () => {
 
       expect(engine.run(fixedIncome).fireAge).toBe(60);
       expect(engine.run({ ...fixedIncome, healthcare }).fireAge).toBeNull();
-    });
-  });
-
-  // 연도 루프는 computeHouseholdEndAge()까지, 즉 "둘 중 늦게 죽는 쪽"까지 돈다. 그 구간에서
-  // 의료비만 축소 계수를 안 받으면 사망한 본인 앞으로 전액이 계속 인출된다.
-  describe('배우자 생존 기간 축소 계수', () => {
-    // 본인 60세/기대수명 80, 배우자 55세/기대수명 90 → deathAtSelfAge = 60 + (90-55) = 95.
-    // 즉 본인 사후 81~95세 구간을 배우자가 단독 생존한다.
-    const withSpouse: SimulationParams = {
-      ...baseParams,
-      spouse: {
-        enabled: true, currentAge: 55, expectancy: 90,
-      },
-    };
-
-    const healthcareAt = (params: SimulationParams, age: number) =>
-      new SimulationEngine().run(params).yearlyResults.find((y) => y.age === age)!.healthcareSpending;
-
-    test('둘 다 생존한 해에는 의료비가 전액 나간다', () => {
-      expect(healthcareAt({ ...withSpouse, healthcare }, 75)).toBe(500000 * 12);
-    });
-
-    test('본인 사후 배우자 단독 생존 기간에는 의료비도 축소 계수만큼 줄어든다', () => {
-      expect(healthcareAt({ ...withSpouse, healthcare }, 85))
-        .toBeCloseTo(500000 * 12 * SINGLE_SURVIVOR_SPENDING_FACTOR, 6);
-    });
-
-    test('본인 기대수명 이후로 잡힌 쇼크도 축소 계수를 따른다', () => {
-      // shockAge 85는 본인 기대수명(80)을 넘는다. 계수를 적용하지 않으면 사망한 본인 앞으로
-      // 목돈 1억이 전액 인출된다.
-      const withLateShock: HealthcareAssumptions = {
-        ...healthcare, baseMonthlyCost: 0, shockEnabled: true, shockAge: 85, shockAmount: 100000000,
-      };
-
-      expect(healthcareAt({ ...withSpouse, healthcare: withLateShock }, 85))
-        .toBeCloseTo(100000000 * SINGLE_SURVIVOR_SPENDING_FACTOR, 6);
-    });
-
-    test('배우자가 없으면 계수가 1이라 의료비가 그대로다', () => {
-      expect(healthcareAt({ ...baseParams, healthcare }, 75)).toBe(500000 * 12);
     });
   });
 

@@ -39,8 +39,6 @@ export function makeYearlyResult(
     unmetSpending: 0,
     healthcareSpending: 0,
     hasTaxWarning: false,
-    spouseAlive: false,
-    spendingFactor: 1,
     ...overrides,
   };
 }

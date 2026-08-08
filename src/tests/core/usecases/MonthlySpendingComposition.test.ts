@@ -2,13 +2,11 @@ import { describe, test, expect } from 'vitest';
 import { makeYearlyResult as makeYearlyResultFixture } from '@/tests/fixtures/yearlyResult';
 import { computeMonthlySpendingComposition } from '@/core/usecases/MonthlySpendingComposition';
 import { SimulationEngine } from '@/core/usecases/SimulationEngine';
-import { SINGLE_SURVIVOR_SPENDING_FACTOR } from '@/core/usecases/spouse/spouseRules';
 import {
   SimulationParams,
   SimulationResult,
   SimulationYearlyResult,
   AssetCurrency,
-  SpendingFactor,
 } from '@/core/entities/types';
 
 // 대시보드 차트와 PDF 리포트가 "월 생활비 재원 구성"을 동일하게 계산하도록
@@ -79,7 +77,6 @@ function makeYearlyResult(overrides: {
   otherIncomeAnnual?: number;
   spendingAnnual: number;
   healthcareSpendingAnnual?: number;
-  spendingFactor?: SpendingFactor;
 }): SimulationYearlyResult {
   // 이 스위트가 실제로 보는 필드(소득 항목별 금액과 지출)만 지정하고 나머지 기본값은
   // 공용 픽스처에 맡긴다. 전체 리터럴을 복제하면 SimulationYearlyResult에 필수 필드가
@@ -95,7 +92,6 @@ function makeYearlyResult(overrides: {
     otherIncome: overrides.otherIncomeAnnual ?? 0,
     spending: overrides.spendingAnnual,
     healthcareSpending: overrides.healthcareSpendingAnnual ?? 0,
-    spendingFactor: overrides.spendingFactor ?? 1,
   });
 }
 
@@ -109,7 +105,6 @@ function makeResult(yearlyResults: SimulationYearlyResult[]): SimulationResult {
     retirementGrade: '보통' as SimulationResult['retirementGrade'],
     goalAchievementRate: 100,
     retirementAssetsAtRetirement: 0,
-    householdEndAge: 90,
   };
 }
 
@@ -310,87 +305,44 @@ describe('computeMonthlySpendingComposition', () => {
     });
   });
 
-  describe('가구 규모 계수(spendingFactor)', () => {
-    test('배우자 사망 후(계수 0.7)에는 축소된 필요분을 기준으로 판정해 가짜 부족분을 만들지 않는다', () => {
-      // 엔진은 한 명만 남은 해의 목표 생활비에 0.7을 곱해 실제로 월 140만원을 인출한다.
-      // 목표(분모)에도 같은 계수를 곱하지 않으면 매년 0.3 × 200만원 = 60만원의
-      // 존재하지 않는 '자산부족'이 사망 시점부터 시뮬레이션 끝까지 보고된다.
-      const params = makeParams({ targetMonthlySpending: 2000000 });
-      const yearly = makeYearlyResult({
-        age: 70,
-        spendingAnnual: 16800000, // 월 1,400,000 = 200만원 × 0.7
-        spendingFactor: 0.7,
-      });
-      const result = makeResult([yearly]);
-
-      const [composition] = computeMonthlySpendingComposition([yearly], params, result);
-
-      expect(composition.shortfall).toBe(0);
-    });
-
-    test('계수와 의료비가 함께 있으면 계수는 생활비에만, 의료비는 이미 축소된 값 그대로 더한다', () => {
-      // 목표 200만원 × 0.7 = 140만원, 의료비는 엔진이 이미 0.7을 곱해 월 35만원으로 계산해 둔 값이다.
-      // 필요분 = 175만원. 실제 지출이 155만원이면 부족분은 20만원이어야 한다.
-      // 의료비에 계수를 다시 곱하면(이중 적용) 필요분이 1,645,000원이 되어 부족분이 95,000원으로 어긋난다.
-      const params = makeParams({ targetMonthlySpending: 2000000 });
-      const yearly = makeYearlyResult({
-        age: 70,
-        spendingAnnual: 18600000, // 월 1,550,000
-        healthcareSpendingAnnual: 4200000, // 월 350,000 (계수 이미 반영됨)
-        spendingFactor: 0.7,
-      });
-      const result = makeResult([yearly]);
-
-      const [composition] = computeMonthlySpendingComposition([yearly], params, result);
-
-      expect(composition.shortfall).toBe(200000);
-    });
-
-    test('targetMonthly에도 계수가 반영된 값이 실린다', () => {
-      // 화면(생활비 구성 차트 툴팁)이 "목표 얼마 중 얼마 부족"을 말하려면 shortfall과
-      // **같은 분모**를 받아야 한다. 이 값을 화면에서 다시 계산하면(물가·계수·의료비 규칙을
-      // 복제하면) 배우자 사망 이후 구간에서 반드시 어긋난다.
-      const params = makeParams({ targetMonthlySpending: 2000000 });
-      const yearly = makeYearlyResult({
-        age: 70,
-        spendingAnnual: 16800000,
-        spendingFactor: 0.7,
-      });
-      const result = makeResult([yearly]);
-
-      const [composition] = computeMonthlySpendingComposition([yearly], params, result);
-
-      expect(composition.targetMonthly).toBe(1400000); // 200만원 × 0.7
-    });
-
-    test('max_sustainable로 역산된 목표에도 같은 계수를 적용한다', () => {
+  describe('max_sustainable로 역산된 목표', () => {
+    test('result.calculatedTargetSpending이 목표 생활비로 쓰인다', () => {
+      // spendingStrategy가 max_sustainable이면 params.userProfile.targetMonthlySpending
+      // (makeParams 기본값 200만원)이 아니라 이진탐색으로 역산된 result.calculatedTargetSpending
+      // (250만원)이 필요분의 기준이 되어야 한다.
+      //
+      // 실제 지출을 두 후보 사이(월 220만원)로 잡아 분기가 실제로 작동하는지 구분한다:
+      //   - 분기 정상 작동: targetMonthly = 250만원 → shortfall = 250만원 - 220만원 = 30만원
+      //   - 분기가 없어 params.userProfile.targetMonthlySpending(200만원)으로 폴백:
+      //     targetMonthly = 200만원 → shortfall = max(0, 200만원 - 220만원) = 0
+      // 실제 지출이 역산 목표와 같은 값(250만원)이면 두 경우 모두 shortfall이 0으로 나와
+      // 분기를 통째로 지워도 테스트가 초록이 되므로(회귀를 못 잡음), 반드시 두 후보 사이의
+      // 값을 써야 한다.
       const params = makeParams({ spendingStrategy: 'max_sustainable' });
-      const yearly = makeYearlyResult({
-        age: 70,
-        spendingAnnual: 21000000, // 월 1,750,000 = 250만원 × 0.7
-        spendingFactor: 0.7,
-      });
+      const yearly = makeYearlyResult({ age: 70, spendingAnnual: 26400000 }); // 월 2,200,000
       const result = { ...makeResult([yearly]), calculatedTargetSpending: 2500000 };
 
       const [composition] = computeMonthlySpendingComposition([yearly], params, result);
 
-      expect(composition.shortfall).toBe(0);
+      // targetMonthly 자체도 직접 단언해 역산값이 그대로 실렸는지 확인한다.
+      expect(composition.targetMonthly).toBe(2500000);
+      expect(composition.shortfall).toBe(300000);
     });
   });
+
 });
 
 // 위의 모든 테스트는 makeYearlyResult가 손으로 만든 SimulationYearlyResult를 먹인다.
-// 그래서 엔진이 채우는 필드의 "의미"가 바뀌어도 — spendingFactor를 이미 곱한 spending을
-// 넘기던 규약이 바뀌거나, healthcareSpending이 spending에 포함되지 않게 되거나,
-// 은퇴 후 연도 집합이 본인 기대수명에서 끊기게 되거나 — 이 파일은 전부 초록인 채로
-// 대시보드 차트와 PDF만 깨진다. 아래는 그 계약을 실제 엔진 출력으로 건다.
+// 그래서 엔진이 채우는 필드의 "의미"가 바뀌어도 — healthcareSpending이 spending에
+// 포함되지 않게 되거나, 은퇴 후 연도 집합이 본인 기대수명에서 끊기게 되거나 —
+// 이 파일은 전부 초록인 채로 대시보드 차트와 PDF만 깨진다. 아래는 그 계약을 실제 엔진
+// 출력으로 건다.
 //
-// 배우자와 의료비를 함께 켠 시나리오를 쓴다. spendingFactor / healthcareSpending이
-// 가장 최근에 추가된 두 필드라 계약이 가장 깨지기 쉽고, 둘 다 목표(분모) 쪽 보정이
-// 필요해서 한쪽만 반영하면 즉시 가짜 부족분으로 드러나기 때문이다.
+// 의료비를 켠 시나리오를 쓴다. healthcareSpending이 가장 최근에 추가된 필드라 계약이
+// 가장 깨지기 쉽고, 목표(분모) 쪽 보정이 필요해서 반영하지 않으면 즉시 가짜 부족분으로
+// 드러나기 때문이다.
 describe('실제 SimulationEngine 출력과의 계약', () => {
-  // 본인 60세 은퇴·85세 기대수명, 배우자는 5살 어리고 85세까지 → 본인 나이 기준 90세 사망.
-  // 즉 가구는 본인 사후 5년(86~90세)을 배우자 단독으로 더 산다.
+  // 본인 60세 은퇴·85세 기대수명.
   // 자산은 넉넉히 두어 전 기간 목표 생활비를 전액 충당하게 한다(고갈되면 spending이 깎여
   // 아래 shortfall 단정의 의미가 사라진다 — 전제로 depletionAge === null을 함께 건다).
   const params: SimulationParams = {
@@ -418,9 +370,6 @@ describe('실제 SimulationEngine 출력과의 계약', () => {
     exchangeScenario: 'base',
     displayCurrency: 'KRW',
     spendingStrategy: 'target',
-    spouse: {
-      enabled: true, currentAge: 55, expectancy: 85,
-    },
     healthcare: {
       enabled: true, costGrowthRate: 5, baseMonthlyCost: 400000,
       longTermCareEnabled: true, longTermCareStartAge: 80, longTermCareMonthlyCost: 1000000,
@@ -431,20 +380,22 @@ describe('실제 SimulationEngine 출력과의 계약', () => {
   const result = new SimulationEngine().run(params);
   const composition = computeMonthlySpendingComposition(result.yearlyResults, params, result);
 
-  test('전제: 시나리오가 고갈되지 않고 배우자·의료비가 실제로 켜져 있다', () => {
+  test('전제: 시나리오가 고갈되지 않고 의료비가 실제로 켜져 있다', () => {
     // 아래 단정들이 "아무 일도 일어나지 않아서" 통과하는 상태로 조용히 퇴화하는 것을 막는다.
     expect(result.depletionAge).toBeNull();
-    expect(result.yearlyResults.some((y) => y.spendingFactor === SINGLE_SURVIVOR_SPENDING_FACTOR)).toBe(true);
     expect(result.yearlyResults.every((y) => y.age < 60 || y.healthcareSpending > 0)).toBe(true);
   });
 
   test('구성 대상 연도가 엔진이 실제로 돈 은퇴 후 전 기간과 일치한다', () => {
-    // 가구 종료 나이(90)까지다. 소비처가 본인 기대수명(85)에서 끊으면 배우자 단독 생존
-    // 구간 5년이 차트에서 통째로 사라진다.
-    expect(result.householdEndAge).toBe(90);
+    // 엔진이 실제로 시뮬레이션을 기대수명(expectancy)까지 도는지를 건다. 예전에는
+    // result.householdEndAge로 이 계약을 검증했으나, 해당 필드가 제거되면서 엔진이
+    // userProfile.expectancy를 직접 종료 나이로 쓰게 되었다.
+    expect(result.yearlyResults[result.yearlyResults.length - 1].age).toBe(
+      params.userProfile.expectancy
+    );
     expect(composition.map((c) => c.age))
       .toEqual(result.yearlyResults.filter((y) => y.age >= 60).map((y) => y.age));
-    expect(composition[composition.length - 1].age).toBe(90);
+    expect(composition[composition.length - 1].age).toBe(85);
   });
 
   test('모든 해에서 재원 구성의 합이 엔진의 실제 월 지출과 정확히 일치한다', () => {
@@ -469,10 +420,8 @@ describe('실제 SimulationEngine 출력과의 계약', () => {
 
   test('자산이 충분한 계획에서는 어떤 해에도 가짜 부족분이 생기지 않는다', () => {
     // 목표(분모)는 여기서 다시 계산되고 실제 지출(분자)은 엔진이 계산한다. 두 계산이
-    // spendingFactor·healthcareSpending에 대해 같은 규약을 쓰지 않으면 즉시 벌어진다:
-    //   - 목표에만 계수를 안 곱하면 86세부터 (1-0.7) × 200만 = 60만원의 가짜 부족분
-    //   - 목표에 의료비를 안 더하면 부족분이 음수로 눌려 0으로 숨는 대신, 반대로
-    //     의료비에 계수를 이중 적용하면 다시 벌어진다
+    // healthcareSpending에 대해 같은 규약을 쓰지 않으면 즉시 벌어진다:
+    //   - 목표에 의료비를 안 더하면 부족분이 음수로 눌려 0으로 숨는다
     //   - 75세 의료비 쇼크(3천만원)가 목표에 안 들어가면 그 해만 250만원어치가 어긋난다
     // 남는 오차는 실제 지출을 원 단위로 반올림한 것뿐이므로 1원 미만이어야 한다.
     for (const c of composition) {

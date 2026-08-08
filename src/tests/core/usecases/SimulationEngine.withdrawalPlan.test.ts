@@ -78,7 +78,6 @@ describe('SimulationEngine withdrawalPlan (인출 정책 파라미터화)', () =
       retirementScore: result.retirementScore,
       retirementGrade: result.retirementGrade,
       goalAchievementRate: result.goalAchievementRate,
-      householdEndAge: result.householdEndAge,
       retirementAssetsAtRetirement: result.retirementAssetsAtRetirement,
       yearCount: result.yearlyResults.length,
       // 효용 점수도 계획 수준 지표다. 채점식(가중치·분모)이 바뀌면 사용자가 보는 점수가

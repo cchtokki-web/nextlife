@@ -17,7 +17,6 @@ function makeResult(overrides: Partial<SimulationResult> = {}): SimulationResult
     retirementGrade: '보통',
     goalAchievementRate: 50,
     retirementAssetsAtRetirement: 0,
-    householdEndAge: 90,
     ...overrides,
   };
 }
@@ -29,7 +28,7 @@ describe('resolvePlanAssetStatus', () => {
       yearlyResults: [51, 60, 90].map((age) => makeYearlyResult({ age, totalAssets: 0 })),
     });
 
-    expect(resolvePlanAssetStatus(result)).toBe('no_investable_asset');
+    expect(resolvePlanAssetStatus(result, 90)).toBe('no_investable_asset');
   });
 
   // 잔액 0에서 월 납입으로 자산을 쌓다가 나중에 고갈되는 적립식 계획을 "미보유"로
@@ -45,7 +44,7 @@ describe('resolvePlanAssetStatus', () => {
       ],
     });
 
-    expect(resolvePlanAssetStatus(result)).toBe('depleted');
+    expect(resolvePlanAssetStatus(result, 90)).toBe('depleted');
   });
 
   test('고갈 없이 자산이 남으면 유지다', () => {
@@ -55,28 +54,25 @@ describe('resolvePlanAssetStatus', () => {
       yearlyResults: [makeYearlyResult({ age: 60, totalAssets: 100000000 })],
     });
 
-    expect(resolvePlanAssetStatus(result)).toBe('sustained');
+    expect(resolvePlanAssetStatus(result, 90)).toBe('sustained');
   });
 
-  // 고갈 판정 기준은 본인 기대수명이 아니라 가구 종료 나이다(heroHeadline·
-  // generateChartCaptions와 같은 관례). 가구 종료 나이에 도달해서야 잔액이 0이 된 것은
-  // "계획대로 다 쓰고 감"이지 실패가 아니다.
-  test('가구 종료 나이에 이르러 소진된 것은 고갈로 보지 않는다', () => {
+  // 기대수명에 도달해서야 잔액이 0이 된 것은 "계획대로 다 쓰고 감"이지 실패가 아니다.
+  test('기대수명에 이르러 소진된 것은 고갈로 보지 않는다', () => {
     const result = makeResult({
       depletionAge: 90,
-      householdEndAge: 90,
       yearlyResults: [
         makeYearlyResult({ age: 60, totalAssets: 50000000 }),
         makeYearlyResult({ age: 90, totalAssets: 0 }),
       ],
     });
 
-    expect(resolvePlanAssetStatus(result)).toBe('sustained');
+    expect(resolvePlanAssetStatus(result, 90)).toBe('sustained');
   });
 
   // yearlyResults가 비어 있으면(엔진의 조기 반환 경로) "모든 해가 0 이하"가 공허하게
   // 참이 되어 자산이 있는 계획까지 미보유로 뒤집힌다.
   test('연도별 결과가 비어 있으면 미보유로 단정하지 않는다', () => {
-    expect(resolvePlanAssetStatus(makeResult({ yearlyResults: [] }))).toBe('sustained');
+    expect(resolvePlanAssetStatus(makeResult({ yearlyResults: [] }), 90)).toBe('sustained');
   });
 });

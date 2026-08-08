@@ -28,7 +28,6 @@ const baseParams: SimulationParams = {
 
 function makeResult(
   depletionAge: number | null,
-  householdEndAge = 90,
   extras: { endingAssets?: number; yearlyResults?: SimulationYearlyResult[] } = {}
 ): SimulationResult {
   return {
@@ -40,7 +39,6 @@ function makeResult(
     retirementGrade: '보통',
     goalAchievementRate: 100,
     retirementAssetsAtRetirement: 0,
-    householdEndAge,
   };
 }
 
@@ -168,16 +166,20 @@ describe('computeSensitivityAnalysis', () => {
     expect(scenarios.find((s) => s.key === 'returnUp')!.deltaYears).toBe(10); // 90 - 80
   });
 
-  // B5: "고갈 없음"의 센티널은 본인 기대수명이 아니라 가구 종료 나이여야 한다.
-  // 장수 배우자가 있으면(가구 종료 100세) 95세 고갈 시나리오가 고갈이 전혀 없는
+  // B5: "고갈 없음"의 센티널은 고정값이 아니라 그 계획의 기대수명이어야 한다.
+  // 90세로 고정하면 기대수명 100세인 계획에서 95세 고갈 시나리오가 고갈이 전혀 없는
   // baseline보다 5년 "낫다"고 보고된다.
-  test('고갈 없음 센티널은 본인 기대수명이 아니라 가구 종료 나이다', () => {
+  test('고갈 없음 센티널은 그 계획의 기대수명이다', () => {
     const engine = makeMockEngine({
       returnDown: 95, returnUp: null, inflationUp: null, inflationDown: null,
       retirementEarlier: null, retirementLater: null,
     });
+    const params: SimulationParams = {
+      ...baseParams,
+      userProfile: { ...baseParams.userProfile, expectancy: 100 },
+    };
 
-    const scenarios = computeSensitivityAnalysis(baseParams, makeResult(null, 100), engine);
+    const scenarios = computeSensitivityAnalysis(params, makeResult(null), engine);
 
     expect(scenarios.find((s) => s.key === 'returnDown')!.deltaYears).toBe(-5);
   });
@@ -191,13 +193,13 @@ describe('computeSensitivityAnalysis', () => {
   describe('연속형 지표', () => {
     test('기말자산과 baseline 대비 증감을 함께 보고한다', () => {
       const runForUtility = vi.fn((params: SimulationParams) => {
-        if (params.assets[0]?.annualGrowthRate === 5) return makeResult(null, 90, { endingAssets: 820000000 });
-        return makeResult(null, 90, { endingAssets: 3000000000 });
+        if (params.assets[0]?.annualGrowthRate === 5) return makeResult(null, { endingAssets: 820000000 });
+        return makeResult(null, { endingAssets: 3000000000 });
       });
       const engine = { runForUtility } as unknown as SimulationEngine;
 
       const scenarios = computeSensitivityAnalysis(
-        baseParams, makeResult(null, 90, { endingAssets: 2500000000 }), engine
+        baseParams, makeResult(null, { endingAssets: 2500000000 }), engine
       );
 
       const returnDown = scenarios.find((s) => s.key === 'returnDown')!;
@@ -216,7 +218,7 @@ describe('computeSensitivityAnalysis', () => {
         makeYearlyResult({ age: 81, unmetSpending: 1200000 }),
         makeYearlyResult({ age: 82, unmetSpending: 3600000 }),
       ];
-      const runForUtility = vi.fn(() => makeResult(null, 90, { yearlyResults }));
+      const runForUtility = vi.fn(() => makeResult(null, { yearlyResults }));
       const engine = { runForUtility } as unknown as SimulationEngine;
 
       const scenarios = computeSensitivityAnalysis(baseParams, makeResult(null), engine);

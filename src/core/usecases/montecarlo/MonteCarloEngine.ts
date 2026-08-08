@@ -63,9 +63,9 @@ export function runMonteCarlo(
   // 결정론 기준선. 팬 차트에 겹쳐 그려 변동성 손실을 드러내는 데 쓴다.
   //
   // run()이 아니라 runSingle을 부른다 — run()은 이진탐색 30회를 더 돌지만 여기서 필요한
-  // 것은 기말자산과 가구 종료 나이뿐이다.
+  // 것은 기말자산뿐이다.
   const deterministic = engine.runSingle(planned);
-  const successAge = deterministic.householdEndAge;
+  const successAge = planned.userProfile.expectancy;
 
   const trials: TrialSummary[] = [];
   for (let i = 0; i < config.trials; i++) {

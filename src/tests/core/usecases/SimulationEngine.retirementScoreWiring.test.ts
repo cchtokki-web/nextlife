@@ -1,13 +1,12 @@
 import { describe, test, expect } from 'vitest';
 import { SimulationEngine } from '@/core/usecases/SimulationEngine';
-import { SINGLE_SURVIVOR_SPENDING_FACTOR } from '@/core/usecases/spouse/spouseRules';
 import { HealthcareAssumptions, SimulationParams } from '@/core/entities/types';
 
 // followups #3: computeRetirementTargetAssets는 순수 함수로 분리되어 산술 계약은 테스트되지만,
-// calculateRetirementScore가 실제로 retirementStartResult.spendingFactor/.healthcareSpending을
-// 넘기는지는 아무도 검증하지 않았다. `computeRetirementTargetAssets(target, 1, 0)`으로
-// 회귀시켜도 기존 테스트가 전부 통과하고 스냅샷도 깨지지 않는다(해당 fixture는 factor 1 /
-// healthcare 0). 배선을 end-to-end로 건다.
+// calculateRetirementScore가 실제로 retirementStartResult.healthcareSpending을 넘기는지는
+// 아무도 검증하지 않았다. `computeRetirementTargetAssets(target, 0)`으로 회귀시켜도 기존
+// 테스트가 전부 통과하고 스냅샷도 깨지지 않는다(해당 fixture는 healthcare 0). 배선을
+// end-to-end로 건다.
 //
 // 방법: "분모가 같아야 하는 두 시나리오"를 만들고 은퇴 준비도가 같은지 본다.
 // 물가상승률 0 + 실질 모드 + 의료비 증가율 0으로 두면 의료비는 은퇴 후 매년 같은 금액이라
@@ -66,30 +65,19 @@ describe('calculateRetirementScore의 목표 자산 배선', () => {
     expect(withoutHealthcare.retirementScore).toBeLessThan(100);
   });
 
-  test('은퇴 시점 가구 규모 계수가 목표 자산 분모에 반영된다', () => {
-    // 배우자가 은퇴 전에 사망하면 은퇴 시점 spendingFactor가 0.7이다. 실제 인출도 0.7배이므로,
-    // 목표 생활비를 처음부터 0.7배로 넣은 1인 가구와 모든 현금흐름이 같다.
-    // 분모에만 계수가 빠지면 배우자 시나리오의 assetScore가 약 30% 과소평가된다.
-    const spouseDiesBeforeRetirement = engine.run({
+  test('은퇴 시점 반복 의료비가 목표 자산 분모에 반영된다', () => {
+    const withoutHealthcare = new SimulationEngine().run(base);
+    const withHealthcare = new SimulationEngine().run({
       ...base,
-      userProfile: { ...base.userProfile, targetMonthlySpending: 3000000 },
-      spouse: {
-        enabled: true,
-        currentAge: 80,
-        expectancy: 82, // 본인 57세 시점에 사망 → 은퇴(60세) 시점에는 1인 가구
+      healthcare: {
+        enabled: true, costGrowthRate: 5, baseMonthlyCost: 1000000,
+        longTermCareEnabled: false, longTermCareStartAge: 80, longTermCareMonthlyCost: 0,
+        shockEnabled: false, shockAge: 0, shockAmount: 0,
       },
     });
 
-    const singleEquivalent = engine.run({
-      ...base,
-      userProfile: {
-        ...base.userProfile,
-        targetMonthlySpending: 3000000 * SINGLE_SURVIVOR_SPENDING_FACTOR,
-      },
-    });
-
-    expect(spouseDiesBeforeRetirement.retirementScore).toBe(singleEquivalent.retirementScore);
-    expect(singleEquivalent.retirementScore).toBeLessThan(100);
+    // 목표 자산 분모가 커지므로 자산 점수가, 따라서 총점이 낮아진다.
+    expect(withHealthcare.retirementScore).toBeLessThan(withoutHealthcare.retirementScore);
   });
 });
 

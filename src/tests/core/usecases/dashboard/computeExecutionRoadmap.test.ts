@@ -83,7 +83,6 @@ function makeRecommendation(
       retirementGrade: '보통',
       goalAchievementRate: 100,
       retirementAssetsAtRetirement: 0,
-      householdEndAge: 90,
     },
     itemizedContributions: [],
   };
@@ -236,42 +235,17 @@ describe('computeExecutionRoadmap', () => {
     expect(ages).toEqual([60, 61, 65]);
   });
 
-  test('배우자가 없으면 종료 마커는 본인 기대수명이다', () => {
+  test('종료 마커는 본인 기대수명이다', () => {
     const roadmap = computeExecutionRoadmap(baseParams, undefined, null, 'sustained');
     expect(roadmap.endAge).toBe(90);
     expect(roadmap.endLabel).toBe('기대수명');
   });
 
-  // B4: depletionAge는 가구 종료 나이까지의 루프에서 판정되므로 본인 기대수명을 넘을 수 있다.
-  // 종료 마커를 본인 기대수명으로 두면 "95세 자산 고갈" 노드가 "90세 기대수명" 종점보다
-  // 뒤에 있는데도 타임라인상 그 앞에 놓인다.
-  test('배우자가 더 오래 살면 종료 마커가 가구 종료 나이가 된다', () => {
-    const params: SimulationParams = {
-      ...baseParams,
-      spouse: {
-        enabled: true, currentAge: 50, expectancy: 95,
-      },
-    };
+  test('기대수명을 넘지 않는 고갈 이벤트가 종료 마커보다 앞에 온다', () => {
+    const roadmap = computeExecutionRoadmap(baseParams, undefined, 85, 'sustained');
 
-    const roadmap = computeExecutionRoadmap(params, undefined, null, 'sustained');
-
-    // 배우자가 본인보다 5살 어리고 95세까지 산다 = 본인 나이 기준 100세.
-    expect(roadmap.endAge).toBe(100);
-    expect(roadmap.endLabel).toContain('배우자');
-  });
-
-  test('가구 종료 나이를 넘지 않는 고갈 이벤트가 종료 마커보다 앞에 온다', () => {
-    const params: SimulationParams = {
-      ...baseParams,
-      spouse: {
-        enabled: true, currentAge: 50, expectancy: 95,
-      },
-    };
-
-    const roadmap = computeExecutionRoadmap(params, undefined, 95, 'sustained');
-
-    expect(roadmap.events.some((e) => e.age === 95)).toBe(true);
-    expect(roadmap.endAge).toBeGreaterThan(95);
+    expect(roadmap.events.some((e) => e.age === 85)).toBe(true);
+    expect(roadmap.endAge).toBeGreaterThan(85);
   });
 
   test('depletionAge가 있으면 "자산 고갈 예상" 이벤트가 severity: warning으로 추가된다', () => {
@@ -319,10 +293,10 @@ describe('computeExecutionRoadmap', () => {
   });
 });
 
-// 로드맵에는 추천이 건드리지 않는 항목(배우자 국민연금 등)도 함께 그려진다. 어떤 나이가
+// 로드맵에는 추천이 건드리지 않는 항목(일반자산 인출 개시 등)도 함께 그려진다. 어떤 나이가
 // 추천으로 옮겨진 것인지 표시가 없으면 한 타임라인 안에 두 기준이 섞인 것으로 읽힌다 —
-// 실제로 "본인 60세(추천) / 배우자 64세(현재 설정)"가 "본인이 배우자보다 먼저 받는다"는
-// 잘못된 인상을 만들었다.
+// 실제로 "국민연금 60세(추천)"와 "일반자산 인출 개시 60세(현재 설정 그대로)"가 뒤섞여
+// 어느 쪽이 추천으로 옮겨진 나이인지 구별할 수 없는 문제가 있었다.
 describe('computeExecutionRoadmap - 추천으로 옮겨진 나이 표시', () => {
   const plan: CompleteWithdrawalPlan = {
     privatePensionMonthlyTarget: 0,
@@ -374,9 +348,6 @@ describe('computeExecutionRoadmap - 투자자산 미보유 계획', () => {
     assets: [],
     privatePensions: [],
     nationalPension: { expectedMonthlyAmount: 1800000 },
-    spouse: {
-      enabled: true, currentAge: 46, expectancy: 92,
-    },
   };
 
   test('자산·사적연금이 없으면 그 인출 개시 이벤트를 그리지 않는다', () => {
@@ -394,21 +365,18 @@ describe('computeExecutionRoadmap - 투자자산 미보유 계획', () => {
     expect(roadmap.events.flatMap((e) => e.items).some((i) => i.severity === 'warning')).toBe(false);
   });
 
-  // 배우자를 켜도 배우자 명의 연금 마일스톤은 그리지 않는다 — 로드맵이 복잡해진다는
-  // 피드백에 따라 배우자 명의 국민연금 자체를 다루지 않게 되었다.
-  test('배우자를 켜도 로드맵은 본인 마일스톤만 그린다', () => {
+  test('로드맵은 본인 마일스톤만 그린다', () => {
     const roadmap = computeExecutionRoadmap(pensionOnlyParams, undefined, 51, 'no_investable_asset');
 
     expect(roadmap.events.map((e) => e.age)).toEqual([60, 65]);
     expect(roadmap.events.find((e) => e.age === 60)!.items.map((i) => i.title)).toEqual(['퇴직']);
     expect(roadmap.events.find((e) => e.age === 65)!.items.map((i) => i.title))
       .toEqual(['국민연금 수령 개시']);
-    expect(roadmap.events.flatMap((e) => e.items).some((i) => i.title.includes('배우자'))).toBe(false);
   });
 
   test('국민연금 수령액이 0이면 국민연금 개시 이벤트도 그리지 않는다', () => {
     const roadmap = computeExecutionRoadmap(
-      { ...pensionOnlyParams, nationalPension: { expectedMonthlyAmount: 0 }, spouse: undefined },
+      { ...pensionOnlyParams, nationalPension: { expectedMonthlyAmount: 0 } },
       undefined,
       51,
       'no_investable_asset'
@@ -432,7 +400,6 @@ describe('selectDepletionAge', () => {
     retirementGrade: '보통',
     goalAchievementRate: 100,
     retirementAssetsAtRetirement: 0,
-    householdEndAge: 90,
   };
 
   test('recommendation이 없으면 baseline(result)의 depletionAge를 쓴다', () => {

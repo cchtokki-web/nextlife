@@ -18,7 +18,7 @@ function readPath(source: unknown, path: FieldPath): unknown {
 //   - taxSettings.*  : resolveTaxSettings()가 채우는 기본 세팅
 //   - strategy.*     : DEFAULT_RETIREMENT_STRATEGY
 //   - 그 외          : initialParams (앱이 새 시나리오에 넣는 값)
-// spouse/healthcare는 initialParams에 없으므로 undefined가 기준이 되고,
+// healthcare는 initialParams에 없으므로 undefined가 기준이 되고,
 // 사용자가 켜는 순간 "변경됨"으로 잡힌다 — 의도한 동작이다.
 function readBaseline(path: FieldPath): unknown {
   if (path.startsWith('taxSettings.')) {

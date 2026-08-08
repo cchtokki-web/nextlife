@@ -18,7 +18,7 @@ const call = (patch: Partial<Parameters<typeof computeAnnualHealthcareCost>[0]> 
   computeAnnualHealthcareCost({
     healthcare, currentAge: 65, retirementAge: 60, simulationStartAge: 60,
     yearsSinceRetirement: 5,
-    inflationMode: 'nominal', inflationRate: 2.5, spendingFactor: 1, ...patch,
+    inflationMode: 'nominal', inflationRate: 2.5, ...patch,
   });
 
 describe('computeAnnualHealthcareCost', () => {
@@ -126,16 +126,6 @@ describe('computeAnnualHealthcareCost', () => {
       .toBeCloseTo(300000 * 12 + 1500000 * 12 * Math.pow(1.05, 5), 0);
   });
 
-  test('생존자가 한 명이면 축소 계수만큼 줄어든다', () => {
-    // 의료비는 생활비와 같은 성격의 반복 가구 지출이다. 본인 사후 배우자 단독
-    // 생존 기간에 본인 기준 전액이 계속 나가면 안 된다.
-    expect(call({ spendingFactor: 0.7 })).toBeCloseTo(call() * 0.7, 0);
-  });
-
-  test('둘 다 사망한 해(계수 0)에는 의료비가 0이다', () => {
-    expect(call({ spendingFactor: 0 })).toBe(0);
-  });
-
   test('실효 증가율이 -100% 이하여도 음수가 되지 않는다', () => {
     // Math.pow(음수, y)는 연도마다 부호가 뒤집혀 "공짜 돈"을 만든다.
     const result = call({
@@ -171,7 +161,7 @@ describe('computeAnnualHealthcareCost', () => {
         healthcare: nominalHealthcare,
         currentAge: 65, retirementAge: 65, simulationStartAge: 50,
         yearsSinceRetirement: 0,
-        inflationMode: 'nominal', inflationRate: 3, spendingFactor: 1, ...patch,
+        inflationMode: 'nominal', inflationRate: 3, ...patch,
       });
 
     test('은퇴 시점 의료비에 현재 나이부터 은퇴까지의 물가상승분이 반영된다', () => {
