@@ -26,7 +26,7 @@ describe('RetirementGoalSection', () => {
     renderSection();
 
     const spending = group('생활비 전략');
-    for (const label of [/원하는 생활비 직접 입력/, /배당금만 소비/, /최대 생활비 자동 계산/, /생활비 제안 받기/]) {
+    for (const label of [/원하는 생활비 직접 입력/, /배당금만 소비/, /평생 소비 최적화/, /생활비 제안 받기/]) {
       expect(spending.getByRole('radio', { name: label })).toBeInTheDocument();
     }
   });
@@ -315,6 +315,72 @@ describe('RetirementGoalSection', () => {
     });
 
     expect(screen.queryByLabelText('목표 상속자산')).not.toBeInTheDocument();
+  });
+
+  describe('평생 소비 최적화 전용 입력', () => {
+    const withChoice = (
+      spendingChoice: 'target' | 'max_sustainable',
+      patch: Partial<typeof DEFAULT_RETIREMENT_STRATEGY> = {}
+    ): SimulationParams => ({
+      ...initialParams,
+      strategy: { ...DEFAULT_RETIREMENT_STRATEGY, spendingChoice, ...patch },
+      userProfile: { ...initialParams.userProfile, targetBequest: 100000000 },
+    });
+
+    test('평생 소비 최적화를 고르면 소비 성향과 최소 생활비가 보인다', () => {
+      renderSection(withChoice('max_sustainable'));
+
+      expect(screen.getByRole('radiogroup', { name: '소비 성향' })).toBeInTheDocument();
+      expect(screen.getByLabelText('최소 생활비')).toBeInTheDocument();
+    });
+
+    test('다른 생활비 전략에서는 보이지 않는다', () => {
+      // 인출액을 목표 생활비가 정하는 전략에서는 "연령대별 배분"이라는 질문이 성립하지 않는다.
+      renderSection(withChoice('target'));
+
+      expect(screen.queryByRole('radiogroup', { name: '소비 성향' })).not.toBeInTheDocument();
+      expect(screen.queryByLabelText('최소 생활비')).not.toBeInTheDocument();
+      expect(screen.queryByLabelText('자산 안전마진')).not.toBeInTheDocument();
+    });
+
+    test('안전마진은 목표 상속자산을 정했을 때만 보인다', () => {
+      // 마진은 "지켜야 할 금액"에 붙는 것이라 지킬 금액이 없으면 조정할 대상이 없다.
+      renderSection(withChoice('max_sustainable', { bequestStrategy: 'target_amount' }));
+      expect(screen.getByLabelText('자산 안전마진')).toBeInTheDocument();
+
+      screen.getByLabelText('자산 안전마진').remove();
+      renderSection(withChoice('max_sustainable', { bequestStrategy: 'leave_some' }));
+      expect(screen.queryByLabelText('자산 안전마진')).not.toBeInTheDocument();
+    });
+
+    test('소비 성향을 고르면 strategy.spendingShape가 반영된다', () => {
+      const onChangeParams = renderSection(withChoice('max_sustainable'));
+
+      fireEvent.click(
+        within(screen.getByRole('radiogroup', { name: '소비 성향' }))
+          .getByRole('radio', { name: /활동기 집중형/ })
+      );
+
+      expect(onChangeParams).toHaveBeenCalledWith(
+        expect.objectContaining({
+          strategy: expect.objectContaining({ spendingShape: 'front_loaded' }),
+        })
+      );
+    });
+
+    test('안전마진에 음수를 넣어도 0 아래로 내려가지 않는다', () => {
+      const onChangeParams = renderSection(
+        withChoice('max_sustainable', { bequestStrategy: 'target_amount' })
+      );
+
+      fireEvent.change(screen.getByLabelText('자산 안전마진'), { target: { value: '-30' } });
+
+      expect(onChangeParams).toHaveBeenCalledWith(
+        expect.objectContaining({
+          strategy: expect.objectContaining({ bequestSafetyMarginRate: 0 }),
+        })
+      );
+    });
   });
 
   test('AI 추천이 개선안을 찾으면 생활비 배수 힌트를 표시한다', () => {

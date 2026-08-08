@@ -46,6 +46,16 @@
   gap: 0.75rem;
 }
 
+/* 평생 소비 최적화의 연령 구간별 금액. 문장 안에 이어 쓰면 "60~69세 580만원 70~79세
+   480만원"처럼 붙어 읽히므로 줄로 나눈다. */
+.spendingPlanList {
+  margin: 0.4rem 0 0;
+  padding-left: 1.1rem;
+  list-style: disc;
+  display: grid;
+  gap: 0.15rem;
+}
+
 .statusNotice {
   display: flex;
   align-items: flex-start;

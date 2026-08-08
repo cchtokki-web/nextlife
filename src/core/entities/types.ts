@@ -83,6 +83,27 @@ export interface OtherIncome {
 
 export type SpendingStrategy = 'target' | 'dividend_only' | 'max_sustainable';
 
+// 은퇴 후 목표 생활비의 연령대별 배분 모양. "얼마를 쓸지"가 아니라 "어떻게 나눠 쓸지"다.
+export type SpendingShapePreset =
+  | 'flat'          // 실질생활비 균등형 (기존 동작)
+  | 'front_loaded'  // 활동기 집중형 — 건강할 때 더 쓰고 나이 들며 줄인다
+  | 'care_heavy';   // 의료·돌봄 대비형 — 후반을 위해 초반을 아낀다
+
+// 해소된 연령별 배수 곡선. 그 해 목표 = targetMonthlySpending × 물가계수 × 배수 + 의료비.
+//
+// **금액이 아니라 배수 벡터인 것이 설계의 핵심이다.** max_sustainable의 이진탐색이 성립하는
+// 이유는 자유변수가 스칼라 하나(targetMonthlySpending)이기 때문인데, 연령별 금액을 각각
+// 자유변수로 두면 벡터가 되어 그 구조를 못 쓴다. 모양을 고정하고 그 위에 스칼라 하나를
+// 곱하면 총지출이 스칼라에 대해 단조라 기존 탐색이 그대로 성립한다.
+//
+// 미지정이면 전 구간 1.0이며, 그때는 이 필드 자체가 없어야 한다(resolveSpendingCurve 주석).
+export interface SpendingCurve {
+  // 오름차순. 각 값은 "그 나이부터 다음 구간"을 뜻한다(70이면 70세가 두 번째 구간의 첫 해).
+  breakpointAges: readonly number[];
+  // 길이 = breakpointAges.length + 1.
+  multipliers: readonly number[];
+}
+
 // 연도별 시장 수익률 충격(%p). 인덱스 y = 시뮬레이션 y번째 해(0 = 현재 나이).
 //
 // 모든 주식/ETF 자산·사적연금·ISA의 **연 수익률에 가산**된다. 배당수익률·현금 이자율·
@@ -215,6 +236,18 @@ export interface SimulationParams {
   yieldPreset?: 'conservative' | 'base' | 'aggressive' | 'custom';
   customYieldSnapshot?: CustomYieldSnapshot; // "사용자 프리셋" 복원용 저장값
   spendingStrategy?: SpendingStrategy; // 목표 생활비 달성 전략
+  // 은퇴 후 목표 생활비의 연령대별 배수. 미지정이면 전 구간 균등(= 기존 동작과 비트 단위로 동일).
+  //
+  // withdrawalPlan이 아니라 최상위에 두는 이유는 assetFloor와 같다: 후보 탐색이
+  // withdrawalPlan을 통째로 교체하므로(paramsWithBaselinePlan) 그 안에 두면 모든 후보
+  // 평가에서 조용히 사라진다.
+  //
+  // 이 값을 읽는 곳은 네 군데이며 **반드시 같은 함수(spendingMultiplierForAge)를 써야 한다**:
+  // 엔진의 목표 산출, meetsSustainabilityGoal의 충당 검증, UtilityEngine의 채점 분모,
+  // MonthlySpendingComposition의 차트 목표선. 하나라도 빠지면 조용히 어긋난다 —
+  // 특히 meetsSustainabilityGoal에서 빠지면 배수가 1을 넘는 구간이 항상 미충당으로 읽혀
+  // max_sustainable 이진탐색이 0으로 붕괴한다.
+  spendingCurve?: SpendingCurve;
   // 상속 하한선(displayCurrency 기준). 총자산이 이 금액 아래로 내려가는 인출을 하지 않는다.
   // 미지정·0이면 하한선 없음(= 기존 동작과 비트 단위로 동일).
   //
@@ -546,6 +579,20 @@ export interface RetirementStrategy {
   preferIsaFirst: IsaFirstChoice;
   riskProfile: RiskProfile;
   economicScenario: EconomicScenario;
+  // 아래 셋은 optional이다. 필수로 만들면 이미 저장된 시나리오의 strategy 객체가 타입과
+  // 어긋나고, 전체 객체를 하드코딩한 테스트 픽스처가 전부 깨진다. resolveStrategy가
+  // DEFAULT_RETIREMENT_STRATEGY로 메우므로 런타임에는 언제나 값이 있다.
+
+  // 은퇴 후 생활비를 연령대별로 어떻게 배분할지. 미지정·'flat'이면 기존 동작(전 구간 균등).
+  spendingShape?: SpendingShapePreset;
+  // 목표 상속자산 위에 얹는 안전마진(%). 엔진 제약(assetFloor)만 부풀리고
+  // 채점 기준(userProfile.targetBequest)은 건드리지 않는다 — 두 값의 역할 구분을 지킨다.
+  // 미지정·0이면 기존 동작.
+  bequestSafetyMarginRate?: number;
+  // 역산된 생활비가 이 값에 못 미치면 화면이 경고한다. **엔진 params로 내려가지 않는다** —
+  // 시뮬레이션을 바꾸지 않고 판정만 하기 때문이다. 이진탐색의 성공 조건에 넣으면 계획
+  // 전체가 실패로 떨어져 "얼마까지 쓸 수 있는가"라는 답 자체가 사라진다.
+  minMonthlySpending?: number;
 }
 
 export interface HealthcareAssumptions {

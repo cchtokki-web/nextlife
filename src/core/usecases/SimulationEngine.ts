@@ -13,6 +13,7 @@ import {
 import { getRetirementGrade, RetirementGrade } from '../entities/retirementGrade';
 import { computeLifetimeUtility } from './utility/UtilityEngine';
 import { computeAnnualHealthcareCostBreakdown } from './healthcare/healthcareCosts';
+import { spendingMultiplierForAge } from './spending/spendingCurve';
 import { DEFAULT_UTILITY_CONFIG } from './utility/utilityWeights';
 import {
   getMarketTaxTreatment,
@@ -192,10 +193,13 @@ export class SimulationEngine {
       .filter((year) => year.age >= userProfile.retirementAge)
       .every((year) => {
         const elapsedYears = year.age - userProfile.currentAge;
+        // 연령대별 배수를 여기서도 곱해야 한다. 빼먹으면 배수가 1을 넘는 구간이 언제나
+        // "미충당"으로 읽혀 어떤 생활비도 성공 판정을 받지 못하고, 이진탐색이 0으로 붕괴한다.
         const baseAnnualTarget = userProfile.targetMonthlySpending * 12
           * (inflationMode === 'nominal'
             ? Math.pow(1 + inflationRate / 100, elapsedYears)
-            : 1);
+            : 1)
+          * spendingMultiplierForAge(trialParams.spendingCurve, year.age);
         const requiredAnnualSpending = baseAnnualTarget + year.healthcareSpending;
         // 월별 부동소수 계산을 12회 합산하므로 표시 통화 1원 미만의 오차만 허용한다.
         return year.spending + 1 >= requiredAnnualSpending;
@@ -655,7 +659,10 @@ export class SimulationEngine {
         const baseMonthly = inflationMode === 'nominal'
           ? userProfile.targetMonthlySpending * Math.pow(1 + infRateAnnual, y)
           : userProfile.targetMonthlySpending;
-        monthlyTargetSpending = baseMonthly;
+        // 연령대별 배수. 곡선이 없으면 1이라 기존 계산과 비트 단위로 같다.
+        // meetsSustainabilityGoal·UtilityEngine·MonthlySpendingComposition이 같은 함수를
+        // 써야 한다(SimulationParams.spendingCurve 주석).
+        monthlyTargetSpending = baseMonthly * spendingMultiplierForAge(params.spendingCurve, currentAge);
       }
       // 의료비는 목표 생활비와 같은 재원(자산 인출)에서 나가므로 월 단위로 환산해 더한다.
       monthlyTargetSpending += monthlyHealthcareCost;

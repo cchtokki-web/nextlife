@@ -9,6 +9,7 @@ import {
 } from '../../entities/types';
 import { DEFAULT_UTILITY_CONFIG } from './utilityWeights';
 import { usesMaximizeBequestScoring } from '../strategy/compileStrategy';
+import { spendingMultiplierForAge } from '../spending/spendingCurve';
 import { sumTotalTaxesAndLevies } from '../tax/annualTaxTotals';
 
 function clamp(value: number, min: number, max: number): number {
@@ -46,7 +47,10 @@ function targetAnnualSpendingForYear(params: SimulationParams, r: SimulationYear
   const target = inflationMode === 'nominal'
     ? base * Math.pow(1 + inflationRate / 100, yearIndex)
     : base;
-  return target + r.healthcareSpending;
+  // 연령대별 배수는 엔진이 실제 지출에 이미 반영했으므로 분모에도 같은 배수가 들어가야 한다.
+  // 빼먹으면 배수가 1 미만인 구간이 "목표 초과 소비"로 읽혀 점수가 부풀고(clamp되어 만점),
+  // 1을 넘는 구간이 결손으로 잡힌다.
+  return target * spendingMultiplierForAge(params.spendingCurve, r.age) + r.healthcareSpending;
 }
 
 // 목표 대비 소비 충족률(ratio)의 연도별 효용. 부족분은 볼록(convex) 페널티로 강하게 반영하고,

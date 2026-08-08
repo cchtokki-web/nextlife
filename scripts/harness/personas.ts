@@ -8,7 +8,9 @@
 // 고자산층(15억+)은 제외했다. 초기자산 범위는 0.25억 ~ 5.8억이다.
 import {
   SimulationParams, InvestmentAsset, PrivatePension, IsaAccount, HealthcareAssumptions,
+  SpendingShapePreset,
 } from '@/core/entities/types';
+import { DEFAULT_RETIREMENT_STRATEGY } from '@/core/usecases/strategy/compileStrategy';
 import { resolveTaxSettings } from '@/core/usecases/tax/taxRates';
 
 const 만 = 10_000;
@@ -333,5 +335,38 @@ P('60대 후 고물가 가정', '물가 4%. 실질 기준에서 자산이 녹는
   base({ currentAge: 66, retirementAge: 66, expectancy: 90, monthlySpending: 3_000_000,
     assets: [krEtf(2 * 억)], pensions: [irp(1.2 * 억, 0)], npMonthly: 1_600_000,
     inflationRate: 4.0 }));
+
+// ── E. 평생 소비 최적화 ──
+//
+// 앞의 51명과 달리 spendingStrategy가 'max_sustainable'이다. 목표 생활비를 사용자가 정하지
+// 않고 자산에서 역산하므로, 재는 것이 다르다: 점수가 아니라 **역산된 금액과 그 계획의
+// 성공률**이다. 같은 자산·같은 상속 목표에 소비 성향만 바꿔 3명을 두어, 활동기 집중형이
+// 성공률을 얼마나 깎는지(이 기능의 핵심 트레이드오프)를 나란히 볼 수 있게 한다.
+const optimized = (shape: SpendingShapePreset): SimulationParams => ({
+  ...base({
+    currentAge: 60, retirementAge: 60, expectancy: 90,
+    // max_sustainable에서 이 값은 인출 목표가 아니라 채점 분모(= 사용자가 말한 "필요")다.
+    monthlySpending: 3_500_000,
+    assets: [krEtf(3 * 억), usEtf(2 * 억)],
+    pensions: [irp(1.5 * 억, 0), savingsPension(1 * 억, 0)],
+    npMonthly: 1_500_000,
+  }),
+  spendingStrategy: 'max_sustainable',
+  strategy: {
+    ...DEFAULT_RETIREMENT_STRATEGY,
+    spendingChoice: 'max_sustainable',
+    bequestStrategy: 'target_amount',
+    spendingShape: shape,
+  },
+  userProfile: {
+    currentAge: 60, retirementAge: 60, expectancy: 90,
+    targetMonthlySpending: 3_500_000,
+    targetBequest: 1 * 억,
+  },
+});
+
+P('평생소비-균등형', '1억을 남기면서 평생 얼마를 쓸 수 있나 (기준선)', optimized('flat'));
+P('평생소비-활동기 집중형', '앞을 두텁게 하면 기준액과 성공률이 얼마나 깎이나', optimized('front_loaded'));
+P('평생소비-의료돌봄 대비형', '뒤를 두텁게 하면 어떻게 달라지나', optimized('care_heavy'));
 
 export const PERSONAS: readonly Persona[] = personas;

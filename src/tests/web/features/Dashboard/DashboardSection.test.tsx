@@ -1,5 +1,5 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, within } from '@testing-library/react';
 import { DashboardSection } from '@/web/features/Dashboard/DashboardSection';
 import {
   CompleteWithdrawalPlan,
@@ -10,6 +10,7 @@ import {
   UtilityBreakdown,
 } from '@/core/entities/types';
 import { makeYearlyResult as sharedYearlyResult } from '@/tests/fixtures/yearlyResult';
+import { DEFAULT_RETIREMENT_STRATEGY } from '@/core/usecases/strategy/compileStrategy';
 
 vi.mock('next-auth/react', () => ({
   useSession: () => ({ data: null }),
@@ -264,16 +265,121 @@ describe('DashboardSection - 지속가능 생활비 제안 배너', () => {
     expect(screen.queryByText(/지속하기 어렵습니다/)).not.toBeInTheDocument();
   });
 
-  // max_sustainable은 이미 그 값이 실제 생활비로 적용된 상태라, 기존 "최대 고정 생활비
-  // 산출 완료" 배너가 담당한다. 두 배너가 같은 숫자를 두 번 말하면 안 된다.
-  test('max_sustainable 전략에서는 제안 배너 대신 기존 적용 배너만 보여준다', () => {
+  // max_sustainable은 이미 그 값이 실제 생활비로 적용된 상태라, 「평생 소비 최적화 결과」
+  // 배너가 담당한다. 두 배너가 같은 숫자를 두 번 말하면 안 된다.
+  test('max_sustainable 전략에서는 제안 배너 대신 역산 결과 배너만 보여준다', () => {
     const maxSusParams: SimulationParams = { ...params, spendingStrategy: 'max_sustainable' };
     const maxSusResult: SimulationResult = { ...result, calculatedTargetSpending: 4420000 };
 
     render(<DashboardSection params={maxSusParams} result={maxSusResult} />);
 
     expect(screen.queryByText(/더 쓸 수 있습니다/)).not.toBeInTheDocument();
-    expect(screen.getByText('최대 고정 생활비 산출 완료')).toBeInTheDocument();
+    expect(screen.getByText('평생 소비 최적화 결과')).toBeInTheDocument();
+  });
+});
+
+describe('DashboardSection - 평생 소비 최적화 결과 배너', () => {
+  const curve = { breakpointAges: [70, 80], multipliers: [1.2, 1.0, 0.8] };
+  const optimizedParams = (overrides: Partial<SimulationParams> = {}): SimulationParams => ({
+    ...params,
+    spendingStrategy: 'max_sustainable',
+    userProfile: { ...params.userProfile, retirementAge: 60, expectancy: 90 },
+    ...overrides,
+  });
+  const optimizedResult: SimulationResult = { ...result, calculatedTargetSpending: 5_000_000 };
+
+  // 배너 안으로 범위를 좁힌다 — 대시보드의 다른 조각에도 리스트와 성공률 문구가 있다.
+  const banner = () => screen.getByText('평생 소비 최적화 결과').closest('div')!;
+  const bannerItems = () => within(banner()).queryAllByRole('listitem').map((el) => el.textContent);
+
+  test('곡선이 없으면 단일 금액을 말한다', () => {
+    render(<DashboardSection params={optimizedParams()} result={optimizedResult} />);
+
+    expect(screen.getByText('평생 소비 최적화 결과')).toBeInTheDocument();
+    expect(bannerItems()).toEqual([]);
+  });
+
+  test('곡선이 있으면 연령 구간별 금액을 나열한다', () => {
+    render(
+      <DashboardSection params={optimizedParams({ spendingCurve: curve })} result={optimizedResult} />
+    );
+
+    const items = bannerItems();
+    expect(items).toHaveLength(3);
+    expect(items[0]).toMatch(/60~69세/);
+    expect(items[2]).toMatch(/80~90세/);
+  });
+
+  test('목표 상속자산이 있으면 그 금액을 남긴다고 말한다', () => {
+    render(
+      <DashboardSection
+        params={optimizedParams({ spendingCurve: curve, assetFloor: 100_000_000 })}
+        result={optimizedResult}
+      />
+    );
+
+    expect(screen.getByText(/90세에/)).toBeInTheDocument();
+  });
+
+  test('역산액이 최소 생활비에 못 미치면 경고한다', () => {
+    render(
+      <DashboardSection
+        params={optimizedParams({
+          spendingCurve: curve, // 최저 구간 = 5,000,000 × 0.8 = 400만원
+          strategy: { ...DEFAULT_RETIREMENT_STRATEGY, minMonthlySpending: 4_500_000 },
+        })}
+        result={optimizedResult}
+      />
+    );
+
+    expect(screen.getByText('역산된 생활비가 최소 기준에 못 미칩니다')).toBeInTheDocument();
+  });
+
+  test('최소 생활비를 충족하면 경고하지 않는다', () => {
+    render(
+      <DashboardSection
+        params={optimizedParams({
+          spendingCurve: curve,
+          strategy: { ...DEFAULT_RETIREMENT_STRATEGY, minMonthlySpending: 3_000_000 },
+        })}
+        result={optimizedResult}
+      />
+    );
+
+    expect(screen.queryByText('역산된 생활비가 최소 기준에 못 미칩니다')).not.toBeInTheDocument();
+  });
+
+  // successRate가 아니라 fullSpendingRate를 쓴다. 목표 상속자산을 정하면 엔진이 그 선
+  // 아래로 인출을 막아 고갈이 구조적으로 일어나지 않으므로 successRate는 거의 항상 100%다
+  // (하니스 실측: 성공률 100% / 완전소비율 43%). 배너의 주장이 "이만큼 쓸 수 있다"이므로
+  // 물어야 할 확률은 "그 금액을 실제로 다 쓰는 비율"이다.
+  test('확률은 자산 유지율이 아니라 목표 생활비 완전 유지율을 말한다', () => {
+    const { rerender } = render(
+      <DashboardSection params={optimizedParams()} result={optimizedResult} monteCarloStatus="running" />
+    );
+    expect(banner().textContent).not.toMatch(/유지할 확률/);
+
+    rerender(
+      <DashboardSection
+        params={optimizedParams()} result={optimizedResult}
+        monteCarloStatus="done"
+        // 배너는 successRate만 읽지만, 같은 화면의 MonteCarloSection이 나머지 필드를
+        // 렌더하므로 실제 결과 형태를 그대로 넘긴다.
+        monteCarlo={{
+          trials: 1000, seed: 20260101, successAge: 90,
+          // 목표 상속자산이 고갈을 막아 성공률은 100%지만, 그 금액을 온전히 쓰는 것은
+          // 43%뿐인 상황(하니스 실측 형태).
+          successRate: 1, fullSpendingRate: 0.43,
+          endingAssets: { p10: 0, p50: 1, p90: 2, mean: 1 },
+          assetBand: [], depletion: { count: 0, earliestAge: null, medianAge: null },
+          deterministicEndingAssets: 1, worstDecilePath: [],
+        }}
+      />
+    );
+    // 위험 분석 섹션도 같은 확률을 말하므로 배너 안으로 좁혀서 본다.
+    // successRate 100%가 아니라 fullSpendingRate 43%를 말해야 한다.
+    expect(banner().textContent).toMatch(/43%/);
+    expect(banner().textContent).not.toMatch(/100%/);
   });
 });
 

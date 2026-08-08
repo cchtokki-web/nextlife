@@ -1,4 +1,5 @@
 import { SimulationParams, SimulationResult, SimulationYearlyResult } from '../entities/types';
+import { spendingMultiplierForAge } from './spending/spendingCurve';
 
 export interface MonthlySpendingComposition {
   age: number;
@@ -44,6 +45,10 @@ export function computeMonthlySpendingComposition(
     if (params.inflationMode === 'nominal') {
       targetMonthly = targetMonthly * Math.pow(1 + infRateAnnual, y);
     }
+
+    // 연령대별 배수. 엔진이 실제 지출에 반영한 것과 같은 곡선을 써야 차트의 목표선과
+    // 재원 스택이 어긋나지 않는다.
+    targetMonthly *= spendingMultiplierForAge(params.spendingCurve, age);
 
     // 의료비도 그해에 반드시 나가야 하는 필요분이다. r.spending에는 이미 포함되어 있으므로
     // 여기 targetMonthly에 더하지 않으면, 의료비만큼 커진 실제 지출이 목표를 넘어서면서

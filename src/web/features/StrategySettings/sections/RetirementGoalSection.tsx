@@ -5,7 +5,8 @@ import { FieldRow, RadioCardGroup } from '../../../components/form';
 import { currencySuffix } from '../currencySuffix';
 import { isFieldVisible } from '../fieldVisibility';
 import {
-  AiRecommendationState, BEQUEST_OPTIONS, OBJECTIVE_OPTIONS, SPENDING_STRATEGY_OPTIONS, SectionProps,
+  AiRecommendationState, BEQUEST_OPTIONS, OBJECTIVE_OPTIONS, SPENDING_SHAPE_OPTIONS,
+  SPENDING_STRATEGY_OPTIONS, SectionProps,
 } from '../strategyOptions';
 import { resolveStrategy } from '../../../../core/usecases/strategy/compileStrategy';
 import { DEFAULT_UTILITY_CONFIG } from '../../../../core/usecases/utility/utilityWeights';
@@ -159,6 +160,68 @@ export function RetirementGoalSection({ params, onChangeParams, mode, changed, a
                     targetBequest: raw === '' ? 0 : Number(raw),
                   },
                 });
+              }
+            }}
+          />
+        </FieldRow>
+      )}
+
+      {/*
+        아래 셋은 「평생 소비 최적화」에서만 보인다. 다른 전략에서는 인출액을 목표 생활비나
+        배당액이 정하므로 "연령대별 배분"과 "역산 결과가 너무 낮은가"라는 질문 자체가
+        성립하지 않는다. 상속 안전마진도 지켜야 할 금액(목표 상속자산)이 있어야 의미가 있다.
+      */}
+      {isFieldVisible(mode, 'strategy.spendingShape') && spendingChoice === 'max_sustainable' && (
+        <FieldRow
+          label="소비 성향"
+          tooltipText="연령대별로 생활비를 어떻게 나눌지 정합니다. 금액이 아니라 배분 모양을 고르는 것이며, 실제 금액은 자산에서 역산됩니다."
+          changed={changed.has('strategy.spendingShape')}
+        >
+          <RadioCardGroup
+            name="spending-shape" ariaLabel="소비 성향"
+            value={strategy.spendingShape ?? 'flat'}
+            options={SPENDING_SHAPE_OPTIONS}
+            onChange={(v) => setStrategy({ spendingShape: v })}
+          />
+        </FieldRow>
+      )}
+
+      {isFieldVisible(mode, 'strategy.minMonthlySpending') && spendingChoice === 'max_sustainable' && (
+        <FieldRow
+          label="최소 생활비"
+          tooltipText="역산된 금액이 이 값에 못 미치면 결과 화면에서 알려줍니다. 계산 자체를 바꾸지는 않습니다."
+          changed={changed.has('strategy.minMonthlySpending')}
+        >
+          <InputField
+            label="" aria-label="최소 생활비" type="text"
+            suffixText={currencySuffix(params.displayCurrency)}
+            value={(strategy.minMonthlySpending ?? 0).toLocaleString()}
+            onChange={(e) => {
+              const raw = e.target.value.replace(/,/g, '');
+              if (raw === '' || !isNaN(Number(raw))) {
+                setStrategy({ minMonthlySpending: raw === '' ? 0 : Number(raw) });
+              }
+            }}
+          />
+        </FieldRow>
+      )}
+
+      {isFieldVisible(mode, 'strategy.bequestSafetyMarginRate')
+        && spendingChoice === 'max_sustainable'
+        && strategy.bequestStrategy === 'target_amount' && (
+        <FieldRow
+          label="자산 안전마진"
+          tooltipText="목표 상속자산 위에 얹는 여유분입니다. 시장이 예상만큼 따라주지 않을 경우를 대비해 그만큼 덜 쓰도록 계산합니다. 상속 목표 금액 자체는 바뀌지 않습니다."
+          changed={changed.has('strategy.bequestSafetyMarginRate')}
+        >
+          <InputField
+            label="" aria-label="자산 안전마진" type="number" suffixText="%"
+            value={String(strategy.bequestSafetyMarginRate ?? 0)}
+            onChange={(e) => {
+              const raw = e.target.value;
+              const parsed = Number(raw);
+              if (raw === '' || !isNaN(parsed)) {
+                setStrategy({ bequestSafetyMarginRate: raw === '' ? 0 : Math.max(0, parsed) });
               }
             }}
           />

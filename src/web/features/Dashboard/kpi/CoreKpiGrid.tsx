@@ -14,6 +14,8 @@ interface CoreKpiGridProps {
   expectancy: number;
   endingAssets: number;
   monthlyTarget: number;
+  // 연령대별 생활비 곡선을 쓸 때, monthlyTarget이 어느 나이 기준인지. 곡선이 없으면 undefined.
+  monthlyTargetAge?: number;
   utilityScore?: number; // Lifetime Utility Score. 없으면(계산 실패 등) 카드 자체를 숨긴다.
   formatValue: (val: number) => string;
   resultBasis?: 'current' | 'recommended';
@@ -31,6 +33,7 @@ export function CoreKpiGrid({
   expectancy,
   endingAssets,
   monthlyTarget,
+  monthlyTargetAge,
   utilityScore,
   formatValue,
   resultBasis = 'current',
@@ -72,7 +75,11 @@ export function CoreKpiGrid({
       <KpiCard label={`${expectancy}세 예상 순자산 · ${resultBasis === 'recommended' ? '추천 결과' : '현재 계획'}`} icon={<Wallet size={16} aria-hidden="true" />}>
         <span className="font-display text-2xl font-semibold">{formatValue(endingAssets)}</span>
       </KpiCard>
-      <KpiCard label="예상 월 생활비" icon={<Landmark size={16} aria-hidden="true" />}>
+      {/* 연령대별 곡선을 쓰면 금액 하나가 어느 구간인지 밝혀야 한다 — 60대와 80대가 다르다. */}
+      <KpiCard
+        label={monthlyTargetAge !== undefined ? `예상 월 생활비 · ${monthlyTargetAge}세 기준` : '예상 월 생활비'}
+        icon={<Landmark size={16} aria-hidden="true" />}
+      >
         <span className="font-display text-2xl font-semibold">{formatValue(monthlyTarget)}</span>
       </KpiCard>
       {utilityScore !== undefined && (

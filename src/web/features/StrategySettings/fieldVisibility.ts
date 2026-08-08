@@ -16,6 +16,12 @@ export const SECTION_FIELDS: Record<SectionId, ReadonlyArray<FieldPath>> = {
   goal: [
     'strategy.spendingChoice',
     'userProfile.targetMonthlySpending',
+    // 아래 셋은 「평생 소비 최적화」(spendingChoice === 'max_sustainable')에서만 렌더된다.
+    // 여기 등록은 "이 섹션이 다루는 필드"라는 선언일 뿐 노출 조건은 섹션이 따로 판정한다
+    // (healthcare.* 하위 필드가 enabled 스위치에 딸려 있는 것과 같은 구조).
+    'strategy.spendingShape',
+    'strategy.minMonthlySpending',
+    'strategy.bequestSafetyMarginRate',
     'strategy.objective',
     'strategy.bequestStrategy',
     'userProfile.targetBequest',

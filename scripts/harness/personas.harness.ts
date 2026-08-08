@@ -1,7 +1,7 @@
-// 51인 페르소나 하니스. `npm run harness:personas`로만 돈다(vitest.harness.config.ts).
+// 페르소나 하니스. `npm run harness:personas`로만 돈다(vitest.harness.config.ts).
 //
 // **회귀 테스트가 아니다.** 단언하지 않고 지표를 뽑아 CSV/MD로 남긴다. 추천 엔진이나 효용
-// 산식을 건드릴 때 "51명에게 실제로 무슨 일이 일어나는가"를 숫자로 보기 위한 것이고,
+// 산식을 건드릴 때 "여러 사람에게 실제로 무슨 일이 일어나는가"를 숫자로 보기 위한 것이고,
 // 그 숫자에는 옳고 그름의 경계선이 아직 없는 것들(예: 목표 우선순위 축 승자 변화)이 섞여
 // 있어 단언으로 굳히면 정상적인 개선까지 막는다. `npm test`의 include 밖에 두는 이유다.
 //
@@ -49,7 +49,7 @@ function pearson(a: number[], b: number[]): number {
   return va === 0 || vb === 0 ? 0 : cov / (va * vb);
 }
 
-test('51인 페르소나 하니스', { timeout: 3_600_000 }, () => {
+test('페르소나 하니스', { timeout: 3_600_000 }, () => {
   const engine = new SimulationEngine();
   const rows: Record<string, string | number>[] = [];
   const details: string[] = [];
@@ -123,6 +123,7 @@ test('51인 페르소나 하니스', { timeout: 3_600_000 }, () => {
       depletionAge: baseResult.depletionAge ?? '',
       endingAssets: Math.round(baseResult.endingAssets),
       sustainableSpending: Math.round(baseResult.calculatedTargetSpending ?? 0),
+      spendingShape: persona.params.strategy?.spendingShape ?? '',
       unmetTotal: Math.round(sumBy(baseResult, (y) => y.unmetSpending)),
       totalTax: Math.round(totalTax(baseResult)),
       totalHealthIns: Math.round(sumBy(baseResult, (y) => y.healthInsurancePaid)),
@@ -203,6 +204,20 @@ test('51인 페르소나 하니스', { timeout: 3_600_000 }, () => {
     `- MC p10 기말자산이 0원인 페르소나: ${rows.filter((r) => num(r, 'mcP10') <= 0).length}명`,
     `- 사적연금 채널링 발동: ${rows.filter((r) => num(r, 'channeling') === 1).length}명`,
     '',
+    // 「평생 소비 최적화」는 점수가 아니라 "얼마를 쓸 수 있고 그 계획이 얼마나 버티는가"를
+    // 재는 모드라 따로 뽑는다. 소비 성향별로 그 트레이드오프가 드러난다.
+    ...(rows.some((r) => r.spendingShape)
+      ? ['### 평생 소비 최적화 (소비 성향별)', '',
+         // 성공률(고갈 안 함)이 아니라 완전소비율을 함께 본다. 목표 상속자산을 정하면
+         // 엔진이 그 선 아래 인출을 막아 고갈이 구조적으로 일어나지 않아 성공률이 거의
+         // 항상 100%가 된다 — 실제로 갈리는 것은 "그 금액을 다 쓰는가"다.
+         '| 페르소나 | 성향 | 역산 기준액 | 자산유지율 | 완전소비율 | 기말자산 |',
+         '|---|---|---|---|---|---|',
+         ...rows.filter((r) => r.spendingShape).map((r) =>
+           `| ${r.name} | ${r.spendingShape} | ${Math.round(num(r, 'sustainableSpending') / 만).toLocaleString()}만원/월 `
+           + `| ${r.mcSuccess}% | ${r.mcFullSpend}% | ${(num(r, 'endingAssets') / 억).toFixed(2)}억 |`),
+         '']
+      : []),
     ...(worsened.length > 0
       ? ['### 추천 적용 후 악화한 페르소나', '',
          ...worsened.map((r) => `- ${r.no} ${r.name}: ${r.mcSuccess}% → ${r.mcRecSuccess}% (배수 ${r.spendMultiplier || '-'})`), '']
@@ -221,7 +236,7 @@ test('51인 페르소나 하니스', { timeout: 3_600_000 }, () => {
   fs.writeFileSync(path.join(OUT_DIR, 'personas.csv'), csv, 'utf-8');
   fs.writeFileSync(
     path.join(OUT_DIR, 'personas.md'),
-    `# 51인 페르소나 하니스 결과\n\n${summary}\n---\n\n${details.join('\n')}`,
+    `# 페르소나 하니스 결과\n\n${summary}\n---\n\n${details.join('\n')}`,
     'utf-8'
   );
 

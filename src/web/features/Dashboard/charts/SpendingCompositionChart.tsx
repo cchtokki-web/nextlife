@@ -2,8 +2,9 @@
 
 import {
   ResponsiveContainer,
-  AreaChart,
+  ComposedChart,
   Area,
+  Line,
   XAxis,
   YAxis,
   Tooltip,
@@ -89,8 +90,9 @@ export function SpendingCompositionChart({ params, result, hiddenKeys, onLegendC
   const currency = params.displayCurrency;
   const spendingChartData: SpendingChartRow[] = computeMonthlySpendingComposition(result.yearlyResults, params, result).map((d) => ({
     age: d.age,
-    // 차트에 그리지는 않는다(재원을 쌓은 높이가 곧 목표라 선을 겹쳐도 정보가 늘지 않는다).
-    // 툴팁이 "얼마 중 얼마"를 말하기 위해서만 싣는다.
+    // 균등형에서는 그리지 않는다 — 재원을 쌓은 높이가 곧 목표라 평평한 선을 겹쳐도 정보가
+    // 늘지 않고, 툴팁이 "얼마 중 얼마"를 이미 말한다. 연령대별 곡선을 쓸 때만 선으로 그린다
+    // (아래 Line의 params.spendingCurve 조건).
     목표생활비: d.targetMonthly,
     사적연금: d.privatePenUsed,
     국민연금: d.nationalUsed,
@@ -118,7 +120,7 @@ export function SpendingCompositionChart({ params, result, hiddenKeys, onLegendC
       <div className={styles.chartScrollWrapper}>
         <div className={styles.chartContainer}>
           <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={spendingChartData} margin={{ top: 10, right: 43, left: 0, bottom: 0 }}>
+            <ComposedChart data={spendingChartData} margin={{ top: 10, right: 43, left: 0, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(255, 255, 255, 0.05)" />
               <XAxis
                 dataKey="age"
@@ -210,6 +212,26 @@ export function SpendingCompositionChart({ params, result, hiddenKeys, onLegendC
                 fillOpacity={0.7}
                 hide={!!hiddenKeys['자산부족']}
               />
+              {/*
+                목표선은 곡선 모드에서만 그린다.
+
+                균등형에서는 원래 그리지 않았고 그 판단은 여전히 옳다 — 재원을 쌓은 높이가
+                곧 목표라 평평한 선을 겹쳐도 정보가 늘지 않는다. 하지만 연령대별 곡선을 쓰면
+                목표 자체가 계단으로 오르내리므로, 그 계단이 보이지 않으면 사용자는 스택 높이가
+                왜 나이에 따라 달라지는지 알 수 없다.
+              */}
+              {params.spendingCurve && (
+                <Line
+                  type="stepAfter"
+                  name="목표생활비"
+                  dataKey="목표생활비"
+                  stroke="#F8FAFC"
+                  strokeWidth={2}
+                  strokeDasharray="5 3"
+                  dot={false}
+                  hide={!!hiddenKeys['목표생활비']}
+                />
+              )}
               <ReferenceLine
                 y={monthlyPensionLimit}
                 stroke="#F8FAFC"
@@ -224,7 +246,7 @@ export function SpendingCompositionChart({ params, result, hiddenKeys, onLegendC
                   offset: 10,
                 }}
               />
-            </AreaChart>
+            </ComposedChart>
           </ResponsiveContainer>
         </div>
       </div>

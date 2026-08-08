@@ -1,11 +1,11 @@
 import {
-  Activity, Banknote, CalendarClock, CalendarMinus, CalendarPlus, CloudRain, Coins, Flame, Gift,
-  HandCoins, Leaf, PiggyBank, Receipt, Rocket, Shield, ShieldCheck, SlidersHorizontal, Sparkles,
-  TrendingDown, TrendingUp, Wallet,
+  Activity, Banknote, CalendarClock, CalendarMinus, CalendarPlus, CloudRain, Coins, Equal, Flame, Gift,
+  HandCoins, HeartPulse, Leaf, PiggyBank, Plane, Receipt, Rocket, Shield, ShieldCheck, SlidersHorizontal,
+  Sparkles, TrendingDown, TrendingUp, Wallet,
 } from 'lucide-react';
 import {
   BequestStrategy, EconomicScenario, HealthcareAssumptions, IsaFirstChoice, NationalPensionStrategy, ObjectivePriority,
-  PrivatePensionStrategy, RiskProfile, SimulationParams, SpendingStrategyChoice,
+  PrivatePensionStrategy, RiskProfile, SimulationParams, SpendingShapePreset, SpendingStrategyChoice,
   StrategyMode, StrategyRecommendation,
 } from '../../../core/entities/types';
 import { RadioCardOption } from '../../components/form';
@@ -61,8 +61,11 @@ export const SPENDING_STRATEGY_OPTIONS: ReadonlyArray<RadioCardOption<SpendingSt
     icon: <Coins size={16} />,
   },
   {
-    value: 'max_sustainable', label: '최대 생활비 자동 계산',
-    description: '기대수명까지 정확히 다 쓰는 금액을 역산해 알려줍니다.',
+    value: 'max_sustainable', label: '평생 소비 최적화',
+    // 예전 문구는 "기대수명까지 정확히 다 쓰는 금액"이었다. 그 설명은 상속 목표를 함께
+    // 설정했을 때 이 모드가 실제로 하는 일 — 목표 잔여자산을 남기면서 역산 — 을 감췄고,
+    // 아래 소비 성향으로 연령대별 배분까지 정할 수 있게 된 지금은 더 어긋난다.
+    description: '남기고 싶은 자산과 소비 성향을 정하면, 연령대별로 쓸 수 있는 금액을 역산합니다.',
     icon: <TrendingUp size={16} />,
   },
   {
@@ -71,6 +74,28 @@ export const SPENDING_STRATEGY_OPTIONS: ReadonlyArray<RadioCardOption<SpendingSt
     // 뜨고, 계산에 들어가는 것은 사용자가 입력한 목표 생활비다.
     description: '지금 자산과 목표를 보고 무리 없는 생활비를 제안합니다. 계산에는 입력한 목표 생활비가 그대로 쓰입니다.',
     icon: <Sparkles size={16} />,
+  },
+];
+
+// 은퇴 후 생활비를 연령대별로 어떻게 배분할지. 「평생 소비 최적화」에서만 보인다 —
+// 다른 전략에서는 인출액을 목표 생활비나 배당액이 정하므로 배분을 논할 자리가 없다.
+//
+// 사용자가 고르는 것은 "얼마"가 아니라 "모양"이다. 실제 금액은 자산에서 역산된다.
+export const SPENDING_SHAPE_OPTIONS: ReadonlyArray<RadioCardOption<SpendingShapePreset>> = [
+  {
+    value: 'flat', label: '실질생활비 균등형',
+    description: '구매력 기준으로 매년 같은 금액을 씁니다.',
+    icon: <Equal size={16} />, recommended: true,
+  },
+  {
+    value: 'front_loaded', label: '활동기 집중형',
+    description: '건강한 60대에 더 쓰고 나이가 들수록 줄입니다. 여행·취미를 앞당기고 싶을 때.',
+    icon: <Plane size={16} />,
+  },
+  {
+    value: 'care_heavy', label: '의료·돌봄 대비형',
+    description: '초반을 아껴 80대 이후를 두텁게 합니다. 간병·요양 비용이 걱정될 때.',
+    icon: <HeartPulse size={16} />,
   },
 ];
 

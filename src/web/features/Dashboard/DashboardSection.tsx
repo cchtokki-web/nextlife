@@ -26,6 +26,8 @@ import { MonteCarloStatus } from '../../hooks/useMonteCarlo';
 import { SequenceRiskResult } from '../../../core/usecases/montecarlo/sequenceRisk';
 import { computeRiskAlerts } from '../../../core/usecases/dashboard/computeRiskAlerts';
 import { computeSustainableSpendingAdvice } from '../../../core/usecases/dashboard/computeSustainableSpendingAdvice';
+import { computeLifetimeSpendingPlan } from '../../../core/usecases/dashboard/computeLifetimeSpendingPlan';
+import { spendingMultiplierForAge } from '../../../core/usecases/spending/spendingCurve';
 import { useBeforeAfterToggle } from './hooks/useBeforeAfterToggle';
 import { ExecutionRoadmap } from './roadmap/ExecutionRoadmap';
 import { computeExecutionRoadmap, selectDepletionAge } from '../../../core/usecases/dashboard/computeExecutionRoadmap';
@@ -122,6 +124,18 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
       ? Math.round(monthlyTarget * recommendation.recommendedPlan.monthlySpendingMultiplier)
       : monthlyTarget;
 
+  // 연령대별 곡선을 쓰면 "월 생활비" 한 값이 무엇을 가리키는지 모호해진다(60대와 80대가
+  // 다른 금액이다). 은퇴 후면 지금 나이 구간, 은퇴 전이면 첫 구간(은퇴 직후)을 보여준다 —
+  // 사용자가 가장 먼저 겪을 금액이다.
+  const spendingCurveLabelAge = Math.max(
+    params.userProfile.currentAge,
+    params.userProfile.retirementAge
+  );
+  const curveMultiplier = spendingMultiplierForAge(params.spendingCurve, spendingCurveLabelAge);
+  const curvedMonthlyTarget = params.spendingCurve
+    ? Math.round(displayedMonthlyTarget * curveMultiplier)
+    : displayedMonthlyTarget;
+
   const captions = generateChartCaptions(displayedResult, params);
   const riskAlerts = computeRiskAlerts(displayedResult, params);
 
@@ -150,6 +164,12 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
 
   // 다른 배너와 같은 이유로 baseline(현재 설정)을 쓴다 — 이 제안은 "지금 설정을 이렇게
   // 바꿔 보라"는 말이므로 Before/After 미리보기를 따라가면 자기 자신을 근거로 삼게 된다.
+  // 「평생 소비 최적화」의 역산 결과를 연령 구간으로 펼친다. 다른 전략에서는 null이다.
+  // baseline(현재 설정)을 쓰는 것은 아래 sustainableSpendingAdvice와 같은 이유다.
+  const lifetimeSpendingPlan = React.useMemo(
+    () => computeLifetimeSpendingPlan(params, result),
+    [params, result]
+  );
   const sustainableSpendingAdvice = computeSustainableSpendingAdvice(
     params.spendingStrategy,
     params.userProfile.targetMonthlySpending,
@@ -215,7 +235,8 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
         survivalScore={displayedResult.retirementScore}
         expectancy={params.userProfile.expectancy}
         endingAssets={displayedResult.endingAssets}
-        monthlyTarget={displayedMonthlyTarget}
+        monthlyTarget={curvedMonthlyTarget}
+        monthlyTargetAge={params.spendingCurve ? spendingCurveLabelAge : undefined}
         utilityScore={displayedResult.utility?.score}
         formatValue={formatValue}
         resultBasis={mode === 'after' ? 'recommended' : 'current'}
@@ -225,9 +246,51 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
         />
 
         <div className={styles.statusList} aria-label="현재 계획 상태">
-          {params.spendingStrategy === 'max_sustainable' && result.calculatedTargetSpending !== undefined && (
-            <StatusNotice tone="success" icon={<Award size={19} aria-hidden="true" />} title="최대 고정 생활비 산출 완료">
-              고갈 없이 유지 가능한 최대 월 생활비는 <strong>{formatValue(result.calculatedTargetSpending)}</strong>입니다.
+          {lifetimeSpendingPlan && (
+            <StatusNotice tone="success" icon={<Award size={19} aria-hidden="true" />} title="평생 소비 최적화 결과">
+              {lifetimeSpendingPlan.assetFloor !== undefined
+                ? <>{params.userProfile.expectancy}세에 <strong>{formatValue(lifetimeSpendingPlan.assetFloor)}</strong>을 남기면서, </>
+                : <>고갈 없이 유지하면서, </>}
+              {lifetimeSpendingPlan.segments.length > 0
+                ? (
+                  <>
+                    연령대별로 다음 금액까지 쓸 수 있습니다.
+                    <ul className={styles.spendingPlanList}>
+                      {lifetimeSpendingPlan.segments.map((s) => (
+                        <li key={s.fromAge}>
+                          {s.fromAge}~{s.toAge ?? params.userProfile.expectancy}세{' '}
+                          <strong>{formatValue(s.monthlyAmount)}</strong>
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                )
+                : <>월 <strong>{formatValue(lifetimeSpendingPlan.baseMonthly)}</strong>까지 쓸 수 있습니다.</>}
+              {/*
+                결정론 한 경로의 결과이므로 확률을 함께 보여준다. 계산이 끝났을 때만 —
+                없는 숫자를 기다리게 하지 않는다.
+
+                **successRate가 아니라 fullSpendingRate를 쓴다.** 이 배너의 주장은 "이만큼 쓸 수
+                있다"이므로, 물어야 할 확률은 "그 금액을 실제로 다 쓰는 비율"이다. 자산 고갈
+                여부(successRate)는 여기서 거의 정보가 없다 — 목표 상속자산을 정하면 엔진이
+                그 선 아래로 인출을 막아 고갈이 구조적으로 일어나지 않는다. 하니스 실측:
+                성공률 100%인 계획의 완전소비율이 43%였다. 그 계획에 "성공확률 100%"라고
+                말하는 것은 사용자를 오도한다.
+              */}
+              {monteCarloStatus === 'done' && monteCarlo && (
+                <> 다만 시장 변동을 반영하면 이 금액을 한 해도 줄이지 않고 유지할 확률은{' '}
+                  <strong>{Math.round(monteCarlo.fullSpendingRate * 100)}%</strong>입니다.</>
+              )}
+            </StatusNotice>
+          )}
+          {lifetimeSpendingPlan?.belowMinimum && (
+            <StatusNotice
+              tone="danger" icon={<AlertTriangle size={19} aria-hidden="true" />}
+              title="역산된 생활비가 최소 기준에 못 미칩니다"
+            >
+              가장 적은 구간이 월 <strong>{formatValue(lifetimeSpendingPlan.belowMinimum.lowestMonthly)}</strong>으로,
+              설정한 최소 생활비({formatValue(lifetimeSpendingPlan.belowMinimum.minMonthlySpending)})보다 낮습니다.
+              목표 상속자산을 줄이거나 은퇴 시점을 늦추는 방향을 검토해 보세요.
             </StatusNotice>
           )}
           {sustainableSpendingAdvice?.kind === 'can_spend_more' && (

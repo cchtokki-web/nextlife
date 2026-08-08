@@ -7,6 +7,7 @@ import {
 } from '../pension/nationalPensionRules';
 import { applyYieldPreset } from '../scenario/applyYieldPreset';
 import { applyEconomicScenario } from '../scenario/economicScenarios';
+import { resolveSpendingCurve } from '../spending/spendingCurve';
 import { resolveTaxSettings } from '../tax/taxRates';
 import { createUtilityConfig, DEFAULT_UTILITY_CONFIG } from '../utility/utilityWeights';
 import { OBJECTIVE_WEIGHT_PRESETS } from './objectivePresets';
@@ -48,6 +49,12 @@ export const DEFAULT_RETIREMENT_STRATEGY: RetirementStrategy = {
   preferIsaFirst: 'pension_first',
   riskProfile: 'ai_recommended',
   economicScenario: 'ai_recommended',
+  // 'flat'은 resolveSpendingCurve에서 undefined로 해소되어 spendingCurve 키 자체가 생기지
+  // 않는다. 즉 이 기본값으로 컴파일해도 곡선 코드 경로를 타지 않는다.
+  spendingShape: 'flat',
+  // 0이면 resolveAssetFloor가 기존과 같은 값을 낸다.
+  bequestSafetyMarginRate: 0,
+  // 미지정 = 경고 없음. 0을 기본값으로 두면 "월 0원 미만"이라는 무의미한 판정이 생긴다.
 };
 
 // 전략 컴파일러 이전에 출시되어 사용자 데이터에 남아 있는 저수준 필드에서 전략 축을 유도한다.
@@ -251,10 +258,23 @@ function resolveTargetBequest(
 //
 // 'maximize'도 하한선이 없다. "가능한 한 많이 남긴다"에는 지켜야 할 특정 금액이 없고,
 // 채점 곡선(monotonicAdequacyRaw)이 이미 많이 남기는 계획을 서열 위로 올린다.
-function resolveAssetFloor(strategy: BequestStrategy, targetBequest: number | undefined): number | undefined {
+//
+// 안전마진(safetyMarginRate, %)은 **하한선만** 부풀린다. 목표가 1억이고 마진이 20%면 엔진은
+// 1.2억을 지키도록 인출을 막지만, 채점은 여전히 1억을 적정선으로 본다. 마진은 "시장이
+// 예상만큼 안 따라줄 경우를 위한 여유"이지 상속 목표를 올리는 것이 아니기 때문이다 —
+// 채점까지 올리면 여유를 크게 잡을수록 상속 점수가 낮아지는(적정선을 못 채운 것으로 읽히는)
+// 반대 방향 압력이 생긴다.
+function resolveAssetFloor(
+  strategy: BequestStrategy,
+  targetBequest: number | undefined,
+  safetyMarginRate: number | undefined
+): number | undefined {
   if (strategy !== 'target_amount') return undefined;
   if (targetBequest === undefined || targetBequest <= 0) return undefined;
-  return targetBequest;
+
+  const margin = Math.max(0, safetyMarginRate ?? 0);
+  if (margin === 0) return targetBequest;
+  return Math.round(targetBequest * (1 + margin / 100));
 }
 
 // spendingChoice → 엔진 SpendingStrategy.
@@ -320,7 +340,14 @@ export function compileStrategy(params: SimulationParams): CompiledStrategy {
   }
 
   const spendingStrategy = resolveSpendingStrategy(strategy.spendingChoice);
-  const assetFloor = resolveAssetFloor(strategy.bequestStrategy, targetBequest);
+  const assetFloor = resolveAssetFloor(
+    strategy.bequestStrategy,
+    targetBequest,
+    strategy.bequestSafetyMarginRate
+  );
+  // 'flat'·미지정이면 undefined다 — 그때는 아래에서 키 자체를 지워, 곡선을 설정한 적 없는
+  // 시나리오가 곡선 코드 경로를 아예 타지 않게 한다.
+  const spendingCurve = resolveSpendingCurve(strategy.spendingShape);
 
   // 경제 시나리오 → 리스크 성향 순으로 적용한다. 둘 다 수익률을 건드리므로
   // 순서가 결과를 결정한다: 시나리오는 물가·환율을, 리스크 성향은 수익률을 지배한다.
@@ -390,6 +417,8 @@ export function compileStrategy(params: SimulationParams): CompiledStrategy {
   };
   if (assetFloor === undefined) delete compiledParams.assetFloor;
   else compiledParams.assetFloor = assetFloor;
+  if (spendingCurve === undefined) delete compiledParams.spendingCurve;
+  else compiledParams.spendingCurve = spendingCurve;
 
   return { params: compiledParams, utilityConfig };
 }

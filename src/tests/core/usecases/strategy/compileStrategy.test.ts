@@ -119,3 +119,63 @@ describe('compileStrategy', () => {
     expect(params).toEqual(snapshot);
   });
 });
+
+describe('compileStrategy - 연령대별 생활비 곡선', () => {
+  test("기본값('flat')은 spendingCurve 키 자체를 만들지 않는다", () => {
+    // 기본 전략으로 컴파일해도 결과가 안 바뀐다는 불변식. 키가 남으면 곡선 코드 경로를
+    // 타게 되고, `{ spendingCurve: undefined }`는 JSON 직렬화에서 "키가 없는 것"과 달라
+    // useScenarios의 dirty 비교가 흔들린다.
+    const result = compileStrategy(withStrategy({}));
+
+    expect('spendingCurve' in result.params).toBe(false);
+  });
+
+  test('활동기 집중형은 감소하는 배수 곡선으로 해소된다', () => {
+    const result = compileStrategy(withStrategy({ spendingShape: 'front_loaded' }));
+    const curve = result.params.spendingCurve!;
+
+    expect(curve.multipliers[0]).toBeGreaterThan(curve.multipliers[curve.multipliers.length - 1]);
+    expect(curve.multipliers.length).toBe(curve.breakpointAges.length + 1);
+  });
+});
+
+describe('compileStrategy - 상속 안전마진', () => {
+  const withTarget = (patch: Partial<RetirementStrategy>): SimulationParams => ({
+    ...withStrategy({ bequestStrategy: 'target_amount', ...patch }),
+    userProfile: { ...baseParams.userProfile, targetBequest: 100_000_000 },
+  });
+
+  test('마진은 엔진 하한선만 부풀리고 채점 기준은 건드리지 않는다', () => {
+    // assetFloor(엔진 제약)와 targetBequest(채점 기준)의 역할 구분을 지킨다.
+    // 채점까지 올리면 여유를 크게 잡을수록 "적정선을 못 채웠다"로 읽혀 상속 점수가
+    // 낮아지는 반대 방향 압력이 생긴다.
+    const result = compileStrategy(withTarget({ bequestSafetyMarginRate: 20 }));
+
+    expect(result.params.assetFloor).toBe(120_000_000);
+    expect(result.params.userProfile.targetBequest).toBe(100_000_000);
+  });
+
+  test('마진 0은 기존 동작과 같다', () => {
+    const withoutMargin = compileStrategy(withTarget({}));
+    const zeroMargin = compileStrategy(withTarget({ bequestSafetyMarginRate: 0 }));
+
+    expect(withoutMargin.params.assetFloor).toBe(100_000_000);
+    expect(zeroMargin.params.assetFloor).toBe(100_000_000);
+  });
+
+  test('상속 전략이 target_amount가 아니면 마진을 줘도 하한선이 생기지 않는다', () => {
+    // 마진은 "지켜야 할 금액"에 붙는 것이라 지킬 금액이 없으면 의미가 없다.
+    const result = compileStrategy(withStrategy({
+      bequestStrategy: 'leave_some',
+      bequestSafetyMarginRate: 20,
+    }));
+
+    expect('assetFloor' in result.params).toBe(false);
+  });
+
+  test('음수 마진은 하한선을 낮추지 않는다', () => {
+    const result = compileStrategy(withTarget({ bequestSafetyMarginRate: -50 }));
+
+    expect(result.params.assetFloor).toBe(100_000_000);
+  });
+});
