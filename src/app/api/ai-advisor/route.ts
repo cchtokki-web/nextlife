@@ -71,7 +71,11 @@ export function buildSimulationContextText(body: AiAdvisorRequestBody): string {
       `활용하는가"를 종합 평가): ${utility.score}점/100점`
     );
     // 가중치를 넘기지 않으면 기본 배점이 쓰여 화면(UtilityBreakdownBars)과 다른 분모를 말하게 된다.
-    const analysis = analyzeCurrentStrategy(utility, utilityWeights ? { weights: utilityWeights } : undefined);
+    const analysis = analyzeCurrentStrategy(
+      utility,
+      utilityWeights ? { weights: utilityWeights } : undefined,
+      { planAssetStatus }
+    );
     lines.push(`  - 강점: ${analysis.strengths.join(' ')}`);
     lines.push(`  - 약점: ${analysis.weaknesses.join(' ')}`);
   }

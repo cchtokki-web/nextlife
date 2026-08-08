@@ -1,6 +1,7 @@
 import { SimulationParams, SimulationResult, UtilityBreakdown, UtilityConfig } from '../../entities/types';
 import { DEFAULT_UTILITY_CONFIG } from './utilityWeights';
 import { resolveStrategy } from '../strategy/compileStrategy';
+import { PlanAssetStatus } from '../dashboard/resolvePlanAssetStatus';
 
 export interface CurrentStrategyAnalysis {
   strengths: string[];
@@ -42,7 +43,8 @@ const WEAKNESS_THRESHOLD = 0.5;
 // 구조적 타이핑으로 그대로 통과한다.
 export function analyzeCurrentStrategy(
   utility: UtilityBreakdown,
-  cfg: Pick<UtilityConfig, 'weights'> = DEFAULT_UTILITY_CONFIG
+  cfg: Pick<UtilityConfig, 'weights'> = DEFAULT_UTILITY_CONFIG,
+  options: { planAssetStatus?: PlanAssetStatus } = {}
 ): CurrentStrategyAnalysis {
   const strengths: string[] = [];
   const weaknesses: string[] = [];
@@ -54,6 +56,15 @@ export function analyzeCurrentStrategy(
     const label = COMPONENT_LABELS[key];
 
     if (ratio >= STRENGTH_THRESHOLD) {
+      // 투자자산이 없는 계획에서 상속 자산 적정성이 만점인 것은 "잘해서"가 아니라 **남길
+      // 자산 자체가 없어서** '다 쓰고 가기' 목표를 자동으로 만족했기 때문이다. 총점이 '위험'인
+      // 화면에서 이것만 "우수합니다"로 올라오면 "상속은 완벽한데 왜 위험하지?"가 된다.
+      if (key === 'bequestAdequacy' && options.planAssetStatus === 'no_investable_asset') {
+        strengths.push(
+          `${label} ${score}/${max}점 — 목표(다 쓰고 가기)를 달성했습니다. 다만 남길 자산 자체가 없는 상태입니다.`
+        );
+        return;
+      }
       strengths.push(`${label}이(가) ${score}/${max}점으로 우수합니다.`);
     } else if (ratio <= WEAKNESS_THRESHOLD) {
       weaknesses.push(`${label}이(가) ${score}/${max}점으로 개선 여지가 있습니다.`);

@@ -283,6 +283,17 @@ export function computeItemizedContributions(
       const singleFieldResult = engine.runForUtility(overrideParams);
       const singleFieldUtility = computeLifetimeUtility(singleFieldResult, overrideParams, cfg);
       const itemDeltas = computeDeltas(baselineResult, singleFieldResult);
+      const utilityDelta = singleFieldUtility.score - currentUtility.score;
+
+      // 적용해도 **아무것도** 바뀌지 않는 항목은 할 일이 아니라 소음이다. 실제로 사적연금
+      // 계좌가 없는 사용자 화면에 "사적연금을 정액 인출 대신 균등하게 인출합니다 (효용 +0점)"이
+      // 떴다 — 그 필드는 계좌가 없으면 어떤 값이어도 결과가 같다.
+      //
+      // 판정에 **deltas 전부가 0**까지 포함하는 것이 중요하다. utilityDelta만 0이고 절세·자산
+      // 효과가 있는 항목은 정상이며(만점·바닥에 가까운 축), 화면 각주가 이미 그 경우를
+      // 설명하고 있다. 그것까지 걸러내면 실제 효과가 있는 제안을 숨기게 된다.
+      if (utilityDelta === 0 && Object.values(itemDeltas).every((v) => v === 0)) continue;
+
       contributions.push({
         field,
         label: labelForSingleFieldChange(
@@ -292,7 +303,7 @@ export function computeItemizedContributions(
           itemDeltas,
           params.userProfile.targetMonthlySpending
         ),
-        utilityDelta: singleFieldUtility.score - currentUtility.score,
+        utilityDelta,
         deltas: itemDeltas,
       });
     } catch (err) {

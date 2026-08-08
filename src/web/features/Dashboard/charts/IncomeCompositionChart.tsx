@@ -6,6 +6,7 @@ import GlassCard from '../../../components/GlassCard';
 import styles from '../Dashboard.module.css';
 import { SimulationParams, SimulationResult } from '../../../../core/entities/types';
 import { PensionStartMarker } from '../../../../core/usecases/dashboard/computePensionStartMarkers';
+import { computeMonthlySpendingComposition } from '../../../../core/usecases/MonthlySpendingComposition';
 import { formatValue, MultilineYAxisTick, RECHARTS_TOOLTIP_STYLE } from './chartFormatters';
 import { ChartCaption } from './ChartCaption';
 
@@ -30,17 +31,77 @@ interface IncomeCompositionChartProps {
   pensionStartMarkers?: PensionStartMarker[];
 }
 
+const INCOME_KEYS = ['국민연금', '사적연금', '배당소득', '기타소득'] as const;
+
+export interface IncomeChartRow {
+  age: number;
+  국민연금: number;
+  사적연금: number;
+  배당소득: number;
+  기타소득: number;
+  hasTaxWarning: boolean;
+  // 그해 목표 월 생활비(은퇴 후에만 존재). 소득이 목표의 몇 %인지 말하기 위한 것이고,
+  // 물가·가구 규모 계수·의료비 규칙은 computeMonthlySpendingComposition이 이미 반영해 둔다.
+  targetMonthly?: number;
+}
+
+// recharts 기본 툴팁은 시리즈를 그대로 나열할 뿐이라, 0원인 소득원까지 함께 찍혀
+// ": 0원 / : 0원 / : 0원"으로 읽혔다(formatter가 name을 빈 문자열로 만들고 있었다).
+// 항목 이름을 되살리고, 0원 줄을 빼고, 은퇴 후에는 목표 생활비 대비 충당률을 덧붙인다.
+export function IncomeCompositionTooltip({
+  active, label, rows, currency,
+}: {
+  active?: boolean;
+  label?: string | number;
+  rows: IncomeChartRow[];
+  currency: SimulationParams['displayCurrency'];
+}) {
+  if (!active) return null;
+  const row = rows.find((r) => r.age === Number(label));
+  if (!row) return null;
+
+  const total = INCOME_KEYS.reduce((sum, key) => sum + row[key], 0);
+  const coverageRate = row.targetMonthly !== undefined && row.targetMonthly > 0
+    ? Math.round((total / 12 / row.targetMonthly) * 100)
+    : null;
+
+  return (
+    <div style={{ ...RECHARTS_TOOLTIP_STYLE, padding: '10px 12px' }}>
+      <div style={{ fontWeight: 700, marginBottom: 6 }}>{row.age}세</div>
+      {INCOME_KEYS.filter((key) => row[key] > 0).map((key) => (
+        <div key={key} style={{ display: 'flex', justifyContent: 'space-between', gap: 16 }}>
+          <span>{key}</span>
+          <span>{formatValue(row[key], currency)}</span>
+        </div>
+      ))}
+      {total === 0 && <div style={{ opacity: 0.7 }}>이 해에는 연금·배당·기타소득이 없습니다.</div>}
+      {coverageRate !== null && (
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, marginTop: 6 }}>
+          <span>목표 생활비 충당률</span>
+          <strong>{coverageRate}%</strong>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function IncomeCompositionChart({
   params, result, hiddenKeys, onLegendClick, caption, pensionStartMarkers = [],
 }: IncomeCompositionChartProps) {
   const currency = params.displayCurrency;
-  const pensionChartData = result.yearlyResults.map((r) => ({
+  // 목표 생활비는 은퇴 후 구간에만 정의된다. 나이로 색인해 두고 툴팁에서 찾아 쓴다 —
+  // 화면이 물가·가구 규모 계수·의료비 규칙을 복제하지 않게 하기 위해 이 usecase를 재사용한다.
+  const targetByAge = new Map(
+    computeMonthlySpendingComposition(result.yearlyResults, params, result).map((d) => [d.age, d.targetMonthly])
+  );
+  const pensionChartData: IncomeChartRow[] = result.yearlyResults.map((r) => ({
     age: r.age,
     국민연금: Math.round(r.nationalPensionIncome),
     사적연금: Math.round(r.privatePensionIncome),
     배당소득: Math.round(r.dividendIncome),
     기타소득: Math.round(r.otherIncome),
     hasTaxWarning: r.hasTaxWarning,
+    targetMonthly: targetByAge.get(r.age),
   }));
 
   return (
@@ -62,7 +123,7 @@ export function IncomeCompositionChart({
       <div className={styles.chartScrollWrapper}>
         <div className={styles.chartContainer}>
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={pensionChartData} margin={{ top: 24, right: 43, left: 0, bottom: 0 }}>
+            <BarChart data={pensionChartData} margin={{ top: 44, right: 43, left: 0, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(255, 255, 255, 0.05)" />
               <XAxis
                 dataKey="age"
@@ -79,9 +140,14 @@ export function IncomeCompositionChart({
                 tick={(props: YAxisTickContentProps) => <MultilineYAxisTick {...props} currency={currency} />}
               />
               <Tooltip
-                contentStyle={RECHARTS_TOOLTIP_STYLE}
-                formatter={(value: unknown) => [formatValue(Number(value), currency), '']}
-                labelFormatter={(label) => (label.toString().includes('세') ? label : `${label}세`)}
+                content={(props) => (
+                  <IncomeCompositionTooltip
+                    active={props.active}
+                    label={props.label}
+                    rows={pensionChartData}
+                    currency={currency}
+                  />
+                )}
               />
               <Legend
                 verticalAlign="top"
@@ -91,7 +157,7 @@ export function IncomeCompositionChart({
               />
               {/* 기준선은 막대보다 먼저 선언해 막대 뒤에 깔리게 한다(recharts는 선언 순서대로 쌓는다).
                   차트 데이터에 없는 나이(예: 시뮬레이션 구간 밖)는 recharts가 조용히 무시한다. */}
-              {pensionStartMarkers.map((marker) => (
+              {pensionStartMarkers.map((marker, index) => (
                 <ReferenceLine
                   key={marker.age}
                   x={marker.age}
@@ -104,6 +170,10 @@ export function IncomeCompositionChart({
                     position: 'top',
                     fontSize: '0.65rem',
                     fontWeight: 600,
+                    // 본인·배우자 개시가 1~2년 차이면 두 라벨이 같은 높이에서 겹쳐 글자가
+                    // 뭉개진다. 홀짝으로 한 단 올려 서로 비켜 가게 한다(margin.top이 2단을
+                    // 수용하도록 함께 넓혀 두었다).
+                    dy: index % 2 === 0 ? 0 : -14,
                   }}
                 />
               ))}

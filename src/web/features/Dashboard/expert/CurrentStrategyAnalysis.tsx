@@ -1,16 +1,20 @@
 import { UtilityBreakdown, UtilityConfig } from '../../../../core/entities/types';
 import { analyzeCurrentStrategy } from '../../../../core/usecases/utility/utilityAnalysis';
+import { PlanAssetStatus } from '../../../../core/usecases/dashboard/resolvePlanAssetStatus';
 
 interface CurrentStrategyAnalysisProps {
   utility: UtilityBreakdown;
   // 점수를 실제로 계산한 config. 넘기지 않으면 기본 배점이 쓰여, 목표 우선순위를 바꾼
   // 계획에서 "세금 효율이(가) 21/10점으로 우수합니다"처럼 만점을 넘긴 문장이 나온다.
   cfg: UtilityConfig;
+  // 투자자산이 없는 계획에서 상속 자산 적정성이 만점인 것은 "잘해서"가 아니다 —
+  // 그 사실을 문장이 밝히도록 상태를 함께 넘긴다.
+  planAssetStatus?: PlanAssetStatus;
 }
 
 // UtilityCard.tsx에 있던 "현재 전략 분석"(강점/약점) 블록을 그대로 이관.
-export function CurrentStrategyAnalysis({ utility, cfg }: CurrentStrategyAnalysisProps) {
-  const { strengths, weaknesses } = analyzeCurrentStrategy(utility, cfg);
+export function CurrentStrategyAnalysis({ utility, cfg, planAssetStatus }: CurrentStrategyAnalysisProps) {
+  const { strengths, weaknesses } = analyzeCurrentStrategy(utility, cfg, { planAssetStatus });
 
   return (
     <div>

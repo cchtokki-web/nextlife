@@ -133,4 +133,19 @@ describe('getIdentityPlan은 사용자가 저장한 인출계획을 그대로 �
 
     expect(plan.privatePensionMonthlyTarget).toBe(1000000);
   });
+
+  // compileStrategy는 사적연금 계좌 유무를 보지 않고 이 필드를 채운다(저율과세 한도 × 전략 비율).
+  // 계좌가 하나도 없으면 그 값은 시뮬레이션에 아무 영향도 주지 않는데, 기준선에 남으면
+  // 후보(계좌가 없으면 키를 넣지 않는다)와 어긋나 "바뀐 필드"로 잡힌다. 그래서 AI 추천
+  // 체크리스트에 "사적연금을 정액 인출 대신 균등하게 인출합니다 (효용 +0점)"라는 존재하지
+  // 않는 할 일이 떴다. 후보 생성기와 같은 규칙을 여기에도 둔다.
+  test('사적연금 계좌가 없으면 저장된 정액 인출액이 있어도 기준선에 넣지 않는다', () => {
+    const plan = getIdentityPlan({
+      ...base,
+      privatePensions: [],
+      withdrawalPlan: { privatePensionMonthlyTarget: 1250000 },
+    });
+
+    expect('privatePensionMonthlyTarget' in plan).toBe(false);
+  });
 });

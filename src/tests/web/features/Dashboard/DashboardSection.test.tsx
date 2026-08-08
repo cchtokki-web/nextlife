@@ -328,3 +328,74 @@ describe('DashboardSection - 투자자산 미보유 계획', () => {
     expect(screen.queryByText(/인출 전략을 다시 검토/)).not.toBeInTheDocument();
   });
 });
+
+// 다른 KPI는 전부 "결과가 이렇다"만 말한다. 사용자가 행동으로 옮길 숫자(얼마가 모자라고
+// 얼마를 더 준비해야 하는가)가 화면 어디에도 없었다.
+describe('DashboardSection - 현재 계획을 유지하면 요약 카드', () => {
+  const shortParams: SimulationParams = {
+    ...params,
+    userProfile: { currentAge: 55, retirementAge: 60, expectancy: 62, targetMonthlySpending: 3500000 },
+  };
+
+  const shortResult: SimulationResult = {
+    ...result,
+    householdEndAge: 62,
+    yearlyResults: [60, 61, 62].map((age) =>
+      makeYearlyResult({ age, spending: 1910000 * 12 })
+    ),
+  };
+
+  test('부족액이 있으면 부족 생활비·기간·필요 자산과 가정 각주를 보여준다', () => {
+    render(<DashboardSection params={shortParams} result={shortResult} />);
+
+    expect(screen.getByText('현재 계획을 유지하면')).toBeInTheDocument();
+    expect(screen.getByText('부족 생활비')).toBeInTheDocument();
+    expect(screen.getByText('부족 기간')).toBeInTheDocument();
+    expect(screen.getByText('추가로 필요한 자산')).toBeInTheDocument();
+    // 가정을 밝히지 않으면 사용자가 확정된 목표 금액으로 읽는다.
+    expect(screen.getByText(/수익률이 물가상승률과 같다고 볼 때/)).toBeInTheDocument();
+  });
+
+  test('부족액이 없으면 카드를 렌더링하지 않는다', () => {
+    const enoughResult: SimulationResult = {
+      ...shortResult,
+      yearlyResults: [60, 61, 62].map((age) => makeYearlyResult({ age, spending: 3500000 * 12 })),
+    };
+
+    render(<DashboardSection params={shortParams} result={enoughResult} />);
+
+    expect(screen.queryByText('현재 계획을 유지하면')).not.toBeInTheDocument();
+  });
+});
+
+// 예전에는 로드맵이 토글과 무관하게 항상 추천안을 그렸다. 그래서 Hero 버튼이 "추천 적용하기"
+// 상태(= 미적용)인데도 로드맵만 추천 나이를 보여줘, 한 화면에서 KPI·차트와 다른 기준을 말했다.
+describe('DashboardSection - 실행 로드맵이 Before/After 토글을 따른다', () => {
+  const earlyPensionPlan: CompleteWithdrawalPlan = {
+    privatePensionMonthlyTarget: 0,
+    nationalPensionStartAge: 60, // 현재 설정(65)에서 조기수령으로 당겨짐
+    assetSellOrderStrategy: 'input_order',
+    isaMaturityDestination: 'pension',
+    generalAssetWithdrawalStartAge: 60,
+    monthlySpendingMultiplier: 1,
+  };
+  const rec: StrategyRecommendation = { ...recommendation, recommendedPlan: earlyPensionPlan };
+
+  test('기본(추천 미적용)에서는 현재 설정 기준으로 그리고 변경 배지를 붙이지 않는다', () => {
+    render(<DashboardSection params={params} result={result} recommendation={rec} />);
+
+    expect(screen.getByText(/현재 설정 기준/)).toBeInTheDocument();
+    expect(screen.queryByText(/현재 65세 → 추천 60세/)).not.toBeInTheDocument();
+    // 국민연금은 현재 설정인 65세 노드에 있어야 한다.
+    expect(screen.getByText('65세')).toBeInTheDocument();
+  });
+
+  test('추천 적용 시 추천 기준으로 바뀌고 옮겨진 나이를 배지로 밝힌다', () => {
+    render(<DashboardSection params={params} result={result} recommendation={rec} />);
+
+    fireEvent.click(screen.getByRole('button', { name: '추천 적용하기' }));
+
+    expect(screen.getByText(/AI 추천 전략 기준/)).toBeInTheDocument();
+    expect(screen.getByText('현재 65세 → 추천 60세')).toBeInTheDocument();
+  });
+});

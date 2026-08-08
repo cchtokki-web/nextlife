@@ -9,13 +9,15 @@ import { computeRiskAlerts } from '../../core/usecases/dashboard/computeRiskAler
 import { computeExecutionRoadmap, selectDepletionAge } from '../../core/usecases/dashboard/computeExecutionRoadmap';
 import { computeSensitivityAnalysis } from '../../core/usecases/dashboard/computeSensitivityAnalysis';
 import { resolvePlanAssetStatus } from '../../core/usecases/dashboard/resolvePlanAssetStatus';
+import { computeShortfallSummary } from '../../core/usecases/dashboard/computeShortfallSummary';
 import { describeFireAge } from '../../core/usecases/dashboard/describeFireAge';
 import { useMonteCarlo } from '../../web/hooks/useMonteCarlo';
 import { computeSequenceRisk } from '../../core/usecases/montecarlo/sequenceRisk';
 import { resolveMonteCarloConfig } from '../../core/usecases/montecarlo/volatilityPresets';
 import { describeDepletionAge } from '../../core/usecases/dashboard/describeDepletionAge';
-import { renderRiskAlertsSection, renderItemizedChecklistSection, renderExecutionRoadmapSection, renderSensitivityTableSection, renderMonteCarloSection } from '../../web/features/Pdf/pdfReportSections';
+import { renderRiskAlertsSection, renderItemizedChecklistSection, renderExecutionRoadmapSection, renderSensitivityTableSection, renderMonteCarloSection, renderShortfallSummarySection } from '../../web/features/Pdf/pdfReportSections';
 import { analyzeCurrentStrategy, explainBequestAdequacy } from '../../core/usecases/utility/utilityAnalysis';
+import { explainUtilityComponents } from '../../core/usecases/utility/explainUtilityComponents';
 import { resolveTaxSettings } from '../../core/usecases/tax/taxRates';
 import { NATIONAL_PENSION_NORMAL_START_AGE } from '../../core/usecases/pension/nationalPensionRules';
 import { useStrategyPipeline } from '../../web/hooks/useStrategyPipeline';
@@ -242,6 +244,11 @@ export default function Home() {
       const formatValuePrint = (val: number): string => formatValue(val);
 
       // Lifetime Utility Score / AI 추천 전략 PDF 섹션(페이지 2)용 데이터 준비
+      // 축별 점수 근거. 화면(UtilityBreakdownBars)과 같은 문장을 싣는다 — 툴팁으로만 두면
+      // 정작 설명이 필요한 인쇄본에서 사라진다.
+      const utilityExplanations = utility
+        ? explainUtilityComponents(reportParams, result, effective.utilityConfig)
+        : null;
       const utilityComponentRowsHtml = utility
         // 같은 화면의 강점/약점 문장(analyzeCurrentStrategy)이 이미 effective.utilityConfig를
         // 쓰고 있었는데 막대만 기본 배점을 고정하고 있었다 — 두 숫자의 분모가 어긋났다.
@@ -249,12 +256,15 @@ export default function Home() {
             const value = utility.components[key];
             const pct = max > 0 ? Math.max(0, Math.min(100, (value / max) * 100)) : 0;
             return `
-              <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px; font-size: 12px;">
-                <span style="width: 110px; color: #475569; font-weight: 600;">${label}</span>
-                <div style="flex-grow: 1; height: 8px; background-color: #e2e8f0; border-radius: 4px; overflow: hidden;">
-                  <div style="width: ${pct}%; height: 100%; background-color: ${color};"></div>
+              <div style="margin-bottom: 8px;">
+                <div style="display: flex; align-items: center; gap: 10px; font-size: 12px;">
+                  <span style="width: 110px; color: #475569; font-weight: 600;">${label}</span>
+                  <div style="flex-grow: 1; height: 8px; background-color: #e2e8f0; border-radius: 4px; overflow: hidden;">
+                    <div style="width: ${pct}%; height: 100%; background-color: ${color};"></div>
+                  </div>
+                  <span style="width: 50px; text-align: right; font-weight: 700; color: ${color};">${value}/${max}</span>
                 </div>
-                <span style="width: 50px; text-align: right; font-weight: 700; color: ${color};">${value}/${max}</span>
+                ${utilityExplanations ? `<p style="margin: 2px 0 0 120px; font-size: 10px; color: #94a3b8; line-height: 1.4;">${utilityExplanations[key]}</p>` : ''}
               </div>
             `;
           }).join('')
@@ -264,7 +274,11 @@ export default function Home() {
         ? `<p style="font-size: 10px; color: #94a3b8; margin: -6px 0 12px; line-height: 1.4;">* 상속 자산 적정성: ${explainBequestAdequacy(reportParams, result, effective.utilityConfig)}</p>`
         : '';
 
-      const currentStrategyAnalysis = utility ? analyzeCurrentStrategy(utility, effective.utilityConfig) : null;
+      // planAssetStatus는 아래에서 계산되므로 여기서 다시 판정한다 — 같은 result에서
+      // 파생되므로 값이 어긋날 수 없다.
+      const currentStrategyAnalysis = utility
+        ? analyzeCurrentStrategy(utility, effective.utilityConfig, { planAssetStatus: resolvePlanAssetStatus(result) })
+        : null;
       const strengthsHtml = currentStrategyAnalysis
         ? currentStrategyAnalysis.strengths.map(s => `<li style="margin-bottom: 4px;">${s}</li>`).join('')
         : '';
@@ -301,6 +315,10 @@ export default function Home() {
 
       const riskAlerts = computeRiskAlerts(result, reportParams, effective.utilityConfig);
       const riskAlertsSectionHtml = renderRiskAlertsSection(riskAlerts);
+      const shortfallSummarySectionHtml = renderShortfallSummarySection(
+        computeShortfallSummary(reportParams, result),
+        formatValuePrint
+      );
       // 화면(DashboardSection)과 같은 함수로 자산 상태를 판정한다 — PDF와 화면이 서로 다른
       // 근거로 "고갈"과 "미보유"를 말하면 같은 계획의 두 문서가 어긋난다.
       const planAssetStatus = resolvePlanAssetStatus(result);
@@ -386,6 +404,7 @@ export default function Home() {
                 </div>
               </div>
             </div>
+            ${shortfallSummarySectionHtml}
             ${riskAlertsSectionHtml}
 
             <h2 style="font-size: 16px; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; color: #0f172a; margin-top: 25px; margin-bottom: 10px;">2. 시뮬레이션 설정 상태</h2>

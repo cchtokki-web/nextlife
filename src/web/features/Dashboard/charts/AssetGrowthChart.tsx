@@ -163,9 +163,11 @@ export function AssetGrowthChart({
                 width={38}
                 tick={(props: YAxisTickContentProps) => <MultilineYAxisTick {...props} fill="#F59E0B" currency={currency} />}
               />
+              {/* name을 빈 문자열로 돌려주면 recharts가 ": 5억원"처럼 값만 나열한다 —
+                  어느 줄이 무슨 자산인지 읽을 수 없었다. 시리즈 이름을 그대로 되돌려준다. */}
               <Tooltip
                 contentStyle={RECHARTS_TOOLTIP_STYLE}
-                formatter={(value: unknown) => [formatValue(Number(value), currency), '']}
+                formatter={(value: unknown, name: unknown) => [formatValue(Number(value), currency), String(name)]}
                 labelFormatter={(label) => `${label}세`}
               />
               <Legend

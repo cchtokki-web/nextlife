@@ -24,9 +24,14 @@ export function computePensionStartMarkers(
   const markers: PensionStartMarker[] = [];
   const { currentAge } = params.userProfile;
 
+  // 라벨이 짧은 이유: 이 문자열은 차트 위 기준선에 그려지는데, 본인·배우자 개시가 1~2년
+  // 차이면 두 라벨이 나란히 놓인다. 긴 문구는 서로 겹쳐 글자가 뭉개져 읽을 수 없게 된다
+  // (실제로 "64세 배 응자세본민연금 굼민연금 시작"으로 렌더된 적이 있다).
+  // 로드맵은 자체 문구를 쓰므로 여기 축약이 영향을 주지 않는다.
+
   // 수령액이 0이면 그 시점에 아무 일도 일어나지 않는다 — 기준선은 소음이 된다.
   if ((params.nationalPension?.expectedMonthlyAmount ?? 0) > 0) {
-    markers.push({ age: nationalPensionStartAge, label: '본인 국민연금 시작' });
+    markers.push({ age: nationalPensionStartAge, label: '본인 연금' });
   }
 
   const spouse = resolveSpouse(params.spouse, params.userProfile);
@@ -34,7 +39,7 @@ export function computePensionStartMarkers(
     const spouseAge = spouseNationalPensionStartSelfAge(spouse);
     // 이미 수령 중이면 차트 구간 안에서 "시작"하는 사건이 아니다.
     if (spouseAge > currentAge) {
-      markers.push({ age: spouseAge, label: '배우자 국민연금 시작' });
+      markers.push({ age: spouseAge, label: '배우자 연금' });
     }
   }
 

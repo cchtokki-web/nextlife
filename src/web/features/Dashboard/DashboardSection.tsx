@@ -5,6 +5,7 @@ import { type LegendPayload } from 'recharts';
 import { Award, Zap, TrendingUp, AlertTriangle } from 'lucide-react';
 import { SimulationParams, SimulationResult, StrategyRecommendation } from '../../../core/entities/types';
 import { explainBequestAdequacy } from '../../../core/usecases/utility/utilityAnalysis';
+import { explainUtilityComponents } from '../../../core/usecases/utility/explainUtilityComponents';
 import { generateChartCaptions } from '../../../core/usecases/dashboard/generateChartCaptions';
 import styles from './Dashboard.module.css';
 import { formatValue as formatValueForCurrency } from './charts/chartFormatters';
@@ -12,6 +13,8 @@ import { AssetGrowthChart } from './charts/AssetGrowthChart';
 import { IncomeCompositionChart } from './charts/IncomeCompositionChart';
 import { SpendingCompositionChart } from './charts/SpendingCompositionChart';
 import { CoreKpiGrid } from './kpi/CoreKpiGrid';
+import { ShortfallSummaryCard } from './kpi/ShortfallSummaryCard';
+import { computeShortfallSummary } from '../../../core/usecases/dashboard/computeShortfallSummary';
 import { RecommendationChecklist } from './recommendation/RecommendationChecklist';
 import { AiSummaryHero } from './hero/AiSummaryHero';
 import { ExpertDetailsPanel } from './expert/ExpertDetailsPanel';
@@ -130,6 +133,11 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
   // 말하는 조각은 Before/After 미리보기를 따라가면 자기 자신을 근거로 삼게 된다.
   const baselinePlanAssetStatus = resolvePlanAssetStatus(result);
 
+  // 로드맵이 볼 추천안. After 모드에서만 넘긴다 — computeExecutionRoadmap은 undefined면
+  // getIdentityPlan(현재 설정)으로 폴백하므로, Before에서는 사용자의 실제 계획이 그려진다.
+  const roadmapRecommendation = mode === 'after' ? recommendation : undefined;
+  const roadmapPlanAssetStatus = mode === 'after' ? planAssetStatus : baselinePlanAssetStatus;
+
   // 소득 차트의 연금 개시 기준선. 차트가 그리는 결과(displayedResult)와 같은 계획이어야 하므로
   // After 모드에서는 추천안의 국민연금 개시 나이를 쓴다.
   const displayedNationalPensionStartAge =
@@ -152,6 +160,17 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
   // 통째로 갈아끼우므로, 화면이 기본 배점을 가정하면 "세금 효율 21/10"처럼 만점을 넘긴
   // 분수가 나온다(compileStrategy는 전략이 없는 계획에서 기본 config를 그대로 반환한다).
   const utilityConfig = React.useMemo(() => compileStrategy(params).utilityConfig, [params]);
+  // 화면에 표시 중인 결과를 따라간다 — 추천을 적용해 부족이 해소되면 카드도 함께 사라져야
+  // KPI·차트와 같은 이야기를 한다.
+  const shortfallSummary = React.useMemo(
+    () => computeShortfallSummary(params, displayedResult),
+    [params, displayedResult]
+  );
+  // 축별 점수 근거. 막대와 같은 결과·같은 config에서 파생돼야 두 숫자가 어긋나지 않는다.
+  const utilityExplanations = React.useMemo(
+    () => explainUtilityComponents(params, displayedResult, utilityConfig),
+    [params, displayedResult, utilityConfig]
+  );
   const bequestAdequacyExplanation = React.useMemo(
     () => (displayedResult.utility ? explainBequestAdequacy(params, displayedResult) : undefined),
     [params, displayedResult]
@@ -248,6 +267,10 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
         sustainableMonthlySpending={result.calculatedTargetSpending}
       />
 
+      {/* 부족액이 있을 때만. 다른 KPI가 전부 "결과가 이렇다"만 말하고 행동으로 옮길 숫자를
+          주지 않아, 이미 계산된 값으로 그 빈자리를 메운다. */}
+      {shortfallSummary && <ShortfallSummaryCard summary={shortfallSummary} formatValue={formatValue} />}
+
       {/* STEP 2: 핵심 KPI */}
       <CoreKpiGrid
         survivalScore={displayedResult.retirementScore}
@@ -280,6 +303,8 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
         <UtilityInsightSection
           utility={displayedResult.utility}
           utilityConfig={utilityConfig}
+          planAssetStatus={planAssetStatus}
+          utilityExplanations={utilityExplanations}
           bequestAdequacyExplanation={bequestAdequacyExplanation}
         />
       )}
@@ -295,17 +320,24 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
         planAssetStatus={baselinePlanAssetStatus}
       />
 
-      {/* AI 추천 전략 실행 로드맵 (Before/After 토글과 무관하게 항상 고정 기준) */}
-      {/* 자산 고갈 나이도 로드맵이 보여주는 것과 같은 기준으로 골라야 나이 이벤트와 고갈 시점이
-          같은 시나리오를 가리킨다 — 선택 로직은 selectDepletionAge(computeExecutionRoadmap.ts)
-          참고. 화면(여기)과 PDF(simulator/page.tsx) 양쪽이 같은 함수를 써서 동일하게 동작한다. */}
+      {/* 실행 로드맵.
+
+          **Before/After 토글을 따른다.** 예전에는 토글과 무관하게 항상 추천안을 그렸고, 그래서
+          추천을 적용하지 않은 화면(Hero 버튼이 "추천 적용하기" 상태)에서 KPI·차트는 현재 설정을
+          보여주는데 로드맵만 추천안(예: 국민연금 60세 조기수령)을 보여줬다. 게다가 배우자
+          국민연금은 추천 엔진의 최적화 축이 아니라 현재 설정 그대로 그려져, 한 타임라인 안에
+          두 기준이 섞여 "본인이 배우자보다 먼저 받는다"는 잘못된 인상을 만들었다.
+
+          자산 고갈 나이·자산 상태도 반드시 같은 기준을 써야 한다 — 셋이 어긋나면 마일스톤과
+          고갈 시점이 서로 다른 시나리오를 가리킨다(selectDepletionAge 주석 참고). */}
       <ExecutionRoadmap
         roadmap={computeExecutionRoadmap(
           params,
-          recommendation,
-          selectDepletionAge(recommendation, result),
-          baselinePlanAssetStatus
+          roadmapRecommendation,
+          selectDepletionAge(roadmapRecommendation, result),
+          roadmapPlanAssetStatus
         )}
+        isRecommendedPlan={!!roadmapRecommendation?.recommendedPlan}
       />
 
       {/* STEP 4: 그래프 3종 (각 상단에 rule-based AI 캡션) */}

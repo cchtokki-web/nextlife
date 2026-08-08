@@ -505,6 +505,55 @@ describe('computeItemizedContributions', () => {
     expect(items[0].label).not.toContain('증액');
   });
 
+  // "적용해도 아무것도 바뀌지 않는 할 일"은 어떤 필드든 소음이다. 사적연금 계좌가 없는데
+  // privatePensionMonthlyTarget만 다른 경우가 실제로 화면에 "효용 +0점" 카드로 떴다.
+  //
+  // 판정에 "모든 deltas가 0"까지 포함하는 것이 중요하다 — utilityDelta만 0이고 절세·자산
+  // 효과가 있는 항목은 정상이며, 화면 각주가 이미 그 경우를 설명한다.
+  test('효용도 절세도 자산도 전혀 바꾸지 않는 항목은 제외한다', () => {
+    const engine = new SimulationEngine();
+    // 사적연금 계좌가 없는 계획 — 이 필드는 어떤 값이어도 결과가 같다.
+    const noPensionParams: SimulationParams = { ...paramsWithLargePension, privatePensions: [] };
+    const identityPlan = getIdentityPlan(noPensionParams);
+    const baselineResult = engine.runForUtility(noPensionParams);
+    const currentUtility = computeLifetimeUtility(baselineResult, noPensionParams, DEFAULT_UTILITY_CONFIG);
+    const recommendedPlan = { ...identityPlan, privatePensionMonthlyTarget: 1250000 };
+
+    const items = computeItemizedContributions(
+      noPensionParams,
+      identityPlan,
+      recommendedPlan,
+      currentUtility,
+      baselineResult,
+      engine,
+      DEFAULT_UTILITY_CONFIG
+    );
+
+    expect(items).toEqual([]);
+  });
+
+  test('효용은 그대로여도 절세·자산 효과가 있는 항목은 남긴다', () => {
+    const engine = new SimulationEngine();
+    const identityPlan = getIdentityPlan(paramsWithLargePension);
+    const baselineResult = engine.runForUtility(paramsWithLargePension);
+    const currentUtility = computeLifetimeUtility(baselineResult, paramsWithLargePension, DEFAULT_UTILITY_CONFIG);
+    const recommendedPlan = { ...identityPlan, nationalPensionStartAge: 70 };
+
+    const items = computeItemizedContributions(
+      paramsWithLargePension,
+      identityPlan,
+      recommendedPlan,
+      currentUtility,
+      baselineResult,
+      engine,
+      DEFAULT_UTILITY_CONFIG
+    );
+
+    expect(items).toHaveLength(1);
+    // 효용 변화가 0이더라도 deltas가 살아 있으면 사용자에게 보여줄 근거가 있다.
+    expect(Object.values(items[0].deltas).some((v) => v !== 0)).toBe(true);
+  });
+
   test('recommendedPlan이 identityPlan과 완전히 같으면 빈 배열을 반환한다', () => {
     const engine = new SimulationEngine();
     const identityPlan = getIdentityPlan(paramsWithLargePension);
