@@ -85,9 +85,10 @@ const SCENARIO_DEFINITIONS: ScenarioDefinition[] = [
 // null(평생 유지)을 "고갈 없음" 센티널 나이로 치환해 비교 가능한 숫자로 만든 뒤 차이를 낸다.
 // 단, baseline과 시나리오가 둘 다 null이면 "변화 없음"을 명확히 하기 위해 0이 아닌 null을 반환한다.
 //
-// 센티널은 시뮬레이션이 실제로 돈 마지막 나이, 즉 그 계획의 기대수명이다. 고정값을 쓰면
-// 기대수명이 그보다 긴 계획에서 센티널을 넘겨 고갈되는 시나리오가 "고갈 없음"보다 큰 값이
-// 되어, 95세에 파산하는 시나리오가 전혀 파산하지 않는 baseline보다 몇 년 낫다고 보고된다.
+// 센티널은 반드시 그 계획의 기대수명(expectancy)이어야 한다. 그래야 depletionAge가
+// null인 "고갈 없음"이 실제로 자산이 버틴 마지막 나이보다 항상 크거나 같아, 고갈되는
+// 시나리오(예: 95세에 파산)와 비교했을 때 항상 더 우월한 값으로 계산된다. expectancy보다
+// 작은 값을 쓰면 고갈되지 않는 baseline이 실제로 고갈되는 시나리오보다 나쁘게 보일 수 있다.
 function computeDeltaYears(
   baselineDepletionAge: number | null,
   depletionAge: number | null,
