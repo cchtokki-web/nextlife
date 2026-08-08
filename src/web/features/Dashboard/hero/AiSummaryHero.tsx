@@ -112,7 +112,12 @@ export function AiSummaryHero({
             </div>
           )}
         </div>
-        {canApply && <ApplyRecommendationButton mode={mode} onToggle={onToggleMode} />}
+        {canApply && (
+          <div className="flex flex-col items-center gap-2">
+            <ApplyRecommendationButton mode={mode} onToggle={onToggleMode} />
+            <p className="text-xs text-foreground-muted">결과 비교용이며 설정은 변경되지 않습니다.</p>
+          </div>
+        )}
       </div>
 
       <Collapse

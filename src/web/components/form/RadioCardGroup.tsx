@@ -73,7 +73,7 @@ export function RadioCardGroup<T extends string>({
                   <span className="break-keep">{opt.label}</span>
                   {opt.recommended && (
                     <span className="inline-flex shrink-0 items-center gap-0.5 whitespace-nowrap rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold text-amber-400">
-                      ⭐ 추천
+                      권장
                     </span>
                   )}
                 </span>

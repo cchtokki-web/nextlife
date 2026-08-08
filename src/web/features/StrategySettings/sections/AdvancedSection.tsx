@@ -195,7 +195,7 @@ export function AdvancedSection({ params, onChangeParams, mode, changed }: Secti
           label="사적연금을 저율과세 한도 내에서만 인출"
           description={
             pensionStrategyGovernsLimit
-              ? '지금은 「연금 전략」의 선택이 이 값을 결정합니다. 직접 정하려면 연금 전략을 "AI 최적화"로 두세요.'
+              ? '지금은 「연금 전략」의 선택이 이 값을 결정합니다. 직접 정하려면 연금 전략을 "자동으로 선택"으로 두세요.'
               : '세금이 적게 붙는 한도까지만 꺼내 씁니다. 생활비가 모자라면 다른 자산에서 채웁니다.'
           }
           tooltipTerm="irp"

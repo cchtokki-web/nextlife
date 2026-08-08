@@ -159,7 +159,7 @@ describe('DashboardSection - IA 순서', () => {
     expect(screen.getByText('평생 효용')).toBeInTheDocument();
   });
 
-  test('추천 적용하기 버튼 클릭 시 KPI가 Before에서 After(추천) 값으로 전환된다', () => {
+  test('추천안 결과 보기 버튼 클릭 시 KPI가 Before에서 After(추천) 값으로 전환된다', () => {
     const afterResult: SimulationResult = { ...result, endingAssets: 999000000, utility: { ...utility, score: 81 } };
     const rec: StrategyRecommendation = { ...recommendation, recommendedResult: afterResult };
 
@@ -168,7 +168,7 @@ describe('DashboardSection - IA 순서', () => {
     expect(screen.queryByText('81점')).not.toBeInTheDocument();
     expect(screen.getByText('5억원')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: '추천 적용하기' }));
+    fireEvent.click(screen.getByRole('button', { name: '추천안 결과 보기' }));
 
     expect(screen.getByText('81점')).toBeInTheDocument();
     // 순자산 KPI도 endingAssets(자산증가분)를 그대로 반영해야 한다 — utilityScore 하나만으로는
@@ -192,7 +192,7 @@ describe('DashboardSection - IA 순서', () => {
 
     expect(screen.getByText('300만원')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: '추천 적용하기' }));
+    fireEvent.click(screen.getByRole('button', { name: '추천안 결과 보기' }));
 
     expect(screen.getByText('360만원')).toBeInTheDocument();
     expect(screen.queryByText('300만원')).not.toBeInTheDocument();
@@ -210,7 +210,7 @@ describe('DashboardSection - IA 순서', () => {
 
     expect(screen.getByText('금융소득종합과세 진입 가능성')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: '추천 적용하기' }));
+    fireEvent.click(screen.getByRole('button', { name: '추천안 결과 보기' }));
 
     expect(screen.queryByText('금융소득종합과세 진입 가능성')).not.toBeInTheDocument();
   });
