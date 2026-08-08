@@ -34,8 +34,7 @@ import {
 import { PRIVATE_PENSION_MIN_START_AGE, clampPrivatePensionStartAge } from './pension/privatePensionRules';
 import { sortAssetsForWithdrawal } from './strategy/assetOrdering';
 import {
-  computeHouseholdEndAge, computeSpendingFactor, computeSpouseNationalPensionMonthly,
-  computeSurvivorPensionMonthly, resolveSpouse,
+  computeHouseholdEndAge, computeSpendingFactor, inheritSurvivorPension, resolveSpouse,
 } from './spouse/spouseRules';
 
 // 연 수익률(소수)을 월 복리율로. initializeAssets가 네 곳에서 같은 식을 반복하고 있었고,
@@ -672,30 +671,18 @@ export class SimulationEngine {
       // 본인 개시 나이에만 걸면 그 기간의 배우자 연금이 조용히 사라진다.
       // 배우자가 없으면(resolvedSpouse === null) 조건은 기존과 완전히 동일하다.
       const selfNationalPensionStarted = currentAge >= nationalPensionStartAge;
-      if (selfNationalPensionStarted || resolvedSpouse !== null) {
+      // 배우자 명의 국민연금은 다루지 않으므로, 본인이 아직 개시 전이면 지급할 것도
+      // 승계할 것도 없다(예전에는 배우자 몫 때문에 `|| resolvedSpouse !== null`이 필요했다).
+      if (selfNationalPensionStarted) {
         const nationalPensionAdjustmentFactor = getNationalPensionAdjustmentFactor(nationalPensionStartAge);
-        let natAmountRaw = selfNationalPensionStarted
-          ? (inflationMode === 'nominal'
-            ? nationalPension.expectedMonthlyAmount * Math.pow(1 + infRateAnnual, y)
-            : nationalPension.expectedMonthlyAmount) * nationalPensionAdjustmentFactor
-          : 0;
+        let natAmountRaw = (inflationMode === 'nominal'
+          ? nationalPension.expectedMonthlyAmount * Math.pow(1 + infRateAnnual, y)
+          : nationalPension.expectedMonthlyAmount) * nationalPensionAdjustmentFactor;
 
-        // 배우자 국민연금 합산. 사망자가 생기면 중복조정으로 큰 쪽만 남는다.
-        if (resolvedSpouse !== null) {
-          const spouseMonthlyBase = computeSpouseNationalPensionMonthly(resolvedSpouse, currentAge);
-          const spouseMonthly = inflationMode === 'nominal'
-            ? spouseMonthlyBase * Math.pow(1 + infRateAnnual, y)
-            : spouseMonthlyBase;
-
-          if (selfAlive && spouseAlive) {
-            natAmountRaw += spouseMonthly;
-          } else if (spouseAlive) {
-            // 본인 사망 → 배우자가 생존자. 본인 연금을 유족연금으로 승계 판정.
-            natAmountRaw = computeSurvivorPensionMonthly(spouseMonthly, natAmountRaw);
-          } else {
-            // 배우자 사망 → 본인이 생존자.
-            natAmountRaw = computeSurvivorPensionMonthly(natAmountRaw, spouseMonthly);
-          }
+        // 본인 사망 → 배우자가 본인 국민연금을 유족연금으로 이어받는다.
+        // 배우자가 먼저 사망한 경우에는 본인 연금이 그대로 유지되므로 분기가 필요 없다.
+        if (resolvedSpouse !== null && !selfAlive && spouseAlive) {
+          natAmountRaw = inheritSurvivorPension(natAmountRaw);
         }
 
         // 연금소득세는 연 단위로 계산해야 한다 — 연금소득공제와 누진세율이 모두 연간 총액

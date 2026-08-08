@@ -75,8 +75,6 @@ describe('BasicInfoSection', () => {
           enabled: true,
           currentAge: 65,
           expectancy: 93, // 본인 기대수명 + 5년(여성 기대수명이 더 길다는 통계)
-          nationalPensionMonthlyAmount: 0,
-          nationalPensionStartAge: 65,
         },
       });
     });
@@ -98,7 +96,9 @@ describe('BasicInfoSection', () => {
     });
   });
 
-  test('배우자가 켜져 있으면 나이·기대수명·국민연금 입력이 보인다', () => {
+  // 배우자 명의 국민연금을 다루지 않게 되면서 입력이 다섯 개에서 셋으로 줄었다.
+  // 남는 것은 가구 종료 나이·생활비 축소 계수를 정하는 나이 두 개뿐이다.
+  test('배우자가 켜져 있으면 나이·기대수명만 보이고 연금 입력은 없다', () => {
     const params = { ...initialParams, spouse: { ...DEFAULT_SPOUSE, enabled: true, currentAge: 48 } };
     render(
       <BasicInfoSection params={params} onChangeParams={vi.fn()} mode="standard" changed={new Set()} />
@@ -106,7 +106,8 @@ describe('BasicInfoSection', () => {
 
     expect(screen.getByLabelText('배우자 나이')).toHaveValue(48);
     expect(screen.getByLabelText('배우자 기대수명')).toBeInTheDocument();
-    expect(screen.getByLabelText('배우자 국민연금 예상 월 수령액')).toBeInTheDocument();
+    expect(screen.queryByLabelText('배우자 국민연금 예상 월 수령액')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('배우자 수령 개시 나이')).not.toBeInTheDocument();
   });
 
   test('배우자 기대수명이 현재 나이보다 작으면 경고를 표시한다', () => {
@@ -209,46 +210,5 @@ describe('BasicInfoSection', () => {
       });
     });
 
-    // A4: HTML min/max는 Number('')가 상태에 도달하는 것을 막지 못한다. 지우면 0이
-    // 저장되어(resolveSpouse가 계산 시 클램프하더라도) 저장값이 조용히 바뀐다.
-    test('배우자 수령 개시 나이를 비우면 아무것도 저장하지 않는다', () => {
-      const params = { ...initialParams, spouse: { ...DEFAULT_SPOUSE, enabled: true } };
-      const onChangeParams = vi.fn();
-      render(
-        <BasicInfoSection params={params} onChangeParams={onChangeParams} mode="standard" changed={new Set()} />
-      );
-
-      fireEvent.change(screen.getByLabelText('배우자 수령 개시 나이'), { target: { value: '' } });
-
-      expect(onChangeParams).not.toHaveBeenCalled();
-    });
-
-    test('배우자 수령 개시 나이는 연기 상한(70세)으로 클램프한다', () => {
-      const params = { ...initialParams, spouse: { ...DEFAULT_SPOUSE, enabled: true } };
-      const onChangeParams = vi.fn();
-      render(
-        <BasicInfoSection params={params} onChangeParams={onChangeParams} mode="standard" changed={new Set()} />
-      );
-
-      fireEvent.change(screen.getByLabelText('배우자 수령 개시 나이'), { target: { value: '99' } });
-
-      expect(onChangeParams).toHaveBeenCalledWith({
-        ...params,
-        spouse: { ...DEFAULT_SPOUSE, enabled: true, nationalPensionStartAge: 70 },
-      });
-    });
-  });
-
-  test('changed에 포함된 경로는 "사용자 설정" 배지를 받는다', () => {
-    render(
-      <BasicInfoSection
-        params={initialParams}
-        onChangeParams={vi.fn()}
-        mode="standard"
-        changed={new Set(['userProfile.currentAge'])}
-      />
-    );
-
-    expect(screen.getAllByText('사용자 설정')).toHaveLength(1);
   });
 });

@@ -1,9 +1,6 @@
 'use client';
 
 import { SimulationParams, SpouseProfile } from '../../../../core/entities/types';
-import {
-  NATIONAL_PENSION_DEFERRED_MAX_AGE, NATIONAL_PENSION_EARLY_MIN_AGE,
-} from '../../../../core/usecases/pension/nationalPensionRules';
 import InputField from '../../../components/InputField';
 import { FieldRow, SwitchField } from '../../../components/form';
 import { AGE_MAX, AGE_MIN, EXPECTANCY_MAX, parseAge } from '../ageInput';
@@ -122,47 +119,6 @@ export function BasicInfoSection({ params, onChangeParams, mode, changed }: Sect
                 onChange={(e) => {
                   const age = parseAge(e.target.value, EXPECTANCY_MAX);
                   if (age !== null) setSpouse({ expectancy: age });
-                }}
-              />
-            </FieldRow>
-          )}
-          {isFieldVisible(mode, 'spouse.nationalPensionMonthlyAmount') && (
-            // 금액 입력은 한 줄을 다 쓴다. 입력 우측에는 단위와 스테퍼 자리로 5.1rem이
-            // 비워져 있어(components.module.css의 inputWithSteppers), 격자 반 칸(126px)에서는
-            // 백만 단위 금액이 그대로 잘린다.
-            <FieldRow
-              className="col-span-2"
-              label="배우자 국민연금 예상 월 수령액"
-              tooltipText="65세에 받기 시작할 때의 금액입니다. 연기하면 자동으로 가산됩니다."
-              changed={changed.has('spouse.nationalPensionMonthlyAmount')}
-            >
-              <InputField
-                label="" aria-label="배우자 국민연금 예상 월 수령액" type="text" suffixText="원"
-                value={(spouse?.nationalPensionMonthlyAmount ?? 0).toLocaleString()}
-                onChange={(e) => {
-                  const raw = e.target.value.replace(/,/g, '');
-                  if (raw === '' || !isNaN(Number(raw))) {
-                    setSpouse({ nationalPensionMonthlyAmount: raw === '' ? 0 : Number(raw) });
-                  }
-                }}
-              />
-            </FieldRow>
-          )}
-          {isFieldVisible(mode, 'spouse.nationalPensionStartAge') && (
-            <FieldRow
-              label="배우자 수령 개시 나이"
-              changed={changed.has('spouse.nationalPensionStartAge')}
-            >
-              <InputField
-                label="" aria-label="배우자 수령 개시 나이" type="number" suffixText="세"
-                min={NATIONAL_PENSION_EARLY_MIN_AGE} max={NATIONAL_PENSION_DEFERRED_MAX_AGE}
-                value={spouse?.nationalPensionStartAge ?? spouseDefaults.nationalPensionStartAge}
-                // 하한을 조기수령 개시 나이(55)로 잡지 않는 이유: 타이핑 중간 상태("6")가
-                // 곧바로 55로 튀어 "65"를 입력할 수 없게 된다. 여기서는 저장하면 안 되는
-                // 값(빈 문자열 = 0)만 막고, 계산 시점의 범위 강제는 resolveSpouse가 한다.
-                onChange={(e) => {
-                  const age = parseAge(e.target.value, NATIONAL_PENSION_DEFERRED_MAX_AGE);
-                  if (age !== null) setSpouse({ nationalPensionStartAge: age });
                 }}
               />
             </FieldRow>

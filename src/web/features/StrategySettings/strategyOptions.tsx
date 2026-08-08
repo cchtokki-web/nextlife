@@ -8,7 +8,6 @@ import {
   PrivatePensionStrategy, RiskProfile, SimulationParams, SpendingStrategyChoice, SpouseProfile,
   StrategyMode, StrategyRecommendation,
 } from '../../../core/entities/types';
-import { NATIONAL_PENSION_NORMAL_START_AGE } from '../../../core/usecases/pension/nationalPensionRules';
 import { RadioCardOption } from '../../components/form';
 import { EXPECTANCY_MAX } from './ageInput';
 import { FieldPath } from './fieldVisibility';
@@ -55,8 +54,6 @@ export function createDefaultSpouse(
     enabled: false,
     currentAge: userProfile.currentAge,
     expectancy: Math.min(EXPECTANCY_MAX, userProfile.expectancy + SPOUSE_EXPECTANCY_BONUS),
-    nationalPensionMonthlyAmount: 0,
-    nationalPensionStartAge: NATIONAL_PENSION_NORMAL_START_AGE,
   };
 }
 

@@ -588,12 +588,14 @@ export interface RetirementStrategy {
 
 // 배우자. 자산/ISA/사적연금 계좌는 가구 합산 하나로 유지하고, 여기서는 생존 기간과
 // 국민연금만 분리한다(설계 결정: 계좌 소유자 분리는 이번 범위 밖).
+// 배우자 **명의**의 국민연금은 다루지 않는다. 설정 항목이 다섯 개로 늘면서 간편 모드까지
+// 복잡해졌고, 그 대가로 얻는 것이 "배우자도 연금을 받는다"는 한 가지뿐이었다.
+// 배우자 축이 실제로 결과를 바꾸는 지점(가구 종료 나이, 생활비 축소 계수, 본인 연금의
+// 유족연금 승계)은 아래 세 필드만으로 전부 성립한다.
 export interface SpouseProfile {
   enabled: boolean;
   currentAge: number;
   expectancy: number;
-  nationalPensionMonthlyAmount: number; // 65세 기준 금액 (본인과 동일 해석)
-  nationalPensionStartAge: number; // 60~70
 }
 
 export interface HealthcareAssumptions {

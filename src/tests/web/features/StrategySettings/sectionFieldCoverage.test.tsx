@@ -51,7 +51,6 @@ const allEnabledParams: SimulationParams = {
   userProfile: { ...initialParams.userProfile, targetBequest: 100000000 },
   spouse: {
     enabled: true, currentAge: 50, expectancy: 90,
-    nationalPensionMonthlyAmount: 500000, nationalPensionStartAge: 65,
   },
   healthcare: {
     enabled: true, costGrowthRate: 3, baseMonthlyCost: 500000,

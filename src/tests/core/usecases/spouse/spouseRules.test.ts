@@ -1,8 +1,7 @@
 import { describe, test, expect } from 'vitest';
 import {
   SINGLE_SURVIVOR_SPENDING_FACTOR, SURVIVOR_PENSION_INHERIT_RATE,
-  computeHouseholdEndAge, computeSpendingFactor, computeSpouseNationalPensionMonthly,
-  computeSurvivorPensionMonthly, resolveSpouse,
+  computeHouseholdEndAge, computeSpendingFactor, inheritSurvivorPension, resolveSpouse,
 } from '@/core/usecases/spouse/spouseRules';
 import { SpouseProfile, UserProfile } from '@/core/entities/types';
 
@@ -12,7 +11,6 @@ const userProfile: UserProfile = {
 
 const spouse: SpouseProfile = {
   enabled: true, currentAge: 48, expectancy: 90,
-  nationalPensionMonthlyAmount: 800000, nationalPensionStartAge: 65,
 };
 
 describe('resolveSpouse', () => {
@@ -38,10 +36,6 @@ describe('resolveSpouse', () => {
     expect(resolved?.deathAtSelfAge).toBe(50); // 0년 후 = 지금
   });
 
-  test('수령 개시 나이를 60~70으로 클램프한다', () => {
-    expect(resolveSpouse({ ...spouse, nationalPensionStartAge: 55 }, userProfile)?.nationalPensionStartAge).toBe(60);
-    expect(resolveSpouse({ ...spouse, nationalPensionStartAge: 99 }, userProfile)?.nationalPensionStartAge).toBe(70);
-  });
 });
 
 describe('computeHouseholdEndAge', () => {
@@ -75,38 +69,15 @@ describe('computeSpendingFactor', () => {
   });
 });
 
-describe('computeSpouseNationalPensionMonthly', () => {
-  test('개시 나이 전에는 0이다', () => {
-    const resolved = resolveSpouse(spouse, userProfile)!;
-    // 배우자 65세 = 본인 67세. 그 전인 본인 66세에는 0.
-    expect(computeSpouseNationalPensionMonthly(resolved, 66)).toBe(0);
+// 배우자 명의 국민연금을 다루지 않게 되면서 "본인 것 vs 사망자 것 × 지급률" 비교가
+// 사라졌다. 남는 규칙은 승계 하나뿐이다 — 이것까지 지우면 본인 사후 배우자 단독 생존
+// 구간의 국민연금 소득이 통째로 0이 되므로 유지한다.
+describe('inheritSurvivorPension', () => {
+  test('사망자 연금에 지급률을 곱한 금액을 이어받는다', () => {
+    expect(inheritSurvivorPension(1000000)).toBe(1000000 * SURVIVOR_PENSION_INHERIT_RATE);
   });
 
-  test('개시 나이부터 정상 금액을 받는다 (65세 개시 = 조정계수 1)', () => {
-    const resolved = resolveSpouse(spouse, userProfile)!;
-
-    expect(computeSpouseNationalPensionMonthly(resolved, 67)).toBe(800000);
-  });
-
-  test('연기 수령이면 가산된 금액을 받는다 (70세 = +36%)', () => {
-    const deferred = resolveSpouse({ ...spouse, nationalPensionStartAge: 70 }, userProfile)!;
-    // 배우자 70세 = 본인 72세.
-    expect(computeSpouseNationalPensionMonthly(deferred, 72)).toBeCloseTo(800000 * 1.36, 5);
-  });
-});
-
-describe('computeSurvivorPensionMonthly', () => {
-  test('본인 연금과 유족연금 중 큰 쪽만 받는다', () => {
-    // 사망자 연금 100만 * 0.6 = 60만 < 본인 80만 → 본인 것 유지.
-    expect(computeSurvivorPensionMonthly(800000, 1000000)).toBe(800000);
-  });
-
-  test('유족연금이 더 크면 유족연금을 받는다', () => {
-    // 사망자 200만 * 0.6 = 120만 > 본인 80만.
-    expect(computeSurvivorPensionMonthly(800000, 2000000)).toBe(2000000 * SURVIVOR_PENSION_INHERIT_RATE);
-  });
-
-  test('본인 연금이 0이어도 유족연금은 받는다', () => {
-    expect(computeSurvivorPensionMonthly(0, 1000000)).toBe(600000);
+  test('사망자 연금이 없으면 이어받을 것도 없다', () => {
+    expect(inheritSurvivorPension(0)).toBe(0);
   });
 });

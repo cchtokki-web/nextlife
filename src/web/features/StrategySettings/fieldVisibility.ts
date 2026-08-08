@@ -15,8 +15,6 @@ export const SECTION_FIELDS: Record<SectionId, ReadonlyArray<FieldPath>> = {
     'spouse.enabled',
     'spouse.currentAge',
     'spouse.expectancy',
-    'spouse.nationalPensionMonthlyAmount',
-    'spouse.nationalPensionStartAge',
   ],
   goal: [
     'strategy.spendingChoice',
@@ -87,8 +85,6 @@ const SIMPLE_FIELDS: ReadonlySet<FieldPath> = new Set([
   'spouse.enabled',
   'spouse.currentAge',
   'spouse.expectancy',
-  'spouse.nationalPensionMonthlyAmount',
-  'spouse.nationalPensionStartAge',
   'strategy.spendingChoice',
   'userProfile.targetMonthlySpending',
   'strategy.objective',

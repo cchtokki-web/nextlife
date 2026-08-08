@@ -124,7 +124,7 @@ describe('runMonteCarlo', () => {
   // 계획에서 본인 기대수명을 쓰면 배우자 단독 생존 구간의 파산이 통째로 숨는다.
   test('성공 기준 나이는 가구 종료 나이다', () => {
     const withSpouse = params({
-      spouse: { enabled: true, currentAge: 50, expectancy: 95, nationalPensionMonthlyAmount: 0, nationalPensionStartAge: 65 },
+      spouse: { enabled: true, currentAge: 50, expectancy: 95 },
     });
 
     const mc = runMonteCarlo(withSpouse, engine, config({ trials: 10 }));
