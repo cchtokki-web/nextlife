@@ -309,7 +309,6 @@ describe('recommendStrategy - 생활비 증액(Phase 2) 후보', () => {
       assets: [{ ...paramsWithSurplusAssetOnly.assets[0], quantity: 9000 }],
       spouse: {
         enabled: true, currentAge: 50, expectancy: 95,
-        nationalPensionMonthlyAmount: 0, nationalPensionStartAge: 65,
       },
     };
 

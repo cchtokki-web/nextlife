@@ -1,7 +1,7 @@
 import { getIdentityPlan } from '../strategy/StrategyCandidateGenerator';
 import { NATIONAL_PENSION_NORMAL_START_AGE } from '../pension/nationalPensionRules';
 import { clampPrivatePensionStartAge, PRIVATE_PENSION_MIN_START_AGE } from '../pension/privatePensionRules';
-import { computeHouseholdEndAge, resolveSpouse, spouseNationalPensionStartSelfAge } from '../spouse/spouseRules';
+import { computeHouseholdEndAge, resolveSpouse } from '../spouse/spouseRules';
 import { SimulationParams, SimulationResult, StrategyRecommendation } from '../../entities/types';
 import { PlanAssetStatus } from './resolvePlanAssetStatus';
 
@@ -145,23 +145,6 @@ export function computeExecutionRoadmap(
         changedFromAge: changedFrom(plan.nationalPensionStartAge, identityPlan.nationalPensionStartAge),
       },
     });
-  }
-
-  // 배우자 국민연금은 본인보다 몇 년 먼저(또는 나중에) 시작될 수 있고, 그 시점에 소득 차트의
-  // 막대가 갑자기 나타난다. 로드맵에 없으면 "왜 64세부터 연금이 생기지?"에 답할 곳이 없다.
-  // 개시 나이는 배우자 나이로 저장되므로 본인 나이로 환산한다(spouseNationalPensionStartSelfAge).
-  if (spouse && spouse.nationalPensionMonthlyAmount > 0) {
-    const spouseStartSelfAge = spouseNationalPensionStartSelfAge(spouse);
-    // 이미 수령 중이면(환산 결과가 시뮬레이션 시작 시점 이전) 앞으로 일어날 일이 아니다.
-    if (spouseStartSelfAge > params.userProfile.currentAge) {
-      rawEvents.push({
-        age: spouseStartSelfAge,
-        item: {
-          title: '배우자 국민연금 수령 개시',
-          description: '배우자 명의의 국민연금 수령이 시작됩니다.',
-        },
-      });
-    }
   }
 
   // 자산 고갈이 예상되면 다른 마일스톤과 함께 정확히 몇 세에 고갈되는지도 타임라인에

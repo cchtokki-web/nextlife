@@ -1,8 +1,4 @@
 import { SpendingFactor, SpouseProfile, UserProfile } from '../../entities/types';
-import {
-  NATIONAL_PENSION_DEFERRED_MAX_AGE, NATIONAL_PENSION_EARLY_MIN_AGE,
-  getNationalPensionAdjustmentFactor,
-} from '../pension/nationalPensionRules';
 
 // 2인 가구 → 1인 가구로 줄었을 때의 소비지출 비율.
 // 통계청 가계동향조사의 1인 가구 대비 2인 가구 소비지출 비(대략 1.4~1.5배)를 역수로
@@ -16,8 +12,6 @@ export const SURVIVOR_PENSION_INHERIT_RATE = 0.6;
 export interface ResolvedSpouse {
   currentAge: number;
   expectancy: number;
-  nationalPensionMonthlyAmount: number;
-  nationalPensionStartAge: number;
   // 배우자가 사망하는 시점을 "본인 나이"로 환산한 값. 엔진 루프는 본인 나이로
   // 돌기 때문에, 매 연도 배우자 나이를 다시 계산하지 않아도 되도록 미리 넣어 둔다.
   deathAtSelfAge: number;
@@ -25,9 +19,8 @@ export interface ResolvedSpouse {
   selfStartAge: number;
 }
 
-// 입력값을 정규화한다. 잘못된 값(기대수명 < 현재 나이, 범위 밖 개시 나이)은
-// 던지지 않고 클램프한다 — UI가 이미 경고를 표시하고 있고, 여기서 던지면
-// 타이핑 중간 상태에서 화면 전체가 죽는다.
+// 입력값을 정규화한다. 잘못된 값(기대수명 < 현재 나이)은 던지지 않고 클램프한다 —
+// UI가 이미 경고를 표시하고 있고, 여기서 던지면 타이핑 중간 상태에서 화면 전체가 죽는다.
 export function resolveSpouse(
   spouse: SpouseProfile | undefined,
   userProfile: UserProfile
@@ -36,16 +29,10 @@ export function resolveSpouse(
 
   const currentAge = Math.max(0, spouse.currentAge);
   const expectancy = Math.max(currentAge, spouse.expectancy);
-  const nationalPensionStartAge = Math.min(
-    NATIONAL_PENSION_DEFERRED_MAX_AGE,
-    Math.max(NATIONAL_PENSION_EARLY_MIN_AGE, spouse.nationalPensionStartAge)
-  );
 
   return {
     currentAge,
     expectancy,
-    nationalPensionMonthlyAmount: Math.max(0, spouse.nationalPensionMonthlyAmount),
-    nationalPensionStartAge,
     deathAtSelfAge: userProfile.currentAge + (expectancy - currentAge),
     selfStartAge: userProfile.currentAge,
   };
@@ -69,32 +56,15 @@ export function computeSpendingFactor(selfAlive: boolean, spouseAlive: boolean):
   return SINGLE_SURVIVOR_SPENDING_FACTOR;
 }
 
-// 배우자의 국민연금 개시 시점을 **본인 나이로** 환산한 값.
+// 사망자의 국민연금을 생존자가 유족연금으로 이어받는 금액.
 //
-// 화면(로드맵 마일스톤, 소득 차트의 기준선)은 전부 본인 나이 축으로 그려지는데, 배우자
-// 개시 나이는 배우자 나이로 저장된다. 그 환산 규칙을 소비처마다 다시 쓰면(현재 나이 차이를
-// 빼고 더하는 식) 한 곳만 어긋나도 조용히 몇 년 밀린 기준선이 그려진다 — 한 곳에 둔다.
-export function spouseNationalPensionStartSelfAge(resolved: ResolvedSpouse): number {
-  return resolved.selfStartAge + (resolved.nationalPensionStartAge - resolved.currentAge);
-}
-
-// 배우자 본인 명의 국민연금 월 수령액(실질, 조정계수 반영). 개시 전이면 0.
-// selfAge는 본인 나이이며, 배우자 나이로 환산해 판정한다.
-export function computeSpouseNationalPensionMonthly(
-  resolved: ResolvedSpouse,
-  selfAge: number
-): number {
-  const spouseAge = resolved.currentAge + (selfAge - resolved.selfStartAge);
-  if (spouseAge < resolved.nationalPensionStartAge) return 0;
-  return resolved.nationalPensionMonthlyAmount
-    * getNationalPensionAdjustmentFactor(resolved.nationalPensionStartAge);
-}
-
-// 배우자 사망 후 생존자가 받는 국민연금. 중복조정으로 본인 연금과 합산하지 않고
-// "본인 연금" vs "사망자 연금 * 지급률" 중 큰 쪽만 받는다(실제 제도의 단순화).
-export function computeSurvivorPensionMonthly(
-  ownMonthly: number,
-  deceasedMonthly: number
-): number {
-  return Math.max(ownMonthly, deceasedMonthly * SURVIVOR_PENSION_INHERIT_RATE);
+// 예전에는 `max(생존자 본인 연금, 사망자 연금 × 지급률)`이라는 중복조정 비교였다. 그 비교는
+// 두 사람이 **각자** 연금을 가질 때만 의미가 있는데, 배우자 명의 국민연금을 다루지 않게
+// 되면서 비교 대상이 사라졌다. 남는 규칙은 승계 하나뿐이다.
+//
+// 이 규칙 자체는 남겨야 한다. 배우자 명의 연금이 아니라 **본인** 연금이 이어지는 것이라,
+// 함께 지우면 본인 사후 배우자 단독 생존 구간의 국민연금 소득이 통째로 0이 되어
+// 고갈 나이·점수가 크게 뒤틀린다.
+export function inheritSurvivorPension(deceasedMonthly: number): number {
+  return deceasedMonthly * SURVIVOR_PENSION_INHERIT_RATE;
 }

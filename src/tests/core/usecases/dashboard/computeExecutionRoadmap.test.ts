@@ -250,7 +250,6 @@ describe('computeExecutionRoadmap', () => {
       ...baseParams,
       spouse: {
         enabled: true, currentAge: 50, expectancy: 95,
-        nationalPensionMonthlyAmount: 0, nationalPensionStartAge: 65,
       },
     };
 
@@ -266,7 +265,6 @@ describe('computeExecutionRoadmap', () => {
       ...baseParams,
       spouse: {
         enabled: true, currentAge: 50, expectancy: 95,
-        nationalPensionMonthlyAmount: 0, nationalPensionStartAge: 65,
       },
     };
 
@@ -378,7 +376,6 @@ describe('computeExecutionRoadmap - 투자자산 미보유 계획', () => {
     nationalPension: { expectedMonthlyAmount: 1800000 },
     spouse: {
       enabled: true, currentAge: 46, expectancy: 92,
-      nationalPensionMonthlyAmount: 200000, nationalPensionStartAge: 60,
     },
   };
 
@@ -397,16 +394,16 @@ describe('computeExecutionRoadmap - 투자자산 미보유 계획', () => {
     expect(roadmap.events.flatMap((e) => e.items).some((i) => i.severity === 'warning')).toBe(false);
   });
 
-  // 소득 차트가 64세부터 튀는 이유를 로드맵도 설명해야 한다.
-  test('배우자 국민연금 개시를 본인 나이로 환산해 마일스톤에 넣는다', () => {
+  // 배우자를 켜도 배우자 명의 연금 마일스톤은 그리지 않는다 — 로드맵이 복잡해진다는
+  // 피드백에 따라 배우자 명의 국민연금 자체를 다루지 않게 되었다.
+  test('배우자를 켜도 로드맵은 본인 마일스톤만 그린다', () => {
     const roadmap = computeExecutionRoadmap(pensionOnlyParams, undefined, 51, 'no_investable_asset');
 
-    expect(roadmap.events.map((e) => e.age)).toEqual([60, 64, 65]);
-    expect(roadmap.events.find((e) => e.age === 64)!.items.map((i) => i.title))
-      .toEqual(['배우자 국민연금 수령 개시']);
+    expect(roadmap.events.map((e) => e.age)).toEqual([60, 65]);
+    expect(roadmap.events.find((e) => e.age === 60)!.items.map((i) => i.title)).toEqual(['퇴직']);
     expect(roadmap.events.find((e) => e.age === 65)!.items.map((i) => i.title))
       .toEqual(['국민연금 수령 개시']);
-    expect(roadmap.events.find((e) => e.age === 60)!.items.map((i) => i.title)).toEqual(['퇴직']);
+    expect(roadmap.events.flatMap((e) => e.items).some((i) => i.title.includes('배우자'))).toBe(false);
   });
 
   test('국민연금 수령액이 0이면 국민연금 개시 이벤트도 그리지 않는다', () => {

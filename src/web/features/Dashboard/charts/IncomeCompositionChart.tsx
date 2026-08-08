@@ -5,7 +5,6 @@ import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Legend, Cart
 import GlassCard from '../../../components/GlassCard';
 import styles from '../Dashboard.module.css';
 import { SimulationParams, SimulationResult } from '../../../../core/entities/types';
-import { PensionStartMarker } from '../../../../core/usecases/dashboard/computePensionStartMarkers';
 import { computeMonthlySpendingComposition } from '../../../../core/usecases/MonthlySpendingComposition';
 import { formatValue, MultilineYAxisTick, RECHARTS_TOOLTIP_STYLE } from './chartFormatters';
 import { ChartCaption } from './ChartCaption';
@@ -25,10 +24,9 @@ interface IncomeCompositionChartProps {
   hiddenKeys: Record<string, boolean>;
   onLegendClick: (data: LegendPayload) => void;
   caption: string;
-  // 국민연금 개시 시점(본인/배우자). 막대는 두 사람의 국민연금을 합산해 그리기 때문에,
-  // 배우자가 먼저 받기 시작하는 계획에서는 어느 해에 작은 막대가 생겼다가 다음 해에
-  // 갑자기 커진다 — 기준선이 없으면 그 이유를 차트에서 읽을 방법이 없다.
-  pensionStartMarkers?: PensionStartMarker[];
+  // 국민연금 개시 나이(본인 기준). 그 해부터 막대가 갑자기 커지는 이유를 차트에서
+  // 읽을 수 있게 세로 기준선을 그린다. 수령액이 0이면 넘기지 않아 기준선도 그려지지 않는다.
+  nationalPensionStartAge?: number;
 }
 
 const INCOME_KEYS = ['국민연금', '사적연금', '배당소득', '기타소득'] as const;
@@ -86,7 +84,7 @@ export function IncomeCompositionTooltip({
 }
 
 export function IncomeCompositionChart({
-  params, result, hiddenKeys, onLegendClick, caption, pensionStartMarkers = [],
+  params, result, hiddenKeys, onLegendClick, caption, nationalPensionStartAge,
 }: IncomeCompositionChartProps) {
   const currency = params.displayCurrency;
   // 목표 생활비는 은퇴 후 구간에만 정의된다. 나이로 색인해 두고 툴팁에서 찾아 쓴다 —
@@ -123,7 +121,7 @@ export function IncomeCompositionChart({
       <div className={styles.chartScrollWrapper}>
         <div className={styles.chartContainer}>
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={pensionChartData} margin={{ top: 44, right: 43, left: 0, bottom: 0 }}>
+            <BarChart data={pensionChartData} margin={{ top: 36, right: 43, left: 0, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(255, 255, 255, 0.05)" />
               <XAxis
                 dataKey="age"
@@ -157,26 +155,21 @@ export function IncomeCompositionChart({
               />
               {/* 기준선은 막대보다 먼저 선언해 막대 뒤에 깔리게 한다(recharts는 선언 순서대로 쌓는다).
                   차트 데이터에 없는 나이(예: 시뮬레이션 구간 밖)는 recharts가 조용히 무시한다. */}
-              {pensionStartMarkers.map((marker, index) => (
+              {nationalPensionStartAge !== undefined && (
                 <ReferenceLine
-                  key={marker.age}
-                  x={marker.age}
+                  x={nationalPensionStartAge}
                   stroke="var(--foreground-muted)"
                   strokeDasharray="4 4"
                   strokeWidth={1.5}
                   label={{
-                    value: `${marker.age}세 ${marker.label}`,
+                    value: `${nationalPensionStartAge}세 국민연금 시작`,
                     fill: 'var(--foreground-muted)',
                     position: 'top',
                     fontSize: '0.65rem',
                     fontWeight: 600,
-                    // 본인·배우자 개시가 1~2년 차이면 두 라벨이 같은 높이에서 겹쳐 글자가
-                    // 뭉개진다. 홀짝으로 한 단 올려 서로 비켜 가게 한다(margin.top이 2단을
-                    // 수용하도록 함께 넓혀 두었다).
-                    dy: index % 2 === 0 ? 0 : -14,
                   }}
                 />
-              ))}
+              )}
               <Bar name="국민연금" dataKey="국민연금" stackId="a" fill="#10B981" hide={!!hiddenKeys['국민연금']} />
               <Bar name="사적연금" dataKey="사적연금" stackId="a" fill="#A855F7" hide={!!hiddenKeys['사적연금']} />
               <Bar name="배당소득" dataKey="배당소득" stackId="a" fill="#3B82F6" hide={!!hiddenKeys['배당소득']} />

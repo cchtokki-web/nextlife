@@ -30,7 +30,6 @@ import { useBeforeAfterToggle } from './hooks/useBeforeAfterToggle';
 import { ExecutionRoadmap } from './roadmap/ExecutionRoadmap';
 import { computeExecutionRoadmap, selectDepletionAge } from '../../../core/usecases/dashboard/computeExecutionRoadmap';
 import { resolvePlanAssetStatus } from '../../../core/usecases/dashboard/resolvePlanAssetStatus';
-import { computePensionStartMarkers } from '../../../core/usecases/dashboard/computePensionStartMarkers';
 import { NATIONAL_PENSION_NORMAL_START_AGE } from '../../../core/usecases/pension/nationalPensionRules';
 import { compileStrategy } from '../../../core/usecases/strategy/compileStrategy';
 import { SentinelApplication } from '../../../core/usecases/strategy/applyAiSentinels';
@@ -138,16 +137,15 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
   const roadmapRecommendation = mode === 'after' ? recommendation : undefined;
   const roadmapPlanAssetStatus = mode === 'after' ? planAssetStatus : baselinePlanAssetStatus;
 
-  // 소득 차트의 연금 개시 기준선. 차트가 그리는 결과(displayedResult)와 같은 계획이어야 하므로
-  // After 모드에서는 추천안의 국민연금 개시 나이를 쓴다.
+  // 소득 차트의 국민연금 개시 기준선. 차트가 그리는 결과(displayedResult)와 같은 계획이어야
+  // 하므로 After 모드에서는 추천안의 개시 나이를 쓴다. 수령액이 0이면 그 해에 아무 일도
+  // 일어나지 않으므로 기준선을 그리지 않는다.
   const displayedNationalPensionStartAge =
-    (mode === 'after' ? recommendation?.recommendedPlan?.nationalPensionStartAge : undefined)
-    ?? params.withdrawalPlan?.nationalPensionStartAge
-    ?? NATIONAL_PENSION_NORMAL_START_AGE;
-  const pensionStartMarkers = React.useMemo(
-    () => computePensionStartMarkers(params, displayedNationalPensionStartAge),
-    [params, displayedNationalPensionStartAge]
-  );
+    (params.nationalPension?.expectedMonthlyAmount ?? 0) > 0
+      ? (mode === 'after' ? recommendation?.recommendedPlan?.nationalPensionStartAge : undefined)
+        ?? params.withdrawalPlan?.nationalPensionStartAge
+        ?? NATIONAL_PENSION_NORMAL_START_AGE
+      : undefined;
 
   // 다른 배너와 같은 이유로 baseline(현재 설정)을 쓴다 — 이 제안은 "지금 설정을 이렇게
   // 바꿔 보라"는 말이므로 Before/After 미리보기를 따라가면 자기 자신을 근거로 삼게 된다.
@@ -358,7 +356,7 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
         hiddenKeys={hiddenKeys}
         onLegendClick={handleLegendClick}
         caption={captions.incomeComposition}
-        pensionStartMarkers={pensionStartMarkers}
+        nationalPensionStartAge={displayedNationalPensionStartAge}
       />
       <SpendingCompositionChart
         params={params}

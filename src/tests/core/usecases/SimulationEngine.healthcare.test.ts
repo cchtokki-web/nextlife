@@ -167,7 +167,6 @@ describe('SimulationEngine 의료비 통합', () => {
       ...baseParams,
       spouse: {
         enabled: true, currentAge: 55, expectancy: 90,
-        nationalPensionMonthlyAmount: 0, nationalPensionStartAge: 65,
       },
     };
 

@@ -420,7 +420,6 @@ describe('실제 SimulationEngine 출력과의 계약', () => {
     spendingStrategy: 'target',
     spouse: {
       enabled: true, currentAge: 55, expectancy: 85,
-      nationalPensionMonthlyAmount: 700000, nationalPensionStartAge: 65,
     },
     healthcare: {
       enabled: true, costGrowthRate: 5, baseMonthlyCost: 400000,

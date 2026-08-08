@@ -77,8 +77,6 @@ describe('calculateRetirementScore의 목표 자산 배선', () => {
         enabled: true,
         currentAge: 80,
         expectancy: 82, // 본인 57세 시점에 사망 → 은퇴(60세) 시점에는 1인 가구
-        nationalPensionMonthlyAmount: 0,
-        nationalPensionStartAge: 65,
       },
     });
 

@@ -40,7 +40,7 @@ describe('simulationYearCount', () => {
   // 경로가 짧으면 뒷부분이 조용히 충격 0이 되어 그 구간만 결정론이 된다.
   test('실제 엔진이 만드는 연도 수와 일치한다 (장수 배우자)', () => {
     const withSpouse = params({
-      spouse: { enabled: true, currentAge: 45, expectancy: 95, nationalPensionMonthlyAmount: 0, nationalPensionStartAge: 65 },
+      spouse: { enabled: true, currentAge: 45, expectancy: 95 },
     });
 
     expect(simulationYearCount(withSpouse))
@@ -49,7 +49,7 @@ describe('simulationYearCount', () => {
 
   test('실제 엔진이 만드는 연도 수와 일치한다 (본인이 더 오래 사는 배우자)', () => {
     const withSpouse = params({
-      spouse: { enabled: true, currentAge: 60, expectancy: 70, nationalPensionMonthlyAmount: 0, nationalPensionStartAge: 65 },
+      spouse: { enabled: true, currentAge: 60, expectancy: 70 },
     });
 
     expect(simulationYearCount(withSpouse))
@@ -58,7 +58,7 @@ describe('simulationYearCount', () => {
 
   test('배우자를 껐으면 없는 것과 같다', () => {
     const disabled = params({
-      spouse: { enabled: false, currentAge: 45, expectancy: 95, nationalPensionMonthlyAmount: 0, nationalPensionStartAge: 65 },
+      spouse: { enabled: false, currentAge: 45, expectancy: 95 },
     });
 
     expect(simulationYearCount(disabled)).toBe(simulationYearCount(params()));
