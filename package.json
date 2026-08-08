@@ -8,7 +8,8 @@
     "start": "prisma db push && next start",
     "lint": "eslint",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "harness:personas": "vitest run --config vitest.harness.config.ts"
   },
   "dependencies": {
     "@next-auth/prisma-adapter": "^1.0.7",

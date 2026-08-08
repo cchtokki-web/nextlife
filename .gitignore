@@ -52,3 +52,6 @@ next-env.d.ts
 *.sqlite3
 .superpowers/
 .worktrees/
+
+# 하니스 출력 (npm run harness:personas)
+/scripts/harness/out/
