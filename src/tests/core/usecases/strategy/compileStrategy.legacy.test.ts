@@ -200,7 +200,7 @@ describe('기본 전략(DEFAULT_RETIREMENT_STRATEGY)의 엔진 결과 동일성'
     expect(engine.run(compiled.params)).toEqual(engine.run(legacyBase));
   });
 
-  test('배우자·의료비를 켜지 않은 시나리오에서도 동일하다', () => {
+  test('의료비를 켜지 않은 시나리오에서도 동일하다', () => {
     const params: SimulationParams = {
       ...legacyBase,
       inflationMode: 'nominal',

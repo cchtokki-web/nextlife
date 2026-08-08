@@ -35,14 +35,6 @@ describe('BasicInfoSection', () => {
     });
   });
 
-  test('배우자 관련 입력을 렌더하지 않는다', () => {
-    renderSection();
-
-    expect(screen.queryByRole('switch', { name: /배우자/ })).not.toBeInTheDocument();
-    expect(screen.queryByLabelText('배우자 나이')).not.toBeInTheDocument();
-    expect(screen.queryByLabelText('배우자 기대수명')).not.toBeInTheDocument();
-  });
-
   // C1: 나이 입력은 디바운스 자동저장(useScenarios)과 겹친다. 값을 지운 상태(Number('') === 0)가
   // 저장되면 E2EE 저장소에 0이 영구히 남고, currentAge 0은 엔진 가드를 통과해 전혀 다른 기간을
   // 계산한다(0~90세 = 91년). 그래서 빈 값은 저장하지 않고 범위 밖 값은 클램프한다.
