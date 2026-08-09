@@ -235,12 +235,19 @@ describe('POST /api/user/withdraw', () => {
 
     expect(mockedTransaction).toHaveBeenCalledTimes(1);
     expect(mockedDeleteMany).toHaveBeenCalledWith({ where: { id: USER_ID } });
-    expect(mockedTokenDeleteMany).toHaveBeenCalledWith({ where: { identifier: 'a@b.com' } });
+    expect(mockedTokenDeleteMany).toHaveBeenCalledWith({
+      where: {
+        OR: [
+          { identifier: { startsWith: `email-migration:${USER_ID}:` } },
+          { identifier: 'a@b.com' },
+        ],
+      },
+    });
   });
 
   // 카카오 스코프에 account_email이 없어 카카오 사용자는 전원 email이 null이다.
-  // identifier는 non-nullable이라, 무조건 부르면 운영 사용자 전원의 탈퇴가 500으로 실패한다.
-  test('이메일이 없는(카카오) 계정이면 인증 토큰 삭제를 시도하지 않는다', async () => {
+  // 이메일이 없어도 전환 도중 발급된 인증번호는 사용자 ID 접두사로 찾아 삭제한다.
+  test('이메일이 없는 카카오 계정도 전환 인증 토큰을 삭제한다', async () => {
     mockedFindUnique.mockResolvedValue(userRow({ email: null }));
     vi.spyOn(global, 'fetch').mockResolvedValueOnce(kakaoResponse(200, { id: 1 }));
 
@@ -248,7 +255,9 @@ describe('POST /api/user/withdraw', () => {
 
     expect(res.status).toBe(200);
     expect(mockedDeleteMany).toHaveBeenCalled();
-    expect(mockedTokenDeleteMany).not.toHaveBeenCalled();
+    expect(mockedTokenDeleteMany).toHaveBeenCalledWith({
+      where: { OR: [{ identifier: { startsWith: `email-migration:${USER_ID}:` } }] },
+    });
   });
 
   test('이미 삭제된 사용자면 200 success를 반환하고 unlink도 삭제도 하지 않는다', async () => {

@@ -173,17 +173,16 @@ const fetchLatestParamsInfo = async (params: SimulationParams): Promise<Simulati
   return updatedParams;
 };
 
-// 발급된 보안키를 카카오톡 '나와의 채팅방'으로 보낸다.
+// 발급된 보안키를 로그인 계정의 이메일로 보낸다.
 //
 // 훅 본문이 아니라 모듈 스코프에 두는 이유: 이 함수를 부르는 로딩 이펙트가 반환 객체보다
 // 앞에 있어, 반환 객체 안에 선언하면 선언 전 참조가 된다(handleCreateScenario를 위로 끌어올린
 // 것과 같은 이유).
-const KAKAO_SEND_TIMEOUT_MS = 15000;
+const EMAIL_SEND_TIMEOUT_MS = 15000;
 
 export interface SendKeyResult {
   success: boolean;
   error?: string;
-  requiresKakaoConsent?: boolean;
 }
 
 // 서버가 준 문구를 모달에 그대로 띄워도 되는지 판단한다. 사용자용 문구는 우리가 쓴 짧은
@@ -193,10 +192,10 @@ const isUserFacingMessage = (message: string): boolean =>
   message.length <= 120 && /[가-힣]/.test(message) && !/[{}[\]"<>]|https?:\/\//.test(message);
 
 async function postBackupKey(key: string): Promise<SendKeyResult> {
-  // 카카오 API가 응답하지 않으면 발급 모달이 '전송 중'에 영원히 갇힌다. 타임아웃을 두어
+  // 메일 서버가 응답하지 않으면 발급 모달이 '전송 중'에 영원히 갇힌다. 타임아웃을 두어
   // 반드시 실패 상태(= 키를 화면에 보여 주고 재시도를 제공하는 상태)로 빠져나오게 한다.
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), KAKAO_SEND_TIMEOUT_MS);
+  const timeoutId = setTimeout(() => controller.abort(), EMAIL_SEND_TIMEOUT_MS);
   try {
     const res = await fetch('/api/user/send-backup-key', {
       method: 'POST',
@@ -213,13 +212,12 @@ async function postBackupKey(key: string): Promise<SendKeyResult> {
     const reason = typeof data.error === 'string' && isUserFacingMessage(data.error) ? data.error : undefined;
     return {
       success: false,
-      error: reason ?? '카카오톡 전송에 실패했습니다.',
-      requiresKakaoConsent: data.code === 'KAKAO_CONSENT_REQUIRED',
+      error: reason ?? '이메일 전송에 실패했습니다.',
     };
   } catch (err) {
-    console.error('Failed to send backup key to Kakao:', err);
+    console.error('Failed to send backup key by email:', err);
     const aborted = err instanceof DOMException && err.name === 'AbortError';
-    return { success: false, error: aborted ? '카카오톡 서버가 응답하지 않습니다.' : '네트워크 오류가 발생했습니다.' };
+    return { success: false, error: aborted ? '메일 서버가 응답하지 않습니다.' : '네트워크 오류가 발생했습니다.' };
   } finally {
     clearTimeout(timeoutId);
   }
@@ -229,7 +227,7 @@ async function postBackupKey(key: string): Promise<SendKeyResult> {
 export type KeyIssuance =
   | { status: 'sending'; key: string }
   | { status: 'sent'; key: string }
-  | { status: 'failed'; key: string; error?: string; requiresKakaoConsent?: boolean };
+  | { status: 'failed'; key: string; error?: string };
 
 // 발급 상태에 더해, "키는 있는데 백업이 확인되지 않은" 상태까지 포함한 모달 표시용 값.
 export type KeyNotice = KeyIssuance | { status: 'unbacked'; key: string };
@@ -275,7 +273,7 @@ export function useScenarios() {
   const [restoreError, setRestoreError] = useState<string | null>(null);
   // 이 사용자에게 보안키를 이미 발급했는지. 상태가 아니라 ref여야 한다 — StrictMode의 이펙트
   // 이중 실행은 같은 커밋의 같은 값을 두 클로저가 보므로 setState 가드로는 막히지 않고,
-  // 그러면 키가 두 개 발급되어 카카오톡에 서로 다른 키가 두 번 도착한다.
+  // 그러면 키가 두 개 발급되어 이메일에 서로 다른 키가 두 번 도착한다.
   const keyIssuedForUserRef = useRef<string | null>(null);
 
   // Cloud Save States
@@ -563,7 +561,7 @@ export function useScenarios() {
                 setLoadErrorState({ key: loadRequestKey, message: '보안키를 생성하지 못했습니다. 페이지를 새로고침해 주세요.' });
               } else {
                 // 발급 즉시 기록한다. 확인 전에 창을 닫아도 다음 로그인이 같은 키로
-                // 이어지고, 카카오톡에 서로 다른 키가 두 개 쌓이지 않는다.
+                // 이어지고, 이메일에 서로 다른 키가 두 개 쌓이지 않는다.
                 localStorage.setItem(keyName, newKey);
                 localStorage.setItem(e2eeBackedUpKeyName(userId), 'false');
                 setIsBackupKeyBackedUp(false);
@@ -575,7 +573,6 @@ export function useScenarios() {
                         status: 'failed',
                         key: newKey,
                         error: result.error,
-                        requiresKakaoConsent: result.requiresKakaoConsent,
                       });
                 });
                 // setLocalKey는 일부러 부르지 않는다. 사용자가 '확인'을 누를 때 비로소
@@ -708,7 +705,7 @@ export function useScenarios() {
   const activeParams = scenarios.find(s => s.id === activeScenarioId)?.data || initialParams;
 
   // 발급 모달에 무엇을 보여 줄지. 발급이 진행 중이면 그것을, 아니면 "키는 있는데 백업이
-  // 확인되지 않은" 상태를 보여 준다. 후자는 발급 도중 창을 닫았거나 카카오톡 전송이 실패한
+  // 확인되지 않은" 상태를 보여 준다. 후자는 발급 도중 창을 닫았거나 이메일 전송이 실패한
   // 채로 넘어간 사용자를 다음 접속에서 자동으로 구제한다.
   const keyNotice: KeyNotice | null = keyIssuance
     ?? (localKey && !isBackupKeyBackedUp ? { status: 'unbacked', key: localKey } : null);
@@ -1069,7 +1066,6 @@ export function useScenarios() {
             status: 'failed',
             key,
             error: result.error,
-            requiresKakaoConsent: result.requiresKakaoConsent,
           });
       return result;
     },
@@ -1160,7 +1156,6 @@ export function useScenarios() {
             status: 'failed',
             key: newKey,
             error: result.error,
-            requiresKakaoConsent: result.requiresKakaoConsent,
           });
 
       // window.location.reload() 대신 handleRestoreKey와 같은 재적재 경로를 쓴다.

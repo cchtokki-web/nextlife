@@ -353,7 +353,7 @@ describe('useScenarios — 로그인', () => {
   // 우리에게는 내부 사정의 노출이다.
   test('사용자용이 아닌 서버 오류 문구는 모달에 전달하지 않는다', async () => {
     signedIn();
-    const rawError = 'Kakao API failed: {"msg":"this access token does not exist","code":-401}';
+    const rawError = 'SMTP failed: {"responseCode":550}';
     vi.stubGlobal('fetch', vi.fn(async (url: string) => {
       if (url === '/api/user/send-backup-key') {
         return { ok: false, status: 400, json: async () => ({ error: rawError }) } as unknown as Response;
@@ -366,19 +366,18 @@ describe('useScenarios — 로그인', () => {
 
     const { result } = renderHook(() => useScenarios());
     await waitFor(() => expect(result.current.keyNotice?.status).toBe('failed'));
-    expect(result.current.keyNotice).toMatchObject({ error: '카카오톡 전송에 실패했습니다.' });
+    expect(result.current.keyNotice).toMatchObject({ error: '이메일 전송에 실패했습니다.' });
   }, 10000);
 
-  test('카카오 talk_message 동의가 필요하면 권한 동의 상태를 전달한다', async () => {
+  test('사용자용 이메일 오류 문구는 그대로 전달한다', async () => {
     signedIn();
     vi.stubGlobal('fetch', vi.fn(async (url: string) => {
       if (url === '/api/user/send-backup-key') {
         return {
           ok: false,
-          status: 403,
+          status: 500,
           json: async () => ({
-            error: '카카오톡 전송 권한 동의가 필요합니다.',
-            code: 'KAKAO_CONSENT_REQUIRED',
+            error: '이메일로 보안키를 보내지 못했습니다. 잠시 후 다시 시도해 주세요.',
           }),
         } as unknown as Response;
       }
@@ -392,12 +391,11 @@ describe('useScenarios — 로그인', () => {
 
     await waitFor(() => expect(result.current.keyNotice?.status).toBe('failed'));
     expect(result.current.keyNotice).toMatchObject({
-      error: '카카오톡 전송 권한 동의가 필요합니다.',
-      requiresKakaoConsent: true,
+      error: '이메일로 보안키를 보내지 못했습니다. 잠시 후 다시 시도해 주세요.',
     });
   }, 10000);
 
-  // 이펙트가 다시 돌 때마다 발급하면 카카오톡에 서로 다른 키가 여러 개 도착한다.
+  // 이펙트가 다시 돌 때마다 발급하면 이메일에 서로 다른 키가 여러 개 도착한다.
   test('재렌더가 반복돼도 보안키는 한 번만 발급한다', async () => {
     signedIn();
     vi.stubGlobal('fetch', mockFetch({ '/api/scenarios': { data: [] } }));

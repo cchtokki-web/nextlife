@@ -5,6 +5,7 @@ import { PrismaAdapter } from "@next-auth/prisma-adapter";
 import bcrypt from "bcrypt";
 import { prisma } from "@/infrastructure/db/prisma";
 import { isDevMode } from "@/core/utils/isDevMode";
+import { isRateLimited } from "@/core/utils/rateLimiter";
 
 if (isDevMode()) {
   process.env.NEXTAUTH_URL = process.env.DEV_NEXTAUTH_URL || "http://localhost:3000";
@@ -86,7 +87,9 @@ export const authOptions: NextAuthOptions = {
             clientSecret: process.env.KAKAO_CLIENT_SECRET || "",
             authorization: {
               params: {
-                scope: "profile_nickname,profile_image,talk_message",
+                // 카카오는 기존 사용자 식별과 이메일 전환 진입에만 쓴다. 보안키는 이메일로
+                // 보내므로 talk_message 추가 동의를 더 이상 요구하지 않는다.
+                scope: "profile_nickname,profile_image",
               },
             },
           }),
@@ -95,7 +98,9 @@ export const authOptions: NextAuthOptions = {
       name: "이메일 로그인",
       credentials: {
         email: { label: "이메일", type: "email", placeholder: "example@example.com" },
-        password: { label: "비밀번호", type: "password" }
+        securityKey: { label: "보안키", type: "password" },
+        // 기존 이메일/비밀번호 계정과 개발 모드 자동 로그인을 위한 호환 필드.
+        password: { label: "비밀번호", type: "password" },
       },
       async authorize(credentials) {
         if (isDevMode()) {
@@ -107,26 +112,62 @@ export const authOptions: NextAuthOptions = {
           };
         }
 
-        if (!credentials?.email || !credentials?.password) {
-          throw new Error("이메일과 비밀번호를 모두 입력해주세요.");
+        const email = credentials?.email?.trim().toLowerCase();
+        const securityKey = credentials?.securityKey?.trim().toUpperCase();
+        const legacyPassword = credentials?.password;
+
+        if (!email || (!securityKey && !legacyPassword)) {
+          throw new Error("이메일과 보안키를 모두 입력해 주세요.");
+        }
+
+        if (securityKey && isRateLimited(`security-key-login:${email}`, 5, 30 * 1000)) {
+          throw new Error("보안키를 너무 많이 잘못 입력했습니다. 30초 후 다시 시도해 주세요.");
         }
 
         const user = await prisma.user.findUnique({
-          where: { email: credentials.email }
+          where: { email }
         });
 
-        if (!user || !user.passwordHash) {
-          throw new Error("가입되지 않은 이메일이거나 비밀번호가 틀렸습니다.");
+        if (!user) {
+          throw new Error("가입되지 않은 이메일이거나 보안키가 올바르지 않습니다.");
         }
 
-        const isPasswordValid = await bcrypt.compare(credentials.password, user.passwordHash);
+        const isSecurityKeyValid = Boolean(
+          securityKey
+          && user.securityKeyHash
+          && await bcrypt.compare(securityKey, user.securityKeyHash),
+        );
+        const isLegacyPasswordValid = Boolean(
+          legacyPassword
+          && user.passwordHash
+          && await bcrypt.compare(legacyPassword, user.passwordHash),
+        );
 
-        if (!isPasswordValid) {
-          throw new Error("가입되지 않은 이메일이거나 비밀번호가 틀렸습니다.");
+        if (!isSecurityKeyValid && !isLegacyPasswordValid) {
+          throw new Error("가입되지 않은 이메일이거나 보안키가 올바르지 않습니다.");
         }
 
-        if (!user.emailVerified) {
-          throw new Error("이메일 인증이 완료되지 않았습니다. 이메일을 확인해주세요.");
+        // 메일로만 전달된 보안키를 맞게 입력한 순간 이메일 소유 확인도 완료된다.
+        if (isSecurityKeyValid && !user.emailVerified) {
+          await prisma.user.update({
+            where: { id: user.id },
+            data: { emailVerified: new Date() },
+          });
+        } else if (isLegacyPasswordValid && !user.emailVerified) {
+          throw new Error("이메일 인증이 완료되지 않았습니다. 이메일을 확인해 주세요.");
+        }
+
+
+        // 재발급 요청만으로는 데이터를 지우지 않는다. 이메일로 받은 새 키를 맞게 입력해
+        // 이메일 소유가 확인된 이 순간에만 삭제하며, 두 변경은 한 트랜잭션으로 묶는다.
+        if (isSecurityKeyValid && user.securityKeyResetPending) {
+          await prisma.$transaction([
+            prisma.scenario.deleteMany({ where: { userId: user.id } }),
+            prisma.user.update({
+              where: { id: user.id },
+              data: { securityKeyResetPending: false, e2eeEnabledAt: null },
+            }),
+          ]);
         }
 
         return {
@@ -144,8 +185,7 @@ export const authOptions: NextAuthOptions = {
   callbacks: {
     async signIn({ account }) {
       // NextAuth v4의 PrismaAdapter는 기존 OAuth Account로 다시 로그인해도 새 토큰을 DB에
-      // 반영하지 않는다. 카카오 동의항목을 추가로 승인받아도 여기서 갱신하지 않으면
-      // send-backup-key는 계속 예전 access_token을 사용해 -402를 반복한다.
+      // 반영하지 않는다. 탈퇴 시 카카오 연결 해제에 최신 토큰이 필요하므로 여기서 갱신한다.
       //
       // 신규 계정은 이 시점에 Account 행이 아직 없어 updateMany가 0건이고, 이어지는
       // PrismaAdapter.linkAccount가 새 토큰으로 행을 만든다. 기존 계정만 이 갱신 대상이다.
