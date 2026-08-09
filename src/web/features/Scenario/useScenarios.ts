@@ -183,6 +183,7 @@ const KAKAO_SEND_TIMEOUT_MS = 15000;
 export interface SendKeyResult {
   success: boolean;
   error?: string;
+  requiresKakaoConsent?: boolean;
 }
 
 // 서버가 준 문구를 모달에 그대로 띄워도 되는지 판단한다. 사용자용 문구는 우리가 쓴 짧은
@@ -210,7 +211,11 @@ async function postBackupKey(key: string): Promise<SendKeyResult> {
     // 다듬어진 문장만 통과시킨다 — 예외 메시지나 외부 API 응답 본문이 새어 나오면
     // 사용자에게는 읽을 수 없는 잡음이고, 우리에게는 내부 사정의 노출이다.
     const reason = typeof data.error === 'string' && isUserFacingMessage(data.error) ? data.error : undefined;
-    return { success: false, error: reason ?? '카카오톡 전송에 실패했습니다.' };
+    return {
+      success: false,
+      error: reason ?? '카카오톡 전송에 실패했습니다.',
+      requiresKakaoConsent: data.code === 'KAKAO_CONSENT_REQUIRED',
+    };
   } catch (err) {
     console.error('Failed to send backup key to Kakao:', err);
     const aborted = err instanceof DOMException && err.name === 'AbortError';
@@ -224,7 +229,7 @@ async function postBackupKey(key: string): Promise<SendKeyResult> {
 export type KeyIssuance =
   | { status: 'sending'; key: string }
   | { status: 'sent'; key: string }
-  | { status: 'failed'; key: string; error?: string };
+  | { status: 'failed'; key: string; error?: string; requiresKakaoConsent?: boolean };
 
 // 발급 상태에 더해, "키는 있는데 백업이 확인되지 않은" 상태까지 포함한 모달 표시용 값.
 export type KeyNotice = KeyIssuance | { status: 'unbacked'; key: string };
@@ -566,7 +571,12 @@ export function useScenarios() {
                 postBackupKey(newKey).then(result => {
                   setKeyIssuance(result.success
                     ? { status: 'sent', key: newKey }
-                    : { status: 'failed', key: newKey, error: result.error });
+                    : {
+                        status: 'failed',
+                        key: newKey,
+                        error: result.error,
+                        requiresKakaoConsent: result.requiresKakaoConsent,
+                      });
                 });
                 // setLocalKey는 일부러 부르지 않는다. 사용자가 '확인'을 누를 때 비로소
                 // 호출되고, 그때 이 이펙트가 다시 돌아 키가 있는 경로로 들어간다.
@@ -1055,7 +1065,12 @@ export function useScenarios() {
       }
       setKeyIssuance(result.success
         ? { status: 'sent', key }
-        : { status: 'failed', key, error: result.error });
+        : {
+            status: 'failed',
+            key,
+            error: result.error,
+            requiresKakaoConsent: result.requiresKakaoConsent,
+          });
       return result;
     },
     // 복구를 요구받으면서도 대조할 암호문이 없는 상태인지. true면 모달이 초기화 버튼을
@@ -1141,7 +1156,12 @@ export function useScenarios() {
       const result = await postBackupKey(newKey);
       setKeyIssuance(result.success
         ? { status: 'sent', key: newKey }
-        : { status: 'failed', key: newKey, error: result.error });
+        : {
+            status: 'failed',
+            key: newKey,
+            error: result.error,
+            requiresKakaoConsent: result.requiresKakaoConsent,
+          });
 
       // window.location.reload() 대신 handleRestoreKey와 같은 재적재 경로를 쓴다.
       // 전체 리로드는 방금 세팅한 발급 모달까지 날려 버린다.

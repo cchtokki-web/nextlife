@@ -219,6 +219,32 @@ describe('POST /api/user/send-backup-key', () => {
     });
   });
 
+  test('talk_message 추가 동의가 필요하면 안정적인 코드로 403을 반환한다', async () => {
+    mockedGetServerSession.mockResolvedValue(session());
+    mockedFindFirst.mockResolvedValue({
+      id: 'account-1',
+      access_token: 'token-without-talk-message',
+      refresh_token: 'refresh-token',
+    } as unknown as AccountRecord);
+
+    vi.spyOn(global, 'fetch').mockResolvedValueOnce(
+      new Response(JSON.stringify({
+        code: -402,
+        msg: 'insufficient scopes.',
+        required_scopes: ['talk_message'],
+      }), { status: 403 })
+    );
+
+    const res = await POST(makeRequest(validBody));
+    const json = await res.json();
+
+    expect(res.status).toBe(403);
+    expect(json).toEqual({
+      error: '카카오톡 전송 권한 동의가 필요합니다.',
+      code: 'KAKAO_CONSENT_REQUIRED',
+    });
+  });
+
   test('액세스 토큰 만료(401) 후 리프레시 토큰 재발급 자체가 실패하면 에러를 반환한다', async () => {
     mockedGetServerSession.mockResolvedValue(session());
     mockedFindFirst.mockResolvedValue({

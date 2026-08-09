@@ -2,6 +2,11 @@ import { describe, test, expect, vi } from 'vitest';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import { E2eeKeyManager } from '@/web/components/E2eeKeyManager';
 
+const signIn = vi.fn();
+vi.mock('next-auth/react', () => ({
+  signIn: (...args: unknown[]) => signIn(...args),
+}));
+
 // 6자리를 한 번에 붙여 넣으면 컴포넌트가 나머지 칸을 채우고 곧바로 복구를 시도한다.
 async function enterKey(key: string) {
   const first = screen.getByLabelText('보안키 1번째 자리');
@@ -157,6 +162,31 @@ describe('E2eeKeyManager — 보안키 발급 안내', () => {
 
     expect(screen.getByText('보안키 백업이 확인되지 않았습니다')).toBeInTheDocument();
     expect(screen.getByText(KEY)).toBeInTheDocument();
+  });
+
+  test('talk_message 동의가 필요하면 재시도 대신 카카오 추가 동의를 요청한다', () => {
+    render(
+      <E2eeKeyManager
+        keyNotice={{
+          status: 'failed',
+          key: KEY,
+          error: '카카오톡 전송 권한 동의가 필요합니다.',
+          requiresKakaoConsent: true,
+        }}
+        onAcknowledgeKey={vi.fn()}
+        onRetrySendKey={vi.fn(async () => ({ success: false }))}
+        needsKeyRestore={false}
+        handleRestoreKey={vi.fn(async () => true)}
+      />
+    );
+
+    expect(screen.queryByRole('button', { name: '다시 보내기' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '카카오 권한 동의' }));
+    expect(signIn).toHaveBeenCalledWith(
+      'kakao',
+      { callbackUrl: '/simulator' },
+      { scope: 'profile_nickname,profile_image,talk_message' },
+    );
   });
 
   // 발급 안내가 떠 있는 동안에는 복구 입력창이 뜨면 안 된다 — 둘 다 전면 모달이다.
