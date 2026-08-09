@@ -96,13 +96,14 @@ describe('GET /api/scenarios — E2EE 잠금 플래그', () => {
     expect(mockedUpdateMany).not.toHaveBeenCalled();
   });
 
-  test('시나리오가 없어도 플래그는 유지된다', async () => {
+  test('시나리오가 없어도 플래그가 서 있으면 잠긴 계정으로 답한다', async () => {
     stubUser([], new Date('2026-01-01'));
 
     const res = await GET(new Request('http://localhost/api/scenarios'));
     const body = await res.json();
 
     expect(body.e2eeEnabled).toBe(true);
+    expect(mockedUpdateMany).not.toHaveBeenCalled();
   });
 });
 
@@ -135,5 +136,27 @@ describe('POST /api/scenarios — E2EE 잠금 플래그', () => {
     await POST(postBody(plain));
 
     expect(mockedUpdateMany).not.toHaveBeenCalled();
+  });
+
+  test('잠긴 계정에 평문을 쓰려 하면 거부하고 아무것도 만들지 않는다', async () => {
+    mockedFindUnique.mockResolvedValue({ id: USER_ID, e2eeEnabledAt: new Date('2026-01-01') } as never);
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const res = await POST(postBody(plain));
+
+    expect(res.status).toBe(409);
+    expect(vi.mocked(prisma.scenario.create)).not.toHaveBeenCalled();
+    consoleError.mockRestore();
+  });
+
+  test('시나리오 생성이 실패하면 플래그를 세우지 않는다', async () => {
+    vi.mocked(prisma.scenario.create).mockRejectedValue(new Error('db down'));
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const res = await POST(postBody(encrypted));
+
+    expect(res.status).toBe(500);
+    expect(mockedUpdateMany).not.toHaveBeenCalled();
+    consoleError.mockRestore();
   });
 });

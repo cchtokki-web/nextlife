@@ -238,6 +238,9 @@ export function useScenarios() {
   // E2EE States
   const [localKey, setLocalKey] = useState<string | null>(null);
   const [needsKeyRestore, setNeedsKeyRestore] = useState(false);
+  // 복구를 요구하면서도 대조할 암호문이 서버에 없는 상태. handleRestoreKey가 맞는 키조차
+  // 받아들일 수 없으므로, 모달이 초기화 버튼을 처음부터 열어 두게 하는 근거가 된다.
+  const [restoreUnverifiable, setRestoreUnverifiable] = useState(false);
   const [isBackupKeyBackedUp, setIsBackupKeyBackedUp] = useState(true);
   const [keyIssuance, setKeyIssuance] = useState<KeyIssuance | null>(null);
   // 복구 실패 사유. "키가 틀렸다"와 "검증할 암호문을 못 찾았다"는 사용자가 취해야 할 행동이
@@ -249,8 +252,14 @@ export function useScenarios() {
   const keyIssuedForUserRef = useRef<string | null>(null);
 
   // Cloud Save States
-  const [isSaving, setIsSaving] = useState(false);
+  //
+  // isSaving은 상태가 아니라 saveStatus에서 파생된다. 예전에는 둘이 따로 있었고, isSaving을
+  // false로 되돌리는 곳이 디바운스 콜백의 finally 하나뿐이었다. 이펙트 cleanup이 그 타이머를
+  // 지우면 finally는 영영 안 돌아 isSaving이 true로 굳었고, Header는 isSaving을 saveStatus보다
+  // 먼저 보므로(Header.tsx) 저장에 실패한 화면에 "저장 중..."이 떠 있었다 — 사실과 정반대다.
+  // 디바운스 1.5초 안에 값을 되돌리기만 해도 재현됐다.
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'success' | 'error'>('idle');
+  const isSaving = saveStatus === 'saving';
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
 
   // 이번에 불러와야 할 대상을 식별하는 키. 아래 로딩 이펙트의 의존성과 정확히 같은 값으로
@@ -298,8 +307,11 @@ export function useScenarios() {
       const keyToUse = overrideKey || localKey;
       const userId = session?.user?.id;
       // 키 없이 저장하면 서버에 평문이 남는다. 그 순간부터 이 계정은 어느 브라우저에서든 키 없이
-      // 열리므로(E2EE가 조용히 꺼진다), 저장을 포기하는 쪽이 낫다. 로딩 경로가 인증 세션에는
-      // 반드시 키를 쥐여 주므로 여기 걸리면 그건 버그다 — 조용히 넘기지 않는다.
+      // 열리므로(E2EE가 조용히 꺼진다), 저장을 포기하는 쪽이 낫다.
+      //
+      // 키가 없는 인증 세션은 E2eeKeyManager가 발급 모달이나 복구 모달로 화면을 덮고 있어
+      // 여기까지 오지 않는다(로딩 경로가 키를 쥐여 주기 때문이 아니다 — 잠긴 계정을 키 없는
+      // 브라우저에서 열면 localKey는 계속 null이다). 걸린다면 그 게이트가 뚫린 것이다.
       if (!keyToUse || !userId) {
         console.error('[E2EE] Refusing to create scenario without a key');
         setSaveStatus('error');
@@ -433,7 +445,11 @@ export function useScenarios() {
       if (userId) {
         const storedKey = localStorage.getItem(`nextlife_e2ee_key_${userId}`);
         if (storedKey && !localKey) {
-          return; // Wait for localKey state to be populated by the initialization effect
+          // localKey는 이펙트가 아니라 렌더 중 조정(위 syncedSessionKey 블록)이 채운다. 그 커밋
+          // 전에 이 이펙트가 먼저 돌면 "키 없음"으로 잘못 분기하므로 한 번 넘긴다.
+          // 발급 직후에도 여기 걸린다(키는 localStorage에 있고 localKey는 아직 null) — 그때는
+          // 발급 모달이 떠 있고 '확인'이 setLocalKey를 불러 다시 돈다.
+          return;
         }
       }
       // Helper for retrying fetches (helps with NextJS rebuild/compilation delay)
@@ -466,14 +482,19 @@ export function useScenarios() {
 
           // 키를 요구할지는 서버 기록(e2eeEnabled)으로 판단한다. 예전에는 "받아 온 payload가
           // 암호문이냐"만 봤는데, 그러면 평문 행이 하나 생기는 순간 그 계정은 어느 브라우저에서든
-          // 키 없이 열렸다. 서버 기록이 아직 없는 배포 직후를 위해 payload 판정도 함께 남겨 둔다
-          // (서버 GET이 소급 기록하므로 곧 e2eeEnabled 쪽으로 수렴한다).
-          const keyRequired = e2eeEnabled === true || list.some(s => isEncryptedPayload(s.data));
+          // 키 없이 열렸다.
+          //
+          // payload 판정은 e2eeEnabled 필드를 아예 모르는 응답(롤아웃 중의 구버전 서버, 캐시된
+          // 응답)만을 위한 폴백이다. 필드가 오기만 하면 서버 판정이 이미 hasCiphertext를 포함하므로
+          // (route.ts의 `Boolean(e2eeEnabledAt) || hasCiphertext`) 이 항이 false를 true로 뒤집을 일은
+          // 없다.
+          const hasCiphertext = list.some(s => isEncryptedPayload(s.data));
+          const keyRequired = e2eeEnabled === true || hasCiphertext;
 
           if (!activeKey) {
             if (keyRequired) {
-              // 잠긴 계정인데 이 브라우저에는 키가 없다. 내용은 하나도 보여 주지 않고 복구를
-              // 요구한다 — 평문으로 남아 있던 행도 마찬가지다.
+              // 잠긴 계정인데 이 브라우저에는 키가 없다. 시나리오 이름만 남기고 데이터는
+              // 자리표시자로 덮어 복구를 요구한다 — 평문으로 남아 있던 행도 마찬가지다.
               setScenarios(list.map(s => {
                 lastSavedParamsRef.current[s.id] = JSON.stringify(initialParams);
                 return { ...s, name: s.isDefault ? '기본 시나리오' : s.name, data: initialParams };
@@ -482,12 +503,18 @@ export function useScenarios() {
                 setActiveScenarioId(list[0].id);
               }
               setNeedsKeyRestore(true);
+              // 잠겼다는데 대조할 암호문이 없으면 handleRestoreKey는 맞는 키도 받아들일 수 없다.
+              // 그 상태를 모달에 알려 초기화 버튼을 처음부터 열어 준다 — 그렇지 않으면 사용자는
+              // 맞는 키를 세 번 넣어 "틀렸다"는 거짓말을 세 번 듣고서야 탈출구를 본다.
+              setRestoreUnverifiable(!hasCiphertext);
               setLoadedRequestKey(loadRequestKey);
               return;
             }
 
             // 키를 한 번도 발급받지 않은 계정 — 신규 가입이거나, E2EE 도입 이전에 만들어져
-            // 평문만 갖고 있는 계정이다. 후자도 여기서 키를 받아야 아래 재암호화가 돈다.
+            // 평문만 갖고 있는 계정이다. 후자도 키를 받아야 평문이 암호화되지만, 이번 패스는
+            // 아니다 — 아래 재암호화는 사용자가 '확인'을 눌러 setLocalKey가 불리고 이펙트가
+            // 다시 돈 뒤에 돈다.
             //
             // 보안키는 시스템이 발급한다. 사용자가 직접 정하게 두면 111111 같은 키가 들어오는데,
             // 암호문은 로그인만 하면 통째로 받아갈 수 있어 오프라인 대입에 그대로 뚫린다.
@@ -563,7 +590,9 @@ export function useScenarios() {
                   lastSavedParamsRef.current[s.id] = JSON.stringify(initialParams);
                 }
               } else {
-                // E2EE 도입 이전에 저장된 평문 params, 또는 키 없는 세션이 덮어쓴 평문.
+                // E2EE 도입 이전에 저장된 평문 params, 또는 이 커밋 이전에 키 없는 세션이 덮어쓴
+                // 평문. 새로 생기지는 않는다 — 저장 경로 셋 모두, 그리고 서버가 잠긴 계정에 대한
+                // 평문 쓰기를 거부한다.
                 // isEncryptedPayload가 암호화 형태를 걸러냈지만 타입 시스템은 그 가드의 else를
                 // 좁혀 주지 못하므로 이 지점에서만 명시한다.
                 const plainData = s.data as SimulationParams;
@@ -584,8 +613,16 @@ export function useScenarios() {
             // 평문 행을 지금 암호화해 되돌린다. 다음 편집을 기다리면 그 사이에 다른 브라우저가
             // 이 계정을 키 없이 열 수 있다 — 편집은 며칠 뒤일 수도 있다.
             //
-            // 화면을 그린 뒤에 돌린다. 실패해도 데이터는 읽히는 상태이므로 사용자를 막지 않고,
-            // 다음 자동저장이 같은 일을 다시 시도한다.
+            // 단, 이 키로 암호문이 하나도 열리지 않았다면(hasDecryptionFailure) 이 키는 틀린
+            // 키다. 틀린 키로 평문을 암호화하면 멀쩡히 읽히던 데이터가 아무도 못 여는 blob이
+            // 된다 — 사용자가 곧 맞는 키를 넣어도 그때는 이미 늦다. 검증되지 않은 키로는
+            // 아무것도 암호화하지 않는다.
+            //
+            // 열 암호문이 애초에 없었던 레거시 평문 계정은 hasDecryptionFailure가 false라
+            // 정상적으로 통과한다 — 키와 어긋날 암호문 자체가 없기 때문이다.
+            if (hasDecryptionFailure) return;
+
+            // 화면을 그린 뒤에 돌린다. 실패해도 데이터는 읽히는 상태이므로 사용자를 막지 않는다.
             for (const id of plaintextIds) {
               const target = decryptedList.find(s => s.id === id);
               if (!target) continue;
@@ -599,10 +636,21 @@ export function useScenarios() {
                 if (!res.ok) throw new Error(`HTTP ${res.status}`);
               } catch (err) {
                 console.error('Failed to re-encrypt plaintext scenario', id, err);
+                // 위 루프가 이 행을 "저장됨"으로 적어 두었다. 그대로 두면 자동저장이 동일성
+                // 비교에서 영원히 건너뛰어, 이 행은 사용자가 값을 고칠 때까지 평문으로 남는다
+                // — 재암호화를 서두른 이유가 통째로 사라진다. 기록을 지워 재시도 경로를 연다.
+                delete lastSavedParamsRef.current[id];
+                // 계정이 아직 무방비라는 사실을 최소한 배지에는 남긴다.
+                setSaveStatus('error');
               }
             }
           };
-          decryptAll();
+          // 이 안의 예외는 전부 개별 try가 받지만, 그 바깥에서 터지면 unhandled rejection이 된다.
+          decryptAll().catch(err => {
+            console.error('Failed to load scenarios:', err);
+            setLoadErrorState({ key: loadRequestKey, message: '시나리오를 불러오지 못했습니다. 다시 시도해 주세요.' });
+            setLoadedRequestKey(loadRequestKey);
+          });
         })
         .catch(err => {
           console.error('[useScenarios] Failed to load scenarios:', err);
@@ -623,10 +671,13 @@ export function useScenarios() {
 
   // Auto-save debounced
   useEffect(() => {
-    if (needsKeyRestore) return; // Prevent overwriting encrypted server data with default values when key is missing!
+    // 키가 없으면 서버 데이터를 기본값으로 덮어쓰지 않는다. 지켜야 할 대상은 암호문만이
+    // 아니다 — 잠긴 계정의 아직 평문인 행도 자리표시자로 덮여 있어 똑같이 위험하다.
+    if (needsKeyRestore) return;
     if (isLoaded && activeScenarioId) {
       const activeScenario = scenarios.find(s => s.id === activeScenarioId);
-      // Only auto-save if data is not locked/encrypted payload (which would trigger decryption failure)
+      // 방어선. 지금은 로드/생성 경로 모두 평문 params만 상태에 넣으므로 이 조건이 거짓이 될
+      // 일은 없다(암호문이 상태에 남으면 그대로 다시 암호화되어 이중 암호문이 된다).
       if (activeScenario && !isEncryptedPayload(activeScenario.data)) {
         const currentDataStr = JSON.stringify(activeScenario.data);
         const lastSavedDataStr = lastSavedParamsRef.current[activeScenario.id];
@@ -648,7 +699,6 @@ export function useScenarios() {
           // 로그인 사용자의 데이터는 서버에 E2EE로 암호화되어 저장되므로,
           // 로컬 저장소에는 평문 폴백을 남기지 않는다(기기 탈취 시 평문 노출 방지).
           setSaveStatus('saving');
-          setIsSaving(true);
           const timeoutId = setTimeout(async () => {
             try {
               const payloadToSave: EncryptedData = await encryptData(activeScenario.data, localKey, userId);
@@ -667,11 +717,14 @@ export function useScenarios() {
             } catch (err) {
               console.error('Failed to save cloud data:', err);
               setSaveStatus('error');
-            } finally {
-              setIsSaving(false);
             }
           }, 1500);
-          return () => clearTimeout(timeoutId);
+          // 예약만 해 두고 실행되지 않은 저장은 '저장 중'이 아니다. 여기서 되돌리지 않으면
+          // 디바운스 안에 값을 되돌리거나 needsKeyRestore가 켜지는 순간 배지가 그대로 굳는다.
+          return () => {
+            clearTimeout(timeoutId);
+            setSaveStatus(prev => (prev === 'saving' ? 'idle' : prev));
+          };
         } else {
           // Unauthenticated or local scenario - saved to local storage instantly
           saveParams(activeScenario.data);
@@ -802,14 +855,22 @@ export function useScenarios() {
       }
       try {
         const payloadToSave: EncryptedData = await encryptData(newData, localKey, userId);
-        await fetch(`/api/scenarios/${id}`, {
+        const res = await fetch(`/api/scenarios/${id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ data: payloadToSave }),
         });
+        // res.ok를 보지 않으면 500/401/409에도 아래 "저장됨" 기록이 남는다. 그러면 자동저장은
+        // 동일성 비교에서 건너뛰고 beforeunload 경고도 뜨지 않아, 사용자는 가져온 시나리오가
+        // 사라진 것을 다음 접속에야 안다(handleCreateScenario가 같은 이유로 res.ok를 먼저 본다).
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
         lastSavedParamsRef.current[id] = JSON.stringify(newData);
+        setSaveStatus('success');
+        setLastSaved(new Date());
       } catch (err) {
         console.error('Failed to save imported scenario data:', err);
+        setSaveStatus('error');
+        alert('가져온 시나리오를 저장하지 못했습니다. 화면의 내용은 아직 서버에 반영되지 않았습니다. 잠시 후 다시 시도해 주세요.');
       }
     } else {
       saveParams(newData);
@@ -859,10 +920,15 @@ export function useScenarios() {
         //
         // 예전에는 이 경우 검증 블록을 통째로 건너뛰고 아래로 흘러내려, 사용자가 입력한 아무
         // 6자리 문자열이나 정답으로 저장했다. 그 키로 이후 데이터가 암호화되면 사용자는 자기
-        // 데이터를 영원히 열 수 없다. 복구 모달이 떴다는 것은 애초에 암호문이 있었다는 뜻이므로,
-        // 빈 목록은 "다른 곳에서 지워졌거나 서버가 조용히 실패했다"는 신호다 — 성공이 아니다.
+        // 데이터를 영원히 열 수 없다.
+        //
+        // 예전 주석은 "복구 모달이 떴다는 것은 애초에 암호문이 있었다는 뜻"이라고 적었지만
+        // 더는 참이 아니다. 서버 플래그(e2eeEnabled)만으로도 모달이 뜨므로, 행이 전부 평문인
+        // 계정도 여기에 도달한다. 그 계정에서는 맞는 키도 여기서 막히므로 restoreUnverifiable로
+        // 모달에 알려 초기화 버튼을 처음부터 열어 둔다. 그 초기화는 읽히는 평문을 보존한다.
         if (encryptedItems.length === 0) {
-          setRestoreError('서버에서 암호화된 데이터를 찾지 못해 보안키를 확인할 수 없습니다. 잠시 후 다시 시도하거나, 데이터를 초기화하고 새 보안키를 발급받아 주세요.');
+          setRestoreUnverifiable(true);
+          setRestoreError('서버에서 암호화된 데이터를 찾지 못해 보안키를 확인할 수 없습니다. 아래에서 데이터를 유지한 채 새 보안키를 발급받을 수 있습니다.');
           return false;
         }
 
@@ -905,6 +971,7 @@ export function useScenarios() {
       setLocalKey(cleanKey);
       setIsBackupKeyBackedUp(true);
       setNeedsKeyRestore(false);
+      setRestoreUnverifiable(false);
       // 요청 키를 무효화해 재적재를 촉발한다. 로딩 이펙트가 isLoaded를 의존성으로 갖고
       // 있으므로, 위 setLocalKey가 값을 바꾸지 않는 경우(같은 키로 복구)에도 다시 돈다.
       setLoadedRequestKey(null);
@@ -919,8 +986,9 @@ export function useScenarios() {
     lastSaved,
     keyNotice,
     // 발급된 키를 사용자가 확인했다. 여기서 비로소 setLocalKey가 불리고, 그 결과
-    // loadRequestKey가 바뀌어 로딩 이펙트가 다시 돈다. 이번에는 localStorage에 키가 있으므로
-    // 기존 storedKey 분기로 들어가 기본 시나리오를 만든다 — 생성 로직을 복제하지 않는다.
+    // loadRequestKey가 바뀌어 로딩 이펙트가 다시 돈다. 이번에는 키가 있으므로 시나리오가
+    // 없으면 기본 시나리오를 만들고, 평문 행이 있으면 그것을 암호화해 되돌린다 — 어느 쪽이든
+    // 생성/재암호화 로직을 여기에 복제하지 않는다.
     handleAcknowledgeKey: () => {
       const userId = session?.user?.id;
       const key = keyNotice?.key;
@@ -949,7 +1017,18 @@ export function useScenarios() {
         : { status: 'failed', key, error: result.error });
       return result;
     },
-    // 보안키를 잊은 사용자의 마지막 탈출구: 데이터를 버리고 새 키를 발급받는다.
+    // 복구를 요구받으면서도 대조할 암호문이 없는 상태인지. true면 모달이 초기화 버튼을
+    // 처음부터 연다 — 그 상태에서는 맞는 키를 넣어도 검증이 불가능하기 때문이다.
+    restoreUnverifiable,
+    // 보안키를 잊은 사용자의 마지막 탈출구: 열 수 없는 데이터를 버리고 새 키를 발급받는다.
+    //
+    // "열 수 없는"이 중요하다. 예전에는 기본 시나리오를 무조건 initialParams로 덮었는데, 서버
+    // 행이 평문이라 멀쩡히 읽히던 계정에서도 그랬다. 그 계정이 이 경로에 오는 이유는 바로
+    // 검증할 암호문이 없어 맞는 키가 거부됐기 때문이므로, 탈출구가 곧 데이터 파괴였다.
+    // 이제 암호문 행만 버리고 평문 행은 새 키로 암호화해 살린다.
+    //
+    // 상태의 scenarios가 아니라 서버를 다시 읽는다. 잠긴 계정을 키 없이 연 경로는 평문 행까지
+    // 자리표시자(initialParams)로 덮어 두었으므로, 상태에는 살릴 원본이 남아 있지 않다.
     //
     // page.tsx에 있던 handleResetAllScenarios를 옮겨 왔다. 초기화 후 카카오 전송이 실패하면
     // 최초 발급과 똑같은 모달(키 노출 + 재시도)을 띄워야 하는데, 그 상태가 이 훅에 있어
@@ -963,6 +1042,20 @@ export function useScenarios() {
         return;
       }
 
+      let serverRows: Array<{ id: string; isDefault: boolean; data: unknown }>;
+      try {
+        const res = await fetch('/api/scenarios');
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const { data } = await res.json();
+        serverRows = Array.isArray(data) ? data : [];
+      } catch (err) {
+        // 서버 상태를 모르는 채 진행하면 무엇을 살리고 무엇을 버릴지 판단할 수 없다.
+        // 새 키를 기록하기 전에 멈춘다 — 여기서 멈추면 옛 상태 그대로다.
+        console.error('Failed to read scenarios before reset:', err);
+        alert('시나리오를 불러오지 못해 초기화를 진행할 수 없습니다. 잠시 후 다시 시도해 주세요.');
+        return;
+      }
+
       // 재암호화 PUT보다 먼저 기록한다. 중간에 실패하면 아무도 모르는 키로 암호화된 데이터가
       // 서버에 남는다.
       localStorage.setItem(`nextlife_e2ee_key_${userId}`, newKey);
@@ -970,21 +1063,28 @@ export function useScenarios() {
       setIsBackupKeyBackedUp(false);
 
       try {
-        const defaultScenario = scenarios.find(s => s.isDefault) || scenarios[0];
-        for (const s of scenarios.filter(s => s.id !== defaultScenario?.id)) {
-          await fetch(`/api/scenarios/${s.id}`, { method: 'DELETE' });
-        }
-        if (defaultScenario) {
-          const encrypted = await encryptData(initialParams, newKey, userId);
-          await fetch(`/api/scenarios/${defaultScenario.id}`, {
+        const defaultRow = serverRows.find(s => s.isDefault) || serverRows[0];
+        for (const s of serverRows) {
+          // 평문 행은 읽히므로 버릴 이유가 없다. 새 키로 잠가서 그대로 살린다.
+          const survives = !isEncryptedPayload(s.data);
+          if (!survives && s.id !== defaultRow?.id) {
+            await fetch(`/api/scenarios/${s.id}`, { method: 'DELETE' });
+            continue;
+          }
+          const payload = survives ? (s.data as SimulationParams) : initialParams;
+          const encrypted = await encryptData(payload, newKey, userId);
+          const res = await fetch(`/api/scenarios/${s.id}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ data: encrypted }),
           });
+          // 여기서 조용히 넘어가면 옛 키로 암호화된 행이 남는데 새 키는 이미 기록돼 있다
+          // — 아무도 못 여는 계정이 된다.
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
         }
       } catch (err) {
         console.error('Failed to reset scenarios:', err);
-        alert('초기화 중 오류가 발생했습니다.');
+        alert('초기화 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.');
         return;
       }
 
@@ -993,6 +1093,7 @@ export function useScenarios() {
       // 재적재 후 이 사용자에게 또 발급이 나가지 않도록 래치를 채운다.
       keyIssuedForUserRef.current = userId;
       setNeedsKeyRestore(false);
+      setRestoreUnverifiable(false);
       setRestoreError(null);
 
       setKeyIssuance({ status: 'sending', key: newKey });

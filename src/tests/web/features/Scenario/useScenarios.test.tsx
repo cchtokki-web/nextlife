@@ -33,6 +33,7 @@ vi.mock('@/infrastructure/storage/localStore', async (importOriginal) => {
 
 import { useScenarios } from '@/web/features/Scenario/useScenarios';
 import { initialParams } from '@/infrastructure/storage/localStore';
+import { isEncryptedPayload } from '@/core/utils/crypto';
 
 const USER_ID = 'user-1';
 const KEY_NAME = `nextlife_e2ee_key_${USER_ID}`;
@@ -237,6 +238,9 @@ describe('useScenarios — 로그인', () => {
 
   // E2EE 도입 이전에 만들어진 계정이다. 평문 데이터가 있다는 이유로 발급을 건너뛰면 이 계정은
   // 영영 키를 못 받고, 평문인 채로 남는다.
+  //
+  // 이 테스트는 발급까지만 본다. 실제 재암호화는 사용자가 '확인'을 눌러 이펙트가 다시 돈
+  // 뒤다 — 위 '평문으로 저장된 시나리오를 읽고 즉시 암호화해 되돌린다'가 그쪽을 덮는다.
   test('키를 받은 적 없는 계정은 평문 데이터가 있어도 보안키를 발급한다', async () => {
     signedIn();
     vi.stubGlobal('fetch', mockFetch({
@@ -271,7 +275,7 @@ describe('useScenarios — 로그인', () => {
   });
 
   // 처음 가입한 사용자다. 사용자가 키를 고르게 두면 111111 같은 키가 들어오므로 시스템이 발급한다.
-  test('시나리오도 키도 없으면 보안키를 발급해 카카오톡으로 보낸다', async () => {
+  test('키를 받은 적 없는 신규 가입자에게 보안키를 발급해 카카오톡으로 보낸다', async () => {
     signedIn();
     vi.stubGlobal('fetch', mockFetch({ '/api/scenarios': { data: [] } }));
 
@@ -433,6 +437,65 @@ describe('useScenarios — 로그인 사용자의 자동저장', () => {
     expect(result.current.isSaving).toBe(false);
   }, 10000);
 
+  // 저장 경로별 가드를 하나씩 검증하면 "지금 도달 가능한 경로"만 잡힌다. 여기서는 결과를 본다
+  // — 로드/편집/가져오기/생성을 모두 거친 뒤, 서버로 나간 모든 쓰기의 data가 예외 없이 암호문
+  // 형태여야 한다. isEncryptedPayload는 실물이므로(위 vi.mock 참조) 판정을 복제하지 않는다.
+  test('서버로 나간 모든 쓰기는 예외 없이 암호문이다', async () => {
+    const { result } = await loadedHook();
+
+    act(() => {
+      result.current.handleUpdateActiveParams((prev) => ({
+        ...prev,
+        userProfile: { ...prev.userProfile, currentAge: 56 },
+      }));
+    });
+    await waitFor(() => expect(putCalls().length).toBeGreaterThan(0), { timeout: 4000 });
+
+    await act(async () => {
+      await result.current.handleUpdateScenarioData('s1', {
+        ...initialParams,
+        userProfile: { ...initialParams.userProfile, currentAge: 57 },
+      });
+    });
+    await act(async () => {
+      await result.current.handleCreateScenario('추가', initialParams);
+    });
+
+    const writes = fetchCalls().filter(([, init]) => init?.method === 'PUT' || init?.method === 'POST');
+    expect(writes.length).toBeGreaterThan(2);
+    for (const [url, init] of writes) {
+      const body = JSON.parse(init!.body as string);
+      if (body.data === undefined) continue;
+      expect(isEncryptedPayload(body.data), `${init!.method} ${url} sent plaintext`).toBe(true);
+    }
+  }, 15000);
+
+  // isSaving과 saveStatus가 따로 놀던 시절, 디바운스 안에 값을 되돌리면 이펙트 cleanup이
+  // 타이머를 지워 finally가 영영 안 돌았다. Header는 isSaving을 먼저 보므로 저장이 멈춘
+  // 화면에 "저장 중..."이 남았다.
+  test('디바운스 안에 값을 되돌리면 저장 중 표시가 굳지 않는다', async () => {
+    const { result } = await loadedHook();
+    const original = result.current.activeParams.userProfile.currentAge;
+
+    act(() => {
+      result.current.handleUpdateActiveParams((prev) => ({
+        ...prev,
+        userProfile: { ...prev.userProfile, currentAge: 58 },
+      }));
+    });
+    await waitFor(() => expect(result.current.isSaving).toBe(true));
+
+    act(() => {
+      result.current.handleUpdateActiveParams((prev) => ({
+        ...prev,
+        userProfile: { ...prev.userProfile, currentAge: original },
+      }));
+    });
+
+    await waitFor(() => expect(result.current.isSaving).toBe(false));
+    expect(putCalls()).toHaveLength(0);
+  }, 10000);
+
   test('서버에 보내는 payload는 암호화된 형태다', async () => {
     const { result } = await loadedHook();
 
@@ -566,7 +629,11 @@ describe('useScenarios — 데이터 유실 방어', () => {
 
   // 키 없는 저장 한 번이 계정의 E2EE를 영구히 끈다. 서버에 평문이 남는 순간부터 그 계정은
   // 어느 브라우저에서든 키 없이 열리기 때문이다. 저장을 포기하는 쪽이 낫다.
-  test('키가 없으면 서버에 저장하지 않는다', async () => {
+  //
+  // 저장 경로 셋 중 가져오기만 여기서 직접 본다. 자동저장과 생성은 needsKeyRestore 게이트와
+  // 발급 모달이 먼저 막아 이 상태에 도달하지 않는다 — 세 경로를 결과로 함께 덮는 것은
+  // 위 '서버로 나간 모든 쓰기는 예외 없이 암호문이다'다.
+  test('키가 없으면 가져오기 저장을 서버로 보내지 않는다', async () => {
     signedIn();
     const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {});
     vi.stubGlobal('fetch', mockFetch({
@@ -591,6 +658,95 @@ describe('useScenarios — 데이터 유실 방어', () => {
     expect(alertSpy).toHaveBeenCalled();
     alertSpy.mockRestore();
   });
+
+  // 이 키로 암호문이 하나도 열리지 않았다면 그 키는 틀린 키다. 틀린 키로 평문 행을 암호화하면
+  // 멀쩡히 읽히던 데이터가 아무도 못 여는 blob이 된다 — 사용자가 곧 맞는 키를 넣어도 늦다.
+  test('키로 암호문이 하나도 안 열리면 평문 행을 재암호화하지 않는다', async () => {
+    signedIn();
+    localStorage.setItem(KEY_NAME, 'WRONGK');
+    decryptData.mockRejectedValue(new Error('bad key'));
+    encryptData.mockResolvedValue(encrypted);
+    vi.stubGlobal('fetch', mockFetch({
+      '/api/scenarios': {
+        data: [
+          { id: 's1', name: 'a', isDefault: true, data: encrypted },
+          { id: 's2', name: 'b', isDefault: false, data: initialParams },
+        ],
+        e2eeEnabled: true,
+      },
+    }));
+
+    const { result } = renderHook(() => useScenarios());
+    await waitFor(() => expect(result.current.needsKeyRestore).toBe(true));
+
+    await new Promise((r) => setTimeout(r, 100));
+    expect(fetchCalls().some(([, init]) => init?.method === 'PUT')).toBe(false);
+  });
+
+  // 실패한 재암호화를 "저장됨"으로 남겨 두면 자동저장이 동일성 비교에서 영원히 건너뛴다.
+  // 그러면 재암호화를 서두른 이유(다음 편집은 며칠 뒤일 수 있다)가 통째로 사라진다.
+  test('재암호화가 실패하면 저장됨으로 기록하지 않고 오류를 표시한다', async () => {
+    signedIn();
+    localStorage.setItem(KEY_NAME, 'KEY123');
+    encryptData.mockResolvedValue(encrypted);
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      if (init?.method === 'PUT') {
+        return { ok: false, status: 500, json: async () => ({}) } as unknown as Response;
+      }
+      if (url === '/api/scenarios') {
+        return {
+          ok: true,
+          json: async () => ({ data: [{ id: 's1', name: 'x', isDefault: true, data: initialParams }] }),
+        } as unknown as Response;
+      }
+      return { ok: true, json: async () => ({ success: true }) } as unknown as Response;
+    }));
+
+    const { result } = renderHook(() => useScenarios());
+    await waitFor(() => expect(result.current.saveStatus).toBe('error'), { timeout: 5000 });
+  }, 10000);
+
+  // res.ok를 안 보면 500에도 "저장됨" 기록이 남는다. 그러면 자동저장은 건너뛰고 beforeunload
+  // 경고도 뜨지 않아, 사용자는 가져온 시나리오가 사라진 것을 다음 접속에야 안다.
+  test('가져오기 저장이 실패하면 저장됨으로 기록하지 않는다', async () => {
+    signedIn();
+    localStorage.setItem(KEY_NAME, 'KEY123');
+    encryptData.mockResolvedValue(encrypted);
+    decryptData.mockResolvedValue(initialParams);
+    const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {});
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      if (init?.method === 'PUT') {
+        return { ok: false, status: 500, json: async () => ({}) } as unknown as Response;
+      }
+      if (url === '/api/scenarios') {
+        return {
+          ok: true,
+          json: async () => ({
+            data: [{ id: 's1', name: 'x', isDefault: true, data: encrypted }],
+            e2eeEnabled: true,
+          }),
+        } as unknown as Response;
+      }
+      return { ok: true, json: async () => ({ success: true }) } as unknown as Response;
+    }));
+
+    const { result } = renderHook(() => useScenarios());
+    await waitFor(() => expect(result.current.isLoaded).toBe(true));
+
+    const imported: SimulationParams = {
+      ...initialParams,
+      userProfile: { ...initialParams.userProfile, currentAge: 62 },
+    };
+    await act(async () => { await result.current.handleUpdateScenarioData('s1', imported); });
+
+    // 저장됨으로 기록하지 않았으므로 자동저장이 같은 데이터를 다시 시도하고, 그것도 500이라
+    // 최종 상태는 오류다. 기록해 버렸다면 자동저장은 아예 돌지 않고 조용히 끝났을 것이다.
+    await waitFor(() => expect(result.current.saveStatus).toBe('error'), { timeout: 5000 });
+    expect(alertSpy).toHaveBeenCalled();
+    // 저장되지 않았으므로 beforeunload가 아직 경고할 수 있어야 한다.
+    expect(result.current.lastSaved).toBeNull();
+    alertSpy.mockRestore();
+  }, 10000);
 
   test('클라우드 저장이 실패하면 성공으로 표시하지 않는다', async () => {
     signedIn();
@@ -642,6 +798,52 @@ describe('useScenarios — 데이터 유실 방어', () => {
     expect(localStorage.getItem(KEY_NAME)).toBeNull();
     expect(result.current.restoreError).toBeTruthy();
   });
+
+  // 잠겼다는데 대조할 암호문이 없으면 맞는 키도 검증할 수 없다. 그 사실을 모달에 알리지 않으면
+  // 사용자는 맞는 키를 세 번 넣어 "틀렸다"는 거짓말을 세 번 듣고서야 탈출구를 본다.
+  test('잠긴 계정에 암호문이 없으면 검증 불가 상태를 알린다', async () => {
+    signedIn();
+    vi.stubGlobal('fetch', mockFetch({
+      '/api/scenarios': {
+        data: [{ id: 's1', name: 'x', isDefault: true, data: initialParams }],
+        e2eeEnabled: true,
+      },
+    }));
+
+    const { result } = renderHook(() => useScenarios());
+    await waitFor(() => expect(result.current.needsKeyRestore).toBe(true));
+
+    expect(result.current.restoreUnverifiable).toBe(true);
+  });
+
+  // 그 상태의 탈출구가 곧 데이터 파괴이면 안 된다. 이 경로에 온 이유가 "읽히는 평문뿐이라
+  // 키를 검증할 수 없다"인데, 예전에는 그 평문을 initialParams로 덮어 버렸다.
+  test('초기화는 읽히는 평문 시나리오를 새 키로 살린다', async () => {
+    signedIn();
+    const mine: SimulationParams = {
+      ...initialParams,
+      userProfile: { ...initialParams.userProfile, currentAge: 49 },
+    };
+    encryptData.mockResolvedValue(encrypted);
+    decryptData.mockResolvedValue(mine);
+    vi.stubGlobal('fetch', mockFetch({
+      '/api/scenarios': {
+        data: [{ id: 's1', name: 'x', isDefault: true, data: mine }],
+        e2eeEnabled: true,
+      },
+    }));
+
+    const { result } = renderHook(() => useScenarios());
+    await waitFor(() => expect(result.current.restoreUnverifiable).toBe(true));
+    encryptData.mockClear();
+
+    await act(async () => { await result.current.handleResetAndReissueKey(); });
+
+    // 지우지 않고, 사용자의 실제 값을 새 키로 암호화해 되돌려 놓는다.
+    expect(fetchCalls().some(([, init]) => init?.method === 'DELETE')).toBe(false);
+    const newKey = localStorage.getItem(KEY_NAME);
+    expect(encryptData).toHaveBeenCalledWith(mine, newKey, USER_ID);
+  }, 10000);
 
   test('평문 시나리오만 있으면 어떤 키도 받아들이지 않는다', async () => {
     decryptData.mockRejectedValue(new Error('bad key'));

@@ -9,6 +9,7 @@ import GlassCard from '../../components/GlassCard';
 import { Target, TrendingUp, Coins } from 'lucide-react';
 import { useSession } from 'next-auth/react';
 import { initialParams } from '../../../infrastructure/storage/localStore';
+import { encryptData } from '../../../core/utils/crypto';
 import { isDevMode } from '../../../core/utils/isDevMode';
 
 import { ScenarioComparisonCards } from './ScenarioComparisonCards';
@@ -393,7 +394,19 @@ export function SimpleSimulator() {
                       
                       localStorage.setItem('nextlife_simulator_params', JSON.stringify(finalParams));
                       
-                      if (session?.user) {
+                      // 로그인 사용자의 기본 시나리오에 이 입력을 반영한다.
+                      //
+                      // 반드시 암호화해서 보낸다. 예전에는 finalParams를 그대로 PUT했는데, 그
+                      // 한 번의 평문 쓰기가 계정의 E2EE를 통째로 껐다 — 이후 그 계정은 어느
+                      // 브라우저에서든 보안키 없이 열렸다. 지금은 서버도 잠긴 계정의 평문
+                      // 쓰기를 409로 막지만, 여기서 애초에 평문을 만들지 않는 것이 먼저다.
+                      //
+                      // 키가 없으면(다른 기기에서 발급받았거나 아직 발급 전) 서버 동기화를
+                      // 건너뛴다. 입력은 위 localStorage에 남아 있고, /simulator가 키를 받거나
+                      // 복구한 뒤 기본 시나리오를 만들 때 그 값을 쓴다.
+                      const userId = session?.user?.id;
+                      const e2eeKey = userId ? localStorage.getItem(`nextlife_e2ee_key_${userId}`) : null;
+                      if (userId && e2eeKey) {
                         try {
                           const res = await fetch('/api/scenarios');
                           if (res.ok) {
@@ -403,7 +416,7 @@ export function SimpleSimulator() {
                               await fetch(`/api/scenarios/${defaultScenario.id}`, {
                                 method: 'PUT',
                                 headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ data: finalParams })
+                                body: JSON.stringify({ data: await encryptData(finalParams, e2eeKey, userId) })
                               });
                             }
                           }

@@ -119,8 +119,16 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Missing name or data' }, { status: 400 });
     }
 
-    if (isEncryptedPayload(data)) {
-      await markE2eeEnabled(user.id);
+    // 잠긴 계정에 평문을 쓰려는 요청은 거부한다. 클라이언트도 막지만, 클라이언트만 막으면
+    // 배포 전 번들이 열려 있는 탭·아직 새로고침하지 않은 다른 기기·세션 쿠키를 가진 요청이
+    // 전부 우회한다. 플래그를 들고 있는 서버가 이 불변식을 지킬 수 있는 유일한 지점이다.
+    const encrypted = isEncryptedPayload(data);
+    if (!encrypted && user.e2eeEnabledAt) {
+      console.error('[E2EE] Rejected plaintext scenario create for locked account', user.id);
+      return NextResponse.json(
+        { error: '이 계정은 보안키로 잠겨 있어 암호화되지 않은 데이터를 저장할 수 없습니다.' },
+        { status: 409 }
+      );
     }
 
     if (isDefault) {
@@ -138,6 +146,7 @@ export async function POST(req: Request) {
             data: JSON.stringify(data),
           },
         });
+        if (encrypted) await markE2eeEnabled(user.id);
         return NextResponse.json(
           { data: { ...updatedScenario, data: JSON.parse(updatedScenario.data) } },
           { status: 200 }
@@ -153,6 +162,10 @@ export async function POST(req: Request) {
         data: JSON.stringify(data),
       },
     });
+
+    // 쓰기가 성공한 뒤에 세운다. 먼저 세우면 쓰기가 실패했을 때 "플래그는 섰는데 암호문은
+    // 없는" 계정이 남고, 그 상태에서는 맞는 키도 검증할 수 없다.
+    if (encrypted) await markE2eeEnabled(user.id);
 
     return NextResponse.json(
       { data: { ...newScenario, data: JSON.parse(newScenario.data) } },

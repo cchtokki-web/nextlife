@@ -111,7 +111,8 @@ const Spinner: React.FC<{ label: string }> = ({ label }) => (
 const RETRY_COOLDOWN_MS = 30000;
 
 interface E2eeKeyManagerProps {
-  // 발급 안내 (최초 발급 / 초기화 후 재발급 / 백업 미확인)
+  // 발급 안내 (최초 발급 — 신규 가입 또는 키를 받은 적 없는 기존 계정 / 초기화 후 재발급 /
+  // 백업 미확인)
   keyNotice?: KeyNotice | null;
   onAcknowledgeKey?: () => void;
   onRetrySendKey?: () => Promise<{ success: boolean; error?: string }>;
@@ -121,6 +122,9 @@ interface E2eeKeyManagerProps {
   handleRestoreKey: (key: string) => Promise<boolean>;
   restoreError?: string | null;
   onResetScenarios?: () => Promise<void> | void;
+  // 서버는 잠긴 계정이라는데 대조할 암호문이 없는 상태. 맞는 키를 넣어도 검증이 불가능하므로
+  // 실패 횟수를 기다리지 않고 탈출구를 연다.
+  restoreUnverifiable?: boolean;
 }
 
 export const E2eeKeyManager: React.FC<E2eeKeyManagerProps> = ({
@@ -131,6 +135,7 @@ export const E2eeKeyManager: React.FC<E2eeKeyManagerProps> = ({
   handleRestoreKey,
   restoreError,
   onResetScenarios,
+  restoreUnverifiable = false,
 }) => {
   const [pinInputs, setPinInputs] = useState<string[]>(['', '', '', '', '', '']);
   const [isRestoring, setIsRestoring] = useState(false);
@@ -163,7 +168,9 @@ export const E2eeKeyManager: React.FC<E2eeKeyManagerProps> = ({
   }, [restoreLockedUntil]);
 
   const isRestoreLocked = restoreLockedUntil !== null && restoreLockRemaining > 0;
-  const canReset = failedRestoreAttempts >= RESET_UNLOCK_ATTEMPTS;
+  // 검증할 암호문이 없는 계정에서는 실패 횟수를 채울 이유가 없다. 맞는 키를 세 번 넣어
+  // "틀렸다"는 거짓말을 세 번 듣고서야 탈출구가 열리는 것을 막는다.
+  const canReset = restoreUnverifiable || failedRestoreAttempts >= RESET_UNLOCK_ATTEMPTS;
 
   React.useEffect(() => {
     if (needsKeyRestore) {
@@ -276,7 +283,8 @@ export const E2eeKeyManager: React.FC<E2eeKeyManagerProps> = ({
     );
   }
 
-  // 1. 보안키 입력 — 다른 기기/브라우저에서 접속했을 때
+  // 1. 보안키 입력 — 서버는 잠긴 계정이라는데 이 브라우저에 키가 없거나(다른 기기/시크릿 창),
+  // 가진 키로 복호화가 실패했을 때.
   if (needsKeyRestore) {
     const message = localError || restoreError;
     return (
@@ -325,7 +333,7 @@ export const E2eeKeyManager: React.FC<E2eeKeyManagerProps> = ({
               </svg>
               보안키 안내
             </div>
-            보안키는 <strong>가입할 때(또는 데이터 초기화로 새 키를 발급받았을 때)</strong> 회원님의 카카오톡 <strong>&lsquo;나와의 채팅방&rsquo;</strong>으로 1회 발송되었습니다. 로그인할 때마다 다시 보내드리지 않으니, 카카오톡에서 <strong>&lsquo;NextLife&rsquo;</strong> 또는 <strong>&lsquo;보안키&rsquo;</strong>를 검색해 지난 메시지를 확인해 주세요.
+            보안키는 <strong>이 기능을 처음 쓰게 된 시점</strong>(가입 직후, 예전에 가입한 계정이라면 보안 강화 이후 첫 로그인, 또는 데이터 초기화로 새 키를 발급받았을 때) 회원님의 카카오톡 <strong>&lsquo;나와의 채팅방&rsquo;</strong>으로 1회 발송되었습니다. 로그인할 때마다 다시 보내드리지 않으니, 카카오톡에서 <strong>&lsquo;NextLife&rsquo;</strong> 또는 <strong>&lsquo;보안키&rsquo;</strong>를 검색해 지난 메시지를 확인해 주세요.
           </div>
 
           {isRestoring && <Spinner label="보안키 확인 및 데이터 조회 중..." />}
@@ -409,7 +417,7 @@ const ResetScenariosControl: React.FC<{
   return (
     <div style={{ marginTop: '4px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
       <p style={{ fontSize: '0.8rem', lineHeight: 1.5, color: '#EF4444', margin: 0, textAlign: 'left', fontWeight: 500 }}>
-        저장된 모든 시나리오가 삭제되고 새 보안키가 발급됩니다. 되돌릴 수 없습니다.
+        새 보안키가 발급되고, 지금 보안키로 열 수 없는 시나리오는 삭제됩니다. 되돌릴 수 없습니다.
       </p>
       <div style={{ display: 'flex', gap: '8px' }}>
         <button type="button" onClick={() => setConfirming(false)} style={secondaryButtonStyle}>

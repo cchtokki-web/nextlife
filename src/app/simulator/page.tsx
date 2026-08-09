@@ -58,6 +58,7 @@ export default function Home() {
     handleAcknowledgeKey,
     handleRetrySendKey,
     restoreError,
+    restoreUnverifiable,
     handleResetAndReissueKey
   } = scenarioState;
 
@@ -958,6 +959,7 @@ export default function Home() {
         handleRestoreKey={handleRestoreKey}
         restoreError={restoreError}
         onResetScenarios={handleResetAndReissueKey}
+        restoreUnverifiable={restoreUnverifiable}
       />
 
       {/* 2. Content Layout */}
