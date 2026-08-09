@@ -125,7 +125,7 @@ export const WithdrawAccountButton: React.FC<WithdrawAccountButtonProps> = ({
               저장된 시나리오 전부
               {typeof scenarioCount === 'number' ? ` (${scenarioCount}개)` : ''}
             </li>
-            <li>계정 정보 — 카카오 연결, 로그인 수단</li>
+            <li>계정 정보 — 이메일 주소, 로그인 수단</li>
             <li>이 브라우저에 보관된 보안키</li>
           </ul>
 

@@ -5,7 +5,9 @@ import type { NextAuthOptions } from 'next-auth';
 // 확정한다. 따라서 모드별 동작을 보려면 env를 바꾼 뒤 모듈을 새로 import해야 한다.
 vi.mock('@/infrastructure/db/prisma', () => ({
   prisma: {
-    user: { findUnique: vi.fn() },
+    user: { findUnique: vi.fn(), update: vi.fn() },
+    scenario: { deleteMany: vi.fn() },
+    $transaction: vi.fn(async () => []),
     account: { updateMany: vi.fn() },
   },
 }));
@@ -78,7 +80,7 @@ describe('authOptions — 프로덕션 모드', () => {
     const authOptions = await loadAuthOptions(false);
     const authorize = credentialsAuthorize(authOptions);
 
-    await expect(authorize(undefined)).rejects.toThrow('이메일과 비밀번호를 모두 입력해주세요.');
+    await expect(authorize(undefined)).rejects.toThrow('이메일과 보안키를 모두 입력해 주세요.');
   });
 
   test('가입되지 않은 이메일이면 거부한다', async () => {
@@ -89,7 +91,70 @@ describe('authOptions — 프로덕션 모드', () => {
     const authorize = credentialsAuthorize(authOptions);
 
     await expect(authorize({ email: 'nobody@example.com', password: 'pw' }))
-      .rejects.toThrow('가입되지 않은 이메일이거나 비밀번호가 틀렸습니다.');
+      .rejects.toThrow('가입되지 않은 이메일이거나 보안키가 올바르지 않습니다.');
+  });
+
+  test('이메일 보안키가 맞으면 이메일 인증을 완료하고 로그인한다', async () => {
+    const authOptions = await loadAuthOptions(false);
+    const { prisma } = await import('@/infrastructure/db/prisma');
+    const bcrypt = (await import('bcrypt')).default;
+    vi.mocked(prisma.user.findUnique).mockResolvedValue({
+      id: 'user-1',
+      email: 'user@example.com',
+      securityKeyHash: 'hashed-key',
+      securityKeyResetPending: false,
+      emailMigrationCompletedAt: null,
+      passwordHash: null,
+      emailVerified: null,
+      name: null,
+      image: null,
+      tier: 'basic',
+      simulationData: null,
+      e2eeEnabledAt: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    vi.mocked(bcrypt.compare).mockResolvedValueOnce(true as never);
+
+    const authorize = credentialsAuthorize(authOptions);
+    await expect(authorize({ email: 'USER@EXAMPLE.COM', securityKey: 'abc234' }))
+      .resolves.toMatchObject({ id: 'user-1', email: 'user@example.com' });
+    expect(prisma.user.update).toHaveBeenCalledWith({
+      where: { id: 'user-1' },
+      data: { emailVerified: expect.any(Date) },
+    });
+  });
+
+  test('재발급한 새 키가 맞을 때만 기존 데이터를 트랜잭션으로 초기화한다', async () => {
+    const authOptions = await loadAuthOptions(false);
+    const { prisma } = await import('@/infrastructure/db/prisma');
+    const bcrypt = (await import('bcrypt')).default;
+    vi.mocked(prisma.user.findUnique).mockResolvedValue({
+      id: 'user-1',
+      email: 'user@example.com',
+      securityKeyHash: 'new-hash',
+      securityKeyResetPending: true,
+      emailMigrationCompletedAt: null,
+      passwordHash: null,
+      emailVerified: new Date(),
+      name: null,
+      image: null,
+      tier: 'basic',
+      simulationData: null,
+      e2eeEnabledAt: new Date(),
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    vi.mocked(bcrypt.compare).mockResolvedValueOnce(true as never);
+
+    await credentialsAuthorize(authOptions)({ email: 'user@example.com', securityKey: 'NEW234' });
+
+    expect(prisma.scenario.deleteMany).toHaveBeenCalledWith({ where: { userId: 'user-1' } });
+    expect(prisma.user.update).toHaveBeenCalledWith({
+      where: { id: 'user-1' },
+      data: { securityKeyResetPending: false, e2eeEnabledAt: null },
+    });
+    expect(prisma.$transaction).toHaveBeenCalled();
   });
 
   test('세션 전략은 jwt다(middleware의 getToken이 이 전제 위에서 동작한다)', async () => {

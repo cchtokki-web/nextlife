@@ -15,6 +15,10 @@ ISA·투자자산·배당을 각각의 세제와 인출 규칙에 따라 다루�
 - **전략 자동 추천** — 인출 계획 5차원을 그리드 탐색하고, 여러 경기 국면에서 최악이 가장
   나은 계획을 고릅니다.
 
+계정은 이메일로 받은 6자리 보안키로 로그인하며, 같은 키로 브라우저에서 자산 데이터를
+암호화합니다. 기존 카카오 사용자는 로그인 후 이메일 인증과 현재 보안키 확인을 거쳐 같은
+계정과 데이터를 유지한 채 이메일 로그인으로 전환할 수 있습니다.
+
 ---
 
 ## 시작하기
@@ -37,7 +41,7 @@ npm run dev          # prisma db push 후 next dev
 NEXT_PUBLIC_DEV_MODE=true npm run dev
 ```
 
-아무 이메일·비밀번호로나 Pro 계정으로 로그인됩니다. 이 분기는 `NODE_ENV !== 'production'`
+개발용 자격증명으로 Pro 계정에 자동 로그인됩니다. 이 분기는 `NODE_ENV !== 'production'`
 조건이 함께 걸려 있어 **프로덕션 빌드에서는 통째로 죽습니다.** `NEXT_PUBLIC_` 접두사 변수는
 클라이언트 번들에 인라인되고 `.env`가 배포 환경으로 새기 쉬운데, 그 한 번의 사고가 곧바로
 완전한 인증 우회가 되기 때문입니다(`src/core/utils/isDevMode.ts`).
@@ -55,8 +59,8 @@ NEXT_PUBLIC_DEV_MODE=true npm run dev
 | `DEV_NEXTAUTH_URL` | 개발 시 콜백 origin 강제 지정(터널·호스트 별칭용, 선택) |
 | `NEXT_PUBLIC_DEV_MODE` | 개발 모드 자동 로그인 |
 | `NEXT_PUBLIC_APP_URL` | 메일 링크 등에 쓰이는 공개 URL |
-| `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASSWORD` / `EMAIL_FROM` | 이메일 인증·백업키 발송 |
-| `KAKAO_CLIENT_ID` / `KAKAO_CLIENT_SECRET` | 카카오 소셜 로그인 |
+| `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASSWORD` / `EMAIL_FROM` | 이메일 가입·보안키 발송 |
+| `KAKAO_CLIENT_ID` / `KAKAO_CLIENT_SECRET` | 기존 카카오 계정의 레거시 로그인 호환 |
 | `OLLAMA_ENDPOINT` / `OLLAMA_MODEL` | AI 조언 문구 생성 (미설정 시 규칙 기반 폴백) |
 | `ADMIN_KEY` | 관리자 API 접근 |
 

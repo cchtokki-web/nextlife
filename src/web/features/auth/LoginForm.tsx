@@ -1,84 +1,183 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { signIn } from "next-auth/react";
+import { useEffect, useRef, useState } from "react";
+import { getSession, signIn } from "next-auth/react";
 import Image from "next/image";
+import { e2eeBackedUpKeyName, e2eeKeyName } from "@/infrastructure/storage/storageKeys";
 import { resolveDevCallbackUrl } from "./resolveDevCallbackUrl";
 import styles from "./LoginForm.module.css";
 
-export default function LoginForm() {
-  const [isRuntimeDevMode, setIsRuntimeDevMode] = useState<boolean | null>(() => {
-    return process.env.NEXT_PUBLIC_DEV_MODE === 'true' ? true : null;
-  });
+type Flow = 'choose' | 'register-email' | 'login-email' | 'security-key';
+
+export default function LoginForm({
+  initialFlow = 'choose',
+  migrationCompleted = false,
+}: {
+  initialFlow?: 'choose' | 'register-email';
+  migrationCompleted?: boolean;
+}) {
+  const [flow, setFlow] = useState<Flow>(initialFlow);
+  const [email, setEmail] = useState('');
+  const [keyDigits, setKeyDigits] = useState(['', '', '', '', '', '']);
+  const [isRegistering, setIsRegistering] = useState(initialFlow === 'register-email');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(migrationCompleted
+    ? '이메일 로그인 전환이 완료되었습니다. 이제 이메일과 보안키로 로그인해 주세요.'
+    : null);
+  const [failedAttempts, setFailedAttempts] = useState(0);
+  const [confirmingReset, setConfirmingReset] = useState(false);
+  const [isRuntimeDevMode, setIsRuntimeDevMode] = useState<boolean | null>(() =>
+    process.env.NEXT_PUBLIC_DEV_MODE === 'true' ? true : null,
+  );
+  const keyRefs = useRef<Array<HTMLInputElement | null>>([]);
 
   useEffect(() => {
-    // 위 초기 state가 이미 true를 넣었으므로 여기서 다시 set하지 않는다.
-    // 그냥 서버 조회만 건너뛰면 된다.
     if (process.env.NEXT_PUBLIC_DEV_MODE === 'true') return;
-
     fetch('/api/dev-mode')
-      .then(res => res.json())
-      .then(data => {
-        if (data && typeof data.isDevMode === 'boolean') {
-          setIsRuntimeDevMode(data.isDevMode);
-        } else {
-          setIsRuntimeDevMode(false);
-        }
-      })
-      .catch(err => {
-        console.error('Failed to fetch dev mode:', err);
-        setIsRuntimeDevMode(false);
-      });
+      .then((res) => res.json())
+      .then((data) => setIsRuntimeDevMode(Boolean(data?.isDevMode)))
+      .catch(() => setIsRuntimeDevMode(false));
   }, []);
-
-  // 자동 로그인이 실패하면 알린다. 예전에는 res.ok가 false일 때 아무 처리가 없어
-  // "개발 모드 자동 로그인 중..." 화면에 영구히 머물렀다.
-  const [devLoginError, setDevLoginError] = useState<string | null>(null);
 
   useEffect(() => {
     if (isRuntimeDevMode !== true) return;
-
     const target = resolveDevCallbackUrl(window.location.search);
     signIn('credentials', { email: 'dev', password: 'dev', redirect: false })
       .then((res) => {
-        if (res?.ok) {
-          window.location.href = target;
-          return;
-        }
-        setDevLoginError(res?.error ?? '자동 로그인에 실패했습니다.');
+        if (res?.ok) window.location.href = target;
+        else setError(res?.error ?? '자동 로그인에 실패했습니다.');
       })
-      .catch((err) => {
-        console.error('Dev auto sign-in failed:', err);
-        setDevLoginError('자동 로그인 중 오류가 발생했습니다.');
-      });
+      .catch(() => setError('자동 로그인 중 오류가 발생했습니다.'));
   }, [isRuntimeDevMode]);
 
-  if (isRuntimeDevMode === null) {
-    return (
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '1rem', color: '#fff', textAlign: 'center' }}>
-        <div style={{ fontSize: '1.2rem', fontWeight: 600 }}>로딩 중...</div>
-      </div>
-    );
-  }
+  const selectFlow = (next: 'register-email' | 'login-email') => {
+    setIsRegistering(next === 'register-email');
+    setFlow(next);
+    setError(null);
+    setMessage(null);
+  };
 
-  if (isRuntimeDevMode === true) {
+  const submitEmail = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setError(null);
+    const normalizedEmail = email.trim().toLowerCase();
+    if (!normalizedEmail) return;
+
+    if (!isRegistering) {
+      setEmail(normalizedEmail);
+      setFlow('security-key');
+      setTimeout(() => keyRefs.current[0]?.focus(), 50);
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const response = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: normalizedEmail }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setError(data.error ?? '회원가입을 시작하지 못했습니다.');
+        return;
+      }
+      setEmail(normalizedEmail);
+      setMessage(data.message ?? '이메일로 보안키를 보냈습니다.');
+      setFlow('security-key');
+      setTimeout(() => keyRefs.current[0]?.focus(), 50);
+    } catch {
+      setError('요청 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const updateKey = (index: number, rawValue: string) => {
+    const value = rawValue.toUpperCase().replace(/[^A-Z0-9]/g, '');
+    const next = [...keyDigits];
+    if (value.length >= 6) {
+      value.slice(0, 6).split('').forEach((character, digitIndex) => { next[digitIndex] = character; });
+      setKeyDigits(next);
+      keyRefs.current[5]?.focus();
+      return;
+    }
+    next[index] = value.slice(-1);
+    setKeyDigits(next);
+    if (value && index < 5) keyRefs.current[index + 1]?.focus();
+  };
+
+  const submitSecurityKey = async (event: React.FormEvent) => {
+    event.preventDefault();
+    const securityKey = keyDigits.join('').toUpperCase();
+    if (securityKey.length !== 6) {
+      setError('이메일로 받은 6자리 보안키를 모두 입력해 주세요.');
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+    try {
+      const result = await signIn('credentials', {
+        email,
+        securityKey,
+        redirect: false,
+        callbackUrl: '/simulator',
+      });
+      if (!result?.ok) {
+        const attempts = failedAttempts + 1;
+        setFailedAttempts(attempts);
+        setKeyDigits(['', '', '', '', '', '']);
+        setError(`보안키가 올바르지 않습니다. (${attempts}/5)`);
+        setTimeout(() => keyRefs.current[0]?.focus(), 50);
+        return;
+      }
+
+      const session = await getSession();
+      const userId = session?.user?.id;
+      if (!userId) throw new Error('Session was not created');
+      localStorage.setItem(e2eeKeyName(userId), securityKey);
+      localStorage.setItem(e2eeBackedUpKeyName(userId), 'true');
+      window.location.href = result.url || '/simulator';
+    } catch {
+      setError('로그인 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const requestSecurityKeyReset = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await fetch('/api/auth/security-key/reset', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setError(data.error ?? '보안키를 재발급하지 못했습니다.');
+        return;
+      }
+      setMessage('새 보안키를 이메일로 보냈습니다. 새 키를 입력하면 기존 데이터가 초기화되고 로그인됩니다.');
+      setKeyDigits(['', '', '', '', '', '']);
+      setFailedAttempts(0);
+      setConfirmingReset(false);
+      setTimeout(() => keyRefs.current[0]?.focus(), 50);
+    } catch {
+      setError('보안키 재발급 요청 중 오류가 발생했습니다.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (isRuntimeDevMode === null || isRuntimeDevMode === true) {
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '1rem', color: '#fff', textAlign: 'center' }}>
-        {devLoginError ? (
-          <>
-            <div style={{ fontSize: '1.2rem', fontWeight: 600 }}>개발 모드 자동 로그인 실패</div>
-            <div style={{ fontSize: '0.9rem', opacity: 0.8 }}>{devLoginError}</div>
-            <button
-              type="button"
-              onClick={() => window.location.reload()}
-              style={{ padding: '8px 20px', borderRadius: 9999, border: '1px solid rgba(255,255,255,0.4)' }}
-            >
-              다시 시도
-            </button>
-          </>
-        ) : (
-          <div className="animate-pulse" style={{ fontSize: '1.2rem', fontWeight: 600 }}>개발 모드 자동 로그인 중...</div>
-        )}
+      <div className={`glass animate-fade-in ${styles.loginContainer}`}>
+        <div className={styles.title}>{error ? '개발 모드 자동 로그인 실패' : '개발 모드 자동 로그인 중...'}</div>
+        {error && <div role="alert" className={styles.errorMessage}>{error}</div>}
       </div>
     );
   }
@@ -86,57 +185,101 @@ export default function LoginForm() {
   return (
     <div className={`glass animate-fade-in ${styles.loginContainer}`}>
       <div className={styles.logoWrapper}>
-        <Image 
-          src="/logo.png" 
-          alt="NextLife Logo" 
-          width={160} 
-          height={160} 
-          priority
-          className="drop-shadow-md"
-        />
+        <Image src="/logo.png" alt="NextLife Logo" width={160} height={160} priority className="drop-shadow-md" />
       </div>
-      
-      <h2 className={styles.title}>로그인</h2>
-      <p className={styles.subtitle}>은퇴 자산 시뮬레이터에 오신 것을 환영합니다.</p>
-      
-      <div className="mt-2" style={{ marginTop: '2rem' }}>
-        <button 
-          type="button"
-          onClick={() => {
-            signIn('kakao', { callbackUrl: '/' });
-          }}
-          style={{ 
-            backgroundColor: '#FEE500', 
-            color: '#191919', 
-            padding: '1rem 1.2rem', 
-            borderRadius: '12px', 
-            fontWeight: 700, 
-            fontSize: '1.05rem', 
-            border: 'none', 
-            cursor: 'pointer', 
-            boxShadow: '0 4px 10px rgba(0,0,0,0.1)', 
-            display: 'flex', 
-            alignItems: 'center', 
-            justifyContent: 'center',
-            gap: '0.6rem',
-            width: '100%',
-            transition: 'transform 0.2s ease, box-shadow 0.2s ease',
-          }}
-          onMouseOver={(e) => {
-            e.currentTarget.style.transform = 'translateY(-2px)';
-            e.currentTarget.style.boxShadow = '0 6px 14px rgba(0,0,0,0.2)';
-          }}
-          onMouseOut={(e) => {
-            e.currentTarget.style.transform = 'translateY(0)';
-            e.currentTarget.style.boxShadow = '0 4px 10px rgba(0,0,0,0.1)';
-          }}
-        >
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path fillRule="evenodd" clipRule="evenodd" d="M12 3C6.477 3 2 6.58 2 11C2 13.829 3.754 16.31 6.438 17.653L5.454 21.282C5.352 21.658 5.766 21.936 6.096 21.722L10.36 18.966C10.893 19.043 11.44 19.083 12 19.083C17.523 19.083 22 15.503 22 11C22 6.58 17.523 3 12 3Z" fill="currentColor"/>
-          </svg>
-          카카오로 3초 만에 시작하기
-        </button>
-      </div>
+      <h2 className={styles.title}>{flow === 'security-key' ? '보안키 입력' : 'NextLife 시작하기'}</h2>
+
+      {flow === 'choose' && (
+        <>
+          <p className={styles.subtitle}>이메일로 간편하게 가입하고 자산 데이터를 안전하게 보관하세요.</p>
+          {message && <div className={styles.successMessage}>{message}</div>}
+          <button type="button" className={styles.submitBtn} onClick={() => selectFlow('register-email')}>
+            이메일로 회원가입
+          </button>
+          <button type="button" className={styles.secondaryBtn} onClick={() => selectFlow('login-email')}>
+            이미 가입했다면 이메일로 로그인
+          </button>
+          <button
+            type="button"
+            className={styles.textBtn}
+            onClick={() => signIn('kakao', { callbackUrl: '/migrate-email' })}
+          >
+            기존 카카오 사용자 로그인 및 전환
+          </button>
+        </>
+      )}
+
+      {(flow === 'register-email' || flow === 'login-email') && (
+        <form onSubmit={submitEmail}>
+          <p className={styles.subtitle}>
+            {isRegistering
+              ? '입력한 이메일 주소로 6자리 보안키를 보내드립니다.'
+              : '가입한 이메일 주소와 이메일로 받은 보안키로 로그인합니다.'}
+          </p>
+          {isRegistering && (
+            <div className={styles.securityNotice}>
+              보안키는 로그인과 고객 데이터 암호화에 사용됩니다. 분실하면 저장된 데이터를 복구할 수 없으므로 이메일을 삭제하지 말고 안전하게 보관해 주세요.
+            </div>
+          )}
+          <div className={styles.formGroup}>
+            <label htmlFor="email" className={styles.label}>이메일 주소</label>
+            <input id="email" type="email" required autoComplete="email" className={styles.input} placeholder="example@example.com" value={email} onChange={(event) => setEmail(event.target.value)} />
+          </div>
+          {error && <div role="alert" className={styles.errorMessage}>{error}</div>}
+          <button type="submit" disabled={loading} className={styles.submitBtn}>
+            {loading ? '보안키 발송 중...' : isRegistering ? '가입하고 보안키 받기' : '보안키 입력하기'}
+          </button>
+          <button type="button" className={styles.textBtn} onClick={() => setFlow('choose')}>취소</button>
+        </form>
+      )}
+
+      {flow === 'security-key' && (
+        <form onSubmit={submitSecurityKey}>
+          <p className={styles.subtitle}><strong>{email}</strong>로 전송된 보안키를 입력해 주세요.</p>
+          {message && <div className={styles.successMessage}>{message}</div>}
+          <div className={styles.pinGroup}>
+            {keyDigits.map((digit, index) => (
+              <input
+                key={index}
+                ref={(element) => { keyRefs.current[index] = element; }}
+                aria-label={`보안키 ${index + 1}번째 자리`}
+                type="password"
+                inputMode="text"
+                autoComplete="one-time-code"
+                maxLength={6}
+                value={digit}
+                disabled={loading}
+                onChange={(event) => updateKey(index, event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Backspace' && !digit && index > 0) keyRefs.current[index - 1]?.focus();
+                }}
+                className={styles.pinInput}
+              />
+            ))}
+          </div>
+          {error && <div role="alert" className={styles.errorMessage}>{error}</div>}
+          <button type="submit" disabled={loading} className={styles.submitBtn}>
+            {loading ? '확인 중...' : isRegistering ? '가입 및 로그인' : '로그인'}
+          </button>
+          {failedAttempts >= 5 && !isRegistering && (
+            confirmingReset ? (
+              <div className={styles.resetWarning}>
+                <strong>정말 초기화하시겠습니까?</strong>
+                <p>새 보안키를 이메일로 보내드립니다. 그 키를 입력하면 기존 자산 데이터가 모두 삭제되며 되돌릴 수 없습니다.</p>
+                <div className={styles.resetActions}>
+                  <button type="button" className={styles.secondaryBtn} onClick={() => setConfirmingReset(false)}>취소</button>
+                  <button type="button" className={styles.dangerBtn} disabled={loading} onClick={requestSecurityKeyReset}>수락하고 재전송</button>
+                </div>
+              </div>
+            ) : (
+              <button type="button" className={styles.dangerBtn} onClick={() => setConfirmingReset(true)}>
+                데이터 초기화 및 보안키 재전송
+              </button>
+            )
+          )}
+          <button type="button" className={styles.textBtn} onClick={() => { setFlow(isRegistering ? 'register-email' : 'login-email'); setError(null); setConfirmingReset(false); }}>이메일 주소 다시 입력</button>
+        </form>
+      )}
     </div>
   );
 }

@@ -2,11 +2,6 @@ import { describe, test, expect, vi } from 'vitest';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import { E2eeKeyManager } from '@/web/components/E2eeKeyManager';
 
-const signIn = vi.fn();
-vi.mock('next-auth/react', () => ({
-  signIn: (...args: unknown[]) => signIn(...args),
-}));
-
 // 6자리를 한 번에 붙여 넣으면 컴포넌트가 나머지 칸을 채우고 곧바로 복구를 시도한다.
 async function enterKey(key: string) {
   const first = screen.getByLabelText('보안키 1번째 자리');
@@ -38,8 +33,8 @@ function renderRestore(overrides: Partial<React.ComponentProps<typeof E2eeKeyMan
 }
 
 describe('E2eeKeyManager — 복구 실패와 탈출구', () => {
-  // 탈출구가 있다는 사실은 처음부터 보이되, 데이터를 지우는 동작이므로 3회 실패 전에는 눌리지 않는다.
-  test('3회 실패하기 전에는 초기화 버튼이 비활성이다', async () => {
+  // 탈출구가 있다는 사실은 처음부터 보이되, 데이터를 지우는 동작이므로 5회 실패 전에는 눌리지 않는다.
+  test('5회 실패하기 전에는 초기화 버튼이 비활성이다', async () => {
     renderRestore();
     expect(resetButton()).toBeDisabled();
 
@@ -47,6 +42,9 @@ describe('E2eeKeyManager — 복구 실패와 탈출구', () => {
     expect(resetButton()).toBeDisabled();
 
     await failTimes(1);
+    expect(resetButton()).toBeDisabled();
+
+    await failTimes(2);
     expect(resetButton()).toBeDisabled();
 
     await failTimes(1);
@@ -70,8 +68,8 @@ describe('E2eeKeyManager — 복구 실패와 탈출구', () => {
     const handleRestoreKey = vi.fn(async () => false);
     renderRestore({ handleRestoreKey });
 
-    await failTimes(3);
-    expect(resetButton()).toBeEnabled();
+    await failTimes(4);
+    expect(resetButton()).toBeDisabled();
 
     handleRestoreKey.mockResolvedValue(true);
     await enterKey('RIGHT1');
@@ -87,7 +85,7 @@ describe('E2eeKeyManager — 복구 실패와 탈출구', () => {
   // 되돌릴 수 없는 삭제라 한 번의 오클릭으로 실행되면 안 된다.
   test('초기화는 두 단계 확인을 거친다', async () => {
     const { onResetScenarios } = renderRestore();
-    await failTimes(3);
+    await failTimes(5);
 
     fireEvent.click(resetButton());
     expect(screen.getByText(/되돌릴 수 없습니다/)).toBeInTheDocument();
@@ -118,7 +116,7 @@ describe('E2eeKeyManager — 보안키 발급 안내', () => {
       />
     );
 
-    // 카카오톡에만 남긴다 — 화면에 띄우면 어깨 너머로 새어 나간다.
+    // 이메일에만 남긴다 — 화면에 띄우면 어깨 너머로 새어 나간다.
     expect(screen.queryByText(KEY)).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '확인' }));
     expect(onAcknowledgeKey).toHaveBeenCalledTimes(1);
@@ -129,7 +127,7 @@ describe('E2eeKeyManager — 보안키 발급 안내', () => {
     const onRetrySendKey = vi.fn(async () => ({ success: false, error: '실패' }));
     render(
       <E2eeKeyManager
-        keyNotice={{ status: 'failed', key: KEY, error: '카카오톡 서버가 응답하지 않습니다.' }}
+        keyNotice={{ status: 'failed', key: KEY, error: '메일 서버가 응답하지 않습니다.' }}
         onAcknowledgeKey={onAcknowledgeKey}
         onRetrySendKey={onRetrySendKey}
         needsKeyRestore={false}
@@ -138,7 +136,7 @@ describe('E2eeKeyManager — 보안키 발급 안내', () => {
     );
 
     expect(screen.getByText(KEY)).toBeInTheDocument();
-    expect(screen.getByText(/카카오톡 서버가 응답하지 않습니다/)).toBeInTheDocument();
+    expect(screen.getByText(/메일 서버가 응답하지 않습니다/)).toBeInTheDocument();
 
     const retry = screen.getByRole('button', { name: '다시 보내기' });
     await act(async () => { fireEvent.click(retry); });
@@ -164,14 +162,13 @@ describe('E2eeKeyManager — 보안키 발급 안내', () => {
     expect(screen.getByText(KEY)).toBeInTheDocument();
   });
 
-  test('talk_message 동의가 필요하면 재시도 대신 카카오 추가 동의를 요청한다', () => {
+  test('이메일 전송 실패 시 같은 키를 다시 보낼 수 있다', () => {
     render(
       <E2eeKeyManager
         keyNotice={{
           status: 'failed',
           key: KEY,
-          error: '카카오톡 전송 권한 동의가 필요합니다.',
-          requiresKakaoConsent: true,
+          error: '이메일 전송에 실패했습니다.',
         }}
         onAcknowledgeKey={vi.fn()}
         onRetrySendKey={vi.fn(async () => ({ success: false }))}
@@ -180,13 +177,7 @@ describe('E2eeKeyManager — 보안키 발급 안내', () => {
       />
     );
 
-    expect(screen.queryByRole('button', { name: '다시 보내기' })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: '카카오 권한 동의' }));
-    expect(signIn).toHaveBeenCalledWith(
-      'kakao',
-      { callbackUrl: '/simulator' },
-      { scope: 'profile_nickname,profile_image,talk_message' },
-    );
+    expect(screen.getByRole('button', { name: '다시 보내기' })).toBeInTheDocument();
   });
 
   // 발급 안내가 떠 있는 동안에는 복구 입력창이 뜨면 안 된다 — 둘 다 전면 모달이다.

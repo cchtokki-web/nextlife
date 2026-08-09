@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { AlertTriangle } from 'lucide-react';
-import { signIn } from 'next-auth/react';
 import type { KeyNotice } from '../features/Scenario/useScenarios';
 // 배럴(ui/index.ts)을 경유하지 않는다 — 거기서 Collapse/Tooltip/GLOSSARY까지 딸려 온다.
 import { ModalShell } from './ui/ModalShell';
@@ -66,7 +65,7 @@ export const E2eeKeyManager: React.FC<E2eeKeyManagerProps> = ({
   // 카운터는 단조 증가한다. 예전에는 잠금이 걸릴 때 0으로 되돌렸는데, 초기화 버튼이 같은
   // 카운터를 읽는 지금 그렇게 하면 3·4회에 열렸던 탈출구가 5회에 다시 닫힌다 — 가장 필요한
   // 순간에 사라지는 셈이다.
-  const RESET_UNLOCK_ATTEMPTS = 3;   // 초기화 버튼이 열리는 실패 횟수
+  const RESET_UNLOCK_ATTEMPTS = 5;   // 초기화 버튼이 열리는 실패 횟수
   const MAX_RESTORE_ATTEMPTS = 5;    // 이 횟수마다 잠금
   const RESTORE_LOCKOUT_MS = 30000;
   const [failedRestoreAttempts, setFailedRestoreAttempts] = useState(0);
@@ -241,19 +240,17 @@ export const E2eeKeyManager: React.FC<E2eeKeyManagerProps> = ({
           }}>
             <div style={{
               fontWeight: 'bold',
-              color: 'var(--kakaotalk-text-color, #FEE500)',
+              color: 'var(--primary-light, #60a5fa)',
               marginBottom: '6px',
               display: 'flex',
               alignItems: 'center',
               gap: '4px',
               fontSize: '0.8rem'
             }}>
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M12 3C6.477 3 2 6.58 2 11C2 13.829 3.754 16.31 6.438 17.653L5.454 21.282C5.352 21.658 5.766 21.936 6.096 21.722L10.36 18.966C10.893 19.043 11.44 19.083 12 19.083C17.523 19.083 22 15.503 22 11C22 6.58 17.523 3 12 3Z" />
-              </svg>
+              ✉
               보안키 안내
             </div>
-            보안키는 <strong>이 기능을 처음 쓰게 된 시점</strong>(가입 직후, 예전에 가입한 계정이라면 보안 강화 이후 첫 로그인, 또는 데이터 초기화로 새 키를 발급받았을 때) 회원님의 카카오톡 <strong>&lsquo;나와의 채팅방&rsquo;</strong>으로 1회 발송되었습니다. 로그인할 때마다 다시 보내드리지 않으니, 카카오톡에서 <strong>&lsquo;NextLife&rsquo;</strong> 또는 <strong>&lsquo;보안키&rsquo;</strong>를 검색해 지난 메시지를 확인해 주세요.
+            보안키는 <strong>가입한 이메일 주소</strong>로 발송되었습니다. 로그인할 때마다 다시 보내드리지 않으니 이메일에서 <strong>&lsquo;NextLife&rsquo;</strong> 또는 <strong>&lsquo;보안키&rsquo;</strong>를 검색해 주세요. 보안키를 잃으면 저장된 자산 데이터를 복구할 수 없습니다.
           </div>
 
           {isRestoring && <Spinner label="보안키 확인 및 데이터 조회 중..." />}
@@ -296,7 +293,7 @@ export const E2eeKeyManager: React.FC<E2eeKeyManagerProps> = ({
   return null;
 };
 
-// 데이터 초기화 버튼. 3회 실패 전에는 보이되 비활성이라 "탈출구가 있다"는 사실은 알 수 있다.
+// 데이터 초기화 버튼. 5회 실패 전에는 보이되 비활성이라 "탈출구가 있다"는 사실은 알 수 있다.
 //
 // 잠금(isRestoreLocked)은 이 버튼을 막지 않는다. 막으면 키를 모르는 사용자가 30초 동안
 // 할 수 있는 일이 하나도 없다.
@@ -327,7 +324,7 @@ const ResetScenariosControl: React.FC<{
         </button>
         {!canReset && (
           <p style={{ fontSize: '0.7rem', color: 'var(--foreground-muted, #94a3b8)', margin: '6px 0 0 0', textAlign: 'center' }}>
-            보안키를 3회 잘못 입력하면 사용할 수 있습니다.
+            보안키를 5회 잘못 입력하면 사용할 수 있습니다.
           </p>
         )}
       </div>
@@ -362,7 +359,7 @@ const ResetScenariosControl: React.FC<{
   );
 };
 
-// 발급된 보안키 안내. 전송에 성공했으면 키를 화면에 띄우지 않고(카카오톡에만 남긴다),
+// 발급된 보안키 안내. 전송에 성공했으면 키를 화면에 띄우지 않고(이메일에만 남긴다),
 // 실패했으면 키를 보여 주고 직접 기록하게 한다.
 const IssuedKeyNotice: React.FC<{
   notice: KeyNotice;
@@ -390,7 +387,7 @@ const IssuedKeyNotice: React.FC<{
     return (
       <ModalShell title="보안키 발급 중">
         <p style={{ fontSize: '0.9rem', lineHeight: 1.6, color: 'var(--foreground-muted, #94a3b8)', margin: '0 0 1rem 0' }}>
-          보안키를 발급해 카카오톡으로 보내는 중입니다.
+          보안키를 발급해 이메일로 보내는 중입니다.
         </p>
         <Spinner label="전송 중..." />
       </ModalShell>
@@ -401,7 +398,7 @@ const IssuedKeyNotice: React.FC<{
     return (
       <ModalShell title="보안키를 보내드렸습니다">
         <p style={{ fontSize: '0.9rem', lineHeight: 1.6, color: 'var(--foreground-muted, #94a3b8)', margin: '0 0 1.5rem 0' }}>
-          회원님의 카카오톡 <strong style={{ color: 'var(--foreground)' }}>&lsquo;나와의 채팅방&rsquo;</strong>으로 보안키를 보내드렸습니다.
+          회원님의 <strong style={{ color: 'var(--foreground)' }}>가입 이메일 주소</strong>로 보안키를 보내드렸습니다.
           <br />
           기기를 바꾸거나 브라우저 데이터를 지웠을 때 이 키가 있어야 자산 데이터를 다시 열 수 있으니,
           메시지를 지우지 말고 보관해 주세요.
@@ -413,10 +410,9 @@ const IssuedKeyNotice: React.FC<{
     );
   }
 
-  // failed / unbacked — 두 경우 모두 "카카오톡에 키가 남아 있다고 확신할 수 없는" 상태다.
-  const title = notice.status === 'failed' ? '카카오톡 전송에 실패했습니다' : '보안키 백업이 확인되지 않았습니다';
+  // failed / unbacked — 두 경우 모두 "이메일에 키가 남아 있다고 확신할 수 없는" 상태다.
+  const title = notice.status === 'failed' ? '이메일 전송에 실패했습니다' : '보안키 백업이 확인되지 않았습니다';
   const reason = notice.status === 'failed' ? notice.error : undefined;
-  const requiresKakaoConsent = notice.status === 'failed' && notice.requiresKakaoConsent === true;
 
   return (
     <ModalShell title={title}>
@@ -445,21 +441,7 @@ const IssuedKeyNotice: React.FC<{
       </div>
 
       <div style={{ display: 'flex', gap: '8px' }}>
-        {requiresKakaoConsent ? (
-          <button
-            type="button"
-            onClick={() => {
-              // 기존 카카오 연결에는 talk_message 동의가 없을 수 있다. scope를 명시해 추가 동의
-              // 화면을 열고, 돌아오면 localStorage에 보존된 같은 키를 다시 보낼 수 있게 한다.
-              signIn('kakao', { callbackUrl: '/simulator' }, {
-                scope: 'profile_nickname,profile_image,talk_message',
-              });
-            }}
-            style={secondaryButtonStyle}
-          >
-            카카오 권한 동의
-          </button>
-        ) : onRetrySend && (
+        {onRetrySend && (
           <button
             type="button"
             disabled={isCoolingDown}

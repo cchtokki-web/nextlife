@@ -87,6 +87,93 @@
   transform: none;
 }
 
+.secondaryBtn,
+.textBtn {
+  width: 100%;
+  border: 1px solid var(--input-border);
+  background: transparent;
+  color: var(--foreground);
+  border-radius: 12px;
+  padding: 0.8rem;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.textBtn {
+  border: 0;
+  color: var(--foreground-muted);
+  margin-top: 0.5rem;
+  font-size: 0.85rem;
+}
+
+.securityNotice {
+  padding: 0.9rem;
+  margin-bottom: 1.25rem;
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  border-radius: 10px;
+  background: rgba(245, 158, 11, 0.09);
+  color: var(--foreground-muted);
+  font-size: 0.82rem;
+  line-height: 1.55;
+}
+
+.pinGroup {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin: 1.25rem 0;
+}
+
+.pinInput {
+  width: 44px;
+  height: 48px;
+  border: 1px solid var(--input-border);
+  border-radius: 9px;
+  background: var(--input-bg);
+  color: var(--foreground);
+  text-align: center;
+  font-size: 1.1rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.pinInput:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--primary-glow);
+}
+
+.dangerBtn {
+  width: 100%;
+  margin-top: 0.75rem;
+  padding: 0.8rem;
+  border: 1px solid rgba(239, 68, 68, 0.55);
+  border-radius: 10px;
+  background: rgba(239, 68, 68, 0.12);
+  color: #ef4444;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.resetWarning {
+  margin-top: 1rem;
+  padding: 1rem;
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  border-radius: 10px;
+  color: #ef4444;
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+.resetWarning p { margin: 0.5rem 0 0.75rem; }
+.resetActions { display: flex; gap: 8px; }
+.resetActions .dangerBtn { margin-top: 0; }
+
+@media (max-width: 420px) {
+  .pinGroup { gap: 5px; }
+  .pinInput { width: 38px; height: 44px; }
+}
+
 .errorMessage {
   background: rgba(239, 68, 68, 0.1);
   border: 1px solid rgba(239, 68, 68, 0.2);

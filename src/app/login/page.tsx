@@ -19,8 +19,11 @@ export default async function LoginPage({
 
   // 같은 키가 여러 번 오면 배열이 된다(예: ?error=a&error=b). 배열을 그대로 렌더하면
   // "a,b"처럼 보이므로 첫 값만 쓴다. 예전에는 `as string`으로 단언만 하고 있었다.
-  const errorParam = (await searchParams)?.error;
+  const params = await searchParams;
+  const errorParam = params?.error;
+  const migratedParam = params?.migrated;
   const error = Array.isArray(errorParam) ? errorParam[0] : errorParam;
+  const migrated = Array.isArray(migratedParam) ? migratedParam[0] : migratedParam;
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem', flexDirection: 'column' }}>
@@ -30,7 +33,7 @@ export default async function LoginPage({
           <small>{error}</small>
         </div>
       )}
-      <LoginForm />
+      <LoginForm migrationCompleted={migrated === '1'} />
     </div>
   );
 }

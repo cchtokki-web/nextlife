@@ -52,7 +52,7 @@ export function SimpleSimulator() {
   const [hasRun, setHasRun] = useState(false);
   const { data: session, status } = useSession();
   const [isRuntimeDevMode, setIsRuntimeDevMode] = useState(isDevMode());
-  const isKakaoUser = isRuntimeDevMode || session?.user?.provider === 'kakao';
+  const isSignedInUser = isRuntimeDevMode || Boolean(session?.user?.id);
   const router = useRouter();
 
   useEffect(() => {
@@ -368,7 +368,7 @@ export function SimpleSimulator() {
                 />
               )}
               
-              {isKakaoUser && (
+              {isSignedInUser && (
                 <motion.div 
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}

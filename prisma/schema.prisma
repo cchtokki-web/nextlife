@@ -14,6 +14,13 @@ model User {
   emailVerified  DateTime?
   image          String?
   passwordHash   String?
+  // 이메일 가입 시 발급한 6자리 보안키의 bcrypt 해시. 원문 보안키는 서버에 저장하지 않는다.
+  securityKeyHash String?
+  // 로그인 전 재발급 요청은 이메일 소유가 확인되기 전까지 데이터를 지우지 않는다.
+  // 새 키로 로그인에 성공한 트랜잭션 안에서 시나리오 삭제와 함께 false로 돌아간다.
+  securityKeyResetPending Boolean @default(false)
+  // 기존 카카오 사용자가 같은 User 행에 이메일 로그인 수단을 연결한 시각.
+  emailMigrationCompletedAt DateTime?
   tier           String     @default("basic")
   simulationData String?
   // 이 계정의 데이터가 보안키로 잠겨 있음을 서버가 기억하는 자리. 서버가 암호문을 처음 받거나

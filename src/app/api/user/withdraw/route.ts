@@ -59,12 +59,11 @@ export async function POST(req: Request) {
     const kakaoUnlinked = kakaoAccount ? await unlinkKakaoAccount(kakaoAccount) : false;
 
     // Scenario/Account/Session은 onDelete: Cascade로 함께 사라진다.
-    // VerificationToken만 User와 관계가 없어(identifier가 이메일 문자열이다) 직접 지운다 —
+    // VerificationToken만 User와 관계가 없어 직접 지운다 —
     // 남겨 두면 같은 이메일로 재가입했을 때 예전 인증/비밀번호 재설정 토큰이 그대로 통한다.
     //
-    // user.email이 null일 수 있다. 카카오 스코프에 account_email이 없어 카카오 사용자는
-    // 전원 null이고, identifier는 non-nullable이라 무조건 부르면 운영 사용자 전원의 탈퇴가
-    // 500으로 실패한다.
+    // 이메일 전환 인증번호는 `email-migration:${userId}:` 접두사를 사용한다. 전환 도중 탈퇴하면
+    // user.email이 여전히 null일 수 있으므로 사용자 ID 접두사도 반드시 함께 지운다.
     //
     // 트랜잭션은 이 두 문장만 감싼다. 위의 fetch를 안에 넣으면 카카오 왕복 동안 SQLite
     // 쓰기 락을 쥐고 있게 되어 다른 모든 쓰기를 막는다.
@@ -72,9 +71,14 @@ export async function POST(req: Request) {
       // delete가 아니라 deleteMany인 이유: 위 findUnique와 여기 사이에 행이 사라져도
       // (더블클릭, 동시 탭) P2025로 던지지 않고 count 0으로 넘어간다.
       prisma.user.deleteMany({ where: { id: userId } }),
-      ...(user.email
-        ? [prisma.verificationToken.deleteMany({ where: { identifier: user.email } })]
-        : []),
+      prisma.verificationToken.deleteMany({
+        where: {
+          OR: [
+            { identifier: { startsWith: `email-migration:${userId}:` } },
+            ...(user.email ? [{ identifier: user.email }] : []),
+          ],
+        },
+      }),
     ]);
 
     return NextResponse.json({ success: true, kakaoUnlinked }, { status: 200 });
