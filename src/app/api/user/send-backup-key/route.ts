@@ -62,11 +62,10 @@ export async function POST(req: Request) {
     const templateObject = {
       object_type: 'text',
       text: `[NextLife] 회원님의 은퇴 자산 시뮬레이션 보안키입니다.\n\n🔑 보안키: ${key.toUpperCase()}\n\n기기를 변경하거나 브라우저 캐시를 삭제했을 때 데이터를 안전하게 복구하려면 이 키를 입력해 주세요.`,
-      link: {
-        web_url: process.env.NEXTAUTH_URL || 'http://localhost:3000',
-        mobile_web_url: process.env.NEXTAUTH_URL || 'http://localhost:3000',
-      },
-      button_title: '시뮬레이터로 이동',
+      // 텍스트 템플릿은 link 객체를 요구하지만 필드가 비어 있으면 버튼을 표시하지 않는다.
+      // 보안키 전달에는 링크가 필요 없다. NEXTAUTH_URL을 넣으면 카카오 앱의 [제품 링크 관리]
+      // 웹 도메인과 정확히 일치하지 않는 배포에서 템플릿 전체가 400으로 거절된다.
+      link: {},
     };
 
     const response = await fetch('https://kapi.kakao.com/v2/api/talk/memo/default/send', {
