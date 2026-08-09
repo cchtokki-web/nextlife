@@ -1,8 +1,11 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useSession } from 'next-auth/react';
+import { signOut, useSession } from 'next-auth/react';
 import { SimulationParams, ScenarioModel } from '../../../core/entities/types';
 import type { EncryptedData } from '../../../core/utils/crypto';
 import { useIsHydrated } from '../../hooks/useBrowserEnvironment';
+import { loadParams, saveParams, initialParams } from '../../../infrastructure/storage/localStore';
+import { e2eeKeyName, e2eeBackedUpKeyName } from '../../../infrastructure/storage/storageKeys';
+import { encryptData, decryptData, isEncryptedPayload, generateBackupKey } from '../../../core/utils/crypto';
 
 // GET /api/scenarios 응답. data의 각 항목은 평문(SimulationParams)일 수도, E2EE로 암호화된
 // 형태일 수도 있어 소비처가 복호화를 시도하며 좁힌다.
@@ -12,9 +15,13 @@ interface ScenarioListResponse {
   // 있어도 키 요구가 사라지지 않는다.
   e2eeEnabled?: boolean;
 }
-import { loadParams, saveParams, initialParams } from '../../../infrastructure/storage/localStore';
-import { e2eeKeyName, e2eeBackedUpKeyName } from '../../../infrastructure/storage/storageKeys';
-import { encryptData, decryptData, isEncryptedPayload, generateBackupKey } from '../../../core/utils/crypto';
+
+class ScenarioRequestError extends Error {
+  constructor(readonly status: number) {
+    super(`서버 응답 오류 (HTTP ${status})`);
+    this.name = 'ScenarioRequestError';
+  }
+}
 
 const convertToRepresentativeAssets = (params: SimulationParams): SimulationParams => {
   if (!params.assets) return params;
@@ -472,10 +479,16 @@ export function useScenarios() {
         try {
           const res = await fetch(url);
           if (!res.ok) {
-            throw new Error(`서버 응답 오류 (HTTP ${res.status})`);
+            throw new ScenarioRequestError(res.status);
           }
           return await res.json();
         } catch (err) {
+          // 401은 일시적인 서버 장애가 아니다. 특히 탈퇴 직후에는 DB의 User 행은 지워졌지만
+          // JWT 쿠키가 브라우저에 잠시 남을 수 있다. 같은 요청을 반복해도 성공하지 않으므로
+          // 재시도하지 않고 바깥에서 세션을 정리한다.
+          if (err instanceof ScenarioRequestError && err.status === 401) {
+            throw err;
+          }
           if (retries > 0) {
             console.warn(`[useScenarios] Fetch failed, retrying in ${delay}ms... (${retries} left). Error:`, err);
             await new Promise(resolve => setTimeout(resolve, delay));
@@ -667,7 +680,13 @@ export function useScenarios() {
             setLoadedRequestKey(loadRequestKey);
           });
         })
-        .catch(err => {
+        .catch(async err => {
+          if (err instanceof ScenarioRequestError && err.status === 401) {
+            // 서버가 더는 이 JWT의 사용자를 인정하지 않는다. 오류 화면에 가두면 "다시 시도"가
+            // 영원히 같은 401만 만든다. 로컬 세션 쿠키를 지우고 재로그인할 수 있게 보낸다.
+            await signOut({ callbackUrl: '/login?callbackUrl=/simulator' });
+            return;
+          }
           console.error('[useScenarios] Failed to load scenarios:', err);
           setLoadErrorState({ key: loadRequestKey, message: err.message || '시나리오 데이터를 가져오지 못했습니다.' });
           setLoadedRequestKey(loadRequestKey);

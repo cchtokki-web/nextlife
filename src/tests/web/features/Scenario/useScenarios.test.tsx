@@ -4,8 +4,10 @@ import type { SimulationParams } from '@/core/entities/types';
 
 // useSession은 훅 전체 분기의 입구다. 테스트마다 값을 갈아 끼운다.
 const sessionState = { data: null as unknown, status: 'loading' as string };
+const signOut = vi.fn();
 vi.mock('next-auth/react', () => ({
   useSession: () => sessionState,
+  signOut: (...args: unknown[]) => signOut(...args),
 }));
 
 // 암복호화는 WebCrypto가 필요해 jsdom에서 그대로 돌릴 수 없다. 그 둘만 대역으로 바꾸고
@@ -73,6 +75,8 @@ beforeEach(() => {
   saveParams.mockReset();
   decryptData.mockReset();
   encryptData.mockReset();
+  signOut.mockReset();
+  signOut.mockResolvedValue(undefined);
   consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
   consoleWarn = vi.spyOn(console, 'warn').mockImplementation(() => {});
   vi.stubGlobal('fetch', mockFetch({}));
@@ -539,6 +543,25 @@ describe('useScenarios — 로그인 사용자의 자동저장', () => {
 // isLoaded/loadError는 상태가 아니라 "이번에 불러올 대상(loadRequestKey)"과 "어디까지
 // 불러왔는가"의 비교로 얻는다. 요청 조건이 바뀌면 저절로 false가 되어야 한다.
 describe('useScenarios — 재적재', () => {
+  test('401은 재시도하지 않고 세션을 정리한 뒤 로그인 화면으로 보낸다', async () => {
+    signedIn();
+    localStorage.setItem(KEY_NAME, 'KEY123');
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url === '/api/scenarios') {
+        return { ok: false, status: 401, json: async () => ({ error: 'Unauthorized' }) } as unknown as Response;
+      }
+      return { ok: true, json: async () => ({ success: true }) } as unknown as Response;
+    }));
+
+    const { result } = renderHook(() => useScenarios());
+
+    await waitFor(() => expect(signOut).toHaveBeenCalledWith({
+      callbackUrl: '/login?callbackUrl=/simulator',
+    }));
+    expect(fetchCalls().filter(([url]) => url === '/api/scenarios')).toHaveLength(1);
+    expect(result.current.loadError).toBeNull();
+  });
+
   test('재시도를 요청하면 다시 불러오고 이전 오류가 남지 않는다', async () => {
     signedIn();
     localStorage.setItem(KEY_NAME, 'KEY123');
