@@ -1,6 +1,10 @@
 import React, { useState } from 'react';
-import { AlertTriangle, RefreshCw } from 'lucide-react';
+import { AlertTriangle } from 'lucide-react';
 import type { KeyNotice } from '../features/Scenario/useScenarios';
+// 배럴(ui/index.ts)을 경유하지 않는다 — 거기서 Collapse/Tooltip/GLOSSARY까지 딸려 온다.
+import { ModalShell } from './ui/ModalShell';
+import { Spinner } from './ui/Spinner';
+import { primaryButtonStyle, secondaryButtonStyle, dangerButtonStyle } from './ui/buttonStyles';
 
 // 잠금/쿨다운 해제 시각. Date.now()는 같은 입력에 다른 값을 주는 impure 호출이라 컴파일러가
 // 렌더 경로에서 부르는 것을 막는다. 실제로는 이벤트 핸들러에서만 부르지만 컴파일러가
@@ -22,91 +26,6 @@ const pinBoxStyle: React.CSSProperties = {
   textAlign: 'center',
   outline: 'none',
 };
-
-const primaryButtonStyle: React.CSSProperties = {
-  flex: 1,
-  padding: '0.75rem',
-  backgroundColor: 'var(--primary, #3b82f6)',
-  border: 'none',
-  borderRadius: '10px',
-  color: '#fff',
-  fontSize: '0.9rem',
-  fontWeight: 700,
-  cursor: 'pointer',
-};
-
-const secondaryButtonStyle: React.CSSProperties = {
-  flex: 1,
-  padding: '0.75rem',
-  backgroundColor: 'rgba(255, 255, 255, 0.05)',
-  border: '1px solid var(--card-border, #334155)',
-  borderRadius: '10px',
-  color: 'var(--foreground, #fff)',
-  fontSize: '0.9rem',
-  fontWeight: 600,
-  cursor: 'pointer',
-};
-
-const dangerButtonStyle: React.CSSProperties = {
-  flex: 1,
-  padding: '0.75rem',
-  backgroundColor: 'rgba(239, 68, 68, 0.1)',
-  border: '1px solid rgba(239, 68, 68, 0.2)',
-  borderRadius: '10px',
-  color: '#EF4444',
-  fontSize: '0.85rem',
-  fontWeight: 600,
-  cursor: 'pointer',
-};
-
-// 모달 껍데기. 컴포넌트 본문 안에 두면 렌더마다 타입 정체성이 새로 생겨 자식이 리마운트되고,
-// PIN 입력 도중 포커스가 날아간다. 반드시 모듈 스코프여야 한다.
-const ModalShell: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => (
-  <div style={{
-    position: 'fixed',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.85)',
-    backdropFilter: 'blur(8px)',
-    display: 'flex',
-    justifyContent: 'center',
-    alignItems: 'center',
-    zIndex: 9999,
-    padding: '1rem'
-  }}>
-    <div style={{
-      backgroundColor: 'var(--card-bg, #1e293b)',
-      border: '1px solid var(--card-border, #334155)',
-      borderRadius: '16px',
-      maxWidth: '500px',
-      width: '100%',
-      padding: '2rem',
-      boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
-      color: 'var(--foreground, #f8fafc)'
-    }}>
-      <h2 style={{ fontSize: '1.25rem', fontWeight: 700, margin: '0 0 1.25rem 0' }}>{title}</h2>
-      {children}
-    </div>
-  </div>
-);
-
-const Spinner: React.FC<{ label: string }> = ({ label }) => (
-  <div style={{
-    display: 'flex',
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: '8px',
-    color: 'var(--primary, #3b82f6)',
-    fontSize: '0.9rem',
-    margin: '10px 0',
-    fontWeight: 600
-  }}>
-    <RefreshCw style={{ animation: 'spin 1s linear infinite' }} size={16} />
-    <span>{label}</span>
-  </div>
-);
 
 const RETRY_COOLDOWN_MS = 30000;
 

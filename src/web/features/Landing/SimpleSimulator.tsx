@@ -10,18 +10,23 @@ import { Target, TrendingUp, Coins } from 'lucide-react';
 import { useSession } from 'next-auth/react';
 import { initialParams } from '../../../infrastructure/storage/localStore';
 import { encryptData } from '../../../core/utils/crypto';
+import {
+  SIMULATOR_PARAMS_KEY,
+  SIMPLE_SIMULATOR_INPUT_KEY,
+  SIMPLE_SIMULATOR_HAS_RUN_KEY,
+  e2eeKeyName,
+} from '../../../infrastructure/storage/storageKeys';
 import { isDevMode } from '../../../core/utils/isDevMode';
 
 import { ScenarioComparisonCards } from './ScenarioComparisonCards';
 import styles from './SimpleSimulator.module.css';
 import { useIsHydrated } from '../../hooks/useBrowserEnvironment';
 
-const INPUT_STORAGE_KEY = 'nextlife_simple_simulator_input';
-const HAS_RUN_STORAGE_KEY = 'nextlife_simple_simulator_has_run';
+
 
 function readSavedInput(): Partial<SimpleSimulationInput> | null {
   try {
-    const saved = localStorage.getItem(INPUT_STORAGE_KEY);
+    const saved = localStorage.getItem(SIMPLE_SIMULATOR_INPUT_KEY);
     return saved ? (JSON.parse(saved) as Partial<SimpleSimulationInput>) : null;
   } catch (err) {
     console.error('Failed to parse saved input', err);
@@ -30,7 +35,7 @@ function readSavedInput(): Partial<SimpleSimulationInput> | null {
 }
 
 function readHasRun(): boolean {
-  return sessionStorage.getItem(HAS_RUN_STORAGE_KEY) === 'true';
+  return sessionStorage.getItem(SIMPLE_SIMULATOR_HAS_RUN_KEY) === 'true';
 }
 
 export function SimpleSimulator() {
@@ -75,7 +80,7 @@ export function SimpleSimulator() {
 
   useEffect(() => {
     if (status === 'authenticated') {
-      sessionStorage.setItem(HAS_RUN_STORAGE_KEY, 'true');
+      sessionStorage.setItem(SIMPLE_SIMULATOR_HAS_RUN_KEY, 'true');
     }
   }, [status]);
 
@@ -93,7 +98,7 @@ export function SimpleSimulator() {
   }
 
   useEffect(() => {
-    localStorage.setItem(INPUT_STORAGE_KEY, JSON.stringify(input));
+    localStorage.setItem(SIMPLE_SIMULATOR_INPUT_KEY, JSON.stringify(input));
   }, [input]);
 
   const engine = useMemo(() => new SimulationEngine(), []);
@@ -133,7 +138,7 @@ export function SimpleSimulator() {
 
   const handleRun = () => {
     setHasRun(true);
-    sessionStorage.setItem(HAS_RUN_STORAGE_KEY, 'true');
+    sessionStorage.setItem(SIMPLE_SIMULATOR_HAS_RUN_KEY, 'true');
     const sessionId = sessionStorage.getItem('analytics_session_id');
     fetch('/api/analytics', {
       method: 'POST',
@@ -346,7 +351,7 @@ export function SimpleSimulator() {
                 <button 
                   onClick={() => {
                     setHasRun(false);
-                    sessionStorage.setItem('nextlife_simple_simulator_has_run', 'false');
+                    sessionStorage.setItem(SIMPLE_SIMULATOR_HAS_RUN_KEY, 'false');
                   }}
                   style={{ background: 'var(--card-border)', border: '1px solid var(--card-border-hover)', color: 'var(--foreground)', padding: '0.4rem 0.8rem', borderRadius: '8px', cursor: 'pointer', fontWeight: 600, fontSize: '0.9rem' }}
                 >
@@ -392,7 +397,7 @@ export function SimpleSimulator() {
                         taxSettings: adapted.taxSettings,
                       };
                       
-                      localStorage.setItem('nextlife_simulator_params', JSON.stringify(finalParams));
+                      localStorage.setItem(SIMULATOR_PARAMS_KEY, JSON.stringify(finalParams));
                       
                       // 로그인 사용자의 기본 시나리오에 이 입력을 반영한다.
                       //
@@ -405,7 +410,7 @@ export function SimpleSimulator() {
                       // 건너뛴다. 입력은 위 localStorage에 남아 있고, /simulator가 키를 받거나
                       // 복구한 뒤 기본 시나리오를 만들 때 그 값을 쓴다.
                       const userId = session?.user?.id;
-                      const e2eeKey = userId ? localStorage.getItem(`nextlife_e2ee_key_${userId}`) : null;
+                      const e2eeKey = userId ? localStorage.getItem(e2eeKeyName(userId)) : null;
                       if (userId && e2eeKey) {
                         try {
                           const res = await fetch('/api/scenarios');

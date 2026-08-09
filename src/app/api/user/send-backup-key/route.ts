@@ -4,6 +4,7 @@ import { authOptions } from '@/core/utils/authOptions';
 import { prisma } from '@/infrastructure/db/prisma';
 import { isDevMode } from '@/core/utils/isDevMode';
 import { isRateLimited } from '@/core/utils/rateLimiter';
+import { isKakaoAuthError, refreshKakaoAccessToken } from '@/infrastructure/kakao/tokens';
 
 export async function POST(req: Request) {
   try {
@@ -71,39 +72,18 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: true });
     }
 
-    // Handle token refresh
-    if ((resData.code === -401 || response.status === 401) && account.refresh_token) {
+    // 액세스 토큰이 죽었으면 재발급 후 한 번 재시도한다. 재발급/저장 로직은 탈퇴의
+    // unlink와 공유한다(infrastructure/kakao/tokens.ts) — 카카오 토큰은 6시간이고 세션
+    // JWT는 30일이라 이 경로는 두 호출처 모두에서 예외가 아니라 흔한 경로다.
+    if (isKakaoAuthError(response.status, resData)) {
       console.log('Kakao access token expired. Attempting to refresh...');
-      
-      const tokenResponse = await fetch('https://kauth.kakao.com/oauth/token', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded;charset=utf-8',
-        },
-        body: new URLSearchParams({
-          grant_type: 'refresh_token',
-          client_id: process.env.KAKAO_CLIENT_ID || '',
-          client_secret: process.env.KAKAO_CLIENT_SECRET || '',
-          refresh_token: account.refresh_token,
-        }),
-      });
+      const newAccessToken = await refreshKakaoAccessToken(account);
 
-      const tokenData = await tokenResponse.json();
-
-      if (tokenResponse.ok && tokenData.access_token) {
-        await prisma.account.update({
-          where: { id: account.id },
-          data: {
-            access_token: tokenData.access_token,
-            refresh_token: tokenData.refresh_token || account.refresh_token,
-            expires_at: tokenData.expires_in ? Math.floor(Date.now() / 1000) + tokenData.expires_in : account.expires_at,
-          },
-        });
-
+      if (newAccessToken) {
         const retryResponse = await fetch('https://kapi.kakao.com/v2/api/talk/memo/default/send', {
           method: 'POST',
           headers: {
-            'Authorization': `Bearer ${tokenData.access_token}`,
+            'Authorization': `Bearer ${newAccessToken}`,
             'Content-Type': 'application/x-www-form-urlencoded',
           },
           body: new URLSearchParams({

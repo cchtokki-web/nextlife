@@ -4,6 +4,7 @@ import { authOptions } from '@/core/utils/authOptions';
 import { prisma } from '@/infrastructure/db/prisma';
 import { markE2eeEnabled } from '@/infrastructure/db/e2ee';
 import { isEncryptedPayload } from '@/core/utils/crypto';
+import { isDevMode } from '@/core/utils/isDevMode';
 
 export async function GET(_req: Request) {
   try {
@@ -21,7 +22,15 @@ export async function GET(_req: Request) {
     });
 
     if (!user) {
-      // Auto-recreate user record in the database if it is missing (e.g. database reset/clean)
+      // 개발 모드 전용. 개발 세션(dev-user-id)은 DB 행 없이 발급되고, prisma db push나
+      // dev.db 삭제로 행이 사라져도 토큰은 계속 유효하다 — 그 편의를 위해 여기서 만든다.
+      //
+      // 운영에서는 만들지 않는다. 세션 전략이 jwt라 User 행을 지워도 쿠키는 만료까지 살아
+      // 있는데, 여기서 되살리면 탈퇴한 계정이 다음 요청 한 번으로 부활한다. 행이 없다는 것은
+      // 이 토큰이 더는 유효한 주체를 가리키지 않는다는 뜻이므로 401로 답한다.
+      if (!isDevMode()) {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      }
       user = await prisma.user.create({
         data: {
           id: userId,
@@ -101,7 +110,15 @@ export async function POST(req: Request) {
     });
 
     if (!user) {
-      // Auto-recreate user record in the database if it is missing (e.g. database reset/clean)
+      // 개발 모드 전용. 개발 세션(dev-user-id)은 DB 행 없이 발급되고, prisma db push나
+      // dev.db 삭제로 행이 사라져도 토큰은 계속 유효하다 — 그 편의를 위해 여기서 만든다.
+      //
+      // 운영에서는 만들지 않는다. 세션 전략이 jwt라 User 행을 지워도 쿠키는 만료까지 살아
+      // 있는데, 여기서 되살리면 탈퇴한 계정이 다음 요청 한 번으로 부활한다. 행이 없다는 것은
+      // 이 토큰이 더는 유효한 주체를 가리키지 않는다는 뜻이므로 401로 답한다.
+      if (!isDevMode()) {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      }
       user = await prisma.user.create({
         data: {
           id: userId,

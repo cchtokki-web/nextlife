@@ -13,6 +13,7 @@ interface ScenarioListResponse {
   e2eeEnabled?: boolean;
 }
 import { loadParams, saveParams, initialParams } from '../../../infrastructure/storage/localStore';
+import { e2eeKeyName, e2eeBackedUpKeyName } from '../../../infrastructure/storage/storageKeys';
 import { encryptData, decryptData, isEncryptedPayload, generateBackupKey } from '../../../core/utils/crypto';
 
 const convertToRepresentativeAssets = (params: SimulationParams): SimulationParams => {
@@ -228,6 +229,11 @@ export function useScenarios() {
   // 여기 포함된 시나리오는 로드 시 복호화가 계속 실패해도 needsKeyRestore를 다시 띄우지 않는다
   // (그렇지 않으면 방금 검증된 올바른 키를 사용자가 무한히 다시 요구받는 루프에 빠진다).
   const corruptedScenarioIdsRef = useRef<Set<string>>(new Set());
+  // 탈퇴처럼 "떠나는 것이 확정된" 이동에서 미저장 경고를 끈다.
+  //
+  // state가 아니라 ref다. 이 값이 바뀔 때 리렌더할 이유가 없고, beforeunload 핸들러는
+  // 이벤트마다 .current를 다시 읽으므로 재등록도 필요 없다.
+  const unsavedGuardDisarmedRef = useRef(false);
 
   // Error & Retry States
   // 오류도 같은 방식이다. 어느 요청에서 난 오류인지 함께 들고 있으면, 요청 조건이 바뀐 뒤에
@@ -280,9 +286,9 @@ export function useScenarios() {
     setSyncedSessionKey(sessionKey);
     const userId = session?.user?.id;
     if (status === 'authenticated' && userId) {
-      const key = localStorage.getItem(`nextlife_e2ee_key_${userId}`);
+      const key = localStorage.getItem(e2eeKeyName(userId));
       if (key) {
-        setIsBackupKeyBackedUp(localStorage.getItem(`nextlife_e2ee_backed_up_${userId}`) === 'true');
+        setIsBackupKeyBackedUp(localStorage.getItem(e2eeBackedUpKeyName(userId)) === 'true');
         setLocalKey(key);
       } else {
         setLocalKey(null);
@@ -443,7 +449,7 @@ export function useScenarios() {
     if (isLoaded) return;
     if (status === 'authenticated') {
       if (userId) {
-        const storedKey = localStorage.getItem(`nextlife_e2ee_key_${userId}`);
+        const storedKey = localStorage.getItem(e2eeKeyName(userId));
         if (storedKey && !localKey) {
           // localKey는 이펙트가 아니라 렌더 중 조정(위 syncedSessionKey 블록)이 채운다. 그 커밋
           // 전에 이 이펙트가 먼저 돌면 "키 없음"으로 잘못 분기하므로 한 번 넘긴다.
@@ -477,7 +483,7 @@ export function useScenarios() {
             return;
           }
           const list = data ?? [];
-          const keyName = `nextlife_e2ee_key_${userId}`;
+          const keyName = e2eeKeyName(userId);
           const activeKey = localKey || localStorage.getItem(keyName);
 
           // 키를 요구할지는 서버 기록(e2eeEnabled)으로 판단한다. 예전에는 "받아 온 payload가
@@ -532,7 +538,7 @@ export function useScenarios() {
                 // 발급 즉시 기록한다. 확인 전에 창을 닫아도 다음 로그인이 같은 키로
                 // 이어지고, 카카오톡에 서로 다른 키가 두 개 쌓이지 않는다.
                 localStorage.setItem(keyName, newKey);
-                localStorage.setItem(`nextlife_e2ee_backed_up_${userId}`, 'false');
+                localStorage.setItem(e2eeBackedUpKeyName(userId), 'false');
                 setIsBackupKeyBackedUp(false);
                 setKeyIssuance({ status: 'sending', key: newKey });
                 postBackupKey(newKey).then(result => {
@@ -739,6 +745,9 @@ export function useScenarios() {
   // Alert user when they try to leave the page with unsaved changes
   useEffect(() => {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      // 탈퇴 직후의 이동에는 경고하지 않는다. 여기서 "머무르기"를 누르면 사용자는 이미
+      // 삭제된 계정 위에 살아 있는 쿠키로 남고, 그 상태의 요청 하나가 계정을 부활시킨다.
+      if (unsavedGuardDisarmedRef.current) return;
       if (isLoaded && activeScenarioId) {
         const activeScenario = scenarios.find(s => s.id === activeScenarioId);
         if (activeScenario) {
@@ -966,8 +975,8 @@ export function useScenarios() {
       }
 
       setRestoreError(null);
-      localStorage.setItem(`nextlife_e2ee_key_${userId}`, cleanKey);
-      localStorage.setItem(`nextlife_e2ee_backed_up_${userId}`, 'true');
+      localStorage.setItem(e2eeKeyName(userId), cleanKey);
+      localStorage.setItem(e2eeBackedUpKeyName(userId), 'true');
       setLocalKey(cleanKey);
       setIsBackupKeyBackedUp(true);
       setNeedsKeyRestore(false);
@@ -981,6 +990,10 @@ export function useScenarios() {
     handleRetryLoad: () => {
       setRetryCount(prev => prev + 1);
     },
+    // 탈퇴가 signOut으로 페이지를 떠나기 직전에 부른다. 위 beforeunload 주석 참조.
+    disarmUnsavedGuard: () => {
+      unsavedGuardDisarmedRef.current = true;
+    },
     isSaving,
     saveStatus,
     lastSaved,
@@ -993,7 +1006,7 @@ export function useScenarios() {
       const userId = session?.user?.id;
       const key = keyNotice?.key;
       if (!userId || !key) return;
-      localStorage.setItem(`nextlife_e2ee_backed_up_${userId}`, 'true');
+      localStorage.setItem(e2eeBackedUpKeyName(userId), 'true');
       setIsBackupKeyBackedUp(true);
       setKeyIssuance(null);
       setLocalKey(key);
@@ -1009,7 +1022,7 @@ export function useScenarios() {
       const result = await postBackupKey(key);
       if (result.success) {
         const userId = session?.user?.id;
-        if (userId) localStorage.setItem(`nextlife_e2ee_backed_up_${userId}`, 'true');
+        if (userId) localStorage.setItem(e2eeBackedUpKeyName(userId), 'true');
         setIsBackupKeyBackedUp(true);
       }
       setKeyIssuance(result.success
@@ -1058,8 +1071,8 @@ export function useScenarios() {
 
       // 재암호화 PUT보다 먼저 기록한다. 중간에 실패하면 아무도 모르는 키로 암호화된 데이터가
       // 서버에 남는다.
-      localStorage.setItem(`nextlife_e2ee_key_${userId}`, newKey);
-      localStorage.setItem(`nextlife_e2ee_backed_up_${userId}`, 'false');
+      localStorage.setItem(e2eeKeyName(userId), newKey);
+      localStorage.setItem(e2eeBackedUpKeyName(userId), 'false');
       setIsBackupKeyBackedUp(false);
 
       try {

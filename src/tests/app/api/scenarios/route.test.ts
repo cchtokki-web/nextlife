@@ -9,6 +9,10 @@ vi.mock('@/core/utils/authOptions', () => ({
   authOptions: {},
 }));
 
+vi.mock('@/core/utils/isDevMode', () => ({
+  isDevMode: vi.fn(() => false),
+}));
+
 vi.mock('@/infrastructure/db/prisma', () => ({
   prisma: {
     user: {
@@ -28,6 +32,7 @@ vi.mock('@/infrastructure/db/prisma', () => ({
 
 import { getServerSession } from 'next-auth/next';
 import { prisma } from '@/infrastructure/db/prisma';
+import { isDevMode } from '@/core/utils/isDevMode';
 import { GET, POST } from '@/app/api/scenarios/route';
 
 const USER_ID = 'user-1';
@@ -37,6 +42,8 @@ const plain = { userProfile: { currentAge: 40 } };
 const mockedGetServerSession = vi.mocked(getServerSession);
 const mockedFindUnique = vi.mocked(prisma.user.findUnique);
 const mockedUpdateMany = vi.mocked(prisma.user.updateMany);
+const mockedIsDevMode = vi.mocked(isDevMode);
+const mockedUserCreate = vi.mocked(prisma.user.create);
 
 type ScenarioRow = { id: string; name: string; isDefault: boolean; data: string };
 
@@ -57,6 +64,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   mockedGetServerSession.mockResolvedValue({ user: { id: USER_ID } } as never);
   mockedUpdateMany.mockResolvedValue({ count: 1 });
+  mockedIsDevMode.mockReturnValue(false);
 });
 
 describe('GET /api/scenarios — E2EE 잠금 플래그', () => {
@@ -158,5 +166,49 @@ describe('POST /api/scenarios — E2EE 잠금 플래그', () => {
     expect(res.status).toBe(500);
     expect(mockedUpdateMany).not.toHaveBeenCalled();
     consoleError.mockRestore();
+  });
+});
+
+// 세션 전략이 jwt라 User 행을 지워도 쿠키는 만료까지 살아 있다. 예전에는 이 라우트가 그
+// 토큰만 보고 없는 행을 되살려서, 탈퇴한 사용자가 시뮬레이터를 한 번 열기만 해도 같은 id로
+// 빈 계정이 부활했다.
+describe('/api/scenarios — 삭제된 사용자 부활 차단', () => {
+  function postBody() {
+    return new Request('http://localhost/api/scenarios', {
+      method: 'POST',
+      body: JSON.stringify({ name: 'x', data: encrypted, isDefault: false }),
+    });
+  }
+
+  test('운영 모드에서 User 행이 없으면 GET이 401을 반환하고 사용자를 만들지 않는다', async () => {
+    mockedFindUnique.mockResolvedValue(null);
+
+    const res = await GET(new Request('http://localhost/api/scenarios'));
+
+    expect(res.status).toBe(401);
+    expect(mockedUserCreate).not.toHaveBeenCalled();
+  });
+
+  test('운영 모드에서 User 행이 없으면 POST가 401을 반환하고 사용자를 만들지 않는다', async () => {
+    mockedFindUnique.mockResolvedValue(null);
+
+    const res = await POST(postBody());
+
+    expect(res.status).toBe(401);
+    expect(mockedUserCreate).not.toHaveBeenCalled();
+    expect(vi.mocked(prisma.scenario.create)).not.toHaveBeenCalled();
+  });
+
+  // 과잉 게이팅으로 로컬 개발이 통째로 막히는 것을 잡는다. 개발 세션(dev-user-id)은
+  // DB 행 없이 발급되므로 여기서 행이 만들어져야 한다.
+  test('개발 모드에서 User 행이 없으면 행을 만들어 계속 진행한다', async () => {
+    mockedIsDevMode.mockReturnValue(true);
+    mockedFindUnique.mockResolvedValue(null);
+    mockedUserCreate.mockResolvedValue({ id: USER_ID, e2eeEnabledAt: null, scenarios: [], simulationData: null } as never);
+
+    const res = await GET(new Request('http://localhost/api/scenarios'));
+
+    expect(res.status).toBe(200);
+    expect(mockedUserCreate).toHaveBeenCalled();
   });
 });

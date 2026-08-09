@@ -1,6 +1,5 @@
 import { SimulationParams } from '../../core/entities/types';
-
-const STORAGE_KEY = 'nextlife_simulator_params';
+import { SIMULATOR_PARAMS_KEY } from './storageKeys';
 
 export const initialParams: SimulationParams = {
   userProfile: {
@@ -70,7 +69,7 @@ export const initialParams: SimulationParams = {
 export const loadParams = (): SimulationParams => {
   if (typeof window === 'undefined') return initialParams;
   try {
-    const data = localStorage.getItem(STORAGE_KEY);
+    const data = localStorage.getItem(SIMULATOR_PARAMS_KEY);
     if (!data || data === 'undefined' || data === 'null') return initialParams;
     const parsed = JSON.parse(data);
     
@@ -87,7 +86,7 @@ export const loadParams = (): SimulationParams => {
 export const saveParams = (params: SimulationParams): void => {
   if (typeof window === 'undefined') return;
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(params));
+    localStorage.setItem(SIMULATOR_PARAMS_KEY, JSON.stringify(params));
   } catch (e) {
     console.error('Failed to save simulation params to LocalStorage:', e);
   }

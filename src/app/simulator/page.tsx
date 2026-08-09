@@ -36,6 +36,8 @@ import styles from './page.module.css';
 import { AlertCircle, RotateCcw, PanelLeftClose, PanelLeftOpen, LogOut, FileText } from 'lucide-react';
 import { useScenarios } from '../../web/features/Scenario/useScenarios';
 import { E2eeKeyManager } from '../../web/components/E2eeKeyManager';
+import { WithdrawAccountButton } from '../../web/features/Account/WithdrawAccountButton';
+import { useWithdrawAccount } from '../../web/features/Account/useWithdrawAccount';
 import { isDevMode } from '../../core/utils/isDevMode';
 
 export default function Home() {
@@ -59,8 +61,13 @@ export default function Home() {
     handleRetrySendKey,
     restoreError,
     restoreUnverifiable,
-    handleResetAndReissueKey
+    handleResetAndReissueKey,
+    disarmUnsavedGuard
   } = scenarioState;
+
+  // 탈퇴 후 signOut으로 페이지를 떠날 때 미저장 경고가 뜨면, 사용자가 "머무르기"를 눌러
+  // 이미 삭제된 계정 위에 남을 수 있다.
+  const handleWithdraw = useWithdrawAccount({ onBeforeSignOut: disarmUnsavedGuard });
 
   const isPro = session?.user?.tier === 'pro' || isDevMode();
 
@@ -877,6 +884,8 @@ export default function Home() {
 
             <button 
               onClick={handleReset}
+              aria-label="초기화"
+              title="초기화"
               onMouseEnter={() => setHoveredBtn('reset')}
               onMouseLeave={() => setHoveredBtn(null)}
               style={{
@@ -896,11 +905,13 @@ export default function Home() {
               }}
             >
               <RotateCcw size={16} />
-              초기화
+              <span className={styles.buttonLabel}>초기화</span>
             </button>
             <button 
               onClick={handleDownload}
               disabled={isGeneratingPdf}
+              aria-label="결과 다운로드"
+              title="결과 다운로드"
               onMouseEnter={() => setHoveredBtn('download')}
               onMouseLeave={() => setHoveredBtn(null)}
               style={{
@@ -921,12 +932,17 @@ export default function Home() {
               }}
             >
               <FileText size={16} />
-              {isGeneratingPdf ? 'PDF 생성 중...' : '결과 다운로드'}
+              {/* 생성 중 문구는 느린 PDF 렌더의 유일한 진행 표시라 모바일에서도 남긴다. */}
+              <span className={isGeneratingPdf ? undefined : styles.buttonLabel}>
+                {isGeneratingPdf ? 'PDF 생성 중...' : '결과 다운로드'}
+              </span>
             </button>
 
 
             <button 
               onClick={() => signOut({ callbackUrl: '/' })}
+              aria-label="로그아웃"
+              title="로그아웃"
               onMouseEnter={() => setHoveredBtn('logout')}
               onMouseLeave={() => setHoveredBtn(null)}
               style={{
@@ -946,8 +962,17 @@ export default function Home() {
               }}
             >
               <LogOut size={16} />
-              로그아웃
+              <span className={styles.buttonLabel}>로그아웃</span>
             </button>
+
+            {/* 가장 바깥에 둔다. 자주 쓰는 로그아웃으로 가는 길에 포인터가 이 위를 지나지 않는다. */}
+            <WithdrawAccountButton
+              onWithdraw={handleWithdraw}
+              scenarioCount={scenarios.length}
+              hovered={hoveredBtn === 'withdraw'}
+              onHoverChange={(h) => setHoveredBtn(h ? 'withdraw' : null)}
+              labelClassName={styles.buttonLabel}
+            />
         </div>
       </Header>
 
