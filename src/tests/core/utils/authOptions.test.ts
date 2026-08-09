@@ -7,13 +7,9 @@ vi.mock('@/infrastructure/db/prisma', () => ({
   prisma: {
     user: { findUnique: vi.fn(), update: vi.fn() },
     scenario: { deleteMany: vi.fn() },
+    verificationToken: { deleteMany: vi.fn() },
     $transaction: vi.fn(async () => []),
-    account: { updateMany: vi.fn() },
   },
-}));
-
-vi.mock('@next-auth/prisma-adapter', () => ({
-  PrismaAdapter: () => ({}),
 }));
 
 vi.mock('bcrypt', () => ({
@@ -45,8 +41,8 @@ afterEach(() => {
   vi.resetModules();
 });
 
-// 개발 모드 분기는 자격증명 검사를 통째로 건너뛰고(아무 이메일·비밀번호나 premium 세션),
-// Kakao provider를 제거하고, 쿠키 secure 플래그를 내린다. 게이트가 한 번 잘못 열리면
+// 개발 모드 분기는 자격증명 검사를 통째로 건너뛰고(아무 이메일·보안키나 premium 세션),
+// 쿠키 secure 플래그를 내린다. 게이트가 한 번 잘못 열리면
 // 그것이 곧 완전한 인증 우회이므로, 프로덕션 빌드에서 그 분기가 죽는다는 사실을 고정한다.
 describe('authOptions — 프로덕션 모드', () => {
   test('NEXT_PUBLIC_DEV_MODE가 true여도 프로덕션 빌드에서는 dev 우회가 죽는다', async () => {
@@ -59,14 +55,14 @@ describe('authOptions — 프로덕션 모드', () => {
     const authorize = credentialsAuthorize(authOptions);
 
     // dev 우회가 살아 있다면 아무 값이나 premium 사용자로 통과시킨다.
-    await expect(authorize({ email: 'anything', password: 'anything' }))
+    await expect(authorize({ email: 'anything', securityKey: 'anything' }))
       .rejects.toThrow();
   });
 
-  test('Kakao 로그인 provider가 존재한다', async () => {
+  test('이메일 credentials provider만 존재한다', async () => {
     const authOptions = await loadAuthOptions(false);
 
-    expect(authOptions.providers.map((p) => p.id)).toContain('kakao');
+    expect(authOptions.providers.map((p) => p.id)).toEqual(['credentials']);
   });
 
   test('쿠키 secure 설정을 next-auth 기본값에 맡긴다(강제로 내리지 않는다)', async () => {
@@ -90,7 +86,7 @@ describe('authOptions — 프로덕션 모드', () => {
 
     const authorize = credentialsAuthorize(authOptions);
 
-    await expect(authorize({ email: 'nobody@example.com', password: 'pw' }))
+    await expect(authorize({ email: 'nobody@example.com', securityKey: 'ABC234' }))
       .rejects.toThrow('가입되지 않은 이메일이거나 보안키가 올바르지 않습니다.');
   });
 
@@ -103,8 +99,6 @@ describe('authOptions — 프로덕션 모드', () => {
       email: 'user@example.com',
       securityKeyHash: 'hashed-key',
       securityKeyResetPending: false,
-      emailMigrationCompletedAt: null,
-      passwordHash: null,
       emailVerified: null,
       name: null,
       image: null,
@@ -134,8 +128,6 @@ describe('authOptions — 프로덕션 모드', () => {
       email: 'user@example.com',
       securityKeyHash: 'new-hash',
       securityKeyResetPending: true,
-      emailMigrationCompletedAt: null,
-      passwordHash: null,
       emailVerified: new Date(),
       name: null,
       image: null,
@@ -152,7 +144,14 @@ describe('authOptions — 프로덕션 모드', () => {
     expect(prisma.scenario.deleteMany).toHaveBeenCalledWith({ where: { userId: 'user-1' } });
     expect(prisma.user.update).toHaveBeenCalledWith({
       where: { id: 'user-1' },
-      data: { securityKeyResetPending: false, e2eeEnabledAt: null },
+      data: {
+        securityKeyResetPending: false,
+        simulationData: null,
+        e2eeEnabledAt: null,
+      },
+    });
+    expect(prisma.verificationToken.deleteMany).toHaveBeenCalledWith({
+      where: { identifier: 'user@example.com' },
     });
     expect(prisma.$transaction).toHaveBeenCalled();
   });
@@ -163,60 +162,6 @@ describe('authOptions — 프로덕션 모드', () => {
     expect(authOptions.session?.strategy).toBe('jwt');
   });
 
-  test('기존 카카오 계정으로 재로그인하면 새 OAuth 토큰을 Account 행에 반영한다', async () => {
-    const authOptions = await loadAuthOptions(false);
-    const { prisma } = await import('@/infrastructure/db/prisma');
-    const signIn = authOptions.callbacks!.signIn!;
-
-    const allowed = await signIn({
-      user: { id: 'user-1' },
-      account: {
-        provider: 'kakao',
-        providerAccountId: 'kakao-1',
-        type: 'oauth',
-        access_token: 'new-access',
-        refresh_token: 'new-refresh',
-        expires_at: 123456,
-      },
-      profile: undefined,
-      email: undefined,
-      credentials: undefined,
-    });
-
-    expect(allowed).toBe(true);
-    expect(prisma.account.updateMany).toHaveBeenCalledWith({
-      where: { provider: 'kakao', providerAccountId: 'kakao-1' },
-      data: {
-        access_token: 'new-access',
-        refresh_token: 'new-refresh',
-        expires_at: 123456,
-      },
-    });
-  });
-
-  test('재로그인 응답에 refresh_token이 없으면 기존 값을 지우지 않는다', async () => {
-    const authOptions = await loadAuthOptions(false);
-    const { prisma } = await import('@/infrastructure/db/prisma');
-    const signIn = authOptions.callbacks!.signIn!;
-
-    await signIn({
-      user: { id: 'user-1' },
-      account: {
-        provider: 'kakao',
-        providerAccountId: 'kakao-1',
-        type: 'oauth',
-        access_token: 'new-access',
-      },
-      profile: undefined,
-      email: undefined,
-      credentials: undefined,
-    });
-
-    expect(prisma.account.updateMany).toHaveBeenCalledWith({
-      where: { provider: 'kakao', providerAccountId: 'kakao-1' },
-      data: { access_token: 'new-access' },
-    });
-  });
 });
 
 describe('authOptions — 개발 모드', () => {
@@ -224,7 +169,7 @@ describe('authOptions — 개발 모드', () => {
     const authOptions = await loadAuthOptions(true);
     const authorize = credentialsAuthorize(authOptions);
 
-    await expect(authorize({ email: 'dev', password: 'dev' }))
+    await expect(authorize({ email: 'dev', securityKey: 'dev' }))
       .resolves.toMatchObject({ email: 'dev@example.com', tier: 'premium' });
   });
 

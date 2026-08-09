@@ -9,6 +9,7 @@ export async function POST(req: Request) {
   try {
     const body = await req.json();
     const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
+    const confirmReset = body.confirmReset === true;
 
     if (!/^\S+@\S+\.\S+$/.test(email)) {
       return NextResponse.json({ error: "올바른 이메일 주소를 입력해 주세요." }, { status: 400 });
@@ -22,28 +23,39 @@ export async function POST(req: Request) {
       where: { email },
     });
 
-    if (existingUser) {
-      return NextResponse.json({ error: "이미 가입된 이메일입니다. 이메일 로그인으로 진행해 주세요." }, { status: 409 });
+    if (existingUser && !confirmReset) {
+      return NextResponse.json({
+        error: "이미 등록된 이메일입니다. 계정을 초기화하면 기존 시나리오가 모두 삭제됩니다.",
+        code: "ACCOUNT_RESET_REQUIRED",
+      }, { status: 409 });
     }
 
     const securityKey = generateSecurityKey();
     const securityKeyHash = await bcrypt.hash(securityKey, 12);
 
-    const user = await prisma.user.create({
-      data: {
-        email,
-        securityKeyHash,
-      },
-    });
-
     try {
       await sendSecurityKeyEmail(email, securityKey);
-    } catch (error) {
-      // 메일을 받지 못한 미완성 계정을 남기면 같은 이메일로 재시도할 수 없다.
-      await prisma.user.delete({ where: { id: user.id } }).catch(() => undefined);
-      throw error;
+    } catch {
+      // 메일 전달이 확인되기 전에는 기존 계정의 키와 데이터에 손대지 않는다.
+      throw new Error('security key email failed');
     }
 
+    if (existingUser) {
+      await prisma.user.update({
+        where: { id: existingUser.id },
+        data: {
+          securityKeyHash,
+          securityKeyResetPending: true,
+          emailVerified: null,
+        },
+      });
+      return NextResponse.json({
+        message: "새 보안키를 이메일로 보냈습니다. 새 키로 로그인하면 기존 시나리오가 모두 초기화됩니다.",
+        resetPending: true,
+      });
+    }
+
+    await prisma.user.create({ data: { email, securityKeyHash } });
     return NextResponse.json({ message: "입력하신 이메일로 보안키를 보냈습니다." }, { status: 201 });
   } catch (error) {
     console.error("Registration error:", error);

@@ -39,6 +39,7 @@ RUN adduser --system --uid 1001 nextjs
 
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/prisma ./prisma
+COPY docker/start.sh /app/start.sh
 
 # Copy the initial dev.db to the image
 COPY --from=builder --chown=nextjs:nodejs /app/prisma/dev.db /app/default.db
@@ -55,19 +56,7 @@ ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
 
 USER root
-# Create entrypoint script
 RUN npm install -g prisma@6.19.3
-RUN echo '#!/bin/sh' > /app/start.sh && \
-    echo 'mkdir -p /app/data' >> /app/start.sh && \
-    echo 'chown -R nextjs:nodejs /app/data' >> /app/start.sh && \
-    echo 'if [ ! -f /app/data/dev.db ]; then' >> /app/start.sh && \
-    echo '  echo "Initializing database..."' >> /app/start.sh && \
-    echo '  cp /app/default.db /app/data/dev.db' >> /app/start.sh && \
-    echo '  chown nextjs:nodejs /app/data/dev.db' >> /app/start.sh && \
-    echo 'fi' >> /app/start.sh && \
-    echo 'echo "Checking and applying database migrations..."' >> /app/start.sh && \
-    echo 'cd /app && export DATABASE_URL="file:/app/data/dev.db" && prisma db push' >> /app/start.sh && \
-    echo 'exec su nextjs -s /bin/sh -c "node server.js"' >> /app/start.sh && \
-    chmod +x /app/start.sh
+RUN chmod +x /app/start.sh
 
 CMD ["/app/start.sh"]

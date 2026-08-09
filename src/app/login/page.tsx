@@ -21,9 +21,7 @@ export default async function LoginPage({
   // "a,b"처럼 보이므로 첫 값만 쓴다. 예전에는 `as string`으로 단언만 하고 있었다.
   const params = await searchParams;
   const errorParam = params?.error;
-  const migratedParam = params?.migrated;
   const error = Array.isArray(errorParam) ? errorParam[0] : errorParam;
-  const migrated = Array.isArray(migratedParam) ? migratedParam[0] : migratedParam;
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem', flexDirection: 'column' }}>
@@ -33,7 +31,7 @@ export default async function LoginPage({
           <small>{error}</small>
         </div>
       )}
-      <LoginForm migrationCompleted={migrated === '1'} />
+      <LoginForm />
     </div>
   );
 }

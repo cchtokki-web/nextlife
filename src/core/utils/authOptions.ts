@@ -1,7 +1,5 @@
 import { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
-import KakaoProvider from "next-auth/providers/kakao";
-import { PrismaAdapter } from "@next-auth/prisma-adapter";
 import bcrypt from "bcrypt";
 import { prisma } from "@/infrastructure/db/prisma";
 import { isDevMode } from "@/core/utils/isDevMode";
@@ -46,7 +44,6 @@ function sameOriginPath(url: string): string {
 }
 
 export const authOptions: NextAuthOptions = {
-  adapter: PrismaAdapter(prisma),
   useSecureCookies: isDevMode() ? false : undefined,
   cookies: isDevMode()
     ? {
@@ -79,28 +76,11 @@ export const authOptions: NextAuthOptions = {
       }
     : undefined,
   providers: [
-    ...(isDevMode()
-      ? []
-      : [
-          KakaoProvider({
-            clientId: process.env.KAKAO_CLIENT_ID || "",
-            clientSecret: process.env.KAKAO_CLIENT_SECRET || "",
-            authorization: {
-              params: {
-                // 카카오는 기존 사용자 식별과 이메일 전환 진입에만 쓴다. 보안키는 이메일로
-                // 보내므로 talk_message 추가 동의를 더 이상 요구하지 않는다.
-                scope: "profile_nickname,profile_image",
-              },
-            },
-          }),
-        ]),
     CredentialsProvider({
       name: "이메일 로그인",
       credentials: {
         email: { label: "이메일", type: "email", placeholder: "example@example.com" },
         securityKey: { label: "보안키", type: "password" },
-        // 기존 이메일/비밀번호 계정과 개발 모드 자동 로그인을 위한 호환 필드.
-        password: { label: "비밀번호", type: "password" },
       },
       async authorize(credentials) {
         if (isDevMode()) {
@@ -114,9 +94,8 @@ export const authOptions: NextAuthOptions = {
 
         const email = credentials?.email?.trim().toLowerCase();
         const securityKey = credentials?.securityKey?.trim().toUpperCase();
-        const legacyPassword = credentials?.password;
 
-        if (!email || (!securityKey && !legacyPassword)) {
+        if (!email || !securityKey) {
           throw new Error("이메일과 보안키를 모두 입력해 주세요.");
         }
 
@@ -137,13 +116,7 @@ export const authOptions: NextAuthOptions = {
           && user.securityKeyHash
           && await bcrypt.compare(securityKey, user.securityKeyHash),
         );
-        const isLegacyPasswordValid = Boolean(
-          legacyPassword
-          && user.passwordHash
-          && await bcrypt.compare(legacyPassword, user.passwordHash),
-        );
-
-        if (!isSecurityKeyValid && !isLegacyPasswordValid) {
+        if (!isSecurityKeyValid) {
           throw new Error("가입되지 않은 이메일이거나 보안키가 올바르지 않습니다.");
         }
 
@@ -153,8 +126,6 @@ export const authOptions: NextAuthOptions = {
             where: { id: user.id },
             data: { emailVerified: new Date() },
           });
-        } else if (isLegacyPasswordValid && !user.emailVerified) {
-          throw new Error("이메일 인증이 완료되지 않았습니다. 이메일을 확인해 주세요.");
         }
 
 
@@ -165,8 +136,13 @@ export const authOptions: NextAuthOptions = {
             prisma.scenario.deleteMany({ where: { userId: user.id } }),
             prisma.user.update({
               where: { id: user.id },
-              data: { securityKeyResetPending: false, e2eeEnabledAt: null },
+              data: {
+                securityKeyResetPending: false,
+                simulationData: null,
+                e2eeEnabledAt: null,
+              },
             }),
+            prisma.verificationToken.deleteMany({ where: { identifier: email } }),
           ]);
         }
 
@@ -183,33 +159,7 @@ export const authOptions: NextAuthOptions = {
     strategy: "jwt",
   },
   callbacks: {
-    async signIn({ account }) {
-      // NextAuth v4의 PrismaAdapter는 기존 OAuth Account로 다시 로그인해도 새 토큰을 DB에
-      // 반영하지 않는다. 탈퇴 시 카카오 연결 해제에 최신 토큰이 필요하므로 여기서 갱신한다.
-      //
-      // 신규 계정은 이 시점에 Account 행이 아직 없어 updateMany가 0건이고, 이어지는
-      // PrismaAdapter.linkAccount가 새 토큰으로 행을 만든다. 기존 계정만 이 갱신 대상이다.
-      if (account?.provider === 'kakao' && account.providerAccountId) {
-        await prisma.account.updateMany({
-          where: {
-            provider: 'kakao',
-            providerAccountId: account.providerAccountId,
-          },
-          data: {
-            ...(account.access_token ? { access_token: account.access_token } : {}),
-            // 카카오는 매번 refresh_token을 주지 않는다. 없을 때 undefined/null로 덮으면
-            // 다음 access token 만료 뒤에는 복구할 수 없으므로 새 값이 있을 때만 갱신한다.
-            ...(account.refresh_token ? { refresh_token: account.refresh_token } : {}),
-            ...(typeof account.expires_at === 'number' ? { expires_at: account.expires_at } : {}),
-          },
-        });
-      }
-      return true;
-    },
-    async jwt({ token, user, account }) {
-      if (account) {
-        token.provider = account.provider;
-      }
+    async jwt({ token, user }) {
       if (user) {
         token.id = user.id;
         token.tier = user.tier || 'basic';
@@ -219,9 +169,6 @@ export const authOptions: NextAuthOptions = {
     async session({ session, token }) {
       if (token && session.user) {
         session.user.id = token.id as string;
-        if (token.provider) {
-          session.user.provider = token.provider as string;
-        }
         if (token.tier) {
           session.user.tier = token.tier as string;
         }

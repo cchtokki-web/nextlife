@@ -1,5 +1,5 @@
-// 개발 모드 여부. authOptions가 이 값으로 자격증명 검사를 통째로 건너뛰고(아무 이메일·비밀번호나
-// premium 계정으로 로그인), Kakao provider를 제거하고, 쿠키 secure 플래그를 내리고,
+// 개발 모드 여부. authOptions가 이 값으로 자격증명 검사를 통째로 건너뛰고(아무 이메일·보안키나
+// premium 계정으로 로그인), 쿠키 secure 플래그를 내리고,
 // NEXTAUTH_URL을 localhost로 덮어쓴다.
 //
 // NEXT_PUBLIC_DEV_MODE 하나만 보면 안 된다. NEXT_PUBLIC_ 접두사라 클라이언트 번들에 인라인되고

@@ -2,7 +2,6 @@
 
 import { SessionProvider } from "next-auth/react";
 import { isDevMode } from "@/core/utils/isDevMode";
-import { EmailMigrationGate } from './EmailMigrationGate';
 
 export default function AuthProvider({ children }: { children: React.ReactNode }) {
   const mockSession = isDevMode() ? {
@@ -10,14 +9,13 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
       id: "dev-mock-id",
       name: "Tokki",
       email: "tokki@dev.local",
-      provider: "kakao",
     },
     expires: "9999-12-31T23:59:59.999Z",
   } : undefined;
 
   return (
     <SessionProvider session={mockSession}>
-      <EmailMigrationGate>{children}</EmailMigrationGate>
+      {children}
     </SessionProvider>
   );
 }

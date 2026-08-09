@@ -57,8 +57,6 @@ export async function PUT(
     if (name !== undefined) updateData.name = name;
     if (data !== undefined) {
       updateData.data = JSON.stringify(data);
-      // 병합 전 사용자 ID로 암호화된 행도 새 소유자의 키로 저장되는 순간 마이그레이션 완료다.
-      updateData.encryptionUserId = null;
     }
     if (isDefault !== undefined) updateData.isDefault = isDefault;
 
