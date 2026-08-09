@@ -345,6 +345,26 @@ describe('useScenarios — 로그인', () => {
     expect(localStorage.getItem(KEY_NAME)).toBe(issuedKey);
   }, 10000);
 
+  // 외부 API 응답 본문이나 예외 메시지가 모달에 뜨면 사용자에게는 읽을 수 없는 잡음이고,
+  // 우리에게는 내부 사정의 노출이다.
+  test('사용자용이 아닌 서버 오류 문구는 모달에 전달하지 않는다', async () => {
+    signedIn();
+    const rawError = 'Kakao API failed: {"msg":"this access token does not exist","code":-401}';
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url === '/api/user/send-backup-key') {
+        return { ok: false, status: 400, json: async () => ({ error: rawError }) } as unknown as Response;
+      }
+      if (url === '/api/scenarios') {
+        return { ok: true, json: async () => ({ data: [] }) } as unknown as Response;
+      }
+      return { ok: true, json: async () => ({ success: true }) } as unknown as Response;
+    }));
+
+    const { result } = renderHook(() => useScenarios());
+    await waitFor(() => expect(result.current.keyNotice?.status).toBe('failed'));
+    expect(result.current.keyNotice).toMatchObject({ error: '카카오톡 전송에 실패했습니다.' });
+  }, 10000);
+
   // 이펙트가 다시 돌 때마다 발급하면 카카오톡에 서로 다른 키가 여러 개 도착한다.
   test('재렌더가 반복돼도 보안키는 한 번만 발급한다', async () => {
     signedIn();

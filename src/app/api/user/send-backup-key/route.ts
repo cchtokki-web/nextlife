@@ -6,12 +6,16 @@ import { isDevMode } from '@/core/utils/isDevMode';
 import { isRateLimited } from '@/core/utils/rateLimiter';
 import { isKakaoAuthError, refreshKakaoAccessToken } from '@/infrastructure/kakao/tokens';
 
+// 이 라우트의 error 문구는 발급 모달에 그대로 뜬다. 카카오 응답 본문이나 내부 사정은
+// 서버 로그에만 남기고, 사용자에게는 "무엇을 하면 되는가"만 알려 준다.
+const SEND_FAILED_MESSAGE = '카카오톡 서버가 메시지를 받지 못했습니다. 잠시 후 다시 시도해 주세요.';
+
 export async function POST(req: Request) {
   try {
     const session = await getServerSession(authOptions);
 
     if (!session || !session.user || !session.user.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json({ error: '로그인이 필요합니다. 다시 로그인해 주세요.' }, { status: 401 });
     }
 
     const userId = session.user.id;
@@ -26,7 +30,7 @@ export async function POST(req: Request) {
     const { key } = body;
 
     if (!key || typeof key !== 'string' || key.trim().length !== 6) {
-      return NextResponse.json({ error: 'Invalid key' }, { status: 400 });
+      return NextResponse.json({ error: SEND_FAILED_MESSAGE }, { status: 400 });
     }
 
     // Retrieve Kakao account details
@@ -42,7 +46,7 @@ export async function POST(req: Request) {
         console.log(`[MOCK KAKAO MESSAGE] TO: ${session.user.name || 'User'}, KEY: ${key.toUpperCase()}`);
         return NextResponse.json({ success: true, message: 'Mock sent successfully (Dev Mode)' });
       }
-      return NextResponse.json({ error: 'Kakao account or access token not found. Please log in with Kakao.' }, { status: 404 });
+      return NextResponse.json({ error: '카카오 계정 연결이 확인되지 않습니다. 카카오로 다시 로그인해 주세요.' }, { status: 404 });
     }
 
     const templateObject = {
@@ -95,13 +99,15 @@ export async function POST(req: Request) {
         if (retryResponse.ok && retryResData.result_code === 0) {
           return NextResponse.json({ success: true });
         }
-        return NextResponse.json({ error: `Kakao API retry failed: ${JSON.stringify(retryResData)}` }, { status: 400 });
+        console.error('Kakao API retry failed:', retryResponse.status, retryResData);
+        return NextResponse.json({ error: SEND_FAILED_MESSAGE }, { status: 400 });
       }
     }
 
-    return NextResponse.json({ error: `Kakao API failed: ${JSON.stringify(resData)}` }, { status: 400 });
+    console.error('Kakao API failed:', response.status, resData);
+    return NextResponse.json({ error: SEND_FAILED_MESSAGE }, { status: 400 });
   } catch (error) {
     console.error('Error sending backup key via Kakao:', error);
-    return NextResponse.json({ error: 'Failed to send backup key' }, { status: 500 });
+    return NextResponse.json({ error: SEND_FAILED_MESSAGE }, { status: 500 });
   }
 }

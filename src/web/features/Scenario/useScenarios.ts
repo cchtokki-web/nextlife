@@ -178,6 +178,12 @@ export interface SendKeyResult {
   error?: string;
 }
 
+// 서버가 준 문구를 모달에 그대로 띄워도 되는지 판단한다. 사용자용 문구는 우리가 쓴 짧은
+// 한국어 문장이다 — 한글이 없거나(영문 내부 메시지), 구조화된 데이터의 흔적이 있거나
+// (중괄호·대괄호·따옴표·URL), 한 문장을 넘길 만큼 길면 사용자에게 보여줄 문구가 아니다.
+const isUserFacingMessage = (message: string): boolean =>
+  message.length <= 120 && /[가-힣]/.test(message) && !/[{}[\]"<>]|https?:\/\//.test(message);
+
 async function postBackupKey(key: string): Promise<SendKeyResult> {
   // 카카오 API가 응답하지 않으면 발급 모달이 '전송 중'에 영원히 갇힌다. 타임아웃을 두어
   // 반드시 실패 상태(= 키를 화면에 보여 주고 재시도를 제공하는 상태)로 빠져나오게 한다.
@@ -193,8 +199,11 @@ async function postBackupKey(key: string): Promise<SendKeyResult> {
     const data = await res.json().catch(() => ({}));
     if (res.ok && data.success) return { success: true };
     // 서버가 이유를 알려주면(레이트 리밋 429 등) 그대로 보여 준다. 사용자가 무엇을 기다려야
-    // 하는지 아는 것과 모르는 것의 차이가 크다.
-    return { success: false, error: data.error || '카카오톡 전송에 실패했습니다.' };
+    // 하는지 아는 것과 모르는 것의 차이가 크다. 다만 모달에 띄우는 문구이므로 사용자용으로
+    // 다듬어진 문장만 통과시킨다 — 예외 메시지나 외부 API 응답 본문이 새어 나오면
+    // 사용자에게는 읽을 수 없는 잡음이고, 우리에게는 내부 사정의 노출이다.
+    const reason = typeof data.error === 'string' && isUserFacingMessage(data.error) ? data.error : undefined;
+    return { success: false, error: reason ?? '카카오톡 전송에 실패했습니다.' };
   } catch (err) {
     console.error('Failed to send backup key to Kakao:', err);
     const aborted = err instanceof DOMException && err.name === 'AbortError';
