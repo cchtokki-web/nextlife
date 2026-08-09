@@ -40,6 +40,9 @@ model User {
 model Scenario {
   id        String   @id @default(cuid())
   userId    String
+  // 계정 병합으로 소유자가 바뀐 암호문은 원래 userId를 PBKDF2 salt로 사용한다.
+  // 클라이언트가 기존 키로 한 번 연 뒤 새 소유자 키로 재암호화하면 null로 돌아간다.
+  encryptionUserId String?
   name      String
   isDefault Boolean  @default(false)
   data      String

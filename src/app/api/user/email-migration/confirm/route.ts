@@ -9,8 +9,6 @@ import { isRateLimited } from '@/core/utils/rateLimiter';
 import { isSecurityKey, normalizeSecurityKey } from '@/core/utils/securityKey';
 import {
   emailAccountCandidateSelect,
-  isMergeableEmptyEmailAccount,
-  occupiedEmailMessage,
 } from '@/core/utils/emailAccountMerge';
 
 const migrationIdentifier = (userId: string, email: string) => `email-migration:${userId}:${email}`;
@@ -47,7 +45,11 @@ export async function POST(req: Request) {
 
     const currentUser = await prisma.user.findUnique({
       where: { id: userId },
-      select: { securityKeyHash: true },
+      select: {
+        securityKeyHash: true,
+        e2eeEnabledAt: true,
+        scenarios: { where: { isDefault: true }, select: { id: true }, take: 1 },
+      },
     });
     if (!currentUser) return NextResponse.json({ error: '계정을 찾을 수 없습니다.' }, { status: 404 });
     if (currentUser.securityKeyHash && !await bcrypt.compare(securityKey, currentUser.securityKeyHash)) {
@@ -59,27 +61,59 @@ export async function POST(req: Request) {
       select: emailAccountCandidateSelect,
     });
     const conflictingOwner = emailOwner?.id !== userId ? emailOwner : null;
-    if (conflictingOwner && !isMergeableEmptyEmailAccount(conflictingOwner)) {
-      return NextResponse.json({ error: occupiedEmailMessage, code: 'ACCOUNT_MERGE_REQUIRED' }, { status: 409 });
-    }
 
     const securityKeyHash = await bcrypt.hash(securityKey, 12);
+    const hasCurrentDefault = currentUser.scenarios.length > 0;
+    const inheritedDefaultId = !hasCurrentDefault ? conflictingOwner?.scenarios[0]?.id : undefined;
+    const legacyScenarioCount = conflictingOwner?.simulationData && conflictingOwner._count.scenarios === 0 ? 1 : 0;
+    const mergedScenarioCount = (conflictingOwner?._count.scenarios ?? 0) + legacyScenarioCount;
+
     await prisma.$transaction([
-      ...(conflictingOwner
-        ? [
-            // User와 관계없는 인증 토큰부터 지운다. Account/Scenario/Session은 아래 User 삭제에
-            // cascade되지만 자동 통합 대상은 애초에 모두 0개여야 한다.
-            prisma.verificationToken.deleteMany({
-              where: {
-                OR: [
-                  { identifier: email },
-                  { identifier: { startsWith: `email-migration:${conflictingOwner.id}:` } },
-                ],
-              },
-            }),
-            prisma.user.deleteMany({ where: { id: conflictingOwner.id } }),
-          ]
-        : []),
+      ...(conflictingOwner ? [
+        // 암호문은 원래 사용자 ID를 salt로 사용한다. 소유권을 옮기기 전에 그 ID를 남겨 두면
+        // 클라이언트가 기존 이메일 계정 키로 열어 현재 키로 다시 암호화할 수 있다.
+        prisma.scenario.updateMany({
+          where: { userId: conflictingOwner.id, encryptionUserId: null },
+          data: { encryptionUserId: conflictingOwner.id },
+        }),
+        // 중복 기본 시나리오가 GET 정리 과정에서 삭제되지 않도록 모두 보조 시나리오로 바꾸고,
+        // 현재 계정에 기본 시나리오가 없을 때만 가장 오래된 하나를 아래에서 다시 지정한다.
+        prisma.scenario.updateMany({
+          where: { userId: conflictingOwner.id, isDefault: true },
+          data: { isDefault: false },
+        }),
+        prisma.scenario.updateMany({
+          where: { userId: conflictingOwner.id },
+          data: { userId },
+        }),
+        ...(inheritedDefaultId ? [
+          prisma.scenario.update({
+            where: { id: inheritedDefaultId },
+            data: { isDefault: true },
+          }),
+        ] : []),
+        ...(legacyScenarioCount ? [
+          prisma.scenario.create({
+            data: {
+              userId,
+              encryptionUserId: conflictingOwner.id,
+              name: hasCurrentDefault ? '이전 계정 기본 시나리오' : '기본 시나리오',
+              isDefault: !hasCurrentDefault,
+              data: conflictingOwner.simulationData!,
+            },
+          }),
+        ] : []),
+        prisma.verificationToken.deleteMany({
+          where: {
+            OR: [
+              { identifier: email },
+              { identifier: { startsWith: `email-migration:${conflictingOwner.id}:` } },
+            ],
+          },
+        }),
+        // 외부 로그인과 이전 세션은 이메일 전환 뒤 유지하지 않는다. 시나리오는 위에서 모두 옮겼다.
+        prisma.user.deleteMany({ where: { id: conflictingOwner.id } }),
+      ] : []),
       prisma.user.update({
         where: { id: userId },
         data: {
@@ -87,6 +121,9 @@ export async function POST(req: Request) {
           emailVerified: new Date(),
           securityKeyHash,
           emailMigrationCompletedAt: new Date(),
+          ...(!currentUser.e2eeEnabledAt && conflictingOwner?.e2eeEnabledAt
+            ? { e2eeEnabledAt: conflictingOwner.e2eeEnabledAt }
+            : {}),
         },
       }),
       prisma.verificationToken.deleteMany({ where: { identifier } }),
@@ -104,6 +141,7 @@ export async function POST(req: Request) {
       success: true,
       keyEmailSent,
       mergedEmptyEmailAccount: Boolean(conflictingOwner),
+      mergedScenarioCount,
     });
   } catch (error) {
     console.error('Email migration confirmation failed:', error);

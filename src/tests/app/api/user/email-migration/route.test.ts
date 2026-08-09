@@ -5,7 +5,7 @@ vi.mock('@/core/utils/authOptions', () => ({ authOptions: {} }));
 vi.mock('@/infrastructure/db/prisma', () => ({
   prisma: {
     user: { findUnique: vi.fn(), update: vi.fn(), deleteMany: vi.fn() },
-    scenario: { deleteMany: vi.fn() },
+    scenario: { deleteMany: vi.fn(), updateMany: vi.fn(), update: vi.fn(), create: vi.fn() },
     verificationToken: { findFirst: vi.fn(), create: vi.fn(), deleteMany: vi.fn() },
     $transaction: vi.fn(async () => []),
   },
@@ -49,6 +49,9 @@ describe('카카오 계정 이메일 로그인 전환 API', () => {
     vi.mocked(prisma.user.update).mockResolvedValue({} as never);
     vi.mocked(prisma.user.deleteMany).mockResolvedValue({ count: 1 } as never);
     vi.mocked(prisma.scenario.deleteMany).mockResolvedValue({ count: 1 } as never);
+    vi.mocked(prisma.scenario.updateMany).mockResolvedValue({ count: 1 } as never);
+    vi.mocked(prisma.scenario.update).mockResolvedValue({} as never);
+    vi.mocked(prisma.scenario.create).mockResolvedValue({} as never);
     sendCodeMock.mockResolvedValue({} as never);
     sendKeyMock.mockResolvedValue({} as never);
   });
@@ -81,7 +84,7 @@ describe('카카오 계정 이메일 로그인 전환 API', () => {
       expires: new Date(Date.now() + 60_000),
     });
     findUserMock
-      .mockResolvedValueOnce({ securityKeyHash: 'old-key-hash' } as never)
+      .mockResolvedValueOnce({ securityKeyHash: 'old-key-hash', e2eeEnabledAt: new Date(), scenarios: [{ id: 'current-default' }] } as never)
       .mockResolvedValueOnce(null);
 
     const response = await confirmMigration(request('http://localhost/api/user/email-migration/confirm', {
@@ -109,7 +112,7 @@ describe('카카오 계정 이메일 로그인 전환 API', () => {
       token: '123456.random',
       expires: new Date(Date.now() + 60_000),
     });
-    findUserMock.mockResolvedValueOnce({ securityKeyHash: 'old-key-hash' } as never);
+    findUserMock.mockResolvedValueOnce({ securityKeyHash: 'old-key-hash', e2eeEnabledAt: new Date(), scenarios: [] } as never);
     vi.mocked(bcrypt.compare).mockResolvedValueOnce(false as never);
 
     const response = await confirmMigration(request('http://localhost/api/user/email-migration/confirm', {
@@ -126,13 +129,14 @@ describe('카카오 계정 이메일 로그인 전환 API', () => {
       expires: new Date(Date.now() + 60_000),
     });
     findUserMock
-      .mockResolvedValueOnce({ securityKeyHash: 'old-key-hash' } as never)
+      .mockResolvedValueOnce({ securityKeyHash: 'old-key-hash', e2eeEnabledAt: new Date(), scenarios: [{ id: 'current-default' }] } as never)
       .mockResolvedValueOnce({
         id: 'empty-email-user',
         tier: 'basic',
         simulationData: null,
         e2eeEnabledAt: null,
         emailMigrationCompletedAt: null,
+        scenarios: [],
         _count: { accounts: 0, scenarios: 0, sessions: 0 },
       } as never);
 
@@ -148,30 +152,35 @@ describe('카카오 계정 이메일 로그인 전환 API', () => {
     }));
   });
 
-  test('이메일 계정에 시나리오가 있으면 자동 삭제하지 않고 별도 병합을 요구한다', async () => {
+  test('이메일 계정의 시나리오는 개수 제한으로 버리지 않고 모두 현재 사용자에게 옮긴다', async () => {
     findTokenMock.mockResolvedValue({
       identifier: 'email-migration:kakao-user:used@example.com',
       token: '123456.random',
       expires: new Date(Date.now() + 60_000),
     });
     findUserMock
-      .mockResolvedValueOnce({ securityKeyHash: 'old-key-hash' } as never)
+      .mockResolvedValueOnce({ securityKeyHash: 'old-key-hash', e2eeEnabledAt: new Date(), scenarios: [{ id: 'current-default' }] } as never)
       .mockResolvedValueOnce({
         id: 'active-email-user',
         tier: 'basic',
         simulationData: null,
         e2eeEnabledAt: new Date(),
         emailMigrationCompletedAt: null,
-        _count: { accounts: 0, scenarios: 1, sessions: 0 },
+        scenarios: [{ id: 'email-default' }],
+        _count: { accounts: 0, scenarios: 6, sessions: 1 },
       } as never);
 
     const response = await confirmMigration(request('http://localhost/api/user/email-migration/confirm', {
       email: 'used@example.com', code: '123456', securityKey: 'ABC234',
     }));
-    expect(response.status).toBe(409);
-    expect(await response.json()).toMatchObject({ code: 'ACCOUNT_MERGE_REQUIRED' });
-    expect(prisma.user.deleteMany).not.toHaveBeenCalled();
-    expect(prisma.$transaction).not.toHaveBeenCalled();
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ mergedScenarioCount: 6 });
+    expect(prisma.scenario.updateMany).toHaveBeenCalledWith({
+      where: { userId: 'active-email-user' },
+      data: { userId: 'kakao-user' },
+    });
+    expect(prisma.user.deleteMany).toHaveBeenCalledWith({ where: { id: 'active-email-user' } });
+    expect(prisma.$transaction).toHaveBeenCalled();
   });
 
   test('만료된 인증번호는 계정을 변경하지 않는다', async () => {
@@ -228,7 +237,7 @@ describe('카카오 계정 이메일 로그인 전환 API', () => {
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
-  test('키 분실 초기화도 데이터가 있는 이메일 계정은 자동 통합하지 않는다', async () => {
+  test('명시적으로 확인한 키 분실 초기화는 충돌 이메일 계정 데이터도 함께 삭제한다', async () => {
     findTokenMock.mockResolvedValue({
       identifier: 'email-migration:kakao-user:used@example.com',
       token: '123456.random',
@@ -240,15 +249,16 @@ describe('카카오 계정 이메일 로그인 전환 API', () => {
       simulationData: null,
       e2eeEnabledAt: new Date(),
       emailMigrationCompletedAt: null,
+      scenarios: [{ id: 'email-default' }],
       _count: { accounts: 0, scenarios: 1, sessions: 0 },
     } as never);
 
     const response = await resetMigration(request('http://localhost/api/user/email-migration/reset', {
       email: 'used@example.com', code: '123456',
     }));
-    expect(response.status).toBe(409);
-    expect(sendKeyMock).not.toHaveBeenCalled();
-    expect(prisma.user.deleteMany).not.toHaveBeenCalled();
-    expect(prisma.$transaction).not.toHaveBeenCalled();
+    expect(response.status).toBe(200);
+    expect(sendKeyMock).toHaveBeenCalled();
+    expect(prisma.user.deleteMany).toHaveBeenCalledWith({ where: { id: 'active-email-user' } });
+    expect(prisma.$transaction).toHaveBeenCalled();
   });
 });

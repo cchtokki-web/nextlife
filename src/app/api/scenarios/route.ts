@@ -5,6 +5,7 @@ import { prisma } from '@/infrastructure/db/prisma';
 import { markE2eeEnabled } from '@/infrastructure/db/e2ee';
 import { isEncryptedPayload } from '@/core/utils/crypto';
 import { isDevMode } from '@/core/utils/isDevMode';
+import { MAX_SCENARIO_COUNT } from '@/core/utils/scenarioLimits';
 
 export async function GET(_req: Request) {
   try {
@@ -169,6 +170,16 @@ export async function POST(req: Request) {
           { status: 200 }
         );
       }
+    }
+
+    // 병합으로 이미 5개를 넘은 계정도 기존 행은 그대로 보존한다. 신규 생성만 막으므로
+    // 6개에서 하나를 삭제해 5개가 되어도 더 만들 수 없고, 4개가 된 뒤에만 하나를 추가할 수 있다.
+    const scenarioCount = await prisma.scenario.count({ where: { userId: user.id } });
+    if (scenarioCount >= MAX_SCENARIO_COUNT) {
+      return NextResponse.json(
+        { error: `시나리오는 최대 ${MAX_SCENARIO_COUNT}개까지만 생성할 수 있습니다.` },
+        { status: 409 },
+      );
     }
 
     const newScenario = await prisma.scenario.create({
