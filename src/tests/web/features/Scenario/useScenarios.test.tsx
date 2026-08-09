@@ -196,61 +196,6 @@ describe('useScenarios — 로그인', () => {
     expect(result.current.needsKeyRestore).toBe(false);
   });
 
-  test('병합 시나리오는 원래 계정 키로 연 뒤 현재 계정 키로 다시 암호화한다', async () => {
-    signedIn();
-    localStorage.setItem(KEY_NAME, 'CURRNT');
-    localStorage.setItem('nextlife_e2ee_key_email-user', 'OLDKEY');
-    decryptData.mockResolvedValue(initialParams);
-    const reencrypted = { isEncrypted: true, ciphertext: 'new', iv: 'new-iv' };
-    encryptData.mockResolvedValue(reencrypted);
-    vi.stubGlobal('fetch', mockFetch({
-      '/api/scenarios': {
-        data: [{ id: 'merged-1', name: '이전 시나리오', isDefault: false, encryptionUserId: 'email-user', data: encrypted }],
-        e2eeEnabled: true,
-      },
-    }));
-
-    const { result } = renderHook(() => useScenarios());
-    await waitFor(() => expect(result.current.isLoaded).toBe(true));
-
-    expect(decryptData).toHaveBeenCalledWith(encrypted, 'OLDKEY', 'email-user');
-    const reencrypt = await waitFor(() => {
-      const call = fetchCalls().find(([url, init]) => url === '/api/scenarios/merged-1' && init?.method === 'PUT');
-      expect(call).toBeDefined();
-      return call!;
-    });
-    expect(encryptData).toHaveBeenCalledWith(initialParams, 'CURRNT', USER_ID);
-    expect(JSON.parse(reencrypt[1]!.body as string).data).toEqual(reencrypted);
-  });
-
-  test('병합한 이전 계정 키가 없으면 암호문을 덮지 않고 키 복구를 요구한다', async () => {
-    signedIn();
-    localStorage.setItem(KEY_NAME, 'CURRNT');
-    decryptData.mockResolvedValue(initialParams);
-    encryptData.mockResolvedValue({ isEncrypted: true, ciphertext: 'new', iv: 'new-iv' });
-    vi.stubGlobal('fetch', mockFetch({
-      '/api/scenarios': {
-        data: [{ id: 'merged-1', name: '이전 시나리오', isDefault: false, encryptionUserId: 'email-user', data: encrypted }],
-        e2eeEnabled: true,
-      },
-    }));
-
-    const { result } = renderHook(() => useScenarios());
-    await waitFor(() => expect(result.current.isLoaded).toBe(true));
-
-    expect(result.current.needsKeyRestore).toBe(true);
-    expect(fetchCalls().some(([, init]) => init?.method === 'PUT')).toBe(false);
-
-    let restored = false;
-    await act(async () => { restored = await result.current.handleRestoreKey('OLDKEY'); });
-    expect(restored).toBe(true);
-    expect(localStorage.getItem('nextlife_e2ee_key_email-user')).toBe('OLDKEY');
-    // 이전 계정 키를 입력해도 현재 로그인용 키가 바뀌면 안 된다.
-    expect(localStorage.getItem(KEY_NAME)).toBe('CURRNT');
-    await waitFor(() => expect(result.current.needsKeyRestore).toBe(false));
-    await waitFor(() => expect(fetchCalls().some(([url, init]) => url === '/api/scenarios/merged-1' && init?.method === 'PUT')).toBe(true));
-  });
-
   // 키가 없는데 서버에 암호화된 데이터가 있으면 복호화할 수 없다. 이때 기본값으로 덮어
   // 저장해 버리면 사용자의 실제 데이터가 영구히 사라진다 — needsKeyRestore가 그것을 막는다.
   test('키가 없으면 복구를 요구하고 기본값으로 덮어쓰지 않는다', async () => {
@@ -334,7 +279,7 @@ describe('useScenarios — 로그인', () => {
   });
 
   // 처음 가입한 사용자다. 사용자가 키를 고르게 두면 111111 같은 키가 들어오므로 시스템이 발급한다.
-  test('키를 받은 적 없는 신규 가입자에게 보안키를 발급해 카카오톡으로 보낸다', async () => {
+  test('키를 받은 적 없는 신규 가입자에게 보안키를 발급해 이메일로 보낸다', async () => {
     signedIn();
     vi.stubGlobal('fetch', mockFetch({ '/api/scenarios': { data: [] } }));
 
@@ -374,7 +319,7 @@ describe('useScenarios — 로그인', () => {
     await waitFor(() => expect(scenarioPostCalls().length).toBeGreaterThan(0), { timeout: 8000 });
   }, 15000);
 
-  test('카카오톡 전송이 실패하면 같은 키로 재시도할 수 있다', async () => {
+  test('이메일 전송이 실패하면 같은 키로 재시도할 수 있다', async () => {
     signedIn();
     let sendShouldFail = true;
     vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {

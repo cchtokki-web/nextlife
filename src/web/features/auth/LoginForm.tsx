@@ -11,10 +11,8 @@ type Flow = 'choose' | 'register-email' | 'login-email' | 'security-key';
 
 export default function LoginForm({
   initialFlow = 'choose',
-  migrationCompleted = false,
 }: {
   initialFlow?: 'choose' | 'register-email';
-  migrationCompleted?: boolean;
 }) {
   const [flow, setFlow] = useState<Flow>(initialFlow);
   const [email, setEmail] = useState('');
@@ -22,9 +20,8 @@ export default function LoginForm({
   const [isRegistering, setIsRegistering] = useState(initialFlow === 'register-email');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [message, setMessage] = useState<string | null>(migrationCompleted
-    ? '이메일 로그인 전환이 완료되었습니다. 이제 이메일과 보안키로 로그인해 주세요.'
-    : null);
+  const [message, setMessage] = useState<string | null>(null);
+  const [confirmingAccountReset, setConfirmingAccountReset] = useState(false);
   const [failedAttempts, setFailedAttempts] = useState(0);
   const [confirmingReset, setConfirmingReset] = useState(false);
   const [isRuntimeDevMode, setIsRuntimeDevMode] = useState<boolean | null>(() =>
@@ -43,7 +40,7 @@ export default function LoginForm({
   useEffect(() => {
     if (isRuntimeDevMode !== true) return;
     const target = resolveDevCallbackUrl(window.location.search);
-    signIn('credentials', { email: 'dev', password: 'dev', redirect: false })
+    signIn('credentials', { email: 'dev', securityKey: 'dev', redirect: false })
       .then((res) => {
         if (res?.ok) window.location.href = target;
         else setError(res?.error ?? '자동 로그인에 실패했습니다.');
@@ -76,15 +73,19 @@ export default function LoginForm({
       const response = await fetch('/api/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: normalizedEmail }),
+        body: JSON.stringify({ email: normalizedEmail, confirmReset: confirmingAccountReset }),
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) {
+        if (data.code === 'ACCOUNT_RESET_REQUIRED') {
+          setConfirmingAccountReset(true);
+        }
         setError(data.error ?? '회원가입을 시작하지 못했습니다.');
         return;
       }
       setEmail(normalizedEmail);
       setMessage(data.message ?? '이메일로 보안키를 보냈습니다.');
+      setConfirmingAccountReset(false);
       setFlow('security-key');
       setTimeout(() => keyRefs.current[0]?.focus(), 50);
     } catch {
@@ -199,13 +200,6 @@ export default function LoginForm({
           <button type="button" className={styles.secondaryBtn} onClick={() => selectFlow('login-email')}>
             이미 가입했다면 이메일로 로그인
           </button>
-          <button
-            type="button"
-            className={styles.textBtn}
-            onClick={() => signIn('kakao', { callbackUrl: '/migrate-email' })}
-          >
-            기존 카카오 사용자 로그인 및 전환
-          </button>
         </>
       )}
 
@@ -226,10 +220,20 @@ export default function LoginForm({
             <input id="email" type="email" required autoComplete="email" className={styles.input} placeholder="example@example.com" value={email} onChange={(event) => setEmail(event.target.value)} />
           </div>
           {error && <div role="alert" className={styles.errorMessage}>{error}</div>}
+          {confirmingAccountReset && (
+            <div className={styles.resetWarning}>
+              <strong>기존 계정을 초기화하시겠습니까?</strong>
+              <p>새 보안키로 로그인하면 기존 시나리오와 자산 데이터가 모두 삭제됩니다. 이 작업은 되돌릴 수 없습니다.</p>
+            </div>
+          )}
           <button type="submit" disabled={loading} className={styles.submitBtn}>
-            {loading ? '보안키 발송 중...' : isRegistering ? '가입하고 보안키 받기' : '보안키 입력하기'}
+            {loading
+              ? '보안키 발송 중...'
+              : isRegistering
+                ? confirmingAccountReset ? '초기화하고 새 보안키 받기' : '가입하고 보안키 받기'
+                : '보안키 입력하기'}
           </button>
-          <button type="button" className={styles.textBtn} onClick={() => setFlow('choose')}>취소</button>
+          <button type="button" className={styles.textBtn} onClick={() => { setFlow('choose'); setConfirmingAccountReset(false); setError(null); }}>취소</button>
         </form>
       )}
 
