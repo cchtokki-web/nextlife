@@ -91,7 +91,8 @@ describe('POST /api/user/send-backup-key', () => {
     const res = await POST(makeRequest(validBody));
 
     expect(res.status).toBe(429);
-    expect(mockedIsRateLimited).toHaveBeenCalledWith('send-backup-key:user-1', 3, 5 * 60 * 1000);
+    // 정상 흐름 하나가 최초 발급 1 + 재시도 2 + 초기화 재발급 1을 쓸 수 있어 한도는 5다.
+    expect(mockedIsRateLimited).toHaveBeenCalledWith('send-backup-key:user-1', 5, 5 * 60 * 1000);
     // 요청 제한에 걸리면 그 이후 로직(계정 조회 등)은 실행되지 않아야 한다.
     expect(mockedFindFirst).not.toHaveBeenCalled();
   });

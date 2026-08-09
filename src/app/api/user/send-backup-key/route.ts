@@ -15,7 +15,9 @@ export async function POST(req: Request) {
 
     const userId = session.user.id;
 
-    if (isRateLimited(`send-backup-key:${userId}`, 3, 5 * 60 * 1000)) {
+    // 5분에 5회. 정상 흐름 하나가 최초 발급 1 + 재시도 2 + 초기화 재발급 1을 쓸 수 있어
+    // 3회면 문제가 없는 사용자도 429를 맞는다. 각 발송은 본인 채팅방으로 가는 메모 1건이다.
+    if (isRateLimited(`send-backup-key:${userId}`, 5, 5 * 60 * 1000)) {
       return NextResponse.json({ error: '너무 많은 요청입니다. 잠시 후 다시 시도해 주세요.' }, { status: 429 });
     }
 

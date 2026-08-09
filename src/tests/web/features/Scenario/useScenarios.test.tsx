@@ -57,6 +57,12 @@ function mockFetch(routes: Record<string, unknown>) {
   });
 }
 
+type FetchCall = [string, RequestInit | undefined];
+const fetchCalls = () => (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls as FetchCall[];
+const sendKeyCalls = () => fetchCalls().filter(([url]) => url === '/api/user/send-backup-key');
+const scenarioPostCalls = () =>
+  fetchCalls().filter(([url, init]) => url === '/api/scenarios' && init?.method === 'POST');
+
 let consoleError: ReturnType<typeof vi.spyOn>;
 let consoleWarn: ReturnType<typeof vi.spyOn>;
 
@@ -211,16 +217,112 @@ describe('useScenarios — 로그인', () => {
     expect(result.current.needsKeyRestore).toBe(true);
   });
 
-  // 처음 가입한 사용자다. 키를 자동 생성하지 않고 사용자가 직접 정하게 한다.
-  test('시나리오도 키도 없으면 키 설정을 요구한다', async () => {
+  // 처음 가입한 사용자다. 사용자가 키를 고르게 두면 111111 같은 키가 들어오므로 시스템이 발급한다.
+  test('시나리오도 키도 없으면 보안키를 발급해 카카오톡으로 보낸다', async () => {
     signedIn();
     vi.stubGlobal('fetch', mockFetch({ '/api/scenarios': { data: [] } }));
 
     const { result } = renderHook(() => useScenarios());
+    await waitFor(() => expect(result.current.keyNotice?.status).toBe('sent'));
+
+    const issuedKey = result.current.keyNotice!.key;
+    // 생성기의 문자셋(모호한 0/O/1/I 제외)을 벗어나면 엔트로피 전제가 깨진 것이다.
+    expect(issuedKey).toMatch(/^[23456789A-HJ-NP-Z]{6}$/);
+    expect(localStorage.getItem(KEY_NAME)).toBe(issuedKey);
+    // 아직 확인 전이므로 백업이 확인되지 않은 상태여야 한다.
+    expect(localStorage.getItem(`nextlife_e2ee_backed_up_${USER_ID}`)).toBe('false');
+
+    const sendCalls = sendKeyCalls();
+    expect(sendCalls).toHaveLength(1);
+    expect(JSON.parse(sendCalls[0][1]!.body as string).key).toBe(issuedKey);
+
+    // 확인을 누르기 전에는 기본 시나리오를 만들지 않는다.
+    expect(scenarioPostCalls()).toHaveLength(0);
+  }, 10000);
+
+  test('발급된 키를 확인하면 기본 시나리오를 만들고 진입시킨다', async () => {
+    signedIn();
+    encryptData.mockResolvedValue(encrypted);
+    decryptData.mockResolvedValue(initialParams);
+    vi.stubGlobal('fetch', mockFetch({ '/api/scenarios': { data: [] } }));
+
+    const { result } = renderHook(() => useScenarios());
+    await waitFor(() => expect(result.current.keyNotice?.status).toBe('sent'));
+    const issuedKey = result.current.keyNotice!.key;
+
+    await act(async () => { result.current.handleAcknowledgeKey(); });
+
+    await waitFor(() => expect(result.current.keyNotice).toBeNull());
+    expect(result.current.localKey).toBe(issuedKey);
+    expect(localStorage.getItem(`nextlife_e2ee_backed_up_${USER_ID}`)).toBe('true');
+    await waitFor(() => expect(scenarioPostCalls().length).toBeGreaterThan(0), { timeout: 8000 });
+  }, 15000);
+
+  test('카카오톡 전송이 실패하면 같은 키로 재시도할 수 있다', async () => {
+    signedIn();
+    let sendShouldFail = true;
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === '/api/user/send-backup-key') {
+        return sendShouldFail
+          ? { ok: false, status: 429, json: async () => ({ error: '너무 많은 요청입니다.' }) } as unknown as Response
+          : { ok: true, json: async () => ({ success: true }) } as unknown as Response;
+      }
+      if (url === '/api/scenarios') {
+        return { ok: true, json: async () => ({ data: [] }) } as unknown as Response;
+      }
+      return { ok: true, json: async () => ({ success: true }) } as unknown as Response;
+    }));
+
+    const { result } = renderHook(() => useScenarios());
+    await waitFor(() => expect(result.current.keyNotice?.status).toBe('failed'));
+    const issuedKey = result.current.keyNotice!.key;
+    // 사용자가 무엇을 기다려야 하는지 알 수 있도록 서버 사유를 그대로 전달한다.
+    expect(result.current.keyNotice).toMatchObject({ error: '너무 많은 요청입니다.' });
+
+    sendShouldFail = false;
+    await act(async () => { await result.current.handleRetrySendKey(); });
+
+    await waitFor(() => expect(result.current.keyNotice?.status).toBe('sent'));
+    // 새 키를 만들면 이미 발송된 키로 암호화된 데이터를 열 수 없게 된다.
+    expect(result.current.keyNotice!.key).toBe(issuedKey);
+    expect(localStorage.getItem(KEY_NAME)).toBe(issuedKey);
+  }, 10000);
+
+  // 이펙트가 다시 돌 때마다 발급하면 카카오톡에 서로 다른 키가 여러 개 도착한다.
+  test('재렌더가 반복돼도 보안키는 한 번만 발급한다', async () => {
+    signedIn();
+    vi.stubGlobal('fetch', mockFetch({ '/api/scenarios': { data: [] } }));
+
+    const { result, rerender } = renderHook(() => useScenarios());
+    await waitFor(() => expect(result.current.keyNotice?.status).toBe('sent'));
+
+    rerender();
+    rerender();
     await waitFor(() => expect(result.current.isLoaded).toBe(true));
 
-    expect(result.current.needsKeySetup).toBe(true);
-  });
+    expect(sendKeyCalls()).toHaveLength(1);
+  }, 10000);
+
+  // 발급 도중 창을 닫은 사용자. 키는 localStorage에 있지만 백업이 확인되지 않았다.
+  test('백업이 확인되지 않은 키가 있으면 다시 안내한다', async () => {
+    signedIn();
+    localStorage.setItem(KEY_NAME, 'KEY123');
+    localStorage.setItem(`nextlife_e2ee_backed_up_${USER_ID}`, 'false');
+    decryptData.mockResolvedValue(initialParams);
+    vi.stubGlobal('fetch', mockFetch({
+      '/api/scenarios': { data: [{ id: 's1', name: 'x', isDefault: true, data: encrypted }] },
+    }));
+
+    const { result } = renderHook(() => useScenarios());
+    await waitFor(() => expect(result.current.keyNotice?.status).toBe('unbacked'));
+    expect(result.current.keyNotice!.key).toBe('KEY123');
+    // 재발급이 아니라 이미 가진 키를 다시 안내하는 것이므로 새 발송이 나가면 안 된다.
+    expect(sendKeyCalls()).toHaveLength(0);
+
+    await act(async () => { result.current.handleAcknowledgeKey(); });
+    await waitFor(() => expect(result.current.keyNotice).toBeNull());
+    expect(localStorage.getItem(`nextlife_e2ee_backed_up_${USER_ID}`)).toBe('true');
+  }, 10000);
 
   test('서버 응답이 실패하면 오류를 노출하고 로딩을 끝낸다', async () => {
     signedIn();
@@ -437,18 +539,94 @@ describe('useScenarios — 데이터 유실 방어', () => {
     expect(result.current.lastSaved).toBeNull();
   }, 10000);
 
-  // 숫자 6자리만 허용하면 10^6(약 20비트)로 시스템 생성 키보다 훨씬 약하다.
-  test('약한 보안키는 거부한다', async () => {
-    signedIn();
-    vi.stubGlobal('fetch', mockFetch({ '/api/scenarios': { data: [] } }));
-    const { result } = renderHook(() => useScenarios());
-    await waitFor(() => expect(result.current.needsKeySetup).toBe(true));
+  // 검증할 암호문이 없으면 이 키가 맞는지 확인할 방법이 없다. 예전에는 검증 블록을 통째로
+  // 건너뛰고 아무 6자리 문자열이나 정답으로 저장했다 — 그 키로 이후 데이터가 암호화되면
+  // 사용자는 자기 데이터를 영원히 열 수 없다.
+  test('서버에 암호문이 없으면 어떤 키도 받아들이지 않는다', async () => {
+    decryptData.mockRejectedValue(new Error('bad key'));
+    const { result } = await loadedWithEncrypted(null);
+    await waitFor(() => expect(result.current.needsKeyRestore).toBe(true));
 
-    for (const weak of ['', '12345', '1234567', 'AB!DEF']) {
-      let accepted: boolean | undefined;
-      await act(async () => { accepted = await result.current.handleSetupKey(weak); });
-      expect(accepted, `"${weak}"가 통과했다`).toBe(false);
-    }
+    // 복구를 시도하는 사이 서버 데이터가 사라졌다.
+    vi.stubGlobal('fetch', mockFetch({ '/api/scenarios': { data: [] } }));
+
+    let accepted: boolean | undefined;
+    await act(async () => { accepted = await result.current.handleRestoreKey('ANY123'); });
+
+    expect(accepted).toBe(false);
     expect(localStorage.getItem(KEY_NAME)).toBeNull();
-  }, 10000);
+    expect(result.current.restoreError).toBeTruthy();
+  });
+
+  test('평문 시나리오만 있으면 어떤 키도 받아들이지 않는다', async () => {
+    decryptData.mockRejectedValue(new Error('bad key'));
+    const { result } = await loadedWithEncrypted(null);
+    await waitFor(() => expect(result.current.needsKeyRestore).toBe(true));
+
+    vi.stubGlobal('fetch', mockFetch({
+      '/api/scenarios': { data: [{ id: 's1', name: 'x', isDefault: true, data: initialParams }] },
+    }));
+
+    let accepted: boolean | undefined;
+    await act(async () => { accepted = await result.current.handleRestoreKey('ANY123'); });
+
+    expect(accepted).toBe(false);
+    expect(localStorage.getItem(KEY_NAME)).toBeNull();
+  });
+
+  // 보안키를 잊은 사용자의 마지막 탈출구. 여기서 실패하면 사용자는 계정에 영원히 갇힌다.
+  test('초기화하면 시나리오를 지우고 새 키를 발급해 진입시킨다', async () => {
+    // 옛 키로는 아무것도 열리지 않지만(good/corrupt), 초기화가 새로 써 넣은 암호문은 열린다.
+    decryptData.mockImplementation(async (payload: { ciphertext: string }) => {
+      if (payload.ciphertext === 'x') return initialParams;
+      throw new Error('bad key');
+    });
+    encryptData.mockResolvedValue(encrypted);
+
+    // 서버 상태를 실제로 반영하는 대역. 초기화가 지우고 다시 쓴 결과를 그대로 되돌려 줘야
+    // "초기화 후 재적재까지 이어지는지"를 검증할 수 있다.
+    signedIn();
+    let serverScenarios: Array<{ id: string; name: string; isDefault: boolean; data: unknown }> = [
+      { id: 's1', name: 'a', isDefault: true, data: good },
+      { id: 's2', name: 'b', isDefault: false, data: corrupt },
+    ];
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === '/api/scenarios' && (init?.method ?? 'GET') === 'GET') {
+        return { ok: true, json: async () => ({ data: serverScenarios }) } as unknown as Response;
+      }
+      if (init?.method === 'DELETE') {
+        const id = url.split('/').pop();
+        serverScenarios = serverScenarios.filter(s => s.id !== id);
+        return { ok: true, json: async () => ({ success: true }) } as unknown as Response;
+      }
+      if (init?.method === 'PUT') {
+        const id = url.split('/').pop();
+        const body = JSON.parse(init.body as string);
+        serverScenarios = serverScenarios.map(s => s.id === id ? { ...s, data: body.data } : s);
+        return { ok: true, json: async () => ({ success: true }) } as unknown as Response;
+      }
+      return { ok: true, json: async () => ({ success: true }) } as unknown as Response;
+    }));
+
+    const { result } = renderHook(() => useScenarios());
+    await waitFor(() => expect(result.current.needsKeyRestore).toBe(true));
+
+    await act(async () => { await result.current.handleResetAndReissueKey(); });
+
+    // 기본 시나리오(s1)만 남기고 나머지는 지운다.
+    const deleteCalls = fetchCalls().filter(([, init]) => init?.method === 'DELETE');
+    expect(deleteCalls.map(([url]) => url)).toEqual(['/api/scenarios/s2']);
+    // 남긴 기본 시나리오는 새 키로 다시 암호화한다.
+    const putCall = fetchCalls().find(([url, init]) => url === '/api/scenarios/s1' && init?.method === 'PUT');
+    expect(putCall).toBeDefined();
+    expect(JSON.parse(putCall![1]!.body as string).data).toEqual(encrypted);
+
+    const newKey = localStorage.getItem(KEY_NAME);
+    expect(newKey).toMatch(/^[23456789A-HJ-NP-Z]{6}$/);
+    expect(result.current.keyNotice).toMatchObject({ status: 'sent', key: newKey });
+    expect(sendKeyCalls()).toHaveLength(1);
+    // 재적재까지 이어져야 한다. 전체 리로드 없이 복구 모달이 닫히는지가 핵심이다.
+    await waitFor(() => expect(result.current.needsKeyRestore).toBe(false));
+    await waitFor(() => expect(result.current.isLoaded).toBe(true), { timeout: 8000 });
+  }, 15000);
 });

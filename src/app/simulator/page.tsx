@@ -36,7 +36,6 @@ import styles from './page.module.css';
 import { AlertCircle, RotateCcw, PanelLeftClose, PanelLeftOpen, LogOut, FileText } from 'lucide-react';
 import { useScenarios } from '../../web/features/Scenario/useScenarios';
 import { E2eeKeyManager } from '../../web/components/E2eeKeyManager';
-import { generateBackupKey, encryptData } from '../../core/utils/crypto';
 import { isDevMode } from '../../core/utils/isDevMode';
 
 export default function Home() {
@@ -55,50 +54,12 @@ export default function Home() {
     lastSaved,
     loadError,
     handleRetryLoad,
-    handleSendKeyToKakao,
-    needsKeySetup,
-    handleSetupKey
+    keyNotice,
+    handleAcknowledgeKey,
+    handleRetrySendKey,
+    restoreError,
+    handleResetAndReissueKey
   } = scenarioState;
-
-  const handleResetAllScenarios = async () => {
-    if (confirm('모든 기존 데이터를 초기화하고 새로운 보안 키로 다시 시작하시겠습니까? 이 작업은 되돌릴 수 없으며 기본 시나리오를 제외한 나머지 시나리오는 모두 삭제되고, 기본 시나리오의 데이터는 기본값으로 초기화됩니다.')) {
-      const newKey = generateBackupKey();
-      const userId = session?.user?.id;
-      if (userId) {
-        localStorage.setItem(`nextlife_e2ee_key_${userId}`, newKey);
-        localStorage.setItem(`nextlife_e2ee_backed_up_${userId}`, 'false');
-
-        try {
-          const defaultScenario = scenarios.find(s => s.isDefault) || scenarios[0];
-          const otherScenarios = scenarios.filter(s => s.id !== defaultScenario?.id);
-
-          for (const s of otherScenarios) {
-            await fetch(`/api/scenarios/${s.id}`, { method: 'DELETE' });
-          }
-
-          if (defaultScenario) {
-            const encrypted = await encryptData(initialParams, newKey, userId);
-            await fetch(`/api/scenarios/${defaultScenario.id}`, {
-              method: 'PUT',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ data: encrypted }),
-            });
-          }
-
-          const kakaoResult = await handleSendKeyToKakao(newKey);
-          if (kakaoResult.success) {
-            alert('데이터가 성공적으로 초기화되었으며, 새 보안키가 카카오톡으로 발송되었습니다.');
-          } else {
-            alert(`데이터는 초기화되었지만 새 보안키를 카카오톡으로 보내지 못했습니다.\n새 보안키: ${newKey}\n이 키를 반드시 별도로 기록해 두세요.`);
-          }
-          window.location.reload();
-        } catch (err) {
-          console.error('Failed to reset scenarios:', err);
-          alert('초기화 중 오류가 발생했습니다.');
-        }
-      }
-    }
-  };
 
   const isPro = session?.user?.tier === 'pro' || isDevMode();
 
@@ -990,11 +951,13 @@ export default function Home() {
       </Header>
 
       <E2eeKeyManager
+        keyNotice={keyNotice}
+        onAcknowledgeKey={handleAcknowledgeKey}
+        onRetrySendKey={handleRetrySendKey}
         needsKeyRestore={needsKeyRestore}
         handleRestoreKey={handleRestoreKey}
-        onResetScenarios={handleResetAllScenarios}
-        needsKeySetup={needsKeySetup}
-        handleSetupKey={handleSetupKey}
+        restoreError={restoreError}
+        onResetScenarios={handleResetAndReissueKey}
       />
 
       {/* 2. Content Layout */}

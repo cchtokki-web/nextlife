@@ -10,7 +10,7 @@ interface ScenarioListResponse {
   data?: Array<Omit<ScenarioModel, 'data'> & { data: unknown }>;
 }
 import { loadParams, saveParams, initialParams } from '../../../infrastructure/storage/localStore';
-import { encryptData, decryptData, isEncryptedPayload } from '../../../core/utils/crypto';
+import { encryptData, decryptData, isEncryptedPayload, generateBackupKey } from '../../../core/utils/crypto';
 
 const convertToRepresentativeAssets = (params: SimulationParams): SimulationParams => {
   if (!params.assets) return params;
@@ -162,6 +162,53 @@ const fetchLatestParamsInfo = async (params: SimulationParams): Promise<Simulati
   return updatedParams;
 };
 
+// 발급된 보안키를 카카오톡 '나와의 채팅방'으로 보낸다.
+//
+// 훅 본문이 아니라 모듈 스코프에 두는 이유: 이 함수를 부르는 로딩 이펙트가 반환 객체보다
+// 앞에 있어, 반환 객체 안에 선언하면 선언 전 참조가 된다(handleCreateScenario를 위로 끌어올린
+// 것과 같은 이유).
+const KAKAO_SEND_TIMEOUT_MS = 15000;
+
+export interface SendKeyResult {
+  success: boolean;
+  error?: string;
+}
+
+async function postBackupKey(key: string): Promise<SendKeyResult> {
+  // 카카오 API가 응답하지 않으면 발급 모달이 '전송 중'에 영원히 갇힌다. 타임아웃을 두어
+  // 반드시 실패 상태(= 키를 화면에 보여 주고 재시도를 제공하는 상태)로 빠져나오게 한다.
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), KAKAO_SEND_TIMEOUT_MS);
+  try {
+    const res = await fetch('/api/user/send-backup-key', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key }),
+      signal: controller.signal,
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok && data.success) return { success: true };
+    // 서버가 이유를 알려주면(레이트 리밋 429 등) 그대로 보여 준다. 사용자가 무엇을 기다려야
+    // 하는지 아는 것과 모르는 것의 차이가 크다.
+    return { success: false, error: data.error || '카카오톡 전송에 실패했습니다.' };
+  } catch (err) {
+    console.error('Failed to send backup key to Kakao:', err);
+    const aborted = err instanceof DOMException && err.name === 'AbortError';
+    return { success: false, error: aborted ? '카카오톡 서버가 응답하지 않습니다.' : '네트워크 오류가 발생했습니다.' };
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+// 보안키 발급 진행 상태. 사용자가 '확인'을 누르기 전까지 앱 진입을 막는 근거가 된다.
+export type KeyIssuance =
+  | { status: 'sending'; key: string }
+  | { status: 'sent'; key: string }
+  | { status: 'failed'; key: string; error?: string };
+
+// 발급 상태에 더해, "키는 있는데 백업이 확인되지 않은" 상태까지 포함한 모달 표시용 값.
+export type KeyNotice = KeyIssuance | { status: 'unbacked'; key: string };
+
 export function useScenarios() {
   const { data: session, status } = useSession();
   const [scenarios, setScenarios] = useState<ScenarioModel[]>([]);
@@ -188,8 +235,15 @@ export function useScenarios() {
   // E2EE States
   const [localKey, setLocalKey] = useState<string | null>(null);
   const [needsKeyRestore, setNeedsKeyRestore] = useState(false);
-  const [needsKeySetup, setNeedsKeySetup] = useState(false);
   const [isBackupKeyBackedUp, setIsBackupKeyBackedUp] = useState(true);
+  const [keyIssuance, setKeyIssuance] = useState<KeyIssuance | null>(null);
+  // 복구 실패 사유. "키가 틀렸다"와 "검증할 암호문을 못 찾았다"는 사용자가 취해야 할 행동이
+  // 다르므로 구분해서 전달한다.
+  const [restoreError, setRestoreError] = useState<string | null>(null);
+  // 이 사용자에게 보안키를 이미 발급했는지. 상태가 아니라 ref여야 한다 — StrictMode의 이펙트
+  // 이중 실행은 같은 커밋의 같은 값을 두 클로저가 보므로 setState 가드로는 막히지 않고,
+  // 그러면 키가 두 개 발급되어 카카오톡에 서로 다른 키가 두 번 도착한다.
+  const keyIssuedForUserRef = useRef<string | null>(null);
 
   // Cloud Save States
   const [isSaving, setIsSaving] = useState(false);
@@ -459,12 +513,39 @@ export function useScenarios() {
               const storedKey = localStorage.getItem(keyName);
               
               if (!storedKey) {
-                // Let the user set their own 6-digit password instead of auto-generating one
-                setNeedsKeySetup(true);
+                // 최초 가입: 보안키는 시스템이 발급한다. 사용자가 직접 정하게 두면 111111 같은
+                // 키가 들어오는데, 암호문은 로그인만 하면 통째로 받아갈 수 있어 오프라인
+                // 대입에 그대로 뚫린다. generateBackupKey()는 모호한 0/O/1/I를 뺀 32자
+                // 집합에서 뽑아 32^6(약 30비트)를 보장한다.
+                if (keyIssuedForUserRef.current !== userId) {
+                  // await 이전에 래치를 건다 — StrictMode 이중 실행이 두 번 발급하는 것을 막는다.
+                  keyIssuedForUserRef.current = userId;
+                  const newKey = generateBackupKey();
+                  if (!newKey) {
+                    // window가 없으면 빈 문자열이 온다. 그대로 진행하면 빈 키로 암호화되어
+                    // 데이터를 영구히 잃는다.
+                    setLoadErrorState({ key: loadRequestKey, message: '보안키를 생성하지 못했습니다. 페이지를 새로고침해 주세요.' });
+                  } else {
+                    // 발급 즉시 기록한다. 확인 전에 창을 닫아도 다음 로그인이 같은 키로
+                    // 이어지고, 카카오톡에 서로 다른 키가 두 개 쌓이지 않는다.
+                    localStorage.setItem(keyName, newKey);
+                    localStorage.setItem(`nextlife_e2ee_backed_up_${userId}`, 'false');
+                    setIsBackupKeyBackedUp(false);
+                    setKeyIssuance({ status: 'sending', key: newKey });
+                    postBackupKey(newKey).then(result => {
+                      setKeyIssuance(result.success
+                        ? { status: 'sent', key: newKey }
+                        : { status: 'failed', key: newKey, error: result.error });
+                    });
+                    // setLocalKey는 일부러 부르지 않는다. 사용자가 '확인'을 누를 때 비로소
+                    // 호출되고, 그때 이 이펙트가 다시 돌아 아래 storedKey 분기로 들어가
+                    // 기본 시나리오를 만든다.
+                  }
+                }
                 setLoadedRequestKey(loadRequestKey);
                 return;
               }
-              
+
               setLocalKey(storedKey);
               const loaded = loadParams();
               const migrated = convertToRepresentativeAssets(migrateParams(loaded || initialParams, etfTickers));
@@ -490,6 +571,12 @@ export function useScenarios() {
 
   // Get current active params
   const activeParams = scenarios.find(s => s.id === activeScenarioId)?.data || initialParams;
+
+  // 발급 모달에 무엇을 보여 줄지. 발급이 진행 중이면 그것을, 아니면 "키는 있는데 백업이
+  // 확인되지 않은" 상태를 보여 준다. 후자는 발급 도중 창을 닫았거나 카카오톡 전송이 실패한
+  // 채로 넘어간 사용자를 다음 접속에서 자동으로 구제한다.
+  const keyNotice: KeyNotice | null = keyIssuance
+    ?? (localKey && !isBackupKeyBackedUp ? { status: 'unbacked', key: localKey } : null);
 
   // Auto-save debounced
   useEffect(() => {
@@ -695,59 +782,73 @@ export function useScenarios() {
     isLoaded,
     localKey,
     needsKeyRestore,
-    isBackupKeyBackedUp,
+    restoreError,
     handleRestoreKey: async (enteredKey: string) => {
+      // 길이만 본다. 예전에 사용자가 직접 정한 키에는 생성기가 쓰지 않는 0/O/1/I가 들어갈 수
+      // 있으므로 문자셋으로 좁히면 그 사용자들이 자기 데이터를 못 연다.
       const cleanKey = enteredKey.trim().toUpperCase();
       if (cleanKey.length !== 6) {
-        alert('올바른 6자리 보안 백업 키가 아닙니다.');
+        setRestoreError('보안키는 6자리입니다.');
         return false;
       }
       const userId = session?.user?.id;
       if (!userId) return false;
+      setRestoreError(null);
 
       // Verify key correctness by attempting to decrypt the encrypted scenarios on the server
       try {
         const res = await fetch('/api/scenarios');
         if (!res.ok) throw new Error('Failed to fetch scenarios');
         const { data } = await res.json();
-        
-        if (data && data.length > 0) {
-          let hasEncrypted = false;
-          let decryptedSuccessfully = false;
-          const failedScenarioIds: string[] = [];
 
-          for (const s of data) {
-            if (isEncryptedPayload(s.data)) {
-              hasEncrypted = true;
-              try {
-                await decryptData(s.data, cleanKey, userId);
-                decryptedSuccessfully = true;
-              } catch {
-                // 이 시나리오만 복호화 실패 — 키가 틀렸는지 이 시나리오만 손상됐는지는
-                // 아래에서 "다른 시나리오가 하나라도 복호화됐는지"로 판별한다.
-                failedScenarioIds.push(s.id);
-              }
-            }
-          }
+        const encryptedItems: Array<{ id: string; data: unknown }> = (Array.isArray(data) ? data : [])
+          .filter((s: { data: unknown }) => isEncryptedPayload(s.data));
 
-          if (hasEncrypted && !decryptedSuccessfully) {
-            // 암호화된 시나리오가 있는데 단 하나도 복호화되지 않았다면 키 자체가 틀린 것이다.
-            return false;
-          }
+        // 검증할 암호문이 하나도 없으면 이 키가 맞는지 확인할 방법이 없다.
+        //
+        // 예전에는 이 경우 검증 블록을 통째로 건너뛰고 아래로 흘러내려, 사용자가 입력한 아무
+        // 6자리 문자열이나 정답으로 저장했다. 그 키로 이후 데이터가 암호화되면 사용자는 자기
+        // 데이터를 영원히 열 수 없다. 복구 모달이 떴다는 것은 애초에 암호문이 있었다는 뜻이므로,
+        // 빈 목록은 "다른 곳에서 지워졌거나 서버가 조용히 실패했다"는 신호다 — 성공이 아니다.
+        if (encryptedItems.length === 0) {
+          setRestoreError('서버에서 암호화된 데이터를 찾지 못해 보안키를 확인할 수 없습니다. 잠시 후 다시 시도하거나, 데이터를 초기화하고 새 보안키를 발급받아 주세요.');
+          return false;
+        }
 
-          if (decryptedSuccessfully && failedScenarioIds.length > 0) {
-            // 키는 맞지만(다른 시나리오는 복호화됨) 일부 시나리오만 복호화에 실패했다면,
-            // 그건 키 문제가 아니라 해당 시나리오 데이터 자체가 손상된 것이다. 이후 로드에서
-            // 같은 키를 다시 요구하는 무한 루프에 빠지지 않도록 손상된 것으로 기록해둔다.
-            failedScenarioIds.forEach((id) => corruptedScenarioIdsRef.current.add(id));
-            alert(`일부 시나리오(${failedScenarioIds.length}개)는 데이터가 손상되어 복구할 수 없습니다. 해당 시나리오는 기본값으로 표시됩니다. 필요하면 삭제 후 다시 만들어주세요.`);
+        let decryptedSuccessfully = false;
+        const failedScenarioIds: string[] = [];
+
+        for (const s of encryptedItems) {
+          try {
+            await decryptData(s.data as EncryptedData, cleanKey, userId);
+            decryptedSuccessfully = true;
+          } catch {
+            // 이 시나리오만 복호화 실패 — 키가 틀렸는지 이 시나리오만 손상됐는지는
+            // 아래에서 "다른 시나리오가 하나라도 복호화됐는지"로 판별한다.
+            failedScenarioIds.push(s.id);
           }
+        }
+
+        if (!decryptedSuccessfully) {
+          // 암호화된 시나리오가 있는데 단 하나도 복호화되지 않았다면 키 자체가 틀린 것이다.
+          setRestoreError('보안키가 올바르지 않습니다.');
+          return false;
+        }
+
+        if (failedScenarioIds.length > 0) {
+          // 키는 맞지만(다른 시나리오는 복호화됨) 일부 시나리오만 복호화에 실패했다면,
+          // 그건 키 문제가 아니라 해당 시나리오 데이터 자체가 손상된 것이다. 이후 로드에서
+          // 같은 키를 다시 요구하는 무한 루프에 빠지지 않도록 손상된 것으로 기록해둔다.
+          failedScenarioIds.forEach((id) => corruptedScenarioIdsRef.current.add(id));
+          alert(`일부 시나리오(${failedScenarioIds.length}개)는 데이터가 손상되어 복구할 수 없습니다. 해당 시나리오는 기본값으로 표시됩니다. 필요하면 삭제 후 다시 만들어주세요.`);
         }
       } catch (err) {
         console.error('Verification of restore key failed:', err);
+        setRestoreError('시나리오를 불러오지 못해 보안키를 확인할 수 없습니다. 잠시 후 다시 시도해 주세요.');
         return false;
       }
 
+      setRestoreError(null);
       localStorage.setItem(`nextlife_e2ee_key_${userId}`, cleanKey);
       localStorage.setItem(`nextlife_e2ee_backed_up_${userId}`, 'true');
       setLocalKey(cleanKey);
@@ -765,94 +866,94 @@ export function useScenarios() {
     isSaving,
     saveStatus,
     lastSaved,
-    handleAcknowledgeBackup: () => {
+    keyNotice,
+    // 발급된 키를 사용자가 확인했다. 여기서 비로소 setLocalKey가 불리고, 그 결과
+    // loadRequestKey가 바뀌어 로딩 이펙트가 다시 돈다. 이번에는 localStorage에 키가 있으므로
+    // 기존 storedKey 분기로 들어가 기본 시나리오를 만든다 — 생성 로직을 복제하지 않는다.
+    handleAcknowledgeKey: () => {
       const userId = session?.user?.id;
-      if (userId) {
-        localStorage.setItem(`nextlife_e2ee_backed_up_${userId}`, 'true');
+      const key = keyNotice?.key;
+      if (!userId || !key) return;
+      localStorage.setItem(`nextlife_e2ee_backed_up_${userId}`, 'true');
+      setIsBackupKeyBackedUp(true);
+      setKeyIssuance(null);
+      setLocalKey(key);
+      // localKey가 이미 같은 값이면(unbacked 경로) setLocalKey가 bail-out해 의존성이
+      // 그대로이므로, handleRestoreKey와 같은 방식으로 요청 키를 무효화해 재적재를 보장한다.
+      setLoadedRequestKey(null);
+    },
+    // 같은 키를 다시 보낸다. 새 키를 만들면 이미 발송된 키로 암호화된 데이터를 열 수 없게 된다.
+    handleRetrySendKey: async (): Promise<SendKeyResult> => {
+      const key = keyNotice?.key;
+      if (!key) return { success: false, error: '보낼 보안키가 없습니다.' };
+      setKeyIssuance({ status: 'sending', key });
+      const result = await postBackupKey(key);
+      if (result.success) {
+        const userId = session?.user?.id;
+        if (userId) localStorage.setItem(`nextlife_e2ee_backed_up_${userId}`, 'true');
         setIsBackupKeyBackedUp(true);
       }
+      setKeyIssuance(result.success
+        ? { status: 'sent', key }
+        : { status: 'failed', key, error: result.error });
+      return result;
     },
-    needsKeySetup,
-    handleSetupKey: useCallback(async (password: string) => {
-      // generateBackupKey()(시스템 생성 키)와 동일한 영문(모호한 0/O/1/I 제외)+숫자 조합을
-      // 허용해 사용자가 직접 정하는 키도 같은 수준의 엔트로피를 갖도록 한다. 숫자 6자리만
-      // 허용하면 10^6(약 20비트)에 불과해 시스템 생성 키(약 30비트)보다 훨씬 약했다.
-      const cleanPassword = password.trim().toUpperCase();
-      if (cleanPassword.length !== 6 || !/^[A-Z0-9]+$/.test(cleanPassword)) {
-        alert('보안 비밀번호는 영문·숫자 6자리여야 합니다.');
-        return false;
-      }
+    // 보안키를 잊은 사용자의 마지막 탈출구: 데이터를 버리고 새 키를 발급받는다.
+    //
+    // page.tsx에 있던 handleResetAllScenarios를 옮겨 왔다. 초기화 후 카카오 전송이 실패하면
+    // 최초 발급과 똑같은 모달(키 노출 + 재시도)을 띄워야 하는데, 그 상태가 이 훅에 있어
+    // 바깥에서는 건드릴 수 없었기 때문이다.
+    handleResetAndReissueKey: async () => {
       const userId = session?.user?.id;
-      if (!userId) return false;
+      if (!userId) return;
+      const newKey = generateBackupKey();
+      if (!newKey) {
+        alert('보안키를 생성하지 못했습니다. 페이지를 새로고침해 주세요.');
+        return;
+      }
 
-      const keyName = `nextlife_e2ee_key_${userId}`;
-      const backupName = `nextlife_e2ee_backed_up_${userId}`;
-
-      localStorage.setItem(keyName, cleanPassword);
-      localStorage.setItem(backupName, 'false');
+      // 재암호화 PUT보다 먼저 기록한다. 중간에 실패하면 아무도 모르는 키로 암호화된 데이터가
+      // 서버에 남는다.
+      localStorage.setItem(`nextlife_e2ee_key_${userId}`, newKey);
+      localStorage.setItem(`nextlife_e2ee_backed_up_${userId}`, 'false');
       setIsBackupKeyBackedUp(false);
-      setLocalKey(cleanPassword);
-      setNeedsKeySetup(false);
 
-      // Call API to send it to Kakao (optional / async background helper)
-      fetch('/api/user/send-backup-key', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ key: cleanPassword }),
-      })
-        .then(res => res.json())
-        .then(data => {
-          if (data.success) {
-            localStorage.setItem(backupName, 'true');
-            setIsBackupKeyBackedUp(true);
-          } else {
-            // 카카오 발송이 실패해도 보안키 자체는 이미 설정되어 시뮬레이션은 정상 진행되므로
-            // 조용히 넘기지 않고, 키 값을 포함해 사용자가 직접 기록해두도록 명시적으로 알린다
-            // (handleResetAllScenarios/handleSendKeyToKakao와 동일한 실패 처리 패턴).
-            console.error('Failed to send key to Kakao:', data.error);
-            alert(`보안키는 설정되었지만 카카오톡 전송에 실패했습니다.\n보안키: ${cleanPassword}\n이 키를 반드시 별도로 기록해 두세요.`);
-          }
-        })
-        .catch(err => {
-          console.error('Failed to send key to Kakao:', err);
-          alert(`보안키는 설정되었지만 카카오톡 전송에 실패했습니다.\n보안키: ${cleanPassword}\n이 키를 반드시 별도로 기록해 두세요.`);
-        });
-
-      // Initialize first scenario using the new key
-      const loaded = loadParams();
-      const migrated = migrateParams(loaded || initialParams, etfTickers);
-      let latestParams = migrated;
       try {
-        latestParams = await fetchLatestParamsInfo(migrated);
-      } catch (err) {
-        console.error('Failed to fetch setup parameters info:', err);
-      }
-      lastSavedParamsRef.current['local-default'] = JSON.stringify(latestParams);
-      await handleCreateScenario('기본 시나리오', latestParams, true, cleanPassword);
-      return true;
-    }, [session, etfTickers]),
-    handleSendKeyToKakao: useCallback(async (keyToSend: string) => {
-      if (status !== 'authenticated') return { success: false, error: '로그인이 필요합니다.' };
-      try {
-        const res = await fetch('/api/user/send-backup-key', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ key: keyToSend }),
-        });
-        const data = await res.json();
-        if (res.ok && data.success) {
-          const userId = session?.user?.id;
-          if (userId) {
-            localStorage.setItem(`nextlife_e2ee_backed_up_${userId}`, 'true');
-            setIsBackupKeyBackedUp(true);
-          }
-          return { success: true };
+        const defaultScenario = scenarios.find(s => s.isDefault) || scenarios[0];
+        for (const s of scenarios.filter(s => s.id !== defaultScenario?.id)) {
+          await fetch(`/api/scenarios/${s.id}`, { method: 'DELETE' });
         }
-        return { success: false, error: data.error || '전송 실패' };
+        if (defaultScenario) {
+          const encrypted = await encryptData(initialParams, newKey, userId);
+          await fetch(`/api/scenarios/${defaultScenario.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ data: encrypted }),
+          });
+        }
       } catch (err) {
-        console.error('Failed to send Kakao key:', err);
-        return { success: false, error: '네트워크 오류가 발생했습니다.' };
+        console.error('Failed to reset scenarios:', err);
+        alert('초기화 중 오류가 발생했습니다.');
+        return;
       }
-    }, [status, session])
+
+      // 옛 키 기준의 "손상됨" 판정은 새 키에서 무의미하다. 남겨 두면 정당한 복구 요구를 막는다.
+      corruptedScenarioIdsRef.current.clear();
+      // 재적재 후 이 사용자에게 또 발급이 나가지 않도록 래치를 채운다.
+      keyIssuedForUserRef.current = userId;
+      setNeedsKeyRestore(false);
+      setRestoreError(null);
+
+      setKeyIssuance({ status: 'sending', key: newKey });
+      const result = await postBackupKey(newKey);
+      setKeyIssuance(result.success
+        ? { status: 'sent', key: newKey }
+        : { status: 'failed', key: newKey, error: result.error });
+
+      // window.location.reload() 대신 handleRestoreKey와 같은 재적재 경로를 쓴다.
+      // 전체 리로드는 방금 세팅한 발급 모달까지 날려 버린다.
+      setLocalKey(newKey);
+      setLoadedRequestKey(null);
+    },
   };
 }
