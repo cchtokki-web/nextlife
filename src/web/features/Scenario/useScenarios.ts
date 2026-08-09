@@ -6,6 +6,7 @@ import { useIsHydrated } from '../../hooks/useBrowserEnvironment';
 import { loadParams, saveParams, initialParams } from '../../../infrastructure/storage/localStore';
 import { e2eeKeyName, e2eeBackedUpKeyName } from '../../../infrastructure/storage/storageKeys';
 import { encryptData, decryptData, isEncryptedPayload, generateBackupKey } from '../../../core/utils/crypto';
+import { MAX_SCENARIO_COUNT } from '../../../core/utils/scenarioLimits';
 
 // GET /api/scenarios 응답. data의 각 항목은 평문(SimulationParams)일 수도, E2EE로 암호화된
 // 형태일 수도 있어 소비처가 복호화를 시도하며 좁힌다.
@@ -323,8 +324,8 @@ export function useScenarios() {
   // 이 함수가 읽는 값은 모두 위쪽 상태 선언부에 있어 위치를 옮겨도 안전하다.
   const handleCreateScenario = async (name: string, data: SimulationParams, isDefault = false, overrideKey?: string) => {
     console.log('[E2EE] handleCreateScenario called:', name, 'isDefault:', isDefault, 'status:', status);
-    if (!isDefault && scenarios.length >= 3) {
-      alert('시나리오는 최대 3개까지만 생성할 수 있습니다.');
+    if (!isDefault && scenarios.length >= MAX_SCENARIO_COUNT) {
+      alert(`시나리오는 최대 ${MAX_SCENARIO_COUNT}개까지만 생성할 수 있습니다.`);
       return;
     }
 
@@ -605,15 +606,24 @@ export function useScenarios() {
             let hasDecryptionFailure = false;
             // 서버에 평문으로 남아 있던 시나리오. 아래에서 즉시 암호화해 되돌린다.
             const plaintextIds: string[] = [];
+            // 다른 계정에서 옮겨 온 암호문. 원래 사용자 ID와 키로 연 뒤 현재 계정 키로
+            // 즉시 다시 암호화해, 다음 접속부터는 하나의 보안키만 필요하게 만든다.
+            const mergedEncryptionIds: string[] = [];
 
             for (const s of list) {
               const displayName = s.isDefault ? '기본 시나리오' : s.name;
               if (isEncryptedPayload(s.data)) {
                 try {
-                  const decryptedData = await decryptData<SimulationParams>(s.data, activeKey, userId);
+                  const encryptionUserId = s.encryptionUserId || userId;
+                  const scenarioKey = encryptionUserId === userId
+                    ? activeKey
+                    : localStorage.getItem(e2eeKeyName(encryptionUserId));
+                  if (!scenarioKey) throw new Error('Merged account security key is missing');
+                  const decryptedData = await decryptData<SimulationParams>(s.data, scenarioKey, encryptionUserId);
                   const migrated = convertToRepresentativeAssets(migrateParams(decryptedData, etfTickers));
                   decryptedList.push({ ...s, name: displayName, data: migrated });
                   lastSavedParamsRef.current[s.id] = JSON.stringify(migrated);
+                  if (s.encryptionUserId) mergedEncryptionIds.push(s.id);
                 } catch (err) {
                   console.error('Decryption failed for scenario', s.id, err);
                   // 이미 handleRestoreKey에서 "키는 맞지만 이 시나리오만 손상됨"으로 확인된
@@ -676,6 +686,24 @@ export function useScenarios() {
                 // — 재암호화를 서두른 이유가 통째로 사라진다. 기록을 지워 재시도 경로를 연다.
                 delete lastSavedParamsRef.current[id];
                 // 계정이 아직 무방비라는 사실을 최소한 배지에는 남긴다.
+                setSaveStatus('error');
+              }
+            }
+
+            for (const id of mergedEncryptionIds) {
+              const target = decryptedList.find(s => s.id === id);
+              if (!target) continue;
+              try {
+                const encrypted = await encryptData(target.data, activeKey, userId);
+                const res = await fetch(`/api/scenarios/${id}`, {
+                  method: 'PUT',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ data: encrypted }),
+                });
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+              } catch (err) {
+                console.error('Failed to re-encrypt merged scenario', id, err);
+                delete lastSavedParamsRef.current[id];
                 setSaveStatus('error');
               }
             }
@@ -957,7 +985,7 @@ export function useScenarios() {
         if (!res.ok) throw new Error('Failed to fetch scenarios');
         const { data } = await res.json();
 
-        const encryptedItems: Array<{ id: string; data: unknown }> = (Array.isArray(data) ? data : [])
+        const encryptedItems: Array<{ id: string; data: unknown; encryptionUserId?: string | null }> = (Array.isArray(data) ? data : [])
           .filter((s: { data: unknown }) => isEncryptedPayload(s.data));
 
         // 검증할 암호문이 하나도 없으면 이 키가 맞는지 확인할 방법이 없다.
@@ -976,33 +1004,38 @@ export function useScenarios() {
           return false;
         }
 
-        let decryptedSuccessfully = false;
-        const failedScenarioIds: string[] = [];
+        const successfulOrigins = new Set<string>();
+        const failedByOrigin = new Map<string, string[]>();
 
         for (const s of encryptedItems) {
+          const encryptionUserId = s.encryptionUserId || userId;
           try {
-            await decryptData(s.data as EncryptedData, cleanKey, userId);
-            decryptedSuccessfully = true;
+            await decryptData(s.data as EncryptedData, cleanKey, encryptionUserId);
+            successfulOrigins.add(encryptionUserId);
           } catch {
-            // 이 시나리오만 복호화 실패 — 키가 틀렸는지 이 시나리오만 손상됐는지는
-            // 아래에서 "다른 시나리오가 하나라도 복호화됐는지"로 판별한다.
-            failedScenarioIds.push(s.id);
+            failedByOrigin.set(encryptionUserId, [...(failedByOrigin.get(encryptionUserId) ?? []), s.id]);
           }
         }
 
-        if (!decryptedSuccessfully) {
+        if (successfulOrigins.size === 0) {
           // 암호화된 시나리오가 있는데 단 하나도 복호화되지 않았다면 키 자체가 틀린 것이다.
           setRestoreError('보안키가 올바르지 않습니다.');
           return false;
         }
 
-        if (failedScenarioIds.length > 0) {
+        const corruptedIds = [...successfulOrigins]
+          .flatMap(originId => failedByOrigin.get(originId) ?? []);
+        if (corruptedIds.length > 0) {
           // 키는 맞지만(다른 시나리오는 복호화됨) 일부 시나리오만 복호화에 실패했다면,
           // 그건 키 문제가 아니라 해당 시나리오 데이터 자체가 손상된 것이다. 이후 로드에서
           // 같은 키를 다시 요구하는 무한 루프에 빠지지 않도록 손상된 것으로 기록해둔다.
-          failedScenarioIds.forEach((id) => corruptedScenarioIdsRef.current.add(id));
-          alert(`일부 시나리오(${failedScenarioIds.length}개)는 데이터가 손상되어 복구할 수 없습니다. 해당 시나리오는 기본값으로 표시됩니다. 필요하면 삭제 후 다시 만들어주세요.`);
+          corruptedIds.forEach((id) => corruptedScenarioIdsRef.current.add(id));
+          alert(`일부 시나리오(${corruptedIds.length}개)는 데이터가 손상되어 복구할 수 없습니다. 해당 시나리오는 기본값으로 표시됩니다. 필요하면 삭제 후 다시 만들어주세요.`);
         }
+
+        successfulOrigins.forEach(originId => {
+          localStorage.setItem(e2eeKeyName(originId), cleanKey);
+        });
       } catch (err) {
         console.error('Verification of restore key failed:', err);
         setRestoreError('시나리오를 불러오지 못해 보안키를 확인할 수 없습니다. 잠시 후 다시 시도해 주세요.');
@@ -1010,10 +1043,13 @@ export function useScenarios() {
       }
 
       setRestoreError(null);
-      localStorage.setItem(e2eeKeyName(userId), cleanKey);
-      localStorage.setItem(e2eeBackedUpKeyName(userId), 'true');
-      setLocalKey(cleanKey);
-      setIsBackupKeyBackedUp(true);
+      // 현재 계정 키를 복구한 경우에만 로그인용 키를 교체한다. 병합된 이전 계정 키라면
+      // 해당 암호문을 여는 데만 저장하고 현재 계정 키는 그대로 둔다.
+      if (localStorage.getItem(e2eeKeyName(userId)) === cleanKey) {
+        localStorage.setItem(e2eeBackedUpKeyName(userId), 'true');
+        setLocalKey(cleanKey);
+        setIsBackupKeyBackedUp(true);
+      }
       setNeedsKeyRestore(false);
       setRestoreUnverifiable(false);
       // 요청 키를 무효화해 재적재를 촉발한다. 로딩 이펙트가 isLoaded를 의존성으로 갖고

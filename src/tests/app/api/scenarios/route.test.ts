@@ -23,6 +23,7 @@ vi.mock('@/infrastructure/db/prisma', () => ({
     },
     scenario: {
       findFirst: vi.fn(),
+      count: vi.fn(),
       create: vi.fn(),
       update: vi.fn(),
       deleteMany: vi.fn(),
@@ -64,6 +65,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   mockedGetServerSession.mockResolvedValue({ user: { id: USER_ID } } as never);
   mockedUpdateMany.mockResolvedValue({ count: 1 });
+  vi.mocked(prisma.scenario.count).mockResolvedValue(0);
   mockedIsDevMode.mockReturnValue(false);
 });
 
@@ -166,6 +168,26 @@ describe('POST /api/scenarios — E2EE 잠금 플래그', () => {
     expect(res.status).toBe(500);
     expect(mockedUpdateMany).not.toHaveBeenCalled();
     consoleError.mockRestore();
+  });
+
+  test.each([5, 6])('기존 시나리오가 %i개면 신규 생성을 막고 기존 행은 유지한다', async (count) => {
+    vi.mocked(prisma.scenario.count).mockResolvedValue(count);
+
+    const res = await POST(postBody(encrypted));
+
+    expect(res.status).toBe(409);
+    expect(await res.json()).toMatchObject({ error: '시나리오는 최대 5개까지만 생성할 수 있습니다.' });
+    expect(vi.mocked(prisma.scenario.create)).not.toHaveBeenCalled();
+    expect(vi.mocked(prisma.scenario.deleteMany)).not.toHaveBeenCalled();
+  });
+
+  test('기존 시나리오가 4개면 다섯 번째 생성을 허용한다', async () => {
+    vi.mocked(prisma.scenario.count).mockResolvedValue(4);
+
+    const res = await POST(postBody(encrypted));
+
+    expect(res.status).toBe(201);
+    expect(vi.mocked(prisma.scenario.create)).toHaveBeenCalled();
   });
 });
 

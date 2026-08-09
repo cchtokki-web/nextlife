@@ -617,6 +617,8 @@ export interface HealthcareAssumptions {
 
 export interface ScenarioModel {
   id: string;
+  /** 계정 병합 전 암호화에 사용된 사용자 ID. 한 번 재저장되면 제거된다. */
+  encryptionUserId?: string | null;
   name: string;
   isDefault: boolean;
   data: SimulationParams;

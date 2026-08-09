@@ -9,8 +9,6 @@ import { isRateLimited } from '@/core/utils/rateLimiter';
 import { generateSecurityKey } from '@/core/utils/securityKey';
 import {
   emailAccountCandidateSelect,
-  isMergeableEmptyEmailAccount,
-  occupiedEmailMessage,
 } from '@/core/utils/emailAccountMerge';
 
 const migrationIdentifier = (userId: string, email: string) => `email-migration:${userId}:${email}`;
@@ -49,9 +47,6 @@ export async function POST(req: Request) {
       select: emailAccountCandidateSelect,
     });
     const conflictingOwner = emailOwner?.id !== userId ? emailOwner : null;
-    if (conflictingOwner && !isMergeableEmptyEmailAccount(conflictingOwner)) {
-      return NextResponse.json({ error: occupiedEmailMessage, code: 'ACCOUNT_MERGE_REQUIRED' }, { status: 409 });
-    }
 
     const newKey = generateSecurityKey();
     const securityKeyHash = await bcrypt.hash(newKey, 12);

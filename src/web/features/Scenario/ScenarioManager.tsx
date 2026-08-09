@@ -4,6 +4,7 @@ import { FolderGit2, ChevronDown, ChevronUp, Copy, Trash2, Edit2, CheckSquare, S
 import compStyles from '../../styles/components.module.css';
 import type { ScenarioModel } from '../../../core/entities/types';
 import type { useScenarios } from './useScenarios';
+import { MAX_SCENARIO_COUNT } from '../../../core/utils/scenarioLimits';
 
 // 이 패널은 useScenarios가 돌려주는 상태 뭉치를 통째로 받는다. 훅의 반환 타입을 그대로
 // 따라가면 필드를 늘리거나 이름을 바꿀 때 여기서도 바로 어긋남이 드러난다.
@@ -94,7 +95,7 @@ const ScenarioItem: React.FC<ScenarioItemProps> = ({
               <button 
                 onClick={(e) => { e.stopPropagation(); if (!isDuplicateDisabled) onDuplicate(); }} 
                 className={`${styles.actionBtn} ${styles.iconBtn}`} 
-                title={isDuplicateDisabled ? "최대 3개까지만 생성할 수 있습니다" : "복제"}
+                title={isDuplicateDisabled ? `최대 ${MAX_SCENARIO_COUNT}개까지만 생성할 수 있습니다` : "복제"}
                 disabled={isDuplicateDisabled}
                 style={isDuplicateDisabled ? { opacity: 0.4, cursor: 'not-allowed' } : {}}
               ><Copy size={16} /></button>
@@ -201,7 +202,7 @@ export const ScenarioManager: React.FC<{ scenarioState: ScenarioState }> = ({ sc
                 scenario={s}
                 isActive={s.id === activeScenarioId}
                 isCompared={compareScenarioIds.includes(s.id)}
-                isDuplicateDisabled={scenarios.length >= 3}
+                isDuplicateDisabled={scenarios.length >= MAX_SCENARIO_COUNT}
                 onSelect={() => setActiveScenarioId(s.id)}
                 onToggleCompare={() => toggleCompareScenario(s.id)}
                 onRename={(newName) => handleRenameScenario(s.id, newName)}

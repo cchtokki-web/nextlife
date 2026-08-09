@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import Image from 'next/image';
 import { signOut, useSession } from 'next-auth/react';
 import type { EncryptedData } from '@/core/utils/crypto';
@@ -16,14 +16,12 @@ export default function EmailMigrationForm() {
   const [step, setStep] = useState<Step>('email');
   const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
-  const [keyDigits, setKeyDigits] = useState(['', '', '', '', '', '']);
   const [loading, setLoading] = useState(false);
   const [checking, setChecking] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [failedKeyAttempts, setFailedKeyAttempts] = useState(0);
+  const [missingCurrentKey, setMissingCurrentKey] = useState(false);
   const [confirmingReset, setConfirmingReset] = useState(false);
-  const keyRefs = useRef<Array<HTMLInputElement | null>>([]);
 
   useEffect(() => {
     if (status !== 'authenticated' || !session?.user?.id) return;
@@ -32,8 +30,7 @@ export default function EmailMigrationForm() {
     fetch('/api/user/email-migration/status')
       .then((response) => response.ok ? response.json() : Promise.reject(new Error(`HTTP ${response.status}`)))
       .then((data) => {
-        const storedKey = localStorage.getItem(e2eeKeyName(userId));
-        if (storedKey?.length === 6) setKeyDigits(storedKey.split(''));
+        setMissingCurrentKey(!localStorage.getItem(e2eeKeyName(userId)));
         if (!data.required) {
           setEmail(data.email ?? '');
           setStep('complete');
@@ -42,20 +39,6 @@ export default function EmailMigrationForm() {
       .catch(() => setError('전환 상태를 확인하지 못했습니다. 페이지를 새로고침해 주세요.'))
       .finally(() => setChecking(false));
   }, [session?.user?.id, status]);
-
-  const updateKey = (index: number, rawValue: string) => {
-    const value = rawValue.toUpperCase().replace(/[^A-Z0-9]/g, '');
-    const next = [...keyDigits];
-    if (value.length >= 6) {
-      value.slice(0, 6).split('').forEach((character, digitIndex) => { next[digitIndex] = character; });
-      setKeyDigits(next);
-      keyRefs.current[5]?.focus();
-      return;
-    }
-    next[index] = value.slice(-1);
-    setKeyDigits(next);
-    if (value && index < 5) keyRefs.current[index + 1]?.focus();
-  };
 
   const requestCode = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -105,9 +88,15 @@ export default function EmailMigrationForm() {
 
   const completeMigration = async (event: React.FormEvent) => {
     event.preventDefault();
-    const securityKey = keyDigits.join('').toUpperCase();
-    if (!/^\d{6}$/.test(code) || securityKey.length !== 6) {
-      setError('이메일 인증번호와 6자리 보안키를 모두 입력해 주세요.');
+    const userId = session?.user?.id;
+    const securityKey = userId ? localStorage.getItem(e2eeKeyName(userId))?.trim().toUpperCase() : null;
+    if (!/^\d{6}$/.test(code)) {
+      setError('이메일 인증번호 6자리를 입력해 주세요.');
+      return;
+    }
+    if (!securityKey || securityKey.length !== 6) {
+      setMissingCurrentKey(true);
+      setError('이 브라우저에 현재 보안키가 없어 기존 데이터를 확인할 수 없습니다. 데이터를 초기화하고 새 키를 발급받아 주세요.');
       return;
     }
 
@@ -115,9 +104,8 @@ export default function EmailMigrationForm() {
     setError(null);
     try {
       if (!await verifyCurrentSecurityKey(securityKey)) {
-        const attempts = failedKeyAttempts + 1;
-        setFailedKeyAttempts(attempts);
-        setError(`기존 데이터를 열 수 없는 보안키입니다. (${attempts}/5) 이전에 받은 보안키를 확인해 주세요.`);
+        setMissingCurrentKey(true);
+        setError('이 브라우저에 저장된 키로 기존 데이터를 열 수 없습니다. 데이터를 초기화하고 새 키를 발급받아 주세요.');
         return;
       }
 
@@ -132,7 +120,6 @@ export default function EmailMigrationForm() {
         return;
       }
 
-      const userId = session?.user?.id;
       if (userId) {
         localStorage.setItem(e2eeKeyName(userId), securityKey);
         localStorage.setItem(e2eeBackedUpKeyName(userId), data.keyEmailSent ? 'true' : 'false');
@@ -202,7 +189,7 @@ export default function EmailMigrationForm() {
         <form onSubmit={requestCode}>
           <p className={loginStyles.subtitle}>기존 시나리오와 자산 데이터는 그대로 유지됩니다.</p>
           <div className={styles.infoBox}>
-            이메일 인증 후 현재 보안키를 연결하면 다음부터 이메일과 보안키로 로그인할 수 있습니다. 카카오 계정과 데이터가 새로 만들어지거나 복사되지 않습니다.
+            이메일 인증 후 현재 계정에 이메일 로그인을 연결합니다. 같은 이메일로 만든 계정이 있으면 저장된 시나리오를 빠짐없이 함께 병합합니다.
           </div>
           <div className={loginStyles.formGroup}>
             <label htmlFor="migration-email" className={loginStyles.label}>연결할 이메일 주소</label>
@@ -215,26 +202,20 @@ export default function EmailMigrationForm() {
 
       {step === 'verify' && (
         <form onSubmit={completeMigration}>
-          <p className={loginStyles.subtitle}><strong>{email}</strong>로 받은 인증번호와 기존 보안키를 입력해 주세요.</p>
+          <p className={loginStyles.subtitle}><strong>{email}</strong>로 받은 인증번호를 입력해 주세요.</p>
           {notice && <div className={loginStyles.successMessage}>{notice}</div>}
           <div className={loginStyles.formGroup}>
             <label htmlFor="migration-code" className={loginStyles.label}>이메일 인증번호</label>
             <input id="migration-code" inputMode="numeric" autoComplete="one-time-code" maxLength={6} required className={loginStyles.input} value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="6자리 숫자" />
           </div>
-          <label className={loginStyles.label}>현재 보안키</label>
-          <div className={loginStyles.pinGroup}>
-            {keyDigits.map((digit, index) => (
-              <input key={index} ref={(element) => { keyRefs.current[index] = element; }} aria-label={`현재 보안키 ${index + 1}번째 자리`} type="password" autoComplete="off" maxLength={6} className={loginStyles.pinInput} value={digit} onChange={(event) => updateKey(index, event.target.value)} />
-            ))}
-          </div>
-          <div className={styles.infoBox}>현재 보안키로 기존 암호화 데이터를 직접 확인합니다. 키를 바꾸거나 데이터를 다시 암호화하지 않습니다.</div>
+          <div className={styles.infoBox}>이 브라우저에 저장된 현재 보안키로 기존 데이터를 확인합니다. 전환이 완료되면 같은 보안키를 입력한 이메일로 다시 보내드립니다.</div>
           {error && <div role="alert" className={loginStyles.errorMessage}>{error}</div>}
           <button disabled={loading} className={loginStyles.submitBtn}>{loading ? '확인 중...' : '이메일 로그인 연결'}</button>
-          {failedKeyAttempts >= 5 && (
+          {missingCurrentKey && (
             confirmingReset ? (
               <div className={loginStyles.resetWarning}>
                 <strong>기존 데이터를 모두 초기화하시겠습니까?</strong>
-                <p>저장된 시나리오와 자산 데이터가 삭제되고 새 보안키가 이메일로 발송됩니다. 이 작업은 되돌릴 수 없습니다.</p>
+                <p>현재 카카오 계정과 같은 이메일로 만든 계정의 시나리오·자산 데이터가 모두 삭제되고 새 보안키가 이메일로 발송됩니다. 이 작업은 되돌릴 수 없습니다.</p>
                 <div className={loginStyles.resetActions}>
                   <button type="button" className={loginStyles.secondaryBtn} onClick={() => setConfirmingReset(false)}>취소</button>
                   <button type="button" className={loginStyles.dangerBtn} disabled={loading} onClick={resetDataAndCompleteMigration}>삭제하고 새 키 받기</button>
