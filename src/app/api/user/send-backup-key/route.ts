@@ -9,6 +9,16 @@ import { isKakaoAuthError, refreshKakaoAccessToken } from '@/infrastructure/kaka
 // 이 라우트의 error 문구는 발급 모달에 그대로 뜬다. 카카오 응답 본문이나 내부 사정은
 // 서버 로그에만 남기고, 사용자에게는 "무엇을 하면 되는가"만 알려 준다.
 const SEND_FAILED_MESSAGE = '카카오톡 서버가 메시지를 받지 못했습니다. 잠시 후 다시 시도해 주세요.';
+const KAKAO_CONSENT_REQUIRED_MESSAGE = '카카오톡 전송 권한 동의가 필요합니다.';
+
+type KakaoErrorBody = {
+  code?: number;
+  required_scopes?: string[];
+};
+
+function requiresTalkMessageConsent(body: KakaoErrorBody | null): boolean {
+  return body?.code === -402 && body.required_scopes?.includes('talk_message') === true;
+}
 
 export async function POST(req: Request) {
   try {
@@ -70,10 +80,21 @@ export async function POST(req: Request) {
       }),
     });
 
-    const resData = await response.json();
+    const resData = await response.json() as KakaoErrorBody & { result_code?: number };
 
     if (response.ok && resData.result_code === 0) {
       return NextResponse.json({ success: true });
+    }
+
+    // 카카오는 talk_message에 동의하지 않은 토큰으로 호출하면 -402와 required_scopes를 준다.
+    // 같은 토큰으로 재시도해도 절대 성공하지 않으므로, 클라이언트가 추가 동의 화면을 열 수
+    // 있도록 외부 응답 본문 대신 안정적인 내부 코드만 전달한다.
+    if (requiresTalkMessageConsent(resData)) {
+      console.warn('Kakao talk_message consent is required for account:', account.id);
+      return NextResponse.json({
+        error: KAKAO_CONSENT_REQUIRED_MESSAGE,
+        code: 'KAKAO_CONSENT_REQUIRED',
+      }, { status: 403 });
     }
 
     // 액세스 토큰이 죽었으면 재발급 후 한 번 재시도한다. 재발급/저장 로직은 탈퇴의

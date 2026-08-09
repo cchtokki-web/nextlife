@@ -4,7 +4,10 @@ import type { NextAuthOptions } from 'next-auth';
 // authOptions는 모듈 로드 시점에 isDevMode()를 읽어 provider 목록·쿠키 설정·NEXTAUTH_URL을
 // 확정한다. 따라서 모드별 동작을 보려면 env를 바꾼 뒤 모듈을 새로 import해야 한다.
 vi.mock('@/infrastructure/db/prisma', () => ({
-  prisma: { user: { findUnique: vi.fn() } },
+  prisma: {
+    user: { findUnique: vi.fn() },
+    account: { updateMany: vi.fn() },
+  },
 }));
 
 vi.mock('@next-auth/prisma-adapter', () => ({
@@ -93,6 +96,61 @@ describe('authOptions — 프로덕션 모드', () => {
     const authOptions = await loadAuthOptions(false);
 
     expect(authOptions.session?.strategy).toBe('jwt');
+  });
+
+  test('기존 카카오 계정으로 재로그인하면 새 OAuth 토큰을 Account 행에 반영한다', async () => {
+    const authOptions = await loadAuthOptions(false);
+    const { prisma } = await import('@/infrastructure/db/prisma');
+    const signIn = authOptions.callbacks!.signIn!;
+
+    const allowed = await signIn({
+      user: { id: 'user-1' },
+      account: {
+        provider: 'kakao',
+        providerAccountId: 'kakao-1',
+        type: 'oauth',
+        access_token: 'new-access',
+        refresh_token: 'new-refresh',
+        expires_at: 123456,
+      },
+      profile: undefined,
+      email: undefined,
+      credentials: undefined,
+    });
+
+    expect(allowed).toBe(true);
+    expect(prisma.account.updateMany).toHaveBeenCalledWith({
+      where: { provider: 'kakao', providerAccountId: 'kakao-1' },
+      data: {
+        access_token: 'new-access',
+        refresh_token: 'new-refresh',
+        expires_at: 123456,
+      },
+    });
+  });
+
+  test('재로그인 응답에 refresh_token이 없으면 기존 값을 지우지 않는다', async () => {
+    const authOptions = await loadAuthOptions(false);
+    const { prisma } = await import('@/infrastructure/db/prisma');
+    const signIn = authOptions.callbacks!.signIn!;
+
+    await signIn({
+      user: { id: 'user-1' },
+      account: {
+        provider: 'kakao',
+        providerAccountId: 'kakao-1',
+        type: 'oauth',
+        access_token: 'new-access',
+      },
+      profile: undefined,
+      email: undefined,
+      credentials: undefined,
+    });
+
+    expect(prisma.account.updateMany).toHaveBeenCalledWith({
+      where: { provider: 'kakao', providerAccountId: 'kakao-1' },
+      data: { access_token: 'new-access' },
+    });
   });
 });
 

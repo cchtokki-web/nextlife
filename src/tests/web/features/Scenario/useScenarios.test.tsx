@@ -369,6 +369,34 @@ describe('useScenarios — 로그인', () => {
     expect(result.current.keyNotice).toMatchObject({ error: '카카오톡 전송에 실패했습니다.' });
   }, 10000);
 
+  test('카카오 talk_message 동의가 필요하면 권한 동의 상태를 전달한다', async () => {
+    signedIn();
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url === '/api/user/send-backup-key') {
+        return {
+          ok: false,
+          status: 403,
+          json: async () => ({
+            error: '카카오톡 전송 권한 동의가 필요합니다.',
+            code: 'KAKAO_CONSENT_REQUIRED',
+          }),
+        } as unknown as Response;
+      }
+      if (url === '/api/scenarios') {
+        return { ok: true, json: async () => ({ data: [] }) } as unknown as Response;
+      }
+      return { ok: true, json: async () => ({ success: true }) } as unknown as Response;
+    }));
+
+    const { result } = renderHook(() => useScenarios());
+
+    await waitFor(() => expect(result.current.keyNotice?.status).toBe('failed'));
+    expect(result.current.keyNotice).toMatchObject({
+      error: '카카오톡 전송 권한 동의가 필요합니다.',
+      requiresKakaoConsent: true,
+    });
+  }, 10000);
+
   // 이펙트가 다시 돌 때마다 발급하면 카카오톡에 서로 다른 키가 여러 개 도착한다.
   test('재렌더가 반복돼도 보안키는 한 번만 발급한다', async () => {
     signedIn();

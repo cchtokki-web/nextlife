@@ -142,6 +142,30 @@ export const authOptions: NextAuthOptions = {
     strategy: "jwt",
   },
   callbacks: {
+    async signIn({ account }) {
+      // NextAuth v4의 PrismaAdapter는 기존 OAuth Account로 다시 로그인해도 새 토큰을 DB에
+      // 반영하지 않는다. 카카오 동의항목을 추가로 승인받아도 여기서 갱신하지 않으면
+      // send-backup-key는 계속 예전 access_token을 사용해 -402를 반복한다.
+      //
+      // 신규 계정은 이 시점에 Account 행이 아직 없어 updateMany가 0건이고, 이어지는
+      // PrismaAdapter.linkAccount가 새 토큰으로 행을 만든다. 기존 계정만 이 갱신 대상이다.
+      if (account?.provider === 'kakao' && account.providerAccountId) {
+        await prisma.account.updateMany({
+          where: {
+            provider: 'kakao',
+            providerAccountId: account.providerAccountId,
+          },
+          data: {
+            ...(account.access_token ? { access_token: account.access_token } : {}),
+            // 카카오는 매번 refresh_token을 주지 않는다. 없을 때 undefined/null로 덮으면
+            // 다음 access token 만료 뒤에는 복구할 수 없으므로 새 값이 있을 때만 갱신한다.
+            ...(account.refresh_token ? { refresh_token: account.refresh_token } : {}),
+            ...(typeof account.expires_at === 'number' ? { expires_at: account.expires_at } : {}),
+          },
+        });
+      }
+      return true;
+    },
     async jwt({ token, user, account }) {
       if (account) {
         token.provider = account.provider;

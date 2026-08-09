@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { AlertTriangle } from 'lucide-react';
+import { signIn } from 'next-auth/react';
 import type { KeyNotice } from '../features/Scenario/useScenarios';
 // 배럴(ui/index.ts)을 경유하지 않는다 — 거기서 Collapse/Tooltip/GLOSSARY까지 딸려 온다.
 import { ModalShell } from './ui/ModalShell';
@@ -415,6 +416,7 @@ const IssuedKeyNotice: React.FC<{
   // failed / unbacked — 두 경우 모두 "카카오톡에 키가 남아 있다고 확신할 수 없는" 상태다.
   const title = notice.status === 'failed' ? '카카오톡 전송에 실패했습니다' : '보안키 백업이 확인되지 않았습니다';
   const reason = notice.status === 'failed' ? notice.error : undefined;
+  const requiresKakaoConsent = notice.status === 'failed' && notice.requiresKakaoConsent === true;
 
   return (
     <ModalShell title={title}>
@@ -443,7 +445,21 @@ const IssuedKeyNotice: React.FC<{
       </div>
 
       <div style={{ display: 'flex', gap: '8px' }}>
-        {onRetrySend && (
+        {requiresKakaoConsent ? (
+          <button
+            type="button"
+            onClick={() => {
+              // 기존 카카오 연결에는 talk_message 동의가 없을 수 있다. scope를 명시해 추가 동의
+              // 화면을 열고, 돌아오면 localStorage에 보존된 같은 키를 다시 보낼 수 있게 한다.
+              signIn('kakao', { callbackUrl: '/simulator' }, {
+                scope: 'profile_nickname,profile_image,talk_message',
+              });
+            }}
+            style={secondaryButtonStyle}
+          >
+            카카오 권한 동의
+          </button>
+        ) : onRetrySend && (
           <button
             type="button"
             disabled={isCoolingDown}
