@@ -167,6 +167,12 @@ describe('POST /api/user/send-backup-key', () => {
     expect((options as RequestInit).headers).toMatchObject({
       Authorization: 'Bearer valid-token',
     });
+    const requestBody = new URLSearchParams((options as RequestInit).body as string);
+    const template = JSON.parse(requestBody.get('template_object')!);
+    // 보안키 메시지에는 이동 링크가 필요 없다. 미등록 배포 도메인을 넣으면 카카오가
+    // 템플릿 전체를 400으로 거절하므로 빈 link로 버튼을 숨긴다.
+    expect(template.link).toEqual({});
+    expect(template).not.toHaveProperty('button_title');
   });
 
   test('액세스 토큰 만료(401) 시 리프레시 토큰으로 재발급 후 재전송에 성공하면 success:true를 반환한다', async () => {
