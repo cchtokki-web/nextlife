@@ -3,6 +3,8 @@ import { getServerSession } from 'next-auth/next';
 import { authOptions } from '@/core/utils/authOptions';
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/infrastructure/db/prisma';
+import { markE2eeEnabled } from '@/infrastructure/db/e2ee';
+import { isEncryptedPayload } from '@/core/utils/crypto';
 
 export async function PUT(
   req: Request,
@@ -35,6 +37,10 @@ export async function PUT(
 
     const body = await req.json();
     const { name, data, isDefault } = body;
+
+    if (data !== undefined && isEncryptedPayload(data)) {
+      await markE2eeEnabled(user.id);
+    }
 
     const updateData: Prisma.ScenarioUpdateInput = {};
     if (name !== undefined) updateData.name = name;

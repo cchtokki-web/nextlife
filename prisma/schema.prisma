@@ -16,6 +16,13 @@ model User {
   passwordHash   String?
   tier           String     @default("basic")
   simulationData String?
+  // 이 계정의 데이터가 보안키로 잠겨 있음을 서버가 기억하는 자리. 서버가 암호문을 처음 받거나
+  // 읽은 순간 세워지고, 이후 내려가지 않는다.
+  //
+  // 이게 없던 시절에는 클라이언트가 "지금 받아 온 payload가 암호문이냐"만 보고 키를 요구했다.
+  // 그러면 평문 행이 하나라도 생기는 순간(레거시 simulationData 마이그레이션, 키 없는 세션의
+  // 저장) 그 계정은 어느 브라우저에서든 키 없이 열린다 — E2EE가 조용히 꺼진다.
+  e2eeEnabledAt  DateTime?
   createdAt      DateTime   @default(now())
   updatedAt      DateTime   @updatedAt
   accounts       Account[]

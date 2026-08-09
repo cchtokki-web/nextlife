@@ -8,6 +8,9 @@ import { useIsHydrated } from '../../hooks/useBrowserEnvironment';
 // 형태일 수도 있어 소비처가 복호화를 시도하며 좁힌다.
 interface ScenarioListResponse {
   data?: Array<Omit<ScenarioModel, 'data'> & { data: unknown }>;
+  // 이 계정이 보안키로 잠겨 있는지. payload 모양과 독립적인 서버 기록이라, 평문 행이 섞여
+  // 있어도 키 요구가 사라지지 않는다.
+  e2eeEnabled?: boolean;
 }
 import { loadParams, saveParams, initialParams } from '../../../infrastructure/storage/localStore';
 import { encryptData, decryptData, isEncryptedPayload, generateBackupKey } from '../../../core/utils/crypto';
@@ -292,13 +295,19 @@ export function useScenarios() {
     }
 
     if (status === 'authenticated') {
+      const keyToUse = overrideKey || localKey;
+      const userId = session?.user?.id;
+      // 키 없이 저장하면 서버에 평문이 남는다. 그 순간부터 이 계정은 어느 브라우저에서든 키 없이
+      // 열리므로(E2EE가 조용히 꺼진다), 저장을 포기하는 쪽이 낫다. 로딩 경로가 인증 세션에는
+      // 반드시 키를 쥐여 주므로 여기 걸리면 그건 버그다 — 조용히 넘기지 않는다.
+      if (!keyToUse || !userId) {
+        console.error('[E2EE] Refusing to create scenario without a key');
+        setSaveStatus('error');
+        alert('보안키가 준비되지 않아 시나리오를 만들 수 없습니다. 페이지를 새로고침해 주세요.');
+        return;
+      }
       try {
-        let payloadToSave: SimulationParams | EncryptedData = data;
-        const keyToUse = overrideKey || localKey;
-        const userId = session?.user?.id;
-        if (keyToUse && userId) {
-          payloadToSave = await encryptData(data, keyToUse, userId);
-        }
+        const payloadToSave: EncryptedData = await encryptData(data, keyToUse, userId);
         const res = await fetch('/api/scenarios', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -317,17 +326,11 @@ export function useScenarios() {
           // 실패해도 암호문 blob을 그대로 SimulationParams 자리에 남기지 않고 원본 평문(data)으로
           // 폴백한다 (로드 경로의 initialParams 폴백과 동일한 안전장치).
           let decryptedData = newScenario.data;
-          const decryptionKey = overrideKey || localKey;
           if (isEncryptedPayload(newScenario.data)) {
-            if (decryptionKey && userId) {
-              try {
-                decryptedData = await decryptData<SimulationParams>(newScenario.data, decryptionKey, userId);
-              } catch (err) {
-                console.error('Failed to decrypt created scenario:', err);
-                decryptedData = data;
-                setNeedsKeyRestore(true);
-              }
-            } else {
+            try {
+              decryptedData = await decryptData<SimulationParams>(newScenario.data, keyToUse, userId);
+            } catch (err) {
+              console.error('Failed to decrypt created scenario:', err);
               decryptedData = data;
               setNeedsKeyRestore(true);
             }
@@ -452,114 +455,154 @@ export function useScenarios() {
       };
 
       fetchWithRetry('/api/scenarios')
-        .then(({ data }) => {
-          if (data && data.length > 0) {
-            const decryptAll = async () => {
-              const decryptedList = [];
-              let hasDecryptionFailure = false;
-              const keyName = `nextlife_e2ee_key_${userId}`;
-              const activeKey = localKey || (userId ? localStorage.getItem(keyName) : null);
+        .then(({ data, e2eeEnabled }) => {
+          if (!userId) {
+            setLoadedRequestKey(loadRequestKey);
+            return;
+          }
+          const list = data ?? [];
+          const keyName = `nextlife_e2ee_key_${userId}`;
+          const activeKey = localKey || localStorage.getItem(keyName);
 
-              for (const s of data) {
-                const displayName = s.isDefault ? '기본 시나리오' : s.name;
-                if (isEncryptedPayload(s.data)) {
-                  if (activeKey && userId) {
-                    try {
-                      const decryptedData = await decryptData<SimulationParams>(s.data, activeKey, userId);
-                      const migrated = convertToRepresentativeAssets(migrateParams(decryptedData, etfTickers));
-                      decryptedList.push({ ...s, name: displayName, data: migrated });
-                      lastSavedParamsRef.current[s.id] = JSON.stringify(migrated);
-                    } catch (err) {
-                      console.error('Decryption failed for scenario', s.id, err);
-                      // 이미 handleRestoreKey에서 "키는 맞지만 이 시나리오만 손상됨"으로 확인된
-                      // 경우에는 키를 다시 요구하지 않는다 (무한 복구 루프 방지).
-                      if (!corruptedScenarioIdsRef.current.has(s.id)) {
-                        hasDecryptionFailure = true;
-                      }
-                      decryptedList.push({ ...s, name: displayName, data: initialParams });
-                      lastSavedParamsRef.current[s.id] = JSON.stringify(initialParams);
-                    }
-                  } else {
-                    // No key found in local storage, but database has E2EE scenarios!
-                    hasDecryptionFailure = true;
-                    decryptedList.push({ ...s, name: displayName, data: initialParams });
-                    lastSavedParamsRef.current[s.id] = JSON.stringify(initialParams);
-                  }
-                } else {
-                  // Backwards compatibility for plain text simulation data.
-                  // isEncryptedPayload가 이미 암호화 형태를 걸러냈으므로 여기 남는 것은
-                  // E2EE 도입 이전에 저장된 평문 params다. 타입 시스템은 그 가드의 else를
-                  // 좁혀 주지 못하므로 이 지점에서만 명시한다.
-                  const plainData = s.data as SimulationParams;
-                  const migrated = convertToRepresentativeAssets(migrateParams(plainData, etfTickers));
-                  decryptedList.push({ ...s, name: displayName, data: migrated });
-                  lastSavedParamsRef.current[s.id] = JSON.stringify(migrated);
-                }
+          // 키를 요구할지는 서버 기록(e2eeEnabled)으로 판단한다. 예전에는 "받아 온 payload가
+          // 암호문이냐"만 봤는데, 그러면 평문 행이 하나 생기는 순간 그 계정은 어느 브라우저에서든
+          // 키 없이 열렸다. 서버 기록이 아직 없는 배포 직후를 위해 payload 판정도 함께 남겨 둔다
+          // (서버 GET이 소급 기록하므로 곧 e2eeEnabled 쪽으로 수렴한다).
+          const keyRequired = e2eeEnabled === true || list.some(s => isEncryptedPayload(s.data));
+
+          if (!activeKey) {
+            if (keyRequired) {
+              // 잠긴 계정인데 이 브라우저에는 키가 없다. 내용은 하나도 보여 주지 않고 복구를
+              // 요구한다 — 평문으로 남아 있던 행도 마찬가지다.
+              setScenarios(list.map(s => {
+                lastSavedParamsRef.current[s.id] = JSON.stringify(initialParams);
+                return { ...s, name: s.isDefault ? '기본 시나리오' : s.name, data: initialParams };
+              }));
+              if (list.length > 0 && (!activeScenarioId || !list.find(s => s.id === activeScenarioId))) {
+                setActiveScenarioId(list[0].id);
               }
-              setScenarios(decryptedList);
-              setNeedsKeyRestore(hasDecryptionFailure);
-              
-              if (!activeScenarioId || !decryptedList.find((s: ScenarioModel) => s.id === activeScenarioId)) {
-                setActiveScenarioId(decryptedList[0].id);
-              }
+              setNeedsKeyRestore(true);
               setLoadedRequestKey(loadRequestKey);
-            };
-            decryptAll();
-          } else {
-            // First-time user: No scenarios exist in the database!
-            const userId = session?.user?.id;
-            if (userId) {
-              const keyName = `nextlife_e2ee_key_${userId}`;
-              const storedKey = localStorage.getItem(keyName);
-              
-              if (!storedKey) {
-                // 최초 가입: 보안키는 시스템이 발급한다. 사용자가 직접 정하게 두면 111111 같은
-                // 키가 들어오는데, 암호문은 로그인만 하면 통째로 받아갈 수 있어 오프라인
-                // 대입에 그대로 뚫린다. generateBackupKey()는 모호한 0/O/1/I를 뺀 32자
-                // 집합에서 뽑아 32^6(약 30비트)를 보장한다.
-                if (keyIssuedForUserRef.current !== userId) {
-                  // await 이전에 래치를 건다 — StrictMode 이중 실행이 두 번 발급하는 것을 막는다.
-                  keyIssuedForUserRef.current = userId;
-                  const newKey = generateBackupKey();
-                  if (!newKey) {
-                    // window가 없으면 빈 문자열이 온다. 그대로 진행하면 빈 키로 암호화되어
-                    // 데이터를 영구히 잃는다.
-                    setLoadErrorState({ key: loadRequestKey, message: '보안키를 생성하지 못했습니다. 페이지를 새로고침해 주세요.' });
-                  } else {
-                    // 발급 즉시 기록한다. 확인 전에 창을 닫아도 다음 로그인이 같은 키로
-                    // 이어지고, 카카오톡에 서로 다른 키가 두 개 쌓이지 않는다.
-                    localStorage.setItem(keyName, newKey);
-                    localStorage.setItem(`nextlife_e2ee_backed_up_${userId}`, 'false');
-                    setIsBackupKeyBackedUp(false);
-                    setKeyIssuance({ status: 'sending', key: newKey });
-                    postBackupKey(newKey).then(result => {
-                      setKeyIssuance(result.success
-                        ? { status: 'sent', key: newKey }
-                        : { status: 'failed', key: newKey, error: result.error });
-                    });
-                    // setLocalKey는 일부러 부르지 않는다. 사용자가 '확인'을 누를 때 비로소
-                    // 호출되고, 그때 이 이펙트가 다시 돌아 아래 storedKey 분기로 들어가
-                    // 기본 시나리오를 만든다.
-                  }
-                }
-                setLoadedRequestKey(loadRequestKey);
-                return;
-              }
+              return;
+            }
 
-              setLocalKey(storedKey);
-              const loaded = loadParams();
-              const migrated = convertToRepresentativeAssets(migrateParams(loaded || initialParams, etfTickers));
-              fetchLatestParamsInfo(migrated).then(latestParams => {
-                lastSavedParamsRef.current['local-default'] = JSON.stringify(latestParams);
-                handleCreateScenario('기본 시나리오', latestParams, true, storedKey);
-              }).catch(err => {
-                console.error('Failed to fetch initial parameters info:', err);
-                lastSavedParamsRef.current['local-default'] = JSON.stringify(migrated);
-                handleCreateScenario('기본 시나리오', migrated, true, storedKey);
-              });
+            // 키를 한 번도 발급받지 않은 계정 — 신규 가입이거나, E2EE 도입 이전에 만들어져
+            // 평문만 갖고 있는 계정이다. 후자도 여기서 키를 받아야 아래 재암호화가 돈다.
+            //
+            // 보안키는 시스템이 발급한다. 사용자가 직접 정하게 두면 111111 같은 키가 들어오는데,
+            // 암호문은 로그인만 하면 통째로 받아갈 수 있어 오프라인 대입에 그대로 뚫린다.
+            // generateBackupKey()는 모호한 0/O/1/I를 뺀 32자 집합에서 뽑아 32^6(약 30비트)를
+            // 보장한다.
+            if (keyIssuedForUserRef.current !== userId) {
+              // await 이전에 래치를 건다 — StrictMode 이중 실행이 두 번 발급하는 것을 막는다.
+              keyIssuedForUserRef.current = userId;
+              const newKey = generateBackupKey();
+              if (!newKey) {
+                // window가 없으면 빈 문자열이 온다. 그대로 진행하면 빈 키로 암호화되어
+                // 데이터를 영구히 잃는다.
+                setLoadErrorState({ key: loadRequestKey, message: '보안키를 생성하지 못했습니다. 페이지를 새로고침해 주세요.' });
+              } else {
+                // 발급 즉시 기록한다. 확인 전에 창을 닫아도 다음 로그인이 같은 키로
+                // 이어지고, 카카오톡에 서로 다른 키가 두 개 쌓이지 않는다.
+                localStorage.setItem(keyName, newKey);
+                localStorage.setItem(`nextlife_e2ee_backed_up_${userId}`, 'false');
+                setIsBackupKeyBackedUp(false);
+                setKeyIssuance({ status: 'sending', key: newKey });
+                postBackupKey(newKey).then(result => {
+                  setKeyIssuance(result.success
+                    ? { status: 'sent', key: newKey }
+                    : { status: 'failed', key: newKey, error: result.error });
+                });
+                // setLocalKey는 일부러 부르지 않는다. 사용자가 '확인'을 누를 때 비로소
+                // 호출되고, 그때 이 이펙트가 다시 돌아 키가 있는 경로로 들어간다.
+              }
             }
             setLoadedRequestKey(loadRequestKey);
+            return;
           }
+
+          // 여기부터는 이 브라우저에 키가 있다.
+          if (list.length === 0) {
+            setLocalKey(activeKey);
+            const loaded = loadParams();
+            const migrated = convertToRepresentativeAssets(migrateParams(loaded || initialParams, etfTickers));
+            fetchLatestParamsInfo(migrated).then(latestParams => {
+              lastSavedParamsRef.current['local-default'] = JSON.stringify(latestParams);
+              handleCreateScenario('기본 시나리오', latestParams, true, activeKey);
+            }).catch(err => {
+              console.error('Failed to fetch initial parameters info:', err);
+              lastSavedParamsRef.current['local-default'] = JSON.stringify(migrated);
+              handleCreateScenario('기본 시나리오', migrated, true, activeKey);
+            });
+            setLoadedRequestKey(loadRequestKey);
+            return;
+          }
+
+          const decryptAll = async () => {
+            const decryptedList = [];
+            let hasDecryptionFailure = false;
+            // 서버에 평문으로 남아 있던 시나리오. 아래에서 즉시 암호화해 되돌린다.
+            const plaintextIds: string[] = [];
+
+            for (const s of list) {
+              const displayName = s.isDefault ? '기본 시나리오' : s.name;
+              if (isEncryptedPayload(s.data)) {
+                try {
+                  const decryptedData = await decryptData<SimulationParams>(s.data, activeKey, userId);
+                  const migrated = convertToRepresentativeAssets(migrateParams(decryptedData, etfTickers));
+                  decryptedList.push({ ...s, name: displayName, data: migrated });
+                  lastSavedParamsRef.current[s.id] = JSON.stringify(migrated);
+                } catch (err) {
+                  console.error('Decryption failed for scenario', s.id, err);
+                  // 이미 handleRestoreKey에서 "키는 맞지만 이 시나리오만 손상됨"으로 확인된
+                  // 경우에는 키를 다시 요구하지 않는다 (무한 복구 루프 방지).
+                  if (!corruptedScenarioIdsRef.current.has(s.id)) {
+                    hasDecryptionFailure = true;
+                  }
+                  decryptedList.push({ ...s, name: displayName, data: initialParams });
+                  lastSavedParamsRef.current[s.id] = JSON.stringify(initialParams);
+                }
+              } else {
+                // E2EE 도입 이전에 저장된 평문 params, 또는 키 없는 세션이 덮어쓴 평문.
+                // isEncryptedPayload가 암호화 형태를 걸러냈지만 타입 시스템은 그 가드의 else를
+                // 좁혀 주지 못하므로 이 지점에서만 명시한다.
+                const plainData = s.data as SimulationParams;
+                const migrated = convertToRepresentativeAssets(migrateParams(plainData, etfTickers));
+                decryptedList.push({ ...s, name: displayName, data: migrated });
+                lastSavedParamsRef.current[s.id] = JSON.stringify(migrated);
+                plaintextIds.push(s.id);
+              }
+            }
+            setScenarios(decryptedList);
+            setNeedsKeyRestore(hasDecryptionFailure);
+
+            if (!activeScenarioId || !decryptedList.find((s: ScenarioModel) => s.id === activeScenarioId)) {
+              setActiveScenarioId(decryptedList[0].id);
+            }
+            setLoadedRequestKey(loadRequestKey);
+
+            // 평문 행을 지금 암호화해 되돌린다. 다음 편집을 기다리면 그 사이에 다른 브라우저가
+            // 이 계정을 키 없이 열 수 있다 — 편집은 며칠 뒤일 수도 있다.
+            //
+            // 화면을 그린 뒤에 돌린다. 실패해도 데이터는 읽히는 상태이므로 사용자를 막지 않고,
+            // 다음 자동저장이 같은 일을 다시 시도한다.
+            for (const id of plaintextIds) {
+              const target = decryptedList.find(s => s.id === id);
+              if (!target) continue;
+              try {
+                const encrypted = await encryptData(target.data, activeKey, userId);
+                const res = await fetch(`/api/scenarios/${id}`, {
+                  method: 'PUT',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ data: encrypted }),
+                });
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+              } catch (err) {
+                console.error('Failed to re-encrypt plaintext scenario', id, err);
+              }
+            }
+          };
+          decryptAll();
         })
         .catch(err => {
           console.error('[useScenarios] Failed to load scenarios:', err);
@@ -594,17 +637,21 @@ export function useScenarios() {
         }
 
         if (status === 'authenticated' && !activeScenarioId.startsWith('local-')) {
+          const userId = session?.user?.id;
+          // 키가 없으면 저장하지 않는다. 예전에는 조용히 평문으로 올렸는데, 그 한 번의 저장이
+          // 계정의 E2EE를 영구히 꺼 버린다(그 뒤로는 어느 브라우저에서든 키 없이 열린다).
+          if (!localKey || !userId) {
+            console.error('[E2EE] Refusing to auto-save without a key');
+            setSaveStatus('error');
+            return;
+          }
           // 로그인 사용자의 데이터는 서버에 E2EE로 암호화되어 저장되므로,
           // 로컬 저장소에는 평문 폴백을 남기지 않는다(기기 탈취 시 평문 노출 방지).
           setSaveStatus('saving');
           setIsSaving(true);
           const timeoutId = setTimeout(async () => {
             try {
-              let payloadToSave: SimulationParams | EncryptedData = activeScenario.data;
-              const userId = session?.user?.id;
-              if (localKey && userId) {
-                payloadToSave = await encryptData(activeScenario.data, localKey, userId);
-              }
+              const payloadToSave: EncryptedData = await encryptData(activeScenario.data, localKey, userId);
               const res = await fetch(`/api/scenarios/${activeScenarioId}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
@@ -745,12 +792,16 @@ export function useScenarios() {
     }));
 
     if (status === 'authenticated' && !id.startsWith('local-')) {
+      const userId = session?.user?.id;
+      // 자동저장과 같은 이유로 평문 저장을 거부한다.
+      if (!localKey || !userId) {
+        console.error('[E2EE] Refusing to save imported scenario without a key');
+        setSaveStatus('error');
+        alert('보안키가 준비되지 않아 저장할 수 없습니다. 페이지를 새로고침해 주세요.');
+        return;
+      }
       try {
-        let payloadToSave: SimulationParams | EncryptedData = newData;
-        const userId = session?.user?.id;
-        if (localKey && userId) {
-          payloadToSave = await encryptData(newData, localKey, userId);
-        }
+        const payloadToSave: EncryptedData = await encryptData(newData, localKey, userId);
         await fetch(`/api/scenarios/${id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },

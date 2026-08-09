@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '@/core/utils/authOptions';
 import { prisma } from '@/infrastructure/db/prisma';
+import { markE2eeEnabled } from '@/infrastructure/db/e2ee';
+import { isEncryptedPayload } from '@/core/utils/crypto';
 
 export async function GET(_req: Request) {
   try {
@@ -69,7 +71,15 @@ export async function GET(_req: Request) {
       updatedAt: s.updatedAt,
     }));
 
-    return NextResponse.json({ data: formattedScenarios }, { status: 200 });
+    // 암호문이 하나라도 있으면 이 계정은 잠겨 있는 것이다. 플래그가 아직 없는 기존 계정을
+    // 여기서 소급해 세운다 — 첫 쓰기를 기다리면, 그 전에 다른 브라우저가 키 없이 열 수 있다.
+    const hasCiphertext = formattedScenarios.some(s => isEncryptedPayload(s.data));
+    if (hasCiphertext && !user.e2eeEnabledAt) {
+      await markE2eeEnabled(user.id);
+    }
+    const e2eeEnabled = Boolean(user.e2eeEnabledAt) || hasCiphertext;
+
+    return NextResponse.json({ data: formattedScenarios, e2eeEnabled }, { status: 200 });
   } catch (error) {
     console.error('Error fetching scenarios:', error);
     return NextResponse.json({ error: 'Failed to fetch scenarios' }, { status: 500 });
@@ -107,6 +117,10 @@ export async function POST(req: Request) {
 
     if (!name || !data) {
       return NextResponse.json({ error: 'Missing name or data' }, { status: 400 });
+    }
+
+    if (isEncryptedPayload(data)) {
+      await markE2eeEnabled(user.id);
     }
 
     if (isDefault) {
