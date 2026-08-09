@@ -7,6 +7,11 @@ import { prisma } from '@/infrastructure/db/prisma';
 import { sendSecurityKeyEmail } from '@/core/utils/emailSender';
 import { isRateLimited } from '@/core/utils/rateLimiter';
 import { generateSecurityKey } from '@/core/utils/securityKey';
+import {
+  emailAccountCandidateSelect,
+  isMergeableEmptyEmailAccount,
+  occupiedEmailMessage,
+} from '@/core/utils/emailAccountMerge';
 
 const migrationIdentifier = (userId: string, email: string) => `email-migration:${userId}:${email}`;
 
@@ -39,9 +44,13 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: '인증번호가 올바르지 않거나 만료되었습니다.' }, { status: 400 });
     }
 
-    const emailOwner = await prisma.user.findUnique({ where: { email }, select: { id: true } });
-    if (emailOwner && emailOwner.id !== userId) {
-      return NextResponse.json({ error: '이미 다른 계정에서 사용 중인 이메일입니다.' }, { status: 409 });
+    const emailOwner = await prisma.user.findUnique({
+      where: { email },
+      select: emailAccountCandidateSelect,
+    });
+    const conflictingOwner = emailOwner?.id !== userId ? emailOwner : null;
+    if (conflictingOwner && !isMergeableEmptyEmailAccount(conflictingOwner)) {
+      return NextResponse.json({ error: occupiedEmailMessage, code: 'ACCOUNT_MERGE_REQUIRED' }, { status: 409 });
     }
 
     const newKey = generateSecurityKey();
@@ -52,6 +61,19 @@ export async function POST(req: Request) {
 
     await prisma.$transaction([
       prisma.scenario.deleteMany({ where: { userId } }),
+      ...(conflictingOwner
+        ? [
+            prisma.verificationToken.deleteMany({
+              where: {
+                OR: [
+                  { identifier: email },
+                  { identifier: { startsWith: `email-migration:${conflictingOwner.id}:` } },
+                ],
+              },
+            }),
+            prisma.user.deleteMany({ where: { id: conflictingOwner.id } }),
+          ]
+        : []),
       prisma.user.update({
         where: { id: userId },
         data: {
@@ -66,7 +88,7 @@ export async function POST(req: Request) {
       prisma.verificationToken.deleteMany({ where: { identifier } }),
     ]);
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true, mergedEmptyEmailAccount: Boolean(conflictingOwner) });
   } catch (error) {
     console.error('Email migration reset failed:', error);
     return NextResponse.json({ error: '데이터 초기화와 보안키 재발급을 완료하지 못했습니다.' }, { status: 500 });
