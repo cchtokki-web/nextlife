@@ -7,6 +7,11 @@ import { prisma } from '@/infrastructure/db/prisma';
 import { sendSecurityKeyEmail } from '@/core/utils/emailSender';
 import { isRateLimited } from '@/core/utils/rateLimiter';
 import { isSecurityKey, normalizeSecurityKey } from '@/core/utils/securityKey';
+import {
+  emailAccountCandidateSelect,
+  isMergeableEmptyEmailAccount,
+  occupiedEmailMessage,
+} from '@/core/utils/emailAccountMerge';
 
 const migrationIdentifier = (userId: string, email: string) => `email-migration:${userId}:${email}`;
 
@@ -49,13 +54,32 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: '현재 보안키가 올바르지 않습니다.' }, { status: 400 });
     }
 
-    const emailOwner = await prisma.user.findUnique({ where: { email }, select: { id: true } });
-    if (emailOwner && emailOwner.id !== userId) {
-      return NextResponse.json({ error: '이미 다른 계정에서 사용 중인 이메일입니다.' }, { status: 409 });
+    const emailOwner = await prisma.user.findUnique({
+      where: { email },
+      select: emailAccountCandidateSelect,
+    });
+    const conflictingOwner = emailOwner?.id !== userId ? emailOwner : null;
+    if (conflictingOwner && !isMergeableEmptyEmailAccount(conflictingOwner)) {
+      return NextResponse.json({ error: occupiedEmailMessage, code: 'ACCOUNT_MERGE_REQUIRED' }, { status: 409 });
     }
 
     const securityKeyHash = await bcrypt.hash(securityKey, 12);
     await prisma.$transaction([
+      ...(conflictingOwner
+        ? [
+            // User와 관계없는 인증 토큰부터 지운다. Account/Scenario/Session은 아래 User 삭제에
+            // cascade되지만 자동 통합 대상은 애초에 모두 0개여야 한다.
+            prisma.verificationToken.deleteMany({
+              where: {
+                OR: [
+                  { identifier: email },
+                  { identifier: { startsWith: `email-migration:${conflictingOwner.id}:` } },
+                ],
+              },
+            }),
+            prisma.user.deleteMany({ where: { id: conflictingOwner.id } }),
+          ]
+        : []),
       prisma.user.update({
         where: { id: userId },
         data: {
@@ -76,7 +100,11 @@ export async function POST(req: Request) {
       console.error('Migrated security key email failed:', error);
     }
 
-    return NextResponse.json({ success: true, keyEmailSent });
+    return NextResponse.json({
+      success: true,
+      keyEmailSent,
+      mergedEmptyEmailAccount: Boolean(conflictingOwner),
+    });
   } catch (error) {
     console.error('Email migration confirmation failed:', error);
     return NextResponse.json({ error: '이메일 로그인 전환을 완료하지 못했습니다.' }, { status: 500 });

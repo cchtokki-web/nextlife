@@ -23,11 +23,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: '인증번호 요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.' }, { status: 429 });
     }
 
-    const emailOwner = await prisma.user.findUnique({ where: { email }, select: { id: true } });
-    if (emailOwner && emailOwner.id !== userId) {
-      return NextResponse.json({ error: '이미 다른 계정에서 사용 중인 이메일입니다.' }, { status: 409 });
-    }
-
+    // 이메일 존재 여부만으로 차단하지 않는다. 같은 사람이 이메일 가입을 먼저 시도해 빈 User가
+    // 남았을 수 있다. 이메일 소유를 인증한 뒤 confirm/reset에서 데이터 유무를 확인해 통합한다.
     const identifier = migrationIdentifier(userId, email);
     const code = crypto.randomInt(0, 1_000_000).toString().padStart(6, '0');
     const storedToken = `${code}.${crypto.randomBytes(16).toString('hex')}`;
