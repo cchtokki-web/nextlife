@@ -66,11 +66,15 @@ export function CoreKpiGrid({
   // 계획 자체의 문제로 오해된다. MC 상태 자체는 위험 분석 그룹(MonteCarloSection)이 알린다.
   const monteCarloSuffix = shownMonteCarlo ? (
     <span
-      className={conflict ? 'flex items-center gap-1 text-[var(--warning)]' : 'flex items-center gap-1'}
+      className={
+        conflict
+          ? 'flex items-center gap-1 whitespace-nowrap text-[var(--warning)]'
+          : 'flex items-center gap-1 whitespace-nowrap'
+      }
       // 등급 aria-label은 별점만 읽으므로 확률은 여기서 따로 읽어 준다.
       aria-label={`시장 변동 반영 시 자산 유지 확률 ${Math.round(shownMonteCarlo.successRate * 100)}%`}
     >
-      {conflict && <AlertTriangle size={13} aria-hidden="true" />}
+      {conflict && <AlertTriangle size={13} className="shrink-0" aria-hidden="true" />}
       <span aria-hidden="true">
         {confidence.score}점 · 시장변동 {Math.round(shownMonteCarlo.successRate * 100)}%
       </span>
@@ -79,12 +83,10 @@ export function CoreKpiGrid({
 
   return (
     <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      {/* 라벨에 "· 시장 변동 반영"을 덧붙이지 않는다. 2열 그리드의 좁은 모바일 카드에서
+          세 줄로 접히는데, 바로 아래 접미사가 "시장변동 37%"라고 이미 같은 말을 한다. */}
       <KpiCard
-        label={
-          confidence.basis === 'probabilistic'
-            ? `${expectancy}세까지 은퇴 준비도 · 시장 변동 반영`
-            : `${expectancy}세까지 은퇴 준비도`
-        }
+        label={`${expectancy}세까지 은퇴 준비도`}
         icon={<ShieldCheck size={16} aria-hidden="true" />}
       >
         <RetirementLikelihoodStars

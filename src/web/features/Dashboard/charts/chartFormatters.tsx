@@ -51,6 +51,15 @@ export function formatShortValue(val: number, currency: AssetCurrency): string {
   return `$ ${Math.round(val)}`;
 }
 
+// Y축이 눈금 라벨에 내주는 폭(px).
+//
+// **34px이던 것을 넓혔다.** recharts는 눈금 텍스트를 축선에서 tickMargin만큼 왼쪽에
+// 오른쪽 정렬로 그리므로, 실제로 글자가 쓸 수 있는 폭은 이 값에서 약 10px을 뺀 만큼이다.
+// 모바일 390px에서 실측하면 "2000"(29px)이 컨테이너 왼쪽 경계보다 5px 바깥에서 시작해
+// 앞자리가 잘렸다 — 화면에는 ",000 만원"으로 보였다. 아래 MultilineYAxisTick이 숫자와
+// 단위를 두 줄로 나누므로 필요한 폭은 숫자 부분("9999" ≈ 31px)이 결정한다.
+export const Y_AXIS_WIDTH = 46;
+
 type MultilineYAxisTickProps = Pick<YAxisTickContentProps, 'x' | 'y' | 'payload' | 'textAnchor' | 'fill'> & {
   currency: AssetCurrency;
 };

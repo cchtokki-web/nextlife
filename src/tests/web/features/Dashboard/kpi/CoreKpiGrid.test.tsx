@@ -90,7 +90,16 @@ describe('CoreKpiGrid - 몬테카를로 성공률 병기', () => {
       // round(92 * (0.5 + 0.5*0.78)) = 82, 성공률 78% -> '주의'
       expect(screen.getByText(/82점/)).toBeInTheDocument();
       expect(screen.getByText('주의')).toBeInTheDocument();
-      expect(screen.getByText('90세까지 은퇴 준비도 · 시장 변동 반영')).toBeInTheDocument();
+    });
+
+    // 라벨에 "· 시장 변동 반영"을 덧붙이면 2열 그리드의 좁은 모바일 카드에서 세 줄로
+    // 접힌다. 바로 아래 접미사가 "시장변동 N%"라고 이미 같은 말을 한다.
+    test('라벨은 MC 반영 여부와 무관하게 짧게 유지한다', () => {
+      const { rerender } = render(<CoreKpiGrid {...soloProps} monteCarlo={{ successRate: 0.78 }} />);
+      expect(screen.getByText('90세까지 은퇴 준비도')).toBeInTheDocument();
+
+      rerender(<CoreKpiGrid {...soloProps} monteCarloStatus="unsupported" monteCarlo={undefined} />);
+      expect(screen.getByText('90세까지 은퇴 준비도')).toBeInTheDocument();
     });
 
     test('성공률이 낮을수록 점수가 더 깎인다', () => {

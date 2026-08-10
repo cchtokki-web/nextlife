@@ -199,6 +199,16 @@ html, body {
   font-family: var(--font-main);
   -webkit-font-smoothing: antialiased;
   overflow-x: hidden;
+
+  /* 한글은 글자마다 줄을 바꿀 수 있어서, 기본값(normal)이면 어절 한가운데가 잘린다.
+     좁은 화면에서 실제로 "은퇴 준/비도", "매우/위험", "실질가치 기/준", "42억 7,278/만원"
+     처럼 읽을 수 없는 줄바꿈이 났다. keep-all은 띄어쓰기에서만 줄을 바꾸게 한다.
+
+     break-word를 함께 두는 이유: keep-all만 두면 한 어절이 컨테이너보다 길 때
+     (긴 영문 URL·티커 등) 줄을 못 바꿔 가로로 넘친다. 이 조합이 "평소에는 어절 단위로,
+     정 안 되면 그때만 강제로"를 뜻한다. */
+  word-break: keep-all;
+  overflow-wrap: break-word;
 }
 
 body {

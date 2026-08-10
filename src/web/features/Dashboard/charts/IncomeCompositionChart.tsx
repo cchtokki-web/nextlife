@@ -1,12 +1,13 @@
 'use client';
 
 import React from 'react';
-import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Legend, CartesianGrid, ReferenceLine, type LegendPayload, type YAxisTickContentProps } from 'recharts';
+import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, ReferenceLine, type LegendPayload, type YAxisTickContentProps } from 'recharts';
 import GlassCard from '../../../components/GlassCard';
 import styles from '../Dashboard.module.css';
 import { SimulationParams, SimulationResult } from '../../../../core/entities/types';
 import { computeMonthlySpendingComposition } from '../../../../core/usecases/MonthlySpendingComposition';
-import { formatValue, MultilineYAxisTick, RECHARTS_TOOLTIP_STYLE } from './chartFormatters';
+import { formatValue, MultilineYAxisTick, RECHARTS_TOOLTIP_STYLE, Y_AXIS_WIDTH } from './chartFormatters';
+import { ChartLegend, type ChartLegendItem } from './ChartLegend';
 import { ChartCaption } from './ChartCaption';
 
 // recharts는 Bar의 label render prop에 대한 공개 타입을 제공하지 않는다 — 실제 런타임에
@@ -30,6 +31,19 @@ interface IncomeCompositionChartProps {
 }
 
 const INCOME_KEYS = ['국민연금', '사적연금', '배당소득', '기타소득'] as const;
+
+// 범례 표기. 아래 <Bar> 선언의 name/fill과 짝을 이룬다.
+export const INCOME_LEGEND: ChartLegendItem[] = [
+  { dataKey: '국민연금', label: '국민연금', color: '#10B981' },
+  { dataKey: '사적연금', label: '사적연금', color: '#A855F7' },
+  { dataKey: '배당소득', label: '배당소득', color: '#3B82F6' },
+  { dataKey: '기타소득', label: '기타소득', color: '#F59E0B' },
+];
+
+// 범례 아래로 추가로 비우는 여백(px). 이 차트만 막대 위에 ⚠️ 표시를 그리고(Bar label의
+// `y - 8`) 국민연금 개시 기준선 라벨을 플롯 최상단에 얹기 때문에, 범례 높이만큼만 비우면
+// 그 둘이 첫 눈금선에 닿는다.
+const BAR_LABEL_HEADROOM = 12;
 
 export interface IncomeChartRow {
   age: number;
@@ -118,10 +132,11 @@ export function IncomeCompositionChart({
         )}
       </div>
       <ChartCaption>{caption}</ChartCaption>
+      <ChartLegend items={INCOME_LEGEND} hiddenKeys={hiddenKeys} onToggle={onLegendClick} />
       <div className={styles.chartScrollWrapper}>
         <div className={styles.chartContainer}>
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={pensionChartData} margin={{ top: 36, right: 43, left: 0, bottom: 0 }}>
+            <BarChart data={pensionChartData} margin={{ top: BAR_LABEL_HEADROOM, right: 43, left: 0, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(255, 255, 255, 0.05)" />
               <XAxis
                 dataKey="age"
@@ -134,7 +149,7 @@ export function IncomeCompositionChart({
               />
               <YAxis
                 stroke="var(--foreground-muted)"
-                width={34}
+                width={Y_AXIS_WIDTH}
                 tick={(props: YAxisTickContentProps) => <MultilineYAxisTick {...props} currency={currency} />}
               />
               <Tooltip
@@ -146,12 +161,6 @@ export function IncomeCompositionChart({
                     currency={currency}
                   />
                 )}
-              />
-              <Legend
-                verticalAlign="top"
-                height={36}
-                wrapperStyle={{ fontSize: '0.8rem', cursor: 'pointer' }}
-                onClick={onLegendClick}
               />
               {/* 기준선은 막대보다 먼저 선언해 막대 뒤에 깔리게 한다(recharts는 선언 순서대로 쌓는다).
                   차트 데이터에 없는 나이(예: 시뮬레이션 구간 밖)는 recharts가 조용히 무시한다. */}
