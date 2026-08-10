@@ -20,6 +20,9 @@ export const e2eeKeyName = (userId: string) => `nextlife_e2ee_key_${userId}`;
 /** 그 보안키를 사용자가 백업했다고 확인했는지. 역시 사용자별. */
 export const e2eeBackedUpKeyName = (userId: string) => `nextlife_e2ee_backed_up_${userId}`;
 
+/** 시뮬레이터에서 마지막으로 선택한 시나리오. 계정별로 복원한다. */
+export const activeScenarioKeyName = (userId: string) => `nextlife_active_scenario_${userId}`;
+
 // 아래 둘은 계정 데이터가 아니다. 탈퇴해도 남긴다.
 //   theme — UI 취향. 지우면 탈퇴가 화면 색을 바꾸는 셈이 된다.
 //   analytics_session_id — 계정과 무관한 익명 식별자.

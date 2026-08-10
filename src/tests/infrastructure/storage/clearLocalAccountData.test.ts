@@ -7,6 +7,7 @@ import {
   ANALYTICS_SESSION_KEY,
   e2eeKeyName,
   e2eeBackedUpKeyName,
+  activeScenarioKeyName,
 } from '@/infrastructure/storage/storageKeys';
 import { loadParams, saveParams, initialParams } from '@/infrastructure/storage/localStore';
 
@@ -29,18 +30,22 @@ afterEach(() => {
 describe('clearLocalAccountData', () => {
   // 보안키는 사용자별로 네임스페이스된다. 접두사로 쓸어 담으면 같은 브라우저를 쓰는
   // 다른 계정의 키까지 가져가고, 그 계정은 자기 데이터를 영영 열지 못한다.
-  test('그 사용자의 보안키와 백업 표시만 지우고 다른 사용자의 것은 남긴다', () => {
+  test('그 사용자의 계정별 브라우저 데이터만 지우고 다른 사용자의 것은 남긴다', () => {
     localStorage.setItem(e2eeKeyName(USER), 'AAA111');
     localStorage.setItem(e2eeBackedUpKeyName(USER), 'true');
+    localStorage.setItem(activeScenarioKeyName(USER), 'scenario-2');
     localStorage.setItem(e2eeKeyName(OTHER), 'BBB222');
     localStorage.setItem(e2eeBackedUpKeyName(OTHER), 'true');
+    localStorage.setItem(activeScenarioKeyName(OTHER), 'scenario-8');
 
     clearLocalAccountData(USER);
 
     expect(localStorage.getItem(e2eeKeyName(USER))).toBeNull();
     expect(localStorage.getItem(e2eeBackedUpKeyName(USER))).toBeNull();
+    expect(localStorage.getItem(activeScenarioKeyName(USER))).toBeNull();
     expect(localStorage.getItem(e2eeKeyName(OTHER))).toBe('BBB222');
     expect(localStorage.getItem(e2eeBackedUpKeyName(OTHER))).toBe('true');
+    expect(localStorage.getItem(activeScenarioKeyName(OTHER))).toBe('scenario-8');
   });
 
   // 탈퇴가 화면 색을 바꾸거나 익명 분석 식별자를 리셋할 이유는 없다.
