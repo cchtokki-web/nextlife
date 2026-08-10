@@ -33,7 +33,7 @@ import { ExecutionRoadmap } from './roadmap/ExecutionRoadmap';
 import { computeExecutionRoadmap, selectDepletionAge } from '../../../core/usecases/dashboard/computeExecutionRoadmap';
 import { resolvePlanAssetStatus } from '../../../core/usecases/dashboard/resolvePlanAssetStatus';
 import { NATIONAL_PENSION_NORMAL_START_AGE } from '../../../core/usecases/pension/nationalPensionRules';
-import { compileStrategy } from '../../../core/usecases/strategy/compileStrategy';
+import { compileStrategy, resolveStrategy } from '../../../core/usecases/strategy/compileStrategy';
 import { SentinelApplication } from '../../../core/usecases/strategy/applyAiSentinels';
 
 interface DashboardSectionProps {
@@ -185,14 +185,20 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
   const utilityConfig = React.useMemo(() => compileStrategy(params).utilityConfig, [params]);
   // 화면에 표시 중인 결과를 따라간다 — 추천을 적용해 부족이 해소되면 카드도 함께 사라져야
   // KPI·차트와 같은 이야기를 한다.
-  const shortfallSummary = React.useMemo(
+  const shortfallReport = React.useMemo(
     () => computeShortfallSummary(params, displayedResult),
     [params, displayedResult]
   );
+  // 자산 고갈 방지 축 설명에 붙일 확률 단서. **Before 모드에서만 붙인다** —
+  // MC는 baseline(현재 계획)으로만 계산되므로(page.tsx가 effective.params로 호출),
+  // After 모드에서 추천안의 설명에 갖다 붙이면 화면이 말하는 계획과 계산에 쓴 계획이 달라진다
+  // (CoreKpiGrid가 성공률 병기를 Before로 제한하는 것과 같은 규칙).
+  const monteCarloForDisplay =
+    mode === 'after' || monteCarloStatus !== 'done' ? undefined : monteCarlo;
   // 축별 점수 근거. 막대와 같은 결과·같은 config에서 파생돼야 두 숫자가 어긋나지 않는다.
   const utilityExplanations = React.useMemo(
-    () => explainUtilityComponents(params, displayedResult, utilityConfig),
-    [params, displayedResult, utilityConfig]
+    () => explainUtilityComponents(params, displayedResult, utilityConfig, monteCarloForDisplay),
+    [params, displayedResult, utilityConfig, monteCarloForDisplay]
   );
   const bequestAdequacyExplanation = React.useMemo(
     () => (displayedResult.utility ? explainBequestAdequacy(params, displayedResult) : undefined),
@@ -319,7 +325,7 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
           )}
         </div>
 
-        {shortfallSummary && <ShortfallSummaryCard summary={shortfallSummary} formatValue={formatValue} />}
+        <ShortfallSummaryCard report={shortfallReport} formatValue={formatValue} />
       </DashboardGroup>
 
       <DashboardGroup title="위험 분석" description="계획이 실패할 수 있는 조건과 시장 변동의 영향을 함께 봅니다.">
@@ -409,6 +415,7 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
             planAssetStatus={planAssetStatus}
             utilityExplanations={utilityExplanations}
             bequestAdequacyExplanation={bequestAdequacyExplanation}
+            bequestStrategy={resolveStrategy(params).bequestStrategy}
           />
         )}
         <ExpertDetailsPanel result={displayedResult} params={params} isPro={isPro} formatValue={formatValue} />

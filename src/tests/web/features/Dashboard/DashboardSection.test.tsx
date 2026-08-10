@@ -485,6 +485,40 @@ describe('DashboardSection - 현재 계획을 유지하면 요약 카드', () =>
 
     expect(screen.queryByText('현재 계획을 유지하면')).not.toBeInTheDocument();
   });
+
+  // **리포트가 "목표 월 350만원"과 "부족 생활비 월 평균 0원"을 나란히 찍은 상황.**
+  //
+  // 「평생 소비 최적화」는 목표를 지속가능액으로 낮춰 잡는다. 계획 기준으로만 보면 부족이
+  // 0이라 문제 없는 계획으로 읽히지만, 사용자가 세운 목표에는 매달 118만원이 모자란다.
+  describe('평생 소비 최적화 계획', () => {
+    const optimizedParams: SimulationParams = {
+      ...shortParams,
+      spendingStrategy: 'max_sustainable',
+    };
+    const optimizedResult: SimulationResult = {
+      ...result,
+      calculatedTargetSpending: 2320000,
+      yearlyResults: [60, 61, 62].map((age) => makeYearlyResult({ age, spending: 2320000 * 12 })),
+    };
+
+    test('목표 기준 부족을 별도 블록으로 보여준다', () => {
+      render(<DashboardSection params={optimizedParams} result={optimizedResult} />);
+
+      expect(screen.getByText('목표 생활비 기준')).toBeInTheDocument();
+      expect(screen.getByText('실제 지속가능 생활비')).toBeInTheDocument();
+      expect(screen.getByText('목표 대비 부족')).toBeInTheDocument();
+    });
+
+    // 예전에는 이 계획에서 "부족 생활비 월 평균 0원 / 부족 기간 3년"이 찍혔다 —
+    // 이진탐색 잔차를 부족으로 셌고 금액은 표시 단위 아래라 0원으로 보였기 때문이다.
+    test('계획 기준 부족 블록은 띄우지 않고 유지 가능하다고 말한다', () => {
+      render(<DashboardSection params={optimizedParams} result={optimizedResult} />);
+
+      expect(screen.queryByText('계획한 생활비조차 채우지 못하는 구간')).not.toBeInTheDocument();
+      expect(screen.queryByText('부족 기간')).not.toBeInTheDocument();
+      expect(screen.getByText(/소비 시에는 자산이 계획대로/)).toBeInTheDocument();
+    });
+  });
 });
 
 // 예전에는 로드맵이 토글과 무관하게 항상 추천안을 그렸다. 그래서 Hero 버튼이 "추천 적용하기"

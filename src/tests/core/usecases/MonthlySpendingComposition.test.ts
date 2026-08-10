@@ -109,6 +109,53 @@ function makeResult(yearlyResults: SimulationYearlyResult[]): SimulationResult {
 }
 
 describe('computeMonthlySpendingComposition', () => {
+  // **목표 기준(goalMonthly)이 별도로 필요한 이유.**
+  //
+  // 「평생 소비 최적화」에서 targetMonthly는 이진탐색이 산출한 지속가능액이라, 사용자가
+  // 목표로 세운 금액은 화면 어디에도 남지 않았다. 그래서 리포트에 "목표 월 350만원"과
+  // "부족 생활비 월 0원"이 나란히 찍혔다 — 실제로는 목표보다 한참 덜 쓰는 계획인데도.
+  describe('목표 기준과 계획 기준', () => {
+    test('평생 소비 최적화에서도 사용자가 입력한 목표 생활비를 goalMonthly로 보존한다', () => {
+      const params = makeParams({ targetMonthlySpending: 3500000, spendingStrategy: 'max_sustainable' });
+      const yearly = makeYearlyResult({ age: 60, spendingAnnual: 2320000 * 12 });
+      const result = { ...makeResult([yearly]), calculatedTargetSpending: 2320000 };
+
+      const [row] = computeMonthlySpendingComposition([yearly], params, result);
+
+      expect(row.targetMonthly).toBe(2320000); // 계획 기준 = 이진탐색 결과
+      expect(row.goalMonthly).toBe(3500000); // 목표 기준 = 사용자 입력
+      expect(row.shortfall).toBe(0); // 계획대로 썼으므로 계획 기준 부족 없음
+      expect(row.goalShortfall).toBe(3500000 - 2320000); // 목표 대비로는 부족
+    });
+
+    test('고정 목표 생활비 계획에서는 두 기준이 같다', () => {
+      const params = makeParams({ targetMonthlySpending: 3500000, spendingStrategy: 'target' });
+      const yearly = makeYearlyResult({ age: 60, spendingAnnual: 1910000 * 12 });
+
+      const [row] = computeMonthlySpendingComposition([yearly], params, makeResult([yearly]));
+
+      expect(row.goalMonthly).toBe(row.targetMonthly);
+      expect(row.goalShortfall).toBe(row.shortfall);
+    });
+
+    // 물가·연령대 배수·의료비 규칙이 두 기준에서 갈리면 "목표 대비 부족"이 규칙 차이인지
+    // 계획 차이인지 구분할 수 없게 된다.
+    test('물가 보정은 두 기준에 같은 규칙으로 적용된다', () => {
+      const params = makeParams({
+        currentAge: 50, retirementAge: 60, targetMonthlySpending: 3500000,
+        spendingStrategy: 'max_sustainable', inflationMode: 'nominal', inflationRate: 10,
+      });
+      const yearly = makeYearlyResult({ age: 60, spendingAnnual: 0 });
+      const result = { ...makeResult([yearly]), calculatedTargetSpending: 2000000 };
+
+      const [row] = computeMonthlySpendingComposition([yearly], params, result);
+
+      const inflator = Math.pow(1.1, 10);
+      expect(row.targetMonthly).toBe(Math.round(2000000 * inflator));
+      expect(row.goalMonthly).toBe(Math.round(3500000 * inflator));
+    });
+  });
+
   describe('사적연금 2중 클램프: min(사적연금 raw, 국민연금 이후 남은 필요분)', () => {
     test('사적연금 raw가 저율과세 한도를 초과해도 더 이상 한도로 자르지 않고 실제 인출액을 그대로 반영한다', () => {
       // 사적연금 raw 월 1,666,667원(연 20,000,000, 구 기본 한도 월 1,250,000보다 큼).

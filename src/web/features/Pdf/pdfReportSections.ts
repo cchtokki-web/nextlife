@@ -2,7 +2,9 @@ import { RiskAlert } from '../../../core/usecases/dashboard/computeRiskAlerts';
 import { ExecutionRoadmap } from '../../../core/usecases/dashboard/computeExecutionRoadmap';
 import { SensitivityScenario } from '../../../core/usecases/dashboard/computeSensitivityAnalysis';
 import { PlanAssetStatus } from '../../../core/usecases/dashboard/resolvePlanAssetStatus';
-import { ShortfallSummary } from '../../../core/usecases/dashboard/computeShortfallSummary';
+import { ShortfallReport } from '../../../core/usecases/dashboard/computeShortfallSummary';
+import { PlanConfidence } from '../../../core/usecases/dashboard/computePlanConfidence';
+import { NationalPensionExplanation } from '../../../core/usecases/pension/explainNationalPension';
 import {
   ItemizedContribution, ItemizedContributionField, StrategyRecommendation,
 } from '../../../core/entities/types';
@@ -19,32 +21,208 @@ export function formatCurrencyUnit(currency: 'KRW' | 'USD'): '원' | '$' {
 // 인라인 스타일 HTML 문자열로 변환하는 순수 함수만 여기 둔다. 기존 handleDownload가 이미 자산/
 // 연금 이름 등을 이스케이프 없이 직접 보간하는 것과 동일한 관례를 따른다(신규 도입 아님).
 
-// "현재 계획을 유지하면" 세 줄. 화면의 ShortfallSummaryCard와 같은 값·같은 각주를 쓴다 —
+// "현재 계획을 유지하면" 블록. 화면의 ShortfallSummaryCard와 같은 값·같은 각주를 쓴다 —
 // 리포트만 가정을 빼면 사용자가 확정된 목표 금액으로 읽는다.
+//
+// 목표 기준과 계획 기준을 나눠 싣는 이유는 카드 쪽 주석과 같다: 「평생 소비 최적화」에서
+// 계획 기준 부족만 보여주면 "부족 생활비 월 0원"이 되어, 목표보다 한참 덜 쓰는 계획이
+// 문제 없는 계획으로 읽힌다.
 export function renderShortfallSummarySection(
-  summary: ShortfallSummary | null,
+  report: ShortfallReport | null,
   formatValue: (val: number) => string
 ): string {
-  if (!summary) return '';
-  const cell = (label: string, value: string) => `
+  if (!report || (!report.goal && !report.plan)) return '';
+  const { goal, plan, goalMonthlySpending, sustainableMonthlySpending } = report;
+
+  const cell = (label: string, value: string, danger = true) => `
     <div style="flex: 1;">
       <p style="margin: 0; font-size: 11px; color: #64748b;">${label}</p>
-      <p style="margin: 2px 0 0; font-size: 15px; font-weight: 700; color: #dc2626;">${value}</p>
+      <p style="margin: 2px 0 0; font-size: 15px; font-weight: 700; color: ${danger ? '#dc2626' : '#0f172a'};">${value}</p>
     </div>
   `;
+
+  const goalHtml = goal
+    ? `
+      <p style="margin: 0 0 6px; font-size: 12px; font-weight: 700; color: #334155;">목표 생활비 기준</p>
+      <div style="display: flex; gap: 14px;">
+        ${cell('목표 생활비', `월 ${formatValue(goalMonthlySpending)}`, false)}
+        ${cell('실제 지속가능 생활비', `월 ${formatValue(sustainableMonthlySpending)}`, false)}
+        ${cell('목표 대비 부족', `월 평균 ${formatValue(goal.averageMonthlyShortfall)}`)}
+      </div>
+      <p style="margin: 6px 0 0; font-size: 10.5px; color: #64748b;">
+        ${goal.firstShortfallAge}세 ~ ${goal.lastShortfallAge}세 ${goal.shortfallYears}년간 · 목표를 그대로 채우려면 약 ${formatValue(goal.totalShortfallInTodayValue)}이 더 필요합니다.
+      </p>
+    `
+    : '';
+
+  const planHtml = plan
+    ? `
+      <p style="margin: ${goal ? '12px' : '0'} 0 6px; font-size: 12px; font-weight: 700; color: #dc2626;">계획한 생활비조차 채우지 못하는 구간</p>
+      <div style="display: flex; gap: 14px;">
+        ${cell('부족 생활비', `월 평균 ${formatValue(plan.averageMonthlyShortfall)}`)}
+        ${cell('부족 기간', `${plan.shortfallYears}년 (${plan.firstShortfallAge}세 ~ ${plan.lastShortfallAge}세)`)}
+        ${cell('추가로 필요한 자산', `약 ${formatValue(plan.totalShortfallInTodayValue)}`)}
+      </div>
+    `
+    : sustainableMonthlySpending < goalMonthlySpending
+      ? `<p style="margin: 12px 0 0; font-size: 12px; color: #0f172a;">월 ${formatValue(sustainableMonthlySpending)} 소비 시에는 자산이 계획대로 유지됩니다.</p>`
+      : '';
+
   return `
     <div style="border: 1px solid #fecaca; background-color: #fef2f2; border-radius: 8px; padding: 12px 14px; margin-top: 12px;">
       <p style="margin: 0 0 8px; font-size: 12.5px; font-weight: 700; color: #0f172a;">현재 계획을 유지하면</p>
-      <div style="display: flex; gap: 14px;">
-        ${cell('부족 생활비', `월 평균 ${formatValue(summary.averageMonthlyShortfall)}`)}
-        ${cell('부족 기간', `${summary.shortfallYears}년 (${summary.firstShortfallAge}세 ~ ${summary.lastShortfallAge}세)`)}
-        ${cell('추가로 필요한 자산', `약 ${formatValue(summary.totalShortfallInTodayValue)}`)}
-      </div>
+      ${goalHtml}
+      ${planHtml}
       <p style="margin: 8px 0 0; font-size: 10px; color: #64748b; line-height: 1.5;">
         * 추가로 필요한 자산은 부족분을 그대로 채우는 데 드는 금액입니다. 수익률이 물가상승률과 같다고 볼 때의
         현재 구매력 기준이며, 투자 수익을 가정하면 더 적은 금액으로도 가능합니다.
       </p>
     </div>
+  `;
+}
+
+// 1페이지 최상단 판정 블록: 기준 시나리오 / 시장 변동성 반영 / 판정.
+//
+// **왜 이 셋을 갈라 놓는가.**
+//
+// 예전 1페이지는 "은퇴 준비도 64점(주의)"와 "자산 고갈: 기대수명까지 고갈 없음"을 나란히
+// 놓았고, "1,000회 중 37%만 90세까지 자산이 남음"은 여섯 페이지 뒤에 있었다. 앞의 두
+// 문장은 **결정론 기준 시나리오에서만** 참인데 그 조건이 어디에도 적혀 있지 않아,
+// 사용자는 "조금 부족하지만 괜찮다"로 읽었다. 실제 의미는 "10번 중 6번은 실패한다"였다.
+//
+// 계산을 바꾸는 것이 아니라, 두 세계를 각각 이름 붙여 보여주고 판정을 하나로 낸다.
+export function renderPlanVerdictSection(input: {
+  expectancy: number;
+  // describeDepletionAge가 만든 문장(화면과 같은 함수를 쓴다).
+  deterministicDepletionText: string;
+  endingAssets: number;
+  confidence: PlanConfidence;
+  monteCarlo?: MonteCarloResult;
+  formatValue: (val: number) => string;
+}): string {
+  const { expectancy, deterministicDepletionText, endingAssets, confidence, monteCarlo, formatValue } = input;
+
+  const block = (title: string, body: string, accent: string) => `
+    <div style="border-left: 4px solid ${accent}; padding: 8px 0 8px 12px; margin-bottom: 12px;">
+      <p style="margin: 0 0 4px; font-size: 11px; font-weight: 700; color: #64748b; letter-spacing: 0.02em;">${title}</p>
+      ${body}
+    </div>
+  `;
+
+  const deterministicHtml = block(
+    '기준 시나리오 · 수익률이 가정대로 실현될 때',
+    `<p style="margin: 0; font-size: 14px; font-weight: 700; color: #0f172a;">${deterministicDepletionText}
+       <span style="font-size: 12px; font-weight: 500; color: #475569;">· ${expectancy}세 잔여자산 ${formatValue(endingAssets)}</span></p>`,
+    '#3b82f6'
+  );
+
+  // MC가 준비되지 않았으면 **조용히 생략하지 않는다.** 예전에는 워커가 늦으면 시장 변동성
+  // 페이지 자체가 사라져, 리포트가 결정론 결과만 담은 채로 완결된 문서처럼 보였다.
+  const probabilisticHtml = monteCarlo === undefined || confidence.basis !== 'probabilistic'
+    ? block(
+        '시장 변동성 반영',
+        `<p style="margin: 0; font-size: 12.5px; color: #b45309;">아직 계산되지 않았습니다. 잠시 후 리포트를 다시 내려받으면 확률 판정이 포함됩니다.</p>`,
+        '#f59e0b'
+      )
+    : block(
+        `시장 변동성 반영 · ${monteCarlo.trials.toLocaleString()}회 시뮬레이션`,
+        `<p style="margin: 0; font-size: 14px; font-weight: 700; color: ${verdictAccent(confidence)};">
+           ${expectancy}세까지 자산 유지 확률 ${Math.round((confidence.successRate ?? 0) * 100)}%
+         </p>
+         <p style="margin: 3px 0 0; font-size: 11.5px; color: #475569;">
+           중앙값 ${expectancy}세 자산 ${formatValue(monteCarlo.endingAssets.p50)} · 하위 10% ${formatValue(monteCarlo.endingAssets.p10)}
+         </p>`,
+        verdictAccent(confidence)
+      );
+
+  const verdictHtml = block(
+    '판정',
+    `<p style="margin: 0; font-size: 14px; font-weight: 700; color: ${verdictAccent(confidence)};">
+       ${verdictText(confidence)}
+     </p>
+     <p style="margin: 3px 0 0; font-size: 11.5px; color: #475569;">
+       은퇴 준비도 ${confidence.score}점${
+         confidence.basis === 'probabilistic'
+           ? ` (${confidence.band}) · 기준 시나리오만 보면 ${confidence.deterministicScore}점`
+           : ' · 시장 변동성 미반영'
+       }
+     </p>`,
+    verdictAccent(confidence)
+  );
+
+  return `
+    <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 18px 20px 8px; margin-bottom: 18px;">
+      ${deterministicHtml}
+      ${probabilisticHtml}
+      ${verdictHtml}
+    </div>
+  `;
+}
+
+function verdictAccent(confidence: PlanConfidence): string {
+  if (confidence.basis !== 'probabilistic') return '#64748b';
+  switch (confidence.band) {
+    case '안정':
+    case '양호':
+      return '#059669';
+    case '주의':
+      return '#d97706';
+    default:
+      return '#dc2626';
+  }
+}
+
+function verdictText(confidence: PlanConfidence): string {
+  if (confidence.basis !== 'probabilistic') return '확률 판정 보류 — 기준 시나리오 결과만 반영되었습니다';
+  switch (confidence.band) {
+    case '안정':
+      return '현재 계획을 유지해도 좋습니다';
+    case '양호':
+      return '대체로 안정적입니다';
+    case '주의':
+      return '점검이 필요합니다';
+    case '위험':
+      return '은퇴계획 조정을 권합니다';
+    default:
+      return '은퇴계획 조정이 필요합니다';
+  }
+}
+
+// 국민연금 설정액 → 실질 수령액 내역표.
+//
+// 리포트에는 "예상 월 수령액 2,000,000원(60세부터 수령)"이라 적혀 있는데 표에는 135만원이
+// 찍혔다. 계산은 정확했지만 그 사이의 두 단계(조기수령 감액, 연금소득세)가 어디에도 없어
+// 사용자가 계산 오류로 판단할 수밖에 없었다.
+export function renderNationalPensionSection(
+  explanation: NationalPensionExplanation | null,
+  formatValue: (val: number) => string
+): string {
+  if (!explanation) return '';
+
+  const rowsHtml = explanation.steps
+    .map((step) => {
+      const sign = step.isTotal || step.amount >= 0 ? '' : '−';
+      const amountText = `${sign}${formatValue(Math.abs(step.amount))}`;
+      const weight = step.isTotal ? '700' : '400';
+      const color = step.isTotal ? '#0f172a' : step.amount < 0 ? '#dc2626' : '#475569';
+      const borderTop = step.isTotal ? 'border-top: 1px solid #cbd5e1;' : '';
+      return `
+        <tr>
+          <td style="padding: 5px 0; font-size: 11.5px; color: ${color}; font-weight: ${weight}; ${borderTop}">${step.label}</td>
+          <td style="padding: 5px 0; font-size: 11.5px; text-align: right; color: ${color}; font-weight: ${weight}; white-space: nowrap; ${borderTop}">월 ${amountText}</td>
+        </tr>
+      `;
+    })
+    .join('');
+
+  return `
+    <table style="width: 100%; border-collapse: collapse; margin: 6px 0 4px;">
+      <tbody>${rowsHtml}</tbody>
+    </table>
+    <p style="margin: 0; font-size: 10px; color: #64748b; line-height: 1.5;">
+      * 표의 국민연금 금액은 이 실질 수령액입니다. ${explanation.inflationNote}
+      건강보험료는 여기서 차감하지 않고 별도로 부과됩니다.
+    </p>
   `;
 }
 
@@ -156,11 +334,17 @@ export function renderSensitivityTableSection(
     depletionAge: number | null;
     unmetSpendingYears: number;
     planAssetStatus: PlanAssetStatus;
+    // 6개 시나리오가 공통으로 고정한 월 생활비. 화면(SensitivityAnalysisSection)과 같은 이유로
+    // 반드시 밝힌다 — 「평생 소비 최적화」 계획에서는 이 값이 사용자가 입력한 목표와 다르다.
+    frozenMonthlySpending?: number;
   }
 ): string {
   if (scenarios.length === 0) return '';
 
   const noInvestableAsset = baseline?.planAssetStatus === 'no_investable_asset';
+  const frozenNoteHtml = baseline?.frozenMonthlySpending === undefined
+    ? ''
+    : `<p style="margin: 0 0 6px; font-size: 10.5px; color: #64748b;">6개 시나리오 모두 <strong>월 생활비 ${formatManwon(baseline.frozenMonthlySpending)}을 고정</strong>한 채 가정 하나만 바꾼 결과입니다.</p>`;
   const visibleScenarios = noInvestableAsset
     ? scenarios.filter(
         (s) => !(s.endingAssetsDelta === 0
@@ -195,6 +379,7 @@ export function renderSensitivityTableSection(
     })
     .join('');
   return `
+    ${frozenNoteHtml}
     <table style="width: 100%; table-layout: fixed; border-collapse: collapse; margin-top: 8px;">
       <colgroup>
         <col style="width: 28%;" />

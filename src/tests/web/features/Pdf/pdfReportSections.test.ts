@@ -6,12 +6,70 @@ import {
   renderExecutionRoadmapSection,
   renderSensitivityTableSection,
   renderMonteCarloSection,
+  renderShortfallSummarySection,
+  renderPlanVerdictSection,
 } from '@/web/features/Pdf/pdfReportSections';
+import { ShortfallReport } from '@/core/usecases/dashboard/computeShortfallSummary';
+import { computePlanConfidence } from '@/core/usecases/dashboard/computePlanConfidence';
 
 describe('formatCurrencyUnit', () => {
   test('replaces currency codes with report-facing symbols', () => {
     expect(formatCurrencyUnit('KRW')).toBe('원');
     expect(formatCurrencyUnit('USD')).toBe('$');
+  });
+});
+
+// 화면(ShortfallSummaryCard)과 같은 값·같은 각주를 써야 한다 — 같은 계획의 두 문서가
+// 다른 이야기를 하면 안 된다.
+describe('renderShortfallSummarySection', () => {
+  const won = (v: number) => `${v.toLocaleString()}원`;
+  const summary = (overrides = {}) => ({
+    shortfallYears: 3, firstShortfallAge: 60, lastShortfallAge: 62,
+    averageMonthlyShortfall: 1180000, totalShortfallInTodayValue: 42480000, ...overrides,
+  });
+  const report = (overrides: Partial<ShortfallReport> = {}): ShortfallReport => ({
+    goal: summary(), plan: summary(),
+    goalMonthlySpending: 3500000, sustainableMonthlySpending: 3500000, ...overrides,
+  });
+
+  test('부족이 전혀 없으면 빈 문자열을 반환한다', () => {
+    expect(renderShortfallSummarySection(report({ goal: null, plan: null }), won)).toBe('');
+    expect(renderShortfallSummarySection(null, won)).toBe('');
+  });
+
+  test('목표 기준 블록에 목표·지속가능·부족 세 금액을 모두 싣는다', () => {
+    const html = renderShortfallSummarySection(
+      report({ plan: null, sustainableMonthlySpending: 2320000 }), won
+    );
+
+    expect(html).toContain('목표 생활비 기준');
+    expect(html).toContain(won(3500000));
+    expect(html).toContain(won(2320000));
+    expect(html).toContain(won(1180000));
+  });
+
+  // 「평생 소비 최적화」에서 계획 기준 부족이 없으면 "부족 생활비 월 0원"을 찍는 대신
+  // 그 계획이 무엇을 보장하는지 말한다.
+  test('계획 기준 부족이 없으면 지속가능액으로 유지된다고 밝힌다', () => {
+    const html = renderShortfallSummarySection(
+      report({ plan: null, sustainableMonthlySpending: 2320000 }), won
+    );
+
+    expect(html).not.toContain('계획한 생활비조차 채우지 못하는 구간');
+    expect(html).toContain('소비 시에는 자산이 계획대로 유지됩니다');
+  });
+
+  test('계획 기준 부족이 있으면 부족 생활비·기간·필요 자산을 싣는다', () => {
+    const html = renderShortfallSummarySection(report(), won);
+
+    expect(html).toContain('계획한 생활비조차 채우지 못하는 구간');
+    expect(html).toContain('부족 기간');
+    expect(html).toContain('60세 ~ 62세');
+    expect(html).toContain('추가로 필요한 자산');
+  });
+
+  test('수익률 가정 각주를 반드시 붙인다', () => {
+    expect(renderShortfallSummarySection(report(), won)).toContain('수익률이 물가상승률과 같다고 볼 때');
   });
 });
 import { RiskAlert } from '@/core/usecases/dashboard/computeRiskAlerts';
@@ -272,6 +330,79 @@ describe('renderItemizedChecklistSection - AI 센티널 자동 적용 구분', (
     expect(html).not.toContain('이미 반영됨');
     expect(html).not.toContain('이 값으로 계산 중');
     expect(html).toContain('국민연금을 70세까지 연기 수령합니다.');
+  });
+});
+
+// **1페이지가 결정론 결과만 크게 말하던 문제.**
+//
+// 예전 1페이지는 "은퇴 준비도 64점(주의)"와 "기대수명까지 고갈 없음"을 나란히 놓았고,
+// "1,000회 중 37%만 남음"은 여섯 페이지 뒤에 있었다. 앞의 두 문장은 결정론 기준
+// 시나리오에서만 참인데 그 조건이 어디에도 적혀 있지 않았다.
+describe('renderPlanVerdictSection', () => {
+  const won = (v: number) => `${v.toLocaleString()}원`;
+  const mc = (successRate: number, p50 = 0, p10 = 0): MonteCarloResult => ({
+    trials: 1000, seed: 1, successAge: 90, successRate, fullSpendingRate: successRate,
+    endingAssets: { p10, p50, p90: 977090000, mean: 300000000 },
+    assetBand: [], depletion: { count: 630, earliestAge: 72, medianAge: 84 },
+    deterministicEndingAssets: 0, worstDecilePath: [],
+  });
+  const render = (successRate?: number, monteCarlo?: MonteCarloResult) =>
+    renderPlanVerdictSection({
+      expectancy: 90,
+      deterministicDepletionText: '기대수명까지 고갈 없음',
+      endingAssets: 0,
+      confidence: computePlanConfidence(64, successRate),
+      monteCarlo,
+      formatValue: won,
+    });
+
+  test('기준 시나리오 결과에 "가정대로 실현될 때"라는 조건을 붙인다', () => {
+    const html = render(0.37, mc(0.37));
+
+    expect(html).toContain('가정대로 실현될 때');
+    expect(html).toContain('기대수명까지 고갈 없음');
+  });
+
+  // 리포트가 지적한 핵심: 두 세계가 각각 이름을 갖고 같은 화면에 놓여야 한다.
+  test('확률 결과를 같은 블록에 나란히 싣는다', () => {
+    const html = render(0.37, mc(0.37));
+
+    expect(html).toContain('시장 변동성 반영');
+    expect(html).toContain('1,000회 시뮬레이션');
+    expect(html).toContain('90세까지 자산 유지 확률 37%');
+    expect(html).toContain('중앙값');
+    expect(html).toContain('하위 10%');
+  });
+
+  test('판정에는 보정 점수와 결정론 점수를 함께 밝힌다', () => {
+    const html = render(0.37, mc(0.37));
+
+    expect(html).toContain('은퇴계획 조정이 필요합니다');
+    expect(html).toContain('44점'); // round(64 * (0.5 + 0.5*0.37))
+    expect(html).toContain('매우 위험');
+    expect(html).toContain('기준 시나리오만 보면 64점');
+  });
+
+  test.each([
+    [0.95, '현재 계획을 유지해도 좋습니다'],
+    [0.85, '대체로 안정적입니다'],
+    [0.75, '점검이 필요합니다'],
+    [0.6, '은퇴계획 조정을 권합니다'],
+    [0.3, '은퇴계획 조정이 필요합니다'],
+  ])('성공률 %s의 판정 문장', (rate, text) => {
+    expect(render(rate, mc(rate))).toContain(text);
+  });
+
+  // 예전에는 워커가 늦으면 시장 변동성 페이지 자체가 사라져, 리포트가 결정론 결과만 담은
+  // 채로 완결된 문서처럼 보였다. 조용히 생략하지 않는다.
+  test('MC가 없으면 생략하지 않고 계산되지 않았다고 밝힌다', () => {
+    const html = render(undefined, undefined);
+
+    expect(html).toContain('시장 변동성 반영');
+    expect(html).toContain('아직 계산되지 않았습니다');
+    expect(html).toContain('확률 판정 보류');
+    expect(html).toContain('시장 변동성 미반영');
+    expect(html).not.toContain('유지 확률');
   });
 });
 

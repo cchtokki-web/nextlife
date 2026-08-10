@@ -8,6 +8,10 @@ interface SensitivityAnalysisSectionProps {
   // 결과가 baseline과 완전히 같은 시나리오를 가려내는 데 쓴다. 자산이 없는 계획에서는
   // 기말자산·고갈 나이가 전부 같아, 이 축까지 봐야 "정말 아무것도 달라지지 않았는가"를 판정할 수 있다.
   baselineUnmetSpendingYears?: number;
+  // 6개 시나리오가 공통으로 고정한 월 생활비. **반드시 밝혀야 한다** — 밝히지 않으면
+  // 사용자는 자기가 입력한 목표 생활비 기준으로 표를 읽는다. 「평생 소비 최적화」 계획에서는
+  // 이 값이 입력한 목표와 다르다.
+  frozenMonthlySpending?: number;
   scenarios: SensitivityScenario[];
   planAssetStatus?: PlanAssetStatus;
 }
@@ -37,6 +41,7 @@ export function SensitivityAnalysisSection({
   baselineDepletionAge,
   baselineEndingAssets,
   baselineUnmetSpendingYears,
+  frozenMonthlySpending,
   scenarios,
   planAssetStatus,
 }: SensitivityAnalysisSectionProps) {
@@ -62,6 +67,12 @@ export function SensitivityAnalysisSection({
   return (
     <section>
       <h4 className="mb-1 text-sm font-semibold">민감도 분석 (핵심 가정 변화에 따른 영향)</h4>
+      {frozenMonthlySpending !== undefined && (
+        <p className="mb-1 text-xs text-foreground-muted">
+          6개 시나리오 모두 <strong>월 생활비 {formatManwon(frozenMonthlySpending)}을 고정</strong>한 채
+          가정 하나만 바꾼 결과입니다.
+        </p>
+      )}
       {noInvestableAsset ? (
         <p className="mb-3 text-xs text-foreground-muted">
           투자자산이 없어 수익률·물가 가정을 바꿔도 기말자산은 0원으로 동일합니다. 아래는 실제로

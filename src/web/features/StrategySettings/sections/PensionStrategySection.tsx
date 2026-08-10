@@ -3,6 +3,8 @@
 import { FieldRow, RadioCardGroup, SwitchField } from '../../../components/form';
 import { resolveStrategy } from '../../../../core/usecases/strategy/compileStrategy';
 import { NATIONAL_PENSION_NORMAL_START_AGE } from '../../../../core/usecases/pension/nationalPensionRules';
+import { explainNationalPension, NationalPensionExplanation } from '../../../../core/usecases/pension/explainNationalPension';
+import { formatManwon } from '../../../../core/usecases/utility/utilityAnalysis';
 import { isFieldVisible } from '../fieldVisibility';
 import {
   AiRecommendationState, ISA_FIRST_OPTIONS, NATIONAL_PENSION_OPTIONS, PRIVATE_PENSION_OPTIONS, SectionProps,
@@ -92,6 +94,11 @@ export function PensionStrategySection({
           {nationalFallbackNotice && (
             <p className="text-xs text-warning">{nationalFallbackNotice}</p>
           )}
+          {/* 설정액이 실제 수령액이 되기까지의 단계. 없으면 사용자는 "월 200만원으로
+              설정했는데 표에는 135만원"이라는 차이를 계산 오류로 읽는다. */}
+          <NationalPensionBreakdown
+            explanation={explainNationalPension(params, effectiveNationalPensionStartAge)}
+          />
         </FieldRow>
       )}
 
@@ -137,5 +144,38 @@ export function PensionStrategySection({
         />
       )}
     </>
+  );
+}
+
+// 설정한 국민연금 수령액이 실제 수령액이 되기까지의 단계를 그대로 펼친다.
+//
+// 조기수령 감액도 세금도 없으면(정상 개시 + 과세 없음) 렌더링하지 않는다 — 그때는
+// 설정액과 수령액이 같아서 표가 아무것도 설명하지 않는다.
+function NationalPensionBreakdown({ explanation }: { explanation: NationalPensionExplanation | null }) {
+  if (!explanation || explanation.isPlain) return null;
+
+  return (
+    <div className="mt-2 rounded-lg border border-card-border/60 p-3 text-xs">
+      <dl className="flex flex-col gap-1">
+        {explanation.steps.map((step) => (
+          <div
+            key={step.label}
+            className={`flex items-baseline justify-between gap-3 ${
+              step.isTotal ? 'mt-1 border-t border-card-border/60 pt-1.5 font-semibold' : ''
+            }`}
+          >
+            <dt className="text-foreground-muted">{step.label}</dt>
+            <dd className={step.amount < 0 && !step.isTotal ? 'text-danger' : ''}>
+              월 {step.amount < 0 && !step.isTotal ? '−' : ''}
+              {formatManwon(Math.abs(step.amount))}
+            </dd>
+          </div>
+        ))}
+      </dl>
+      <p className="mt-2 text-[11px] leading-snug text-foreground-muted">
+        차트·표의 국민연금 금액은 이 실질 수령액입니다. {explanation.inflationNote} 건강보험료는
+        여기서 차감하지 않고 별도로 부과됩니다.
+      </p>
+    </div>
   );
 }

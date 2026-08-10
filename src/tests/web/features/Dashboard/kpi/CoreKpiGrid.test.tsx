@@ -62,7 +62,7 @@ describe('CoreKpiGrid - 몬테카를로 성공률 병기', () => {
     // 흔하다. 등급만 보여 주면 사용자가 그 사실을 알 길이 없다.
     const { container } = render(<CoreKpiGrid {...baseProps} monteCarlo={{ successRate: 0.78 }} />);
 
-    expect(screen.getByText('시장변동 78%')).toBeInTheDocument();
+    expect(screen.getByText(/시장변동 78%/)).toBeInTheDocument();
     expect(screen.getByLabelText('시장 변동 반영 시 자산 유지 확률 78%')).toBeInTheDocument();
     expect(warningIcon(container)).toBeInTheDocument();
   });
@@ -70,9 +70,47 @@ describe('CoreKpiGrid - 몬테카를로 성공률 병기', () => {
   test('성공률이 문턱 이상이면 경고 없이 숫자만 표시한다', () => {
     const { container } = render(<CoreKpiGrid {...baseProps} monteCarlo={{ successRate: 0.98 }} />);
 
-    expect(screen.getByText('시장변동 98%')).toBeInTheDocument();
+    expect(screen.getByText(/시장변동 98%/)).toBeInTheDocument();
     // 여기가 핵심이다 — 부재를 단언하지 않으면 "항상 경고"가 통과한다.
     expect(warningIcon(container)).not.toBeInTheDocument();
+  });
+
+  // **헤드라인 숫자가 결정론 점수면 안 되는 이유.**
+  //
+  // 실제 리포트에서 "64점(주의)"과 "성공률 37%"가 한 화면에 놓였는데, 사용자가 받는 인상은
+  // 앞의 숫자가 결정한다 — 뒤의 확률은 부연으로 읽힌다.
+  describe('시장 변동 반영 점수', () => {
+    // 평생 효용 카드도 같은 등급 어휘를 쓰므로 그 카드를 빼고 준비도 카드만 남긴다 —
+    // 그렇지 않으면 '안정' 같은 단어가 화면에 둘 있어 무엇을 단언하는지 모호해진다.
+    const soloProps = { ...baseProps, utilityScore: undefined };
+
+    test('헤드라인 점수와 판정이 성공률을 반영한다', () => {
+      render(<CoreKpiGrid {...soloProps} monteCarlo={{ successRate: 0.78 }} />);
+
+      // round(92 * (0.5 + 0.5*0.78)) = 82, 성공률 78% -> '주의'
+      expect(screen.getByText(/82점/)).toBeInTheDocument();
+      expect(screen.getByText('주의')).toBeInTheDocument();
+      expect(screen.getByText('90세까지 은퇴 준비도 · 시장 변동 반영')).toBeInTheDocument();
+    });
+
+    test('성공률이 낮을수록 점수가 더 깎인다', () => {
+      const { rerender } = render(<CoreKpiGrid {...soloProps} monteCarlo={{ successRate: 0.37 }} />);
+      // round(92 * (0.5 + 0.5*0.37)) = 63
+      expect(screen.getByText(/63점/)).toBeInTheDocument();
+      expect(screen.getByText('매우 위험')).toBeInTheDocument();
+
+      rerender(<CoreKpiGrid {...soloProps} monteCarlo={{ successRate: 0.95 }} />);
+      expect(screen.getByText(/90점/)).toBeInTheDocument();
+      expect(screen.getByText('안정')).toBeInTheDocument();
+    });
+
+    // MC를 못 쓰는 상태에서 보정 점수를 지어내면 안 된다 — 그때 보이는 것은 결정론 점수다.
+    test('MC가 없으면 결정론 등급으로 되돌아가고 라벨에 반영 표시를 붙이지 않는다', () => {
+      render(<CoreKpiGrid {...soloProps} monteCarloStatus="unsupported" monteCarlo={undefined} />);
+
+      expect(screen.getByText('90세까지 은퇴 준비도')).toBeInTheDocument();
+      expect(screen.getByText('매우 안정')).toBeInTheDocument(); // survivalScore 92의 결정론 등급
+    });
   });
 
   test('결정론 판정이 고갈이면 성공률이 낮아도 충돌로 표시하지 않는다', () => {

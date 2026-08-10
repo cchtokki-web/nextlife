@@ -7,7 +7,6 @@ import { SimulationParams, SimulationResult } from '../../../../core/entities/ty
 import { SimulationEngine } from '../../../../core/usecases/SimulationEngine';
 import { computeExpertAnalytics } from '../../../../core/usecases/dashboard/computeExpertAnalytics';
 import { computeSensitivityAnalysis } from '../../../../core/usecases/dashboard/computeSensitivityAnalysis';
-import { resolvePlanAssetStatus } from '../../../../core/usecases/dashboard/resolvePlanAssetStatus';
 import { estimateHealthInsuranceCliff } from '../../../../core/usecases/healthcare/estimateHealthInsuranceCliff';
 import { resolveTaxContext } from '../../../../core/usecases/tax/taxContext';
 import { YearlyChart } from '../YearlyChart';
@@ -32,19 +31,9 @@ export function ExpertDetailsPanel({
   const analytics = computeExpertAnalytics(result, params);
   const engine = useMemo(() => new SimulationEngine(), []);
   // 민감도 분석은 Before/After 토글과 무관하게 항상 "현재 설정(params)" 자체의 취약성을
-  // 보여줘야 하므로, 화면에 표시 중인 result(토글에 따라 추천안 결과일 수 있음)를 신뢰하지 않고
-  // params로부터 직접 기준선을 재계산한다.
-  const sensitivityBaseline = useMemo(() => engine.runForUtility(params), [params, engine]);
-  const sensitivityScenarios = useMemo(
-    () => computeSensitivityAnalysis(params, sensitivityBaseline, engine),
-    [params, sensitivityBaseline, engine]
-  );
-  // 시나리오의 unmetSpendingYears와 같은 식으로 세야 "결과가 baseline과 같은가" 판정이
-  // 성립한다(computeSensitivityAnalysis 참조).
-  const baselineUnmetSpendingYears = useMemo(
-    () => sensitivityBaseline.yearlyResults.filter((y) => y.unmetSpending > 0).length,
-    [sensitivityBaseline]
-  );
+  // 보여줘야 하므로, 화면에 표시 중인 result(토글에 따라 추천안 결과일 수 있음)를 넘기지 않는다.
+  // 기준선은 computeSensitivityAnalysis가 6개 시나리오와 **같은 고정 계획**으로 직접 계산한다.
+  const sensitivity = useMemo(() => computeSensitivityAnalysis(params, engine), [params, engine]);
   // 위 연평균 건보료와 같은 result를 근거로 삼는다 — 두 숫자가 나란히 놓이므로 서로 다른
   // 실행에서 온 값이면 안 된다(민감도 기준선이 params로 재계산하는 것과는 반대 이유다).
   const healthInsuranceCliff = useMemo(
@@ -114,11 +103,12 @@ export function ExpertDetailsPanel({
           </section>
 
           <SensitivityAnalysisSection
-            baselineDepletionAge={sensitivityBaseline.depletionAge}
-            baselineEndingAssets={sensitivityBaseline.endingAssets}
-            baselineUnmetSpendingYears={baselineUnmetSpendingYears}
-            scenarios={sensitivityScenarios}
-            planAssetStatus={resolvePlanAssetStatus(sensitivityBaseline, params)}
+            baselineDepletionAge={sensitivity.baselineDepletionAge}
+            baselineEndingAssets={sensitivity.baselineEndingAssets}
+            baselineUnmetSpendingYears={sensitivity.baselineUnmetSpendingYears}
+            frozenMonthlySpending={sensitivity.frozenMonthlySpending}
+            scenarios={sensitivity.scenarios}
+            planAssetStatus={sensitivity.baselinePlanAssetStatus}
           />
 
           {isPro && (

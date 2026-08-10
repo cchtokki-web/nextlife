@@ -1,5 +1,7 @@
 import { SimulationEngine } from '../SimulationEngine';
-import { SimulationParams, SimulationResult } from '../../entities/types';
+import { SimulationParams } from '../../entities/types';
+import { freezeSpendingPlan, mapFrozenPlan, runFrozenPlan } from '../spending/freezeSpendingPlan';
+import { PlanAssetStatus, resolvePlanAssetStatus } from './resolvePlanAssetStatus';
 
 export interface SensitivityScenario {
   key: 'returnDown' | 'returnUp' | 'inflationUp' | 'inflationDown' | 'retirementEarlier' | 'retirementLater';
@@ -98,23 +100,50 @@ function computeDeltaYears(
   return scenarioEffective - baselineEffective;
 }
 
+export interface SensitivityAnalysis {
+  // 가장 위험한(고갈이 빠른) 시나리오가 먼저이며, 평생 유지(null)는 항상 뒤로 간다.
+  scenarios: SensitivityScenario[];
+  // 6개 시나리오가 **공통으로 고정한** 월 생활비. 화면과 PDF는 이 값을 반드시 밝혀야 한다 —
+  // 밝히지 않으면 사용자는 자기가 입력한 목표 생활비 기준으로 표를 읽는다.
+  frozenMonthlySpending: number;
+  // 기준선도 같은 고정 계획에서 나온다(아래 주석 참조). 호출부가 따로 계산해 넘기지 않는다.
+  baselineDepletionAge: number | null;
+  baselineEndingAssets: number;
+  // 시나리오의 unmetSpendingYears와 같은 식으로 센다 — 두 값을 나란히 비교해
+  // "결과가 baseline과 정말 같은가"를 판정하는 화면이 있다(SensitivityAnalysisSection).
+  baselineUnmetSpendingYears: number;
+  // 화면이 "투자자산이 없어 전부 동일" 분기를 타는 근거. 이 판정도 시나리오와 같은 고정
+  // 계획에서 나와야 하므로 여기서 함께 낸다 — 호출부가 다른 실행 결과로 판정하면
+  // "표는 갈리는데 안내문은 동일하다고 말하는" 상태가 된다.
+  baselinePlanAssetStatus: PlanAssetStatus;
+}
+
 // 6개 시나리오(투자수익률/물가상승률/은퇴시점 각 ±)를 재실행해 자산 고갈 나이가 얼마나
 // 민감하게 변하는지 반환한다. 개별 시나리오가 예외를 던지면 해당 시나리오만 제외한다.
-// 반환 순서는 가장 위험한(고갈이 빠른) 시나리오가 먼저이며, 평생 유지(null)는 항상 뒤로 간다.
+//
+// **생활비는 고정한다.** 민감도 분석은 "이 계획을 그대로 유지했을 때 가정 하나가 바뀌면
+// 어떻게 되는가"를 묻는 것이다. 예전에는 「평생 소비 최적화」 계획에서 시나리오마다
+// runForUtility가 이진탐색을 다시 돌려(SimulationEngine.ts:161) 생활비를 재최적화했고,
+// 그 결과 기준 시나리오가 90세에 정확히 0원인 계획인데도 수익률 -2%p·물가 +1%p가 전부
+// "평생 유지"로 나왔다. 그건 민감도가 아니라 "가정이 나빴다면 얼마나 덜 썼을까"였다.
+//
+// **기준선도 같은 고정 계획으로 계산한다.** 예전에는 호출부가 baseline을 넘겼는데 두 곳이
+// 서로 다른 것을 넘기고 있었다(화면은 runForUtility(params), PDF는 run()의 result).
+// 시나리오와 다른 기준선으로 뺀 endingAssetsDelta는 의미가 없으므로 인자를 없앤다.
 export function computeSensitivityAnalysis(
   params: SimulationParams,
-  baselineResult: SimulationResult,
   engine: SimulationEngine
-): SensitivityScenario[] {
-  const baselineDepletionAge = baselineResult.depletionAge;
+): SensitivityAnalysis {
+  const frozen = freezeSpendingPlan(params, engine);
+  const baseline = runFrozenPlan(engine, frozen);
+  const baselineDepletionAge = baseline.depletionAge;
   const { expectancy } = params.userProfile;
 
   const withSortKey: (SensitivityScenario & { sortAge: number })[] = [];
 
   for (const def of SCENARIO_DEFINITIONS) {
     try {
-      const modifiedParams = def.buildParams(params);
-      const result = engine.runForUtility(modifiedParams);
+      const result = runFrozenPlan(engine, mapFrozenPlan(frozen, def.buildParams));
       const depletionAge = result.depletionAge;
       withSortKey.push({
         key: def.key,
@@ -122,7 +151,7 @@ export function computeSensitivityAnalysis(
         depletionAge,
         deltaYears: computeDeltaYears(baselineDepletionAge, depletionAge, expectancy),
         endingAssets: result.endingAssets,
-        endingAssetsDelta: result.endingAssets - baselineResult.endingAssets,
+        endingAssetsDelta: result.endingAssets - baseline.endingAssets,
         unmetSpendingYears: result.yearlyResults.filter((y) => y.unmetSpending > 0).length,
         sortAge: depletionAge ?? Infinity,
       });
@@ -132,7 +161,14 @@ export function computeSensitivityAnalysis(
     }
   }
 
-  return withSortKey
-    .sort((a, b) => a.sortAge - b.sortAge)
-    .map(({ sortAge: _sortAge, ...scenario }) => scenario);
+  return {
+    scenarios: withSortKey
+      .sort((a, b) => a.sortAge - b.sortAge)
+      .map(({ sortAge: _sortAge, ...scenario }) => scenario),
+    frozenMonthlySpending: frozen.monthlyTargetSpending,
+    baselineDepletionAge,
+    baselineEndingAssets: baseline.endingAssets,
+    baselineUnmetSpendingYears: baseline.yearlyResults.filter((y) => y.unmetSpending > 0).length,
+    baselinePlanAssetStatus: resolvePlanAssetStatus(baseline, params),
+  };
 }

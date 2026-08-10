@@ -39,6 +39,22 @@ describe('compileStrategy', () => {
       .toBe(DEFAULT_UTILITY_CONFIG.appropriateBequestMonths);
   });
 
+  // **상속 전략은 배점을 바꾸지 않는다.**
+  //
+  // 「모두 사용」에서 이 축을 0점으로 만드는 안을 시도했다가 되돌렸다. 그때 이 축이 재는 것은
+  // "상속을 잘 남겼는가"가 아니라 "다 쓰고 갔는가"이고, 미소진 자산을 잡는 축이 이것 하나뿐이다
+  // (소비 만족도는 목표를 채우면 만점이라 안 쓰고 남긴 자산을 잡지 못한다). 배점을 걷어내자
+  // 페르소나 하니스에서 "다 쓰고 간다"고 선언하고 46억을 남기는 계획의 효용이 10점 **올랐다**.
+  // 대신 표시 이름만 바꾼다(buildUtilityComponentMeta).
+  test.each(['spend_all', 'leave_some', 'maximize'] as const)(
+    '상속 전략 %s은 효용 배점을 바꾸지 않는다',
+    (bequestStrategy) => {
+      const result = compileStrategy(withStrategy({ bequestStrategy }));
+
+      expect(result.utilityConfig.weights).toEqual(DEFAULT_UTILITY_CONFIG.weights);
+    }
+  );
+
   test('상속 전략 "모두 사용"은 targetBequest를 0으로 만든다', () => {
     const result = compileStrategy(withStrategy({ bequestStrategy: 'spend_all' }));
 

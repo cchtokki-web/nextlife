@@ -58,6 +58,56 @@ describe('explainUtilityComponents - 자산 고갈 방지', () => {
     expect(explainUtilityComponents(makeParams(), result).depletionSafety).toContain('62세까지');
   });
 
+  // **이 축이 20/20인데 몬테카를로 성공률이 37%였던 상태.**
+  //
+  // 점수는 결정론 depletionAge만 보므로 만점이 맞다. 틀린 것은 그 만점이 어떤 조건에서
+  // 성립하는지 화면 어디에도 적혀 있지 않았다는 점이다. 점수를 MC로 재정의하지 않고
+  // (UtilityEngine.ts:185-206) 조건만 문장으로 밝힌다.
+  describe('시장 변동성 단서', () => {
+    // 자산이 실제로 있는 계획이어야 한다 — 전 구간 0원이면 '미보유'로 분류되어
+    // 충돌 판정 자체가 성립하지 않는다(isMonteCarloConflict).
+    const sustained = makeResult(
+      [60, 61, 62].map((age) => makeYearlyResult({ age, totalAssets: 500000000 })),
+      { depletionAge: null }
+    );
+
+    test('만점 문장에 기준 수익률 가정임을 밝힌다', () => {
+      const { depletionSafety } = explainUtilityComponents(makeParams(), sustained);
+
+      expect(depletionSafety).toContain('기준 수익률이 그대로 실현되면');
+    });
+
+    test('결정론은 고갈이 없는데 성공률이 낮으면 그 확률을 함께 말한다', () => {
+      const { depletionSafety } = explainUtilityComponents(
+        makeParams(), sustained, undefined, { successRate: 0.37 }
+      );
+
+      expect(depletionSafety).toContain('62세까지 자산이 남을 확률은 37%');
+    });
+
+    test('성공률이 충분히 높으면 덧붙이지 않는다', () => {
+      const { depletionSafety } = explainUtilityComponents(
+        makeParams(), sustained, undefined, { successRate: 0.97 }
+      );
+
+      expect(depletionSafety).not.toContain('확률은');
+    });
+
+    // 결정론도 이미 고갈을 말하고 있으면 어긋남이 없다 — 그 경고는 고갈 문장이 이미 한다.
+    test('결정론 판정이 고갈이면 확률 단서를 붙이지 않는다', () => {
+      const depleted = makeResult(
+        [60, 61].map((age) => makeYearlyResult({ age, totalAssets: 100000000 })),
+        { depletionAge: 61 }
+      );
+
+      const { depletionSafety } = explainUtilityComponents(
+        makeParams(), depleted, undefined, { successRate: 0.37 }
+      );
+
+      expect(depletionSafety).not.toContain('확률은');
+    });
+  });
+
   // 투자자산이 없는 계획: 엔진이 첫 해에 고갈로 판정하므로 depletionAge <= retirementAge다.
   test('은퇴 전에 이미 자산이 없으면 메울 기간이 없다고 말한다', () => {
     const yearly = [60, 61, 62].map((age) => makeYearlyResult({ age }));

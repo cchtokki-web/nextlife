@@ -15,7 +15,10 @@ import { useMonteCarlo } from '../../web/hooks/useMonteCarlo';
 import { computeSequenceRisk } from '../../core/usecases/montecarlo/sequenceRisk';
 import { resolveMonteCarloConfig } from '../../core/usecases/montecarlo/volatilityPresets';
 import { describeDepletionAge } from '../../core/usecases/dashboard/describeDepletionAge';
-import { formatCurrencyUnit, renderRiskAlertsSection, renderItemizedChecklistSection, renderExecutionRoadmapSection, renderSensitivityTableSection, renderMonteCarloSection, renderShortfallSummarySection } from '../../web/features/Pdf/pdfReportSections';
+import { formatCurrencyUnit, renderRiskAlertsSection, renderItemizedChecklistSection, renderExecutionRoadmapSection, renderSensitivityTableSection, renderMonteCarloSection, renderShortfallSummarySection, renderPlanVerdictSection, renderNationalPensionSection } from '../../web/features/Pdf/pdfReportSections';
+import { computePlanConfidence } from '../../core/usecases/dashboard/computePlanConfidence';
+import { resolveStrategy } from '../../core/usecases/strategy/compileStrategy';
+import { explainNationalPension } from '../../core/usecases/pension/explainNationalPension';
 import { analyzeCurrentStrategy, explainBequestAdequacy } from '../../core/usecases/utility/utilityAnalysis';
 import { explainUtilityComponents } from '../../core/usecases/utility/explainUtilityComponents';
 import { resolveTaxSettings } from '../../core/usecases/tax/taxRates';
@@ -186,7 +189,12 @@ export default function Home() {
       const jsPDF = (await import('jspdf')).default;
       const html2canvas = (await import('html2canvas')).default;
 
-      const { retirementScore, retirementGrade, goalAchievementRate, fireAge, depletionAge, endingAssets, yearlyResults, utility } = result;
+      // retirementGrade는 꺼내지 않는다 — 1페이지 판정은 시장 변동을 반영한 밴드
+      // (PlanConfidence.band)가 말하고, 결정론 등급만 크게 찍는 것이 정확히 이번에 없앤 문제다.
+      const {
+        retirementScore, goalAchievementRate, fireAge, depletionAge, endingAssets, yearlyResults, utility,
+        avgRetirementMonthlyIncome, avgTargetMonthlySpending,
+      } = result;
       // 리포트가 인쇄하는 모든 값은 "결과(result)를 만든 params", 즉 effective.params에서 읽는다.
       // compiled.params(AI 센티널 적용 전)나 activeParams(사용자가 입력한 원본)를 읽으면
       // 경제 시나리오·리스크 성향·연금 전략이 지배하는 필드에서 화면에 찍힌 숫자와
@@ -216,13 +224,16 @@ export default function Home() {
       // Lifetime Utility Score / AI 추천 전략 PDF 섹션(페이지 2)용 데이터 준비
       // 축별 점수 근거. 화면(UtilityBreakdownBars)과 같은 문장을 싣는다 — 툴팁으로만 두면
       // 정작 설명이 필요한 인쇄본에서 사라진다.
+      // MC를 함께 넘겨 자산 고갈 방지 축이 "만점이지만 기준 수익률 가정"임을 밝히게 한다.
+      // 점수는 바뀌지 않는다 — 리포트에서 그 축이 20/20인데 성공률은 37%였던 상태를 없앤다.
       const utilityExplanations = utility
-        ? explainUtilityComponents(reportParams, result, effective.utilityConfig)
+        ? explainUtilityComponents(reportParams, result, effective.utilityConfig, monteCarlo)
         : null;
       const utilityComponentRowsHtml = utility
         // 같은 화면의 강점/약점 문장(analyzeCurrentStrategy)이 이미 effective.utilityConfig를
         // 쓰고 있었는데 막대만 기본 배점을 고정하고 있었다 — 두 숫자의 분모가 어긋났다.
-        ? buildUtilityComponentMeta(effective.utilityConfig.weights).map(({ key, label, max, color }) => {
+        // 상속 축의 라벨도 화면과 같아야 한다 — 「모두 사용」에서는 '자산 소진도'다.
+        ? buildUtilityComponentMeta(effective.utilityConfig.weights, resolveStrategy(reportParams).bequestStrategy).map(({ key, label, max, color }) => {
             const value = utility.components[key];
             const pct = max > 0 ? Math.max(0, Math.min(100, (value / max) * 100)) : 0;
             return `
@@ -292,15 +303,35 @@ export default function Home() {
       // 화면(DashboardSection)과 같은 함수로 자산 상태를 판정한다 — PDF와 화면이 서로 다른
       // 근거로 "고갈"과 "미보유"를 말하면 같은 계획의 두 문서가 어긋난다.
       const planAssetStatus = resolvePlanAssetStatus(result, reportParams);
+      // 설정액(월 200만원)이 표의 금액(월 135만원)이 되기까지의 단계. 이 내역이 없으면
+      // 사용자는 두 숫자의 차이를 계산 오류로 읽는다.
+      const nationalPensionSectionHtml = renderNationalPensionSection(
+        explainNationalPension(reportParams),
+        formatValuePrint
+      );
+      // 결정론 점수에 시장 변동 성공률을 반영한 판정. 화면(CoreKpiGrid)과 같은 함수를 쓴다.
+      // MC가 아직 계산되지 않았으면 basis가 'deterministic'으로 떨어지고, 리포트는 그 사실을
+      // 조용히 넘기지 않고 명시한다(renderPlanVerdictSection).
+      const planConfidence = computePlanConfidence(retirementScore, monteCarlo?.successRate);
+      const planVerdictSectionHtml = renderPlanVerdictSection({
+        expectancy: userProfile.expectancy,
+        deterministicDepletionText: describeDepletionAge(depletionAge, userProfile.expectancy, planAssetStatus),
+        endingAssets,
+        confidence: planConfidence,
+        monteCarlo,
+        formatValue: formatValuePrint,
+      });
       const roadmap = computeExecutionRoadmap(reportParams, recommendation, selectDepletionAge(recommendation, result), planAssetStatus);
       const executionRoadmapSectionHtml = renderExecutionRoadmapSection(roadmap);
-      const sensitivityScenarios = computeSensitivityAnalysis(reportParams, result, engine);
-      const sensitivityTableSectionHtml = renderSensitivityTableSection(sensitivityScenarios, {
-        depletionAge: result.depletionAge,
-        // computeSensitivityAnalysis가 시나리오별로 세는 것과 같은 식이어야 "결과가 baseline과
-        // 같은가" 판정이 성립한다.
-        unmetSpendingYears: result.yearlyResults.filter((y) => y.unmetSpending > 0).length,
-        planAssetStatus,
+      // 기준선을 넘기지 않는다 — computeSensitivityAnalysis가 6개 시나리오와 같은 고정 계획으로
+      // 직접 계산한다. 예전에는 화면과 PDF가 서로 다른 기준선을 넘겨(화면은 runForUtility(params),
+      // 여기는 run()의 result) 같은 계획의 두 문서가 다른 증감을 보여줄 수 있었다.
+      const sensitivity = computeSensitivityAnalysis(reportParams, engine);
+      const sensitivityTableSectionHtml = renderSensitivityTableSection(sensitivity.scenarios, {
+        depletionAge: sensitivity.baselineDepletionAge,
+        unmetSpendingYears: sensitivity.baselineUnmetSpendingYears,
+        planAssetStatus: sensitivity.baselinePlanAssetStatus,
+        frozenMonthlySpending: sensitivity.frozenMonthlySpending,
       });
 
       // Create a temporary container
@@ -383,6 +414,47 @@ export default function Home() {
       `;
       container.appendChild(styleBlock);
 
+      // **페이지·섹션 번호를 리터럴로 쓰지 않는다.**
+      //
+      // 예전에는 두 번호가 전부 하드코딩이었고, 조건부인 시장 변동성 페이지 때문에 실제로
+      // 어긋나 있었다: 「7. 시장 변동성 분석」과 「7. 연령별 소득원…」이 둘 다 7번이었고,
+      // 재원 구성 각주는 "5페이지 세금 설정과 6페이지 금융소득과세"를 고정 문자열로 가리켰다.
+      // 섹션 하나만 넣거나 빼도 문서 전체의 번호가 조용히 틀어지는 구조였다.
+      //
+      // 두 카운터는 **문서에 등장하는 순서대로** 소비된다(템플릿 리터럴은 왼쪽부터 평가된다).
+      let sectionNo = 0;
+      const nextSection = () => (sectionNo += 1);
+      let pageNo = 0;
+      const nextPage = () => (pageNo += 1);
+      // 각주가 가리키는 페이지 번호를 나중에 채우기 위한 자리표. 실제 번호는 그 페이지를
+      // 만들 때 확정되므로, 하드코딩 대신 치환으로 잇는다.
+      let taxSettingsPageNo = 0;
+      let firstYearlyTablePageNo = 0;
+
+      // 시장 변동성 분석을 **2페이지로 올린다.**
+      //
+      // 예전에는 마지막 고정 페이지였다. 그래서 1페이지의 "기대수명까지 고갈 없음"을 읽은
+      // 사용자가 여섯 페이지 뒤에야 "1,000회 중 37%만 남음"을 보게 됐다. 앞의 좋은 결과를
+      // 강조하고 뒤의 위험을 별도 페이지에 숨긴 구조였다. 수익률 순서 위험(같은 평균,
+      // 다른 순서)은 이 리포트에서 가장 값어치 있는 분석이기도 하다.
+      //
+      // 워커가 아직 끝나지 않았으면 이 페이지는 생략된다. 그때도 1페이지의 판정 블록이
+      // "아직 계산되지 않았습니다"라고 밝히므로(renderPlanVerdictSection), 리포트가
+      // 결정론 결과만 담은 채 완결된 문서처럼 보이는 일은 없다.
+      const monteCarloHtml = renderMonteCarloSection(monteCarlo, sequenceRisk);
+      const monteCarloPageHtml = () => monteCarloHtml === '' ? '' : `
+        <div class="pdf-page">
+          <div class="pdf-content">
+            <h2 style="font-size: 16px; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; color: #0f172a; margin-top: 0; margin-bottom: 10px;">${nextSection()}. 시장 변동성 분석</h2>
+            ${monteCarloHtml}
+          </div>
+          <div class="pdf-footer">
+            <span>NextLife 은퇴 자산 시뮬레이션 리포트</span>
+            <span>페이지 ${nextPage()} / {total_pages}</span>
+          </div>
+        </div>
+      `;
+
       // Page 1: Summary and Settings
       let pagesHtml = `
         <div class="pdf-page">
@@ -390,28 +462,27 @@ export default function Home() {
             <h1 style="font-size: 26px; border-bottom: 3px solid #3b82f6; padding-bottom: 12px; color: #1e3a8a; margin-top: 0;">NextLife 은퇴 자산 시뮬레이션 결과 리포트</h1>
             <p style="font-size: 11px; color: #64748b; margin-bottom: 25px;">출력 일시: ${new Date().toLocaleString()}</p>
             
-            <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 24px; margin-bottom: 30px;">
-              <h2 style="margin-top: 0; font-size: 17px; color: #0f172a; border-bottom: none; padding-bottom: 0;">1. 종합 결과 요약</h2>
+            <h2 style="margin-top: 0; font-size: 17px; color: #0f172a; border-bottom: none; padding-bottom: 0; margin-bottom: 12px;">${nextSection()}. 종합 결과 요약</h2>
+            ${planVerdictSectionHtml}
+            <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px 24px; margin-bottom: 26px;">
               <div class="summary-grid">
                 <div class="summary-item">
-                  <p class="summary-label">은퇴 준비도 점수</p>
-                  <p class="summary-note"></p>
-                  <span class="summary-value">${retirementScore}점 <span style="font-size: 11.5px; color: #64748b; font-weight: 600;">(${retirementGrade})</span></span>
-                </div>
-                <div class="summary-item">
-                  <p class="summary-label">은퇴 소득 달성률</p>
-                  <p class="summary-note">배당·연금 등 고정소득만 반영, 자산 인출분 제외<br/>2페이지 평생 효용 점수와는 별도로 계산되는 지표입니다.</p>
+                  <p class="summary-label">연금·배당 소득 충족률</p>
+                  <p class="summary-note">${
+                    // 분자·분모를 함께 밝힌다. 예전에는 "은퇴 소득 달성률 62%"라는 이름만
+                    // 있어서, 목표 생활비의 62%밖에 못 쓴다는 뜻으로 읽혔다. 실제로는
+                    // **자산을 팔아 쓴 인출분을 뺀** 소득만의 비율이라, 원금을 계획적으로
+                    // 헐어 쓰는 정상적인 계획도 100%에 도달하지 않는다.
+                    avgRetirementMonthlyIncome !== undefined && avgTargetMonthlySpending !== undefined
+                      ? `은퇴 후 월 평균 소득 ${formatValuePrint(Math.round(avgRetirementMonthlyIncome))} ÷ 목표 생활비 ${formatValuePrint(Math.round(avgTargetMonthlySpending))}<br/>자산을 팔아 쓴 인출분은 분자에서 제외되므로, 계획대로 원금을 헐어 쓰는 경우에도 100%가 되지 않습니다.`
+                      : '배당·연금 등 소득만 반영하며 자산 인출분은 제외합니다.'
+                  }</p>
                   <span class="summary-value">${goalAchievementRate}%</span>
                 </div>
                 <div class="summary-item">
                   <p class="summary-label">소득만으로 생활비 충당 가능 시점</p>
                   <p class="summary-note">배당·연금 등 그 해 소득이 목표 생활비를 넘어서는 나이</p>
                   <span class="summary-value">${describeFireAge(fireAge, userProfile.retirementAge)}</span>
-                </div>
-                <div class="summary-item">
-                  <p class="summary-label">자산 고갈 예상 나이</p>
-                  <p class="summary-note"></p>
-                  <span class="summary-value">${describeDepletionAge(depletionAge, userProfile.expectancy, planAssetStatus)}</span>
                 </div>
                 <div style="grid-column: span 2; font-size: 13.5px; padding-top: 8px;">
                   <span style="font-weight: 600; color: #475569;">사망 시(기대수명 ${userProfile.expectancy}세) 잔여 자산</span>
@@ -422,7 +493,7 @@ export default function Home() {
             ${shortfallSummarySectionHtml}
             ${riskAlertsSectionHtml}
 
-            <h2 style="font-size: 16px; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; color: #0f172a; margin-top: 25px; margin-bottom: 10px;">2. 시뮬레이션 설정 상태</h2>
+            <h2 style="font-size: 16px; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; color: #0f172a; margin-top: 25px; margin-bottom: 10px;">${nextSection()}. 시뮬레이션 설정 상태</h2>
             <ul style="padding-left: 20px; margin-top: 5px; margin-bottom: 25px; font-size: 13px; line-height: 1.6;">
               <li style="margin-bottom: 6px;"><strong>현재 나이:</strong> ${userProfile.currentAge}세 / <strong>은퇴 목표 나이:</strong> ${userProfile.retirementAge}세 / <strong>기대 수명:</strong> ${userProfile.expectancy}세</li>
               <li style="margin-bottom: 6px;"><strong>목표 월 생활비:</strong> ${userProfile.targetMonthlySpending.toLocaleString()} ${displayCurrencyUnit}</li>
@@ -433,14 +504,16 @@ export default function Home() {
           </div>
           <div class="pdf-footer">
             <span>NextLife 은퇴 자산 시뮬레이션 리포트</span>
-            <span>페이지 1 / {total_pages}</span>
+            <span>페이지 ${nextPage()} / {total_pages}</span>
           </div>
         </div>
 
+        ${monteCarloPageHtml()}
+
         <div class="pdf-page">
           <div class="pdf-content">
-            <h2 style="font-size: 16px; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; color: #0f172a; margin-top: 0; margin-bottom: 10px;">3. 평생 효용 점수 &amp; AI 추천 전략</h2>
-            <p style="font-size: 11px; color: #64748b; margin-top: 0; margin-bottom: 14px;">"얼마를 남기는가"보다 "얼마나 잘 사용하는가"를 기준으로 평가한 평생 효용 점수입니다. 1페이지의 은퇴 소득 달성률과는 별도로 계산되는 독립 지표입니다.</p>
+            <h2 style="font-size: 16px; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; color: #0f172a; margin-top: 0; margin-bottom: 10px;">${nextSection()}. 평생 효용 점수 &amp; AI 추천 전략</h2>
+            <p style="font-size: 11px; color: #64748b; margin-top: 0; margin-bottom: 14px;">"얼마를 남기는가"보다 "얼마나 잘 사용하는가"를 기준으로 평가한 평생 효용 점수입니다. 1페이지의 연금·배당 소득 충족률과는 별도로 계산되는 독립 지표입니다.</p>
 
             <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 18px; margin-bottom: 18px;">
               <div style="display: flex; align-items: baseline; gap: 8px; margin-bottom: 12px;">
@@ -470,13 +543,13 @@ export default function Home() {
           </div>
           <div class="pdf-footer">
             <span>NextLife 은퇴 자산 시뮬레이션 리포트</span>
-            <span>페이지 2 / {total_pages}</span>
+            <span>페이지 ${nextPage()} / {total_pages}</span>
           </div>
         </div>
 
         <div class="pdf-page">
           <div class="pdf-content">
-            <h2 style="font-size: 16px; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; color: #0f172a; margin-top: 0; margin-bottom: 10px;">4. 실행 로드맵 및 민감도 분석</h2>
+            <h2 style="font-size: 16px; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; color: #0f172a; margin-top: 0; margin-bottom: 10px;">${nextSection()}. 실행 로드맵 및 민감도 분석</h2>
             <p style="font-size: 11px; color: #64748b; margin-top: 0; margin-bottom: 14px;">AI 추천 전략(또는 현재 설정) 기준으로 나이별 실행 시점과, 핵심 가정이 바뀌었을 때 결과가 얼마나 민감한지를 보여줍니다.</p>
 
             <h3 style="font-size: 13px; color: #0f172a; margin-bottom: 8px;">실행 로드맵</h3>
@@ -487,16 +560,17 @@ export default function Home() {
           </div>
           <div class="pdf-footer">
             <span>NextLife 은퇴 자산 시뮬레이션 리포트</span>
-            <span>페이지 3 / {total_pages}</span>
+            <span>페이지 ${nextPage()} / {total_pages}</span>
           </div>
         </div>
 
         <div class="pdf-page">
           <div class="pdf-content">
-            <h2 style="font-size: 16px; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; color: #0f172a; margin-top: 0; margin-bottom: 10px;">5. 연금 및 자산 현황</h2>
+            <h2 style="font-size: 16px; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; color: #0f172a; margin-top: 0; margin-bottom: 10px;">${nextSection()}. 연금 및 자산 현황</h2>
             <div style="font-size: 13px; line-height: 1.6; display: grid; grid-template-columns: 1fr; gap: 12px;">
               <div>
                 <strong>국민연금:</strong> 예상 월 수령액 ${nationalPension?.expectedMonthlyAmount.toLocaleString()}원 (${reportParams.withdrawalPlan?.nationalPensionStartAge ?? NATIONAL_PENSION_NORMAL_START_AGE}세부터 수령)
+                ${nationalPensionSectionHtml}
               </div>
               <div>
                 <strong>사적연금:</strong>
@@ -566,13 +640,13 @@ export default function Home() {
           </div>
           <div class="pdf-footer">
             <span>NextLife 은퇴 자산 시뮬레이션 리포트</span>
-            <span>페이지 4 / {total_pages}</span>
+            <span>페이지 ${nextPage()} / {total_pages}</span>
           </div>
         </div>
 
         <div class="pdf-page">
           <div class="pdf-content">
-            <h2 style="font-size: 16px; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; color: #0f172a; margin-top: 0; margin-bottom: 10px;">6. 세금 설정</h2>
+            <h2 style="font-size: 16px; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; color: #0f172a; margin-top: 0; margin-bottom: 10px;">${nextSection()}. 세금 설정</h2>
             <ul style="padding-left: 20px; margin-top: 5px; margin-bottom: 0; font-size: 13px; line-height: 1.6;">
               <li style="margin-bottom: 6px;"><strong>금융소득종합과세 반영:</strong> ${currentTaxSettings.enableComprehensiveTax ? `반영 (2천만원 초과분 ${currentTaxSettings.comprehensiveTaxRate}% 추가 과세)` : '미반영'}</li>
               <li style="margin-bottom: 6px;"><strong>추가 건강보험료 반영:</strong> ${currentTaxSettings.enableHealthInsurance ? `반영 (초과분 ${currentTaxSettings.healthInsuranceRate}%)` : '미반영'}</li>
@@ -584,35 +658,12 @@ export default function Home() {
           </div>
           <div class="pdf-footer">
             <span>NextLife 은퇴 자산 시뮬레이션 리포트</span>
-            <span>페이지 5 / {total_pages}</span>
+            <span>페이지 ${(taxSettingsPageNo = nextPage())} / {total_pages}</span>
           </div>
         </div>
       `;
 
-      // 시장 변동성 페이지. 워커가 아직 끝나지 않았으면 통째로 생략한다 —
-      // 그때는 FIXED_PAGE_COUNT도 5로 돌아가 페이지 번호가 자동으로 맞는다.
-      //
-      // 고정 페이지 수를 상수로 뽑는 이유: 예전에는 총 페이지 수와 각 표 페이지의 번호가
-      // 5와 6을 리터럴로 따로 들고 있었다. 섹션을 하나 넣으려면 세 곳을 동시에 고쳐야 했고,
-      // 한 곳만 고치면 "페이지 6 / 10"과 실제 장수가 어긋나도 아무도 알아채지 못한다.
-      const monteCarloHtml = renderMonteCarloSection(monteCarlo, sequenceRisk);
-      const FIXED_PAGE_COUNT = 5 + (monteCarloHtml !== '' ? 1 : 0);
-      if (monteCarloHtml !== '') {
-        pagesHtml += `
-          <div class="pdf-page">
-            <div class="pdf-content">
-              <h2 style="font-size: 16px; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; color: #0f172a; margin-top: 0; margin-bottom: 10px;">7. 시장 변동성 분석</h2>
-              ${monteCarloHtml}
-            </div>
-            <div class="pdf-footer">
-              <span>NextLife 은퇴 자산 시뮬레이션 리포트</span>
-              <span>페이지 ${FIXED_PAGE_COUNT} / {total_pages}</span>
-            </div>
-          </div>
-        `;
-      }
-
-      // Page 5+: Tables
+      // Tables (이후 페이지 수는 데이터 양에 따라 달라진다)
       const chunks: typeof yearlyResults[] = [];
       const rowsPerPage = 30; // Fits A4 page beautifully with comfortable vertical rhythm
       for (let i = 0; i < yearlyResults.length; i += rowsPerPage) {
@@ -642,14 +693,17 @@ export default function Home() {
         ? '<p style="font-size: 9.5px; color: #94a3b8; margin: 0 0 8px;">* 아래 금액은 모두 오늘 시점 기준 실질 가치입니다(물가상승률은 자산 성장률에 사전 차감 반영되었습니다). 명목(미래 실제 지급) 금액이 아닙니다.</p>'
         : '<p style="font-size: 9.5px; color: #94a3b8; margin: 0 0 8px;">* 아래 금액은 물가상승률이 매년 누적 반영된 명목 가치입니다.</p>';
 
+      // 섹션 번호는 여러 페이지로 나뉘어도 하나다 — 첫 청크에서만 소비한다.
+      const yearlyTableSectionNo = nextSection();
       chunks.forEach((chunk, chunkIdx) => {
-        const pageNum = chunkIdx + FIXED_PAGE_COUNT + 1;
+        const pageNum = nextPage();
+        if (chunkIdx === 0) firstYearlyTablePageNo = pageNum;
         const isLastChunk = chunkIdx === chunks.length - 1 && !hasSpendingSection;
         pagesHtml += `
           <div class="pdf-page">
             <div class="pdf-content">
               <h2 style="font-size: 15px; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; color: #0f172a; margin-top: 0; margin-bottom: 12px;">
-                7. 연령별 소득원 및 자산 추이 (페이지 ${chunkIdx + 1})
+                ${yearlyTableSectionNo}. 연령별 소득원 및 자산 추이 (${chunkIdx + 1}/${chunks.length})
               </h2>
               ${realValueNoteHtml}
               ${healthcareNoteHtml}
@@ -712,14 +766,15 @@ export default function Home() {
         `;
       });
 
+      const spendingTableSectionNo = hasSpendingSection ? nextSection() : 0;
       spendingChunks.forEach((chunk, chunkIdx) => {
-        const pageNum = chunks.length + FIXED_PAGE_COUNT + 1 + chunkIdx;
+        const pageNum = nextPage();
         const isLastChunk = chunkIdx === spendingChunks.length - 1;
         pagesHtml += `
           <div class="pdf-page">
             <div class="pdf-content">
               <h2 style="font-size: 15px; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; color: #0f172a; margin-top: 0; margin-bottom: 12px;">
-                8. 은퇴 후 월 생활비 재원 구성 (페이지 ${chunkIdx + 1})
+                ${spendingTableSectionNo}. 은퇴 후 월 생활비 재원 구성 (${chunkIdx + 1}/${spendingChunks.length})
               </h2>
               ${realValueNoteHtml}
               <table style="width: 100%; border-collapse: collapse; font-size: 10.5px;">
@@ -755,7 +810,7 @@ export default function Home() {
         pagesHtml += `
                 </tbody>
               </table>
-              <p style="margin-top: 10px; font-size: 10px; color: #64748b;">* 월 생활비 재원 구성은 연간 금액을 월 단위로 환산한 값이며, 사적연금 열은 저율과세 한도와 무관하게 실제 시뮬레이션 인출액을 그대로 반영합니다. 한도 초과 시 발생하는 세금은 5페이지 세금 설정과 6페이지 금융소득과세 열을 참고하세요.</p>
+              <p style="margin-top: 10px; font-size: 10px; color: #64748b;">* 월 생활비 재원 구성은 연간 금액을 월 단위로 환산한 값이며, 사적연금 열은 저율과세 한도와 무관하게 실제 시뮬레이션 인출액을 그대로 반영합니다. 한도 초과 시 발생하는 세금은 {tax_page}페이지 세금 설정과 {yearly_page}페이지 금융소득과세 열을 참고하세요.</p>
         `;
 
         if (isLastChunk) {
@@ -778,8 +833,11 @@ export default function Home() {
         `;
       });
 
-      const totalPages = FIXED_PAGE_COUNT + chunks.length + spendingChunks.length;
-      pagesHtml = pagesHtml.replaceAll('{total_pages}', totalPages.toString());
+      // 카운터가 실제로 만들어 낸 장수 그대로다 — 더 이상 따로 세지 않는다.
+      pagesHtml = pagesHtml
+        .replaceAll('{total_pages}', pageNo.toString())
+        .replaceAll('{tax_page}', taxSettingsPageNo.toString())
+        .replaceAll('{yearly_page}', firstYearlyTablePageNo.toString());
 
       // Append pages html
       const pagesContainer = document.createElement('div');

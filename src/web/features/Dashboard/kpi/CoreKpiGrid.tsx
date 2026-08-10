@@ -6,6 +6,7 @@ import GlassCard from '../../../components/GlassCard';
 import { RetirementLikelihoodStars } from './RetirementLikelihoodStars';
 import { PlanAssetStatus } from '../../../../core/usecases/dashboard/resolvePlanAssetStatus';
 import { isMonteCarloConflict } from '../../../../core/usecases/montecarlo/monteCarloConflict';
+import { computePlanConfidence } from '../../../../core/usecases/dashboard/computePlanConfidence';
 import type { MonteCarloStatus } from '../../../hooks/useMonteCarlo';
 
 interface CoreKpiGridProps {
@@ -53,9 +54,16 @@ export function CoreKpiGrid({
   const conflict =
     planAssetStatus !== undefined && isMonteCarloConflict(planAssetStatus, shownMonteCarlo);
 
-  // running/idle/error/unsupported는 아무것도 표시하지 않고 등급만 보이는 상태로 폴백한다.
-  // 워커를 못 쓰는 환경은 사용자가 어찌할 수 없는데, 그 자리에 경고성 문구를 두면 계획
-  // 자체의 문제로 오해된다. MC 상태 자체는 위험 분석 그룹(MonteCarloSection)이 알린다.
+  // **헤드라인 숫자를 시장 변동 반영 점수로 바꾼다.**
+  //
+  // 예전에는 결정론 점수를 그대로 크게 보여주고 성공률은 옆에 작게 붙였다. 실제 리포트에서
+  // "64점(주의)"과 "성공률 37%"가 그렇게 한 화면에 놓였는데, 사용자가 받는 인상은 앞의
+  // 숫자가 결정한다 — 뒤의 확률은 부연으로 읽힌다. 판정을 하나로 합쳐 그 어긋남을 없앤다.
+  const confidence = computePlanConfidence(survivalScore, shownMonteCarlo?.successRate);
+
+  // running/idle/error/unsupported는 확률을 표시하지 않고 결정론 등급만 보이는 상태로
+  // 폴백한다. 워커를 못 쓰는 환경은 사용자가 어찌할 수 없는데, 그 자리에 경고성 문구를 두면
+  // 계획 자체의 문제로 오해된다. MC 상태 자체는 위험 분석 그룹(MonteCarloSection)이 알린다.
   const monteCarloSuffix = shownMonteCarlo ? (
     <span
       className={conflict ? 'flex items-center gap-1 text-[var(--warning)]' : 'flex items-center gap-1'}
@@ -63,14 +71,27 @@ export function CoreKpiGrid({
       aria-label={`시장 변동 반영 시 자산 유지 확률 ${Math.round(shownMonteCarlo.successRate * 100)}%`}
     >
       {conflict && <AlertTriangle size={13} aria-hidden="true" />}
-      <span aria-hidden="true">시장변동 {Math.round(shownMonteCarlo.successRate * 100)}%</span>
+      <span aria-hidden="true">
+        {confidence.score}점 · 시장변동 {Math.round(shownMonteCarlo.successRate * 100)}%
+      </span>
     </span>
   ) : undefined;
 
   return (
     <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-      <KpiCard label={`${expectancy}세까지 은퇴 준비도`} icon={<ShieldCheck size={16} aria-hidden="true" />}>
-        <RetirementLikelihoodStars score={survivalScore} suffix={monteCarloSuffix} />
+      <KpiCard
+        label={
+          confidence.basis === 'probabilistic'
+            ? `${expectancy}세까지 은퇴 준비도 · 시장 변동 반영`
+            : `${expectancy}세까지 은퇴 준비도`
+        }
+        icon={<ShieldCheck size={16} aria-hidden="true" />}
+      >
+        <RetirementLikelihoodStars
+          score={confidence.score}
+          gradeLabel={confidence.band}
+          suffix={monteCarloSuffix}
+        />
       </KpiCard>
       <KpiCard label={`${expectancy}세 예상 순자산 · ${resultBasis === 'recommended' ? '추천 결과' : '현재 계획'}`} icon={<Wallet size={16} aria-hidden="true" />}>
         <span className="font-display text-2xl font-semibold">{formatValue(endingAssets)}</span>

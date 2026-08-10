@@ -1,5 +1,5 @@
 import { SimulationParams, SimulationResult } from '../../entities/types';
-import { computeMonthlySpendingComposition } from '../MonthlySpendingComposition';
+import { computeMonthlySpendingComposition, MonthlySpendingComposition } from '../MonthlySpendingComposition';
 
 export interface ShortfallSummary {
   // 목표 생활비를 채우지 못하는 은퇴 후 연도 수.
@@ -17,17 +17,56 @@ export interface ShortfallSummary {
   totalShortfallInTodayValue: number;
 }
 
+export interface ShortfallReport {
+  // **사용자가 입력한 목표 생활비** 대비 부족. 「평생 소비 최적화」가 생활비를 낮춰 잡은
+  // 몫이 여기 잡힌다 — 계산상으로는 성공한 계획이지만 사용자가 세운 목표에는 못 미친다.
+  goal: ShortfallSummary | null;
+  // **계획이 실제로 쓰기로 한 금액** 대비 부족. 계획한 금액조차 못 쓴 해이므로 자산이
+  // 정말 모자란 상태다. 두 기준이 같은 계획(고정 목표 생활비)에서는 goal과 동일하다.
+  plan: ShortfallSummary | null;
+  // 사용자가 입력한 월 목표 생활비(연령대 배수·물가 적용 전의 기준값).
+  goalMonthlySpending: number;
+  // 이 계획이 실제로 지속 가능한 월 생활비. 엔진이 전략과 무관하게 항상 이진탐색으로
+  // 구해 둔 값(SimulationResult.calculatedTargetSpending)이다.
+  sustainableMonthlySpending: number;
+}
+
+// 월 단위 부족액이 이 값 미만인 해는 부족으로 세지 않는다.
+//
+// 이진탐색(findMaxSustainable)은 30회 반복으로 수렴하므로 목표와 실제 지출 사이에 늘
+// 수천 원의 잔차가 남는다. 그 잔차를 부족으로 세면 「평생 소비 최적화」 계획에서 은퇴 후
+// 전 구간이 "부족한 해"가 되고, 금액은 표시 단위(만원) 아래라 화면에 0원으로 찍힌다.
+// 리포트에 "부족 생활비 월 평균 0원 / 부족 기간 31년"이 함께 나온 것이 정확히 이 상태였다.
+// 임계값을 화면의 표시 단위(1만원, chartFormatters.formatValue)와 맞춰, 화면이 0원이라고
+// 말하는 금액은 집계에도 잡히지 않게 한다.
+export const SHORTFALL_EPSILON_MONTHLY = 10000;
+
 // "현재 계획을 유지하면 얼마가 모자라고, 그걸 메우려면 얼마가 필요한가"를 집계한다.
 //
 // 새 시뮬레이션을 돌리지 않는다. computeMonthlySpendingComposition이 이미 연도별로 계산해 둔
-// shortfall/targetMonthly를 읽을 뿐이다 — 물가·의료비 규칙을 여기서 다시
+// shortfall/goalShortfall을 읽을 뿐이다 — 물가·의료비 규칙을 여기서 다시
 // 유도하면 화면의 생활비 재원 구성 차트와 반드시 어긋난다.
 export function computeShortfallSummary(
   params: SimulationParams,
   result: SimulationResult
-): ShortfallSummary | null {
+): ShortfallReport {
   const composition = computeMonthlySpendingComposition(result.yearlyResults, params, result);
-  const shortfallYears = composition.filter((row) => row.shortfall > 0);
+
+  return {
+    goal: summarize(composition, (row) => row.goalShortfall, params),
+    plan: summarize(composition, (row) => row.shortfall, params),
+    goalMonthlySpending: params.userProfile.targetMonthlySpending,
+    sustainableMonthlySpending:
+      result.calculatedTargetSpending ?? params.userProfile.targetMonthlySpending,
+  };
+}
+
+function summarize(
+  composition: readonly MonthlySpendingComposition[],
+  shortfallOf: (row: MonthlySpendingComposition) => number,
+  params: SimulationParams
+): ShortfallSummary | null {
+  const shortfallYears = composition.filter((row) => shortfallOf(row) >= SHORTFALL_EPSILON_MONTHLY);
   if (shortfallYears.length === 0) return null;
 
   const { currentAge } = params.userProfile;
@@ -35,14 +74,14 @@ export function computeShortfallSummary(
   const isNominal = params.inflationMode === 'nominal';
 
   const totalShortfallInTodayValue = shortfallYears.reduce((sum, row) => {
-    const annual = row.shortfall * 12;
+    const annual = shortfallOf(row) * 12;
     // 명목가치 계획의 미래 금액은 물가만큼 부풀려져 있다. 그대로 더하면 "지금 얼마를
     // 준비해야 하는가"를 크게 과장한다. 실질가치 계획은 이미 현재 구매력이라 손대지 않는다.
     if (!isNominal) return sum + annual;
     return sum + annual / Math.pow(1 + inflationRate / 100, row.age - currentAge);
   }, 0);
 
-  const totalMonthlyShortfall = shortfallYears.reduce((sum, row) => sum + row.shortfall, 0);
+  const totalMonthlyShortfall = shortfallYears.reduce((sum, row) => sum + shortfallOf(row), 0);
 
   return {
     shortfallYears: shortfallYears.length,
