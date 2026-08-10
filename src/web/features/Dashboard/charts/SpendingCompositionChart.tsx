@@ -8,7 +8,6 @@ import {
   XAxis,
   YAxis,
   Tooltip,
-  Legend,
   CartesianGrid,
   ReferenceLine,
   type LegendPayload,
@@ -18,7 +17,8 @@ import GlassCard from '../../../components/GlassCard';
 import styles from '../Dashboard.module.css';
 import { SimulationParams, SimulationResult } from '../../../../core/entities/types';
 import { computeMonthlySpendingComposition } from '../../../../core/usecases/MonthlySpendingComposition';
-import { formatValue, MultilineYAxisTick, RECHARTS_TOOLTIP_STYLE } from './chartFormatters';
+import { formatValue, MultilineYAxisTick, RECHARTS_TOOLTIP_STYLE, Y_AXIS_WIDTH } from './chartFormatters';
+import { ChartLegend, type ChartLegendItem } from './ChartLegend';
 import { ChartCaption } from './ChartCaption';
 
 interface SpendingCompositionChartProps {
@@ -31,6 +31,16 @@ interface SpendingCompositionChartProps {
 
 // 스택 순서와 같은 순서로 나열해야 툴팁과 그래프가 같은 이야기를 한다.
 const SOURCE_KEYS = ['사적연금', '국민연금', '배당소득', '기타소득', '자산인출', '자산부족'] as const;
+
+// 범례 표기. 아래 <Area> 선언의 name/fill과 짝을 이룬다 — 어긋나면 범례가 다른 색을 말한다.
+export const SPENDING_SOURCE_LEGEND: ChartLegendItem[] = [
+  { dataKey: '사적연금', label: '사적연금', color: '#A855F7' },
+  { dataKey: '국민연금', label: '국민연금', color: '#10B981' },
+  { dataKey: '배당소득', label: '배당소득', color: '#3B82F6' },
+  { dataKey: '기타소득', label: '기타소득', color: '#F59E0B' },
+  { dataKey: '자산인출', label: '자산인출', color: '#EC4899' },
+  { dataKey: '자산부족', label: '자산부족', color: '#EF4444' },
+];
 
 export interface SpendingChartRow {
   age: number;
@@ -88,6 +98,14 @@ export function SpendingCompositionTooltip({
 
 export function SpendingCompositionChart({ params, result, hiddenKeys, onLegendClick, caption }: SpendingCompositionChartProps) {
   const currency = params.displayCurrency;
+  // 범례 항목은 아래 시리즈 선언과 **같은 이름·같은 색**이어야 한다(legendItems 테스트가 고정).
+  // 목표생활비 선은 연령대별 곡선을 쓸 때만 그리므로 범례에도 그때만 오른다.
+  const legendItems: ChartLegendItem[] = [
+    ...SPENDING_SOURCE_LEGEND,
+    ...(params.spendingCurve
+      ? [{ dataKey: '목표생활비', label: '목표생활비', color: '#F8FAFC', shape: 'dashed' as const }]
+      : []),
+  ];
   const spendingChartData: SpendingChartRow[] = computeMonthlySpendingComposition(result.yearlyResults, params, result).map((d) => ({
     age: d.age,
     // 균등형에서는 그리지 않는다 — 재원을 쌓은 높이가 곧 목표라 평평한 선을 겹쳐도 정보가
@@ -117,6 +135,7 @@ export function SpendingCompositionChart({ params, result, hiddenKeys, onLegendC
         </span>
       </div>
       <ChartCaption>{caption}</ChartCaption>
+      <ChartLegend items={legendItems} hiddenKeys={hiddenKeys} onToggle={onLegendClick} />
       <div className={styles.chartScrollWrapper}>
         <div className={styles.chartContainer}>
           <ResponsiveContainer width="100%" height="100%">
@@ -133,7 +152,7 @@ export function SpendingCompositionChart({ params, result, hiddenKeys, onLegendC
               />
               <YAxis
                 stroke="var(--foreground-muted)"
-                width={34}
+                width={Y_AXIS_WIDTH}
                 tick={(props: YAxisTickContentProps) => <MultilineYAxisTick {...props} currency={currency} />}
               />
               <Tooltip
@@ -145,12 +164,6 @@ export function SpendingCompositionChart({ params, result, hiddenKeys, onLegendC
                     currency={currency}
                   />
                 )}
-              />
-              <Legend
-                verticalAlign="top"
-                height={36}
-                wrapperStyle={{ fontSize: '0.8rem', cursor: 'pointer' }}
-                onClick={onLegendClick}
               />
               <Area
                 type="monotone"

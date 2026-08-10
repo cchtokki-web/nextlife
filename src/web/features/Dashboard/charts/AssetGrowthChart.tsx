@@ -8,7 +8,6 @@ import {
   XAxis,
   YAxis,
   Tooltip,
-  Legend,
   CartesianGrid,
   type LegendPayload,
   type YAxisTickContentProps,
@@ -18,7 +17,8 @@ import GlassCard from '../../../components/GlassCard';
 import styles from '../Dashboard.module.css';
 import { SimulationParams, SimulationResult } from '../../../../core/entities/types';
 import { PlanAssetStatus } from '../../../../core/usecases/dashboard/resolvePlanAssetStatus';
-import { formatValue, MultilineYAxisTick, RECHARTS_TOOLTIP_STYLE } from './chartFormatters';
+import { formatValue, MultilineYAxisTick, RECHARTS_TOOLTIP_STYLE, Y_AXIS_WIDTH } from './chartFormatters';
+import { ChartLegend, type ChartLegendItem } from './ChartLegend';
 import { ChartCaption } from './ChartCaption';
 
 interface CompareResultEntry {
@@ -40,6 +40,17 @@ interface AssetGrowthChartProps {
 }
 
 const COMPARE_COLORS = ['#10B981', '#F59E0B', '#EF4444', '#8B5CF6'];
+
+// 범례 표기. 아래 <Area>/<Line> 선언의 name/dataKey/stroke/strokeDasharray와 짝을 이룬다 —
+// 어긋나면 범례가 차트에 없는 색이나 모양을 말한다.
+// 자산 breakdown을 접어도 항목은 남는다: 시리즈가 사라지는 게 아니라 hide될 뿐이다.
+const ASSET_LEGEND: ChartLegendItem[] = [
+  { dataKey: '자산총액', label: '총 자산액 (현재)', color: 'var(--primary)', shape: 'area' },
+  { dataKey: '주식자산', label: '주식/ETF 자산', color: 'var(--accent)', shape: 'dashed' },
+  { dataKey: '연금자산', label: '연금 자산', color: 'var(--secondary)', shape: 'dashed' },
+  { dataKey: 'ISA자산', label: 'ISA 자산', color: 'var(--success)', shape: 'dashed' },
+  { dataKey: '현금', label: '현금', color: 'var(--foreground-muted)', shape: 'dashed' },
+];
 
 export function AssetGrowthChart({
   params,
@@ -88,6 +99,24 @@ export function AssetGrowthChart({
   // "생활비를 200만원으로 넣었는데 왜 250만원이지?"가 된다.
   const hasHealthcareCost = yearlyResults.some((r) => r.healthcareSpending > 0);
 
+  // 월 생활비 라벨은 의료비 포함 여부에 따라 달라지고, 비교 시나리오는 개수가 가변이다.
+  // 둘 다 아래 시리즈 선언과 같은 규칙을 써야 범례와 그래프가 같은 이야기를 한다.
+  const legendItems: ChartLegendItem[] = [
+    ...ASSET_LEGEND,
+    ...compareResults.map((comp, idx) => ({
+      dataKey: `compare_${comp.id}`,
+      label: `${comp.name} (비교)`,
+      color: COMPARE_COLORS[idx % COMPARE_COLORS.length],
+      shape: 'line' as const,
+    })),
+    {
+      dataKey: '월생활비',
+      label: hasHealthcareCost ? '월 생활비 (의료비 포함)' : '월 생활비',
+      color: '#F59E0B',
+      shape: 'line' as const,
+    },
+  ];
+
   return (
     <GlassCard className={styles.chartCard}>
       <div className={styles.chartHeader}>
@@ -123,6 +152,9 @@ export function AssetGrowthChart({
         </div>
       </div>
       <ChartCaption>{caption}</ChartCaption>
+      {!hasNoInvestableAsset && (
+        <ChartLegend items={legendItems} hiddenKeys={hiddenKeys} onToggle={onLegendClick} />
+      )}
       {hasNoInvestableAsset ? (
         <p className="rounded-2xl border border-card-border bg-foreground/5 px-6 py-10 text-center text-sm text-foreground-muted">
           등록된 투자자산이 없어 자산 추이를 표시할 수 없습니다.
@@ -153,14 +185,14 @@ export function AssetGrowthChart({
               <YAxis
                 yAxisId="left"
                 stroke="var(--foreground-muted)"
-                width={34}
+                width={Y_AXIS_WIDTH}
                 tick={(props: YAxisTickContentProps) => <MultilineYAxisTick {...props} currency={currency} />}
               />
               <YAxis
                 yAxisId="right"
                 orientation="right"
                 stroke="#F59E0B"
-                width={38}
+                width={Y_AXIS_WIDTH}
                 tick={(props: YAxisTickContentProps) => <MultilineYAxisTick {...props} fill="#F59E0B" currency={currency} />}
               />
               {/* name을 빈 문자열로 돌려주면 recharts가 ": 5억원"처럼 값만 나열한다 —
@@ -169,12 +201,6 @@ export function AssetGrowthChart({
                 contentStyle={RECHARTS_TOOLTIP_STYLE}
                 formatter={(value: unknown, name: unknown) => [formatValue(Number(value), currency), String(name)]}
                 labelFormatter={(label) => `${label}세`}
-              />
-              <Legend
-                verticalAlign="top"
-                height={36}
-                wrapperStyle={{ fontSize: '0.8rem', color: 'var(--foreground-muted)', cursor: 'pointer' }}
-                onClick={onLegendClick}
               />
               <Area
                 yAxisId="left"

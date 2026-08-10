@@ -37,10 +37,13 @@ export function RetirementLikelihoodStars({
           />
         ))}
       </div>
-      <div className="flex items-center gap-1.5 text-sm text-foreground-muted">
+      {/* 등급과 접미사는 각각 통째로 유지하고, 자리가 없으면 **줄 단위로** 넘긴다.
+          예전에는 wrap 없이 한 줄에 밀어 넣어서 좁은 카드에서 "매우/위험", "38점 · 시장/변동 37%"
+          처럼 어절 한가운데가 잘렸다. */}
+      <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-sm text-foreground-muted">
         {/* 등급은 위 aria-label이 이미 읽어 주므로 여기서는 시각 표시 전용이다.
             숨기지 않으면 스크린리더가 같은 등급을 두 번 말한다. */}
-        <span aria-hidden="true">{grade}</span>
+        <span className="whitespace-nowrap" aria-hidden="true">{grade}</span>
         {suffix}
       </div>
     </div>
