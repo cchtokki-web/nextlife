@@ -320,6 +320,12 @@ export function compileStrategy(params: SimulationParams): CompiledStrategy {
   // 화면과 같은 함수로 전략을 읽는다 — 레거시 씨앗 규칙이 두 곳에 흩어지지 않게 하기 위해서다.
   const strategy = resolveStrategy(params);
 
+  // 상속 축의 배점은 상속 전략에 따라 바꾸지 않는다. 「모두 사용」에서도 이 축은 살아 있어야
+  // 한다 — 그때 이 축이 재는 것은 "상속을 잘 남겼는가"가 아니라 **"다 쓰고 갔는가"**이고,
+  // 그것을 재는 축은 이것 하나뿐이기 때문이다(소비 만족도는 목표를 채우면 만점이라
+  // 안 쓰고 남긴 자산을 잡지 못한다). 배점을 걷어내면 "다 쓰고 간다"고 선언하고 46억을
+  // 남기는 계획이 오히려 만점에 가까워진다 — 페르소나 하니스에서 실제로 그랬다.
+  // 대신 표시 이름을 전략에 맞게 바꾼다(resolveBequestAxisLabel).
   const weights = OBJECTIVE_WEIGHT_PRESETS[strategy.objective] ?? DEFAULT_UTILITY_CONFIG.weights;
   const utilityConfig = createUtilityConfig(weights, UTILITY_CONFIG_REST);
 

@@ -1288,6 +1288,10 @@ export class SimulationEngine {
       retirementScore,
       retirementGrade,
       goalAchievementRate,
+      // 비율만 내보내면 화면은 "62%"가 무엇을 무엇으로 나눈 값인지 말할 수 없다. 분자·분모를
+      // 함께 실어야 리포트가 "월 평균 소득 215만원 / 목표 348만원 = 62%"라고 밝힐 수 있다.
+      avgRetirementMonthlyIncome,
+      avgTargetMonthlySpending,
       retirementAssetsAtRetirement,
     };
   }

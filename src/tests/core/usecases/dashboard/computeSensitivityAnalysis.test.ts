@@ -42,17 +42,32 @@ function makeResult(
   };
 }
 
-function makeMockEngine(depletionAgeByLabel: Record<string, number | null>): SimulationEngine {
-  const runForUtility = vi.fn((params: SimulationParams) => {
+// 기준선도 이제 computeSensitivityAnalysis가 직접 계산한다 — 변형이 하나도 걸리지 않은 호출.
+function isBaselineCall(p: SimulationParams): boolean {
+  return p.assets[0]?.annualGrowthRate === baseParams.assets[0]?.annualGrowthRate
+    && p.inflationRate === baseParams.inflationRate
+    && p.userProfile.retirementAge === baseParams.userProfile.retirementAge;
+}
+
+function makeMockEngine(
+  depletionAgeByLabel: Record<string, number | null>,
+  baseline: SimulationResult = makeResult(88)
+): SimulationEngine {
+  const runSingle = vi.fn((params: SimulationParams) => {
     if (params.assets[0]?.annualGrowthRate === 5) return makeResult(depletionAgeByLabel['returnDown']);
     if (params.assets[0]?.annualGrowthRate === 9) return makeResult(depletionAgeByLabel['returnUp']);
     if (params.inflationRate === 3) return makeResult(depletionAgeByLabel['inflationUp']);
     if (params.inflationRate === 1) return makeResult(depletionAgeByLabel['inflationDown']);
     if (params.userProfile.retirementAge === 57) return makeResult(depletionAgeByLabel['retirementEarlier']);
     if (params.userProfile.retirementAge === 63) return makeResult(depletionAgeByLabel['retirementLater']);
+    if (isBaselineCall(params)) return baseline;
     throw new Error(`unexpected params: ${JSON.stringify(params)}`);
   });
-  return { runForUtility } as unknown as SimulationEngine;
+  return { runSingle } as unknown as SimulationEngine;
+}
+
+function callsOf(engine: SimulationEngine): SimulationParams[][] {
+  return (engine.runSingle as unknown as { mock: { calls: SimulationParams[][] } }).mock.calls;
 }
 
 describe('computeSensitivityAnalysis', () => {
@@ -61,9 +76,9 @@ describe('computeSensitivityAnalysis', () => {
       returnDown: 85, returnUp: 90, inflationUp: 88, inflationDown: 88,
       retirementEarlier: 88, retirementLater: 88,
     });
-    computeSensitivityAnalysis(baseParams, makeResult(88), engine);
+    computeSensitivityAnalysis(baseParams, engine);
 
-    const calls = (engine.runForUtility as unknown as { mock: { calls: SimulationParams[][] } }).mock.calls;
+    const calls = callsOf(engine);
     const returnDownCall = calls.find((c) => c[0].assets[0].annualGrowthRate === 5)![0];
     expect(returnDownCall.privatePensions[0].annualReturn).toBe(2); // 4 - 2
     expect(returnDownCall.isaAccounts![0].annualReturn).toBe(3); // 5 - 2
@@ -78,9 +93,9 @@ describe('computeSensitivityAnalysis', () => {
       returnDown: 88, returnUp: 88, inflationUp: 85, inflationDown: 90,
       retirementEarlier: 86, retirementLater: 89,
     });
-    computeSensitivityAnalysis(baseParams, makeResult(88), engine);
+    computeSensitivityAnalysis(baseParams, engine);
 
-    const calls = (engine.runForUtility as unknown as { mock: { calls: SimulationParams[][] } }).mock.calls;
+    const calls = callsOf(engine);
     const inflationUpCall = calls.find((c) => c[0].inflationRate === 3)![0];
     expect(inflationUpCall.assets[0].annualGrowthRate).toBe(7); // 변경 없음
     expect(inflationUpCall.userProfile.retirementAge).toBe(60); // 변경 없음
@@ -94,13 +109,12 @@ describe('computeSensitivityAnalysis', () => {
       ...baseParams,
       userProfile: { currentAge: 58, retirementAge: 60, expectancy: 90, targetMonthlySpending: 3000000 },
     };
-    const runForUtility = vi.fn((_p: SimulationParams) => makeResult(85));
-    const engine = { runForUtility } as unknown as SimulationEngine;
+    const runSingle = vi.fn((_p: SimulationParams) => makeResult(85));
+    const engine = { runSingle } as unknown as SimulationEngine;
 
-    computeSensitivityAnalysis(params, makeResult(88), engine);
+    computeSensitivityAnalysis(params, engine);
 
-    const calls = (runForUtility as unknown as { mock: { calls: SimulationParams[][] } }).mock.calls;
-    const earlierCall = calls.find((c) => c[0].userProfile.retirementAge < 60);
+    const earlierCall = callsOf(engine).find((c) => c[0].userProfile.retirementAge < 60);
     expect(earlierCall![0].userProfile.retirementAge).toBe(59); // max(58+1, 60-3=57) = 59
   });
 
@@ -109,13 +123,12 @@ describe('computeSensitivityAnalysis', () => {
       ...baseParams,
       userProfile: { currentAge: 40, retirementAge: 88, expectancy: 90, targetMonthlySpending: 3000000 },
     };
-    const runForUtility = vi.fn((_p: SimulationParams) => makeResult(85));
-    const engine = { runForUtility } as unknown as SimulationEngine;
+    const runSingle = vi.fn((_p: SimulationParams) => makeResult(85));
+    const engine = { runSingle } as unknown as SimulationEngine;
 
-    computeSensitivityAnalysis(params, makeResult(88), engine);
+    computeSensitivityAnalysis(params, engine);
 
-    const calls = (runForUtility as unknown as { mock: { calls: SimulationParams[][] } }).mock.calls;
-    const laterCall = calls.find((c) => c[0].userProfile.retirementAge > 88);
+    const laterCall = callsOf(engine).find((c) => c[0].userProfile.retirementAge > 88);
     expect(laterCall![0].userProfile.retirementAge).toBe(89); // min(90-1=89, 88+3=91) = 89
   });
 
@@ -124,7 +137,7 @@ describe('computeSensitivityAnalysis', () => {
       returnDown: 82, returnUp: null, inflationUp: 86, inflationDown: null,
       retirementEarlier: 84, retirementLater: 89,
     });
-    const scenarios = computeSensitivityAnalysis(baseParams, makeResult(88), engine);
+    const { scenarios } = computeSensitivityAnalysis(baseParams, engine);
 
     const nonNullKeys = scenarios.filter((s) => s.depletionAge !== null).map((s) => s.key);
     expect(nonNullKeys).toEqual(['returnDown', 'retirementEarlier', 'inflationUp', 'retirementLater']);
@@ -140,7 +153,7 @@ describe('computeSensitivityAnalysis', () => {
       returnDown: 82, returnUp: null, inflationUp: 88, inflationDown: 88,
       retirementEarlier: 88, retirementLater: 88,
     });
-    const scenarios = computeSensitivityAnalysis(baseParams, makeResult(88), engine);
+    const { scenarios } = computeSensitivityAnalysis(baseParams, engine);
     expect(scenarios.find((s) => s.key === 'returnDown')!.deltaYears).toBe(-6);
     expect(scenarios.find((s) => s.key === 'returnUp')!.deltaYears).toBe(2);
   });
@@ -149,8 +162,9 @@ describe('computeSensitivityAnalysis', () => {
     const engine = makeMockEngine({
       returnDown: null, returnUp: null, inflationUp: null, inflationDown: null,
       retirementEarlier: null, retirementLater: null,
-    });
-    const scenarios = computeSensitivityAnalysis(baseParams, makeResult(null), engine);
+    }, makeResult(null));
+    const { scenarios, baselineDepletionAge } = computeSensitivityAnalysis(baseParams, engine);
+    expect(baselineDepletionAge).toBeNull();
     scenarios.forEach((s) => {
       expect(s.depletionAge).toBeNull();
       expect(s.deltaYears).toBeNull();
@@ -161,8 +175,8 @@ describe('computeSensitivityAnalysis', () => {
     const engine = makeMockEngine({
       returnDown: 88, returnUp: null, inflationUp: 88, inflationDown: 88,
       retirementEarlier: 88, retirementLater: 88,
-    });
-    const scenarios = computeSensitivityAnalysis(baseParams, makeResult(80), engine);
+    }, makeResult(80));
+    const { scenarios } = computeSensitivityAnalysis(baseParams, engine);
     expect(scenarios.find((s) => s.key === 'returnUp')!.deltaYears).toBe(10); // 90 - 80
   });
 
@@ -170,16 +184,17 @@ describe('computeSensitivityAnalysis', () => {
   // 90세로 고정하면 기대수명 100세인 계획에서 95세 고갈 시나리오가 고갈이 전혀 없는
   // baseline보다 5년 "낫다"고 보고된다.
   test('고갈 없음 센티널은 그 계획의 기대수명이다', () => {
-    const engine = makeMockEngine({
-      returnDown: 95, returnUp: null, inflationUp: null, inflationDown: null,
-      retirementEarlier: null, retirementLater: null,
-    });
     const params: SimulationParams = {
       ...baseParams,
       userProfile: { ...baseParams.userProfile, expectancy: 100 },
     };
+    const runSingle = vi.fn((p: SimulationParams) => {
+      if (p.assets[0]?.annualGrowthRate === 5) return makeResult(95);
+      return makeResult(null);
+    });
+    const engine = { runSingle } as unknown as SimulationEngine;
 
-    const scenarios = computeSensitivityAnalysis(params, makeResult(null), engine);
+    const { scenarios } = computeSensitivityAnalysis(params, engine);
 
     expect(scenarios.find((s) => s.key === 'returnDown')!.deltaYears).toBe(-5);
   });
@@ -192,15 +207,16 @@ describe('computeSensitivityAnalysis', () => {
   // 버려지던 값을 함께 싣는다.
   describe('연속형 지표', () => {
     test('기말자산과 baseline 대비 증감을 함께 보고한다', () => {
-      const runForUtility = vi.fn((params: SimulationParams) => {
+      const runSingle = vi.fn((params: SimulationParams) => {
         if (params.assets[0]?.annualGrowthRate === 5) return makeResult(null, { endingAssets: 820000000 });
+        if (isBaselineCall(params)) return makeResult(null, { endingAssets: 2500000000 });
         return makeResult(null, { endingAssets: 3000000000 });
       });
-      const engine = { runForUtility } as unknown as SimulationEngine;
+      const engine = { runSingle } as unknown as SimulationEngine;
 
-      const scenarios = computeSensitivityAnalysis(
-        baseParams, makeResult(null, { endingAssets: 2500000000 }), engine
-      );
+      const { scenarios, baselineEndingAssets } = computeSensitivityAnalysis(baseParams, engine);
+
+      expect(baselineEndingAssets).toBe(2500000000);
 
       const returnDown = scenarios.find((s) => s.key === 'returnDown')!;
       expect(returnDown.endingAssets).toBe(820000000);
@@ -218,10 +234,10 @@ describe('computeSensitivityAnalysis', () => {
         makeYearlyResult({ age: 81, unmetSpending: 1200000 }),
         makeYearlyResult({ age: 82, unmetSpending: 3600000 }),
       ];
-      const runForUtility = vi.fn(() => makeResult(null, { yearlyResults }));
-      const engine = { runForUtility } as unknown as SimulationEngine;
+      const runSingle = vi.fn(() => makeResult(null, { yearlyResults }));
+      const engine = { runSingle } as unknown as SimulationEngine;
 
-      const scenarios = computeSensitivityAnalysis(baseParams, makeResult(null), engine);
+      const { scenarios } = computeSensitivityAnalysis(baseParams, engine);
 
       expect(scenarios[0].unmetSpendingYears).toBe(2);
     });
@@ -237,12 +253,12 @@ describe('computeSensitivityAnalysis', () => {
       ...baseParams,
       withdrawalPlan: { generalAssetWithdrawalStartAge: 60 },
     };
-    const runForUtility = vi.fn((_p: SimulationParams) => makeResult(85));
-    const engine = { runForUtility } as unknown as SimulationEngine;
+    const runSingle = vi.fn((_p: SimulationParams) => makeResult(85));
+    const engine = { runSingle } as unknown as SimulationEngine;
 
-    computeSensitivityAnalysis(params, makeResult(88), engine);
+    computeSensitivityAnalysis(params, engine);
 
-    const calls = (runForUtility as unknown as { mock: { calls: SimulationParams[][] } }).mock.calls;
+    const calls = callsOf(engine);
     const earlier = calls.find((c) => c[0].userProfile.retirementAge === 57)![0];
     expect(earlier.withdrawalPlan?.generalAssetWithdrawalStartAge).toBe(57);
 
@@ -253,61 +269,96 @@ describe('computeSensitivityAnalysis', () => {
   test('일반자산 인출 개시 나이가 설정되지 않았으면 만들어 내지 않는다', () => {
     // 미설정은 "은퇴 나이를 따른다"는 뜻이라(엔진의 ?? 폴백) 이미 함께 움직인다.
     // 여기서 값을 채워 넣으면 사용자가 설정하지 않은 계획을 시나리오가 지어내는 셈이다.
-    const runForUtility = vi.fn((_p: SimulationParams) => makeResult(85));
-    const engine = { runForUtility } as unknown as SimulationEngine;
+    const runSingle = vi.fn((_p: SimulationParams) => makeResult(85));
+    const engine = { runSingle } as unknown as SimulationEngine;
 
-    computeSensitivityAnalysis(baseParams, makeResult(88), engine);
+    computeSensitivityAnalysis(baseParams, engine);
 
-    const calls = (runForUtility as unknown as { mock: { calls: SimulationParams[][] } }).mock.calls;
-    const earlier = calls.find((c) => c[0].userProfile.retirementAge === 57)![0];
+    const earlier = callsOf(engine).find((c) => c[0].userProfile.retirementAge === 57)![0];
     expect(earlier.withdrawalPlan?.generalAssetWithdrawalStartAge).toBeUndefined();
   });
 
-  // mock이 아닌 실제 엔진으로 "재계산이 실제로 일어나고 방향이 맞는가"를 고정한다.
-  // 위 테스트들은 전부 mock engine이라 엔진이 통째로 바뀌어도 통과한다.
+  // **이 블록이 이 변경의 존재 이유다.**
   //
-  // 자산을 넉넉하게 잡는 이유가 이 테스트의 요점이다: 고갈이 전혀 없어(depletionAge가 모두
-  // null) 예전 구현으로는 6개 시나리오가 구분되지 않던 계획에서도, 기말자산은 뚜렷하게
-  // 갈린다는 것을 보인다. 리포트가 보고한 상황(잔여자산 25억, 민감도 전부 "평생 유지")이
-  // 정확히 이 형태였다.
-  test('[통합] 고갈이 없는 계획에서도 수익률에 따라 기말자산이 갈린다', () => {
-    const engine = new SimulationEngine();
-    const richParams: SimulationParams = {
+  // 리포트가 보고한 모순: 기준 시나리오는 90세에 자산이 정확히 0원인데, 민감도 분석에서는
+  // 투자수익률 -2%p·물가 +1%p가 전부 "평생 유지"로 나왔다. 원인은 「평생 소비 최적화」
+  // 계획에서 시나리오마다 이진탐색이 다시 돌아 생활비를 낮춰 버린 것이었다.
+  describe('생활비 고정', () => {
+    const maxSustainableParams: SimulationParams = {
       ...baseParams,
+      userProfile: { currentAge: 51, retirementAge: 60, expectancy: 90, targetMonthlySpending: 3500000 },
       assets: [
-        { id: 'a1', type: 'etf', ticker: 'SPY', name: 'S&P500', quantity: 500, averagePrice: 400000,
-          annualGrowthRate: 7, dividendYield: 1.5, monthlyContribution: 2000000, reinvestDividend: true, currency: 'KRW' },
+        { id: 'a1', type: 'etf', ticker: 'QQQ', name: 'QQQ', quantity: 100, averagePrice: 1000000,
+          annualGrowthRate: 7, dividendYield: 1.5, monthlyContribution: 1000000,
+          reinvestDividend: true, currency: 'KRW' },
       ],
       nationalPension: { expectedMonthlyAmount: 2000000 },
+      inflationRate: 2.5,
+      spendingStrategy: 'max_sustainable',
     };
-    const baseline = engine.runForUtility(richParams);
 
-    // 전제 확인: 이 계획은 고갈되지 않는다. 고갈되면 아래 비교가 "0 대 0"이 되어 무의미해진다.
-    expect(baseline.depletionAge).toBeNull();
-    expect(baseline.endingAssets).toBeGreaterThan(0);
+    test('6개 시나리오와 기준선이 모두 같은 월 생활비를 쓴다', () => {
+      const engine = new SimulationEngine();
+      const spy = vi.spyOn(engine, 'runSingle');
 
-    const scenarios = computeSensitivityAnalysis(richParams, baseline, engine);
+      const { frozenMonthlySpending } = computeSensitivityAnalysis(maxSustainableParams, engine);
 
-    // 예전 구현이라면 여기서 멈췄다 — 6개 전부 "평생 유지"라 구분되는 정보가 없었다.
-    expect(scenarios.every((s) => s.depletionAge === null)).toBe(true);
+      // 이진탐색으로 확정된 금액이 사용자가 입력한 목표(350만원)와 다르다는 것이 전제다.
+      expect(frozenMonthlySpending).toBeGreaterThan(0);
+      expect(frozenMonthlySpending).not.toBe(3500000);
 
-    const down = scenarios.find((s) => s.key === 'returnDown')!;
-    const up = scenarios.find((s) => s.key === 'returnUp')!;
+      // 이진탐색(engine.run 내부) 호출을 지나 시나리오 실행 구간만 본다: 기준선 1 + 시나리오 6.
+      const scenarioCalls = spy.mock.calls.slice(-7);
+      expect(scenarioCalls).toHaveLength(7);
+      scenarioCalls.forEach(([p]) => {
+        expect(p.userProfile.targetMonthlySpending).toBe(frozenMonthlySpending);
+        // 전략 문자열을 바꾸면 사적연금 인출 규칙이 달라진다(SimulationEngine.ts:882).
+        expect(p.spendingStrategy).toBe('max_sustainable');
+      });
+    });
 
-    expect(down.endingAssets).toBeLessThan(baseline.endingAssets);
-    expect(up.endingAssets).toBeGreaterThan(baseline.endingAssets);
-    expect(down.endingAssetsDelta).toBeLessThan(0);
-    expect(up.endingAssetsDelta).toBeGreaterThan(0);
+    test('[통합] 평생 소비 최적화 계획에서 수익률 -2%p는 기준선보다 이르게 고갈된다', () => {
+      const engine = new SimulationEngine();
+
+      const { scenarios, baselineDepletionAge, baselineEndingAssets } =
+        computeSensitivityAnalysis(maxSustainableParams, engine);
+
+      // 전제: 최적화 계획은 기대수명 시점에 자산을 거의 다 쓴다.
+      expect(baselineEndingAssets).toBeLessThan(maxSustainableParams.userProfile.targetMonthlySpending * 12);
+
+      const down = scenarios.find((s) => s.key === 'returnDown')!;
+      const up = scenarios.find((s) => s.key === 'returnUp')!;
+      const baselineEffective = baselineDepletionAge ?? maxSustainableParams.userProfile.expectancy;
+
+      // 예전 구현은 여기서 down.depletionAge가 null이었다 — 생활비를 다시 낮춰 버렸기 때문이다.
+      expect(down.depletionAge).not.toBeNull();
+      expect(down.depletionAge!).toBeLessThan(baselineEffective);
+      expect(down.endingAssetsDelta).toBeLessThanOrEqual(0);
+
+      // 반대 방향도 살아 있어야 한다 — 수익률이 좋아지면 자산이 남는다.
+      expect(up.endingAssetsDelta).toBeGreaterThan(0);
+    });
+
+    test('고정 전략이 아닌 계획은 사용자가 입력한 목표 생활비를 그대로 보고한다', () => {
+      const engine = makeMockEngine({
+        returnDown: 85, returnUp: 90, inflationUp: 88, inflationDown: 88,
+        retirementEarlier: 88, retirementLater: 88,
+      });
+
+      const { frozenMonthlySpending } = computeSensitivityAnalysis(baseParams, engine);
+
+      expect(frozenMonthlySpending).toBe(3000000);
+    });
   });
 
   test('특정 시나리오가 예외를 던져도 나머지 5개는 정상 반환된다', () => {
-    const runForUtility = vi.fn((params: SimulationParams) => {
+    const runSingle = vi.fn((params: SimulationParams) => {
       if (params.assets[0]?.annualGrowthRate === 5) throw new Error('시뮬레이션 실패');
       return makeResult(85);
     });
-    const engine = { runForUtility } as unknown as SimulationEngine;
+    const engine = { runSingle } as unknown as SimulationEngine;
 
-    const scenarios = computeSensitivityAnalysis(baseParams, makeResult(88), engine);
+    const { scenarios } = computeSensitivityAnalysis(baseParams, engine);
 
     expect(scenarios).toHaveLength(5);
     expect(scenarios.find((s) => s.key === 'returnDown')).toBeUndefined();

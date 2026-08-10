@@ -71,3 +71,42 @@ describe('UtilityBreakdownBars', () => {
     expect(screen.getByText('27/35')).toBeInTheDocument();
   });
 });
+
+// 「모두 사용」에서 이 축이 재는 것은 "상속을 잘 남겼는가"가 아니라 "다 쓰고 갔는가"다.
+// 이름이 그대로면 상속을 원하지 않는 사용자에게 자기와 무관한 항목이 배점을 차지하고
+// 있는 것처럼 보인다 — 배점을 걷어내는 대신(그러면 미소진 자산을 잡는 축이 사라진다)
+// 이름을 바꾼다.
+describe('UtilityBreakdownBars - 상속 축 이름', () => {
+  test('기본 전략에서는 "상속 자산 적정성"이다', () => {
+    render(<UtilityBreakdownBars utility={utility} weights={DEFAULT_UTILITY_CONFIG.weights} />);
+
+    expect(screen.getByText('상속 자산 적정성')).toBeInTheDocument();
+    expect(screen.queryByText('자산 소진도')).not.toBeInTheDocument();
+  });
+
+  test('모두 사용에서는 "자산 소진도"다', () => {
+    render(
+      <UtilityBreakdownBars
+        utility={utility}
+        weights={DEFAULT_UTILITY_CONFIG.weights}
+        bequestStrategy="spend_all"
+      />
+    );
+
+    expect(screen.getByText('자산 소진도')).toBeInTheDocument();
+    expect(screen.queryByText('상속 자산 적정성')).not.toBeInTheDocument();
+  });
+
+  // 이름만 바뀌고 배점은 그대로여야 한다.
+  test('이름이 바뀌어도 배점은 그대로다', () => {
+    render(
+      <UtilityBreakdownBars
+        utility={utility}
+        weights={DEFAULT_UTILITY_CONFIG.weights}
+        bequestStrategy="spend_all"
+      />
+    );
+
+    expect(screen.getByText(`${utility.components.bequestAdequacy}/10`)).toBeInTheDocument();
+  });
+});

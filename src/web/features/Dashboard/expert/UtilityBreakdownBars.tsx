@@ -1,7 +1,7 @@
 'use client';
 
 import { motion } from 'framer-motion';
-import { UtilityBreakdown, UtilityConfig } from '../../../../core/entities/types';
+import { BequestStrategy, UtilityBreakdown, UtilityConfig } from '../../../../core/entities/types';
 import { buildUtilityComponentMeta } from '../utilityComponentMeta';
 import { UtilityComponentExplanations } from '../../../../core/usecases/utility/explainUtilityComponents';
 
@@ -15,13 +15,16 @@ interface UtilityBreakdownBarsProps {
   // 툴팁(hover)이 아니라 항상 보이는 줄로 두는 이유: 모바일에는 hover가 없고 PDF에도
   // 인쇄되지 않아, 정작 설명이 필요한 경로에서 전부 사라진다.
   explanations?: UtilityComponentExplanations;
+  // 상속 축의 이름을 정한다 — 「모두 사용」에서는 이 축이 "다 쓰고 갔는가"를 재므로
+  // 이름도 그래야 한다(buildUtilityComponentMeta 참조).
+  bequestStrategy?: BequestStrategy;
 }
 
 // UtilityCard.tsx에 있던 6개 Utility 구성요소 바 차트를 그대로 이관.
-export function UtilityBreakdownBars({ utility, weights, explanations }: UtilityBreakdownBarsProps) {
+export function UtilityBreakdownBars({ utility, weights, explanations, bequestStrategy }: UtilityBreakdownBarsProps) {
   return (
     <div className="flex flex-col gap-3">
-      {buildUtilityComponentMeta(weights).map(({ key, label, max, color }) => {
+      {buildUtilityComponentMeta(weights, bequestStrategy).map(({ key, label, max, color }) => {
         const value = utility.components[key];
         const pct = max > 0 ? Math.max(0, Math.min(100, (value / max) * 100)) : 0;
         return (

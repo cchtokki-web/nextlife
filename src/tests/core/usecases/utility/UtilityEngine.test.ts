@@ -222,6 +222,46 @@ describe('UtilityEngine.computeLifetimeUtility', () => {
       const bigTargetUtility = computeLifetimeUtility(makeR(), bigTargetParams);
       expect(smallTargetUtility.components.bequestAdequacy).toBeLessThan(bigTargetUtility.components.bequestAdequacy);
     });
+
+    // **잔여자산 0원이 7/10을 받던 문제.**
+    //
+    // 미달 구간의 식이 `0.7 + 0.3 * ratio`였다. 적정 상속자산 대비 0%를 달성한 계획도
+    // 0.7을 받아, 실제 리포트에서 "90세 잔여자산 0원"과 "상속 자산 적정성 7/10"이 나란히
+    // 찍혔다. 예전 테스트가 전부 상대 비교(toBeLessThan)였던 탓에 이 하한선은 어떤 단정에도
+    // 고정되어 있지 않았다 — 그래서 여기서는 값을 못박는다.
+    describe('미달 구간의 절대 점수', () => {
+      const endingAssets = (amount: number) =>
+        makeResult(
+          Array.from({ length: 36 }, (_, i) => makeYear(60 + i, { totalAssets: amount, pensionAssets: 0 })),
+          amount > 0 ? null : 80
+        );
+
+      test('목표 대비 잔여자산이 0원이면 0점이다', () => {
+        const params: SimulationParams = {
+          ...baseParams, userProfile: { ...userProfile, targetBequest: 100000000 },
+        };
+
+        expect(computeLifetimeUtility(endingAssets(0), params).components.bequestAdequacy).toBe(0);
+      });
+
+      test.each([
+        [25000000, 3], // ratio 0.25 -> 2.5 -> 반올림 3
+        [50000000, 5], // ratio 0.5
+        [90000000, 9], // ratio 0.9 — 적정선에 가까우면 여전히 높다
+      ])('잔여자산 %s원이면 %s점 (미달 구간은 선형)', (amount, expected) => {
+        const params: SimulationParams = {
+          ...baseParams, userProfile: { ...userProfile, targetBequest: 100000000 },
+        };
+
+        expect(computeLifetimeUtility(endingAssets(amount), params).components.bequestAdequacy).toBe(expected);
+      });
+
+      // targetBequest 미지정 계획(기본값 'leave_some')도 같은 곡선을 탄다 —
+      // 리포트의 시나리오가 정확히 이것이었다(적정 상속자산 8,400만원, 잔여 0원).
+      test('목표 미지정 계획도 잔여자산이 0원이면 0점이다', () => {
+        expect(computeLifetimeUtility(endingAssets(0), baseParams).components.bequestAdequacy).toBe(0);
+      });
+    });
   });
 
   describe('pensionUtilization (연금 활용도) 재설계', () => {

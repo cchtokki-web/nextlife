@@ -362,7 +362,22 @@ export interface SimulationResult {
   endingAssets: number; // 시뮬레이션 종료(기대수명) 시점 잔여 자산
   retirementScore: number; // 0 ~ 100 점
   retirementGrade: RetirementGrade; // 점수 등급 (매우 안정, 안정, 보통, 주의, 위험)
-  goalAchievementRate: number; // 은퇴 후 예상 월소득 / 목표 월소득 비율 (%)
+  // 은퇴 후 **연금·배당 등 소득만으로** 목표 생활비를 얼마나 채우는지의 비율(%).
+  // 자산을 팔아 쓴 인출분은 분자에 넣지 않는다 — 그래서 원금을 계획적으로 헐어 쓰는
+  // 정상적인 계획도 100%에 도달하지 않는다.
+  //
+  // 이 정의가 리포트에서 오해를 샀다. "은퇴 소득 달성률 62%"라는 이름만 보면 목표 생활비의
+  // 62%밖에 못 쓴다는 뜻으로 읽히지만, 실제로는 자산 인출을 포함해 목표의 80%를 쓰고 있었다.
+  // 이름과 분자·분모를 함께 드러내야 한다(아래 두 필드).
+  goalAchievementRate: number;
+  // goalAchievementRate의 분자: 은퇴 후 연평균 월 소득(배당 + 국민연금 + 사적연금 + 기타, 세후).
+  // goalAchievementRate의 분모: 은퇴 후 연평균 월 목표 생활비(연령대 배수·물가·의료비 반영).
+  //
+  // 엔진은 항상 채우지만 선택적이다 — calculatedTargetSpending·utility와 같은 관례로,
+  // 손으로 만든 결과 객체(테스트 픽스처 등)에는 이 값이 존재하지 않는 것이 정직하다.
+  // 화면은 없으면 비율만 보여준다.
+  avgRetirementMonthlyIncome?: number;
+  avgTargetMonthlySpending?: number;
   calculatedTargetSpending?: number; // 역산된 목표 생활비 (max_sustainable 모드 등에서 사용)
   retirementAssetsAtRetirement: number; // 은퇴 시작 시점 총자산 (해석/배너 표시용)
   utility?: UtilityBreakdown; // Lifetime Utility Score

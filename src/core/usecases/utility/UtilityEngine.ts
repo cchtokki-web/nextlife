@@ -107,11 +107,21 @@ function computeDepletionSafetyRaw(params: SimulationParams, result: SimulationR
   return clamp((result.depletionAge - retirementAge) / span, 0, 1);
 }
 
-// ratio(실제/적정)가 1 이하면 완만하게, 1을 초과하면(과다 잔여) 지수적으로 감점한다.
+// ratio(실제/적정)가 1 이하면 선형으로, 1을 초과하면(과다 잔여) 지수적으로 감점한다.
 // 선형 감쇠 대신 지수 감쇠를 쓰는 이유: ratio가 매우 큰 값들(예: 3배 vs 15배 과다) 사이에서도
 // 0으로 뭉개지지 않고 상대적 크기 차이가 계속 반영되어야 하기 때문이다.
-function bellShapedAdequacyRaw(ratio: number, baseFloor: number, excessDecayRate: number): number {
-  if (ratio <= 1) return baseFloor + (1 - baseFloor) * ratio;
+//
+// **미달 구간의 하한선(baseFloor 0.7)을 없앴다.**
+//
+// 예전에는 ratio <= 1 구간이 `0.7 + 0.3 * ratio`였다. 그래서 적정 상속자산 8,400만원 대비
+// 잔여자산이 **0원인 계획도 0.7**, 즉 10점 만점에 7점을 받았다. 실제 리포트에서 "90세
+// 잔여자산 0원"과 "상속 자산 적정성 7/10"이 나란히 찍힌 것이 정확히 이 식 때문이다.
+// 목표의 0%를 달성한 계획이 70%의 점수를 받을 근거가 없다.
+//
+// 미달 구간을 여전히 선형으로 두는 것은 의도적이다 — 적정선에 조금 못 미치는 계획
+// (ratio 0.9 → 0.9)까지 급격히 깎을 이유는 없고, 그 완만함이 원래 baseFloor의 취지였다.
+function bellShapedAdequacyRaw(ratio: number, excessDecayRate: number): number {
+  if (ratio <= 1) return Math.max(0, ratio);
   return Math.exp(-excessDecayRate * (ratio - 1));
 }
 
@@ -220,12 +230,13 @@ function computeBequestAdequacyRaw(params: SimulationParams, result: SimulationR
   if (targetBequest !== undefined && targetBequest <= 0) {
     if (result.endingAssets <= 0) return 1;
     const excessScale = params.userProfile.targetMonthlySpending > 0 ? params.userProfile.targetMonthlySpending * 12 : 1;
-    return bellShapedAdequacyRaw(1 + result.endingAssets / excessScale, 0.7, 0.4);
+    // endingAssets > 0인 분기이므로 ratio는 항상 1을 넘는다 — 지수 감쇠 구간만 탄다.
+    return bellShapedAdequacyRaw(1 + result.endingAssets / excessScale, 0.4);
   }
 
   const appropriateBalance =
     targetBequest !== undefined ? targetBequest : appropriateBequestBalance(params, cfg);
-  return bellShapedAdequacyRaw(bequestRatio(result.endingAssets, appropriateBalance), 0.7, 0.4);
+  return bellShapedAdequacyRaw(bequestRatio(result.endingAssets, appropriateBalance), 0.4);
 }
 
 // 세부담 비율(총세금 / 총소득)로 세금 효율을 채점한다.

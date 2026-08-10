@@ -1,6 +1,7 @@
 import { SimulationParams, SimulationResult, SimulationYearlyResult } from '../../entities/types';
 import { MonteCarloBandYear, MonteCarloConfig, MonteCarloResult } from '../../entities/montecarlo';
 import { SimulationEngine } from '../SimulationEngine';
+import { FrozenSpendingPlan, freezeSpendingPlan, runFrozenPlan } from '../spending/freezeSpendingPlan';
 import { mulberry32, deriveSeed } from './rng';
 import { buildReturnShockPath } from './returnPath';
 import { percentileOfSorted } from './statistics';
@@ -15,25 +16,6 @@ interface TrialSummary {
   depletionAge: number | null;
   hasUnmetSpending: boolean;
   totalAssetsByYear: number[];
-}
-
-// max_sustainable 전략을 시행 전에 **한 번만** 해소해 'target'으로 고정한다.
-//
-// 시행마다 이진탐색을 다시 돌리면 두 가지가 잘못된다:
-//   1. 비용이 30배가 된다(시행당 runSingle 30회 추가).
-//   2. 더 중요하게, **계획 자체가 시행마다 달라진다.** 그 시행이 겪을 미래를 미리 알고
-//      생활비를 정하는 셈이라(완벽한 예지력) 성공률이 구조적으로 100%에 붙는다.
-//      MC가 묻는 것은 "이 계획이 여러 미래에서 얼마나 견디는가"지 "미래를 알았다면 얼마나
-//      썼을까"가 아니다.
-function resolvePlannedParams(params: SimulationParams, engine: SimulationEngine): SimulationParams {
-  if ((params.spendingStrategy ?? 'target') !== 'max_sustainable') return params;
-
-  const sustainable = engine.run(params).calculatedTargetSpending ?? 0;
-  return {
-    ...params,
-    spendingStrategy: 'target',
-    userProfile: { ...params.userProfile, targetMonthlySpending: sustainable },
-  };
 }
 
 function summarize(index: number, result: SimulationResult): TrialSummary {
@@ -80,13 +62,13 @@ export function estimateSuccessRate(
 ): number {
   if (config.trials <= 0) return 0;
 
-  const planned = resolvePlannedParams(params, engine);
-  const years = simulationYearCount(planned);
-  const successAge = planned.userProfile.expectancy;
+  const planned = freezeSpendingPlan(params, engine);
+  const years = simulationYearCount(planned.params);
+  const successAge = planned.params.userProfile.expectancy;
 
   let succeeded = 0;
   for (let i = 0; i < config.trials; i++) {
-    const { depletionAge } = engine.runSingle(planned, pathForTrial(years, config, i));
+    const { depletionAge } = runFrozenPlan(engine, planned, pathForTrial(years, config, i));
     if (isSuccessfulTrial(depletionAge, successAge)) succeeded++;
   }
   return succeeded / config.trials;
@@ -97,21 +79,21 @@ export function runMonteCarlo(
   engine: SimulationEngine,
   config: MonteCarloConfig
 ): MonteCarloResult {
-  const planned = resolvePlannedParams(params, engine);
-  const years = simulationYearCount(planned);
+  const planned = freezeSpendingPlan(params, engine);
+  const years = simulationYearCount(planned.params);
 
   // 결정론 기준선. 팬 차트에 겹쳐 그려 변동성 손실을 드러내는 데 쓴다.
   //
   // run()이 아니라 runSingle을 부른다 — run()은 이진탐색 30회를 더 돌지만 여기서 필요한
   // 것은 기말자산뿐이다.
-  const deterministic = engine.runSingle(planned);
-  const successAge = planned.userProfile.expectancy;
+  const deterministic = runFrozenPlan(engine, planned);
+  const successAge = planned.params.userProfile.expectancy;
 
   const trials: TrialSummary[] = [];
   for (let i = 0; i < config.trials; i++) {
     // runSingle만 부른다. run()이면 시행당 31회가 되어 1000시행이 31,000회가 된다
     // (RecommendationEngine이 runForUtility를 도입한 것과 같은 판단).
-    trials.push(summarize(i, engine.runSingle(planned, pathForTrial(years, config, i))));
+    trials.push(summarize(i, runFrozenPlan(engine, planned, pathForTrial(years, config, i))));
   }
 
   const endingSorted = trials.map((t) => t.endingAssets).sort((a, b) => a - b);
@@ -129,7 +111,7 @@ export function runMonteCarlo(
 
   // 연도별 분위수. 각 해마다 전 시행의 총자산을 모아 정렬한다.
   const assetBand: MonteCarloBandYear[] = [];
-  const startAge = planned.userProfile.currentAge;
+  const startAge = planned.params.userProfile.currentAge;
   for (let y = 0; y < years; y++) {
     const columnSorted = trials
       .map((t) => t.totalAssetsByYear[y])
@@ -173,7 +155,7 @@ export function runMonteCarlo(
 // 시행에서 온 값이라 그것을 이은 선은 어느 시행의 경로도 아니다. 실제 경로 하나가 필요하다.
 function extractWorstDecilePath(
   trials: readonly TrialSummary[],
-  planned: SimulationParams,
+  planned: FrozenSpendingPlan,
   engine: SimulationEngine,
   config: MonteCarloConfig,
   years: number
@@ -185,5 +167,5 @@ function extractWorstDecilePath(
   // 보여주려는 것이므로 최소값이 아니라 10% 지점을 고른다.
   const pick = byEndingAssets[Math.min(byEndingAssets.length - 1, Math.floor(byEndingAssets.length * 0.1))];
 
-  return engine.runSingle(planned, pathForTrial(years, config, pick.index)).yearlyResults;
+  return runFrozenPlan(engine, planned, pathForTrial(years, config, pick.index)).yearlyResults;
 }

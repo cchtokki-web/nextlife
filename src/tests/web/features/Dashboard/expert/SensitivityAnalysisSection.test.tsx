@@ -72,6 +72,28 @@ describe('SensitivityAnalysisSection', () => {
 // 6개 시나리오가 전부 "평생 유지"이면 상세 막대를 접고 "고갈 위험 없습니다" 한 줄만
 // 보여줬다. 그 결과 실제 리포트에서 수익률 ±2%p가 기말자산을 수십억 갈라놓는데도
 // 사용자는 아무 차이도 보지 못했다 — 정보량이 0인 화면이었다.
+// 고정한 생활비를 밝히지 않으면 사용자는 자기가 입력한 목표 생활비 기준으로 표를 읽는다.
+// 「평생 소비 최적화」에서는 그 두 금액이 다르다.
+describe('SensitivityAnalysisSection - 고정된 생활비 표기', () => {
+  test('6개 시나리오가 공통으로 고정한 월 생활비를 밝힌다', () => {
+    render(
+      <SensitivityAnalysisSection
+        baselineDepletionAge={88} baselineEndingAssets={2500000000}
+        frozenMonthlySpending={2320000} scenarios={scenarios}
+      />
+    );
+
+    expect(screen.getByText(/고정/)).toBeInTheDocument();
+    expect(screen.getByText(/232만원/)).toBeInTheDocument();
+  });
+
+  test('값이 없으면 문장을 만들어 내지 않는다', () => {
+    render(<SensitivityAnalysisSection baselineDepletionAge={88} baselineEndingAssets={2500000000} scenarios={scenarios} />);
+
+    expect(screen.queryByText(/고정한 채/)).not.toBeInTheDocument();
+  });
+});
+
 describe('SensitivityAnalysisSection - 고갈이 전혀 없는 계획', () => {
   const allLifetime: SensitivityScenario[] = [
     scenario({ key: 'returnDown', label: '투자수익률 -2%p', endingAssets: 820000000, endingAssetsDelta: -1680000000 }),

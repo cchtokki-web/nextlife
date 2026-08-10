@@ -35,3 +35,4 @@ export const OBJECTIVE_WEIGHT_PRESETS: Record<ObjectivePriority, UtilityConfig['
   // 이 값이 기본 가중치와 달라지면 "목표 미정"이 조용히 특정 목표로 채점된다.
   ai_recommended: DEFAULT_UTILITY_CONFIG.weights,
 };
+

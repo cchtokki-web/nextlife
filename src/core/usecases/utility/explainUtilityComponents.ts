@@ -3,6 +3,8 @@ import { DEFAULT_UTILITY_CONFIG } from './utilityWeights';
 import { explainBequestAdequacy, formatManwon } from './utilityAnalysis';
 import { sumTotalTaxesAndLevies } from '../tax/annualTaxTotals';
 import { spendingMultiplierForAge } from '../spending/spendingCurve';
+import { isMonteCarloConflict } from '../montecarlo/monteCarloConflict';
+import { resolvePlanAssetStatus } from '../dashboard/resolvePlanAssetStatus';
 
 export type UtilityComponentExplanations = Record<UtilityAxis, string>;
 
@@ -15,7 +17,10 @@ export type UtilityComponentExplanations = Record<UtilityAxis, string>;
 export function explainUtilityComponents(
   params: SimulationParams,
   result: SimulationResult,
-  cfg: UtilityConfig = DEFAULT_UTILITY_CONFIG
+  cfg: UtilityConfig = DEFAULT_UTILITY_CONFIG,
+  // 있으면 자산 고갈 방지 축의 설명에 확률 단서를 덧붙인다(아래 explainDepletionSafety 참조).
+  // 점수 자체는 바뀌지 않는다 — UtilityEngine.ts:185-206의 설계 결정을 유지한다.
+  monteCarlo?: { successRate: number }
 ): UtilityComponentExplanations {
   const { yearlyResults } = result;
   const { retirementAge } = params.userProfile;
@@ -23,7 +28,7 @@ export function explainUtilityComponents(
 
   return {
     consumption: explainConsumption(params, retirementYears),
-    depletionSafety: explainDepletionSafety(params, result, retirementYears.length),
+    depletionSafety: explainDepletionSafety(params, result, retirementYears.length, monteCarlo),
     pensionUtilization: explainPensionUtilization(params, retirementYears),
     taxEfficiency: explainTaxEfficiency(yearlyResults),
     taxationRisk: explainTaxationRisk(yearlyResults),
@@ -58,16 +63,31 @@ function explainConsumption(params: SimulationParams, retirementYears: YearlyRes
   return `은퇴 후 목표 월 ${formatManwon(avgTargetMonthly)} 대비 실제 소비는 평균 월 ${formatManwon(avgActualMonthly)}(${rate}%)입니다.`;
 }
 
+// **이 축이 만점인데 몬테카를로 성공률이 37%인 상태.**
+//
+// computeDepletionSafetyRaw는 결정론 depletionAge만 본다. 기준 수익률이 그대로 실현되면
+// 고갈이 없으므로 raw = 1, 즉 20/20이다. 그런데 같은 리포트의 확률 시뮬레이션은 "1,000회 중
+// 37%만 90세까지 자산이 남는다"고 말했다. 두 숫자가 한 화면에서 정면으로 부딪힌다.
+//
+// 점수를 MC로 재정의하지 않는 이유는 UtilityEngine.ts:185-206에 기록되어 있다(비용 /
+// 재채점 불변식 / 효용은 선호를 서열화하고 MC는 실현 가능성을 제약한다는 역할 분리).
+// 대신 **만점의 조건을 문장으로 밝힌다** — 그 조건이 적혀 있지 않은 것이 문제였지,
+// 결정론 세계 안에서 이 점수가 틀린 것은 아니다.
 function explainDepletionSafety(
   params: SimulationParams,
   result: SimulationResult,
-  retirementYearCount: number
+  retirementYearCount: number,
+  monteCarlo?: { successRate: number }
 ): string {
   const { retirementAge, expectancy } = params.userProfile;
   const { depletionAge } = result;
 
   if (depletionAge === null) {
-    return `${expectancy}세까지 자산이 고갈되지 않아 만점입니다.`;
+    const base = `기준 수익률이 그대로 실현되면 ${expectancy}세까지 자산이 고갈되지 않아 만점입니다.`;
+    if (!isMonteCarloConflict(resolvePlanAssetStatus(result, params), monteCarlo)) return base;
+    return `${base} 다만 시장 변동을 반영하면 ${expectancy}세까지 자산이 남을 확률은 ${Math.round(
+      monteCarlo!.successRate * 100
+    )}%입니다.`;
   }
   // 은퇴 시점 이전에 이미 0이면 자산으로 메울 수 있는 기간 자체가 없다(raw = 0).
   if (depletionAge <= retirementAge) {

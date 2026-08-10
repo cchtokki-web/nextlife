@@ -45,3 +45,4 @@ describe('OBJECTIVE_WEIGHT_PRESETS', () => {
     expect(OBJECTIVE_WEIGHT_PRESETS.ai_recommended).toEqual(DEFAULT_UTILITY_CONFIG.weights);
   });
 });
+
