@@ -4,7 +4,7 @@ import { SimulationParams, ScenarioModel } from '../../../core/entities/types';
 import type { EncryptedData } from '../../../core/utils/crypto';
 import { useIsHydrated } from '../../hooks/useBrowserEnvironment';
 import { loadParams, saveParams, initialParams } from '../../../infrastructure/storage/localStore';
-import { e2eeKeyName, e2eeBackedUpKeyName } from '../../../infrastructure/storage/storageKeys';
+import { activeScenarioKeyName, e2eeKeyName, e2eeBackedUpKeyName } from '../../../infrastructure/storage/storageKeys';
 import { encryptData, decryptData, isEncryptedPayload, generateBackupKey } from '../../../core/utils/crypto';
 import { MAX_SCENARIO_COUNT } from '../../../core/utils/scenarioLimits';
 
@@ -236,7 +236,7 @@ export type KeyNotice = KeyIssuance | { status: 'unbacked'; key: string };
 export function useScenarios() {
   const { data: session, status } = useSession();
   const [scenarios, setScenarios] = useState<ScenarioModel[]>([]);
-  const [activeScenarioId, setActiveScenarioId] = useState<string | null>(null);
+  const [activeScenarioId, setActiveScenarioIdState] = useState<string | null>(null);
   const [compareScenarioIds, setCompareScenarioIds] = useState<string[]>([]);
   // 로딩 상태는 "무엇을 불러오려 했는가(loadRequestKey)"와 "무엇까지 불러왔는가"의 비교로
   // 얻는다. 상태로 들고 있으면 요청 조건이 바뀔 때마다 이펙트에서 false로 되돌려야 하는데,
@@ -293,6 +293,28 @@ export function useScenarios() {
   const loadRequestKey = `${status}:${localKey ?? ''}:${retryCount}`;
   const isLoaded = loadedRequestKey === loadRequestKey;
   const loadError = loadErrorState?.key === loadRequestKey ? loadErrorState.message : null;
+
+  // 선택은 계산 결과를 바꾸는 사용자 의도이므로 새로고침 뒤에도 유지한다. 계정별 키를 써야
+  // 같은 브라우저에서 다른 계정으로 로그인했을 때 서로의 마지막 선택이 섞이지 않는다.
+  const setActiveScenarioId = useCallback((id: string) => {
+    setActiveScenarioIdState(id);
+    const userId = session?.user?.id;
+    if (status === 'authenticated' && userId) {
+      localStorage.setItem(activeScenarioKeyName(userId), id);
+    }
+  }, [session?.user?.id, status]);
+
+  const restoreActiveScenarioId = useCallback((list: Array<{ id: string }>, userId: string) => {
+    const storedId = localStorage.getItem(activeScenarioKeyName(userId));
+    const restoredId = list.some(scenario => scenario.id === storedId) ? storedId : list[0]?.id;
+    if (!restoredId) return;
+
+    setActiveScenarioIdState(restoredId);
+    // 삭제된 시나리오를 가리키는 낡은 값도 즉시 정상화한다.
+    if (storedId !== restoredId) {
+      localStorage.setItem(activeScenarioKeyName(userId), restoredId);
+    }
+  }, []);
 
   // E2EE 키를 localStorage에서 읽어 온다.
   //
@@ -531,9 +553,7 @@ export function useScenarios() {
                 lastSavedParamsRef.current[s.id] = JSON.stringify(initialParams);
                 return { ...s, name: s.isDefault ? '기본 시나리오' : s.name, data: initialParams };
               }));
-              if (list.length > 0 && (!activeScenarioId || !list.find(s => s.id === activeScenarioId))) {
-                setActiveScenarioId(list[0].id);
-              }
+              restoreActiveScenarioId(list, userId);
               setNeedsKeyRestore(true);
               // 잠겼다는데 대조할 암호문이 없으면 handleRestoreKey는 맞는 키도 받아들일 수 없다.
               // 그 상태를 모달에 알려 초기화 버튼을 처음부터 열어 준다 — 그렇지 않으면 사용자는
@@ -640,9 +660,7 @@ export function useScenarios() {
             setScenarios(decryptedList);
             setNeedsKeyRestore(hasDecryptionFailure);
 
-            if (!activeScenarioId || !decryptedList.find((s: ScenarioModel) => s.id === activeScenarioId)) {
-              setActiveScenarioId(decryptedList[0].id);
-            }
+            restoreActiveScenarioId(decryptedList, userId);
             setLoadedRequestKey(loadRequestKey);
 
             // 평문 행을 지금 암호화해 되돌린다. 다음 편집을 기다리면 그 사이에 다른 브라우저가

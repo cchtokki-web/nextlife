@@ -4,6 +4,7 @@ import {
   SIMPLE_SIMULATOR_HAS_RUN_KEY,
   e2eeKeyName,
   e2eeBackedUpKeyName,
+  activeScenarioKeyName,
 } from './storageKeys';
 
 /**
@@ -38,6 +39,7 @@ export function clearLocalAccountData(userId: string): void {
   for (const key of [
     e2eeKeyName(userId),
     e2eeBackedUpKeyName(userId),
+    activeScenarioKeyName(userId),
     SIMULATOR_PARAMS_KEY,
     SIMPLE_SIMULATOR_INPUT_KEY,
   ]) {

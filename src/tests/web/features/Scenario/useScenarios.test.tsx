@@ -36,6 +36,7 @@ vi.mock('@/infrastructure/storage/localStore', async (importOriginal) => {
 import { useScenarios } from '@/web/features/Scenario/useScenarios';
 import { initialParams } from '@/infrastructure/storage/localStore';
 import { isEncryptedPayload } from '@/core/utils/crypto';
+import { activeScenarioKeyName } from '@/infrastructure/storage/storageKeys';
 
 const USER_ID = 'user-1';
 const KEY_NAME = `nextlife_e2ee_key_${USER_ID}`;
@@ -148,6 +149,64 @@ describe('useScenarios — 비로그인', () => {
 });
 
 describe('useScenarios — 로그인', () => {
+  test('마지막으로 선택한 시나리오를 다시 접속했을 때 복원한다', async () => {
+    signedIn();
+    localStorage.setItem(KEY_NAME, 'KEY123');
+    localStorage.setItem(activeScenarioKeyName(USER_ID), 's2');
+    vi.stubGlobal('fetch', mockFetch({
+      '/api/scenarios': {
+        data: [
+          { id: 's1', name: '기본', isDefault: true, data: initialParams },
+          { id: 's2', name: '마지막 선택', isDefault: false, data: initialParams },
+        ],
+      },
+    }));
+
+    const { result } = renderHook(() => useScenarios());
+    await waitFor(() => expect(result.current.isLoaded).toBe(true));
+
+    expect(result.current.activeScenarioId).toBe('s2');
+    expect(result.current.activeParams).toBe(result.current.scenarios[1].data);
+  });
+
+  test('선택한 시나리오를 계정별 브라우저 저장소에 기록한다', async () => {
+    signedIn();
+    localStorage.setItem(KEY_NAME, 'KEY123');
+    vi.stubGlobal('fetch', mockFetch({
+      '/api/scenarios': {
+        data: [
+          { id: 's1', name: '기본', isDefault: true, data: initialParams },
+          { id: 's2', name: '다른 계획', isDefault: false, data: initialParams },
+        ],
+      },
+    }));
+
+    const { result } = renderHook(() => useScenarios());
+    await waitFor(() => expect(result.current.isLoaded).toBe(true));
+
+    act(() => result.current.setActiveScenarioId('s2'));
+
+    expect(result.current.activeScenarioId).toBe('s2');
+    expect(localStorage.getItem(activeScenarioKeyName(USER_ID))).toBe('s2');
+  });
+
+  test('저장된 시나리오가 삭제됐으면 첫 시나리오로 복구하고 낡은 값을 교체한다', async () => {
+    signedIn();
+    localStorage.setItem(KEY_NAME, 'KEY123');
+    localStorage.setItem(activeScenarioKeyName(USER_ID), 'deleted');
+    vi.stubGlobal('fetch', mockFetch({
+      '/api/scenarios': {
+        data: [{ id: 's1', name: '기본', isDefault: true, data: initialParams }],
+      },
+    }));
+
+    const { result } = renderHook(() => useScenarios());
+    await waitFor(() => expect(result.current.isLoaded).toBe(true));
+
+    expect(result.current.activeScenarioId).toBe('s1');
+    expect(localStorage.getItem(activeScenarioKeyName(USER_ID))).toBe('s1');
+  });
+
   // 평문 행은 읽을 수 있지만 그대로 두면 안 된다. 서버에 평문이 하나라도 남아 있는 동안은
   // 그 계정이 키 없이 열리기 때문이다. 다음 편집을 기다리지 않고 지금 암호화해 되돌린다.
   test('평문으로 저장된 시나리오를 읽고 즉시 암호화해 되돌린다', async () => {
