@@ -48,10 +48,11 @@ const mockedUserCreate = vi.mocked(prisma.user.create);
 
 type ScenarioRow = { id: string; name: string; isDefault: boolean; data: string };
 
-function stubUser(scenarios: ScenarioRow[], e2eeEnabledAt: Date | null) {
+function stubUser(scenarios: ScenarioRow[], e2eeEnabledAt: Date | null, lastActiveScenarioId: string | null = null) {
   mockedFindUnique.mockResolvedValue({
     id: USER_ID,
     e2eeEnabledAt,
+    lastActiveScenarioId,
     scenarios: scenarios.map(s => ({ ...s, userId: USER_ID, createdAt: new Date(0), updatedAt: new Date(0) })),
     simulationData: null,
   } as unknown as Awaited<ReturnType<typeof prisma.user.findUnique>>);
@@ -67,6 +68,28 @@ beforeEach(() => {
   mockedUpdateMany.mockResolvedValue({ count: 1 });
   vi.mocked(prisma.scenario.count).mockResolvedValue(0);
   mockedIsDevMode.mockReturnValue(false);
+});
+
+// 목록과 같은 응답으로 돌려줘야 한다. 따로 요청하면 목록이 먼저 도착하는 순간 첫 시나리오가
+// 한 번 선택되어 화면이 깜빡이고, 그 사이의 자동저장이 엉뚱한 시나리오로 나갈 수 있다.
+describe('GET /api/scenarios — 마지막 선택', () => {
+  test('계정에 기록된 마지막 선택을 목록과 함께 돌려준다', async () => {
+    stubUser([row('s1', plain), row('s2', plain)], null, 's2');
+
+    const res = await GET(new Request('http://localhost/api/scenarios'));
+    const body = await res.json();
+
+    expect(body.lastActiveScenarioId).toBe('s2');
+  });
+
+  test('기록이 없으면 null이다', async () => {
+    stubUser([row('s1', plain)], null);
+
+    const res = await GET(new Request('http://localhost/api/scenarios'));
+    const body = await res.json();
+
+    expect(body.lastActiveScenarioId).toBeNull();
+  });
 });
 
 describe('GET /api/scenarios — E2EE 잠금 플래그', () => {

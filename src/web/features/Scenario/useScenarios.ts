@@ -15,6 +15,8 @@ interface ScenarioListResponse {
   // 이 계정이 보안키로 잠겨 있는지. payload 모양과 독립적인 서버 기록이라, 평문 행이 섞여
   // 있어도 키 요구가 사라지지 않는다.
   e2eeEnabled?: boolean;
+  // 이 계정이 마지막으로 선택한 시나리오. 계정에 붙어 있으므로 다른 기기에서 로그인해도 온다.
+  lastActiveScenarioId?: string | null;
 }
 
 class ScenarioRequestError extends Error {
@@ -174,6 +176,27 @@ const fetchLatestParamsInfo = async (params: SimulationParams): Promise<Simulati
   return updatedParams;
 };
 
+// 마지막으로 선택한 시나리오를 계정에 기록한다.
+//
+// 결과를 기다리지 않는다. 화면은 이미 그 시나리오로 바뀌어 있고, 이 기록은 다음 로그인에만
+// 쓰이므로 실패해도 지금 사용자가 하는 일을 막을 이유가 없다. 실패한 값은 다음 선택이나 다음
+// 로드의 정상화가 다시 올린다.
+const persistActiveScenarioId = (scenarioId: string): void => {
+  // 비로그인 세션이 만든 임시 id다. 서버에 대응하는 행이 없다.
+  if (scenarioId.startsWith('local-')) return;
+  fetch('/api/user/active-scenario', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ scenarioId }),
+  })
+    // 실패를 화면에 띄우지는 않지만 로그는 남긴다. 이 요청이 조용히 계속 실패하면 증상은
+    // "다음 로그인에서 엉뚱한 시나리오가 열린다"뿐이라, 로그가 없으면 원인에 닿을 길이 없다.
+    .then(res => {
+      if (!res.ok) console.error('Failed to persist active scenario: HTTP', res.status);
+    })
+    .catch(err => console.error('Failed to persist active scenario:', err));
+};
+
 // 발급된 보안키를 로그인 계정의 이메일로 보낸다.
 //
 // 훅 본문이 아니라 모듈 스코프에 두는 이유: 이 함수를 부르는 로딩 이펙트가 반환 객체보다
@@ -294,25 +317,44 @@ export function useScenarios() {
   const isLoaded = loadedRequestKey === loadRequestKey;
   const loadError = loadErrorState?.key === loadRequestKey ? loadErrorState.message : null;
 
-  // 선택은 계산 결과를 바꾸는 사용자 의도이므로 새로고침 뒤에도 유지한다. 계정별 키를 써야
-  // 같은 브라우저에서 다른 계정으로 로그인했을 때 서로의 마지막 선택이 섞이지 않는다.
+  // 선택은 계산 결과를 바꾸는 사용자 의도이므로 새로고침 뒤에도, 다시 로그인한 뒤에도 유지한다.
+  //
+  // 두 군데에 적는다.
+  //   계정(서버) — 진짜 출처. 로그인은 브라우저가 아니라 계정 단위의 사건이므로, 다른 기기나
+  //     시크릿 창에서 들어와도 마지막 선택이 따라와야 한다.
+  //   localStorage — 서버에 아직 값이 없는 계정(이 기능 이전부터 쓰던 사용자)을 위한 폴백.
+  //     계정별 키를 써야 같은 브라우저에서 다른 계정으로 로그인했을 때 서로의 선택이 섞이지 않는다.
   const setActiveScenarioId = useCallback((id: string) => {
     setActiveScenarioIdState(id);
     const userId = session?.user?.id;
     if (status === 'authenticated' && userId) {
       localStorage.setItem(activeScenarioKeyName(userId), id);
+      persistActiveScenarioId(id);
     }
   }, [session?.user?.id, status]);
 
-  const restoreActiveScenarioId = useCallback((list: Array<{ id: string }>, userId: string) => {
+  const restoreActiveScenarioId = useCallback((
+    list: Array<{ id: string }>,
+    userId: string,
+    serverId: string | null | undefined,
+  ) => {
+    const inList = (id: string | null | undefined): id is string =>
+      Boolean(id) && list.some(scenario => scenario.id === id);
     const storedId = localStorage.getItem(activeScenarioKeyName(userId));
-    const restoredId = list.some(scenario => scenario.id === storedId) ? storedId : list[0]?.id;
+    // 서버 값이 브라우저 값보다 우선한다 — 다른 기기에서 고른 선택은 여기에만 있고, 이 브라우저의
+    // 기록은 그보다 낡았을 수 있다. 서버에 값이 없을 때만 localStorage로 내려간다.
+    const restoredId = inList(serverId) ? serverId : inList(storedId) ? storedId : list[0]?.id;
     if (!restoredId) return;
 
     setActiveScenarioIdState(restoredId);
     // 삭제된 시나리오를 가리키는 낡은 값도 즉시 정상화한다.
     if (storedId !== restoredId) {
       localStorage.setItem(activeScenarioKeyName(userId), restoredId);
+    }
+    // 서버가 다른 값을 들고 있거나(삭제된 시나리오를 가리킴) 아직 아무 값도 없으면 지금 올린다.
+    // 후자가 브라우저에만 있던 기존 사용자의 선택을 계정으로 옮기는 유일한 지점이다.
+    if (serverId !== restoredId) {
+      persistActiveScenarioId(restoredId);
     }
   }, []);
 
@@ -525,7 +567,7 @@ export function useScenarios() {
       };
 
       fetchWithRetry('/api/scenarios')
-        .then(({ data, e2eeEnabled }) => {
+        .then(({ data, e2eeEnabled, lastActiveScenarioId }) => {
           if (!userId) {
             setLoadedRequestKey(loadRequestKey);
             return;
@@ -553,7 +595,7 @@ export function useScenarios() {
                 lastSavedParamsRef.current[s.id] = JSON.stringify(initialParams);
                 return { ...s, name: s.isDefault ? '기본 시나리오' : s.name, data: initialParams };
               }));
-              restoreActiveScenarioId(list, userId);
+              restoreActiveScenarioId(list, userId, lastActiveScenarioId);
               setNeedsKeyRestore(true);
               // 잠겼다는데 대조할 암호문이 없으면 handleRestoreKey는 맞는 키도 받아들일 수 없다.
               // 그 상태를 모달에 알려 초기화 버튼을 처음부터 열어 준다 — 그렇지 않으면 사용자는
@@ -660,7 +702,7 @@ export function useScenarios() {
             setScenarios(decryptedList);
             setNeedsKeyRestore(hasDecryptionFailure);
 
-            restoreActiveScenarioId(decryptedList, userId);
+            restoreActiveScenarioId(decryptedList, userId, lastActiveScenarioId);
             setLoadedRequestKey(loadRequestKey);
 
             // 평문 행을 지금 암호화해 되돌린다. 다음 편집을 기다리면 그 사이에 다른 브라우저가
@@ -851,12 +893,20 @@ export function useScenarios() {
       return;
     }
 
+    // 지운 시나리오를 빼고 남는 첫 시나리오. scenarios[0]을 그대로 쓰면 지운 것이 첫 항목일 때
+    // 이미 없는 시나리오를 선택한 채로 남는다 — 이제 그 값은 계정에도 기록되므로(404가 나고,
+    // 다음 로그인의 복원 대상이 어긋난다) 남는 것 중에서 고른다.
+    const fallback = scenarios.find(s => s.id !== id);
+    const selectFallback = () => {
+      if (activeScenarioId === id && fallback) setActiveScenarioId(fallback.id);
+    };
+
     if (status === 'authenticated' && !id.startsWith('local-')) {
       try {
         const res = await fetch(`/api/scenarios/${id}`, { method: 'DELETE' });
         if (res.ok) {
           setScenarios(prev => prev.filter(s => s.id !== id));
-          if (activeScenarioId === id) setActiveScenarioId(scenarios[0].id);
+          selectFallback();
           setCompareScenarioIds(prev => prev.filter(compId => compId !== id));
         }
       } catch (err) {
@@ -864,7 +914,7 @@ export function useScenarios() {
       }
     } else {
       setScenarios(prev => prev.filter(s => s.id !== id));
-      if (activeScenarioId === id) setActiveScenarioId(scenarios[0].id);
+      selectFallback();
       setCompareScenarioIds(prev => prev.filter(compId => compId !== id));
     }
   };

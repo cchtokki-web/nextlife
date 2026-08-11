@@ -27,6 +27,14 @@ model User {
   // 그러면 평문 행이 하나라도 생기는 순간(레거시 simulationData 마이그레이션, 키 없는 세션의
   // 저장) 그 계정은 어느 브라우저에서든 키 없이 열린다 — E2EE가 조용히 꺼진다.
   e2eeEnabledAt  DateTime?
+  // 이 계정이 시뮬레이터에서 마지막으로 선택한 시나리오. 브라우저가 아니라 계정에 붙여 두어야
+  // 다른 기기·브라우저에서 로그인해도 같은 시나리오로 이어진다(예전에는 localStorage에만
+  // 있어서, 로그인이라는 계정 단위 사건이 브라우저를 바꾸는 순간 선택이 사라졌다).
+  //
+  // Scenario를 향한 관계가 아니라 평범한 문자열이다. 관계로 묶으면 User↔Scenario가 두 방향이
+  // 되어 이름 붙은 relation이 필요해지는데, 이 값은 무결성을 강제할 대상이 아니다 — 가리키던
+  // 행이 사라지면 클라이언트가 첫 시나리오로 되돌리고 그 값을 다시 올려 스스로 낫는다.
+  lastActiveScenarioId String?
   createdAt      DateTime   @default(now())
   updatedAt      DateTime   @updatedAt
   scenarios      Scenario[]

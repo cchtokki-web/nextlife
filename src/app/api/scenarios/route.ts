@@ -89,7 +89,13 @@ export async function GET(_req: Request) {
     }
     const e2eeEnabled = Boolean(user.e2eeEnabledAt) || hasCiphertext;
 
-    return NextResponse.json({ data: formattedScenarios, e2eeEnabled }, { status: 200 });
+    // 마지막 선택을 목록과 같은 응답으로 돌려준다. 별도 요청으로 나누면 목록이 먼저 도착하는
+    // 순간 첫 시나리오가 한 번 선택되어 화면이 깜빡이고, 그 사이의 자동저장이 엉뚱한 시나리오로
+    // 나갈 수 있다. 둘은 항상 같이 도착해야 한다.
+    return NextResponse.json(
+      { data: formattedScenarios, e2eeEnabled, lastActiveScenarioId: user.lastActiveScenarioId ?? null },
+      { status: 200 }
+    );
   } catch (error) {
     console.error('Error fetching scenarios:', error);
     return NextResponse.json({ error: 'Failed to fetch scenarios' }, { status: 500 });
