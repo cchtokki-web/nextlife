@@ -123,6 +123,16 @@ export async function DELETE(
       where: { id },
     });
 
+    // 마지막 선택이 방금 지운 시나리오를 가리키고 있었다면 비운다. 클라이언트도 다른 시나리오로
+    // 옮겨 가며 새 값을 올리지만, 그 요청이 실패하거나 사용자가 곧바로 창을 닫으면 계정에는
+    // 존재하지 않는 id가 남는다. 지우는 쪽에서 함께 정리해 두면 그 창이 없다.
+    if (user.lastActiveScenarioId === id) {
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { lastActiveScenarioId: null },
+      });
+    }
+
     return NextResponse.json({ success: true }, { status: 200 });
   } catch (error) {
     console.error('Error deleting scenario:', error);

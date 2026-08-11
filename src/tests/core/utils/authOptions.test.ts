@@ -105,6 +105,7 @@ describe('authOptions — 프로덕션 모드', () => {
       tier: 'basic',
       simulationData: null,
       e2eeEnabledAt: null,
+      lastActiveScenarioId: null,
       createdAt: new Date(),
       updatedAt: new Date(),
     });
@@ -134,6 +135,7 @@ describe('authOptions — 프로덕션 모드', () => {
       tier: 'basic',
       simulationData: null,
       e2eeEnabledAt: new Date(),
+      lastActiveScenarioId: null,
       createdAt: new Date(),
       updatedAt: new Date(),
     });
@@ -148,6 +150,7 @@ describe('authOptions — 프로덕션 모드', () => {
         securityKeyResetPending: false,
         simulationData: null,
         e2eeEnabledAt: null,
+        lastActiveScenarioId: null,
       },
     });
     expect(prisma.verificationToken.deleteMany).toHaveBeenCalledWith({

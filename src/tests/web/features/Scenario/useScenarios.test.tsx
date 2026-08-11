@@ -66,6 +66,14 @@ const fetchCalls = () => (globalThis.fetch as ReturnType<typeof vi.fn>).mock.cal
 const sendKeyCalls = () => fetchCalls().filter(([url]) => url === '/api/user/send-backup-key');
 const scenarioPostCalls = () =>
   fetchCalls().filter(([url, init]) => url === '/api/scenarios' && init?.method === 'POST');
+// 시나리오 데이터를 서버로 올리는 요청. 마지막 선택을 기록하는 PUT과 구분해야 한다 —
+// "저장이 나가지 않아야 한다"는 단언이 후자까지 세면 데이터와 무관한 요청에 걸려 넘어진다.
+const isScenarioPut = ([url, init]: FetchCall) =>
+  String(url).startsWith('/api/scenarios') && init?.method === 'PUT';
+const activeScenarioPuts = () =>
+  fetchCalls()
+    .filter(([url]) => url === '/api/user/active-scenario')
+    .map(([, init]) => JSON.parse(String(init?.body)).scenarioId as string);
 
 let consoleError: ReturnType<typeof vi.spyOn>;
 let consoleWarn: ReturnType<typeof vi.spyOn>;
@@ -149,17 +157,17 @@ describe('useScenarios — 비로그인', () => {
 });
 
 describe('useScenarios — 로그인', () => {
-  test('마지막으로 선택한 시나리오를 다시 접속했을 때 복원한다', async () => {
+  const twoScenarios = [
+    { id: 's1', name: '기본', isDefault: true, data: initialParams },
+    { id: 's2', name: '마지막 선택', isDefault: false, data: initialParams },
+  ];
+
+  test('계정에 기록된 마지막 선택을 이 브라우저에 기록이 없어도 복원한다', async () => {
     signedIn();
     localStorage.setItem(KEY_NAME, 'KEY123');
-    localStorage.setItem(activeScenarioKeyName(USER_ID), 's2');
+    // 다른 기기에서 고른 선택. 이 브라우저의 localStorage는 비어 있다.
     vi.stubGlobal('fetch', mockFetch({
-      '/api/scenarios': {
-        data: [
-          { id: 's1', name: '기본', isDefault: true, data: initialParams },
-          { id: 's2', name: '마지막 선택', isDefault: false, data: initialParams },
-        ],
-      },
+      '/api/scenarios': { data: twoScenarios, lastActiveScenarioId: 's2' },
     }));
 
     const { result } = renderHook(() => useScenarios());
@@ -167,18 +175,66 @@ describe('useScenarios — 로그인', () => {
 
     expect(result.current.activeScenarioId).toBe('s2');
     expect(result.current.activeParams).toBe(result.current.scenarios[1].data);
+    // 이미 서버 값과 같으므로 다시 올리지 않는다.
+    expect(activeScenarioPuts()).toEqual([]);
   });
 
-  test('선택한 시나리오를 계정별 브라우저 저장소에 기록한다', async () => {
+  test('계정 값이 브라우저 값보다 우선한다', async () => {
+    signedIn();
+    localStorage.setItem(KEY_NAME, 'KEY123');
+    localStorage.setItem(activeScenarioKeyName(USER_ID), 's1');
+    vi.stubGlobal('fetch', mockFetch({
+      '/api/scenarios': { data: twoScenarios, lastActiveScenarioId: 's2' },
+    }));
+
+    const { result } = renderHook(() => useScenarios());
+    await waitFor(() => expect(result.current.isLoaded).toBe(true));
+
+    expect(result.current.activeScenarioId).toBe('s2');
+    expect(localStorage.getItem(activeScenarioKeyName(USER_ID))).toBe('s2');
+  });
+
+  test('계정에 아직 값이 없으면 브라우저 값을 쓰고 그것을 계정으로 올린다', async () => {
+    signedIn();
+    localStorage.setItem(KEY_NAME, 'KEY123');
+    localStorage.setItem(activeScenarioKeyName(USER_ID), 's2');
+    vi.stubGlobal('fetch', mockFetch({
+      '/api/scenarios': { data: twoScenarios, lastActiveScenarioId: null },
+    }));
+
+    const { result } = renderHook(() => useScenarios());
+    await waitFor(() => expect(result.current.isLoaded).toBe(true));
+
+    expect(result.current.activeScenarioId).toBe('s2');
+    await waitFor(() => expect(activeScenarioPuts()).toEqual(['s2']));
+  });
+
+  test('선택한 시나리오를 계정과 브라우저 저장소 양쪽에 기록한다', async () => {
     signedIn();
     localStorage.setItem(KEY_NAME, 'KEY123');
     vi.stubGlobal('fetch', mockFetch({
-      '/api/scenarios': {
-        data: [
-          { id: 's1', name: '기본', isDefault: true, data: initialParams },
-          { id: 's2', name: '다른 계획', isDefault: false, data: initialParams },
-        ],
-      },
+      '/api/scenarios': { data: twoScenarios, lastActiveScenarioId: 's1' },
+    }));
+
+    const { result } = renderHook(() => useScenarios());
+    await waitFor(() => expect(result.current.isLoaded).toBe(true));
+
+    act(() => result.current.setActiveScenarioId('s2'));
+
+    expect(result.current.activeScenarioId).toBe('s2');
+    expect(localStorage.getItem(activeScenarioKeyName(USER_ID))).toBe('s2');
+    await waitFor(() => expect(activeScenarioPuts()).toEqual(['s2']));
+  });
+
+  test('계정 기록이 실패해도 화면의 선택은 그대로다', async () => {
+    signedIn();
+    localStorage.setItem(KEY_NAME, 'KEY123');
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === '/api/user/active-scenario') throw new Error('offline');
+      if (url === '/api/scenarios') {
+        return { ok: true, json: async () => ({ data: twoScenarios, lastActiveScenarioId: 's1' }) } as unknown as Response;
+      }
+      return { ok: true, json: async () => ({ success: true }) } as unknown as Response;
     }));
 
     const { result } = renderHook(() => useScenarios());
@@ -190,13 +246,14 @@ describe('useScenarios — 로그인', () => {
     expect(localStorage.getItem(activeScenarioKeyName(USER_ID))).toBe('s2');
   });
 
-  test('저장된 시나리오가 삭제됐으면 첫 시나리오로 복구하고 낡은 값을 교체한다', async () => {
+  test('기억된 시나리오가 삭제됐으면 첫 시나리오로 복구하고 양쪽의 낡은 값을 교체한다', async () => {
     signedIn();
     localStorage.setItem(KEY_NAME, 'KEY123');
     localStorage.setItem(activeScenarioKeyName(USER_ID), 'deleted');
     vi.stubGlobal('fetch', mockFetch({
       '/api/scenarios': {
         data: [{ id: 's1', name: '기본', isDefault: true, data: initialParams }],
+        lastActiveScenarioId: 'deleted',
       },
     }));
 
@@ -205,6 +262,26 @@ describe('useScenarios — 로그인', () => {
 
     expect(result.current.activeScenarioId).toBe('s1');
     expect(localStorage.getItem(activeScenarioKeyName(USER_ID))).toBe('s1');
+    await waitFor(() => expect(activeScenarioPuts()).toEqual(['s1']));
+  });
+
+  test('활성 시나리오를 삭제하면 남은 시나리오 중에서 고른다', async () => {
+    signedIn();
+    localStorage.setItem(KEY_NAME, 'KEY123');
+    vi.stubGlobal('fetch', mockFetch({
+      '/api/scenarios': { data: twoScenarios, lastActiveScenarioId: 's2' },
+    }));
+
+    const { result } = renderHook(() => useScenarios());
+    await waitFor(() => expect(result.current.isLoaded).toBe(true));
+    expect(result.current.activeScenarioId).toBe('s2');
+
+    await act(async () => {
+      await result.current.handleDeleteScenario('s2');
+    });
+
+    expect(result.current.activeScenarioId).toBe('s1');
+    await waitFor(() => expect(activeScenarioPuts()).toEqual(['s1']));
   });
 
   // 평문 행은 읽을 수 있지만 그대로 두면 안 된다. 서버에 평문이 하나라도 남아 있는 동안은
@@ -271,8 +348,7 @@ describe('useScenarios — 로그인', () => {
     expect(result.current.isLoaded).toBe(true);
     // 자동저장이 막혀 서버로 PUT이 나가지 않아야 한다.
     await new Promise((r) => setTimeout(r, 50));
-    const calls = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls;
-    expect(calls.some(([, init]) => (init as RequestInit | undefined)?.method === 'PUT')).toBe(false);
+    expect(fetchCalls().some(isScenarioPut)).toBe(false);
   });
 
   // 이 계정이 잠겨 있다는 사실은 서버가 기억한다(e2eeEnabled). payload가 평문이라는 이유로
@@ -523,9 +599,7 @@ describe('useScenarios — 로그인 사용자의 자동저장', () => {
     return hook;
   }
 
-  const putCalls = () =>
-    (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls
-      .filter(([, init]) => (init as RequestInit | undefined)?.method === 'PUT');
+  const putCalls = () => fetchCalls().filter(isScenarioPut);
 
   test('편집 직후에는 저장 중 상태로 표시하고 디바운스 뒤에 보낸다', async () => {
     const { result } = await loadedHook();
@@ -570,7 +644,9 @@ describe('useScenarios — 로그인 사용자의 자동저장', () => {
       await result.current.handleCreateScenario('추가', initialParams);
     });
 
-    const writes = fetchCalls().filter(([, init]) => init?.method === 'PUT' || init?.method === 'POST');
+    const writes = fetchCalls().filter(
+      (call) => isScenarioPut(call) || (call[0] === '/api/scenarios' && call[1]?.method === 'POST'),
+    );
     expect(writes.length).toBeGreaterThan(2);
     for (const [url, init] of writes) {
       const body = JSON.parse(init!.body as string);
@@ -781,7 +857,7 @@ describe('useScenarios — 데이터 유실 방어', () => {
       });
     });
 
-    expect(fetchCalls().some(([, init]) => init?.method === 'PUT')).toBe(false);
+    expect(fetchCalls().some(isScenarioPut)).toBe(false);
     expect(result.current.saveStatus).toBe('error');
     expect(alertSpy).toHaveBeenCalled();
     alertSpy.mockRestore();
@@ -808,7 +884,7 @@ describe('useScenarios — 데이터 유실 방어', () => {
     await waitFor(() => expect(result.current.needsKeyRestore).toBe(true));
 
     await new Promise((r) => setTimeout(r, 100));
-    expect(fetchCalls().some(([, init]) => init?.method === 'PUT')).toBe(false);
+    expect(fetchCalls().some(isScenarioPut)).toBe(false);
   });
 
   // 실패한 재암호화를 "저장됨"으로 남겨 두면 자동저장이 동일성 비교에서 영원히 건너뛴다.

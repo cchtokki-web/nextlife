@@ -26,7 +26,7 @@ vi.mock('@/infrastructure/db/prisma', () => ({
 
 import { getServerSession } from 'next-auth/next';
 import { prisma } from '@/infrastructure/db/prisma';
-import { PUT } from '@/app/api/scenarios/[id]/route';
+import { PUT, DELETE } from '@/app/api/scenarios/[id]/route';
 
 const USER_ID = 'user-1';
 const SCENARIO_ID = 's1';
@@ -48,8 +48,15 @@ function put(data: unknown) {
   );
 }
 
-function stubUser(e2eeEnabledAt: Date | null) {
-  mockedUserFindUnique.mockResolvedValue({ id: USER_ID, e2eeEnabledAt } as never);
+function stubUser(e2eeEnabledAt: Date | null, lastActiveScenarioId: string | null = null) {
+  mockedUserFindUnique.mockResolvedValue({ id: USER_ID, e2eeEnabledAt, lastActiveScenarioId } as never);
+}
+
+function del(id: string) {
+  return DELETE(
+    new Request(`http://localhost/api/scenarios/${id}`, { method: 'DELETE' }),
+    { params: Promise.resolve({ id }) }
+  );
 }
 
 beforeEach(() => {
@@ -138,5 +145,44 @@ describe('PUT /api/scenarios/[id] — E2EE 잠금 플래그', () => {
 
     expect(res.status).toBe(200);
     expect(mockedUpdateMany).not.toHaveBeenCalled();
+  });
+});
+
+// 마지막 선택은 다음 로그인에서 그대로 열린다. 지운 시나리오를 계속 가리키게 두면 클라이언트가
+// 매번 첫 시나리오로 되돌려야 하고, 그 정정 요청이 실패하면 어긋난 채로 남는다.
+describe('DELETE /api/scenarios/[id] — 마지막 선택 정리', () => {
+  test('지운 시나리오가 마지막 선택이었으면 비운다', async () => {
+    stubUser(null, SCENARIO_ID);
+
+    const res = await del(SCENARIO_ID);
+
+    expect(res.status).toBe(200);
+    expect(vi.mocked(prisma.user.update)).toHaveBeenCalledWith({
+      where: { id: USER_ID },
+      data: { lastActiveScenarioId: null },
+    });
+  });
+
+  test('다른 시나리오를 가리키고 있었으면 건드리지 않는다', async () => {
+    stubUser(null, 's2');
+
+    const res = await del(SCENARIO_ID);
+
+    expect(res.status).toBe(200);
+    expect(vi.mocked(prisma.user.update)).not.toHaveBeenCalled();
+  });
+
+  test('기본 시나리오는 지울 수 없고 마지막 선택도 그대로다', async () => {
+    stubUser(null, SCENARIO_ID);
+    vi.mocked(prisma.scenario.findUnique).mockResolvedValue({
+      id: SCENARIO_ID, userId: USER_ID, name: 'x', isDefault: true,
+      data: '{}', createdAt: new Date(0), updatedAt: new Date(0),
+    } as never);
+
+    const res = await del(SCENARIO_ID);
+
+    expect(res.status).toBe(400);
+    expect(vi.mocked(prisma.scenario.delete)).not.toHaveBeenCalled();
+    expect(vi.mocked(prisma.user.update)).not.toHaveBeenCalled();
   });
 });
