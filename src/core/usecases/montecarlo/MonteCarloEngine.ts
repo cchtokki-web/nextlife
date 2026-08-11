@@ -2,6 +2,7 @@ import { SimulationParams, SimulationResult, SimulationYearlyResult } from '../.
 import { MonteCarloBandYear, MonteCarloConfig, MonteCarloResult } from '../../entities/montecarlo';
 import { SimulationEngine } from '../SimulationEngine';
 import { FrozenSpendingPlan, freezeSpendingPlan, runFrozenPlan } from '../spending/freezeSpendingPlan';
+import { hasSpendingShortfall } from '../spending/spendingShortfall';
 import { mulberry32, deriveSeed } from './rng';
 import { buildReturnShockPath } from './returnPath';
 import { percentileOfSorted } from './statistics';
@@ -23,7 +24,7 @@ function summarize(index: number, result: SimulationResult): TrialSummary {
     index,
     endingAssets: result.endingAssets,
     depletionAge: result.depletionAge,
-    hasUnmetSpending: result.yearlyResults.some((y) => y.unmetSpending > 0),
+    hasUnmetSpending: result.yearlyResults.some(hasSpendingShortfall),
     totalAssetsByYear: result.yearlyResults.map((y) => y.totalAssets),
   };
 }
@@ -44,7 +45,11 @@ export function isSuccessfulTrial(depletionAge: number | null, successAge: numbe
   return depletionAge === null || depletionAge > successAge;
 }
 
-// 성공률만 필요한 호출자를 위한 경량 진입점(추천 엔진의 생활비 증액 게이트).
+// **자산 보존** 성공률만 필요한 호출자를 위한 경량 진입점(추천 엔진의 생활비 증액 게이트).
+//
+// 게이트가 자산 보존 기준을 쓰는 것은 의도다 — 그 게이트가 묻는 것은 "더 써도 자산이
+// 버티는가"이고, RecommendationEngine.SPENDING_INCREASE_GATE의 실측 임계(0.9/0.8)도
+// 그 기준으로 보정됐다. 생활 유지 성공률로 바꾸면 그 실측 근거가 통째로 무효가 된다.
 //
 // runMonteCarlo가 만드는 것 중 게이트가 쓰지 않는 것 — assetBand(연도별 분위수 정렬),
 // worstDecilePath(추가 runSingle 1회), 결정론 기준선(추가 runSingle 1회), 시행별
@@ -99,10 +104,11 @@ export function runMonteCarlo(
   const endingSorted = trials.map((t) => t.endingAssets).sort((a, b) => a - b);
   const mean = endingSorted.reduce((a, b) => a + b, 0) / (endingSorted.length || 1);
 
-  // 성공 = successAge까지 고갈되지 않음. 판정식은 isSuccessfulTrial 한 곳에만 둔다.
+  // 자산 보존 성공 = successAge까지 고갈되지 않음. 판정식은 isSuccessfulTrial 한 곳에만 둔다.
   const succeeded = trials.filter((t) => isSuccessfulTrial(t.depletionAge, successAge));
-  // 목표 생활비를 온전히 쓴 시행 = 고갈도 없고 결손도 없는 시행.
-  const fullSpending = succeeded.filter((t) => !t.hasUnmetSpending);
+  // 생활 유지 성공 = 계획한 생활비를 한 해도 줄이지 않음. **고갈 여부를 묻지 않는다** —
+  // 이유는 MonteCarloResult.spendingSuccessRate 주석에 있다.
+  const spendingSucceeded = trials.filter((t) => !t.hasUnmetSpending);
 
   const depletedAges = trials
     .map((t) => t.depletionAge)
@@ -131,7 +137,8 @@ export function runMonteCarlo(
     seed: config.seed,
     successAge,
     successRate: trials.length > 0 ? succeeded.length / trials.length : 0,
-    fullSpendingRate: trials.length > 0 ? fullSpending.length / trials.length : 0,
+    spendingSuccessRate: trials.length > 0 ? spendingSucceeded.length / trials.length : 0,
+    plannedMonthlySpending: planned.monthlyTargetSpending,
     endingAssets: {
       p10: percentileOfSorted(endingSorted, 0.1),
       p50: percentileOfSorted(endingSorted, 0.5),

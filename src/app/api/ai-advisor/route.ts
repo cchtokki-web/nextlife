@@ -42,8 +42,12 @@ export interface AiAdvisorRequestBody {
   // 자산 고갈과 자산 미보유를 가른다. 없으면(옛 클라이언트) 기존 문구를 그대로 쓴다.
   planAssetStatus?: PlanAssetStatus;
   sustainableMonthlySpending?: number;
+  // 자산 보존 성공률(기대수명까지 자산이 남을 확률).
   monteCarloSuccessRate?: number;
-  monteCarloFullSpendingRate?: number;
+  // 생활 유지 성공률(계획한 생활비를 한 해도 줄이지 않을 확률). 자산 고갈과 독립적으로 센다.
+  monteCarloSpendingSuccessRate?: number;
+  // 은퇴~국민연금 개시 사이의 공백 구간. 조언 우선순위 2번의 근거다.
+  pensionGap?: { fromAge: number; toAge: number; years: number; monthlyAssetWithdrawal: number; bridgeAmount: number };
 }
 
 function toManwon(val?: number): string {
@@ -57,7 +61,7 @@ export function buildSimulationContextText(body: AiAdvisorRequestBody): string {
     taxSettings, spendingStrategy, inflationRate, inflationMode,
     goalAchievementRate, fireAge, endingAssets, monthlyTarget, score, depletionAge,
     retirementGrade, utility, utilityWeights, recommendation, planAssetStatus, sustainableMonthlySpending,
-    monteCarloSuccessRate, monteCarloFullSpendingRate,
+    monteCarloSuccessRate, monteCarloSpendingSuccessRate, pensionGap,
   } = body;
 
   const lines: string[] = [];
@@ -67,11 +71,33 @@ export function buildSimulationContextText(body: AiAdvisorRequestBody): string {
   }
   lines.push(`- 목표 월 생활비: ${toManwon(monthlyTarget)}만원`);
   lines.push(`- 은퇴 준비도 점수: ${score}점 (등급: ${retirementGrade ?? '정보 없음'})`);
-  if (typeof monteCarloSuccessRate === 'number') {
+  // 두 확률의 이름과 정의를 함께 넘긴다. 이름만 넘기면 LLM이 "자산 유지 확률"이라는 말로
+  // 생활 유지 숫자를 설명하거나 그 반대를 한다 — 두 값이 크게 갈리는 계획(연금이 두꺼운
+  // 계획)에서 그 혼동이 정확히 반대 결론을 만든다.
+  if (typeof monteCarloSpendingSuccessRate === 'number' || typeof monteCarloSuccessRate === 'number') {
+    const parts: string[] = [];
+    if (typeof monteCarloSpendingSuccessRate === 'number') {
+      parts.push(
+        `생활 유지 성공률(계획한 생활비를 한 해도 줄이지 않을 확률) ${Math.round(monteCarloSpendingSuccessRate * 100)}%`
+      );
+    }
+    if (typeof monteCarloSuccessRate === 'number') {
+      parts.push(`자산 보존 성공률(기대수명까지 자산이 남을 확률) ${Math.round(monteCarloSuccessRate * 100)}%`);
+    }
     lines.push(
-      `- 시장 변동성 분석: 자산 유지 확률 ${Math.round(monteCarloSuccessRate * 100)}%` +
-      `${typeof monteCarloFullSpendingRate === 'number' ? ` / 목표 생활비 완전 유지 확률 ${Math.round(monteCarloFullSpendingRate * 100)}%` : ''}. ` +
-      '결정론적 기준 시나리오와 구분해서 설명할 것.'
+      `- 시장 변동성 분석: ${parts.join(' / ')}. ` +
+      '**이 확률이 계획의 최종 판정 근거다.** 결정론적 기준 시나리오 결과(자산 고갈 나이 등)는 ' +
+      '"수익률이 가정대로 실현될 때"라는 조건부 결과이므로, 그것만 근거로 "안정적"이라고 쓰지 말 것. ' +
+      '두 확률이 크게 다르면 그 차이가 무엇을 뜻하는지 밝힐 것(생활 유지가 높으면 종신연금이 ' +
+      '생활비를 메우는 것이고, 자산 보존이 높으면 생활수준을 깎아 버티는 것이다).'
+    );
+  }
+  if (pensionGap) {
+    lines.push(
+      `- 연금 공백 구간: ${pensionGap.fromAge}~${pensionGap.toAge}세 ${pensionGap.years}년간 국민연금 없이 ` +
+      `월 평균 ${formatManwon(pensionGap.monthlyAssetWithdrawal)}을 자산에서 인출함. ` +
+      `이 구간 필요 자금 약 ${formatManwon(pensionGap.bridgeAmount)}. 은퇴 직후라 잔고가 가장 크고 ` +
+      '인출률도 가장 높아 시장 하락에 가장 취약한 구간임.'
     );
   }
 
@@ -222,13 +248,13 @@ export async function POST(req: NextRequest) {
     const {
       score, monthlyTarget, isPro, userProfile, depletionAge, retirementGrade, utility, recommendation,
       planAssetStatus, goalAchievementRate, sustainableMonthlySpending,
-      monteCarloSuccessRate, monteCarloFullSpendingRate,
+      monteCarloSuccessRate, monteCarloSpendingSuccessRate, pensionGap,
     } = body;
     // 규칙 기반 폴백도 LLM과 같은 근거를 봐야 한다 — 두 경로가 서로 다른 진단을 내면
     // 같은 계획인데 Ollama 가용 여부에 따라 화면 문구가 달라진다.
     const ruleBasedContext = {
       planAssetStatus, goalAchievementRate, sustainableMonthlySpending,
-      monteCarloSuccessRate, monteCarloFullSpendingRate,
+      monteCarloSuccessRate, monteCarloSpendingSuccessRate, pensionGap,
     };
 
     const OLLAMA_ENDPOINT = process.env.OLLAMA_ENDPOINT;
@@ -248,16 +274,17 @@ export async function POST(req: NextRequest) {
 1. 반드시 **딱 2개의 문장**으로만 작성하세요. 미사여구, 불필요한 인사말, 위로나 격려는 모두 제거하고 팩트 위주로 요점만 전달하세요. 상담을 권유하는 맺음말은 시스템이 별도로 자동 추가하므로 작성하지 마세요.
 2. 중요한 정보(점수, 금액, 핵심 조언 등)는 반드시 **텍스트**처럼 마크다운 볼드체를 사용하여 강조하세요.
 3. <think> 태그나 내부 사고 과정을 절대 출력하지 마세요. 곧바로 최종 답변만 출력하세요.
-4. 종합 진단은 반드시 "은퇴 준비도 점수/등급"과 "자산 고갈 예상 나이"를 1차 기준으로 삼으세요. "고정소득 커버율"은 배당·연금 등 원금 인출을 제외한 보조 지표이므로, 이 값이 100% 미만이라는 이유만으로 위험하다고 단정하지 마세요. 자산 고갈 예상 나이가 없고 기대수명 시점 잔여 자산이 충분하다면, 고정소득 커버율이 낮아도 안정적인 은퇴로 해석하세요.
-5. [시뮬레이션 결과 전체]에 "AI 추천 전략"이 포함되어 있다면(=평생 효용 점수를 더 높일 수 있는 인출 전략이 존재한다는 뜻), 두 번째 문장의 액션 플랜에 이를 우선적으로 반영하세요. 없다면 언급하지 마세요.
+4. 종합 진단의 1차 기준은 **"시장 변동성 분석"의 두 성공률**입니다. 결정론 기준 시나리오 결과(자산 고갈 예상 나이, 기대수명 시점 잔여 자산)만 근거로 "안정적"이라고 쓰지 마세요 — 그것은 "수익률이 가정대로 실현될 때"에만 참인 조건부 결과입니다. 성공률이 낮은데 기준 시나리오가 멀쩡하다면, 그 사실 자체를 진단으로 쓰세요. "고정소득 커버율"은 원금 인출을 제외한 보조 지표이므로 이 값이 100% 미만이라는 이유만으로 위험하다고 단정하지 마세요.
+5. **액션 플랜의 우선순위는 다음 순서를 따르세요: ① 은퇴 시점 조정 → ② 연금 공백 구간 대비 → ③ 목표 생활비 조정 → ④ 투자 포트폴리오 → ⑤ 인출·매도 순서.** 앞 순위의 근거가 [시뮬레이션 결과 전체]에 있으면 그것을 먼저 제시하세요. 인출 순서·매도 순서 조언(예: "배당수익률이 낮은 자산부터 매도")을 두 번째 문장의 **첫 조언으로 쓰지 마세요** — 이 계획에서 효과가 가장 작은 레버입니다.
 6. "투자자산 미보유" 상태라고 명시되어 있으면, "자산 고갈"·"자산이 고갈된다"는 표현을 절대 쓰지 마세요. 인출 순서 조정·자산 재배치·매도 전략처럼 존재하지 않는 자산을 전제로 한 조언도 하지 마세요. 대신 목표 생활비 조정, 은퇴 시점, 국민연금 수령 시점, 추가 저축·투자만 제안하세요.
+7. "투자자산 소진"과 "생활비 부족"은 서로 다른 사건입니다. 투자자산이 소진돼도 국민연금이 생활비를 덮으면 생활은 유지됩니다 — 그 경우 "자산이 고갈되어 위험하다"가 아니라 "투자자산은 소진되지만 연금이 생활비를 채운다"고 쓰세요.
 
 [시뮬레이션 결과 전체]
 ${simulationContextText}
 
 [작성 가이드]
-- 첫 번째 문장: 은퇴 준비도 등급(매우 안정/안정/보통/주의/위험)과 자산 고갈 가능성을 우선 기준으로 한 직설적인 상태 진단. 고정소득 커버율이 낮다는 이유만으로 부정적으로 서술하지 말 것.
-- 두 번째 문장: AI 추천 전략이 있다면 그 내용(구체적인 인출 시점/방식 변경)을 우선 제시하고, 없다면 연금 구성·세금 설정·자산 구성 등 위 데이터를 근거로 한 구체적인 액션 플랜 또는 제안.
+- 첫 번째 문장: 시장 변동성 분석의 성공률을 1차 근거로 한 직설적인 상태 진단. 기준 시나리오 결과를 함께 쓸 때는 반드시 "기준 수익률이 실현되면"이라는 조건을 붙일 것.
+- 두 번째 문장: 규칙 5의 우선순위에 따른 액션 플랜 하나. 연금 공백 구간이 있으면 그 대비가 상위 후보다.
 `;
 
     let response;

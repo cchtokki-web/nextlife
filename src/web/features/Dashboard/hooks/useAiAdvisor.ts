@@ -13,6 +13,7 @@ import {
 } from '../../../../core/entities/types';
 import { RetirementGrade } from '../../../../core/entities/retirementGrade';
 import { PlanAssetStatus } from '../../../../core/usecases/dashboard/resolvePlanAssetStatus';
+import { PensionGapRisk } from '../../../../core/usecases/dashboard/computePensionGapRisk';
 
 export interface UseAiAdvisorInput {
   score: number;
@@ -27,8 +28,13 @@ export interface UseAiAdvisorInput {
   planAssetStatus: PlanAssetStatus;
   // 자산 미보유 계획에서 "고정소득이 목표 생활비의 몇 %를 충당하는가"를 말하는 데 쓴다.
   sustainableMonthlySpending?: number;
+  // 자산 보존 성공률(기대수명까지 자산이 남을 확률).
   monteCarloSuccessRate?: number;
-  monteCarloFullSpendingRate?: number;
+  // 생활 유지 성공률(계획한 생활비를 한 해도 줄이지 않을 확률). 자산 고갈 여부와 독립이다 —
+  // MonteCarloResult.spendingSuccessRate 주석 참조.
+  monteCarloSpendingSuccessRate?: number;
+  // 은퇴~국민연금 개시 사이의 공백 구간. 조언 우선순위에서 인출 전략보다 앞선다.
+  pensionGap?: PensionGapRisk;
   goalAchievementRate?: number;
   fireAge?: number | null;
   endingAssets?: number;

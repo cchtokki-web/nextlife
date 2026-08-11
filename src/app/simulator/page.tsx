@@ -15,8 +15,10 @@ import { useMonteCarlo } from '../../web/hooks/useMonteCarlo';
 import { computeSequenceRisk } from '../../core/usecases/montecarlo/sequenceRisk';
 import { resolveMonteCarloConfig } from '../../core/usecases/montecarlo/volatilityPresets';
 import { describeDepletionAge } from '../../core/usecases/dashboard/describeDepletionAge';
-import { formatCurrencyUnit, renderRiskAlertsSection, renderItemizedChecklistSection, renderExecutionRoadmapSection, renderSensitivityTableSection, renderMonteCarloSection, renderShortfallSummarySection, renderPlanVerdictSection, renderNationalPensionSection } from '../../web/features/Pdf/pdfReportSections';
+import { formatCurrencyUnit, renderRiskAlertsSection, renderItemizedChecklistSection, renderExecutionRoadmapSection, renderSensitivityTableSection, renderMonteCarloSection, renderShortfallSummarySection, renderPlanVerdictSection, renderNationalPensionSection, renderKeyLeversSection } from '../../web/features/Pdf/pdfReportSections';
 import { computePlanConfidence } from '../../core/usecases/dashboard/computePlanConfidence';
+import { computeKeyLevers } from '../../core/usecases/dashboard/computeKeyLevers';
+import { computePensionGapRisk } from '../../core/usecases/dashboard/computePensionGapRisk';
 import { resolveStrategy } from '../../core/usecases/strategy/compileStrategy';
 import { explainNationalPension } from '../../core/usecases/pension/explainNationalPension';
 import { analyzeCurrentStrategy, explainBequestAdequacy } from '../../core/usecases/utility/utilityAnalysis';
@@ -298,7 +300,8 @@ export default function Home() {
       const riskAlertsSectionHtml = renderRiskAlertsSection(riskAlerts);
       const shortfallSummarySectionHtml = renderShortfallSummarySection(
         computeShortfallSummary(reportParams, result),
-        formatValuePrint
+        formatValuePrint,
+        { expectancy: userProfile.expectancy, spendingSuccessRate: monteCarlo?.spendingSuccessRate }
       );
       // 화면(DashboardSection)과 같은 함수로 자산 상태를 판정한다 — PDF와 화면이 서로 다른
       // 근거로 "고갈"과 "미보유"를 말하면 같은 계획의 두 문서가 어긋난다.
@@ -312,7 +315,13 @@ export default function Home() {
       // 결정론 점수에 시장 변동 성공률을 반영한 판정. 화면(CoreKpiGrid)과 같은 함수를 쓴다.
       // MC가 아직 계산되지 않았으면 basis가 'deterministic'으로 떨어지고, 리포트는 그 사실을
       // 조용히 넘기지 않고 명시한다(renderPlanVerdictSection).
-      const planConfidence = computePlanConfidence(retirementScore, monteCarlo?.successRate);
+      const planConfidence = computePlanConfidence(
+        retirementScore,
+        monteCarlo && {
+          spendingSuccessRate: monteCarlo.spendingSuccessRate,
+          assetSuccessRate: monteCarlo.successRate,
+        }
+      );
       const planVerdictSectionHtml = renderPlanVerdictSection({
         expectancy: userProfile.expectancy,
         deterministicDepletionText: describeDepletionAge(depletionAge, userProfile.expectancy, planAssetStatus),
@@ -333,6 +342,17 @@ export default function Home() {
         planAssetStatus: sensitivity.baselinePlanAssetStatus,
         frozenMonthlySpending: sensitivity.frozenMonthlySpending,
       });
+      // 화면(KeyLeversCard)과 같은 함수·같은 순서를 쓴다. 같은 계획의 두 문서가 서로 다른
+      // 우선순위를 제시하면 안 된다.
+      const keyLeversSectionHtml = renderKeyLeversSection(
+        computeKeyLevers({
+          sensitivity,
+          pensionGap: computePensionGapRisk(reportParams, result),
+          shortfall: computeShortfallSummary(reportParams, result),
+          recommendation,
+          formatValue: formatValuePrint,
+        })
+      );
 
       // Create a temporary container
       const container = document.createElement('div');
@@ -535,6 +555,8 @@ export default function Home() {
                 <ul style="padding-left: 18px; margin-top: 4px; margin-bottom: 0;">${weaknessesHtml}</ul>
               </div>
             </div>
+
+            ${keyLeversSectionHtml}
 
             <h3 style="font-size: 13px; color: #0f172a; margin-bottom: 4px;">🤖 AI 추천 전략 — ${recommendationSummaryText}</h3>
             ${hasImprovement ? '<p style="font-size: 10px; color: #94a3b8; margin: 0 0 6px;">※ 아래 추천안은 시뮬레이션 결과이며 실제 설정에는 자동 반영되지 않습니다. 적용하려면 설정을 직접 변경하세요.</p>' : ''}

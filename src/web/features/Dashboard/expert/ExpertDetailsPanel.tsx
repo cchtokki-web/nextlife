@@ -4,9 +4,8 @@ import { useMemo } from 'react';
 import { Collapse } from '../../../components/ui';
 import GlassCard from '../../../components/GlassCard';
 import { SimulationParams, SimulationResult } from '../../../../core/entities/types';
-import { SimulationEngine } from '../../../../core/usecases/SimulationEngine';
 import { computeExpertAnalytics } from '../../../../core/usecases/dashboard/computeExpertAnalytics';
-import { computeSensitivityAnalysis } from '../../../../core/usecases/dashboard/computeSensitivityAnalysis';
+import { SensitivityAnalysis } from '../../../../core/usecases/dashboard/computeSensitivityAnalysis';
 import { estimateHealthInsuranceCliff } from '../../../../core/usecases/healthcare/estimateHealthInsuranceCliff';
 import { resolveTaxContext } from '../../../../core/usecases/tax/taxContext';
 import { YearlyChart } from '../YearlyChart';
@@ -17,6 +16,9 @@ interface ExpertDetailsPanelProps {
   params: SimulationParams;
   isPro?: boolean;
   formatValue: (val: number) => string;
+  // 호출부(DashboardSection)가 계산해 내려준다. 여기서 다시 돌리면 시뮬레이션 7회가 두 배가
+  // 되고, 핵심 레버 카드와 이 표가 서로 다른 실행 결과를 말할 수 있다.
+  sensitivity: SensitivityAnalysis;
 }
 
 // 세금/건보료/인출순서/연금구성/금융소득종합과세/상속 등 전문가용 상세 분석. 기본 닫힘 상태이며,
@@ -27,13 +29,9 @@ export function ExpertDetailsPanel({
   params,
   isPro = false,
   formatValue,
+  sensitivity,
 }: ExpertDetailsPanelProps) {
   const analytics = computeExpertAnalytics(result, params);
-  const engine = useMemo(() => new SimulationEngine(), []);
-  // 민감도 분석은 Before/After 토글과 무관하게 항상 "현재 설정(params)" 자체의 취약성을
-  // 보여줘야 하므로, 화면에 표시 중인 result(토글에 따라 추천안 결과일 수 있음)를 넘기지 않는다.
-  // 기준선은 computeSensitivityAnalysis가 6개 시나리오와 **같은 고정 계획**으로 직접 계산한다.
-  const sensitivity = useMemo(() => computeSensitivityAnalysis(params, engine), [params, engine]);
   // 위 연평균 건보료와 같은 result를 근거로 삼는다 — 두 숫자가 나란히 놓이므로 서로 다른
   // 실행에서 온 값이면 안 된다(민감도 기준선이 params로 재계산하는 것과는 반대 이유다).
   const healthInsuranceCliff = useMemo(

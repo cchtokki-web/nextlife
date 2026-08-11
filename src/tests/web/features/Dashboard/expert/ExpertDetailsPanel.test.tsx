@@ -1,6 +1,8 @@
 import { describe, test, expect } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { ExpertDetailsPanel } from '@/web/features/Dashboard/expert/ExpertDetailsPanel';
+import { computeSensitivityAnalysis } from '@/core/usecases/dashboard/computeSensitivityAnalysis';
+import { SimulationEngine } from '@/core/usecases/SimulationEngine';
 import { SimulationParams, SimulationResult } from '@/core/entities/types';
 import { makeYearlyResult as makeYearlyResultFixture } from '@/tests/fixtures/yearlyResult';
 
@@ -33,9 +35,15 @@ const params: SimulationParams = {
 
 const formatValue = (v: number) => `${v.toLocaleString()}원`;
 
+// 민감도 분석은 이제 호출부(DashboardSection)가 계산해 내려준다 — 이 패널이 직접 돌리면
+// 핵심 레버 카드와 서로 다른 실행 결과를 말할 수 있기 때문이다. 테스트도 같은 함수로 만들어
+// 넘긴다(손으로 지어낸 값을 쓰면 표가 실제 계산과 어긋나도 통과한다).
+const sensitivityFor = (p: SimulationParams) => computeSensitivityAnalysis(p, new SimulationEngine());
+const sensitivity = sensitivityFor(params);
+
 describe('ExpertDetailsPanel', () => {
   test('기본적으로 닫혀 있고, 열면 세금/연금 리스크 섹션이 보인다', () => {
-    render(<ExpertDetailsPanel result={result} params={params} formatValue={formatValue} isPro={false} />);
+    render(<ExpertDetailsPanel result={result} params={params} formatValue={formatValue} sensitivity={sensitivity} isPro={false} />);
 
     expect(screen.queryByText('세금 및 건강보험료 (은퇴 이후 연평균)')).not.toBeInTheDocument();
 
@@ -46,13 +54,13 @@ describe('ExpertDetailsPanel', () => {
   });
 
   test('isPro가 false이면 연도별 상세 내역(YearlyChart) 섹션을 렌더링하지 않는다', () => {
-    render(<ExpertDetailsPanel result={result} params={params} formatValue={formatValue} isPro={false} />);
+    render(<ExpertDetailsPanel result={result} params={params} formatValue={formatValue} sensitivity={sensitivity} isPro={false} />);
     fireEvent.click(screen.getByRole('button', { name: '전문가용 상세 분석 더 보기' }));
     expect(screen.queryByText('연도별 상세 내역')).not.toBeInTheDocument();
   });
 
   test('isPro가 true이면 연도별 상세 내역(YearlyChart) 섹션을 렌더링한다', () => {
-    render(<ExpertDetailsPanel result={result} params={params} formatValue={formatValue} isPro={true} />);
+    render(<ExpertDetailsPanel result={result} params={params} formatValue={formatValue} sensitivity={sensitivity} isPro={true} />);
     fireEvent.click(screen.getByRole('button', { name: '전문가용 상세 분석 더 보기' }));
     expect(screen.getByText('연도별 상세 내역')).toBeInTheDocument();
   });
@@ -68,7 +76,7 @@ describe('ExpertDetailsPanel', () => {
       <ExpertDetailsPanel
         result={noNationalPensionResult}
         params={noNationalPensionParams}
-        formatValue={formatValue}
+        formatValue={formatValue} sensitivity={sensitivity}
         isPro={false}
       />
     );
@@ -92,7 +100,7 @@ describe('ExpertDetailsPanel', () => {
   };
 
   test('민감도 분석 섹션(SensitivityAnalysisSection)이 렌더된다', () => {
-    render(<ExpertDetailsPanel result={result} params={paramsWithAssets} formatValue={formatValue} isPro={false} />);
+    render(<ExpertDetailsPanel result={result} params={paramsWithAssets} formatValue={formatValue} sensitivity={sensitivityFor(paramsWithAssets)} isPro={false} />);
     fireEvent.click(screen.getByRole('button', { name: '전문가용 상세 분석 더 보기' }));
 
     // 제목이 "자산 고갈 나이"에서 바뀐 이유: 고갈이 없는 계획에서도 기말자산으로
@@ -105,7 +113,7 @@ describe('ExpertDetailsPanel', () => {
   // 국민연금만 등록한 계획: 수익률·물가를 흔들어도 굴릴 원금이 없어 결과가 전부 같다.
   // 예전에는 6행이 "0원 · 51세 고갈 · 생활비 부족 N년"으로 똑같이 찍혔다.
   test('투자자산이 없으면 결과가 동일한 시나리오를 접고 그 이유를 밝힌다', () => {
-    render(<ExpertDetailsPanel result={result} params={params} formatValue={formatValue} isPro={false} />);
+    render(<ExpertDetailsPanel result={result} params={params} formatValue={formatValue} sensitivity={sensitivity} isPro={false} />);
     fireEvent.click(screen.getByRole('button', { name: '전문가용 상세 분석 더 보기' }));
 
     expect(screen.getByText(/투자자산이 없어/)).toBeInTheDocument();
@@ -114,7 +122,7 @@ describe('ExpertDetailsPanel', () => {
 
   test('민감도 분석 기준선은 result prop이 아니라 params로 직접 재계산한 값을 사용한다 (Before/After 토글과 무관)', () => {
     const misleadingResult: SimulationResult = { ...result, depletionAge: 999 }; // 실제로는 나올 수 없는 값 — result를 그대로 믿으면 999세가 표시됨
-    render(<ExpertDetailsPanel result={misleadingResult} params={params} formatValue={formatValue} isPro={false} />);
+    render(<ExpertDetailsPanel result={misleadingResult} params={params} formatValue={formatValue} sensitivity={sensitivity} isPro={false} />);
     fireEvent.click(screen.getByRole('button', { name: '전문가용 상세 분석 더 보기' }));
     expect(screen.queryByText(/999세/)).not.toBeInTheDocument();
   });
@@ -132,7 +140,7 @@ describe('ExpertDetailsPanel - 피부양자 자격 상실 시 건강보험료', 
   };
 
   test('부과 기준 소득이 문턱을 넘으면 자격 상실 시 보험료를 함께 보여준다', () => {
-    render(<ExpertDetailsPanel result={overThresholdResult} params={params} formatValue={formatValue} isPro={false} />);
+    render(<ExpertDetailsPanel result={overThresholdResult} params={params} formatValue={formatValue} sensitivity={sensitivity} isPro={false} />);
     fireEvent.click(screen.getByRole('button', { name: '전문가용 상세 분석 더 보기' }));
 
     expect(screen.getByText(/피부양자 자격 상실 시/)).toBeInTheDocument();
@@ -140,14 +148,14 @@ describe('ExpertDetailsPanel - 피부양자 자격 상실 시 건강보험료', 
   });
 
   test('재산·자동차분이 빠져 있다는 사실을 함께 밝힌다', () => {
-    render(<ExpertDetailsPanel result={overThresholdResult} params={params} formatValue={formatValue} isPro={false} />);
+    render(<ExpertDetailsPanel result={overThresholdResult} params={params} formatValue={formatValue} sensitivity={sensitivity} isPro={false} />);
     fireEvent.click(screen.getByRole('button', { name: '전문가용 상세 분석 더 보기' }));
 
     expect(screen.getByText(/재산·자동차분/)).toBeInTheDocument();
   });
 
   test('문턱을 넘는 해가 없으면 아무것도 보여주지 않는다', () => {
-    render(<ExpertDetailsPanel result={result} params={params} formatValue={formatValue} isPro={false} />);
+    render(<ExpertDetailsPanel result={result} params={params} formatValue={formatValue} sensitivity={sensitivity} isPro={false} />);
     fireEvent.click(screen.getByRole('button', { name: '전문가용 상세 분석 더 보기' }));
 
     expect(screen.queryByText(/피부양자 자격 상실 시/)).not.toBeInTheDocument();

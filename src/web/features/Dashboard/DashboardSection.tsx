@@ -9,7 +9,7 @@ import { explainUtilityComponents } from '../../../core/usecases/utility/explain
 import { generateChartCaptions } from '../../../core/usecases/dashboard/generateChartCaptions';
 import styles from './Dashboard.module.css';
 import { formatValue as formatValueForCurrency } from './charts/chartFormatters';
-import { AssetGrowthChart } from './charts/AssetGrowthChart';
+import { AssetGrowthChart, DEFAULT_HIDDEN_PERCENTILE_KEYS } from './charts/AssetGrowthChart';
 import { IncomeCompositionChart } from './charts/IncomeCompositionChart';
 import { SpendingCompositionChart } from './charts/SpendingCompositionChart';
 import { CoreKpiGrid } from './kpi/CoreKpiGrid';
@@ -32,6 +32,13 @@ import { useBeforeAfterToggle } from './hooks/useBeforeAfterToggle';
 import { ExecutionRoadmap } from './roadmap/ExecutionRoadmap';
 import { computeExecutionRoadmap, selectDepletionAge } from '../../../core/usecases/dashboard/computeExecutionRoadmap';
 import { resolvePlanAssetStatus } from '../../../core/usecases/dashboard/resolvePlanAssetStatus';
+import { resolvePlanOutcome } from '../../../core/usecases/dashboard/resolvePlanOutcome';
+import { computePlanConfidence } from '../../../core/usecases/dashboard/computePlanConfidence';
+import { computeSensitivityAnalysis } from '../../../core/usecases/dashboard/computeSensitivityAnalysis';
+import { computePensionGapRisk } from '../../../core/usecases/dashboard/computePensionGapRisk';
+import { computeKeyLevers } from '../../../core/usecases/dashboard/computeKeyLevers';
+import { SimulationEngine } from '../../../core/usecases/SimulationEngine';
+import { KeyLeversCard } from './recommendation/KeyLeversCard';
 import { NATIONAL_PENSION_NORMAL_START_AGE } from '../../../core/usecases/pension/nationalPensionRules';
 import { compileStrategy, resolveStrategy } from '../../../core/usecases/strategy/compileStrategy';
 import { SentinelApplication } from '../../../core/usecases/strategy/applyAiSentinels';
@@ -70,7 +77,15 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
   monteCarloStatus = 'idle',
   sequenceRisk,
 }) => {
-  const [hiddenKeys, setHiddenKeys] = React.useState<Record<string, boolean>>({});
+  // 초기값이 빈 객체가 아닌 이유: 몬테카를로 상위 10% 선은 처음 화면에서 꺼 둔다
+  // (DEFAULT_HIDDEN_PERCENTILE_KEYS 주석 참고 — 켜 두면 축이 그 선에 끌려가 주 곡선이 눌린다).
+  //
+  // **아래 assetChartHiddenKeys처럼 덮어쓰기(overlay)로 두지 않는다.** 덮어쓰면 사용자가
+  // 범례 버튼으로 켜도 다시 꺼져서 버튼이 동작하지 않는 것처럼 보인다. 기본값은 초기 상태로만
+  // 두고, 그 뒤로는 사용자의 선택이 이긴다.
+  const [hiddenKeys, setHiddenKeys] = React.useState<Record<string, boolean>>(
+    () => ({ ...DEFAULT_HIDDEN_PERCENTILE_KEYS })
+  );
   const [compositionChart, setCompositionChart] = React.useState<'income' | 'spending'>('income');
   // 자산 추이 차트 기본 단순화 모드: 켜지기 전까지는 주식자산/연금자산 breakdown을 숨기고
   // 자산총액/월생활비만 보여준다. 범례 클릭으로 저장된 hiddenKeys는 그대로 두고 덮어씌우기만 한다.
@@ -151,6 +166,28 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
   // 말하는 조각은 Before/After 미리보기를 따라가면 자기 자신을 근거로 삼게 된다.
   const baselinePlanAssetStatus = resolvePlanAssetStatus(result, params);
 
+  // 화면에 표시 중인 결과에서 일어난 세 사건(투자자산 소진 / 총자산 고갈 / 생활비 부족).
+  // 차트 배지·캡션·헤드라인이 전부 이 하나를 근거로 삼아야 서로 다른 이야기를 하지 않는다.
+  const planOutcome = React.useMemo(
+    () => resolvePlanOutcome(displayedResult, params),
+    [displayedResult, params]
+  );
+  const baselinePlanOutcome = React.useMemo(() => resolvePlanOutcome(result, params), [result, params]);
+
+  // 확률 판정. MC는 baseline(현재 계획)으로만 계산되므로(page.tsx가 effective.params로 호출)
+  // After 모드에서는 확률을 붙이지 않는다 — 붙이면 화면이 말하는 계획과 계산에 쓴 계획이
+  // 달라진다(CoreKpiGrid가 성공률 병기를 Before로 제한하는 것과 같은 규칙).
+  const monteCarloForDisplay =
+    mode === 'after' || monteCarloStatus !== 'done' ? undefined : monteCarlo;
+  const monteCarloRates = monteCarloForDisplay && {
+    spendingSuccessRate: monteCarloForDisplay.spendingSuccessRate,
+    assetSuccessRate: monteCarloForDisplay.successRate,
+  };
+  const planConfidence = computePlanConfidence(displayedResult.retirementScore, monteCarloRates);
+  // 헤드라인은 baseline(현재 설정) 기준이다 — 다른 baseline 조각들과 같은 이유로, "지금
+  // 설정이 어떤가"를 말하는 문장이 Before/After 미리보기를 따라가면 자기 자신을 근거로 삼는다.
+  const baselinePlanConfidence = computePlanConfidence(result.retirementScore, monteCarloRates);
+
   // 로드맵이 볼 추천안. After 모드에서만 넘긴다 — computeExecutionRoadmap은 undefined면
   // getIdentityPlan(현재 설정)으로 폴백하므로, Before에서는 사용자의 실제 계획이 그려진다.
   const roadmapRecommendation = mode === 'after' ? recommendation : undefined;
@@ -189,12 +226,21 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
     () => computeShortfallSummary(params, displayedResult),
     [params, displayedResult]
   );
-  // 자산 고갈 방지 축 설명에 붙일 확률 단서. **Before 모드에서만 붙인다** —
-  // MC는 baseline(현재 계획)으로만 계산되므로(page.tsx가 effective.params로 호출),
-  // After 모드에서 추천안의 설명에 갖다 붙이면 화면이 말하는 계획과 계산에 쓴 계획이 달라진다
-  // (CoreKpiGrid가 성공률 병기를 Before로 제한하는 것과 같은 규칙).
-  const monteCarloForDisplay =
-    mode === 'after' || monteCarloStatus !== 'done' ? undefined : monteCarlo;
+
+  // 민감도 분석은 예전에 ExpertDetailsPanel 안에서만 계산됐다. 핵심 레버 카드가 같은 값을
+  // 인용해야 하므로 여기로 끌어올려 한 번만 계산하고 아래로 내려준다 — 두 곳에서 각자 돌리면
+  // 시뮬레이션 7회가 두 배가 되고, 더 나쁘게는 두 카드가 다른 실행 결과를 말할 수 있다.
+  //
+  // Before/After 토글과 무관하게 항상 "현재 설정(params)"의 취약성을 본다(기존 규칙 유지).
+  const engine = React.useMemo(() => new SimulationEngine(), []);
+  const sensitivity = React.useMemo(() => computeSensitivityAnalysis(params, engine), [params, engine]);
+  const pensionGap = React.useMemo(() => computePensionGapRisk(params, result), [params, result]);
+  const keyLevers = React.useMemo(
+    () => computeKeyLevers({ sensitivity, pensionGap, shortfall: shortfallReport, recommendation, formatValue }),
+    // formatValue는 매 렌더 새 참조지만 currency에만 의존하므로 통화를 의존성으로 쓴다.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [sensitivity, pensionGap, shortfallReport, recommendation, currency]
+  );
   // 축별 점수 근거. 막대와 같은 결과·같은 config에서 파생돼야 두 숫자가 어긋나지 않는다.
   const utilityExplanations = React.useMemo(
     () => explainUtilityComponents(params, displayedResult, utilityConfig, monteCarloForDisplay),
@@ -236,23 +282,25 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
         utilityWeights={utilityConfig.weights}
         recommendation={recommendation}
         planAssetStatus={baselinePlanAssetStatus}
+        planOutcome={baselinePlanOutcome}
+        planConfidence={baselinePlanConfidence}
         sustainableMonthlySpending={result.calculatedTargetSpending}
         monteCarloSuccessRate={monteCarlo?.successRate}
-        monteCarloFullSpendingRate={monteCarlo?.fullSpendingRate}
+        monteCarloSpendingSuccessRate={monteCarlo?.spendingSuccessRate}
+        pensionGap={pensionGap ?? undefined}
         />
 
         <CoreKpiGrid
-        survivalScore={displayedResult.retirementScore}
+        confidence={planConfidence}
         expectancy={params.userProfile.expectancy}
         endingAssets={displayedResult.endingAssets}
-        monthlyTarget={curvedMonthlyTarget}
+        sustainableMonthly={curvedMonthlyTarget}
+        goalMonthly={applyCurve(params.userProfile.targetMonthlySpending)}
         monthlyTargetAge={params.spendingCurve ? spendingCurveLabelAge : undefined}
+        pensionGap={pensionGap ?? undefined}
         utilityScore={displayedResult.utility?.score}
         formatValue={formatValue}
         resultBasis={mode === 'after' ? 'recommended' : 'current'}
-        monteCarlo={monteCarlo}
-        monteCarloStatus={monteCarloStatus}
-        planAssetStatus={baselinePlanAssetStatus}
         />
 
         <div className={styles.statusList} aria-label="현재 계획 상태">
@@ -280,16 +328,21 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
                 결정론 한 경로의 결과이므로 확률을 함께 보여준다. 계산이 끝났을 때만 —
                 없는 숫자를 기다리게 하지 않는다.
 
-                **successRate가 아니라 fullSpendingRate를 쓴다.** 이 배너의 주장은 "이만큼 쓸 수
+                **successRate가 아니라 spendingSuccessRate를 쓴다.** 이 배너의 주장은 "이만큼 쓸 수
                 있다"이므로, 물어야 할 확률은 "그 금액을 실제로 다 쓰는 비율"이다. 자산 고갈
                 여부(successRate)는 여기서 거의 정보가 없다 — 목표 상속자산을 정하면 엔진이
                 그 선 아래로 인출을 막아 고갈이 구조적으로 일어나지 않는다. 하니스 실측:
                 성공률 100%인 계획의 완전소비율이 43%였다. 그 계획에 "성공확률 100%"라고
                 말하는 것은 사용자를 오도한다.
+
+                이 논거는 spendingSuccessRate의 새 정의(자산 고갈과 독립)에서 오히려 더 정확해진다.
+                옛 정의는 자산이 살아남은 시행 안에서만 셌기 때문에, 투자자산이 88세에 바닥나도
+                연금으로 90세까지 이 금액을 다 쓴 경로를 실패로 세어 배너 숫자를 실제보다 낮게
+                보고했다.
               */}
               {monteCarloStatus === 'done' && monteCarlo && (
                 <> 다만 시장 변동을 반영하면 이 금액을 한 해도 줄이지 않고 유지할 확률은{' '}
-                  <strong>{Math.round(monteCarlo.fullSpendingRate * 100)}%</strong>입니다.</>
+                  <strong>{Math.round(monteCarlo.spendingSuccessRate * 100)}%</strong>입니다.</>
               )}
             </StatusNotice>
           )}
@@ -325,7 +378,12 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
           )}
         </div>
 
-        <ShortfallSummaryCard report={shortfallReport} formatValue={formatValue} />
+        <ShortfallSummaryCard
+          report={shortfallReport}
+          formatValue={formatValue}
+          expectancy={params.userProfile.expectancy}
+          spendingSuccessRate={monteCarloForDisplay?.spendingSuccessRate}
+        />
       </DashboardGroup>
 
       <DashboardGroup title="위험 분석" description="계획이 실패할 수 있는 조건과 시장 변동의 영향을 함께 봅니다.">
@@ -340,6 +398,11 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
       </DashboardGroup>
 
       <DashboardGroup title="실행 계획" description="추천 변경 사항과 실행 시점을 이어서 확인하세요.">
+        {/* 인출 전략 체크리스트보다 위에 둔다. 이유는 computeKeyLevers 주석 참고 —
+            체크리스트가 탐색하는 축(매도 순서·인출 개시 나이)은 이 계획에서 다섯 번째로
+            중요한 레버인데, 예전에는 그것이 실행 계획의 첫 카드였다. */}
+        <KeyLeversCard levers={keyLevers} />
+
         <RecommendationChecklist
         recommendation={recommendation}
         recommendationFailed={recommendationFailed}
@@ -379,7 +442,8 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
         caption={captions.assetGrowth}
         showBreakdown={showAssetBreakdown}
         onToggleBreakdown={() => setShowAssetBreakdown((v) => !v)}
-        planAssetStatus={planAssetStatus}
+        planOutcome={planOutcome}
+        monteCarlo={monteCarloForDisplay}
         />
         <div className={styles.chartTabs} role="tablist" aria-label="현금흐름 차트 선택">
           <button type="button" role="tab" aria-selected={compositionChart === 'income'} onClick={() => setCompositionChart('income')}>소득 구성</button>
@@ -418,7 +482,13 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
             bequestStrategy={resolveStrategy(params).bequestStrategy}
           />
         )}
-        <ExpertDetailsPanel result={displayedResult} params={params} isPro={isPro} formatValue={formatValue} />
+        <ExpertDetailsPanel
+          result={displayedResult}
+          params={params}
+          isPro={isPro}
+          formatValue={formatValue}
+          sensitivity={sensitivity}
+        />
       </DashboardGroup>
     </div>
   );

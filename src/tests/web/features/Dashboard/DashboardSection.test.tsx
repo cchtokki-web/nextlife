@@ -100,6 +100,11 @@ const recommendation: StrategyRecommendation = {
   ],
 };
 
+// KPI 카드 하나로 좁혀 그 값만 읽는다. 「지속가능 생활비」와 「목표 생활비」가 같은 금액인
+// 계획이 흔해서, 좁히지 않으면 한쪽만 바뀌는 회귀를 잡지 못한다.
+const kpiValue = (label: string): string =>
+  screen.getByText(label).closest('div')!.parentElement!.querySelector('.font-display')!.textContent!;
+
 describe('DashboardSection - IA 순서', () => {
   beforeEach(() => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(makeStreamResponse([JSON.stringify({ response: '안내 문구' })])));
@@ -166,12 +171,18 @@ describe('DashboardSection - IA 순서', () => {
     expect(screen.queryByText(/연령별 소득원 구성/)).not.toBeInTheDocument();
   });
 
-  test('핵심 KPI 4장(은퇴준비도/순자산/월생활비/Utility)이 모두 노출된다', () => {
+  // KPI 4장은 사용자가 실제로 묻는 네 가지다: 이 계획이 될 확률은 / 실제로 얼마를 쓸 수
+  // 있나 / 원한 금액과 얼마나 차이 나나 / 가장 위험한 구간은 언제인가.
+  // 기말 순자산과 평생 효용은 카드에서 내려 보조 행으로 강등했다(CoreKpiGrid 주석 참고).
+  test('핵심 KPI 4장(성공률/지속가능 생활비/목표 생활비/연금 공백)이 모두 노출된다', () => {
     render(<DashboardSection params={params} result={result} recommendation={recommendation} />);
-    expect(screen.getByText(/은퇴 준비도/)).toBeInTheDocument();
+    expect(screen.getByText(/은퇴 성공률/)).toBeInTheDocument();
+    expect(screen.getByText(/지속가능 생활비/)).toBeInTheDocument();
+    expect(screen.getByText('목표 생활비')).toBeInTheDocument();
+    expect(screen.getByText('연금 공백')).toBeInTheDocument();
+    // 강등된 두 지표도 화면에서 사라지지는 않는다(평생 효용은 상세 분석에도 나오므로 복수).
     expect(screen.getByText(/예상 순자산/)).toBeInTheDocument();
-    expect(screen.getByText('예상 월 생활비')).toBeInTheDocument();
-    expect(screen.getByText('평생 효용')).toBeInTheDocument();
+    expect(screen.getAllByText(/평생 효용/).length).toBeGreaterThan(0);
   });
 
   test('추천안 결과 보기 버튼 클릭 시 KPI가 Before에서 After(추천) 값으로 전환된다', () => {
@@ -205,12 +216,15 @@ describe('DashboardSection - IA 순서', () => {
 
     render(<DashboardSection params={params} result={result} recommendation={rec} />);
 
-    expect(screen.getByText('300만원')).toBeInTheDocument();
+    // 「지속가능 생활비」와 「목표 생활비」 카드가 나란히 있고 baseline에서는 둘 다 300만원이다.
+    // 배수는 지속가능 쪽에만 걸리므로 카드로 좁혀서 본다 — 좁히지 않으면 목표 카드의 300만원이
+    // 남아 있다는 이유로 이 테스트가 배수 미적용도 통과시킨다.
+    expect(kpiValue('지속가능 생활비')).toBe('월 300만원');
 
     fireEvent.click(screen.getByRole('button', { name: '추천안 결과 보기' }));
 
-    expect(screen.getByText('360만원')).toBeInTheDocument();
-    expect(screen.queryByText('300만원')).not.toBeInTheDocument();
+    expect(kpiValue('지속가능 생활비')).toBe('월 360만원');
+    expect(kpiValue('목표 생활비')).toBe('월 300만원');
   });
 
   test('Before 상태에서 리스크 알림이 보이고, 추천 적용(After) 시 리스크가 해소되면 알림이 사라진다', () => {
@@ -349,11 +363,11 @@ describe('DashboardSection - 평생 소비 최적화 결과 배너', () => {
     expect(screen.queryByText('역산된 생활비가 최소 기준에 못 미칩니다')).not.toBeInTheDocument();
   });
 
-  // successRate가 아니라 fullSpendingRate를 쓴다. 목표 상속자산을 정하면 엔진이 그 선
+  // successRate가 아니라 spendingSuccessRate를 쓴다. 목표 상속자산을 정하면 엔진이 그 선
   // 아래로 인출을 막아 고갈이 구조적으로 일어나지 않으므로 successRate는 거의 항상 100%다
-  // (하니스 실측: 성공률 100% / 완전소비율 43%). 배너의 주장이 "이만큼 쓸 수 있다"이므로
+  // (하니스 실측: 자산 보존 100% / 생활 유지 43%). 배너의 주장이 "이만큼 쓸 수 있다"이므로
   // 물어야 할 확률은 "그 금액을 실제로 다 쓰는 비율"이다.
-  test('확률은 자산 유지율이 아니라 목표 생활비 완전 유지율을 말한다', () => {
+  test('확률은 자산 보존율이 아니라 생활 유지율을 말한다', () => {
     const { rerender } = render(
       <DashboardSection params={optimizedParams()} result={optimizedResult} monteCarloStatus="running" />
     );
@@ -369,7 +383,8 @@ describe('DashboardSection - 평생 소비 최적화 결과 배너', () => {
           trials: 1000, seed: 20260101, successAge: 90,
           // 목표 상속자산이 고갈을 막아 성공률은 100%지만, 그 금액을 온전히 쓰는 것은
           // 43%뿐인 상황(하니스 실측 형태).
-          successRate: 1, fullSpendingRate: 0.43,
+          successRate: 1, spendingSuccessRate: 0.43,
+          plannedMonthlySpending: 2230000,
           endingAssets: { p10: 0, p50: 1, p90: 2, mean: 1 },
           assetBand: [], depletion: { count: 0, earliestAge: null, medianAge: null },
           deterministicEndingAssets: 1, worstDecilePath: [],
@@ -377,7 +392,7 @@ describe('DashboardSection - 평생 소비 최적화 결과 배너', () => {
       />
     );
     // 위험 분석 섹션도 같은 확률을 말하므로 배너 안으로 좁혀서 본다.
-    // successRate 100%가 아니라 fullSpendingRate 43%를 말해야 한다.
+    // successRate 100%가 아니라 spendingSuccessRate 43%를 말해야 한다.
     expect(banner().textContent).toMatch(/43%/);
     expect(banner().textContent).not.toMatch(/100%/);
   });
@@ -415,7 +430,7 @@ describe('DashboardSection - 투자자산 미보유 계획', () => {
 
     // 헤드라인·차트 캡션·차트 빈 상태가 모두 같은 사실을 말하므로 헤드라인 문장 전체로 좁힌다.
     expect(
-      screen.getAllByText(/위험 수준의 은퇴 준비 상태입니다\. 등록된 투자자산이 없어, 연금 등 고정소득만으로/).length
+      screen.getAllByText(/등록된 투자자산이 없지만, 연금 등 고정소득이 계획한 생활비를 채웁니다/).length
     ).toBeGreaterThan(0);
     expect(screen.queryByText(/51세에 자산이 고갈될 위험/)).not.toBeInTheDocument();
   });
@@ -516,7 +531,7 @@ describe('DashboardSection - 현재 계획을 유지하면 요약 카드', () =>
 
       expect(screen.queryByText('계획한 생활비조차 채우지 못하는 구간')).not.toBeInTheDocument();
       expect(screen.queryByText('부족 기간')).not.toBeInTheDocument();
-      expect(screen.getByText(/소비 시에는 자산이 계획대로/)).toBeInTheDocument();
+      expect(screen.getByText(/기준 수익률이 실현된다는 가정에서는/)).toBeInTheDocument();
     });
   });
 });

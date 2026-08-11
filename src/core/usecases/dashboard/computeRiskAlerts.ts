@@ -4,9 +4,16 @@ import { formatManwon } from '../utility/utilityAnalysis';
 import { resolveStrategy } from '../strategy/compileStrategy';
 import { resolveTaxContext, TaxContext } from '../tax/taxContext';
 import { estimateHealthInsuranceCliff } from '../healthcare/estimateHealthInsuranceCliff';
+import { computePensionGapRisk, PensionGapRisk } from './computePensionGapRisk';
 
 export interface RiskAlert {
-  key: 'comprehensiveTax' | 'privatePensionLimit' | 'healthInsurance' | 'healthInsuranceCliff' | 'bequestShortfall';
+  key:
+    | 'pensionGap'
+    | 'comprehensiveTax'
+    | 'privatePensionLimit'
+    | 'healthInsurance'
+    | 'healthInsuranceCliff'
+    | 'bequestShortfall';
   title: string;
   message: string;
 }
@@ -42,6 +49,27 @@ function findFirstContiguousRange(
 
 function formatAgeRange(startAge: number, endAge: number): string {
   return startAge === endAge ? `${startAge}세` : `${startAge}~${endAge}세`;
+}
+
+// 은퇴 직후~국민연금 개시 전 구간. 다른 알림이 전부 세금·상속 위험인 것과 달리 이것은
+// **계획 자체의 구조적 위험**이라, sortAge를 은퇴 나이로 두어 목록 맨 위에 오게 한다.
+//
+// 이 카드가 필요한 이유는 computePensionGapRisk 주석에 있다 — 요약하면, 은퇴 후 자산 잔고가
+// 가장 크고 인출률도 가장 높은 구간이 여기라서 이 5년의 시장 하락이 전체 성공률을 좌우한다.
+function buildPensionGapAlert(gap: PensionGapRisk | null): RiskAlertCandidate | null {
+  if (gap === null) return null;
+  return {
+    sortAge: gap.fromAge,
+    alert: {
+      key: 'pensionGap',
+      title: `핵심 위험구간: ${formatAgeRange(gap.fromAge, gap.toAge)} (국민연금 개시 전)`,
+      message:
+        `국민연금 개시 전 ${gap.years}년 동안 생활비 대부분을 투자자산 인출로 충당합니다` +
+        `(월 평균 ${formatManwon(gap.monthlyAssetWithdrawal)}). 이 기간의 시장 하락은 회복할 원금을 ` +
+        `줄여 은퇴 전체의 성공률에 가장 큰 영향을 줍니다. ` +
+        `이 구간을 넘기는 데 필요한 자금은 약 ${formatManwon(gap.bridgeAmount)}입니다.`,
+    },
+  };
 }
 
 function buildComprehensiveTaxAlert(yearlyResults: SimulationYearlyResult[]): RiskAlertCandidate | null {
@@ -200,6 +228,7 @@ export function computeRiskAlerts(
   const privatePensionLimit = params.taxSettings?.privatePensionLimit ?? 15000000;
 
   const candidates = [
+    buildPensionGapAlert(computePensionGapRisk(params, result)),
     buildComprehensiveTaxAlert(yearlyResults),
     buildPrivatePensionLimitAlert(yearlyResults, privatePensionLimit),
     buildHealthInsuranceAlert(yearlyResults, cfg.healthInsuranceCeiling),

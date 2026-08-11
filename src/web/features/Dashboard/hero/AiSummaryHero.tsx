@@ -9,6 +9,8 @@ import { BeforeAfterMode } from '../hooks/useBeforeAfterToggle';
 import { ApplyRecommendationButton } from '../recommendation/ApplyRecommendationButton';
 import { buildHeroHeadline } from './heroHeadline';
 import { AiAdviceText } from './AiAdviceText';
+import { PlanOutcome } from '../../../../core/usecases/dashboard/resolvePlanOutcome';
+import { PlanConfidence } from '../../../../core/usecases/dashboard/computePlanConfidence';
 
 interface AiSummaryHeroProps extends UseAiAdvisorInput {
   formatValue: (val: number) => string;
@@ -20,16 +22,21 @@ interface AiSummaryHeroProps extends UseAiAdvisorInput {
   // advisorInput.userProfile에서 읽지 않고 별도 필수 prop으로 받는 이유: 그쪽은 optional이라
   // 값이 없을 때 조용히 폴백이 필요해지고, 그 폴백은 실제 시뮬레이션 구간과 어긋날 수 있다.
   expectancy: number;
+  // 헤드라인이 서술할 결정론 사건들(투자자산 소진 / 생활비 부족 / 자산 상태)과 확률 판정.
+  // 둘 다 호출부가 이미 계산해 두는 값이라 여기서 다시 유도하지 않는다 — 유도하면 화면의
+  // 다른 조각(차트 배지·KPI)과 다른 근거를 말하게 된다.
+  planOutcome: PlanOutcome;
+  planConfidence: PlanConfidence;
 }
 
 // 결과 화면 최상단 Hero. 한줄 요약(rule-based) + Before/After Utility 비교 + 절세/자산증가
 // 요약 + 추천 적용 버튼을 보여주고, LLM이 생성한 전체 AI 의견은 Collapse 안에 격리한다.
 export function AiSummaryHero({
-  formatValue, mode, onToggleMode, canApply, expectancy, ...advisorInput
+  formatValue, mode, onToggleMode, canApply, expectancy, planOutcome, planConfidence, ...advisorInput
 }: AiSummaryHeroProps) {
   const { data: session } = useSession();
   const userNamePrefix = session?.user?.name ? `${session.user.name}님의 ` : '';
-  const { utility, recommendation, depletionAge } = advisorInput;
+  const { utility, recommendation } = advisorInput;
   const aiAdvisor = useAiAdvisor(advisorInput);
 
   // 에러/rule-based 폴백은 사용자가 반드시 알아야 할 신호라, 접힌 패널 안에 숨어있지 않도록
@@ -48,18 +55,7 @@ export function AiSummaryHero({
 
   if (!utility) return null;
 
-  const headline = buildHeroHeadline(
-    utility.score,
-    depletionAge,
-    expectancy,
-    advisorInput.planAssetStatus,
-    advisorInput.monteCarloSuccessRate === undefined || advisorInput.monteCarloFullSpendingRate === undefined
-      ? undefined
-      : {
-          successRate: advisorInput.monteCarloSuccessRate,
-          fullSpendingRate: advisorInput.monteCarloFullSpendingRate,
-        }
-  );
+  const headline = buildHeroHeadline({ expectancy, outcome: planOutcome, confidence: planConfidence });
   // "여기서 더 갈 수 있는가"를 지금 화면의 값(utility = result.utility) 기준으로 판정한다.
   //
   // recommendation.improved만 보면 안 된다. 그 값은 센티널 미적용 baseline 대비 판정이라,

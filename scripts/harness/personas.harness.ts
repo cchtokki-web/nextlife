@@ -158,13 +158,13 @@ test('페르소나 하니스', { timeout: 3_600_000 }, () => {
       channeling: rec?.recommendedPrivatePensionChanneling ? 1 : 0,
       newPensionContrib: rec?.recommendedNewPensionContribution ? 1 : 0,
       mcSuccess: +(mcBase.successRate * 100).toFixed(1),
-      mcFullSpend: +(mcBase.fullSpendingRate * 100).toFixed(1),
+      mcSpendSuccess: +(mcBase.spendingSuccessRate * 100).toFixed(1),
       mcP10: Math.round(mcBase.endingAssets.p10),
       mcP50: Math.round(mcBase.endingAssets.p50),
       mcDeterministic: Math.round(mcBase.deterministicEndingAssets),
       mcDepletionMedian: mcBase.depletion.medianAge ?? '',
       mcRecSuccess: +(mcRec.successRate * 100).toFixed(1),
-      mcRecFullSpend: +(mcRec.fullSpendingRate * 100).toFixed(1),
+      mcRecSpendSuccess: +(mcRec.spendingSuccessRate * 100).toFixed(1),
       mcRecP10: Math.round(mcRec.endingAssets.p10),
     });
 
@@ -175,7 +175,7 @@ test('페르소나 하니스', { timeout: 3_600_000 }, () => {
       `월 목표 ${(persona.params.userProfile.targetMonthlySpending / 만).toFixed(0)}만, 초기자산 ${(initialAssetKRW(persona.params) / 억).toFixed(2)}억\n` +
       `- 결정론: 점수 ${baseResult.retirementScore}(${baseResult.retirementGrade}), 고갈 ${baseResult.depletionAge ?? '없음'}, ` +
       `기말 ${(baseResult.endingAssets / 억).toFixed(2)}억, 효용 ${baseResult.utility?.score}\n` +
-      `- MC(σ=${mcCfg.annualStdDev}): 성공률 ${(mcBase.successRate * 100).toFixed(1)}%, 완전소비율 ${(mcBase.fullSpendingRate * 100).toFixed(1)}%, ` +
+      `- MC(σ=${mcCfg.annualStdDev}): 자산보존 ${(mcBase.successRate * 100).toFixed(1)}%, 생활유지 ${(mcBase.spendingSuccessRate * 100).toFixed(1)}%, ` +
       `p10 ${(mcBase.endingAssets.p10 / 억).toFixed(2)}억 / p50 ${(mcBase.endingAssets.p50 / 억).toFixed(2)}억 / 결정론 ${(mcBase.deterministicEndingAssets / 억).toFixed(2)}억\n` +
       `- AI추천: improved=${rec?.improved}, 후보 ${rec?.totalCandidateCount}(실패 ${rec?.failedCandidateCount}), 효용 ${rec?.currentUtility.score} → ${rec?.recommendedUtility.score}\n` +
       `- recommendedPlan: ${JSON.stringify(rec?.recommendedPlan)}\n` +

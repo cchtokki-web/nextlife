@@ -7,6 +7,10 @@ import { ShortfallReport, ShortfallSummary } from '../../../../core/usecases/das
 interface ShortfallSummaryCardProps {
   report: ShortfallReport;
   formatValue: (val: number) => string;
+  // "몇 세까지 유지되는가"의 그 나이. 조건을 밝히려면 기간도 함께 말해야 한다.
+  expectancy: number;
+  // 시장 변동을 반영한 생활 유지 성공률. 없으면(MC 미계산) 확률 문장을 생략한다.
+  spendingSuccessRate?: number;
 }
 
 // "그래서 내가 얼마를 더 준비해야 하는가"에 답하는 카드.
@@ -20,7 +24,9 @@ interface ShortfallSummaryCardProps {
 // 「평생 소비 최적화」는 목표 월 350만원을 지속가능한 232만원으로 낮춰 잡는다. 계획 기준으로만
 // 보면 부족이 0이라 "문제 없음"으로 읽히지만, 사용자가 세운 목표에는 월 118만원이 모자란다.
 // 실제 리포트에 "목표 월 350만원"과 "부족 생활비 월 평균 0원"이 나란히 찍힌 것이 그 결과였다.
-export function ShortfallSummaryCard({ report, formatValue }: ShortfallSummaryCardProps) {
+export function ShortfallSummaryCard({
+  report, formatValue, expectancy, spendingSuccessRate,
+}: ShortfallSummaryCardProps) {
   const { goal, plan, goalMonthlySpending, sustainableMonthlySpending } = report;
   if (!goal && !plan) return null;
 
@@ -76,10 +82,23 @@ export function ShortfallSummaryCard({ report, formatValue }: ShortfallSummaryCa
         </section>
       ) : (
         loweredByPlan && (
-          <p className="text-sm">
-            월 <strong>{formatValue(sustainableMonthlySpending)}</strong> 소비 시에는 자산이 계획대로
-            유지됩니다.
-          </p>
+          // **결정론 결과와 확률 결과를 한 문장에 섞지 않는다.** 예전에는 "월 223만원 소비
+          // 시에는 자산이 계획대로 유지됩니다"라고 확정형으로 썼는데, 그 문장이 참인 세계는
+          // "기준 수익률이 그대로 실현될 때"뿐이다. 같은 화면의 성공률이 39%인데도 이 카드만
+          // 단정하고 있었다. 조건을 앞에 붙이고, 확률은 별도 문장으로 분리한다.
+          <>
+            <p className="text-sm">
+              기준 수익률이 실현된다는 가정에서는 월{' '}
+              <strong>{formatValue(sustainableMonthlySpending)}</strong> 소비 시 {expectancy}세까지
+              계획이 유지됩니다.
+            </p>
+            {spendingSuccessRate !== undefined && (
+              <p className="mt-1 text-sm text-foreground-muted">
+                시장 변동성을 고려한 생활 유지 성공률:{' '}
+                <strong className="text-foreground">{Math.round(spendingSuccessRate * 100)}%</strong>
+              </p>
+            )}
+          </>
         )
       )}
 

@@ -1,6 +1,11 @@
 import { StrategyRecommendation, UserProfile, UtilityBreakdown } from '../../../core/entities/types';
 import { getRetirementGrade, RetirementGrade } from '../../../core/entities/retirementGrade';
 import { PlanAssetStatus } from '../../../core/usecases/dashboard/resolvePlanAssetStatus';
+import {
+  getPlanConfidenceBand,
+  PLAN_CONFIDENCE_BAND_LABEL,
+} from '../../../core/usecases/dashboard/computePlanConfidence';
+import { formatManwon } from '../../../core/usecases/utility/utilityAnalysis';
 
 // LLM 폴백 경로. 인자가 길어져 위치 인자로는 호출부에서 무엇이 무엇인지 읽히지 않아,
 // 새로 추가되는 값부터는 이름 있는 객체로 받는다.
@@ -12,8 +17,12 @@ export interface RuleBasedAdviceContext {
   // 고갈 없이 유지 가능한 월 생활비(SimulationResult.calculatedTargetSpending).
   // 화면의 과소비 배너가 쓰는 값과 같아야 두 문구가 같은 근거를 말한다.
   sustainableMonthlySpending?: number;
+  // 자산 보존 성공률(기대수명까지 자산이 남을 확률).
   monteCarloSuccessRate?: number;
-  monteCarloFullSpendingRate?: number;
+  // 생활 유지 성공률(계획한 생활비를 한 해도 줄이지 않을 확률). 판정의 1차 근거다.
+  monteCarloSpendingSuccessRate?: number;
+  // 은퇴~국민연금 개시 사이의 공백. 있으면 조언 우선순위가 인출 전략보다 앞선다.
+  pensionGap?: { fromAge: number; toAge: number; years: number; bridgeAmount: number };
 }
 
 export function generateRuleBasedAdvice(
@@ -31,8 +40,16 @@ export function generateRuleBasedAdvice(
   const grade = retirementGrade ?? getRetirementGrade(score);
   const {
     planAssetStatus, goalAchievementRate, sustainableMonthlySpending,
-    monteCarloSuccessRate, monteCarloFullSpendingRate,
+    monteCarloSuccessRate, monteCarloSpendingSuccessRate, pensionGap,
   } = context;
+
+  // 확률이 있으면 판정은 **확률에서 나온다.** 예전에는 결정론 등급이 판정을 정하고 확률이
+  // 뒤에 부연으로 붙어, 성공률 39%인 계획이 "안정 등급"으로 시작했다. LLM 경로의 규칙 4와
+  // 같은 원칙이다 — 두 경로가 다른 기준으로 판정하면 Ollama 가용 여부가 진단을 바꾼다.
+  const band =
+    typeof monteCarloSpendingSuccessRate === 'number'
+      ? getPlanConfidenceBand(monteCarloSpendingSuccessRate)
+      : undefined;
 
   let statusText: string;
   let isFavorable: boolean;
@@ -44,17 +61,24 @@ export function generateRuleBasedAdvice(
       `등록된 투자자산이 없어 은퇴 후 생활비를 국민연금 등 고정소득에만 의존하는 계획으로, ` +
       `은퇴 준비도는 **${grade}** 등급(${score}점)입니다.`;
     isFavorable = false;
+  } else if (band !== undefined && typeof monteCarloSpendingSuccessRate === 'number') {
+    const spendingPercent = Math.round(monteCarloSpendingSuccessRate * 100);
+    const assetClause = typeof monteCarloSuccessRate === 'number'
+      ? `, 자산 보존 성공률은 **${Math.round(monteCarloSuccessRate * 100)}%**`
+      : '';
+    statusText =
+      `시장 변동을 반영하면 계획한 생활비를 한 해도 줄이지 않을 확률은 **${spendingPercent}%**${assetClause}로, ` +
+      `**${PLAN_CONFIDENCE_BAND_LABEL[band]}** 수준입니다(기준 수익률만 놓고 보면 은퇴 준비도 ${score}점 · ${grade}).`;
+    isFavorable = band === 'very_stable' || band === 'stable';
   } else {
     switch (grade) {
       case '매우 안정':
       case '안정':
-        statusText = typeof monteCarloSuccessRate === 'number' && monteCarloSuccessRate < 0.95
-          ? `은퇴 준비도는 **${grade}** 등급(${score}점)이고 기준 시나리오에서는 자산이 유지되지만, 시장 변동 반영 시 자산 유지 확률은 **${Math.round(monteCarloSuccessRate * 100)}%**${typeof monteCarloFullSpendingRate === 'number' ? `, 목표 생활비 완전 유지 확률은 **${Math.round(monteCarloFullSpendingRate * 100)}%**` : ''}입니다.`
-          : `은퇴 준비도가 **${grade}** 등급(${score}점)으로, 기준 시나리오에서 자산이 안정적으로 유지될 것으로 예상됩니다.`;
+        statusText = `은퇴 준비도가 **${grade}** 등급(${score}점)으로, 기준 시나리오에서 자산이 안정적으로 유지될 것으로 예상됩니다(시장 변동성 미반영).`;
         isFavorable = true;
         break;
       case '보통':
-        statusText = `은퇴 준비도는 **보통** 등급(${score}점)으로 양호하지만 일부 보완이 필요합니다.`;
+        statusText = `은퇴 준비도는 **보통** 등급(${score}점)으로 양호하지만 일부 보완이 필요합니다(시장 변동성 미반영).`;
         isFavorable = true;
         break;
       case '주의':
@@ -101,5 +125,15 @@ export function generateRuleBasedAdvice(
     ? ` AI 분석 결과, ${improvementLever} 평생 효용 점수를 **${recommendation!.currentUtility.score}점**에서 **${recommendation!.recommendedUtility.score}점**까지 높일 수 있습니다.${newPensionCaveat}`
     : '';
 
-  return `${statusText} ${possibilityText}${utilityText}`;
+  // 연금 공백은 인출 전략보다 앞선다(LLM 경로의 규칙 5와 같은 우선순위). 은퇴 직후라 잔고가
+  // 가장 크고 인출률도 가장 높은 구간이므로, "매도 순서를 바꾸세요"보다 먼저 말해야 한다.
+  const pensionGapText = pensionGap
+    ? ` 특히 ${pensionGap.fromAge}~${pensionGap.toAge}세 ${pensionGap.years}년은 국민연금 개시 전이라 생활비를 자산 인출로 메우는 구간이므로, ` +
+      // 금액 포맷은 화면·PDF와 같은 함수를 쓴다. 직접 만원으로 나누면 "13,162만원"처럼
+      // 억 단위가 접히지 않은 문자열이 나와, 같은 금액이 카드에서는 "1억 3,162만원"으로
+      // 보이는데 조언에서는 다르게 읽힌다.
+      `이 기간용 자금 약 **${formatManwon(pensionGap.bridgeAmount)}**을 변동성이 낮은 자산으로 따로 확보해 두시기 바랍니다.`
+    : '';
+
+  return `${statusText} ${possibilityText}${pensionGapText}${utilityText}`;
 }

@@ -10,7 +10,8 @@ function makeMonteCarlo(overrides: Partial<MonteCarloResult> = {}): MonteCarloRe
     seed: 1,
     successAge: 90,
     successRate: 0.87,
-    fullSpendingRate: 0.81,
+    spendingSuccessRate: 0.81,
+    plannedMonthlySpending: 2230000,
     endingAssets: { p10: 200000000, p50: 1800000000, p90: 5200000000, mean: 2100000000 },
     assetBand: [
       { age: 60, p10: 400000000, p50: 480000000, p90: 560000000 },

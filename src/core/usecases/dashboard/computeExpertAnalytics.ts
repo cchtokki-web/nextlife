@@ -1,5 +1,6 @@
 import { SimulationParams, SimulationResult } from '../../entities/types';
 import { sumYearTaxes } from '../tax/annualTaxTotals';
+import { findFirstAgeWithNationalPension } from './computePensionGapRisk';
 
 export interface ExpertAnalytics {
   avgPreTaxIncome: number;
@@ -34,7 +35,10 @@ export function computeExpertAnalytics(result: SimulationResult, params: Simulat
   const avgNetIncome = avg((r) => r.totalIncome);
   const avgYearlyDividend = avg((r) => r.dividendIncome);
 
-  const firstAgeWithNationalPension = yearlyResults.find((r) => r.nationalPensionIncome > 0)?.age ?? null;
+  // 공백 구간 판정은 computePensionGapRisk와 **같은 함수**를 쓴다. 예전에는 두 곳이 각자
+  // `find(nationalPensionIncome > 0)`을 적고 있었는데, 그 규칙이 갈라지면 전문가 패널의
+  // "5년 공백"과 위험 카드의 "60~64세"가 서로 다른 나이를 말하게 된다.
+  const firstAgeWithNationalPension = findFirstAgeWithNationalPension(result);
   const pensionGapYears = firstAgeWithNationalPension === null ? 0 : Math.max(0, firstAgeWithNationalPension - retirementAge);
 
   const hasSignificantDividends = avgYearlyDividend > 5000000;
