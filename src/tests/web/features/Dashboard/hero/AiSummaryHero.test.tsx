@@ -1,6 +1,7 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import { AiSummaryHero } from '@/web/features/Dashboard/hero/AiSummaryHero';
+import { computePlanConfidence } from '@/core/usecases/dashboard/computePlanConfidence';
 import { StrategyRecommendation, SimulationResult, UtilityBreakdown } from '@/core/entities/types';
 
 vi.mock('next-auth/react', () => ({
@@ -46,6 +47,15 @@ const zeroDeltas: StrategyRecommendation['deltas'] = {
 
 const formatValue = (v: number) => `${v.toLocaleString()}원`;
 
+// 헤드라인이 서술할 사건과 확률 판정은 이제 호출부가 계산해 내려준다 — 히어로가 직접
+// 유도하면 차트 배지·KPI와 다른 근거를 말하게 된다.
+const planOutcome = {
+  assetStatus: 'sustained' as const,
+  investableDepletionAge: null,
+  spendingShortfall: null,
+};
+const planConfidence = computePlanConfidence(80, { spendingSuccessRate: 0.9, assetSuccessRate: 0.9 });
+
 describe('AiSummaryHero', () => {
   beforeEach(() => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(makeStreamResponse([JSON.stringify({ response: '안내 문구' })])));
@@ -67,6 +77,8 @@ describe('AiSummaryHero', () => {
         isPro={false}
         depletionAge={null}
         planAssetStatus="sustained"
+        planOutcome={planOutcome}
+        planConfidence={planConfidence}
       />
     );
     expect(container).toBeEmptyDOMElement();
@@ -85,14 +97,16 @@ describe('AiSummaryHero', () => {
         isPro={false}
         depletionAge={null}
         planAssetStatus="sustained"
+        planOutcome={planOutcome}
+        planConfidence={planConfidence}
         utility={utility}
         userProfile={{ currentAge: 55, retirementAge: 60, expectancy: 90, targetMonthlySpending: 3000000 }}
       />
     );
-    expect(screen.getByText(/은퇴/)).toBeInTheDocument();
+    expect(screen.getByText(/90세까지 투자자산이 고갈되지 않고/)).toBeInTheDocument();
   });
 
-  test('기대수명 전에 고갈되면 헤드라인이 고갈 위험을 말한다', () => {
+  test('기대수명 전에 자산이 소진되면 헤드라인이 그 사실을 말한다', () => {
     render(
       <AiSummaryHero
         formatValue={formatValue}
@@ -105,12 +119,14 @@ describe('AiSummaryHero', () => {
         isPro={false}
         depletionAge={76}
         planAssetStatus="depleted"
+        planOutcome={{ ...planOutcome, assetStatus: 'depleted' }}
+        planConfidence={planConfidence}
         utility={utility}
         userProfile={{ currentAge: 55, retirementAge: 60, expectancy: 90, targetMonthlySpending: 3000000 }}
       />
     );
 
-    expect(screen.getByText(/76세에 자산이 고갈될 위험이 있습니다/)).toBeInTheDocument();
+    expect(screen.getByText(/기대수명 전에 자산이 모두 소진되지만/)).toBeInTheDocument();
   });
 
   // 기대수명이 expectancy prop과 userProfile.expectancy 두 경로로 들어온다. 두 값이 항상
@@ -129,13 +145,15 @@ describe('AiSummaryHero', () => {
         isPro={false}
         depletionAge={null}
         planAssetStatus="sustained"
+        planOutcome={planOutcome}
+        planConfidence={planConfidence}
         utility={utility}
         userProfile={{ currentAge: 55, retirementAge: 60, expectancy: 90, targetMonthlySpending: 3000000 }}
       />
     );
 
-    expect(screen.getByText(/95세까지 자산 고갈 위험이 없습니다/)).toBeInTheDocument();
-    expect(screen.queryByText(/90세까지 자산 고갈 위험이 없습니다/)).not.toBeInTheDocument();
+    expect(screen.getByText(/95세까지 투자자산이 고갈되지 않고/)).toBeInTheDocument();
+    expect(screen.queryByText(/90세까지 투자자산이 고갈되지 않고/)).not.toBeInTheDocument();
   });
 
   test('improved 추천이 있으면 Before/After Utility 비교 문구와 추천 적용 버튼을 보여준다', () => {
@@ -169,6 +187,8 @@ describe('AiSummaryHero', () => {
         isPro={false}
         depletionAge={null}
         planAssetStatus="sustained"
+        planOutcome={planOutcome}
+        planConfidence={planConfidence}
         utility={utility}
         recommendation={recommendation}
         userProfile={{ currentAge: 55, retirementAge: 60, expectancy: 90, targetMonthlySpending: 3000000 }}
@@ -195,6 +215,8 @@ describe('AiSummaryHero', () => {
         isPro={false}
         depletionAge={null}
         planAssetStatus="sustained"
+        planOutcome={planOutcome}
+        planConfidence={planConfidence}
         utility={utility}
         userProfile={{ currentAge: 55, retirementAge: 60, expectancy: 90, targetMonthlySpending: 3000000 }}
       />
@@ -221,6 +243,8 @@ describe('AiSummaryHero', () => {
         isPro={false}
         depletionAge={null}
         planAssetStatus="sustained"
+        planOutcome={planOutcome}
+        planConfidence={planConfidence}
         utility={utility}
         userProfile={{ currentAge: 55, retirementAge: 60, expectancy: 90, targetMonthlySpending: 3000000 }}
       />
@@ -261,6 +285,8 @@ describe('AiSummaryHero', () => {
           isPro={false}
           depletionAge={null}
           planAssetStatus="sustained"
+        planOutcome={planOutcome}
+        planConfidence={planConfidence}
           utility={{ ...utility, score: currentScore }}
           recommendation={recommendation}
           userProfile={{ currentAge: 55, retirementAge: 60, expectancy: 90, targetMonthlySpending: 3000000 }}

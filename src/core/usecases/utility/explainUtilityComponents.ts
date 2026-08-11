@@ -123,8 +123,16 @@ function explainPensionUtilization(params: SimulationParams, retirementYears: Ye
   return `${parts.join('. ')}.`;
 }
 
+// **점수 산식은 건드리지 않는다.** computeTaxEfficiencyRaw는 세금과 건강보험료를 합한
+// 비율로 채점하고, 그것이 옳다(annualTaxTotals.ts:51-54 — 건보료를 빼면 연금 인출을 늘려
+// 건보료를 키우는 계획이 "세금이 안 늘었다"로 채점된다). 여기서는 **문장이 내역을 밝힐 뿐**이다.
+//
+// 밝혀야 하는 이유: 화면이 "세금·건강보험료 4,874만원"이라고 묶어 말하는데 바로 아래 전문가
+// 패널에는 "건강보험료 0원"이 찍혀 있었다. 두 숫자가 모순으로 보이지만 실제로는 전액이 세금이다.
 function explainTaxEfficiency(yearlyResults: YearlyResults): string {
   const totalTaxPaid = sumTotalTaxesAndLevies(yearlyResults);
+  const totalHealthInsurance = yearlyResults.reduce((sum, r) => sum + r.healthInsurancePaid, 0);
+  const totalPureTax = totalTaxPaid - totalHealthInsurance;
   // 분모에서 기타소득을 빼는 것은 computeTaxEfficiencyRaw와 같은 규칙이다 — 이 시뮬레이터는
   // 기타소득을 세후 실수령액으로 받으므로 분모에 넣으면 비율이 희석된다.
   const totalGrossIncome = yearlyResults.reduce((sum, r) => sum + r.preTaxTotalIncome - r.otherIncome, 0);
@@ -132,7 +140,13 @@ function explainTaxEfficiency(yearlyResults: YearlyResults): string {
   if (totalGrossIncome <= 0) return '과세 대상 소득이 없어 세금 부담이 발생하지 않습니다.';
 
   const rate = (totalTaxPaid / totalGrossIncome) * 100;
-  return `평생 세전 소득 ${formatManwon(totalGrossIncome)} 중 약 ${rate.toFixed(1)}%(${formatManwon(totalTaxPaid)})를 세금·건강보험료로 냅니다.`;
+  const breakdown = totalHealthInsurance > 0
+    ? `세금 ${formatManwon(totalPureTax)} + 건강보험료 ${formatManwon(totalHealthInsurance)}`
+    : `전액 세금이며 건강보험료 추가 부담은 없습니다`;
+  return (
+    `평생 세전 소득 ${formatManwon(totalGrossIncome)} 중 약 ${rate.toFixed(1)}%` +
+    `(${formatManwon(totalTaxPaid)})를 세금·건강보험료로 냅니다 — ${breakdown}.`
+  );
 }
 
 function explainTaxationRisk(yearlyResults: YearlyResults): string {

@@ -67,8 +67,11 @@ export function MonteCarloSection({
 
   if (!monteCarlo) return null;
 
-  const successPercent = Math.round(monteCarlo.successRate * 100);
-  const fullSpendingPercent = Math.round(monteCarlo.fullSpendingRate * 100);
+  const assetPercent = Math.round(monteCarlo.successRate * 100);
+  const spendingPercent = Math.round(monteCarlo.spendingSuccessRate * 100);
+  // 「평생 소비 최적화」에서 판정 기준은 사용자가 입력한 목표가 아니라 엔진이 역산한
+  // 지속가능액이다. 밝히지 않으면 사용자는 자기 목표(예: 월 350만원) 기준으로 읽는다.
+  const plannedMonthly = formatValue(monteCarlo.plannedMonthlySpending);
 
   return (
     <GlassCard>
@@ -78,14 +81,30 @@ export function MonteCarloSection({
             <Dices size={18} aria-hidden="true" />
             시장이 흔들려도 계획이 버틸 확률
           </h3>
-          <p className="text-sm">
-            수익률이 해마다 오르내리는 상황을 {monteCarlo.trials.toLocaleString()}회 시뮬레이션한 결과,{' '}
-            <strong className="text-lg">{successPercent}%</strong>의 경우에{' '}
-            {monteCarlo.successAge}세까지 자산이 남았습니다.
+          <p className="text-xs text-foreground-muted">
+            수익률이 해마다 오르내리는 상황을 {monteCarlo.trials.toLocaleString()}회 시뮬레이션한 결과입니다.
           </p>
-          <p className="mt-1 text-xs text-foreground-muted">
-            목표 생활비를 한 해도 줄이지 않고 유지한 경우는 {fullSpendingPercent}%입니다.
-          </p>
+          {/* 두 확률을 나란히 놓는다. 예전에는 자산 유지 확률이 큰 글씨로 먼저 나오고 생활비
+              쪽이 작은 글씨 부연이었는데, 사용자가 실제로 두려워하는 것은 "죽을 때 잔액이
+              0원인가"가 아니라 "살아 있는 동안 쓸 돈이 모자라는가"다. 그리고 옛 정의는 생활비
+              확률을 자산 생존 시행 안에서만 세어, 연금이 생활비를 메우는 경로를 실패로 셌다. */}
+          <dl className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div>
+              <dt className="text-sm font-semibold">생활 유지 성공률</dt>
+              <dd className="font-display text-2xl font-semibold">{spendingPercent}%</dd>
+              <p className="mt-0.5 text-xs text-foreground-muted">
+                계획 생활비(월 {plannedMonthly})를 한 해도 줄이지 않은 경우입니다.
+              </p>
+            </div>
+            <div>
+              <dt className="text-sm font-semibold text-foreground-muted">자산 보존 성공률</dt>
+              <dd className="font-display text-2xl font-semibold text-foreground-muted">{assetPercent}%</dd>
+              <p className="mt-0.5 text-xs text-foreground-muted">
+                {monteCarlo.successAge}세까지 자산이 남은 경우입니다. 두 확률은 서로 다른 실패를 셉니다 —
+                연금이 생활비를 덮으면 자산이 바닥나도 생활은 유지됩니다.
+              </p>
+            </div>
+          </dl>
         </section>
 
         {isPro && (
@@ -131,11 +150,14 @@ export function MonteCarloSection({
               좋은 해가 먼저 오느냐 나쁜 해가 먼저 오느냐만으로 기대수명 시점 자산이{' '}
               <strong>{formatValue(sequenceRisk.orderingSpread)}</strong> 갈립니다.
             </p>
-            {/* 순열이므로 평균이 실제로 같다. 이 문장을 빼면 사용자는 "그냥 운이 나쁜 경우"로
-                읽고, 은퇴 직후 하락이 왜 특별히 위험한지 이해하지 못한다. */}
+            {/* 순열이므로 평균이 실제로 같다. 그 사실만 말하면 사용자는 "그냥 운이 나쁜 경우"로
+                읽는다. **왜** 순서가 결과를 가르는지 — 인출 중에는 하락이 원금을 영구히 줄인다는
+                메커니즘 — 을 함께 말해야 은퇴 직후 구간을 왜 따로 지켜야 하는지 이해된다. */}
             <p className="mt-1 text-xs text-foreground-muted">
-              아래 경우들은 <strong>연평균 수익률이 완전히 같습니다.</strong> 다른 것은 순서뿐입니다 —
-              은퇴 직후에 하락이 오면 회복할 원금이 이미 인출로 줄어 있기 때문입니다.
+              아래 경우들은 <strong>연평균 수익률이 완전히 같습니다.</strong> 다른 것은 순서뿐입니다.
+              <strong> 은퇴 직후 5~10년의 수익률이 특히 중요합니다</strong> — 평균이 같더라도 은퇴 초기에
+              큰 하락이 오면 생활비를 마련하려고 자산을 싼값에 팔게 되고, 그렇게 줄어든 원금은 이후
+              시장이 회복해도 함께 회복되지 않기 때문입니다.
             </p>
 
             {isPro && (

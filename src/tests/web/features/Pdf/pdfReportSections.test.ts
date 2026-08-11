@@ -50,13 +50,22 @@ describe('renderShortfallSummarySection', () => {
 
   // 「평생 소비 최적화」에서 계획 기준 부족이 없으면 "부족 생활비 월 0원"을 찍는 대신
   // 그 계획이 무엇을 보장하는지 말한다.
-  test('계획 기준 부족이 없으면 지속가능액으로 유지된다고 밝힌다', () => {
+  // **결정론 결과를 확정형으로 말하지 않는다.** 예전 문구("월 232만원 소비 시에는 자산이
+  // 계획대로 유지됩니다")는 기준 수익률이 실현될 때에만 참인데 조건이 어디에도 없었고,
+  // 같은 리포트의 성공률은 39%였다.
+  test('계획 기준 부족이 없으면 조건과 확률을 나눠 밝힌다', () => {
     const html = renderShortfallSummarySection(
-      report({ plan: null, sustainableMonthlySpending: 2320000 }), won
+      report({ plan: null, sustainableMonthlySpending: 2320000 }), won,
+      { expectancy: 90, spendingSuccessRate: 0.39 }
     );
 
     expect(html).not.toContain('계획한 생활비조차 채우지 못하는 구간');
-    expect(html).toContain('소비 시에는 자산이 계획대로 유지됩니다');
+    expect(html).toContain('기준 수익률이 실현된다는 가정에서는');
+    expect(html).toContain('90세까지 계획이 유지됩니다');
+    expect(html).toContain('생활 유지 성공률');
+    expect(html).toContain('39%');
+    // 확정형 표현이 되살아나면 여기서 잡힌다.
+    expect(html).not.toContain('자산이 계획대로 유지됩니다');
   });
 
   test('계획 기준 부족이 있으면 부족 생활비·기간·필요 자산을 싣는다', () => {
@@ -341,7 +350,8 @@ describe('renderItemizedChecklistSection - AI 센티널 자동 적용 구분', (
 describe('renderPlanVerdictSection', () => {
   const won = (v: number) => `${v.toLocaleString()}원`;
   const mc = (successRate: number, p50 = 0, p10 = 0): MonteCarloResult => ({
-    trials: 1000, seed: 1, successAge: 90, successRate, fullSpendingRate: successRate,
+    trials: 1000, seed: 1, successAge: 90, successRate, spendingSuccessRate: successRate,
+    plannedMonthlySpending: 3000000,
     endingAssets: { p10, p50, p90: 977090000, mean: 300000000 },
     assetBand: [], depletion: { count: 630, earliestAge: 72, medianAge: 84 },
     deterministicEndingAssets: 0, worstDecilePath: [],
@@ -351,7 +361,12 @@ describe('renderPlanVerdictSection', () => {
       expectancy: 90,
       deterministicDepletionText: '기대수명까지 고갈 없음',
       endingAssets: 0,
-      confidence: computePlanConfidence(64, successRate),
+      confidence: computePlanConfidence(
+        64,
+        successRate === undefined
+          ? undefined
+          : { spendingSuccessRate: successRate, assetSuccessRate: successRate }
+      ),
       monteCarlo,
       formatValue: won,
     });
@@ -369,7 +384,8 @@ describe('renderPlanVerdictSection', () => {
 
     expect(html).toContain('시장 변동성 반영');
     expect(html).toContain('1,000회 시뮬레이션');
-    expect(html).toContain('90세까지 자산 유지 확률 37%');
+    expect(html).toContain('생활 유지 성공률 37%');
+    expect(html).toContain('90세까지 자산 보존 37%');
     expect(html).toContain('중앙값');
     expect(html).toContain('하위 10%');
   });
@@ -377,18 +393,19 @@ describe('renderPlanVerdictSection', () => {
   test('판정에는 보정 점수와 결정론 점수를 함께 밝힌다', () => {
     const html = render(0.37, mc(0.37));
 
-    expect(html).toContain('은퇴계획 조정이 필요합니다');
+    expect(html).toContain('은퇴계획 조정을 권합니다');
     expect(html).toContain('44점'); // round(64 * (0.5 + 0.5*0.37))
-    expect(html).toContain('매우 위험');
+    expect(html).toContain('위험');
     expect(html).toContain('기준 시나리오만 보면 64점');
   });
 
   test.each([
     [0.95, '현재 계획을 유지해도 좋습니다'],
     [0.85, '대체로 안정적입니다'],
-    [0.75, '점검이 필요합니다'],
-    [0.6, '은퇴계획 조정을 권합니다'],
-    [0.3, '은퇴계획 조정이 필요합니다'],
+    [0.75, '유지되지만 여유가 크지는 않습니다'],
+    [0.6, '점검이 필요합니다'],
+    [0.4, '은퇴계획 조정을 권합니다'],
+    [0.2, '은퇴계획을 다시 세워야 합니다'],
   ])('성공률 %s의 판정 문장', (rate, text) => {
     expect(render(rate, mc(rate))).toContain(text);
   });
@@ -408,7 +425,8 @@ describe('renderPlanVerdictSection', () => {
 
 describe('renderMonteCarloSection', () => {
   const monteCarlo: MonteCarloResult = {
-    trials: 1000, seed: 1, successAge: 90, successRate: 0.87, fullSpendingRate: 0.81,
+    trials: 1000, seed: 1, successAge: 90, successRate: 0.87, spendingSuccessRate: 0.81,
+    plannedMonthlySpending: 3000000,
     endingAssets: { p10: 200000000, p50: 1800000000, p90: 5200000000, mean: 2100000000 },
     assetBand: [
       { age: 60, p10: 400000000, p50: 480000000, p90: 560000000 },

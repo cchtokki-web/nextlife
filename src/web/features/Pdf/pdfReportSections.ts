@@ -3,7 +3,13 @@ import { ExecutionRoadmap } from '../../../core/usecases/dashboard/computeExecut
 import { SensitivityScenario } from '../../../core/usecases/dashboard/computeSensitivityAnalysis';
 import { PlanAssetStatus } from '../../../core/usecases/dashboard/resolvePlanAssetStatus';
 import { ShortfallReport } from '../../../core/usecases/dashboard/computeShortfallSummary';
-import { PlanConfidence } from '../../../core/usecases/dashboard/computePlanConfidence';
+import { KeyLever } from '../../../core/usecases/dashboard/computeKeyLevers';
+import {
+  PLAN_CONFIDENCE_BAND_LABEL,
+  PLAN_CONFIDENCE_BAND_TIER,
+  PlanConfidence,
+  PlanConfidenceBandKey,
+} from '../../../core/usecases/dashboard/computePlanConfidence';
 import { NationalPensionExplanation } from '../../../core/usecases/pension/explainNationalPension';
 import {
   ItemizedContribution, ItemizedContributionField, StrategyRecommendation,
@@ -29,7 +35,9 @@ export function formatCurrencyUnit(currency: 'KRW' | 'USD'): '원' | '$' {
 // 문제 없는 계획으로 읽힌다.
 export function renderShortfallSummarySection(
   report: ShortfallReport | null,
-  formatValue: (val: number) => string
+  formatValue: (val: number) => string,
+  // 화면(ShortfallSummaryCard)과 같은 두 문장을 내기 위한 값. 없으면 확률 문장을 생략한다.
+  context?: { expectancy: number; spendingSuccessRate?: number }
 ): string {
   if (!report || (!report.goal && !report.plan)) return '';
   const { goal, plan, goalMonthlySpending, sustainableMonthlySpending } = report;
@@ -64,8 +72,14 @@ export function renderShortfallSummarySection(
         ${cell('추가로 필요한 자산', `약 ${formatValue(plan.totalShortfallInTodayValue)}`)}
       </div>
     `
+    // **결정론 결과와 확률 결과를 한 문장에 섞지 않는다.** 예전 문구("월 223만원 소비 시에는
+    // 자산이 계획대로 유지됩니다")는 기준 수익률이 실현될 때에만 참인데 조건이 어디에도 없었다.
+    // 화면(ShortfallSummaryCard)과 같은 두 문장을 낸다 — 두 문서가 갈라지면 안 된다.
     : sustainableMonthlySpending < goalMonthlySpending
-      ? `<p style="margin: 12px 0 0; font-size: 12px; color: #0f172a;">월 ${formatValue(sustainableMonthlySpending)} 소비 시에는 자산이 계획대로 유지됩니다.</p>`
+      ? `<p style="margin: 12px 0 0; font-size: 12px; color: #0f172a;">기준 수익률이 실현된다는 가정에서는 월 ${formatValue(sustainableMonthlySpending)} 소비 시${context ? ` ${context.expectancy}세까지` : ''} 계획이 유지됩니다.</p>`
+        + (context?.spendingSuccessRate !== undefined
+          ? `<p style="margin: 3px 0 0; font-size: 11.5px; color: #475569;">시장 변동성을 고려한 생활 유지 성공률: <strong>${Math.round(context.spendingSuccessRate * 100)}%</strong></p>`
+          : '')
       : '';
 
   return `
@@ -77,6 +91,33 @@ export function renderShortfallSummarySection(
         * 추가로 필요한 자산은 부족분을 그대로 채우는 데 드는 금액입니다. 수익률이 물가상승률과 같다고 볼 때의
         현재 구매력 기준이며, 투자 수익을 가정하면 더 적은 금액으로도 가능합니다.
       </p>
+    </div>
+  `;
+}
+
+// 「무엇부터 바꿔야 하나」. 화면(KeyLeversCard)과 같은 데이터·같은 순서를 쓴다.
+//
+// 인출 전략 체크리스트보다 앞에 놓아야 하는 이유는 computeKeyLevers 주석에 있다 — 체크리스트가
+// 탐색하는 축(매도 순서·인출 개시 나이)은 대부분의 계획에서 다섯 번째로 중요한 레버다.
+export function renderKeyLeversSection(levers: KeyLever[]): string {
+  if (levers.length === 0) return '';
+
+  const rows = levers
+    .map(
+      (lever, index) => `
+      <li style="margin: 0 0 6px; font-size: 11.5px; color: #0f172a;">
+        <strong>${index + 1}. ${lever.title}</strong>
+        <span style="display: block; margin-top: 2px; font-size: 11px; color: #475569;">${lever.detail}</span>
+      </li>
+    `
+    )
+    .join('');
+
+  return `
+    <div style="border: 1px solid #e2e8f0; background-color: #f8fafc; border-radius: 8px; padding: 12px 14px; margin-bottom: 12px;">
+      <p style="margin: 0 0 2px; font-size: 12.5px; font-weight: 700; color: #0f172a;">무엇부터 바꿔야 하나</p>
+      <p style="margin: 0 0 8px; font-size: 10.5px; color: #64748b;">이미 계산된 결과에서 영향이 큰 순서로 정리했습니다. 아래로 갈수록 효과가 작습니다.</p>
+      <ol style="margin: 0; padding-left: 16px;">${rows}</ol>
     </div>
   `;
 }
@@ -126,11 +167,14 @@ export function renderPlanVerdictSection(input: {
       )
     : block(
         `시장 변동성 반영 · ${monteCarlo.trials.toLocaleString()}회 시뮬레이션`,
+        // 두 확률을 함께 싣는다. 하나만 실으면 종신연금이 두꺼운 계획(생활은 유지되나 자산은
+        // 사라지는 계획)과 그 반대 계획이 같은 숫자로 요약된다.
         `<p style="margin: 0; font-size: 14px; font-weight: 700; color: ${verdictAccent(confidence)};">
-           ${expectancy}세까지 자산 유지 확률 ${Math.round((confidence.successRate ?? 0) * 100)}%
+           생활 유지 성공률 ${Math.round((confidence.rates?.spendingSuccessRate ?? 0) * 100)}%
+           <span style="font-size: 12px; font-weight: 500; color: #475569;">· ${expectancy}세까지 자산 보존 ${Math.round((confidence.rates?.assetSuccessRate ?? 0) * 100)}%</span>
          </p>
          <p style="margin: 3px 0 0; font-size: 11.5px; color: #475569;">
-           중앙값 ${expectancy}세 자산 ${formatValue(monteCarlo.endingAssets.p50)} · 하위 10% ${formatValue(monteCarlo.endingAssets.p10)}
+           계획 생활비 월 ${formatValue(monteCarlo.plannedMonthlySpending)} 기준 · 중앙값 ${expectancy}세 자산 ${formatValue(monteCarlo.endingAssets.p50)} · 하위 10% ${formatValue(monteCarlo.endingAssets.p10)}
          </p>`,
         verdictAccent(confidence)
       );
@@ -143,7 +187,7 @@ export function renderPlanVerdictSection(input: {
      <p style="margin: 3px 0 0; font-size: 11.5px; color: #475569;">
        은퇴 준비도 ${confidence.score}점${
          confidence.basis === 'probabilistic'
-           ? ` (${confidence.band}) · 기준 시나리오만 보면 ${confidence.deterministicScore}점`
+           ? ` (${confidence.band ? PLAN_CONFIDENCE_BAND_LABEL[confidence.band] : ''}) · 기준 시나리오만 보면 ${confidence.deterministicScore}점`
            : ' · 시장 변동성 미반영'
        }
      </p>`,
@@ -159,33 +203,29 @@ export function renderPlanVerdictSection(input: {
   `;
 }
 
+// 색은 밴드→티어 매핑 한 곳에서만 나온다(화면의 CoreKpiGrid와 같은 표). 여기서 다시
+// switch로 색을 정하면 임계를 바꿀 때 PDF만 옛 색으로 남는다.
+const TIER_COLOR = { green: '#059669', orange: '#d97706', red: '#dc2626' } as const;
+
 function verdictAccent(confidence: PlanConfidence): string {
-  if (confidence.basis !== 'probabilistic') return '#64748b';
-  switch (confidence.band) {
-    case '안정':
-    case '양호':
-      return '#059669';
-    case '주의':
-      return '#d97706';
-    default:
-      return '#dc2626';
-  }
+  if (confidence.basis !== 'probabilistic' || confidence.band === undefined) return '#64748b';
+  return TIER_COLOR[PLAN_CONFIDENCE_BAND_TIER[confidence.band]];
 }
 
+const BAND_VERDICT_TEXT: Record<PlanConfidenceBandKey, string> = {
+  very_stable: '현재 계획을 유지해도 좋습니다',
+  stable: '대체로 안정적입니다',
+  moderate: '유지되지만 여유가 크지는 않습니다',
+  caution: '점검이 필요합니다',
+  risky: '은퇴계획 조정을 권합니다',
+  very_risky: '은퇴계획을 다시 세워야 합니다',
+};
+
 function verdictText(confidence: PlanConfidence): string {
-  if (confidence.basis !== 'probabilistic') return '확률 판정 보류 — 기준 시나리오 결과만 반영되었습니다';
-  switch (confidence.band) {
-    case '안정':
-      return '현재 계획을 유지해도 좋습니다';
-    case '양호':
-      return '대체로 안정적입니다';
-    case '주의':
-      return '점검이 필요합니다';
-    case '위험':
-      return '은퇴계획 조정을 권합니다';
-    default:
-      return '은퇴계획 조정이 필요합니다';
+  if (confidence.basis !== 'probabilistic' || confidence.band === undefined) {
+    return '확률 판정 보류 — 기준 시나리오 결과만 반영되었습니다';
   }
+  return BAND_VERDICT_TEXT[confidence.band];
 }
 
 // 국민연금 설정액 → 실질 수령액 내역표.
@@ -412,8 +452,8 @@ export function renderMonteCarloSection(
 ): string {
   if (!monteCarlo) return '';
 
-  const successPercent = Math.round(monteCarlo.successRate * 100);
-  const fullSpendingPercent = Math.round(monteCarlo.fullSpendingRate * 100);
+  const assetPercent = Math.round(monteCarlo.successRate * 100);
+  const spendingPercent = Math.round(monteCarlo.spendingSuccessRate * 100);
 
   const depletionText = monteCarlo.depletion.count > 0
     ? `<p style="margin: 6px 0 0; font-size: 11px; color: #dc2626;">자산이 먼저 바닥난 경우가 ${monteCarlo.depletion.count.toLocaleString()}회 있었고, 가장 이른 시점은 ${monteCarlo.depletion.earliestAge}세였습니다.</p>`
@@ -439,6 +479,8 @@ export function renderMonteCarloSection(
         좋은 해가 먼저 오느냐 나쁜 해가 먼저 오느냐만으로 기대수명 시점 자산이
         <strong>${formatManwon(sequenceRisk.orderingSpread)}</strong> 갈립니다.
         아래 경우들은 <strong>연평균 수익률이 완전히 같습니다</strong> — 다른 것은 순서뿐입니다.
+        <strong>은퇴 직후 5~10년의 수익률이 특히 중요합니다.</strong> 평균이 같더라도 은퇴 초기에 큰 하락이 오면
+        생활비를 마련하려고 자산을 싼값에 팔게 되고, 그렇게 줄어든 원금은 이후 시장이 회복해도 함께 회복되지 않습니다.
       </p>
       <table style="width: 100%; border-collapse: collapse; margin-top: 8px;">
         <thead>
@@ -454,10 +496,11 @@ export function renderMonteCarloSection(
 
   return `
     <p style="margin: 0; font-size: 11.5px; color: #475569;">
-      수익률이 해마다 오르내리는 상황을 ${monteCarlo.trials.toLocaleString()}회 시뮬레이션한 결과,
-      <strong style="font-size: 14px; color: #0f172a;">${successPercent}%</strong>의 경우에
-      ${monteCarlo.successAge}세까지 자산이 남았습니다.
-      목표 생활비를 한 해도 줄이지 않고 유지한 경우는 ${fullSpendingPercent}%입니다.
+      수익률이 해마다 오르내리는 상황을 ${monteCarlo.trials.toLocaleString()}회 시뮬레이션한 결과입니다.
+      <strong style="font-size: 14px; color: #0f172a;">생활 유지 성공률 ${spendingPercent}%</strong>
+      — 계획 생활비(월 ${formatManwon(monteCarlo.plannedMonthlySpending)})를 한 해도 줄이지 않은 경우입니다.
+      <strong>자산 보존 성공률 ${assetPercent}%</strong> — ${monteCarlo.successAge}세까지 자산이 남은 경우입니다.
+      두 확률은 서로 다른 실패를 셉니다: 연금이 생활비를 덮으면 자산이 바닥나도 생활은 유지됩니다.
     </p>
     <table style="width: 100%; border-collapse: collapse; margin-top: 8px;">
       <thead>

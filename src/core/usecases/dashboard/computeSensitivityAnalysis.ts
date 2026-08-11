@@ -1,6 +1,7 @@
 import { SimulationEngine } from '../SimulationEngine';
 import { SimulationParams } from '../../entities/types';
 import { freezeSpendingPlan, mapFrozenPlan, runFrozenPlan } from '../spending/freezeSpendingPlan';
+import { hasSpendingShortfall } from '../spending/spendingShortfall';
 import { PlanAssetStatus, resolvePlanAssetStatus } from './resolvePlanAssetStatus';
 
 export interface SensitivityScenario {
@@ -152,7 +153,7 @@ export function computeSensitivityAnalysis(
         deltaYears: computeDeltaYears(baselineDepletionAge, depletionAge, expectancy),
         endingAssets: result.endingAssets,
         endingAssetsDelta: result.endingAssets - baseline.endingAssets,
-        unmetSpendingYears: result.yearlyResults.filter((y) => y.unmetSpending > 0).length,
+        unmetSpendingYears: result.yearlyResults.filter(hasSpendingShortfall).length,
         sortAge: depletionAge ?? Infinity,
       });
     } catch {
@@ -168,7 +169,7 @@ export function computeSensitivityAnalysis(
     frozenMonthlySpending: frozen.monthlyTargetSpending,
     baselineDepletionAge,
     baselineEndingAssets: baseline.endingAssets,
-    baselineUnmetSpendingYears: baseline.yearlyResults.filter((y) => y.unmetSpending > 0).length,
+    baselineUnmetSpendingYears: baseline.yearlyResults.filter(hasSpendingShortfall).length,
     baselinePlanAssetStatus: resolvePlanAssetStatus(baseline, params),
   };
 }

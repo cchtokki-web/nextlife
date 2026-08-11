@@ -11,12 +11,15 @@ interface RetirementLikelihoodStarsProps {
   // 점수에서 유도한 등급 대신 쓸 라벨. 시장 변동성을 반영한 판정(PlanConfidenceBand)이
   // 있을 때 쓴다 — 그 판정은 성공률에서 직접 나오므로 점수로는 유도할 수 없다.
   gradeLabel?: string;
+  // 라벨과 함께 별 개수도 넘긴다. 라벨만 갈아끼우면 별은 계속 점수에서 나와서, 보정 점수
+  // 49점(별 1개) 옆에 밴드 '보통'이 붙는 어긋남이 생긴다.
+  starCount?: number;
 }
 
 export function RetirementLikelihoodStars({
-  score, maxStars = 5, suffix, gradeLabel,
+  score, maxStars = 5, suffix, gradeLabel, starCount,
 }: RetirementLikelihoodStarsProps) {
-  const filled = scoreToStars(score);
+  const filled = starCount ?? scoreToStars(score);
   const grade = gradeLabel ?? getRetirementGrade(score);
 
   // 등급 텍스트는 별 아래 줄에 둔다. KPI 카드는 4열 그리드라 폭이 좁은데, 별 5개와

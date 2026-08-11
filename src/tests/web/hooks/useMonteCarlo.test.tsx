@@ -47,7 +47,8 @@ const params: SimulationParams = {
 
 function makeResult(successRate: number) {
   return {
-    trials: 1000, seed: 1, successAge: 85, successRate, fullSpendingRate: successRate,
+    trials: 1000, seed: 1, successAge: 85, successRate, spendingSuccessRate: successRate,
+    plannedMonthlySpending: 3000000,
     endingAssets: { p10: 1, p50: 2, p90: 3, mean: 2 },
     assetBand: [], depletion: { count: 0, earliestAge: null, medianAge: null },
     deterministicEndingAssets: 2, worstDecilePath: [],

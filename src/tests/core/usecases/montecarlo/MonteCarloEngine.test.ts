@@ -4,6 +4,10 @@ import { resolveMonteCarloConfig, VOLATILITY_BY_YIELD_PRESET } from '@/core/usec
 import { SimulationEngine } from '@/core/usecases/SimulationEngine';
 import { SimulationParams } from '@/core/entities/types';
 import { MonteCarloConfig } from '@/core/entities/montecarlo';
+import { freezeSpendingPlan, runFrozenPlan } from '@/core/usecases/spending/freezeSpendingPlan';
+import { buildReturnShockPath } from '@/core/usecases/montecarlo/returnPath';
+import { mulberry32, deriveSeed } from '@/core/usecases/montecarlo/rng';
+import { simulationYearCount } from '@/core/usecases/montecarlo/horizon';
 
 const engine = new SimulationEngine();
 
@@ -178,13 +182,59 @@ describe('runMonteCarlo', () => {
     expect(mc.successRate).toBeLessThan(1);
   });
 
-  test('목표 생활비를 온전히 쓴 시행의 비율을 함께 보고한다', () => {
+  test('계획 생활비를 온전히 쓴 시행의 비율을 함께 보고한다', () => {
     const mc = runMonteCarlo(params(), engine, config({ trials: 50 }));
 
-    expect(mc.fullSpendingRate).toBeGreaterThanOrEqual(0);
-    expect(mc.fullSpendingRate).toBeLessThanOrEqual(1);
-    // 자산이 남아도 생활비를 못 쓴 시행이 있을 수 있으므로 성공률보다 클 수 없다.
-    expect(mc.fullSpendingRate).toBeLessThanOrEqual(mc.successRate);
+    expect(mc.spendingSuccessRate).toBeGreaterThanOrEqual(0);
+    expect(mc.spendingSuccessRate).toBeLessThanOrEqual(1);
+  });
+
+  // **이 테스트가 지표 재정의의 존재 이유다 — 정의 자체를 잠근다.**
+  //
+  // 옛 정의(fullSpendingRate)는 `succeeded.filter(!hasUnmetSpending)`이었다. 즉 자산이
+  // 살아남은 시행 안에서만 결손 없음을 셌고, 그래서 "자산은 바닥났지만 종신연금이 생활비를
+  // 끝까지 대는" 경로를 실패로 집계했다. 그 접합(conjunction)에는 의미상 근거가 없다 —
+  // 사용자가 묻는 것은 "쓰기로 한 만큼 쓰며 살았는가"이고, 거기에 "그리고 돈이 남았는가"를
+  // 덧붙일 이유가 없다.
+  //
+  // **실측 참고**: 이 엔진에서 두 정의는 대부분의 계획에서 같은 숫자를 낸다. 인출 경로가
+  // 매달 `min(잔액, 필요액)`으로 깎기 때문에, 적자 구간에서 자산이 0에 닿는 해는 거의 항상
+  // 그 해에 결손도 함께 낸다(300시행 × 자산규모 6종에서 "고갈했으나 결손 없음"이 0건이었다).
+  // 갈리는 것은 경계 사례 — 기대수명에 정확히 고갈되는 시행(isSuccessfulTrial은 실패로
+  // 보지만 그 해 생활비는 소득이 채운 경우) — 이라 특정 픽스처로 재현하기 어렵다.
+  // 그래서 숫자 관계를 단언하는 대신, **집계 모집단이 전체 시행인지**를 직접 검증한다:
+  // 같은 시드로 시행을 재현해 결손 없는 시행의 비율을 독립적으로 세고 비교한다.
+  test('생활 유지 성공률은 자산 생존 여부와 무관하게 전체 시행에서 센다', () => {
+    const cfg = config({ trials: 40, annualStdDev: 20 });
+    const target = params();
+
+    const mc = runMonteCarlo(target, engine, cfg);
+
+    // runMonteCarlo와 같은 시드 규칙(deriveSeed(seed, index))으로 같은 시행을 재현한다.
+    const planned = freezeSpendingPlan(target, engine);
+    const years = simulationYearCount(planned.params);
+    let noShortfall = 0;
+    for (let i = 0; i < cfg.trials; i++) {
+      const path = buildReturnShockPath(years, cfg.annualStdDev, mulberry32(deriveSeed(cfg.seed, i)));
+      const trial = runFrozenPlan(engine, planned, path);
+      // **여기에 depletionAge 조건을 걸지 않는다** — 그것이 이 지표의 정의다.
+      if (!trial.yearlyResults.some((y) => y.unmetSpending > 0)) noShortfall++;
+    }
+
+    expect(mc.spendingSuccessRate).toBe(noShortfall / cfg.trials);
+  });
+
+  // 판정 기준이 되는 월 생활비를 함께 실어야 화면이 "계획 생활비 월 223만원 기준"이라고
+  // 밝힐 수 있다. 「평생 소비 최적화」에서 이 값은 사용자가 입력한 목표가 아니다.
+  test('판정 기준이 된 월 생활비를 함께 보고한다', () => {
+    const target = runMonteCarlo(params(), engine, config({ trials: 5 }));
+    expect(target.plannedMonthlySpending).toBe(2500000);
+
+    const maxSus = runMonteCarlo(
+      params({ spendingStrategy: 'max_sustainable' }), engine, config({ trials: 5 })
+    );
+    expect(maxSus.plannedMonthlySpending).not.toBe(2500000);
+    expect(maxSus.plannedMonthlySpending).toBeGreaterThan(0);
   });
 });
 

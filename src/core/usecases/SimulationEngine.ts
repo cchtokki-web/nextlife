@@ -14,6 +14,7 @@ import { getRetirementGrade, RetirementGrade } from '../entities/retirementGrade
 import { computeLifetimeUtility } from './utility/UtilityEngine';
 import { computeAnnualHealthcareCostBreakdown } from './healthcare/healthcareCosts';
 import { spendingMultiplierForAge } from './spending/spendingCurve';
+import { hasSpendingShortfall } from './spending/spendingShortfall';
 import { DEFAULT_UTILITY_CONFIG } from './utility/utilityWeights';
 import {
   getMarketTaxTreatment,
@@ -191,7 +192,7 @@ export class SimulationEngine {
     // 잔액이 아주 조금 남았더라도 목표 생활비를 못 쓴 해가 있으면 그 금액은 "지속 가능한
     // 생활비"가 아니다. depletionAge만 보면 인출 가능한 잔액만 쓰고 멈춘 경로가 성공으로
     // 오인되어 탐색 상한(월 5천만원)까지 치솟는다.
-    if (result.yearlyResults.some((year) => year.unmetSpending > 0)) return false;
+    if (result.yearlyResults.some(hasSpendingShortfall)) return false;
 
     // unmetSpending은 인출 경로가 남긴 진단값이다. 특정 소득/연금 조합에서 그 값이 0으로
     // 남더라도 실제 spending이 목표보다 작으면 지속 가능하다고 볼 수 없다. 탐색이 시험한
