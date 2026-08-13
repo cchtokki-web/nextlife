@@ -135,6 +135,7 @@ export function runMonteCarlo(
   return {
     trials: config.trials,
     seed: config.seed,
+    annualStdDev: config.annualStdDev,
     successAge,
     successRate: trials.length > 0 ? succeeded.length / trials.length : 0,
     spendingSuccessRate: trials.length > 0 ? spendingSucceeded.length / trials.length : 0,

@@ -90,9 +90,9 @@ describe('RecommendationChecklist', () => {
     render(<RecommendationChecklist recommendation={recommendation} formatValue={formatValue} />);
 
     expect(screen.getByText('국민연금을 70세까지 연기 수령합니다.')).toBeInTheDocument();
-    expect(screen.getByText('효용 +2점')).toBeInTheDocument();
+    expect(screen.getByText('단독 효용 +2점')).toBeInTheDocument();
     expect(screen.getByText('총 효용 +5점')).toBeInTheDocument();
-    expect(screen.getByText(/단독 적용 기준/)).toBeInTheDocument();
+    expect(screen.getByText(/해당 항목 하나만 적용한 결과/)).toBeInTheDocument();
   });
 
   test('개별 항목의 utilityDelta가 음수(상호작용으로 인한 marginal 손실)여도 이중부호 없이 올바르게 표시한다', () => {
@@ -109,8 +109,10 @@ describe('RecommendationChecklist', () => {
     });
     render(<RecommendationChecklist recommendation={recommendation} formatValue={formatValue} />);
 
-    expect(screen.getByText('효용 -1점')).toBeInTheDocument();
-    expect(screen.queryByText('효용 +-1점')).not.toBeInTheDocument();
+    expect(screen.getByText('단독 효용 -1점')).toBeInTheDocument();
+    expect(screen.getByText('전체 조합에서만 유효')).toBeInTheDocument();
+    expect(screen.getByText('추가 세금 +500,000원')).toBeInTheDocument();
+    expect(screen.queryByText('단독 효용 +-1점')).not.toBeInTheDocument();
   });
 
   test('utilityDelta가 0이면(컴포넌트가 이미 만점/바닥이라 반영되지 않는 경우) 효용 +0점으로 표시한다', () => {
@@ -127,7 +129,8 @@ describe('RecommendationChecklist', () => {
     });
     render(<RecommendationChecklist recommendation={recommendation} formatValue={formatValue} />);
 
-    expect(screen.getByText('효용 +0점')).toBeInTheDocument();
+    expect(screen.getByText('단독 효용 +0점')).toBeInTheDocument();
+    expect(screen.getByText('절세 +14,820,000원')).toBeInTheDocument();
   });
 
   describe('AI 센티널로 이미 자동 적용된 항목', () => {
@@ -156,7 +159,7 @@ describe('RecommendationChecklist', () => {
       appliedValues: { nationalPensionStartAge: 70 },
     };
 
-    test('자동 적용된 항목은 "이미 반영됨"으로, 나머지는 "남은 할 일"로 나눈다', () => {
+    test('자동 적용된 항목은 "이미 반영됨"으로, 나머지는 단독 권장으로 나눈다', () => {
       render(
         <RecommendationChecklist
           recommendation={twoItems}
@@ -167,7 +170,7 @@ describe('RecommendationChecklist', () => {
       );
 
       expect(screen.getByText('이미 반영됨')).toBeInTheDocument();
-      expect(screen.getByText('남은 할 일')).toBeInTheDocument();
+      expect(screen.getByText('단독으로도 권장')).toBeInTheDocument();
       expect(screen.getByText('이 값으로 계산 중')).toBeInTheDocument();
     });
 
@@ -210,7 +213,7 @@ describe('RecommendationChecklist', () => {
       );
 
       expect(screen.getByText(/추가로 하실 일은 없습니다/)).toBeInTheDocument();
-      expect(screen.queryByText('남은 할 일')).not.toBeInTheDocument();
+      expect(screen.queryByText('단독으로도 권장')).not.toBeInTheDocument();
     });
 
     test('센티널이 없으면 종전대로 전부 할 일로 보여준다', () => {

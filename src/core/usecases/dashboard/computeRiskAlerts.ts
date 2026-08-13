@@ -58,16 +58,23 @@ function formatAgeRange(startAge: number, endAge: number): string {
 // 가장 크고 인출률도 가장 높은 구간이 여기라서 이 5년의 시장 하락이 전체 성공률을 좌우한다.
 function buildPensionGapAlert(gap: PensionGapRisk | null): RiskAlertCandidate | null {
   if (gap === null) return null;
+  const fundingMessage = gap.shortfallYears > 0
+    ? gap.monthlyAssetWithdrawal > 0
+      ? `이 기간에는 자산에서 월 평균 ${formatManwon(gap.monthlyAssetWithdrawal)}을 인출하고, ` +
+        `${gap.shortfallYears}년은 계획 생활비를 월 평균 ${formatManwon(gap.averageMonthlyShortfall)} 채우지 못합니다. ` +
+        `인출액과 부족분을 합쳐 필요한 자금은 약 ${formatManwon(gap.bridgeAmount)}입니다.`
+      : `${gap.shortfallYears}년은 일반자산 인출 시작 조건 때문에 계획 생활비를 월 평균 ` +
+        `${formatManwon(gap.averageMonthlyShortfall)} 채우지 못합니다. 이 부족분을 메우는 데 필요한 ` +
+        `자금은 약 ${formatManwon(gap.bridgeAmount)}입니다.`
+    : `생활비를 위해 자산에서 월 평균 ${formatManwon(gap.monthlyAssetWithdrawal)}을 인출합니다. ` +
+      `이 기간의 시장 하락은 회복할 원금을 줄일 수 있으므로, 약 ${formatManwon(gap.bridgeAmount)}을 ` +
+      `변동성이 낮은 자금으로 확보하는 것이 좋습니다.`;
   return {
     sortAge: gap.fromAge,
     alert: {
       key: 'pensionGap',
       title: `핵심 위험구간: ${formatAgeRange(gap.fromAge, gap.toAge)} (국민연금 개시 전)`,
-      message:
-        `국민연금 개시 전 ${gap.years}년 동안 생활비 대부분을 투자자산 인출로 충당합니다` +
-        `(월 평균 ${formatManwon(gap.monthlyAssetWithdrawal)}). 이 기간의 시장 하락은 회복할 원금을 ` +
-        `줄여 은퇴 전체의 성공률에 가장 큰 영향을 줍니다. ` +
-        `이 구간을 넘기는 데 필요한 자금은 약 ${formatManwon(gap.bridgeAmount)}입니다.`,
+      message: `국민연금 개시 전 ${gap.years}년의 공백입니다. ${fundingMessage}`,
     },
   };
 }

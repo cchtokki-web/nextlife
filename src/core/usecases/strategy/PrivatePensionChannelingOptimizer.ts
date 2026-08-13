@@ -74,6 +74,8 @@ export interface PrivatePensionChannelingResult {
   // bestResult/bestUtility가 그대로 채워지므로 호출부는 분기 없이 무조건 소비할 수 있다.
   finalResult: SimulationResult;
   finalUtility: UtilityBreakdown;
+  // 최종 추천안을 완전 실행(run)해 지속가능 생활비까지 계산할 때 쓰는 실제 파라미터.
+  finalParams: SimulationParams;
   // 실제로 engine.runForUtility를 호출한 횟수(전제조건 미충족이면 0).
   attemptedCount: number;
   // 그중 DomainError로 실패한 횟수.
@@ -85,6 +87,7 @@ type Leg = 'channeling' | 'channeling-baseline' | 'new-pension' | 'combined';
 interface LegEvaluation {
   result: SimulationResult;
   utility: UtilityBreakdown;
+  params: SimulationParams;
 }
 
 // 신규 연금 계좌(4-B 레그) 생성 헬퍼. 운용 조건(수익률/투자종류/배당률)만 템플릿 계좌에서
@@ -177,6 +180,7 @@ function buildIsaAssetOnlyParams(params: SimulationParams): SimulationParams {
 }
 
 function noOp(
+  params: SimulationParams,
   bestResult: SimulationResult,
   bestUtility: UtilityBreakdown,
   attemptedCount: number,
@@ -189,6 +193,7 @@ function noOp(
     itemizedContributions: [],
     finalResult: bestResult,
     finalUtility: bestUtility,
+    finalParams: params,
     attemptedCount,
     failedCount,
   };
@@ -244,7 +249,7 @@ export function optimizePrivatePensionChanneling(
       }
       throw err;
     }
-    return { result, utility: computeLifetimeUtility(result, candidateParams, cfg) };
+    return { result, utility: computeLifetimeUtility(result, candidateParams, cfg), params: candidateParams };
   };
 
   // 채널링 후보는 항상 isaMaturityDestination을 'asset'으로 바꿔서 평가되므로(buildChannelingParams),
@@ -263,7 +268,7 @@ export function optimizePrivatePensionChanneling(
     channelingEval.utility.score > channelingBaselineEval.utility.score;
   const newPensionBeneficial = newPensionEval !== null && newPensionEval.utility.score > bestUtility.score;
 
-  if (!channelingBeneficial && !newPensionBeneficial) return noOp(bestResult, bestUtility, attemptedCount, failedCount);
+  if (!channelingBeneficial && !newPensionBeneficial) return noOp(params, bestResult, bestUtility, attemptedCount, failedCount);
 
   // 채널링 대상 계좌 중 납입 중인 계좌가 하나라도 있어야 이전용 계좌가 생기고, 그래야 라벨의
   // "계좌 이전" 문구가 실제로 시뮬레이션된 행동이 된다(buildChannelingParams 참조).
@@ -294,6 +299,7 @@ export function optimizePrivatePensionChanneling(
     itemizedContributions: [makeItem('privatePensionChanneling', buildChannelingLabel(hasAccountTransfer), evaluation)],
     finalResult: evaluation.result,
     finalUtility: evaluation.utility,
+    finalParams: evaluation.params,
     attemptedCount,
     failedCount,
   });
@@ -305,6 +311,7 @@ export function optimizePrivatePensionChanneling(
     itemizedContributions: [makeItem('newPensionContribution', NEW_PENSION_LABEL, evaluation)],
     finalResult: evaluation.result,
     finalUtility: evaluation.utility,
+    finalParams: evaluation.params,
     attemptedCount,
     failedCount,
   });
@@ -348,6 +355,7 @@ export function optimizePrivatePensionChanneling(
     ],
     finalResult: combinedEval.result,
     finalUtility: combinedEval.utility,
+    finalParams: combinedEval.params,
     attemptedCount,
     failedCount,
   };

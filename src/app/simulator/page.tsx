@@ -378,6 +378,12 @@ export default function Home() {
         }
         .pdf-content {
           flex-grow: 1;
+          min-height: 0;
+        }
+        .pdf-data-table th,
+        .pdf-data-table td {
+          padding: 4px 5px !important;
+          line-height: 1.15;
         }
         .pdf-footer {
           font-size: 10px;
@@ -532,7 +538,7 @@ export default function Home() {
 
         <div class="pdf-page">
           <div class="pdf-content">
-            <h2 style="font-size: 16px; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; color: #0f172a; margin-top: 0; margin-bottom: 10px;">${nextSection()}. 평생 효용 점수 &amp; AI 추천 전략</h2>
+            <h2 style="font-size: 16px; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; color: #0f172a; margin-top: 0; margin-bottom: 10px;">${nextSection()}. 평생 효용 점수 및 현재 전략 분석</h2>
             <p style="font-size: 11px; color: #64748b; margin-top: 0; margin-bottom: 14px;">"얼마를 남기는가"보다 "얼마나 잘 사용하는가"를 기준으로 평가한 평생 효용 점수입니다. 1페이지의 연금·배당 소득 충족률과는 별도로 계산되는 독립 지표입니다.</p>
 
             <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 18px; margin-bottom: 18px;">
@@ -557,11 +563,6 @@ export default function Home() {
             </div>
 
             ${keyLeversSectionHtml}
-
-            <h3 style="font-size: 13px; color: #0f172a; margin-bottom: 4px;">🤖 AI 추천 전략 — ${recommendationSummaryText}</h3>
-            ${hasImprovement ? '<p style="font-size: 10px; color: #94a3b8; margin: 0 0 6px;">※ 아래 추천안은 시뮬레이션 결과이며 실제 설정에는 자동 반영되지 않습니다. 적용하려면 설정을 직접 변경하세요.</p>' : ''}
-            <div style="margin-top: 6px;">${itemizedChecklistHtml}</div>
-            ${deltaRowsHtml}
           </div>
           <div class="pdf-footer">
             <span>NextLife 은퇴 자산 시뮬레이션 리포트</span>
@@ -573,6 +574,11 @@ export default function Home() {
           <div class="pdf-content">
             <h2 style="font-size: 16px; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; color: #0f172a; margin-top: 0; margin-bottom: 10px;">${nextSection()}. 실행 로드맵 및 민감도 분석</h2>
             <p style="font-size: 11px; color: #64748b; margin-top: 0; margin-bottom: 14px;">AI 추천 전략(또는 현재 설정) 기준으로 나이별 실행 시점과, 핵심 가정이 바뀌었을 때 결과가 얼마나 민감한지를 보여줍니다.</p>
+
+            <h3 style="font-size: 13px; color: #0f172a; margin-bottom: 4px;">🤖 AI 추천 전략 — ${recommendationSummaryText}</h3>
+            ${hasImprovement ? '<p style="font-size: 10px; color: #94a3b8; margin: 0 0 6px;">※ 아래 추천안은 시뮬레이션 결과이며 실제 설정에는 자동 반영되지 않습니다. 적용하려면 설정을 직접 변경하세요.</p>' : ''}
+            <div style="margin-top: 6px;">${itemizedChecklistHtml}</div>
+            ${deltaRowsHtml}
 
             <h3 style="font-size: 13px; color: #0f172a; margin-bottom: 8px;">실행 로드맵</h3>
             ${executionRoadmapSectionHtml}
@@ -588,7 +594,7 @@ export default function Home() {
 
         <div class="pdf-page">
           <div class="pdf-content">
-            <h2 style="font-size: 16px; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; color: #0f172a; margin-top: 0; margin-bottom: 10px;">${nextSection()}. 연금 및 자산 현황</h2>
+            <h2 style="font-size: 16px; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; color: #0f172a; margin-top: 0; margin-bottom: 10px;">${nextSection()}. 연금·자산 현황 및 세금 설정</h2>
             <div style="font-size: 13px; line-height: 1.6; display: grid; grid-template-columns: 1fr; gap: 12px;">
               <div>
                 <strong>국민연금:</strong> 예상 월 수령액 ${nationalPension?.expectedMonthlyAmount.toLocaleString()}원 (${reportParams.withdrawalPlan?.nationalPensionStartAge ?? NATIONAL_PENSION_NORMAL_START_AGE}세부터 수령)
@@ -659,17 +665,10 @@ export default function Home() {
                 </ul>
               </div>
             </div>
-          </div>
-          <div class="pdf-footer">
-            <span>NextLife 은퇴 자산 시뮬레이션 리포트</span>
-            <span>페이지 ${nextPage()} / {total_pages}</span>
-          </div>
-        </div>
 
-        <div class="pdf-page">
-          <div class="pdf-content">
-            <h2 style="font-size: 16px; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; color: #0f172a; margin-top: 0; margin-bottom: 10px;">${nextSection()}. 세금 설정</h2>
-            <ul style="padding-left: 20px; margin-top: 5px; margin-bottom: 0; font-size: 13px; line-height: 1.6;">
+            <h3 style="font-size: 13px; color: #0f172a; margin-top: 18px; margin-bottom: 6px;">세금 설정 (2024년 기준 단순화 모델)</h3>
+            <p style="font-size: 9.5px; color: #94a3b8; margin: 0 0 6px;">실제 과세는 계좌·상품·소득 구간과 최신 세법에 따라 달라질 수 있으며, 세액공제·지방소득세 등 일부 항목은 포함하지 않습니다.</p>
+            <ul style="padding-left: 20px; margin-top: 5px; margin-bottom: 0; font-size: 11px; line-height: 1.45;">
               <li style="margin-bottom: 6px;"><strong>금융소득종합과세 반영:</strong> ${currentTaxSettings.enableComprehensiveTax ? `반영 (2천만원 초과분 ${currentTaxSettings.comprehensiveTaxRate}% 추가 과세)` : '미반영'}</li>
               <li style="margin-bottom: 6px;"><strong>추가 건강보험료 반영:</strong> ${currentTaxSettings.enableHealthInsurance ? `반영 (초과분 ${currentTaxSettings.healthInsuranceRate}%)` : '미반영'}</li>
               <li style="margin-bottom: 6px;"><strong>배당소득세율:</strong> 해외 주식/ETF ${currentTaxSettings.usDividendTaxRate}% / 국내 주식/ETF ${currentTaxSettings.domesticDividendTaxRate}%</li>
@@ -687,7 +686,9 @@ export default function Home() {
 
       // Tables (이후 페이지 수는 데이터 양에 따라 달라진다)
       const chunks: typeof yearlyResults[] = [];
-      const rowsPerPage = 30; // Fits A4 page beautifully with comfortable vertical rhythm
+      // 9pt 표와 4px 셀 여백에서는 A4 한 장에 42행이 잘림 없이 들어간다. 기존 30행은
+      // 10~12행짜리 반쪽 페이지를 반복해서 만들어 동일 샘플이 10페이지까지 늘어났다.
+      const rowsPerPage = 42;
       for (let i = 0; i < yearlyResults.length; i += rowsPerPage) {
         chunks.push(yearlyResults.slice(i, i + rowsPerPage));
       }
@@ -729,7 +730,7 @@ export default function Home() {
               </h2>
               ${realValueNoteHtml}
               ${healthcareNoteHtml}
-              <table style="width: 100%; border-collapse: collapse; font-size: 10.5px;">
+              <table class="pdf-data-table" style="width: 100%; border-collapse: collapse; font-size: 9px;">
                 <thead>
                   <tr>
                     <th style="border: 1px solid #cbd5e1; padding: 7px 8px; text-align: center; background-color: #f1f5f9; font-weight: 700; color: #334155;">나이</th>
@@ -799,7 +800,7 @@ export default function Home() {
                 ${spendingTableSectionNo}. 은퇴 후 월 생활비 재원 구성 (${chunkIdx + 1}/${spendingChunks.length})
               </h2>
               ${realValueNoteHtml}
-              <table style="width: 100%; border-collapse: collapse; font-size: 10.5px;">
+              <table class="pdf-data-table" style="width: 100%; border-collapse: collapse; font-size: 9px;">
                 <thead>
                   <tr>
                     <th style="border: 1px solid #cbd5e1; padding: 7px 8px; text-align: center; background-color: #f1f5f9; font-weight: 700; color: #334155;">나이</th>
@@ -868,6 +869,14 @@ export default function Home() {
       document.body.appendChild(container);
 
       const pages = container.querySelectorAll('.pdf-page');
+      const overflowingPages = Array.from(pages).flatMap((page, index) => {
+        const content = page.querySelector('.pdf-content') as HTMLElement | null;
+        return content && content.scrollHeight > content.clientHeight + 1 ? [index + 1] : [];
+      });
+      if (overflowingPages.length > 0) {
+        document.body.removeChild(container);
+        throw new Error(`PDF page overflow detected: ${overflowingPages.join(', ')}`);
+      }
       const pdf = new jsPDF('p', 'mm', 'a4');
 
       for (let i = 0; i < pages.length; i++) {

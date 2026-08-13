@@ -182,9 +182,10 @@ describe('renderItemizedChecklistSection', () => {
     };
     const html = renderItemizedChecklistSection(recommendation);
     expect(html).toContain('국민연금을 70세까지 연기 수령합니다.');
-    expect(html).toContain('효용 +5점');
+    expect(html).toContain('단독 효용 +5점');
     expect(html).toContain('사적연금을 63세부터 인출합니다.');
-    expect(html).toContain('효용 -1.2점');
+    expect(html).toContain('단독 효용 -1.2점');
+    expect(html).toContain('전체 조합에서만 유효');
   });
 });
 
@@ -329,7 +330,7 @@ describe('renderItemizedChecklistSection - AI 센티널 자동 적용 구분', (
     const html = renderItemizedChecklistSection(recommendation, ['nationalPensionStartAge']);
 
     expect(html).toContain('이미 반영됨');
-    expect(html).toContain('남은 할 일');
+    expect(html).toContain('단독으로도 권장');
     expect(html).toContain('이 값으로 계산 중');
   });
 
@@ -425,7 +426,7 @@ describe('renderPlanVerdictSection', () => {
 
 describe('renderMonteCarloSection', () => {
   const monteCarlo: MonteCarloResult = {
-    trials: 1000, seed: 1, successAge: 90, successRate: 0.87, spendingSuccessRate: 0.81,
+    trials: 1000, seed: 1, annualStdDev: 18, successAge: 90, successRate: 0.87, spendingSuccessRate: 0.81,
     plannedMonthlySpending: 3000000,
     endingAssets: { p10: 200000000, p50: 1800000000, p90: 5200000000, mean: 2100000000 },
     assetBand: [
@@ -460,6 +461,15 @@ describe('renderMonteCarloSection', () => {
     expect(html).toContain('87%');
     expect(html).toContain('1,000');
     expect(html).toContain('90세');
+  });
+
+  test('변동성·분포·상관·시드 가정을 표기한다', () => {
+    const html = renderMonteCarloSection(monteCarlo, sequenceRisk);
+
+    expect(html).toContain('연 변동성 18%p');
+    expect(html).toContain('정규분포');
+    expect(html).toContain('같은 시장 충격');
+    expect(html).toContain('고정 시드 1');
   });
 
   test('잔여자산 분위수를 표로 싣는다', () => {

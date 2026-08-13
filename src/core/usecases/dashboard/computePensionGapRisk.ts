@@ -1,5 +1,6 @@
 import { SimulationParams, SimulationResult } from '../../entities/types';
 import { computeMonthlySpendingComposition } from '../MonthlySpendingComposition';
+import { SHORTFALL_EPSILON_MONTHLY } from './computeShortfallSummary';
 
 // 은퇴 시점과 국민연금 개시 시점 사이의 «연금 공백기».
 //
@@ -19,7 +20,15 @@ export interface PensionGapRisk {
   years: number;
   // 공백기 월 평균 자산인출액.
   monthlyAssetWithdrawal: number;
-  // 공백기에 자산에서 빼 써야 하는 총액 = «필요 Bridge 자금». 현재 구매력 기준이다.
+  // 공백기에 실제로 자산에서 인출하는 총액. 현재 구매력 기준이다.
+  assetWithdrawalAmount: number;
+  // 공백기 중 계획 생활비를 채우지 못하는 연수와, 그 연도들만을 기준으로 한 월평균 부족액.
+  shortfallYears: number;
+  averageMonthlyShortfall: number;
+  // 공백기에 채우지 못한 생활비 총액. 현재 구매력 기준이다.
+  shortfallAmount: number;
+  // 공백기를 계획대로 건너는 데 필요한 총 자금 = 실제 자산인출 + 미충족 생활비.
+  // 인출 시작 조건 때문에 자산을 쓰지 못한 계획도 0원으로 축소되지 않아야 한다.
   bridgeAmount: number;
 }
 
@@ -51,21 +60,39 @@ export function computePensionGapRisk(
   // 명목가치 계획의 미래 금액은 물가만큼 부풀려져 있다. 그대로 더하면 "지금 얼마를 준비해야
   // 하는가"를 과장한다. 할인 규칙은 computeShortfallSummary.summarize와 **같은 것**을 쓴다 —
   // 두 카드가 나란히 놓이는데 서로 다른 자로 재면 사용자가 금액을 비교할 수 없다.
-  const bridgeAmount = gapRows.reduce((sum, row) => {
-    const annual = row.assetWithdrawal * 12;
-    if (!isNominal) return sum + annual;
-    return sum + annual / Math.pow(1 + inflationRate / 100, row.age - currentAge);
-  }, 0);
+  const presentValue = (monthly: number, age: number) => {
+    const annual = monthly * 12;
+    if (!isNominal) return annual;
+    return annual / Math.pow(1 + inflationRate / 100, age - currentAge);
+  };
+
+  const assetWithdrawalAmount = gapRows.reduce(
+    (sum, row) => sum + presentValue(row.assetWithdrawal, row.age),
+    0
+  );
+
+  const shortfallRows = gapRows.filter((row) => row.shortfall >= SHORTFALL_EPSILON_MONTHLY);
+  const shortfallAmount = shortfallRows.reduce(
+    (sum, row) => sum + presentValue(row.shortfall, row.age),
+    0
+  );
 
   const monthlyAssetWithdrawal =
     gapRows.reduce((sum, row) => sum + row.assetWithdrawal, 0) / gapRows.length;
+  const averageMonthlyShortfall = shortfallRows.length === 0
+    ? 0
+    : shortfallRows.reduce((sum, row) => sum + row.shortfall, 0) / shortfallRows.length;
 
   return {
     fromAge: retirementAge,
     toAge: firstAgeWithNationalPension - 1,
     years,
     monthlyAssetWithdrawal: Math.round(monthlyAssetWithdrawal),
-    bridgeAmount: Math.round(bridgeAmount),
+    assetWithdrawalAmount: Math.round(assetWithdrawalAmount),
+    shortfallYears: shortfallRows.length,
+    averageMonthlyShortfall: Math.round(averageMonthlyShortfall),
+    shortfallAmount: Math.round(shortfallAmount),
+    bridgeAmount: Math.round(assetWithdrawalAmount + shortfallAmount),
   };
 }
 

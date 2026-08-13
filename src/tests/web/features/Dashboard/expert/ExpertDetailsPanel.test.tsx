@@ -151,7 +151,7 @@ describe('ExpertDetailsPanel - 피부양자 자격 상실 시 건강보험료', 
     render(<ExpertDetailsPanel result={overThresholdResult} params={params} formatValue={formatValue} sensitivity={sensitivity} isPro={false} />);
     fireEvent.click(screen.getByRole('button', { name: '전문가용 상세 분석 더 보기' }));
 
-    expect(screen.getByText(/재산·자동차분/)).toBeInTheDocument();
+    expect(screen.getAllByText(/재산·자동차분/).length).toBeGreaterThan(0);
   });
 
   test('문턱을 넘는 해가 없으면 아무것도 보여주지 않는다', () => {

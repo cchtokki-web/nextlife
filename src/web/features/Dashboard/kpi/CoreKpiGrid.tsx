@@ -128,7 +128,7 @@ export function CoreKpiGrid({
                 {pensionGap.fromAge}~{pensionGap.toAge}세
               </span>
               <span className="text-sm text-foreground-muted">
-                {pensionGap.years}년 · 월 {formatValue(pensionGap.monthlyAssetWithdrawal)} 인출
+                {pensionGap.years}년 · 필요자금 {formatValue(pensionGap.bridgeAmount)}
               </span>
             </div>
           ) : (

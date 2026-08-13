@@ -667,7 +667,13 @@ export function recommendStrategy(
       : baseReasons;
   const itemizedContributions = [...withdrawalItemizedContributions, ...additionalItemizedContributions];
   const improved = channelingOpt.finalUtility.score > currentUtility.score;
-  const deltas = computeDeltas(baselineResult, channelingOpt.finalResult);
+  // 후보 탐색은 성능 때문에 runForUtility를 쓰지만, 화면의 추천 결과에는 역산된 지속가능
+  // 생활비(calculatedTargetSpending)도 필요하다. 채택된 최종 조합만 한 번 완전 실행한다.
+  const recommendedResult = improved
+    ? engine.run(channelingOpt.finalParams, cfg)
+    : channelingOpt.finalResult;
+  const recommendedUtility = recommendedResult.utility ?? channelingOpt.finalUtility;
+  const deltas = computeDeltas(baselineResult, recommendedResult);
 
   // Phase 3/4의 시도량/실패량을 후보 통계에 합산해 AI advisor(계산 실패 감지)까지 흐르게 한다.
   // params.assets.length는 Phase 3가 시도한 작업량의 근사치이고, Phase 4는 실제로 실행한
@@ -719,7 +725,7 @@ export function recommendStrategy(
   return {
     currentUtility,
     verifiedSentinelPlan,
-    recommendedUtility: channelingOpt.finalUtility,
+    recommendedUtility,
     recommendedPlan,
     recommendedAssetReinvestment: reinvestOpt.recommendedAssetReinvestment,
     recommendedPrivatePensionChanneling: channelingOpt.recommendedPrivatePensionChanneling,
@@ -730,7 +736,7 @@ export function recommendStrategy(
     totalCandidateCount,
     failedCandidateCount,
     deltas,
-    recommendedResult: channelingOpt.finalResult,
+    recommendedResult,
     itemizedContributions,
   };
 }

@@ -66,6 +66,10 @@ export function ExpertDetailsPanel({
                 <dd className="font-semibold">{formatValue(analytics.avgNetIncome)}</dd>
               </div>
             </dl>
+            <p className="mt-2 text-xs leading-relaxed text-foreground-muted">
+              세금은 <strong className="text-foreground">2024년 기준 단순화 모델</strong>입니다. 부양가족·추가공제,
+              재산·자동차분 건강보험료, 일부 국내상장 해외·채권형 ETF의 과세 차이는 반영하지 않습니다.
+            </p>
             {/* 위 건강보험료는 이 시뮬레이터의 모델(문턱 초과분 × 요율)이 부과한 값이다.
                 실제 제도는 피부양자 자격을 잃는 순간 소득 전체에 부과되므로 훨씬 크다.
                 그 계단을 계산에 넣지 않는 이유는 estimateHealthInsuranceCliff 주석 참고.

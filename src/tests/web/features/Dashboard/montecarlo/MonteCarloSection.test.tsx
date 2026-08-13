@@ -8,6 +8,7 @@ function makeMonteCarlo(overrides: Partial<MonteCarloResult> = {}): MonteCarloRe
   return {
     trials: 1000,
     seed: 1,
+    annualStdDev: 18,
     successAge: 90,
     successRate: 0.87,
     spendingSuccessRate: 0.81,
@@ -83,6 +84,17 @@ describe('MonteCarloSection', () => {
     );
 
     expect(screen.getByText(/1,000회/)).toBeInTheDocument();
+  });
+
+  test('변동성·분포·상관·시드 가정을 밝힌다', () => {
+    render(
+      <MonteCarloSection status="done" monteCarlo={makeMonteCarlo()} formatValue={formatValue} isPro={false} />
+    );
+
+    expect(screen.getByText(/연 변동성 18%p/)).toBeInTheDocument();
+    expect(screen.getByText(/정규분포/)).toBeInTheDocument();
+    expect(screen.getByText(/같은 시장 충격/)).toBeInTheDocument();
+    expect(screen.getByText(/고정 시드 1/)).toBeInTheDocument();
   });
 
   // **변동성 손실을 숨기지 않는다.**

@@ -26,6 +26,8 @@ export interface MonteCarloBandYear {
 export interface MonteCarloResult {
   trials: number;
   seed: number;
+  // 화면·PDF에서 결과 가정을 숨기지 않기 위한 실제 연 변동성(%p).
+  annualStdDev?: number;
   // 성공 판정 기준 나이 = 시뮬레이션 종료 나이(본인 기대수명). 결정론 시뮬레이션의
   // 고갈 판정과 같은 나이를 써야 성공률과 화면 문구가 어긋나지 않는다.
   //

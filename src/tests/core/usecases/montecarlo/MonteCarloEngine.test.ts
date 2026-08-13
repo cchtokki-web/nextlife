@@ -110,11 +110,12 @@ describe('runMonteCarlo', () => {
     expect(mc.assetBand[mc.assetBand.length - 1].age).toBe(85);
   });
 
-  test('시행 수와 시드를 결과에 남긴다', () => {
-    const mc = runMonteCarlo(params(), engine, config({ trials: 37, seed: 99 }));
+  test('시행 수와 시드, 변동성을 결과에 남긴다', () => {
+    const mc = runMonteCarlo(params(), engine, config({ trials: 37, seed: 99, annualStdDev: 18 }));
 
     expect(mc.trials).toBe(37);
     expect(mc.seed).toBe(99);
+    expect(mc.annualStdDev).toBe(18);
   });
 
   test('시행이 1회여도 동작한다', () => {

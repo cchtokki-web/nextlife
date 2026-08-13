@@ -3,7 +3,6 @@ import { makeYearlyResult as makeYearlyResultFixture } from '@/tests/fixtures/ye
 import { SimulationEngine } from '@/core/usecases/SimulationEngine';
 import {
   recommendStrategy,
-  SPENDING_INCREASE_GATE,
   buildReasons,
   computeDeltas,
   computeItemizedContributions,
@@ -440,6 +439,15 @@ describe('recommendStrategy - 생활비 증액(Phase 2) 후보', () => {
 });
 
 describe('recommendStrategy - recommendedResult', () => {
+  test('개선안의 최종 결과에는 역산된 지속가능 생활비가 포함된다', () => {
+    const engine = new SimulationEngine();
+    const recommendation = recommendStrategy(paramsWithOptimizableHeadroom, engine);
+
+    expect(recommendation.improved).toBe(true);
+    expect(recommendation.recommendedResult.calculatedTargetSpending).toBeGreaterThanOrEqual(0);
+    expect(recommendation.recommendedResult.utility?.score).toBe(recommendation.recommendedUtility.score);
+  });
+
   test('improved가 true면 recommendedResult가 baseline과 다른 연도별 결과를 담는다', () => {
     const engine = new SimulationEngine();
     const recommendation = recommendStrategy(paramsWithOptimizableHeadroom, engine);

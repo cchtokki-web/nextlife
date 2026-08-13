@@ -17,6 +17,10 @@ import {
 import { formatManwon } from '../../../core/usecases/utility/utilityAnalysis';
 import { MonteCarloResult } from '../../../core/entities/montecarlo';
 import { SequenceRiskResult } from '../../../core/usecases/montecarlo/sequenceRisk';
+import {
+  formatTaxImpact,
+  groupRecommendationItems,
+} from '../Dashboard/recommendation/recommendationPresentation';
 
 export function formatCurrencyUnit(currency: 'KRW' | 'USD'): '원' | '$' {
   return currency === 'KRW' ? '원' : '$';
@@ -299,30 +303,33 @@ export function renderItemizedChecklistSection(
   const renderItem = (item: ItemizedContribution, applied: boolean) => {
     const sign = item.utilityDelta >= 0 ? '+' : '';
     const color = item.utilityDelta >= 0 ? '#10B981' : '#EF4444';
+    const taxImpact = formatTaxImpact(item.deltas.totalTax, formatManwon);
     const appliedNote = applied
       ? '<span style="color: #2563eb; font-size: 10px; margin-left: 6px;">이 값으로 계산 중</span>'
       : '';
     return `
         <div style="display: flex; justify-content: space-between; align-items: baseline; padding: 6px 0; border-bottom: 1px dashed #e2e8f0; font-size: 12px;">
           <span>${applied ? '✓' : '☐'} ${item.label}${appliedNote}</span>
-          <span style="font-weight: 700; color: ${color}; white-space: nowrap; margin-left: 10px;">효용 ${sign}${item.utilityDelta}점</span>
+          <span style="font-weight: 700; color: ${color}; white-space: nowrap; margin-left: 10px;">단독 효용 ${sign}${item.utilityDelta}점</span>
         </div>
+        ${taxImpact ? `<div style="margin: 1px 0 0 20px; font-size: 10px; color: #64748b;">${taxImpact}</div>` : ''}
       `;
   };
 
-  const alreadyApplied = items.filter((i) => appliedFields.includes(i.field));
-  const remaining = items.filter((i) => !appliedFields.includes(i.field));
+  const { applied: alreadyApplied, recommended, conditional } = groupRecommendationItems(items, appliedFields);
   const heading = (text: string) =>
     `<p style="font-size: 11px; font-weight: 700; color: #475569; margin: 8px 0 2px;">${text}</p>`;
 
-  if (alreadyApplied.length === 0) {
-    return remaining.map((i) => renderItem(i, false)).join('');
-  }
-
   return [
-    heading('이미 반영됨'),
-    ...alreadyApplied.map((i) => renderItem(i, true)),
-    ...(remaining.length > 0 ? [heading('남은 할 일'), ...remaining.map((i) => renderItem(i, false))] : []),
+    ...(alreadyApplied.length > 0 ? [heading('이미 반영됨'), ...alreadyApplied.map((i) => renderItem(i, true))] : []),
+    ...(recommended.length > 0 ? [heading('단독으로도 권장'), ...recommended.map((i) => renderItem(i, false))] : []),
+    ...(conditional.length > 0
+      ? [
+          heading('전체 조합에서만 유효'),
+          '<p style="font-size: 10px; color: #64748b; margin: 2px 0 4px;">단독 적용 시 점수가 오르지 않으므로 전체 추천 조합의 최종 결과와 함께 판단하세요.</p>',
+          ...conditional.map((i) => renderItem(i, false)),
+        ]
+      : []),
   ].join('');
 }
 
@@ -501,6 +508,9 @@ export function renderMonteCarloSection(
       — 계획 생활비(월 ${formatManwon(monteCarlo.plannedMonthlySpending)})를 한 해도 줄이지 않은 경우입니다.
       <strong>자산 보존 성공률 ${assetPercent}%</strong> — ${monteCarlo.successAge}세까지 자산이 남은 경우입니다.
       두 확률은 서로 다른 실패를 셉니다: 연금이 생활비를 덮으면 자산이 바닥나도 생활은 유지됩니다.
+    </p>
+    <p style="margin: 4px 0 0; font-size: 10px; color: #64748b;">
+      계산 가정: 연 변동성 ${monteCarlo.annualStdDev ?? 15}%p · 정규분포 · 모든 위험자산이 같은 시장 충격을 공유 · 고정 시드 ${monteCarlo.seed}
     </p>
     <table style="width: 100%; border-collapse: collapse; margin-top: 8px;">
       <thead>

@@ -252,12 +252,21 @@ describe('DashboardSection - IA 순서', () => {
 // spendingStrategy === 'max_sustainable'로 묶여 있어, 고정 생활비로 계획한 사용자는
 // 상속 목표가 0원인데 수억을 남기거나 반대로 자산이 고갈되는데도 아무 말을 듣지 못했다.
 describe('DashboardSection - 지속가능 생활비 제안 배너', () => {
+  test('지속가능 생활비 KPI는 목표액이 아니라 엔진 역산액을 표시한다', () => {
+    const tightResult: SimulationResult = { ...result, calculatedTargetSpending: 2160000 };
+
+    render(<DashboardSection params={params} result={tightResult} />);
+
+    expect(kpiValue('지속가능 생활비')).toBe('월 216만원');
+    expect(kpiValue('목표 생활비')).toBe('월 300만원');
+  });
+
   test('더 쓸 수 있으면 그 금액을 제안한다', () => {
     const richResult: SimulationResult = { ...result, calculatedTargetSpending: 4420000 };
 
     render(<DashboardSection params={params} result={richResult} />);
 
-    expect(screen.getByText(/442만원/)).toBeInTheDocument();
+    expect(screen.getAllByText(/442만원/).length).toBeGreaterThan(0);
     expect(screen.getByText(/더 쓸 수 있습니다/)).toBeInTheDocument();
   });
 
@@ -266,7 +275,7 @@ describe('DashboardSection - 지속가능 생활비 제안 배너', () => {
 
     render(<DashboardSection params={params} result={tightResult} />);
 
-    expect(screen.getByText(/240만원/)).toBeInTheDocument();
+    expect(screen.getAllByText(/240만원/).length).toBeGreaterThan(0);
     expect(screen.getByText(/지속하기 어렵습니다/)).toBeInTheDocument();
   });
 

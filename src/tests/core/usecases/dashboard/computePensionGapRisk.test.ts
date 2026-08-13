@@ -38,18 +38,19 @@ describe('computePensionGapRisk', () => {
     expect(gap!.years).toBe(5);
   });
 
-  // Bridge 자금은 새로 계산하지 않고 화면의 「생활비 재원 구성」 차트와 같은 값을 쓴다.
-  // 두 곳이 갈라지면 카드가 말하는 금액과 차트의 분홍 띠가 어긋난다.
-  test('Bridge 자금은 공백기 자산인출 합과 일치한다', () => {
+  test('Bridge 자금은 공백기 자산인출과 미충족 생활비의 합이다', () => {
     const p = params();
     const result = engine.run(p);
     const gap = computePensionGapRisk(p, result)!;
 
-    const expected = computeMonthlySpendingComposition(result.yearlyResults, p, result)
-      .filter((row) => row.age >= 60 && row.age < 65)
-      .reduce((sum, row) => sum + row.assetWithdrawal * 12, 0);
+    const rows = computeMonthlySpendingComposition(result.yearlyResults, p, result)
+      .filter((row) => row.age >= 60 && row.age < 65);
+    const expectedWithdrawal = rows.reduce((sum, row) => sum + row.assetWithdrawal * 12, 0);
+    const expectedShortfall = rows.reduce((sum, row) => sum + row.shortfall * 12, 0);
 
-    expect(gap.bridgeAmount).toBe(Math.round(expected));
+    expect(gap.assetWithdrawalAmount).toBe(Math.round(expectedWithdrawal));
+    expect(gap.shortfallAmount).toBe(Math.round(expectedShortfall));
+    expect(gap.bridgeAmount).toBe(Math.round(expectedWithdrawal + expectedShortfall));
     expect(gap.bridgeAmount).toBeGreaterThan(0);
   });
 
@@ -58,8 +59,23 @@ describe('computePensionGapRisk', () => {
     const gap = computePensionGapRisk(p, engine.run(p))!;
 
     expect(gap.monthlyAssetWithdrawal).toBeGreaterThan(0);
-    // 5년치 총액과 월 평균이 같은 근거에서 나와야 한다.
-    expect(gap.monthlyAssetWithdrawal).toBeCloseTo(gap.bridgeAmount / (gap.years * 12), -4);
+    expect(gap.monthlyAssetWithdrawal).toBeCloseTo(gap.assetWithdrawalAmount / (gap.years * 12), -4);
+  });
+
+  test('일반자산 인출이 막혀도 생활비 부족분을 필요자금으로 보고한다', () => {
+    const p = params({
+      withdrawalPlan: { generalAssetWithdrawalStartAge: 65 },
+      userProfile: { currentAge: 59, retirementAge: 60, expectancy: 90, targetMonthlySpending: 3500000 },
+      privatePensions: [{
+        id: 'p1', name: 'IRP', type: 'irp', balance: 100000000, monthlyContribution: 0,
+        annualReturn: 5, dividendYield: 0, investmentType: 'etf', currency: 'KRW',
+      }],
+    });
+    const gap = computePensionGapRisk(p, engine.run(p))!;
+
+    expect(gap.shortfallYears).toBeGreaterThan(0);
+    expect(gap.shortfallAmount).toBeGreaterThan(0);
+    expect(gap.bridgeAmount).toBeGreaterThan(gap.assetWithdrawalAmount);
   });
 
   // 「공백」은 개시 시점이 뒤에 있을 때만 성립한다. 끝까지 없는 것은 공백이 아니라 부재이고,

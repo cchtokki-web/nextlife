@@ -149,7 +149,9 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
   const curveMultiplier = spendingMultiplierForAge(params.spendingCurve, spendingCurveLabelAge);
   const applyCurve = (amount: number) =>
     params.spendingCurve ? Math.round(amount * curveMultiplier) : amount;
-  const curvedMonthlyTarget = applyCurve(displayedMonthlyTarget);
+  const displayedSustainableMonthly = applyCurve(
+    displayedResult.calculatedTargetSpending ?? displayedMonthlyTarget
+  );
   // 히어로(=AI 노후 설계사 입력)는 baseline 기준이라 추천 배수를 타지 않지만, 곡선은 똑같이
   // 타야 한다. 빼면 같은 화면에서 히어로는 "월 580만원", 바로 아래 KPI는 "65세 기준 696만원"을
   // 말하고, AI가 곡선을 모르는 금액을 근거로 조언한다.
@@ -294,7 +296,7 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
         confidence={planConfidence}
         expectancy={params.userProfile.expectancy}
         endingAssets={displayedResult.endingAssets}
-        sustainableMonthly={curvedMonthlyTarget}
+        sustainableMonthly={displayedSustainableMonthly}
         goalMonthly={applyCurve(params.userProfile.targetMonthlySpending)}
         monthlyTargetAge={params.spendingCurve ? spendingCurveLabelAge : undefined}
         pensionGap={pensionGap ?? undefined}

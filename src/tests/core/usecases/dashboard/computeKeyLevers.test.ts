@@ -50,7 +50,12 @@ const input = (overrides: Partial<KeyLeversInput> = {}): KeyLeversInput => ({
     scenario('returnUp', { endingAssetsDelta: 499010000 }),
     scenario('returnDown', { depletionAge: 67, unmetSpendingYears: 13 }),
   ]),
-  pensionGap: { fromAge: 60, toAge: 64, years: 5, monthlyAssetWithdrawal: 2500000, bridgeAmount: 150000000 },
+  pensionGap: {
+    fromAge: 60, toAge: 64, years: 5,
+    monthlyAssetWithdrawal: 2500000, assetWithdrawalAmount: 150000000,
+    shortfallYears: 0, averageMonthlyShortfall: 0, shortfallAmount: 0,
+    bridgeAmount: 150000000,
+  },
   shortfall: shortfall(),
   recommendation: undefined,
   formatValue: won,

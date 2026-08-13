@@ -5,6 +5,7 @@ import { ItemizedContribution, StrategyRecommendation } from '../../../../core/e
 import { SentinelApplication } from '../../../../core/usecases/strategy/applyAiSentinels';
 import { PlanAssetStatus } from '../../../../core/usecases/dashboard/resolvePlanAssetStatus';
 import GlassCard from '../../../components/GlassCard';
+import { formatTaxImpact, groupRecommendationItems } from './recommendationPresentation';
 
 interface RecommendationChecklistProps {
   recommendation?: StrategyRecommendation;
@@ -71,8 +72,11 @@ export function RecommendationChecklist({
   //
   // 라벨 문자열이 아니라 field로 가른다 — 문구에는 수치가 섞여 있어 매칭 기준이 될 수 없다.
   const appliedFields = sentinels?.appliedFields ?? [];
-  const alreadyApplied = recommendation.itemizedContributions.filter((i) => appliedFields.includes(i.field));
-  const remaining = recommendation.itemizedContributions.filter((i) => !appliedFields.includes(i.field));
+  const { applied: alreadyApplied, recommended, conditional } = groupRecommendationItems(
+    recommendation.itemizedContributions,
+    appliedFields
+  );
+  const remaining = [...recommended, ...conditional];
 
   // 헤드라인은 "여기서 더 얻을 수 있는 것"이다. 자동 채움분은 이미 화면의 KPI에 반영돼
   // 있으므로, baseline 대비 총 개선폭을 쓰면 사용자가 이미 가진 몫까지 앞으로 얻을 것처럼
@@ -102,7 +106,7 @@ export function RecommendationChecklist({
           {item.label}
         </span>
         <span className={`shrink-0 text-sm font-semibold ${item.utilityDelta >= 0 ? 'text-success' : 'text-danger'}`}>
-          효용 {item.utilityDelta >= 0 ? '+' : ''}
+          단독 효용 {item.utilityDelta >= 0 ? '+' : ''}
           {item.utilityDelta}점
         </span>
       </div>
@@ -111,10 +115,8 @@ export function RecommendationChecklist({
       )}
       <div className="ml-6 mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-foreground-muted">
         {applied && <span className="text-primary">이 값으로 계산 중</span>}
-        {item.deltas.totalTax !== 0 && (
-          <span>
-            절세 {item.deltas.totalTax <= 0 ? formatValue(-item.deltas.totalTax) : `-${formatValue(item.deltas.totalTax)}`}
-          </span>
+        {formatTaxImpact(item.deltas.totalTax, formatValue) && (
+          <span>{formatTaxImpact(item.deltas.totalTax, formatValue)}</span>
         )}
         {item.deltas.endingAssets !== 0 && (
           <span>
@@ -152,15 +154,28 @@ export function RecommendationChecklist({
         </>
       )}
 
-      {remaining.length > 0 && (
+      {recommended.length > 0 && (
         <>
           {alreadyApplied.length > 0 && (
-            <h4 className="mb-2 text-xs font-semibold text-foreground-muted">남은 할 일</h4>
+            <h4 className="mb-2 text-xs font-semibold text-foreground-muted">단독으로도 권장</h4>
           )}
           <ul className="flex flex-col gap-3">
-            {remaining.map((item, i) => renderItem(item, i, false))}
+            {recommended.map((item, i) => renderItem(item, i, false))}
           </ul>
         </>
+      )}
+
+      {conditional.length > 0 && (
+        <section className={recommended.length > 0 ? 'mt-4' : undefined}>
+          <h4 className="mb-1 text-xs font-semibold text-warning">전체 조합에서만 유효</h4>
+          <p className="mb-2 text-xs text-foreground-muted">
+            아래 변경은 단독으로 적용하면 점수가 오르지 않습니다. 위 추천과 함께 적용할 때의 최종
+            종합 결과를 확인한 뒤 선택하세요.
+          </p>
+          <ul className="flex flex-col gap-3">
+            {conditional.map((item, i) => renderItem(item, i, false))}
+          </ul>
+        </section>
       )}
 
       {remaining.length === 0 && alreadyApplied.length > 0 && (
@@ -170,7 +185,7 @@ export function RecommendationChecklist({
       )}
 
       <p className="mt-2 text-xs text-foreground-muted">
-        * 항목별 효용 점수는 단독 적용 기준이라 합계가 총 개선폭과 다를 수 있고, 이미 만점·바닥에
+        * 단독 효용 점수는 해당 항목 하나만 적용한 결과라 합계가 최종 종합 개선폭과 다를 수 있고, 이미 만점·바닥에
         가까운 항목은 절세·자산 효과가 있어도 +0점으로 보일 수 있습니다.
       </p>
     </GlassCard>

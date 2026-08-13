@@ -6,6 +6,7 @@ import {
   PLAN_CONFIDENCE_BAND_LABEL,
 } from '../../../core/usecases/dashboard/computePlanConfidence';
 import { formatManwon } from '../../../core/usecases/utility/utilityAnalysis';
+import { PensionGapRisk } from '../../../core/usecases/dashboard/computePensionGapRisk';
 
 // LLM 폴백 경로. 인자가 길어져 위치 인자로는 호출부에서 무엇이 무엇인지 읽히지 않아,
 // 새로 추가되는 값부터는 이름 있는 객체로 받는다.
@@ -22,7 +23,7 @@ export interface RuleBasedAdviceContext {
   // 생활 유지 성공률(계획한 생활비를 한 해도 줄이지 않을 확률). 판정의 1차 근거다.
   monteCarloSpendingSuccessRate?: number;
   // 은퇴~국민연금 개시 사이의 공백. 있으면 조언 우선순위가 인출 전략보다 앞선다.
-  pensionGap?: { fromAge: number; toAge: number; years: number; bridgeAmount: number };
+  pensionGap?: PensionGapRisk;
 }
 
 export function generateRuleBasedAdvice(
@@ -128,7 +129,10 @@ export function generateRuleBasedAdvice(
   // 연금 공백은 인출 전략보다 앞선다(LLM 경로의 규칙 5와 같은 우선순위). 은퇴 직후라 잔고가
   // 가장 크고 인출률도 가장 높은 구간이므로, "매도 순서를 바꾸세요"보다 먼저 말해야 한다.
   const pensionGapText = pensionGap
-    ? ` 특히 ${pensionGap.fromAge}~${pensionGap.toAge}세 ${pensionGap.years}년은 국민연금 개시 전이라 생활비를 자산 인출로 메우는 구간이므로, ` +
+    ? ` 특히 ${pensionGap.fromAge}~${pensionGap.toAge}세 ${pensionGap.years}년은 국민연금 개시 전이며, ` +
+      (pensionGap.shortfallYears > 0
+        ? `그중 ${pensionGap.shortfallYears}년은 생활비가 월 평균 **${formatManwon(pensionGap.averageMonthlyShortfall)}** 부족합니다. `
+        : `생활비를 위해 자산에서 월 평균 **${formatManwon(pensionGap.monthlyAssetWithdrawal)}**을 인출합니다. `) +
       // 금액 포맷은 화면·PDF와 같은 함수를 쓴다. 직접 만원으로 나누면 "13,162만원"처럼
       // 억 단위가 접히지 않은 문자열이 나와, 같은 금액이 카드에서는 "1억 3,162만원"으로
       // 보이는데 조언에서는 다르게 읽힌다.

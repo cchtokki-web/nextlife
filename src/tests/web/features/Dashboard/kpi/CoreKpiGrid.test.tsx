@@ -21,7 +21,12 @@ describe('CoreKpiGrid', () => {
       <CoreKpiGrid
         {...baseProps}
         confidence={confidence(0.95)}
-        pensionGap={{ fromAge: 60, toAge: 64, years: 5, monthlyAssetWithdrawal: 2500000, bridgeAmount: 150000000 }}
+        pensionGap={{
+          fromAge: 60, toAge: 64, years: 5,
+          monthlyAssetWithdrawal: 2500000, assetWithdrawalAmount: 150000000,
+          shortfallYears: 0, averageMonthlyShortfall: 0, shortfallAmount: 0,
+          bridgeAmount: 150000000,
+        }}
       />
     );
 
@@ -33,6 +38,7 @@ describe('CoreKpiGrid', () => {
     expect(screen.getByText('월 3500000원')).toBeInTheDocument();
     expect(screen.getByText('연금 공백')).toBeInTheDocument();
     expect(screen.getByText('60~64세')).toBeInTheDocument();
+    expect(screen.getByText('5년 · 필요자금 150000000원')).toBeInTheDocument();
   });
 
   // 목표와 지속가능액의 차이가 이 화면의 핵심 결론이다. 두 카드를 나란히 두는 이유가 그것이므로

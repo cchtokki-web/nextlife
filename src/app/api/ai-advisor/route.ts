@@ -8,6 +8,7 @@ import { RetirementGrade } from '../../../core/entities/retirementGrade';
 import { analyzeCurrentStrategy, formatManwon } from '../../../core/usecases/utility/utilityAnalysis';
 import { describeFireAge } from '../../../core/usecases/dashboard/describeFireAge';
 import { PlanAssetStatus } from '../../../core/usecases/dashboard/resolvePlanAssetStatus';
+import { PensionGapRisk } from '../../../core/usecases/dashboard/computePensionGapRisk';
 
 export const runtime = 'edge';
 
@@ -47,7 +48,7 @@ export interface AiAdvisorRequestBody {
   // 생활 유지 성공률(계획한 생활비를 한 해도 줄이지 않을 확률). 자산 고갈과 독립적으로 센다.
   monteCarloSpendingSuccessRate?: number;
   // 은퇴~국민연금 개시 사이의 공백 구간. 조언 우선순위 2번의 근거다.
-  pensionGap?: { fromAge: number; toAge: number; years: number; monthlyAssetWithdrawal: number; bridgeAmount: number };
+  pensionGap?: PensionGapRisk;
 }
 
 function toManwon(val?: number): string {
@@ -93,11 +94,16 @@ export function buildSimulationContextText(body: AiAdvisorRequestBody): string {
     );
   }
   if (pensionGap) {
+    const gapDetail = pensionGap.shortfallYears > 0
+      ? `${pensionGap.shortfallYears}년간 월 평균 ${formatManwon(pensionGap.averageMonthlyShortfall)}의 생활비가 ` +
+        `미충족되고, 실제 월 평균 자산인출은 ${formatManwon(pensionGap.monthlyAssetWithdrawal)}임.`
+      : `월 평균 ${formatManwon(pensionGap.monthlyAssetWithdrawal)}을 자산에서 인출함.`;
     lines.push(
       `- 연금 공백 구간: ${pensionGap.fromAge}~${pensionGap.toAge}세 ${pensionGap.years}년간 국민연금 없이 ` +
-      `월 평균 ${formatManwon(pensionGap.monthlyAssetWithdrawal)}을 자산에서 인출함. ` +
-      `이 구간 필요 자금 약 ${formatManwon(pensionGap.bridgeAmount)}. 은퇴 직후라 잔고가 가장 크고 ` +
-      '인출률도 가장 높아 시장 하락에 가장 취약한 구간임.'
+      `${gapDetail} 이 구간 총 필요자금 약 ${formatManwon(pensionGap.bridgeAmount)}. ` +
+      (pensionGap.monthlyAssetWithdrawal > 0
+        ? '은퇴 직후 자산을 인출하므로 시장 하락 순서에 취약한 구간임.'
+        : '일반자산 인출 시작 조건 때문에 보유자산을 생활비로 쓰지 못하는 유동성 공백임.')
     );
   }
 
