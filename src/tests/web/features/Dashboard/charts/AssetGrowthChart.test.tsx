@@ -42,6 +42,43 @@ const params: SimulationParams = {
 };
 
 describe('AssetGrowthChart - 단순화 모드 토글', () => {
+  test('간단히 보기에서는 강제로 숨긴 자산 구성 범례를 노출하지 않는다', () => {
+    const { rerender } = render(
+      <AssetGrowthChart
+        params={params}
+        result={result}
+        compareResults={[]}
+        hiddenKeys={{ 주식자산: true, 연금자산: true }}
+        onLegendClick={() => {}}
+        caption=""
+        showBreakdown={false}
+        onToggleBreakdown={() => {}}
+        planOutcome={{ assetStatus: 'sustained', investableDepletionAge: null, spendingShortfall: null }}
+      />
+    );
+
+    expect(screen.queryByRole('button', { name: /주식\/ETF 자산/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /연금 자산/ })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /총 자산액/ })).toBeInTheDocument();
+
+    rerender(
+      <AssetGrowthChart
+        params={params}
+        result={result}
+        compareResults={[]}
+        hiddenKeys={{}}
+        onLegendClick={() => {}}
+        caption=""
+        showBreakdown={true}
+        onToggleBreakdown={() => {}}
+        planOutcome={{ assetStatus: 'sustained', investableDepletionAge: null, spendingShortfall: null }}
+      />
+    );
+
+    expect(screen.getByRole('button', { name: /주식\/ETF 자산/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /연금 자산/ })).toBeInTheDocument();
+  });
+
   test('showBreakdown이 false면 "자산 구성 상세보기" 버튼을, true면 "간단히 보기" 버튼을 보여준다', () => {
     const { rerender } = render(
       <AssetGrowthChart
