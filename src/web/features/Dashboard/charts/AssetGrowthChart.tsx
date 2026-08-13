@@ -75,7 +75,6 @@ export const DEFAULT_HIDDEN_PERCENTILE_KEYS: Record<string, boolean> = { '상위
 
 // 범례 표기. 아래 <Area>/<Line> 선언의 name/dataKey/stroke/strokeDasharray와 짝을 이룬다 —
 // 어긋나면 범례가 차트에 없는 색이나 모양을 말한다.
-// 자산 breakdown을 접어도 항목은 남는다: 시리즈가 사라지는 게 아니라 hide될 뿐이다.
 const ASSET_LEGEND: ChartLegendItem[] = [
   { dataKey: '자산총액', label: '총 자산액 (현재)', color: 'var(--primary)', shape: 'area' },
   { dataKey: '주식자산', label: '주식/ETF 자산', color: 'var(--accent)', shape: 'dashed' },
@@ -146,8 +145,13 @@ export function AssetGrowthChart({
 
   // 월 생활비 라벨은 의료비 포함 여부에 따라 달라지고, 비교 시나리오는 개수가 가변이다.
   // 둘 다 아래 시리즈 선언과 같은 규칙을 써야 범례와 그래프가 같은 이야기를 한다.
+  // 간단히 보기에서 강제로 숨기는 두 구성 시리즈는 범례에서도 뺀다. 클릭해도 상위의
+  // assetChartHiddenKeys 오버레이가 다시 숨기는 버튼을 노출하면 고장 난 토글처럼 보인다.
+  const visibleAssetLegend = showBreakdown
+    ? ASSET_LEGEND
+    : ASSET_LEGEND.filter((item) => item.dataKey !== '주식자산' && item.dataKey !== '연금자산');
   const legendItems: ChartLegendItem[] = [
-    ...ASSET_LEGEND,
+    ...visibleAssetLegend,
     // 분위수 세 개를 각각 범례 버튼으로 낸다. 범례가 곧 선택 스위치다 — 보고 싶은 경우만
     // 켜면 축도 그에 맞춰 다시 그려진다(PERCENTILE_SERIES 주석 참고).
     ...(bandByAge
