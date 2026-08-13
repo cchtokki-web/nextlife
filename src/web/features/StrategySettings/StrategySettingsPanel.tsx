@@ -340,6 +340,12 @@ export function StrategySettingsPanel({
   return (
     <div className="flex flex-col gap-5">
       <div className="flex flex-col gap-2.5">
+        <div>
+          <h2 className="text-base font-bold text-foreground">시나리오 설정</h2>
+          <p className="mt-1 text-xs leading-relaxed text-foreground-muted">
+            위에서 선택한 시나리오에만 적용됩니다.
+          </p>
+        </div>
         <StrategyModeSelector mode={mode} onChange={handleModeChange} />
 
         {(automaticallyAppliedCount > 0 || availableRecommendationCount > 0) && (

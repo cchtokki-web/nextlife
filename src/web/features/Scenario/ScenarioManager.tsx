@@ -113,7 +113,7 @@ const ScenarioItem: React.FC<ScenarioItemProps> = ({
 };
 
 export const ScenarioManager: React.FC<{ scenarioState: ScenarioState }> = ({ scenarioState }) => {
-  const [isExpanded, setIsExpanded] = useState(true);
+  const [isExpanded, setIsExpanded] = useState(false);
   const [importTargetId, setImportTargetId] = useState<string | null>(null);
 
   const handleImportClick = (id: string, e: React.MouseEvent) => {
@@ -172,24 +172,59 @@ export const ScenarioManager: React.FC<{ scenarioState: ScenarioState }> = ({ sc
     toggleCompareScenario, handleDuplicateScenario, handleDeleteScenario, handleRenameScenario
   } = scenarioState;
 
+  const activeScenario = scenarios.find((scenario) => scenario.id === activeScenarioId);
+
   return (
-    <div className={styles.container}>
-      <div 
-        className={styles.header}
-        onClick={() => setIsExpanded(!isExpanded)}
-        style={{ cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: isExpanded ? '1rem' : '0' }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <FolderGit2 size={18} className={styles.icon} />
-          <span className={styles.title}>시나리오 관리</span>
+    <section className={styles.container} aria-labelledby="scenario-context-title">
+      <div className={styles.contextHeading}>
+        <div className={styles.contextTitleRow}>
+          <FolderGit2 size={18} className={styles.icon} aria-hidden="true" />
+          <div>
+            <h2 id="scenario-context-title" className={styles.contextTitle}>시나리오</h2>
+            <p className={styles.contextDescription}>선택한 시나리오의 설정과 자산이 아래에 표시됩니다.</p>
+          </div>
         </div>
-        {isExpanded ? <ChevronUp size={18} className={styles.icon} /> : <ChevronDown size={18} className={styles.icon} />}
+      </div>
+
+      <div className={styles.contextControls}>
+        <label className={styles.selectLabel} htmlFor="active-scenario-select">현재 시나리오</label>
+        <div className={styles.selectRow}>
+          <div className={styles.selectWrap}>
+            <select
+              id="active-scenario-select"
+              className={styles.scenarioSelect}
+              value={activeScenarioId ?? ''}
+              onChange={(event) => setActiveScenarioId(event.target.value)}
+            >
+              {scenarios.map((scenario) => (
+                <option key={scenario.id} value={scenario.id}>{scenario.name}</option>
+              ))}
+            </select>
+            <ChevronDown size={16} className={styles.selectChevron} aria-hidden="true" />
+          </div>
+          <button
+            type="button"
+            className={styles.manageButton}
+            aria-expanded={isExpanded}
+            aria-controls="scenario-management-list"
+            onClick={() => setIsExpanded((expanded) => !expanded)}
+          >
+            관리
+            {isExpanded
+              ? <ChevronUp size={16} aria-hidden="true" />
+              : <ChevronDown size={16} aria-hidden="true" />}
+          </button>
+        </div>
+        {activeScenario?.isDefault && <span className={styles.activeHint}>기본 시나리오</span>}
       </div>
 
       {isExpanded && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.5rem' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem' }}>
-            <label className={compStyles.label} style={{ margin: 0 }}>내 시나리오 목록</label>
+        <div id="scenario-management-list" className={styles.managementPanel}>
+          <div className={styles.managementHeader}>
+            <div>
+              <span className={compStyles.label}>시나리오 관리</span>
+              <p className={styles.managementDescription}>비교하거나 복제하고, 이름과 파일을 관리할 수 있습니다.</p>
+            </div>
             <input 
               type="file" id="scenario-file-input" accept=".json" 
               style={{ display: 'none' }} onChange={handleFileChange} 
@@ -215,7 +250,7 @@ export const ScenarioManager: React.FC<{ scenarioState: ScenarioState }> = ({ sc
           </div>
         </div>
       )}
-    </div>
+    </section>
   );
 };
 export default ScenarioManager;
