@@ -1106,25 +1106,24 @@ export default function Home() {
               </button>
             </div>
             
-            {/* 내 은퇴 전략 = 6개 섹션 (기본 정보 / 은퇴 목표 / 연금 / 투자 / 경제 가정 / 고급 설정) */}
-            <GlassCard>
-              {/* 추천은 여기서 한 번만 계산해 내려보낸다. 패널이 자체적으로 계산하면
-                  이 앱에서 가장 무거운 계산(최대 218개 후보 시뮬레이션)이 두 배가 된다. */}
-              <StrategySettingsPanel
-                params={activeParams}
-                onChangeParams={handleUpdateActiveParams}
-                recommendation={recommendation}
-                recommendationFailed={recommendationFailed}
-                sentinels={sentinels}
-              />
-            </GlassCard>
-
-            {/* Scenario Manager Section */}
+            {/* 시나리오가 상위 컨텍스트이고, 아래 설정은 선택한 시나리오에 종속된다. */}
             <GlassCard>
               <ScenarioManager scenarioState={scenarioState} />
+
+              {/* 추천은 여기서 한 번만 계산해 내려보낸다. 패널이 자체적으로 계산하면
+                  이 앱에서 가장 무거운 계산(최대 218개 후보 시뮬레이션)이 두 배가 된다. */}
+              <div style={{ paddingTop: '1.25rem' }}>
+                <StrategySettingsPanel
+                  params={activeParams}
+                  onChangeParams={handleUpdateActiveParams}
+                  recommendation={recommendation}
+                  recommendationFailed={recommendationFailed}
+                  sentinels={sentinels}
+                />
+              </div>
             </GlassCard>
 
-            {/* 내 자산 — 보유 자산·연금·ISA·기타 소득 입력 (기본 닫힘) */}
+            {/* 내 자산도 현재 시나리오에 종속되지만 입력량이 많아 별도 접이식 영역으로 둔다. */}
             <Collapse title={<span className="text-base font-semibold">내 자산</span>}>
               <div className="flex flex-col gap-6 pt-2">
                 <GlassCard>
