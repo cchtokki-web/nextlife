@@ -15,13 +15,13 @@ describe('evaluation boundary', () => {
     const simulationEngine = new LegacySimulationEngine();
     const result = simulationEngine.run(compiled.params, compiled.utilityConfig);
     const resultBefore = structuredClone(result);
-    const { profile, strategy } = LegacySimulationAdapter.fromLegacy(
+    const { profile, goals, strategy } = LegacySimulationAdapter.fromLegacy(
       compiled.params,
       compiled.utilityConfig
     );
 
     const evaluation = new LegacyEvaluationEngine(simulationEngine)
-      .evaluate(profile, strategy, result);
+      .evaluate(profile, goals, strategy, result);
 
     expect(evaluation.riskAlerts).toEqual(computeRiskAlerts(result, compiled.params));
     expect(evaluation.shortfall).toEqual(computeShortfallSummary(compiled.params, result));

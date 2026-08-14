@@ -1,16 +1,133 @@
 import type {
+  InvestmentAsset,
+  IsaAccount,
+  NationalPension,
+  OtherIncome,
+  PrivatePension,
   SimulationParams,
+  SpendingCurve,
+  SpendingStrategy,
   UtilityConfig,
+  WithdrawalPlan,
 } from '../../entities/types';
 
-/**
- * The persisted simulator input before the goal-based domain was introduced.
- * Keep this alias while saved scenarios and API contracts still use SimulationParams.
- */
+/** Persisted simulator input kept for saved scenarios and existing API callers. */
 export type LegacySimulationConfig = SimulationParams;
 
-/** Current personal, family, income, and asset state used by every strategy. */
-export type RetirementProfile = Pick<
+export interface PersonalProfile {
+  currentAge: number;
+}
+
+/** SimulationParams has no household member fields yet. Do not invent spouse data here. */
+export interface HouseholdProfile {
+  spouse?: PersonalProfile;
+}
+
+export interface IncomeProfile {
+  otherIncomes: OtherIncome[];
+}
+
+export type PrivatePensionAccount = Omit<
+  PrivatePension,
+  'monthlyContribution' | 'annualReturn' | 'dividendYield' | 'earlyChannelingEnabled'
+>;
+
+export type PensionProfile =
+  | { kind: 'national'; account: NationalPension }
+  | { kind: 'private'; account: PrivatePensionAccount };
+
+export type AssetAccount =
+  | {
+      kind: 'investment';
+      account: Omit<
+        InvestmentAsset,
+        | 'monthlyContribution'
+        | 'contributionPeriod'
+        | 'contributionAmount'
+        | 'annualGrowthRate'
+        | 'dividendYield'
+        | 'reinvestDividend'
+      >;
+    }
+  | {
+      kind: 'isa';
+      account: Omit<IsaAccount, 'monthlyContribution' | 'annualReturn' | 'dividendYield'>;
+    };
+
+/** Existing recurring deposits are FACTs about the user's current plan. */
+export interface ContributionPlan {
+  accountKind: 'investment' | 'private_pension' | 'isa';
+  accountId: string;
+  monthlyAmount: number;
+  period?: InvestmentAsset['contributionPeriod'];
+  periodicAmount?: number;
+}
+
+/** Current facts only. Desired outcomes and execution choices live outside this object. */
+export interface RetirementProfile {
+  personal: PersonalProfile;
+  household: HouseholdProfile;
+  income: IncomeProfile;
+  pensions: PensionProfile[];
+  assets: AssetAccount[];
+  contributions: ContributionPlan[];
+  /** Preserves the distinction between an omitted legacy ISA list and an explicitly empty one. */
+  hasIsaAccounts: boolean;
+}
+
+export type RetirementGoal =
+  | { type: 'retirement_age'; targetAge: number }
+  | { type: 'monthly_spending'; monthlyAmount: number }
+  | { type: 'plan_horizon'; targetAge: number }
+  | { type: 'bequest'; targetAmount: number };
+
+/** Goal list is intentionally not capped here; the maximum-five selection belongs to a later UI phase. */
+export interface RetirementGoals {
+  goals: RetirementGoal[];
+}
+
+export interface WithdrawalPolicy extends Omit<WithdrawalPlan, 'nationalPensionStartAge'> {
+  assetFloor?: number;
+}
+
+export interface SpendingPolicy {
+  mode?: SpendingStrategy;
+  curve?: SpendingCurve;
+}
+
+export type AccountProjection =
+  | {
+      accountKind: 'investment';
+      accountId: string;
+      annualReturn: number;
+      dividendYield: number;
+      reinvestDividend: boolean;
+    }
+  | {
+      accountKind: 'private_pension';
+      accountId: string;
+      annualReturn: number;
+      dividendYield?: number;
+    }
+  | {
+      accountKind: 'isa';
+      accountId: string;
+      annualReturn: number;
+      dividendYield: number;
+    };
+
+export interface AssetAllocationPolicy {
+  accountProjections: AccountProjection[];
+}
+
+export interface ContributionPolicy {
+  privatePensionEarlyChanneling: Array<{
+    accountId: string;
+    enabled: boolean;
+  }>;
+}
+
+type LegacyStrategySettings = Omit<
   SimulationParams,
   | 'userProfile'
   | 'assets'
@@ -18,20 +135,68 @@ export type RetirementProfile = Pick<
   | 'privatePensions'
   | 'isaAccounts'
   | 'otherIncomes'
+  | 'spendingStrategy'
+  | 'spendingCurve'
+  | 'assetFloor'
+  | 'withdrawalPlan'
 >;
 
 /**
- * A simulation strategy and its assumptions, separated from the user's current state.
+ * System-controlled execution choices and calculation assumptions.
  *
- * This phase deliberately carries every legacy option without interpreting or changing it.
- * Later goal-based strategy generation can replace this shape behind the SimulationEngine
- * interface without changing the UI or the legacy persistence contract.
+ * `legacySettings` is the compatibility payload used by the legacy engine. The named policy
+ * projections make the new boundary explicit without changing any existing formula or default.
  */
-export type RetirementStrategy = Omit<SimulationParams, keyof RetirementProfile> & {
+export interface RetirementStrategy {
+  retirementAge: number;
+  nationalPensionStartAge?: number;
+  privatePensionStartAge?: number;
+  withdrawalPolicy: WithdrawalPolicy;
+  spendingPolicy: SpendingPolicy;
+  assetAllocation?: AssetAllocationPolicy;
+  cashBufferMonths?: number;
+  contributionPolicy?: ContributionPolicy;
+  legacySettings: LegacyStrategySettings;
+  legacyPresence: {
+    withdrawalPlan: boolean;
+    spendingStrategy: boolean;
+    spendingCurve: boolean;
+    assetFloor: boolean;
+  };
   utilityConfig: UtilityConfig;
-};
+}
 
 export interface RetirementSimulationInput {
   profile: RetirementProfile;
+  goals: RetirementGoals;
   strategy: RetirementStrategy;
 }
+
+export type LegacyFieldCategory = 'FACT' | 'GOAL' | 'STRATEGY';
+
+/** Exhaustive top-level classification; mixed `userProfile` fields are split by the adapter. */
+export const LEGACY_SIMULATION_FIELD_CLASSIFICATION = {
+  userProfile: 'GOAL',
+  assets: 'FACT',
+  nationalPension: 'FACT',
+  privatePensions: 'FACT',
+  isaAccounts: 'FACT',
+  otherIncomes: 'FACT',
+  inflationRate: 'STRATEGY',
+  inflationMode: 'STRATEGY',
+  baseExchangeRate: 'STRATEGY',
+  exchangeScenario: 'STRATEGY',
+  displayCurrency: 'STRATEGY',
+  useLatestExchangeRate: 'STRATEGY',
+  yieldPreset: 'STRATEGY',
+  customYieldSnapshot: 'STRATEGY',
+  spendingStrategy: 'STRATEGY',
+  spendingCurve: 'STRATEGY',
+  assetFloor: 'STRATEGY',
+  cashYieldRate: 'STRATEGY',
+  taxSettings: 'STRATEGY',
+  withdrawalPlan: 'STRATEGY',
+  strategy: 'STRATEGY',
+  healthcare: 'STRATEGY',
+  taxLawVersion: 'STRATEGY',
+} as const satisfies Record<keyof SimulationParams, LegacyFieldCategory>;

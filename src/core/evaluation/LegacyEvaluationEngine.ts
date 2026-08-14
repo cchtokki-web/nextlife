@@ -1,5 +1,5 @@
 import type { SimulationResult } from '../entities/types';
-import type { LegacySimulationConfig, RetirementProfile, RetirementStrategy } from '../domain/input/retirement';
+import type { LegacySimulationConfig, RetirementGoals, RetirementProfile, RetirementStrategy } from '../domain/input/retirement';
 import { LegacySimulationAdapter } from '../domain/input/LegacySimulationAdapter';
 import type { EvaluationContext, EvaluationEngine, RetirementEvaluation } from './EvaluationEngine';
 import { LegacySimulationEngine } from '../simulation/LegacySimulationEngine';
@@ -22,11 +22,12 @@ export class LegacyEvaluationEngine implements EvaluationEngine {
 
   evaluate(
     profile: RetirementProfile,
+    goals: RetirementGoals,
     strategy: RetirementStrategy,
     result: SimulationResult,
     context: EvaluationContext = {}
   ): RetirementEvaluation {
-    const params = LegacySimulationAdapter.toLegacy(profile, strategy);
+    const params = LegacySimulationAdapter.toLegacy(profile, goals, strategy);
     const monteCarloRates = context.monteCarlo && {
       spendingSuccessRate: context.monteCarlo.spendingSuccessRate,
       assetSuccessRate: context.monteCarlo.successRate,
