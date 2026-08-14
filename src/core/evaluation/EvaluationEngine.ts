@@ -11,12 +11,18 @@ import type { ChartCaptions } from '../usecases/dashboard/generateChartCaptions'
 import type { LifetimeSpendingPlan } from '../usecases/dashboard/computeLifetimeSpendingPlan';
 import type { SustainableSpendingAdvice } from '../usecases/dashboard/computeSustainableSpendingAdvice';
 import type { UtilityComponentExplanations } from '../usecases/utility/explainUtilityComponents';
+import type {
+  SimulationMetrics,
+  SustainableSpendingEstimate,
+} from '../usecases/metrics/SimulationMetricsCalculator';
 
 export interface EvaluationContext {
   monteCarlo?: MonteCarloResult;
+  sustainableSpendingEstimate?: SustainableSpendingEstimate;
 }
 
 export interface RetirementEvaluation {
+  metrics: SimulationMetrics;
   chartCaptions: ChartCaptions;
   riskAlerts: RiskAlert[];
   shortfall: ShortfallReport;

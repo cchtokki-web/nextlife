@@ -12,6 +12,7 @@ const pensionOnlyRow: IncomeChartRow = {
   기타소득: 0,
   hasTaxWarning: false,
   targetMonthly: 3500000,
+  fixedIncomeCoverageRate: 22880000 / 12 / 3500000,
 };
 
 describe('IncomeCompositionTooltip', () => {
@@ -40,7 +41,13 @@ describe('IncomeCompositionTooltip', () => {
       <IncomeCompositionTooltip
         active
         label={55}
-        rows={[{ ...pensionOnlyRow, age: 55, 국민연금: 0, targetMonthly: undefined }]}
+        rows={[{
+          ...pensionOnlyRow,
+          age: 55,
+          국민연금: 0,
+          targetMonthly: undefined,
+          fixedIncomeCoverageRate: undefined,
+        }]}
         currency="KRW"
       />
     );

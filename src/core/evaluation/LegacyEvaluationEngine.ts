@@ -15,10 +15,14 @@ import { computeSustainableSpendingAdvice } from '../usecases/dashboard/computeS
 import { explainUtilityComponents } from '../usecases/utility/explainUtilityComponents';
 import { explainBequestAdequacy } from '../usecases/utility/utilityAnalysis';
 import { computeSensitivityAnalysis, type SensitivityAnalysis } from '../usecases/dashboard/computeSensitivityAnalysis';
+import { SimulationMetricsCalculator } from '../usecases/metrics/SimulationMetricsCalculator';
 
 /** Preserves the current result interpretation while removing its orchestration from React. */
 export class LegacyEvaluationEngine implements EvaluationEngine {
-  constructor(private readonly simulationEngine = new LegacySimulationEngine()) {}
+  constructor(
+    private readonly simulationEngine = new LegacySimulationEngine(),
+    private readonly metricsCalculator = new SimulationMetricsCalculator(),
+  ) {}
 
   evaluate(
     profile: RetirementProfile,
@@ -31,9 +35,16 @@ export class LegacyEvaluationEngine implements EvaluationEngine {
     const monteCarloRates = context.monteCarlo && {
       spendingSuccessRate: context.monteCarlo.spendingSuccessRate,
       assetSuccessRate: context.monteCarlo.successRate,
+      goalSuccessProbability: context.monteCarlo.goalSuccessProbability,
     };
 
     return {
+      metrics: this.metricsCalculator.calculate(
+        params,
+        result,
+        context.monteCarlo,
+        context.sustainableSpendingEstimate,
+      ),
       chartCaptions: generateChartCaptions(result, params),
       riskAlerts: computeRiskAlerts(result, params),
       shortfall: computeShortfallSummary(params, result),

@@ -7,6 +7,8 @@ import { mulberry32, deriveSeed } from './rng';
 import { buildReturnShockPath } from './returnPath';
 import { percentileOfSorted } from './statistics';
 import { simulationYearCount } from './horizon';
+import { computeMonthlySpendingComposition } from '../MonthlySpendingComposition';
+import { SHORTFALL_EPSILON_MONTHLY } from '../metrics/SimulationMetricsCalculator';
 
 // 한 시행에서 보관하는 것. 전 시행의 yearlyResults를 통째로 들면(1000 × 55년 × 30필드)
 // 수십 MB가 되므로 스칼라 두 개와 연도별 총자산만 남긴다. 최악 경로의 상세는 그 시행의
@@ -16,15 +18,25 @@ interface TrialSummary {
   endingAssets: number;
   depletionAge: number | null;
   hasUnmetSpending: boolean;
+  hasGoalSpendingShortfall: boolean;
   totalAssetsByYear: number[];
 }
 
-function summarize(index: number, result: SimulationResult): TrialSummary {
+function summarize(
+  index: number,
+  result: SimulationResult,
+  goalParams: SimulationParams,
+): TrialSummary {
   return {
     index,
     endingAssets: result.endingAssets,
     depletionAge: result.depletionAge,
     hasUnmetSpending: result.yearlyResults.some(hasSpendingShortfall),
+    hasGoalSpendingShortfall: computeMonthlySpendingComposition(
+      result.yearlyResults,
+      goalParams,
+      result,
+    ).some((row) => row.goalShortfall >= SHORTFALL_EPSILON_MONTHLY),
     totalAssetsByYear: result.yearlyResults.map((y) => y.totalAssets),
   };
 }
@@ -98,7 +110,11 @@ export function runMonteCarlo(
   for (let i = 0; i < config.trials; i++) {
     // runSingle만 부른다. run()이면 시행당 31회가 되어 1000시행이 31,000회가 된다
     // (RecommendationEngine이 runForUtility를 도입한 것과 같은 판단).
-    trials.push(summarize(i, runFrozenPlan(engine, planned, pathForTrial(years, config, i))));
+    trials.push(summarize(
+      i,
+      runFrozenPlan(engine, planned, pathForTrial(years, config, i)),
+      params,
+    ));
   }
 
   const endingSorted = trials.map((t) => t.endingAssets).sort((a, b) => a - b);
@@ -109,6 +125,15 @@ export function runMonteCarlo(
   // 생활 유지 성공 = 계획한 생활비를 한 해도 줄이지 않음. **고갈 여부를 묻지 않는다** —
   // 이유는 MonteCarloResult.spendingSuccessRate 주석에 있다.
   const spendingSucceeded = trials.filter((t) => !t.hasUnmetSpending);
+  const terminalAssetGoal = Math.max(
+    0,
+    params.userProfile.targetBequest ?? params.assetFloor ?? 0,
+  );
+  const goalSucceeded = trials.filter((t) => (
+    !t.hasGoalSpendingShortfall
+    && isSuccessfulTrial(t.depletionAge, successAge)
+    && t.endingAssets >= terminalAssetGoal
+  ));
 
   const depletedAges = trials
     .map((t) => t.depletionAge)
@@ -139,6 +164,7 @@ export function runMonteCarlo(
     successAge,
     successRate: trials.length > 0 ? succeeded.length / trials.length : 0,
     spendingSuccessRate: trials.length > 0 ? spendingSucceeded.length / trials.length : 0,
+    goalSuccessProbability: trials.length > 0 ? goalSucceeded.length / trials.length : 0,
     plannedMonthlySpending: planned.monthlyTargetSpending,
     endingAssets: {
       p10: percentileOfSorted(endingSorted, 0.1),

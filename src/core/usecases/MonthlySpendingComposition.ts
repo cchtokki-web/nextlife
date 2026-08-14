@@ -3,6 +3,7 @@ import { spendingMultiplierForAge } from './spending/spendingCurve';
 
 export interface MonthlySpendingComposition {
   age: number;
+  year: number;
   // 그해에 필요한 월 생활비(물가·의료비까지 반영한 최종값). 아래 재원들의
   // 합계가 이 값에 못 미친 몫이 shortfall이다.
   //
@@ -17,6 +18,9 @@ export interface MonthlySpendingComposition {
   // 리포트에 "목표 월 350만원"과 "부족 생활비 월 0원"이 나란히 찍혔다 — 실제로는 목표보다
   // 월 118만원을 덜 쓰는 계획인데도. 두 기준을 모두 들고 있어야 그 차이를 말할 수 있다.
   goalMonthly: number;
+  actualMonthly: number;
+  spendingAchievementRate: number;
+  fixedIncomeCoverageRate: number;
   nationalUsed: number;
   privatePenUsed: number;
   dividendUsed: number;
@@ -100,8 +104,14 @@ export function computeMonthlySpendingComposition(
 
     return {
       age,
+      year: r.year,
       targetMonthly: Math.round(targetMonthly),
       goalMonthly: Math.round(goalMonthly),
+      actualMonthly: actualSpendingMonthly,
+      spendingAchievementRate: goalMonthly > 0 ? actualSpendingMonthly / goalMonthly : 0,
+      fixedIncomeCoverageRate: targetMonthly > 0
+        ? (national + privatePen + dividend + other) / targetMonthly
+        : 0,
       nationalUsed, privatePenUsed, dividendUsed, otherUsed, assetWithdrawal, shortfall, goalShortfall,
     };
   });

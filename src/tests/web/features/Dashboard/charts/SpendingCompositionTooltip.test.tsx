@@ -14,6 +14,7 @@ const pensionOnlyRow: SpendingChartRow = {
   기타소득: 0,
   자산인출: 0,
   자산부족: 1590000,
+  목표달성률: 1910000 / 3500000,
 };
 
 describe('SpendingCompositionTooltip', () => {

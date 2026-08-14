@@ -58,8 +58,8 @@ export function renderShortfallSummarySection(
       <p style="margin: 0 0 6px; font-size: 12px; font-weight: 700; color: #334155;">목표 생활비 기준</p>
       <div style="display: flex; gap: 14px;">
         ${cell('목표 생활비', `월 ${formatValue(goalMonthlySpending)}`, false)}
-        ${cell('실제 지속가능 생활비', `월 ${formatValue(sustainableMonthlySpending)}`, false)}
-        ${cell('목표 대비 부족', `월 평균 ${formatValue(goal.averageMonthlyShortfall)}`)}
+        ${cell('지속가능 생활비', `월 ${formatValue(sustainableMonthlySpending)}`, false)}
+        ${cell('목표 대비 평균 부족액', `월 ${formatValue(goal.averageMonthlyShortfall)}`)}
       </div>
       <p style="margin: 6px 0 0; font-size: 10.5px; color: #64748b;">
         ${goal.firstShortfallAge}세 ~ ${goal.lastShortfallAge}세 ${goal.shortfallYears}년간 · 목표를 그대로 채우려면 약 ${formatValue(goal.totalShortfallInTodayValue)}이 더 필요합니다.
@@ -71,7 +71,7 @@ export function renderShortfallSummarySection(
     ? `
       <p style="margin: ${goal ? '12px' : '0'} 0 6px; font-size: 12px; font-weight: 700; color: #dc2626;">계획한 생활비조차 채우지 못하는 구간</p>
       <div style="display: flex; gap: 14px;">
-        ${cell('부족 생활비', `월 평균 ${formatValue(plan.averageMonthlyShortfall)}`)}
+        ${cell('계획 기준 평균 부족액', `월 ${formatValue(plan.averageMonthlyShortfall)}`)}
         ${cell('부족 기간', `${plan.shortfallYears}년 (${plan.firstShortfallAge}세 ~ ${plan.lastShortfallAge}세)`)}
         ${cell('추가로 필요한 자산', `약 ${formatValue(plan.totalShortfallInTodayValue)}`)}
       </div>
@@ -174,8 +174,8 @@ export function renderPlanVerdictSection(input: {
         // 두 확률을 함께 싣는다. 하나만 실으면 종신연금이 두꺼운 계획(생활은 유지되나 자산은
         // 사라지는 계획)과 그 반대 계획이 같은 숫자로 요약된다.
         `<p style="margin: 0; font-size: 14px; font-weight: 700; color: ${verdictAccent(confidence)};">
-           생활 유지 성공률 ${Math.round((confidence.rates?.spendingSuccessRate ?? 0) * 100)}%
-           <span style="font-size: 12px; font-weight: 500; color: #475569;">· ${expectancy}세까지 자산 보존 ${Math.round((confidence.rates?.assetSuccessRate ?? 0) * 100)}%</span>
+           목표 동시 달성 확률 ${Math.round((confidence.rates?.goalSuccessProbability ?? confidence.rates?.spendingSuccessRate ?? 0) * 100)}%
+           <span style="font-size: 12px; font-weight: 500; color: #475569;">· 생활 유지 ${Math.round((confidence.rates?.spendingSuccessRate ?? 0) * 100)}% · ${expectancy}세까지 자산 보존 ${Math.round((confidence.rates?.assetSuccessRate ?? 0) * 100)}%</span>
          </p>
          <p style="margin: 3px 0 0; font-size: 11.5px; color: #475569;">
            계획 생활비 월 ${formatValue(monteCarlo.plannedMonthlySpending)} 기준 · 중앙값 ${expectancy}세 자산 ${formatValue(monteCarlo.endingAssets.p50)} · 하위 10% ${formatValue(monteCarlo.endingAssets.p10)}

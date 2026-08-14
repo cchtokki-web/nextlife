@@ -1,5 +1,5 @@
 import { describe, test, expect, vi } from 'vitest';
-import { runMonteCarlo } from '@/core/usecases/montecarlo/MonteCarloEngine';
+import { isSuccessfulTrial, runMonteCarlo } from '@/core/usecases/montecarlo/MonteCarloEngine';
 import { resolveMonteCarloConfig, VOLATILITY_BY_YIELD_PRESET } from '@/core/usecases/montecarlo/volatilityPresets';
 import { SimulationEngine } from '@/core/usecases/SimulationEngine';
 import { SimulationParams } from '@/core/entities/types';
@@ -188,6 +188,27 @@ describe('runMonteCarlo', () => {
 
     expect(mc.spendingSuccessRate).toBeGreaterThanOrEqual(0);
     expect(mc.spendingSuccessRate).toBeLessThanOrEqual(1);
+    expect(mc.goalSuccessProbability).toBeLessThanOrEqual(mc.spendingSuccessRate);
+    expect(mc.goalSuccessProbability).toBeLessThanOrEqual(mc.successRate);
+  });
+
+  test('목표 성공확률은 명시된 기말자산 목표까지 같은 시행에서 만족해야 한다', () => {
+    const impossibleBequest = params({
+      userProfile: {
+        ...params().userProfile,
+        targetBequest: 10_000_000_000_000,
+      },
+    });
+
+    const mc = runMonteCarlo(
+      impossibleBequest,
+      engine,
+      config({ annualStdDev: 0, trials: 10 }),
+    );
+
+    expect(mc.spendingSuccessRate).toBe(1);
+    expect(mc.successRate).toBe(1);
+    expect(mc.goalSuccessProbability).toBe(0);
   });
 
   // **이 테스트가 지표 재정의의 존재 이유다 — 정의 자체를 잠근다.**
@@ -215,14 +236,20 @@ describe('runMonteCarlo', () => {
     const planned = freezeSpendingPlan(target, engine);
     const years = simulationYearCount(planned.params);
     let noShortfall = 0;
+    let allCoreGoals = 0;
     for (let i = 0; i < cfg.trials; i++) {
       const path = buildReturnShockPath(years, cfg.annualStdDev, mulberry32(deriveSeed(cfg.seed, i)));
       const trial = runFrozenPlan(engine, planned, path);
       // **여기에 depletionAge 조건을 걸지 않는다** — 그것이 이 지표의 정의다.
       if (!trial.yearlyResults.some((y) => y.unmetSpending > 0)) noShortfall++;
+      if (
+        !trial.yearlyResults.some((y) => y.unmetSpending > 0)
+        && isSuccessfulTrial(trial.depletionAge, planned.params.userProfile.expectancy)
+      ) allCoreGoals++;
     }
 
     expect(mc.spendingSuccessRate).toBe(noShortfall / cfg.trials);
+    expect(mc.goalSuccessProbability).toBe(allCoreGoals / cfg.trials);
   });
 
   // 판정 기준이 되는 월 생활비를 함께 실어야 화면이 "계획 생활비 월 223만원 기준"이라고

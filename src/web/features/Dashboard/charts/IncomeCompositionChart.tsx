@@ -55,6 +55,7 @@ export interface IncomeChartRow {
   // 그해 목표 월 생활비(은퇴 후에만 존재). 소득이 목표의 몇 %인지 말하기 위한 것이고,
   // 물가·의료비 규칙은 computeMonthlySpendingComposition이 이미 반영해 둔다.
   targetMonthly?: number;
+  fixedIncomeCoverageRate?: number;
 }
 
 // recharts 기본 툴팁은 시리즈를 그대로 나열할 뿐이라, 0원인 소득원까지 함께 찍혀
@@ -73,9 +74,9 @@ export function IncomeCompositionTooltip({
   if (!row) return null;
 
   const total = INCOME_KEYS.reduce((sum, key) => sum + row[key], 0);
-  const coverageRate = row.targetMonthly !== undefined && row.targetMonthly > 0
-    ? Math.round((total / 12 / row.targetMonthly) * 100)
-    : null;
+  const coverageRate = row.fixedIncomeCoverageRate === undefined
+    ? null
+    : Math.round(row.fixedIncomeCoverageRate * 100);
 
   return (
     <div style={{ ...RECHARTS_TOOLTIP_STYLE, padding: '10px 12px' }}>
@@ -104,7 +105,8 @@ export function IncomeCompositionChart({
   // 목표 생활비는 은퇴 후 구간에만 정의된다. 나이로 색인해 두고 툴팁에서 찾아 쓴다 —
   // 화면이 물가·의료비 규칙을 복제하지 않게 하기 위해 이 usecase를 재사용한다.
   const targetByAge = new Map(
-    computeMonthlySpendingComposition(result.yearlyResults, params, result).map((d) => [d.age, d.targetMonthly])
+    computeMonthlySpendingComposition(result.yearlyResults, params, result)
+      .map((d) => [d.age, d] as const)
   );
   const pensionChartData: IncomeChartRow[] = result.yearlyResults.map((r) => ({
     age: r.age,
@@ -113,7 +115,8 @@ export function IncomeCompositionChart({
     배당소득: Math.round(r.dividendIncome),
     기타소득: Math.round(r.otherIncome),
     hasTaxWarning: r.hasTaxWarning,
-    targetMonthly: targetByAge.get(r.age),
+    targetMonthly: targetByAge.get(r.age)?.targetMonthly,
+    fixedIncomeCoverageRate: targetByAge.get(r.age)?.fixedIncomeCoverageRate,
   }));
 
   return (

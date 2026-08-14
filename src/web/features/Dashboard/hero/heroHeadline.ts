@@ -55,6 +55,9 @@ export function buildHeroHeadline({ expectancy, outcome, confidence }: HeroHeadl
   }
 
   const { band, rates } = confidence;
+  const goalPercent = Math.round(
+    (rates.goalSuccessProbability ?? rates.spendingSuccessRate) * 100,
+  );
   const spendingPercent = Math.round(rates.spendingSuccessRate * 100);
   const assetPercent = Math.round(rates.assetSuccessRate * 100);
 
@@ -62,7 +65,8 @@ export function buildHeroHeadline({ expectancy, outcome, confidence }: HeroHeadl
     emoji: TIER_EMOJI[PLAN_CONFIDENCE_BAND_TIER[band]],
     text:
       `${events} ${BAND_VERDICT[band]} ` +
-      `시장 변동을 반영하면 계획한 생활비를 한 해도 줄이지 않을 확률은 ${spendingPercent}%, ` +
+      `시장 변동을 반영한 전체 목표 동시 달성 확률은 ${goalPercent}%, ` +
+      `계획한 생활비를 한 해도 줄이지 않을 확률은 ${spendingPercent}%, ` +
       `${expectancy}세까지 자산이 남을 확률은 ${assetPercent}%입니다(${PLAN_CONFIDENCE_BAND_LABEL[band]}).` +
       buildDivergenceClause(rates.spendingSuccessRate, rates.assetSuccessRate),
   };

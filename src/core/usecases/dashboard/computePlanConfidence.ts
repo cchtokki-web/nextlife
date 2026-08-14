@@ -77,18 +77,14 @@ export function getPlanConfidenceBand(successRate: number): PlanConfidenceBandKe
 
 // 성공률이 점수를 깎는 폭. 성공률 100%면 결정론 점수 그대로, 0%면 절반이 된다.
 //
-// 0으로 깎지 않는 이유: MC 실패는 "계획한 생활비를 한 해라도 채우지 못한다"는 뜻이지 계획에
-// 아무 가치가 없다는 뜻이 아니다. 자산 충분성·연금 커버율·인플레 방어력은 여전히 그 계획이
-// 가진 것이고, 그 넷이 결정론 점수의 75점을 이룬다. 절반이 방어 가능한 최대 할인이다.
-//
-// **자산 보존 성공률을 여기에 곱하지 않는 이유**: calculateRetirementScore가 이미
-// depletionAge를 입력으로 받아 자산 고갈 위험을 결정론 점수 안에 반영한다(longevityScore).
-// 자산 축을 혼합에 또 넣으면 같은 사실로 두 번 깎는다. 생활 유지 축은 결정론 점수 어디에도
-// 없는 정보라, 곱해야 할 것은 이쪽이다.
+// 0으로 깎지 않는 이유: 확률 목표 실패가 계획에 가치가 전혀 없다는 뜻은 아니다. 연금 활용·
+// 세금 효율 등 결정론 점수가 측정하는 다른 축은 남으므로 절반을 최대 할인으로 둔다.
 const MIN_CONFIDENCE_FACTOR = 0.5;
 
-// 두 성공률. 화면·PDF·AI 조언이 전부 이 쌍을 함께 들고 다녀야 한다 — 이유는 아래 주석.
+// 전체 목표 확률과 그 구성축. 화면·PDF가 함께 들고 다녀야 낮은 원인을 구분할 수 있다.
 export interface PlanSuccessRates {
+  // 정량 판정 가능한 사용자 목표를 같은 시행에서 모두 만족한 비율. 레거시 MC 결과에는 없다.
+  goalSuccessProbability?: number;
   // 생활비 부족이 한 해도 없던 시행 비율(MonteCarloResult.spendingSuccessRate).
   spendingSuccessRate: number;
   // 기대수명까지 자산이 고갈되지 않은 시행 비율(MonteCarloResult.successRate).
@@ -102,31 +98,17 @@ export interface PlanConfidence {
   deterministicScore: number;
   // MC가 없으면 undefined — 그때는 밴드 판정 자체가 성립하지 않는다.
   band?: PlanConfidenceBandKey;
-  // 판정에 쓴 확률(= spendingSuccessRate)과 함께 보여야 할 보조 확률.
+  // 판정에 쓴 전체 목표 확률(없으면 spendingSuccessRate 폴백)과 구성축.
   rates?: PlanSuccessRates;
   // 'deterministic'이면 화면은 "시장 변동성 미반영"을 밝혀야 한다. MC 워커를 못 쓰는
   // 환경이나 추천안 토글 중(추천안의 MC는 계산하지 않는다)이 그 상태다.
   basis: 'deterministic' | 'probabilistic';
 }
 
-// **밴드는 생활 유지 성공률로 정한다.**
-//
-// 사용자가 은퇴 계획에서 실제로 두려워하는 것은 "죽을 때 잔액이 0원인가"가 아니라 "살아
-// 있는 동안 쓸 돈이 모자라는가"다. 국민연금 같은 종신소득이 있으면 투자자산이 바닥나도
-// 생활은 유지될 수 있고, 그 경로를 실패로 부르면 계획을 잘못 판정하게 된다.
-//
-// **54인 페르소나 실측(`npm run harness:personas`)에서 이 전환이 바꾸는 것.** 밴드 분포는
-// 거의 그대로이고(54명 중 1명만 이동), 실질적으로 달라지는 것은 상속 목표가 인출을 막는
-// 계획이다. 「60대 중 상속 우선」은 자산 보존 100% / 생활 유지 32.8%로, 옛 기준에서는
-// '매우 안정'이었지만 실제로는 세 번 중 두 번 계획한 생활비를 못 쓴다. 새 기준에서 그 계획은
-// '위험'이 된다.
-//
-// ⚠️ 이 선택이 만드는 반대편 왜곡: 생활비를 아주 낮게 잡아 국민연금만으로 덮이는 계획은
-// 자산이 전부 사라져도 생활 유지 성공률이 100%가 되어 '매우 안정'을 받는다(실측 54명에서는
-// 그런 페르소나가 없었지만 구조적으로 가능하다). 그래서
-//   (1) 화면은 두 확률을 **항상 함께** 보여주고(CoreKpiGrid·MonteCarloSection),
-//   (2) 투자자산 소진 시점이 있으면 헤드라인이 반드시 그 사실을 말한다(heroHeadline).
-// 이 두 장치가 빠지면 밴드 전환이 예전 왜곡을 다른 방향으로 되살린다.
+// **전체 목표 성공확률이 있으면 밴드는 그 값으로 정하고, 레거시 결과만 생활 유지 성공률로
+// 폴백한다.**
+// 전체 목표 확률은 주변확률의 최솟값이 아니라 같은 Monte Carlo 시행에서 목표를 모두 만족한
+// 교집합이다. 기존 캐시·테스트 픽스처처럼 이 필드가 없는 결과만 생활 유지 확률로 폴백한다.
 export function computePlanConfidence(
   retirementScore: number,
   rates?: PlanSuccessRates
@@ -137,11 +119,19 @@ export function computePlanConfidence(
 
   const clampedSpending = Math.min(1, Math.max(0, rates.spendingSuccessRate));
   const clampedAsset = Math.min(1, Math.max(0, rates.assetSuccessRate));
+  const clampedGoal = rates.goalSuccessProbability === undefined
+    ? undefined
+    : Math.min(1, Math.max(0, rates.goalSuccessProbability));
+  const primarySuccessRate = clampedGoal ?? clampedSpending;
   return {
-    score: Math.round(retirementScore * (MIN_CONFIDENCE_FACTOR + (1 - MIN_CONFIDENCE_FACTOR) * clampedSpending)),
+    score: Math.round(retirementScore * (MIN_CONFIDENCE_FACTOR + (1 - MIN_CONFIDENCE_FACTOR) * primarySuccessRate)),
     deterministicScore: retirementScore,
-    band: getPlanConfidenceBand(clampedSpending),
-    rates: { spendingSuccessRate: clampedSpending, assetSuccessRate: clampedAsset },
+    band: getPlanConfidenceBand(primarySuccessRate),
+    rates: {
+      spendingSuccessRate: clampedSpending,
+      assetSuccessRate: clampedAsset,
+      ...(clampedGoal === undefined ? {} : { goalSuccessProbability: clampedGoal }),
+    },
     basis: 'probabilistic',
   };
 }

@@ -174,12 +174,13 @@ describe('DashboardSection - IA 순서', () => {
   // KPI 4장은 사용자가 실제로 묻는 네 가지다: 이 계획이 될 확률은 / 실제로 얼마를 쓸 수
   // 있나 / 원한 금액과 얼마나 차이 나나 / 가장 위험한 구간은 언제인가.
   // 기말 순자산과 평생 효용은 카드에서 내려 보조 행으로 강등했다(CoreKpiGrid 주석 참고).
-  test('핵심 KPI 4장(성공률/지속가능 생활비/목표 생활비/연금 공백)이 모두 노출된다', () => {
+  test('핵심 KPI 4장(목표 성공확률/실제 소비/목표 생활비/부족 발생)이 모두 노출된다', () => {
     render(<DashboardSection params={params} result={result} recommendation={recommendation} />);
-    expect(screen.getByText(/은퇴 성공률/)).toBeInTheDocument();
-    expect(screen.getByText(/지속가능 생활비/)).toBeInTheDocument();
+    expect(screen.getByText('정량 목표 성공 확률')).toBeInTheDocument();
+    expect(screen.getByText('현재 전략 평균 실제 소비')).toBeInTheDocument();
     expect(screen.getByText('목표 생활비')).toBeInTheDocument();
-    expect(screen.getByText('연금 공백')).toBeInTheDocument();
+    expect(screen.getByText('생활비 부족 발생')).toBeInTheDocument();
+    expect(screen.getByText(/기준 수익률상 지속가능 생활비/)).toBeInTheDocument();
     // 강등된 두 지표도 화면에서 사라지지는 않는다(평생 효용은 상세 분석에도 나오므로 복수).
     expect(screen.getByText(/예상 순자산/)).toBeInTheDocument();
     expect(screen.getAllByText(/평생 효용/).length).toBeGreaterThan(0);
@@ -203,7 +204,7 @@ describe('DashboardSection - IA 순서', () => {
     expect(screen.queryByText('5억원')).not.toBeInTheDocument();
   });
 
-  test('추천안에 생활비 배수(monthlySpendingMultiplier)가 포함되면 After 모드에서 예상 월 생활비 KPI가 그만큼 늘어난다', () => {
+  test('After 모드에서는 추천 결과의 평균 실제 소비 metric을 표시한다', () => {
     const recommendedPlan: CompleteWithdrawalPlan = {
       privatePensionMonthlyTarget: 0,
       nationalPensionStartAge: 65,
@@ -212,18 +213,19 @@ describe('DashboardSection - IA 순서', () => {
       generalAssetWithdrawalStartAge: 60,
       monthlySpendingMultiplier: 1.2,
     };
-    const rec: StrategyRecommendation = { ...recommendation, recommendedPlan };
+    const recommendedResult: SimulationResult = {
+      ...result,
+      yearlyResults: result.yearlyResults.map((row) => ({ ...row, spending: 43_200_000 })),
+    };
+    const rec: StrategyRecommendation = { ...recommendation, recommendedPlan, recommendedResult };
 
     render(<DashboardSection params={params} result={result} recommendation={rec} />);
 
-    // 「지속가능 생활비」와 「목표 생활비」 카드가 나란히 있고 baseline에서는 둘 다 300만원이다.
-    // 배수는 지속가능 쪽에만 걸리므로 카드로 좁혀서 본다 — 좁히지 않으면 목표 카드의 300만원이
-    // 남아 있다는 이유로 이 테스트가 배수 미적용도 통과시킨다.
-    expect(kpiValue('지속가능 생활비')).toBe('월 300만원');
+    expect(kpiValue('현재 전략 평균 실제 소비')).toBe('월 300만원');
 
     fireEvent.click(screen.getByRole('button', { name: '추천안 결과 보기' }));
 
-    expect(kpiValue('지속가능 생활비')).toBe('월 360만원');
+    expect(kpiValue('현재 전략 평균 실제 소비')).toBe('월 360만원');
     expect(kpiValue('목표 생활비')).toBe('월 300만원');
   });
 
@@ -252,12 +254,12 @@ describe('DashboardSection - IA 순서', () => {
 // spendingStrategy === 'max_sustainable'로 묶여 있어, 고정 생활비로 계획한 사용자는
 // 상속 목표가 0원인데 수억을 남기거나 반대로 자산이 고갈되는데도 아무 말을 듣지 못했다.
 describe('DashboardSection - 지속가능 생활비 제안 배너', () => {
-  test('지속가능 생활비 KPI는 목표액이 아니라 엔진 역산액을 표시한다', () => {
+  test('지속가능 생활비는 목표액과 분리해 엔진 역산액을 표시한다', () => {
     const tightResult: SimulationResult = { ...result, calculatedTargetSpending: 2160000 };
 
     render(<DashboardSection params={params} result={tightResult} />);
 
-    expect(kpiValue('지속가능 생활비')).toBe('월 216만원');
+    expect(screen.getByText(/기준 수익률상 지속가능 생활비/).parentElement).toHaveTextContent('월 216만원');
     expect(kpiValue('목표 생활비')).toBe('월 300만원');
   });
 
@@ -492,7 +494,7 @@ describe('DashboardSection - 현재 계획을 유지하면 요약 카드', () =>
     render(<DashboardSection params={shortParams} result={shortResult} />);
 
     expect(screen.getByText('현재 계획을 유지하면')).toBeInTheDocument();
-    expect(screen.getByText('부족 생활비')).toBeInTheDocument();
+    expect(screen.getByText('계획 기준 평균 부족액')).toBeInTheDocument();
     expect(screen.getByText('부족 기간')).toBeInTheDocument();
     expect(screen.getByText('추가로 필요한 자산')).toBeInTheDocument();
     // 가정을 밝히지 않으면 사용자가 확정된 목표 금액으로 읽는다.
@@ -529,8 +531,8 @@ describe('DashboardSection - 현재 계획을 유지하면 요약 카드', () =>
       render(<DashboardSection params={optimizedParams} result={optimizedResult} />);
 
       expect(screen.getByText('목표 생활비 기준')).toBeInTheDocument();
-      expect(screen.getByText('실제 지속가능 생활비')).toBeInTheDocument();
-      expect(screen.getByText('목표 대비 부족')).toBeInTheDocument();
+      expect(screen.getAllByText('지속가능 생활비').length).toBeGreaterThan(0);
+      expect(screen.getByText('목표 대비 평균 부족액')).toBeInTheDocument();
     });
 
     // 예전에는 이 계획에서 "부족 생활비 월 평균 0원 / 부족 기간 3년"이 찍혔다 —

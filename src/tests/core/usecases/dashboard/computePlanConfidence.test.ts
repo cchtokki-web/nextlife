@@ -4,7 +4,7 @@ import {
 } from '@/core/usecases/dashboard/computePlanConfidence';
 
 // 두 확률을 함께 넘겨야 하는 시그니처라, 테스트가 매번 객체를 짜지 않도록 감싼다.
-// 밴드는 생활 유지 성공률에서만 나오므로 자산 보존은 기본값을 둔다.
+// 레거시 경로는 전체 목표 성공확률이 없으므로 생활 유지 성공률로 폴백한다.
 const rates = (spendingSuccessRate: number, assetSuccessRate = spendingSuccessRate) => ({
   spendingSuccessRate,
   assetSuccessRate,
@@ -47,6 +47,18 @@ const BAND_KEY_BY_LABEL = {
 } as const;
 
 describe('computePlanConfidence', () => {
+  test('전체 목표 성공확률이 있으면 생활 유지 주변확률보다 우선해 판정한다', () => {
+    const confidence = computePlanConfidence(80, {
+      spendingSuccessRate: 0.95,
+      assetSuccessRate: 0.95,
+      goalSuccessProbability: 0.2,
+    });
+
+    expect(confidence.band).toBe('very_risky');
+    expect(confidence.score).toBe(48);
+    expect(confidence.rates?.goalSuccessProbability).toBe(0.2);
+  });
+
   // 리포트가 보고한 상황: 준비도 64점(주의)인데 시장 변동 성공률은 37%였다.
   test('리포트 사례 — 64점 · 성공률 37%는 44점 위험으로 보정된다', () => {
     const confidence = computePlanConfidence(64, rates(0.37));
@@ -58,8 +70,7 @@ describe('computePlanConfidence', () => {
     expect(confidence.basis).toBe('probabilistic');
   });
 
-  // **밴드와 점수는 생활 유지 성공률에서만 나온다.** 자산 보존 축은 결정론 점수의
-  // longevityScore에 이미 반영돼 있어, 여기서 다시 곱하면 같은 사실로 두 번 깎인다.
+  // 레거시 입력에서는 밴드와 점수가 생활 유지 성공률에서 나오며 자산 보존은 표시용이다.
   test('자산 보존 성공률은 밴드와 점수를 바꾸지 않는다', () => {
     const withHighAsset = computePlanConfidence(64, rates(0.37, 0.95));
     const withLowAsset = computePlanConfidence(64, rates(0.37, 0.05));
