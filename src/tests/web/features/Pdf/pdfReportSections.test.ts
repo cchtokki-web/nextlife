@@ -385,7 +385,8 @@ describe('renderPlanVerdictSection', () => {
 
     expect(html).toContain('시장 변동성 반영');
     expect(html).toContain('1,000회 시뮬레이션');
-    expect(html).toContain('생활 유지 성공률 37%');
+    expect(html).toContain('목표 동시 달성 확률 37%');
+    expect(html).toContain('생활 유지 37%');
     expect(html).toContain('90세까지 자산 보존 37%');
     expect(html).toContain('중앙값');
     expect(html).toContain('하위 10%');

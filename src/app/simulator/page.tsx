@@ -264,6 +264,7 @@ export default function Home() {
         monteCarlo && {
           spendingSuccessRate: monteCarlo.spendingSuccessRate,
           assetSuccessRate: monteCarlo.successRate,
+          goalSuccessProbability: monteCarlo.goalSuccessProbability,
         }
       );
       const planVerdictSectionHtml = renderPlanVerdictSection({

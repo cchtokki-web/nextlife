@@ -45,6 +45,7 @@ import {
   WithdrawalAccountType,
   taxFreeAccount,
 } from './withdrawal/WithdrawalEngine';
+import { calculateRetirementIncomeMetrics } from './metrics/SimulationMetricsCalculator';
 
 // 연 수익률(소수)을 월 복리율로. initializeAssets가 네 곳에서 같은 식을 반복하고 있었고,
 // 연도별 시장 충격을 얹으려면 같은 식이 다섯 번째로 필요해져 한 곳으로 모은다.
@@ -1476,36 +1477,13 @@ export class LegacySimulationEngine implements SimulationEngineContract {
       if (totalIncome >= targetSpendingForFIRE && fireAge === null) fireAge = currentAge;
     }
 
-    const retirementYearsResults = yearlyResults.filter((r) => r.age >= userProfile.retirementAge);
-    let avgRetirementMonthlyIncome = 0;
-    let avgTargetMonthlySpending = 0;
-    
-    if (retirementYearsResults.length > 0) {
-      const totalIncomeSum = retirementYearsResults.reduce((sum, r) => sum + r.totalIncome, 0);
-      let totalTargetSum = 0;
-      retirementYearsResults.forEach(r => {
-          // 연령대별 곡선을 쓰면 그 해의 목표도 배수만큼 달라진다. 빼면 배수 0.8 구간이
-          // "목표 초과 달성"으로, 1.2 구간이 미달로 잡혀 달성률이 실제와 어긋난다.
-          let annualTarget = userProfile.targetMonthlySpending * 12
-            * spendingMultiplierForAge(params.spendingCurve, r.age);
-          if (inflationMode === 'nominal') {
-              annualTarget = annualTarget * Math.pow(1 + inflationRate / 100, r.age - startAge);
-          }
-          // 의료비도 목표(=충족해야 할 필요)의 일부다. 더하지 않으면 의료비를 켠 순간
-          // 분자(totalIncome)만 커진다 — 의료비를 메우려 사적연금을 더 인출한 금액이
-          // 소득으로 집계되기 때문이다 — 분모는 그대로라서 달성률이 부풀려진다.
-          // 물가 보정을 적용하지 않는 이유: healthcareSpending은 이미 엔진이 그 해의
-          // inflationMode에 맞춰 계산해 둔 실제 지출액이다(중복 보정 금지).
-          annualTarget += r.healthcareSpending;
-          totalTargetSum += annualTarget;
-      });
-
-      avgRetirementMonthlyIncome = totalIncomeSum / retirementYearsResults.length / 12;
-      avgTargetMonthlySpending = totalTargetSum / retirementYearsResults.length / 12;
-    }
-
-    const goalAchievementRate = avgTargetMonthlySpending > 0
-      ? Math.min(200, Math.max(0, Math.round((avgRetirementMonthlyIncome / avgTargetMonthlySpending) * 100))) : 0;
+    // 레거시 필드 이름(goalAchievementRate)은 호환을 위해 유지하지만 실제 의미는
+    // "자산 매도 제외 고정소득 커버율"이다. 새 생활비 달성률과 같은 식으로 오해되지 않도록
+    // 공통 metric service의 명시적 계산 결과를 사용한다.
+    const incomeMetrics = calculateRetirementIncomeMetrics(yearlyResults, params);
+    const avgRetirementMonthlyIncome = incomeMetrics.averageMonthlyIncome;
+    const avgTargetMonthlySpending = incomeMetrics.averageMonthlyTarget;
+    const goalAchievementRate = incomeMetrics.fixedIncomeCoverageRate;
 
     const endingAssets = yearlyResults.length > 0 ? yearlyResults[yearlyResults.length - 1].totalAssets : 0;
 

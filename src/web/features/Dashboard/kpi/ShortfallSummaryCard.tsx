@@ -48,10 +48,10 @@ export function ShortfallSummaryCard({
             <Row label="목표 생활비">
               월 <strong>{formatValue(goalMonthlySpending)}</strong>
             </Row>
-            <Row label="실제 지속가능 생활비">
+            <Row label="지속가능 생활비">
               월 <strong>{formatValue(sustainableMonthlySpending)}</strong>
             </Row>
-            <Row label="목표 대비 부족">
+            <Row label="목표 대비 평균 부족액">
               월 평균 <strong className="text-danger">{formatValue(goal.averageMonthlyShortfall)}</strong>
             </Row>
           </dl>
@@ -66,7 +66,7 @@ export function ShortfallSummaryCard({
         <section>
           <h4 className="mb-2 text-sm font-semibold text-danger">계획한 생활비조차 채우지 못하는 구간</h4>
           <dl className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            <Row label="부족 생활비">
+            <Row label="계획 기준 평균 부족액">
               월 평균 <strong className="text-danger">{formatValue(plan.averageMonthlyShortfall)}</strong>
             </Row>
             <Row label="부족 기간">

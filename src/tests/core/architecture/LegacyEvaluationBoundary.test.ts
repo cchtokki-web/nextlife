@@ -7,6 +7,7 @@ import { computeShortfallSummary } from '@/core/usecases/dashboard/computeShortf
 import { resolvePlanAssetStatus } from '@/core/usecases/dashboard/resolvePlanAssetStatus';
 import { resolvePlanOutcome } from '@/core/usecases/dashboard/resolvePlanOutcome';
 import { compileStrategy } from '@/core/usecases/strategy/compileStrategy';
+import { SimulationMetricsCalculator } from '@/core/usecases/metrics/SimulationMetricsCalculator';
 import { initialParams } from '@/infrastructure/storage/localStore';
 
 describe('evaluation boundary', () => {
@@ -27,6 +28,9 @@ describe('evaluation boundary', () => {
     expect(evaluation.shortfall).toEqual(computeShortfallSummary(compiled.params, result));
     expect(evaluation.planAssetStatus).toBe(resolvePlanAssetStatus(result, compiled.params));
     expect(evaluation.planOutcome).toEqual(resolvePlanOutcome(result, compiled.params));
+    expect(evaluation.metrics).toEqual(
+      new SimulationMetricsCalculator().calculate(compiled.params, result)
+    );
     expect(result).toEqual(resultBefore);
   });
 });

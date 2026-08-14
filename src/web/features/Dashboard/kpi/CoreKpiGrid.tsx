@@ -10,22 +10,13 @@ import {
   PLAN_CONFIDENCE_BAND_TIER,
   PlanConfidence,
 } from '../../../../core/usecases/dashboard/computePlanConfidence';
-import { PensionGapRisk } from '../../../../core/usecases/dashboard/computePensionGapRisk';
+import type { SimulationMetrics } from '../../../../core/usecases/metrics/SimulationMetricsCalculator';
 
 interface CoreKpiGridProps {
   // 시장 변동을 반영한 판정. 밴드·두 확률·보정 점수가 전부 여기서 나온다.
   confidence: PlanConfidence;
   expectancy: number;
-  endingAssets: number;
-  // 이 계획이 실제로 지속 가능한 월 생활비(엔진의 역산 결과).
-  sustainableMonthly: number;
-  // 사용자가 목표로 세운 월 생활비.
-  goalMonthly: number;
-  // 연령대별 곡선을 쓸 때, 위 금액이 어느 나이 기준인지. 곡선이 없으면 undefined.
-  monthlyTargetAge?: number;
-  // 은퇴~국민연금 개시 사이의 공백. 없으면 "없음"으로 표시한다 — 카드를 숨기지 않는 이유는
-  // 공백이 없다는 것 자체가 좋은 소식이고, 4열 그리드에서 한 칸이 비면 배치가 무너지기 때문이다.
-  pensionGap?: PensionGapRisk;
+  metrics: SimulationMetrics;
   utilityScore?: number; // Lifetime Utility Score. 없으면(계산 실패 등) 보조 행에서 뺀다.
   formatValue: (val: number) => string;
   resultBasis?: 'current' | 'recommended';
@@ -43,11 +34,7 @@ interface CoreKpiGridProps {
 export function CoreKpiGrid({
   confidence,
   expectancy,
-  endingAssets,
-  sustainableMonthly,
-  goalMonthly,
-  monthlyTargetAge,
-  pensionGap,
+  metrics,
   utilityScore,
   formatValue,
   resultBasis = 'current',
@@ -59,7 +46,9 @@ export function CoreKpiGrid({
   // 두 번 하는 것이 된다.
   const isWarning = band !== undefined && PLAN_CONFIDENCE_BAND_TIER[band] === 'red';
 
-  const shortfall = goalMonthly - sustainableMonthly;
+  const firstShortfall = metrics.shortfall.shortfallYears[0];
+  const lastShortfall = metrics.shortfall.shortfallYears.at(-1);
+  const goalProbability = metrics.goalSuccessProbability;
 
   const confidenceSuffix = isProbabilistic && confidence.rates ? (
     <span
@@ -69,7 +58,7 @@ export function CoreKpiGrid({
           : 'flex items-center gap-1 whitespace-nowrap'
       }
       // 등급 aria-label은 별점만 읽으므로 확률은 여기서 따로 읽어 준다.
-      aria-label={`생활 유지 성공률 ${Math.round(confidence.rates.spendingSuccessRate * 100)}%, 자산 보존 성공률 ${Math.round(confidence.rates.assetSuccessRate * 100)}%`}
+      aria-label={`목표 성공 확률 ${Math.round((confidence.rates.goalSuccessProbability ?? confidence.rates.spendingSuccessRate) * 100)}%, 생활 유지 성공률 ${Math.round(confidence.rates.spendingSuccessRate * 100)}%, 자산 보존 성공률 ${Math.round(confidence.rates.assetSuccessRate * 100)}%`}
     >
       {isWarning && <AlertTriangle size={13} className="shrink-0" aria-hidden="true" />}
       <span aria-hidden="true">자산 보존 {Math.round(confidence.rates.assetSuccessRate * 100)}%</span>
@@ -81,14 +70,13 @@ export function CoreKpiGrid({
   return (
     <div className="flex flex-col gap-3">
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        {/* ① 은퇴 성공률. 큰 숫자는 **생활 유지 성공률**이다 — 사용자가 실제로 두려워하는 것은
-            "죽을 때 잔액이 0원인가"가 아니라 "살아 있는 동안 쓸 돈이 모자라는가"이기 때문이다.
-            자산 보존 성공률은 바로 아래 함께 적어 둘이 갈리는 계획을 숨기지 않는다. */}
-        <KpiCard label="은퇴 성공률 · 생활 유지" icon={<ShieldCheck size={16} aria-hidden="true" />}>
-          {isProbabilistic && band !== undefined && confidence.rates ? (
+        {/* ① 정량 판정 가능한 목표의 동시 성공확률. 생활 유지와 자산 보존 주변확률도 함께
+            적어 어느 축 때문에 전체 확률이 낮아졌는지 숨기지 않는다. */}
+        <KpiCard label="정량 목표 성공 확률" icon={<ShieldCheck size={16} aria-hidden="true" />}>
+          {isProbabilistic && band !== undefined && confidence.rates && goalProbability !== null ? (
             <div className="flex flex-col gap-1">
               <span className="font-display text-2xl font-semibold">
-                {Math.round(confidence.rates.spendingSuccessRate * 100)}%
+                {Math.round(goalProbability * 100)}%
               </span>
               <RetirementLikelihoodStars
                 score={confidence.score}
@@ -102,33 +90,29 @@ export function CoreKpiGrid({
           )}
         </KpiCard>
 
-        {/* ② 이 계획으로 실제 쓸 수 있는 금액. */}
-        <KpiCard
-          label={monthlyTargetAge !== undefined ? `지속가능 생활비 · ${monthlyTargetAge}세 기준` : '지속가능 생활비'}
-          icon={<Landmark size={16} aria-hidden="true" />}
-        >
-          <span className="font-display text-2xl font-semibold">월 {formatValue(sustainableMonthly)}</span>
+        <KpiCard label="현재 전략 평균 실제 소비" icon={<Landmark size={16} aria-hidden="true" />}>
+          <span className="font-display text-2xl font-semibold">월 {formatValue(metrics.actualSpending)}</span>
         </KpiCard>
 
         {/* ③ 사용자가 원한 금액. ②와 나란히 놓여야 차이가 한눈에 보인다. */}
         <KpiCard label="목표 생활비" icon={<Target size={16} aria-hidden="true" />}>
           <div className="flex flex-col gap-0.5">
-            <span className="font-display text-2xl font-semibold">월 {formatValue(goalMonthly)}</span>
-            {shortfall > 0 && (
-              <span className="text-sm text-danger">월 {formatValue(shortfall)} 부족</span>
-            )}
+            <span className="font-display text-2xl font-semibold">월 {formatValue(metrics.targetSpending)}</span>
+            <span className="text-sm text-foreground-muted">
+              목표 달성률 {Math.round(metrics.spendingAchievementRate * 100)}%
+            </span>
           </div>
         </KpiCard>
 
-        {/* ④ 계획에서 가장 취약한 구간. 근거는 computePensionGapRisk 주석 참고. */}
-        <KpiCard label="연금 공백" icon={<CalendarClock size={16} aria-hidden="true" />}>
-          {pensionGap ? (
+        {/* ④ 목표 생활비를 실제로 채우지 못한 연도와 그 기간의 평균 부족액. */}
+        <KpiCard label="생활비 부족 발생" icon={<CalendarClock size={16} aria-hidden="true" />}>
+          {firstShortfall && lastShortfall ? (
             <div className="flex flex-col gap-0.5">
               <span className="font-display text-2xl font-semibold">
-                {pensionGap.fromAge}~{pensionGap.toAge}세
+                {firstShortfall.age}~{lastShortfall.age}세
               </span>
               <span className="text-sm text-foreground-muted">
-                {pensionGap.years}년 · 필요자금 {formatValue(pensionGap.bridgeAmount)}
+                {metrics.shortfall.shortfallYears.length}년 · 월 평균 {formatValue(metrics.shortfall.averageMonthlyShortfall)}
               </span>
             </div>
           ) : (
@@ -143,7 +127,18 @@ export function CoreKpiGrid({
         <span className="inline-flex items-center gap-1.5">
           <Wallet size={14} aria-hidden="true" />
           {expectancy}세 예상 순자산 · {resultBasis === 'recommended' ? '추천 결과' : '현재 계획'}{' '}
-          <strong className="font-semibold text-foreground">{formatValue(endingAssets)}</strong>
+          <strong className="font-semibold text-foreground">{formatValue(metrics.terminalAssets)}</strong>
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <Landmark size={14} aria-hidden="true" />
+          {metrics.sustainableSpendingBasis === 'probabilistic'
+            ? `${Math.round((metrics.sustainableSpendingTargetProbability ?? 0) * 100)}% 목표 기준 지속가능 생활비`
+            : '기준 수익률상 지속가능 생활비'}{' '}
+          <strong className="font-semibold text-foreground">월 {formatValue(metrics.sustainableSpending)}</strong>
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <ShieldCheck size={14} aria-hidden="true" />
+          자산 생존 <strong className="font-semibold text-foreground">{metrics.assetSurvival ? '예' : '아니오'}</strong>
         </span>
         {utilityScore !== undefined && (
           <span className="inline-flex items-center gap-1.5">

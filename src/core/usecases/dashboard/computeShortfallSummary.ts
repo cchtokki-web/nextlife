@@ -1,5 +1,10 @@
 import { SimulationParams, SimulationResult } from '../../entities/types';
-import { computeMonthlySpendingComposition, MonthlySpendingComposition } from '../MonthlySpendingComposition';
+import type { MonthlySpendingComposition } from '../MonthlySpendingComposition';
+import {
+  SHORTFALL_EPSILON_MONTHLY,
+  SimulationMetricsCalculator,
+  type ShortfallYearMetric,
+} from '../metrics/SimulationMetricsCalculator';
 
 export interface ShortfallSummary {
   // 목표 생활비를 채우지 못하는 은퇴 후 연도 수.
@@ -39,7 +44,9 @@ export interface ShortfallReport {
 // 리포트에 "부족 생활비 월 평균 0원 / 부족 기간 31년"이 함께 나온 것이 정확히 이 상태였다.
 // 임계값을 화면의 표시 단위(1만원, chartFormatters.formatValue)와 맞춰, 화면이 0원이라고
 // 말하는 금액은 집계에도 잡히지 않게 한다.
-export const SHORTFALL_EPSILON_MONTHLY = 10000;
+export { SHORTFALL_EPSILON_MONTHLY } from '../metrics/SimulationMetricsCalculator';
+
+const metricsCalculator = new SimulationMetricsCalculator();
 
 // "현재 계획을 유지하면 얼마가 모자라고, 그걸 메우려면 얼마가 필요한가"를 집계한다.
 //
@@ -50,14 +57,36 @@ export function computeShortfallSummary(
   params: SimulationParams,
   result: SimulationResult
 ): ShortfallReport {
-  const composition = computeMonthlySpendingComposition(result.yearlyResults, params, result);
+  const metrics = metricsCalculator.calculate(params, result);
 
   return {
-    goal: summarize(composition, (row) => row.goalShortfall, params),
-    plan: summarize(composition, (row) => row.shortfall, params),
+    goal: summarizeGoalShortfall(metrics.shortfall.shortfallYears, params),
+    plan: summarize(metrics.yearlySpending, (row) => row.shortfall, params),
     goalMonthlySpending: params.userProfile.targetMonthlySpending,
     sustainableMonthlySpending:
       result.calculatedTargetSpending ?? params.userProfile.targetMonthlySpending,
+  };
+}
+
+function summarizeGoalShortfall(
+  shortfallYears: readonly ShortfallYearMetric[],
+  params: SimulationParams,
+): ShortfallSummary | null {
+  if (shortfallYears.length === 0) return null;
+
+  const totalMonthlyShortfall = shortfallYears.reduce(
+    (sum, row) => sum + row.monthlyAmount,
+    0,
+  );
+  return {
+    shortfallYears: shortfallYears.length,
+    firstShortfallAge: shortfallYears[0].age,
+    lastShortfallAge: shortfallYears[shortfallYears.length - 1].age,
+    averageMonthlyShortfall: Math.round(totalMonthlyShortfall / shortfallYears.length),
+    totalShortfallInTodayValue: totalInTodayValue(
+      shortfallYears.map((row) => ({ age: row.age, monthlyAmount: row.monthlyAmount })),
+      params,
+    ),
   };
 }
 
@@ -69,18 +98,6 @@ function summarize(
   const shortfallYears = composition.filter((row) => shortfallOf(row) >= SHORTFALL_EPSILON_MONTHLY);
   if (shortfallYears.length === 0) return null;
 
-  const { currentAge } = params.userProfile;
-  const inflationRate = params.inflationRate ?? 2;
-  const isNominal = params.inflationMode === 'nominal';
-
-  const totalShortfallInTodayValue = shortfallYears.reduce((sum, row) => {
-    const annual = shortfallOf(row) * 12;
-    // 명목가치 계획의 미래 금액은 물가만큼 부풀려져 있다. 그대로 더하면 "지금 얼마를
-    // 준비해야 하는가"를 크게 과장한다. 실질가치 계획은 이미 현재 구매력이라 손대지 않는다.
-    if (!isNominal) return sum + annual;
-    return sum + annual / Math.pow(1 + inflationRate / 100, row.age - currentAge);
-  }, 0);
-
   const totalMonthlyShortfall = shortfallYears.reduce((sum, row) => sum + shortfallOf(row), 0);
 
   return {
@@ -88,6 +105,24 @@ function summarize(
     firstShortfallAge: shortfallYears[0].age,
     lastShortfallAge: shortfallYears[shortfallYears.length - 1].age,
     averageMonthlyShortfall: Math.round(totalMonthlyShortfall / shortfallYears.length),
-    totalShortfallInTodayValue: Math.round(totalShortfallInTodayValue),
+    totalShortfallInTodayValue: totalInTodayValue(
+      shortfallYears.map((row) => ({ age: row.age, monthlyAmount: shortfallOf(row) })),
+      params,
+    ),
   };
+}
+
+function totalInTodayValue(
+  shortfalls: readonly { age: number; monthlyAmount: number }[],
+  params: SimulationParams,
+): number {
+  const { currentAge } = params.userProfile;
+  const inflationRate = params.inflationRate ?? 2;
+  const isNominal = params.inflationMode === 'nominal';
+  const total = shortfalls.reduce((sum, row) => {
+    const annual = row.monthlyAmount * 12;
+    if (!isNominal) return sum + annual;
+    return sum + annual / Math.pow(1 + inflationRate / 100, row.age - currentAge);
+  }, 0);
+  return Math.round(total);
 }

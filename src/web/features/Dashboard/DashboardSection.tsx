@@ -20,7 +20,6 @@ import { MonteCarloSection } from './montecarlo/MonteCarloSection';
 import { MonteCarloResult } from '../../../core/entities/montecarlo';
 import { MonteCarloStatus } from '../../hooks/useMonteCarlo';
 import { SequenceRiskResult } from '../../../core/usecases/montecarlo/sequenceRisk';
-import { spendingMultiplierForAge } from '../../../core/usecases/spending/spendingCurve';
 import { useBeforeAfterToggle } from './hooks/useBeforeAfterToggle';
 import { ExecutionRoadmap } from './roadmap/ExecutionRoadmap';
 import { computeExecutionRoadmap, selectDepletionAge } from '../../../core/usecases/dashboard/computeExecutionRoadmap';
@@ -114,38 +113,6 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
   });
   const displayedResult = mode === 'after' && recommendation ? recommendation.recommendedResult : result;
 
-  // baseline(현재 설정) 기준 월 목표 생활비 — AI 노후 설계사 의견은 Before/After 미리보기와
-  // 무관하게 항상 "실제 설정"을 근거로 답해야 하므로 이 값을 그대로 쓴다.
-  const monthlyTarget =
-    params.spendingStrategy === 'max_sustainable' && result.calculatedTargetSpending
-      ? result.calculatedTargetSpending
-      : params.userProfile.targetMonthlySpending;
-
-  // KPI/지표는 화면에 실제로 표시 중인 결과(displayedResult)를 따라가야 한다 — After 모드에서
-  // 추천안이 생활비 배수(monthlySpendingMultiplier)를 포함하면 그만큼 반영한다.
-  const displayedMonthlyTarget =
-    mode === 'after' && recommendation?.recommendedPlan?.monthlySpendingMultiplier
-      ? Math.round(monthlyTarget * recommendation.recommendedPlan.monthlySpendingMultiplier)
-      : monthlyTarget;
-
-  // 연령대별 곡선을 쓰면 "월 생활비" 한 값이 무엇을 가리키는지 모호해진다(60대와 80대가
-  // 다른 금액이다). 은퇴 후면 지금 나이 구간, 은퇴 전이면 첫 구간(은퇴 직후)을 보여준다 —
-  // 사용자가 가장 먼저 겪을 금액이다.
-  const spendingCurveLabelAge = Math.max(
-    params.userProfile.currentAge,
-    params.userProfile.retirementAge
-  );
-  const curveMultiplier = spendingMultiplierForAge(params.spendingCurve, spendingCurveLabelAge);
-  const applyCurve = (amount: number) =>
-    params.spendingCurve ? Math.round(amount * curveMultiplier) : amount;
-  const displayedSustainableMonthly = applyCurve(
-    displayedResult.calculatedTargetSpending ?? displayedMonthlyTarget
-  );
-  // 히어로(=AI 노후 설계사 입력)는 baseline 기준이라 추천 배수를 타지 않지만, 곡선은 똑같이
-  // 타야 한다. 빼면 같은 화면에서 히어로는 "월 580만원", 바로 아래 KPI는 "65세 기준 696만원"을
-  // 말하고, AI가 곡선을 모르는 금액을 근거로 조언한다.
-  const baselineCurvedMonthlyTarget = applyCurve(monthlyTarget);
-
   // 목표 우선순위가 정한 효용 배점을 포함해 legacy 입력을 새 Domain/Input 경계로 변환한다.
   const utilityConfig = React.useMemo(() => compileStrategy(params).utilityConfig, [params]);
   const domainInput = React.useMemo(
@@ -179,6 +146,7 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
   );
 
   const {
+    metrics: displayedMetrics,
     chartCaptions: captions,
     riskAlerts,
     planAssetStatus,
@@ -189,6 +157,7 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
     bequestAdequacyExplanation,
   } = displayedEvaluation;
   const {
+    metrics: baselineMetrics,
     planAssetStatus: baselinePlanAssetStatus,
     planOutcome: baselinePlanOutcome,
     planConfidence: baselinePlanConfidence,
@@ -237,14 +206,14 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
         canApply={canApply}
         score={result.retirementScore}
         retirementGrade={result.retirementGrade}
-        monthlyTarget={baselineCurvedMonthlyTarget}
+        monthlyTarget={baselineMetrics.targetSpending}
         isPro={isPro}
         userProfile={params.userProfile}
         depletionAge={result.depletionAge}
         expectancy={params.userProfile.expectancy}
-        goalAchievementRate={result.goalAchievementRate}
+        goalAchievementRate={baselineMetrics.fixedIncomeCoverageRate}
         fireAge={result.fireAge}
-        endingAssets={result.endingAssets}
+        endingAssets={baselineMetrics.terminalAssets}
         assets={params.assets}
         privatePensions={params.privatePensions}
         nationalPension={params.nationalPension}
@@ -260,7 +229,7 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
         planAssetStatus={baselinePlanAssetStatus}
         planOutcome={baselinePlanOutcome}
         planConfidence={baselinePlanConfidence}
-        sustainableMonthlySpending={result.calculatedTargetSpending}
+        sustainableMonthlySpending={baselineMetrics.sustainableSpending}
         monteCarloSuccessRate={monteCarlo?.successRate}
         monteCarloSpendingSuccessRate={monteCarlo?.spendingSuccessRate}
         pensionGap={pensionGap ?? undefined}
@@ -269,11 +238,7 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
         <CoreKpiGrid
         confidence={planConfidence}
         expectancy={params.userProfile.expectancy}
-        endingAssets={displayedResult.endingAssets}
-        sustainableMonthly={displayedSustainableMonthly}
-        goalMonthly={applyCurve(params.userProfile.targetMonthlySpending)}
-        monthlyTargetAge={params.spendingCurve ? spendingCurveLabelAge : undefined}
-        pensionGap={pensionGap ?? undefined}
+        metrics={displayedMetrics}
         utilityScore={displayedResult.utility?.score}
         formatValue={formatValue}
         resultBasis={mode === 'after' ? 'recommended' : 'current'}

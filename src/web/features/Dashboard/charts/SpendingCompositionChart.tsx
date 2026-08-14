@@ -51,6 +51,7 @@ export interface SpendingChartRow {
   기타소득: number;
   자산인출: number;
   자산부족: number;
+  목표달성률: number;
 }
 
 // recharts 기본 툴팁은 시리즈를 그대로 나열할 뿐이라, 사용자가 큰 빨간 '자산부족' 띠를 봐도
@@ -68,10 +69,9 @@ export function SpendingCompositionTooltip({
   const row = rows.find((r) => r.age === Number(label));
   if (!row) return null;
 
-  const covered = Math.max(0, row.목표생활비 - row.자산부족);
-  // 목표가 0인 해(예: 목표 생활비를 0으로 입력했거나, max_sustainable이 0으로 수렴한 계획)에는
-  // 비율이 성립하지 않는다.
-  const coverageRate = row.목표생활비 > 0 ? Math.round((covered / row.목표생활비) * 100) : null;
+  const coverageRate = row.목표생활비 > 0
+    ? Math.round(row.목표달성률 * 100)
+    : null;
 
   return (
     <div style={{ ...RECHARTS_TOOLTIP_STYLE, padding: '10px 12px' }}>
@@ -112,6 +112,7 @@ export function SpendingCompositionChart({ params, result, hiddenKeys, onLegendC
     기타소득: d.otherUsed,
     자산인출: d.assetWithdrawal,
     자산부족: d.shortfall,
+    목표달성률: d.spendingAchievementRate,
   }));
 
   const rawPensionLimit = params.taxSettings?.privatePensionLimit ?? 15000000;
