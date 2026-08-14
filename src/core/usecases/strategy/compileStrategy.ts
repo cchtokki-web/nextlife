@@ -11,6 +11,7 @@ import { resolveSpendingCurve } from '../spending/spendingCurve';
 import { resolveTaxSettings } from '../tax/taxRates';
 import { createUtilityConfig, DEFAULT_UTILITY_CONFIG } from '../utility/utilityWeights';
 import { OBJECTIVE_WEIGHT_PRESETS } from './objectivePresets';
+import { createGoalUtilityConfig } from '../goals/goalUtilityConfig';
 
 // createUtilityConfig는 `{ weights, ...rest }`를 반환한다. rest에 DEFAULT_UTILITY_CONFIG를
 // 통째로 넘기면 그 안의 weights가 나중에 스프레드되어 방금 고른 프리셋을 덮어쓴다.
@@ -313,7 +314,7 @@ function resolveSpendingStrategy(spendingChoice: SpendingStrategyChoice): Spendi
 export function compileStrategy(params: SimulationParams): CompiledStrategy {
   // 전략도 없고 레거시 저수준 필드도 baseline이면 아무것도 번역할 것이 없다.
   // 이 통과 경로가 "새 기능을 하나도 켜지 않은 시나리오는 입력이 비트 단위로 보존된다"를 보장한다.
-  if (!params.strategy && !hasLegacyStrategySeed(params)) {
+  if (!params.strategy && !hasLegacyStrategySeed(params) && !params.retirementGoals?.length) {
     return { params, utilityConfig: DEFAULT_UTILITY_CONFIG };
   }
 
@@ -327,7 +328,11 @@ export function compileStrategy(params: SimulationParams): CompiledStrategy {
   // 남기는 계획이 오히려 만점에 가까워진다 — 페르소나 하니스에서 실제로 그랬다.
   // 대신 표시 이름을 전략에 맞게 바꾼다(resolveBequestAxisLabel).
   const weights = OBJECTIVE_WEIGHT_PRESETS[strategy.objective] ?? DEFAULT_UTILITY_CONFIG.weights;
-  const utilityConfig = createUtilityConfig(weights, UTILITY_CONFIG_REST);
+  const objectiveUtilityConfig = createUtilityConfig(weights, UTILITY_CONFIG_REST);
+  // 목표 기반 기본 UI에서 선택한 최대 5개 목표가 추천 후보와 현재 계획 평가에 쓰는 목적
+  // 함수를 결정한다. 목표 필드가 없는 기존 시나리오는 objectiveUtilityConfig를 그대로 써서
+  // 저장 데이터의 기존 결과를 보존한다.
+  const utilityConfig = createGoalUtilityConfig(params.retirementGoals, objectiveUtilityConfig);
 
   const targetBequest = resolveTargetBequest(
     strategy.bequestStrategy,
@@ -356,9 +361,21 @@ export function compileStrategy(params: SimulationParams): CompiledStrategy {
   // 보이고, 값을 되돌리려면 전략을 다시 max_sustainable로 바꿔야 한다는 걸 알아낼 방법이 없다.
   // 이 값들은 시나리오에 저장되므로 다시 열어도 그대로 살아난다.
   const lifetimeOptimization = spendingStrategy === 'max_sustainable';
-  const assetFloor = lifetimeOptimization
+  const inheritanceGoal = params.retirementGoals?.find((goal) => goal.type === 'INHERITANCE');
+  const goalAllowsAssetFloor = !inheritanceGoal || inheritanceGoal.constraintType === 'HARD';
+  const inheritanceAssetFloor = !goalAllowsAssetFloor
+    ? undefined
+    : lifetimeOptimization
     ? resolveAssetFloor(strategy.bequestStrategy, targetBequest, strategy.bequestSafetyMarginRate)
     : resolveAssetFloor(strategy.bequestStrategy, targetBequest, 0);
+  const hasHardAssetSurvivalGoal = params.retirementGoals?.some((goal) =>
+    goal.type === 'ASSET_SURVIVAL' && goal.constraintType === 'HARD'
+  ) ?? false;
+  // 자산 고갈 방지 HARD의 최소 의미는 전 기간 자산이 0이 되지 않는 것이다. 1은 새 금융
+  // 가정이 아니라 엔진의 `assetFloor > 0` 제약 경로를 활성화하는 최소 내부 통화 단위다.
+  const assetFloor = hasHardAssetSurvivalGoal
+    ? Math.max(1, inheritanceAssetFloor ?? 0)
+    : inheritanceAssetFloor;
   // 'flat'·미지정이면 undefined다 — 그때는 아래에서 키 자체를 지워, 곡선을 설정한 적 없는
   // 시나리오가 곡선 코드 경로를 아예 타지 않게 한다.
   const spendingCurve = lifetimeOptimization

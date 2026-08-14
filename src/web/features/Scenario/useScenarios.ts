@@ -7,6 +7,7 @@ import { loadParams, saveParams, initialParams } from '../../../infrastructure/s
 import { activeScenarioKeyName, e2eeKeyName, e2eeBackedUpKeyName } from '../../../infrastructure/storage/storageKeys';
 import { encryptData, decryptData, isEncryptedPayload, generateBackupKey } from '../../../core/utils/crypto';
 import { MAX_SCENARIO_COUNT } from '../../../core/utils/scenarioLimits';
+import { migrateRetirementGoals } from '../../../core/usecases/goals/retirementGoalAdapter';
 
 // GET /api/scenarios 응답. data의 각 항목은 평문(SimulationParams)일 수도, E2EE로 암호화된
 // 형태일 수도 있어 소비처가 복호화를 시도하며 좁힌다.
@@ -93,7 +94,8 @@ const migrateParams = (params: SimulationParams, tickers: string[]): SimulationP
     }
     return asset;
   });
-  return changed ? { ...params, assets: migratedAssets } : params;
+  const withAssets = changed ? { ...params, assets: migratedAssets } : params;
+  return migrateRetirementGoals(withAssets);
 };
 
 const fetchLatestParamsInfo = async (params: SimulationParams): Promise<SimulationParams> => {

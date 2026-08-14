@@ -283,6 +283,15 @@ describe('generateSpendingAdjustmentCandidates', () => {
     expect(candidates.map((c) => c.monthlySpendingMultiplier)).toEqual([0.8, 0.9]);
   });
 
+  test('HARD 생활비 목표용 옵션은 감액 후보를 생성하지 않는다', () => {
+    const candidates = generateSpendingAdjustmentCandidates(baseParams, basePlan, {
+      allowIncrease: false,
+      allowDecrease: false,
+    });
+
+    expect(candidates).toEqual([]);
+  });
+
   test("spendingStrategy가 'target'이 아니면 후보를 생성하지 않는다", () => {
     const candidates = generateSpendingAdjustmentCandidates(
       { ...baseParams, spendingStrategy: 'max_sustainable' },

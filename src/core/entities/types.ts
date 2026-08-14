@@ -1,4 +1,11 @@
 import { RetirementGrade } from './retirementGrade';
+import type { RetirementGoal } from './retirementGoal';
+
+export type {
+  RetirementGoal,
+  RetirementGoalConstraintType,
+  RetirementGoalType,
+} from './retirementGoal';
 
 export interface UserProfile {
   currentAge: number;
@@ -222,6 +229,10 @@ export interface CustomYieldSnapshot {
 
 export interface SimulationParams {
   userProfile: UserProfile;
+  // 목표 기반 기본 입력. optional인 이유는 기존 로컬/E2EE 시나리오가 이 필드 없이 저장돼
+  // 있기 때문이다. 로드 경로의 migrateRetirementGoals가 기존 은퇴 나이·생활비에서 목표를
+  // 복원하며, 계산 엔진은 계속 기존 저수준 필드를 소비한다.
+  retirementGoals?: RetirementGoal[];
   assets: InvestmentAsset[];
   nationalPension: NationalPension;
   privatePensions: PrivatePension[];

@@ -579,8 +579,15 @@ export function recommendStrategy(
 
   const identityPlan = getIdentityPlan(params);
   const spendingBasePlan = state.bestPlan ?? identityPlan;
+  const hasHardSpendingGoal = params.retirementGoals?.some((goal) =>
+    goal.constraintType === 'HARD'
+    && (goal.type === 'LIVING_EXPENSE_STABILITY' || goal.type === 'COMFORTABLE_SPENDING')
+  ) ?? false;
   const spendingCandidates = generateSpendingAdjustmentCandidates(params, spendingBasePlan, {
     allowIncrease: allowSpendingIncrease,
+    // HARD 생활비 목표는 다른 목표와 맞바꿔 감액할 수 없다. SOFT일 때만 기존 0.8/0.9
+    // 절충 후보를 생성한다.
+    allowDecrease: !hasHardSpendingGoal,
   });
   for (const plan of spendingCandidates) {
     evaluateCandidate(plan, params, engine, cfg, state, spendingGate);

@@ -29,7 +29,10 @@ function goalsFromLegacy(config: LegacySimulationConfig): RetirementGoals {
   if (hasOwn(config.userProfile, 'targetBequest')) {
     goals.push({ type: 'bequest', targetAmount: config.userProfile.targetBequest as number });
   }
-  return { goals };
+  return {
+    goals,
+    ...(config.retirementGoals ? { selectedGoals: config.retirementGoals } : {}),
+  };
 }
 
 function requiredGoal<T extends RetirementGoal['type']>(
@@ -116,6 +119,7 @@ export class RetirementModelAdapter {
       privatePensions: _privatePensions,
       isaAccounts: _isaAccounts,
       otherIncomes: _otherIncomes,
+      retirementGoals: _retirementGoals,
       spendingStrategy: _spendingStrategy,
       spendingCurve: _spendingCurve,
       assetFloor: _assetFloor,
@@ -289,6 +293,7 @@ export class RetirementModelAdapter {
         targetMonthlySpending: monthlySpending.monthlyAmount,
         ...(bequest ? { targetBequest: bequest.targetAmount } : {}),
       },
+      ...(goals.selectedGoals ? { retirementGoals: goals.selectedGoals } : {}),
       assets,
       nationalPension: nationalPension.account,
       privatePensions,
