@@ -1,7 +1,8 @@
 import { SimulationParams, SimulationResult } from '../../entities/types';
-import { SimulationEngine } from '../SimulationEngine';
+import { LegacySimulationEngine } from '../../simulation/LegacySimulationEngine';
 import { compileStrategy } from './compileStrategy';
 import { runStrategyPipeline } from './runStrategyPipeline';
+import { simulateLegacyConfig } from '../../application/simulateLegacyConfig';
 
 // 저장된 시나리오 하나를 "비교용"으로 실행한다.
 //
@@ -25,12 +26,12 @@ export interface RunCompiledScenarioOptions {
 }
 
 export function runCompiledScenario(
-  engine: SimulationEngine,
+  engine: LegacySimulationEngine,
   params: SimulationParams,
   options: RunCompiledScenarioOptions = {}
 ): SimulationResult {
   if (options.applySentinels) return runStrategyPipeline(params, engine).result;
 
   const compiled = compileStrategy(params);
-  return engine.run(compiled.params, compiled.utilityConfig);
+  return simulateLegacyConfig(engine, compiled.params, compiled.utilityConfig);
 }

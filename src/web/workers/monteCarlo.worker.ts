@@ -1,4 +1,4 @@
-import { SimulationEngine } from '../../core/usecases/SimulationEngine';
+import { LegacySimulationEngine } from '../../core/simulation/LegacySimulationEngine';
 import { runMonteCarlo } from '../../core/usecases/montecarlo/MonteCarloEngine';
 import { MonteCarloRequest, MonteCarloResponse } from './monteCarloProtocol';
 
@@ -10,7 +10,7 @@ import { MonteCarloRequest, MonteCarloResponse } from './monteCarloProtocol';
 // (core/utils/crypto.ts). 서버에서 돌리려면 평문 params를 전송해야 해서 그 설계와 충돌한다.
 //
 // SimulationEngine은 인스턴스 상태가 없으므로(필드 선언 0개) 워커 수명 동안 하나면 충분하다.
-const engine = new SimulationEngine();
+const engine = new LegacySimulationEngine();
 
 self.onmessage = (event: MessageEvent<MonteCarloRequest>) => {
   const { requestId, params, config } = event.data;

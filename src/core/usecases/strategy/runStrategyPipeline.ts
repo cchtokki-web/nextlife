@@ -1,8 +1,9 @@
 import { SimulationParams, SimulationResult, StrategyRecommendation } from '../../entities/types';
-import { SimulationEngine } from '../SimulationEngine';
+import { LegacySimulationEngine } from '../../simulation/LegacySimulationEngine';
 import { CompiledStrategy, compileStrategy } from './compileStrategy';
-import { recommendStrategy } from './RecommendationEngine';
 import { SentinelApplication, applyAiSentinels } from './applyAiSentinels';
+import { LegacyRecommendationEngine } from '../../recommendation/LegacyRecommendationEngine';
+import { simulateLegacyConfig } from '../../application/simulateLegacyConfig';
 
 export interface StrategyPipelineResult {
   // 사용자 입력을 컴파일한 것. AI 센티널은 아직 baseline으로 내려가 있다.
@@ -43,13 +44,14 @@ export interface StrategyPipelineResult {
 // 대신 두 경로가 같은 결과를 낸다는 것을 테스트가 고정한다(runStrategyPipeline.test.ts).
 export function runStrategyPipeline(
   params: SimulationParams,
-  engine: SimulationEngine
+  engine: LegacySimulationEngine
 ): StrategyPipelineResult {
   const compiled = compileStrategy(params);
 
   let recommendation: StrategyRecommendation | undefined;
   try {
-    recommendation = recommendStrategy(compiled.params, engine, compiled.utilityConfig);
+    recommendation = new LegacyRecommendationEngine(engine)
+      .recommendLegacyConfig(compiled.params, compiled.utilityConfig);
   } catch (err) {
     // 추천 실패는 부분적이다 — 나머지 계산은 여전히 옳으므로 여기서 던져 전체를 무효화하지 않는다.
     console.warn('Failed to compute strategy recommendation', err);
@@ -64,6 +66,6 @@ export function runStrategyPipeline(
     recommendation,
     sentinels,
     effective,
-    result: engine.run(effective.params, effective.utilityConfig),
+    result: simulateLegacyConfig(engine, effective.params, effective.utilityConfig),
   };
 }

@@ -35,6 +35,9 @@ import {
 } from './pension/nationalPensionRules';
 import { PRIVATE_PENSION_MIN_START_AGE, clampPrivatePensionStartAge } from './pension/privatePensionRules';
 import { sortAssetsForWithdrawal } from './strategy/assetOrdering';
+import type { SimulationEngine as SimulationEngineContract } from '../simulation/SimulationEngine';
+import type { RetirementProfile, RetirementStrategy } from '../domain/input/retirement';
+import { LegacySimulationAdapter } from '../domain/input/LegacySimulationAdapter';
 
 // 연 수익률(소수)을 월 복리율로. initializeAssets가 네 곳에서 같은 식을 반복하고 있었고,
 // 연도별 시장 충격을 얹으려면 같은 식이 다섯 번째로 필요해져 한 곳으로 모은다.
@@ -132,7 +135,18 @@ export function computeRetirementTargetAssets(
   return Math.max(0, annualNeed) * 25;
 }
 
-export class SimulationEngine {
+/**
+ * Original calculation engine retained unchanged behind the new domain boundary.
+ * `run` and `runSingle` remain available for legacy callers and Monte Carlo internals.
+ */
+export class LegacySimulationEngine implements SimulationEngineContract {
+  simulate(profile: RetirementProfile, strategy: RetirementStrategy): SimulationResult {
+    return this.run(
+      LegacySimulationAdapter.toLegacy(profile, strategy),
+      strategy.utilityConfig
+    );
+  }
+
   // cfg는 목표 우선순위(UtilityConfig.weights)를 반영한 효용 계산에 쓰인다. 생략하면
   // 기본 가중치(DEFAULT_UTILITY_CONFIG)로 계산되어 호출부 9곳(RecommendationEngine 등,
   // 전부 자체적으로 cfg를 다루거나 기본값으로 충분한 곳)의 기존 동작이 그대로 유지된다.
@@ -1297,3 +1311,6 @@ export class SimulationEngine {
     };
   }
 }
+
+/** @deprecated Use LegacySimulationEngine through the SimulationEngine interface. */
+export class SimulationEngine extends LegacySimulationEngine {}

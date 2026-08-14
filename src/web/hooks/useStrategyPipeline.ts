@@ -2,11 +2,12 @@
 
 import { useDeferredValue, useMemo } from 'react';
 import { SimulationParams, SimulationResult, StrategyRecommendation } from '../../core/entities/types';
-import { SimulationEngine } from '../../core/usecases/SimulationEngine';
+import { LegacySimulationEngine } from '../../core/simulation/LegacySimulationEngine';
 import { CompiledStrategy, compileStrategy } from '../../core/usecases/strategy/compileStrategy';
-import { recommendStrategy } from '../../core/usecases/strategy/RecommendationEngine';
+import { LegacyRecommendationEngine } from '../../core/recommendation/LegacyRecommendationEngine';
 import { SentinelApplication, applyAiSentinels } from '../../core/usecases/strategy/applyAiSentinels';
 import { useBackgroundValue } from './useBackgroundValue';
+import { simulateLegacyConfig } from '../../core/application/simulateLegacyConfig';
 
 export interface StrategyPipeline {
   // 사용자 입력을 컴파일한 것. AI 센티널은 아직 baseline으로 내려가 있다.
@@ -41,7 +42,7 @@ export interface StrategyPipeline {
 // useStrategyPipeline.test.tsx가 recommendStrategy에 실제로 넘어간 params를 검사한다.
 export function useStrategyPipeline(
   params: SimulationParams,
-  engine: SimulationEngine
+  engine: LegacySimulationEngine
 ): StrategyPipeline {
   // 빠른 타이핑 중 메인 스레드를 막지 않도록 파라미터를 미룬다.
   const deferredParams = useDeferredValue(params);
@@ -65,13 +66,13 @@ export function useStrategyPipeline(
   //
   // 여기에 effective를 넘기면 안 된다 — 위 불변식 참고.
   const [recommendationCompiled, isComputingRecommendation] = useBackgroundValue(compiled);
+  const recommendationEngine = useMemo(() => new LegacyRecommendationEngine(engine), [engine]);
 
   const { recommendation, recommendationFailed } = useMemo(() => {
     try {
       return {
-        recommendation: recommendStrategy(
+        recommendation: recommendationEngine.recommendLegacyConfig(
           recommendationCompiled.params,
-          engine,
           recommendationCompiled.utilityConfig
         ),
         recommendationFailed: false,
@@ -80,7 +81,7 @@ export function useStrategyPipeline(
       console.error('Failed to compute strategy recommendation', err);
       return { recommendation: undefined, recommendationFailed: true };
     }
-  }, [engine, recommendationCompiled]);
+  }, [recommendationEngine, recommendationCompiled]);
 
   // 미정으로 남은 센티널 축을 추천값으로 채운다. 사용자 params는 그대로 두고 계산에만
   // 반영하므로, 추천의 입력(compiled)과 시뮬레이션의 입력(effective)이 분리된다.
@@ -104,7 +105,7 @@ export function useStrategyPipeline(
   // (나머지 대시보드는 여전히 옳다) 전용 "계산하지 못했습니다" 상태가 있지만,
   // engine.run이 실패하면 진실하게 보여줄 결과가 하나도 없다.
   const result = useMemo(
-    () => engine.run(effective.params, effective.utilityConfig),
+    () => simulateLegacyConfig(engine, effective.params, effective.utilityConfig),
     [engine, effective.params, effective.utilityConfig]
   );
 

@@ -3,7 +3,8 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { SimpleSimulationAdapter, SimpleSimulationInput, InvestmentPropensity } from '../../../core/usecases/SimpleSimulationAdapter';
-import { SimulationEngine } from '../../../core/usecases/SimulationEngine';
+import { LegacySimulationEngine } from '../../../core/simulation/LegacySimulationEngine';
+import { simulateLegacyConfig } from '../../../core/application/simulateLegacyConfig';
 import { motion, AnimatePresence } from 'framer-motion';
 import GlassCard from '../../components/GlassCard';
 import { Target, TrendingUp, Coins } from 'lucide-react';
@@ -101,7 +102,7 @@ export function SimpleSimulator() {
     localStorage.setItem(SIMPLE_SIMULATOR_INPUT_KEY, JSON.stringify(input));
   }, [input]);
 
-  const engine = useMemo(() => new SimulationEngine(), []);
+  const engine = useMemo(() => new LegacySimulationEngine(), []);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -155,8 +156,8 @@ export function SimpleSimulator() {
       monthlyInvestment: input.monthlyInvestment + 500000
     });
     return {
-      result: engine.run(params),
-      resultPlus50: engine.run(paramsPlus50)
+      result: simulateLegacyConfig(engine, params),
+      resultPlus50: simulateLegacyConfig(engine, paramsPlus50)
     };
   }, [hasRun, input, engine]);
 

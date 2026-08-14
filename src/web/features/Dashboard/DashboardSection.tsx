@@ -4,9 +4,6 @@ import React, { type ReactNode } from 'react';
 import { type LegendPayload } from 'recharts';
 import { Award, Zap, TrendingUp, AlertTriangle } from 'lucide-react';
 import { SimulationParams, SimulationResult, StrategyRecommendation } from '../../../core/entities/types';
-import { explainBequestAdequacy } from '../../../core/usecases/utility/utilityAnalysis';
-import { explainUtilityComponents } from '../../../core/usecases/utility/explainUtilityComponents';
-import { generateChartCaptions } from '../../../core/usecases/dashboard/generateChartCaptions';
 import styles from './Dashboard.module.css';
 import { formatValue as formatValueForCurrency } from './charts/chartFormatters';
 import { AssetGrowthChart, DEFAULT_HIDDEN_PERCENTILE_KEYS } from './charts/AssetGrowthChart';
@@ -14,7 +11,6 @@ import { IncomeCompositionChart } from './charts/IncomeCompositionChart';
 import { SpendingCompositionChart } from './charts/SpendingCompositionChart';
 import { CoreKpiGrid } from './kpi/CoreKpiGrid';
 import { ShortfallSummaryCard } from './kpi/ShortfallSummaryCard';
-import { computeShortfallSummary } from '../../../core/usecases/dashboard/computeShortfallSummary';
 import { RecommendationChecklist } from './recommendation/RecommendationChecklist';
 import { AiSummaryHero } from './hero/AiSummaryHero';
 import { ExpertDetailsPanel } from './expert/ExpertDetailsPanel';
@@ -24,24 +20,17 @@ import { MonteCarloSection } from './montecarlo/MonteCarloSection';
 import { MonteCarloResult } from '../../../core/entities/montecarlo';
 import { MonteCarloStatus } from '../../hooks/useMonteCarlo';
 import { SequenceRiskResult } from '../../../core/usecases/montecarlo/sequenceRisk';
-import { computeRiskAlerts } from '../../../core/usecases/dashboard/computeRiskAlerts';
-import { computeSustainableSpendingAdvice } from '../../../core/usecases/dashboard/computeSustainableSpendingAdvice';
-import { computeLifetimeSpendingPlan } from '../../../core/usecases/dashboard/computeLifetimeSpendingPlan';
 import { spendingMultiplierForAge } from '../../../core/usecases/spending/spendingCurve';
 import { useBeforeAfterToggle } from './hooks/useBeforeAfterToggle';
 import { ExecutionRoadmap } from './roadmap/ExecutionRoadmap';
 import { computeExecutionRoadmap, selectDepletionAge } from '../../../core/usecases/dashboard/computeExecutionRoadmap';
-import { resolvePlanAssetStatus } from '../../../core/usecases/dashboard/resolvePlanAssetStatus';
-import { resolvePlanOutcome } from '../../../core/usecases/dashboard/resolvePlanOutcome';
-import { computePlanConfidence } from '../../../core/usecases/dashboard/computePlanConfidence';
-import { computeSensitivityAnalysis } from '../../../core/usecases/dashboard/computeSensitivityAnalysis';
-import { computePensionGapRisk } from '../../../core/usecases/dashboard/computePensionGapRisk';
 import { computeKeyLevers } from '../../../core/usecases/dashboard/computeKeyLevers';
-import { SimulationEngine } from '../../../core/usecases/SimulationEngine';
 import { KeyLeversCard } from './recommendation/KeyLeversCard';
 import { NATIONAL_PENSION_NORMAL_START_AGE } from '../../../core/usecases/pension/nationalPensionRules';
 import { compileStrategy, resolveStrategy } from '../../../core/usecases/strategy/compileStrategy';
 import { SentinelApplication } from '../../../core/usecases/strategy/applyAiSentinels';
+import { LegacySimulationAdapter } from '../../../core/domain/input/LegacySimulationAdapter';
+import { LegacyEvaluationEngine } from '../../../core/evaluation/LegacyEvaluationEngine';
 
 interface DashboardSectionProps {
   params: SimulationParams;
@@ -157,38 +146,54 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
   // 말하고, AI가 곡선을 모르는 금액을 근거로 조언한다.
   const baselineCurvedMonthlyTarget = applyCurve(monthlyTarget);
 
-  const captions = generateChartCaptions(displayedResult, params);
-  const riskAlerts = computeRiskAlerts(displayedResult, params);
-
-  // 차트·캡션·헤드라인이 전부 이 하나의 판정을 근거로 삼는다. 화면에 실제로 표시 중인
-  // 결과(displayedResult)를 쓰는 것은 captions/riskAlerts와 같은 이유다 — After 모드에서
-  // 추천안이 자산 상태 자체를 바꾸면 그 결과를 따라가야 한다.
-  const planAssetStatus = resolvePlanAssetStatus(displayedResult, params);
-  // baseline(현재 설정) 기준 상태. AI 노후 설계사 의견·과소비 배너처럼 "지금 설정이 어떤가"를
-  // 말하는 조각은 Before/After 미리보기를 따라가면 자기 자신을 근거로 삼게 된다.
-  const baselinePlanAssetStatus = resolvePlanAssetStatus(result, params);
-
-  // 화면에 표시 중인 결과에서 일어난 세 사건(투자자산 소진 / 총자산 고갈 / 생활비 부족).
-  // 차트 배지·캡션·헤드라인이 전부 이 하나를 근거로 삼아야 서로 다른 이야기를 하지 않는다.
-  const planOutcome = React.useMemo(
-    () => resolvePlanOutcome(displayedResult, params),
-    [displayedResult, params]
+  // 목표 우선순위가 정한 효용 배점을 포함해 legacy 입력을 새 Domain/Input 경계로 변환한다.
+  const utilityConfig = React.useMemo(() => compileStrategy(params).utilityConfig, [params]);
+  const domainInput = React.useMemo(
+    () => LegacySimulationAdapter.fromLegacy(params, utilityConfig),
+    [params, utilityConfig]
   );
-  const baselinePlanOutcome = React.useMemo(() => resolvePlanOutcome(result, params), [result, params]);
+  const evaluationEngine = React.useMemo(() => new LegacyEvaluationEngine(), []);
 
-  // 확률 판정. MC는 baseline(현재 계획)으로만 계산되므로(page.tsx가 effective.params로 호출)
-  // After 모드에서는 확률을 붙이지 않는다 — 붙이면 화면이 말하는 계획과 계산에 쓴 계획이
-  // 달라진다(CoreKpiGrid가 성공률 병기를 Before로 제한하는 것과 같은 규칙).
+  // MC는 baseline으로만 계산되므로 After 미리보기에는 결합하지 않는다.
   const monteCarloForDisplay =
     mode === 'after' || monteCarloStatus !== 'done' ? undefined : monteCarlo;
-  const monteCarloRates = monteCarloForDisplay && {
-    spendingSuccessRate: monteCarloForDisplay.spendingSuccessRate,
-    assetSuccessRate: monteCarloForDisplay.successRate,
-  };
-  const planConfidence = computePlanConfidence(displayedResult.retirementScore, monteCarloRates);
-  // 헤드라인은 baseline(현재 설정) 기준이다 — 다른 baseline 조각들과 같은 이유로, "지금
-  // 설정이 어떤가"를 말하는 문장이 Before/After 미리보기를 따라가면 자기 자신을 근거로 삼는다.
-  const baselinePlanConfidence = computePlanConfidence(result.retirementScore, monteCarloRates);
+  const displayedEvaluation = React.useMemo(
+    () => evaluationEngine.evaluate(
+      domainInput.profile,
+      domainInput.strategy,
+      displayedResult,
+      { monteCarlo: monteCarloForDisplay }
+    ),
+    [domainInput, displayedResult, evaluationEngine, monteCarloForDisplay]
+  );
+  const baselineEvaluation = React.useMemo(
+    () => evaluationEngine.evaluate(
+      domainInput.profile,
+      domainInput.strategy,
+      result,
+      { monteCarlo: monteCarloForDisplay }
+    ),
+    [domainInput, result, evaluationEngine, monteCarloForDisplay]
+  );
+
+  const {
+    chartCaptions: captions,
+    riskAlerts,
+    planAssetStatus,
+    planOutcome,
+    planConfidence,
+    shortfall: shortfallReport,
+    utilityExplanations,
+    bequestAdequacyExplanation,
+  } = displayedEvaluation;
+  const {
+    planAssetStatus: baselinePlanAssetStatus,
+    planOutcome: baselinePlanOutcome,
+    planConfidence: baselinePlanConfidence,
+    lifetimeSpendingPlan,
+    sustainableSpendingAdvice,
+    pensionGap,
+  } = baselineEvaluation;
 
   // 로드맵이 볼 추천안. After 모드에서만 넘긴다 — computeExecutionRoadmap은 undefined면
   // getIdentityPlan(현재 설정)으로 폴백하므로, Before에서는 사용자의 실제 계획이 그려진다.
@@ -205,54 +210,21 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
         ?? NATIONAL_PENSION_NORMAL_START_AGE
       : undefined;
 
-  // 다른 배너와 같은 이유로 baseline(현재 설정)을 쓴다 — 이 제안은 "지금 설정을 이렇게
-  // 바꿔 보라"는 말이므로 Before/After 미리보기를 따라가면 자기 자신을 근거로 삼게 된다.
-  // 「평생 소비 최적화」의 역산 결과를 연령 구간으로 펼친다. 다른 전략에서는 null이다.
-  // baseline(현재 설정)을 쓰는 것은 아래 sustainableSpendingAdvice와 같은 이유다.
-  const lifetimeSpendingPlan = React.useMemo(
-    () => computeLifetimeSpendingPlan(params, result),
-    [params, result]
-  );
-  const sustainableSpendingAdvice = computeSustainableSpendingAdvice(
-    params.spendingStrategy,
-    params.userProfile.targetMonthlySpending,
-    result.calculatedTargetSpending
-  );
-  // 효용 점수를 실제로 계산한 config. 목표 우선순위(strategy.objective)가 6개 항목의 배점을
-  // 통째로 갈아끼우므로, 화면이 기본 배점을 가정하면 "세금 효율 21/10"처럼 만점을 넘긴
-  // 분수가 나온다(compileStrategy는 전략이 없는 계획에서 기본 config를 그대로 반환한다).
-  const utilityConfig = React.useMemo(() => compileStrategy(params).utilityConfig, [params]);
-  // 화면에 표시 중인 결과를 따라간다 — 추천을 적용해 부족이 해소되면 카드도 함께 사라져야
-  // KPI·차트와 같은 이야기를 한다.
-  const shortfallReport = React.useMemo(
-    () => computeShortfallSummary(params, displayedResult),
-    [params, displayedResult]
-  );
-
   // 민감도 분석은 예전에 ExpertDetailsPanel 안에서만 계산됐다. 핵심 레버 카드가 같은 값을
   // 인용해야 하므로 여기로 끌어올려 한 번만 계산하고 아래로 내려준다 — 두 곳에서 각자 돌리면
   // 시뮬레이션 7회가 두 배가 되고, 더 나쁘게는 두 카드가 다른 실행 결과를 말할 수 있다.
   //
   // Before/After 토글과 무관하게 항상 "현재 설정(params)"의 취약성을 본다(기존 규칙 유지).
-  const engine = React.useMemo(() => new SimulationEngine(), []);
-  const sensitivity = React.useMemo(() => computeSensitivityAnalysis(params, engine), [params, engine]);
-  const pensionGap = React.useMemo(() => computePensionGapRisk(params, result), [params, result]);
+  const sensitivity = React.useMemo(
+    () => evaluationEngine.analyzeSensitivity(params),
+    [evaluationEngine, params]
+  );
   const keyLevers = React.useMemo(
     () => computeKeyLevers({ sensitivity, pensionGap, shortfall: shortfallReport, recommendation, formatValue }),
     // formatValue는 매 렌더 새 참조지만 currency에만 의존하므로 통화를 의존성으로 쓴다.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [sensitivity, pensionGap, shortfallReport, recommendation, currency]
   );
-  // 축별 점수 근거. 막대와 같은 결과·같은 config에서 파생돼야 두 숫자가 어긋나지 않는다.
-  const utilityExplanations = React.useMemo(
-    () => explainUtilityComponents(params, displayedResult, utilityConfig, monteCarloForDisplay),
-    [params, displayedResult, utilityConfig, monteCarloForDisplay]
-  );
-  const bequestAdequacyExplanation = React.useMemo(
-    () => (displayedResult.utility ? explainBequestAdequacy(params, displayedResult) : undefined),
-    [params, displayedResult]
-  );
-
   return (
     <div className={styles.container}>
       <DashboardGroup title="결과 요약" description="현재 계획의 결론과 가장 중요한 숫자를 한곳에서 확인하세요.">

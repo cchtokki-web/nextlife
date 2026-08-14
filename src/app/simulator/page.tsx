@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useMemo, useDeferredValue } from 'react';
 import { useSession, signOut } from 'next-auth/react';
-import { SimulationEngine } from '../../core/usecases/SimulationEngine';
+import { LegacySimulationEngine } from '../../core/simulation/LegacySimulationEngine';
 import { SimulationResult } from '../../core/entities/types';
 import { computeMonthlySpendingComposition } from '../../core/usecases/MonthlySpendingComposition';
 import { computeRiskAlerts } from '../../core/usecases/dashboard/computeRiskAlerts';
@@ -85,7 +85,7 @@ export default function Home() {
   const [sidebarOverride, setSidebarOverride] = useState<boolean | null>(null);
   const isSidebarOpen = sidebarOverride ?? !isNarrowScreen;
   const setIsSidebarOpen = setSidebarOverride;
-  const [engine] = useState(() => new SimulationEngine());
+  const [engine] = useState(() => new LegacySimulationEngine());
   const [hoveredBtn, setHoveredBtn] = useState<string | null>(null);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState<boolean>(false);
 
