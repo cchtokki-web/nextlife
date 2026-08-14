@@ -26,6 +26,9 @@ const evaluation = (
   hardConstraintFailures: GoalEvaluationResult['hardConstraintFailures'] = [],
 ): GoalEvaluationResult => ({
   score,
+  weightedScore: score,
+  hardConstraintsSatisfied: hardConstraintFailures.length === 0,
+  goalEvaluations: [],
   utility: utility(score),
   hardConstraintFailures,
   unsupportedHardGoals: [],
@@ -114,7 +117,7 @@ describe('StrategyOptimizer', () => {
     expect(result.debug.rejectionReasons.HARD_RETIREMENT_AGE).toBe(1);
   });
 
-  test('사후 HARD 탈락과 시뮬레이션 실패를 분리 집계하고 점수로 정렬한다', () => {
+  test('사후 HARD 탈락과 시뮬레이션 실패를 분리 집계하고 목표 가중 점수로 정렬한다', () => {
     const input = LegacySimulationAdapter.fromLegacy(structuredClone(initialParams));
     const candidates = [
       candidate(input.strategy, 'low', 60),
@@ -140,7 +143,11 @@ describe('StrategyOptimizer', () => {
             reason: 'depleted',
           }]);
         }
-        return evaluation(id === 'best' ? 90 : 50);
+        const evaluated = evaluation(id === 'best' ? 90 : 50);
+        // lifetime utility compatibility fields must no longer decide the primary ranking.
+        return id === 'best'
+          ? { ...evaluated, score: 1, utility: utility(1) }
+          : { ...evaluated, score: 100, utility: utility(100) };
       }),
     };
 

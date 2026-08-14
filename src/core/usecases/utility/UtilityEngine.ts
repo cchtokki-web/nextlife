@@ -41,7 +41,10 @@ function sum(values: number[]): number {
 // 가리지는 않지만 그 해 자체는 "목표를 다 채웠다"로 읽힌다. 의료비는 생활수준을 높이는
 // 재량 소비가 아니라 반드시 나가는 비용이므로 목표(=필요) 쪽에 들어가는 것이 맞다.
 // 이미 엔진이 inflationMode를 반영해 계산한 실제 지출액이라 물가 보정을 다시 적용하지 않는다.
-function targetAnnualSpendingForYear(params: SimulationParams, r: SimulationYearlyResult): number {
+export function targetAnnualSpendingForYear(
+  params: SimulationParams,
+  r: SimulationYearlyResult,
+): number {
   const { userProfile, inflationRate = 2, inflationMode = 'real' } = params;
   const yearIndex = r.age - userProfile.currentAge;
   const base = userProfile.targetMonthlySpending * 12;
@@ -77,7 +80,10 @@ function consumptionYearUtility(ratio: number): number {
   return Math.pow(Math.max(0, ratio), 1.5);
 }
 
-function computeConsumptionRaw(params: SimulationParams, retirementYears: SimulationYearlyResult[]): number {
+export function computeConsumptionRaw(
+  params: SimulationParams,
+  retirementYears: SimulationYearlyResult[],
+): number {
   if (retirementYears.length === 0) return 0;
 
   const ratios = retirementYears.map((r) => {
