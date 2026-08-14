@@ -9,7 +9,7 @@ import {
 import { DomainError } from '../../entities/errors';
 import { SimulationEngine } from '../SimulationEngine';
 import { computeLifetimeUtility } from '../utility/UtilityEngine';
-import { getIdentityPlan } from './StrategyCandidateGenerator';
+import { getIdentityPlan, paramsWithBaselinePlan } from './StrategyCandidateGenerator';
 import { computeDeltas } from './deltas';
 
 export interface DividendReinvestmentPerAssetResult {
@@ -46,9 +46,9 @@ function buildParamsWithReinvestmentOverrides(
   plan: BaselineWithdrawalPlan,
   overrides: Record<string, boolean>
 ): SimulationParams {
+  const withPlan = paramsWithBaselinePlan(params, plan);
   return {
-    ...params,
-    withdrawalPlan: plan,
+    ...withPlan,
     assets: params.assets.map((a) => (a.id in overrides ? { ...a, reinvestDividend: overrides[a.id] } : a)),
   };
 }

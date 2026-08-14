@@ -134,8 +134,27 @@ export type ReturnShockPath = readonly number[];
 
 export type AssetSellOrderStrategy = 'input_order' | 'low_dividend_first' | 'high_dividend_first';
 export type IsaMaturityDestination = 'pension' | 'asset';
+export type AccountWithdrawalPolicy =
+  | 'GENERAL_FIRST'
+  | 'ISA_FIRST'
+  | 'PENSION_FIRST'
+  | 'TAX_OPTIMIZED'
+  | 'PROPORTIONAL'
+  | 'CUSTOM';
+export type AccountWithdrawalType =
+  | 'CASH'
+  | 'GENERAL'
+  | 'ISA'
+  | 'PENSION_SAVINGS'
+  | 'IRP'
+  | 'PRIVATE_PENSION';
 
 export interface WithdrawalPlan {
+  // StrategyOptimizer가 선택해 전달하는 계좌군 인출 정책. 엔진은 추천하지 않고 그대로 평가한다.
+  // 미지정이면 기존 현금 → 일반자산 → 사적연금 흐름과 호환되는 GENERAL_FIRST다.
+  accountWithdrawalPolicy?: AccountWithdrawalPolicy;
+  // CUSTOM일 때만 사용한다. 계좌 유형 또는 구체 계좌 id를 앞에서부터 우선한다.
+  customWithdrawalOrder?: readonly (AccountWithdrawalType | string)[];
   privatePensionMonthlyTarget?: number; // 월 목표 인출액(KRW 기준, 세전). 계좌 합산 기준, 잔액 한도 내에서 제한
   nationalPensionStartAge?: number; // 국민연금 수령 개시 나이 (60~70, 미지정 시 65 = 기존 동작과 동일)
   assetSellOrderStrategy?: AssetSellOrderStrategy; // 자산 매도 순서 (미지정 시 'input_order' = 기존 동작과 동일)
@@ -151,7 +170,11 @@ export interface WithdrawalPlan {
 // StrategyCandidateGenerator가 만드는 후보처럼 필드가 모두 채워진 "완결된" 인출 전략.
 // WithdrawalPlan은 "부분 override 패치"(일부 필드만 지정)로도 쓰이는 반면, 이 타입은 그 의미를
 // 컴파일 타임에 구분하기 위한 것이다 (예: StrategyRecommendation.recommendedPlan).
-export type CompleteWithdrawalPlan = Required<WithdrawalPlan>;
+export type OptimizedWithdrawalPlan = Omit<
+  WithdrawalPlan,
+  'accountWithdrawalPolicy' | 'customWithdrawalOrder'
+>;
+export type CompleteWithdrawalPlan = Required<OptimizedWithdrawalPlan>;
 
 // 추천 엔진이 다루는 계획. CompleteWithdrawalPlan과 달리 privatePensionMonthlyTarget만
 // 없을 수 있다.

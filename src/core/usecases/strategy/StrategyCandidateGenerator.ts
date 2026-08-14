@@ -146,7 +146,17 @@ export function paramsWithBaselinePlan(
   params: SimulationParams,
   plan: BaselineWithdrawalPlan
 ): SimulationParams {
-  const withdrawalPlan: WithdrawalPlan = { ...plan };
+  // 계좌군 정책은 이 단계의 기존 5차원 추천 격자 바깥에서 StrategyOptimizer가 전달하는 축이다.
+  // 후보 plan으로 통째로 교체해 잃지 않도록 원본에서 명시적으로 보존한다.
+  const withdrawalPlan: WithdrawalPlan = {
+    ...plan,
+    ...(params.withdrawalPlan?.accountWithdrawalPolicy !== undefined
+      ? { accountWithdrawalPolicy: params.withdrawalPlan.accountWithdrawalPolicy }
+      : {}),
+    ...(params.withdrawalPlan?.customWithdrawalOrder !== undefined
+      ? { customWithdrawalOrder: params.withdrawalPlan.customWithdrawalOrder }
+      : {}),
+  };
   if (plan.privatePensionMonthlyTarget === undefined) {
     delete withdrawalPlan.privatePensionMonthlyTarget;
   }
