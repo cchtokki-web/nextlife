@@ -94,6 +94,16 @@ const MATRIX: ReadonlyArray<{ name: string; params: SimulationParams }> = [
     },
   },
   {
+    name: '저장된 인출계획 — 계좌군 CUSTOM 정책',
+    params: {
+      ...base,
+      withdrawalPlan: {
+        accountWithdrawalPolicy: 'CUSTOM',
+        customWithdrawalOrder: ['isa-1', 'GENERAL', 'IRP'],
+      },
+    },
+  },
+  {
     name: '자산 없음(연금만)',
     params: { ...base, assets: [], isaAccounts: [] },
   },

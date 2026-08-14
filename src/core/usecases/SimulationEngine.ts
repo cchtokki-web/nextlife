@@ -40,9 +40,10 @@ import type { RetirementGoals, RetirementProfile, RetirementStrategy } from '../
 import { LegacySimulationAdapter } from '../domain/input/LegacySimulationAdapter';
 import { calculateFundingGap, completeCashFlow } from './cashflow/CashFlowPipeline';
 import {
-  LiquidatableSource,
+  AssetAccount as WithdrawalAssetAccount,
   WithdrawalEngine,
-  taxFreeSource,
+  WithdrawalAccountType,
+  taxFreeAccount,
 } from './withdrawal/WithdrawalEngine';
 
 // 연 수익률(소수)을 월 복리율로. initializeAssets가 네 곳에서 같은 식을 반복하고 있었고,
@@ -117,6 +118,12 @@ interface ActiveIsa extends IsaAccount {
   returnRateAnnual: number;
   returnRateMonthly: number;
   divRateMonthly: number;
+}
+
+function pensionWithdrawalAccountType(type: PrivatePension['type']): WithdrawalAccountType {
+  if (type === 'irp') return 'IRP';
+  if (type === 'savings') return 'PENSION_SAVINGS';
+  return 'PRIVATE_PENSION';
 }
 
 // 은퇴 준비도 점수의 자산 항목(100점 중 25점)의 분모. 4% 룰(연 필요액 × 25)로 환산한 목표 자산.
@@ -341,10 +348,10 @@ export class LegacySimulationEngine implements SimulationEngineContract {
   // 징수되고(연금 폴백 없이 잔액을 버림) 사적연금 초과세만 연금까지 폴백해, 같은 성격의 두
   // 세금이 서로 다르게 처리됐다.
   //
-  // ISA는 의도적으로 제외한다. ISA 잔액을 중도 인출하면 만기 정산의 과세표준
-  // (totalInvested 대비 수익)이 어긋나는데, 이 엔진에는 중도 인출 시 ISA 세제 혜택이
-  // 어떻게 되는지에 대한 모델이 없다. 근거 없는 규칙을 만드는 대신 ISA는 건드리지 않는다 —
-  // 그 결과 ISA에만 돈이 남은 해에는 세금이 과소 징수되며, 이는 알려진 근사다.
+  // ISA는 의도적으로 제외한다. 생활비 경로의 WithdrawalEngine은 추적 가능한 납입원금까지만
+  // 중도인출하지만, 세금 징수를 위해 ISA 수익금까지 강제 인출할 세제 규칙은 이 모델에 없다.
+  // 근거 없는 규칙을 만드는 대신 ISA는 건드리지 않는다 — ISA에만 돈이 남은 해에는 세금이
+  // 과소 징수될 수 있으며, 이는 알려진 근사다.
   private collectTax(
     amountDisplay: number,
     assets: readonly ActiveAsset[],
@@ -895,7 +902,14 @@ export class LegacySimulationEngine implements SimulationEngineContract {
           const contribution = isRetired ? 0 : pension.monthlyContribution;
           pension.currentBalance += growth + contribution;
 
-          if (isRetired && pension.currentBalance > 0) {
+          // 계좌군 정책을 명시한 새 경로에서는 사적연금을 여기서 선지급하지 않는다. Funding Gap
+          // 아래의 단일 WithdrawalEngine 호출이 GENERAL/ISA/PENSION 우선순위를 실제로 결정한다.
+          // 정책 미지정 시에만 기존의 정기 균등분할/정액 지급을 유지해 저장 시나리오를 보존한다.
+          if (
+            isRetired
+            && pension.currentBalance > 0
+            && withdrawalPlan?.accountWithdrawalPolicy === undefined
+          ) {
             let drawAmountRaw = 0;
             // 사용자가 개별 조정할 수 있는 필드가 아니라 항상 이 식이다 — computeExecutionRoadmap.ts의
             // 로드맵 이벤트 나이 계산과 동일해야 한다.
@@ -940,20 +954,42 @@ export class LegacySimulationEngine implements SimulationEngineContract {
               drawAmountRaw = Math.min(drawAmountRaw, headroomInPensionCurrency);
             }
 
-            pension.currentBalance -= drawAmountRaw;
-
             // pensionWithdrawalsStarted가 false면 drawAmountRaw는 항상 0이라 세율 값 자체는 결과에
             // 영향을 주지 않지만, getPrivatePensionIncomeTaxRate는 "55세 미만으로 호출되지 않는다"는
             // 불변식을 전제하므로(taxRates.ts 주석 참고) 그 불변식을 실제로 지키기 위해 게이트를 건다.
             const taxRate = pensionWithdrawalsStarted ? getPrivatePensionIncomeTaxRate(currentAge, taxCtx) : 0;
 
-            const drawAmountTax = drawAmountRaw * taxRate;
-            const drawAmountNet = drawAmountRaw - drawAmountTax;
+            // 정기 사적연금 지급도 계좌 잔액을 직접 깎지 않고 WithdrawalEngine을 통한다.
+            // 이 호출은 계획이 정한 지급액을 실행할 뿐, 엔진이 지급 전략을 추천하지 않는다.
+            const plannedWithdrawal = withdrawalEngine.withdraw({
+              age: currentAge,
+              year: currentYear,
+              netCashRequired: drawAmountRaw - drawAmountRaw * taxRate,
+              accounts: [{
+                id: pension.id,
+                type: pensionWithdrawalAccountType(pension.type),
+                balance: pension.currentBalance,
+                minimumWithdrawalAge: PRIVATE_PENSION_MIN_START_AGE,
+                withdrawalLimit: drawAmountRaw,
+                estimatedTaxRate: taxRate,
+                availableGross: () => pension.currentBalance,
+                withdrawForNet: (_netRequested, grossLimit) => {
+                  const gross = grossLimit;
+                  pension.currentBalance -= gross;
+                  const tax = gross * taxRate;
+                  return { gross, tax, net: gross - tax };
+                },
+              }],
+              strategy: { policy: 'CUSTOM', customOrder: [pension.id] },
+            });
+            const drawAmountActual = plannedWithdrawal.grossWithdrawal;
+            const drawAmountTax = plannedWithdrawal.tax;
+            const drawAmountNet = plannedWithdrawal.netWithdrawal;
 
             monthlyPensionIncomeNetDisplay += this.convertValue(drawAmountNet, pension.currency, displayCurrency, exchangeRate);
             annualPensionTaxPaid += this.convertValue(drawAmountTax, pension.currency, displayCurrency, exchangeRate);
-            annualPreTaxTotalIncome += this.convertValue(drawAmountRaw, pension.currency, displayCurrency, exchangeRate);
-            annualPrivatePensionPreTaxKRW += this.convertValue(drawAmountRaw, pension.currency, 'KRW', exchangeRate);
+            annualPreTaxTotalIncome += this.convertValue(drawAmountActual, pension.currency, displayCurrency, exchangeRate);
+            annualPrivatePensionPreTaxKRW += this.convertValue(drawAmountActual, pension.currency, 'KRW', exchangeRate);
           } else if (
             !isRetired &&
             currentAge >= PRIVATE_PENSION_MIN_START_AGE &&
@@ -984,11 +1020,31 @@ export class LegacySimulationEngine implements SimulationEngineContract {
             );
 
             if (drawAmountRaw > 0) {
-              remainingBridgeLimitKRW -= this.convertValue(drawAmountRaw, pension.currency, 'KRW', exchangeRate);
-              pension.currentBalance -= drawAmountRaw;
-
-              const drawAmountTax = drawAmountRaw * taxRate;
-              const drawAmountNet = drawAmountRaw - drawAmountTax;
+              const bridgeWithdrawal = withdrawalEngine.withdraw({
+                age: currentAge,
+                year: currentYear,
+                netCashRequired: drawAmountRaw - drawAmountRaw * taxRate,
+                accounts: [{
+                  id: pension.id,
+                  type: pensionWithdrawalAccountType(pension.type),
+                  balance: pension.currentBalance,
+                  minimumWithdrawalAge: PRIVATE_PENSION_MIN_START_AGE,
+                  withdrawalLimit: drawAmountRaw,
+                  estimatedTaxRate: taxRate,
+                  availableGross: () => pension.currentBalance,
+                  withdrawForNet: (_netRequested, grossLimit) => {
+                    const gross = grossLimit;
+                    pension.currentBalance -= gross;
+                    const tax = gross * taxRate;
+                    return { gross, tax, net: gross - tax };
+                  },
+                }],
+                strategy: { policy: 'CUSTOM', customOrder: [pension.id] },
+              });
+              const drawAmountActual = bridgeWithdrawal.grossWithdrawal;
+              const drawAmountTax = bridgeWithdrawal.tax;
+              const drawAmountNet = bridgeWithdrawal.netWithdrawal;
+              remainingBridgeLimitKRW -= this.convertValue(drawAmountActual, pension.currency, 'KRW', exchangeRate);
 
               // 인출액이 이미 ISA 룸으로 캡되어 있으므로 순액은 전액 적립된다(소실 없음).
               const netInIsaCurrency = this.convertValue(drawAmountNet, pension.currency, activeIsas[0].currency, exchangeRate);
@@ -997,8 +1053,8 @@ export class LegacySimulationEngine implements SimulationEngineContract {
               isaBridgeRoomRemainingInIsaCurrency = Math.max(0, isaBridgeRoomRemainingInIsaCurrency - netInIsaCurrency);
 
               annualPensionTaxPaid += this.convertValue(drawAmountTax, pension.currency, displayCurrency, exchangeRate);
-              annualPreTaxTotalIncome += this.convertValue(drawAmountRaw, pension.currency, displayCurrency, exchangeRate);
-              annualPrivatePensionPreTaxKRW += this.convertValue(drawAmountRaw, pension.currency, 'KRW', exchangeRate);
+              annualPreTaxTotalIncome += this.convertValue(drawAmountActual, pension.currency, displayCurrency, exchangeRate);
+              annualPrivatePensionPreTaxKRW += this.convertValue(drawAmountActual, pension.currency, 'KRW', exchangeRate);
             }
           }
         });
@@ -1040,23 +1096,35 @@ export class LegacySimulationEngine implements SimulationEngineContract {
           cashBucketDisplay += funding.surplus;
         }
 
-        const sources: LiquidatableSource[] = [];
+        const withdrawalAccounts: WithdrawalAssetAccount[] = [];
         if (funding.fundingGap > 0) {
           // 이미 손에 있는 현금은 법정 인출 나이와 무관하며 세금도 없다.
-          sources.push(taxFreeSource(
-            () => cashBucketDisplay,
-            (gross) => {
+          withdrawalAccounts.push(taxFreeAccount({
+            id: 'simulation-cash',
+            type: 'CASH',
+            balance: () => cashBucketDisplay,
+            withdraw: (gross) => {
               const actual = Math.min(cashBucketDisplay, gross);
               cashBucketDisplay -= actual;
               return actual;
-            }
-          ));
+            },
+          }));
 
           const generalAssetWithdrawalStartAge = withdrawalPlan?.generalAssetWithdrawalStartAge
             ?? userProfile.retirementAge;
-          if (currentAge >= generalAssetWithdrawalStartAge) {
-            for (const asset of withdrawalOrderedAssets) {
-              sources.push({
+          for (const asset of withdrawalOrderedAssets) {
+              withdrawalAccounts.push({
+                id: asset.id,
+                type: 'GENERAL',
+                balance: this.convertValue(
+                  asset.currentValue, asset.currency, displayCurrency, exchangeRate
+                ),
+                minimumWithdrawalAge: generalAssetWithdrawalStartAge,
+                estimatedTaxRate: asset.capitalGainsTaxable
+                  ? (currentTaxSettings.capitalGainsTaxRate !== undefined
+                    ? currentTaxSettings.capitalGainsTaxRate / 100
+                    : taxCtx.profile.overseasCapitalGainsTaxRate)
+                  : 0,
                 availableGross: () => this.convertValue(
                   asset.currentValue, asset.currency, displayCurrency, exchangeRate
                 ),
@@ -1127,6 +1195,33 @@ export class LegacySimulationEngine implements SimulationEngineContract {
                   };
                 },
               });
+          }
+
+          // 기존 저장 시나리오는 생활비에 ISA를 쓰지 않았다. 계좌군 정책을 명시한 새 경로에서만
+          // ISA를 후보로 등록해 opt-in 호환성을 지킨다. 중도인출은 프로젝트가 확실히 추적하는
+          // 납입원금 범위로 제한하고, 수익금 과세 규칙은 새로 가정하지 않는다.
+          if (withdrawalPlan?.accountWithdrawalPolicy !== undefined) {
+            for (const isa of activeIsas) {
+              withdrawalAccounts.push(taxFreeAccount({
+                id: isa.id,
+                type: 'ISA',
+                balance: () => this.convertValue(
+                  isa.currentBalance, isa.currency, displayCurrency, exchangeRate
+                ),
+                availableGross: () => Math.min(
+                  this.convertValue(isa.currentBalance, isa.currency, displayCurrency, exchangeRate),
+                  this.convertValue(isa.totalInvested, isa.currency, displayCurrency, exchangeRate)
+                ),
+                withdraw: (grossDisplay) => {
+                  const grossIsaCurrency = this.convertValue(
+                    grossDisplay, displayCurrency, isa.currency, exchangeRate
+                  );
+                  const actual = Math.min(isa.currentBalance, isa.totalInvested, grossIsaCurrency);
+                  isa.currentBalance -= actual;
+                  isa.totalInvested -= actual;
+                  return this.convertValue(actual, isa.currency, displayCurrency, exchangeRate);
+                },
+              }));
             }
           }
 
@@ -1135,7 +1230,14 @@ export class LegacySimulationEngine implements SimulationEngineContract {
           if (currentAge >= PRIVATE_PENSION_MIN_START_AGE) {
             const taxRate = getPrivatePensionIncomeTaxRate(currentAge, taxCtx);
             for (const pension of activePensions) {
-              sources.push({
+              withdrawalAccounts.push({
+                id: pension.id,
+                type: pensionWithdrawalAccountType(pension.type),
+                balance: this.convertValue(
+                  pension.currentBalance, pension.currency, displayCurrency, exchangeRate
+                ),
+                minimumWithdrawalAge: PRIVATE_PENSION_MIN_START_AGE,
+                estimatedTaxRate: taxRate,
                 availableGross: () => {
                   let available = this.convertValue(
                     pension.currentBalance, pension.currency, displayCurrency, exchangeRate
@@ -1192,11 +1294,17 @@ export class LegacySimulationEngine implements SimulationEngineContract {
           ) - assetFloorDisplay)
           : Infinity;
         const withdrawal = withdrawalEngine.withdraw({
-          requiredNetCash: funding.fundingGap,
+          age: currentAge,
+          year: currentYear,
+          netCashRequired: funding.fundingGap,
+          accounts: withdrawalAccounts,
+          strategy: {
+            policy: withdrawalPlan?.accountWithdrawalPolicy ?? 'GENERAL_FIRST',
+            customOrder: withdrawalPlan?.customWithdrawalOrder,
+          },
           liquidatableHeadroom: protectedHeadroom,
-          sources,
         });
-        const completedCashFlow = completeCashFlow(funding, withdrawal.net);
+        const completedCashFlow = completeCashFlow(funding, withdrawal.netWithdrawal);
         annualSpending += completedCashFlow.actualSpending;
         annualUnmetSpending += completedCashFlow.shortfall;
       }

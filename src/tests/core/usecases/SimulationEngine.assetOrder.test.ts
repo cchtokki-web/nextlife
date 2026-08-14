@@ -160,3 +160,87 @@ describe('SimulationEngine ISA 만기 자금 이동 목적지', () => {
     expect(resultAt60!.pensionAssets).toBeLessThan(7000000); // 연금은 그대로 500만원 근방
   });
 });
+
+describe('SimulationEngine 계좌군 인출 정책', () => {
+  const accountPolicyParams: SimulationParams = {
+    userProfile: {
+      currentAge: 60,
+      retirementAge: 60,
+      expectancy: 60,
+      targetMonthlySpending: 1_000_000,
+    },
+    assets: [{
+      id: 'general', type: 'etf', ticker: 'GENERAL', name: '일반자산',
+      quantity: 1, averagePrice: 20_000_000, acquisitionCostBasis: 20_000_000,
+      annualGrowthRate: 0, dividendYield: 0, monthlyContribution: 0,
+      reinvestDividend: false, currency: 'KRW', assetMarket: 'KR_ETF',
+    }],
+    isaAccounts: [{
+      id: 'isa', type: 'general', balance: 20_000_000, monthlyContribution: 0,
+      annualReturn: 0, dividendYield: 0, currency: 'KRW', maturityYears: 100,
+    }],
+    nationalPension: { expectedMonthlyAmount: 0 },
+    privatePensions: [],
+    otherIncomes: [],
+    inflationRate: 0,
+    inflationMode: 'real',
+    baseExchangeRate: 1_350,
+    exchangeScenario: 'base',
+    displayCurrency: 'KRW',
+  };
+
+  test('정책 미지정 기존 시나리오는 생활비 부족분으로 ISA 원금을 인출하지 않는다', () => {
+    const engine = new SimulationEngine();
+    const isaOnly: SimulationParams = { ...accountPolicyParams, assets: [] };
+    const legacy = engine.runSingle(isaOnly).yearlyResults[0];
+    const optedIn = engine.runSingle({
+      ...isaOnly,
+      withdrawalPlan: { accountWithdrawalPolicy: 'ISA_FIRST' },
+    }).yearlyResults[0];
+
+    expect(legacy.isaAssets).toBe(20_000_000);
+    expect(legacy.unmetSpending).toBe(12_000_000);
+    expect(optedIn.isaAssets).toBe(8_000_000);
+    expect(optedIn.unmetSpending).toBe(0);
+  });
+
+  test('ISA_FIRST는 일반자산보다 ISA 납입원금을 먼저 생활비로 사용한다', () => {
+    const engine = new SimulationEngine();
+    const generalFirst = engine.runSingle({
+      ...accountPolicyParams,
+      withdrawalPlan: { accountWithdrawalPolicy: 'GENERAL_FIRST' },
+    }).yearlyResults[0];
+    const isaFirst = engine.runSingle({
+      ...accountPolicyParams,
+      withdrawalPlan: { accountWithdrawalPolicy: 'ISA_FIRST' },
+    }).yearlyResults[0];
+
+    expect(generalFirst.stockAssets).toBeLessThan(isaFirst.stockAssets);
+    expect(generalFirst.isaAssets).toBeGreaterThan(isaFirst.isaAssets);
+    expect(isaFirst.unmetSpending).toBe(0);
+  });
+
+  test('PENSION_FIRST는 일반자산보다 사적연금을 먼저 생활비로 사용한다', () => {
+    const engine = new SimulationEngine();
+    const withPension: SimulationParams = {
+      ...accountPolicyParams,
+      isaAccounts: [],
+      privatePensions: [{
+        id: 'irp', type: 'irp', balance: 20_000_000, monthlyContribution: 0,
+        annualReturn: 0, currency: 'KRW',
+      }],
+    };
+    const generalFirst = engine.runSingle({
+      ...withPension,
+      withdrawalPlan: { accountWithdrawalPolicy: 'GENERAL_FIRST' },
+    }).yearlyResults[0];
+    const pensionFirst = engine.runSingle({
+      ...withPension,
+      withdrawalPlan: { accountWithdrawalPolicy: 'PENSION_FIRST' },
+    }).yearlyResults[0];
+
+    expect(generalFirst.stockAssets).toBeLessThan(pensionFirst.stockAssets);
+    expect(generalFirst.pensionAssets).toBeGreaterThan(pensionFirst.pensionAssets);
+    expect(pensionFirst.unmetSpending).toBe(0);
+  });
+});
