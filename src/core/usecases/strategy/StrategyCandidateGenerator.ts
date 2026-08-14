@@ -170,15 +170,16 @@ const SPENDING_DECREASE_GRID = [0.8, 0.9];
 export function generateSpendingAdjustmentCandidates(
   params: SimulationParams,
   basePlan: BaselineWithdrawalPlan,
-  options: { allowIncrease: boolean }
+  options: { allowIncrease: boolean; allowDecrease?: boolean }
 ): BaselineWithdrawalPlan[] {
   // 목표 생활비가 인출액을 결정하지 않는 전략에서는 배수 자체가 무의미하다.
   if ((params.spendingStrategy ?? 'target') !== 'target') return [];
   if (params.userProfile.targetMonthlySpending <= 0) return [];
 
+  const decreaseGrid = options.allowDecrease === false ? [] : SPENDING_DECREASE_GRID;
   const grid = options.allowIncrease
-    ? [...SPENDING_DECREASE_GRID, ...SPENDING_INCREASE_GRID]
-    : SPENDING_DECREASE_GRID;
+    ? [...decreaseGrid, ...SPENDING_INCREASE_GRID]
+    : decreaseGrid;
 
   return grid.map((multiplier) => ({ ...basePlan, monthlySpendingMultiplier: multiplier }));
 }

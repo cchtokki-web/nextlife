@@ -1,9 +1,8 @@
 "use client";
 
-import React, { useState, useEffect, useMemo, useDeferredValue } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useSession, signOut } from 'next-auth/react';
 import { LegacySimulationEngine } from '../../core/simulation/LegacySimulationEngine';
-import { SimulationResult } from '../../core/entities/types';
 import { computeMonthlySpendingComposition } from '../../core/usecases/MonthlySpendingComposition';
 import { computeRiskAlerts } from '../../core/usecases/dashboard/computeRiskAlerts';
 import { computeExecutionRoadmap, selectDepletionAge } from '../../core/usecases/dashboard/computeExecutionRoadmap';
@@ -11,9 +10,6 @@ import { computeSensitivityAnalysis } from '../../core/usecases/dashboard/comput
 import { resolvePlanAssetStatus } from '../../core/usecases/dashboard/resolvePlanAssetStatus';
 import { computeShortfallSummary } from '../../core/usecases/dashboard/computeShortfallSummary';
 import { describeFireAge } from '../../core/usecases/dashboard/describeFireAge';
-import { useMonteCarlo } from '../../web/hooks/useMonteCarlo';
-import { computeSequenceRisk } from '../../core/usecases/montecarlo/sequenceRisk';
-import { resolveMonteCarloConfig } from '../../core/usecases/montecarlo/volatilityPresets';
 import { describeDepletionAge } from '../../core/usecases/dashboard/describeDepletionAge';
 import { formatCurrencyUnit, renderRiskAlertsSection, renderItemizedChecklistSection, renderExecutionRoadmapSection, renderSensitivityTableSection, renderMonteCarloSection, renderShortfallSummarySection, renderPlanVerdictSection, renderNationalPensionSection, renderKeyLeversSection } from '../../web/features/Pdf/pdfReportSections';
 import { computePlanConfidence } from '../../core/usecases/dashboard/computePlanConfidence';
@@ -25,25 +21,28 @@ import { analyzeCurrentStrategy, explainBequestAdequacy } from '../../core/useca
 import { explainUtilityComponents } from '../../core/usecases/utility/explainUtilityComponents';
 import { resolveTaxSettings } from '../../core/usecases/tax/taxRates';
 import { NATIONAL_PENSION_NORMAL_START_AGE } from '../../core/usecases/pension/nationalPensionRules';
-import { useStrategyPipeline } from '../../web/hooks/useStrategyPipeline';
 import { useMediaQuery } from '../../web/hooks/useBrowserEnvironment';
-import { runCompiledScenario } from '../../core/usecases/strategy/runCompiledScenario';
 import { buildUtilityComponentMeta } from '../../web/features/Dashboard/utilityComponentMeta';
 import { initialParams } from '../../infrastructure/storage/localStore';
-import { AssetFormSection } from '../../web/features/AssetForm/AssetFormSection';
 import { ScenarioManager } from '../../web/features/Scenario/ScenarioManager';
 import { StrategySettingsPanel } from '../../web/features/StrategySettings/StrategySettingsPanel';
+import { RetirementInputFlow } from '../../web/features/RetirementGoals/RetirementInputFlow';
 import { Collapse } from '../../web/components/ui';
 import { DashboardSection } from '../../web/features/Dashboard/DashboardSection';
 import GlassCard from '../../web/components/GlassCard';
 import { Header } from '../../web/components/Header/Header';
 import styles from './page.module.css';
-import { AlertCircle, RotateCcw, PanelLeftClose, PanelLeftOpen, LogOut, FileText } from 'lucide-react';
+import { AlertCircle, BarChart3, RotateCcw, PanelLeftClose, PanelLeftOpen, LogOut, FileText } from 'lucide-react';
 import { useScenarios } from '../../web/features/Scenario/useScenarios';
 import { E2eeKeyManager } from '../../web/components/E2eeKeyManager';
 import { WithdrawAccountButton } from '../../web/features/Account/WithdrawAccountButton';
 import { useWithdrawAccount } from '../../web/features/Account/useWithdrawAccount';
 import { isDevMode } from '../../core/utils/isDevMode';
+import {
+  AnalysisBoundary,
+  type AnalysisRequest,
+  type AnalysisRuntimeValue,
+} from '../../web/features/RetirementAnalysis/AnalysisRuntime';
 
 export default function Home() {
   const { data: session } = useSession();
@@ -88,6 +87,7 @@ export default function Home() {
   const [engine] = useState(() => new LegacySimulationEngine());
   const [hoveredBtn, setHoveredBtn] = useState<string | null>(null);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState<boolean>(false);
+  const [analysisRequest, setAnalysisRequest] = useState<AnalysisRequest | null>(null);
 
   // Dynamically update document body preset attribute for dynamic styling/glows
   useEffect(() => {
@@ -95,63 +95,6 @@ export default function Home() {
       document.body.setAttribute('data-preset', activeParams.yieldPreset || 'base');
     }
   }, [activeParams.yieldPreset]);
-
-  // 계산 파이프라인(컴파일 → 추천 → 센티널 자동 채움 → 시뮬레이션)은 훅에 있다.
-  // 이 화면의 핵심 불변식("추천의 입력은 언제나 센티널 미적용 compiled")을 테스트로
-  // 고정하기 위해 분리했다 — 자세한 근거는 useStrategyPipeline 주석 참고.
-  const {
-    effective, sentinels, recommendation, recommendationFailed,
-    isComputingRecommendation, result,
-  } = useStrategyPipeline(activeParams, engine);
-
-  // 몬테카를로는 워커에서, 시퀀스 리스크는 메인 스레드에서 돈다.
-  //
-  // **둘 다 effective.params를 쓴다** — 엔진이 실제로 계산에 쓴 값이다. activeParams나
-  // compiled.params를 주면 화면의 결정론 곡선과 확률 밴드가 서로 다른 세계를 그린다
-  // (PDF가 reportParams로 effective.params를 쓰는 것과 같은 이유).
-  //
-  // 시퀀스 리스크를 워커로 보내지 않는 이유: runSingle 5회뿐이라 이미 동기로 도는
-  // 민감도 분석 6회보다 싸다. 순서 리스크 패널은 즉시 뜨고 확률 카드만 늦게 채워진다.
-  const { result: monteCarlo, status: monteCarloStatus } = useMonteCarlo(effective.params);
-  const sequenceRisk = useMemo(
-    () => computeSequenceRisk(effective.params, engine, resolveMonteCarloConfig(effective.params)),
-    [effective.params, engine]
-  );
-
-  // Track simulation runs with a simple debounce
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      const sessionId = sessionStorage.getItem('analytics_session_id');
-      fetch('/api/analytics', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type: 'SIMULATION_RUN', sessionId }),
-      }).catch(err => console.error('Failed to log simulation run', err));
-    }, 3000);
-    return () => clearTimeout(timer);
-  }, [result]);
-
-  // 비교 시나리오도 활성 시나리오와 **완전히 같은 경로**로 실행한다 — 전략 컴파일 +
-  // AI 센티널 자동 채움까지. 자동 채움을 건너뛰면 같은 시나리오를 복제해 나란히 놓아도
-  // 두 곡선이 다르게 그려진다(활성 쪽만 AI가 채운 값으로 돌기 때문이다).
-  //
-  // 비용이 만만치 않다. 시나리오당 recommendStrategy 한 번(최대 218개 후보 시뮬레이션)이
-  // 추가되므로 비교 카드 수만큼 곱해진다. 그래서 입력을 useDeferredValue로 미뤄
-  // 트랜지션(비긴급) 우선순위에서 계산하게 한다 — 자동저장 때문에 scenarios 참조는 타이핑마다
-  // 바뀌는데, 미루지 않으면 그 계산이 매 키 입력의 렌더를 막는다.
-  const deferredScenarios = useDeferredValue(scenarios);
-  const deferredCompareIds = useDeferredValue(compareScenarioIds);
-  const compareResults = useMemo(() => {
-    return deferredCompareIds.map(id => {
-      const scenario = deferredScenarios.find(s => s.id === id);
-      if (!scenario) return null;
-      return {
-        id,
-        name: scenario.name,
-        result: runCompiledScenario(engine, scenario.data, { applySentinels: true }),
-      };
-    }).filter(Boolean) as { id: string, name: string, result: SimulationResult }[];
-  }, [engine, deferredScenarios, deferredCompareIds]);
 
   const formatValue = (val: number): string => {
     const currency = activeParams.displayCurrency;
@@ -183,8 +126,9 @@ export default function Home() {
     }
   };
 
-  const handleDownload = async () => {
-    if (isGeneratingPdf) return;
+  const handleDownload = async (analysis: AnalysisRuntimeValue | null) => {
+    if (isGeneratingPdf || !analysis) return;
+    const { effective, sentinels, recommendation, result, monteCarlo, sequenceRisk } = analysis;
     setIsGeneratingPdf(true);
 
     try {
@@ -916,6 +860,7 @@ export default function Home() {
   const handleReset = () => {
     if (confirm('현재 시나리오의 입력사항이 기본값으로 초기화됩니다. 계속하시겠습니까?')) {
       handleUpdateActiveParams(initialParams);
+      setAnalysisRequest(null);
     }
   };
 
@@ -965,7 +910,9 @@ export default function Home() {
     return <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', color: 'var(--foreground-muted)' }}>시뮬레이션 엔진을 준비하고 있습니다...</div>;
   }
 
-  return (
+  const renderPage = (analysis: AnalysisRuntimeValue | null) => {
+    const analysisIsCurrent = analysis?.sourceParams === activeParams;
+    return (
     <main className={styles.main}>
       <Header saveStatus={saveStatus} isSaving={isSaving} lastSaved={lastSaved}>
         <div className={styles.actionContainer}>
@@ -997,8 +944,8 @@ export default function Home() {
               <span className={styles.buttonLabel}>초기화</span>
             </button>
             <button 
-              onClick={handleDownload}
-              disabled={isGeneratingPdf}
+              onClick={() => handleDownload(analysisIsCurrent ? analysis : null)}
+              disabled={isGeneratingPdf || !analysisIsCurrent}
               aria-label="결과 다운로드"
               title="결과 다운로드"
               onMouseEnter={() => setHoveredBtn('download')}
@@ -1012,8 +959,8 @@ export default function Home() {
                 border: `1px solid ${hoveredBtn === 'download' ? 'var(--primary)' : 'var(--card-border)'}`, 
                 borderRadius: '12px', 
                 color: hoveredBtn === 'download' ? 'var(--primary)' : 'var(--foreground-muted)', 
-                cursor: isGeneratingPdf ? 'not-allowed' : 'pointer', 
-                opacity: isGeneratingPdf ? 0.6 : 1,
+                cursor: isGeneratingPdf || !analysisIsCurrent ? 'not-allowed' : 'pointer',
+                opacity: isGeneratingPdf || !analysisIsCurrent ? 0.6 : 1,
                 fontSize: '0.85rem', 
                 fontWeight: 600, 
                 transition: 'all 0.2s ease',
@@ -1110,27 +1057,39 @@ export default function Home() {
             <GlassCard>
               <ScenarioManager scenarioState={scenarioState} />
 
-              {/* 추천은 여기서 한 번만 계산해 내려보낸다. 패널이 자체적으로 계산하면
-                  이 앱에서 가장 무거운 계산(최대 218개 후보 시뮬레이션)이 두 배가 된다. */}
-              <div style={{ paddingTop: '1.25rem' }}>
-                <StrategySettingsPanel
+              <div className="pt-5">
+                <RetirementInputFlow
                   params={activeParams}
                   onChangeParams={handleUpdateActiveParams}
-                  recommendation={recommendation}
-                  recommendationFailed={recommendationFailed}
-                  sentinels={sentinels}
+                  onStartAnalysis={() => {
+                    setAnalysisRequest({
+                      params: activeParams,
+                      compareScenarios: scenarios
+                        .filter((scenario) => compareScenarioIds.includes(scenario.id))
+                        .map(({ id, name, data }) => ({ id, name, data })),
+                    });
+                    if (isNarrowScreen) setIsSidebarOpen(false);
+                  }}
                 />
               </div>
             </GlassCard>
 
-            {/* 내 자산도 현재 시나리오에 종속되지만 입력량이 많아 별도 접이식 영역으로 둔다. */}
-            <Collapse title={<span className="text-base font-semibold">내 자산</span>}>
-              <div className="flex flex-col gap-6 pt-2">
-                <GlassCard>
-                  <AssetFormSection params={activeParams} onChangeParams={handleUpdateActiveParams} />
-                </GlassCard>
-              </div>
-            </Collapse>
+            {/* 기존의 세부 전략·연금·경제·세금 입력은 삭제하지 않고 기본 흐름 밖에 보존한다. */}
+            <GlassCard>
+              <Collapse title={<span className="text-sm font-semibold">고급 / 전문가 설정</span>}>
+                <div className="pt-4">
+                  {/* 추천은 여기서 한 번만 계산해 내려보낸다. 패널이 자체적으로 계산하면
+                      이 앱에서 가장 무거운 계산(최대 218개 후보 시뮬레이션)이 두 배가 된다. */}
+                  <StrategySettingsPanel
+                    params={activeParams}
+                    onChangeParams={handleUpdateActiveParams}
+                    recommendation={analysisIsCurrent ? analysis.recommendation : undefined}
+                    recommendationFailed={analysisIsCurrent ? analysis.recommendationFailed : false}
+                    sentinels={analysisIsCurrent ? analysis.sentinels : undefined}
+                  />
+                </div>
+              </Collapse>
+            </GlassCard>
           </section>
 
           {/* Right Side: Visual Dashboard */}
@@ -1161,19 +1120,36 @@ export default function Home() {
                 </button>
               </div>
             )}
-            <DashboardSection
-              params={effective.params}
-              result={result}
-              compareResults={compareResults}
-              isPro={isPro}
-              recommendation={recommendation}
-              recommendationFailed={recommendationFailed}
-              isComputingRecommendation={isComputingRecommendation}
-              sentinels={sentinels}
-              monteCarlo={monteCarlo}
-              monteCarloStatus={monteCarloStatus}
-              sequenceRisk={sequenceRisk}
-            />
+            {analysisIsCurrent ? (
+              <DashboardSection
+                params={analysis.effective.params}
+                result={analysis.result}
+                compareResults={analysis.compareResults}
+                isPro={isPro}
+                recommendation={analysis.recommendation}
+                recommendationFailed={analysis.recommendationFailed}
+                isComputingRecommendation={analysis.isComputingRecommendation}
+                sentinels={analysis.sentinels}
+                monteCarlo={analysis.monteCarlo}
+                monteCarloStatus={analysis.monteCarloStatus}
+                sequenceRisk={analysis.sequenceRisk}
+              />
+            ) : (
+              <GlassCard>
+                <div className="flex min-h-64 flex-col items-center justify-center px-6 py-12 text-center">
+                  <BarChart3 size={30} className="text-primary" aria-hidden="true" />
+                  <h2 className="mt-4 text-lg font-bold text-foreground">
+                    {analysis ? '입력 변경사항을 다시 분석해 주세요' : '은퇴 계획을 만들어 보세요'}
+                  </h2>
+                  <p className="mt-2 max-w-md text-sm leading-relaxed text-foreground-muted">
+                    {analysis
+                      ? '현재 결과는 이전 입력 기준이므로 숨겼습니다. 목표 단계에서 분석 시작을 다시 눌러 주세요.'
+                      : <>개인정보와 자산정보를 확인하고 원하는 은퇴 목표를 선택한 뒤
+                        &lsquo;분석 시작&rsquo;을 눌러 주세요.</>}
+                  </p>
+                </div>
+              </GlassCard>
+            )}
           </section>
 
         </div>
@@ -1198,5 +1174,12 @@ export default function Home() {
         </div>
       </footer>
     </main>
+    );
+  };
+
+  return (
+    <AnalysisBoundary request={analysisRequest} engine={engine}>
+      {renderPage}
+    </AnalysisBoundary>
   );
 }

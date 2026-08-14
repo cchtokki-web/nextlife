@@ -10,6 +10,7 @@ import type {
   UtilityConfig,
   WithdrawalPlan,
 } from '../../entities/types';
+import type { RetirementGoal as SelectedRetirementGoal } from '../../entities/retirementGoal';
 
 /** Persisted simulator input kept for saved scenarios and existing API callers. */
 export type LegacySimulationConfig = SimulationParams;
@@ -81,9 +82,11 @@ export type RetirementGoal =
   | { type: 'plan_horizon'; targetAge: number }
   | { type: 'bequest'; targetAmount: number };
 
-/** Goal list is intentionally not capped here; the maximum-five selection belongs to a later UI phase. */
+/** Required legacy engine goals plus the optional maximum-five user selection. */
 export interface RetirementGoals {
   goals: RetirementGoal[];
+  /** User-selected, prioritized goals introduced by the goal-based input flow. */
+  selectedGoals?: SelectedRetirementGoal[];
 }
 
 export interface WithdrawalPolicy extends Omit<WithdrawalPlan, 'nationalPensionStartAge'> {
@@ -135,6 +138,7 @@ type LegacyStrategySettings = Omit<
   | 'privatePensions'
   | 'isaAccounts'
   | 'otherIncomes'
+  | 'retirementGoals'
   | 'spendingStrategy'
   | 'spendingCurve'
   | 'assetFloor'
@@ -177,6 +181,7 @@ export type LegacyFieldCategory = 'FACT' | 'GOAL' | 'STRATEGY';
 /** Exhaustive top-level classification; mixed `userProfile` fields are split by the adapter. */
 export const LEGACY_SIMULATION_FIELD_CLASSIFICATION = {
   userProfile: 'GOAL',
+  retirementGoals: 'GOAL',
   assets: 'FACT',
   nationalPension: 'FACT',
   privatePensions: 'FACT',

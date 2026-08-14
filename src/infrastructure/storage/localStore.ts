@@ -8,6 +8,7 @@ export const initialParams: SimulationParams = {
     expectancy: 85,
     targetMonthlySpending: 3500000, // 350만 원 (통계청 50대 평균 소비지출 참고)
   },
+  retirementGoals: [],
   assets: [
     {
       id: 'asset-kodex200',
