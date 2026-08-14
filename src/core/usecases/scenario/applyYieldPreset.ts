@@ -1,5 +1,11 @@
 import { CustomYieldSnapshot, SimulationParams } from '../../entities/types';
 
+export const YIELD_PRESET_RATES = {
+  conservative: { stockGrowth: 5, pensionReturn: 3 },
+  base: { stockGrowth: 7, pensionReturn: 4 },
+  aggressive: { stockGrowth: 9, pensionReturn: 6 },
+} as const;
+
 // 구 설정 UI(시뮬레이션 설정/핵심 설정 카드)에 있던 "시장 수익률 프리셋 적용" 로직을 순수
 // 함수로 추출한 것. 그 UI들은 제거되었고, 지금은 compileStrategy가 「투자 전략」의 리스크 성향을
 // 프리셋으로 번역할 때 이 함수를 호출한다.
@@ -19,15 +25,7 @@ export function applyYieldPreset(
   params: SimulationParams,
   preset: 'conservative' | 'base' | 'aggressive'
 ): SimulationParams {
-  let stockGrowth = 7;
-  let pensionReturn = 4;
-  if (preset === 'conservative') {
-    stockGrowth = 5;
-    pensionReturn = 3;
-  } else if (preset === 'aggressive') {
-    stockGrowth = 9;
-    pensionReturn = 6;
-  }
+  const { stockGrowth, pensionReturn } = YIELD_PRESET_RATES[preset];
 
   const customYieldSnapshot = params.yieldPreset === 'custom' ? captureCustomYieldSnapshot(params) : params.customYieldSnapshot;
 
