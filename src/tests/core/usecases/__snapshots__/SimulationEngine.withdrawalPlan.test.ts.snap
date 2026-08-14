@@ -4,21 +4,21 @@ exports[`SimulationEngine withdrawalPlan (인출 정책 파라미터화) > 회�
 {
   "마지막해": {
     "age": 90,
-    "capitalGainsTaxPaid": 2269748.7615953838,
+    "capitalGainsTaxPaid": 2079304.5780386052,
     "comprehensiveTaxPaid": 0,
-    "dividendTaxPaid": 960057.2560406725,
+    "dividendTaxPaid": 932450.9037996675,
     "hasTaxWarning": false,
-    "healthInsuranceIncomeBasis": 20639612.82333524,
-    "healthInsurancePaid": 45348.54917446863,
+    "healthInsuranceIncomeBasis": 20455570.47506187,
+    "healthInsurancePaid": 32299.946681886664,
     "nationalPensionTaxPaid": 1787051.6415700344,
     "pensionAssets": 0,
     "pensionTaxPaid": 9845555.394732019,
-    "preTaxTotalIncome": 108788107.75147572,
+    "preTaxTotalIncome": 108604065.40320234,
     "privatePensionTaxMethod": "separate",
     "spending": 85435386.69838452,
-    "stockAssets": 326392057.3825031,
-    "totalAssets": 398809548.764397,
-    "totalIncome": 96150094.90995845,
+    "stockAssets": 316917121.7890729,
+    "totalAssets": 389334613.1709668,
+    "totalIncome": 96006707.51641868,
   },
   "은퇴시점": {
     "age": 60,
@@ -62,7 +62,7 @@ exports[`SimulationEngine withdrawalPlan (인출 정책 파라미터화) > 회�
 exports[`SimulationEngine withdrawalPlan (인출 정책 파라미터화) > 회귀 가드(요약): withdrawalPlan 미지정 시 계획 수준 지표가 동일해야 한다 1`] = `
 {
   "depletionAge": null,
-  "endingAssets": 398809548.764397,
+  "endingAssets": 389334613.1709668,
   "fireAge": 81,
   "goalAchievementRate": 94,
   "retirementAssetsAtRetirement": 563995420.2198206,
