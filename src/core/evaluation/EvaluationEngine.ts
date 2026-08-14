@@ -1,6 +1,6 @@
 import type { MonteCarloResult } from '../entities/montecarlo';
 import type { SimulationResult } from '../entities/types';
-import type { RetirementProfile, RetirementStrategy } from '../domain/input/retirement';
+import type { RetirementGoals, RetirementProfile, RetirementStrategy } from '../domain/input/retirement';
 import type { RiskAlert } from '../usecases/dashboard/computeRiskAlerts';
 import type { ShortfallReport } from '../usecases/dashboard/computeShortfallSummary';
 import type { PlanAssetStatus } from '../usecases/dashboard/resolvePlanAssetStatus';
@@ -34,6 +34,7 @@ export interface RetirementEvaluation {
 export interface EvaluationEngine {
   evaluate(
     profile: RetirementProfile,
+    goals: RetirementGoals,
     strategy: RetirementStrategy,
     result: SimulationResult,
     context?: EvaluationContext

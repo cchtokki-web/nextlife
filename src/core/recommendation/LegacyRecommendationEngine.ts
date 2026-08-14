@@ -11,10 +11,11 @@ export class LegacyRecommendationEngine implements RecommendationEngine {
 
   recommend(
     profile: Parameters<RecommendationEngine['recommend']>[0],
-    strategy: Parameters<RecommendationEngine['recommend']>[1]
+    goals: Parameters<RecommendationEngine['recommend']>[1],
+    strategy: Parameters<RecommendationEngine['recommend']>[2]
   ): ReturnType<RecommendationEngine['recommend']> {
     return recommendStrategy(
-      LegacySimulationAdapter.toLegacy(profile, strategy),
+      LegacySimulationAdapter.toLegacy(profile, goals, strategy),
       this.simulationEngine,
       strategy.utilityConfig
     );
@@ -24,7 +25,7 @@ export class LegacyRecommendationEngine implements RecommendationEngine {
     config: LegacySimulationConfig,
     utilityConfig?: UtilityConfig
   ): ReturnType<RecommendationEngine['recommend']> {
-    const { profile, strategy } = LegacySimulationAdapter.fromLegacy(config, utilityConfig);
-    return this.recommend(profile, strategy);
+    const { profile, goals, strategy } = LegacySimulationAdapter.fromLegacy(config, utilityConfig);
+    return this.recommend(profile, goals, strategy);
   }
 }

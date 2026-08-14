@@ -36,7 +36,7 @@ import {
 import { PRIVATE_PENSION_MIN_START_AGE, clampPrivatePensionStartAge } from './pension/privatePensionRules';
 import { sortAssetsForWithdrawal } from './strategy/assetOrdering';
 import type { SimulationEngine as SimulationEngineContract } from '../simulation/SimulationEngine';
-import type { RetirementProfile, RetirementStrategy } from '../domain/input/retirement';
+import type { RetirementGoals, RetirementProfile, RetirementStrategy } from '../domain/input/retirement';
 import { LegacySimulationAdapter } from '../domain/input/LegacySimulationAdapter';
 
 // 연 수익률(소수)을 월 복리율로. initializeAssets가 네 곳에서 같은 식을 반복하고 있었고,
@@ -140,9 +140,9 @@ export function computeRetirementTargetAssets(
  * `run` and `runSingle` remain available for legacy callers and Monte Carlo internals.
  */
 export class LegacySimulationEngine implements SimulationEngineContract {
-  simulate(profile: RetirementProfile, strategy: RetirementStrategy): SimulationResult {
+  simulate(profile: RetirementProfile, goals: RetirementGoals, strategy: RetirementStrategy): SimulationResult {
     return this.run(
-      LegacySimulationAdapter.toLegacy(profile, strategy),
+      LegacySimulationAdapter.toLegacy(profile, goals, strategy),
       strategy.utilityConfig
     );
   }

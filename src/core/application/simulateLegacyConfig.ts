@@ -9,6 +9,6 @@ export function simulateLegacyConfig(
   config: LegacySimulationConfig,
   utilityConfig?: UtilityConfig
 ): SimulationResult {
-  const { profile, strategy } = LegacySimulationAdapter.fromLegacy(config, utilityConfig);
-  return engine.simulate(profile, strategy);
+  const { profile, goals, strategy } = LegacySimulationAdapter.fromLegacy(config, utilityConfig);
+  return engine.simulate(profile, goals, strategy);
 }

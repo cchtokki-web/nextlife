@@ -160,6 +160,7 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
   const displayedEvaluation = React.useMemo(
     () => evaluationEngine.evaluate(
       domainInput.profile,
+      domainInput.goals,
       domainInput.strategy,
       displayedResult,
       { monteCarlo: monteCarloForDisplay }
@@ -169,6 +170,7 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
   const baselineEvaluation = React.useMemo(
     () => evaluationEngine.evaluate(
       domainInput.profile,
+      domainInput.goals,
       domainInput.strategy,
       result,
       { monteCarlo: monteCarloForDisplay }
