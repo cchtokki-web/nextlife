@@ -1,4 +1,4 @@
-import { SimulationParams, SimulationResult, SimulationYearlyResult } from '../../entities/types';
+import { SimulationParams, SimulationYearlyResult, StrategySimulationResult } from '../../entities/types';
 import { MonteCarloBandYear, MonteCarloConfig, MonteCarloResult } from '../../entities/montecarlo';
 import { SimulationEngine } from '../SimulationEngine';
 import { FrozenSpendingPlan, freezeSpendingPlan, runFrozenPlan } from '../spending/freezeSpendingPlan';
@@ -24,7 +24,7 @@ interface TrialSummary {
 
 function summarize(
   index: number,
-  result: SimulationResult,
+  result: StrategySimulationResult,
   goalParams: SimulationParams,
 ): TrialSummary {
   return {

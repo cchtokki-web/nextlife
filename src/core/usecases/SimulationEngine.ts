@@ -9,6 +9,7 @@ import {
   PrivatePensionTaxationMethod,
   UtilityConfig,
   ReturnShockPath,
+  StrategySimulationResult,
 } from '../entities/types';
 import { getRetirementGrade, RetirementGrade } from '../entities/retirementGrade';
 import { computeLifetimeUtility } from './utility/UtilityEngine';
@@ -150,15 +151,27 @@ export function computeRetirementTargetAssets(
 }
 
 /**
- * Original calculation engine retained unchanged behind the new domain boundary.
- * `run` and `runSingle` remain available for legacy callers and Monte Carlo internals.
+ * Original formulas retained behind the new domain boundary.
+ * `run` and `runForUtility` remain compatibility entry points; `simulate` calls only
+ * `runSingle`. Monte Carlo may still call `runSingle` with an explicit return path.
  */
 export class LegacySimulationEngine implements SimulationEngineContract {
-  simulate(profile: RetirementProfile, goals: RetirementGoals, strategy: RetirementStrategy): SimulationResult {
-    return this.run(
-      LegacySimulationAdapter.toLegacy(profile, goals, strategy),
-      strategy.utilityConfig
-    );
+  simulate(profile: RetirementProfile, strategy: RetirementStrategy): StrategySimulationResult {
+    const goals: RetirementGoals = {
+      goals: [
+        { type: 'retirement_age', targetAge: strategy.retirementAge },
+        { type: 'monthly_spending', monthlyAmount: strategy.targetMonthlySpending },
+        { type: 'plan_horizon', targetAge: strategy.planHorizonAge },
+        ...(strategy.targetBequest === undefined
+          ? []
+          : [{ type: 'bequest' as const, targetAmount: strategy.targetBequest }]),
+      ],
+    };
+    const params = LegacySimulationAdapter.toLegacy(profile, goals, strategy);
+
+    // The public boundary evaluates exactly one supplied strategy. Utility scoring,
+    // sustainable-spending search and Monte Carlo are deliberately not invoked here.
+    return this.runSingle(params, undefined, strategy.simulationStartYear);
   }
 
   // cfg는 목표 우선순위(UtilityConfig.weights)를 반영한 효용 계산에 쓰인다. 생략하면
@@ -171,7 +184,7 @@ export class LegacySimulationEngine implements SimulationEngineContract {
     if (strategy === 'max_sustainable') {
       result = this.findMaxSustainable(params);
     } else {
-      const mainResult = this.runSingle(params);
+      const mainResult = this.evaluateProjection(params, this.runSingle(params));
       const maxSustainable = this.findMaxSustainableValue(params);
       result = { ...mainResult, calculatedTargetSpending: maxSustainable };
     }
@@ -190,7 +203,7 @@ export class LegacySimulationEngine implements SimulationEngineContract {
     if (strategy === 'max_sustainable') {
       return this.run(params, cfg);
     }
-    const result = this.runSingle(params);
+    const result = this.evaluateProjection(params, this.runSingle(params));
     const utility = computeLifetimeUtility(result, params, cfg);
     return { ...result, utility };
   }
@@ -213,7 +226,7 @@ export class LegacySimulationEngine implements SimulationEngineContract {
   // 이 시행이 "지속 가능"한가. 하한선이 없으면 기존 판정("고갈되지 않았거나 기말자산이 남음")을
   // 비트 단위로 그대로 쓴다.
   private meetsSustainabilityGoal(
-    result: SimulationResult,
+    result: StrategySimulationResult,
     assetFloor: number,
     trialParams: SimulationParams
   ): boolean {
@@ -272,7 +285,8 @@ export class LegacySimulationEngine implements SimulationEngineContract {
     const assetFloor = Math.max(0, params.assetFloor ?? 0);
     let low = 0;
     let high = 50000000; // 5천만원/월
-    let bestResult: SimulationResult | null = null;
+    let bestResult: StrategySimulationResult | null = null;
+    let bestTrialParams: SimulationParams | null = null;
     let bestTarget = 0;
 
     for (let i = 0; i < 30; i++) {
@@ -282,6 +296,7 @@ export class LegacySimulationEngine implements SimulationEngineContract {
 
       if (this.meetsSustainabilityGoal(result, assetFloor, trialParams)) {
         bestResult = result;
+        bestTrialParams = trialParams;
         bestTarget = mid;
         low = mid;
       } else {
@@ -290,10 +305,14 @@ export class LegacySimulationEngine implements SimulationEngineContract {
     }
 
     if (!bestResult) {
-      bestResult = this.runSingle(this.sustainabilityTrialParams(params, 0));
+      bestTrialParams = this.sustainabilityTrialParams(params, 0);
+      bestResult = this.runSingle(bestTrialParams);
     }
 
-    return { ...bestResult, calculatedTargetSpending: bestTarget };
+    return {
+      ...this.evaluateProjection(bestTrialParams ?? params, bestResult),
+      calculatedTargetSpending: bestTarget,
+    };
   }
 
   // 그 해의 시장 충격(%p)을 각 계좌의 월 복리율에 반영한다.
@@ -557,16 +576,89 @@ export class LegacySimulationEngine implements SimulationEngineContract {
     return { retirementScore, retirementGrade, retirementAssetsAtRetirement: retirementAssets };
   }
 
+  /** Adds legacy evaluation fields outside the deterministic projection path. */
+  private evaluateProjection(
+    params: SimulationParams,
+    projection: StrategySimulationResult
+  ): SimulationResult {
+    if (projection.yearlyResults.length === 0) {
+      return {
+        ...projection,
+        fireAge: null,
+        retirementScore: 0,
+        retirementGrade: '위험',
+        goalAchievementRate: 0,
+        retirementAssetsAtRetirement: 0,
+      };
+    }
+
+    const { userProfile, inflationMode, inflationRate } = params;
+    const incomeMetrics = calculateRetirementIncomeMetrics(projection.yearlyResults, params);
+    const recurringHealthcareByAge = new Map<number, number>();
+
+    for (const year of projection.yearlyResults) {
+      recurringHealthcareByAge.set(year.age, computeAnnualHealthcareCostBreakdown({
+        healthcare: params.healthcare,
+        currentAge: year.age,
+        retirementAge: userProfile.retirementAge,
+        simulationStartAge: userProfile.currentAge,
+        yearsSinceRetirement: year.age - userProfile.retirementAge,
+        inflationMode,
+        inflationRate,
+      }).recurring);
+    }
+
+    const fireYear = projection.yearlyResults.find((year) => {
+      const elapsedYears = year.age - userProfile.currentAge;
+      const curveMultiplier = year.age >= userProfile.retirementAge
+        ? spendingMultiplierForAge(params.spendingCurve, year.age)
+        : 1;
+      const targetSpending = (inflationMode === 'nominal'
+        ? userProfile.targetMonthlySpending * 12 * curveMultiplier
+          * Math.pow(1 + inflationRate / 100, elapsedYears)
+        : userProfile.targetMonthlySpending * 12 * curveMultiplier)
+        + year.healthcareSpending;
+      return year.totalIncome >= targetSpending;
+    });
+
+    const { retirementScore, retirementGrade, retirementAssetsAtRetirement } =
+      this.calculateRetirementScore(
+        projection.yearlyResults,
+        userProfile,
+        incomeMetrics.fixedIncomeCoverageRate,
+        projection.depletionAge,
+        inflationMode,
+        inflationRate,
+        recurringHealthcareByAge
+      );
+
+    return {
+      ...projection,
+      fireAge: fireYear === undefined || fireYear.age >= userProfile.expectancy
+        ? null
+        : fireYear.age,
+      retirementScore,
+      retirementGrade,
+      goalAchievementRate: incomeMetrics.fixedIncomeCoverageRate,
+      avgRetirementMonthlyIncome: incomeMetrics.averageMonthlyIncome,
+      avgTargetMonthlySpending: incomeMetrics.averageMonthlyTarget,
+      retirementAssetsAtRetirement,
+    };
+  }
+
   // returnPath는 몬테카를로·시퀀스 리스크 전용 통로다(ReturnShockPath 주석 참고).
   //
   // run()/runForUtility()/findMaxSustainableValue()는 이 인자를 넘기지 않는다 — 저장된
   // 시나리오의 숫자를 한 자리도 바꾸지 않기 위해서다. 확률 경로가 필요한 호출부는
   // runSingle을 직접 부른다(run()은 시행당 이진탐색 30회를 더 돌아 1000시행이면 31,000회가 된다).
-  runSingle(params: SimulationParams, returnPath?: ReturnShockPath): SimulationResult {
+  runSingle(
+    params: SimulationParams,
+    returnPath?: ReturnShockPath,
+    simulationStartYear: number = new Date().getFullYear()
+  ): StrategySimulationResult {
     if (!params || !params.userProfile) {
       return {
-        yearlyResults: [], fireAge: null, depletionAge: null,
-        endingAssets: 0, retirementScore: 0, retirementGrade: '위험', goalAchievementRate: 0, retirementAssetsAtRetirement: 0,
+        yearlyResults: [], depletionAge: null, endingAssets: 0,
       };
     }
 
@@ -634,34 +726,34 @@ export class LegacySimulationEngine implements SimulationEngineContract {
 
     if (isNaN(totalYears) || totalYears <= 0) {
       return {
-        yearlyResults: [], fireAge: null, depletionAge: null,
-        endingAssets: 0, retirementScore: 0, retirementGrade: '위험', goalAchievementRate: 0, retirementAssetsAtRetirement: 0,
+        yearlyResults: [], depletionAge: null, endingAssets: 0,
       };
     }
 
     const yearlyResults: SimulationYearlyResult[] = [];
-    // 나이 → 그 해 의료비 중 "매년 반복되는" 부분. SimulationYearlyResult.healthcareSpending은
-    // 실제 인출액(일회성 쇼크 포함)이라 4% 룰 분모로 쓸 수 없어 따로 모아 둔다.
-    // 결과 객체에 필드를 추가하지 않는 이유: 이 값은 점수 계산의 중간 산물일 뿐
-    // 화면·PDF·AI 프롬프트가 읽을 지표가 아니다.
-    const recurringHealthcareByAge = new Map<number, number>();
-    let fireAge: number | null = null;
     let depletionAge: number | null = null;
 
     for (let y = 0; y < totalYears; y++) {
+      // 연초자산은 그 해의 수익률 충격을 적용하기 전에 확정한다. applyReturnShock은 현재
+      // 잔액을 바꾸지 않지만, 이 순서를 고정해야 향후 충격 구현이 바뀌어도 연초/수익 경계가
+      // 흐려지지 않는다. 충격이 반영된 월 성장액은 아래 annualInvestmentReturn에 누적된다.
+      const openingAssets = currentTotalAssetsDisplay(
+        deferredWithdrawalCapitalGainsTaxReserveDisplay
+      );
       // 경로가 없으면 아예 호출하지 않는다(applyReturnShock 주석 참고). 경로가 짧으면
       // 남은 해는 충격 0으로 본다 — 던지지 않는다.
       if (returnPath !== undefined) {
         this.applyReturnShock(activeAssets, activePensions, activeIsas, returnPath[y] ?? 0);
       }
       const currentAge = startAge + y;
-      const currentYear = new Date().getFullYear() + y;
+      const currentYear = simulationStartYear + y;
       const isRetired = currentAge >= userProfile.retirementAge;
 
       let annualDividendIncome = 0;
       let annualNationalPensionIncome = 0;
       let annualPrivatePensionIncome = 0;
       let annualOtherIncome = 0;
+      let annualTargetSpending = 0;
       let annualSpending = 0;
       // 목표 생활비 중 재원이 모자라 채우지 못한 금액. 인출 경로가 잔액을 넘겨 인출하지
       // 않으므로 부족분은 자산을 마이너스로 만드는 대신 지출에서 조용히 깎인다 —
@@ -670,6 +762,12 @@ export class LegacySimulationEngine implements SimulationEngineContract {
       let annualDividendTaxPaid = 0;
       let annualPensionTaxPaid = 0;
       let annualNationalPensionTaxPaid = 0;
+      let annualIsaTaxPaid = 0;
+      let annualGeneralAssetWithdrawal = 0;
+      let annualIsaWithdrawal = 0;
+      let annualPrivatePensionWithdrawal = 0;
+      let annualWithdrawal = 0;
+      let annualInvestmentReturn = 0;
       let annualPreTaxTotalIncome = 0;
       let annualRawFinancialIncomeKRW = 0;
       // 생활비 외의 매도(종합과세·연금세·전년도 양도세 납부)에서 그 해 실현된 해외주식
@@ -696,8 +794,6 @@ export class LegacySimulationEngine implements SimulationEngineContract {
         inflationRate: infRateAnnual * 100,
       });
       const annualHealthcareCost = healthcareCost.total;
-      // 4% 룰 분모에 넣을 반복 구성요소만 따로 기록해 둔다(일회성 쇼크 제외).
-      recurringHealthcareByAge.set(currentAge, healthcareCost.recurring);
       const monthlyHealthcareCost = annualHealthcareCost / 12;
 
       let monthlyTargetSpending = 0;
@@ -754,7 +850,9 @@ export class LegacySimulationEngine implements SimulationEngineContract {
         //
         // 다음 달치 잉여가 들어오기 **전에** 굴린다 — 이번 달에 막 생긴 현금에 이달치 이자를
         // 주면 하루도 두지 않은 돈에 한 달치가 붙는다.
-        cashBucketDisplay *= 1 + cashYieldRateMonthly;
+        const cashReturn = cashBucketDisplay * cashYieldRateMonthly;
+        cashBucketDisplay += cashReturn;
+        annualInvestmentReturn += cashReturn;
 
         // ISA Processing
         // 사적연금 조기수령 채널링(Phase 4)의 브릿지 인출은 activeIsas[0]에 별도 크레딧을
@@ -782,6 +880,9 @@ export class LegacySimulationEngine implements SimulationEngineContract {
           isaMonthlyRoomRemainingKRW -= this.convertValue(contribution, isa.currency, 'KRW', exchangeRate);
 
           isa.currentBalance += growth + dividend + contribution;
+          annualInvestmentReturn += this.convertValue(
+            growth, isa.currency, displayCurrency, exchangeRate
+          );
           isa.totalInvested += contribution;
           isa.monthsSinceInception += 1;
 
@@ -793,6 +894,9 @@ export class LegacySimulationEngine implements SimulationEngineContract {
             const totalProfit = isa.currentBalance - isa.totalInvested;
             const exemptionLimit = this.convertValue(getIsaExemptionLimitKRW(isa.type, taxCtx), 'KRW', isa.currency, exchangeRate);
             const taxAmount = calculateIsaMaturityTax(totalProfit, exemptionLimit, taxCtx);
+            annualIsaTaxPaid += this.convertValue(
+              taxAmount, isa.currency, displayCurrency, exchangeRate
+            );
             const netBalance = isa.currentBalance - taxAmount;
             const preferPension = (withdrawalPlan?.isaMaturityDestination ?? 'pension') === 'pension';
 
@@ -845,6 +949,9 @@ export class LegacySimulationEngine implements SimulationEngineContract {
 
           const contribution = isRetired ? 0 : asset.monthlyContribution;
           asset.currentValue += growth + contribution;
+          annualInvestmentReturn += this.convertValue(
+            growth, asset.currency, displayCurrency, exchangeRate
+          );
           // 적립금은 새로 취득한 금액이므로 원가에 더한다. 성장분(growth)은 평가차익이라 더하지 않는다.
           asset.costBasis += contribution;
 
@@ -902,6 +1009,9 @@ export class LegacySimulationEngine implements SimulationEngineContract {
           const growth = pension.currentBalance * pension.returnRateMonthly;
           const contribution = isRetired ? 0 : pension.monthlyContribution;
           pension.currentBalance += growth + contribution;
+          annualInvestmentReturn += this.convertValue(
+            growth, pension.currency, displayCurrency, exchangeRate
+          );
 
           // 계좌군 정책을 명시한 새 경로에서는 사적연금을 여기서 선지급하지 않는다. Funding Gap
           // 아래의 단일 WithdrawalEngine 호출이 GENERAL/ISA/PENSION 우선순위를 실제로 결정한다.
@@ -991,6 +1101,11 @@ export class LegacySimulationEngine implements SimulationEngineContract {
             annualPensionTaxPaid += this.convertValue(drawAmountTax, pension.currency, displayCurrency, exchangeRate);
             annualPreTaxTotalIncome += this.convertValue(drawAmountActual, pension.currency, displayCurrency, exchangeRate);
             annualPrivatePensionPreTaxKRW += this.convertValue(drawAmountActual, pension.currency, 'KRW', exchangeRate);
+            const drawAmountDisplay = this.convertValue(
+              drawAmountActual, pension.currency, displayCurrency, exchangeRate
+            );
+            annualPrivatePensionWithdrawal += drawAmountDisplay;
+            annualWithdrawal += drawAmountDisplay;
           } else if (
             !isRetired &&
             currentAge >= PRIVATE_PENSION_MIN_START_AGE &&
@@ -1056,6 +1171,11 @@ export class LegacySimulationEngine implements SimulationEngineContract {
               annualPensionTaxPaid += this.convertValue(drawAmountTax, pension.currency, displayCurrency, exchangeRate);
               annualPreTaxTotalIncome += this.convertValue(drawAmountActual, pension.currency, displayCurrency, exchangeRate);
               annualPrivatePensionPreTaxKRW += this.convertValue(drawAmountActual, pension.currency, 'KRW', exchangeRate);
+              const drawAmountDisplay = this.convertValue(
+                drawAmountActual, pension.currency, displayCurrency, exchangeRate
+              );
+              annualPrivatePensionWithdrawal += drawAmountDisplay;
+              annualWithdrawal += drawAmountDisplay;
             }
           }
         });
@@ -1078,6 +1198,7 @@ export class LegacySimulationEngine implements SimulationEngineContract {
         const targetMonthlyCashNeed = (isRetired && spendingStrategy === 'dividend_only')
           ? monthlyTotalIncome + monthlyHealthcareCost
           : monthlyTargetSpending;
+        annualTargetSpending += targetMonthlyCashNeed;
 
         // Cash-flow pipeline: 목표액과 모든 가용소득을 먼저 확정한 뒤 Funding Gap만 인출 엔진에
         // 요청한다. Shortfall은 인출 결과(세후 현금)가 돌아온 뒤 completeCashFlow에서만 계산된다.
@@ -1305,6 +1426,18 @@ export class LegacySimulationEngine implements SimulationEngineContract {
           },
           liquidatableHeadroom: protectedHeadroom,
         });
+        annualWithdrawal += withdrawal.grossWithdrawal;
+        for (const item of withdrawal.withdrawalsByAccount) {
+          if (item.accountType === 'GENERAL') annualGeneralAssetWithdrawal += item.gross;
+          else if (item.accountType === 'ISA') annualIsaWithdrawal += item.gross;
+          else if (
+            item.accountType === 'PENSION_SAVINGS'
+            || item.accountType === 'IRP'
+            || item.accountType === 'PRIVATE_PENSION'
+          ) {
+            annualPrivatePensionWithdrawal += item.gross;
+          }
+        }
         const completedCashFlow = completeCashFlow(funding, withdrawal.netWithdrawal);
         annualSpending += completedCashFlow.actualSpending;
         annualUnmetSpending += completedCashFlow.shortfall;
@@ -1440,15 +1573,35 @@ export class LegacySimulationEngine implements SimulationEngineContract {
       const hasTaxWarning = annualRawFinancialIncomeKRW > taxCtx.profile.financialIncomeThresholdKRW;
       const pensionIncome = annualNationalPensionIncome + annualPrivatePensionIncome;
       const totalIncome = annualDividendIncome + pensionIncome + annualOtherIncome;
+      const taxes = annualDividendTaxPaid
+        + annualPensionTaxPaid
+        + annualNationalPensionTaxPaid
+        + annualIsaTaxPaid
+        + annualComprehensiveTaxPaidDisplay
+        + annualHealthInsurancePaidDisplay
+        + annualCapitalGainsTaxPaidDisplay;
 
       yearlyResults.push({
         age: currentAge, year: currentYear, totalAssets: totalAssetsDisplay,
+        employmentIncome: 0,
         stockAssets: stockAssetsDisplay, pensionAssets: pensionAssetsDisplay,
         isaAssets: isaAssetsDisplay,
         cashAssets: cashAssetsDisplay,
         dividendIncome: annualDividendIncome, nationalPensionIncome: annualNationalPensionIncome,
         privatePensionIncome: annualPrivatePensionIncome, pensionIncome, otherIncome: annualOtherIncome,
-        totalIncome, spending: annualSpending, unmetSpending: annualUnmetSpending,
+        totalIncome,
+        targetSpending: annualTargetSpending,
+        actualSpending: annualSpending,
+        shortfall: annualUnmetSpending,
+        generalAssetWithdrawal: annualGeneralAssetWithdrawal,
+        isaWithdrawal: annualIsaWithdrawal,
+        privatePensionWithdrawal: annualPrivatePensionWithdrawal,
+        withdrawal: annualWithdrawal,
+        taxes,
+        openingAssets,
+        investmentReturn: annualInvestmentReturn,
+        closingAssets: totalAssetsDisplay,
+        spending: annualSpending, unmetSpending: annualUnmetSpending,
         healthcareSpending: annualHealthcareCost,
         hasTaxWarning,
         preTaxTotalIncome: annualPreTaxTotalIncome,
@@ -1461,54 +1614,14 @@ export class LegacySimulationEngine implements SimulationEngineContract {
       });
 
       if (totalAssetsDisplay <= 0 && depletionAge === null) depletionAge = currentAge;
-
-      // 의료비도 소득으로 감당해야 할 지출이다. 빼면 "의료비를 못 내는데 FIRE 달성"이 된다.
-      //
-      // 곡선 배수는 은퇴 후에만 곱한다 — 엔진의 monthlyTargetSpending이 isRetired일 때만
-      // 곡선을 타는 것과 같은 규칙이다. 은퇴 전에도 곱하면 활동기 배수 1.2가 아직 목표
-      // 생활비로 살지 않는 구간까지 밀고 들어와, 엔진이 쓴 적 없는 목표로 FIRE를 판정한다.
-      const fireCurveMultiplier = currentAge >= userProfile.retirementAge
-        ? spendingMultiplierForAge(params.spendingCurve, currentAge)
-        : 1;
-      const targetSpendingForFIRE = (inflationMode === 'nominal'
-        ? userProfile.targetMonthlySpending * 12 * fireCurveMultiplier * Math.pow(1 + inflationRate / 100, y)
-        : userProfile.targetMonthlySpending * 12 * fireCurveMultiplier) + annualHealthcareCost;
-
-      if (totalIncome >= targetSpendingForFIRE && fireAge === null) fireAge = currentAge;
     }
-
-    // 레거시 필드 이름(goalAchievementRate)은 호환을 위해 유지하지만 실제 의미는
-    // "자산 매도 제외 고정소득 커버율"이다. 새 생활비 달성률과 같은 식으로 오해되지 않도록
-    // 공통 metric service의 명시적 계산 결과를 사용한다.
-    const incomeMetrics = calculateRetirementIncomeMetrics(yearlyResults, params);
-    const avgRetirementMonthlyIncome = incomeMetrics.averageMonthlyIncome;
-    const avgTargetMonthlySpending = incomeMetrics.averageMonthlyTarget;
-    const goalAchievementRate = incomeMetrics.fixedIncomeCoverageRate;
 
     const endingAssets = yearlyResults.length > 0 ? yearlyResults[yearlyResults.length - 1].totalAssets : 0;
 
-    const { retirementScore, retirementGrade, retirementAssetsAtRetirement } = this.calculateRetirementScore(
-      yearlyResults, userProfile, goalAchievementRate, depletionAge, inflationMode, inflationRate,
-      recurringHealthcareByAge
-    );
-
     return {
       yearlyResults,
-      // 종료 판정은 같은 반환 객체의 depletionAge/endingAssets와 같은 기준(시뮬레이션
-      // 종료 나이 = 본인 기대수명)을 쓴다. endAge가 userProfile.expectancy 하나에서만 오므로
-      // 셋은 구조적으로 같은 나이를 본다 — 종료 나이의 출처가 늘어나면 이 대응도 함께 유지해야
-      // 한 결과 안에서 "고갈 없음"과 "FIRE 달성 불가"가 어긋나지 않는다.
-      fireAge: fireAge === null || fireAge >= endAge ? null : fireAge,
       depletionAge,
       endingAssets,
-      retirementScore,
-      retirementGrade,
-      goalAchievementRate,
-      // 비율만 내보내면 화면은 "62%"가 무엇을 무엇으로 나눈 값인지 말할 수 없다. 분자·분모를
-      // 함께 실어야 리포트가 "월 평균 소득 215만원 / 목표 348만원 = 62%"라고 밝힐 수 있다.
-      avgRetirementMonthlyIncome,
-      avgTargetMonthlySpending,
-      retirementAssetsAtRetirement,
     };
   }
 }

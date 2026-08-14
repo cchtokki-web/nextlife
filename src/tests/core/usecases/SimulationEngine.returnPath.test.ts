@@ -67,6 +67,35 @@ describe('SimulationEngine - returnPath', () => {
     expect(down.endingAssets).toBeLessThan(baseline.endingAssets);
   });
 
+  test('충격으로 생긴 평가손익은 연초자산 이후 해당 연도 investmentReturn에 기록된다', () => {
+    const singleYear = params({
+      userProfile: {
+        currentAge: 55,
+        retirementAge: 60,
+        expectancy: 55,
+        targetMonthlySpending: 0,
+      },
+      assets: [{
+        id: 'shock-only', type: 'etf', ticker: 'SHOCK', name: '충격 검증 자산',
+        quantity: 1, averagePrice: 200_000_000, annualGrowthRate: 0,
+        dividendYield: 0, monthlyContribution: 0, reinvestDividend: false, currency: 'KRW',
+      }],
+      isaAccounts: [],
+      privatePensions: [],
+      nationalPension: { expectedMonthlyAmount: 0 },
+      inflationRate: 0,
+    });
+
+    const year = engine.runSingle(singleYear, [10]).yearlyResults[0];
+
+    expect(year.openingAssets).toBe(200_000_000);
+    expect(year.investmentReturn).toBeCloseTo(20_000_000, 6);
+    expect(year.closingAssets).toBeCloseTo(
+      year.openingAssets + year.investmentReturn,
+      6
+    );
+  });
+
   // 상수 충격은 수익률을 통째로 올린 것과 같아야 한다 — 통로가 실제로 "연 수익률에 %p
   // 가산"으로 동작하는지를 고정한다. 사적연금·ISA까지 함께 움직이는지도 여기서 잡힌다.
   test('상수 충격은 모든 계좌의 연 수익률을 그만큼 올린 것과 같다', () => {

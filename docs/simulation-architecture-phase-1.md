@@ -63,8 +63,8 @@ Recommendation: RecommendationEngine
 - Domain/Input은 현재 상태(`RetirementProfile`), 원하는 결과(`RetirementGoals`), 계산 전략·가정
   (`RetirementStrategy`)을 분리한다.
 - `LegacySimulationAdapter`는 기존 `SimulationParams`를 손실 없이 새 입력으로 변환하고 다시 복원한다.
-- 새 `SimulationEngine`은 UI 프레임워크에 의존하지 않고
-  `simulate(profile, goals, strategy)`만 계약한다.
+- 1단계 당시 `SimulationEngine` 경계는 `simulate(profile, goals, strategy)`였다. 7단계에서
+  실행 목표값을 전략에 포함하고 `simulate(profile, strategy)` 단일 전략 평가 계약으로 축소했다.
 - `LegacySimulationEngine`은 기존 `run`/`runSingle`을 유지하여 추천, 민감도, Monte Carlo와 기존
   호출자의 동작을 보존하면서 새 인터페이스도 구현한다.
 - `LegacyEvaluationEngine`은 React가 직접 조합하던 위험 경고, 부족분, 자산 상태, 성공 판정,

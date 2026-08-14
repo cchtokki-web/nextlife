@@ -152,6 +152,14 @@ type LegacyStrategySettings = Omit<
  * projections make the new boundary explicit without changing any existing formula or default.
  */
 export interface RetirementStrategy {
+  /** Concrete spending target evaluated by the simulation (display-currency amount per month). */
+  targetMonthlySpending: number;
+  /** Last age included in the deterministic projection. */
+  planHorizonAge: number;
+  /** Optional amount the applied strategy intends to leave at the projection horizon. */
+  targetBequest?: number;
+  /** Explicit calendar-year anchor; keeps the same profile/strategy input deterministic. */
+  simulationStartYear: number;
   retirementAge: number;
   nationalPensionStartAge?: number;
   privatePensionStartAge?: number;

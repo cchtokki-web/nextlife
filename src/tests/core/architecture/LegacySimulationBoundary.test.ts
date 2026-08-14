@@ -140,8 +140,8 @@ describe('new simulation boundary over the legacy engine', () => {
     if (!investment) throw new Error('investment contribution fixture is missing');
     investment.monthlyAmount = 1_000_000;
 
-    const baselineResult = engine.simulate(baseline.profile, baseline.goals, baseline.strategy);
-    const changedResult = engine.simulate(changed.profile, changed.goals, changed.strategy);
+    const baselineResult = engine.simulate(baseline.profile, baseline.strategy);
+    const changedResult = engine.simulate(changed.profile, changed.strategy);
 
     expect(changedResult.yearlyResults[0].totalAssets)
       .toBeGreaterThan(baselineResult.yearlyResults[0].totalAssets);
@@ -157,19 +157,21 @@ describe('new simulation boundary over the legacy engine', () => {
       .toThrow('Missing contribution plan: investment/asset-kodex200');
   });
 
-  test('simulate(profile, goals, strategy) is exactly equal to the pre-refactor run result', () => {
+  test('simulate(profile, strategy) evaluates one strategy without utility or optimization output', () => {
     const legacyEngine = new LegacySimulationEngine();
     const compiled = compileStrategy(structuredClone(initialParams));
     const before = legacyEngine.run(compiled.params, compiled.utilityConfig);
-    const { profile, goals, strategy } = LegacySimulationAdapter.fromLegacy(
+    const { profile, strategy } = LegacySimulationAdapter.fromLegacy(
       compiled.params,
       compiled.utilityConfig
     );
 
     const engine: SimulationEngine = legacyEngine;
-    const after = engine.simulate(profile, goals, strategy);
+    const after = engine.simulate(profile, strategy);
 
-    expect(after).toEqual(before);
+    expect(after.yearlyResults).toEqual(before.yearlyResults);
+    expect(after).not.toHaveProperty('utility');
+    expect(after).not.toHaveProperty('calculatedTargetSpending');
   });
 
   test('application entry point runs without React or browser state', () => {

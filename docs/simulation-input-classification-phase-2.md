@@ -61,7 +61,7 @@ legacyConfig
 새 `SimulationEngine` 경계도 세 객체를 직접 받는다.
 
 ```ts
-engine.simulate(profile, goals, strategy)
+engine.simulate(profile, strategy)
 ```
 
 기존 생활비, 연금, 세금, 인출, Monte Carlo, 효용 및 추천 계산식은 변경하지 않는다.

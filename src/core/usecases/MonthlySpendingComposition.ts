@@ -1,4 +1,4 @@
-import { SimulationParams, SimulationResult, SimulationYearlyResult } from '../entities/types';
+import { SimulationParams, SimulationYearlyResult } from '../entities/types';
 import { spendingMultiplierForAge } from './spending/spendingCurve';
 
 export interface MonthlySpendingComposition {
@@ -40,7 +40,7 @@ export interface MonthlySpendingComposition {
 export function computeMonthlySpendingComposition(
   yearlyResults: SimulationYearlyResult[],
   params: SimulationParams,
-  result: SimulationResult
+  result: { yearlyResults: SimulationYearlyResult[]; calculatedTargetSpending?: number }
 ): MonthlySpendingComposition[] {
   const retirementYearsResults = yearlyResults.filter(r => r.age >= params.userProfile.retirementAge);
 

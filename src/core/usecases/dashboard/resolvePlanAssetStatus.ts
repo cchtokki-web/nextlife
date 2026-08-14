@@ -1,4 +1,4 @@
-import { SimulationParams, SimulationResult } from '../../entities/types';
+import { SimulationParams, StrategySimulationResult } from '../../entities/types';
 
 // 계획이 놓인 자산 상태. 화면 문구·차트·추천 카드가 전부 이 하나의 판정을 근거로 삼는다.
 //
@@ -14,7 +14,10 @@ export type PlanAssetStatus = 'no_investable_asset' | 'depleted' | 'sustained';
 // 이 저장소의 다른 대시보드 유즈케이스(generateChartCaptions·computeRiskAlerts·
 // computeShortfallSummary 등)와 시그니처를 맞추기 위해서이기도 하지만, number 두 개
 // (expectancy와 retirementAge)를 바꿔 넘겨도 컴파일이 통과하는 위험을 없애기 위해서다.
-export function resolvePlanAssetStatus(result: SimulationResult, params: SimulationParams): PlanAssetStatus {
+export function resolvePlanAssetStatus(
+  result: Pick<StrategySimulationResult, 'yearlyResults' | 'depletionAge'>,
+  params: SimulationParams
+): PlanAssetStatus {
   const { yearlyResults, depletionAge } = result;
   const { expectancy } = params.userProfile;
 
