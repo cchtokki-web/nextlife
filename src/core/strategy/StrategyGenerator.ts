@@ -5,6 +5,7 @@ import type {
   RetirementProfile,
   RetirementStrategy,
 } from '../domain/input/retirement';
+import { normalizeRetirementGoals } from '../entities/retirementGoal';
 import {
   NATIONAL_PENSION_DEFERRED_MAX_AGE,
   NATIONAL_PENSION_EARLY_MIN_AGE,
@@ -129,15 +130,22 @@ function strategyFor(
 export class StrategyGenerator {
   generate(
     profile: RetirementProfile,
-    _goals: RetirementGoals,
+    goals: RetirementGoals,
     seed: RetirementStrategy,
     options: StrategyGenerationOptions = {},
   ): StrategyGenerationResult {
     const maxCandidates = Math.max(1, Math.floor(options.maxCandidates ?? DEFAULT_MAX_CANDIDATES));
     // 이미 은퇴한 사용자의 seed 은퇴 나이는 현재 나이보다 과거여도 반드시 보존한다.
     // 새 후보만 현재~계획 종료 구간으로 제한해야 기존 시나리오가 후보 0개로 사라지지 않는다.
+    // 선택한 조기은퇴 목표가 기존 고정 격자 밖에 있어도 후보로 직접 평가한다. HARD 여부와
+    // 무관하게 생성하고, 실제 탈락 판단은 HardConstraintFilter 한 곳에서 맡는다.
+    const goalRetirementAges = normalizeRetirementGoals(goals.selectedGoals ?? [])
+      .filter((goal) => goal.type === 'EARLY_RETIREMENT' && goal.targetValue !== undefined)
+      .map((goal) => goal.targetValue as number)
+      .filter((age) => age >= profile.personal.currentAge && age <= seed.planHorizonAge);
     const retirementAges = uniqueSorted([
       seed.retirementAge,
+      ...goalRetirementAges,
       ...RETIREMENT_AGE_GRID.filter((age) =>
         age >= profile.personal.currentAge && age <= seed.planHorizonAge
       ),

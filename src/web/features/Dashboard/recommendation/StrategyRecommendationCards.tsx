@@ -1,12 +1,14 @@
 import { Loader2, Star } from 'lucide-react';
 import type { SimulationParams } from '../../../../core/entities/types';
 import type { RankedStrategyCandidate } from '../../../../core/strategy/StrategyOptimizer';
+import type { CandidateRecommendation } from '../../../../core/recommendation/RecommendationEngine';
 import type { StrategyOptimizationStatus } from '../../../hooks/useStrategyOptimization';
 import GlassCard from '../../../components/GlassCard';
 import styles from '../Dashboard.module.css';
 
 interface StrategyRecommendationCardsProps {
   candidates: readonly RankedStrategyCandidate[];
+  recommendations?: readonly CandidateRecommendation[];
   status: StrategyOptimizationStatus;
   currentGoalProbability?: number;
   params: SimulationParams;
@@ -108,6 +110,7 @@ export function strategyChanges(
 
 export function StrategyRecommendationCards({
   candidates,
+  recommendations,
   status,
   currentGoalProbability,
   params,
@@ -130,11 +133,22 @@ export function StrategyRecommendationCards({
     );
   }
 
-  if (candidates.length === 0) {
+  const finalRecommendations = recommendations && recommendations.length > 0
+    ? recommendations
+    : candidates.map((candidate): CandidateRecommendation => ({
+        persona: candidate.rank === 1 ? 'BALANCED' : 'STABLE',
+        label: strategyCharacteristicLabel(candidate) === '안정형' ? '안정형'
+          : strategyCharacteristicLabel(candidate) === '균형형' ? '균형형' : '여유형',
+        candidate,
+        reason: '목표 달성확률과 전략 특성을 기준으로 선택했습니다.',
+      }));
+
+  if (finalRecommendations.length === 0) {
     return <GlassCard className="text-sm text-foreground-muted">현재 목표 조건을 만족하는 추천 후보가 없습니다.</GlassCard>;
   }
 
-  const recommended = candidates[0];
+  const recommended = finalRecommendations.find((item) => item.persona === 'BALANCED')
+    ?? finalRecommendations[0];
   return (
     <>
       <div className={styles.recommendationComparison} aria-label="현재 계획과 추천 전략 비교">
@@ -145,28 +159,28 @@ export function StrategyRecommendationCards({
         <span className={styles.comparisonArrow} aria-hidden="true">→</span>
         <div>
           <span>추천 전략 적용</span>
-          <strong>{Math.round((recommended.monteCarlo?.goalSuccessProbability ?? 0) * 100)}%</strong>
+          <strong>{Math.round((recommended.candidate.monteCarlo?.goalSuccessProbability ?? 0) * 100)}%</strong>
         </div>
       </div>
 
       <div className={styles.recommendationGrid}>
-        {candidates.map((candidate) => {
+        {finalRecommendations.map((recommendation) => {
+          const candidate = recommendation.candidate;
           const probability = candidate.monteCarlo?.goalSuccessProbability ?? 0;
           const changes = strategyChanges(params, candidate, formatValue);
           return (
             <article
               key={candidate.candidate.id}
-              className={`${styles.strategyCard} ${candidate.rank === 1 ? styles.recommendedStrategyCard : ''}`}
+              className={`${styles.strategyCard} ${recommendation === recommended ? styles.recommendedStrategyCard : ''}`}
             >
               <header className={styles.strategyCardHeader}>
                 <div>
-                  <p className={styles.strategyLabel}>{strategyCharacteristicLabel(candidate)}</p>
+                  <p className={styles.strategyLabel}>{recommendation.label}</p>
                   <p className={styles.strategySummary}>
-                    {ALLOCATION_LABELS[candidate.candidate.dimensions.assetAllocation]} ·{' '}
-                    {SPENDING_LABELS[candidate.candidate.dimensions.spendingPattern]}
+                    {recommendation.reason}
                   </p>
                 </div>
-                {candidate.rank === 1 && (
+                {recommendation === recommended && (
                   <span className={styles.recommendedBadge}><Star size={13} aria-hidden="true" /> 추천</span>
                 )}
               </header>

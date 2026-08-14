@@ -1,4 +1,4 @@
-import { normalizeRetirementGoals, type RetirementGoalType } from '../entities/retirementGoal';
+import type { RetirementGoalType } from '../entities/retirementGoal';
 import type { StrategySimulationResult } from '../entities/types';
 import type {
   MonteCarloConfig,
@@ -23,8 +23,17 @@ import {
 } from './StrategyGenerator';
 import type { StrategyMonteCarloEngine } from '../usecases/montecarlo/MonteCarloEngine';
 import { annualStdDevForYieldPreset } from '../usecases/montecarlo/volatilityPresets';
+import {
+  RecommendationEngine,
+  type FinalStrategyRecommendations,
+} from '../recommendation/RecommendationEngine';
+import {
+  HardConstraintFilter,
+  type PreSimulationRejectionCode,
+} from './HardConstraintFilter';
 
-export type PreSimulationRejectionCode = 'HARD_RETIREMENT_AGE';
+export type { PreSimulationRejectionCode } from './HardConstraintFilter';
+
 
 export interface RankedStrategyCandidate {
   rank: number;
@@ -54,6 +63,8 @@ export interface StrategyOptimizerDebug {
 export interface StrategyOptimizationResult {
   best: RankedStrategyCandidate | null;
   rankedCandidates: RankedStrategyCandidate[];
+  /** Monte Carlo 검증 후보를 안정형·균형형·여유형으로 변환한 최종 추천. */
+  recommendations: FinalStrategyRecommendations;
   debug: StrategyOptimizerDebug;
 }
 
@@ -68,21 +79,6 @@ export interface StrategyOptimizerOptions extends StrategyGenerationOptions {
     /** Number returned after probabilistic re-ranking. Default: 3. */
     finalistLimit?: number;
   };
-}
-
-function preSimulationHardFailure(
-  candidate: StrategyCandidate,
-  goals: RetirementGoals,
-): PreSimulationRejectionCode | null {
-  const hardRetirementGoal = normalizeRetirementGoals(goals.selectedGoals ?? []).find((goal) =>
-    goal.type === 'EARLY_RETIREMENT'
-      && goal.constraintType === 'HARD'
-      && goal.targetValue !== undefined
-  );
-  return hardRetirementGoal?.targetValue !== undefined
-    && candidate.strategy.retirementAge > hardRetirementGoal.targetValue
-    ? 'HARD_RETIREMENT_AGE'
-    : null;
 }
 
 function errorMessage(error: unknown): string {
@@ -100,6 +96,8 @@ export class StrategyOptimizer {
     private readonly goalEvaluationEngine: GoalEvaluationEngine = new DefaultGoalEvaluationEngine(),
     private readonly generator: StrategyGenerator = new StrategyGenerator(),
     private readonly monteCarloEngine?: StrategyMonteCarloEngine,
+    private readonly hardConstraintFilter = new HardConstraintFilter(),
+    private readonly recommendationEngine = new RecommendationEngine(),
   ) {}
 
   optimize(
@@ -118,10 +116,10 @@ export class StrategyOptimizer {
     let postSimulationRejectedCount = 0;
 
     for (const candidate of generated.candidates) {
-      const hardFailure = preSimulationHardFailure(candidate, goals);
-      if (hardFailure) {
+      const hardFailures = this.hardConstraintFilter.beforeSimulation(candidate, goals);
+      if (hardFailures.length > 0) {
         hardConstraintRejectedCount += 1;
-        increment(rejectionReasons, hardFailure);
+        hardFailures.forEach((failure) => increment(rejectionReasons, failure.code));
         continue;
       }
 
@@ -135,9 +133,12 @@ export class StrategyOptimizer {
           simulation,
         );
         evaluation.unsupportedHardGoals.forEach((goal) => unsupportedHardGoals.add(goal));
+        const evaluationHardFailures = this.hardConstraintFilter.afterEvaluation(evaluation);
+        // 기존 GoalEvaluationEngine 계약의 boolean도 계속 존중한다. 커스텀 구현이 실패 상세를
+        // 비워 둔 경우에도 예전처럼 후보를 통과시키지 않는다.
         if (!evaluation.hardConstraintsSatisfied) {
           postSimulationRejectedCount += 1;
-          evaluation.hardConstraintFailures.forEach((failure) =>
+          evaluationHardFailures.forEach((failure) =>
             increment(rejectionReasons, failure.code)
           );
           continue;
@@ -157,6 +158,7 @@ export class StrategyOptimizer {
     let deterministicShortlistCount = 0;
     let monteCarloValidatedCount = 0;
     let rankedCandidates: RankedStrategyCandidate[];
+    let recommendations: FinalStrategyRecommendations = { recommendations: [], primary: null };
 
     if (options.monteCarlo) {
       if (!this.monteCarloEngine) {
@@ -207,6 +209,9 @@ export class StrategyOptimizer {
         || right.evaluation.weightedScore - left.evaluation.weightedScore
         || left.candidate.id.localeCompare(right.candidate.id)
       );
+      recommendations = this.recommendationEngine.recommend(
+        validated.map((item, index) => ({ ...item, rank: index + 1 }))
+      );
       const finalistLimit = Math.max(1, Math.floor(options.monteCarlo.finalistLimit ?? 3));
       rankedCandidates = validated.slice(0, finalistLimit).map((item, index) => ({
         ...item,
@@ -223,6 +228,7 @@ export class StrategyOptimizer {
     return {
       best: rankedCandidates[0] ?? null,
       rankedCandidates,
+      recommendations,
       debug: {
         generation: generated.debug,
         generatedCandidateCount: generated.candidates.length,
