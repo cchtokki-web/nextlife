@@ -30,7 +30,7 @@ function makeParams(overrides: Partial<SimulationParams> = {}): SimulationParams
 
 describe('goalAchievementRate 분자·분모', () => {
   test('분자와 분모를 결과에 함께 싣는다', () => {
-    const result = new SimulationEngine().runSingle(makeParams());
+    const result = new SimulationEngine().run(makeParams());
 
     expect(result.avgRetirementMonthlyIncome).toBeGreaterThan(0);
     expect(result.avgTargetMonthlySpending).toBeGreaterThan(0);
@@ -38,7 +38,7 @@ describe('goalAchievementRate 분자·분모', () => {
 
   // 셋이 어긋나면 리포트가 "215만 ÷ 348만 = 62%"라고 써 놓고 실제로는 다른 계산을 한 셈이 된다.
   test('보고된 비율이 분자÷분모와 일치한다', () => {
-    const result = new SimulationEngine().runSingle(makeParams());
+    const result = new SimulationEngine().run(makeParams());
 
     const derived = Math.round(
       (result.avgRetirementMonthlyIncome! / result.avgTargetMonthlySpending!) * 100
@@ -49,7 +49,7 @@ describe('goalAchievementRate 분자·분모', () => {
   // 이것이 이 지표의 정의다. 자산을 아무리 많이 팔아 써도 분자는 움직이지 않는다.
   test('분자는 연금·배당 등 소득만이며 자산 인출분은 포함하지 않는다', () => {
     const engine = new SimulationEngine();
-    const result = engine.runSingle(makeParams());
+    const result = engine.run(makeParams());
 
     const retirementYears = result.yearlyResults.filter((y) => y.age >= 60);
     const avgIncome =
@@ -65,8 +65,8 @@ describe('goalAchievementRate 분자·분모', () => {
   test('분모는 목표 생활비이며 의료비를 포함한다', () => {
     const engine = new SimulationEngine();
 
-    const plain = engine.runSingle(makeParams());
-    const withHealthcare = engine.runSingle(
+    const plain = engine.run(makeParams());
+    const withHealthcare = engine.run(
       makeParams({
         healthcare: {
           enabled: true, costGrowthRate: 0, baseMonthlyCost: 300000,
@@ -82,8 +82,8 @@ describe('goalAchievementRate 분자·분모', () => {
   test('연령대별 생활비 곡선이 분모에 반영된다', () => {
     const engine = new SimulationEngine();
 
-    const flat = engine.runSingle(makeParams());
-    const frontLoaded = engine.runSingle(
+    const flat = engine.run(makeParams());
+    const frontLoaded = engine.run(
       makeParams({ spendingCurve: { breakpointAges: [70, 80], multipliers: [1.2, 1.0, 0.8] } })
     );
 

@@ -138,6 +138,12 @@ export class RetirementModelAdapter {
     };
 
     const strategy: RetirementStrategy = {
+      targetMonthlySpending: config.userProfile.targetMonthlySpending,
+      planHorizonAge: config.userProfile.expectancy,
+      ...(hasOwn(config.userProfile, 'targetBequest')
+        ? { targetBequest: config.userProfile.targetBequest }
+        : {}),
+      simulationStartYear: new Date().getFullYear(),
       retirementAge: config.userProfile.retirementAge,
       ...(config.withdrawalPlan?.nationalPensionStartAge !== undefined
         ? { nationalPensionStartAge: config.withdrawalPlan.nationalPensionStartAge }

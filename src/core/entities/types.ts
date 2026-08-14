@@ -321,6 +321,8 @@ export interface SimulationParams {
 export interface SimulationYearlyResult {
   age: number;
   year: number;
+  /** 근로소득 모델이 추가되기 전까지 0. 근거 없는 소득을 추정하지 않는다. */
+  employmentIncome: number;
   totalAssets: number; // 기말 자산액 (선택 표기 통화 기준)
   stockAssets: number; // 주식/ETF 자산
   pensionAssets: number; // 사적연금 자산
@@ -342,6 +344,28 @@ export interface SimulationYearlyResult {
   pensionIncome: number; // 연간 세후 연금 수령액 (국민+사적)
   otherIncome: number; // 연간 세후 기타 소득
   totalIncome: number; // 연간 총 가처분 소득 (세후)
+  /** 연령곡선·물가·의료비를 반영해 해당 연도에 쓰려 한 총액. */
+  targetSpending: number;
+  /** spending의 명시적 별칭. 새 단일전략 평가 계약에서 사용한다. */
+  actualSpending: number;
+  /** unmetSpending의 명시적 별칭. */
+  shortfall: number;
+  /** 생활비 재원 및 계획 집행으로 일반 투자자산에서 인출한 세전 총액. */
+  generalAssetWithdrawal: number;
+  /** ISA에서 인출한 총액. */
+  isaWithdrawal: number;
+  /** 사적연금 계좌에서 인출한 세전 총액. */
+  privatePensionWithdrawal: number;
+  /** 모든 계좌 유형에서 인출한 세전 총액(현금 포함). */
+  withdrawal: number;
+  /** 엔진이 기록한 모든 세금과 추가 건강보험료의 합계. */
+  taxes: number;
+  /** 해당 연도 계산을 시작하기 직전의 총자산. */
+  openingAssets: number;
+  /** 현금·일반자산·ISA·사적연금의 평가수익 합계(배당소득 제외). */
+  investmentReturn: number;
+  /** totalAssets의 명시적 별칭. */
+  closingAssets: number;
   
   // 세금 및 공과금 상세 내역
   preTaxTotalIncome: number; // 연간 세전 총소득
@@ -417,6 +441,16 @@ export interface SimulationResult {
   retirementAssetsAtRetirement: number; // 은퇴 시작 시점 총자산 (해석/배너 표시용)
   utility?: UtilityBreakdown; // Lifetime Utility Score
   recommendation?: StrategyRecommendation; // AI 추천 전략 (별도 계산 시에만 채워짐)
+}
+
+/**
+ * Deterministic projection of one supplied strategy.
+ * Goal scoring, grades, FIRE interpretation, utility and recommendations belong to evaluation.
+ */
+export interface StrategySimulationResult {
+  yearlyResults: SimulationYearlyResult[];
+  depletionAge: number | null;
+  endingAssets: number;
 }
 
 export interface UtilityConfig {

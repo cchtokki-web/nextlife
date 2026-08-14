@@ -1,4 +1,4 @@
-import { ReturnShockPath, SimulationParams, SimulationResult } from '../../entities/types';
+import { ReturnShockPath, SimulationParams, StrategySimulationResult } from '../../entities/types';
 import { SimulationEngine } from '../SimulationEngine';
 
 // 「평생 소비 최적화(max_sustainable)」 계획의 생활비를 **한 번만** 확정해 고정한다.
@@ -55,7 +55,7 @@ export function runFrozenPlan(
   engine: SimulationEngine,
   plan: FrozenSpendingPlan,
   returnPath?: ReturnShockPath
-): SimulationResult {
+): StrategySimulationResult {
   return engine.runSingle(plan.params, returnPath);
 }
 
