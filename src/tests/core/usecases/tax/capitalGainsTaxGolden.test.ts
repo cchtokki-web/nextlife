@@ -79,8 +79,9 @@ describe('SimulationEngine - 양도소득세 통합', () => {
 
   test('취득원가가 평가액의 절반이면 매도액의 절반이 차익으로 실현된다', () => {
     // 원가 5억 / 평가 10억 → 원가비율 0.5.
-    // 1년차 매도액 = 연 생활비 6,000만원 → 실현이익 3,000만원.
-    // 세액 = (3,000만 − 250만) × 22% = 605만원. **다음 해**에 부과된다.
+    // 세후 생활비 6,000만원을 확보해야 하므로 매도액은 6,000만원보다 크다.
+    // 원가비율 0.5일 때 G - (0.5G - 250만원) × 22% = 6,000만원을 역산한다.
+    // 세액은 매도대금 중 유보했다가 **다음 해**에 납부한다.
     const result = new SimulationEngine().run(sellingScenario('US_ETF', 500_000_000));
 
     const firstYear = result.yearlyResults[0];
@@ -88,7 +89,11 @@ describe('SimulationEngine - 양도소득세 통합', () => {
 
     // 1년차에는 아직 내지 않는다(실제 확정신고가 다음 해 5월이다).
     expect(firstYear.capitalGainsTaxPaid).toBe(0);
-    expect(secondYear.capitalGainsTaxPaid).toBeCloseTo((30_000_000 - 2_500_000) * 0.22, -3);
+    const expectedGrossWithdrawal = (60_000_000 - 550_000) / 0.89;
+    expect(secondYear.capitalGainsTaxPaid).toBeCloseTo(
+      expectedGrossWithdrawal - 60_000_000,
+      -3
+    );
   });
 
   test('국내 ETF는 같은 차익이 나도 양도세가 붙지 않는다', () => {
@@ -102,6 +107,44 @@ describe('SimulationEngine - 양도소득세 통합', () => {
     expect(totalTax(domestic)).toBe(0);
     // 세금을 더 내므로 기말자산도 더 적다 — 이것이 예전 모델의 낙관 편향이었다.
     expect(overseas.endingAssets).toBeLessThan(domestic.endingAssets);
+  });
+
+  test('생활비 매도와 다른 세금 납부 매도의 차익은 연간 기본공제를 한 번만 적용한다', () => {
+    const initialWithdrawalAsset = 1_000_000_000;
+    const params: SimulationParams = {
+      ...sellingScenario('US_ETF', initialWithdrawalAsset / 2),
+      userProfile: {
+        currentAge: 60,
+        retirementAge: 60,
+        expectancy: 62,
+        targetMonthlySpending: 20_000_000,
+      },
+      assets: [
+        {
+          ...sellingScenario('US_ETF', initialWithdrawalAsset / 2).assets[0],
+          id: 'withdrawal-asset',
+        },
+        {
+          id: 'dividend-asset', type: 'etf', ticker: 'DIV', name: '국내 고배당 ETF',
+          quantity: 20_000, averagePrice: 100_000,
+          annualGrowthRate: 0, dividendYield: 5,
+          monthlyContribution: 0, reinvestDividend: false,
+          currency: 'KRW', assetMarket: 'KR_ETF',
+        },
+      ],
+    };
+
+    const result = new SimulationEngine().run(params);
+    const firstYear = result.yearlyResults[0];
+    const secondYear = result.yearlyResults[1];
+
+    // 첫 번째 자산이 생활비와 종합과세·건보료 납부에 모두 먼저 매도된다. 성장률이 0이고
+    // 원가비율이 0.5로 유지되므로 평가액 감소분의 절반이 그 해 전체 실현차익이다.
+    const firstYearGrossSales = initialWithdrawalAsset - firstYear.stockAssets + 2_000_000_000;
+    const expectedTax = calculateCapitalGainsTaxKRW(firstYearGrossSales * 0.5, ctx);
+
+    expect(firstYear.comprehensiveTaxPaid + firstYear.healthInsurancePaid).toBeGreaterThan(0);
+    expect(secondYear.capitalGainsTaxPaid).toBeCloseTo(expectedTax, -2);
   });
 
   test('마지막 해에 실현된 차익도 과세된다 (이연분이 사라지지 않는다)', () => {
