@@ -1,0 +1,176 @@
+import { describe, expect, test, vi } from 'vitest';
+import type { StrategySimulationResult, UtilityBreakdown } from '@/core/entities/types';
+import type { GoalEvaluationEngine, GoalEvaluationResult } from '@/core/evaluation/GoalEvaluationEngine';
+import { LegacySimulationAdapter } from '@/core/domain/input/LegacySimulationAdapter';
+import type { SimulationEngine } from '@/core/simulation/SimulationEngine';
+import { LegacySimulationEngine } from '@/core/simulation/LegacySimulationEngine';
+import type { StrategyCandidate, StrategyGenerationResult } from '@/core/strategy/StrategyGenerator';
+import { StrategyGenerator } from '@/core/strategy/StrategyGenerator';
+import { StrategyOptimizer } from '@/core/strategy/StrategyOptimizer';
+import { initialParams } from '@/infrastructure/storage/localStore';
+
+const utility = (score: number): UtilityBreakdown => ({
+  score,
+  components: {
+    consumption: score,
+    depletionSafety: 0,
+    pensionUtilization: 0,
+    taxEfficiency: 0,
+    taxationRisk: 0,
+    bequestAdequacy: 0,
+  },
+});
+
+const evaluation = (
+  score: number,
+  hardConstraintFailures: GoalEvaluationResult['hardConstraintFailures'] = [],
+): GoalEvaluationResult => ({
+  score,
+  utility: utility(score),
+  hardConstraintFailures,
+  unsupportedHardGoals: [],
+});
+
+const simulation = (endingAssets: number): StrategySimulationResult => ({
+  yearlyResults: [],
+  depletionAge: null,
+  endingAssets,
+});
+
+function candidate(
+  seed: ReturnType<typeof LegacySimulationAdapter.fromLegacy>['strategy'],
+  id: string,
+  retirementAge: number,
+): StrategyCandidate {
+  return {
+    id,
+    strategy: { ...seed, retirementAge },
+    dimensions: {
+      retirementAge,
+      nationalPensionTiming: 'NORMAL',
+      nationalPensionStartAge: 65,
+      withdrawalPolicy: 'GENERAL_FIRST',
+      spendingPattern: 'FIXED',
+      assetAllocation: 'BALANCED',
+    },
+  };
+}
+
+function fakeGeneration(candidates: StrategyCandidate[]): StrategyGenerationResult {
+  return {
+    candidates,
+    debug: {
+      axisSizes: {
+        retirementAge: candidates.length,
+        nationalPensionTiming: 1,
+        nationalPensionStartAge: 1,
+        withdrawalPolicy: 1,
+        spendingPattern: 1,
+        assetAllocation: 1,
+      },
+      theoreticalCombinationCount: candidates.length,
+      generatedCandidateCount: candidates.length,
+      cappedCandidateCount: 0,
+      omittedAxes: [],
+    },
+  };
+}
+
+describe('StrategyOptimizer', () => {
+  test('실제 엔진 경계로 생성부터 평가·랭킹까지 연결한다', () => {
+    const input = LegacySimulationAdapter.fromLegacy(structuredClone(initialParams));
+
+    const result = new StrategyOptimizer(new LegacySimulationEngine()).optimize(
+      input.profile,
+      input.goals,
+      input.strategy,
+      { maxCandidates: 12, rankingLimit: 3 },
+    );
+
+    expect(result.debug.generatedCandidateCount).toBe(12);
+    expect(result.debug.simulatedCandidateCount).toBe(12);
+    expect(result.debug.failedCandidateCount).toBe(0);
+    expect(result.rankedCandidates).toHaveLength(3);
+    expect(result.best?.rank).toBe(1);
+  });
+
+  test('HARD 은퇴 나이 위반 후보는 시뮬레이션 전에 제거한다', () => {
+    const input = LegacySimulationAdapter.fromLegacy(structuredClone(initialParams));
+    input.goals.selectedGoals = [{
+      type: 'EARLY_RETIREMENT', priority: 1, targetValue: 60, constraintType: 'HARD',
+    }];
+    const candidates = [candidate(input.strategy, 'age-60', 60), candidate(input.strategy, 'age-61', 61)];
+    const generator = { generate: vi.fn(() => fakeGeneration(candidates)) } as unknown as StrategyGenerator;
+    const simulate = vi.fn(() => simulation(100));
+    const engine = { simulate } satisfies SimulationEngine;
+    const evaluator = { evaluate: vi.fn(() => evaluation(70)) } satisfies GoalEvaluationEngine;
+
+    const result = new StrategyOptimizer(engine, evaluator, generator)
+      .optimize(input.profile, input.goals, input.strategy);
+
+    expect(simulate).toHaveBeenCalledTimes(1);
+    expect(result.best?.candidate.id).toBe('age-60');
+    expect(result.debug.hardConstraintRejectedCount).toBe(1);
+    expect(result.debug.rejectionReasons.HARD_RETIREMENT_AGE).toBe(1);
+  });
+
+  test('사후 HARD 탈락과 시뮬레이션 실패를 분리 집계하고 점수로 정렬한다', () => {
+    const input = LegacySimulationAdapter.fromLegacy(structuredClone(initialParams));
+    const candidates = [
+      candidate(input.strategy, 'low', 60),
+      candidate(input.strategy, 'best', 60),
+      candidate(input.strategy, 'hard-fail', 60),
+      candidate(input.strategy, 'engine-fail', 60),
+    ];
+    const generator = { generate: () => fakeGeneration(candidates) } as unknown as StrategyGenerator;
+    const engine: SimulationEngine = {
+      simulate: vi.fn((_profile, strategy) => {
+        const id = candidates.find((item) => item.strategy === strategy)?.id;
+        if (id === 'engine-fail') throw new Error('projection failed');
+        return simulation(id === 'best' ? 200 : 100);
+      }),
+    };
+    const evaluator: GoalEvaluationEngine = {
+      evaluate: vi.fn((_profile, _goals, strategy) => {
+        const id = candidates.find((item) => item.strategy === strategy)?.id;
+        if (id === 'hard-fail') {
+          return evaluation(99, [{
+            code: 'HARD_ASSET_SURVIVAL',
+            goalType: 'ASSET_SURVIVAL',
+            reason: 'depleted',
+          }]);
+        }
+        return evaluation(id === 'best' ? 90 : 50);
+      }),
+    };
+
+    const result = new StrategyOptimizer(engine, evaluator, generator)
+      .optimize(input.profile, input.goals, input.strategy);
+
+    expect(result.rankedCandidates.map((item) => item.candidate.id)).toEqual(['best', 'low']);
+    expect(result.rankedCandidates.map((item) => item.rank)).toEqual([1, 2]);
+    expect(result.debug.postSimulationRejectedCount).toBe(1);
+    expect(result.debug.failedCandidateCount).toBe(1);
+    expect(result.debug.rejectionReasons.HARD_ASSET_SURVIVAL).toBe(1);
+    expect(result.debug.simulationFailures).toEqual([
+      { candidateId: 'engine-fail', reason: 'projection failed' },
+    ]);
+  });
+
+  test('동점이면 기말자산, 후보 id 순으로 결정론적으로 정렬한다', () => {
+    const input = LegacySimulationAdapter.fromLegacy(structuredClone(initialParams));
+    const candidates = [candidate(input.strategy, 'b', 60), candidate(input.strategy, 'a', 60)];
+    const generator = { generate: () => fakeGeneration(candidates) } as unknown as StrategyGenerator;
+    const engine: SimulationEngine = {
+      simulate: (_profile, strategy) => simulation(strategy === candidates[0].strategy ? 100 : 200),
+    };
+    const evaluator: GoalEvaluationEngine = { evaluate: () => evaluation(80) };
+
+    const result = new StrategyOptimizer(engine, evaluator, generator)
+      .optimize(input.profile, input.goals, input.strategy, { rankingLimit: 1 });
+
+    expect(result.rankedCandidates).toHaveLength(1);
+    expect(result.best?.candidate.id).toBe('a');
+    expect(result.debug.rankedCandidateCount).toBe(2);
+  });
+});
