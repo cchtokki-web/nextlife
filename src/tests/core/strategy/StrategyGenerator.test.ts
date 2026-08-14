@@ -114,4 +114,16 @@ describe('StrategyGenerator', () => {
       .toEqual(new Set([67]));
     expect(result.candidates.length).toBeGreaterThan(0);
   });
+
+  test('고정 격자 밖의 사용자 조기은퇴 목표도 후보 나이로 포함한다', () => {
+    const input = LegacySimulationAdapter.fromLegacy(structuredClone(initialParams));
+    input.goals.selectedGoals = [{
+      type: 'EARLY_RETIREMENT', priority: 1, targetValue: 57, constraintType: 'SOFT',
+    }];
+
+    const result = new StrategyGenerator().generate(input.profile, input.goals, input.strategy);
+
+    expect(result.candidates.some((item) => item.strategy.retirementAge === 57)).toBe(true);
+    expect(result.debug.axisSizes.retirementAge).toBe(9);
+  });
 });

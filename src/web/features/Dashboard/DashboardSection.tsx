@@ -262,6 +262,7 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
       <DashboardGroup title="NextLife 추천" description="목표에 가장 가까운 최종 전략 3개와 현재 계획에서 바뀌는 점만 비교합니다.">
         <StrategyRecommendationCards
           candidates={strategyOptimization?.rankedCandidates ?? []}
+          recommendations={strategyOptimization?.recommendations?.recommendations}
           status={strategyOptimizationStatus}
           currentGoalProbability={currentGoalProbability}
           params={params}

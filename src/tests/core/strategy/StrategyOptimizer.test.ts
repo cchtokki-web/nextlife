@@ -166,6 +166,22 @@ describe('StrategyOptimizer', () => {
     ]);
   });
 
+  test('커스텀 평가기가 실패 상세 없이 HARD false만 반환해도 후보를 통과시키지 않는다', () => {
+    const input = LegacySimulationAdapter.fromLegacy(structuredClone(initialParams));
+    const only = candidate(input.strategy, 'hard-false', 60);
+    const generator = { generate: () => fakeGeneration([only]) } as unknown as StrategyGenerator;
+    const evaluated = { ...evaluation(70), hardConstraintsSatisfied: false };
+
+    const result = new StrategyOptimizer(
+      { simulate: () => simulation(100) },
+      { evaluate: () => evaluated },
+      generator,
+    ).optimize(input.profile, input.goals, input.strategy);
+
+    expect(result.rankedCandidates).toEqual([]);
+    expect(result.debug.postSimulationRejectedCount).toBe(1);
+  });
+
   test('동점이면 기말자산, 후보 id 순으로 결정론적으로 정렬한다', () => {
     const input = LegacySimulationAdapter.fromLegacy(structuredClone(initialParams));
     const candidates = [candidate(input.strategy, 'b', 60), candidate(input.strategy, 'a', 60)];
@@ -231,6 +247,10 @@ describe('StrategyOptimizer', () => {
     expect(result.debug.deterministicShortlistCount).toBe(20);
     expect(result.debug.monteCarloValidatedCount).toBe(20);
     expect(result.debug.monteCarloFailures).toEqual([]);
+    expect(result.recommendations.recommendations.map((item) => item.label)).toEqual([
+      '안정형', '균형형', '여유형',
+    ]);
+    expect(result.recommendations.primary?.persona).toBe('BALANCED');
   });
 
   test('Monte Carlo 옵션이 없으면 확률 검증을 실행하지 않는다', () => {

@@ -130,4 +130,32 @@ describe('StrategyRecommendationCards', () => {
     expect(changes).not.toContainEqual(expect.objectContaining({ label: '월 생활비' }));
     expect(changes).not.toContainEqual(expect.objectContaining({ label: '생활비 배분' }));
   });
+
+  test('최종 추천 엔진의 세 페르소나를 안정형·균형형·여유형으로 표시한다', () => {
+    const candidates = [
+      candidate(1, 'CONSERVATIVE', 'FIXED', 0.97),
+      candidate(2, 'BALANCED', 'FIXED', 0.95),
+      candidate(3, 'GROWTH', 'FRONT_LOADED', 0.9),
+    ];
+
+    render(
+      <StrategyRecommendationCards
+        candidates={candidates}
+        recommendations={[
+          { persona: 'STABLE', label: '안정형', candidate: candidates[0], reason: '하방 방어' },
+          { persona: 'BALANCED', label: '균형형', candidate: candidates[1], reason: '목표 균형' },
+          { persona: 'COMFORTABLE', label: '여유형', candidate: candidates[2], reason: '소비 여력' },
+        ]}
+        status="done"
+        currentGoalProbability={0.7}
+        params={params}
+        formatValue={formatValue}
+      />
+    );
+
+    expect(screen.getByText('안정형')).toBeInTheDocument();
+    expect(screen.getByText('균형형')).toBeInTheDocument();
+    expect(screen.getByText('여유형')).toBeInTheDocument();
+    expect(within(screen.getByText('균형형').closest('article')!).getByText('추천')).toBeInTheDocument();
+  });
 });
