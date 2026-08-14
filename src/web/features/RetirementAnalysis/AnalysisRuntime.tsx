@@ -8,6 +8,7 @@ import { resolveMonteCarloConfig } from '../../../core/usecases/montecarlo/volat
 import { runCompiledScenario } from '../../../core/usecases/strategy/runCompiledScenario';
 import { useMonteCarlo } from '../../hooks/useMonteCarlo';
 import { type StrategyPipeline, useStrategyPipeline } from '../../hooks/useStrategyPipeline';
+import { useStrategyOptimization } from '../../hooks/useStrategyOptimization';
 
 export interface AnalysisRequest {
   params: SimulationParams;
@@ -19,6 +20,8 @@ export interface AnalysisRuntimeValue extends StrategyPipeline {
   monteCarlo: ReturnType<typeof useMonteCarlo>['result'];
   monteCarloStatus: ReturnType<typeof useMonteCarlo>['status'];
   sequenceRisk: ReturnType<typeof computeSequenceRisk>;
+  strategyOptimization: ReturnType<typeof useStrategyOptimization>['result'];
+  strategyOptimizationStatus: ReturnType<typeof useStrategyOptimization>['status'];
   compareResults: Array<{ id: string; name: string; result: SimulationResult }>;
 }
 
@@ -40,6 +43,10 @@ interface AnalysisBoundaryProps {
 export function AnalysisRuntime({ request, engine, children }: AnalysisRuntimeProps) {
   const pipeline = useStrategyPipeline(request.params, engine);
   const { result: monteCarlo, status: monteCarloStatus } = useMonteCarlo(pipeline.effective.params);
+  const {
+    result: strategyOptimization,
+    status: strategyOptimizationStatus,
+  } = useStrategyOptimization(pipeline.effective.params);
   const sequenceRisk = useMemo(
     () => computeSequenceRisk(
       pipeline.effective.params,
@@ -72,6 +79,8 @@ export function AnalysisRuntime({ request, engine, children }: AnalysisRuntimePr
     monteCarlo,
     monteCarloStatus,
     sequenceRisk,
+    strategyOptimization,
+    strategyOptimizationStatus,
     compareResults,
   });
 }

@@ -30,6 +30,9 @@ import { compileStrategy, resolveStrategy } from '../../../core/usecases/strateg
 import { SentinelApplication } from '../../../core/usecases/strategy/applyAiSentinels';
 import { LegacySimulationAdapter } from '../../../core/domain/input/LegacySimulationAdapter';
 import { LegacyEvaluationEngine } from '../../../core/evaluation/LegacyEvaluationEngine';
+import type { StrategyOptimizationResult } from '../../../core/strategy/StrategyOptimizer';
+import type { StrategyOptimizationStatus } from '../../hooks/useStrategyOptimization';
+import { StrategyRecommendationCards } from './recommendation/StrategyRecommendationCards';
 
 interface DashboardSectionProps {
   params: SimulationParams;
@@ -48,6 +51,8 @@ interface DashboardSectionProps {
   monteCarlo?: MonteCarloResult;
   monteCarloStatus?: MonteCarloStatus;
   sequenceRisk?: SequenceRiskResult;
+  strategyOptimization?: StrategyOptimizationResult;
+  strategyOptimizationStatus?: StrategyOptimizationStatus;
 }
 
 // 결과 화면 오케스트레이터. 하위 조각(Hero/KPI/체크리스트/차트/전문가상세)을 IA 순서대로
@@ -64,6 +69,8 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
   monteCarlo,
   monteCarloStatus = 'idle',
   sequenceRisk,
+  strategyOptimization,
+  strategyOptimizationStatus = 'idle',
 }) => {
   // 초기값이 빈 객체가 아닌 이유: 몬테카를로 상위 10% 선은 처음 화면에서 꺼 둔다
   // (DEFAULT_HIDDEN_PERCENTILE_KEYS 주석 참고 — 켜 두면 축이 그 선에 끌려가 주 곡선이 눌린다).
@@ -158,6 +165,7 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
   } = displayedEvaluation;
   const {
     metrics: baselineMetrics,
+    riskAlerts: baselineRiskAlerts,
     planAssetStatus: baselinePlanAssetStatus,
     planOutcome: baselinePlanOutcome,
     planConfidence: baselinePlanConfidence,
@@ -196,8 +204,79 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [sensitivity, pensionGap, shortfallReport, recommendation, currency]
   );
+  const currentGoalProbability = monteCarloStatus === 'done' && monteCarlo
+    ? monteCarlo.goalSuccessProbability ?? monteCarlo.spendingSuccessRate
+    : undefined;
+  const diagnosis = currentGoalProbability !== undefined
+    ? currentGoalProbability >= 0.9
+      ? { emoji: '🟢', text: '현재 계획으로 안정적인 은퇴가 가능합니다.', tone: 'success' as const }
+      : currentGoalProbability >= 0.7
+        ? { emoji: '🟡', text: '조금 조정하면 안정적인 은퇴가 가능합니다.', tone: 'warning' as const }
+        : { emoji: '🔴', text: '목표를 지키려면 현재 계획의 조정이 필요합니다.', tone: 'danger' as const }
+    : baselinePlanOutcome.spendingShortfall || baselinePlanOutcome.assetStatus === 'depleted'
+      ? { emoji: '🔴', text: '기준 시나리오에서 현재 계획의 조정이 필요합니다.', tone: 'danger' as const }
+      : baselinePlanOutcome.investableDepletionAge !== null
+        ? { emoji: '🟡', text: '기준 시나리오는 유지되지만 투자자산 소진에 대비해야 합니다.', tone: 'warning' as const }
+        : { emoji: '🟢', text: '기준 시나리오에서는 계획한 생활비와 자산이 유지됩니다.', tone: 'success' as const };
+  const probabilityLabel = currentGoalProbability !== undefined
+    ? `${Math.round(currentGoalProbability * 100)}%`
+    : monteCarloStatus === 'error' || monteCarloStatus === 'unsupported'
+      ? '확인 불가'
+      : '계산 중';
+  const biggestRisk = baselineRiskAlerts[0]?.title
+    ?? (result.depletionAge !== null
+      ? `${result.depletionAge}세에 투자자산이 소진될 가능성`
+      : currentGoalProbability !== undefined && currentGoalProbability < 0.9
+        ? '시장 하락 시 생활비 목표를 유지할 여유 부족'
+        : '현재 가정에서 발견된 중대한 위험 없음');
+
   return (
     <div className={styles.container}>
+      <DashboardGroup title="현재 계획 진단" description="나는 지금 괜찮은지, 무엇이 가장 취약한지부터 확인하세요.">
+        <section className={`${styles.planDiagnosis} ${styles[diagnosis.tone]}`} aria-label="현재 계획 분석">
+          <div className={styles.diagnosisHeadline}>
+            <span aria-hidden="true">{diagnosis.emoji}</span>
+            <h3>{diagnosis.text}</h3>
+          </div>
+          <div className={styles.diagnosisGrid}>
+            <div>
+              <span>목표 달성 확률</span>
+              <strong>{probabilityLabel}</strong>
+            </div>
+            <div>
+              <span>가장 큰 위험</span>
+              <strong>{biggestRisk}</strong>
+            </div>
+          </div>
+          <dl className={styles.currentPlanFacts} aria-label="현재 계획">
+            <div><dt>은퇴</dt><dd>{params.userProfile.retirementAge}세</dd></div>
+            <div><dt>월 생활비 목표</dt><dd>{formatValue(baselineMetrics.targetSpending)}</dd></div>
+            <div><dt>{params.userProfile.expectancy}세 예상자산</dt><dd>{formatValue(baselineMetrics.terminalAssets)}</dd></div>
+          </dl>
+          {currentGoalProbability === undefined && (
+            <p className={styles.deterministicNote}>확률 검증 전에는 기준 시나리오의 생존·생활비 부족 여부만 진단합니다.</p>
+          )}
+        </section>
+      </DashboardGroup>
+
+      <DashboardGroup title="NextLife 추천" description="목표에 가장 가까운 최종 전략 3개와 현재 계획에서 바뀌는 점만 비교합니다.">
+        <StrategyRecommendationCards
+          candidates={strategyOptimization?.rankedCandidates ?? []}
+          status={strategyOptimizationStatus}
+          currentGoalProbability={currentGoalProbability}
+          params={params}
+          formatValue={formatValue}
+        />
+      </DashboardGroup>
+
+      <details className={styles.detailedAnalysis}>
+        <summary>
+          <span>
+            <strong>상세 분석</strong>
+            <small>연령별 자산·소득, 세금, 건강보험료, Monte Carlo 분위수와 연도별 현금흐름</small>
+          </span>
+        </summary>
+        <div className={styles.detailedAnalysisContent}>
       <DashboardGroup title="결과 요약" description="현재 계획의 결론과 가장 중요한 숫자를 한곳에서 확인하세요.">
         <AiSummaryHero
         formatValue={formatValue}
@@ -431,6 +510,8 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
           sensitivity={sensitivity}
         />
       </DashboardGroup>
+        </div>
+      </details>
     </div>
   );
 };

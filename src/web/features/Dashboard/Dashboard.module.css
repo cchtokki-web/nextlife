@@ -47,6 +47,170 @@
   gap: 0.75rem;
 }
 
+.planDiagnosis {
+  padding: 1.4rem;
+  border: 1px solid var(--panel-border);
+  border-radius: 22px;
+  background: var(--panel-bg);
+}
+
+.planDiagnosis.success { border-color: color-mix(in srgb, var(--success) 38%, var(--panel-border)); }
+.planDiagnosis.warning { border-color: color-mix(in srgb, #f59e0b 42%, var(--panel-border)); }
+.planDiagnosis.danger { border-color: color-mix(in srgb, var(--danger) 38%, var(--panel-border)); }
+
+.diagnosisHeadline {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.diagnosisHeadline h3 {
+  font-family: var(--font-display);
+  font-size: clamp(1.15rem, 2vw, 1.45rem);
+  font-weight: 700;
+  color: var(--foreground);
+}
+
+.diagnosisGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 0.75fr) minmax(0, 1.75fr);
+  gap: 0.75rem;
+  margin-top: 1.25rem;
+}
+
+.diagnosisGrid > div,
+.currentPlanFacts > div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.diagnosisGrid > div {
+  padding: 1rem;
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--card-bg) 80%, transparent);
+}
+
+.diagnosisGrid span,
+.currentPlanFacts dt,
+.recommendationComparison span {
+  font-size: 0.75rem;
+  color: var(--foreground-muted);
+}
+
+.diagnosisGrid strong {
+  font-size: 1rem;
+  line-height: 1.45;
+  color: var(--foreground);
+}
+
+.diagnosisGrid > div:first-child strong {
+  font-family: var(--font-display);
+  font-size: 2rem;
+  color: var(--primary);
+}
+
+.currentPlanFacts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--card-border);
+}
+
+.currentPlanFacts dd {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--foreground);
+}
+
+.deterministicNote {
+  margin-top: 0.75rem;
+  font-size: 0.72rem;
+  color: var(--foreground-muted);
+}
+
+.recommendationComparison {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem 1.25rem;
+  border: 1px solid color-mix(in srgb, var(--primary) 30%, var(--card-border));
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--primary) 7%, var(--panel-bg));
+}
+
+.recommendationComparison > div { display: flex; flex-direction: column; gap: 0.25rem; }
+.recommendationComparison > div:last-child { text-align: right; }
+.recommendationComparison strong { font-family: var(--font-display); font-size: 1.5rem; color: var(--foreground); }
+.recommendationComparison > div:last-child strong { color: var(--success); }
+.comparisonArrow { color: var(--primary); font-weight: 700; }
+
+.recommendationGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.9rem;
+}
+
+.strategyCard {
+  min-width: 0;
+  padding: 1.1rem;
+  border: 1px solid var(--card-border);
+  border-radius: 20px;
+  background: var(--panel-bg);
+}
+
+.recommendedStrategyCard {
+  border-color: color-mix(in srgb, var(--primary) 55%, var(--card-border));
+  box-shadow: 0 10px 30px color-mix(in srgb, var(--primary) 10%, transparent);
+}
+
+.strategyCardHeader { display: flex; align-items: flex-start; justify-content: space-between; gap: 0.5rem; }
+.strategyLabel { font-family: var(--font-display); font-size: 1.05rem; font-weight: 700; color: var(--foreground); }
+.strategySummary { margin-top: 0.2rem; font-size: 0.72rem; line-height: 1.4; color: var(--foreground-muted); }
+.recommendedBadge { display: inline-flex; align-items: center; gap: 0.2rem; flex-shrink: 0; padding: 0.25rem 0.5rem; border-radius: 999px; background: color-mix(in srgb, var(--primary) 14%, transparent); color: var(--primary); font-size: 0.7rem; font-weight: 700; }
+
+.strategyMetrics { display: grid; gap: 0.55rem; margin-top: 1rem; }
+.strategyMetrics > div { display: flex; align-items: baseline; justify-content: space-between; gap: 0.5rem; }
+.strategyMetrics dt { font-size: 0.75rem; color: var(--foreground-muted); }
+.strategyMetrics dd { text-align: right; font-size: 0.9rem; font-weight: 700; color: var(--foreground); }
+.strategyMetrics > div:first-child dd { font-size: 1.15rem; color: var(--success); }
+
+.strategyChanges { margin-top: 1rem; padding-top: 0.9rem; border-top: 1px solid var(--card-border); }
+.strategyChanges h4 { font-size: 0.78rem; font-weight: 700; color: var(--foreground); }
+.strategyChanges dl { display: grid; gap: 0.6rem; margin-top: 0.65rem; }
+.strategyChanges dl > div { display: grid; gap: 0.2rem; }
+.strategyChanges dt, .strategyChanges p { font-size: 0.7rem; color: var(--foreground-muted); }
+.strategyChanges dd { display: flex; align-items: center; flex-wrap: wrap; gap: 0.3rem; font-size: 0.74rem; }
+.strategyChanges dd span { color: var(--foreground-muted); text-decoration: line-through; }
+.strategyChanges dd b { color: var(--foreground-muted); }
+.strategyChanges dd strong { color: var(--foreground); }
+
+.detailedAnalysis {
+  border: 1px solid var(--panel-border);
+  border-radius: 22px;
+  background: color-mix(in srgb, var(--panel-bg) 55%, transparent);
+  overflow: clip;
+}
+
+.detailedAnalysis > summary {
+  display: flex;
+  cursor: pointer;
+  padding: 1.1rem 1.25rem;
+  list-style: none;
+}
+
+.detailedAnalysis > summary::-webkit-details-marker { display: none; }
+.detailedAnalysis > summary span { display: flex; flex-direction: column; gap: 0.2rem; }
+.detailedAnalysis > summary strong { font-family: var(--font-display); color: var(--foreground); }
+.detailedAnalysis > summary small { font-size: 0.75rem; color: var(--foreground-muted); }
+.detailedAnalysis > summary::after { content: '＋'; margin-left: auto; color: var(--primary); }
+.detailedAnalysis[open] > summary::after { content: '−'; }
+.detailedAnalysisContent { display: flex; flex-direction: column; gap: 2rem; padding: 0 1rem 1rem; }
+
 /* 평생 소비 최적화의 연령 구간별 금액. 문장 안에 이어 쓰면 "60~69세 580만원 70~79세
    480만원"처럼 붙어 읽히므로 줄로 나눈다. */
 .spendingPlanList {
@@ -107,6 +271,8 @@
   .container { gap: 1.5rem; }
   .groupContent { padding: 0.5rem; border-radius: 20px; }
   .groupHeader { padding: 0 0.1rem; }
+  .diagnosisGrid, .recommendationGrid { grid-template-columns: 1fr; }
+  .currentPlanFacts { grid-template-columns: 1fr; gap: 0.65rem; }
 }
 
 .checkIcon {

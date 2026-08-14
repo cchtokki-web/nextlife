@@ -1134,6 +1134,8 @@ export default function Home() {
                 monteCarlo={analysis.monteCarlo}
                 monteCarloStatus={analysis.monteCarloStatus}
                 sequenceRisk={analysis.sequenceRisk}
+                strategyOptimization={analysis.strategyOptimization}
+                strategyOptimizationStatus={analysis.strategyOptimizationStatus}
               />
             ) : (
               <GlassCard>

@@ -123,13 +123,31 @@ describe('DashboardSection - IA 순서', () => {
     const riskIdx = text.indexOf('위험 분석');
     const actionIdx = text.indexOf('실행 계획');
     const chartIdx = text.indexOf('자산 흐름');
-    const detailIdx = text.indexOf('상세 분석');
+    // 첫 번째 "상세 분석"은 새 기본 화면의 접기 버튼이고, 마지막 항목은 기존 전문가
+    // 상세 섹션이다. 기존 상세 콘텐츠 내부의 순서를 검증하므로 마지막 위치를 본다.
+    const detailIdx = text.lastIndexOf('상세 분석');
 
     expect(summaryIdx).toBeGreaterThanOrEqual(0);
     expect(riskIdx).toBeGreaterThan(summaryIdx);
     expect(actionIdx).toBeGreaterThan(riskIdx);
     expect(chartIdx).toBeGreaterThan(actionIdx);
     expect(detailIdx).toBeGreaterThan(chartIdx);
+  });
+
+  test('Monte Carlo 전에는 고정소득 충당률을 목표 달성 확률로 표시하지 않는다', () => {
+    const assetFundedResult: SimulationResult = {
+      ...result,
+      goalAchievementRate: 30,
+      depletionAge: null,
+      yearlyResults: result.yearlyResults.map((row) => ({ ...row, unmetSpending: 0 })),
+    };
+
+    render(<DashboardSection params={params} result={assetFundedResult} monteCarloStatus="running" />);
+
+    const diagnosis = screen.getByLabelText('현재 계획 분석');
+    expect(within(diagnosis).getByText('계산 중')).toBeInTheDocument();
+    expect(within(diagnosis).queryByText(/30%/)).not.toBeInTheDocument();
+    expect(within(diagnosis).getByText(/기준 시나리오에서는/)).toBeInTheDocument();
   });
 
   test('실행 로드맵이 렌더링되고 체크리스트 다음, 차트 이전에 위치한다', () => {
@@ -193,7 +211,7 @@ describe('DashboardSection - IA 순서', () => {
     render(<DashboardSection params={params} result={result} recommendation={rec} />);
 
     expect(screen.queryByText('81점')).not.toBeInTheDocument();
-    expect(screen.getByText('5억원')).toBeInTheDocument();
+    expect(screen.getAllByText('5억원').length).toBeGreaterThan(0);
 
     fireEvent.click(screen.getByRole('button', { name: '추천안 결과 보기' }));
 
@@ -201,7 +219,8 @@ describe('DashboardSection - IA 순서', () => {
     // 순자산 KPI도 endingAssets(자산증가분)를 그대로 반영해야 한다 — utilityScore 하나만으로는
     // 다른 하위 컴포넌트에 baseline 값이 잘못 배선돼도 잡아내지 못한다.
     expect(screen.getByText('9억 9,900만원')).toBeInTheDocument();
-    expect(screen.queryByText('5억원')).not.toBeInTheDocument();
+    // 현재 계획 진단은 Before 기준을 유지하므로 5억원은 상단에 계속 남는다.
+    expect(screen.getAllByText('5억원')).toHaveLength(1);
   });
 
   test('After 모드에서는 추천 결과의 평균 실제 소비 metric을 표시한다', () => {
@@ -230,20 +249,29 @@ describe('DashboardSection - IA 순서', () => {
   });
 
   test('Before 상태에서 리스크 알림이 보이고, 추천 적용(After) 시 리스크가 해소되면 알림이 사라진다', () => {
+    const riskParams: SimulationParams = {
+      ...params,
+      userProfile: { ...params.userProfile, retirementAge: 65 },
+      withdrawalPlan: { nationalPensionStartAge: 65 },
+    };
     const riskyResult: SimulationResult = {
       ...result,
-      yearlyResults: [makeYearlyResult({ age: 60 }), makeYearlyResult({ age: 65, nationalPensionIncome: 12000000, hasTaxWarning: true })],
+      yearlyResults: [makeYearlyResult({ age: 65, nationalPensionIncome: 12000000, hasTaxWarning: true })],
     };
     const cleanAfterResult: SimulationResult = { ...result, endingAssets: 999000000, utility: { ...utility, score: 81 } };
     const rec: StrategyRecommendation = { ...recommendation, recommendedResult: cleanAfterResult };
 
-    render(<DashboardSection params={params} result={riskyResult} recommendation={rec} />);
+    render(<DashboardSection params={riskParams} result={riskyResult} recommendation={rec} />);
 
-    expect(screen.getByText('금융소득종합과세 진입 가능성')).toBeInTheDocument();
+    expect(screen.getAllByText('금융소득종합과세 진입 가능성').length).toBeGreaterThanOrEqual(2);
 
     fireEvent.click(screen.getByRole('button', { name: '추천안 결과 보기' }));
 
-    expect(screen.queryByText('금융소득종합과세 진입 가능성')).not.toBeInTheDocument();
+    // 상세 패널은 추천안 기준으로 위험이 해소되지만, 최상단 "현재 계획 진단"은 baseline의
+    // 위험을 계속 말해야 서로 다른 두 계획을 한 카드에서 섞지 않는다.
+    const diagnosis = screen.getByLabelText('현재 계획 분석');
+    expect(within(diagnosis).getByText('금융소득종합과세 진입 가능성')).toBeInTheDocument();
+    expect(screen.getAllByText('금융소득종합과세 진입 가능성')).toHaveLength(1);
   });
 });
 
