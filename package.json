@@ -8,6 +8,7 @@
     "start": "prisma db push && next start",
     "lint": "eslint",
     "test": "vitest run",
+    "test:retirement-domain-invariants": "vitest run src/tests/core/retirement-domain-invariants",
     "test:watch": "vitest",
     "harness:personas": "vitest run --config vitest.harness.config.ts"
   },
