@@ -7,6 +7,8 @@ import { LegacySimulationEngine } from '@/core/simulation/LegacySimulationEngine
 import type { StrategyCandidate, StrategyGenerationResult } from '@/core/strategy/StrategyGenerator';
 import { StrategyGenerator } from '@/core/strategy/StrategyGenerator';
 import { StrategyOptimizer } from '@/core/strategy/StrategyOptimizer';
+import type { StrategyMonteCarloEngine } from '@/core/usecases/montecarlo/MonteCarloEngine';
+import { VOLATILITY_BY_YIELD_PRESET } from '@/core/usecases/montecarlo/volatilityPresets';
 import { initialParams } from '@/infrastructure/storage/localStore';
 
 const utility = (score: number): UtilityBreakdown => ({
@@ -179,5 +181,131 @@ describe('StrategyOptimizer', () => {
     expect(result.rankedCandidates).toHaveLength(1);
     expect(result.best?.candidate.id).toBe('a');
     expect(result.debug.rankedCandidateCount).toBe(2);
+  });
+
+  test('결정론 상위 20개만 Monte Carlo로 검증한 뒤 최종 3개를 재정렬한다', () => {
+    const input = LegacySimulationAdapter.fromLegacy(structuredClone(initialParams));
+    const candidates = Array.from({ length: 30 }, (_, index) =>
+      candidate(input.strategy, `candidate-${String(index + 1).padStart(2, '0')}`, 60)
+    );
+    const generator = { generate: () => fakeGeneration(candidates) } as unknown as StrategyGenerator;
+    const engine: SimulationEngine = { simulate: () => simulation(100) };
+    const evaluator: GoalEvaluationEngine = {
+      evaluate: vi.fn((_profile, _goals, strategy) => {
+        const index = candidates.findIndex((item) => item.strategy === strategy);
+        return evaluation(100 - index);
+      }),
+    };
+    const validate = vi.fn((_profile, _goals, strategy, config) => {
+      const index = candidates.findIndex((item) => item.strategy === strategy);
+      const probability = index / 100;
+      return {
+        trials: config.trials,
+        seed: config.seed,
+        goalSuccessProbability: probability,
+        spendingSuccessProbability: probability,
+        assetSurvivalProbability: probability,
+        terminalAssetMedian: index,
+        terminalAssetP10: index,
+        terminalAssetP90: index,
+        shortfallProbability: 1 - probability,
+      };
+    });
+    const monteCarloEngine = { validate } satisfies StrategyMonteCarloEngine;
+
+    const result = new StrategyOptimizer(engine, evaluator, generator, monteCarloEngine).optimize(
+      input.profile,
+      input.goals,
+      input.strategy,
+      { monteCarlo: { config: { trials: 1_000, seed: 42, annualStdDev: 15 } } },
+    );
+
+    expect(validate).toHaveBeenCalledTimes(20);
+    expect(validate.mock.calls.every((call) => call[3].seed === 42)).toBe(true);
+    expect(result.rankedCandidates.map((item) => item.candidate.id)).toEqual([
+      'candidate-20',
+      'candidate-19',
+      'candidate-18',
+    ]);
+    expect(result.rankedCandidates.every((item) => item.monteCarlo !== undefined)).toBe(true);
+    expect(result.debug.deterministicShortlistCount).toBe(20);
+    expect(result.debug.monteCarloValidatedCount).toBe(20);
+    expect(result.debug.monteCarloFailures).toEqual([]);
+  });
+
+  test('Monte Carlo 옵션이 없으면 확률 검증을 실행하지 않는다', () => {
+    const input = LegacySimulationAdapter.fromLegacy(structuredClone(initialParams));
+    const candidates = [candidate(input.strategy, 'only', 60)];
+    const generator = { generate: () => fakeGeneration(candidates) } as unknown as StrategyGenerator;
+    const validate = vi.fn();
+
+    const result = new StrategyOptimizer(
+      { simulate: () => simulation(100) },
+      { evaluate: () => evaluation(80) },
+      generator,
+      { validate } as unknown as StrategyMonteCarloEngine,
+    ).optimize(input.profile, input.goals, input.strategy);
+
+    expect(validate).not.toHaveBeenCalled();
+    expect(result.debug.deterministicShortlistCount).toBe(0);
+    expect(result.debug.monteCarloValidatedCount).toBe(0);
+  });
+
+  test('후보별 수익률 프리셋의 변동성을 적용하면서 trials와 seed는 공통으로 유지한다', () => {
+    const input = LegacySimulationAdapter.fromLegacy(structuredClone(initialParams));
+    const presets = ['conservative', 'base', 'aggressive'] as const;
+    const candidates = presets.map((preset) => {
+      const item = candidate(input.strategy, preset, 60);
+      return {
+        ...item,
+        strategy: {
+          ...item.strategy,
+          legacySettings: { ...item.strategy.legacySettings, yieldPreset: preset },
+        },
+      };
+    });
+    const generator = { generate: () => fakeGeneration(candidates) } as unknown as StrategyGenerator;
+    const validate = vi.fn((_profile, _goals, _strategy, config) => ({
+      trials: config.trials,
+      seed: config.seed,
+      goalSuccessProbability: 1,
+      spendingSuccessProbability: 1,
+      assetSurvivalProbability: 1,
+      terminalAssetMedian: 100,
+      terminalAssetP10: 90,
+      terminalAssetP90: 110,
+      shortfallProbability: 0,
+    }));
+
+    new StrategyOptimizer(
+      { simulate: () => simulation(100) },
+      { evaluate: () => evaluation(80) },
+      generator,
+      { validate } satisfies StrategyMonteCarloEngine,
+    ).optimize(input.profile, input.goals, input.strategy, {
+      monteCarlo: { config: { trials: 1_000, seed: 2026, annualStdDev: 99 } },
+    });
+
+    const configsByPreset = Object.fromEntries(validate.mock.calls.map((call) => [
+      call[2].legacySettings.yieldPreset,
+      call[3],
+    ]));
+    expect(configsByPreset).toEqual({
+      conservative: {
+        trials: 1_000,
+        seed: 2026,
+        annualStdDev: VOLATILITY_BY_YIELD_PRESET.conservative,
+      },
+      base: {
+        trials: 1_000,
+        seed: 2026,
+        annualStdDev: VOLATILITY_BY_YIELD_PRESET.base,
+      },
+      aggressive: {
+        trials: 1_000,
+        seed: 2026,
+        annualStdDev: VOLATILITY_BY_YIELD_PRESET.aggressive,
+      },
+    });
   });
 });

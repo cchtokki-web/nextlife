@@ -1,6 +1,10 @@
 import { normalizeRetirementGoals, type RetirementGoalType } from '../entities/retirementGoal';
 import type { StrategySimulationResult } from '../entities/types';
 import type {
+  MonteCarloConfig,
+  StrategyMonteCarloValidationResult,
+} from '../entities/montecarlo';
+import type {
   RetirementGoals,
   RetirementProfile,
   RetirementStrategy,
@@ -17,6 +21,8 @@ import {
   type StrategyGenerationDebug,
   type StrategyGenerationOptions,
 } from './StrategyGenerator';
+import type { StrategyMonteCarloEngine } from '../usecases/montecarlo/MonteCarloEngine';
+import { annualStdDevForYieldPreset } from '../usecases/montecarlo/volatilityPresets';
 
 export type PreSimulationRejectionCode = 'HARD_RETIREMENT_AGE';
 
@@ -25,6 +31,8 @@ export interface RankedStrategyCandidate {
   candidate: StrategyCandidate;
   simulation: StrategySimulationResult;
   evaluation: GoalEvaluationResult;
+  /** Present only when this candidate reached final Monte Carlo validation. */
+  monteCarlo?: StrategyMonteCarloValidationResult;
 }
 
 export interface StrategyOptimizerDebug {
@@ -38,6 +46,9 @@ export interface StrategyOptimizerDebug {
   rejectionReasons: Partial<Record<PreSimulationRejectionCode | GoalEvaluationResult['hardConstraintFailures'][number]['code'], number>>;
   unsupportedHardGoals: RetirementGoalType[];
   simulationFailures: Array<{ candidateId: string; reason: string }>;
+  deterministicShortlistCount: number;
+  monteCarloValidatedCount: number;
+  monteCarloFailures: Array<{ candidateId: string; reason: string }>;
 }
 
 export interface StrategyOptimizationResult {
@@ -49,6 +60,14 @@ export interface StrategyOptimizationResult {
 export interface StrategyOptimizerOptions extends StrategyGenerationOptions {
   /** Limits returned ranking size without reducing how many generated candidates are evaluated. */
   rankingLimit?: number;
+  /** Enables final-stage validation. Monte Carlo is never run when this option is absent. */
+  monteCarlo?: {
+    config: MonteCarloConfig;
+    /** Number retained by deterministic goal scoring before Monte Carlo. Default: 20. */
+    shortlistLimit?: number;
+    /** Number returned after probabilistic re-ranking. Default: 3. */
+    finalistLimit?: number;
+  };
 }
 
 function preSimulationHardFailure(
@@ -80,6 +99,7 @@ export class StrategyOptimizer {
     private readonly simulationEngine: SimulationEngine,
     private readonly goalEvaluationEngine: GoalEvaluationEngine = new DefaultGoalEvaluationEngine(),
     private readonly generator: StrategyGenerator = new StrategyGenerator(),
+    private readonly monteCarloEngine?: StrategyMonteCarloEngine,
   ) {}
 
   optimize(
@@ -133,11 +153,72 @@ export class StrategyOptimizer {
       || right.simulation.endingAssets - left.simulation.endingAssets
       || left.candidate.id.localeCompare(right.candidate.id)
     );
-    const rankingLimit = Math.max(1, Math.floor(options.rankingLimit ?? (accepted.length || 1)));
-    const rankedCandidates = accepted.slice(0, rankingLimit).map((item, index) => ({
-      ...item,
-      rank: index + 1,
-    }));
+    const monteCarloFailures: StrategyOptimizerDebug['monteCarloFailures'] = [];
+    let deterministicShortlistCount = 0;
+    let monteCarloValidatedCount = 0;
+    let rankedCandidates: RankedStrategyCandidate[];
+
+    if (options.monteCarlo) {
+      if (!this.monteCarloEngine) {
+        throw new Error('Monte Carlo validation requested without a StrategyMonteCarloEngine');
+      }
+      const shortlistLimit = Math.max(1, Math.floor(options.monteCarlo.shortlistLimit ?? 20));
+      const shortlist = accepted.slice(0, shortlistLimit);
+      deterministicShortlistCount = shortlist.length;
+      const validated: Array<Omit<RankedStrategyCandidate, 'rank'>> = [];
+
+      for (const item of shortlist) {
+        try {
+          const candidateConfig: MonteCarloConfig = {
+            ...options.monteCarlo.config,
+            // Candidate allocations already carry the project's conservative/base/aggressive
+            // risk preset. Keep common random numbers (trials + seed), but do not grant a higher
+            // expected-return candidate the lower volatility supplied for another allocation.
+            annualStdDev: annualStdDevForYieldPreset(
+              item.candidate.strategy.legacySettings.yieldPreset,
+              options.monteCarlo.config.annualStdDev,
+            ),
+          };
+          const monteCarlo = this.monteCarloEngine.validate(
+            profile,
+            goals,
+            item.candidate.strategy,
+            candidateConfig,
+          );
+          monteCarloValidatedCount += 1;
+          validated.push({ ...item, monteCarlo });
+        } catch (error) {
+          monteCarloFailures.push({
+            candidateId: item.candidate.id,
+            reason: errorMessage(error),
+          });
+        }
+      }
+
+      validated.sort((left, right) =>
+        (right.monteCarlo?.goalSuccessProbability ?? 0)
+          - (left.monteCarlo?.goalSuccessProbability ?? 0)
+        || (right.monteCarlo?.spendingSuccessProbability ?? 0)
+          - (left.monteCarlo?.spendingSuccessProbability ?? 0)
+        || (right.monteCarlo?.assetSurvivalProbability ?? 0)
+          - (left.monteCarlo?.assetSurvivalProbability ?? 0)
+        || (right.monteCarlo?.terminalAssetMedian ?? 0)
+          - (left.monteCarlo?.terminalAssetMedian ?? 0)
+        || right.evaluation.weightedScore - left.evaluation.weightedScore
+        || left.candidate.id.localeCompare(right.candidate.id)
+      );
+      const finalistLimit = Math.max(1, Math.floor(options.monteCarlo.finalistLimit ?? 3));
+      rankedCandidates = validated.slice(0, finalistLimit).map((item, index) => ({
+        ...item,
+        rank: index + 1,
+      }));
+    } else {
+      const rankingLimit = Math.max(1, Math.floor(options.rankingLimit ?? (accepted.length || 1)));
+      rankedCandidates = accepted.slice(0, rankingLimit).map((item, index) => ({
+        ...item,
+        rank: index + 1,
+      }));
+    }
 
     return {
       best: rankedCandidates[0] ?? null,
@@ -153,6 +234,9 @@ export class StrategyOptimizer {
         rejectionReasons,
         unsupportedHardGoals: [...unsupportedHardGoals],
         simulationFailures,
+        deterministicShortlistCount,
+        monteCarloValidatedCount,
+        monteCarloFailures,
       },
     };
   }

@@ -1,5 +1,12 @@
 import { SimulationParams, SimulationYearlyResult, StrategySimulationResult } from '../../entities/types';
-import { MonteCarloBandYear, MonteCarloConfig, MonteCarloResult } from '../../entities/montecarlo';
+import {
+  MonteCarloBandYear,
+  MonteCarloConfig,
+  MonteCarloResult,
+  StrategyMonteCarloValidationResult,
+} from '../../entities/montecarlo';
+import type { RetirementGoals, RetirementProfile, RetirementStrategy } from '../../domain/input/retirement';
+import { LegacySimulationAdapter } from '../../domain/input/LegacySimulationAdapter';
 import { SimulationEngine } from '../SimulationEngine';
 import { FrozenSpendingPlan, freezeSpendingPlan, runFrozenPlan } from '../spending/freezeSpendingPlan';
 import { hasSpendingShortfall } from '../spending/spendingShortfall';
@@ -165,6 +172,14 @@ export function runMonteCarlo(
     successRate: trials.length > 0 ? succeeded.length / trials.length : 0,
     spendingSuccessRate: trials.length > 0 ? spendingSucceeded.length / trials.length : 0,
     goalSuccessProbability: trials.length > 0 ? goalSucceeded.length / trials.length : 0,
+    spendingSuccessProbability: trials.length > 0 ? spendingSucceeded.length / trials.length : 0,
+    assetSurvivalProbability: trials.length > 0 ? succeeded.length / trials.length : 0,
+    terminalAssetMedian: percentileOfSorted(endingSorted, 0.5),
+    terminalAssetP10: percentileOfSorted(endingSorted, 0.1),
+    terminalAssetP90: percentileOfSorted(endingSorted, 0.9),
+    shortfallProbability: trials.length > 0
+      ? 1 - spendingSucceeded.length / trials.length
+      : 0,
     plannedMonthlySpending: planned.monthlyTargetSpending,
     endingAssets: {
       p10: percentileOfSorted(endingSorted, 0.1),
@@ -181,6 +196,58 @@ export function runMonteCarlo(
     deterministicEndingAssets: deterministic.endingAssets,
     worstDecilePath: extractWorstDecilePath(trials, planned, engine, config, years),
   };
+}
+
+/** Optimizer-facing Monte Carlo boundary. Deterministic candidate generation never depends on it. */
+export interface StrategyMonteCarloEngine {
+  validate(
+    profile: RetirementProfile,
+    goals: RetirementGoals,
+    strategy: RetirementStrategy,
+    config: MonteCarloConfig,
+  ): StrategyMonteCarloValidationResult;
+}
+
+/**
+ * Final-stage validator that reuses the deterministic cash-flow engine and varies only its return
+ * path. The adapter keeps the goal-based domain model out of the legacy Monte Carlo entry point.
+ */
+export class MonteCarloEngine implements StrategyMonteCarloEngine {
+  constructor(private readonly simulationEngine: SimulationEngine) {}
+
+  validate(
+    profile: RetirementProfile,
+    goals: RetirementGoals,
+    strategy: RetirementStrategy,
+    config: MonteCarloConfig,
+  ): StrategyMonteCarloValidationResult {
+    const params = LegacySimulationAdapter.toLegacy(profile, {
+      goals: [
+        { type: 'retirement_age', targetAge: strategy.retirementAge },
+        { type: 'monthly_spending', monthlyAmount: strategy.targetMonthlySpending },
+        { type: 'plan_horizon', targetAge: strategy.planHorizonAge },
+        ...(strategy.targetBequest === undefined
+          ? []
+          : [{ type: 'bequest' as const, targetAmount: strategy.targetBequest }]),
+      ],
+      ...(goals.selectedGoals ? { selectedGoals: goals.selectedGoals } : {}),
+    }, strategy);
+    const result = runMonteCarlo(params, this.simulationEngine, config);
+    const spendingSuccessProbability = result.spendingSuccessProbability
+      ?? result.spendingSuccessRate;
+
+    return {
+      trials: result.trials,
+      seed: result.seed,
+      goalSuccessProbability: result.goalSuccessProbability ?? 0,
+      spendingSuccessProbability,
+      assetSurvivalProbability: result.assetSurvivalProbability ?? result.successRate,
+      terminalAssetMedian: result.terminalAssetMedian ?? result.endingAssets.p50,
+      terminalAssetP10: result.terminalAssetP10 ?? result.endingAssets.p10,
+      terminalAssetP90: result.terminalAssetP90 ?? result.endingAssets.p90,
+      shortfallProbability: result.shortfallProbability ?? 1 - spendingSuccessProbability,
+    };
+  }
 }
 
 // 기말자산 기준 최악 10분위에 해당하는 대표 시행 하나를 골라 상세를 재실행한다.

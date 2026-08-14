@@ -31,15 +31,21 @@ export const DEFAULT_MONTE_CARLO_SEED = 20260101;
 // 안정적이다. 그 이상은 표시 정밀도에 기여하지 않으면서 계산 시간만 늘린다.
 export const DEFAULT_MONTE_CARLO_TRIALS = 1000;
 
+/** Single source of truth for translating the existing return preset into market volatility. */
+export function annualStdDevForYieldPreset(
+  preset: SimulationParams['yieldPreset'],
+  fallback: number = VOLATILITY_BY_YIELD_PRESET.base,
+): number {
+  return preset === 'conservative' || preset === 'base' || preset === 'aggressive'
+    ? VOLATILITY_BY_YIELD_PRESET[preset]
+    : fallback;
+}
+
 // 결정론 params에서 MC 설정을 유도한다. 저장되는 값이 아니다(MonteCarloConfig 주석).
 export function resolveMonteCarloConfig(params: SimulationParams): MonteCarloConfig {
-  const preset = params.yieldPreset;
-  const annualStdDev =
-    preset === 'conservative' || preset === 'base' || preset === 'aggressive'
-      ? VOLATILITY_BY_YIELD_PRESET[preset]
-      // 'custom'이거나 미지정이면 base를 쓴다. custom은 사용자가 자산별 수익률을 직접
-      // 정한 경우인데, 거기서 변동성을 추론할 방법이 없다(수익률과 변동성은 독립 입력이다).
-      : VOLATILITY_BY_YIELD_PRESET.base;
+  // 'custom'이거나 미지정이면 base를 쓴다. custom은 사용자가 자산별 수익률을 직접
+  // 정한 경우인데, 거기서 변동성을 추론할 방법이 없다(수익률과 변동성은 독립 입력이다).
+  const annualStdDev = annualStdDevForYieldPreset(params.yieldPreset);
 
   return {
     trials: DEFAULT_MONTE_CARLO_TRIALS,

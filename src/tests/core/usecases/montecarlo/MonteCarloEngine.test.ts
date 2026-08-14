@@ -1,5 +1,10 @@
 import { describe, test, expect, vi } from 'vitest';
-import { isSuccessfulTrial, runMonteCarlo } from '@/core/usecases/montecarlo/MonteCarloEngine';
+import {
+  isSuccessfulTrial,
+  MonteCarloEngine,
+  runMonteCarlo,
+} from '@/core/usecases/montecarlo/MonteCarloEngine';
+import { LegacySimulationAdapter } from '@/core/domain/input/LegacySimulationAdapter';
 import { resolveMonteCarloConfig, VOLATILITY_BY_YIELD_PRESET } from '@/core/usecases/montecarlo/volatilityPresets';
 import { SimulationEngine } from '@/core/usecases/SimulationEngine';
 import { SimulationParams } from '@/core/entities/types';
@@ -190,6 +195,12 @@ describe('runMonteCarlo', () => {
     expect(mc.spendingSuccessRate).toBeLessThanOrEqual(1);
     expect(mc.goalSuccessProbability).toBeLessThanOrEqual(mc.spendingSuccessRate);
     expect(mc.goalSuccessProbability).toBeLessThanOrEqual(mc.successRate);
+    expect(mc.spendingSuccessProbability).toBe(mc.spendingSuccessRate);
+    expect(mc.assetSurvivalProbability).toBe(mc.successRate);
+    expect(mc.terminalAssetMedian).toBe(mc.endingAssets.p50);
+    expect(mc.terminalAssetP10).toBe(mc.endingAssets.p10);
+    expect(mc.terminalAssetP90).toBe(mc.endingAssets.p90);
+    expect(mc.shortfallProbability).toBeCloseTo(1 - mc.spendingSuccessRate, 12);
   });
 
   test('목표 성공확률은 명시된 기말자산 목표까지 같은 시행에서 만족해야 한다', () => {
@@ -263,6 +274,26 @@ describe('runMonteCarlo', () => {
     );
     expect(maxSus.plannedMonthlySpending).not.toBe(2500000);
     expect(maxSus.plannedMonthlySpending).toBeGreaterThan(0);
+  });
+});
+
+describe('MonteCarloEngine strategy validation', () => {
+  test('같은 seed로 최종 검증 지표 7개를 재현한다', () => {
+    const input = LegacySimulationAdapter.fromLegacy(params());
+    const validator = new MonteCarloEngine(engine);
+    const cfg = config({ trials: 30, seed: 77 });
+
+    const first = validator.validate(input.profile, input.goals, input.strategy, cfg);
+    const second = validator.validate(input.profile, input.goals, input.strategy, cfg);
+
+    expect(second).toEqual(first);
+    expect(first).toMatchObject({ trials: 30, seed: 77 });
+    expect(first.goalSuccessProbability).toBeGreaterThanOrEqual(0);
+    expect(first.spendingSuccessProbability).toBeGreaterThanOrEqual(0);
+    expect(first.assetSurvivalProbability).toBeGreaterThanOrEqual(0);
+    expect(first.terminalAssetP10).toBeLessThanOrEqual(first.terminalAssetMedian);
+    expect(first.terminalAssetMedian).toBeLessThanOrEqual(first.terminalAssetP90);
+    expect(first.shortfallProbability).toBeCloseTo(1 - first.spendingSuccessProbability, 12);
   });
 });
 
