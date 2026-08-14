@@ -115,7 +115,7 @@ export class StrategyOptimizer {
           simulation,
         );
         evaluation.unsupportedHardGoals.forEach((goal) => unsupportedHardGoals.add(goal));
-        if (evaluation.hardConstraintFailures.length > 0) {
+        if (!evaluation.hardConstraintsSatisfied) {
           postSimulationRejectedCount += 1;
           evaluation.hardConstraintFailures.forEach((failure) =>
             increment(rejectionReasons, failure.code)
@@ -129,7 +129,7 @@ export class StrategyOptimizer {
     }
 
     accepted.sort((left, right) =>
-      right.evaluation.score - left.evaluation.score
+      right.evaluation.weightedScore - left.evaluation.weightedScore
       || right.simulation.endingAssets - left.simulation.endingAssets
       || left.candidate.id.localeCompare(right.candidate.id)
     );
