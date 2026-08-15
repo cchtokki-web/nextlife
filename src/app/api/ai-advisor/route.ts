@@ -112,7 +112,7 @@ export function buildSimulationContextText(body: AiAdvisorRequestBody): string {
       `- 평생 효용 점수(은퇴 준비도 점수와는 별개의 지표로 "자산을 얼마나 잘 ` +
       `활용하는가"를 종합 평가): ${utility.score}점/100점`
     );
-    // 가중치를 넘기지 않으면 기본 배점이 쓰여 화면(UtilityBreakdownBars)과 다른 분모를 말하게 된다.
+    // 가중치를 넘기지 않으면 기본 배점이 쓰여 PDF 리포트의 효용 막대와 다른 분모를 말하게 된다.
     const analysis = analyzeCurrentStrategy(
       utility,
       utilityWeights ? { weights: utilityWeights } : undefined,

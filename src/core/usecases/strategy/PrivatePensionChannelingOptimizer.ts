@@ -276,7 +276,7 @@ export function optimizePrivatePensionChanneling(
 
   // 축을 인자로 받는다. 둘 다 'privatePensionChanneling'으로 뭉개면, 나중에 이 축이 센티널로
   // 채워질 때 적용되지 않은 신규 납입 항목까지 "이미 반영됨"으로 표시된다
-  // (RecommendationChecklist가 appliedFields.includes(field)로 가른다).
+  // (PDF 리포트의 항목별 체크리스트가 appliedFields.includes(field)로 가른다).
   const makeItem = (
     field: ItemizedContribution['field'],
     label: string,

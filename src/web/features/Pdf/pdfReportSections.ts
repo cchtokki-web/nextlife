@@ -11,16 +11,17 @@ import {
   PlanConfidenceBandKey,
 } from '../../../core/usecases/dashboard/computePlanConfidence';
 import { NationalPensionExplanation } from '../../../core/usecases/pension/explainNationalPension';
-import {
-  ItemizedContribution, ItemizedContributionField, StrategyRecommendation,
-} from '../../../core/entities/types';
+import { SimulationParams } from '../../../core/entities/types';
 import { formatManwon } from '../../../core/usecases/utility/utilityAnalysis';
 import { MonteCarloResult } from '../../../core/entities/montecarlo';
+import { GoalSuccessConditions } from '../../../core/usecases/goals/goalSuccessConditions';
 import { SequenceRiskResult } from '../../../core/usecases/montecarlo/sequenceRisk';
-import {
-  formatTaxImpact,
-  groupRecommendationItems,
-} from '../Dashboard/recommendation/recommendationPresentation';
+import { OptimizationOutcome } from '../../../core/strategy/StrategyOptimizer';
+import { CandidateRecommendation } from '../../../core/recommendation/RecommendationEngine';
+import { RetirementGoalType } from '../../../core/entities/retirementGoal';
+import { RETIREMENT_GOAL_CATALOG } from '../RetirementGoals/goalCatalog';
+import { describeStrategyChanges } from '../../../core/usecases/dashboard/describeStrategyChanges';
+import type { StrategyOptimizationStatus } from '../../hooks/useStrategyOptimization';
 
 export function formatCurrencyUnit(currency: 'KRW' | 'USD'): '원' | '$' {
   return currency === 'KRW' ? '원' : '$';
@@ -171,15 +172,14 @@ export function renderPlanVerdictSection(input: {
       )
     : block(
         `시장 변동성 반영 · ${monteCarlo.trials.toLocaleString()}회 시뮬레이션`,
-        // 두 확률을 함께 싣는다. 하나만 실으면 종신연금이 두꺼운 계획(생활은 유지되나 자산은
-        // 사라지는 계획)과 그 반대 계획이 같은 숫자로 요약된다.
+        // **목표 달성 확률 하나만 싣는다.** 화면의 진단 카드와 같은 분업이다 — 이 블록은
+        // 판정을 내리고, 그 확률을 이루는 두 성분(생활 유지·자산 보존)과 잔여자산 분포는
+        // 「시장 변동 검증」 섹션이 소유한다. 예전에는 세 확률과 분위수 두 개를 여기서 먼저
+        // 인쇄하고 뒤 페이지에서 같은 숫자를 다시 인쇄했다.
         `<p style="margin: 0; font-size: 14px; font-weight: 700; color: ${verdictAccent(confidence)};">
-           목표 동시 달성 확률 ${Math.round((confidence.rates?.goalSuccessProbability ?? confidence.rates?.spendingSuccessRate ?? 0) * 100)}%
-           <span style="font-size: 12px; font-weight: 500; color: #475569;">· 생활 유지 ${Math.round((confidence.rates?.spendingSuccessRate ?? 0) * 100)}% · ${expectancy}세까지 자산 보존 ${Math.round((confidence.rates?.assetSuccessRate ?? 0) * 100)}%</span>
+           목표 달성 확률 ${Math.round((confidence.rates?.goalSuccessProbability ?? confidence.rates?.spendingSuccessRate ?? 0) * 100)}%
          </p>
-         <p style="margin: 3px 0 0; font-size: 11.5px; color: #475569;">
-           계획 생활비 월 ${formatValue(monteCarlo.plannedMonthlySpending)} 기준 · 중앙값 ${expectancy}세 자산 ${formatValue(monteCarlo.endingAssets.p50)} · 하위 10% ${formatValue(monteCarlo.endingAssets.p10)}
-         </p>`,
+         ${goalCoverageNote(monteCarlo.goalConditions)}`,
         verdictAccent(confidence)
       );
 
@@ -207,7 +207,24 @@ export function renderPlanVerdictSection(input: {
   `;
 }
 
-// 색은 밴드→티어 매핑 한 곳에서만 나온다(화면의 CoreKpiGrid와 같은 표). 여기서 다시
+// 이 확률이 **어떤 목표를 판정한 것인지** 밝힌다(화면의 GoalCoverageNote와 같은 문장).
+// 밝히지 않으면 "판정하지 않음"이 "판정해서 통과함"으로 읽힌다 — 세금 최소화를 골라 둔
+// 사용자는 그 목표까지 포함된 확률로 이 숫자를 읽는데, 시행 하나로 세금 목표의 성공/실패를
+// 물을 방법은 없다. 리포트는 화면보다 오래 남고 그대로 인용되므로 더 중요하다.
+function goalCoverageNote(conditions: GoalSuccessConditions): string {
+  if (conditions.basis === 'legacy_plan') return '';
+
+  const unmeasured = conditions.unmeasuredGoals.map(goalLabel).join(', ');
+  const base = conditions.basis === 'plan_defaults'
+    ? '선택한 목표는 시장 변동 시행으로 판정할 수 없어, 계획의 기본 조건(목표 생활비 유지·자산 고갈 없음)으로 계산한 확률입니다.'
+    : '선택한 목표 중 시행으로 판정할 수 있는 조건만 반영한 확률입니다.';
+
+  return `<p style="margin: 3px 0 0; font-size: 11px; color: #475569;">${base}${
+    unmeasured ? ` 이 확률에 반영되지 않은 목표: ${unmeasured}.` : ''
+  }</p>`;
+}
+
+// 색은 밴드→티어 매핑 한 곳에서만 나온다(화면의 진단 카드와 같은 표). 여기서 다시
 // switch로 색을 정하면 임계를 바꿀 때 PDF만 옛 색으로 남는다.
 const TIER_COLOR = { green: '#059669', orange: '#d97706', red: '#dc2626' } as const;
 
@@ -288,49 +305,169 @@ export function renderRiskAlertsSection(alerts: RiskAlert[]): string {
   `;
 }
 
-// 리포트의 항목별 체크리스트. 화면의 RecommendationChecklist와 같은 규칙을 따라야 한다 —
-// AI 센티널이 이미 계산에 넣은 축은 "할 일"이 아니라 "이미 반영됨"이다. 이 구분이 없으면
-// 리포트가 인쇄한 숫자는 70세 기준인데 같은 장에서 "70세로 바꾸세요"라고 시키게 된다.
-export function renderItemizedChecklistSection(
-  recommendation: StrategyRecommendation | undefined,
-  appliedFields: ReadonlyArray<ItemizedContributionField> = []
-): string {
-  const items = recommendation?.itemizedContributions ?? [];
-  if (!recommendation || !recommendation.improved || items.length === 0) {
-    return '<p style="font-size: 12px; color: #64748b;">현재 설정이 이미 최적입니다. 추가로 추천할 변경 사항이 없습니다.</p>';
+// 「NextLife 추천」. 화면의 StrategyRecommendationCards와 같은 데이터·같은 문구를 쓴다
+// (달라지는 점은 describeStrategyChanges가 소유한다).
+//
+// **예전의 「🤖 AI 추천 전략」 체크리스트를 대체한다.** 그쪽은 평생 효용 점수로 항목을
+// 정렬해 보여줬는데, 효용은 후보를 서로 비교하기 위한 내부 척도라 사용자가 "+5점"의 크기를
+// 가늠할 기준이 없었다. 그리고 화면은 이미 목표 달성 확률로 말하는 다른 추천을 내고 있어,
+// 같은 계획의 두 문서가 서로 다른 축으로 서로 다른 전략을 권했다.
+//
+// **검증되지 않은 상태를 조용히 생략하지 않는다.** 워커가 끝나기 전에 리포트를 내려받으면
+// 추천 자리가 통째로 비는데, 그러면 "추천할 것이 없는 계획"으로 읽힌다.
+export function renderStrategyRecommendationSection(input: {
+  recommendations?: readonly CandidateRecommendation[];
+  status: StrategyOptimizationStatus;
+  currentGoalProbability?: number;
+  unsupportedHardGoals?: readonly RetirementGoalType[];
+  outcome?: OptimizationOutcome;
+  params: SimulationParams;
+  formatValue: (value: number) => string;
+}): string {
+  const {
+    recommendations, status, currentGoalProbability, unsupportedHardGoals, outcome, params, formatValue,
+  } = input;
+
+  const notice = (text: string) =>
+    `<p style="margin: 0; font-size: 12px; color: #b45309;">${text}</p>`;
+
+  if (status !== 'done') {
+    return notice(
+      status === 'unsupported'
+        ? '이 브라우저에서는 백그라운드 검증을 실행할 수 없어 전략 추천을 계산하지 못했습니다.'
+        : status === 'error'
+          ? '전략 추천을 검증하는 중 오류가 발생했습니다. 나머지 분석은 정상입니다.'
+          : '아직 계산되지 않았습니다. 잠시 후 리포트를 다시 내려받으면 추천 전략이 포함됩니다.'
+    );
   }
 
-  const renderItem = (item: ItemizedContribution, applied: boolean) => {
-    const sign = item.utilityDelta >= 0 ? '+' : '';
-    const color = item.utilityDelta >= 0 ? '#10B981' : '#EF4444';
-    const taxImpact = formatTaxImpact(item.deltas.totalTax, formatManwon);
-    const appliedNote = applied
-      ? '<span style="color: #2563eb; font-size: 10px; margin-left: 6px;">이 값으로 계산 중</span>'
-      : '';
-    return `
-        <div style="display: flex; justify-content: space-between; align-items: baseline; padding: 6px 0; border-bottom: 1px dashed #e2e8f0; font-size: 12px;">
-          <span>${applied ? '✓' : '☐'} ${item.label}${appliedNote}</span>
-          <span style="font-weight: 700; color: ${color}; white-space: nowrap; margin-left: 10px;">단독 효용 ${sign}${item.utilityDelta}점</span>
+  const finalRecommendations = recommendations ?? [];
+  if (finalRecommendations.length === 0) {
+    return notice(describeEmptyOutcome(outcome));
+  }
+
+  const recommended = finalRecommendations.find((item) => item.persona === 'BALANCED')
+    ?? finalRecommendations[0];
+
+  // 검증할 수 없었던 HARD 목표를 밝힌다. 밝히지 않으면 "확인하지 않음"이 "확인해서 통과함"으로
+  // 읽힌다 — 리포트는 화면보다 오래 남고 그대로 인용되므로 더 중요하다.
+  const unsupportedHtml = unsupportedHardGoals && unsupportedHardGoals.length > 0
+    ? `<p style="margin: 0 0 10px; font-size: 11px; color: #b45309; background-color: #fffbeb; border: 1px solid #fde68a; border-radius: 6px; padding: 8px 10px;">
+         <strong>다음 필수(HARD) 목표는 현재 검증할 수 없습니다:</strong> ${unsupportedHardGoals.map(goalLabel).join(', ')}.
+         아래 추천은 이 목표를 만족하는지 확인하지 않은 결과입니다.
+       </p>`
+    : '';
+
+  const comparisonHtml = `
+    <div style="display: flex; align-items: center; gap: 14px; background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 16px; margin-bottom: 12px;">
+      <div style="flex: 1;">
+        <p style="margin: 0; font-size: 11px; color: #64748b;">현재 계획</p>
+        <p style="margin: 2px 0 0; font-size: 18px; font-weight: 700; color: #0f172a;">${
+          currentGoalProbability === undefined ? '계산 중' : `${Math.round(currentGoalProbability * 100)}%`
+        }</p>
+      </div>
+      <span style="font-size: 18px; color: #94a3b8;">&rarr;</span>
+      <div style="flex: 1; text-align: right;">
+        <p style="margin: 0; font-size: 11px; color: #64748b;">추천 전략 적용</p>
+        <p style="margin: 2px 0 0; font-size: 18px; font-weight: 700; color: #059669;">${
+          Math.round(recommended.candidate.monteCarlo.goalSuccessProbability * 100)
+        }%</p>
+      </div>
+    </div>
+  `;
+
+  const cardsHtml = finalRecommendations
+    .map((recommendation) => {
+      const candidate = recommendation.candidate;
+      const isRecommended = recommendation === recommended;
+      const changes = describeStrategyChanges(params, candidate, formatValue);
+      const changesHtml = changes.length > 0
+        ? `<table style="width: 100%; border-collapse: collapse; margin-top: 4px;">
+             <tbody>${changes
+               .map((change) => `
+                 <tr>
+                   <td style="padding: 3px 0; font-size: 10.5px; color: #64748b; white-space: nowrap;">${change.label}</td>
+                   <td style="padding: 3px 0 3px 8px; font-size: 10.5px; color: #0f172a; text-align: right;">
+                     <span style="color: #94a3b8; text-decoration: line-through;">${change.before}</span>
+                     &rarr; <strong>${change.after}</strong>
+                   </td>
+                 </tr>
+               `)
+               .join('')}</tbody>
+           </table>`
+        : '<p style="margin: 4px 0 0; font-size: 10.5px; color: #64748b;">핵심 설정은 유지하고 시장 변동 안정성만 재검증한 전략입니다.</p>';
+
+      return `
+        <div style="flex: 1; border: ${isRecommended ? '2px solid #3b82f6' : '1px solid #e2e8f0'}; border-radius: 10px; padding: 12px 14px; box-sizing: border-box;">
+          <p style="margin: 0; font-size: 13px; font-weight: 700; color: #0f172a;">
+            ${recommendation.label}${isRecommended ? ' <span style="font-size: 10px; color: #3b82f6;">&#9733; 추천</span>' : ''}
+          </p>
+          <p style="margin: 3px 0 8px; font-size: 10px; color: #64748b; line-height: 1.45;">${recommendation.reason}</p>
+          <table style="width: 100%; border-collapse: collapse;">
+            <tbody>
+              <tr>
+                <td style="padding: 2px 0; font-size: 11px; color: #64748b;">목표 달성 확률</td>
+                <td style="padding: 2px 0; font-size: 12px; font-weight: 700; color: #0f172a; text-align: right;">${Math.round(candidate.monteCarlo.goalSuccessProbability * 100)}%</td>
+              </tr>
+              <tr>
+                <td style="padding: 2px 0; font-size: 11px; color: #64748b;">생활비</td>
+                <td style="padding: 2px 0; font-size: 12px; font-weight: 700; color: #0f172a; text-align: right;">월 ${formatValue(candidate.candidate.strategy.targetMonthlySpending)}</td>
+              </tr>
+              <tr>
+                <td style="padding: 2px 0; font-size: 11px; color: #64748b;">예상 잔여자산(중앙값)</td>
+                <td style="padding: 2px 0; font-size: 12px; font-weight: 700; color: #0f172a; text-align: right;">${formatValue(candidate.monteCarlo.terminalAssetMedian)}</td>
+              </tr>
+            </tbody>
+          </table>
+          <p style="margin: 10px 0 0; font-size: 11px; font-weight: 700; color: #334155; border-top: 1px solid #e2e8f0; padding-top: 8px;">현재 계획에서 달라지는 점</p>
+          ${changesHtml}
         </div>
-        ${taxImpact ? `<div style="margin: 1px 0 0 20px; font-size: 10px; color: #64748b;">${taxImpact}</div>` : ''}
       `;
-  };
+    })
+    .join('');
 
-  const { applied: alreadyApplied, recommended, conditional } = groupRecommendationItems(items, appliedFields);
-  const heading = (text: string) =>
-    `<p style="font-size: 11px; font-weight: 700; color: #475569; margin: 8px 0 2px;">${text}</p>`;
+  return `
+    ${unsupportedHtml}
+    ${comparisonHtml}
+    <div style="display: flex; gap: 10px; align-items: stretch;">${cardsHtml}</div>
+    <p style="margin: 10px 0 0; font-size: 10px; color: #94a3b8;">
+      ※ 위 추천은 시뮬레이션 결과이며 실제 설정에 자동 반영되지 않습니다. 적용하려면 설정을 직접 변경하세요.
+    </p>
+  `;
+}
 
-  return [
-    ...(alreadyApplied.length > 0 ? [heading('이미 반영됨'), ...alreadyApplied.map((i) => renderItem(i, true))] : []),
-    ...(recommended.length > 0 ? [heading('단독으로도 권장'), ...recommended.map((i) => renderItem(i, false))] : []),
-    ...(conditional.length > 0
-      ? [
-          heading('전체 조합에서만 유효'),
-          '<p style="font-size: 10px; color: #64748b; margin: 2px 0 4px;">단독 적용 시 점수가 오르지 않으므로 전체 추천 조합의 최종 결과와 함께 판단하세요.</p>',
-          ...conditional.map((i) => renderItem(i, false)),
-        ]
-      : []),
-  ].join('');
+function goalLabel(type: RetirementGoalType): string {
+  return RETIREMENT_GOAL_CATALOG.find((goal) => goal.type === type)?.label ?? type;
+}
+
+const HARD_CONSTRAINT_LABELS: Record<string, string> = {
+  HARD_RETIREMENT_AGE: '희망 은퇴 나이',
+  HARD_SPENDING_SHORTFALL: '목표 생활비 유지',
+  HARD_ASSET_SURVIVAL: '자산 고갈 방지',
+  HARD_MINIMUM_ENDING_ASSETS: '최소 기말자산',
+  HARD_UNSPECIFIED: '사유가 기록되지 않은 필수 조건',
+};
+
+// 결과가 없는 네 가지 원인을 구분한다. 화면(EmptyOutcomeCard)과 같은 이유다 — 하나로 묶으면
+// 엔진이 전부 예외로 죽은 경우에도 "당신의 목표가 불가능하다"는 뜻으로 읽힌다.
+function describeEmptyOutcome(outcome?: OptimizationOutcome): string {
+  if (outcome?.kind === 'no_candidate_generated') {
+    return '입력만으로는 비교할 전략을 만들지 못했습니다. 자산과 연금 정보가 입력되어 있는지 확인해 주세요.';
+  }
+  if (outcome?.kind === 'no_persona_matched') {
+    return `전략 ${outcome.validatedCount}개를 검증했지만 안정형·균형형·여유형 중 어느 특성에도 해당하지 않아 추천을 만들지 못했습니다.`;
+  }
+  if (outcome?.kind === 'no_candidate_survived') {
+    const blocked = outcome.blockedBy.map((code) => HARD_CONSTRAINT_LABELS[code] ?? code).join(', ');
+    const base = outcome.hardConstraintRejectedCount > 0
+      ? `선택한 필수(HARD) 목표를 동시에 만족하는 전략을 찾지 못했습니다${blocked ? ` — 후보를 막은 조건: ${blocked}` : ''}. 해당 목표를 선택 목표(SOFT)로 바꾸거나 목표치를 조정하면 후보를 찾을 수 있습니다.`
+      : '';
+    const failed = outcome.failedCount > 0
+      ? `${base ? ' ' : ''}또한 전략 ${outcome.failedCount}개는 계산 중 오류로 평가하지 못했습니다.${outcome.firstFailureReason ? ` (원인: ${outcome.firstFailureReason})` : ''}`
+      : '';
+    return `${base}${failed}` || '현재 목표 조건을 만족하는 추천 후보가 없습니다.';
+  }
+  return '현재 목표 조건을 만족하는 추천 후보가 없습니다.';
 }
 
 export function renderExecutionRoadmapSection(roadmap: ExecutionRoadmap): string {
@@ -501,9 +638,12 @@ export function renderMonteCarloSection(
     `
     : '';
 
+  // **1페이지의 목표 달성 확률을 다시 인쇄하지 않는다.** 여기서 말하는 두 확률은 그 판정을
+  // 이루는 성분이고 정의가 서로 다르다(화면의 MonteCarloSection과 같은 분업).
   return `
     <p style="margin: 0; font-size: 11.5px; color: #475569;">
-      수익률이 해마다 오르내리는 상황을 ${monteCarlo.trials.toLocaleString()}회 시뮬레이션한 결과입니다.
+      1페이지 판정의 목표 달성 확률은 아래 가정으로 계산했습니다. 수익률이 해마다 오르내리는 상황을
+      ${monteCarlo.trials.toLocaleString()}회 시뮬레이션한 결과이며, 그 확률을 이루는 두 성분은 다음과 같습니다.
       <strong style="font-size: 14px; color: #0f172a;">생활 유지 성공률 ${spendingPercent}%</strong>
       — 계획 생활비(월 ${formatManwon(monteCarlo.plannedMonthlySpending)})를 한 해도 줄이지 않은 경우입니다.
       <strong>자산 보존 성공률 ${assetPercent}%</strong> — ${monteCarlo.successAge}세까지 자산이 남은 경우입니다.

@@ -15,6 +15,12 @@ import { RetirementGrade } from '../../../../core/entities/retirementGrade';
 import { PlanAssetStatus } from '../../../../core/usecases/dashboard/resolvePlanAssetStatus';
 import { PensionGapRisk } from '../../../../core/usecases/dashboard/computePensionGapRisk';
 
+// **현재 어떤 화면도 이 훅을 호출하지 않는다.** 결과 화면의 「AI 노후 설계사 상세 의견」
+// 패널을 걷어내면서 유일한 호출부가 사라졌다(진단 카드와 추천 카드가 같은 판정을 이미
+// 수치로 말하고 있어, LLM 문장은 세 번째 서술이었다).
+//
+// 훅과 /api/ai-advisor 라우트를 지우지 않고 남긴 이유는 다시 붙일 자리가 정해지지 않았기
+// 때문이다. 배선하기 전에 그 화면이 이미 말하는 것과 겹치지 않는지 먼저 확인할 것.
 export interface UseAiAdvisorInput {
   score: number;
   retirementGrade?: RetirementGrade;

@@ -24,11 +24,11 @@
 // 뭉개면 "조정하면 되는 계획"과 "구조 자체를 다시 짜야 하는 계획"이 구분되지 않는다.
 //
 // **밴드를 표시 문구가 아니라 키로 돌려준다.** 두 가지 이유가 있다.
-//   (1) heroHeadline·CoreKpiGrid·PDF의 verdictText/verdictAccent가 밴드로 분기하는데,
+//   (1) 진단 카드와 PDF의 verdictText/verdictAccent가 밴드로 분기하는데,
 //       분기 대상이 한국어 문구면 카피 한 줄만 고쳐도 로직이 조용히 깨진다.
 //   (2) 표시 라벨 집합(매우 안정~매우 위험)은 RetirementGrade를 완전히 포함한다. 둘 다
 //       문자열 유니온이면 **은퇴 준비도 등급을 확률 밴드 자리에 넘겨도 컴파일이 통과한다.**
-//       heroHeadline이 실제로 그 사고를 저지르고 있었다(효용 점수를 준비도 임계표로 등급화).
+//       옛 결과 화면 헤드라인이 실제로 그 사고를 저지르고 있었다(효용 점수를 준비도 임계표로 등급화).
 //       resolvePlanAssetStatus가 number 두 개를 거부한 것과 같은 종류의 방어다.
 export type PlanConfidenceBandKey =
   | 'very_stable' | 'stable' | 'moderate' | 'caution' | 'risky' | 'very_risky';

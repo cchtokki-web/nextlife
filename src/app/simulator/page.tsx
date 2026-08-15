@@ -9,20 +9,15 @@ import { computeExecutionRoadmap, selectDepletionAge } from '../../core/usecases
 import { computeSensitivityAnalysis } from '../../core/usecases/dashboard/computeSensitivityAnalysis';
 import { resolvePlanAssetStatus } from '../../core/usecases/dashboard/resolvePlanAssetStatus';
 import { computeShortfallSummary } from '../../core/usecases/dashboard/computeShortfallSummary';
-import { describeFireAge } from '../../core/usecases/dashboard/describeFireAge';
 import { describeDepletionAge } from '../../core/usecases/dashboard/describeDepletionAge';
-import { formatCurrencyUnit, renderRiskAlertsSection, renderItemizedChecklistSection, renderExecutionRoadmapSection, renderSensitivityTableSection, renderMonteCarloSection, renderShortfallSummarySection, renderPlanVerdictSection, renderNationalPensionSection, renderKeyLeversSection } from '../../web/features/Pdf/pdfReportSections';
+import { formatCurrencyUnit, renderRiskAlertsSection, renderStrategyRecommendationSection, renderExecutionRoadmapSection, renderSensitivityTableSection, renderMonteCarloSection, renderShortfallSummarySection, renderPlanVerdictSection, renderNationalPensionSection, renderKeyLeversSection } from '../../web/features/Pdf/pdfReportSections';
 import { computePlanConfidence } from '../../core/usecases/dashboard/computePlanConfidence';
 import { computeKeyLevers } from '../../core/usecases/dashboard/computeKeyLevers';
 import { computePensionGapRisk } from '../../core/usecases/dashboard/computePensionGapRisk';
-import { resolveStrategy } from '../../core/usecases/strategy/compileStrategy';
 import { explainNationalPension } from '../../core/usecases/pension/explainNationalPension';
-import { analyzeCurrentStrategy, explainBequestAdequacy } from '../../core/usecases/utility/utilityAnalysis';
-import { explainUtilityComponents } from '../../core/usecases/utility/explainUtilityComponents';
 import { resolveTaxSettings } from '../../core/usecases/tax/taxRates';
 import { NATIONAL_PENSION_NORMAL_START_AGE } from '../../core/usecases/pension/nationalPensionRules';
 import { useMediaQuery } from '../../web/hooks/useBrowserEnvironment';
-import { buildUtilityComponentMeta } from '../../web/features/Dashboard/utilityComponentMeta';
 import { initialParams } from '../../infrastructure/storage/localStore';
 import { ScenarioManager } from '../../web/features/Scenario/ScenarioManager';
 import { StrategySettingsPanel } from '../../web/features/StrategySettings/StrategySettingsPanel';
@@ -128,7 +123,10 @@ export default function Home() {
 
   const handleDownload = async (analysis: AnalysisRuntimeValue | null) => {
     if (isGeneratingPdf || !analysis) return;
-    const { effective, sentinels, recommendation, result, monteCarlo, sequenceRisk } = analysis;
+    const {
+      effective, recommendation, result, monteCarlo, sequenceRisk,
+      strategyOptimization, strategyOptimizationStatus,
+    } = analysis;
     setIsGeneratingPdf(true);
 
     try {
@@ -137,10 +135,11 @@ export default function Home() {
 
       // retirementGrade는 꺼내지 않는다 — 1페이지 판정은 시장 변동을 반영한 밴드
       // (PlanConfidence.band)가 말하고, 결정론 등급만 크게 찍는 것이 정확히 이번에 없앤 문제다.
-      const {
-        retirementScore, goalAchievementRate, fireAge, depletionAge, endingAssets, yearlyResults, utility,
-        avgRetirementMonthlyIncome, avgTargetMonthlySpending,
-      } = result;
+      //
+      // goalAchievementRate·fireAge·avgRetirementMonthlyIncome도 더는 꺼내지 않는다. 옛 1페이지
+      // 요약 그리드가 쓰던 값인데, 그 그리드는 「사망 시 잔여 자산」을 같은 페이지의 판정 블록과
+      // 중복 인쇄했고 나머지 두 지표는 각주 세 줄을 붙여야 뜻이 통하는 파생 지표였다.
+      const { retirementScore, depletionAge, endingAssets, yearlyResults } = result;
       // 리포트가 인쇄하는 모든 값은 "결과(result)를 만든 params", 즉 effective.params에서 읽는다.
       // compiled.params(AI 센티널 적용 전)나 activeParams(사용자가 입력한 원본)를 읽으면
       // 경제 시나리오·리스크 성향·연금 전략이 지배하는 필드에서 화면에 찍힌 숫자와
@@ -167,78 +166,20 @@ export default function Home() {
 
       const formatValuePrint = (val: number): string => formatValue(val);
 
-      // Lifetime Utility Score / AI 추천 전략 PDF 섹션(페이지 2)용 데이터 준비
-      // 축별 점수 근거. 화면(UtilityBreakdownBars)과 같은 문장을 싣는다 — 툴팁으로만 두면
-      // 정작 설명이 필요한 인쇄본에서 사라진다.
-      // MC를 함께 넘겨 자산 고갈 방지 축이 "만점이지만 기준 수익률 가정"임을 밝히게 한다.
-      // 점수는 바뀌지 않는다 — 리포트에서 그 축이 20/20인데 성공률은 37%였던 상태를 없앤다.
-      const utilityExplanations = utility
-        ? explainUtilityComponents(reportParams, result, effective.utilityConfig, monteCarlo)
-        : null;
-      const utilityComponentRowsHtml = utility
-        // 같은 화면의 강점/약점 문장(analyzeCurrentStrategy)이 이미 effective.utilityConfig를
-        // 쓰고 있었는데 막대만 기본 배점을 고정하고 있었다 — 두 숫자의 분모가 어긋났다.
-        // 상속 축의 라벨도 화면과 같아야 한다 — 「모두 사용」에서는 '자산 소진도'다.
-        ? buildUtilityComponentMeta(effective.utilityConfig.weights, resolveStrategy(reportParams).bequestStrategy).map(({ key, label, max, color }) => {
-            const value = utility.components[key];
-            const pct = max > 0 ? Math.max(0, Math.min(100, (value / max) * 100)) : 0;
-            return `
-              <div style="margin-bottom: 8px;">
-                <div style="display: flex; align-items: center; gap: 10px; font-size: 12px;">
-                  <span style="width: 110px; color: #475569; font-weight: 600;">${label}</span>
-                  <div style="flex-grow: 1; height: 8px; background-color: #e2e8f0; border-radius: 4px; overflow: hidden;">
-                    <div style="width: ${pct}%; height: 100%; background-color: ${color};"></div>
-                  </div>
-                  <span style="width: 50px; text-align: right; font-weight: 700; color: ${color};">${value}/${max}</span>
-                </div>
-                ${utilityExplanations ? `<p style="margin: 2px 0 0 120px; font-size: 10px; color: #94a3b8; line-height: 1.4;">${utilityExplanations[key]}</p>` : ''}
-              </div>
-            `;
-          }).join('')
-        : '<p style="font-size: 12px; color: #94a3b8;">효용 데이터를 계산할 수 없습니다.</p>';
-
-      const bequestAdequacyExplanationHtml = utility
-        ? `<p style="font-size: 10px; color: #94a3b8; margin: -6px 0 12px; line-height: 1.4;">* 상속 자산 적정성: ${explainBequestAdequacy(reportParams, result, effective.utilityConfig)}</p>`
-        : '';
-
-      // planAssetStatus는 아래에서 계산되므로 여기서 다시 판정한다 — 같은 result에서
-      // 파생되므로 값이 어긋날 수 없다.
-      const currentStrategyAnalysis = utility
-        ? analyzeCurrentStrategy(utility, effective.utilityConfig, { planAssetStatus: resolvePlanAssetStatus(result, reportParams) })
-        : null;
-      const strengthsHtml = currentStrategyAnalysis
-        ? currentStrategyAnalysis.strengths.map(s => `<li style="margin-bottom: 4px;">${s}</li>`).join('')
-        : '';
-      const weaknessesHtml = currentStrategyAnalysis
-        ? currentStrategyAnalysis.weaknesses.map(w => `<li style="margin-bottom: 4px;">${w}</li>`).join('')
-        : '';
-
-      // 화면(AiSummaryHero·useBeforeAfterToggle)과 같은 규칙을 쓴다. improved만 보면 센티널
-      // 자동 채움이 이미 개선분을 반영한 뒤에도 true라, 같은 장에 "평생 효용 71"과
-      // "효용 65점 → 71점"이 나란히 인쇄된다.
-      const currentUtilityScore = utility?.score ?? recommendation?.currentUtility.score;
-      const hasImprovement = !!recommendation?.improved
-        && currentUtilityScore !== undefined
-        && recommendation.recommendedUtility.score > currentUtilityScore;
-      const recommendationSummaryText = !recommendation
-        ? 'AI 추천 전략을 계산할 수 없습니다.'
-        : hasImprovement
-          ? `효용 ${currentUtilityScore}점 → ${recommendation.recommendedUtility.score}점`
-          : '현재 전략 유지 권장';
-      // 리포트가 인쇄하는 숫자는 effective 기준이므로, 체크리스트도 "이미 반영된 축"을
-      // 알아야 한다. 넘기지 않으면 70세로 계산한 리포트가 같은 장에서 "70세로 바꾸세요"라고
-      // 시키게 된다.
-      const itemizedChecklistHtml = renderItemizedChecklistSection(recommendation, sentinels.appliedFields);
-      const deltaRowsHtml = (recommendation && hasImprovement)
-        ? `
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; font-size: 12px;">
-            <div><strong>평생 소비 변화:</strong> <span style="color: ${recommendation.deltas.lifetimeConsumption >= 0 ? '#10B981' : '#EF4444'}; font-weight: 700;">${recommendation.deltas.lifetimeConsumption >= 0 ? '+' : '-'}${formatValuePrint(Math.abs(recommendation.deltas.lifetimeConsumption))}</span></div>
-            <div><strong>평생 총세금 변화:</strong> <span style="color: ${recommendation.deltas.totalTax <= 0 ? '#10B981' : '#F59E0B'}; font-weight: 700;">${recommendation.deltas.totalTax >= 0 ? '+' : '-'}${formatValuePrint(Math.abs(recommendation.deltas.totalTax))}</span></div>
-            <div><strong>사망 시 연금잔액 변화:</strong> <span style="color: ${recommendation.deltas.pensionEndingBalance <= 0 ? '#10B981' : '#F59E0B'}; font-weight: 700;">${recommendation.deltas.pensionEndingBalance >= 0 ? '+' : '-'}${formatValuePrint(Math.abs(recommendation.deltas.pensionEndingBalance))}</span></div>
-            <div><strong>사망 시 총자산 변화:</strong> <span style="color: ${recommendation.deltas.endingAssets <= 0 ? '#10B981' : '#F59E0B'}; font-weight: 700;">${recommendation.deltas.endingAssets >= 0 ? '+' : '-'}${formatValuePrint(Math.abs(recommendation.deltas.endingAssets))}</span></div>
-          </div>
-        `
-        : '';
+      // 「NextLife 추천」. 화면의 추천 카드와 같은 데이터·같은 문구를 쓴다.
+      //
+      // 예전 이 자리에는 레거시 「🤖 AI 추천 전략」 체크리스트와 평생 효용 점수 페이지가
+      // 있었다. 둘 다 효용 점수로 말했는데, 화면은 이미 목표 달성 확률로 말하는 다른 추천을
+      // 내고 있어 같은 계획의 두 문서가 서로 다른 축으로 서로 다른 전략을 권했다.
+      const strategyRecommendationHtml = renderStrategyRecommendationSection({
+        recommendations: strategyOptimization?.recommendations?.recommendations,
+        status: strategyOptimizationStatus,
+        currentGoalProbability: monteCarlo?.goalSuccessProbability,
+        unsupportedHardGoals: strategyOptimization?.debug?.unsupportedHardGoals,
+        outcome: strategyOptimization?.outcome,
+        params: reportParams,
+        formatValue: formatValuePrint,
+      });
 
       const riskAlerts = computeRiskAlerts(result, reportParams, effective.utilityConfig);
       const riskAlertsSectionHtml = renderRiskAlertsSection(riskAlerts);
@@ -256,7 +197,7 @@ export default function Home() {
         explainNationalPension(reportParams),
         formatValuePrint
       );
-      // 결정론 점수에 시장 변동 성공률을 반영한 판정. 화면(CoreKpiGrid)과 같은 함수를 쓴다.
+      // 결정론 점수에 시장 변동 성공률을 반영한 판정. 화면의 진단 카드와 같은 함수를 쓴다.
       // MC가 아직 계산되지 않았으면 basis가 'deterministic'으로 떨어지고, 리포트는 그 사실을
       // 조용히 넘기지 않고 명시한다(renderPlanVerdictSection).
       const planConfidence = computePlanConfidence(
@@ -275,7 +216,11 @@ export default function Home() {
         monteCarlo,
         formatValue: formatValuePrint,
       });
-      const roadmap = computeExecutionRoadmap(reportParams, recommendation, selectDepletionAge(recommendation, result), planAssetStatus);
+      // **로드맵은 현재 계획 기준이다(화면과 같다).** 추천안을 넘기면 리포트의 다른 모든
+      // 숫자는 현재 계획인데 로드맵만 추천 나이를 그린다. 추천안의 연령별 변경은 위
+      // 「NextLife 추천」의 "달라지는 점"이 담당한다. 고갈 나이도 같은 기준이어야 한다
+      // (selectDepletionAge 주석 참고).
+      const roadmap = computeExecutionRoadmap(reportParams, undefined, selectDepletionAge(undefined, result), planAssetStatus);
       const executionRoadmapSectionHtml = renderExecutionRoadmapSection(roadmap);
       // 기준선을 넘기지 않는다 — computeSensitivityAnalysis가 6개 시나리오와 같은 고정 계획으로
       // 직접 계산한다. 예전에는 화면과 PDF가 서로 다른 기준선을 넘겨(화면은 runForUtility(params),
@@ -402,7 +347,7 @@ export default function Home() {
       let taxSettingsPageNo = 0;
       let firstYearlyTablePageNo = 0;
 
-      // 시장 변동성 분석을 **2페이지로 올린다.**
+      // 시장 변동 검증은 **진단·추천 바로 뒤에 둔다**(화면의 「계획의 근거」 첫 항목과 같다).
       //
       // 예전에는 마지막 고정 페이지였다. 그래서 1페이지의 "기대수명까지 고갈 없음"을 읽은
       // 사용자가 여섯 페이지 뒤에야 "1,000회 중 37%만 남음"을 보게 됐다. 앞의 좋은 결과를
@@ -416,7 +361,7 @@ export default function Home() {
       const monteCarloPageHtml = () => monteCarloHtml === '' ? '' : `
         <div class="pdf-page">
           <div class="pdf-content">
-            <h2 style="font-size: 16px; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; color: #0f172a; margin-top: 0; margin-bottom: 10px;">${nextSection()}. 시장 변동성 분석</h2>
+            <h2 style="font-size: 16px; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; color: #0f172a; margin-top: 0; margin-bottom: 10px;">${nextSection()}. 시장 변동 검증</h2>
             ${monteCarloHtml}
           </div>
           <div class="pdf-footer">
@@ -433,34 +378,8 @@ export default function Home() {
             <h1 style="font-size: 26px; border-bottom: 3px solid #3b82f6; padding-bottom: 12px; color: #1e3a8a; margin-top: 0;">NextLife 은퇴 자산 시뮬레이션 결과 리포트</h1>
             <p style="font-size: 11px; color: #64748b; margin-bottom: 25px;">출력 일시: ${new Date().toLocaleString()}</p>
             
-            <h2 style="margin-top: 0; font-size: 17px; color: #0f172a; border-bottom: none; padding-bottom: 0; margin-bottom: 12px;">${nextSection()}. 종합 결과 요약</h2>
+            <h2 style="margin-top: 0; font-size: 17px; color: #0f172a; border-bottom: none; padding-bottom: 0; margin-bottom: 12px;">${nextSection()}. 현재 계획 진단</h2>
             ${planVerdictSectionHtml}
-            <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px 24px; margin-bottom: 26px;">
-              <div class="summary-grid">
-                <div class="summary-item">
-                  <p class="summary-label">연금·배당 소득 충족률</p>
-                  <p class="summary-note">${
-                    // 분자·분모를 함께 밝힌다. 예전에는 "은퇴 소득 달성률 62%"라는 이름만
-                    // 있어서, 목표 생활비의 62%밖에 못 쓴다는 뜻으로 읽혔다. 실제로는
-                    // **자산을 팔아 쓴 인출분을 뺀** 소득만의 비율이라, 원금을 계획적으로
-                    // 헐어 쓰는 정상적인 계획도 100%에 도달하지 않는다.
-                    avgRetirementMonthlyIncome !== undefined && avgTargetMonthlySpending !== undefined
-                      ? `은퇴 후 월 평균 소득 ${formatValuePrint(Math.round(avgRetirementMonthlyIncome))} ÷ 목표 생활비 ${formatValuePrint(Math.round(avgTargetMonthlySpending))}<br/>자산을 팔아 쓴 인출분은 분자에서 제외되므로, 계획대로 원금을 헐어 쓰는 경우에도 100%가 되지 않습니다.`
-                      : '배당·연금 등 소득만 반영하며 자산 인출분은 제외합니다.'
-                  }</p>
-                  <span class="summary-value">${goalAchievementRate}%</span>
-                </div>
-                <div class="summary-item">
-                  <p class="summary-label">소득만으로 생활비 충당 가능 시점</p>
-                  <p class="summary-note">배당·연금 등 그 해 소득이 목표 생활비를 넘어서는 나이</p>
-                  <span class="summary-value">${describeFireAge(fireAge, userProfile.retirementAge)}</span>
-                </div>
-                <div style="grid-column: span 2; font-size: 13.5px; padding-top: 8px;">
-                  <span style="font-weight: 600; color: #475569;">사망 시(기대수명 ${userProfile.expectancy}세) 잔여 자산</span>
-                  <span style="float: right; font-size: 16px; color: #3b82f6; font-weight: 700;">${formatValuePrint(endingAssets)}</span>
-                </div>
-              </div>
-            </div>
             ${shortfallSummarySectionHtml}
             ${riskAlertsSectionHtml}
 
@@ -479,35 +398,11 @@ export default function Home() {
           </div>
         </div>
 
-        ${monteCarloPageHtml()}
-
         <div class="pdf-page">
           <div class="pdf-content">
-            <h2 style="font-size: 16px; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; color: #0f172a; margin-top: 0; margin-bottom: 10px;">${nextSection()}. 평생 효용 점수 및 현재 전략 분석</h2>
-            <p style="font-size: 11px; color: #64748b; margin-top: 0; margin-bottom: 14px;">"얼마를 남기는가"보다 "얼마나 잘 사용하는가"를 기준으로 평가한 평생 효용 점수입니다. 1페이지의 연금·배당 소득 충족률과는 별도로 계산되는 독립 지표입니다.</p>
-
-            <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 18px; margin-bottom: 18px;">
-              <div style="display: flex; align-items: baseline; gap: 8px; margin-bottom: 12px;">
-                <span style="font-size: 24px; font-weight: 800; color: #1e3a8a;">${utility ? utility.score : '-'}</span>
-                <span style="font-size: 12px; color: #64748b;">/ 100점</span>
-              </div>
-              ${utilityComponentRowsHtml}
-            </div>
-            ${bequestAdequacyExplanationHtml}
-
-            <h3 style="font-size: 13px; color: #0f172a; margin-bottom: 8px;">현재 전략 분석</h3>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 18px; font-size: 12px;">
-              <div>
-                <strong style="color: #10B981;">장점</strong>
-                <ul style="padding-left: 18px; margin-top: 4px; margin-bottom: 0;">${strengthsHtml}</ul>
-              </div>
-              <div>
-                <strong style="color: #F59E0B;">단점</strong>
-                <ul style="padding-left: 18px; margin-top: 4px; margin-bottom: 0;">${weaknessesHtml}</ul>
-              </div>
-            </div>
-
-            ${keyLeversSectionHtml}
+            <h2 style="font-size: 16px; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; color: #0f172a; margin-top: 0; margin-bottom: 10px;">${nextSection()}. NextLife 추천</h2>
+            <p style="font-size: 11px; color: #64748b; margin-top: 0; margin-bottom: 14px;">목표에 가장 가까운 최종 전략과, 현재 계획에서 바뀌는 점만 비교합니다.</p>
+            ${strategyRecommendationHtml}
           </div>
           <div class="pdf-footer">
             <span>NextLife 은퇴 자산 시뮬레이션 리포트</span>
@@ -515,15 +410,14 @@ export default function Home() {
           </div>
         </div>
 
+        ${monteCarloPageHtml()}
+
         <div class="pdf-page">
           <div class="pdf-content">
-            <h2 style="font-size: 16px; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; color: #0f172a; margin-top: 0; margin-bottom: 10px;">${nextSection()}. 실행 로드맵 및 민감도 분석</h2>
-            <p style="font-size: 11px; color: #64748b; margin-top: 0; margin-bottom: 14px;">AI 추천 전략(또는 현재 설정) 기준으로 나이별 실행 시점과, 핵심 가정이 바뀌었을 때 결과가 얼마나 민감한지를 보여줍니다.</p>
+            <h2 style="font-size: 16px; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; color: #0f172a; margin-top: 0; margin-bottom: 10px;">${nextSection()}. 실행 시점 및 민감도 분석</h2>
+            <p style="font-size: 11px; color: #64748b; margin-top: 0; margin-bottom: 14px;">무엇부터 손대야 하는지, 현재 설정에서 나이별로 무슨 일이 일어나는지, 그리고 핵심 가정이 바뀌었을 때 결과가 얼마나 민감한지를 보여줍니다.</p>
 
-            <h3 style="font-size: 13px; color: #0f172a; margin-bottom: 4px;">🤖 AI 추천 전략 — ${recommendationSummaryText}</h3>
-            ${hasImprovement ? '<p style="font-size: 10px; color: #94a3b8; margin: 0 0 6px;">※ 아래 추천안은 시뮬레이션 결과이며 실제 설정에는 자동 반영되지 않습니다. 적용하려면 설정을 직접 변경하세요.</p>' : ''}
-            <div style="margin-top: 6px;">${itemizedChecklistHtml}</div>
-            ${deltaRowsHtml}
+            ${keyLeversSectionHtml}
 
             <h3 style="font-size: 13px; color: #0f172a; margin-bottom: 8px;">실행 로드맵</h3>
             ${executionRoadmapSectionHtml}
@@ -1128,8 +1022,6 @@ export default function Home() {
                 compareResults={analysis.compareResults}
                 isPro={isPro}
                 recommendation={analysis.recommendation}
-                recommendationFailed={analysis.recommendationFailed}
-                isComputingRecommendation={analysis.isComputingRecommendation}
                 sentinels={analysis.sentinels}
                 monteCarlo={analysis.monteCarlo}
                 monteCarloStatus={analysis.monteCarloStatus}

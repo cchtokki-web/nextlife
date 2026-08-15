@@ -9,7 +9,7 @@ interface ExecutionRoadmapProps {
   isRecommendedPlan?: boolean;
 }
 
-// "언제 무슨 일이 일어나는지"를 수직 타임라인으로 보여준다. RecommendationChecklist("무엇을")와
+// "언제 무슨 일이 일어나는지"를 수직 타임라인으로 보여준다. 핵심 레버 카드("무엇을")와
 // 짝을 이루며, 계산은 컴포넌트 밖(computeExecutionRoadmap)에서 하고 여기서는 렌더링만 담당한다.
 export function ExecutionRoadmap({ roadmap, isRecommendedPlan = false }: ExecutionRoadmapProps) {
   return (

@@ -1,7 +1,6 @@
 'use client';
 
 import { useMemo } from 'react';
-import { Collapse } from '../../../components/ui';
 import GlassCard from '../../../components/GlassCard';
 import { SimulationParams, SimulationResult } from '../../../../core/entities/types';
 import { computeExpertAnalytics } from '../../../../core/usecases/dashboard/computeExpertAnalytics';
@@ -21,9 +20,11 @@ interface ExpertDetailsPanelProps {
   sensitivity: SensitivityAnalysis;
 }
 
-// 세금/건보료/인출순서/연금구성/금융소득종합과세/상속 등 전문가용 상세 분석. 기본 닫힘 상태이며,
-// DashboardSection에서 계산만 되고 렌더링되지 않던 세금/리스크 분석값(computeExpertAnalytics)을 소비한다.
-// "평생 효용 점수 구성"/"현재 전략 분석"은 UtilityInsightSection으로 승격되어 여기서는 다루지 않는다.
+// 세금/건보료/연금구성/금융소득종합과세/민감도 상세. computeExpertAnalytics가 계산한 값을 소비한다.
+//
+// **자체 Collapse를 두지 않는다.** 이 패널은 이미 접혀 있는 「계획의 근거」 안에 있어서,
+// 예전처럼 안쪽에 또 접힘을 두면 세금 표 하나를 보는 데 세 번을 열어야 했다
+// (<details> "상세 분석" → 그룹 "상세 분석" → Collapse "전문가용 상세 분석 더 보기").
 export function ExpertDetailsPanel({
   result,
   params,
@@ -44,8 +45,7 @@ export function ExpertDetailsPanel({
 
   return (
     <GlassCard>
-      <Collapse title={<span className="font-display text-base font-semibold">전문가용 상세 분석 더 보기</span>}>
-        <div className="flex flex-col gap-6 pt-2">
+      <div className="flex flex-col gap-6">
           <section>
             <h4 className="mb-2 text-sm font-semibold">세금 및 건강보험료 (은퇴 이후 연평균)</h4>
             <dl className="grid grid-cols-2 gap-3 text-xs sm:grid-cols-4">
@@ -119,8 +119,7 @@ export function ExpertDetailsPanel({
               <YearlyChart params={params} result={result} />
             </section>
           )}
-        </div>
-      </Collapse>
+      </div>
     </GlassCard>
   );
 }
