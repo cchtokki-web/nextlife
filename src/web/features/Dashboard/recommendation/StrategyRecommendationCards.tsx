@@ -14,7 +14,6 @@ import styles from '../Dashboard.module.css';
 interface StrategyRecommendationCardsProps {
   recommendations?: readonly CandidateRecommendation[];
   status: StrategyOptimizationStatus;
-  currentGoalProbability?: number;
   /** Worker failure detail. Without it an "오류" card cannot tell the user or support what broke. */
   errorMessage?: string;
   /**
@@ -247,7 +246,6 @@ function UnreachableGoalCard({
 export function StrategyRecommendationCards({
   recommendations,
   status,
-  currentGoalProbability,
   errorMessage,
   unsupportedHardGoals,
   outcome,
@@ -330,21 +328,9 @@ export function StrategyRecommendationCards({
         </GlassCard>
       )}
 
-      <div className={styles.recommendationComparison} aria-label="현재 계획과 추천 전략 비교">
-        {/* 라벨은 진단 카드의 「목표 달성 확률」과 같은 값이다. 여기서 '달성률' 같은 다른
-            이름을 쓰면 사용자는 서로 다른 지표로 읽는다 — 이 비교바가 말하는 것은 "무엇을"이
-            아니라 "현재 → 추천"이므로 좌측은 계획의 이름만 적는다. */}
-        <div>
-          <span>현재 계획</span>
-          <strong>{currentGoalProbability === undefined ? '계산 중' : `${Math.round(currentGoalProbability * 100)}%`}</strong>
-        </div>
-        <span className={styles.comparisonArrow} aria-hidden="true">→</span>
-        <div>
-          <span>추천 전략 적용</span>
-          <strong>{Math.round(recommended.candidate.monteCarlo.goalSuccessProbability * 100)}%</strong>
-        </div>
-      </div>
-
+      {/* 「현재 계획 N% → 추천 전략 적용 M%」 비교 바는 제거했다. 왼쪽 숫자는 바로 위 진단
+          카드의 「목표 달성 확률」과 같은 값이고, 오른쪽 숫자는 아래 ☆추천 카드의 「목표 달성
+          확률」과 같은 값이라 화면에 같은 두 숫자가 세 번 나왔다. */}
       <div className={styles.recommendationGrid}>
         {finalRecommendations.map((recommendation) => {
           const candidate = recommendation.candidate;

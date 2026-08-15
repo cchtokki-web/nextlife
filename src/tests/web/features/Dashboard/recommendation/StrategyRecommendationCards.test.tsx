@@ -97,7 +97,6 @@ describe('StrategyRecommendationCards', () => {
     render(
       <StrategyRecommendationCards
         status="done"
-        currentGoalProbability={0.72}
         params={params}
         formatValue={formatValue}
       />
@@ -177,7 +176,6 @@ describe('StrategyRecommendationCards', () => {
           { persona: 'STABLE', label: '안정형', candidate: candidates[0], reason: '하방 방어' },
         ]}
         status="done"
-        currentGoalProbability={0.72}
         unsupportedHardGoals={['HOUSING_STABILITY']}
         params={params}
         formatValue={formatValue}
@@ -238,7 +236,6 @@ describe('StrategyRecommendationCards', () => {
           { persona: 'COMFORTABLE', label: '여유형', candidate: candidates[2], reason: '소비 여력' },
         ]}
         status="done"
-        currentGoalProbability={0.7}
         params={params}
         formatValue={formatValue}
       />
@@ -266,7 +263,6 @@ describe('StrategyRecommendationCards 목표 도달 불가', () => {
       <StrategyRecommendationCards
         recommendations={unreachable}
         status="done"
-        currentGoalProbability={0}
         outcome={outcome}
         params={params}
         formatValue={formatValue}
@@ -279,7 +275,6 @@ describe('StrategyRecommendationCards 목표 도달 불가', () => {
     expect(screen.getByText(/전략 12개를 검증했지만 모두 목표 달성 확률이 0%/)).toBeInTheDocument();
     expect(screen.queryByText('균형형')).toBeNull();
     expect(screen.queryByText('여유형')).toBeNull();
-    expect(screen.queryByLabelText('현재 계획과 추천 전략 비교')).toBeNull();
     expect(screen.queryByRole('button', { name: '적용' })).toBeNull();
   });
 
@@ -341,7 +336,6 @@ describe('StrategyRecommendationCards 적용 버튼', () => {
       <StrategyRecommendationCards
         recommendations={[balanced]}
         status="done"
-        currentGoalProbability={0.7}
         params={params}
         formatValue={formatValue}
         {...props}
@@ -426,7 +420,6 @@ describe('StrategyRecommendationCards 적용 버튼', () => {
           { persona: 'COMFORTABLE', label: '여유형', candidate: candidate(3, 'GROWTH', 'FRONT_LOADED', 0.9), reason: '소비 여력' },
         ]}
         status="done"
-        currentGoalProbability={0.7}
         params={params}
         formatValue={formatValue}
         onApplyStrategy={vi.fn()}
@@ -454,7 +447,6 @@ describe('StrategyRecommendationCards 적용 버튼', () => {
           { persona: 'COMFORTABLE', label: '여유형', candidate: candidate(3, 'GROWTH', 'FRONT_LOADED', 0.9), reason: '소비 여력' },
         ]}
         status="done"
-        currentGoalProbability={0.7}
         params={params}
         formatValue={formatValue}
         onApplyStrategy={vi.fn()}

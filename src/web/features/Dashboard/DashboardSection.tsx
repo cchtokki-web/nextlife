@@ -294,7 +294,6 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
         <StrategyRecommendationCards
           recommendations={strategyOptimization?.recommendations?.recommendations}
           status={strategyOptimizationStatus}
-          currentGoalProbability={currentGoalProbability}
           errorMessage={strategyOptimizationError}
           unsupportedHardGoals={strategyOptimization?.debug?.unsupportedHardGoals}
           outcome={strategyOptimization?.outcome}
