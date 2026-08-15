@@ -93,8 +93,7 @@
 }
 
 .diagnosisGrid span,
-.currentPlanFacts dt,
-.recommendationComparison span {
+.currentPlanFacts dt {
   font-size: 0.75rem;
   color: var(--foreground-muted);
 }
@@ -245,23 +244,6 @@
   line-height: 1.5;
   color: var(--foreground);
 }
-
-.recommendationComparison {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
-  align-items: center;
-  gap: 1rem;
-  padding: 1rem 1.25rem;
-  border: 1px solid color-mix(in srgb, var(--primary) 30%, var(--card-border));
-  border-radius: 18px;
-  background: color-mix(in srgb, var(--primary) 7%, var(--panel-bg));
-}
-
-.recommendationComparison > div { display: flex; flex-direction: column; gap: 0.25rem; }
-.recommendationComparison > div:last-child { text-align: right; }
-.recommendationComparison strong { font-family: var(--font-display); font-size: 1.5rem; color: var(--foreground); }
-.recommendationComparison > div:last-child strong { color: var(--success); }
-.comparisonArrow { color: var(--primary); font-weight: 700; }
 
 .recommendationGrid {
   display: grid;
