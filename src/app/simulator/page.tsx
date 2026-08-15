@@ -1005,6 +1005,9 @@ export default function Home() {
                 <RetirementInputFlow
                   params={activeParams}
                   onChangeParams={handleUpdateActiveParams}
+                  // 결과가 현재 설정으로 계산된 것이면 다시 누를 이유가 없다. 판정은 두 값을
+                  // 모두 쥔 이곳에서만 할 수 있다.
+                  analysisIsCurrent={analysisIsCurrent}
                   onStartAnalysis={() => {
                     setAnalysisRequest(buildAnalysisRequest(activeParams));
                     // 이 시나리오를 분석했다는 사실만 남긴다. 결과는 저장하지 않는다 —

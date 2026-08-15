@@ -44,6 +44,41 @@ describe('RetirementInputFlow', () => {
     expect(onStartAnalysis).toHaveBeenCalledOnce();
   });
 
+  // 분석이 끝나면 같은 설정으로 다시 눌러 봐야 같은 결과가 나온다. 그때도 버튼이 살아 있으면
+  // 사용자는 "아직 반영되지 않은 변경이 남아 있다"는 뜻으로 읽는다.
+  test('마지막 분석 이후 바뀐 설정이 없으면 분석을 시작할 수 없다', () => {
+    const analyzed = {
+      ...initialParams,
+      retirementGoals: [
+        { type: 'ASSET_SURVIVAL' as const, priority: 1, constraintType: 'HARD' as const },
+      ],
+    };
+    const { rerender } = render(
+      <RetirementInputFlow
+        params={analyzed}
+        onChangeParams={vi.fn()}
+        onStartAnalysis={vi.fn()}
+        analysisIsCurrent
+      />
+    );
+
+    const startButton = screen.getByRole('button', { name: '분석 시작' });
+    expect(startButton).toBeDisabled();
+    expect(startButton).toHaveAttribute('title', expect.stringContaining('바뀐 설정이 없습니다'));
+
+    // 설정을 바꾸면 결과가 더 이상 현재 것이 아니므로 호출자가 false를 내려 준다.
+    rerender(
+      <RetirementInputFlow
+        params={{ ...analyzed, userProfile: { ...analyzed.userProfile, currentAge: 52 } }}
+        onChangeParams={vi.fn()}
+        onStartAnalysis={vi.fn()}
+        analysisIsCurrent={false}
+      />
+    );
+
+    expect(screen.getByRole('button', { name: '분석 시작' })).toBeEnabled();
+  });
+
   test('선택한 목표가 없으면 분석을 시작할 수 없다', () => {
     render(
       <RetirementInputFlow

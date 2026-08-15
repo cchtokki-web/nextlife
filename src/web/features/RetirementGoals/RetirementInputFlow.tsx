@@ -15,6 +15,15 @@ interface RetirementInputFlowProps {
     params: SimulationParams | ((previous: SimulationParams) => SimulationParams)
   ) => void;
   onStartAnalysis: () => void;
+  /**
+   * 지금 화면에 서 있는 결과가 «현재» 설정으로 계산된 것인가. true면 다시 눌러도 같은
+   * 결과가 나오므로 버튼을 잠근다.
+   *
+   * 이 컴포넌트는 어떤 params로 분석했는지 모른다 — 판정은 그 둘을 모두 쥔 호출자가 한다
+   * (page.tsx의 analysisIsCurrent). 기본값 false라서, 판정을 내려 주지 않는 호출자에게는
+   * 예전처럼 언제나 누를 수 있는 버튼이 남는다.
+   */
+  analysisIsCurrent?: boolean;
 }
 
 const STEPS = [
@@ -23,10 +32,12 @@ const STEPS = [
   { label: '은퇴 목표', icon: BarChart3 },
 ] as const;
 
-export function RetirementInputFlow({ params, onChangeParams, onStartAnalysis }: RetirementInputFlowProps) {
+export function RetirementInputFlow({
+  params, onChangeParams, onStartAnalysis, analysisIsCurrent = false,
+}: RetirementInputFlowProps) {
   const [step, setStep] = useState(0);
   const goals = resolveRetirementGoals(params);
-  const canAnalyze = goals.length > 0 && goals.every((goal) => {
+  const goalsAreReady = goals.length > 0 && goals.every((goal) => {
     const needsTarget = goal.type === 'EARLY_RETIREMENT'
       || goal.type === 'LIVING_EXPENSE_STABILITY'
       || goal.type === 'COMFORTABLE_SPENDING'
@@ -34,11 +45,19 @@ export function RetirementInputFlow({ params, onChangeParams, onStartAnalysis }:
     return !needsTarget || (goal.targetValue !== undefined && goal.targetValue > 0);
   });
   // 「분석 시작」은 어느 단계에서나 눌릴 수 있으므로, 비활성일 때 왜 못 누르는지를 버튼 자신이 설명해야 한다.
-  const blockedReason = canAnalyze
-    ? undefined
-    : goals.length === 0
-      ? '은퇴 목표 단계에서 목표를 1개 이상 선택해 주세요.'
-      : '선택한 목표의 목표값을 입력해 주세요.';
+  //
+  // 목표 사유를 먼저 본다. 목표를 지우면 설정이 바뀌어 결과가 stale이 되므로 두 사유가
+  // 동시에 참일 수 없지만, 순서를 정해 두어야 다음 사유가 늘어도 문구가 흔들리지 않는다.
+  const blockedReason = goals.length === 0
+    ? '은퇴 목표 단계에서 목표를 1개 이상 선택해 주세요.'
+    : !goalsAreReady
+      ? '선택한 목표의 목표값을 입력해 주세요.'
+      // 같은 설정으로 다시 눌러 봐야 같은 결과가 나온다. 누를 수 있게 두면 사용자는
+      // "아직 반영되지 않은 변경이 남아 있다"는 뜻으로 읽는다.
+      : analysisIsCurrent
+        ? '마지막 분석 이후 바뀐 설정이 없습니다.'
+        : undefined;
+  const canAnalyze = blockedReason === undefined;
 
   const setProfileAge = (key: 'currentAge' | 'expectancy', raw: string, max: number) => {
     const age = parseAge(raw, max);
