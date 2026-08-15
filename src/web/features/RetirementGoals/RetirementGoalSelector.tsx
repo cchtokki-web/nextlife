@@ -146,7 +146,7 @@ export function RetirementGoalSelector({
                   </button>
                 </div>
 
-                <div className={`mt-3 grid gap-3 ${definition.target ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1'}`}>
+                <div className="mt-3 flex flex-col gap-3">
                   {definition.target && (
                     <label className="flex flex-col gap-1 text-xs font-semibold text-foreground-muted">
                       {definition.target.label}
@@ -164,7 +164,7 @@ export function RetirementGoalSelector({
                               });
                             }
                           }}
-                          className="w-full rounded-lg border border-card-border bg-black/20 px-3 py-2 pr-12 text-sm text-foreground outline-none focus:border-primary"
+                          className="h-10 w-full rounded-lg border border-card-border bg-black/20 px-3 pr-12 text-sm text-foreground outline-none focus:border-primary"
                         />
                         <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs text-foreground-muted">
                           {definition.target.unit === 'age' ? '세' : displayCurrency === 'KRW' ? '원' : 'USD'}
@@ -180,10 +180,10 @@ export function RetirementGoalSelector({
                       onChange={(event) => updateGoal(goal.type, {
                         constraintType: event.target.value as RetirementGoalConstraintType,
                       })}
-                      className="rounded-lg border border-card-border bg-black/20 px-3 py-2 text-sm text-foreground outline-none focus:border-primary"
+                      className="h-10 w-full rounded-lg border border-card-border bg-black/20 px-3 text-sm text-foreground outline-none focus:border-primary"
                     >
-                      <option value="HARD">반드시 지키기 (HARD)</option>
-                      <option value="SOFT">가능하면 달성 (SOFT)</option>
+                      <option value="HARD">반드시 지키기</option>
+                      <option value="SOFT">가능하면 달성</option>
                     </select>
                   </label>
                 </div>
