@@ -16,19 +16,26 @@ const renderSection = (params = initialParams, onChangeParams = vi.fn()) => {
 };
 
 describe('BasicInfoSection', () => {
-  test('현재 나이·은퇴 나이·기대수명을 표시한다', () => {
+  test('현재 나이와 기대수명을 표시한다', () => {
     renderSection();
 
     expect(screen.getByLabelText('현재 나이')).toHaveValue(50);
-    expect(screen.getByLabelText('목표 은퇴 나이')).toHaveValue(60);
     expect(screen.getByLabelText('기대수명')).toHaveValue(85);
   });
 
-  test('본인 나이 입력 3개 외에는 스위치나 다른 입력을 렌더하지 않는다', () => {
+  // 은퇴 나이는 「은퇴 목표」의 «빠른 은퇴» 카드가 유일한 편집 경로다. 여기에 되살리면
+  // 같은 값을 두 화면이 각자 편집하던 상태로 돌아간다.
+  test('은퇴 나이는 이 섹션에서 편집하지 않는다', () => {
+    renderSection();
+
+    expect(screen.queryByLabelText('목표 은퇴 나이')).toBeNull();
+  });
+
+  test('본인 나이 입력 2개 외에는 스위치나 다른 입력을 렌더하지 않는다', () => {
     renderSection();
 
     expect(screen.queryAllByRole('switch')).toHaveLength(0);
-    expect(screen.getAllByRole('spinbutton')).toHaveLength(3);
+    expect(screen.getAllByRole('spinbutton')).toHaveLength(2);
   });
 
   test('현재 나이를 바꾸면 userProfile.currentAge만 바뀐 params로 호출된다', () => {
@@ -48,7 +55,6 @@ describe('BasicInfoSection', () => {
   describe('나이 입력 가드', () => {
     test.each([
       ['현재 나이'],
-      ['목표 은퇴 나이'],
       ['기대수명'],
     ])('%s를 비우면 아무것도 저장하지 않는다', (label) => {
       const onChangeParams = renderSection();
@@ -63,7 +69,6 @@ describe('BasicInfoSection', () => {
 
       expect(screen.getByLabelText('현재 나이')).toHaveAttribute('min', '1');
       expect(screen.getByLabelText('현재 나이')).toHaveAttribute('max', '120');
-      expect(screen.getByLabelText('목표 은퇴 나이')).toHaveAttribute('max', '120');
       expect(screen.getByLabelText('기대수명')).toHaveAttribute('max', '130');
     });
 
@@ -83,7 +88,6 @@ describe('BasicInfoSection', () => {
     // 하한은 1이다(0세 기대수명·0세 은퇴는 어느 것도 의미가 없다).
     test.each([
       ['현재 나이', 'currentAge'],
-      ['목표 은퇴 나이', 'retirementAge'],
       ['기대수명', 'expectancy'],
     ] as const)('%s의 음수·0은 1로 클램프한다', (label, key) => {
       const onChangeParams = renderSection();

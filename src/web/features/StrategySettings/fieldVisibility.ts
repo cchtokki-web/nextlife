@@ -3,28 +3,19 @@ import { StrategyMode } from '../../../core/entities/types';
 // SimulationParams 안의 값을 가리키는 점 경로. diffDefaults가 같은 표기를 쓴다.
 export type FieldPath = string;
 
-export type SectionId = 'basic' | 'goal' | 'pension' | 'investment' | 'economic' | 'advanced';
+export type SectionId = 'basic' | 'pension' | 'investment' | 'economic' | 'advanced';
 
 // 섹션 → 그 섹션이 다루는 필드 경로. 한 경로는 정확히 한 섹션에만 속한다
 // (중복되면 변경 개수 배지가 이중 계산된다 — 테스트가 이를 막는다).
+//
+// **여기에 없는 축이 있다.** 은퇴 나이·목표 생활비·상속·생활비 전략·목표 우선순위는
+// 「은퇴 목표」 카드(RetirementInputFlow 3단계)가 유일한 편집 경로이며, 값은 목표에서
+// 파생된다(normalizeGoalDrivenParams). 이 패널에 다시 등록하면 같은 값을 두 화면이 각자
+// 편집하던 상태로 돌아간다 — 그것이 이 목록에서 goal 섹션을 걷어낸 이유다.
 export const SECTION_FIELDS: Record<SectionId, ReadonlyArray<FieldPath>> = {
   basic: [
     'userProfile.currentAge',
-    'userProfile.retirementAge',
     'userProfile.expectancy',
-  ],
-  goal: [
-    'strategy.spendingChoice',
-    'userProfile.targetMonthlySpending',
-    // 아래 셋은 「평생 소비 최적화」(spendingChoice === 'max_sustainable')에서만 렌더된다.
-    // 여기 등록은 "이 섹션이 다루는 필드"라는 선언일 뿐 노출 조건은 섹션이 따로 판정한다
-    // (healthcare.* 하위 필드가 enabled 스위치에 딸려 있는 것과 같은 구조).
-    'strategy.spendingShape',
-    'strategy.minMonthlySpending',
-    'strategy.bequestSafetyMarginRate',
-    'strategy.objective',
-    'strategy.bequestStrategy',
-    'userProfile.targetBequest',
   ],
   pension: [
     'strategy.nationalPensionStrategy',
@@ -79,15 +70,11 @@ export const SECTION_FIELDS: Record<SectionId, ReadonlyArray<FieldPath>> = {
   ],
 };
 
-// 간편 모드에서 보이는 필드. 나이 3개 + 생활비 전략 + 목표 우선순위 + 연금 전략 2개
-// + 배당 재투자. "필수 입력만" 원칙의 예외는 배당 재투자 하나이며 근거는 아래 주석에 있다.
+// 간편 모드에서 보이는 필드. 나이 2개 + 연금 전략 2개 + 배당 재투자.
+// "필수 입력만" 원칙의 예외는 배당 재투자 하나이며 근거는 아래 주석에 있다.
 const SIMPLE_FIELDS: ReadonlySet<FieldPath> = new Set([
   'userProfile.currentAge',
-  'userProfile.retirementAge',
   'userProfile.expectancy',
-  'strategy.spendingChoice',
-  'userProfile.targetMonthlySpending',
-  'strategy.objective',
   'strategy.nationalPensionStrategy',
   'strategy.privatePensionStrategy',
   // 배당 재투자는 "필수 입력"은 아니지만 여기 있어야 한다. AI 추천이 이 값을 자주 권하고

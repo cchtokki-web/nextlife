@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Coins, LineChart, Settings2, Target, TrendingUp, User } from 'lucide-react';
+import { Coins, LineChart, Settings2, TrendingUp, User } from 'lucide-react';
 import {
   IsaFirstChoice, NationalPensionStrategy, SimulationParams, StrategyMode, StrategyRecommendation,
 } from '../../../core/entities/types';
@@ -15,7 +15,6 @@ import { BasicInfoSection } from './sections/BasicInfoSection';
 import { EconomicAssumptionSection } from './sections/EconomicAssumptionSection';
 import { InvestmentStrategySection } from './sections/InvestmentStrategySection';
 import { PensionStrategySection } from './sections/PensionStrategySection';
-import { RetirementGoalSection } from './sections/RetirementGoalSection';
 import { StrategyModeSelector } from './StrategyModeSelector';
 import { collectChangedPaths, countSectionChanges } from './diffDefaults';
 import { SectionId, isSectionVisible } from './fieldVisibility';
@@ -42,7 +41,6 @@ const HIGHLIGHT_DURATION_MS = 800;
 // 섹션 표시 메타. 순서가 화면 순서다.
 const SECTIONS: ReadonlyArray<{ id: SectionId; title: string; icon: React.ReactNode }> = [
   { id: 'basic', title: '기본 정보', icon: <User size={16} /> },
-  { id: 'goal', title: '은퇴 목표', icon: <Target size={16} /> },
   { id: 'pension', title: '연금 전략', icon: <Coins size={16} /> },
   { id: 'investment', title: '투자 전략', icon: <TrendingUp size={16} /> },
   { id: 'economic', title: '경제 가정', icon: <LineChart size={16} /> },
@@ -93,7 +91,10 @@ function describeAutomaticApplication(
 // 'investment'는 빠져 있다 — 그 섹션의 riskProfile/economicScenario는 RecommendationEngine이
 // 추천을 생산하지 않는 축이고, 예전에 이 버튼이 적용하던 배당 재투자는 실제 컨트롤이 있는
 // 「연금 전략」으로 옮겼다.
-const AI_SECTIONS: ReadonlySet<SectionId> = new Set(['goal', 'pension']);
+//
+// 'goal'도 빠져 있다. AI가 권하던 생활비 배수는 목표 월 생활비를 바꾸는 것이었는데, 그 값은
+// 이제 「은퇴 목표」 카드에서만 편집한다 — 화면에 없는 필드를 바꾸는 버튼은 두지 않는다.
+const AI_SECTIONS: ReadonlySet<SectionId> = new Set(['pension']);
 
 export function StrategySettingsPanel({
   params, onChangeParams, recommendation, recommendationFailed, sentinels,
@@ -154,8 +155,6 @@ export function StrategySettingsPanel({
     switch (id) {
       case 'basic':
         return <BasicInfoSection {...sectionProps} />;
-      case 'goal':
-        return <RetirementGoalSection {...sectionProps} ai={ai} />;
       case 'pension':
         return (
           <PensionStrategySection
@@ -220,25 +219,6 @@ export function StrategySettingsPanel({
 
     const plan = ai.recommendation?.recommendedPlan;
     if (!plan) return id === 'pension' ? applyReinvest() : null;
-
-    if (id === 'goal') {
-      if (plan.monthlySpendingMultiplier === 1) return null;
-      const nextSpending = Math.round(
-        params.userProfile.targetMonthlySpending * plan.monthlySpendingMultiplier
-      );
-      return {
-        params: {
-          ...params,
-          userProfile: {
-            ...params.userProfile,
-            targetMonthlySpending: nextSpending,
-          },
-        },
-        changes: [
-          `목표 월 생활비 ${Math.round(params.userProfile.targetMonthlySpending / 10000).toLocaleString()}만원 → ${Math.round(nextSpending / 10000).toLocaleString()}만원`,
-        ],
-      };
-    }
 
     if (id === 'pension') {
       // 추천 나이를 enum으로 역매핑한다. 정확히 일치하는 전략이 없으면(예: 68세)

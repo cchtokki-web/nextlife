@@ -2,9 +2,9 @@ import type { SimulationParams } from '../../entities/types';
 import {
   normalizeRetirementGoals,
   type RetirementGoal,
-  type RetirementGoalType,
 } from '../../entities/retirementGoal';
 import { resolveStrategy } from '../strategy/compileStrategy';
+import { normalizeGoalDrivenParams } from './normalizeGoalDrivenParams';
 
 export function resolveRetirementGoals(params: SimulationParams): RetirementGoal[] {
   // 기존 시나리오의 은퇴 나이·생활비는 그대로 보존하지만 사용자가 고르지 않은 목표를
@@ -13,55 +13,48 @@ export function resolveRetirementGoals(params: SimulationParams): RetirementGoal
   return normalizeRetirementGoals(params.retirementGoals);
 }
 
+/**
+ * 저장된 시나리오를 «읽을 때» 목표 상태를 정돈한다. 화면과 계산이 보는 모든 params가 이
+ * 함수를 지난다(useScenarios의 migrateParams).
+ *
+ * 목표 배열 정규화에 더해, 목표가 정하는 축(은퇴 나이·목표 생활비·상속·생활비 전략·목표
+ * 우선순위)을 목표에서 다시 파생시킨다. 그 입력들은 고급 패널에서 제거되어 「은퇴 목표」
+ * 카드가 유일한 편집 경로이므로, 저장된 옛 값이 남아 있으면 화면 어디에도 없는 값이 계산을
+ * 좌우하게 된다. E2EE라 서버 마이그레이션이라는 선택지가 없어 읽는 시점에 할 수밖에 없다.
+ *
+ * **정규화를 compileStrategy에 두지 않는 이유**: 그쪽은 "전략(사용자 언어) → 저수준 파라미터"
+ * 번역기이고, 어떤 축을 제품이 노출하는가는 그 번역기가 알 일이 아니다. 거기에 두면
+ * 배당금만 소비·평생 소비 최적화 같은 엔진 기능이 번역 단계에서 통째로 죽어, 나중에 내부
+ * 최적화 엔진이 그 축을 후보로 쓰려 해도 쓸 수 없다.
+ */
 export function migrateRetirementGoals(params: SimulationParams): SimulationParams {
-  if (Array.isArray(params.retirementGoals)) {
-    const normalized = normalizeRetirementGoals(params.retirementGoals);
-    return JSON.stringify(normalized) === JSON.stringify(params.retirementGoals)
-      ? params
-      : { ...params, retirementGoals: normalized };
-  }
-  // 기존 시나리오에는 필드를 새로 쓰지 않는다. UI는 resolveRetirementGoals로 레거시 값을
-  // 보여주되, 사용자가 실제로 목표를 편집하기 전까지 기존 분석 목적 함수를 보존한다.
-  return params;
+  const withGoals = Array.isArray(params.retirementGoals)
+    ? withNormalizedGoalList(params, params.retirementGoals)
+    : params;
+  return normalizeGoalDrivenParams(withGoals, resolveStrategy(withGoals));
 }
 
-export function applyRetirementGoals(
+function withNormalizedGoalList(
   params: SimulationParams,
   goals: readonly RetirementGoal[],
 ): SimulationParams {
   const normalized = normalizeRetirementGoals(goals);
-  let userProfile = params.userProfile;
-  let strategy = params.strategy;
+  return JSON.stringify(normalized) === JSON.stringify(goals)
+    ? params
+    : { ...params, retirementGoals: normalized };
+}
 
-  const firstWithTarget = (...types: RetirementGoalType[]) =>
-    normalized.find((goal) => types.includes(goal.type) && goal.targetValue !== undefined);
-
-  const retirementAge = firstWithTarget('EARLY_RETIREMENT');
-  if (retirementAge?.targetValue !== undefined) {
-    userProfile = { ...userProfile, retirementAge: retirementAge.targetValue };
-  }
-
-  const spending = firstWithTarget('LIVING_EXPENSE_STABILITY', 'COMFORTABLE_SPENDING');
-  if (spending?.targetValue !== undefined) {
-    userProfile = { ...userProfile, targetMonthlySpending: spending.targetValue };
-  }
-
-  const inheritance = firstWithTarget('INHERITANCE');
-  if (inheritance?.targetValue !== undefined) {
-    userProfile = { ...userProfile, targetBequest: inheritance.targetValue };
-    strategy = { ...resolveStrategy(params), bequestStrategy: 'target_amount' };
-  } else if (params.retirementGoals?.some((goal) => goal.type === 'INHERITANCE')) {
-    const { targetBequest: _targetBequest, ...withoutTargetBequest } = userProfile;
-    userProfile = withoutTargetBequest;
-    if (strategy?.bequestStrategy === 'target_amount') {
-      strategy = { ...strategy, bequestStrategy: 'leave_some' };
-    }
-  }
-
-  return {
-    ...params,
-    userProfile,
-    ...(strategy ? { strategy } : {}),
-    retirementGoals: normalized,
-  };
+/**
+ * 목표 편집을 시나리오 설정에 반영한다.
+ *
+ * 투영 규칙은 여기에 두지 않는다 — 엔진이 읽는 시점에 쓰는 것과 «같은» 함수
+ * (normalizeGoalDrivenParams)에 맡긴다. 두 곳에 규칙을 두면 카드에 적힌 값과 계산에 들어간
+ * 값이 갈라지고, 그 갈라짐이 정확히 이 화면이 고치려는 결함이었다.
+ */
+export function applyRetirementGoals(
+  params: SimulationParams,
+  goals: readonly RetirementGoal[],
+): SimulationParams {
+  const next = { ...params, retirementGoals: normalizeRetirementGoals(goals) };
+  return normalizeGoalDrivenParams(next, resolveStrategy(next));
 }

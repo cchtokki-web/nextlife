@@ -4,6 +4,8 @@ import { useState } from 'react';
 import { BarChart3, UserRound, WalletCards } from 'lucide-react';
 import type { SimulationParams } from '../../../core/entities/types';
 import { applyRetirementGoals, resolveRetirementGoals } from '../../../core/usecases/goals/retirementGoalAdapter';
+import { normalizeGoalDrivenParams } from '../../../core/usecases/goals/normalizeGoalDrivenParams';
+import { resolveStrategy } from '../../../core/usecases/strategy/compileStrategy';
 import { AssetFormSection } from '../AssetForm/AssetFormSection';
 import InputField from '../../components/InputField';
 import { AGE_MAX, AGE_MIN, EXPECTANCY_MAX, parseAge } from '../StrategySettings/ageInput';
@@ -37,6 +39,8 @@ export function RetirementInputFlow({
 }: RetirementInputFlowProps) {
   const [step, setStep] = useState(0);
   const goals = resolveRetirementGoals(params);
+  // 목표 카드가 새 목표를 고를 때 쓰는 시드. 엔진이 실제로 계산에 쓰는 값과 같아야 한다.
+  const goalSeedProfile = normalizeGoalDrivenParams(params, resolveStrategy(params)).userProfile;
   const goalsAreReady = goals.length > 0 && goals.every((goal) => {
     const needsTarget = goal.type === 'EARLY_RETIREMENT'
       || goal.type === 'LIVING_EXPENSE_STABILITY'
@@ -132,12 +136,15 @@ export function RetirementInputFlow({
 
       {step === 2 && (
         <section aria-label="은퇴 목표">
+          {/* 시드값은 «정규화된» 프로필에서 가져온다. 저장된 옛 은퇴 나이를 그대로 시드하면
+              「빠른 은퇴」를 처음 고른 순간 카드에 60세가 찍히는데, 계산은 그 목표를 고르기
+              전까지 65세로 돌고 있었다 — 카드가 계산을 설명하지 못하게 된다. */}
           <RetirementGoalSelector
             goals={goals}
             displayCurrency={params.displayCurrency}
-            retirementAge={params.userProfile.retirementAge}
-            targetMonthlySpending={params.userProfile.targetMonthlySpending}
-            targetBequest={params.userProfile.targetBequest}
+            retirementAge={goalSeedProfile.retirementAge}
+            targetMonthlySpending={goalSeedProfile.targetMonthlySpending}
+            targetBequest={goalSeedProfile.targetBequest}
             onChange={(nextGoals) => onChangeParams(applyRetirementGoals(params, nextGoals))}
           />
         </section>

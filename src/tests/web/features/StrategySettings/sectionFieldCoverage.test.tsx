@@ -26,14 +26,13 @@ vi.mock('@/web/features/StrategySettings/fieldVisibility', async (importOriginal
 
 const { SECTION_FIELDS } = await import('@/web/features/StrategySettings/fieldVisibility');
 const { BasicInfoSection } = await import('@/web/features/StrategySettings/sections/BasicInfoSection');
-const { RetirementGoalSection } = await import('@/web/features/StrategySettings/sections/RetirementGoalSection');
 const { PensionStrategySection } = await import('@/web/features/StrategySettings/sections/PensionStrategySection');
 const { InvestmentStrategySection } = await import('@/web/features/StrategySettings/sections/InvestmentStrategySection');
 const { EconomicAssumptionSection } = await import('@/web/features/StrategySettings/sections/EconomicAssumptionSection');
 const { AdvancedSection } = await import('@/web/features/StrategySettings/sections/AdvancedSection');
 
-// 조건부로만 렌더되는 필드(의료비 하위 항목, 상속 목표 금액 등)까지 모두 나타나도록
-// 모든 하위 토글을 켠 params. 이 fixture가 불완전하면 테스트가 거짓 실패한다.
+// 조건부로만 렌더되는 필드(의료비 하위 항목 등)까지 모두 나타나도록 모든 하위 토글을 켠
+// params. 이 fixture가 불완전하면 테스트가 거짓 실패한다.
 const allEnabledParams: SimulationParams = {
   ...initialParams,
   useLatestExchangeRate: false,
@@ -41,14 +40,13 @@ const allEnabledParams: SimulationParams = {
     mode: 'expert',
     objective: 'ai_recommended',
     spendingChoice: 'target',
-    bequestStrategy: 'target_amount',
+    bequestStrategy: 'leave_some',
     nationalPensionStrategy: 'ai_optimized',
     privatePensionStrategy: 'ai_optimized',
     preferIsaFirst: 'pension_first',
     riskProfile: 'ai_recommended',
     economicScenario: 'ai_recommended',
   },
-  userProfile: { ...initialParams.userProfile, targetBequest: 100000000 },
   healthcare: {
     enabled: true, costGrowthRate: 3, baseMonthlyCost: 500000,
     longTermCareEnabled: true, longTermCareStartAge: 80, longTermCareMonthlyCost: 1500000,
@@ -81,7 +79,6 @@ describe('SECTION_FIELDS 경로 렌더 계약', () => {
     render(
       <>
         <BasicInfoSection {...sectionProps} />
-        <RetirementGoalSection {...sectionProps} ai={ai} />
         <PensionStrategySection {...sectionProps} ai={ai} />
         <InvestmentStrategySection {...sectionProps} ai={ai} />
         <EconomicAssumptionSection {...sectionProps} />

@@ -6,14 +6,21 @@ import {
   resolveRetirementGoals,
 } from '@/core/usecases/goals/retirementGoalAdapter';
 import { compileStrategy } from '@/core/usecases/strategy/compileStrategy';
+import { NATIONAL_PENSION_NORMAL_START_AGE } from '@/core/usecases/pension/nationalPensionRules';
 
 describe('retirementGoalAdapter', () => {
-  test('기존 시나리오는 목표를 임의 선택하지 않고 기존 입력을 그대로 보존한다', () => {
+  // 목표를 «대신 골라 주지는» 않는다. 다만 목표가 정하는 축은 목표가 없을 때 권장값으로
+  // 정규화된다 — 고급 패널에서 그 입력들을 걷어냈으므로, 저장된 옛 값을 그대로 두면
+  // 화면 어디에도 없는 값이 계산을 좌우한다.
+  test('기존 시나리오에도 목표를 지어내지 않되 목표가 정하는 축은 권장값으로 정돈한다', () => {
     const { retirementGoals: _goals, ...legacy } = initialParams;
     const migrated = migrateRetirementGoals(legacy);
 
-    expect(migrated).toBe(legacy);
     expect(resolveRetirementGoals(migrated)).toEqual([]);
+    expect(migrated.userProfile.retirementAge).toBe(NATIONAL_PENSION_NORMAL_START_AGE);
+    // 목표 생활비는 채점 분모라 지우지 않는다.
+    expect(migrated.userProfile.targetMonthlySpending)
+      .toBe(initialParams.userProfile.targetMonthlySpending);
   });
 
   test('목표 target 값을 기존 엔진 입력의 단일 값에 동기화한다', () => {

@@ -9,7 +9,9 @@ import { SectionProps } from '../strategyOptions';
 export function BasicInfoSection({ params, onChangeParams, mode, changed }: SectionProps) {
   const { userProfile } = params;
 
-  const setProfile = (key: 'currentAge' | 'retirementAge' | 'expectancy', value: number) => {
+  // 은퇴 나이는 여기서 정하지 않는다. 「은퇴 목표」의 «빠른 은퇴» 카드가 유일한 편집 경로이며,
+  // 그 목표를 고르지 않으면 국민연금 정상 개시 나이로 계산된다(normalizeGoalDrivenParams).
+  const setProfile = (key: 'currentAge' | 'expectancy', value: number) => {
     onChangeParams({ ...params, userProfile: { ...userProfile, [key]: value } });
   };
 
@@ -24,23 +26,6 @@ export function BasicInfoSection({ params, onChangeParams, mode, changed }: Sect
             onChange={(e) => {
               const age = parseAge(e.target.value, AGE_MAX);
               if (age !== null) setProfile('currentAge', age);
-            }}
-          />
-        </FieldRow>
-      )}
-      {isFieldVisible(mode, 'userProfile.retirementAge') && (
-        <FieldRow
-          label="목표 은퇴 나이"
-          tooltipText="근로소득이 끝나고 자산 인출을 시작하는 나이입니다."
-          changed={changed.has('userProfile.retirementAge')}
-        >
-          <InputField
-            label="" aria-label="목표 은퇴 나이" type="number" suffixText="세"
-            min={AGE_MIN} max={AGE_MAX}
-            value={userProfile.retirementAge}
-            onChange={(e) => {
-              const age = parseAge(e.target.value, AGE_MAX);
-              if (age !== null) setProfile('retirementAge', age);
             }}
           />
         </FieldRow>
