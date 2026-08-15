@@ -1,5 +1,5 @@
-import { render, screen, within } from '@testing-library/react';
-import { describe, expect, test } from 'vitest';
+import { fireEvent, render, screen, within } from '@testing-library/react';
+import { describe, expect, test, vi } from 'vitest';
 import type { SimulationParams } from '@/core/entities/types';
 import type { ValidatedStrategyCandidate } from '@/core/recommendation/RecommendationEngine';
 import { DEFAULT_UTILITY_CONFIG } from '@/core/usecases/utility/utilityWeights';
@@ -248,5 +248,108 @@ describe('StrategyRecommendationCards', () => {
     expect(screen.getByText('균형형')).toBeInTheDocument();
     expect(screen.getByText('여유형')).toBeInTheDocument();
     expect(within(screen.getByText('균형형').closest('article')!).getByText('추천')).toBeInTheDocument();
+  });
+});
+
+describe('StrategyRecommendationCards 적용 버튼', () => {
+  const balanced = {
+    persona: 'BALANCED' as const,
+    label: '균형형' as const,
+    candidate: candidate(1, 'BALANCED', 'FIXED', 0.95),
+    reason: '목표 균형',
+  };
+
+  function renderCards(props: Partial<Parameters<typeof StrategyRecommendationCards>[0]> = {}) {
+    return render(
+      <StrategyRecommendationCards
+        recommendations={[balanced]}
+        status="done"
+        currentGoalProbability={0.7}
+        params={params}
+        formatValue={formatValue}
+        {...props}
+      />
+    );
+  }
+
+  // PDF 리포트와 읽기 전용 문맥이 같은 컴포넌트를 쓴다. 콜백이 없으면 액션 자체가 없어야 한다.
+  test('적용 콜백이 없으면 버튼을 내지 않는다', () => {
+    renderCards();
+
+    expect(screen.queryByRole('button', { name: /적용/ })).not.toBeInTheDocument();
+  });
+
+  test('바로 적용하지 않고 한 번 더 확인한다', () => {
+    const onApplyStrategy = vi.fn();
+    renderCards({ onApplyStrategy });
+
+    fireEvent.click(screen.getByRole('button', { name: '이 전략 적용' }));
+
+    expect(onApplyStrategy).not.toHaveBeenCalled();
+    expect(screen.getByText(/현재 시나리오 설정이 바뀝니다/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: '적용' }));
+    expect(onApplyStrategy).toHaveBeenCalledWith(balanced);
+  });
+
+  test('확인을 취소하면 적용하지 않고 원래 버튼으로 돌아간다', () => {
+    const onApplyStrategy = vi.fn();
+    renderCards({ onApplyStrategy });
+
+    fireEvent.click(screen.getByRole('button', { name: '이 전략 적용' }));
+    fireEvent.click(screen.getByRole('button', { name: '취소' }));
+
+    expect(onApplyStrategy).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: '이 전략 적용' })).toBeInTheDocument();
+  });
+
+  test('이미 적용한 전략은 다시 적용할 수 없다', () => {
+    renderCards({ onApplyStrategy: vi.fn(), appliedCandidateId: 'candidate-1' });
+
+    expect(screen.getByRole('button', { name: '적용됨' })).toBeDisabled();
+  });
+
+  // 카드가 받는 params는 센티널이 채운 계산용 값이고 실제 적용 대상은 사용자가 입력한
+  // 설정이다. 둘의 판정이 엇갈리면 눌러도 아무 일이 없거나(침묵 실패) 적용할 것이 있는데
+  // 버튼이 잠긴다. 그래서 활성 여부는 «적용하는 쪽»이 판정한다.
+  test('적용 가능 여부는 카드가 아니라 호출자가 판정한다', () => {
+    const canApplyStrategy = vi.fn().mockReturnValue(false);
+    renderCards({ onApplyStrategy: vi.fn(), canApplyStrategy });
+
+    expect(canApplyStrategy).toHaveBeenCalledWith(balanced);
+    // 카드에는 달라지는 점이 있지만 실제 설정에는 반영할 것이 없는 상태다.
+    expect(screen.getByRole('button', { name: '반영할 수 있는 설정이 없습니다' })).toBeDisabled();
+  });
+
+  test('호출자가 적용 가능하다고 하면 카드 목록이 비어 있어도 누를 수 있다', () => {
+    renderCards({ onApplyStrategy: vi.fn(), canApplyStrategy: () => true });
+
+    expect(screen.getByRole('button', { name: '이 전략 적용' })).toBeEnabled();
+  });
+
+  test('달라지는 점이 없으면 적용할 것도 없다', () => {
+    const sameAsCurrent = {
+      ...balanced,
+      candidate: {
+        ...balanced.candidate,
+        candidate: {
+          ...balanced.candidate.candidate,
+          dimensions: {
+            ...balanced.candidate.candidate.dimensions,
+            retirementAge: params.userProfile.retirementAge,
+            nationalPensionStartAge: 60,
+            withdrawalPolicy: 'GENERAL_FIRST' as const,
+          },
+          strategy: {
+            ...balanced.candidate.candidate.strategy,
+            retirementAge: params.userProfile.retirementAge,
+            nationalPensionStartAge: 60,
+          },
+        },
+      },
+    };
+    renderCards({ recommendations: [sameAsCurrent], onApplyStrategy: vi.fn() });
+
+    expect(screen.getByRole('button', { name: /달라지는 점이 없습니다/ })).toBeDisabled();
   });
 });

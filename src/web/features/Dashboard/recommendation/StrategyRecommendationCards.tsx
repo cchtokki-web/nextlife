@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Loader2, Star } from 'lucide-react';
 import type { SimulationParams } from '../../../../core/entities/types';
 import type { RetirementGoalType } from '../../../../core/entities/retirementGoal';
@@ -26,6 +27,99 @@ interface StrategyRecommendationCardsProps {
   outcome?: OptimizationOutcome;
   params: SimulationParams;
   formatValue: (value: number) => string;
+  /**
+   * 추천 전략을 사용자의 시나리오 설정에 반영한다. 없으면 적용 액션 자체를 내지 않는다 —
+   * PDF 리포트처럼 설정을 바꿀 수 없는 문맥이 같은 카드를 쓴다.
+   */
+  onApplyStrategy?: (recommendation: CandidateRecommendation) => void;
+  /**
+   * 지금 적용하면 실제로 바뀌는 설정이 있는가. 아래 「달라지는 점」의 개수로 대신 세면 안
+   * 된다 — 그 목록은 센티널이 채운 계산용 params 기준이고, 적용 대상은 사용자가 입력한
+   * 설정이라 국민연금·투자 성향 축에서 두 판정이 엇갈린다.
+   */
+  canApplyStrategy?: (recommendation: CandidateRecommendation) => boolean;
+  /** 방금 적용한 후보. 그 카드는 다시 누를 수 없다. */
+  appliedCandidateId?: string;
+}
+
+interface StrategyApplyActionProps {
+  recommendation: CandidateRecommendation;
+  onApply: (recommendation: CandidateRecommendation) => void;
+  canApply: boolean;
+  /** 카드가 「달라지는 점」을 하나라도 보여주고 있는가. 비활성 문구를 고르는 데만 쓴다. */
+  hasDescribedChanges: boolean;
+  applied: boolean;
+}
+
+/**
+ * 적용 버튼과 그 자리에서 펼쳐지는 확인 단계.
+ *
+ * 모달을 쓰지 않는 이유: 확인 모달의 값어치는 "무엇이 바뀌는지" 목록을 보여주는 데 있는데,
+ * 그 목록은 바로 위 「현재 계획에서 달라지는 점」에 이미 상시 표시돼 있다. 모달을 띄우면
+ * 같은 목록을 두 번 보여주면서 근거가 되는 카드 본문만 가린다.
+ */
+function StrategyApplyAction({
+  recommendation, onApply, canApply, hasDescribedChanges, applied,
+}: StrategyApplyActionProps) {
+  const [confirming, setConfirming] = useState(false);
+
+  if (applied || !canApply) {
+    // 「달라지는 점」은 있는데 적용할 것이 없는 경우를 구분한다. 생활비 배분처럼 현재
+    // 계획과 다르지만 반영 경로가 없는 축만 남았을 때 "달라지는 점이 없습니다"라고 하면
+    // 바로 위 목록과 정면으로 모순된다.
+    const label = applied ? '적용됨'
+      : hasDescribedChanges ? '반영할 수 있는 설정이 없습니다'
+      : '달라지는 점이 없습니다';
+    return (
+      <div className={styles.strategyCardActions}>
+        <button type="button" className={styles.applyStrategyButton} disabled>
+          {label}
+        </button>
+      </div>
+    );
+  }
+
+  if (!confirming) {
+    return (
+      <div className={styles.strategyCardActions}>
+        <button
+          type="button"
+          className={styles.applyStrategyButton}
+          onClick={() => setConfirming(true)}
+        >
+          이 전략 적용
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className={styles.strategyCardActions} aria-live="polite">
+      {/* 되돌리기는 이 세션에서만 가능하다(스냅샷을 저장하지 않는다). 누르기 전에 밝힌다. */}
+      <p className={styles.applyStrategyNotice}>
+        현재 시나리오 설정이 바뀝니다. 되돌리기는 이 화면을 새로고침하기 전까지만 가능합니다.
+      </p>
+      <div className={styles.applyStrategyConfirm}>
+        <button
+          type="button"
+          className={styles.applyStrategyCancel}
+          onClick={() => setConfirming(false)}
+        >
+          취소
+        </button>
+        <button
+          type="button"
+          className={styles.applyStrategyButton}
+          onClick={() => {
+            setConfirming(false);
+            onApply(recommendation);
+          }}
+        >
+          적용
+        </button>
+      </div>
+    </div>
+  );
 }
 
 function goalLabel(type: RetirementGoalType): string {
@@ -104,6 +198,9 @@ export function StrategyRecommendationCards({
   outcome,
   params,
   formatValue,
+  onApplyStrategy,
+  canApplyStrategy,
+  appliedCandidateId,
 }: StrategyRecommendationCardsProps) {
   if (status === 'running') {
     return (
@@ -224,6 +321,16 @@ export function StrategyRecommendationCards({
                   <p>핵심 설정은 유지하고 시장 변동 안정성만 재검증한 전략입니다.</p>
                 )}
               </div>
+
+              {onApplyStrategy && (
+                <StrategyApplyAction
+                  recommendation={recommendation}
+                  onApply={onApplyStrategy}
+                  canApply={canApplyStrategy?.(recommendation) ?? changes.length > 0}
+                  hasDescribedChanges={changes.length > 0}
+                  applied={candidate.candidate.id === appliedCandidateId}
+                />
+              )}
             </article>
           );
         })}

@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useSession, signOut } from 'next-auth/react';
+import type { SimulationParams } from '../../core/entities/types';
 import { LegacySimulationEngine } from '../../core/simulation/LegacySimulationEngine';
 import { computeMonthlySpendingComposition } from '../../core/usecases/MonthlySpendingComposition';
 import { computeRiskAlerts } from '../../core/usecases/dashboard/computeRiskAlerts';
@@ -24,6 +25,8 @@ import { StrategySettingsPanel } from '../../web/features/StrategySettings/Strat
 import { RetirementInputFlow } from '../../web/features/RetirementGoals/RetirementInputFlow';
 import { Collapse } from '../../web/components/ui';
 import { DashboardSection } from '../../web/features/Dashboard/DashboardSection';
+import { AppliedStrategyBanner } from '../../web/features/Dashboard/recommendation/AppliedStrategyBanner';
+import { useAppliedStrategy } from '../../web/hooks/useAppliedStrategy';
 import GlassCard from '../../web/components/GlassCard';
 import { Header } from '../../web/components/Header/Header';
 import styles from './page.module.css';
@@ -43,9 +46,10 @@ export default function Home() {
   const { data: session } = useSession();
   const scenarioState = useScenarios();
   const { 
-    scenarios, 
-    activeParams, 
-    handleUpdateActiveParams, 
+    scenarios,
+    activeParams,
+    activeScenarioId,
+    handleUpdateActiveParams,
     compareScenarioIds, 
     isLoaded,
     needsKeyRestore,
@@ -83,6 +87,27 @@ export default function Home() {
   const [hoveredBtn, setHoveredBtn] = useState<string | null>(null);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState<boolean>(false);
   const [analysisRequest, setAnalysisRequest] = useState<AnalysisRequest | null>(null);
+
+  // 분석 요청을 만드는 곳은 여기 하나다. 「분석 시작」 버튼과 추천 전략 적용·되돌리기가
+  // 같은 요청을 만들어야 비교 시나리오가 어느 경로에서든 함께 따라간다.
+  const buildAnalysisRequest = useCallback((params: SimulationParams): AnalysisRequest => ({
+    params,
+    compareScenarios: scenarios
+      .filter((scenario) => compareScenarioIds.includes(scenario.id))
+      .map(({ id, name, data }) => ({ id, name, data })),
+  }), [scenarios, compareScenarioIds]);
+
+  // 추천 카드의 「이 전략 적용」과 그 되돌리기.
+  //
+  // 설정 갱신과 재분석 요청이 **같은 커밋에서 같은 params 참조**를 받는 것이 중요하다.
+  // 아래 analysisIsCurrent가 참조 비교라, 둘이 어긋나면 적용 직후 대시보드가 "다시 분석해
+  // 주세요"로 한 프레임 사라진다.
+  const appliedStrategy = useAppliedStrategy({
+    activeParams,
+    activeScenarioId,
+    onChangeParams: handleUpdateActiveParams,
+    onReanalyze: (params) => setAnalysisRequest(buildAnalysisRequest(params)),
+  });
 
   // Dynamically update document body preset attribute for dynamic styling/glows
   useEffect(() => {
@@ -756,6 +781,8 @@ export default function Home() {
     if (confirm('현재 시나리오의 입력사항이 기본값으로 초기화됩니다. 계속하시겠습니까?')) {
       handleUpdateActiveParams(initialParams);
       setAnalysisRequest(null);
+      // 초기화한 설정 위에 "추천 전략을 적용했다"는 배너가 남으면 안 된다.
+      appliedStrategy.forget();
     }
   };
 
@@ -957,12 +984,7 @@ export default function Home() {
                   params={activeParams}
                   onChangeParams={handleUpdateActiveParams}
                   onStartAnalysis={() => {
-                    setAnalysisRequest({
-                      params: activeParams,
-                      compareScenarios: scenarios
-                        .filter((scenario) => compareScenarioIds.includes(scenario.id))
-                        .map(({ id, name, data }) => ({ id, name, data })),
-                    });
+                    setAnalysisRequest(buildAnalysisRequest(activeParams));
                     if (isNarrowScreen) setIsSidebarOpen(false);
                   }}
                 />
@@ -1015,6 +1037,14 @@ export default function Home() {
                 </button>
               </div>
             )}
+            {/* 삼항 «밖»에 둔다. 설정이 바뀌어 결과가 stale이 되면 아래 대시보드가 통째로
+                사라지는데, 그때도 되돌리기 경로는 살아 있어야 한다. */}
+            {appliedStrategy.snapshot && (
+              <AppliedStrategyBanner
+                snapshot={appliedStrategy.snapshot}
+                onUndo={appliedStrategy.undo}
+              />
+            )}
             {analysisIsCurrent ? (
               <DashboardSection
                 params={analysis.effective.params}
@@ -1028,6 +1058,11 @@ export default function Home() {
                 sequenceRisk={analysis.sequenceRisk}
                 strategyOptimization={analysis.strategyOptimization}
                 strategyOptimizationStatus={analysis.strategyOptimizationStatus}
+                // 적용 대상은 센티널이 적용된 analysis.effective.params가 아니라 사용자가
+                // 입력한 activeParams다. 그 결정을 훅 한 곳에 두어 둘을 혼동할 여지를 없앤다.
+                onApplyStrategy={appliedStrategy.applyRecommendation}
+                canApplyStrategy={appliedStrategy.canApply}
+                appliedCandidateId={appliedStrategy.snapshot?.candidateId}
               />
             ) : (
               <GlassCard>

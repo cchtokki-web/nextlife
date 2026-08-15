@@ -237,6 +237,75 @@
 .strategyChanges dd b { color: var(--foreground-muted); }
 .strategyChanges dd strong { color: var(--foreground); }
 
+.strategyCardActions { display: grid; gap: 0.5rem; margin-top: 0.9rem; }
+.applyStrategyButton {
+  width: 100%;
+  padding: 0.55rem 0.75rem;
+  border: none;
+  border-radius: 12px;
+  background: var(--primary);
+  color: #fff;
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: opacity 0.2s ease;
+}
+.applyStrategyButton:hover:not(:disabled) { opacity: 0.9; }
+.applyStrategyButton:disabled {
+  background: color-mix(in srgb, var(--foreground-muted) 18%, transparent);
+  color: var(--foreground-muted);
+  cursor: default;
+}
+.applyStrategyNotice { font-size: 0.7rem; line-height: 1.45; color: var(--foreground-muted); }
+.applyStrategyConfirm { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 0.4rem; }
+.applyStrategyCancel {
+  padding: 0.55rem 0.75rem;
+  border: 1px solid var(--card-border);
+  border-radius: 12px;
+  background: transparent;
+  color: var(--foreground-muted);
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+/* 대시보드 «바깥»에 놓인다 — 설정이 바뀌면 결과가 stale이 되어 대시보드가 사라지는데,
+   그때도 되돌리기 경로는 살아 있어야 한다. */
+.appliedStrategyBanner {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  padding: 0.9rem 1.15rem;
+  border: 1px solid color-mix(in srgb, var(--primary) 35%, var(--card-border));
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--primary) 8%, var(--panel-bg));
+}
+.appliedStrategyTitle { font-size: 0.85rem; color: var(--foreground); }
+.appliedStrategyDetail { margin-top: 0.25rem; font-size: 0.74rem; line-height: 1.45; color: var(--foreground-muted); }
+.appliedStrategySkipped {
+  margin-top: 0.25rem;
+  font-size: 0.74rem;
+  line-height: 1.45;
+  color: var(--warning, #d97706);
+}
+.undoStrategyButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-shrink: 0;
+  padding: 0.5rem 0.85rem;
+  border: 1px solid var(--card-border);
+  border-radius: 12px;
+  background: var(--card-bg);
+  color: var(--foreground);
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.2s ease, color 0.2s ease;
+}
+.undoStrategyButton:hover { border-color: var(--primary); color: var(--primary); }
+
 .detailedAnalysis {
   border: 1px solid var(--panel-border);
   border-radius: 22px;

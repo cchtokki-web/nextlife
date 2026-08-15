@@ -33,6 +33,7 @@ import { SentinelApplication } from '../../../core/usecases/strategy/applyAiSent
 import { describeSentinelAxes } from './sentinelAxisLabels';
 import { LegacySimulationAdapter } from '../../../core/domain/input/LegacySimulationAdapter';
 import { LegacyEvaluationEngine } from '../../../core/evaluation/LegacyEvaluationEngine';
+import type { CandidateRecommendation } from '../../../core/recommendation/RecommendationEngine';
 import type { StrategyOptimizationResult } from '../../../core/strategy/StrategyOptimizer';
 import type { StrategyOptimizationStatus } from '../../hooks/useStrategyOptimization';
 import { StrategyRecommendationCards } from './recommendation/StrategyRecommendationCards';
@@ -58,6 +59,12 @@ interface DashboardSectionProps {
   strategyOptimization?: StrategyOptimizationResult;
   strategyOptimizationStatus?: StrategyOptimizationStatus;
   strategyOptimizationError?: string;
+  // 추천 카드의 적용 액션. 여기서는 그대로 통과시키기만 한다 — «무엇에» 적용할지는
+  // page.tsx가 정한다. 이 컴포넌트가 받는 params는 센티널이 적용된 표시용 값이고,
+  // 실제 적용 대상은 사용자가 입력한 activeParams라서 여기서 결정하면 안 된다.
+  onApplyStrategy?: (recommendation: CandidateRecommendation) => void;
+  canApplyStrategy?: (recommendation: CandidateRecommendation) => boolean;
+  appliedCandidateId?: string;
 }
 
 // 결과 화면 오케스트레이터.
@@ -84,6 +91,9 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
   strategyOptimization,
   strategyOptimizationStatus = 'idle',
   strategyOptimizationError,
+  onApplyStrategy,
+  canApplyStrategy,
+  appliedCandidateId,
 }) => {
   // 초기값이 빈 객체가 아닌 이유: 몬테카를로 상위 10% 선은 처음 화면에서 꺼 둔다
   // (DEFAULT_HIDDEN_PERCENTILE_KEYS 주석 참고 — 켜 두면 축이 그 선에 끌려가 주 곡선이 눌린다).
@@ -288,6 +298,9 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
           outcome={strategyOptimization?.outcome}
           params={params}
           formatValue={formatValue}
+          onApplyStrategy={onApplyStrategy}
+          canApplyStrategy={canApplyStrategy}
+          appliedCandidateId={appliedCandidateId}
         />
       </DashboardGroup>
 
