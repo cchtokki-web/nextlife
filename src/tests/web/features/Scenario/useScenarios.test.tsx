@@ -36,7 +36,7 @@ vi.mock('@/infrastructure/storage/localStore', async (importOriginal) => {
 import { useScenarios } from '@/web/features/Scenario/useScenarios';
 import { initialParams } from '@/infrastructure/storage/localStore';
 import { isEncryptedPayload } from '@/core/utils/crypto';
-import { activeScenarioKeyName } from '@/infrastructure/storage/storageKeys';
+import { activeScenarioKeyName, LOCAL_ANALYZED_AT_KEY } from '@/infrastructure/storage/storageKeys';
 
 const USER_ID = 'user-1';
 const KEY_NAME = `nextlife_e2ee_key_${USER_ID}`;
@@ -70,10 +70,27 @@ const scenarioPostCalls = () =>
 // "저장이 나가지 않아야 한다"는 단언이 후자까지 세면 데이터와 무관한 요청에 걸려 넘어진다.
 const isScenarioPut = ([url, init]: FetchCall) =>
   String(url).startsWith('/api/scenarios') && init?.method === 'PUT';
-const activeScenarioPuts = () =>
+const selectionPutBodies = () =>
   fetchCalls()
     .filter(([url]) => url === '/api/user/active-scenario')
-    .map(([, init]) => JSON.parse(String(init?.body)).scenarioId as string);
+    .map(([, init]) => JSON.parse(String(init?.body)) as {
+      scenarioId?: string;
+      compareScenarioIds?: string[];
+    });
+const activeScenarioPuts = () =>
+  selectionPutBodies()
+    .filter((body) => body.scenarioId !== undefined)
+    .map((body) => body.scenarioId as string);
+const comparePuts = () =>
+  selectionPutBodies()
+    .filter((body) => body.compareScenarioIds !== undefined)
+    .map((body) => body.compareScenarioIds as string[]);
+/** 분석 표시만 바꾸는 PUT. 시나리오 데이터 저장과 구분해야 한다. */
+const analyzedPuts = () =>
+  fetchCalls()
+    .filter(([url, init]) => String(url).startsWith('/api/scenarios/') && init?.method === 'PUT')
+    .map(([url, init]) => [String(url), JSON.parse(String(init?.body)) as { analyzed?: boolean }] as const)
+    .filter(([, body]) => body.analyzed !== undefined);
 
 let consoleError: ReturnType<typeof vi.spyOn>;
 let consoleWarn: ReturnType<typeof vi.spyOn>;
@@ -699,6 +716,217 @@ describe('useScenarios — 로그인 사용자의 자동저장', () => {
     const body = JSON.parse((init as RequestInit).body as string);
     expect(body.data).toEqual(encrypted);
   }, 10000);
+});
+
+// 분석 결과는 저장하지 않는다. 저장하는 것은 "이 시나리오에서 분석을 돌렸다"는 사실뿐이고,
+// 화면이 저장된 params로 같은 계산을 다시 돌려 세운다. 이 표시가 남지 않으면 사용자는 다시
+// 로그인할 때마다 「분석 시작」을 다시 눌러야 한다.
+describe('useScenarios — 분석 표시', () => {
+  // 이미 암호화된 상태로 시작한다. 평문으로 두면 로드 직후의 재암호화 PUT이 섞여
+  // "분석 표시만으로는 데이터가 다시 나가지 않는다"를 검증할 수 없다.
+  const twoScenarios = [
+    { id: 's1', name: '기본', isDefault: true, data: encrypted, analyzedAt: null },
+    { id: 's2', name: '분석함', isDefault: false, data: encrypted, analyzedAt: '2026-08-01T00:00:00.000Z' },
+  ];
+
+  async function loadedHook(routes: Record<string, unknown> = {}) {
+    signedIn();
+    localStorage.setItem(KEY_NAME, 'KEY123');
+    encryptData.mockResolvedValue(encrypted);
+    decryptData.mockResolvedValue(initialParams);
+    vi.stubGlobal('fetch', mockFetch({
+      '/api/scenarios': { data: twoScenarios, lastActiveScenarioId: 's1', e2eeEnabled: true },
+      ...routes,
+    }));
+    const hook = renderHook(() => useScenarios());
+    await waitFor(() => expect(hook.result.current.isLoaded).toBe(true));
+    return hook;
+  }
+
+  test('서버가 알려 준 분석 시각을 시나리오에 싣는다', async () => {
+    const { result } = await loadedHook();
+
+    expect(result.current.scenarios[0].analyzedAt).toBeNull();
+    expect(result.current.scenarios[1].analyzedAt).toBe('2026-08-01T00:00:00.000Z');
+  });
+
+  // 이 필드를 모르는 응답(롤아웃 중의 구버전 서버, 캐시된 응답)이 와도 undefined가 상태로
+  // 흘러들면 안 된다 — 화면이 undefined를 "분석함"으로도 "안 함"으로도 읽을 수 있다.
+  test('응답에 분석 시각이 없으면 null로 정규화한다', async () => {
+    const { result } = await loadedHook({
+      '/api/scenarios': {
+        data: [{ id: 's1', name: '기본', isDefault: true, data: encrypted }],
+        lastActiveScenarioId: 's1',
+        e2eeEnabled: true,
+      },
+    });
+
+    expect(result.current.scenarios[0].analyzedAt).toBeNull();
+  });
+
+  test('분석했다고 표시하면 화면과 서버 양쪽에 남는다', async () => {
+    const { result } = await loadedHook();
+
+    act(() => result.current.setScenarioAnalyzed('s1', true));
+
+    expect(result.current.scenarios[0].analyzedAt).not.toBeNull();
+    await waitFor(() => expect(analyzedPuts()).toEqual([['/api/scenarios/s1', { analyzed: true }]]));
+  });
+
+  test('표시를 지우면 화면과 서버 양쪽에서 사라진다', async () => {
+    const { result } = await loadedHook();
+
+    act(() => result.current.setScenarioAnalyzed('s2', false));
+
+    expect(result.current.scenarios[1].analyzedAt).toBeNull();
+    await waitFor(() => expect(analyzedPuts()).toEqual([['/api/scenarios/s2', { analyzed: false }]]));
+  });
+
+  // 화면의 대시보드가 살아 있으려면 activeParams의 «참조»가 그대로여야 한다(page.tsx의
+  // analysisIsCurrent가 참조 비교다). 분석 표시를 세우면서 data까지 새 객체로 만들면,
+  // 「분석 시작」을 누른 바로 그 순간 결과가 stale로 판정되어 대시보드가 사라진다.
+  test('분석 표시는 params 참조를 바꾸지 않는다', async () => {
+    const { result } = await loadedHook();
+    const before = result.current.activeParams;
+
+    act(() => result.current.setScenarioAnalyzed('s1', true));
+
+    expect(result.current.activeParams).toBe(before);
+  });
+
+  // 데이터가 바뀐 것이 아니므로 자동저장이 따라 나가면 안 된다. 나가면 편집하지 않은 시나리오가
+  // 매 분석마다 서버에 다시 쓰인다.
+  test('분석 표시만으로 시나리오 데이터를 다시 저장하지 않는다', async () => {
+    const { result } = await loadedHook();
+
+    act(() => result.current.setScenarioAnalyzed('s1', true));
+
+    await new Promise((r) => setTimeout(r, 2000));
+    const dataPuts = fetchCalls().filter(
+      (call) => isScenarioPut(call) && JSON.parse(String(call[1]?.body)).data !== undefined
+    );
+    expect(dataPuts).toHaveLength(0);
+  }, 10000);
+
+  // 비로그인 세션에는 서버에 대응하는 행이 없다. 그래도 새로고침 한 번에 결과 화면이
+  // 사라지면 안 되므로 브라우저 저장소가 그 자리를 대신한다.
+  test('비로그인 세션은 분석 표시를 브라우저에 남기고 다시 읽는다', async () => {
+    signedOut();
+    const first = renderHook(() => useScenarios());
+    await waitFor(() => expect(first.result.current.isLoaded).toBe(true));
+
+    act(() => first.result.current.setScenarioAnalyzed('local-default', true));
+    expect(localStorage.getItem(LOCAL_ANALYZED_AT_KEY)).not.toBeNull();
+    first.unmount();
+
+    const second = renderHook(() => useScenarios());
+    await waitFor(() => expect(second.result.current.isLoaded).toBe(true));
+    expect(second.result.current.scenarios[0].analyzedAt).not.toBeNull();
+  });
+
+  test('비로그인 세션에서 표시를 지우면 브라우저 저장소에서도 지운다', async () => {
+    signedOut();
+    localStorage.setItem(LOCAL_ANALYZED_AT_KEY, '2026-08-01T00:00:00.000Z');
+    const { result } = renderHook(() => useScenarios());
+    await waitFor(() => expect(result.current.isLoaded).toBe(true));
+    expect(result.current.scenarios[0].analyzedAt).toBe('2026-08-01T00:00:00.000Z');
+
+    act(() => result.current.setScenarioAnalyzed('local-default', false));
+
+    expect(localStorage.getItem(LOCAL_ANALYZED_AT_KEY)).toBeNull();
+    expect(result.current.scenarios[0].analyzedAt).toBeNull();
+  });
+});
+
+// 비교 대상은 결과 화면을 바꾸는 사용자 결정이다. 마지막 선택과 같은 이유로 계정에 붙인다.
+describe('useScenarios — 비교 시나리오', () => {
+  const threeScenarios = [
+    { id: 's1', name: '기본', isDefault: true, data: initialParams, analyzedAt: null },
+    { id: 's2', name: 'b', isDefault: false, data: initialParams, analyzedAt: null },
+    { id: 's3', name: 'c', isDefault: false, data: initialParams, analyzedAt: null },
+  ];
+
+  async function loadedHook(response: Record<string, unknown>) {
+    signedIn();
+    localStorage.setItem(KEY_NAME, 'KEY123');
+    decryptData.mockResolvedValue(initialParams);
+    encryptData.mockResolvedValue(encrypted);
+    vi.stubGlobal('fetch', mockFetch({ '/api/scenarios': response }));
+    const hook = renderHook(() => useScenarios());
+    await waitFor(() => expect(hook.result.current.isLoaded).toBe(true));
+    return hook;
+  }
+
+  test('계정에 기록된 비교 목록을 순서 그대로 복원한다', async () => {
+    const { result } = await loadedHook({
+      data: threeScenarios,
+      lastActiveScenarioId: 's1',
+      compareScenarioIds: ['s3', 's2'],
+    });
+
+    expect(result.current.compareScenarioIds).toEqual(['s3', 's2']);
+    // 이미 서버 값과 같으므로 다시 올리지 않는다.
+    expect(comparePuts()).toEqual([]);
+  });
+
+  // 다른 기기에서 지운 시나리오가 목록에 남아 있을 수 있다. 그대로 두면 비교 계산이 존재하지
+  // 않는 시나리오를 찾아 조용히 건너뛴다.
+  test('사라진 시나리오 id는 걸러 내고 정정된 목록을 올린다', async () => {
+    const { result } = await loadedHook({
+      data: threeScenarios,
+      lastActiveScenarioId: 's1',
+      compareScenarioIds: ['s2', 'deleted'],
+    });
+
+    expect(result.current.compareScenarioIds).toEqual(['s2']);
+    await waitFor(() => expect(comparePuts()).toEqual([['s2']]));
+  });
+
+  test('비교 대상을 켜고 끄면 계정에 기록한다', async () => {
+    const { result } = await loadedHook({ data: threeScenarios, lastActiveScenarioId: 's1' });
+
+    act(() => result.current.toggleCompareScenario('s2'));
+    expect(result.current.compareScenarioIds).toEqual(['s2']);
+    await waitFor(() => expect(comparePuts()).toEqual([['s2']]));
+
+    act(() => result.current.toggleCompareScenario('s2'));
+    expect(result.current.compareScenarioIds).toEqual([]);
+    await waitFor(() => expect(comparePuts()).toEqual([['s2'], []]));
+  });
+
+  // 한도에 걸린 토글은 아무것도 바꾸지 않았으므로 서버로도 나가면 안 된다.
+  test('한도를 넘는 토글은 계정에 기록하지 않는다', async () => {
+    const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {});
+    const { result } = await loadedHook({
+      data: [
+        ...threeScenarios,
+        { id: 's4', name: 'd', isDefault: false, data: initialParams, analyzedAt: null },
+        { id: 's5', name: 'e', isDefault: false, data: initialParams, analyzedAt: null },
+      ],
+      lastActiveScenarioId: 's1',
+      compareScenarioIds: ['s2', 's3', 's4'],
+    });
+
+    act(() => result.current.toggleCompareScenario('s5'));
+
+    expect(result.current.compareScenarioIds).toEqual(['s2', 's3', 's4']);
+    expect(alertSpy).toHaveBeenCalled();
+    expect(comparePuts()).toEqual([]);
+    alertSpy.mockRestore();
+  });
+
+  // 서버가 DELETE에서 함께 정리하지만, 그 요청이 실패해도 화면은 즉시 정상이어야 한다.
+  test('비교 중인 시나리오를 지우면 목록에서 빠진다', async () => {
+    const { result } = await loadedHook({
+      data: threeScenarios,
+      lastActiveScenarioId: 's1',
+      compareScenarioIds: ['s2', 's3'],
+    });
+
+    await act(async () => { await result.current.handleDeleteScenario('s2'); });
+
+    expect(result.current.compareScenarioIds).toEqual(['s3']);
+  });
 });
 
 // isLoaded/loadError는 상태가 아니라 "이번에 불러올 대상(loadRequestKey)"과 "어디까지

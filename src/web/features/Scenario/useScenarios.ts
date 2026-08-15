@@ -4,9 +4,10 @@ import { SimulationParams, ScenarioModel } from '../../../core/entities/types';
 import type { EncryptedData } from '../../../core/utils/crypto';
 import { useIsHydrated } from '../../hooks/useBrowserEnvironment';
 import { loadParams, saveParams, initialParams } from '../../../infrastructure/storage/localStore';
-import { activeScenarioKeyName, e2eeKeyName, e2eeBackedUpKeyName } from '../../../infrastructure/storage/storageKeys';
+import { activeScenarioKeyName, e2eeKeyName, e2eeBackedUpKeyName, LOCAL_ANALYZED_AT_KEY } from '../../../infrastructure/storage/storageKeys';
 import { encryptData, decryptData, isEncryptedPayload, generateBackupKey } from '../../../core/utils/crypto';
 import { MAX_SCENARIO_COUNT } from '../../../core/utils/scenarioLimits';
+import { MAX_COMPARE_SCENARIO_COUNT } from '../../../core/utils/compareScenarios';
 import { migrateRetirementGoals } from '../../../core/usecases/goals/retirementGoalAdapter';
 
 // GET /api/scenarios 응답. data의 각 항목은 평문(SimulationParams)일 수도, E2EE로 암호화된
@@ -18,6 +19,8 @@ interface ScenarioListResponse {
   e2eeEnabled?: boolean;
   // 이 계정이 마지막으로 선택한 시나리오. 계정에 붙어 있으므로 다른 기기에서 로그인해도 온다.
   lastActiveScenarioId?: string | null;
+  // 이 계정이 함께 비교하던 시나리오들. 같은 이유로 계정에 붙어 있다.
+  compareScenarioIds?: string[];
 }
 
 class ScenarioRequestError extends Error {
@@ -199,6 +202,36 @@ const persistActiveScenarioId = (scenarioId: string): void => {
     .catch(err => console.error('Failed to persist active scenario:', err));
 };
 
+// 함께 비교 중인 시나리오 목록을 계정에 기록한다. 위와 같은 이유로 결과를 기다리지 않는다.
+const persistCompareScenarioIds = (compareScenarioIds: string[]): void => {
+  fetch('/api/user/active-scenario', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ compareScenarioIds }),
+  })
+    .then(res => {
+      if (!res.ok) console.error('Failed to persist compare scenarios: HTTP', res.status);
+    })
+    .catch(err => console.error('Failed to persist compare scenarios:', err));
+};
+
+// 「분석 시작」을 눌렀다는 사실을 서버에 기록한다.
+//
+// 시나리오 데이터는 보내지 않는다 — 이 요청은 analyzedAt만 건드리므로 E2EE 경로와 무관하고,
+// 키가 없는 세션에서도 안전하다(자동저장이 키 없이는 아무것도 보내지 않는 것과 대조된다).
+const persistScenarioAnalyzed = (scenarioId: string, analyzed: boolean): void => {
+  fetch(`/api/scenarios/${scenarioId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ analyzed }),
+  })
+    // 조용히 계속 실패하면 증상은 "다시 로그인하면 결과 화면이 비어 있다"뿐이다.
+    .then(res => {
+      if (!res.ok) console.error('Failed to persist analyzed mark: HTTP', res.status);
+    })
+    .catch(err => console.error('Failed to persist analyzed mark:', err));
+};
+
 // 발급된 보안키를 로그인 계정의 이메일로 보낸다.
 //
 // 훅 본문이 아니라 모듈 스코프에 두는 이유: 이 함수를 부르는 로딩 이펙트가 반환 객체보다
@@ -360,6 +393,25 @@ export function useScenarios() {
     }
   }, []);
 
+  // 계정에 기록된 비교 목록을 복원한다.
+  //
+  // 목록에 없는 id는 걸러 낸다 — 다른 기기에서 지운 시나리오가 남아 있으면 비교 계산이
+  // 존재하지 않는 시나리오를 찾아 조용히 건너뛴다. 걸러 낸 결과가 서버 값과 다르면 지금
+  // 정정해 올려, 다음 로그인에서 같은 정리를 반복하지 않는다.
+  const restoreCompareScenarioIds = useCallback((
+    list: Array<{ id: string }>,
+    serverIds: string[] | undefined,
+  ) => {
+    if (!serverIds || serverIds.length === 0) return;
+    const restored = serverIds
+      .filter(id => list.some(scenario => scenario.id === id))
+      .slice(0, MAX_COMPARE_SCENARIO_COUNT);
+    setCompareScenarioIds(restored);
+    if (restored.length !== serverIds.length) {
+      persistCompareScenarioIds(restored);
+    }
+  }, []);
+
   // E2EE 키를 localStorage에서 읽어 온다.
   //
   // 이펙트가 아니라 세션이 바뀐 순간 렌더 중에 조정한다. 이펙트로 하면 키가 없는 상태로 한 번
@@ -442,7 +494,7 @@ export function useScenarios() {
           lastSavedParamsRef.current[newScenario.id] = JSON.stringify(decryptedData);
           setScenarios(prev => {
             const filtered = prev.filter(s => s.id !== newScenario.id && !(isDefault && s.isDefault));
-            return [...filtered, { ...newScenario, data: decryptedData }];
+            return [...filtered, { ...newScenario, data: decryptedData, analyzedAt: newScenario.analyzedAt ?? null }];
           });
           setActiveScenarioId(newScenario.id);
         }
@@ -459,6 +511,9 @@ export function useScenarios() {
         name,
         isDefault,
         data,
+        // 새로 만든 시나리오는 아직 분석한 적이 없다. 복제본도 마찬가지다 — 설정이 같아도
+        // 「분석 시작」은 사용자가 그 시나리오에서 직접 누른 적이 있어야 한다.
+        analyzedAt: null,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
@@ -516,6 +571,9 @@ export function useScenarios() {
       name: '기본 시나리오',
       isDefault: true,
       data: migrated,
+      // 로그인 계정의 Scenario.analyzedAt에 해당한다. 이게 없으면 비로그인 사용자는
+      // 새로고침 한 번에 결과 화면을 잃는다.
+      analyzedAt: localStorage.getItem(LOCAL_ANALYZED_AT_KEY),
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     }]);
@@ -569,7 +627,7 @@ export function useScenarios() {
       };
 
       fetchWithRetry('/api/scenarios')
-        .then(({ data, e2eeEnabled, lastActiveScenarioId }) => {
+        .then(({ data, e2eeEnabled, lastActiveScenarioId, compareScenarioIds: serverCompareIds }) => {
           if (!userId) {
             setLoadedRequestKey(loadRequestKey);
             return;
@@ -595,9 +653,15 @@ export function useScenarios() {
               // 자리표시자로 덮어 복구를 요구한다 — 평문으로 남아 있던 행도 마찬가지다.
               setScenarios(list.map(s => {
                 lastSavedParamsRef.current[s.id] = JSON.stringify(initialParams);
-                return { ...s, name: s.isDefault ? '기본 시나리오' : s.name, data: initialParams };
+                return {
+                  ...s,
+                  name: s.isDefault ? '기본 시나리오' : s.name,
+                  data: initialParams,
+                  analyzedAt: s.analyzedAt ?? null,
+                };
               }));
               restoreActiveScenarioId(list, userId, lastActiveScenarioId);
+              restoreCompareScenarioIds(list, serverCompareIds);
               setNeedsKeyRestore(true);
               // 잠겼다는데 대조할 암호문이 없으면 handleRestoreKey는 맞는 키도 받아들일 수 없다.
               // 그 상태를 모달에 알려 초기화 버튼을 처음부터 열어 준다 — 그렇지 않으면 사용자는
@@ -676,7 +740,7 @@ export function useScenarios() {
                 try {
                   const decryptedData = await decryptData<SimulationParams>(s.data, activeKey, userId);
                   const migrated = convertToRepresentativeAssets(migrateParams(decryptedData, etfTickers));
-                  decryptedList.push({ ...s, name: displayName, data: migrated });
+                  decryptedList.push({ ...s, name: displayName, data: migrated, analyzedAt: s.analyzedAt ?? null });
                   lastSavedParamsRef.current[s.id] = JSON.stringify(migrated);
                 } catch (err) {
                   console.error('Decryption failed for scenario', s.id, err);
@@ -685,7 +749,7 @@ export function useScenarios() {
                   if (!corruptedScenarioIdsRef.current.has(s.id)) {
                     hasDecryptionFailure = true;
                   }
-                  decryptedList.push({ ...s, name: displayName, data: initialParams });
+                  decryptedList.push({ ...s, name: displayName, data: initialParams, analyzedAt: s.analyzedAt ?? null });
                   lastSavedParamsRef.current[s.id] = JSON.stringify(initialParams);
                 }
               } else {
@@ -696,7 +760,7 @@ export function useScenarios() {
                 // 좁혀 주지 못하므로 이 지점에서만 명시한다.
                 const plainData = s.data as SimulationParams;
                 const migrated = convertToRepresentativeAssets(migrateParams(plainData, etfTickers));
-                decryptedList.push({ ...s, name: displayName, data: migrated });
+                decryptedList.push({ ...s, name: displayName, data: migrated, analyzedAt: s.analyzedAt ?? null });
                 lastSavedParamsRef.current[s.id] = JSON.stringify(migrated);
                 plaintextIds.push(s.id);
               }
@@ -705,6 +769,7 @@ export function useScenarios() {
             setNeedsKeyRestore(hasDecryptionFailure);
 
             restoreActiveScenarioId(decryptedList, userId, lastActiveScenarioId);
+            restoreCompareScenarioIds(decryptedList, serverCompareIds);
             setLoadedRequestKey(loadRequestKey);
 
             // 평문 행을 지금 암호화해 되돌린다. 다음 편집을 기다리면 그 사이에 다른 브라우저가
@@ -936,19 +1001,47 @@ export function useScenarios() {
     }
   };
 
+  // 다음 값을 «업데이터 밖에서» 계산한다. 예전에는 setState 업데이터 안에서 계산하며 한도
+  // 초과 시 alert까지 띄웠는데, 업데이터는 StrictMode에서 두 번 불리므로 경고가 두 번 뜬다.
+  // 이제는 서버 기록까지 따라붙어 요청도 두 번 나갈 자리다.
   const toggleCompareScenario = (id: string) => {
-    setCompareScenarioIds(prev => {
-      if (prev.includes(id)) {
-        return prev.filter(compId => compId !== id);
-      } else {
-        if (prev.length >= 3) {
-          alert('비교 시나리오는 최대 3개까지만 추가할 수 있습니다.');
-          return prev;
-        }
-        return [...prev, id];
+    let next: string[];
+    if (compareScenarioIds.includes(id)) {
+      next = compareScenarioIds.filter(compId => compId !== id);
+    } else {
+      if (compareScenarioIds.length >= MAX_COMPARE_SCENARIO_COUNT) {
+        alert(`비교 시나리오는 최대 ${MAX_COMPARE_SCENARIO_COUNT}개까지만 추가할 수 있습니다.`);
+        return;
       }
-    });
+      next = [...compareScenarioIds, id];
+    }
+    setCompareScenarioIds(next);
+    // 비교 대상은 결과 화면을 바꾸는 결정이므로 다음 로그인까지 남아야 한다.
+    if (status === 'authenticated') persistCompareScenarioIds(next);
   };
+
+  /**
+   * 이 시나리오에서 「분석 시작」을 눌렀다(또는 그 사실을 지운다)고 기록한다.
+   *
+   * 분석 «결과»는 저장하지 않는다. 저장하는 것은 사실 하나뿐이고, 다음 접속에서 화면이
+   * 저장된 params로 같은 계산을 다시 돌려 결과를 세운다(Scenario.analyzedAt 주석 참조).
+   *
+   * data 참조는 절대 건드리지 않는다. 화면의 대시보드는 activeParams의 참조 비교로 결과가
+   * 최신인지 판정하므로(page.tsx의 analysisIsCurrent), 여기서 새 params 객체를 만들면
+   * 「분석 시작」을 누른 바로 그 순간 결과가 stale로 판정되어 대시보드가 사라진다.
+   */
+  const setScenarioAnalyzed = useCallback((id: string, analyzed: boolean) => {
+    const analyzedAt = analyzed ? new Date().toISOString() : null;
+    setScenarios(prev => prev.map(s => (s.id === id ? { ...s, analyzedAt } : s)));
+
+    if (id.startsWith('local-')) {
+      // 비로그인 세션에는 서버에 대응하는 행이 없다. 브라우저 저장소가 그 자리를 대신한다.
+      if (analyzedAt) localStorage.setItem(LOCAL_ANALYZED_AT_KEY, analyzedAt);
+      else localStorage.removeItem(LOCAL_ANALYZED_AT_KEY);
+      return;
+    }
+    if (status === 'authenticated') persistScenarioAnalyzed(id, analyzed);
+  }, [status]);
 
   const handleUpdateScenarioData = useCallback(async (id: string, newData: SimulationParams) => {
     setScenarios(prev => prev.map(s => {
@@ -998,6 +1091,7 @@ export function useScenarios() {
     setActiveScenarioId,
     compareScenarioIds,
     toggleCompareScenario,
+    setScenarioAnalyzed,
     activeParams,
     handleUpdateActiveParams,
     handleUpdateScenarioData,

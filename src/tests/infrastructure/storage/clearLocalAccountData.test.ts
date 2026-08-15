@@ -8,6 +8,7 @@ import {
   e2eeKeyName,
   e2eeBackedUpKeyName,
   activeScenarioKeyName,
+  LOCAL_ANALYZED_AT_KEY,
 } from '@/infrastructure/storage/storageKeys';
 import { loadParams, saveParams, initialParams } from '@/infrastructure/storage/localStore';
 
@@ -82,6 +83,16 @@ describe('clearLocalAccountData', () => {
     clearLocalAccountData(USER);
 
     expect(localStorage.getItem(SIMPLE_SIMULATOR_INPUT_KEY)).toBeNull();
+  });
+
+  // 입력값만 지우고 이 표시를 남기면, 탈퇴 후 비로그인 상태로 돌아온 브라우저가 기본값 위에
+  // "분석했던 계획"을 복원한 것처럼 보인다.
+  test('비로그인 세션의 분석 표시도 지운다', () => {
+    localStorage.setItem(LOCAL_ANALYZED_AT_KEY, '2026-08-01T00:00:00.000Z');
+
+    clearLocalAccountData(USER);
+
+    expect(localStorage.getItem(LOCAL_ANALYZED_AT_KEY)).toBeNull();
   });
 
   // 나머지 키가 전부 localStorage라 가장 빠뜨리기 쉬운 항목이다.

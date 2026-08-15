@@ -6,6 +6,7 @@ import { markE2eeEnabled } from '@/infrastructure/db/e2ee';
 import { isEncryptedPayload } from '@/core/utils/crypto';
 import { isDevMode } from '@/core/utils/isDevMode';
 import { MAX_SCENARIO_COUNT } from '@/core/utils/scenarioLimits';
+import { parseCompareScenarioIds } from '@/core/utils/compareScenarios';
 
 export async function GET(_req: Request) {
   try {
@@ -77,6 +78,9 @@ export async function GET(_req: Request) {
       name: s.name,
       isDefault: s.isDefault,
       data: JSON.parse(s.data),
+      // 결과 화면을 다시 세울지 판단하는 값. 결과 자체는 오지 않는다 — 클라이언트가 위 data로
+      // 같은 계산을 다시 돌린다(Scenario.analyzedAt의 스키마 주석 참조).
+      analyzedAt: s.analyzedAt,
       createdAt: s.createdAt,
       updatedAt: s.updatedAt,
     }));
@@ -89,11 +93,17 @@ export async function GET(_req: Request) {
     }
     const e2eeEnabled = Boolean(user.e2eeEnabledAt) || hasCiphertext;
 
-    // 마지막 선택을 목록과 같은 응답으로 돌려준다. 별도 요청으로 나누면 목록이 먼저 도착하는
-    // 순간 첫 시나리오가 한 번 선택되어 화면이 깜빡이고, 그 사이의 자동저장이 엉뚱한 시나리오로
-    // 나갈 수 있다. 둘은 항상 같이 도착해야 한다.
+    // 마지막 선택과 비교 목록을 목록과 같은 응답으로 돌려준다. 별도 요청으로 나누면 목록이 먼저
+    // 도착하는 순간 첫 시나리오가 한 번 선택되어 화면이 깜빡이고, 그 사이의 자동저장이 엉뚱한
+    // 시나리오로 나갈 수 있다. 셋은 항상 같이 도착해야 한다 — 비교 목록이 한 커밋 늦게 오면
+    // 그 사이에 복원된 분석이 비교 카드 없이 계산되어, 사용자는 비교 대상을 다시 골라야 한다.
     return NextResponse.json(
-      { data: formattedScenarios, e2eeEnabled, lastActiveScenarioId: user.lastActiveScenarioId ?? null },
+      {
+        data: formattedScenarios,
+        e2eeEnabled,
+        lastActiveScenarioId: user.lastActiveScenarioId ?? null,
+        compareScenarioIds: parseCompareScenarioIds(user.compareScenarioIds),
+      },
       { status: 200 }
     );
   } catch (error) {

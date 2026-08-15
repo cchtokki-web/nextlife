@@ -140,9 +140,10 @@ export const authOptions: NextAuthOptions = {
                 securityKeyResetPending: false,
                 simulationData: null,
                 e2eeEnabledAt: null,
-                // 위 deleteMany가 시나리오를 전부 지웠다. 함께 비우지 않으면 마지막 선택이
-                // 존재하지 않는 시나리오를 가리킨 채 남는다.
+                // 위 deleteMany가 시나리오를 전부 지웠다. 함께 비우지 않으면 마지막 선택과
+                // 비교 목록이 존재하지 않는 시나리오를 가리킨 채 남는다.
                 lastActiveScenarioId: null,
+                compareScenarioIds: null,
               },
             }),
             prisma.verificationToken.deleteMany({ where: { identifier: email } }),

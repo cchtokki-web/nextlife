@@ -48,8 +48,24 @@ function put(data: unknown) {
   );
 }
 
-function stubUser(e2eeEnabledAt: Date | null, lastActiveScenarioId: string | null = null) {
-  mockedUserFindUnique.mockResolvedValue({ id: USER_ID, e2eeEnabledAt, lastActiveScenarioId } as never);
+function stubUser(
+  e2eeEnabledAt: Date | null,
+  lastActiveScenarioId: string | null = null,
+  compareScenarioIds: string | null = null,
+) {
+  mockedUserFindUnique.mockResolvedValue(
+    { id: USER_ID, e2eeEnabledAt, lastActiveScenarioId, compareScenarioIds } as never
+  );
+}
+
+function putBody(body: unknown) {
+  return PUT(
+    new Request(`http://localhost/api/scenarios/${SCENARIO_ID}`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
+    { params: Promise.resolve({ id: SCENARIO_ID }) }
+  );
 }
 
 function del(id: string) {
@@ -148,6 +164,71 @@ describe('PUT /api/scenarios/[id] — E2EE 잠금 플래그', () => {
   });
 });
 
+// 결과 화면을 복원하는 유일한 근거다. 이 표시가 저장되지 않으면 사용자는 다시 로그인할 때마다
+// 「분석 시작」을 다시 눌러야 한다 — 설정은 남아 있는데 계획만 사라진 것처럼 보인다.
+describe('PUT /api/scenarios/[id] — 분석 표시', () => {
+  test('analyzed: true면 분석 시각을 기록한다', async () => {
+    stubUser(null);
+
+    const res = await putBody({ analyzed: true });
+
+    expect(res.status).toBe(200);
+    expect(mockedScenarioUpdate).toHaveBeenCalledWith({
+      where: { id: SCENARIO_ID },
+      data: { analyzedAt: expect.any(Date) },
+    });
+  });
+
+  test('analyzed: false면 분석 시각을 지운다', async () => {
+    stubUser(null);
+
+    const res = await putBody({ analyzed: false });
+
+    expect(res.status).toBe(200);
+    expect(mockedScenarioUpdate).toHaveBeenCalledWith({
+      where: { id: SCENARIO_ID },
+      data: { analyzedAt: null },
+    });
+  });
+
+  // 데이터를 건드리지 않는 요청이므로 잠금 판정에 관여하지 않는다. 여기서 막히면 잠긴 계정
+  // (=정상적으로 E2EE를 쓰는 모든 계정)에서 분석 표시가 영영 저장되지 않는다.
+  test('잠긴 계정에서도 분석 표시만 바꾸는 요청은 통과한다', async () => {
+    stubUser(new Date('2026-01-01'));
+
+    const res = await putBody({ analyzed: true });
+
+    expect(res.status).toBe(200);
+    expect(mockedUpdateMany).not.toHaveBeenCalled();
+  });
+
+  // 데이터 저장과 분석 표시가 한 요청에 섞여 오면 둘 다 반영해야 한다.
+  test('데이터와 함께 오면 둘 다 반영한다', async () => {
+    stubUser(null);
+
+    const res = await putBody({ data: encrypted, analyzed: true });
+
+    expect(res.status).toBe(200);
+    expect(mockedScenarioUpdate).toHaveBeenCalledWith({
+      where: { id: SCENARIO_ID },
+      data: { data: JSON.stringify(encrypted), analyzedAt: expect.any(Date) },
+    });
+  });
+
+  test('남의 시나리오에는 분석 표시를 쓸 수 없다', async () => {
+    stubUser(null);
+    vi.mocked(prisma.scenario.findUnique).mockResolvedValue({
+      id: SCENARIO_ID, userId: 'someone-else', name: 'x', isDefault: false,
+      data: '{}', createdAt: new Date(0), updatedAt: new Date(0),
+    } as never);
+
+    const res = await putBody({ analyzed: true });
+
+    expect(res.status).toBe(404);
+    expect(mockedScenarioUpdate).not.toHaveBeenCalled();
+  });
+});
+
 // 마지막 선택은 다음 로그인에서 그대로 열린다. 지운 시나리오를 계속 가리키게 두면 클라이언트가
 // 매번 첫 시나리오로 되돌려야 하고, 그 정정 요청이 실패하면 어긋난 채로 남는다.
 describe('DELETE /api/scenarios/[id] — 마지막 선택 정리', () => {
@@ -170,6 +251,43 @@ describe('DELETE /api/scenarios/[id] — 마지막 선택 정리', () => {
 
     expect(res.status).toBe(200);
     expect(vi.mocked(prisma.user.update)).not.toHaveBeenCalled();
+  });
+
+  // 비교 목록도 다음 로그인에서 그대로 복원된다. 지운 id가 남아 있으면 클라이언트가 매번
+  // 걸러 내야 하고, 그 정정이 올라가지 못하면 계정에는 없는 시나리오가 계속 남는다.
+  test('지운 시나리오를 비교 목록에서도 빼낸다', async () => {
+    stubUser(null, 's9', JSON.stringify(['s0', SCENARIO_ID, 's2']));
+
+    const res = await del(SCENARIO_ID);
+
+    expect(res.status).toBe(200);
+    expect(vi.mocked(prisma.user.update)).toHaveBeenCalledWith({
+      where: { id: USER_ID },
+      data: { compareScenarioIds: JSON.stringify(['s0', 's2']) },
+    });
+  });
+
+  test('비교 목록에 없으면 건드리지 않는다', async () => {
+    stubUser(null, 's9', JSON.stringify(['s0', 's2']));
+
+    const res = await del(SCENARIO_ID);
+
+    expect(res.status).toBe(200);
+    expect(vi.mocked(prisma.user.update)).not.toHaveBeenCalled();
+  });
+
+  // 마지막 선택과 비교 목록을 각각 update하면 두 번째가 실패했을 때 절반만 정리된 상태가 남는다.
+  test('마지막 선택과 비교 목록을 한 번에 정리한다', async () => {
+    stubUser(null, SCENARIO_ID, JSON.stringify([SCENARIO_ID]));
+
+    const res = await del(SCENARIO_ID);
+
+    expect(res.status).toBe(200);
+    expect(vi.mocked(prisma.user.update)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(prisma.user.update)).toHaveBeenCalledWith({
+      where: { id: USER_ID },
+      data: { lastActiveScenarioId: null, compareScenarioIds: null },
+    });
   });
 
   test('기본 시나리오는 지울 수 없고 마지막 선택도 그대로다', async () => {
