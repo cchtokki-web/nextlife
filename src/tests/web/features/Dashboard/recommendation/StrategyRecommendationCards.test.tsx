@@ -280,7 +280,7 @@ describe('StrategyRecommendationCards 목표 도달 불가', () => {
     expect(screen.queryByText('균형형')).toBeNull();
     expect(screen.queryByText('여유형')).toBeNull();
     expect(screen.queryByLabelText('현재 계획과 추천 전략 비교')).toBeNull();
-    expect(screen.queryByRole('button', { name: '이 전략 적용' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '적용' })).toBeNull();
   });
 
   test('지속 가능한 생활비를 계산했으면 목표와의 격차를 숫자로 말한다', () => {
@@ -363,28 +363,16 @@ describe('StrategyRecommendationCards 적용 버튼', () => {
     expect(screen.queryByRole('button', { name: /적용/ })).not.toBeInTheDocument();
   });
 
-  test('바로 적용하지 않고 한 번 더 확인한다', () => {
+  // 확인 단계를 두지 않는다 — 바뀌는 내용은 바로 위 「달라지는 점」에 이미 있고, 적용 뒤에는
+  // 같은 자리의 「적용 해제」로 되돌릴 수 있다.
+  test('확인 단계 없이 한 번에 적용한다', () => {
     const onApplyStrategy = vi.fn();
     renderCards({ onApplyStrategy });
-
-    fireEvent.click(screen.getByRole('button', { name: '이 전략 적용' }));
-
-    expect(onApplyStrategy).not.toHaveBeenCalled();
-    expect(screen.getByText(/현재 시나리오 설정이 바뀝니다/)).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: '적용' }));
+
     expect(onApplyStrategy).toHaveBeenCalledWith(balanced);
-  });
-
-  test('확인을 취소하면 적용하지 않고 원래 버튼으로 돌아간다', () => {
-    const onApplyStrategy = vi.fn();
-    renderCards({ onApplyStrategy });
-
-    fireEvent.click(screen.getByRole('button', { name: '이 전략 적용' }));
-    fireEvent.click(screen.getByRole('button', { name: '취소' }));
-
-    expect(onApplyStrategy).not.toHaveBeenCalled();
-    expect(screen.getByRole('button', { name: '이 전략 적용' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '취소' })).not.toBeInTheDocument();
   });
 
   // 적용한 자리에서 바로 되돌릴 수 있어야 한다. 배너는 대시보드 바깥에 있어서, 카드를
@@ -408,15 +396,13 @@ describe('StrategyRecommendationCards 적용 버튼', () => {
     expect(screen.getByRole('button', { name: '적용됨' })).toBeDisabled();
   });
 
-  // 확인 단계를 거쳐 적용한 뒤 해제하면 «처음» 버튼으로 돌아와야 한다. 컴포넌트가
-  // 언마운트되지 않으므로, 적용 시점에 confirming을 내리지 않으면 해제 직후 확인 패널이
-  // 되살아난다. 적용 전후를 rerender로 이어 붙여야만 잡히는 회귀다.
-  test('적용한 뒤 해제하면 확인 단계가 아니라 처음 버튼으로 돌아온다', () => {
+  // 적용 → 해제의 왕복이 «같은» 컴포넌트 위에서 처음 상태로 돌아와야 한다. 컴포넌트가
+  // 언마운트되지 않으므로, 적용 전후를 rerender로 이어 붙여야만 잡히는 회귀다.
+  test('적용한 뒤 해제하면 처음 버튼으로 돌아온다', () => {
     const onApplyStrategy = vi.fn();
     const onUndoStrategy = vi.fn();
     const { rerenderWith } = renderCards({ onApplyStrategy, onUndoStrategy });
 
-    fireEvent.click(screen.getByRole('button', { name: '이 전략 적용' }));
     fireEvent.click(screen.getByRole('button', { name: '적용' }));
     expect(onApplyStrategy).toHaveBeenCalledWith(balanced);
 
@@ -426,8 +412,7 @@ describe('StrategyRecommendationCards 적용 버튼', () => {
     expect(onUndoStrategy).toHaveBeenCalledTimes(1);
 
     rerenderWith({ onApplyStrategy, onUndoStrategy });
-    expect(screen.getByRole('button', { name: '이 전략 적용' })).toBeInTheDocument();
-    expect(screen.queryByText(/현재 시나리오 설정이 바뀝니다/)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '적용' })).toBeInTheDocument();
   });
 
   // 어느 전략이 적용 중인지는 오직 이 버튼으로만 드러난다. 세 카드가 같은 onUndoStrategy를
@@ -451,7 +436,7 @@ describe('StrategyRecommendationCards 적용 버튼', () => {
     );
 
     expect(screen.getAllByRole('button', { name: '적용 해제' })).toHaveLength(1);
-    expect(screen.getAllByRole('button', { name: '이 전략 적용' })).toHaveLength(2);
+    expect(screen.getAllByRole('button', { name: '적용' })).toHaveLength(2);
     expect(
       within(screen.getByText('균형형').closest('article')!).getByRole('button', { name: '적용 해제' })
     ).toBeInTheDocument();
@@ -472,7 +457,7 @@ describe('StrategyRecommendationCards 적용 버튼', () => {
   test('호출자가 적용 가능하다고 하면 카드 목록이 비어 있어도 누를 수 있다', () => {
     renderCards({ onApplyStrategy: vi.fn(), canApplyStrategy: () => true });
 
-    expect(screen.getByRole('button', { name: '이 전략 적용' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: '적용' })).toBeEnabled();
   });
 
   test('달라지는 점이 없으면 적용할 것도 없다', () => {

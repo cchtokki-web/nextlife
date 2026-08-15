@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { Loader2, Star } from 'lucide-react';
 import type { SimulationParams } from '../../../../core/entities/types';
 import type { RetirementGoalType } from '../../../../core/entities/retirementGoal';
@@ -79,24 +78,19 @@ interface StrategyApplyActionProps {
 
 /**
  * 카드 하단 액션. 상태에 따라 셋 중 하나를 낸다 — 적용된 카드의 「적용 해제」, 적용할 것이
- * 없을 때의 비활성 표시, 그리고 적용 버튼과 그 자리에서 펼쳐지는 확인 단계.
+ * 없을 때의 비활성 표시, 그리고 적용 버튼.
  *
- * 확인 단계에 모달을 쓰지 않는 이유: 확인 모달의 값어치는 "무엇이 바뀌는지" 목록을 보여주는 데 있는데,
- * 그 목록은 바로 위 「현재 계획에서 달라지는 점」에 이미 상시 표시돼 있다. 모달을 띄우면
- * 같은 목록을 두 번 보여주면서 근거가 되는 카드 본문만 가린다.
+ * 확인 단계를 두지 않는다: 확인의 값어치는 "무엇이 바뀌는지"를 보여주는 데 있는데, 그 목록은
+ * 바로 위 「현재 계획에서 달라지는 점」에 이미 상시 표시돼 있다. 적용 결과도 같은 자리의
+ * 「적용 해제」로 한 번에 되돌릴 수 있어, 확인 단계는 한 번 더 누르게 할 뿐이었다.
  */
 function StrategyApplyAction({
   recommendation, onApply, canApply, hasDescribedChanges, applied, onUndo,
 }: StrategyApplyActionProps) {
-  const [confirming, setConfirming] = useState(false);
-
   // 적용한 자리에서 바로 되돌린다. 되돌리기 배너는 대시보드 «바깥»에 있어서 카드를 보고
   // 있는 사용자에게는 취소 경로가 보이지 않는다.
   //
   // 되돌릴 수 있을 때에만 이 버튼이 뜬다는 보장은 호출부가 한다(appliedCandidateId 주석).
-  //
-  // 확인 단계를 두지 않는 이유: 적용할 때 이미 한 번 확인했고, 해제는 그 확인을 취소하는
-  // 방향이라 사용자가 잃을 것이 없다.
   if (applied && onUndo) {
     return (
       <div className={styles.strategyCardActions}>
@@ -127,45 +121,15 @@ function StrategyApplyAction({
     );
   }
 
-  if (!confirming) {
-    return (
-      <div className={styles.strategyCardActions}>
-        <button
-          type="button"
-          className={styles.applyStrategyButton}
-          onClick={() => setConfirming(true)}
-        >
-          이 전략 적용
-        </button>
-      </div>
-    );
-  }
-
   return (
-    <div className={styles.strategyCardActions} aria-live="polite">
-      {/* 되돌리기는 이 세션에서만 가능하다(스냅샷을 저장하지 않는다). 누르기 전에 밝힌다. */}
-      <p className={styles.applyStrategyNotice}>
-        현재 시나리오 설정이 바뀝니다. 되돌리기는 이 화면을 새로고침하기 전까지만 가능합니다.
-      </p>
-      <div className={styles.applyStrategyConfirm}>
-        <button
-          type="button"
-          className={styles.applyStrategyCancel}
-          onClick={() => setConfirming(false)}
-        >
-          취소
-        </button>
-        <button
-          type="button"
-          className={styles.applyStrategyButton}
-          onClick={() => {
-            setConfirming(false);
-            onApply(recommendation);
-          }}
-        >
-          적용
-        </button>
-      </div>
+    <div className={styles.strategyCardActions}>
+      <button
+        type="button"
+        className={styles.applyStrategyButton}
+        onClick={() => onApply(recommendation)}
+      >
+        적용
+      </button>
     </div>
   );
 }

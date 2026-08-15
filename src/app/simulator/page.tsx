@@ -109,7 +109,7 @@ export default function Home() {
     buildRequest: () => buildAnalysisRequest(activeParams),
   });
 
-  // 추천 카드의 「이 전략 적용」과 그 되돌리기.
+  // 추천 카드의 「적용」과 그 되돌리기.
   //
   // 설정 갱신과 재분석 요청이 **같은 커밋에서 같은 params 참조**를 받는 것이 중요하다.
   // 아래 analysisIsCurrent가 참조 비교라, 둘이 어긋나면 적용 직후 대시보드가 "다시 분석해
