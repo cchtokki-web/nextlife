@@ -195,12 +195,51 @@ describe('runMonteCarlo', () => {
     expect(mc.spendingSuccessRate).toBeLessThanOrEqual(1);
     expect(mc.goalSuccessProbability).toBeLessThanOrEqual(mc.spendingSuccessRate);
     expect(mc.goalSuccessProbability).toBeLessThanOrEqual(mc.successRate);
-    expect(mc.spendingSuccessProbability).toBe(mc.spendingSuccessRate);
-    expect(mc.assetSurvivalProbability).toBe(mc.successRate);
-    expect(mc.terminalAssetMedian).toBe(mc.endingAssets.p50);
-    expect(mc.terminalAssetP10).toBe(mc.endingAssets.p10);
-    expect(mc.terminalAssetP90).toBe(mc.endingAssets.p90);
-    expect(mc.shortfallProbability).toBeCloseTo(1 - mc.spendingSuccessRate, 12);
+  });
+
+  test('validate는 optimizer용 이름으로 옮기기만 하고 값을 새로 만들지 않는다', () => {
+    // **세 확률이 서로 달라야 의미가 있는 테스트다.**
+    // 기본 fixture는 successRate = spendingSuccessRate = goalSuccessProbability = 0.62라,
+    // 세 필드를 서로 바꿔 연결해도(cross-wiring) 단언이 전부 통과했다. validate()에서 `?? 0`
+    // 폴백을 걷어낸 근거가 "이제 순수한 이름 변환"이라는 것이므로, 어느 원본에서 읽는지를
+    // 실제로 구분하지 못하면 그 근거를 지키는 장치가 없는 셈이다.
+    //
+    // assetFloor가 인출을 막아 자산은 100% 보존되지만 생활비는 자주 미달하고(자산 보존 ≠
+    // 생활 유지), 그 위의 상속 목표가 다시 걸러진다(목표 성공 ≠ 생활 유지).
+    const discriminating = params({
+      assetFloor: 200_000_000,
+      userProfile: { ...params().userProfile, targetBequest: 700_000_000 },
+    });
+    const input = LegacySimulationAdapter.fromLegacy(structuredClone(discriminating));
+    const cfg = config({ trials: 60 });
+    const direct = runMonteCarlo(discriminating, engine, cfg);
+    const validated = new MonteCarloEngine(engine).validate(
+      input.profile,
+      input.goals,
+      input.strategy,
+      cfg,
+    );
+
+    // fixture가 퇴화하면(세 값이 같아지면) 아래 단언들이 무력해지므로 먼저 확인한다.
+    expect(new Set([
+      direct.successRate,
+      direct.spendingSuccessRate,
+      direct.goalSuccessProbability,
+    ]).size).toBe(3);
+    expect(new Set([
+      direct.endingAssets.p10,
+      direct.endingAssets.p50,
+      direct.endingAssets.p90,
+    ]).size).toBe(3);
+
+    // 같은 seed·trials이므로 두 실행은 동일해야 한다. 이름만 달라진다.
+    expect(validated.spendingSuccessProbability).toBe(direct.spendingSuccessRate);
+    expect(validated.assetSurvivalProbability).toBe(direct.successRate);
+    expect(validated.goalSuccessProbability).toBe(direct.goalSuccessProbability);
+    expect(validated.terminalAssetMedian).toBe(direct.endingAssets.p50);
+    expect(validated.terminalAssetP10).toBe(direct.endingAssets.p10);
+    expect(validated.terminalAssetP90).toBe(direct.endingAssets.p90);
+    expect(validated.shortfallProbability).toBeCloseTo(1 - direct.spendingSuccessRate, 12);
   });
 
   test('목표 성공확률은 명시된 기말자산 목표까지 같은 시행에서 만족해야 한다', () => {

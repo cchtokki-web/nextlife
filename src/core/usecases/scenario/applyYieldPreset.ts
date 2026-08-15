@@ -1,5 +1,21 @@
 import { CustomYieldSnapshot, SimulationParams } from '../../entities/types';
 
+// 리스크 성향별 연 기대수익률. **단위는 %** (0.05가 아니라 5), 자산의 annualGrowthRate와
+// 사적연금 expectedReturn에 그대로 대입된다.
+//
+// **출처(git 이력 추적 결과)**: 근거 문서는 이 저장소에 없다. 확인된 것은 변경 이력뿐이다.
+//   - 최초 커밋 5eaff3e: ScenarioSelector.tsx에 conservative 5/3, base 8/5, aggressive 12/8.
+//   - 8a08aff "투자성향 프리셋 적용 로직을 순수 함수(applyYieldPreset)로 추출"(2026-07-25):
+//     순수 추출을 표방했으나 실제로는 base 8/5 → 7/4, aggressive 12/8 → 9/6으로 **값을 함께
+//     낮췄다.** 커밋 메시지에 근거 설명이 없다. conservative(5/3)만 최초값 그대로다.
+// 즉 현재 base·aggressive 값의 근거는 기록된 적이 없다. 임의로 다시 바꾸지 말고, 근거를 아는
+// 사람이 여기에 출처를 남길 것. 바꿔야 한다면 그때는 반드시 근거를 함께 적는다.
+//
+// **명목/실질**: 명목 수익률이다. inflationMode가 'real'이면 엔진이 inflationRate를 별도로
+// 차감하므로, 이 값 자체를 실질로 바꾸면 물가가 두 번 반영된다.
+//
+// 이 상수는 이제 applyYieldPreset뿐 아니라 StrategyGenerator의 assetAllocation 축
+// (CONSERVATIVE/BALANCED/GROWTH)도 소비한다. 값을 바꾸면 후보 생성 결과가 함께 바뀐다.
 export const YIELD_PRESET_RATES = {
   conservative: { stockGrowth: 5, pensionReturn: 3 },
   base: { stockGrowth: 7, pensionReturn: 4 },

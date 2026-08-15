@@ -132,6 +132,22 @@
   color: var(--foreground-muted);
 }
 
+.recommendationErrorDetail {
+  margin-top: 0.5rem;
+  font-size: 0.72rem;
+  color: var(--foreground-muted);
+  word-break: break-word;
+}
+
+/* 검증하지 못한 HARD 목표 고지. 추천 카드보다 먼저 읽혀야 하므로 경고 색을 쓴다. */
+.unsupportedHardGoalNotice {
+  margin-bottom: 0.75rem;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: var(--foreground);
+  border-left: 3px solid var(--warning, #d97706);
+}
+
 .recommendationComparison {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);

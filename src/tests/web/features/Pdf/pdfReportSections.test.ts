@@ -352,6 +352,7 @@ describe('renderPlanVerdictSection', () => {
   const won = (v: number) => `${v.toLocaleString()}원`;
   const mc = (successRate: number, p50 = 0, p10 = 0): MonteCarloResult => ({
     trials: 1000, seed: 1, successAge: 90, successRate, spendingSuccessRate: successRate,
+    goalSuccessProbability: successRate,
     plannedMonthlySpending: 3000000,
     endingAssets: { p10, p50, p90: 977090000, mean: 300000000 },
     assetBand: [], depletion: { count: 630, earliestAge: 72, medianAge: 84 },
@@ -428,6 +429,7 @@ describe('renderPlanVerdictSection', () => {
 describe('renderMonteCarloSection', () => {
   const monteCarlo: MonteCarloResult = {
     trials: 1000, seed: 1, annualStdDev: 18, successAge: 90, successRate: 0.87, spendingSuccessRate: 0.81,
+    goalSuccessProbability: 0.81,
     plannedMonthlySpending: 3000000,
     endingAssets: { p10: 200000000, p50: 1800000000, p90: 5200000000, mean: 2100000000 },
     assetBand: [

@@ -1,11 +1,10 @@
 import { render, screen, within } from '@testing-library/react';
 import { describe, expect, test } from 'vitest';
 import type { SimulationParams } from '@/core/entities/types';
-import type { RankedStrategyCandidate } from '@/core/strategy/StrategyOptimizer';
+import type { ValidatedStrategyCandidate } from '@/core/recommendation/RecommendationEngine';
 import { DEFAULT_UTILITY_CONFIG } from '@/core/usecases/utility/utilityWeights';
 import {
   StrategyRecommendationCards,
-  strategyCharacteristicLabel,
   strategyChanges,
 } from '@/web/features/Dashboard/recommendation/StrategyRecommendationCards';
 
@@ -29,7 +28,7 @@ function candidate(
   allocation: 'CONSERVATIVE' | 'BALANCED' | 'GROWTH',
   spending: 'FIXED' | 'FRONT_LOADED' | 'CARE_HEAVY',
   probability: number,
-): RankedStrategyCandidate {
+): ValidatedStrategyCandidate {
   const preset = allocation === 'CONSERVATIVE' ? 'conservative'
     : allocation === 'GROWTH' ? 'aggressive' : 'base';
   return {
@@ -96,16 +95,9 @@ function candidate(
 const formatValue = (value: number) => `${Math.round(value / 10_000)}만원`;
 
 describe('StrategyRecommendationCards', () => {
-  test('실제 전략 특성으로 라벨을 정하며 1위가 균형형이 아니어도 추천한다', () => {
-    const candidates = [
-      candidate(1, 'CONSERVATIVE', 'FIXED', 0.97),
-      candidate(2, 'BALANCED', 'FRONT_LOADED', 0.91),
-      candidate(3, 'GROWTH', 'CARE_HEAVY', 0.79),
-    ];
-
+  test('추천 결과가 없으면 후보만으로 페르소나를 지어내지 않는다', () => {
     render(
       <StrategyRecommendationCards
-        candidates={candidates}
         status="done"
         currentGoalProbability={0.72}
         params={params}
@@ -113,12 +105,114 @@ describe('StrategyRecommendationCards', () => {
       />
     );
 
-    expect(strategyCharacteristicLabel(candidates[0])).toBe('안정형');
-    const firstCard = screen.getByText('안정형').closest('article')!;
-    expect(within(firstCard).getByText('추천')).toBeInTheDocument();
-    expect(screen.getByText('72%')).toBeInTheDocument();
-    expect(screen.getAllByText('97%')).toHaveLength(2);
-    expect(screen.getAllByText('현재 계획에서 달라지는 점')).toHaveLength(3);
+    // 페르소나 배정은 RecommendationEngine의 책임이다. 예전 UI 폴백은 rank로 persona를 만들고
+    // GROWTH 후보를 '여유형'으로 부르며 실행되지도 않은 선택 근거를 함께 출력했다.
+    expect(screen.getByText('현재 목표 조건을 만족하는 추천 후보가 없습니다.')).toBeInTheDocument();
+    expect(screen.queryByText('안정형')).not.toBeInTheDocument();
+    expect(screen.queryByText('여유형')).not.toBeInTheDocument();
+  });
+
+  test('계산 실패와 HARD 목표 충돌을 서로 다른 문구로 안내한다', () => {
+    const { unmount } = render(
+      <StrategyRecommendationCards
+        status="done"
+        outcome={{
+          kind: 'no_candidate_survived',
+          hardConstraintRejectedCount: 0,
+          failedCount: 12,
+          blockedBy: [],
+          firstFailureReason: 'projection exploded',
+        }}
+        params={params}
+        formatValue={formatValue}
+      />
+    );
+
+    // 계산이 깨진 경우: 목표가 불가능하다고 말하면 안 된다.
+    expect(screen.getByText(/계산 중 오류로 평가하지 못했습니다/)).toBeInTheDocument();
+    expect(screen.getByText(/projection exploded/)).toBeInTheDocument();
+    expect(screen.queryByText(/필수\(HARD\) 목표를 동시에 만족하는 전략을 찾지 못했습니다/))
+      .not.toBeInTheDocument();
+    unmount();
+
+    render(
+      <StrategyRecommendationCards
+        status="done"
+        outcome={{
+          kind: 'no_candidate_survived',
+          hardConstraintRejectedCount: 40,
+          failedCount: 0,
+          blockedBy: ['HARD_ASSET_SURVIVAL'],
+        }}
+        params={params}
+        formatValue={formatValue}
+      />
+    );
+
+    // 목표가 충돌한 경우: 무엇이 막았는지와 조정 방법을 알려준다.
+    expect(screen.getByText(/필수\(HARD\) 목표를 동시에 만족하는 전략을 찾지 못했습니다/))
+      .toBeInTheDocument();
+    expect(screen.getByText(/자산 고갈 방지/)).toBeInTheDocument();
+    expect(screen.queryByText(/계산 중 오류/)).not.toBeInTheDocument();
+  });
+
+  test('검증된 후보가 있으나 페르소나가 없으면 목표 탓으로 돌리지 않는다', () => {
+    render(
+      <StrategyRecommendationCards
+        status="done"
+        outcome={{ kind: 'no_persona_matched', validatedCount: 7 }}
+        params={params}
+        formatValue={formatValue}
+      />
+    );
+
+    expect(screen.getByText(/전략 7개를 검증했지만/)).toBeInTheDocument();
+    expect(screen.queryByText(/목표 조건을 만족하는 추천 후보가 없습니다/)).not.toBeInTheDocument();
+  });
+
+  test('검증하지 못한 HARD 목표를 추천과 함께 고지한다', () => {
+    const candidates = [candidate(1, 'CONSERVATIVE', 'FIXED', 0.97)];
+
+    render(
+      <StrategyRecommendationCards
+        recommendations={[
+          { persona: 'STABLE', label: '안정형', candidate: candidates[0], reason: '하방 방어' },
+        ]}
+        status="done"
+        currentGoalProbability={0.72}
+        unsupportedHardGoals={['HOUSING_STABILITY']}
+        params={params}
+        formatValue={formatValue}
+      />
+    );
+
+    expect(screen.getByText(/다음 필수\(HARD\) 목표는 현재 검증할 수 없습니다/)).toBeInTheDocument();
+    expect(screen.getByText(/주거 안정/)).toBeInTheDocument();
+  });
+
+  test('오류 상태에서 워커가 보고한 원인을 함께 보여준다', () => {
+    render(
+      <StrategyRecommendationCards
+        status="error"
+        errorMessage="shortlistLimit must be a finite number, received NaN"
+        params={params}
+        formatValue={formatValue}
+      />
+    );
+
+    expect(screen.getByText(/shortlistLimit must be a finite number/)).toBeInTheDocument();
+  });
+
+  test('idle은 검증 중 스피너로 표시하지 않는다', () => {
+    render(
+      <StrategyRecommendationCards
+        status="idle"
+        params={params}
+        formatValue={formatValue}
+      />
+    );
+
+    expect(screen.queryByText(/검증하고 있습니다/)).not.toBeInTheDocument();
   });
 
   test('현재 값과 다른 항목만 변경점으로 만든다', () => {
@@ -140,7 +234,6 @@ describe('StrategyRecommendationCards', () => {
 
     render(
       <StrategyRecommendationCards
-        candidates={candidates}
         recommendations={[
           { persona: 'STABLE', label: '안정형', candidate: candidates[0], reason: '하방 방어' },
           { persona: 'BALANCED', label: '균형형', candidate: candidates[1], reason: '목표 균형' },

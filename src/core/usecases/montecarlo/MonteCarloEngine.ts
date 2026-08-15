@@ -132,6 +132,12 @@ export function runMonteCarlo(
   // 생활 유지 성공 = 계획한 생활비를 한 해도 줄이지 않음. **고갈 여부를 묻지 않는다** —
   // 이유는 MonteCarloResult.spendingSuccessRate 주석에 있다.
   const spendingSucceeded = trials.filter((t) => !t.hasUnmetSpending);
+  // 사용자가 고른 INHERITANCE 목표액은 여기까지 **투영을 통해** 도달한다:
+  // applyRetirementGoals(선택 목표 → userProfile.targetBequest) → 어댑터 → strategy.targetBequest
+  // → validate()가 다시 bequest 목표로 넘김 → 이 줄.
+  // 사슬 어디가 끊겨도 목표액은 조용히 0이 되고, 모든 시행이 기말자산 조건을 통과해
+  // 목표 성공확률만 과대평가된다(오류는 나지 않는다).
+  // retirement-domain-invariants/monte-carlo.test.ts가 그 사슬 전체를 고정한다.
   const terminalAssetGoal = Math.max(
     0,
     params.userProfile.targetBequest ?? params.assetFloor ?? 0,
@@ -172,14 +178,6 @@ export function runMonteCarlo(
     successRate: trials.length > 0 ? succeeded.length / trials.length : 0,
     spendingSuccessRate: trials.length > 0 ? spendingSucceeded.length / trials.length : 0,
     goalSuccessProbability: trials.length > 0 ? goalSucceeded.length / trials.length : 0,
-    spendingSuccessProbability: trials.length > 0 ? spendingSucceeded.length / trials.length : 0,
-    assetSurvivalProbability: trials.length > 0 ? succeeded.length / trials.length : 0,
-    terminalAssetMedian: percentileOfSorted(endingSorted, 0.5),
-    terminalAssetP10: percentileOfSorted(endingSorted, 0.1),
-    terminalAssetP90: percentileOfSorted(endingSorted, 0.9),
-    shortfallProbability: trials.length > 0
-      ? 1 - spendingSucceeded.length / trials.length
-      : 0,
     plannedMonthlySpending: planned.monthlyTargetSpending,
     endingAssets: {
       p10: percentileOfSorted(endingSorted, 0.1),
@@ -233,19 +231,19 @@ export class MonteCarloEngine implements StrategyMonteCarloEngine {
       ...(goals.selectedGoals ? { selectedGoals: goals.selectedGoals } : {}),
     }, strategy);
     const result = runMonteCarlo(params, this.simulationEngine, config);
-    const spendingSuccessProbability = result.spendingSuccessProbability
-      ?? result.spendingSuccessRate;
 
+    // 순수한 이름 변환이다. `?? 0` 같은 폴백을 두지 않는다 — 값이 없다는 사실이 "성공확률 0%"로
+    // 둔갑하면, 측정되지 않은 계획이 가장 나쁜 계획으로 표시되고 화면에는 0%가 찍힌다.
     return {
       trials: result.trials,
       seed: result.seed,
-      goalSuccessProbability: result.goalSuccessProbability ?? 0,
-      spendingSuccessProbability,
-      assetSurvivalProbability: result.assetSurvivalProbability ?? result.successRate,
-      terminalAssetMedian: result.terminalAssetMedian ?? result.endingAssets.p50,
-      terminalAssetP10: result.terminalAssetP10 ?? result.endingAssets.p10,
-      terminalAssetP90: result.terminalAssetP90 ?? result.endingAssets.p90,
-      shortfallProbability: result.shortfallProbability ?? 1 - spendingSuccessProbability,
+      goalSuccessProbability: result.goalSuccessProbability,
+      spendingSuccessProbability: result.spendingSuccessRate,
+      assetSurvivalProbability: result.successRate,
+      terminalAssetMedian: result.endingAssets.p50,
+      terminalAssetP10: result.endingAssets.p10,
+      terminalAssetP90: result.endingAssets.p90,
+      shortfallProbability: 1 - result.spendingSuccessRate,
     };
   }
 }

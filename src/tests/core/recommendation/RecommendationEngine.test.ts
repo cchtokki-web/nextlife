@@ -93,4 +93,35 @@ describe('RecommendationEngine', () => {
     expect(result.recommendations).toHaveLength(1);
     expect(result.recommendations[0].candidate.candidate.id).toBe('validated');
   });
+
+  // C7: qualifies가 하드 필터가 된 뒤로, CONSERVATIVE + FRONT_LOADED 후보는 안정형과 여유형
+  // 양쪽 조건을 동시에 만족한다. 그래서 `used` Set이 실제로 중재를 하게 됐는데, 기존 테스트
+  // 입력(CONSERVATIVE/FIXED, GROWTH/FRONT_LOADED)은 애초에 겹칠 수 없어 이를 검증하지 못했다.
+  test('두 페르소나 조건을 동시에 만족하는 후보를 중복 배정하지 않는다', () => {
+    const dual = candidate({
+      id: 'dual', allocation: 'CONSERVATIVE', spending: 'FRONT_LOADED', goalProbability: 0.9,
+    });
+
+    const result = new RecommendationEngine().recommend([dual]);
+
+    const ids = result.recommendations.map((item) => item.candidate.candidate.id);
+    expect(ids).toEqual(['dual']);
+    // 배열 순서상 안정형이 먼저 선점한다. 여유형은 남은 후보가 없으므로 비어야 한다.
+    expect(result.recommendations.map((item) => item.persona)).toEqual(['STABLE']);
+  });
+
+  test('겹치는 후보가 있어도 각 페르소나에는 서로 다른 후보가 간다', () => {
+    const dual = candidate({
+      id: 'dual', allocation: 'CONSERVATIVE', spending: 'FRONT_LOADED', goalProbability: 0.9,
+    });
+    const frontLoaded = candidate({
+      id: 'front-loaded', allocation: 'GROWTH', spending: 'FRONT_LOADED', goalProbability: 0.8,
+    });
+
+    const result = new RecommendationEngine().recommend([dual, frontLoaded]);
+
+    const ids = result.recommendations.map((item) => item.candidate.candidate.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(ids).toEqual(['dual', 'front-loaded']);
+  });
 });

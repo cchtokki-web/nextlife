@@ -71,6 +71,8 @@ describe('DefaultGoalEvaluationEngine', () => {
       goalType: 'HOUSING_STABILITY',
       score: 0,
       achieved: false,
+      // 정량화할 수 없는 목표는 단위 없는 측정치를 갖는다.
+      measurement: { unit: 'NONE' },
       reason: '현재 프로필과 시뮬레이션 결과에 주거 안정을 정량화할 정보가 없습니다.',
     }]);
   });
@@ -94,8 +96,8 @@ describe('DefaultGoalEvaluationEngine', () => {
       goalType: 'EARLY_RETIREMENT',
       score: 98,
       achieved: false,
-      actualValue: 61,
-      targetValue: 60,
+      // 61과 60은 나이다. 단위가 타입에 드러나므로 표시 계층이 goalType으로 추측하지 않는다.
+      measurement: { unit: 'AGE', actual: 61, target: 60 },
     });
     expect(evaluated.hardConstraintsSatisfied).toBe(false);
     expect(evaluated.hardConstraintFailures).toEqual([expect.objectContaining({
@@ -152,8 +154,15 @@ describe('DefaultGoalEvaluationEngine', () => {
     );
     const [stability, comfortable] = evaluated.goalEvaluations;
 
-    expect(stability).toMatchObject({ achieved: true, score: 100, targetValue: 3_000_000 });
-    expect(comfortable).toMatchObject({ achieved: false, targetValue: 5_000_000 });
+    // 생활비 목표치는 월 금액이다(나이나 총액이 아니다).
+    expect(stability).toMatchObject({
+      achieved: true, score: 100,
+      measurement: { unit: 'MONTHLY_MONEY', target: 3_000_000 },
+    });
+    expect(comfortable).toMatchObject({
+      achieved: false,
+      measurement: { unit: 'MONTHLY_MONEY', target: 5_000_000 },
+    });
     expect(comfortable.score).toBeLessThan(100);
     expect(evaluated.hardConstraintsSatisfied).toBe(false);
     expect(evaluated.hardConstraintFailures).toEqual([expect.objectContaining({
@@ -199,9 +208,198 @@ describe('DefaultGoalEvaluationEngine', () => {
     expect(evaluated.goalEvaluations[0]).toMatchObject({
       achieved: true,
       score: 100,
-      targetValue: 3_000_000,
+      measurement: { unit: 'MONTHLY_MONEY', target: 3_000_000 },
     });
     expect(evaluated.hardConstraintsSatisfied).toBe(true);
     expect(evaluated.hardConstraintFailures).toEqual([]);
+  });
+});
+
+describe('DefaultGoalEvaluationEngine 회귀', () => {
+  test('은퇴 시점 이후 결과가 없으면 ASSET_GROWTH를 만점으로 처리하지 않는다', () => {
+    const input = LegacySimulationAdapter.fromLegacy(structuredClone(initialParams));
+    input.goals.selectedGoals = [{ type: 'ASSET_GROWTH', priority: 1, constraintType: 'SOFT' }];
+    const simulated = new LegacySimulationEngine().simulate(input.profile, input.strategy);
+    // 은퇴 나이 이후 연도가 하나도 없는 결과. 예전에는 비교 기준이 0으로 무너져
+    // "기말 자산이 은퇴 시점 자산 이상으로 유지됩니다"와 100점이 함께 나왔다.
+    const result = {
+      ...simulated,
+      yearlyResults: simulated.yearlyResults.filter(
+        (year) => year.age < input.strategy.retirementAge,
+      ),
+    };
+
+    const evaluated = new DefaultGoalEvaluationEngine().evaluate(
+      input.profile,
+      input.goals,
+      input.strategy,
+      result,
+    );
+
+    const growth = evaluated.goalEvaluations.find((item) => item.goalType === 'ASSET_GROWTH');
+    expect(growth?.score).toBe(0);
+    expect(growth?.achieved).toBe(false);
+    expect(growth?.reason).toContain('평가할 수 없습니다');
+  });
+
+  test('사전/사후 HARD 은퇴나이 판정이 같은 규칙을 쓴다', async () => {
+    const { retirementAgeHardFailure } = await import('@/core/evaluation/GoalEvaluationEngine');
+    const { HardConstraintFilter } = await import('@/core/strategy/HardConstraintFilter');
+    const input = LegacySimulationAdapter.fromLegacy(structuredClone(initialParams));
+    const goal = {
+      type: 'EARLY_RETIREMENT' as const, priority: 1, constraintType: 'HARD' as const, targetValue: 55,
+    };
+    input.goals.selectedGoals = [goal];
+
+    const candidate = {
+      id: 'late',
+      strategy: { ...input.strategy, retirementAge: 62 },
+      dimensions: {
+        retirementAge: 62,
+        nationalPensionTiming: 'NORMAL' as const,
+        nationalPensionStartAge: 65,
+        withdrawalPolicy: 'GENERAL_FIRST' as const,
+        spendingPattern: 'FIXED' as const,
+        assetAllocation: 'BALANCED' as const,
+      },
+    };
+
+    const preSimulation = new HardConstraintFilter().beforeSimulation(candidate, input.goals);
+    expect(preSimulation).toEqual([retirementAgeHardFailure(62, goal)]);
+    // 경계값도 양쪽이 같아야 한다. 한쪽만 > 를 >= 로 바꾸면 후보가 사전에는 잘리고
+    // 사후에는 통과하는(또는 그 반대) 상태가 조용히 생긴다.
+    expect(new HardConstraintFilter().beforeSimulation(
+      { ...candidate, strategy: { ...input.strategy, retirementAge: 55 } },
+      input.goals,
+    )).toEqual([]);
+    expect(retirementAgeHardFailure(55, goal)).toBeNull();
+  });
+});
+
+// 목표 유형별 측정 단위 계약. 이 표가 깨지면 표시 계층이 나이를 금액으로(또는 그 반대로)
+// 렌더링하게 되므로, 개별 테스트가 아니라 전 유형을 한 번에 고정한다.
+describe('GoalMeasurement 단위 계약', () => {
+  const EXPECTED_UNIT: Record<string, string> = {
+    EARLY_RETIREMENT: 'AGE',
+    ASSET_SURVIVAL: 'AGE',
+    LIVING_EXPENSE_STABILITY: 'MONTHLY_MONEY',
+    COMFORTABLE_SPENDING: 'MONTHLY_MONEY',
+    INHERITANCE: 'MONEY',
+    ASSET_GROWTH: 'MONEY',
+    PENSION_OPTIMIZATION: 'NONE',
+    TAX_OPTIMIZATION: 'NONE',
+    RISK_REDUCTION: 'NONE',
+    HOUSING_STABILITY: 'NONE',
+  };
+
+  test.each(Object.entries(EXPECTED_UNIT))('%s 목표는 %s 단위로 측정된다', (goalType, unit) => {
+    const input = LegacySimulationAdapter.fromLegacy(structuredClone(initialParams));
+    input.goals.selectedGoals = [{
+      type: goalType as never,
+      priority: 1,
+      constraintType: 'SOFT',
+      // 나이 목표와 금액 목표가 같은 필드를 쓰던 것이 바로 이 변경의 이유다.
+      ...(goalType === 'EARLY_RETIREMENT' ? { targetValue: 62 } : {}),
+      ...(goalType === 'INHERITANCE' || goalType === 'ASSET_GROWTH'
+        ? { targetValue: 100_000_000 } : {}),
+      ...(goalType === 'LIVING_EXPENSE_STABILITY' || goalType === 'COMFORTABLE_SPENDING'
+        ? { targetValue: 3_000_000 } : {}),
+    }];
+    const result = new LegacySimulationEngine().simulate(input.profile, input.strategy);
+
+    const evaluated = new DefaultGoalEvaluationEngine()
+      .evaluate(input.profile, input.goals, input.strategy, result);
+
+    expect(evaluated.goalEvaluations[0].measurement.unit).toBe(unit);
+  });
+
+  test('NONE 단위에는 수치가 실리지 않는다', () => {
+    const input = LegacySimulationAdapter.fromLegacy(structuredClone(initialParams));
+    input.goals.selectedGoals = [{ type: 'TAX_OPTIMIZATION', priority: 1, constraintType: 'SOFT' }];
+    const result = new LegacySimulationEngine().simulate(input.profile, input.strategy);
+
+    const evaluated = new DefaultGoalEvaluationEngine()
+      .evaluate(input.profile, input.goals, input.strategy, result);
+
+    expect(evaluated.goalEvaluations[0].measurement).toEqual({ unit: 'NONE' });
+  });
+});
+
+// C4: clampScore가 비유한 값에서 예외를 던지는지. 이 가드가 `return 0`으로 바뀌어도
+// 1892개 테스트가 전부 통과했다. NaN 점수는 랭킹 비교자에 들어가 정렬을 임의로 만들고,
+// 그래도 소비자는 0번 후보를 "당신에게 최적"으로 표시한다 — 조용한 오염이다.
+describe('점수 가드', () => {
+  test('시뮬레이션 결과가 비유한 값이면 점수를 만들지 않고 예외를 던진다', () => {
+    const input = LegacySimulationAdapter.fromLegacy(structuredClone(initialParams));
+    input.goals.selectedGoals = [{
+      type: 'INHERITANCE', priority: 1, constraintType: 'SOFT', targetValue: 100_000_000,
+    }];
+    const simulated = new LegacySimulationEngine().simulate(input.profile, input.strategy);
+
+    for (const broken of [Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(() => new DefaultGoalEvaluationEngine().evaluate(
+        input.profile,
+        input.goals,
+        input.strategy,
+        { ...simulated, endingAssets: broken },
+      )).toThrow(/finite/);
+    }
+  });
+});
+
+// 빈 projection은 실제 평가기에 한 번도 들어간 적이 없었다. 각 평가 함수가 빈 배열에서
+// 무엇을 하는지가 명세되어 있지 않으면, 조용히 만점을 주거나 예외를 던지거나 둘 중 하나다.
+describe('빈 시뮬레이션 결과', () => {
+  test('연도 결과가 비어도 목표를 달성으로 꾸미지 않는다', () => {
+    const input = LegacySimulationAdapter.fromLegacy(structuredClone(initialParams));
+    input.goals.selectedGoals = [
+      { type: 'LIVING_EXPENSE_STABILITY', priority: 1, constraintType: 'SOFT' },
+      { type: 'ASSET_SURVIVAL', priority: 2, constraintType: 'SOFT' },
+      { type: 'ASSET_GROWTH', priority: 3, constraintType: 'SOFT' },
+    ];
+
+    const evaluated = new DefaultGoalEvaluationEngine().evaluate(
+      input.profile,
+      input.goals,
+      input.strategy,
+      { yearlyResults: [], depletionAge: null, endingAssets: 0 },
+    );
+
+    const byType = new Map(evaluated.goalEvaluations.map((item) => [item.goalType, item]));
+    // 생활비: 은퇴 기간 결과가 없으므로 달성으로 볼 수 없다.
+    expect(byType.get('LIVING_EXPENSE_STABILITY')?.achieved).toBe(false);
+    // 자산 성장: 비교 기준(은퇴 시점 자산)이 없으므로 평가 불가여야 한다.
+    expect(byType.get('ASSET_GROWTH')?.achieved).toBe(false);
+    expect(byType.get('ASSET_GROWTH')?.score).toBe(0);
+    // 모든 점수는 유한하고 0~100 범위여야 한다.
+    for (const item of evaluated.goalEvaluations) {
+      expect(Number.isFinite(item.score)).toBe(true);
+      expect(item.score).toBeGreaterThanOrEqual(0);
+      expect(item.score).toBeLessThanOrEqual(100);
+    }
+  });
+});
+
+// 자산 성장 목표는 "기말 자산 >= 은퇴 시점 자산"이다. 등호가 포함되므로 정확히 같은 경우도
+// 달성이다. `>`로 바뀌면 딱 본전인 계획이 미달로 뒤집힌다.
+describe('자산 성장 경계', () => {
+  test('기말 자산이 은퇴 시점 자산과 정확히 같으면 달성으로 본다', () => {
+    const input = LegacySimulationAdapter.fromLegacy(structuredClone(initialParams));
+    input.goals.selectedGoals = [{ type: 'ASSET_GROWTH', priority: 1, constraintType: 'SOFT' }];
+    const simulated = new LegacySimulationEngine().simulate(input.profile, input.strategy);
+    const retirementYear = simulated.yearlyResults.find(
+      (year) => year.age >= input.strategy.retirementAge,
+    )!;
+
+    const evaluated = new DefaultGoalEvaluationEngine().evaluate(
+      input.profile,
+      input.goals,
+      input.strategy,
+      { ...simulated, endingAssets: retirementYear.openingAssets },
+    );
+
+    const growth = evaluated.goalEvaluations[0];
+    expect(growth.achieved).toBe(true);
+    expect(growth.score).toBe(100);
   });
 });

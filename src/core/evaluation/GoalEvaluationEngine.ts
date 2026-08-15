@@ -25,25 +25,72 @@ export type HardConstraintFailureCode =
   | 'HARD_RETIREMENT_AGE'
   | 'HARD_SPENDING_SHORTFALL'
   | 'HARD_ASSET_SURVIVAL'
-  | 'HARD_MINIMUM_ENDING_ASSETS';
+  | 'HARD_MINIMUM_ENDING_ASSETS'
+  /**
+   * A custom engine rejected the candidate through the deprecated boolean without naming a
+   * constraint. Synthesised so a rejection always carries a reason — never invented for a
+   * candidate that was not actually rejected.
+   */
+  | 'HARD_UNSPECIFIED';
 
 export interface HardConstraintFailure {
   code: HardConstraintFailureCode;
-  goalType: RetirementGoalType;
+  /** Absent only for HARD_UNSPECIFIED, where no goal was named by the rejecting engine. */
+  goalType?: RetirementGoalType;
   reason: string;
 }
+
+/**
+ * The single definition of the HARD early-retirement rule.
+ *
+ * It is checked twice — once before simulation by HardConstraintFilter on static strategy facts,
+ * once after evaluation here — so the predicate and its reason string must exist in one place.
+ * Two copies would let a pre-simulation rejection disagree with a post-evaluation pass.
+ */
+export function retirementAgeHardFailure(
+  retirementAge: number,
+  goal: RetirementGoal,
+): HardConstraintFailure | null {
+  if (goal.targetValue === undefined || retirementAge <= goal.targetValue) return null;
+  return {
+    code: 'HARD_RETIREMENT_AGE',
+    goalType: goal.type,
+    reason: `전략 은퇴 나이 ${retirementAge}세가 HARD 목표 ${goal.targetValue}세보다 늦습니다.`,
+  };
+}
+
+/**
+ * 목표별 실측치와 목표치, **그리고 그 단위**.
+ *
+ * 예전에는 `actualValue`/`targetValue`가 맨 number였고 의미가 goalType에 따라 달라졌다 —
+ * EARLY_RETIREMENT와 ASSET_SURVIVAL에서는 나이, INHERITANCE·ASSET_GROWTH에서는 금액,
+ * 생활비 목표에서는 월 금액. 그래서 이 값을 표시하려면 표시 계층이 goalType을 다시 분기해
+ * 단위를 추측해야 했다. AGENTS.md는 나이와 연도, 금액 단위를 섞지 말라고 못박는데, 그
+ * 혼용이 한 인터페이스 안에 들어 있던 셈이다.
+ *
+ * 단위를 판별자로 올리면 표시 계층은 `switch (measurement.unit)` 하나로 끝나고, 새 단위가
+ * 생기면 컴파일러가 누락된 분기를 잡아 준다.
+ */
+export type GoalMeasurement =
+  | { unit: 'NONE' }
+  | { unit: 'AGE' | 'MONEY' | 'MONTHLY_MONEY'; actual?: number; target?: number };
 
 export interface GoalEvaluation {
   goalType: RetirementGoalType;
   score: number;
   achieved: boolean;
-  actualValue?: number;
-  targetValue?: number;
+  measurement: GoalMeasurement;
   reason: string;
 }
 
 export interface StrategyEvaluation {
-  hardConstraintsSatisfied: boolean;
+  /**
+   * @deprecated `hardConstraintFailures`가 판정의 단일 근거다. 이 불리언은 상세 목록과
+   * 모순될 수 있어(양쪽을 각자 채울 수 있으므로) 더 이상 단독으로 읽지 않는다.
+   * 예전 계약을 구현한 외부 엔진이 상세 없이 이 값만 false로 주는 경우를 계속 존중하기
+   * 위해 남겨 두며, 그 조정은 `HardConstraintFilter.afterEvaluation` 한 곳에서만 한다.
+   */
+  hardConstraintsSatisfied?: boolean;
   goalEvaluations: GoalEvaluation[];
   weightedScore: number;
 }
@@ -71,7 +118,16 @@ export interface GoalEvaluationEngine {
   ): GoalEvaluationResult;
 }
 
+/**
+ * `Math.max(0, NaN)` is `NaN`, so the obvious clamp silently passes non-finite values straight
+ * through. A `NaN` score reaches the ranking comparators, where `NaN - NaN` makes the sort order
+ * arbitrary while every consumer still treats position 0 as "the best strategy for you".
+ * A non-finite score is a bug in the calculation upstream, not a value to render.
+ */
 function clampScore(value: number): number {
+  if (!Number.isFinite(value)) {
+    throw new Error(`Goal score must be a finite number, received ${value}`);
+  }
   return Math.round(Math.min(100, Math.max(0, value)));
 }
 
@@ -109,8 +165,7 @@ function minimumEndingAssetEvaluation(
     goalType: goal.type,
     score: minimumTargetScore(result.endingAssets, targetValue),
     achieved,
-    actualValue: result.endingAssets,
-    targetValue,
+    measurement: { unit: 'MONEY', actual: result.endingAssets, target: targetValue },
     reason: achieved
       ? `기말 자산이 목표 금액 ${targetValue}을 충족합니다.`
       : `기말 자산 ${result.endingAssets}이 목표 ${targetValue}에 미달합니다.`,
@@ -124,7 +179,7 @@ function retirementAgeEvaluation(goal: RetirementGoal, strategy: RetirementStrat
       goalType: goal.type,
       score: 0,
       achieved: false,
-      actualValue: strategy.retirementAge,
+      measurement: { unit: 'AGE', actual: strategy.retirementAge },
       reason: '희망 은퇴 나이가 없어 달성도를 계산할 수 없습니다.',
     };
   }
@@ -134,8 +189,7 @@ function retirementAgeEvaluation(goal: RetirementGoal, strategy: RetirementStrat
     goalType: goal.type,
     score: achieved ? 100 : clampScore(targetValue / strategy.retirementAge * 100),
     achieved,
-    actualValue: strategy.retirementAge,
-    targetValue,
+    measurement: { unit: 'AGE', actual: strategy.retirementAge, target: targetValue },
     reason: achieved
       ? `${targetValue}세 이하 은퇴 목표를 충족합니다.`
       : `전략 은퇴 나이 ${strategy.retirementAge}세가 목표 ${targetValue}세보다 늦습니다.`,
@@ -158,7 +212,9 @@ function spendingEvaluation(
     goalType: goal.type,
     score,
     achieved: retirementYears.length > 0 && shortfallYears === 0,
-    ...(goal.targetValue !== undefined ? { targetValue: goal.targetValue } : {}),
+    measurement: goal.targetValue === undefined
+      ? { unit: 'MONTHLY_MONEY' }
+      : { unit: 'MONTHLY_MONEY', target: goal.targetValue },
     reason: retirementYears.length === 0
       ? '은퇴 기간 결과가 없어 소비 목표를 평가할 수 없습니다.'
       : shortfallYears === 0
@@ -224,8 +280,11 @@ function assetSurvivalEvaluation(
     goalType: goal.type,
     score: rawScore(raws.depletionSafety),
     achieved: survives,
-    actualValue: result.depletionAge ?? strategy.planHorizonAge,
-    targetValue: strategy.planHorizonAge,
+    measurement: {
+      unit: 'AGE',
+      actual: result.depletionAge ?? strategy.planHorizonAge,
+      target: strategy.planHorizonAge,
+    },
     reason: survives
       ? `계획 종료 나이 ${strategy.planHorizonAge}세까지 자산이 고갈되지 않습니다.`
       : `${result.depletionAge}세에 자산이 고갈됩니다.`,
@@ -247,7 +306,7 @@ function endingAssetEvaluation(
     goalType: goal.type,
     score,
     achieved: score === 100,
-    actualValue: result.endingAssets,
+    measurement: { unit: 'MONEY', actual: result.endingAssets },
     reason: '명시된 목표 금액이 없어 기존 적정 잔여자산 기준으로 평가했습니다.',
   };
 }
@@ -261,16 +320,26 @@ function assetGrowthEvaluation(
     return minimumEndingAssetEvaluation(goal, result, goal.targetValue);
   }
 
-  const retirementAssets = result.yearlyResults.find(
-    (year) => year.age >= strategy.retirementAge,
-  )?.openingAssets ?? 0;
+  const retirementYear = result.yearlyResults.find((year) => year.age >= strategy.retirementAge);
+  if (retirementYear === undefined) {
+    // Falling back to 0 here would make the comparison "endingAssets >= 0" — trivially true, and
+    // minimumTargetScore(x, 0) returns a perfect 100. An unevaluable goal must never score as met.
+    return {
+      goalType: goal.type,
+      score: 0,
+      achieved: false,
+      measurement: { unit: 'MONEY', actual: result.endingAssets },
+      reason: '은퇴 시점 이후 결과가 없어 자산 성장 목표를 평가할 수 없습니다.',
+    };
+  }
+
+  const retirementAssets = retirementYear.openingAssets;
   const achieved = result.endingAssets >= retirementAssets;
   return {
     goalType: goal.type,
     score: minimumTargetScore(result.endingAssets, retirementAssets),
     achieved,
-    actualValue: result.endingAssets,
-    targetValue: retirementAssets,
+    measurement: { unit: 'MONEY', actual: result.endingAssets, target: retirementAssets },
     reason: achieved
       ? '기말 자산이 은퇴 시점 자산 이상으로 유지됩니다.'
       : '기말 자산이 은퇴 시점 자산보다 줄어듭니다.',
@@ -298,6 +367,7 @@ function evaluateGoal(
         goalType: goal.type,
         score,
         achieved: score === 100,
+        measurement: { unit: 'NONE' },
         reason: '공적·사적연금 수령 기간과 연금 세금 효율을 평가했습니다.',
       };
     }
@@ -307,6 +377,7 @@ function evaluateGoal(
         goalType: goal.type,
         score,
         achieved: score === 100,
+        measurement: { unit: 'NONE' },
         reason: '기존 세부담률 기준으로 세금 효율을 평가했습니다.',
       };
     }
@@ -316,6 +387,7 @@ function evaluateGoal(
         goalType: goal.type,
         score,
         achieved: score === 100,
+        measurement: { unit: 'NONE' },
         reason: '현재 결정론 결과에서 자산 고갈 안전성을 위험 대리지표로 평가했습니다.',
       };
     }
@@ -328,6 +400,7 @@ function evaluateGoal(
         goalType: goal.type,
         score: 0,
         achieved: false,
+        measurement: { unit: 'NONE' },
         reason: '현재 프로필과 시뮬레이션 결과에 주거 안정을 정량화할 정보가 없습니다.',
       };
   }
@@ -370,13 +443,8 @@ export class DefaultGoalEvaluationEngine implements GoalEvaluationEngine {
       if (goal.constraintType !== 'HARD') continue;
 
       if (goal.type === 'EARLY_RETIREMENT' && goal.targetValue !== undefined) {
-        if (strategy.retirementAge > goal.targetValue) {
-          hardConstraintFailures.push({
-            code: 'HARD_RETIREMENT_AGE',
-            goalType: goal.type,
-            reason: `전략 은퇴 나이 ${strategy.retirementAge}세가 HARD 목표 ${goal.targetValue}세보다 늦습니다.`,
-          });
-        }
+        const failure = retirementAgeHardFailure(strategy.retirementAge, goal);
+        if (failure) hardConstraintFailures.push(failure);
         continue;
       }
 

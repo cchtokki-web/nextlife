@@ -22,6 +22,7 @@ export interface AnalysisRuntimeValue extends StrategyPipeline {
   sequenceRisk: ReturnType<typeof computeSequenceRisk>;
   strategyOptimization: ReturnType<typeof useStrategyOptimization>['result'];
   strategyOptimizationStatus: ReturnType<typeof useStrategyOptimization>['status'];
+  strategyOptimizationError: ReturnType<typeof useStrategyOptimization>['errorMessage'];
   compareResults: Array<{ id: string; name: string; result: SimulationResult }>;
 }
 
@@ -46,6 +47,7 @@ export function AnalysisRuntime({ request, engine, children }: AnalysisRuntimePr
   const {
     result: strategyOptimization,
     status: strategyOptimizationStatus,
+    errorMessage: strategyOptimizationError,
   } = useStrategyOptimization(pipeline.effective.params);
   const sequenceRisk = useMemo(
     () => computeSequenceRisk(
@@ -81,6 +83,7 @@ export function AnalysisRuntime({ request, engine, children }: AnalysisRuntimePr
     sequenceRisk,
     strategyOptimization,
     strategyOptimizationStatus,
+    strategyOptimizationError,
     compareResults,
   });
 }

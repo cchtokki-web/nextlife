@@ -24,6 +24,10 @@ import { useBeforeAfterToggle } from './hooks/useBeforeAfterToggle';
 import { ExecutionRoadmap } from './roadmap/ExecutionRoadmap';
 import { computeExecutionRoadmap, selectDepletionAge } from '../../../core/usecases/dashboard/computeExecutionRoadmap';
 import { computeKeyLevers } from '../../../core/usecases/dashboard/computeKeyLevers';
+import {
+  getPlanConfidenceBand,
+  PLAN_CONFIDENCE_BAND_TIER,
+} from '../../../core/usecases/dashboard/computePlanConfidence';
 import { KeyLeversCard } from './recommendation/KeyLeversCard';
 import { NATIONAL_PENSION_NORMAL_START_AGE } from '../../../core/usecases/pension/nationalPensionRules';
 import { compileStrategy, resolveStrategy } from '../../../core/usecases/strategy/compileStrategy';
@@ -53,6 +57,7 @@ interface DashboardSectionProps {
   sequenceRisk?: SequenceRiskResult;
   strategyOptimization?: StrategyOptimizationResult;
   strategyOptimizationStatus?: StrategyOptimizationStatus;
+  strategyOptimizationError?: string;
 }
 
 // 결과 화면 오케스트레이터. 하위 조각(Hero/KPI/체크리스트/차트/전문가상세)을 IA 순서대로
@@ -71,6 +76,7 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
   sequenceRisk,
   strategyOptimization,
   strategyOptimizationStatus = 'idle',
+  strategyOptimizationError,
 }) => {
   // 초기값이 빈 객체가 아닌 이유: 몬테카를로 상위 10% 선은 처음 화면에서 꺼 둔다
   // (DEFAULT_HIDDEN_PERCENTILE_KEYS 주석 참고 — 켜 두면 축이 그 선에 끌려가 주 곡선이 눌린다).
@@ -204,13 +210,21 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [sensitivity, pensionGap, shortfallReport, recommendation, currency]
   );
+  // spendingSuccessRate로 대체하지 않는다. 그것은 "고갈 여부를 묻지 않는" 다른 지표라
+  // 언제나 목표 성공확률보다 관대하고(montecarlo.ts 주석), 대체하면 목표를 못 지키는 계획이
+  // 🟢으로 표시될 수 있다. 측정되지 않았으면 아래에서 '확인 불가'로 내려간다.
   const currentGoalProbability = monteCarloStatus === 'done' && monteCarlo
-    ? monteCarlo.goalSuccessProbability ?? monteCarlo.spendingSuccessRate
+    ? monteCarlo.goalSuccessProbability
     : undefined;
-  const diagnosis = currentGoalProbability !== undefined
-    ? currentGoalProbability >= 0.9
+  // 임계값은 computePlanConfidence가 소유한다. 같은 화면에 이미 그 밴드로 그린 지표가 있어
+  // (planConfidence) 별도 임계값을 두면 0.85에서 한쪽은 '안정', 한쪽은 🟡으로 갈린다.
+  const diagnosisTier = currentGoalProbability !== undefined
+    ? PLAN_CONFIDENCE_BAND_TIER[getPlanConfidenceBand(currentGoalProbability)]
+    : undefined;
+  const diagnosis = diagnosisTier !== undefined
+    ? diagnosisTier === 'green'
       ? { emoji: '🟢', text: '현재 계획으로 안정적인 은퇴가 가능합니다.', tone: 'success' as const }
-      : currentGoalProbability >= 0.7
+      : diagnosisTier === 'orange'
         ? { emoji: '🟡', text: '조금 조정하면 안정적인 은퇴가 가능합니다.', tone: 'warning' as const }
         : { emoji: '🔴', text: '목표를 지키려면 현재 계획의 조정이 필요합니다.', tone: 'danger' as const }
     : baselinePlanOutcome.spendingShortfall || baselinePlanOutcome.assetStatus === 'depleted'
@@ -259,12 +273,14 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
         </section>
       </DashboardGroup>
 
-      <DashboardGroup title="NextLife 추천" description="목표에 가장 가까운 최종 전략 3개와 현재 계획에서 바뀌는 점만 비교합니다.">
+      <DashboardGroup title="NextLife 추천" description="목표에 가장 가까운 최종 전략과 현재 계획에서 바뀌는 점만 비교합니다.">
         <StrategyRecommendationCards
-          candidates={strategyOptimization?.rankedCandidates ?? []}
           recommendations={strategyOptimization?.recommendations?.recommendations}
           status={strategyOptimizationStatus}
           currentGoalProbability={currentGoalProbability}
+          errorMessage={strategyOptimizationError}
+          unsupportedHardGoals={strategyOptimization?.debug?.unsupportedHardGoals}
+          outcome={strategyOptimization?.outcome}
           params={params}
           formatValue={formatValue}
         />

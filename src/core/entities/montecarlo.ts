@@ -68,14 +68,11 @@ export interface MonteCarloResult {
   // 사용자가 입력한 목표 생활비, 기대수명까지 자산 생존, 명시된 기말자산 목표를 같은
   // 시행에서 모두 만족한 비율. 두 주변확률의 최솟값으로 추정하지 않고 시행별 교집합을
   // 직접 센다. 정량 판정 기준이 아직 없는 정성 목표는 이 확률에 포함하지 않는다.
-  goalSuccessProbability?: number;
-  /** Optimizer naming aliases. Optional here only for source compatibility with older fixtures. */
-  spendingSuccessProbability?: number;
-  assetSurvivalProbability?: number;
-  terminalAssetMedian?: number;
-  terminalAssetP10?: number;
-  terminalAssetP90?: number;
-  shortfallProbability?: number;
+  //
+  // optimizer가 쓰는 이름(spendingSuccessProbability, terminalAssetMedian 등)은 여기 두지
+  // 않는다. 그 값들은 이미 successRate/spendingSuccessRate/endingAssets에 있고, 같은 수를 두
+  // 필드에 저장하면 둘이 어긋날 수 있다. 이름 변환은 MonteCarloEngine.validate가 담당한다.
+  goalSuccessProbability: number;
   // 위 두 비율이 판정 기준으로 삼은 월 생활비(freezeSpendingPlan이 고정한 값).
   //
   // 「평생 소비 최적화」에서 이 값은 사용자가 입력한 목표(예: 월 350만원)가 아니라 엔진이

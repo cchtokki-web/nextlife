@@ -51,27 +51,60 @@ function cashflowFingerprint(result: SimulationResult): string {
   ].join('|');
 }
 
+// 선택지를 "같은 곡선끼리" 묶는다. 개수만 세지 않는 이유는 실패했을 때 **어느 선택지가
+// 서로 붙었는지**가 유일하게 쓸모 있는 정보이기 때문이다. 예전에는 "N종만 만든다"까지만
+// 알려줘서, 실패를 본 사람이 진짜 회귀인지 우연인지 구분할 수 없었다.
+function cashflowGroups(
+  params: SimulationParams,
+  axis: keyof RetirementStrategy,
+  values: readonly unknown[]
+): Map<string, unknown[]> {
+  const groups = new Map<string, unknown[]>();
+  for (const value of values) {
+    const fingerprint = cashflowFingerprint(
+      runWithStrategy(params, { ...DEFAULT_RETIREMENT_STRATEGY, [axis]: value } as RetirementStrategy)
+    );
+    const existing = groups.get(fingerprint);
+    if (existing) existing.push(value);
+    else groups.set(fingerprint, [value]);
+  }
+  return groups;
+}
+
+/** 서로 붙어 버린 선택지 묶음만 사람이 읽을 수 있게 적는다. */
+function describeCollisions(groups: Map<string, unknown[]>): string {
+  const collided = [...groups.values()].filter((group) => group.length > 1);
+  if (collided.length === 0) return '충돌한 선택지 없음';
+  return collided.map((group) => `{${group.join(', ')}}`).join(', ');
+}
+
 function distinctCashflows(
   params: SimulationParams,
   axis: keyof RetirementStrategy,
   values: readonly unknown[]
 ): number {
-  const fingerprints = new Set(
-    values.map((value) =>
-      cashflowFingerprint(
-        runWithStrategy(params, { ...DEFAULT_RETIREMENT_STRATEGY, [axis]: value } as RetirementStrategy)
-      )
-    )
-  );
-  return fingerprints.size;
+  return cashflowGroups(params, axis, values).size;
 }
 
 describe('전략 축이 현금흐름을 바꾼다', () => {
   // 각 축이 만들어야 할 "서로 다른 곡선"의 최소 개수.
   //
-  // 선택지 수와 같을 필요는 없다 — 일부 값이 같은 계획으로 수렴하는 것은 정상이다
-  // (예: 리스크 성향의 'custom'과 'ai_recommended'는 둘 다 "수익률을 덮어쓰지 않는다").
-  // 다만 **하나뿐이면 그 축은 죽어 있다.**
+  // 원칙적으로 선택지 수와 같을 필요는 없다 — 일부 값이 같은 계획으로 수렴하는 것은 정상일
+  // 수 있다(예: 리스크 성향의 'custom'과 'ai_recommended'는 둘 다 "수익률을 덮어쓰지 않는다").
+  // 다만 **현재 이 다섯 축은 실측상 선택지 수만큼 전부 갈린다.** 그래서 임계값을 선택지 수와
+  // 같게 두었다. 즉 여유(margin)가 0이고, 어떤 선택지든 하나라도 다른 선택지와 같은 곡선으로
+  // 붙으면 실패한다 — 의도된 민감도다.
+  //
+  // **실패 유형을 먼저 구분할 것.**
+  //
+  // (1) 단언 실패(AssertionError): 계산 자체는 난수·시간 의존이 없고 공유 fixture도 변형되지
+  //     않는다(확인함). 따라서 실제 수렴이며, 메시지가 어느 선택지끼리 붙었는지 알려준다.
+  //     수렴이 정당하다고 판단되면 임계값을 낮추고 **왜 정당한지**를 여기에 적는다.
+  // (2) 타임아웃: 이 파일은 무겁다. spendingChoice 하나가 단독 실행에서도 약 2.2초인데
+  //     ('max_sustainable'이 이진탐색을 돌린다) 기본 타임아웃은 5초라 여유가 2배 남짓뿐이다.
+  //     전체 스위트를 병렬로 돌리면 CPU 경합으로 6.7초까지 늘어 타임아웃으로 죽은 적이 있다.
+  //     그래서 vitest.config.ts에서 testTimeout을 30초로 올렸다 — 이건 계산 결함이 아니라
+  //     실행 시간 문제이므로, 실패를 보면 먼저 소요 시간을 확인할 것.
   const AXIS_EXPECTATIONS = [
     {
       axis: 'spendingChoice' as const,
@@ -104,12 +137,13 @@ describe('전략 축이 현금흐름을 바꾼다', () => {
   test.each(AXIS_EXPECTATIONS)(
     '$axis: 선택지 $values.length개가 서로 다른 자산 곡선 $minDistinct종 이상을 만든다',
     ({ axis, values, minDistinct }) => {
-      const distinct = distinctCashflows(allAxesLiveParams, axis, values);
+      const groups = cashflowGroups(allAxesLiveParams, axis, values);
 
       expect(
-        distinct,
-        `${axis} 축의 선택지 ${values.length}개가 자산 곡선 ${distinct}종만 만든다`
-        + ` (기대: ${minDistinct}종 이상). 이 축은 현금흐름에 반영되지 않고 있다.`
+        groups.size,
+        `${axis} 축의 선택지 ${values.length}개가 자산 곡선 ${groups.size}종만 만든다`
+        + ` (기대: ${minDistinct}종 이상). 같은 곡선으로 붙은 선택지: ${describeCollisions(groups)}.`
+        + ` 이 축의 해당 선택지들이 현금흐름에 반영되지 않고 있다.`
       ).toBeGreaterThanOrEqual(minDistinct);
     }
   );

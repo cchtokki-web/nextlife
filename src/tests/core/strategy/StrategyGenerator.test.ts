@@ -21,7 +21,7 @@ describe('StrategyGenerator', () => {
       assetAllocation: 3,
     });
     expect(result.debug.omittedAxes.map((item) => item.axis)).toEqual([
-      'privatePensionStartAge', 'cashBufferMonths', 'guardrail',
+      'privatePensionStartAge', 'cashBufferMonths', 'guardrail', 'spendingPolicyMode',
     ]);
     expect(result.candidates).toHaveLength(648);
     expect(input).toEqual(before);
@@ -125,5 +125,45 @@ describe('StrategyGenerator', () => {
 
     expect(result.candidates.some((item) => item.strategy.retirementAge === 57)).toBe(true);
     expect(result.debug.axisSizes.retirementAge).toBe(9);
+  });
+
+  // C5: 현재 나이 이전의 국민연금 개시 나이는 이미 지나간 선택이므로 후보가 될 수 없다.
+  // 이 필터가 사라지면 60세 개시 후보가 63세 사용자에게도 생성되고, 조기수령 감액률만
+  // 영구 적용된 채 순위에 오른다 — 오류 없이 잘못된 추천이 나온다.
+  test('현재 나이 이전의 국민연금 개시 나이는 후보로 만들지 않는다', () => {
+    const input = LegacySimulationAdapter.fromLegacy(structuredClone(initialParams));
+    input.profile.personal.currentAge = 63;
+    input.strategy.retirementAge = 63;
+
+    const result = new StrategyGenerator().generate(input.profile, input.goals, input.strategy);
+
+    const startAges = new Set(
+      result.candidates.map((candidate) => candidate.dimensions.nationalPensionStartAge),
+    );
+    expect(startAges.size).toBeGreaterThan(0);
+    for (const age of startAges) {
+      expect(age).toBeGreaterThanOrEqual(63);
+    }
+    // 60세(조기수령 최소 나이)는 이 사용자에게 선택지가 아니다.
+    expect(startAges.has(60)).toBe(false);
+  });
+
+  // C6: 후보 비교 기준을 맞추기 위해 소비 모드를 target으로 고정하는 것은 의도된 동작이다.
+  // 그 사실은 omittedAxes로 고지되지만, 동작 자체를 고정하는 테스트가 없었다.
+  test('seed가 max_sustainable이어도 모든 후보를 target 모드로 고정한다', () => {
+    const input = LegacySimulationAdapter.fromLegacy(structuredClone(initialParams));
+    const seed = {
+      ...input.strategy,
+      spendingPolicy: { ...input.strategy.spendingPolicy, mode: 'max_sustainable' as const },
+    };
+
+    const result = new StrategyGenerator().generate(input.profile, input.goals, seed, {
+      maxCandidates: 8,
+    });
+
+    expect(result.candidates.length).toBeGreaterThan(0);
+    for (const candidate of result.candidates) {
+      expect(candidate.strategy.spendingPolicy.mode).toBe('target');
+    }
   });
 });

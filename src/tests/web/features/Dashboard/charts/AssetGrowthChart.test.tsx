@@ -142,6 +142,7 @@ describe('AssetGrowthChart - 몬테카를로 분위수 선', () => {
     successAge: 90,
     successRate: 0.39,
     spendingSuccessRate: 0.39,
+    goalSuccessProbability: 0.39,
     plannedMonthlySpending: 2230000,
     endingAssets: { p10: 0, p50: 100000000, p90: 8000000000, mean: 500000000 },
     assetBand: [{ age: 60, p10: 10000000, p50: 300000000, p90: 900000000 }],

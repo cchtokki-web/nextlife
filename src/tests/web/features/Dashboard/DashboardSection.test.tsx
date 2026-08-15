@@ -422,7 +422,7 @@ describe('DashboardSection - 평생 소비 최적화 결과 배너', () => {
           trials: 1000, seed: 20260101, successAge: 90,
           // 목표 상속자산이 고갈을 막아 성공률은 100%지만, 그 금액을 온전히 쓰는 것은
           // 43%뿐인 상황(하니스 실측 형태).
-          successRate: 1, spendingSuccessRate: 0.43,
+          successRate: 1, spendingSuccessRate: 0.43, goalSuccessProbability: 0.43,
           plannedMonthlySpending: 2230000,
           endingAssets: { p10: 0, p50: 1, p90: 2, mean: 1 },
           assetBand: [], depletion: { count: 0, earliestAge: null, medianAge: null },
@@ -604,5 +604,66 @@ describe('DashboardSection - 실행 로드맵이 Before/After 토글을 따른�
 
     expect(screen.getByText(/AI 추천 전략 기준/)).toBeInTheDocument();
     expect(screen.getByText('현재 65세 → 추천 60세')).toBeInTheDocument();
+  });
+});
+
+// C3: "현재 계획 진단" 섹션의 두 가지 결정을 고정한다.
+//   (1) 표시하는 확률이 goalSuccessProbability인가 (spendingSuccessRate 대체 금지)
+//   (2) 신호등 임계값이 computePlanConfidence의 밴드를 쓰는가 (인라인 0.9/0.7 금지)
+// 두 값을 일부러 크게 벌리고, 옛 임계값과 새 임계값의 판정이 갈리는 0.85를 쓴다.
+describe('DashboardSection - 현재 계획 진단', () => {
+  const diagnosis = () => screen.getByLabelText('현재 계획 분석');
+
+  const monteCarloWith = (goal: number, spending: number) => ({
+    trials: 1000, seed: 20260101, successAge: 90,
+    successRate: 1,
+    spendingSuccessRate: spending,
+    goalSuccessProbability: goal,
+    plannedMonthlySpending: 3_000_000,
+    endingAssets: { p10: 0, p50: 1, p90: 2, mean: 1 },
+    assetBand: [], depletion: { count: 0, earliestAge: null, medianAge: null },
+    deterministicEndingAssets: 1, worstDecilePath: [],
+  });
+
+  test('생활 유지율이 아니라 목표 성공확률을 표시한다', () => {
+    render(
+      <DashboardSection
+        params={params} result={result}
+        monteCarloStatus="done"
+        monteCarlo={monteCarloWith(0.85, 0.30)}
+      />
+    );
+
+    // 두 지표는 정의가 다르다. 대체하면 목표를 못 지키는 계획이 안정적으로 보일 수 있다.
+    expect(diagnosis().textContent).toMatch(/85%/);
+    expect(diagnosis().textContent).not.toMatch(/30%/);
+  });
+
+  test('0.85는 computePlanConfidence 밴드에 따라 안정(🟢)으로 판정한다', () => {
+    render(
+      <DashboardSection
+        params={params} result={result}
+        monteCarloStatus="done"
+        monteCarlo={monteCarloWith(0.85, 0.85)}
+      />
+    );
+
+    // 옛 인라인 임계값(>= 0.9)이라면 🟡이 된다. 도메인 밴드는 0.80 이상을 stable(green)로 본다.
+    expect(diagnosis().textContent).toContain('🟢');
+    expect(diagnosis().textContent).not.toContain('🟡');
+  });
+
+  test('0.60은 주의(🟡)로 판정한다', () => {
+    render(
+      <DashboardSection
+        params={params} result={result}
+        monteCarloStatus="done"
+        monteCarlo={monteCarloWith(0.60, 0.60)}
+      />
+    );
+
+    // 옛 인라인 임계값(>= 0.7 미만은 🔴)이라면 🔴이 된다. 도메인 밴드는 0.50 이상을 orange로 본다.
+    expect(diagnosis().textContent).toContain('🟡');
+    expect(diagnosis().textContent).not.toContain('🔴');
   });
 });

@@ -28,6 +28,7 @@ import {
   calculateCapitalGainsTaxKRW,
 } from './tax/TaxEngine';
 import { TaxContext, resolveTaxContext } from './tax/taxContext';
+import { InvalidSimulationInputError } from '../entities/errors';
 import {
   getNationalPensionAdjustmentFactor,
   NATIONAL_PENSION_NORMAL_START_AGE,
@@ -660,6 +661,18 @@ export class LegacySimulationEngine implements SimulationEngineContract {
       return {
         yearlyResults: [], depletionAge: null, endingAssets: 0,
       };
+    }
+
+    // 모든 투영 경로(run, findMaxSustainable, 몬테카를로)가 여기를 지나므로 검증을 한 곳에 둔다.
+    //
+    // 음수 목표 생활비는 지출이 수입처럼 작동해 기말자산을 **늘린다**(실측: 82.7억 → 103억).
+    // 오류 없이 계획이 실제보다 좋아 보이므로 0으로 보정하지 않고 거부한다. 0으로 두어도
+    // "생활비를 쓰지 않는 계획"이라 마찬가지로 비현실적으로 낙관적이기 때문이다.
+    // 0 자체는 의미가 있으므로 허용하고, 음수 수익률은 정당한 비관 가정이므로 막지 않는다.
+    if (params.userProfile.targetMonthlySpending < 0) {
+      throw new InvalidSimulationInputError(
+        `목표 생활비는 음수일 수 없습니다. 입력값: ${params.userProfile.targetMonthlySpending}`,
+      );
     }
 
     const {
