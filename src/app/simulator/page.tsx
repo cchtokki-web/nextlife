@@ -1063,6 +1063,7 @@ export default function Home() {
                 onApplyStrategy={appliedStrategy.applyRecommendation}
                 canApplyStrategy={appliedStrategy.canApply}
                 appliedCandidateId={appliedStrategy.snapshot?.candidateId}
+                onUndoStrategy={appliedStrategy.undo}
               />
             ) : (
               <GlassCard>

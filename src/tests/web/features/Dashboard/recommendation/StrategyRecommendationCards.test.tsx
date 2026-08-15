@@ -303,7 +303,22 @@ describe('StrategyRecommendationCards 적용 버튼', () => {
     expect(screen.getByRole('button', { name: '이 전략 적용' })).toBeInTheDocument();
   });
 
-  test('이미 적용한 전략은 다시 적용할 수 없다', () => {
+  // 적용한 자리에서 바로 되돌릴 수 있어야 한다. 배너는 대시보드 바깥에 있어서, 카드를
+  // 보고 있는 사용자에게는 취소 경로가 보이지 않는다.
+  test('적용한 전략은 그 자리에서 해제할 수 있다', () => {
+    const onUndoStrategy = vi.fn();
+    renderCards({ onApplyStrategy: vi.fn(), appliedCandidateId: 'candidate-1', onUndoStrategy });
+
+    const undoButton = screen.getByRole('button', { name: '적용 해제' });
+    expect(undoButton).toBeEnabled();
+
+    // 확인 단계 없이 곧바로 해제한다 — 되돌리는 방향이라 잃을 것이 없다.
+    fireEvent.click(undoButton);
+    expect(onUndoStrategy).toHaveBeenCalledTimes(1);
+  });
+
+  // PDF 리포트처럼 설정을 바꿀 수 없는 문맥은 해제 콜백을 주지 않는다.
+  test('해제 콜백이 없으면 적용됨으로만 표시한다', () => {
     renderCards({ onApplyStrategy: vi.fn(), appliedCandidateId: 'candidate-1' });
 
     expect(screen.getByRole('button', { name: '적용됨' })).toBeDisabled();

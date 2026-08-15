@@ -65,6 +65,7 @@ interface DashboardSectionProps {
   onApplyStrategy?: (recommendation: CandidateRecommendation) => void;
   canApplyStrategy?: (recommendation: CandidateRecommendation) => boolean;
   appliedCandidateId?: string;
+  onUndoStrategy?: () => void;
 }
 
 // 결과 화면 오케스트레이터.
@@ -94,6 +95,7 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
   onApplyStrategy,
   canApplyStrategy,
   appliedCandidateId,
+  onUndoStrategy,
 }) => {
   // 초기값이 빈 객체가 아닌 이유: 몬테카를로 상위 10% 선은 처음 화면에서 꺼 둔다
   // (DEFAULT_HIDDEN_PERCENTILE_KEYS 주석 참고 — 켜 두면 축이 그 선에 끌려가 주 곡선이 눌린다).
@@ -301,6 +303,7 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
           onApplyStrategy={onApplyStrategy}
           canApplyStrategy={canApplyStrategy}
           appliedCandidateId={appliedCandidateId}
+          onUndoStrategy={onUndoStrategy}
         />
       </DashboardGroup>
 

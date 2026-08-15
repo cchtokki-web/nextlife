@@ -204,6 +204,10 @@
 }
 
 .strategyCard {
+  /* 카드마다 「달라지는 점」 항목 수가 달라 본문 높이가 제각각이다. 세로 flex로 두고
+     액션 영역을 아래로 밀어야 세 카드의 적용 버튼이 같은 높이에 선다. */
+  display: flex;
+  flex-direction: column;
   min-width: 0;
   padding: 1.1rem;
   border: 1px solid var(--card-border);
@@ -237,7 +241,9 @@
 .strategyChanges dd b { color: var(--foreground-muted); }
 .strategyChanges dd strong { color: var(--foreground); }
 
-.strategyCardActions { display: grid; gap: 0.5rem; margin-top: 0.9rem; }
+/* margin-top: auto — 남는 세로 공간을 전부 위쪽에 몰아 버튼을 카드 바닥에 고정한다.
+   padding-top은 본문이 카드를 꽉 채웠을 때의 최소 간격이다. */
+.strategyCardActions { display: grid; gap: 0.5rem; margin-top: auto; padding-top: 0.9rem; }
 .applyStrategyButton {
   width: 100%;
   padding: 0.55rem 0.75rem;
@@ -267,6 +273,22 @@
   font-size: 0.78rem;
   cursor: pointer;
 }
+
+/* 적용된 카드의 해제 버튼. 채운 primary 버튼(=아직 안 누른 카드)과 시각적으로 구분해야
+   세 카드 중 어느 것이 적용 상태인지 한눈에 읽힌다. */
+.undoAppliedStrategyButton {
+  width: 100%;
+  padding: 0.55rem 0.75rem;
+  border: 1px solid color-mix(in srgb, var(--primary) 45%, var(--card-border));
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--primary) 10%, transparent);
+  color: var(--foreground);
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: border-color 0.2s ease, color 0.2s ease;
+}
+.undoAppliedStrategyButton:hover { border-color: var(--primary); color: var(--primary); }
 
 /* 대시보드 «바깥»에 놓인다 — 설정이 바뀌면 결과가 stale이 되어 대시보드가 사라지는데,
    그때도 되돌리기 경로는 살아 있어야 한다. */

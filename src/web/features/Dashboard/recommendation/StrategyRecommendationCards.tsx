@@ -40,6 +40,11 @@ interface StrategyRecommendationCardsProps {
   canApplyStrategy?: (recommendation: CandidateRecommendation) => boolean;
   /** 방금 적용한 후보. 그 카드는 다시 누를 수 없다. */
   appliedCandidateId?: string;
+  /**
+   * 적용한 전략을 적용 직전 설정으로 되돌린다. 없으면 적용된 카드를 「적용됨」으로만
+   * 표시한다 — PDF 리포트처럼 설정을 바꿀 수 없는 문맥이 같은 카드를 쓴다.
+   */
+  onUndoStrategy?: () => void;
 }
 
 interface StrategyApplyActionProps {
@@ -49,6 +54,8 @@ interface StrategyApplyActionProps {
   /** 카드가 「달라지는 점」을 하나라도 보여주고 있는가. 비활성 문구를 고르는 데만 쓴다. */
   hasDescribedChanges: boolean;
   applied: boolean;
+  /** 적용 상태를 되돌린다. 없으면 적용된 카드는 비활성 표시로만 남는다. */
+  onUndo?: () => void;
 }
 
 /**
@@ -59,9 +66,31 @@ interface StrategyApplyActionProps {
  * 같은 목록을 두 번 보여주면서 근거가 되는 카드 본문만 가린다.
  */
 function StrategyApplyAction({
-  recommendation, onApply, canApply, hasDescribedChanges, applied,
+  recommendation, onApply, canApply, hasDescribedChanges, applied, onUndo,
 }: StrategyApplyActionProps) {
   const [confirming, setConfirming] = useState(false);
+
+  // 적용한 자리에서 바로 되돌린다. 되돌리기 배너는 대시보드 «바깥»에 있어서 카드를 보고
+  // 있는 사용자에게는 취소 경로가 보이지 않는다.
+  //
+  // 이 버튼은 되돌리기가 실제로 가능할 때에만 나타난다: applied 판정의 근거인
+  // appliedCandidateId가 되돌릴 수 있을 때에만 값을 갖는 스냅샷에서 오기 때문이다.
+  //
+  // 확인 단계를 두지 않는 이유: 적용할 때 이미 한 번 확인했고, 해제는 그 확인을 취소하는
+  // 방향이라 사용자가 잃을 것이 없다.
+  if (applied && onUndo) {
+    return (
+      <div className={styles.strategyCardActions}>
+        <button
+          type="button"
+          className={styles.undoAppliedStrategyButton}
+          onClick={onUndo}
+        >
+          적용 해제
+        </button>
+      </div>
+    );
+  }
 
   if (applied || !canApply) {
     // 「달라지는 점」은 있는데 적용할 것이 없는 경우를 구분한다. 생활비 배분처럼 현재
@@ -201,6 +230,7 @@ export function StrategyRecommendationCards({
   onApplyStrategy,
   canApplyStrategy,
   appliedCandidateId,
+  onUndoStrategy,
 }: StrategyRecommendationCardsProps) {
   if (status === 'running') {
     return (
@@ -329,6 +359,7 @@ export function StrategyRecommendationCards({
                   canApply={canApplyStrategy?.(recommendation) ?? changes.length > 0}
                   hasDescribedChanges={changes.length > 0}
                   applied={candidate.candidate.id === appliedCandidateId}
+                  onUndo={onUndoStrategy}
                 />
               )}
             </article>
