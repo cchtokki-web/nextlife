@@ -350,10 +350,18 @@ export function StrategyRecommendationCards({
           const candidate = recommendation.candidate;
           const probability = candidate.monteCarlo.goalSuccessProbability;
           const changes = describeStrategyChanges(params, candidate, formatValue);
+          // 테두리 강조는 «지금 적용된» 카드에만 준다. 엔진이 고른 ☆추천은 배지가 말하고,
+          // 적용 상태는 그 카드가 다른 카드와 다르게 보인다는 것으로 말한다. 아무것도
+          // 적용하지 않았으면 어떤 카드도 강조하지 않는다 — 강조된 카드가 늘 하나 있으면
+          // 사용자는 그것을 "이미 골라 둔 것"으로 읽는다.
+          const applied = candidate.candidate.id === appliedCandidateId;
           return (
             <article
               key={candidate.candidate.id}
-              className={`${styles.strategyCard} ${recommendation === recommended ? styles.recommendedStrategyCard : ''}`}
+              className={`${styles.strategyCard} ${applied ? styles.appliedStrategyCard : ''}`}
+              // 강조를 색으로만 말하지 않는다. 화면을 보지 않는 사용자에게도 어느 카드가
+              // 적용 중인지 드러나야 한다.
+              aria-current={applied ? 'true' : undefined}
             >
               <header className={styles.strategyCardHeader}>
                 <div>
@@ -397,7 +405,7 @@ export function StrategyRecommendationCards({
                   onApply={onApplyStrategy}
                   canApply={canApplyStrategy?.(recommendation) ?? changes.length > 0}
                   hasDescribedChanges={changes.length > 0}
-                  applied={candidate.candidate.id === appliedCandidateId}
+                  applied={applied}
                   onUndo={onUndoStrategy}
                 />
               )}
