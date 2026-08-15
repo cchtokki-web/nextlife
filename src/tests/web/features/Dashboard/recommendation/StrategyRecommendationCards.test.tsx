@@ -375,8 +375,8 @@ describe('StrategyRecommendationCards 적용 버튼', () => {
     expect(screen.queryByRole('button', { name: '취소' })).not.toBeInTheDocument();
   });
 
-  // 적용한 자리에서 바로 되돌릴 수 있어야 한다. 배너는 대시보드 바깥에 있어서, 카드를
-  // 보고 있는 사용자에게는 취소 경로가 보이지 않는다.
+  // 적용한 자리에서 바로 되돌릴 수 있어야 한다. 대시보드 바깥의 되돌리기 배너를 제거한
+  // 뒤로, 이 버튼이 화면에 남은 유일한 취소 경로다.
   test('적용한 전략은 그 자리에서 해제할 수 있다', () => {
     const onUndoStrategy = vi.fn();
     renderCards({ onApplyStrategy: vi.fn(), appliedCandidateId: 'candidate-1', onUndoStrategy });

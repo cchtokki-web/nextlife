@@ -9,9 +9,17 @@ import { applyStrategyToParams } from '../../core/usecases/dashboard/applyStrate
 //
 // 스냅샷은 이 세션의 메모리에만 둔다. 시나리오 data에 얹으면 자동저장·E2EE 직렬화 경로를
 // 함께 건드려야 하는데, 되돌리기는 "방금 누른 버튼을 취소한다"는 짧은 수명의 기능이다.
-// 새로고침하면 사라진다는 사실은 화면(적용 확인 문구와 배너)이 밝힌다.
+// 새로고침하면 사라진다 — 화면에는 그 사실을 알리는 문구가 없으므로, 되돌리기 버튼이 보이는
+// 동안에만 되돌릴 수 있다는 것이 사용자가 보는 전부다.
 
-/** 배너가 읽는 값. 되돌릴 수 있을 때에만 주어진다. */
+/**
+ * 화면이 읽는 값. 되돌릴 수 있을 때에만 주어진다.
+ *
+ * 지금 화면이 쓰는 것은 candidateId뿐이다(추천 카드가 어느 카드에 「적용 해제」를 낼지
+ * 고른다). label과 아래 두 라벨 목록은 무엇이 적용되고 무엇이 빠졌는지에 대한 기록으로
+ * 남긴다 — 배너를 지우면서 표시 경로가 사라졌을 뿐, 판정 자체는 applyStrategyToParams가
+ * 계속 내고 있다.
+ */
 export interface AppliedStrategySnapshot {
   candidateId: string;
   label: string;
@@ -64,7 +72,7 @@ export function useAppliedStrategy({
   const [record, setRecord] = useState<AppliedStrategyRecord | null>(null);
 
   // 무효화는 이펙트가 아니라 파생 술어로 판정한다. 이펙트로 지우면 한 커밋 동안
-  // 이미 유효하지 않은 배너가 화면에 남는다.
+  // 이미 유효하지 않은 「적용 해제」 버튼이 화면에 남는다.
   //
   // handleUpdateActiveParams는 언제나 새 객체를 만들므로, 사용자가 설정을 직접 바꾸면
   // 참조 비교만으로 확실히 잡힌다(page.tsx의 analysisIsCurrent와 같은 관용구다).
@@ -79,7 +87,7 @@ export function useAppliedStrategy({
 
   const applyRecommendation = useCallback((recommendation: CandidateRecommendation) => {
     // 활성 시나리오가 없으면 handleUpdateActiveParams가 무동작이다. 그대로 두면 설정은
-    // 그대로인데 "적용했습니다" 배너만 뜬다.
+    // 그대로인데 카드만 "적용됨"으로 바뀐다.
     if (activeScenarioId === null) return;
 
     const outcome = applyStrategyToParams(activeParams, recommendation.candidate);

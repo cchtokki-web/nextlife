@@ -26,7 +26,6 @@ import { StrategySettingsPanel } from '../../web/features/StrategySettings/Strat
 import { RetirementInputFlow } from '../../web/features/RetirementGoals/RetirementInputFlow';
 import { Collapse } from '../../web/components/ui';
 import { DashboardSection } from '../../web/features/Dashboard/DashboardSection';
-import { AppliedStrategyBanner } from '../../web/features/Dashboard/recommendation/AppliedStrategyBanner';
 import { useAppliedStrategy } from '../../web/hooks/useAppliedStrategy';
 import GlassCard from '../../web/components/GlassCard';
 import { Header } from '../../web/components/Header/Header';
@@ -113,7 +112,8 @@ export default function Home() {
   //
   // 설정 갱신과 재분석 요청이 **같은 커밋에서 같은 params 참조**를 받는 것이 중요하다.
   // 아래 analysisIsCurrent가 참조 비교라, 둘이 어긋나면 적용 직후 대시보드가 "다시 분석해
-  // 주세요"로 한 프레임 사라진다.
+  // 주세요"로 한 프레임 사라진다. 되돌리기 버튼은 그 대시보드 «안»의 추천 카드에만 있으므로,
+  // 사라지는 순간 사용자는 방금 누른 적용을 취소할 경로를 잃는다.
   const appliedStrategy = useAppliedStrategy({
     activeParams,
     activeScenarioId,
@@ -803,7 +803,7 @@ export default function Home() {
       // 「분석함」 표시도 함께 지운다. 남겨 두면 다음 로그인에서 기본값 위에 결과 화면이
       // 복원되어, 초기화가 그 시나리오에서만 잠깐 통한 것처럼 보인다.
       if (activeScenarioId) setScenarioAnalyzed(activeScenarioId, false);
-      // 초기화한 설정 위에 "추천 전략을 적용했다"는 배너가 남으면 안 된다.
+      // 초기화한 설정 위에 "추천 전략을 적용했다"는 표시(카드의 「적용 해제」)가 남으면 안 된다.
       appliedStrategy.forget();
     }
   };
@@ -1061,14 +1061,6 @@ export default function Home() {
                   설정 패널 열기
                 </button>
               </div>
-            )}
-            {/* 삼항 «밖»에 둔다. 설정이 바뀌어 결과가 stale이 되면 아래 대시보드가 통째로
-                사라지는데, 그때도 되돌리기 경로는 살아 있어야 한다. */}
-            {appliedStrategy.snapshot && (
-              <AppliedStrategyBanner
-                snapshot={appliedStrategy.snapshot}
-                onUndo={appliedStrategy.undo}
-              />
             )}
             {analysisIsCurrent ? (
               <DashboardSection

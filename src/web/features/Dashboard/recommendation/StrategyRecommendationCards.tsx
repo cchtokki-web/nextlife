@@ -87,8 +87,8 @@ interface StrategyApplyActionProps {
 function StrategyApplyAction({
   recommendation, onApply, canApply, hasDescribedChanges, applied, onUndo,
 }: StrategyApplyActionProps) {
-  // 적용한 자리에서 바로 되돌린다. 되돌리기 배너는 대시보드 «바깥»에 있어서 카드를 보고
-  // 있는 사용자에게는 취소 경로가 보이지 않는다.
+  // 적용한 자리에서 바로 되돌린다. 화면에 남은 «유일한» 취소 경로다 — 대시보드 바깥의
+  // 되돌리기 배너는 제거했다.
   //
   // 되돌릴 수 있을 때에만 이 버튼이 뜬다는 보장은 호출부가 한다(appliedCandidateId 주석).
   if (applied && onUndo) {
