@@ -211,7 +211,6 @@ export default function Home() {
       const strategyRecommendationHtml = renderStrategyRecommendationSection({
         recommendations: strategyOptimization?.recommendations?.recommendations,
         status: strategyOptimizationStatus,
-        currentGoalProbability: monteCarlo?.goalSuccessProbability,
         unsupportedHardGoals: strategyOptimization?.debug?.unsupportedHardGoals,
         outcome: strategyOptimization?.outcome,
         // 화면이 쓰는 것과 같은 헬퍼·같은 입력이다. 리포트가 따로 역산하면 두 문서가 다른

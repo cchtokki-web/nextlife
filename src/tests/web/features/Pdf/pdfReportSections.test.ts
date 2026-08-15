@@ -183,24 +183,31 @@ describe('renderStrategyRecommendationSection', () => {
     reason: '목표 성공확률과 목표 적합도, 자산배분의 균형을 우선했습니다.',
   };
 
-  test('현재 계획 → 추천 전략 확률 비교와 페르소나 카드를 싣는다', () => {
+  test('페르소나 카드와 달라지는 점을 싣는다', () => {
     const html = renderStrategyRecommendationSection({
-      recommendations: [balanced], status: 'done', currentGoalProbability: 0.72, params, formatValue,
+      recommendations: [balanced], status: 'done', params, formatValue,
     });
 
-    expect(html).toContain('현재 계획');
-    expect(html).toContain('72%');
-    expect(html).toContain('추천 전략 적용');
-    expect(html).toContain('94%');
     expect(html).toContain('균형형');
+    expect(html).toContain('94%');
     expect(html).toContain('현재 계획에서 달라지는 점');
+  });
+
+  // 「현재 계획 N% → 추천 전략 적용 M%」 요약 바는 화면과 함께 걷어냈다. 두 숫자 모두 같은
+  // 리포트의 다른 자리(계획 진단·추천 카드)에 이미 있어, 같은 값을 세 번 적는 셈이었다.
+  test('현재 계획 → 추천 전략 요약 바를 싣지 않는다', () => {
+    const html = renderStrategyRecommendationSection({
+      recommendations: [balanced], status: 'done', params, formatValue,
+    });
+
+    expect(html).not.toContain('추천 전략 적용');
   });
 
   // 확률 이름은 화면·리포트를 통틀어 「목표 달성 확률」 하나다. 같은 값에 이름이 여럿이면
   // 사용자는 서로 다른 지표로 읽는다.
   test('확률을 「목표 달성 확률」이라는 한 이름으로만 부른다', () => {
     const html = renderStrategyRecommendationSection({
-      recommendations: [balanced], status: 'done', currentGoalProbability: 0.72, params, formatValue,
+      recommendations: [balanced], status: 'done', params, formatValue,
     });
 
     expect(html).toContain('목표 달성 확률');
@@ -211,7 +218,7 @@ describe('renderStrategyRecommendationSection', () => {
   // 화면(describeStrategyChanges)과 같은 함수를 쓰므로 같은 변경 목록이 나와야 한다.
   test('현재 설정과 다른 축만 달라지는 점으로 싣는다', () => {
     const html = renderStrategyRecommendationSection({
-      recommendations: [balanced], status: 'done', currentGoalProbability: 0.72, params, formatValue,
+      recommendations: [balanced], status: 'done', params, formatValue,
     });
 
     expect(html).toContain('은퇴 시점');
@@ -250,7 +257,7 @@ describe('renderStrategyRecommendationSection', () => {
       ...balanced, candidate: candidate(1, 0),
     };
     const html = renderStrategyRecommendationSection({
-      recommendations: [zero], status: 'done', currentGoalProbability: 0, params, formatValue,
+      recommendations: [zero], status: 'done', params, formatValue,
       outcome: { kind: 'no_candidate_reaches_goal', validatedCount: 12, personaCount: 1 },
       sustainableSpendingAdvice: {
         kind: 'overspending',
@@ -283,7 +290,7 @@ describe('renderStrategyRecommendationSection', () => {
   // 리포트는 화면보다 오래 남고 그대로 인용되므로 더 중요하다.
   test('검증할 수 없었던 HARD 목표를 밝힌다', () => {
     const html = renderStrategyRecommendationSection({
-      recommendations: [balanced], status: 'done', currentGoalProbability: 0.72, params, formatValue,
+      recommendations: [balanced], status: 'done', params, formatValue,
       unsupportedHardGoals: ['TAX_OPTIMIZATION'],
     });
 
