@@ -298,6 +298,7 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
           errorMessage={strategyOptimizationError}
           unsupportedHardGoals={strategyOptimization?.debug?.unsupportedHardGoals}
           outcome={strategyOptimization?.outcome}
+          sustainableSpendingAdvice={sustainableSpendingAdvice}
           params={params}
           formatValue={formatValue}
           onApplyStrategy={onApplyStrategy}

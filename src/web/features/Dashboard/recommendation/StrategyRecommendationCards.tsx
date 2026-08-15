@@ -6,6 +6,7 @@ import type { OptimizationOutcome } from '../../../../core/strategy/StrategyOpti
 // 「달라지는 점」 문구는 core가 소유한다 — PDF 리포트가 같은 함수를 쓴다.
 import { describeStrategyChanges } from '../../../../core/usecases/dashboard/describeStrategyChanges';
 import type { CandidateRecommendation } from '../../../../core/recommendation/RecommendationEngine';
+import type { SustainableSpendingAdvice } from '../../../../core/usecases/dashboard/computeSustainableSpendingAdvice';
 import type { StrategyOptimizationStatus } from '../../../hooks/useStrategyOptimization';
 import { RETIREMENT_GOAL_CATALOG } from '../../RetirementGoals/goalCatalog';
 import GlassCard from '../../../components/GlassCard';
@@ -25,6 +26,16 @@ interface StrategyRecommendationCardsProps {
   unsupportedHardGoals?: readonly RetirementGoalType[];
   /** Why the run produced no recommendation. Absent means the caller has no result to explain. */
   outcome?: OptimizationOutcome;
+  /**
+   * 현재 계획에서 「월 얼마까지 쓸 수 있는가」와 목표의 차이. 어떤 전략도 목표에 도달하지
+   * 못할 때 그 격차를 숫자로 말하는 데만 쓴다.
+   *
+   * 새로 계산하지 않는다 — SimulationEngine이 이미 구해 둔 calculatedTargetSpending을
+   * computeSustainableSpendingAdvice가 조언으로 옮긴 값이며, 화면의 다른 배너와 같은 출처다.
+   * null일 수 있고(고정 생활비 계획이 아니거나 이진탐색이 0으로 수렴한 경우), 그때는 격차를
+   * 숫자로 말하지 않는다.
+   */
+  sustainableSpendingAdvice?: SustainableSpendingAdvice | null;
   params: SimulationParams;
   formatValue: (value: number) => string;
   /**
@@ -226,6 +237,49 @@ function EmptyOutcomeCard({ outcome }: { outcome?: OptimizationOutcome }) {
   );
 }
 
+/**
+ * 어떤 전략으로도 목표에 도달하지 못할 때, 전략 카드 대신 «격차»를 보여준다.
+ *
+ * 카드를 그대로 두고 경고만 얹지 않는 이유: 모든 후보가 0%면 세 비교자가 전부 동률이라
+ * 카드의 순서도 ☆추천도 근거가 없고(noRecommendationReachesGoal 주석), 수치까지 서로 같아
+ * 두 장이 나란히 서면 "둘 중 하나를 고르라"는 뜻으로만 읽힌다. 실제로 사용자가 할 수 있는
+ * 일은 전략을 고르는 것이 아니라 목표나 저축을 바꾸는 것이므로, 화면도 그것을 말해야 한다.
+ */
+function UnreachableGoalCard({
+  outcome,
+  advice,
+  formatValue,
+}: {
+  outcome: Extract<OptimizationOutcome, { kind: 'no_candidate_reaches_goal' }>;
+  advice?: SustainableSpendingAdvice | null;
+  formatValue: (value: number) => string;
+}) {
+  return (
+    <GlassCard className={styles.unreachableGoal} role="note">
+      <div className={styles.unreachableGoalHeadline}>
+        <span aria-hidden="true">🔴</span>
+        <h3>어떤 전략으로도 목표에 도달하지 못합니다</h3>
+      </div>
+      <p className={styles.unreachableGoalSummary}>
+        전략 {outcome.validatedCount}개를 검증했지만 모두 목표 달성 확률이 0%입니다.
+      </p>
+      {/* 격차는 계산됐을 때만 말한다. computeSustainableSpendingAdvice는 고정 생활비 계획이
+          아니거나 지속가능액이 0으로 수렴하면 null을 내는데, 그때 0원을 찍으면 측정하지 못한
+          값을 확신에 찬 숫자로 보여주게 된다. */}
+      {advice?.kind === 'overspending' && (
+        <dl className={styles.unreachableGoalGap} aria-label="목표와 지속 가능한 생활비의 격차">
+          <div><dt>월 생활비 목표</dt><dd>{formatValue(advice.currentMonthly)}</dd></div>
+          <div><dt>지속 가능한 월 생활비</dt><dd>{formatValue(advice.sustainableMonthly)}</dd></div>
+          <div><dt>부족</dt><dd>{formatValue(advice.difference)}</dd></div>
+        </dl>
+      )}
+      <p className={styles.unreachableGoalAction}>
+        목표 생활비를 낮추거나, 은퇴 전 저축·연금 납입을 늘려야 합니다.
+      </p>
+    </GlassCard>
+  );
+}
+
 export function StrategyRecommendationCards({
   recommendations,
   status,
@@ -233,6 +287,7 @@ export function StrategyRecommendationCards({
   errorMessage,
   unsupportedHardGoals,
   outcome,
+  sustainableSpendingAdvice,
   params,
   formatValue,
   onApplyStrategy,
@@ -282,6 +337,18 @@ export function StrategyRecommendationCards({
   // 지어내고 "목표 달성확률과 전략 특성을 기준으로 선택했습니다"라는 근거까지 붙였는데,
   // 그 선택은 실제로 일어난 적이 없었다.
   const finalRecommendations = recommendations ?? [];
+
+  // 카드 그리드보다 «먼저» 판정한다. 여기서 돌아서면 비교 바와 그리드가 통째로 건너뛰어져,
+  // 아래 렌더 경로 곳곳에 0% 조건을 흩뿌리지 않아도 된다.
+  if (outcome?.kind === 'no_candidate_reaches_goal') {
+    return (
+      <UnreachableGoalCard
+        outcome={outcome}
+        advice={sustainableSpendingAdvice}
+        formatValue={formatValue}
+      />
+    );
+  }
 
   if (finalRecommendations.length === 0) {
     return <EmptyOutcomeCard outcome={outcome} />;

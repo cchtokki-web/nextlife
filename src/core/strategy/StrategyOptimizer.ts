@@ -26,6 +26,7 @@ import { annualStdDevForYieldPreset } from '../usecases/montecarlo/volatilityPre
 import {
   RECOMMENDATION_PERSONAS,
   RecommendationEngine,
+  noRecommendationReachesGoal,
   type CandidateRecommendation,
   type FinalStrategyRecommendations,
   type ValidatedStrategyCandidate,
@@ -90,7 +91,14 @@ export type OptimizationOutcome =
       firstFailureReason?: string;
     }
   /** Validated candidates exist, but none carries any persona's defining trait. */
-  | { kind: 'no_persona_matched'; validatedCount: number };
+  | { kind: 'no_persona_matched'; validatedCount: number }
+  /**
+   * 추천은 만들어졌지만 전부 목표 달성 확률 0% — 고를 이유가 없는 선택지다.
+   *
+   * 이것은 실패가 아니라 «답»이다: 어떤 전략으로도 이 목표에 도달하지 못한다. 카드로 내면
+   * 존재하지 않는 선택을 고르라는 화면이 되므로 다른 갈래로 분리한다.
+   */
+  | { kind: 'no_candidate_reaches_goal'; validatedCount: number; personaCount: number };
 
 export interface StrategyOptimizationResult {
   best: RankedStrategyCandidate | null;
@@ -213,6 +221,8 @@ interface OutcomeInputs {
   monteCarloValidatedCount: number;
   monteCarloFailures: ReadonlyArray<{ candidateId: string; reason: string }>;
   recommendationCount: number;
+  /** 확정된 추천이 전부 목표 달성 확률 0%인가. 판정은 noRecommendationReachesGoal이 소유한다. */
+  allRecommendationsZeroGoal: boolean;
   rankedCount: number;
 }
 
@@ -254,6 +264,16 @@ function resolveOutcome(input: OutcomeInputs): OptimizationOutcome {
 
   if (input.recommendationCount === 0) {
     return { kind: 'no_persona_matched', validatedCount: input.monteCarloValidatedCount };
+  }
+
+  // 추천이 «있는» 경우만 여기 온다. 순서가 중요하다 — 추천이 없으면 위의 no_persona_matched가
+  // 먼저 맞고, 그것은 "특성이 없다"라는 다른 사건이다.
+  if (input.allRecommendationsZeroGoal) {
+    return {
+      kind: 'no_candidate_reaches_goal',
+      validatedCount: input.monteCarloValidatedCount,
+      personaCount: input.recommendationCount,
+    };
   }
 
   return { kind: 'ok' };
@@ -449,6 +469,9 @@ export class StrategyOptimizer {
       monteCarloValidatedCount,
       monteCarloFailures,
       recommendationCount: recommendations.recommendations.length,
+      // 확정 패스를 통과한 «최종» 목록으로 판정한다. 선별 단계 목록으로 세면 확정 후 사라진
+      // 후보까지 포함되고, 화면에 나가는 숫자와 다른 근거로 판정하게 된다.
+      allRecommendationsZeroGoal: noRecommendationReachesGoal(recommendations.recommendations),
       rankedCount: rankedCandidates.length,
     });
 

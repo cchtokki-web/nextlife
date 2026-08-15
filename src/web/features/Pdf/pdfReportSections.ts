@@ -4,6 +4,7 @@ import { SensitivityScenario } from '../../../core/usecases/dashboard/computeSen
 import { PlanAssetStatus } from '../../../core/usecases/dashboard/resolvePlanAssetStatus';
 import { ShortfallReport } from '../../../core/usecases/dashboard/computeShortfallSummary';
 import { KeyLever } from '../../../core/usecases/dashboard/computeKeyLevers';
+import { SustainableSpendingAdvice } from '../../../core/usecases/dashboard/computeSustainableSpendingAdvice';
 import {
   PLAN_CONFIDENCE_BAND_LABEL,
   PLAN_CONFIDENCE_BAND_TIER,
@@ -321,11 +322,14 @@ export function renderStrategyRecommendationSection(input: {
   currentGoalProbability?: number;
   unsupportedHardGoals?: readonly RetirementGoalType[];
   outcome?: OptimizationOutcome;
+  /** 화면과 같은 출처의 격차 숫자. 도달 불가 문단에서만 쓰고, null이면 숫자 없이 사실만 적는다. */
+  sustainableSpendingAdvice?: SustainableSpendingAdvice | null;
   params: SimulationParams;
   formatValue: (value: number) => string;
 }): string {
   const {
-    recommendations, status, currentGoalProbability, unsupportedHardGoals, outcome, params, formatValue,
+    recommendations, status, currentGoalProbability, unsupportedHardGoals, outcome,
+    sustainableSpendingAdvice, params, formatValue,
   } = input;
 
   const notice = (text: string) =>
@@ -339,6 +343,29 @@ export function renderStrategyRecommendationSection(input: {
           ? '전략 추천을 검증하는 중 오류가 발생했습니다. 나머지 분석은 정상입니다.'
           : '아직 계산되지 않았습니다. 잠시 후 리포트를 다시 내려받으면 추천 전략이 포함됩니다.'
     );
+  }
+
+  // 화면(StrategyRecommendationCards)과 같은 자리에서, 같은 판정으로 돌아선다. 리포트는 화면보다
+  // 오래 남고 그대로 인용되므로, 고를 이유가 없는 선택지를 표로 남기면 더 오래 오해된다.
+  if (outcome?.kind === 'no_candidate_reaches_goal') {
+    const gap = sustainableSpendingAdvice?.kind === 'overspending'
+      ? `<table style="width: 100%; border-collapse: collapse; margin-top: 10px;">
+           <tbody>
+             <tr><td style="padding: 4px 0; font-size: 11px; color: #64748b;">월 생활비 목표</td>
+                 <td style="padding: 4px 0; font-size: 12px; font-weight: 700; color: #0f172a; text-align: right;">${formatValue(sustainableSpendingAdvice.currentMonthly)}</td></tr>
+             <tr><td style="padding: 4px 0; font-size: 11px; color: #64748b;">지속 가능한 월 생활비</td>
+                 <td style="padding: 4px 0; font-size: 12px; font-weight: 700; color: #0f172a; text-align: right;">${formatValue(sustainableSpendingAdvice.sustainableMonthly)}</td></tr>
+             <tr><td style="padding: 4px 0; font-size: 11px; color: #64748b;">부족</td>
+                 <td style="padding: 4px 0; font-size: 12px; font-weight: 700; color: #b91c1c; text-align: right;">${formatValue(sustainableSpendingAdvice.difference)}</td></tr>
+           </tbody>
+         </table>`
+      : '';
+    return `<div style="border: 1px solid #fecaca; background-color: #fef2f2; border-radius: 8px; padding: 12px 14px;">
+        <p style="margin: 0; font-size: 13px; font-weight: 700; color: #b91c1c;">어떤 전략으로도 목표에 도달하지 못합니다</p>
+        <p style="margin: 6px 0 0; font-size: 12px; color: #475569;">전략 ${outcome.validatedCount}개를 검증했지만 모두 목표 달성 확률이 0%입니다.</p>
+        ${gap}
+        <p style="margin: 10px 0 0; font-size: 12px; color: #0f172a;">목표 생활비를 낮추거나, 은퇴 전 저축·연금 납입을 늘려야 합니다.</p>
+      </div>`;
   }
 
   const finalRecommendations = recommendations ?? [];
@@ -456,6 +483,11 @@ function describeEmptyOutcome(outcome?: OptimizationOutcome): string {
   }
   if (outcome?.kind === 'no_persona_matched') {
     return `전략 ${outcome.validatedCount}개를 검증했지만 안정형·균형형·여유형 중 어느 특성에도 해당하지 않아 추천을 만들지 못했습니다.`;
+  }
+  // 이 kind는 추천이 «있는» 경우에만 나오므로 현재 구조에서 여기까지 오지 않는다. 그래도
+  // 적어 둔다 — 유니온이 늘었는데 이 함수만 모르면 조용히 마지막 폴백 문장으로 새어 나간다.
+  if (outcome?.kind === 'no_candidate_reaches_goal') {
+    return `전략 ${outcome.validatedCount}개를 검증했지만 모두 목표 달성 확률이 0%입니다. 목표 생활비를 낮추거나, 은퇴 전 저축·연금 납입을 늘려야 합니다.`;
   }
   if (outcome?.kind === 'no_candidate_survived') {
     const blocked = outcome.blockedBy.map((code) => HARD_CONSTRAINT_LABELS[code] ?? code).join(', ');
