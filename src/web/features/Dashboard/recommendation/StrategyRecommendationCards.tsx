@@ -1,10 +1,9 @@
 import { Loader2, Star } from 'lucide-react';
 import type { SimulationParams } from '../../../../core/entities/types';
 import type { RetirementGoalType } from '../../../../core/entities/retirementGoal';
-import type {
-  OptimizationOutcome,
-  RankedStrategyCandidate,
-} from '../../../../core/strategy/StrategyOptimizer';
+import type { OptimizationOutcome } from '../../../../core/strategy/StrategyOptimizer';
+// 「달라지는 점」 문구는 core가 소유한다 — PDF 리포트가 같은 함수를 쓴다.
+import { describeStrategyChanges } from '../../../../core/usecases/dashboard/describeStrategyChanges';
 import type { CandidateRecommendation } from '../../../../core/recommendation/RecommendationEngine';
 import type { StrategyOptimizationStatus } from '../../../hooks/useStrategyOptimization';
 import { RETIREMENT_GOAL_CATALOG } from '../../RetirementGoals/goalCatalog';
@@ -96,91 +95,6 @@ function EmptyOutcomeCard({ outcome }: { outcome?: OptimizationOutcome }) {
   );
 }
 
-const WITHDRAWAL_LABELS: Record<string, string> = {
-  GENERAL_FIRST: '일반계좌 우선 인출',
-  ISA_FIRST: 'ISA 우선 인출',
-  PENSION_FIRST: '연금계좌 우선 인출',
-  TAX_OPTIMIZED: '세금 최적화 순서로 인출',
-};
-
-const ALLOCATION_LABELS = {
-  CONSERVATIVE: '보수적 자산배분',
-  BALANCED: '균형 자산배분',
-  GROWTH: '성장형 자산배분',
-} as const;
-
-const SPENDING_LABELS = {
-  FIXED: '생활비를 일정하게 유지',
-  FRONT_LOADED: '은퇴 초기에 생활비를 더 사용',
-  CARE_HEAVY: '후기 의료·돌봄 지출에 대비',
-} as const;
-
-export interface StrategyChange {
-  label: string;
-  before: string;
-  after: string;
-}
-
-export function strategyChanges(
-  params: SimulationParams,
-  ranked: RankedStrategyCandidate,
-  formatValue: (value: number) => string,
-): StrategyChange[] {
-  const { strategy } = ranked.candidate;
-  const dimensions = ranked.candidate.dimensions;
-  const currentPensionAge = params.withdrawalPlan?.nationalPensionStartAge ?? 65;
-  const currentWithdrawal = params.withdrawalPlan?.accountWithdrawalPolicy;
-  const currentAllocation = params.yieldPreset;
-  const changes: StrategyChange[] = [];
-
-  if (params.userProfile.retirementAge !== strategy.retirementAge) {
-    changes.push({
-      label: '은퇴 시점',
-      before: `${params.userProfile.retirementAge}세`,
-      after: `${strategy.retirementAge}세`,
-    });
-  }
-  if (currentPensionAge !== strategy.nationalPensionStartAge) {
-    changes.push({
-      label: '국민연금',
-      before: `${currentPensionAge}세`,
-      after: `${strategy.nationalPensionStartAge}세`,
-    });
-  }
-  if (params.userProfile.targetMonthlySpending !== strategy.targetMonthlySpending) {
-    changes.push({
-      label: '월 생활비',
-      before: formatValue(params.userProfile.targetMonthlySpending),
-      after: formatValue(strategy.targetMonthlySpending),
-    });
-  }
-  if (currentWithdrawal !== dimensions.withdrawalPolicy) {
-    changes.push({
-      label: '자산 인출',
-      before: currentWithdrawal ? WITHDRAWAL_LABELS[currentWithdrawal] ?? currentWithdrawal : '현재 설정',
-      after: WITHDRAWAL_LABELS[dimensions.withdrawalPolicy] ?? dimensions.withdrawalPolicy,
-    });
-  }
-  const candidatePreset = strategy.legacySettings.yieldPreset;
-  if (currentAllocation !== candidatePreset) {
-    changes.push({
-      label: '투자 성향',
-      before: currentAllocation === 'conservative' ? '보수적 자산배분'
-        : currentAllocation === 'aggressive' ? '성장형 자산배분' : '균형 자산배분',
-      after: ALLOCATION_LABELS[dimensions.assetAllocation],
-    });
-  }
-  if (dimensions.spendingPattern !== 'FIXED') {
-    changes.push({
-      label: '생활비 배분',
-      before: '연령대별 동일 기준',
-      after: SPENDING_LABELS[dimensions.spendingPattern],
-    });
-  }
-
-  return changes;
-}
-
 export function StrategyRecommendationCards({
   recommendations,
   status,
@@ -251,8 +165,11 @@ export function StrategyRecommendationCards({
       )}
 
       <div className={styles.recommendationComparison} aria-label="현재 계획과 추천 전략 비교">
+        {/* 라벨은 진단 카드의 「목표 달성 확률」과 같은 값이다. 여기서 '달성률' 같은 다른
+            이름을 쓰면 사용자는 서로 다른 지표로 읽는다 — 이 비교바가 말하는 것은 "무엇을"이
+            아니라 "현재 → 추천"이므로 좌측은 계획의 이름만 적는다. */}
         <div>
-          <span>현재 목표 달성률</span>
+          <span>현재 계획</span>
           <strong>{currentGoalProbability === undefined ? '계산 중' : `${Math.round(currentGoalProbability * 100)}%`}</strong>
         </div>
         <span className={styles.comparisonArrow} aria-hidden="true">→</span>
@@ -266,7 +183,7 @@ export function StrategyRecommendationCards({
         {finalRecommendations.map((recommendation) => {
           const candidate = recommendation.candidate;
           const probability = candidate.monteCarlo.goalSuccessProbability;
-          const changes = strategyChanges(params, candidate, formatValue);
+          const changes = describeStrategyChanges(params, candidate, formatValue);
           return (
             <article
               key={candidate.candidate.id}
@@ -285,7 +202,7 @@ export function StrategyRecommendationCards({
               </header>
 
               <dl className={styles.strategyMetrics}>
-                <div><dt>목표 성공확률</dt><dd>{Math.round(probability * 100)}%</dd></div>
+                <div><dt>목표 달성 확률</dt><dd>{Math.round(probability * 100)}%</dd></div>
                 <div><dt>생활비</dt><dd>월 {formatValue(candidate.candidate.strategy.targetMonthlySpending)}</dd></div>
                 {/* 결정론 경로의 endingAssets로 대체하지 않는다. 같은 라벨 아래에서 1,000회
                     시행의 중앙값과 단일 경로 값이 섞이면 사용자는 둘을 구분할 수 없다. */}

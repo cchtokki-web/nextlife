@@ -150,13 +150,30 @@ function buildInvestmentReturnLever({ sensitivity, formatValue }: KeyLeversInput
   };
 }
 
-function buildWithdrawalOrderLever({ recommendation }: KeyLeversInput): KeyLever | null {
+// **평생 효용 점수를 인용하지 않는다.** 효용은 후보를 서로 비교하기 위한 내부 척도라
+// 사용자가 "+5점"의 크기를 가늠할 기준이 없고, 결과 화면에서도 더 이상 노출하지 않는다.
+// 대신 같은 항목이 이미 들고 있는 절세액·자산 증감을 근거로 쓴다 — 단위가 금액이라
+// 다른 레버(은퇴 시점·생활비)의 근거와 같은 자로 읽힌다.
+//
+// 근거 수치가 하나도 없으면 레버를 만들지 않는다. 수치 없는 조언은 이 저장소가 이미
+// 거부한 형태이고, 그런 항목은 "라벨만 있는 5순위"로 남아 목록의 신뢰도만 떨어뜨린다.
+function buildWithdrawalOrderLever({ recommendation, formatValue }: KeyLeversInput): KeyLever | null {
   const top = recommendation?.itemizedContributions?.[0];
   if (!recommendation?.improved || top === undefined) return null;
+
+  const effects: string[] = [];
+  if (top.deltas.totalTax < 0) effects.push(`절세 ${formatValue(-top.deltas.totalTax)}`);
+  else if (top.deltas.totalTax > 0) effects.push(`추가 세금 ${formatValue(top.deltas.totalTax)}`);
+  if (top.deltas.endingAssets !== 0) {
+    effects.push(
+      `기말자산 ${top.deltas.endingAssets >= 0 ? '+' : '−'}${formatValue(Math.abs(top.deltas.endingAssets))}`
+    );
+  }
+  if (effects.length === 0) return null;
 
   return {
     key: 'withdrawalOrder',
     title: '인출 순서 최적화',
-    detail: `${top.label} (평생 효용 ${top.utilityDelta >= 0 ? '+' : ''}${top.utilityDelta}점). 아래 체크리스트에서 전체 항목을 확인하세요.`,
+    detail: `${top.label} (${effects.join(' · ')}).`,
   };
 }

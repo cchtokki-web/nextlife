@@ -1,4 +1,4 @@
-import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, test, expect, vi } from 'vitest';
 import { render, screen, fireEvent, within } from '@testing-library/react';
 import { DashboardSection } from '@/web/features/Dashboard/DashboardSection';
 import {
@@ -101,38 +101,78 @@ const recommendation: StrategyRecommendation = {
   ],
 };
 
-// KPI 카드 하나로 좁혀 그 값만 읽는다. 「지속가능 생활비」와 「목표 생활비」가 같은 금액인
-// 계획이 흔해서, 좁히지 않으면 한쪽만 바뀌는 회귀를 잡지 못한다.
-const kpiValue = (label: string): string =>
-  screen.getByText(label).closest('div')!.parentElement!.querySelector('.font-display')!.textContent!;
+// 진단 카드의 「현재 계획」 dl에서 항목 하나만 읽는다. 「지속가능 생활비」와 「목표 생활비」가
+// 같은 금액인 계획이 흔해서, 좁히지 않으면 한쪽만 바뀌는 회귀를 잡지 못한다.
+const planFact = (label: string): string =>
+  within(screen.getByLabelText('현재 계획')).getByText(label).closest('div')!
+    .querySelector('dd')!.textContent!;
 
 describe('DashboardSection - IA 순서', () => {
-  beforeEach(() => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(makeStreamResponse([JSON.stringify({ response: '안내 문구' })])));
-  });
-  afterEach(() => {
-    vi.unstubAllGlobals();
-  });
-
-  test('결과 요약 → 위험 분석 → 실행 계획 → 자산 흐름 → 상세 분석 순서로 렌더링된다', () => {
+  test('진단 → 추천 → 계획의 근거 3단으로 렌더링된다', () => {
     const { container } = render(
       <DashboardSection params={params} result={result} recommendation={recommendation} />
     );
 
     const text = container.textContent ?? '';
-    const summaryIdx = text.indexOf('결과 요약');
-    const riskIdx = text.indexOf('위험 분석');
-    const actionIdx = text.indexOf('실행 계획');
-    const chartIdx = text.indexOf('자산 흐름');
-    // 첫 번째 "상세 분석"은 새 기본 화면의 접기 버튼이고, 마지막 항목은 기존 전문가
-    // 상세 섹션이다. 기존 상세 콘텐츠 내부의 순서를 검증하므로 마지막 위치를 본다.
-    const detailIdx = text.lastIndexOf('상세 분석');
+    const diagnosisIdx = text.indexOf('현재 계획 진단');
+    const recommendIdx = text.indexOf('NextLife 추천');
+    const evidenceIdx = text.indexOf('계획의 근거');
 
-    expect(summaryIdx).toBeGreaterThanOrEqual(0);
-    expect(riskIdx).toBeGreaterThan(summaryIdx);
-    expect(actionIdx).toBeGreaterThan(riskIdx);
-    expect(chartIdx).toBeGreaterThan(actionIdx);
-    expect(detailIdx).toBeGreaterThan(chartIdx);
+    expect(diagnosisIdx).toBeGreaterThanOrEqual(0);
+    expect(recommendIdx).toBeGreaterThan(diagnosisIdx);
+    expect(evidenceIdx).toBeGreaterThan(recommendIdx);
+  });
+
+  test('「계획의 근거」 안은 자산 흐름 → 시장 변동 검증 → 계획 상세 수치 → 실행 시점 순이다', () => {
+    const { container } = render(
+      <DashboardSection params={params} result={result} recommendation={recommendation} />
+    );
+
+    const text = container.textContent ?? '';
+    const chartIdx = text.indexOf('자산 흐름');
+    const riskIdx = text.indexOf('시장 변동 검증');
+    const detailIdx = text.indexOf('계획 상세 수치');
+    const actionIdx = text.indexOf('실행 시점');
+
+    expect(chartIdx).toBeGreaterThanOrEqual(0);
+    expect(riskIdx).toBeGreaterThan(chartIdx);
+    expect(detailIdx).toBeGreaterThan(riskIdx);
+    expect(actionIdx).toBeGreaterThan(detailIdx);
+  });
+
+  // 「결과 요약」은 진단 카드가 이미 말한 판정·확률·목표 생활비·기말자산을 다른 이름으로 다시
+  // 말했고, 체크리스트는 「NextLife 추천」과 다른 축(평생 효용)으로 두 번째 추천을 냈다.
+  test('중복이던 결과 요약·효용 점수·두 번째 추천은 더 이상 렌더되지 않는다', () => {
+    render(<DashboardSection params={params} result={result} recommendation={recommendation} />);
+
+    expect(screen.queryByText('결과 요약')).not.toBeInTheDocument();
+    expect(screen.queryByText('정량 목표 성공 확률')).not.toBeInTheDocument();
+    expect(screen.queryByText('현재 전략 평균 실제 소비')).not.toBeInTheDocument();
+    expect(screen.queryByText(/평생 효용/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/AI 추천 전략/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '추천안 결과 보기' })).not.toBeInTheDocument();
+  });
+
+  // 같은 값에 이름을 여러 개 붙이면 사용자는 서로 다른 지표로 읽는다. 정본은 「목표 달성 확률」.
+  test('목표 달성 확률은 한 이름으로만 불린다', () => {
+    render(<DashboardSection params={params} result={result} recommendation={recommendation} />);
+
+    expect(screen.getByText('목표 달성 확률')).toBeInTheDocument();
+    expect(screen.queryByText('현재 목표 달성률')).not.toBeInTheDocument();
+    expect(screen.queryByText('목표 성공확률')).not.toBeInTheDocument();
+  });
+
+  // LLM 조언 패널을 걷어냈으므로 결과 화면은 네트워크를 전혀 타지 않아야 한다. 남아 있으면
+  // 화면에 보이지도 않는 응답을 위해 매 렌더 요청이 나간다.
+  test('AI 조언 API를 호출하지 않는다', () => {
+    const fetchSpy = vi.fn().mockResolvedValue(makeStreamResponse([JSON.stringify({ response: '안내 문구' })]));
+    vi.stubGlobal('fetch', fetchSpy);
+    try {
+      render(<DashboardSection params={params} result={result} recommendation={recommendation} />);
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   test('Monte Carlo 전에는 고정소득 충당률을 목표 달성 확률로 표시하지 않는다', () => {
@@ -151,23 +191,29 @@ describe('DashboardSection - IA 순서', () => {
     expect(within(diagnosis).getByText(/기준 시나리오에서는/)).toBeInTheDocument();
   });
 
-  test('실행 로드맵이 렌더링되고 체크리스트 다음, 차트 이전에 위치한다', () => {
+  test('실행 로드맵은 「무엇부터 바꿔야 하나」 다음, 차트 이후에 위치한다', () => {
     const { container } = render(
       <DashboardSection params={params} result={result} recommendation={recommendation} />
     );
     const text = container.textContent ?? '';
-    const checklistIdx = text.indexOf('AI 추천 전략');
-    const roadmapIdx = text.indexOf('실행 로드맵');
     const chartIdx = text.indexOf('자산 추이 시뮬레이션');
+    const leversIdx = text.indexOf('무엇부터 바꿔야 하나');
+    const roadmapIdx = text.indexOf('실행 로드맵');
 
-    expect(roadmapIdx).toBeGreaterThan(checklistIdx);
-    expect(chartIdx).toBeGreaterThan(roadmapIdx);
+    expect(chartIdx).toBeGreaterThanOrEqual(0);
+    expect(leversIdx).toBeGreaterThan(chartIdx);
+    expect(roadmapIdx).toBeGreaterThan(leversIdx);
   });
 
-  test('전문가용 상세 분석 Collapse를 열지 않아도 평생 효용 점수 구성이 바로 보인다', () => {
-    render(<DashboardSection params={params} result={result} recommendation={recommendation} />);
-    expect(screen.getByText('평생 효용 점수 구성')).toBeInTheDocument();
-    expect(screen.getByText('장점')).toBeInTheDocument();
+  // 「계획의 근거」를 한 번 여는 것으로 끝나야 한다. 예전에는 세금 표 하나를 보는 데
+  // <details> → 그룹 → Collapse까지 세 번을 열어야 했다.
+  test('안쪽에 또 다른 접힘을 두지 않는다', () => {
+    const { container } = render(
+      <DashboardSection params={params} result={result} recommendation={recommendation} />
+    );
+
+    expect(container.querySelectorAll('details')).toHaveLength(1);
+    expect(screen.getByText('세금 및 건강보험료 (은퇴 이후 연평균)')).toBeInTheDocument();
   });
 
   test('자산 추이 차트는 기본으로 단순화 모드이며, "자산 구성 상세보기" 버튼을 제공한다', () => {
@@ -190,66 +236,9 @@ describe('DashboardSection - IA 순서', () => {
     expect(screen.queryByText(/연령별 소득원 구성/)).not.toBeInTheDocument();
   });
 
-  // KPI 4장은 사용자가 실제로 묻는 네 가지다: 이 계획이 될 확률은 / 실제로 얼마를 쓸 수
-  // 있나 / 원한 금액과 얼마나 차이 나나 / 가장 위험한 구간은 언제인가.
-  // 기말 순자산과 평생 효용은 카드에서 내려 보조 행으로 강등했다(CoreKpiGrid 주석 참고).
-  test('핵심 KPI 4장(목표 성공확률/실제 소비/목표 생활비/부족 발생)이 모두 노출된다', () => {
-    render(<DashboardSection params={params} result={result} recommendation={recommendation} />);
-    expect(screen.getByText('정량 목표 성공 확률')).toBeInTheDocument();
-    expect(screen.getByText('현재 전략 평균 실제 소비')).toBeInTheDocument();
-    expect(screen.getByText('목표 생활비')).toBeInTheDocument();
-    expect(screen.getByText('생활비 부족 발생')).toBeInTheDocument();
-    expect(screen.getByText(/기준 수익률상 지속가능 생활비/)).toBeInTheDocument();
-    // 강등된 두 지표도 화면에서 사라지지는 않는다(평생 효용은 상세 분석에도 나오므로 복수).
-    expect(screen.getByText(/예상 순자산/)).toBeInTheDocument();
-    expect(screen.getAllByText(/평생 효용/).length).toBeGreaterThan(0);
-  });
-
-  test('추천안 결과 보기 버튼 클릭 시 KPI가 Before에서 After(추천) 값으로 전환된다', () => {
-    const afterResult: SimulationResult = { ...result, endingAssets: 999000000, utility: { ...utility, score: 81 } };
-    const rec: StrategyRecommendation = { ...recommendation, recommendedResult: afterResult };
-
-    render(<DashboardSection params={params} result={result} recommendation={rec} />);
-
-    expect(screen.queryByText('81점')).not.toBeInTheDocument();
-    expect(screen.getAllByText('5억원').length).toBeGreaterThan(0);
-
-    fireEvent.click(screen.getByRole('button', { name: '추천안 결과 보기' }));
-
-    expect(screen.getByText('81점')).toBeInTheDocument();
-    // 순자산 KPI도 endingAssets(자산증가분)를 그대로 반영해야 한다 — utilityScore 하나만으로는
-    // 다른 하위 컴포넌트에 baseline 값이 잘못 배선돼도 잡아내지 못한다.
-    expect(screen.getByText('9억 9,900만원')).toBeInTheDocument();
-    // 현재 계획 진단은 Before 기준을 유지하므로 5억원은 상단에 계속 남는다.
-    expect(screen.getAllByText('5억원')).toHaveLength(1);
-  });
-
-  test('After 모드에서는 추천 결과의 평균 실제 소비 metric을 표시한다', () => {
-    const recommendedPlan: CompleteWithdrawalPlan = {
-      privatePensionMonthlyTarget: 0,
-      nationalPensionStartAge: 65,
-      assetSellOrderStrategy: 'input_order',
-      isaMaturityDestination: 'pension',
-      generalAssetWithdrawalStartAge: 60,
-      monthlySpendingMultiplier: 1.2,
-    };
-    const recommendedResult: SimulationResult = {
-      ...result,
-      yearlyResults: result.yearlyResults.map((row) => ({ ...row, spending: 43_200_000 })),
-    };
-    const rec: StrategyRecommendation = { ...recommendation, recommendedPlan, recommendedResult };
-
-    render(<DashboardSection params={params} result={result} recommendation={rec} />);
-
-    expect(kpiValue('현재 전략 평균 실제 소비')).toBe('월 300만원');
-
-    fireEvent.click(screen.getByRole('button', { name: '추천안 결과 보기' }));
-
-    expect(kpiValue('현재 전략 평균 실제 소비')).toBe('월 360만원');
-    expect(kpiValue('목표 생활비')).toBe('월 300만원');
-  });
-
-  test('Before 상태에서 리스크 알림이 보이고, 추천 적용(After) 시 리스크가 해소되면 알림이 사라진다', () => {
+  // 진단 카드의 「가장 큰 위험」은 riskAlerts[0]의 제목이고, 위험 카드 목록은 그 항목의
+  // 설명과 대응까지 보여준다. 요약 → 상세 관계이므로 제목이 두 번 나오는 것은 의도다.
+  test('가장 큰 위험은 진단 카드가 제목으로, 위험 카드가 상세로 말한다', () => {
     const riskParams: SimulationParams = {
       ...params,
       userProfile: { ...params.userProfile, retirementAge: 65 },
@@ -259,20 +248,51 @@ describe('DashboardSection - IA 순서', () => {
       ...result,
       yearlyResults: [makeYearlyResult({ age: 65, nationalPensionIncome: 12000000, hasTaxWarning: true })],
     };
-    const cleanAfterResult: SimulationResult = { ...result, endingAssets: 999000000, utility: { ...utility, score: 81 } };
-    const rec: StrategyRecommendation = { ...recommendation, recommendedResult: cleanAfterResult };
 
-    render(<DashboardSection params={riskParams} result={riskyResult} recommendation={rec} />);
+    render(<DashboardSection params={riskParams} result={riskyResult} recommendation={recommendation} />);
 
-    expect(screen.getAllByText('금융소득종합과세 진입 가능성').length).toBeGreaterThanOrEqual(2);
-
-    fireEvent.click(screen.getByRole('button', { name: '추천안 결과 보기' }));
-
-    // 상세 패널은 추천안 기준으로 위험이 해소되지만, 최상단 "현재 계획 진단"은 baseline의
-    // 위험을 계속 말해야 서로 다른 두 계획을 한 카드에서 섞지 않는다.
     const diagnosis = screen.getByLabelText('현재 계획 분석');
     expect(within(diagnosis).getByText('금융소득종합과세 진입 가능성')).toBeInTheDocument();
-    expect(screen.getAllByText('금융소득종합과세 진입 가능성')).toHaveLength(1);
+    expect(screen.getAllByText('금융소득종합과세 진입 가능성').length).toBeGreaterThanOrEqual(2);
+  });
+});
+
+// 자동 채움(applyAiSentinels)은 사용자가 미정으로 둔 축을 추천값으로 채워 engine.run에
+// 넘긴다 — 화면의 숫자가 사용자가 입력한 적 없는 값을 포함한다는 뜻이다. 예전에는 추천
+// 체크리스트의 "이미 반영됨" 블록이 그 사실을 말했고, 그 블록을 없앤 뒤에는 진단 카드가 말한다.
+describe('DashboardSection - 자동 반영된 설정 표기', () => {
+  const diagnosis = () => screen.getByLabelText('현재 계획 분석');
+
+  test('자동으로 채운 축이 있으면 진단 카드가 그 축을 밝힌다', () => {
+    render(
+      <DashboardSection
+        params={params} result={result} recommendation={recommendation}
+        sentinels={{
+          compiled: { params, utilityConfig: { weights: {} } } as never,
+          appliedFields: ['nationalPensionStartAge', 'assetSellOrderStrategy'],
+          appliedValues: {},
+        }}
+      />
+    );
+
+    expect(diagnosis().textContent).toMatch(/자동으로 반영했습니다/);
+    expect(diagnosis().textContent).toMatch(/국민연금 개시 나이/);
+    expect(diagnosis().textContent).toMatch(/자산 매도 순서/);
+  });
+
+  test('자동으로 채운 축이 없으면 그 줄을 렌더하지 않는다', () => {
+    render(
+      <DashboardSection
+        params={params} result={result} recommendation={recommendation}
+        sentinels={{
+          compiled: { params, utilityConfig: { weights: {} } } as never,
+          appliedFields: [],
+          appliedValues: {},
+        }}
+      />
+    );
+
+    expect(diagnosis().textContent).not.toMatch(/자동으로 반영했습니다/);
   });
 });
 
@@ -288,8 +308,11 @@ describe('DashboardSection - 지속가능 생활비 제안 배너', () => {
 
     render(<DashboardSection params={params} result={tightResult} />);
 
-    expect(screen.getByText(/기준 수익률상 지속가능 생활비/).parentElement).toHaveTextContent('월 216만원');
-    expect(kpiValue('목표 생활비')).toBe('월 300만원');
+    // 지속가능액(216만)은 과소비 배너가, 사용자가 세운 목표(300만)는 진단 카드가 말한다.
+    // 둘이 같은 카드에 붙어 있으면 어느 쪽이 "내가 정한 값"인지 구분되지 않는다.
+    expect(screen.getByText(/지속하기 어렵습니다/)).toBeInTheDocument();
+    expect(screen.getAllByText(/216만원/).length).toBeGreaterThan(0);
+    expect(planFact('월 생활비 목표')).toBe('300만원');
   });
 
   test('더 쓸 수 있으면 그 금액을 제안한다', () => {
@@ -466,14 +489,14 @@ describe('DashboardSection - 투자자산 미보유 계획', () => {
     utility: { ...utility, score: 32 },
   };
 
-  test('헤드라인이 고갈이 아니라 투자자산 미보유로 말한다', () => {
+  // 엔진은 첫 해에 depletionAge=51을 잡는다. 화면이 그것을 그대로 결론으로 말하면
+  // "51세에 자산이 고갈되는 계획"이 되는데, 실제로는 굴릴 투자자산을 처음부터 넣지 않은 것뿐이다.
+  test('고갈이 아니라 투자자산 미보유로 말한다', () => {
     render(<DashboardSection params={noAssetParams} result={noAssetResult} />);
 
-    // 헤드라인·차트 캡션·차트 빈 상태가 모두 같은 사실을 말하므로 헤드라인 문장 전체로 좁힌다.
-    expect(
-      screen.getAllByText(/등록된 투자자산이 없지만, 연금 등 고정소득이 계획한 생활비를 채웁니다/).length
-    ).toBeGreaterThan(0);
+    expect(screen.getByText(/등록된 투자자산이 없어 자산 잔액은 0원으로 유지됩니다/)).toBeInTheDocument();
     expect(screen.queryByText(/51세에 자산이 고갈될 위험/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/51세에 투자자산이 모두 소진/)).not.toBeInTheDocument();
   });
 
   test('자산 추이 차트가 0원 축 대신 안내를 보여주고 상세보기 토글을 숨긴다', () => {
@@ -577,9 +600,10 @@ describe('DashboardSection - 현재 계획을 유지하면 요약 카드', () =>
   });
 });
 
-// 예전에는 로드맵이 토글과 무관하게 항상 추천안을 그렸다. 그래서 Hero 버튼이 "추천 적용하기"
-// 상태(= 미적용)인데도 로드맵만 추천 나이를 보여줘, 한 화면에서 KPI·차트와 다른 기준을 말했다.
-describe('DashboardSection - 실행 로드맵이 Before/After 토글을 따른다', () => {
+// 예전에는 로드맵만 추천안을 그려서, KPI·차트가 현재 설정을 보여주는데 로드맵은 추천 나이를
+// 말했다. 지금 이 화면의 모든 숫자는 현재 계획 하나를 기준으로 하므로 로드맵도 같아야 한다.
+// (추천안의 연령별 일정은 「NextLife 추천」 카드의 "달라지는 점"이 담당한다.)
+describe('DashboardSection - 실행 로드맵은 언제나 현재 계획 기준이다', () => {
   const earlyPensionPlan: CompleteWithdrawalPlan = {
     privatePensionMonthlyTarget: 0,
     nationalPensionStartAge: 60, // 현재 설정(65)에서 조기수령으로 당겨짐
@@ -590,22 +614,14 @@ describe('DashboardSection - 실행 로드맵이 Before/After 토글을 따른�
   };
   const rec: StrategyRecommendation = { ...recommendation, recommendedPlan: earlyPensionPlan };
 
-  test('기본(추천 미적용)에서는 현재 설정 기준으로 그리고 변경 배지를 붙이지 않는다', () => {
+  test('추천안이 있어도 현재 설정 기준으로 그리고 변경 배지를 붙이지 않는다', () => {
     render(<DashboardSection params={params} result={result} recommendation={rec} />);
 
     expect(screen.getByText(/현재 설정 기준/)).toBeInTheDocument();
+    expect(screen.queryByText(/AI 추천 전략 기준/)).not.toBeInTheDocument();
     expect(screen.queryByText(/현재 65세 → 추천 60세/)).not.toBeInTheDocument();
     // 국민연금은 현재 설정인 65세 노드에 있어야 한다.
     expect(screen.getByText('65세')).toBeInTheDocument();
-  });
-
-  test('추천 적용 시 추천 기준으로 바뀌고 옮겨진 나이를 배지로 밝힌다', () => {
-    render(<DashboardSection params={params} result={result} recommendation={rec} />);
-
-    fireEvent.click(screen.getByRole('button', { name: '추천안 결과 보기' }));
-
-    expect(screen.getByText(/AI 추천 전략 기준/)).toBeInTheDocument();
-    expect(screen.getByText('현재 65세 → 추천 60세')).toBeInTheDocument();
   });
 });
 

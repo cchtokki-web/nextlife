@@ -3,10 +3,8 @@ import { describe, expect, test } from 'vitest';
 import type { SimulationParams } from '@/core/entities/types';
 import type { ValidatedStrategyCandidate } from '@/core/recommendation/RecommendationEngine';
 import { DEFAULT_UTILITY_CONFIG } from '@/core/usecases/utility/utilityWeights';
-import {
-  StrategyRecommendationCards,
-  strategyChanges,
-} from '@/web/features/Dashboard/recommendation/StrategyRecommendationCards';
+import { describeStrategyChanges } from '@/core/usecases/dashboard/describeStrategyChanges';
+import { StrategyRecommendationCards } from '@/web/features/Dashboard/recommendation/StrategyRecommendationCards';
 
 const params: SimulationParams = {
   userProfile: { currentAge: 50, retirementAge: 60, expectancy: 90, targetMonthlySpending: 3_500_000 },
@@ -216,7 +214,7 @@ describe('StrategyRecommendationCards', () => {
   });
 
   test('현재 값과 다른 항목만 변경점으로 만든다', () => {
-    const changes = strategyChanges(params, candidate(1, 'CONSERVATIVE', 'FIXED', 0.97), formatValue);
+    const changes = describeStrategyChanges(params, candidate(1, 'CONSERVATIVE', 'FIXED', 0.97), formatValue);
 
     expect(changes.map((change) => change.label)).toEqual([
       '은퇴 시점', '국민연금', '자산 인출', '투자 성향',

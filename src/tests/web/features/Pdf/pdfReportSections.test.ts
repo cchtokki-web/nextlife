@@ -2,7 +2,7 @@ import { describe, test, expect } from 'vitest';
 import {
   formatCurrencyUnit,
   renderRiskAlertsSection,
-  renderItemizedChecklistSection,
+  renderStrategyRecommendationSection,
   renderExecutionRoadmapSection,
   renderSensitivityTableSection,
   renderMonteCarloSection,
@@ -86,7 +86,9 @@ import { ExecutionRoadmap } from '@/core/usecases/dashboard/computeExecutionRoad
 import { MonteCarloResult } from '@/core/entities/montecarlo';
 import { SequenceRiskResult } from '@/core/usecases/montecarlo/sequenceRisk';
 import { SensitivityScenario } from '@/core/usecases/dashboard/computeSensitivityAnalysis';
-import { StrategyRecommendation, UtilityBreakdown } from '@/core/entities/types';
+import { SimulationParams } from '@/core/entities/types';
+import { CandidateRecommendation, ValidatedStrategyCandidate } from '@/core/recommendation/RecommendationEngine';
+import { DEFAULT_UTILITY_CONFIG } from '@/core/usecases/utility/utilityWeights';
 import { NO_GOAL_FAILURE, LEGACY_GOAL_CONDITIONS } from '@/tests/fixtures/goalFailure';
 
 describe('renderRiskAlertsSection', () => {
@@ -108,85 +110,149 @@ describe('renderRiskAlertsSection', () => {
   });
 });
 
-describe('renderItemizedChecklistSection', () => {
-  const utility: UtilityBreakdown = {
-    score: 76,
-    components: { consumption: 27, depletionSafety: 20, pensionUtilization: 13, taxEfficiency: 8, taxationRisk: 8, bequestAdequacy: 0 },
+// 예전 이 자리에는 레거시 「🤖 AI 추천 전략」 체크리스트가 있었다. 그쪽은 평생 효용 점수로
+// 항목을 정렬했는데, 화면은 이미 목표 달성 확률로 말하는 다른 추천을 내고 있어 같은 계획의
+// 두 문서가 서로 다른 축으로 서로 다른 전략을 권했다.
+describe('renderStrategyRecommendationSection', () => {
+  const params: SimulationParams = {
+    userProfile: { currentAge: 50, retirementAge: 60, expectancy: 90, targetMonthlySpending: 3_500_000 },
+    assets: [],
+    nationalPension: { expectedMonthlyAmount: 1_500_000 },
+    privatePensions: [],
+    otherIncomes: [],
+    inflationRate: 2,
+    inflationMode: 'real',
+    baseExchangeRate: 1350,
+    exchangeScenario: 'base',
+    displayCurrency: 'KRW',
+    yieldPreset: 'base',
+    withdrawalPlan: { nationalPensionStartAge: 60, accountWithdrawalPolicy: 'GENERAL_FIRST' },
   };
-  const zeroDeltas: StrategyRecommendation['deltas'] = {
-    lifetimeConsumption: 0,
-    totalTax: 0,
-    endingAssets: 0,
-    pensionEndingBalance: 0,
-    comprehensiveTaxYears: 0,
-    healthInsuranceTotal: 0,
-    nationalPensionTotal: 0,
-  };
-  const baseRecommendedResult = {
-    yearlyResults: [],
-    fireAge: null,
-    depletionAge: null,
-    endingAssets: 0,
-    retirementScore: 0,
-    retirementGrade: '보통' as const,
-    goalAchievementRate: 100,
-    retirementAssetsAtRetirement: 0,
-  };
+  const formatValue = (value: number) => `${Math.round(value / 10_000)}만원`;
 
-  test('recommendation이 undefined이면 폴백 문구를 반환한다', () => {
-    const html = renderItemizedChecklistSection(undefined);
-    expect(html).toContain('현재 설정이 이미 최적입니다');
+  const candidate = (rank: number, probability: number): ValidatedStrategyCandidate => ({
+    rank,
+    candidate: {
+      id: `candidate-${rank}`,
+      dimensions: {
+        retirementAge: 62,
+        nationalPensionTiming: 'NORMAL',
+        nationalPensionStartAge: 65,
+        withdrawalPolicy: 'ISA_FIRST',
+        spendingPattern: 'FIXED',
+        assetAllocation: 'BALANCED',
+      },
+      strategy: {
+        targetMonthlySpending: 3_500_000,
+        planHorizonAge: 90,
+        simulationStartYear: 2026,
+        retirementAge: 62,
+        nationalPensionStartAge: 65,
+        withdrawalPolicy: { accountWithdrawalPolicy: 'ISA_FIRST' },
+        spendingPolicy: { mode: 'target' },
+        legacySettings: {
+          inflationRate: 2, inflationMode: 'real', baseExchangeRate: 1350,
+          exchangeScenario: 'base', displayCurrency: 'KRW', yieldPreset: 'base',
+        },
+        legacyPresence: {
+          withdrawalPlan: true, spendingStrategy: false, spendingCurve: false, assetFloor: false,
+        },
+        utilityConfig: DEFAULT_UTILITY_CONFIG,
+      },
+    },
+    simulation: { yearlyResults: [], depletionAge: null, endingAssets: 200_000_000 },
+    evaluation: {
+      hardConstraintsSatisfied: true, goalEvaluations: [], weightedScore: 80, score: 80,
+      utility: { score: 80, components: { consumption: 0, depletionSafety: 0, pensionUtilization: 0, taxEfficiency: 0, taxationRisk: 0, bequestAdequacy: 0 } },
+      hardConstraintFailures: [], unsupportedHardGoals: [],
+    },
+    monteCarlo: {
+      trials: 1000, seed: 20260101,
+      goalSuccessProbability: probability,
+      spendingSuccessProbability: probability,
+      assetSurvivalProbability: probability,
+      terminalAssetMedian: 300_000_000,
+      terminalAssetP10: 100_000_000,
+      terminalAssetP90: 500_000_000,
+      shortfallProbability: 1 - probability,
+    },
   });
 
-  test('improved가 false이면 폴백 문구를 반환한다', () => {
-    const recommendation: StrategyRecommendation = {
-      currentUtility: utility,
-      verifiedSentinelPlan: [],
-      recommendedUtility: utility,
-      recommendedPlan: null,
-      recommendedAssetReinvestment: null,
-      recommendedPrivatePensionChanneling: null,
-      recommendedNewPensionContribution: null,
-      channelingIncludesAccountTransfer: false,
-      improved: false,
-      reasons: [],
-      deltas: zeroDeltas,
-      totalCandidateCount: 0,
-      failedCandidateCount: 0,
-      recommendedResult: baseRecommendedResult,
-      itemizedContributions: [],
-    };
-    const html = renderItemizedChecklistSection(recommendation);
-    expect(html).toContain('현재 설정이 이미 최적입니다');
+  const balanced: CandidateRecommendation = {
+    persona: 'BALANCED', label: '균형형', candidate: candidate(1, 0.94),
+    reason: '목표 성공확률과 목표 적합도, 자산배분의 균형을 우선했습니다.',
+  };
+
+  test('현재 계획 → 추천 전략 확률 비교와 페르소나 카드를 싣는다', () => {
+    const html = renderStrategyRecommendationSection({
+      recommendations: [balanced], status: 'done', currentGoalProbability: 0.72, params, formatValue,
+    });
+
+    expect(html).toContain('현재 계획');
+    expect(html).toContain('72%');
+    expect(html).toContain('추천 전략 적용');
+    expect(html).toContain('94%');
+    expect(html).toContain('균형형');
+    expect(html).toContain('현재 계획에서 달라지는 점');
   });
 
-  test('itemizedContributions를 항목별 +/-효용 점수와 함께 렌더링한다', () => {
-    const recommendation: StrategyRecommendation = {
-      currentUtility: utility,
-      verifiedSentinelPlan: [],
-      recommendedUtility: { ...utility, score: 81 },
-      recommendedPlan: null,
-      recommendedAssetReinvestment: null,
-      recommendedPrivatePensionChanneling: null,
-      recommendedNewPensionContribution: null,
-      channelingIncludesAccountTransfer: false,
-      improved: true,
-      reasons: [],
-      deltas: zeroDeltas,
-      totalCandidateCount: 12,
-      failedCandidateCount: 0,
-      recommendedResult: baseRecommendedResult,
-      itemizedContributions: [
-        { field: 'nationalPensionStartAge', label: '국민연금을 70세까지 연기 수령합니다.', utilityDelta: 5, deltas: { ...zeroDeltas, totalTax: -1000000 } },
-        { field: 'privatePensionMonthlyTarget', label: '사적연금을 63세부터 인출합니다.', utilityDelta: -1.2, deltas: zeroDeltas },
-      ],
-    };
-    const html = renderItemizedChecklistSection(recommendation);
-    expect(html).toContain('국민연금을 70세까지 연기 수령합니다.');
-    expect(html).toContain('단독 효용 +5점');
-    expect(html).toContain('사적연금을 63세부터 인출합니다.');
-    expect(html).toContain('단독 효용 -1.2점');
-    expect(html).toContain('전체 조합에서만 유효');
+  // 확률 이름은 화면·리포트를 통틀어 「목표 달성 확률」 하나다. 같은 값에 이름이 여럿이면
+  // 사용자는 서로 다른 지표로 읽는다.
+  test('확률을 「목표 달성 확률」이라는 한 이름으로만 부른다', () => {
+    const html = renderStrategyRecommendationSection({
+      recommendations: [balanced], status: 'done', currentGoalProbability: 0.72, params, formatValue,
+    });
+
+    expect(html).toContain('목표 달성 확률');
+    expect(html).not.toContain('목표 성공확률 ');
+    expect(html).not.toContain('현재 목표 달성률');
+  });
+
+  // 화면(describeStrategyChanges)과 같은 함수를 쓰므로 같은 변경 목록이 나와야 한다.
+  test('현재 설정과 다른 축만 달라지는 점으로 싣는다', () => {
+    const html = renderStrategyRecommendationSection({
+      recommendations: [balanced], status: 'done', currentGoalProbability: 0.72, params, formatValue,
+    });
+
+    expect(html).toContain('은퇴 시점');
+    expect(html).toContain('국민연금');
+    expect(html).toContain('자산 인출');
+    expect(html).not.toContain('월 생활비');
+  });
+
+  // 워커가 끝나기 전에 내려받으면 추천 자리가 통째로 빈다. 조용히 생략하면 "추천할 것이 없는
+  // 계획"으로 읽힌다.
+  test('아직 검증되지 않았으면 생략하지 않고 그 사실을 밝힌다', () => {
+    const html = renderStrategyRecommendationSection({ status: 'running', params, formatValue });
+
+    expect(html).toContain('아직 계산되지 않았습니다');
+  });
+
+  test('후보가 없는 원인을 하나로 뭉뚱그리지 않는다', () => {
+    const html = renderStrategyRecommendationSection({
+      recommendations: [], status: 'done', params, formatValue,
+      outcome: {
+        kind: 'no_candidate_survived',
+        hardConstraintRejectedCount: 3,
+        failedCount: 0,
+        blockedBy: ['HARD_ASSET_SURVIVAL'],
+      },
+    });
+
+    expect(html).toContain('자산 고갈 방지');
+    expect(html).not.toContain('입력만으로는 비교할 전략을 만들지 못했습니다');
+  });
+
+  // 검증하지 못한 필수 목표를 밝히지 않으면 "확인하지 않음"이 "확인해서 통과함"으로 읽힌다.
+  // 리포트는 화면보다 오래 남고 그대로 인용되므로 더 중요하다.
+  test('검증할 수 없었던 HARD 목표를 밝힌다', () => {
+    const html = renderStrategyRecommendationSection({
+      recommendations: [balanced], status: 'done', currentGoalProbability: 0.72, params, formatValue,
+      unsupportedHardGoals: ['TAX_OPTIMIZATION'],
+    });
+
+    expect(html).toContain('검증할 수 없습니다');
+    expect(html).toContain('세금 최소화');
   });
 });
 
@@ -313,37 +379,6 @@ describe('renderSensitivityTableSection', () => {
   });
 });
 
-describe('renderItemizedChecklistSection - AI 센티널 자동 적용 구분', () => {
-  const zeroDeltas: StrategyRecommendation['deltas'] = {
-    lifetimeConsumption: 0, totalTax: 0, endingAssets: 0, pensionEndingBalance: 0,
-    comprehensiveTaxYears: 0, healthInsuranceTotal: 0, nationalPensionTotal: 0,
-  };
-
-  const recommendation = {
-    improved: true,
-    itemizedContributions: [
-      { field: 'nationalPensionStartAge', label: '국민연금을 70세까지 연기 수령합니다.', utilityDelta: 8, deltas: zeroDeltas },
-      { field: 'assetReinvestment', label: '"삼성전자"의 배당을 재투자로 전환합니다.', utilityDelta: 5, deltas: zeroDeltas },
-    ],
-  } as unknown as StrategyRecommendation;
-
-  test('자동 적용된 축은 "이미 반영됨"으로 분리해 인쇄한다', () => {
-    const html = renderItemizedChecklistSection(recommendation, ['nationalPensionStartAge']);
-
-    expect(html).toContain('이미 반영됨');
-    expect(html).toContain('단독으로도 권장');
-    expect(html).toContain('이 값으로 계산 중');
-  });
-
-  test('자동 적용이 없으면 종전대로 구분 없이 인쇄한다', () => {
-    const html = renderItemizedChecklistSection(recommendation);
-
-    expect(html).not.toContain('이미 반영됨');
-    expect(html).not.toContain('이 값으로 계산 중');
-    expect(html).toContain('국민연금을 70세까지 연기 수령합니다.');
-  });
-});
-
 // **1페이지가 결정론 결과만 크게 말하던 문제.**
 //
 // 예전 1페이지는 "은퇴 준비도 64점(주의)"와 "기대수명까지 고갈 없음"을 나란히 놓았고,
@@ -382,17 +417,26 @@ describe('renderPlanVerdictSection', () => {
     expect(html).toContain('기대수명까지 고갈 없음');
   });
 
-  // 리포트가 지적한 핵심: 두 세계가 각각 이름을 갖고 같은 화면에 놓여야 한다.
-  test('확률 결과를 같은 블록에 나란히 싣는다', () => {
+  // 리포트가 지적한 핵심: 두 세계가 각각 이름을 갖고 같은 블록에 놓여야 한다.
+  test('결정론 결과와 확률 결과를 같은 블록에 나란히 싣는다', () => {
     const html = render(0.37, mc(0.37));
 
+    expect(html).toContain('가정대로 실현될 때');
     expect(html).toContain('시장 변동성 반영');
     expect(html).toContain('1,000회 시뮬레이션');
-    expect(html).toContain('목표 동시 달성 확률 37%');
-    expect(html).toContain('생활 유지 37%');
-    expect(html).toContain('90세까지 자산 보존 37%');
-    expect(html).toContain('중앙값');
-    expect(html).toContain('하위 10%');
+    expect(html).toContain('목표 달성 확률 37%');
+  });
+
+  // **판정 블록은 목표 달성 확률 하나만 말한다.** 성분 확률(생활 유지·자산 보존)과 잔여자산
+  // 분위수는 「시장 변동 검증」 섹션이 소유한다 — 예전에는 여기서 먼저 인쇄하고 뒤 페이지에서
+  // 같은 숫자를 다시 인쇄했다.
+  test('성분 확률과 잔여자산 분위수를 여기서 다시 인쇄하지 않는다', () => {
+    const html = render(0.37, mc(0.37, 100000000, 5000000));
+
+    expect(html).not.toContain('생활 유지 37%');
+    expect(html).not.toContain('자산 보존 37%');
+    expect(html).not.toContain('중앙값');
+    expect(html).not.toContain('하위 10%');
   });
 
   test('판정에는 보정 점수와 결정론 점수를 함께 밝힌다', () => {
