@@ -328,17 +328,6 @@
   color: var(--foreground-muted);
   cursor: default;
 }
-.applyStrategyNotice { font-size: 0.7rem; line-height: 1.45; color: var(--foreground-muted); }
-.applyStrategyConfirm { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 0.4rem; }
-.applyStrategyCancel {
-  padding: 0.55rem 0.75rem;
-  border: 1px solid var(--card-border);
-  border-radius: 12px;
-  background: transparent;
-  color: var(--foreground-muted);
-  font-size: 0.78rem;
-  cursor: pointer;
-}
 
 /* 적용된 카드의 해제 버튼. 채운 primary 버튼(=아직 안 누른 카드)과 시각적으로 구분해야
    세 카드 중 어느 것이 적용 상태인지 한눈에 읽힌다. */
