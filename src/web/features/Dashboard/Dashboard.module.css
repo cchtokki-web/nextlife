@@ -281,9 +281,12 @@
   background: var(--panel-bg);
 }
 
-.recommendedStrategyCard {
-  border-color: color-mix(in srgb, var(--primary) 55%, var(--card-border));
-  box-shadow: 0 10px 30px color-mix(in srgb, var(--primary) 10%, transparent);
+/* 지금 시나리오에 반영된 카드. ☆추천(엔진의 선택)이 아니라 «적용 상태»를 말한다 —
+   적용한 것이 없으면 어떤 카드에도 붙지 않는다. */
+.appliedStrategyCard {
+  border-color: color-mix(in srgb, var(--primary) 70%, var(--card-border));
+  box-shadow: 0 10px 30px color-mix(in srgb, var(--primary) 12%, transparent);
+  background: color-mix(in srgb, var(--primary) 6%, var(--panel-bg));
 }
 
 .strategyCardHeader { display: flex; align-items: flex-start; justify-content: space-between; gap: 0.5rem; }

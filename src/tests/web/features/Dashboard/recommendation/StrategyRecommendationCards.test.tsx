@@ -442,6 +442,48 @@ describe('StrategyRecommendationCards 적용 버튼', () => {
     ).toBeInTheDocument();
   });
 
+  // 카드 강조(테두리)와 그 접근성 표시는 «적용 상태»를 따른다. ☆추천은 엔진이 고른
+  // 카드일 뿐 사용자가 반영한 카드가 아니어서, 둘을 같은 강조로 말하면 아직 아무것도
+  // 적용하지 않은 화면이 "이미 하나 골라져 있다"로 읽힌다.
+  function threeCards(props: CardProps = {}) {
+    return render(
+      <StrategyRecommendationCards
+        recommendations={[
+          { persona: 'STABLE', label: '안정형', candidate: candidate(1, 'CONSERVATIVE', 'FIXED', 0.97), reason: '하방 방어' },
+          { persona: 'BALANCED', label: '균형형', candidate: candidate(2, 'BALANCED', 'FIXED', 0.95), reason: '목표 균형' },
+          { persona: 'COMFORTABLE', label: '여유형', candidate: candidate(3, 'GROWTH', 'FRONT_LOADED', 0.9), reason: '소비 여력' },
+        ]}
+        status="done"
+        currentGoalProbability={0.7}
+        params={params}
+        formatValue={formatValue}
+        onApplyStrategy={vi.fn()}
+        onUndoStrategy={vi.fn()}
+        {...props}
+      />
+    );
+  }
+
+  function cardOf(label: string) {
+    return screen.getByText(label).closest('article')!;
+  }
+
+  test('적용한 카드만 강조한다 — ☆추천 카드가 아니라', () => {
+    threeCards({ appliedCandidateId: 'candidate-3' });
+
+    // ☆추천은 균형형에 붙어 있지만, 강조는 사용자가 적용한 여유형이 가져간다.
+    expect(within(cardOf('균형형')).getByText('추천')).toBeInTheDocument();
+    expect(cardOf('여유형')).toHaveAttribute('aria-current', 'true');
+    expect(cardOf('균형형')).not.toHaveAttribute('aria-current');
+    expect(cardOf('안정형')).not.toHaveAttribute('aria-current');
+  });
+
+  test('적용한 전략이 없으면 어떤 카드도 강조하지 않는다', () => {
+    const { container } = threeCards();
+
+    expect(container.querySelectorAll('article[aria-current]')).toHaveLength(0);
+  });
+
   // 카드가 받는 params는 센티널이 채운 계산용 값이고 실제 적용 대상은 사용자가 입력한
   // 설정이다. 둘의 판정이 엇갈리면 눌러도 아무 일이 없거나(침묵 실패) 적용할 것이 있는데
   // 버튼이 잠긴다. 그래서 활성 여부는 «적용하는 쪽»이 판정한다.
