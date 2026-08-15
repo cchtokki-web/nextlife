@@ -29,10 +29,24 @@ describe('collectChangedPaths', () => {
   test('전략 하위 필드를 바꾸면 strategy.* 경로가 잡힌다', () => {
     const params = {
       ...initialParams,
-      strategy: { ...DEFAULT_RETIREMENT_STRATEGY, objective: 'tax_minimization' as const },
+      strategy: { ...DEFAULT_RETIREMENT_STRATEGY, riskProfile: 'conservative' as const },
     };
 
-    expect(collectChangedPaths(params).has('strategy.objective')).toBe(true);
+    expect(collectChangedPaths(params).has('strategy.riskProfile')).toBe(true);
+  });
+
+  // 이 패널이 다루지 않는 축은 세지 않는다. 세면 전문가 모드로 올려도 되돌릴 입력이 없는
+  // 「숨겨진 사용자 설정 N개」가 영원히 남는다 — 목표가 정하는 축이 정확히 그런 경우다.
+  test('목표가 정하는 축은 변경으로 세지 않는다', () => {
+    const params = {
+      ...initialParams,
+      strategy: { ...DEFAULT_RETIREMENT_STRATEGY, objective: 'tax_minimization' as const },
+      userProfile: { ...initialParams.userProfile, targetBequest: 100_000_000 },
+    };
+
+    const changed = collectChangedPaths(params);
+    expect(changed.has('strategy.objective')).toBe(false);
+    expect(changed.has('userProfile.targetBequest')).toBe(false);
   });
 
   // 최신 환율 자동 조회는 「경제 가정」을 열 때마다 baseExchangeRate를 실시간 값으로
@@ -133,6 +147,6 @@ describe('countSectionChanges', () => {
   });
 
   test('변경이 없으면 0을 반환한다', () => {
-    expect(countSectionChanges(new Set(), 'goal', 'standard')).toEqual({ visible: 0, hidden: 0 });
+    expect(countSectionChanges(new Set(), 'pension', 'standard')).toEqual({ visible: 0, hidden: 0 });
   });
 });

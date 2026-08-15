@@ -1,17 +1,17 @@
 import {
-  Activity, Banknote, CalendarClock, CalendarMinus, CalendarPlus, CloudRain, Coins, Equal, Flame, Gift,
-  HandCoins, HeartPulse, Leaf, PiggyBank, Plane, Receipt, Rocket, Shield, ShieldCheck, SlidersHorizontal,
-  Sparkles, TrendingDown, TrendingUp, Wallet,
+  Activity, CalendarClock, CalendarMinus, CalendarPlus, CloudRain, Flame,
+  Leaf, PiggyBank, Rocket, Shield, ShieldCheck, SlidersHorizontal,
+  Sparkles, TrendingDown, Wallet,
 } from 'lucide-react';
 import {
-  BequestStrategy, EconomicScenario, HealthcareAssumptions, IsaFirstChoice, NationalPensionStrategy, ObjectivePriority,
-  PrivatePensionStrategy, RiskProfile, SimulationParams, SpendingShapePreset, SpendingStrategyChoice,
+  EconomicScenario, HealthcareAssumptions, IsaFirstChoice, NationalPensionStrategy,
+  PrivatePensionStrategy, RiskProfile, SimulationParams,
   StrategyMode, StrategyRecommendation,
 } from '../../../core/entities/types';
 import { RadioCardOption } from '../../components/form';
 import { FieldPath } from './fieldVisibility';
 
-// 6개 섹션이 공유하는 props. 섹션은 자기 값 읽기/쓰기와 노출 판정에 필요한 것만 받는다.
+// 각 섹션이 공유하는 props. 섹션은 자기 값 읽기/쓰기와 노출 판정에 필요한 것만 받는다.
 export interface SectionProps {
   params: SimulationParams;
   onChangeParams: (params: SimulationParams) => void;
@@ -46,115 +46,6 @@ export const DEFAULT_HEALTHCARE: HealthcareAssumptions = {
   shockAge: 75,
   shockAmount: 30000000,
 };
-
-// SpendingStrategyChoice는 core(entities/types.ts)에 정의되어 있다 —
-// strategy.spendingChoice 필드의 타입이라 도메인 쪽이 소유해야 한다.
-export const SPENDING_STRATEGY_OPTIONS: ReadonlyArray<RadioCardOption<SpendingStrategyChoice>> = [
-  {
-    value: 'target', label: '원하는 생활비 직접 입력',
-    description: '매달 쓰고 싶은 금액을 정하고, 그 돈이 언제까지 버티는지 봅니다.',
-    icon: <Wallet size={16} />, recommended: true,
-  },
-  {
-    value: 'dividend_only', label: '배당금만 소비',
-    description: '원금은 건드리지 않고 배당·이자만 씁니다. 자산을 그대로 남깁니다.',
-    icon: <Coins size={16} />,
-  },
-  {
-    value: 'max_sustainable', label: '평생 소비 최적화',
-    // 예전 문구는 "기대수명까지 정확히 다 쓰는 금액"이었다. 그 설명은 상속 목표를 함께
-    // 설정했을 때 이 모드가 실제로 하는 일 — 목표 잔여자산을 남기면서 역산 — 을 감췄고,
-    // 아래 소비 성향으로 연령대별 배분까지 정할 수 있게 된 지금은 더 어긋난다.
-    description: '남기고 싶은 자산과 소비 성향을 정하면, 연령대별로 쓸 수 있는 금액을 역산합니다.',
-    icon: <TrendingUp size={16} />,
-  },
-  {
-    value: 'ai', label: '생활비 제안 받기',
-    // compileStrategy가 'ai'를 baseline인 'target'으로 내린다. 즉 제안은 옆 필드에 힌트로만
-    // 뜨고, 계산에 들어가는 것은 사용자가 입력한 목표 생활비다.
-    description: '지금 자산과 목표를 보고 무리 없는 생활비를 제안합니다. 계산에는 입력한 목표 생활비가 그대로 쓰입니다.',
-    icon: <Sparkles size={16} />,
-  },
-];
-
-// 은퇴 후 생활비를 연령대별로 어떻게 배분할지. 「평생 소비 최적화」에서만 보인다 —
-// 다른 전략에서는 인출액을 목표 생활비나 배당액이 정하므로 배분을 논할 자리가 없다.
-//
-// 사용자가 고르는 것은 "얼마"가 아니라 "모양"이다. 실제 금액은 자산에서 역산된다.
-export const SPENDING_SHAPE_OPTIONS: ReadonlyArray<RadioCardOption<SpendingShapePreset>> = [
-  {
-    value: 'flat', label: '실질생활비 균등형',
-    description: '구매력 기준으로 매년 같은 금액을 씁니다.',
-    icon: <Equal size={16} />, recommended: true,
-  },
-  {
-    value: 'front_loaded', label: '활동기 집중형',
-    description: '건강한 60대에 더 쓰고 나이가 들수록 줄입니다. 여행·취미를 앞당기고 싶을 때.',
-    icon: <Plane size={16} />,
-  },
-  {
-    value: 'care_heavy', label: '의료·돌봄 대비형',
-    description: '초반을 아껴 80대 이후를 두텁게 합니다. 간병·요양 비용이 걱정될 때.',
-    icon: <HeartPulse size={16} />,
-  },
-];
-
-export const OBJECTIVE_OPTIONS: ReadonlyArray<RadioCardOption<ObjectivePriority>> = [
-  {
-    value: 'lifetime_spending', label: '평생 생활비 확보',
-    description: '돈이 떨어지지 않는 것을 가장 중요하게 봅니다.',
-    icon: <Wallet size={16} />,
-  },
-  {
-    value: 'tax_minimization', label: '세금 최소화',
-    description: '평생 내는 세금과 건강보험료를 줄이는 쪽을 택합니다.',
-    icon: <Receipt size={16} />,
-  },
-  {
-    value: 'wealth_maximization', label: '자산 최대화',
-    description: '쓰는 속도를 늦춰 자산을 오래 크게 유지합니다.',
-    icon: <PiggyBank size={16} />,
-  },
-  {
-    value: 'bequest_maximization', label: '상속 최대화',
-    description: '남기는 자산을 최우선으로 두고 계획을 세웁니다.',
-    icon: <Gift size={16} />,
-  },
-  {
-    value: 'ai_recommended', label: '균형 있게 평가',
-    description: '목표를 하나로 정하지 않고, 어느 목표로 봐도 크게 아쉽지 않은 계획을 고릅니다.',
-    icon: <Sparkles size={16} />, recommended: true,
-  },
-];
-
-export const BEQUEST_OPTIONS: ReadonlyArray<RadioCardOption<BequestStrategy>> = [
-  {
-    value: 'spend_all', label: '모두 사용',
-    description: '남기지 않고 다 쓰는 것을 목표로 평가합니다.',
-    icon: <HandCoins size={16} />,
-  },
-  {
-    value: 'leave_some', label: '일부 남기기',
-    // "목표로 합니다"가 아니다. 이 값은 엔진에 하한선을 걸지 않고 채점 기준만 정한다 —
-    // 기본값이라 하한선을 걸면 전략을 저장한 적 없는 모든 시나리오의 곡선이 조용히 바뀐다.
-    description: '2년치 생활비 정도를 적정선으로 보고 평가합니다. 인출을 따로 제한하지는 않습니다.',
-    // 기본값(DEFAULT_RETIREMENT_STRATEGY)과 같은 값에 추천 배지를 둔다. 이 앱이 상속 목표를
-    // 따로 정하지 않은 계획에 실제로 적용하는 기준이 정확히 "2년치 생활비"다.
-    icon: <Banknote size={16} />, recommended: true,
-  },
-  {
-    value: 'maximize', label: '최대 상속',
-    description: '가능한 한 많이 남기는 방향으로 평가합니다. 많이 남길수록 점수가 올라갑니다.',
-    icon: <Gift size={16} />,
-  },
-  {
-    value: 'target_amount', label: '목표 금액 유지',
-    // 이 값만 엔진에 실제 제약(assetFloor)을 건다. 남은 자산이 그 금액 밑으로 내려가는
-    // 인출을 하지 않으므로, 지키려면 생활비가 줄어든다. 그 대가를 문구가 밝혀야 한다.
-    description: '남기고 싶은 금액을 정하면 그 금액이 남도록 인출을 조절합니다. 모자라면 생활비가 줄어듭니다.',
-    icon: <PiggyBank size={16} />,
-  },
-];
 
 // ISA 만기 자금의 행선지.
 //

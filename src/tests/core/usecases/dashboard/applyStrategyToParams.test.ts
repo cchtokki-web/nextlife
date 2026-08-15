@@ -111,6 +111,43 @@ describe('applyStrategyToParams', () => {
     expect(result.params.strategy).toBeUndefined();
   });
 
+  // 은퇴 나이·목표 생활비는 「은퇴 목표」 카드가 유일한 편집 경로다. userProfile만 덮어쓰면
+  // 다음 정규화가 목표에서 그 값을 다시 파생시켜 방금 적용한 값이 조용히 사라진다.
+  test('은퇴 시점·월 생활비는 대응하는 목표의 목표값까지 함께 갱신한다', () => {
+    const params = makeParams({
+      userProfile: { currentAge: 50, retirementAge: 60, expectancy: 90, targetMonthlySpending: 3_000_000 },
+    });
+
+    const result = applyStrategyToParams(params, makeRanked({
+      retirementAge: 62,
+      targetMonthlySpending: 3_500_000,
+    }));
+
+    const goals = result.params.retirementGoals ?? [];
+    expect(goals.find((goal) => goal.type === 'EARLY_RETIREMENT')?.targetValue).toBe(62);
+    expect(goals.find((goal) => goal.type === 'LIVING_EXPENSE_STABILITY')?.targetValue).toBe(3_500_000);
+    expect(result.params.userProfile.retirementAge).toBe(62);
+    expect(result.params.userProfile.targetMonthlySpending).toBe(3_500_000);
+  });
+
+  // 사용자가 고르지 않은 목표를 앱이 대신 만들지는 않는다(최대 5개 제한과 우선순위를
+  // 앱이 대신 결정하게 된다). 대신 왜 반영하지 못했는지를 남긴다.
+  test('대응하는 목표가 없으면 반영하지 않고 사유를 남긴다', () => {
+    const params = makeParams({
+      retirementGoals: [{ type: 'ASSET_SURVIVAL', priority: 1, constraintType: 'HARD' }],
+    });
+
+    const result = applyStrategyToParams(params, makeRanked({
+      retirementAge: 62,
+      targetMonthlySpending: 4_000_000,
+    }));
+
+    expect(labelsOf(result.skipped)).toEqual(expect.arrayContaining(['은퇴 시점', '월 생활비']));
+    expect(result.skipped.find((item) => item.key === 'retirementAge')?.reason)
+      .toMatch(/빠른 은퇴/);
+    expect(result.params.userProfile.retirementAge).toBe(params.userProfile.retirementAge);
+  });
+
   test('인출 정책을 바꾸면 짝이 맞지 않는 사용자 지정 순서를 지운다', () => {
     const params = makeParams({
       withdrawalPlan: {

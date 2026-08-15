@@ -4,7 +4,9 @@ import {
 } from '@/web/features/StrategySettings/fieldVisibility';
 import { StrategyMode } from '@/core/entities/types';
 
-const ALL_SECTIONS: SectionId[] = ['basic', 'goal', 'pension', 'investment', 'economic', 'advanced'];
+// 「은퇴 목표」 섹션은 없다. 그 축들은 「은퇴 목표」 카드가 유일한 편집 경로다
+// (normalizeGoalDrivenParams).
+const ALL_SECTIONS: SectionId[] = ['basic', 'pension', 'investment', 'economic', 'advanced'];
 const ALL_MODES: StrategyMode[] = ['simple', 'standard', 'expert'];
 
 describe('fieldVisibility', () => {
@@ -33,10 +35,30 @@ describe('fieldVisibility', () => {
     }
   });
 
-  test('간편 모드에서도 나이와 목표 우선순위는 보인다', () => {
+  test('간편 모드에서도 나이와 연금 전략은 보인다', () => {
     expect(isFieldVisible('simple', 'userProfile.currentAge')).toBe(true);
-    expect(isFieldVisible('simple', 'userProfile.retirementAge')).toBe(true);
-    expect(isFieldVisible('simple', 'strategy.objective')).toBe(true);
+    expect(isFieldVisible('simple', 'userProfile.expectancy')).toBe(true);
+    expect(isFieldVisible('simple', 'strategy.nationalPensionStrategy')).toBe(true);
+  });
+
+  // 이 패널에 다시 등록하면 같은 값을 두 화면이 각자 편집하던 상태로 돌아간다.
+  test('목표가 정하는 축은 어떤 모드에서도 이 패널에 없다', () => {
+    const goalDriven = [
+      'userProfile.retirementAge',
+      'userProfile.targetMonthlySpending',
+      'userProfile.targetBequest',
+      'strategy.spendingChoice',
+      'strategy.objective',
+      'strategy.bequestStrategy',
+      'strategy.spendingShape',
+      'strategy.minMonthlySpending',
+      'strategy.bequestSafetyMarginRate',
+    ];
+    for (const path of goalDriven) {
+      for (const mode of ALL_MODES) {
+        expect(isFieldVisible(mode, path), `${path} @ ${mode}`).toBe(false);
+      }
+    }
   });
 
   test('노출 범위는 간편 ⊆ 표준 ⊆ 전문가 순으로 넓어진다', () => {
@@ -63,7 +85,6 @@ describe('fieldVisibility', () => {
   describe('isSectionVisible', () => {
     test('간편 모드에서는 투자·경제·고급 섹션이 통째로 숨는다', () => {
       expect(isSectionVisible('simple', 'basic')).toBe(true);
-      expect(isSectionVisible('simple', 'goal')).toBe(true);
       expect(isSectionVisible('simple', 'pension')).toBe(true);
       expect(isSectionVisible('simple', 'investment')).toBe(false);
       expect(isSectionVisible('simple', 'economic')).toBe(false);

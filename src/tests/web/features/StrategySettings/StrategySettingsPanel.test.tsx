@@ -20,7 +20,7 @@ const withMode = (mode: 'simple' | 'standard' | 'expert') => ({
   strategy: { ...DEFAULT_RETIREMENT_STRATEGY, mode },
 });
 
-const reviewAndApplyRecommendation = (section: '은퇴 목표' | '연금 전략') => {
+const reviewAndApplyRecommendation = (section: '연금 전략') => {
   fireEvent.click(screen.getByRole('button', { name: `${section} 추천값 반영` }));
   expect(screen.getByRole('dialog', { name: '추천값을 반영할까요?' })).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: '추천값 반영' }));
@@ -53,7 +53,6 @@ describe('StrategySettingsPanel', () => {
       const has = renderIn('simple');
 
       expect(has('기본 정보')).toBe(true);
-      expect(has('은퇴 목표')).toBe(true);
       expect(has('연금 전략')).toBe(true);
       expect(has('투자 전략')).toBe(false);
       expect(has('경제 가정')).toBe(false);
@@ -68,10 +67,12 @@ describe('StrategySettingsPanel', () => {
       expect(has('고급 설정')).toBe(false);
     });
 
-    test('전문가 모드에서는 6개 섹션이 모두 보인다', () => {
+    // 「은퇴 목표」 섹션은 없다 — 그 축들은 「은퇴 목표」 카드가 유일한 편집 경로다.
+    test('전문가 모드에서는 5개 섹션이 모두 보인다', () => {
       const has = renderIn('expert');
 
-      for (const title of ['기본 정보', '은퇴 목표', '연금 전략', '투자 전략', '경제 가정', '고급 설정']) {
+      expect(has('은퇴 목표')).toBe(false);
+      for (const title of ['기본 정보', '연금 전략', '투자 전략', '경제 가정', '고급 설정']) {
         expect(has(title), title).toBe(true);
       }
     });
@@ -139,13 +140,13 @@ describe('StrategySettingsPanel', () => {
       expect(notice()).not.toBeInTheDocument();
     });
 
-    // 보이는 섹션 안의 숨은 필드('목표 상속자산'은 간편 모드에서 렌더되지 않는다)는
-    // 섹션 헤더가 아니라 요약이 책임진다. 헤더에 합산하면 "1개 변경"이 떠 있는데 펼쳐도
-    // 되돌릴 항목이 하나도 없는 상태가 된다 — 사용자가 찾을 수 없는 개수를 세는 셈이다.
+    // 보이는 섹션 안의 숨은 필드(간편 모드에서 렌더되지 않는 'ISA 만기 자금')는 섹션 헤더가
+    // 아니라 요약이 책임진다. 헤더에 합산하면 "1개 변경"이 떠 있는데 펼쳐도 되돌릴 항목이
+    // 하나도 없는 상태가 된다 — 사용자가 찾을 수 없는 개수를 세는 셈이다.
     test('보이는 섹션의 숨은 필드는 섹션 헤더가 아니라 요약이 센다', () => {
       const params = {
         ...initialParams,
-        userProfile: { ...initialParams.userProfile, targetBequest: 100000000 },
+        strategy: { ...DEFAULT_RETIREMENT_STRATEGY, preferIsaFirst: 'isa_first' as const },
       };
 
       render(<StrategySettingsPanel params={params} onChangeParams={vi.fn()} {...noRecommendation} />);
@@ -155,15 +156,15 @@ describe('StrategySettingsPanel', () => {
     });
 
     // 한 섹션에 보이는 변경과 숨은 변경이 함께 있으면 각자 제 자리에서 보고된다.
-    // '목표 월 생활비'(간편 모드에서 보임) → 섹션 배지 1개,
-    // '목표 상속자산'(간편 모드에서 숨김) → 요약 1개.
+    // '국민연금 수령 시작'(간편 모드에서 보임) → 섹션 배지 1개,
+    // 'ISA 만기 자금'(간편 모드에서 숨김) → 요약 1개.
     test('보이는 변경은 섹션 배지가, 숨은 변경은 요약이 각각 센다', () => {
       const params = {
         ...initialParams,
-        userProfile: {
-          ...initialParams.userProfile,
-          targetMonthlySpending: initialParams.userProfile.targetMonthlySpending + 500000,
-          targetBequest: 100000000,
+        strategy: {
+          ...DEFAULT_RETIREMENT_STRATEGY,
+          nationalPensionStrategy: 'defer_max' as const,
+          preferIsaFirst: 'isa_first' as const,
         },
       };
 
@@ -251,7 +252,9 @@ describe('StrategySettingsPanel', () => {
     );
 
     expect(screen.getByText('추천 설정 현황')).toBeInTheDocument();
-    expect(screen.getByText(/자동 반영 중 2개 · 반영 가능한 추천 1개/)).toBeInTheDocument();
+    // 생활비 배수는 더 이상 이 패널이 적용하지 않는다(목표 월 생활비는 「은퇴 목표」 카드의 값이다).
+    // 연금 축은 센티널이 이미 같은 값을 반영 중이라 남는 추천이 없다.
+    expect(screen.getByText(/자동 반영 중 2개 · 반영 가능한 추천 0개/)).toBeInTheDocument();
     expect(screen.getByText('현재 계산값 · 국민연금: 70세부터 수령')).toBeInTheDocument();
     expect(screen.getByText('현재 계산값 · ISA 만기 자금: 일반 자산으로')).toBeInTheDocument();
   });
@@ -261,9 +264,8 @@ describe('StrategySettingsPanel', () => {
     const recommendation = {
       improved: true,
       recommendedPlan: {
-        nationalPensionStartAge: 65,
-        isaMaturityDestination: 'pension',
-        monthlySpendingMultiplier: 1.1,
+        nationalPensionStartAge: 70,
+        isaMaturityDestination: 'asset',
       },
       recommendedAssetReinvestment: null,
     } as unknown as StrategyRecommendation;
@@ -275,8 +277,8 @@ describe('StrategySettingsPanel', () => {
       />
     );
 
-    fireEvent.click(screen.getByRole('button', { name: '은퇴 목표 추천값 반영' }));
-    expect(screen.getByText('목표 월 생활비 350만원 → 385만원')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '연금 전략 추천값 반영' }));
+    expect(screen.getByText('국민연금 수령 시작 65세 → 70세')).toBeInTheDocument();
     expect(onChangeParams).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole('button', { name: '취소' }));
@@ -433,11 +435,9 @@ describe('StrategySettingsPanel', () => {
     });
   });
 
-  // C4: 지금까지 "클릭 → 실제로 어떤 값이 바뀌는가"가 고정된 섹션은 연금 전략뿐이었다.
-  // 은퇴 목표·투자 전략은 버튼 활성/비활성만 검증되어 있어, buildAiSectionPatch가 엉뚱한
-  // 필드(예: 목표 상속자산, 자산의 monthlyContribution)를 쓰거나 배수를 반대로 적용해도
-  // 전부 통과했다. 아래는 적용 결과 params 전체를 그대로 단정해 그 경로를 막는다.
-  describe('AI 추천 적용 — 은퇴 목표', () => {
+  // 생활비 배수를 적용하던 「은퇴 목표」 섹션은 사라졌다. AI가 권하는 목표 생활비를 이 패널이
+  // 바꿀 수 없다는 사실 자체를 고정한다 — 되살리면 화면에 없는 필드를 바꾸는 버튼이 된다.
+  describe('AI 추천 적용 — 목표 월 생활비는 이 패널이 바꾸지 않는다', () => {
     const withMultiplier = (monthlySpendingMultiplier: number) => ({
       improved: true,
       recommendedPlan: {
@@ -448,7 +448,7 @@ describe('StrategySettingsPanel', () => {
       recommendedAssetReinvestment: null,
     } as unknown as StrategyRecommendation);
 
-    test('생활비 배수를 목표 월 생활비에만 곱해 반올림한 값으로 적용한다', () => {
+    test('생활비 배수가 있어도 적용 버튼을 내지 않는다', () => {
       const onChangeParams = vi.fn();
       render(
         <StrategySettingsPanel
@@ -457,62 +457,10 @@ describe('StrategySettingsPanel', () => {
         />
       );
 
-      reviewAndApplyRecommendation('은퇴 목표');
-
-      // 350만 × 1.1 = 385만. params 전체를 단정하므로 strategy나 자산을 함께 건드리면 깨진다.
-      expect(onChangeParams).toHaveBeenCalledWith({
-        ...initialParams,
-        userProfile: { ...initialParams.userProfile, targetMonthlySpending: 3850000 },
-      });
-    });
-
-    test('배수가 1보다 작으면 생활비를 줄이는 방향으로 적용한다', () => {
-      // 배수를 나눗셈으로 쓰거나 부호를 뒤집어도 1.1 케이스만으로는 잡히지 않는다.
-      const onChangeParams = vi.fn();
-      render(
-        <StrategySettingsPanel
-          params={initialParams} onChangeParams={onChangeParams}
-          recommendation={withMultiplier(0.9)} recommendationFailed={false}
-        />
-      );
-
-      reviewAndApplyRecommendation('은퇴 목표');
-
-      expect(onChangeParams).toHaveBeenCalledWith({
-        ...initialParams,
-        userProfile: { ...initialParams.userProfile, targetMonthlySpending: 3150000 },
-      });
-    });
-
-    test('배수가 1이면 버튼이 나오지 않는다', () => {
-      const onChangeParams = vi.fn();
-      render(
-        <StrategySettingsPanel
-          params={initialParams} onChangeParams={onChangeParams}
-          recommendation={withMultiplier(1)} recommendationFailed={false}
-        />
-      );
-
       expect(screen.queryByRole('button', { name: new RegExp('^은퇴 목표 ') })).not.toBeInTheDocument();
-      // 버튼 부재 단언이 "섹션 자체가 렌더되지 않아서" 통과하는 경우와 구분한다.
-      // (onChangeParams는 누를 대상이 없으니 호출될 수 없어 단언해도 공허하다.)
-      expect(screen.getByRole('button', { expanded: false, name: /은퇴 목표/ })).toBeInTheDocument();
-    });
-
-    test('추천이 아직 없으면(계산 전) 버튼이 나오지 않는다', () => {
-      // 추천 도착 전에 눌렸을 때 recommendedPlan이 undefined인 채로 곱하면
-      // targetMonthlySpending이 NaN이 되어 저장되고, 디바운스 자동저장이 그 NaN을 남긴다.
-      const onChangeParams = vi.fn();
-      render(
-        <StrategySettingsPanel
-          params={initialParams} onChangeParams={onChangeParams} {...noRecommendation}
-        />
-      );
-
-      expect(screen.queryByRole('button', { name: new RegExp('^은퇴 목표 ') })).not.toBeInTheDocument();
-      // 버튼 부재 단언이 "섹션 자체가 렌더되지 않아서" 통과하는 경우와 구분한다.
-      // (onChangeParams는 누를 대상이 없으니 호출될 수 없어 단언해도 공허하다.)
-      expect(screen.getByRole('button', { expanded: false, name: /은퇴 목표/ })).toBeInTheDocument();
+      // 「연금 전략」은 이미 추천과 같은 상태라 여기서도 누를 것이 없어야 한다.
+      expect(screen.queryByRole('button', { name: '연금 전략 추천값 반영' })).not.toBeInTheDocument();
+      expect(onChangeParams).not.toHaveBeenCalled();
     });
   });
 

@@ -1,7 +1,7 @@
 import { describe, test, expect } from 'vitest';
 import {
-  NATIONAL_PENSION_OPTIONS, PRIVATE_PENSION_OPTIONS, OBJECTIVE_OPTIONS, BEQUEST_OPTIONS,
-  RISK_PROFILE_OPTIONS, ECONOMIC_SCENARIO_OPTIONS, SPENDING_STRATEGY_OPTIONS, ISA_FIRST_OPTIONS,
+  NATIONAL_PENSION_OPTIONS, PRIVATE_PENSION_OPTIONS,
+  RISK_PROFILE_OPTIONS, ECONOMIC_SCENARIO_OPTIONS, ISA_FIRST_OPTIONS,
 } from '@/web/features/StrategySettings/strategyOptions';
 import { compileStrategy, DEFAULT_RETIREMENT_STRATEGY } from '@/core/usecases/strategy/compileStrategy';
 import { resolveAssumptionVariants } from '@/core/usecases/strategy/robustness';
@@ -58,11 +58,10 @@ describe('AI 센티널 선택지 문구', () => {
   });
 
   test('값을 채우지 않는 축들은 값을 약속하지 않는다', () => {
+    // 목표 우선순위·생활비 전략은 이 패널에 없다(「은퇴 목표」 카드가 정한다). 남은 가정 축만 본다.
     const undecided = [
-      optionFor(OBJECTIVE_OPTIONS, 'ai_recommended'),
       optionFor(RISK_PROFILE_OPTIONS, 'ai_recommended'),
       optionFor(ECONOMIC_SCENARIO_OPTIONS, 'ai_recommended'),
-      optionFor(SPENDING_STRATEGY_OPTIONS, 'ai'),
     ];
 
     for (const option of undecided) {
@@ -103,17 +102,17 @@ describe('AI 센티널 선택지 문구', () => {
     expect(optionFor(ECONOMIC_SCENARIO_OPTIONS, 'ai_recommended').description).toMatch(/모두|견디/);
   });
 
-  test('생활비 AI 추천은 계산에 입력값이 쓰인다는 사실을 밝힌다', () => {
+  // 화면에서 고를 수는 없어졌지만(생활비 전략은 목표 카드가 정한다), 저장된 시나리오에는
+  // 아직 'ai'가 남아 있을 수 있다. 그때 엔진이 목표 생활비를 그대로 쓰는지는 계속 고정한다.
+  test('저장된 생활비 AI 추천은 목표액 모드로 내려간다', () => {
     expect(compiledWith({ spendingChoice: 'ai' }).params.spendingStrategy).toBe('target');
-
-    expect(optionFor(SPENDING_STRATEGY_OPTIONS, 'ai').description).toMatch(/입력한 목표 생활비/);
   });
 });
 
-describe('상속 전략 문구 — 제약인가 채점인가', () => {
-  // 네 선택지 중 엔진에 실제 제약(assetFloor)을 거는 것은 '목표 금액 유지' 하나뿐이다.
-  // 나머지 셋은 채점 기준만 바꾼다. 문구가 이 차이를 뒤집으면 사용자는 "목표 금액을
-  // 정했는데 왜 그만큼 안 남지?"라고 묻게 된다.
+describe('상속 전략 — 제약인가 채점인가', () => {
+  // 네 값 중 엔진에 실제 제약(assetFloor)을 거는 것은 '목표 금액 유지' 하나뿐이다. 나머지
+  // 셋은 채점 기준만 바꾼다. 화면에서 고르는 것은 「상속 자산 확보」 목표뿐이지만, 그 목표가
+  // 무엇으로 번역되는지는 이 성질에 달려 있다.
   const withBequest = (bequestStrategy: BequestStrategy, targetBequest?: number) =>
     compileStrategy({
       ...baseParams,
@@ -131,18 +130,6 @@ describe('상속 전략 문구 — 제약인가 채점인가', () => {
     expect(withBequest('maximize').params.assetFloor).toBeUndefined();
   });
 
-  test('목표 금액 유지 문구는 인출 조절과 그 대가를 함께 말한다', () => {
-    const description = optionFor(BEQUEST_OPTIONS, 'target_amount').description;
-
-    expect(description).toMatch(/인출을 조절|남도록/);
-    // 공짜가 아니라는 사실을 밝혀야 한다.
-    expect(description).toMatch(/생활비/);
-  });
-
-  test('일부 남기기 문구는 제약이 아니라 평가 기준임을 밝힌다', () => {
-    // 기본값이라 하한선을 걸 수 없다(걸면 저장된 모든 시나리오의 곡선이 조용히 바뀐다).
-    expect(optionFor(BEQUEST_OPTIONS, 'leave_some').description).toMatch(/평가|적정선/);
-  });
 });
 
 describe('ISA 만기 행선지 문구 — 엔진이 실제로 하는 일', () => {

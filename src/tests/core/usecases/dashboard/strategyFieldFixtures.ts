@@ -14,14 +14,38 @@ const ALLOCATION_PRESETS = {
   GROWTH: 'aggressive',
 } as const;
 
-export function makeParams(overrides: Partial<SimulationParams> = {}): SimulationParams {
-  return {
-    userProfile: {
-      currentAge: 50,
-      retirementAge: 60,
-      expectancy: 90,
-      targetMonthlySpending: 3_500_000,
+/**
+ * 은퇴 나이·목표 생활비는 「은퇴 목표」 카드가 유일한 편집 경로다(normalizeGoalDrivenParams).
+ * 그래서 추천 적용도 그 목표를 고쳐야 반영되며, 목표가 없으면 반영하지 않고 사유를 남긴다.
+ * 픽스처는 프로필 값과 «짝이 맞는» 목표를 함께 넣어, 분석을 돌릴 수 있는 실제 상태를 만든다.
+ */
+function goalsFor(userProfile: SimulationParams['userProfile']): SimulationParams['retirementGoals'] {
+  return [
+    {
+      type: 'EARLY_RETIREMENT',
+      priority: 1,
+      targetValue: userProfile.retirementAge,
+      constraintType: 'HARD',
     },
+    {
+      type: 'LIVING_EXPENSE_STABILITY',
+      priority: 2,
+      targetValue: userProfile.targetMonthlySpending,
+      constraintType: 'SOFT',
+    },
+  ];
+}
+
+export function makeParams(overrides: Partial<SimulationParams> = {}): SimulationParams {
+  const userProfile = overrides.userProfile ?? {
+    currentAge: 50,
+    retirementAge: 60,
+    expectancy: 90,
+    targetMonthlySpending: 3_500_000,
+  };
+  return {
+    userProfile,
+    retirementGoals: goalsFor(userProfile),
     assets: [],
     nationalPension: { expectedMonthlyAmount: 1_500_000 },
     privatePensions: [],

@@ -4,7 +4,7 @@ import type { StrategyDimensions } from '@/core/strategy/StrategyGenerator';
 import { applyStrategyToParams } from '@/core/usecases/dashboard/applyStrategyToParams';
 import { describeStrategyChanges } from '@/core/usecases/dashboard/describeStrategyChanges';
 import { STRATEGY_FIELD_MAP } from '@/core/usecases/dashboard/strategyFieldMap';
-import { compileStrategy } from '@/core/usecases/strategy/compileStrategy';
+import { compileStrategy, resolveStrategy } from '@/core/usecases/strategy/compileStrategy';
 import { makeParams, makeRanked, type RankedOverrides } from './strategyFieldFixtures';
 
 // describeStrategyChanges(카드가 말하는 것)와 applyStrategyToParams(실제로 일어나는 것)의
@@ -16,16 +16,22 @@ import { makeParams, makeRanked, type RankedOverrides } from './strategyFieldFix
 
 const formatValue = (value: number) => `${Math.round(value / 10_000)}만원`;
 
+// 카드가 실제로 받는 것은 «컴파일된» params다(page.tsx가 analysis.effective.params를 넘긴다).
+// 그래서 국민연금 개시 나이는 언제나 수령 전략과 짝이 맞는다 — 저수준 나이만 60인데 전략은
+// 미정('ai_optimized' = 65세)인 params는 화면에 존재하지 않는 상태이고, 그런 픽스처를 쓰면
+// 「적용했는데 국민연금이 다시 달라 보인다」는 실패가 계약이 아니라 픽스처에서 나온다.
 const CURRENT_PLANS: SimulationParams[] = [
   makeParams({
     userProfile: { currentAge: 50, retirementAge: 60, expectancy: 90, targetMonthlySpending: 3_000_000 },
     yieldPreset: 'conservative',
     withdrawalPlan: { nationalPensionStartAge: 60, accountWithdrawalPolicy: 'GENERAL_FIRST' },
+    strategy: { ...resolveStrategy(makeParams()), nationalPensionStrategy: 'early', riskProfile: 'conservative' },
   }),
   makeParams({
     userProfile: { currentAge: 45, retirementAge: 65, expectancy: 95, targetMonthlySpending: 5_000_000 },
     yieldPreset: 'aggressive',
     withdrawalPlan: { nationalPensionStartAge: 70, accountWithdrawalPolicy: 'TAX_OPTIMIZED' },
+    strategy: { ...resolveStrategy(makeParams()), nationalPensionStrategy: 'defer_max', riskProfile: 'aggressive' },
   }),
   // 저수준 필드를 하나도 정하지 않은 옛 시나리오.
   makeParams({ yieldPreset: undefined, withdrawalPlan: undefined }),

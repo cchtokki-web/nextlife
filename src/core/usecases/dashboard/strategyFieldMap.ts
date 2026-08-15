@@ -1,6 +1,9 @@
 import type { NationalPensionStrategy, RiskProfile, SimulationParams } from '../../entities/types';
+import type { RetirementGoalType } from '../../entities/retirementGoal';
+import { normalizeRetirementGoals } from '../../entities/retirementGoal';
 import type { RankedStrategyCandidate } from '../../strategy/StrategyOptimizer';
 import { NATIONAL_PENSION_STRATEGY_AGES, resolveStrategy } from '../strategy/compileStrategy';
+import { applyRetirementGoals } from '../goals/retirementGoalAdapter';
 import { NATIONAL_PENSION_NORMAL_START_AGE } from '../pension/nationalPensionRules';
 
 // 추천 전략과 사용자 설정을 잇는 **여섯 축의 단일 테이블**.
@@ -121,6 +124,30 @@ function withStrategy(
   };
 }
 
+/**
+ * 목표가 정하는 축은 «목표»를 고쳐야 반영된다.
+ *
+ * userProfile만 덮어쓰면 다음 정규화(normalizeGoalDrivenParams)가 그 값을 목표에서 다시
+ * 파생시켜, 방금 적용한 값이 조용히 사라진다. 그래서 목표의 targetValue를 바꾸고
+ * applyRetirementGoals에 투영을 맡긴다 — 화면(목표 카드)과 계산이 같은 숫자를 말하게 된다.
+ *
+ * 대응하는 목표를 고르지 않았으면 반영하지 않는다. 사용자가 고르지 않은 목표를 여기서
+ * 만들어 내면, 「최대 5개」 제한과 우선순위를 앱이 대신 결정하게 된다.
+ */
+function withGoalTarget(
+  params: SimulationParams,
+  types: readonly RetirementGoalType[],
+  value: number,
+  reason: string,
+): StrategyFieldApplication {
+  const goals = normalizeRetirementGoals(params.retirementGoals ?? []);
+  const index = goals.findIndex((goal) => types.includes(goal.type));
+  if (index === -1) return { applied: false, reason };
+
+  const next = goals.map((goal, i) => (i === index ? { ...goal, targetValue: value } : goal));
+  return { applied: true, params: applyRetirementGoals(params, next) };
+}
+
 export const STRATEGY_FIELD_MAP: readonly StrategyFieldSpec[] = [
   {
     key: 'retirementAge',
@@ -131,17 +158,12 @@ export const STRATEGY_FIELD_MAP: readonly StrategyFieldSpec[] = [
       before: `${params.userProfile.retirementAge}세`,
       after: `${ranked.candidate.strategy.retirementAge}세`,
     }),
-    // compileStrategy가 그대로 통과시키는 축이라 저수준 필드 하나로 충분하다.
-    apply: (params, ranked) => ({
-      applied: true,
-      params: {
-        ...params,
-        userProfile: {
-          ...params.userProfile,
-          retirementAge: ranked.candidate.strategy.retirementAge,
-        },
-      },
-    }),
+    apply: (params, ranked) => withGoalTarget(
+      params,
+      ['EARLY_RETIREMENT'],
+      ranked.candidate.strategy.retirementAge,
+      '「빠른 은퇴」 목표를 선택해야 은퇴 시점을 바꿀 수 있습니다',
+    ),
   },
   {
     key: 'nationalPensionStartAge',
@@ -176,22 +198,14 @@ export const STRATEGY_FIELD_MAP: readonly StrategyFieldSpec[] = [
       before: formatValue(params.userProfile.targetMonthlySpending),
       after: formatValue(ranked.candidate.strategy.targetMonthlySpending),
     }),
-    apply: (params, ranked) => {
-      const withSpending: SimulationParams = {
-        ...params,
-        userProfile: {
-          ...params.userProfile,
-          targetMonthlySpending: ranked.candidate.strategy.targetMonthlySpending,
-        },
-      };
-      // 후보는 전부 'target' 모드로 생성된다(StrategyGenerator.strategyFor). 사용자가
-      // '최대 지속가능 생활비'를 쓰고 있으면 엔진이 목표액 대신 역산값을 쓰므로, 모드를
-      // 내리지 않으면 방금 써 넣은 금액이 계산에 반영되지 않는다.
-      if (resolveStrategy(params).spendingChoice === 'target') {
-        return { applied: true, params: withSpending };
-      }
-      return { applied: true, params: withStrategy(withSpending, { spendingChoice: 'target' }) };
-    },
+    // 생활비 전략을 'target'으로 내리는 처리는 필요 없다 — 정규화가 모든 계획을 그 모드로
+    // 고정한다(normalizeGoalDrivenParams).
+    apply: (params, ranked) => withGoalTarget(
+      params,
+      ['LIVING_EXPENSE_STABILITY', 'COMFORTABLE_SPENDING'],
+      ranked.candidate.strategy.targetMonthlySpending,
+      '「생활비 안정」 또는 「여유 있는 소비」 목표를 선택해야 월 생활비를 바꿀 수 있습니다',
+    ),
   },
   {
     key: 'withdrawalPolicy',
