@@ -319,7 +319,6 @@ export function renderRiskAlertsSection(alerts: RiskAlert[]): string {
 export function renderStrategyRecommendationSection(input: {
   recommendations?: readonly CandidateRecommendation[];
   status: StrategyOptimizationStatus;
-  currentGoalProbability?: number;
   unsupportedHardGoals?: readonly RetirementGoalType[];
   outcome?: OptimizationOutcome;
   /** 화면과 같은 출처의 격차 숫자. 도달 불가 문단에서만 쓰고, null이면 숫자 없이 사실만 적는다. */
@@ -328,7 +327,7 @@ export function renderStrategyRecommendationSection(input: {
   formatValue: (value: number) => string;
 }): string {
   const {
-    recommendations, status, currentGoalProbability, unsupportedHardGoals, outcome,
+    recommendations, status, unsupportedHardGoals, outcome,
     sustainableSpendingAdvice, params, formatValue,
   } = input;
 
@@ -385,24 +384,6 @@ export function renderStrategyRecommendationSection(input: {
        </p>`
     : '';
 
-  const comparisonHtml = `
-    <div style="display: flex; align-items: center; gap: 14px; background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 16px; margin-bottom: 12px;">
-      <div style="flex: 1;">
-        <p style="margin: 0; font-size: 11px; color: #64748b;">현재 계획</p>
-        <p style="margin: 2px 0 0; font-size: 18px; font-weight: 700; color: #0f172a;">${
-          currentGoalProbability === undefined ? '계산 중' : `${Math.round(currentGoalProbability * 100)}%`
-        }</p>
-      </div>
-      <span style="font-size: 18px; color: #94a3b8;">&rarr;</span>
-      <div style="flex: 1; text-align: right;">
-        <p style="margin: 0; font-size: 11px; color: #64748b;">추천 전략 적용</p>
-        <p style="margin: 2px 0 0; font-size: 18px; font-weight: 700; color: #059669;">${
-          Math.round(recommended.candidate.monteCarlo.goalSuccessProbability * 100)
-        }%</p>
-      </div>
-    </div>
-  `;
-
   const cardsHtml = finalRecommendations
     .map((recommendation) => {
       const candidate = recommendation.candidate;
@@ -455,7 +436,6 @@ export function renderStrategyRecommendationSection(input: {
 
   return `
     ${unsupportedHtml}
-    ${comparisonHtml}
     <div style="display: flex; gap: 10px; align-items: stretch;">${cardsHtml}</div>
     <p style="margin: 10px 0 0; font-size: 10px; color: #94a3b8;">
       ※ 위 추천은 시뮬레이션 결과이며 실제 설정에 자동 반영되지 않습니다. 적용하려면 설정을 직접 변경하세요.
