@@ -35,6 +35,12 @@ model User {
   // 되어 이름 붙은 relation이 필요해지는데, 이 값은 무결성을 강제할 대상이 아니다 — 가리키던
   // 행이 사라지면 클라이언트가 첫 시나리오로 되돌리고 그 값을 다시 올려 스스로 낫는다.
   lastActiveScenarioId String?
+  // 대시보드에서 함께 비교하던 시나리오들. lastActiveScenarioId와 같은 이유로 계정에 붙인다 —
+  // 비교 대상은 결과 화면을 바꾸는 사용자 결정이므로 브라우저를 바꿔도 따라와야 한다.
+  //
+  // 관계가 아니라 JSON 문자열 배열이다. 순서가 뜻을 갖고(카드가 고른 순서대로 늘어선다),
+  // 가리키던 행이 사라지면 클라이언트가 목록에 없는 id를 걸러 내고 다시 올려 스스로 낫는다.
+  compareScenarioIds String?
   createdAt      DateTime   @default(now())
   updatedAt      DateTime   @updatedAt
   scenarios      Scenario[]
@@ -46,6 +52,16 @@ model Scenario {
   name      String
   isDefault Boolean  @default(false)
   data      String
+  // 이 시나리오에서 「분석 시작」을 눌러 결과 화면을 만든 적이 있는지.
+  //
+  // 결과 자체는 저장하지 않는다. 시뮬레이션·Monte Carlo·추천은 전부 data에서 파생되므로,
+  // 결과를 함께 저장하면 같은 계획을 말하는 출처가 둘이 되고 그중 하나는 반드시 낡는다.
+  // 저장하는 것은 "다시 계산해도 되는가"라는 사실 하나뿐이고, 화면은 로그인 직후 저장된
+  // data로 같은 계산을 다시 돌려 세운다.
+  //
+  // data와 달리 E2EE 대상이 아니다. 금액도 나이도 아닌 "이 사용자가 버튼을 눌렀다"는 사실이라
+  // 암호화해서 얻을 것이 없고, 암호화하면 서버가 이 값만 갱신하는 요청을 검증할 수 없다.
+  analyzedAt DateTime?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)

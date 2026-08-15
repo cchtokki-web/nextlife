@@ -14,6 +14,16 @@ export const SIMPLE_SIMULATOR_INPUT_KEY = 'nextlife_simple_simulator_input';
 /** 랜딩 간이 시뮬레이터를 한 번이라도 돌렸는지 (sessionStorage). */
 export const SIMPLE_SIMULATOR_HAS_RUN_KEY = 'nextlife_simple_simulator_has_run';
 
+/**
+ * 비로그인 세션의 기본 시나리오에서 「분석 시작」을 누른 시각(ISO).
+ *
+ * 로그인 계정에서는 같은 사실을 Scenario.analyzedAt이 들고 있다. 비로그인 세션에는 서버에
+ * 대응하는 행이 없어 그 자리가 여기다 — 없으면 새로고침 한 번에 결과 화면이 사라진다.
+ * 시나리오가 local-default 하나뿐이므로 SIMULATOR_PARAMS_KEY와 마찬가지로 사용자별
+ * 네임스페이스가 아니다.
+ */
+export const LOCAL_ANALYZED_AT_KEY = 'nextlife_local_analyzed_at';
+
 /** E2EE 보안키. 사용자별로 다르므로 반드시 userId로 조립한다. */
 export const e2eeKeyName = (userId: string) => `nextlife_e2ee_key_${userId}`;
 

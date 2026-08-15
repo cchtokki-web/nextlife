@@ -704,6 +704,13 @@ export interface ScenarioModel {
   name: string;
   isDefault: boolean;
   data: SimulationParams;
+  /**
+   * 이 시나리오에서 「분석 시작」을 눌러 결과 화면을 만든 적이 있으면 그 시각(ISO), 없으면 null.
+   *
+   * 결과 화면을 복원하는 유일한 근거다. 결과 자체는 저장하지 않고 data로 다시 계산하므로
+   * (Scenario.analyzedAt의 스키마 주석 참조), 이 값이 없으면 화면은 안내 문구로 시작한다.
+   */
+  analyzedAt: string | null;
   createdAt: string;
   updatedAt: string;
 }

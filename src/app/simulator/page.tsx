@@ -41,6 +41,7 @@ import {
   type AnalysisRequest,
   type AnalysisRuntimeValue,
 } from '../../web/features/RetirementAnalysis/AnalysisRuntime';
+import { useAnalysisRequest } from '../../web/features/RetirementAnalysis/useAnalysisRequest';
 
 export default function Home() {
   const { data: session } = useSession();
@@ -50,7 +51,8 @@ export default function Home() {
     activeParams,
     activeScenarioId,
     handleUpdateActiveParams,
-    compareScenarioIds, 
+    compareScenarioIds,
+    setScenarioAnalyzed,
     isLoaded,
     needsKeyRestore,
     handleRestoreKey,
@@ -86,16 +88,25 @@ export default function Home() {
   const [engine] = useState(() => new LegacySimulationEngine());
   const [hoveredBtn, setHoveredBtn] = useState<string | null>(null);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState<boolean>(false);
-  const [analysisRequest, setAnalysisRequest] = useState<AnalysisRequest | null>(null);
 
-  // 분석 요청을 만드는 곳은 여기 하나다. 「분석 시작」 버튼과 추천 전략 적용·되돌리기가
-  // 같은 요청을 만들어야 비교 시나리오가 어느 경로에서든 함께 따라간다.
+  // 분석 요청을 만드는 곳은 여기 하나다. 「분석 시작」 버튼과 추천 전략 적용·되돌리기, 그리고
+  // 저장된 계획의 복원이 같은 요청을 만들어야 비교 시나리오가 어느 경로에서든 함께 따라간다.
   const buildAnalysisRequest = useCallback((params: SimulationParams): AnalysisRequest => ({
     params,
     compareScenarios: scenarios
       .filter((scenario) => compareScenarioIds.includes(scenario.id))
       .map(({ id, name, data }) => ({ id, name, data })),
   }), [scenarios, compareScenarioIds]);
+
+  // 다시 로그인해도 분석했던 계획이 그대로 열려야 한다. 결과를 저장해 두는 것이 아니라,
+  // 시나리오에 남은 「분석함」 표시를 보고 저장된 params로 같은 계산을 다시 돌린다.
+  const activeScenario = scenarios.find((scenario) => scenario.id === activeScenarioId) ?? null;
+  const { request: analysisRequest, setRequest: setAnalysisRequest } = useAnalysisRequest({
+    isLoaded,
+    activeScenarioId,
+    analyzedAt: activeScenario?.analyzedAt ?? null,
+    buildRequest: () => buildAnalysisRequest(activeParams),
+  });
 
   // 추천 카드의 「이 전략 적용」과 그 되돌리기.
   //
@@ -781,6 +792,9 @@ export default function Home() {
     if (confirm('현재 시나리오의 입력사항이 기본값으로 초기화됩니다. 계속하시겠습니까?')) {
       handleUpdateActiveParams(initialParams);
       setAnalysisRequest(null);
+      // 「분석함」 표시도 함께 지운다. 남겨 두면 다음 로그인에서 기본값 위에 결과 화면이
+      // 복원되어, 초기화가 그 시나리오에서만 잠깐 통한 것처럼 보인다.
+      if (activeScenarioId) setScenarioAnalyzed(activeScenarioId, false);
       // 초기화한 설정 위에 "추천 전략을 적용했다"는 배너가 남으면 안 된다.
       appliedStrategy.forget();
     }
@@ -985,6 +999,9 @@ export default function Home() {
                   onChangeParams={handleUpdateActiveParams}
                   onStartAnalysis={() => {
                     setAnalysisRequest(buildAnalysisRequest(activeParams));
+                    // 이 시나리오를 분석했다는 사실만 남긴다. 결과는 저장하지 않는다 —
+                    // 다음 접속에서 같은 params로 다시 계산해 이 화면을 세운다.
+                    if (activeScenarioId) setScenarioAnalyzed(activeScenarioId, true);
                     if (isNarrowScreen) setIsSidebarOpen(false);
                   }}
                 />
