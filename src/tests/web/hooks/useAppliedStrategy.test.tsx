@@ -160,7 +160,7 @@ describe('useAppliedStrategy', () => {
   });
 
   test('활성 시나리오가 없으면 적용하지 않는다', () => {
-    // handleUpdateActiveParams가 무동작이라 설정은 그대로인데 배너만 뜨는 상태를 막는다.
+    // handleUpdateActiveParams가 무동작이라 설정은 그대로인데 카드만 "적용됨"이 되는 상태를 막는다.
     const { result, onChangeParams } = setup({ activeScenarioId: null });
 
     act(() => result.current.applyRecommendation(recommendation({ retirementAge: 63 })));
