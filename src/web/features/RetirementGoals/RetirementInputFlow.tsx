@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { BarChart3, ChevronLeft, ChevronRight, UserRound, WalletCards } from 'lucide-react';
+import { BarChart3, UserRound, WalletCards } from 'lucide-react';
 import type { SimulationParams } from '../../../core/entities/types';
 import { applyRetirementGoals, resolveRetirementGoals } from '../../../core/usecases/goals/retirementGoalAdapter';
 import { AssetFormSection } from '../AssetForm/AssetFormSection';
@@ -33,6 +33,12 @@ export function RetirementInputFlow({ params, onChangeParams, onStartAnalysis }:
       || goal.type === 'INHERITANCE';
     return !needsTarget || (goal.targetValue !== undefined && goal.targetValue > 0);
   });
+  // 「분석 시작」은 어느 단계에서나 눌릴 수 있으므로, 비활성일 때 왜 못 누르는지를 버튼 자신이 설명해야 한다.
+  const blockedReason = canAnalyze
+    ? undefined
+    : goals.length === 0
+      ? '은퇴 목표 단계에서 목표를 1개 이상 선택해 주세요.'
+      : '선택한 목표의 목표값을 입력해 주세요.';
 
   const setProfileAge = (key: 'currentAge' | 'expectancy', raw: string, max: number) => {
     const age = parseAge(raw, max);
@@ -46,24 +52,35 @@ export function RetirementInputFlow({ params, onChangeParams, onStartAnalysis }:
 
   return (
     <div className="flex flex-col gap-5">
-      <nav aria-label="시뮬레이션 입력 단계" className="grid grid-cols-3 gap-1.5">
-        {STEPS.map(({ label, icon: Icon }, index) => (
-          <button
-            key={label}
-            type="button"
-            aria-current={step === index ? 'step' : undefined}
-            onClick={() => setStep(index)}
-            className={`flex min-w-0 flex-col items-center gap-1 rounded-xl border px-1 py-2.5 text-[11px] font-semibold transition sm:text-xs ${
-              step === index
-                ? 'border-primary bg-primary/10 text-primary'
-                : 'border-card-border text-foreground-muted hover:border-primary/40'
-            }`}
-          >
-            <Icon size={16} />
-            <span>{index + 1}. {label}</span>
-          </button>
-        ))}
-      </nav>
+      <div className="flex flex-col gap-3">
+        <nav aria-label="시뮬레이션 입력 단계" className="grid grid-cols-3 gap-1.5">
+          {STEPS.map(({ label, icon: Icon }, index) => (
+            <button
+              key={label}
+              type="button"
+              aria-current={step === index ? 'step' : undefined}
+              onClick={() => setStep(index)}
+              className={`flex min-w-0 flex-col items-center gap-1 rounded-xl border px-1 py-2.5 text-[11px] font-semibold transition sm:text-xs ${
+                step === index
+                  ? 'border-primary bg-primary/10 text-primary'
+                  : 'border-card-border text-foreground-muted hover:border-primary/40'
+              }`}
+            >
+              <Icon size={16} />
+              <span>{index + 1}. {label}</span>
+            </button>
+          ))}
+        </nav>
+        <button
+          type="button"
+          disabled={!canAnalyze}
+          title={blockedReason}
+          onClick={onStartAnalysis}
+          className="w-full rounded-xl bg-primary px-4 py-2.5 text-sm font-bold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          분석 시작
+        </button>
+      </div>
 
       {step === 0 && (
         <section aria-labelledby="personal-info-title" className="flex flex-col gap-4">
@@ -105,40 +122,6 @@ export function RetirementInputFlow({ params, onChangeParams, onStartAnalysis }:
             onChange={(nextGoals) => onChangeParams(applyRetirementGoals(params, nextGoals))}
           />
         </section>
-      )}
-
-      <div className="flex items-center justify-between gap-3 border-t border-card-border/60 pt-4">
-        <button
-          type="button"
-          disabled={step === 0}
-          onClick={() => setStep((current) => Math.max(0, current - 1))}
-          className="flex items-center gap-1 rounded-lg border border-card-border px-3 py-2 text-xs font-semibold text-foreground-muted disabled:opacity-30"
-        >
-          <ChevronLeft size={14} /> 이전
-        </button>
-        {step < STEPS.length - 1 ? (
-          <button
-            type="button"
-            onClick={() => setStep((current) => Math.min(STEPS.length - 1, current + 1))}
-            className="flex items-center gap-1 rounded-lg bg-primary px-4 py-2 text-xs font-bold text-white"
-          >
-            다음 <ChevronRight size={14} />
-          </button>
-        ) : (
-          <button
-            type="button"
-            disabled={!canAnalyze}
-            onClick={onStartAnalysis}
-            className="rounded-lg bg-primary px-4 py-2 text-xs font-bold text-white disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            분석 시작
-          </button>
-        )}
-      </div>
-      {step === 2 && !canAnalyze && (
-        <p role="alert" className="-mt-2 text-right text-xs text-warning">
-          목표를 1개 이상 선택하고 필요한 목표값을 입력해 주세요.
-        </p>
       )}
     </div>
   );

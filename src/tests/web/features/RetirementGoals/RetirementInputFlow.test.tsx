@@ -20,7 +20,9 @@ describe('RetirementInputFlow', () => {
     expect(screen.getByRole('button', { name: '3. 은퇴 목표' })).toHaveAttribute('aria-current', 'step');
   });
 
-  test('유효한 목표를 선택한 상태에서 분석 시작을 호출한다', () => {
+  // 「분석 시작」이 마지막 단계 맨 아래에 있던 시절에는 목표 카드를 모두 지나쳐 스크롤해야 눌렀다.
+  // 이제는 단계 탭 바로 아래에 상주하므로 첫 단계에서도 바로 눌려야 한다.
+  test('목표가 유효하면 첫 단계에서도 바로 분석 시작을 호출한다', () => {
     const onStartAnalysis = vi.fn();
     const params = {
       ...initialParams,
@@ -36,7 +38,7 @@ describe('RetirementInputFlow', () => {
       />
     );
 
-    fireEvent.click(screen.getByRole('button', { name: '3. 은퇴 목표' }));
+    expect(screen.getByRole('button', { name: '1. 개인정보' })).toHaveAttribute('aria-current', 'step');
     fireEvent.click(screen.getByRole('button', { name: '분석 시작' }));
 
     expect(onStartAnalysis).toHaveBeenCalledOnce();
@@ -51,9 +53,42 @@ describe('RetirementInputFlow', () => {
       />
     );
 
-    fireEvent.click(screen.getByRole('button', { name: '3. 은퇴 목표' }));
+    const startButton = screen.getByRole('button', { name: '분석 시작' });
+    expect(startButton).toBeDisabled();
+    expect(startButton).toHaveAttribute('title', expect.stringContaining('목표를 1개 이상'));
+  });
 
-    expect(screen.getByRole('button', { name: '분석 시작' })).toBeDisabled();
-    expect(screen.getByRole('alert')).toHaveTextContent('목표를 1개 이상 선택');
+  // 목표는 골랐지만 목표값이 비어 있는 상태는 "고르기만 하면 된다"와 사유가 다르다.
+  test('목표는 골랐지만 목표값이 비어 있으면 분석을 시작할 수 없다', () => {
+    render(
+      <RetirementInputFlow
+        params={{
+          ...initialParams,
+          retirementGoals: [
+            { type: 'EARLY_RETIREMENT' as const, priority: 1, constraintType: 'SOFT' as const },
+          ],
+        }}
+        onChangeParams={vi.fn()}
+        onStartAnalysis={vi.fn()}
+      />
+    );
+
+    const startButton = screen.getByRole('button', { name: '분석 시작' });
+    expect(startButton).toBeDisabled();
+    expect(startButton).toHaveAttribute('title', expect.stringContaining('목표값을 입력'));
+  });
+
+  // 단계 이동은 상단 탭이 전담한다. 하단 이동 버튼이 되살아나면 마우스 동선이 다시 길어진다.
+  test('하단 이동 버튼 없이 단계 탭만 제공한다', () => {
+    render(
+      <RetirementInputFlow
+        params={initialParams}
+        onChangeParams={vi.fn()}
+        onStartAnalysis={vi.fn()}
+      />
+    );
+
+    expect(screen.queryByRole('button', { name: /이전/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /다음/ })).toBeNull();
   });
 });
