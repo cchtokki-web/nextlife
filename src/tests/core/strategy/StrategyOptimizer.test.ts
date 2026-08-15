@@ -519,6 +519,73 @@ describe('StrategyOptimizer', () => {
     expect(result.outcome).toEqual({ kind: 'ok' });
   });
 
+  // 국민연금만 있고 자산이 없는 계획에서 실제로 나온 상태: 추천은 두 장 만들어졌지만 둘 다
+  // 0%였다. 그때 outcome이 ok였기 때문에 화면은 "둘 중 하나를 고르세요"라고 말했다.
+  test('추천이 전부 0%면 ok가 아니라 도달 불가로 알린다', () => {
+    const input = LegacySimulationAdapter.fromLegacy(structuredClone(initialParams));
+    const candidates = [
+      candidate(input.strategy, 'balanced', 60, { assetAllocation: 'BALANCED', spendingPattern: 'FIXED' }),
+      candidate(input.strategy, 'front', 61, { assetAllocation: 'BALANCED', spendingPattern: 'FRONT_LOADED' }),
+    ];
+    const generator = { generate: () => fakeGeneration(candidates) } as unknown as StrategyGenerator;
+    const monteCarloEngine = {
+      validate: (_p, _g, _s, config) => ({
+        trials: config.trials, seed: config.seed,
+        goalSuccessProbability: 0, spendingSuccessProbability: 0,
+        assetSurvivalProbability: 0.4, terminalAssetMedian: 100,
+        terminalAssetP10: 0, terminalAssetP90: 200, shortfallProbability: 1,
+      }),
+    } satisfies StrategyMonteCarloEngine;
+
+    const result = new StrategyOptimizer(
+      { simulate: () => simulation(100) },
+      { evaluate: () => evaluation(80) },
+      generator,
+      monteCarloEngine,
+    ).optimize(input.profile, input.goals, input.strategy, {
+      monteCarlo: { config: { trials: 10, seed: 1, annualStdDev: 15 } },
+    });
+
+    expect(result.outcome).toEqual({
+      kind: 'no_candidate_reaches_goal',
+      validatedCount: 2,
+      personaCount: 2,
+    });
+    // 추천 자체는 비우지 않는다. 그 후보들이 「가장 나은 후보」라는 사실은 여전히 참이고,
+    // 비우면 primary가 null이 되어 도달 불가와 「추천 없음」이 데이터에서 구별되지 않는다.
+    expect(result.recommendations.recommendations).toHaveLength(2);
+    expect(result.recommendations.primary).not.toBeNull();
+  });
+
+  test('추천 중 하나라도 0%를 넘으면 그대로 ok다', () => {
+    const input = LegacySimulationAdapter.fromLegacy(structuredClone(initialParams));
+    const candidates = [
+      candidate(input.strategy, 'balanced', 60, { assetAllocation: 'BALANCED', spendingPattern: 'FIXED' }),
+      candidate(input.strategy, 'front', 61, { assetAllocation: 'BALANCED', spendingPattern: 'FRONT_LOADED' }),
+    ];
+    const generator = { generate: () => fakeGeneration(candidates) } as unknown as StrategyGenerator;
+    const monteCarloEngine = {
+      validate: (_p, _g, strategy, config) => ({
+        trials: config.trials, seed: config.seed,
+        goalSuccessProbability: strategy.retirementAge === 61 ? 0.02 : 0,
+        spendingSuccessProbability: 0.1,
+        assetSurvivalProbability: 0.4, terminalAssetMedian: 100,
+        terminalAssetP10: 0, terminalAssetP90: 200, shortfallProbability: 0.9,
+      }),
+    } satisfies StrategyMonteCarloEngine;
+
+    const result = new StrategyOptimizer(
+      { simulate: () => simulation(100) },
+      { evaluate: () => evaluation(80) },
+      generator,
+      monteCarloEngine,
+    ).optimize(input.profile, input.goals, input.strategy, {
+      monteCarlo: { config: { trials: 10, seed: 1, annualStdDev: 15 } },
+    });
+
+    expect(result.outcome).toEqual({ kind: 'ok' });
+  });
+
   test('후보가 하나도 생성되지 않으면 탈락과 구분한다', () => {
     const input = LegacySimulationAdapter.fromLegacy(structuredClone(initialParams));
     const generator = { generate: () => fakeGeneration([]) } as unknown as StrategyGenerator;

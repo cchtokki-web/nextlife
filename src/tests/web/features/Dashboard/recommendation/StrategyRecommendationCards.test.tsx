@@ -251,6 +251,81 @@ describe('StrategyRecommendationCards', () => {
   });
 });
 
+// 국민연금 200만원만 있고 자산이 없는 계획에서 실제로 나온 화면: 균형형·여유형 두 장이
+// 생활비도 예상 잔여자산도 같은 값으로, 둘 다 0%인 채 나란히 섰고 앞 카드에 ☆추천이 붙었다.
+// 고를 이유가 없는 선택지를 고르라는 화면이었다.
+describe('StrategyRecommendationCards 목표 도달 불가', () => {
+  const unreachable = [
+    { persona: 'BALANCED' as const, label: '균형형' as const, candidate: candidate(1, 'BALANCED', 'FIXED', 0), reason: '목표 균형' },
+    { persona: 'COMFORTABLE' as const, label: '여유형' as const, candidate: candidate(2, 'BALANCED', 'FRONT_LOADED', 0), reason: '소비 여력' },
+  ];
+  const outcome = { kind: 'no_candidate_reaches_goal', validatedCount: 12, personaCount: 2 } as const;
+
+  test('추천이 전부 0%면 전략 카드와 비교 바 대신 격차를 보여준다', () => {
+    render(
+      <StrategyRecommendationCards
+        recommendations={unreachable}
+        status="done"
+        currentGoalProbability={0}
+        outcome={outcome}
+        params={params}
+        formatValue={formatValue}
+        onApplyStrategy={vi.fn()}
+        canApplyStrategy={() => true}
+      />
+    );
+
+    expect(screen.getByText('어떤 전략으로도 목표에 도달하지 못합니다')).toBeInTheDocument();
+    expect(screen.getByText(/전략 12개를 검증했지만 모두 목표 달성 확률이 0%/)).toBeInTheDocument();
+    expect(screen.queryByText('균형형')).toBeNull();
+    expect(screen.queryByText('여유형')).toBeNull();
+    expect(screen.queryByLabelText('현재 계획과 추천 전략 비교')).toBeNull();
+    expect(screen.queryByRole('button', { name: '이 전략 적용' })).toBeNull();
+  });
+
+  test('지속 가능한 생활비를 계산했으면 목표와의 격차를 숫자로 말한다', () => {
+    render(
+      <StrategyRecommendationCards
+        recommendations={unreachable}
+        status="done"
+        outcome={outcome}
+        sustainableSpendingAdvice={{
+          kind: 'overspending',
+          currentMonthly: 3_000_000,
+          sustainableMonthly: 2_000_000,
+          difference: 1_000_000,
+        }}
+        params={params}
+        formatValue={formatValue}
+      />
+    );
+
+    const gap = screen.getByLabelText('목표와 지속 가능한 생활비의 격차');
+    expect(within(gap).getByText('300만원')).toBeInTheDocument();
+    expect(within(gap).getByText('200만원')).toBeInTheDocument();
+    expect(within(gap).getByText('100만원')).toBeInTheDocument();
+  });
+
+  // 조언은 고정 생활비 계획이 아니거나 지속가능액이 0으로 수렴하면 null이다. 그때 0원을 찍으면
+  // 측정하지 못한 값을 확신에 찬 숫자로 보여주게 된다.
+  test('지속 가능한 생활비를 구하지 못했으면 격차를 숫자로 지어내지 않는다', () => {
+    render(
+      <StrategyRecommendationCards
+        recommendations={unreachable}
+        status="done"
+        outcome={outcome}
+        sustainableSpendingAdvice={null}
+        params={params}
+        formatValue={formatValue}
+      />
+    );
+
+    expect(screen.getByText('어떤 전략으로도 목표에 도달하지 못합니다')).toBeInTheDocument();
+    expect(screen.getByText(/목표 생활비를 낮추거나/)).toBeInTheDocument();
+    expect(screen.queryByLabelText('목표와 지속 가능한 생활비의 격차')).toBeNull();
+  });
+});
+
 describe('StrategyRecommendationCards 적용 버튼', () => {
   const balanced = {
     persona: 'BALANCED' as const,

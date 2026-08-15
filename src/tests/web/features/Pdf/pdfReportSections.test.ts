@@ -243,6 +243,42 @@ describe('renderStrategyRecommendationSection', () => {
     expect(html).not.toContain('입력만으로는 비교할 전략을 만들지 못했습니다');
   });
 
+  // 리포트는 화면보다 오래 남고 그대로 인용된다. 고를 이유가 없는 선택지를 표로 남기면
+  // 화면에서 걷어낸 오해가 리포트에만 살아남는다.
+  test('추천이 전부 0%면 전략 표 대신 격차를 싣는다', () => {
+    const zero: CandidateRecommendation = {
+      ...balanced, candidate: candidate(1, 0),
+    };
+    const html = renderStrategyRecommendationSection({
+      recommendations: [zero], status: 'done', currentGoalProbability: 0, params, formatValue,
+      outcome: { kind: 'no_candidate_reaches_goal', validatedCount: 12, personaCount: 1 },
+      sustainableSpendingAdvice: {
+        kind: 'overspending',
+        currentMonthly: 3_000_000,
+        sustainableMonthly: 2_000_000,
+        difference: 1_000_000,
+      },
+    });
+
+    expect(html).toContain('어떤 전략으로도 목표에 도달하지 못합니다');
+    expect(html).toContain('전략 12개를 검증했지만');
+    expect(html).toContain('지속 가능한 월 생활비');
+    expect(html).not.toContain('균형형');
+    expect(html).not.toContain('추천 전략 적용');
+    expect(html).not.toContain('현재 계획에서 달라지는 점');
+  });
+
+  test('지속 가능한 생활비를 구하지 못했으면 격차를 숫자로 지어내지 않는다', () => {
+    const html = renderStrategyRecommendationSection({
+      recommendations: [{ ...balanced, candidate: candidate(1, 0) }], status: 'done', params, formatValue,
+      outcome: { kind: 'no_candidate_reaches_goal', validatedCount: 12, personaCount: 1 },
+      sustainableSpendingAdvice: null,
+    });
+
+    expect(html).toContain('어떤 전략으로도 목표에 도달하지 못합니다');
+    expect(html).not.toContain('지속 가능한 월 생활비');
+  });
+
   // 검증하지 못한 필수 목표를 밝히지 않으면 "확인하지 않음"이 "확인해서 통과함"으로 읽힌다.
   // 리포트는 화면보다 오래 남고 그대로 인용되므로 더 중요하다.
   test('검증할 수 없었던 HARD 목표를 밝힌다', () => {

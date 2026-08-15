@@ -37,6 +37,23 @@ export interface CandidateRecommendation {
   reason: string;
 }
 
+/**
+ * 모든 추천이 목표 달성 확률 0%인가.
+ *
+ * 0%뿐인 후보군에서는 세 비교자의 1·2순위 키가 모두 동률이라 승자를 정하는 것은
+ * `candidate.id.localeCompare` — 사실상 후보 id 알파벳 순이다. 그렇게 뽑힌 카드에 ☆추천을
+ * 붙이면 근거 없는 선택을 근거 있는 것처럼 보여준다. 고를 이유가 없는 선택지는 내지 않는다.
+ *
+ * 빈 배열은 false다. 「도달하지 못했다」와 「추천이 없다」는 사용자가 할 일이 다른 사건이고,
+ * 후자는 이미 no_persona_matched·no_candidate_survived가 원인별로 설명한다.
+ */
+export function noRecommendationReachesGoal(
+  recommendations: readonly CandidateRecommendation[],
+): boolean {
+  return recommendations.length > 0
+    && recommendations.every((item) => item.candidate.monteCarlo.goalSuccessProbability === 0);
+}
+
 export interface FinalStrategyRecommendations {
   recommendations: CandidateRecommendation[];
   /** 균형형을 기본 제안으로 삼되 후보 부족 시 첫 추천으로 대체한다. */

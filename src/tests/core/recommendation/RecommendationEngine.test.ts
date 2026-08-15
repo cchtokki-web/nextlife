@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { RecommendationEngine } from '@/core/recommendation/RecommendationEngine';
+import { RecommendationEngine, noRecommendationReachesGoal } from '@/core/recommendation/RecommendationEngine';
 import type { RankedStrategyCandidate } from '@/core/strategy/StrategyOptimizer';
 import { LegacySimulationAdapter } from '@/core/domain/input/LegacySimulationAdapter';
 import { initialParams } from '@/infrastructure/storage/localStore';
@@ -123,5 +123,38 @@ describe('RecommendationEngine', () => {
     const ids = result.recommendations.map((item) => item.candidate.candidate.id);
     expect(new Set(ids).size).toBe(ids.length);
     expect(ids).toEqual(['dual', 'front-loaded']);
+  });
+});
+
+// 국민연금 200만원만 있고 자산이 없는 계획에서 실제로 나온 화면: 균형형·여유형 두 장이
+// 나란히 0%로, 생활비와 예상 잔여자산까지 같은 값으로 표시됐다. 그 상태에서 순서를 정한 것은
+// 비교자가 아니라 id 알파벳 순이었고, 앞선 카드에는 ☆추천까지 붙었다.
+describe('noRecommendationReachesGoal', () => {
+  const recommend = (candidates: RankedStrategyCandidate[]) =>
+    new RecommendationEngine().recommend(candidates).recommendations;
+
+  test('모든 추천이 0%면 도달하지 못한 것으로 본다', () => {
+    const recommendations = recommend([
+      candidate({ id: 'balanced', allocation: 'BALANCED', spending: 'FIXED', goalProbability: 0 }),
+      candidate({ id: 'comfortable', allocation: 'BALANCED', spending: 'FRONT_LOADED', goalProbability: 0 }),
+    ]);
+
+    expect(recommendations).toHaveLength(2);
+    expect(noRecommendationReachesGoal(recommendations)).toBe(true);
+  });
+
+  test('하나라도 0%를 넘으면 고를 이유가 있으므로 도달 불가가 아니다', () => {
+    const recommendations = recommend([
+      candidate({ id: 'balanced', allocation: 'BALANCED', spending: 'FIXED', goalProbability: 0 }),
+      candidate({ id: 'comfortable', allocation: 'BALANCED', spending: 'FRONT_LOADED', goalProbability: 0.01 }),
+    ]);
+
+    expect(noRecommendationReachesGoal(recommendations)).toBe(false);
+  });
+
+  // 「도달하지 못했다」와 「추천이 없다」는 사용자가 할 일이 다른 사건이다. 빈 배열을 true로
+  // 두면 no_persona_matched·no_candidate_survived가 설명하던 원인이 0% 문구로 덮인다.
+  test('추천이 없는 것은 도달 불가와 다른 사건이다', () => {
+    expect(noRecommendationReachesGoal([])).toBe(false);
   });
 });

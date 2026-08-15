@@ -15,6 +15,7 @@ import { formatCurrencyUnit, renderRiskAlertsSection, renderStrategyRecommendati
 import { computePlanConfidence } from '../../core/usecases/dashboard/computePlanConfidence';
 import { computeKeyLevers } from '../../core/usecases/dashboard/computeKeyLevers';
 import { computePensionGapRisk } from '../../core/usecases/dashboard/computePensionGapRisk';
+import { computeSustainableSpendingAdvice } from '../../core/usecases/dashboard/computeSustainableSpendingAdvice';
 import { explainNationalPension } from '../../core/usecases/pension/explainNationalPension';
 import { resolveTaxSettings } from '../../core/usecases/tax/taxRates';
 import { NATIONAL_PENSION_NORMAL_START_AGE } from '../../core/usecases/pension/nationalPensionRules';
@@ -213,6 +214,13 @@ export default function Home() {
         currentGoalProbability: monteCarlo?.goalSuccessProbability,
         unsupportedHardGoals: strategyOptimization?.debug?.unsupportedHardGoals,
         outcome: strategyOptimization?.outcome,
+        // 화면이 쓰는 것과 같은 헬퍼·같은 입력이다. 리포트가 따로 역산하면 두 문서가 다른
+        // 「지속 가능한 생활비」를 말할 수 있다.
+        sustainableSpendingAdvice: computeSustainableSpendingAdvice(
+          reportParams.spendingStrategy,
+          reportParams.userProfile.targetMonthlySpending,
+          result.calculatedTargetSpending,
+        ),
         params: reportParams,
         formatValue: formatValuePrint,
       });
