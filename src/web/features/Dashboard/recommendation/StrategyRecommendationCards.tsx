@@ -29,7 +29,8 @@ interface StrategyRecommendationCardsProps {
   formatValue: (value: number) => string;
   /**
    * 추천 전략을 사용자의 시나리오 설정에 반영한다. 없으면 적용 액션 자체를 내지 않는다 —
-   * PDF 리포트처럼 설정을 바꿀 수 없는 문맥이 같은 카드를 쓴다.
+   * 설정을 바꿀 수 없는 읽기 전용 문맥을 위한 여지다(PDF 리포트는 이 컴포넌트가 아니라
+   * pdfReportSections가 따로 그리며, 공유하는 것은 describeStrategyChanges뿐이다).
    */
   onApplyStrategy?: (recommendation: CandidateRecommendation) => void;
   /**
@@ -38,11 +39,18 @@ interface StrategyRecommendationCardsProps {
    * 설정이라 국민연금·투자 성향 축에서 두 판정이 엇갈린다.
    */
   canApplyStrategy?: (recommendation: CandidateRecommendation) => boolean;
-  /** 방금 적용한 후보. 그 카드는 다시 누를 수 없다. */
+  /**
+   * 방금 적용한 후보. 그 카드는 적용 버튼 대신 「적용 해제」를 낸다.
+   *
+   * 호출자는 «되돌릴 수 있는 동안에만» 이 값을 채워야 한다. 카드는 이 값 하나로 해제
+   * 버튼을 내므로, 되돌릴 수 없는 상태에서 값이 남아 있으면 눌러도 아무 일이 없는 버튼이
+   * 생긴다. 현재 호출자(page.tsx)는 그 조건에서만 값을 갖는 useAppliedStrategy의
+   * snapshot에서 이 id를 가져와 조건을 만족한다.
+   */
   appliedCandidateId?: string;
   /**
-   * 적용한 전략을 적용 직전 설정으로 되돌린다. 없으면 적용된 카드를 「적용됨」으로만
-   * 표시한다 — PDF 리포트처럼 설정을 바꿀 수 없는 문맥이 같은 카드를 쓴다.
+   * 적용한 전략을 적용 직전 설정으로 되돌린다. 없으면 적용된 카드를 「적용됨」 비활성
+   * 표시로만 남긴다 — 설정을 바꿀 수 없는 읽기 전용 문맥을 위한 여지다.
    */
   onUndoStrategy?: () => void;
 }
@@ -59,9 +67,10 @@ interface StrategyApplyActionProps {
 }
 
 /**
- * 적용 버튼과 그 자리에서 펼쳐지는 확인 단계.
+ * 카드 하단 액션. 상태에 따라 셋 중 하나를 낸다 — 적용된 카드의 「적용 해제」, 적용할 것이
+ * 없을 때의 비활성 표시, 그리고 적용 버튼과 그 자리에서 펼쳐지는 확인 단계.
  *
- * 모달을 쓰지 않는 이유: 확인 모달의 값어치는 "무엇이 바뀌는지" 목록을 보여주는 데 있는데,
+ * 확인 단계에 모달을 쓰지 않는 이유: 확인 모달의 값어치는 "무엇이 바뀌는지" 목록을 보여주는 데 있는데,
  * 그 목록은 바로 위 「현재 계획에서 달라지는 점」에 이미 상시 표시돼 있다. 모달을 띄우면
  * 같은 목록을 두 번 보여주면서 근거가 되는 카드 본문만 가린다.
  */
@@ -73,8 +82,7 @@ function StrategyApplyAction({
   // 적용한 자리에서 바로 되돌린다. 되돌리기 배너는 대시보드 «바깥»에 있어서 카드를 보고
   // 있는 사용자에게는 취소 경로가 보이지 않는다.
   //
-  // 이 버튼은 되돌리기가 실제로 가능할 때에만 나타난다: applied 판정의 근거인
-  // appliedCandidateId가 되돌릴 수 있을 때에만 값을 갖는 스냅샷에서 오기 때문이다.
+  // 되돌릴 수 있을 때에만 이 버튼이 뜬다는 보장은 호출부가 한다(appliedCandidateId 주석).
   //
   // 확인 단계를 두지 않는 이유: 적용할 때 이미 한 번 확인했고, 해제는 그 확인을 취소하는
   // 방향이라 사용자가 잃을 것이 없다.

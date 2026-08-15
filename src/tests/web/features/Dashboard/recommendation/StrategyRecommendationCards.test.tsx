@@ -259,8 +259,10 @@ describe('StrategyRecommendationCards 적용 버튼', () => {
     reason: '목표 균형',
   };
 
-  function renderCards(props: Partial<Parameters<typeof StrategyRecommendationCards>[0]> = {}) {
-    return render(
+  type CardProps = Partial<Parameters<typeof StrategyRecommendationCards>[0]>;
+
+  function cardsElement(props: CardProps) {
+    return (
       <StrategyRecommendationCards
         recommendations={[balanced]}
         status="done"
@@ -272,7 +274,14 @@ describe('StrategyRecommendationCards 적용 버튼', () => {
     );
   }
 
-  // PDF 리포트와 읽기 전용 문맥이 같은 컴포넌트를 쓴다. 콜백이 없으면 액션 자체가 없어야 한다.
+  // rerenderWith: 적용 전후로 appliedCandidateId만 바꿔 «같은» 컴포넌트를 다시 그린다.
+  // 새로 render하면 로컬 state가 초기화되어 언마운트 없는 실제 화면 전환을 재현하지 못한다.
+  function renderCards(props: CardProps = {}) {
+    const view = render(cardsElement(props));
+    return { ...view, rerenderWith: (next: CardProps) => view.rerender(cardsElement(next)) };
+  }
+
+  // 설정을 바꿀 수 없는 읽기 전용 문맥이 같은 컴포넌트를 쓸 수 있다. 콜백이 없으면 액션 자체가 없어야 한다.
   test('적용 콜백이 없으면 버튼을 내지 않는다', () => {
     renderCards();
 
@@ -317,11 +326,60 @@ describe('StrategyRecommendationCards 적용 버튼', () => {
     expect(onUndoStrategy).toHaveBeenCalledTimes(1);
   });
 
-  // PDF 리포트처럼 설정을 바꿀 수 없는 문맥은 해제 콜백을 주지 않는다.
+  // 설정을 바꿀 수 없는 읽기 전용 문맥은 해제 콜백을 주지 않는다.
   test('해제 콜백이 없으면 적용됨으로만 표시한다', () => {
     renderCards({ onApplyStrategy: vi.fn(), appliedCandidateId: 'candidate-1' });
 
     expect(screen.getByRole('button', { name: '적용됨' })).toBeDisabled();
+  });
+
+  // 확인 단계를 거쳐 적용한 뒤 해제하면 «처음» 버튼으로 돌아와야 한다. 컴포넌트가
+  // 언마운트되지 않으므로, 적용 시점에 confirming을 내리지 않으면 해제 직후 확인 패널이
+  // 되살아난다. 적용 전후를 rerender로 이어 붙여야만 잡히는 회귀다.
+  test('적용한 뒤 해제하면 확인 단계가 아니라 처음 버튼으로 돌아온다', () => {
+    const onApplyStrategy = vi.fn();
+    const onUndoStrategy = vi.fn();
+    const { rerenderWith } = renderCards({ onApplyStrategy, onUndoStrategy });
+
+    fireEvent.click(screen.getByRole('button', { name: '이 전략 적용' }));
+    fireEvent.click(screen.getByRole('button', { name: '적용' }));
+    expect(onApplyStrategy).toHaveBeenCalledWith(balanced);
+
+    // 적용이 반영되면 호출자가 appliedCandidateId를 내려 준다.
+    rerenderWith({ onApplyStrategy, onUndoStrategy, appliedCandidateId: 'candidate-1' });
+    fireEvent.click(screen.getByRole('button', { name: '적용 해제' }));
+    expect(onUndoStrategy).toHaveBeenCalledTimes(1);
+
+    rerenderWith({ onApplyStrategy, onUndoStrategy });
+    expect(screen.getByRole('button', { name: '이 전략 적용' })).toBeInTheDocument();
+    expect(screen.queryByText(/현재 시나리오 설정이 바뀝니다/)).not.toBeInTheDocument();
+  });
+
+  // 어느 전략이 적용 중인지는 오직 이 버튼으로만 드러난다. 세 카드가 같은 onUndoStrategy를
+  // 받으므로, applied 판정이 깨지면 전부 「적용 해제」가 되어 그 정보가 사라진다.
+  test('적용 해제 버튼은 적용된 카드에만 나온다', () => {
+    render(
+      <StrategyRecommendationCards
+        recommendations={[
+          { persona: 'STABLE', label: '안정형', candidate: candidate(1, 'CONSERVATIVE', 'FIXED', 0.97), reason: '하방 방어' },
+          { persona: 'BALANCED', label: '균형형', candidate: candidate(2, 'BALANCED', 'FIXED', 0.95), reason: '목표 균형' },
+          { persona: 'COMFORTABLE', label: '여유형', candidate: candidate(3, 'GROWTH', 'FRONT_LOADED', 0.9), reason: '소비 여력' },
+        ]}
+        status="done"
+        currentGoalProbability={0.7}
+        params={params}
+        formatValue={formatValue}
+        onApplyStrategy={vi.fn()}
+        onUndoStrategy={vi.fn()}
+        appliedCandidateId="candidate-2"
+      />
+    );
+
+    expect(screen.getAllByRole('button', { name: '적용 해제' })).toHaveLength(1);
+    expect(screen.getAllByRole('button', { name: '이 전략 적용' })).toHaveLength(2);
+    expect(
+      within(screen.getByText('균형형').closest('article')!).getByRole('button', { name: '적용 해제' })
+    ).toBeInTheDocument();
   });
 
   // 카드가 받는 params는 센티널이 채운 계산용 값이고 실제 적용 대상은 사용자가 입력한
