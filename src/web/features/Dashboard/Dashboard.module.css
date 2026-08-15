@@ -126,6 +126,38 @@
   color: var(--foreground);
 }
 
+.goalCoverageNote {
+  margin-top: 0.75rem;
+  font-size: 0.72rem;
+  line-height: 1.5;
+  color: var(--foreground-muted);
+}
+
+.goalShortfallReason {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--card-border);
+}
+
+.goalShortfallReason > span {
+  font-size: 0.75rem;
+  color: var(--foreground-muted);
+}
+
+.goalShortfallReason > p {
+  font-size: 0.9rem;
+  line-height: 1.5;
+  color: var(--foreground);
+}
+
+.goalShortfallReason > .goalShortfallHint {
+  font-size: 0.8rem;
+  color: var(--foreground-muted);
+}
+
 .deterministicNote {
   margin-top: 0.75rem;
   font-size: 0.72rem;

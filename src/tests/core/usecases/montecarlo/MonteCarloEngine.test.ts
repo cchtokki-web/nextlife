@@ -363,3 +363,115 @@ describe('resolveMonteCarloConfig', () => {
     expect(VOLATILITY_BY_YIELD_PRESET.base).toBeLessThan(VOLATILITY_BY_YIELD_PRESET.aggressive);
   });
 });
+
+describe('goalFailure — 목표 달성 확률을 떨어뜨린 원인', () => {
+  test('원인별 시행 수를 goalSuccessProbability와 같은 판정으로 집계한다', () => {
+    const config: MonteCarloConfig = { trials: 60, seed: 7, annualStdDev: 18 };
+    const result = runMonteCarlo(params(), engine, config);
+
+    // 세 조건을 모두 통과한 시행 수 = goalSuccessProbability * trials.
+    // 어느 원인에도 걸리지 않은 시행이 그보다 적으면 집계가 판정과 갈라진 것이다.
+    const succeeded = Math.round(result.goalSuccessProbability * config.trials);
+    const { spendingShortfall, assetDepletion, terminalShortfall } = result.goalFailure;
+    for (const count of [spendingShortfall, assetDepletion, terminalShortfall]) {
+      expect(count).toBeGreaterThanOrEqual(0);
+      expect(count).toBeLessThanOrEqual(config.trials);
+      expect(count).toBeLessThanOrEqual(config.trials - succeeded);
+    }
+    // 실패한 시행은 반드시 어떤 원인에든 잡혀야 한다.
+    if (succeeded < config.trials) {
+      expect(Math.max(spendingShortfall, assetDepletion, terminalShortfall)).toBeGreaterThan(0);
+    }
+  });
+
+  test('사적연금 인출 상한이 걸린 계획은 자산이 남는데도 생활비 미달로 실패한다', () => {
+    // 자산 대부분이 사적연금에 있고 월 인출 상한이 낮으면, 일반계좌를 다 쓴 뒤로는 목표
+    // 생활비를 채울 방법이 없다. 그런데 연금 잔액은 그대로 남으므로 고갈로는 잡히지 않는다.
+    // 이 조합이 "기말자산은 큰데 목표 달성 확률만 바닥"의 원인이다.
+    const capped = runMonteCarlo(params({
+      privatePensions: [
+        { id: 'p1', type: 'irp', balance: 1_500_000_000, monthlyContribution: 0, annualReturn: 4, currency: 'KRW' },
+      ],
+      withdrawalPlan: { privatePensionMonthlyTarget: 300_000 },
+    }), engine, { trials: 30, seed: 7, annualStdDev: 12 });
+
+    expect(capped.goalFailure.spendingShortfall).toBeGreaterThan(capped.goalFailure.assetDepletion);
+    expect(capped.goalFailure.medianFirstShortfallAge).not.toBeNull();
+  });
+
+  test('생활비 미달 시행이 없으면 medianFirstShortfallAge는 null이다', () => {
+    // 목표 생활비가 국민연금만으로도 덮이는 계획.
+    const easy = runMonteCarlo(params({
+      userProfile: { currentAge: 55, retirementAge: 60, expectancy: 85, targetMonthlySpending: 500_000 },
+    }), engine, { trials: 20, seed: 7, annualStdDev: 5 });
+
+    expect(easy.goalFailure.spendingShortfall).toBe(0);
+    expect(easy.goalFailure.medianFirstShortfallAge).toBeNull();
+  });
+});
+
+describe('goalSuccessProbability — 선택한 목표가 판정 조건을 정한다', () => {
+  const config: MonteCarloConfig = { trials: 40, seed: 7, annualStdDev: 15 };
+  // 이 fixture가 절대 도달할 수 없는 기말자산 목표액.
+  const unreachableBequest = 100_000_000_000_000;
+
+  test('레거시 시나리오(목표 없음)는 목표 도입 이전과 같은 조건을 쓴다', () => {
+    const legacy = runMonteCarlo(
+      params({ userProfile: { currentAge: 55, retirementAge: 60, expectancy: 85, targetMonthlySpending: 2500000, targetBequest: unreachableBequest } }),
+      engine, config,
+    );
+
+    expect(legacy.goalConditions.basis).toBe('legacy_plan');
+    expect(legacy.goalConditions.terminalAssetGoal).toBe(unreachableBequest);
+    expect(legacy.goalSuccessProbability).toBe(0);
+  });
+
+  test('상속을 고르지 않았으면 남아 있는 상속 목표액이 확률을 깎지 않는다', () => {
+    // 구 UI에서 넣어 둔 금액이 목표 화면을 거친 뒤에도 조건으로 살아 있으면, 사용자는
+    // 화면 어디에도 보이지 않는 값 때문에 0%를 받는다.
+    const withGoals = runMonteCarlo(params({
+      userProfile: { currentAge: 55, retirementAge: 60, expectancy: 85, targetMonthlySpending: 2500000, targetBequest: unreachableBequest },
+      retirementGoals: [{ type: 'LIVING_EXPENSE_STABILITY', priority: 1, constraintType: 'SOFT' }],
+    }), engine, config);
+
+    expect(withGoals.goalConditions.basis).toBe('selected_goals');
+    expect(withGoals.goalConditions.terminalAssetGoal).toBe(0);
+    expect(withGoals.goalFailure.terminalShortfall).toBe(0);
+    expect(withGoals.goalSuccessProbability).toBeGreaterThan(0);
+  });
+
+  test('고르지 않은 조건은 실패 사유로도 세지 않는다', () => {
+    // 생활비만 골랐으면 고갈은 이 확률이 묻는 것이 아니다. 판정하지 않은 조건을 사유로만
+    // 보고하면 확률과 화면이 어긋난다.
+    const spendingOnly = runMonteCarlo(params({
+      retirementGoals: [{ type: 'LIVING_EXPENSE_STABILITY', priority: 1, constraintType: 'SOFT' }],
+    }), engine, config);
+
+    expect(spendingOnly.goalConditions.requireAssetSurvival).toBe(false);
+    expect(spendingOnly.goalFailure.assetDepletion).toBe(0);
+    // 원본 지표는 그대로 남는다 — 조건에서 빠졌다고 자산 보존 성공률까지 지우지 않는다.
+    expect(spendingOnly.successRate).toBeLessThanOrEqual(1);
+  });
+
+  test('판정할 수 없는 목표만 골라도 100%가 되지 않는다', () => {
+    const qualitativeOnly = runMonteCarlo(params({
+      retirementGoals: [{ type: 'TAX_OPTIMIZATION', priority: 1, constraintType: 'SOFT' }],
+    }), engine, config);
+
+    expect(qualitativeOnly.goalConditions.basis).toBe('plan_defaults');
+    expect(qualitativeOnly.goalConditions.unmeasuredGoals).toEqual(['TAX_OPTIMIZATION']);
+    expect(qualitativeOnly.goalConditions.requireSpendingTarget).toBe(true);
+    expect(qualitativeOnly.goalConditions.requireAssetSurvival).toBe(true);
+  });
+
+  test('상속을 고르면 그 목표액이 다시 조건이 된다', () => {
+    const withInheritance = runMonteCarlo(params({
+      retirementGoals: [{
+        type: 'INHERITANCE', priority: 1, constraintType: 'SOFT', targetValue: unreachableBequest,
+      }],
+    }), engine, config);
+
+    expect(withInheritance.goalConditions.terminalAssetGoal).toBe(unreachableBequest);
+    expect(withInheritance.goalSuccessProbability).toBe(0);
+  });
+});

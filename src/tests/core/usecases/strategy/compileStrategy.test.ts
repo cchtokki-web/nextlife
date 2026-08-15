@@ -228,6 +228,46 @@ describe('compileStrategy - 상속 안전마진', () => {
     expect(result.params.assetFloor).toBe(100_000_000);
   });
 
+  // 예전 규칙은 "상속 목표를 고르지 않았으면 하한선을 건다"였다. 그래서 목표 화면에서
+  // 상속을 고르지 않은 사용자가 가장 강한 인출 제약을 받았고, 화면에는 그 금액이 보이지
+  // 않아 원인을 알 수 없었다.
+  describe('상속 하한선은 고른 상속 목표에서만 나온다', () => {
+    const withTargetAndGoals = (goals: SimulationParams['retirementGoals']): SimulationParams => ({
+      ...withTarget({}),
+      retirementGoals: goals,
+    });
+
+    test('목표 목록이 있는데 상속을 고르지 않았으면 하한선이 없다', () => {
+      const result = compileStrategy(withTargetAndGoals([
+        { type: 'LIVING_EXPENSE_STABILITY', priority: 1, constraintType: 'SOFT' },
+      ]));
+
+      expect('assetFloor' in result.params).toBe(false);
+      // 채점 기준(targetBequest)은 그대로 둔다 — 하한선은 인출 제약이고 이것은 목표액이다.
+      expect(result.params.userProfile.targetBequest).toBe(100_000_000);
+    });
+
+    test('상속을 HARD로 골랐을 때만 하한선이 생긴다', () => {
+      const hard = compileStrategy(withTargetAndGoals([
+        { type: 'INHERITANCE', priority: 1, constraintType: 'HARD', targetValue: 100_000_000 },
+      ]));
+      const soft = compileStrategy(withTargetAndGoals([
+        { type: 'INHERITANCE', priority: 1, constraintType: 'SOFT', targetValue: 100_000_000 },
+      ]));
+
+      expect(hard.params.assetFloor).toBe(100_000_000);
+      expect('assetFloor' in soft.params).toBe(false);
+    });
+
+    test('목표를 한 번도 고른 적 없는 시나리오는 예전 동작을 유지한다', () => {
+      // retirementGoals 키 자체가 없으면 목표 화면을 거친 적이 없다는 뜻이다.
+      // 저장된 결과가 조용히 달라지면 안 된다.
+      const result = compileStrategy(withTarget({}));
+
+      expect(result.params.assetFloor).toBe(100_000_000);
+    });
+  });
+
   test('음수 마진은 하한선을 낮추지 않는다', () => {
     const result = compileStrategy(withTarget({ bequestSafetyMarginRate: -50 }));
 

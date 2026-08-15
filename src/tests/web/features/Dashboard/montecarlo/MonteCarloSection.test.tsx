@@ -3,6 +3,7 @@ import { render, screen } from '@testing-library/react';
 import { MonteCarloSection } from '@/web/features/Dashboard/montecarlo/MonteCarloSection';
 import { MonteCarloResult } from '@/core/entities/montecarlo';
 import { SequenceRiskResult } from '@/core/usecases/montecarlo/sequenceRisk';
+import { NO_GOAL_FAILURE, LEGACY_GOAL_CONDITIONS } from '@/tests/fixtures/goalFailure';
 
 function makeMonteCarlo(overrides: Partial<MonteCarloResult> = {}): MonteCarloResult {
   return {
@@ -13,6 +14,7 @@ function makeMonteCarlo(overrides: Partial<MonteCarloResult> = {}): MonteCarloRe
     successRate: 0.87,
     spendingSuccessRate: 0.81,
     goalSuccessProbability: 0.81,
+    goalFailure: NO_GOAL_FAILURE, goalConditions: LEGACY_GOAL_CONDITIONS,
     plannedMonthlySpending: 2230000,
     endingAssets: { p10: 200000000, p50: 1800000000, p90: 5200000000, mean: 2100000000 },
     assetBand: [

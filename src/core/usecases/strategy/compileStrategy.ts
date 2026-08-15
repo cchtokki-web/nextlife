@@ -362,7 +362,21 @@ export function compileStrategy(params: SimulationParams): CompiledStrategy {
   // 이 값들은 시나리오에 저장되므로 다시 열어도 그대로 살아난다.
   const lifetimeOptimization = spendingStrategy === 'max_sustainable';
   const inheritanceGoal = params.retirementGoals?.find((goal) => goal.type === 'INHERITANCE');
-  const goalAllowsAssetFloor = !inheritanceGoal || inheritanceGoal.constraintType === 'HARD';
+  // **하한선의 근거는 사용자가 고른 상속 목표뿐이다.**
+  //
+  // 예전 규칙은 "상속 목표를 고르지 않았으면 하한선을 건다"였다. 그래서 목표 화면에서
+  // 상속을 한 번도 고르지 않은 사용자가 가장 강한 제약을 받았다 — 구 UI에서 넣어 둔
+  // 상속 목표액(또는 기본 전략 '일부 남기기'가 실체화한 24개월치)이 인출 하한선이 되어,
+  // 자산이 남아 있는데도 그 아래로는 헐 수 없어 목표 생활비가 매년 미달됐다. 화면에는
+  // 그 금액이 어디에도 보이지 않아 원인을 알 방법이 없었다. 실측(자산 x3, 상속 30억
+  // 잔존): 목표 달성률 0.6%, 기말자산 중앙값 33.8억, 자산 고갈 0회.
+  //
+  // 목표 목록이 없는 시나리오(retirementGoals 키 자체가 없음)는 목표 화면을 거친 적이
+  // 없다는 뜻이므로 예전 규칙을 그대로 둔다 — 저장된 결과가 조용히 달라지지 않는다.
+  const usesGoalFlow = Array.isArray(params.retirementGoals);
+  const goalAllowsAssetFloor = usesGoalFlow
+    ? inheritanceGoal?.constraintType === 'HARD'
+    : true;
   const inheritanceAssetFloor = !goalAllowsAssetFloor
     ? undefined
     : lifetimeOptimization

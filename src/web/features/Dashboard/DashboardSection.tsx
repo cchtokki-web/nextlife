@@ -28,6 +28,9 @@ import {
   getPlanConfidenceBand,
   PLAN_CONFIDENCE_BAND_TIER,
 } from '../../../core/usecases/dashboard/computePlanConfidence';
+import { explainGoalShortfall } from '../../../core/usecases/dashboard/explainGoalShortfall';
+import type { GoalSuccessConditions } from '../../../core/usecases/goals/goalSuccessConditions';
+import { retirementGoalDefinition } from '../RetirementGoals/goalCatalog';
 import { KeyLeversCard } from './recommendation/KeyLeversCard';
 import { NATIONAL_PENSION_NORMAL_START_AGE } from '../../../core/usecases/pension/nationalPensionRules';
 import { compileStrategy, resolveStrategy } from '../../../core/usecases/strategy/compileStrategy';
@@ -232,6 +235,17 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
       : baselinePlanOutcome.investableDepletionAge !== null
         ? { emoji: '🟡', text: '기준 시나리오는 유지되지만 투자자산 소진에 대비해야 합니다.', tone: 'warning' as const }
         : { emoji: '🟢', text: '기준 시나리오에서는 계획한 생활비와 자산이 유지됩니다.', tone: 'success' as const };
+  // 확률이 왜 그 값인지. 확률만 보여주면 사용자는 언제나 "자산 부족"으로 읽지만, 인출을
+  // 막는 설정(사적연금 최소 인출·자산 하한선) 때문에 자산이 남아도 목표를 못 채우는 계획이
+  // 같은 숫자를 받는다. 그 구분은 explainGoalShortfall이 소유한다.
+  const goalShortfallExplanation = monteCarlo
+    ? explainGoalShortfall({
+      goalFailure: monteCarlo.goalFailure,
+      trials: monteCarlo.trials,
+      params,
+      formatValue,
+    })
+    : undefined;
   const probabilityLabel = currentGoalProbability !== undefined
     ? `${Math.round(currentGoalProbability * 100)}%`
     : monteCarloStatus === 'error' || monteCarloStatus === 'unsupported'
@@ -267,6 +281,20 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
             <div><dt>월 생활비 목표</dt><dd>{formatValue(baselineMetrics.targetSpending)}</dd></div>
             <div><dt>{params.userProfile.expectancy}세 예상자산</dt><dd>{formatValue(baselineMetrics.terminalAssets)}</dd></div>
           </dl>
+          {monteCarlo && monteCarlo.goalConditions.basis !== 'legacy_plan' && (
+            <GoalCoverageNote conditions={monteCarlo.goalConditions} />
+          )}
+          {goalShortfallExplanation && goalShortfallExplanation.cause !== 'none' && (
+            <div className={styles.goalShortfallReason}>
+              {/* "확률이 낮은 이유"라고 쓰지 않는다. 89%인 계획에도 실패 시행은 있고,
+                  그때 이 제목은 사실이 아닌 것을 단정한다. */}
+              <span>목표를 달성하지 못한 시행의 원인</span>
+              <p>{goalShortfallExplanation.headline}</p>
+              {goalShortfallExplanation.hint && (
+                <p className={styles.goalShortfallHint}>{goalShortfallExplanation.hint}</p>
+              )}
+            </div>
+          )}
           {currentGoalProbability === undefined && (
             <p className={styles.deterministicNote}>확률 검증 전에는 기준 시나리오의 생존·생활비 부족 여부만 진단합니다.</p>
           )}
@@ -532,6 +560,24 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
     </div>
   );
 };
+
+// 이 확률이 **어떤 목표를 판정한 것인지** 밝힌다. 밝히지 않으면 "판정하지 않음"이
+// "판정해서 통과함"으로 읽힌다 — 세금 최소화를 골라 둔 사용자는 그 목표까지 포함된 확률로
+// 이 숫자를 읽는데, 시행 하나로 세금 목표의 성공/실패를 물을 방법은 없다.
+function GoalCoverageNote({ conditions }: { conditions: GoalSuccessConditions }) {
+  const unmeasured = conditions.unmeasuredGoals
+    .map((type) => retirementGoalDefinition(type).label)
+    .join(', ');
+
+  return (
+    <p className={styles.goalCoverageNote}>
+      {conditions.basis === 'plan_defaults'
+        ? '선택한 목표는 시장 변동 시행으로 판정할 수 없어, 계획의 기본 조건(목표 생활비 유지·자산 고갈 없음)으로 계산한 확률입니다.'
+        : '선택한 목표 중 시행으로 판정할 수 있는 조건만 반영한 확률입니다.'}
+      {unmeasured && ` 이 확률에 반영되지 않은 목표: ${unmeasured}.`}
+    </p>
+  );
+}
 
 function DashboardGroup({ title, description, children }: { title: string; description: string; children: ReactNode }) {
   return (

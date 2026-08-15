@@ -4,6 +4,7 @@ import { AssetGrowthChart, DEFAULT_HIDDEN_PERCENTILE_KEYS } from '@/web/features
 import { MonteCarloResult } from '@/core/entities/montecarlo';
 import { SimulationParams, SimulationResult, SimulationYearlyResult } from '@/core/entities/types';
 import { makeYearlyResult as sharedYearlyResult } from '@/tests/fixtures/yearlyResult';
+import { NO_GOAL_FAILURE, LEGACY_GOAL_CONDITIONS } from '@/tests/fixtures/goalFailure';
 
 // 차트 테스트는 "자산이 있는" 상태가 기본이라야 시리즈가 그려진다. 공유 픽스처(전부 0) 위에
 // 이 파일 공통의 잔액을 얹는다.
@@ -143,6 +144,7 @@ describe('AssetGrowthChart - 몬테카를로 분위수 선', () => {
     successRate: 0.39,
     spendingSuccessRate: 0.39,
     goalSuccessProbability: 0.39,
+    goalFailure: NO_GOAL_FAILURE, goalConditions: LEGACY_GOAL_CONDITIONS,
     plannedMonthlySpending: 2230000,
     endingAssets: { p10: 0, p50: 100000000, p90: 8000000000, mean: 500000000 },
     assetBand: [{ age: 60, p10: 10000000, p50: 300000000, p90: 900000000 }],

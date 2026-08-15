@@ -11,6 +11,7 @@ import {
 } from '@/core/entities/types';
 import { makeYearlyResult as sharedYearlyResult } from '@/tests/fixtures/yearlyResult';
 import { DEFAULT_RETIREMENT_STRATEGY } from '@/core/usecases/strategy/compileStrategy';
+import { NO_GOAL_FAILURE, LEGACY_GOAL_CONDITIONS } from '@/tests/fixtures/goalFailure';
 
 vi.mock('next-auth/react', () => ({
   useSession: () => ({ data: null }),
@@ -423,6 +424,7 @@ describe('DashboardSection - 평생 소비 최적화 결과 배너', () => {
           // 목표 상속자산이 고갈을 막아 성공률은 100%지만, 그 금액을 온전히 쓰는 것은
           // 43%뿐인 상황(하니스 실측 형태).
           successRate: 1, spendingSuccessRate: 0.43, goalSuccessProbability: 0.43,
+          goalFailure: NO_GOAL_FAILURE, goalConditions: LEGACY_GOAL_CONDITIONS,
           plannedMonthlySpending: 2230000,
           endingAssets: { p10: 0, p50: 1, p90: 2, mean: 1 },
           assetBand: [], depletion: { count: 0, earliestAge: null, medianAge: null },
@@ -619,6 +621,7 @@ describe('DashboardSection - 현재 계획 진단', () => {
     successRate: 1,
     spendingSuccessRate: spending,
     goalSuccessProbability: goal,
+    goalFailure: NO_GOAL_FAILURE, goalConditions: LEGACY_GOAL_CONDITIONS,
     plannedMonthlySpending: 3_000_000,
     endingAssets: { p10: 0, p50: 1, p90: 2, mean: 1 },
     assetBand: [], depletion: { count: 0, earliestAge: null, medianAge: null },
@@ -651,6 +654,99 @@ describe('DashboardSection - 현재 계획 진단', () => {
     // 옛 인라인 임계값(>= 0.9)이라면 🟡이 된다. 도메인 밴드는 0.80 이상을 stable(green)로 본다.
     expect(diagnosis().textContent).toContain('🟢');
     expect(diagnosis().textContent).not.toContain('🟡');
+  });
+
+  // 확률만 보여주면 사용자는 언제나 "자산 부족"으로 읽는다. 자산이 남아 있는데도 인출
+  // 설정 때문에 목표를 못 채우는 계획은 그 사실을 화면에서 읽을 수 있어야 한다.
+  test('목표를 달성하지 못한 원인과 그것을 만든 설정을 함께 표시한다', () => {
+    render(
+      <DashboardSection
+        params={{ ...params, withdrawalPlan: { privatePensionMonthlyTarget: 312_500 } }}
+        result={result}
+        monteCarloStatus="done"
+        monteCarlo={{
+          ...monteCarloWith(0.02, 0.02),
+          goalFailure: {
+            spendingShortfall: 980, assetDepletion: 0, terminalShortfall: 5,
+            medianFirstShortfallAge: 72, terminalAssetGoal: 0,
+          },
+        }}
+      />
+    );
+
+    expect(diagnosis().textContent).toContain('목표를 달성하지 못한 시행의 원인');
+    expect(diagnosis().textContent).toContain('980회');
+    expect(diagnosis().textContent).toContain('72세부터');
+    expect(diagnosis().textContent).toContain('사적연금');
+  });
+
+  // 판정하지 않은 목표를 밝히지 않으면 "판정하지 않음"이 "판정해서 통과함"으로 읽힌다.
+  test('확률에 반영되지 않은 목표를 밝힌다', () => {
+    render(
+      <DashboardSection
+        params={params} result={result}
+        monteCarloStatus="done"
+        monteCarlo={{
+          ...monteCarloWith(0.9, 0.9),
+          goalConditions: {
+            basis: 'selected_goals',
+            requireSpendingTarget: true,
+            requireAssetSurvival: false,
+            terminalAssetGoal: 0,
+            unmeasuredGoals: ['TAX_OPTIMIZATION', 'PENSION_OPTIMIZATION'],
+          },
+        }}
+      />
+    );
+
+    expect(diagnosis().textContent).toContain('반영되지 않은 목표: 세금 최소화, 연금 최대 활용');
+  });
+
+  test('판정 가능한 목표가 없으면 기본 조건으로 계산했다고 밝힌다', () => {
+    render(
+      <DashboardSection
+        params={params} result={result}
+        monteCarloStatus="done"
+        monteCarlo={{
+          ...monteCarloWith(0.9, 0.9),
+          goalConditions: {
+            basis: 'plan_defaults',
+            requireSpendingTarget: true,
+            requireAssetSurvival: true,
+            terminalAssetGoal: 0,
+            unmeasuredGoals: ['TAX_OPTIMIZATION'],
+          },
+        }}
+      />
+    );
+
+    expect(diagnosis().textContent).toContain('계획의 기본 조건');
+  });
+
+  test('레거시 시나리오에는 목표 안내를 붙이지 않는다', () => {
+    // 목표를 고른 적 없는 사용자에게 "선택한 목표"를 말하면 없는 선택을 있다고 하는 것이다.
+    render(
+      <DashboardSection
+        params={params} result={result}
+        monteCarloStatus="done"
+        monteCarlo={monteCarloWith(0.9, 0.9)}
+      />
+    );
+
+    expect(diagnosis().textContent).not.toContain('반영되지 않은 목표');
+    expect(diagnosis().textContent).not.toContain('계획의 기본 조건');
+  });
+
+  test('실패 원인이 없으면 이유 블록을 그리지 않는다', () => {
+    render(
+      <DashboardSection
+        params={params} result={result}
+        monteCarloStatus="done"
+        monteCarlo={monteCarloWith(1, 1)}
+      />
+    );
+
+    expect(diagnosis().textContent).not.toContain('목표를 달성하지 못한 시행의 원인');
   });
 
   test('0.60은 주의(🟡)로 판정한다', () => {

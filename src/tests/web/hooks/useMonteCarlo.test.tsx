@@ -3,6 +3,7 @@ import { renderHook, act, waitFor } from '@testing-library/react';
 import { useMonteCarlo } from '@/web/hooks/useMonteCarlo';
 import { SimulationParams } from '@/core/entities/types';
 import { MonteCarloRequest, MonteCarloResponse } from '@/web/workers/monteCarloProtocol';
+import { NO_GOAL_FAILURE, LEGACY_GOAL_CONDITIONS } from '@/tests/fixtures/goalFailure';
 
 // 워커 생성을 주입 가능하게 둔 이유: jsdom에는 Worker가 없어 훅 테스트가 실제 워커를
 // 띄울 수 없다. 이 저장소는 이미 배선 자체를 테스트로 고정하는 관례가 있다
@@ -49,6 +50,7 @@ function makeResult(successRate: number) {
   return {
     trials: 1000, seed: 1, successAge: 85, successRate, spendingSuccessRate: successRate,
     goalSuccessProbability: successRate,
+    goalFailure: NO_GOAL_FAILURE, goalConditions: LEGACY_GOAL_CONDITIONS,
     plannedMonthlySpending: 3000000,
     endingAssets: { p10: 1, p50: 2, p90: 3, mean: 2 },
     assetBand: [], depletion: { count: 0, earliestAge: null, medianAge: null },

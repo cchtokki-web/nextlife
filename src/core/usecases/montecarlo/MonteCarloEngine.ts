@@ -15,6 +15,7 @@ import { buildReturnShockPath } from './returnPath';
 import { percentileOfSorted } from './statistics';
 import { simulationYearCount } from './horizon';
 import { computeMonthlySpendingComposition } from '../MonthlySpendingComposition';
+import { resolveGoalSuccessConditions } from '../goals/goalSuccessConditions';
 import { SHORTFALL_EPSILON_MONTHLY } from '../metrics/SimulationMetricsCalculator';
 
 // 한 시행에서 보관하는 것. 전 시행의 yearlyResults를 통째로 들면(1000 × 55년 × 30필드)
@@ -25,7 +26,10 @@ interface TrialSummary {
   endingAssets: number;
   depletionAge: number | null;
   hasUnmetSpending: boolean;
-  hasGoalSpendingShortfall: boolean;
+  // 목표 생활비를 처음 채우지 못한 나이. null이면 전 기간 목표를 채웠다.
+  // boolean이 아니라 나이를 드는 이유: "몇 %가 실패했는가"만으로는 원인을 지목할 수 없고,
+  // 실패가 **언제부터** 시작되는지가 곧 원인의 종류를 가른다(GoalFailureBreakdown 주석).
+  firstGoalShortfallAge: number | null;
   totalAssetsByYear: number[];
 }
 
@@ -34,16 +38,18 @@ function summarize(
   result: StrategySimulationResult,
   goalParams: SimulationParams,
 ): TrialSummary {
+  const firstShortfallRow = computeMonthlySpendingComposition(
+    result.yearlyResults,
+    goalParams,
+    result,
+  ).find((row) => row.goalShortfall >= SHORTFALL_EPSILON_MONTHLY);
+
   return {
     index,
     endingAssets: result.endingAssets,
     depletionAge: result.depletionAge,
     hasUnmetSpending: result.yearlyResults.some(hasSpendingShortfall),
-    hasGoalSpendingShortfall: computeMonthlySpendingComposition(
-      result.yearlyResults,
-      goalParams,
-      result,
-    ).some((row) => row.goalShortfall >= SHORTFALL_EPSILON_MONTHLY),
+    firstGoalShortfallAge: firstShortfallRow?.age ?? null,
     totalAssetsByYear: result.yearlyResults.map((y) => y.totalAssets),
   };
 }
@@ -132,21 +138,41 @@ export function runMonteCarlo(
   // 생활 유지 성공 = 계획한 생활비를 한 해도 줄이지 않음. **고갈 여부를 묻지 않는다** —
   // 이유는 MonteCarloResult.spendingSuccessRate 주석에 있다.
   const spendingSucceeded = trials.filter((t) => !t.hasUnmetSpending);
+  // **무엇을 판정할지는 선택한 목표가 정한다.** 조건을 여기에 고정하면 두 방향으로 모두
+  // 틀린다 — 고르지 않은 상속 목표액이 확률을 깎고, 고른 목표(자산 고갈 방지 HARD 등)는
+  // 확률을 바꾸지 못한다. 그 결정은 resolveGoalSuccessConditions 한 곳에만 둔다.
+  //
   // 사용자가 고른 INHERITANCE 목표액은 여기까지 **투영을 통해** 도달한다:
   // applyRetirementGoals(선택 목표 → userProfile.targetBequest) → 어댑터 → strategy.targetBequest
-  // → validate()가 다시 bequest 목표로 넘김 → 이 줄.
+  // → validate()가 selectedGoals와 bequest 목표를 함께 넘김 → resolveGoalSuccessConditions.
   // 사슬 어디가 끊겨도 목표액은 조용히 0이 되고, 모든 시행이 기말자산 조건을 통과해
   // 목표 성공확률만 과대평가된다(오류는 나지 않는다).
   // retirement-domain-invariants/monte-carlo.test.ts가 그 사슬 전체를 고정한다.
-  const terminalAssetGoal = Math.max(
-    0,
-    params.userProfile.targetBequest ?? params.assetFloor ?? 0,
-  );
-  const goalSucceeded = trials.filter((t) => (
-    !t.hasGoalSpendingShortfall
-    && isSuccessfulTrial(t.depletionAge, successAge)
-    && t.endingAssets >= terminalAssetGoal
-  ));
+  const conditions = resolveGoalSuccessConditions(params);
+  const { terminalAssetGoal } = conditions;
+  const failsSpending = (t: TrialSummary) =>
+    conditions.requireSpendingTarget && t.firstGoalShortfallAge !== null;
+  const failsSurvival = (t: TrialSummary) =>
+    conditions.requireAssetSurvival && !isSuccessfulTrial(t.depletionAge, successAge);
+  const failsTerminal = (t: TrialSummary) =>
+    terminalAssetGoal > 0 && t.endingAssets < terminalAssetGoal;
+
+  const goalSucceeded = trials.filter((t) => !failsSpending(t) && !failsSurvival(t) && !failsTerminal(t));
+
+  // 실패 원인별 집계. 위 판정식의 세 술어를 그대로 재사용한다 — 조건을 여기서 다시 쓰면
+  // 판정하지 않은 조건이 사유로만 보고되어 확률과 화면이 어긋난다.
+  const shortfallAges = trials
+    .filter(failsSpending)
+    .map((t) => t.firstGoalShortfallAge)
+    .filter((age): age is number => age !== null)
+    .sort((a, b) => a - b);
+  const goalFailure = {
+    spendingShortfall: shortfallAges.length,
+    assetDepletion: trials.filter(failsSurvival).length,
+    terminalShortfall: trials.filter(failsTerminal).length,
+    medianFirstShortfallAge: shortfallAges.length > 0 ? percentileOfSorted(shortfallAges, 0.5) : null,
+    terminalAssetGoal,
+  };
 
   const depletedAges = trials
     .map((t) => t.depletionAge)
@@ -178,6 +204,8 @@ export function runMonteCarlo(
     successRate: trials.length > 0 ? succeeded.length / trials.length : 0,
     spendingSuccessRate: trials.length > 0 ? spendingSucceeded.length / trials.length : 0,
     goalSuccessProbability: trials.length > 0 ? goalSucceeded.length / trials.length : 0,
+    goalFailure,
+    goalConditions: conditions,
     plannedMonthlySpending: planned.monthlyTargetSpending,
     endingAssets: {
       p10: percentileOfSorted(endingSorted, 0.1),

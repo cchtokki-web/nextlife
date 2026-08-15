@@ -1,3 +1,4 @@
+import type { GoalSuccessConditions } from '../usecases/goals/goalSuccessConditions';
 import { SimulationYearlyResult } from './types';
 
 // 몬테카를로 시뮬레이션의 입력과 결과.
@@ -21,6 +22,23 @@ export interface MonteCarloBandYear {
   p10: number;
   p50: number;
   p90: number;
+}
+
+// goalSuccessProbability의 세 판정 조건별 실패 시행 수. 판정식은 runMonteCarlo 한 곳에만
+// 있고 여기에는 그 결과만 집계한다.
+export interface GoalFailureBreakdown {
+  // 은퇴 후 어느 해든 목표 생활비를 1만원 이상 채우지 못한 시행 수.
+  spendingShortfall: number;
+  // 기대수명 전에 자산이 고갈된 시행 수.
+  assetDepletion: number;
+  // 기말자산이 목표(targetBequest 또는 assetFloor)에 못 미친 시행 수.
+  terminalShortfall: number;
+  // 생활비 미달이 **처음 발생한 나이**의 중앙값. 미달 시행이 없으면 null.
+  // "언제부터 무너지는가"는 원인 지목에 필요한 최소 정보다 — 은퇴 직후부터면 계획 자체가
+  // 과하고, 20년 뒤부터면 인출 경로나 장수 위험이다.
+  medianFirstShortfallAge: number | null;
+  // 세 번째 조건이 실제로 쓴 기말자산 목표액. 0이면 그 조건은 사실상 없다.
+  terminalAssetGoal: number;
 }
 
 export interface MonteCarloResult {
@@ -73,6 +91,19 @@ export interface MonteCarloResult {
   // 않는다. 그 값들은 이미 successRate/spendingSuccessRate/endingAssets에 있고, 같은 수를 두
   // 필드에 저장하면 둘이 어긋날 수 있다. 이름 변환은 MonteCarloEngine.validate가 담당한다.
   goalSuccessProbability: number;
+  // goalSuccessProbability가 낮을 때 **무엇이 그 값을 떨어뜨렸는지**. 확률 하나만 보여주면
+  // 사용자는 언제나 "자산이 모자란다"로 읽지만, 실제로는 자산이 남아도는데 인출이 막혀
+  // 목표 생활비를 못 채우는 계획이 같은 2%를 받는다(사적연금 「최소 인출」이 그렇다:
+  // 저율과세 한도의 25%가 월 인출 상한이 되어, 일반계좌가 마른 뒤로는 목표를 채울 방법이
+  // 없는데 연금 잔액은 그대로 남아 고갈로도 잡히지 않는다).
+  //
+  // 한 시행이 여러 원인에 동시에 해당할 수 있으므로 세 값의 합은 (trials - 성공 시행 수)와
+  // 같지 않다.
+  goalFailure: GoalFailureBreakdown;
+  // 위 확률이 **무엇을 판정한 것인지**. 선택한 목표에서 유도한 조건인지, 판정 가능한 목표가
+  // 없어 계획의 기본 조건으로 되돌아갔는지, 그리고 어떤 목표가 이 확률에 반영되지 않았는지.
+  // 숫자만 보여주면 사용자는 자기가 고른 목표 전부가 반영됐다고 읽는다.
+  goalConditions: GoalSuccessConditions;
   // 위 두 비율이 판정 기준으로 삼은 월 생활비(freezeSpendingPlan이 고정한 값).
   //
   // 「평생 소비 최적화」에서 이 값은 사용자가 입력한 목표(예: 월 350만원)가 아니라 엔진이
