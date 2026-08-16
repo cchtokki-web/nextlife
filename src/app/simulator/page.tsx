@@ -12,6 +12,7 @@ import { resolvePlanAssetStatus } from '../../core/usecases/dashboard/resolvePla
 import { computeShortfallSummary } from '../../core/usecases/dashboard/computeShortfallSummary';
 import { describeDepletionAge } from '../../core/usecases/dashboard/describeDepletionAge';
 import { formatCurrencyUnit, renderRiskAlertsSection, renderStrategyRecommendationSection, renderExecutionRoadmapSection, renderSensitivityTableSection, renderMonteCarloSection, renderShortfallSummarySection, renderPlanVerdictSection, renderNationalPensionSection, renderKeyLeversSection } from '../../web/features/Pdf/pdfReportSections';
+import { describePrivatePensionLabel } from '../../web/features/Pdf/describePrivatePension';
 import { computePlanConfidence } from '../../core/usecases/dashboard/computePlanConfidence';
 import { computeKeyLevers } from '../../core/usecases/dashboard/computeKeyLevers';
 import { computePensionGapRisk } from '../../core/usecases/dashboard/computePensionGapRisk';
@@ -489,7 +490,7 @@ export default function Home() {
 
       if (privatePensions && privatePensions.length > 0) {
         privatePensions.forEach(p => {
-          pagesHtml += `<li style="margin-bottom: 4px;"><strong>${p.name}</strong> (${p.type === 'irp' ? 'IRP' : p.type === 'savings' ? '연금저축' : '기타'}): 현재 잔액 ${p.balance.toLocaleString()} ${formatCurrencyUnit(p.currency)}, 매월 ${p.monthlyContribution.toLocaleString()} ${formatCurrencyUnit(p.currency)} 납입, 예상 연 수익률 ${p.annualReturn}%</li>`;
+          pagesHtml += `<li style="margin-bottom: 4px;"><strong>${describePrivatePensionLabel(p)}</strong>: 현재 잔액 ${p.balance.toLocaleString()} ${formatCurrencyUnit(p.currency)}, 매월 ${p.monthlyContribution.toLocaleString()} ${formatCurrencyUnit(p.currency)} 납입, 예상 연 수익률 ${p.annualReturn}%</li>`;
         });
       } else {
         pagesHtml += `<li>등록된 사적연금 없음</li>`;
