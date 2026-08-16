@@ -77,9 +77,14 @@ describe('SimulationEngine 사적연금 브릿지 조기인출(Phase 4)', () => 
     expect(at55!.privatePensionIncome).toBe(0);
   });
 
+  // 목표 생활비를 0이 아닌 값으로 준다. 은퇴 후 정기 인출은 부족분까지만 일어나므로
+  // (정기 인출 상한), 목표가 0이면 인출도 0이라 «경로 복귀»를 관찰할 수 없다.
   test('retirementAge 이후에는 기존 인출 로직으로 복귀해 privatePensionIncome에 반영된다', () => {
     const engine = new SimulationEngine();
-    const result = engine.run({ ...baseParams, userProfile: { ...baseParams.userProfile, expectancy: 60 } });
+    const result = engine.run({
+      ...baseParams,
+      userProfile: { ...baseParams.userProfile, expectancy: 60, targetMonthlySpending: 2_000_000 },
+    });
 
     const at59 = result.yearlyResults.find((r) => r.age === 59);
     const at60 = result.yearlyResults.find((r) => r.age === 60);

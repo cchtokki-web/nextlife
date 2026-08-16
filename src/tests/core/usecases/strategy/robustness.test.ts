@@ -209,8 +209,11 @@ describe('recommendStrategy 통합 — 강건성 모드', () => {
     // 사용자가 국면을 직접 골랐으면 그 국면만이 진실이다. 다른 국면으로 재평가하는 것은
     // 사용자의 명시적 선택을 무시하는 것이다.
     const engine = new SimulationEngine();
+    // 목표 생활비를 공용 픽스처(300만원)보다 높게 잡는다. 정기 인출은 부족분까지만 일어나므로
+    // (정기 인출 상한), 목표가 낮으면 baseline이 이미 최적에 가까워 격자가 이길 여지가 없다.
     const fixed = compileStrategy({
       ...allAxesLiveParams,
+      userProfile: { ...allAxesLiveParams.userProfile, targetMonthlySpending: 4_500_000 },
       strategy: {
         ...DEFAULT_RETIREMENT_STRATEGY,
         riskProfile: 'neutral', economicScenario: 'recession', objective: 'lifetime_spending',

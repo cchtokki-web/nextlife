@@ -85,8 +85,13 @@ const paramsWithLargePension: SimulationParams = {
 // paramsWithLargePension 자체에 자산을 넣지 않는 이유: 그 픽스처는
 // "privatePensions/nationalPension을 비우면 탐색 차원이 하나도 없다"를 검증하는 테스트들의
 // 기반이기도 한데, 일반자산이 하나라도 있으면 매도순서·인출개시나이 차원이 살아나 그 전제가 깨진다.
+//
+// 목표 생활비를 paramsWithLargePension(200만원)보다 높게 잡는 이유: 정기 인출은 부족분까지만
+// 일어난다(정기 인출 상한). 목표가 낮으면 균등분할액이 부족분에 눌려 baseline이 이미 최적에
+// 가까워지고, 격자 탐색이 이길 여지가 사라져 improved가 false가 된다.
 const paramsWithOptimizableHeadroom: SimulationParams = {
   ...paramsWithLargePension,
+  userProfile: { ...paramsWithLargePension.userProfile, targetMonthlySpending: 3_000_000 },
   assets: [
     {
       id: 'general-asset',

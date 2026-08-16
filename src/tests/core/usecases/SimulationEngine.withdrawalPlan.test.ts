@@ -196,7 +196,10 @@ describe('SimulationEngine withdrawalPlan (인출 정책 파라미터화)', () =
       privatePensions: [
         { id: 'pension-1', type: 'irp', balance: 300000000, monthlyContribution: 0, annualReturn: 5, currency: 'KRW' },
       ],
-      otherIncomes: [{ id: 'income-1', label: '임대소득', monthlyAmount: 1000000, currency: 'KRW' }], // 목표(40만원) 충분히 충당
+      // 목표(40만원)에 20만원 모자라게 둔다. 정기 인출은 부족분까지만 일어나므로(정기 인출
+      // 상한), 소득이 목표를 넘으면 55세 이후에도 인출이 0이라 아래 후반부 단언이 성립하지
+      // 않는다. 이 테스트가 보려는 것은 «나이 게이트»이지 인출 규모가 아니다.
+      otherIncomes: [{ id: 'income-1', label: '임대소득', monthlyAmount: 200000, currency: 'KRW' }],
       inflationRate: 0,
       inflationMode: 'real',
       baseExchangeRate: 1350,

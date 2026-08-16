@@ -1017,6 +1017,30 @@ export class LegacySimulationEngine implements SimulationEngineContract {
         // 두 캡이 같은 해에 함께 소진되는 일은 없다.
         let remainingBridgeLimitKRW = (currentTaxSettings.privatePensionLimit ?? taxCtx.profile.privatePensionLimitKRW) / 12;
 
+        // 정기 인출(잔액 ÷ 잔여개월)이 넘어서면 안 되는 이 달의 «순» 필요액.
+        //
+        // 균등분할액은 나이가 들수록 커진다(60세 3.3% → 70세 5% → 80세 10%). 상한이 없으면
+        // 어느 시점부터 생활비를 넘겨 인출되고, 남은 돈은 갈 곳이 없어 잉여현금이 된다.
+        // 현금을 자산으로 되돌리는 경로가 없어 그대로 단조 누적되므로, 사용자는 연금소득세를
+        // 물고 실질수익률 -2%인 계좌에 돈을 재워 두게 된다.
+        //
+        // 균등분할식은 법정 연금수령한도(평가액 ÷ (11 - 연금수령연차) × 120%)가 아니라
+        // 기대수명까지 나누는 편의 가정이다. 실제 연금저축·IRP는 수령 개시 후에도 수령액을
+        // 조절할 수 있고 최소 의무 수령액이 없다 — 제도가 두는 것은 상한뿐이므로, 필요액까지만
+        // 빼는 것은 제도를 왜곡하지 않는다. 새 가정을 더하는 것이 아니라 근거 없는 강제 인출을
+        // 걷어내는 쪽이다.
+        //
+        // 아래 funding gap(calculateFundingGap)과 같은 뺄셈이지만, 연금 인출액을 정하려면
+        // 그보다 먼저 알아야 해서 여기서 구한다. 계좌가 여럿이면 이 잔여액을 공유한다 —
+        // 계좌마다 필요액을 새로 주면 계좌 수만큼 중복 인출된다.
+        let remainingMonthlyNeedDisplay = Math.max(0, calculateFundingGap(monthlyTargetSpending, {
+          employment: 0,
+          nationalPension: monthlyNationalPensionDisplay,
+          privatePension: 0,
+          dividend: monthlyDividendIncomeNetDisplay,
+          other: monthlyOtherIncomeTotalDisplay,
+        }).fundingGap);
+
         activePensions.forEach((pension) => {
           if (pension.currentBalance < 0) pension.currentBalance = 0;
           const growth = pension.currentBalance * pension.returnRateMonthly;
@@ -1051,7 +1075,16 @@ export class LegacySimulationEngine implements SimulationEngineContract {
                 drawAmountRaw = Math.max(0, growth);
               } else {
                 const remainingMonths = Math.max(1, (endAge - currentAge) * 12 + (12 - m));
-                drawAmountRaw = pension.currentBalance / remainingMonths;
+                const evenSplit = pension.currentBalance / remainingMonths;
+                // 균등분할액은 「이만큼까지 뺄 수 있다」이지 「이만큼 빼야 한다」가 아니다.
+                // 필요액은 세후 기준이므로 세율만큼 그로스업해 비교한다 — 그러지 않으면
+                // 세금만큼 덜 빼서 매달 생활비가 모자란다.
+                const taxRateForCap = getPrivatePensionIncomeTaxRate(currentAge, taxCtx);
+                const needGrossInPensionCurrency = this.convertValue(
+                  remainingMonthlyNeedDisplay / Math.max(1e-9, 1 - taxRateForCap),
+                  displayCurrency, pension.currency, exchangeRate
+                );
+                drawAmountRaw = Math.min(evenSplit, needGrossInPensionCurrency);
               }
             }
 
@@ -1110,7 +1143,10 @@ export class LegacySimulationEngine implements SimulationEngineContract {
             const drawAmountTax = plannedWithdrawal.tax;
             const drawAmountNet = plannedWithdrawal.netWithdrawal;
 
-            monthlyPensionIncomeNetDisplay += this.convertValue(drawAmountNet, pension.currency, displayCurrency, exchangeRate);
+            const drawAmountNetDisplay = this.convertValue(drawAmountNet, pension.currency, displayCurrency, exchangeRate);
+            // 다음 계좌는 이미 채워진 만큼을 빼고 본다.
+            remainingMonthlyNeedDisplay = Math.max(0, remainingMonthlyNeedDisplay - drawAmountNetDisplay);
+            monthlyPensionIncomeNetDisplay += drawAmountNetDisplay;
             annualPensionTaxPaid += this.convertValue(drawAmountTax, pension.currency, displayCurrency, exchangeRate);
             annualPreTaxTotalIncome += this.convertValue(drawAmountActual, pension.currency, displayCurrency, exchangeRate);
             annualPrivatePensionPreTaxKRW += this.convertValue(drawAmountActual, pension.currency, 'KRW', exchangeRate);
