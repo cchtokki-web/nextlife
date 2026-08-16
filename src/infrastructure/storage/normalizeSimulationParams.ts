@@ -37,6 +37,55 @@ import type { RetirementGoal, RetirementGoalType } from '../../core/entities/ret
 import { RETIREMENT_GOAL_TYPES } from '../../core/entities/retirementGoal';
 import { DEFAULT_HEALTHCARE } from '../../core/usecases/healthcare/defaultHealthcare';
 import { initialParams } from './defaultParams';
+import {
+  collectNormalizationIssues,
+  describeIssue,
+  financialIssues,
+  type NormalizationIssue,
+} from './normalizationIssues';
+
+/**
+ * 정제하면서 «무엇을 바꿨는지»도 함께 돌려준다.
+ *
+ * 정제 자체는 조용해야 한다 — 필드 하나가 깨졌다고 계산을 멈추면 사용자는 아무것도 볼 수
+ * 없다. 하지만 조용한 것과 «흔적이 없는» 것은 다르다. 통화를 읽지 못해 USD 자산이 KRW로
+ * 읽히면 평가액이 1/1350이 되는데, 계좌는 화면에 그대로 남아 아무도 그것을 알아채지 못한다.
+ *
+ * 그래서 값을 바꾸는 일과 그것을 알리는 일을 분리한다. 이 함수는 둘 다 하고,
+ * normalizeSimulationParams는 앞의 것만 한다(호출부 40여 곳을 그대로 두기 위해서다).
+ */
+export function normalizeSimulationParamsWithIssues(raw: unknown): {
+  params: SimulationParams;
+  issues: NormalizationIssue[];
+} {
+  const params = normalizeSimulationParams(raw);
+  return { params, issues: collectNormalizationIssues(raw, params) };
+}
+
+/**
+ * 정제가 바꾼 것을 진단 가능한 형태로 남긴다.
+ *
+ * 사용자 화면에 띄우지 않는 것은 의도다. 이 정보로 사용자가 지금 할 수 있는 일이 없고
+ * (「assets[1].currency를 읽지 못했습니다」는 조치로 이어지지 않는다), 계획을 볼 때마다
+ * 경고가 뜨면 정작 중요한 경고를 무시하게 된다. 화면에 무엇을 어떻게 띄울지는 별도 결정이며,
+ * 그때 필요한 데이터는 normalizeSimulationParamsWithIssues가 이미 돌려주고 있다.
+ *
+ * 지금 필요한 것은 «문의가 들어왔을 때 재현 없이 원인을 짚을 수 있는 기록»이다.
+ */
+export function reportNormalizationIssues(source: string, issues: readonly NormalizationIssue[]): void {
+  if (issues.length === 0) return;
+  const financial = financialIssues(issues);
+  if (financial.length > 0) {
+    console.error(
+      `[정제] ${source}: 계산에 쓰이는 값 ${financial.length}건을 대체했습니다`,
+      financial.map(describeIssue),
+    );
+  }
+  const cosmetic = issues.length - financial.length;
+  if (cosmetic > 0) {
+    console.warn(`[정제] ${source}: 표시용 값 ${cosmetic}건을 대체했습니다`);
+  }
+}
 
 /**
  * 저장 데이터를 계산에 넣어도 되는 모양으로 정제한다.
@@ -135,45 +184,61 @@ function onlyIfPresent<K extends string, V>(
   return { [key]: normalize(raw[key]) } as { [P in K]?: V };
 }
 
-const CURRENCIES: readonly AssetCurrency[] = ['KRW', 'USD'];
-const ASSET_MARKETS: readonly AssetMarket[] = ['US_ETF', 'KR_ETF', 'IRP', 'PENSION', 'OTHER'];
-const INVESTMENT_TYPES: readonly AccountInvestmentType[] = ['custom', 'deposit', 'etf'];
-const PRIVATE_PENSION_TYPES: readonly PrivatePensionType[] = ['irp', 'savings', 'retirement'];
-const ISA_TYPES: readonly IsaAccountType[] = ['general', 'low_income'];
+/**
+ * 유니온을 «빠짐없이» 옮겨 적었는지 컴파일러가 확인하게 한다.
+ *
+ * `const X: readonly T[] = [...]`는 부분집합도 통과시킨다. 그래서 AssetCurrency에 'JPY'를
+ * 추가하고 아래 목록에 넣는 것을 잊으면, 타입은 멀쩡한 채로 «모든 사용자의 JPY 계좌가
+ * 로드할 때마다 KRW가 된다» — 이 파일이 막으려던 바로 그 종류의 조용한 손실이다.
+ *
+ * 반환 타입이 아니라 인자 쪽에서 걸러 낸다. 목록이 유니온을 다 덮지 못하면 인자 타입이
+ * never가 되어 그 자리에서 컴파일이 멈춘다.
+ */
+function coversUnion<T extends string>() {
+  return <L extends readonly T[]>(
+    list: L & (Exclude<T, L[number]> extends never ? unknown : never),
+  ): readonly T[] => list;
+}
+
+const CURRENCIES = coversUnion<AssetCurrency>()(['KRW', 'USD']);
+const ASSET_MARKETS = coversUnion<AssetMarket>()(['US_ETF', 'KR_ETF', 'IRP', 'PENSION', 'OTHER']);
+const INVESTMENT_TYPES = coversUnion<AccountInvestmentType>()(['custom', 'deposit', 'etf']);
+const PRIVATE_PENSION_TYPES = coversUnion<PrivatePensionType>()(['irp', 'savings', 'retirement']);
+const ISA_TYPES = coversUnion<IsaAccountType>()(['general', 'low_income']);
 const YIELD_PRESETS = ['conservative', 'base', 'aggressive', 'custom'] as const;
-const SPENDING_STRATEGIES: readonly SpendingStrategy[] = ['target', 'dividend_only', 'max_sustainable'];
-const COMPREHENSIVE_TAX_MODES: readonly ComprehensiveTaxMode[] = ['progressive_credit', 'flat'];
-const WITHDRAWAL_POLICIES: readonly AccountWithdrawalPolicy[] = [
+const SPENDING_STRATEGIES = coversUnion<SpendingStrategy>()(['target', 'dividend_only', 'max_sustainable']);
+const COMPREHENSIVE_TAX_MODES = coversUnion<ComprehensiveTaxMode>()(['progressive_credit', 'flat']);
+const WITHDRAWAL_POLICIES = coversUnion<AccountWithdrawalPolicy>()([
   'GENERAL_FIRST', 'ISA_FIRST', 'PENSION_FIRST', 'TAX_OPTIMIZED', 'PROPORTIONAL', 'CUSTOM',
-];
-const SELL_ORDER_STRATEGIES: readonly AssetSellOrderStrategy[] = [
+]);
+const SELL_ORDER_STRATEGIES = coversUnion<AssetSellOrderStrategy>()([
   'input_order', 'low_dividend_first', 'high_dividend_first',
-];
-const ISA_MATURITY_DESTINATIONS: readonly IsaMaturityDestination[] = ['pension', 'asset'];
-const TAX_LAW_VERSIONS: readonly TaxLawVersion[] = ['current'];
-const STRATEGY_MODES: readonly StrategyMode[] = ['simple', 'standard', 'expert'];
-const OBJECTIVE_PRIORITIES: readonly ObjectivePriority[] = [
+]);
+const ISA_MATURITY_DESTINATIONS = coversUnion<IsaMaturityDestination>()(['pension', 'asset']);
+const TAX_LAW_VERSIONS = coversUnion<TaxLawVersion>()(['current']);
+const STRATEGY_MODES = coversUnion<StrategyMode>()(['simple', 'standard', 'expert']);
+const OBJECTIVE_PRIORITIES = coversUnion<ObjectivePriority>()([
   'lifetime_spending', 'tax_minimization', 'wealth_maximization',
   'bequest_maximization', 'ai_recommended',
-];
-const SPENDING_CHOICES: readonly SpendingStrategyChoice[] = [...SPENDING_STRATEGIES, 'ai'];
-const BEQUEST_STRATEGIES: readonly BequestStrategy[] = [
+]);
+const SPENDING_CHOICES = coversUnion<SpendingStrategyChoice>()([...SPENDING_STRATEGIES, 'ai']);
+const BEQUEST_STRATEGIES = coversUnion<BequestStrategy>()([
   'spend_all', 'leave_some', 'maximize', 'target_amount',
-];
-const NATIONAL_PENSION_STRATEGIES: readonly NationalPensionStrategy[] = [
+]);
+const NATIONAL_PENSION_STRATEGIES = coversUnion<NationalPensionStrategy>()([
   'early', 'normal', 'defer_1y', 'defer_2y', 'defer_max', 'ai_optimized',
-];
-const PRIVATE_PENSION_STRATEGIES: readonly PrivatePensionStrategy[] = [
+]);
+const PRIVATE_PENSION_STRATEGIES = coversUnion<PrivatePensionStrategy>()([
   'tax_first', 'spending_first', 'growth_first', 'minimum', 'ai_optimized',
-];
-const ISA_FIRST_CHOICES: readonly IsaFirstChoice[] = ['isa_first', 'pension_first', 'ai_optimized'];
-const RISK_PROFILES: readonly RiskProfile[] = [
+]);
+const ISA_FIRST_CHOICES = coversUnion<IsaFirstChoice>()(['isa_first', 'pension_first', 'ai_optimized']);
+const RISK_PROFILES = coversUnion<RiskProfile>()([
   'conservative', 'neutral', 'aggressive', 'custom', 'ai_recommended',
-];
-const ECONOMIC_SCENARIOS: readonly EconomicScenario[] = [
+]);
+const ECONOMIC_SCENARIOS = coversUnion<EconomicScenario>()([
   'long_term_average', 'recession', 'high_inflation', 'low_growth', 'ai_recommended',
-];
-const SPENDING_SHAPES: readonly SpendingShapePreset[] = ['flat', 'front_loaded', 'care_heavy'];
+]);
+const SPENDING_SHAPES = coversUnion<SpendingShapePreset>()(['flat', 'front_loaded', 'care_heavy']);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -191,6 +256,15 @@ function finite(value: unknown, fallback: number): number {
  */
 function positive(value: unknown, fallback: number): number {
   return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : fallback;
+}
+
+/** 사람의 나이로 성립하는 값만 통과시킨다. 벗어나면 «보정»이 아니라 기본값으로 되돌린다 —
+ *  120으로 깎아 두면 사용자가 넣은 적 없는 기대수명이 계획에 남는다. */
+const MAX_HUMAN_AGE = 120;
+function humanAge(value: unknown, fallback: number): number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= MAX_HUMAN_AGE
+    ? value
+    : fallback;
 }
 
 function optionalFinite(value: unknown): number | undefined {
@@ -249,9 +323,14 @@ function normalizeUserProfile(value: unknown): UserProfile {
   const raw = isRecord(value) ? value : {};
   const base = initialParams.userProfile;
   return {
-    currentAge: finite(raw.currentAge, base.currentAge),
-    retirementAge: finite(raw.retirementAge, base.retirementAge),
-    expectancy: finite(raw.expectancy, base.expectancy),
+    // 나이는 금액과 달리 «루프의 경계»다. SimulationEngine의 투영은
+    // `expectancy - currentAge + 1`번 도는데 NaN과 0 이하만 막으므로, expectancy가 1e9면
+    // 오류 없이 10억 번을 돌아 탭이 멈춘다(저장값이 사람이 고칠 수 있는 localStorage에서
+    // 온다는 것을 생각하면 가정이 아니다). 사람의 나이로 성립하지 않는 값은 통과시키지
+    // 않는다 — retirementGoal의 normalizeTargetValue가 쓰는 것과 같은 상한이다.
+    currentAge: humanAge(raw.currentAge, base.currentAge),
+    retirementAge: humanAge(raw.retirementAge, base.retirementAge),
+    expectancy: humanAge(raw.expectancy, base.expectancy),
     targetMonthlySpending: finite(raw.targetMonthlySpending, base.targetMonthlySpending),
     // 0은 「상속하지 않고 다 쓴다」는 명시적 목표라 미지정과 다르다. 그 구분을 지키려면
     // 깨진 값을 0으로 채워서는 안 되고 미지정으로 두어야 하며(원칙 2), 애초에 없던 키를
@@ -479,10 +558,29 @@ function normalizeStrategy(value: unknown): RetirementStrategy {
  * 특히 `enabled`가 중요하다. 엔진은 `!healthcare.enabled`로만 검사하므로 문자열 'false'가
  * 의료비를 켰고, 그 상태에서 `costGrowthRate`가 NaN이면 자산 전체가 NaN으로 번졌다.
  */
+
+/**
+ * `enabled`는 두 상태가 아니라 셋이다: 켬, 끔, 그리고 «읽지 못함».
+ *
+ * boolean이 아닌 값을 전부 기본값(false)으로 보내면, 읽지 못한 설정이 「끔」과 구별되지 않는다.
+ * 그 방향이 위험한 이유는 의료비가 «비용»이기 때문이다 — 조용히 꺼지면 월 30만원 의료비와
+ * 80세 이후 월 150만원 장기요양, 3,000만원 충격이 20년 계획에서 통째로 빠지고, 계획은 실제보다
+ * 안전해 «보인다». 반대 방향(잘못 켜짐)은 계획을 비관적으로 만들 뿐이라 훨씬 낫다.
+ *
+ * 그래서 키가 «없을 때»와 «읽지 못했을 때»를 가른다. 없으면 지정한 적 없는 것이므로 제품
+ * 기본값(false)이 맞다. 있는데 boolean이 아니면 사용자가 이 패널을 건드린 흔적이므로, 나머지
+ * 필드가 살아 있는 쪽(= 켜 둔 상태로 저장됐을 가능성)을 택한다. 어느 쪽이든 이 대체는
+ * collectNormalizationIssues가 보고하므로 흔적 없이 지나가지 않는다.
+ */
+function healthcareEnabled(value: Record<string, unknown>): boolean {
+  if (typeof value.enabled === 'boolean') return value.enabled;
+  if (!('enabled' in value)) return DEFAULT_HEALTHCARE.enabled;
+  return true;
+}
 function normalizeHealthcare(value: unknown): HealthcareAssumptions | undefined {
   if (!isRecord(value)) return undefined;
   return {
-    enabled: bool(value.enabled, DEFAULT_HEALTHCARE.enabled),
+    enabled: healthcareEnabled(value),
     costGrowthRate: finite(value.costGrowthRate, DEFAULT_HEALTHCARE.costGrowthRate),
     baseMonthlyCost: finite(value.baseMonthlyCost, DEFAULT_HEALTHCARE.baseMonthlyCost),
     longTermCareEnabled: bool(value.longTermCareEnabled, DEFAULT_HEALTHCARE.longTermCareEnabled),

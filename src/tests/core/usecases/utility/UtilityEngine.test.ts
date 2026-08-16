@@ -397,6 +397,35 @@ describe('UtilityEngine.computeLifetimeUtility', () => {
       null,
     );
 
+    // **명목 모드에서 분자와 분모의 화폐 기준이 같아야 한다.**
+    //
+    // endingAssets는 기대수명 시점의 잔액이라 명목 모드에서는 그 시점의 명목 금액이다.
+    // 분모(연 목표생활비)를 오늘 값으로 두면 완충연수가 (1+물가)^기간배 부풀어, 2.5%·35년이면
+    // 약 2.4배가 된다. fullBufferYears가 5년에서 포화하므로 명목 모드의 거의 모든 계획이
+    // 이 축 만점을 받고, 축을 넣은 목적(완충을 태운 계획과 남긴 계획의 구분)이 사라진다.
+    //
+    // 실질 모드와 «같은 구매력»을 남긴 계획이 같은 점수를 받는지로 확인한다. 물가 보정을
+    // 빼먹으면 명목 쪽만 2.4배 유리해져 두 점수가 갈린다.
+    test('명목 모드에서도 실질 모드와 같은 구매력이면 같은 점수를 받는다', () => {
+      const years = baseParams.userProfile.expectancy - baseParams.userProfile.currentAge;
+      const inflationRate = 2.5;
+      const factor = Math.pow(1 + inflationRate / 100, years);
+      // 완충 2년치. 포화(5년) 아래라 점수가 실제로 갈리는 구간이다.
+      const realBuffer = ANNUAL_TARGET * 2;
+
+      const real = computeLifetimeUtility(withBuffer(realBuffer), {
+        ...baseParams, inflationMode: 'real', inflationRate,
+      });
+      const nominal = computeLifetimeUtility(withBuffer(realBuffer * factor), {
+        ...baseParams, inflationMode: 'nominal', inflationRate,
+      });
+
+      expect(nominal.components.depletionSafety).toBeCloseTo(real.components.depletionSafety, 5);
+      // 전제 확인: 만점에 붙어 있으면 어떤 오류든 가려진다.
+      expect(real.components.depletionSafety)
+        .toBeLessThan(DEFAULT_UTILITY_CONFIG.weights.depletionSafety);
+    });
+
     test('고갈하지 않아도 완충자본이 두꺼울수록 높다', () => {
       const thin = computeLifetimeUtility(withBuffer(0), baseParams);
       const thick = computeLifetimeUtility(withBuffer(ANNUAL_TARGET * 10), baseParams);
@@ -686,6 +715,29 @@ describe('bequestAdequacy — bequestStrategy = maximize (최대 상속)', () =>
       Array.from({ length: 36 }, (_, i) => makeYear(60 + i, { totalAssets, pensionAssets: 0 })),
       null
     );
+
+  // 적정 잔여자산도 같은 화폐 기준 문제를 갖는다. 이쪽은 지수 감쇠라 「어차피 0점이니
+  // 분모가 조금 움직여도 상관없다」는 기록이 파일에 남아 있었지만, 그것은 분모를 20%
+  // 움직였을 때의 이야기다 — 명목 보정의 2.4배는 적정선 근처(점수가 실제로 갈리는 구간)의
+  // 계획을 만점에서 감점 구간으로 통째로 옮긴다.
+  test('명목 모드에서도 실질 모드와 같은 구매력이면 같은 점수를 받는다', () => {
+    const years = baseParams.userProfile.expectancy - baseParams.userProfile.currentAge;
+    const inflationRate = 2.5;
+    const factor = Math.pow(1 + inflationRate / 100, years);
+
+    const real = computeLifetimeUtility(resultWithEndingAssets(APPROPRIATE_BALANCE), {
+      ...baseParams, inflationMode: 'real', inflationRate,
+    });
+    const nominal = computeLifetimeUtility(resultWithEndingAssets(APPROPRIATE_BALANCE * factor), {
+      ...baseParams, inflationMode: 'nominal', inflationRate,
+    });
+
+    expect(nominal.components.bequestAdequacy).toBeCloseTo(real.components.bequestAdequacy, 5);
+    // 전제 확인: 적정선을 정확히 맞춘 계획이라 만점이어야 하고, 그래야 «떨어지는» 방향의
+    // 오류가 드러난다.
+    expect(real.components.bequestAdequacy)
+      .toBe(DEFAULT_UTILITY_CONFIG.weights.bequestAdequacy);
+  });
 
   test('최대 상속을 고르면 잔여자산이 많을수록 점수가 높아진다', () => {
     const params = withStrategy('maximize');

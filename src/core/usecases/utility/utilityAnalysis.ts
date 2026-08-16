@@ -1,7 +1,8 @@
-import { SimulationParams, SimulationResult, UtilityBreakdown, UtilityConfig } from '../../entities/types';
+import { AssetCurrency, SimulationParams, SimulationResult, UtilityBreakdown, UtilityConfig } from '../../entities/types';
 import { DEFAULT_UTILITY_CONFIG } from './utilityWeights';
 import { resolveStrategy } from '../strategy/compileStrategy';
 import { PlanAssetStatus } from '../dashboard/resolvePlanAssetStatus';
+import { appropriateBequestBalance } from './UtilityEngine';
 
 export interface CurrentStrategyAnalysis {
   strengths: string[];
@@ -10,6 +11,12 @@ export interface CurrentStrategyAnalysis {
 
 // 1억원(=10,000만원) 이상이면 "N억 M,MMM만원"으로 나눠 표기해 큰 금액도 한눈에 읽히게 한다.
 // AI 노후 설계사 문구(예: "179,169만원")처럼 자릿수가 많은 순수 만원 표기가 되지 않도록 하는 목적.
+//
+// **인자는 반드시 원화여야 한다.** 「만원」·「억원」은 원화의 단위라, 다른 통화의 숫자를
+// 넣으면 그 숫자에 원화 단위를 붙여 버린다. displayCurrency가 'USD'인 사용자에게 달러
+// 금액이 「만원」으로 찍히는 것이 실제로 일어났던 일이다(computeRiskAlerts) — 매개변수
+// 이름만으로는 그것을 막지 못했으므로, 표시 통화 기준 값을 다루는 호출부는 formatMoney를
+// 쓴다. 이 함수는 privatePensionLimit 같은 «원화로 고정된 제도 값»에만 쓴다.
 export function formatManwon(amountKRW: number): string {
   const manwon = Math.round(amountKRW / 10000);
   const sign = manwon < 0 ? '-' : '';
@@ -20,6 +27,22 @@ export function formatManwon(amountKRW: number): string {
   if (eok === 0) return `${sign}${absManwon.toLocaleString('ko-KR')}만원`;
   if (rest === 0) return `${sign}${eok.toLocaleString('ko-KR')}억원`;
   return `${sign}${eok.toLocaleString('ko-KR')}억 ${rest.toLocaleString('ko-KR')}만원`;
+}
+
+/**
+ * 표시 통화 기준 금액의 문구 표기.
+ *
+ * 엔진이 내놓는 금액(SimulationYearlyResult의 자산·인출·부족분 등)은 원화가 아니라
+ * `displayCurrency` 기준이다(types.ts). 그것을 formatManwon에 넣으면 달러 숫자에 「만원」이
+ * 붙는다 — 숫자도 단위도 틀린 문장이 된다.
+ *
+ * 달러는 만원·억원으로 끊지 않는다. 그 자릿수 구분은 원화의 관습이고, $1,234,567을
+ * 「123만원」꼴로 옮기면 읽는 사람이 원화로 오해한다.
+ */
+export function formatMoney(amount: number, currency: AssetCurrency): string {
+  if (currency === 'KRW') return formatManwon(amount);
+  const sign = amount < 0 ? '-' : '';
+  return `${sign}$${Math.round(Math.abs(amount)).toLocaleString('en-US')}`;
 }
 
 const COMPONENT_LABELS: Record<keyof UtilityBreakdown['components'], string> = {
@@ -99,7 +122,7 @@ export function explainBequestAdequacy(
     if (result.endingAssets <= 0) {
       return '최대 상속을 목표로 하셨지만 예상 잔여자산이 남지 않아 상속 자산 적정성 점수를 받지 못했습니다.';
     }
-    const appropriateBalance = params.userProfile.targetMonthlySpending * cfg.appropriateBequestMonths;
+    const appropriateBalance = appropriateBequestBalance(params, cfg);
     if (appropriateBalance <= 0) {
       return `최대 상속을 목표로 하셨고, 예상 잔여자산은 약 ${formatManwon(result.endingAssets)}입니다. 많이 남길수록 점수가 올라갑니다.`;
     }
@@ -140,7 +163,7 @@ export function explainBequestAdequacy(
     return `예상 잔여자산(약 ${formatManwon(result.endingAssets)})이 목표 상속자산(약 ${formatManwon(targetBequest)}) 대비 부족합니다.`;
   }
 
-  const appropriateBalance = params.userProfile.targetMonthlySpending * cfg.appropriateBequestMonths;
+  const appropriateBalance = appropriateBequestBalance(params, cfg);
   if (appropriateBalance <= 0) {
     return '목표 월 생활비가 설정되지 않아 적정 상속 자산 기준을 계산할 수 없습니다.';
   }
