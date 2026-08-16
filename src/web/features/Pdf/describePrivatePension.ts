@@ -1,8 +1,12 @@
 import type { PrivatePension } from '../../../core/entities/types';
 
+// PrivatePensionType 전체를 덮는다. 예전에는 irp/savings만 라벨링하고 나머지를 「기타」로
+// 떨궜는데, 사용자는 입력 폼에서 「퇴직연금」을 고를 수 있어(AssetFormSection의 선택지)
+// 화면은 「퇴직 연금 계좌」라 부르고 리포트만 「기타」라 부르는 상태였다.
 const TYPE_LABELS: Record<string, string> = {
   irp: 'IRP',
   savings: '연금저축',
+  retirement: '퇴직연금',
 };
 
 /**

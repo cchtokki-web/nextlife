@@ -13,6 +13,7 @@ import { computeShortfallSummary } from '../../core/usecases/dashboard/computeSh
 import { describeDepletionAge } from '../../core/usecases/dashboard/describeDepletionAge';
 import { formatCurrencyUnit, renderRiskAlertsSection, renderStrategyRecommendationSection, renderExecutionRoadmapSection, renderSensitivityTableSection, renderMonteCarloSection, renderShortfallSummarySection, renderPlanVerdictSection, renderNationalPensionSection, renderKeyLeversSection } from '../../web/features/Pdf/pdfReportSections';
 import { describePrivatePensionLabel } from '../../web/features/Pdf/describePrivatePension';
+import { describeInvestmentAssetLabel } from '../../web/features/Pdf/describeInvestmentAsset';
 import { computePlanConfidence } from '../../core/usecases/dashboard/computePlanConfidence';
 import { computeKeyLevers } from '../../core/usecases/dashboard/computeKeyLevers';
 import { computePensionGapRisk } from '../../core/usecases/dashboard/computePensionGapRisk';
@@ -506,7 +507,7 @@ export default function Home() {
 
       if (assets && assets.length > 0) {
         assets.forEach(a => {
-          pagesHtml += `<li style="margin-bottom: 4px;"><strong>${a.name}</strong> (${a.type}): ${a.quantity}주(개) x 평균단가 ${a.averagePrice.toLocaleString()} ${formatCurrencyUnit(a.currency)}, 매월 ${a.monthlyContribution.toLocaleString()} ${formatCurrencyUnit(a.currency)} 납입, 예상 연 수익률 ${a.annualGrowthRate}%, 배당률 ${a.dividendYield}%, 배당 재투자 ${a.reinvestDividend ? 'O' : 'X'}</li>`;
+          pagesHtml += `<li style="margin-bottom: 4px;"><strong>${describeInvestmentAssetLabel(a)}</strong>: ${a.quantity}주(개) x 평균단가 ${a.averagePrice.toLocaleString()} ${formatCurrencyUnit(a.currency)}, 매월 ${a.monthlyContribution.toLocaleString()} ${formatCurrencyUnit(a.currency)} 납입, 예상 연 수익률 ${a.annualGrowthRate}%, 배당률 ${a.dividendYield}%, 배당 재투자 ${a.reinvestDividend ? 'O' : 'X'}</li>`;
         });
       } else {
         pagesHtml += `<li>등록된 투자 자산 없음</li>`;

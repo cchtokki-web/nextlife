@@ -38,7 +38,13 @@ describe('describePrivatePensionLabel', () => {
     expect(describePrivatePensionLabel(pension({ name: '   ' }))).toBe('IRP');
   });
 
+  // 사용자가 UI에서 고를 수 있는 종류는 전부 이름을 가져야 한다. 퇴직연금은 고를 수 있는데
+  // (AssetFormSection의 선택지) 리포트만 「기타」라고 불렀다 — 화면은 「퇴직 연금 계좌」다.
+  test('사용자가 고를 수 있는 세 종류를 모두 제 이름으로 부른다', () => {
+    expect(describePrivatePensionLabel(pension({ type: 'retirement' }))).toBe('퇴직연금');
+  });
+
   test('알 수 없는 종류는 기타로 부른다', () => {
-    expect(describePrivatePensionLabel(pension({ type: 'other' as PrivatePension['type'] }))).toBe('기타');
+    expect(describePrivatePensionLabel(pension({ type: 'unknown' as PrivatePension['type'] }))).toBe('기타');
   });
 });
