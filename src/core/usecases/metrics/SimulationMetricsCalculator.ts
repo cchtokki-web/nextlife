@@ -177,7 +177,16 @@ export function calculateRetirementIncomeMetrics(
     params,
     placeholder,
   );
-  const averageMonthlyIncome = average(retirementYears.map((row) => row.totalIncome / 12));
+  // 사적연금 인출은 고정소득이 아니다. 이 지표의 목적은 "자산 매도·인출분을 제외하고
+  // 고정소득이 목표를 얼마나 덮는가"인데(SimulationEngine의 은퇴점수 오버라이드 주석 참고),
+  // 연금계좌 인출은 일반자산 매도와 경제적 실질이 같고 세제만 다르다. 일반자산 매도는
+  // 빼면서 연금계좌 인출만 넣으면 같은 성격의 두 흐름을 다르게 세는 셈이다.
+  //
+  // 국민연금·배당·기타소득은 남긴다 — 종신 지급이거나 원금을 유지한 채 나오는 흐름이라
+  // 계좌가 비어 멈추지 않는다. fireAge 판정도 같은 기준을 쓴다.
+  const averageMonthlyIncome = average(
+    retirementYears.map((row) => (row.totalIncome - row.privatePensionIncome) / 12)
+  );
   const averageMonthlyTarget = average(composition.map((row) => row.targetMonthly));
 
   return {

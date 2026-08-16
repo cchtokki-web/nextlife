@@ -109,8 +109,11 @@ export function computeMonthlySpendingComposition(
       goalMonthly: Math.round(goalMonthly),
       actualMonthly: actualSpendingMonthly,
       spendingAchievementRate: goalMonthly > 0 ? actualSpendingMonthly / goalMonthly : 0,
+      // 사적연금 인출은 고정소득이 아니다 — 연금계좌라는 자산을 헐어 쓰는 것이라 일반자산
+      // 매도와 실질이 같다. 구성 항목(privatePenUsed)에는 그대로 남으므로 차트는 사적연금이
+      // 생활비를 얼마나 채웠는지 계속 보여준다. 바뀌는 것은 「고정소득 커버율」 한 줄뿐이다.
       fixedIncomeCoverageRate: targetMonthly > 0
-        ? (national + privatePen + dividend + other) / targetMonthly
+        ? (national + dividend + other) / targetMonthly
         : 0,
       nationalUsed, privatePenUsed, dividendUsed, otherUsed, assetWithdrawal, shortfall, goalShortfall,
     };

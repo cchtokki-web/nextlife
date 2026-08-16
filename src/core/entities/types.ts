@@ -433,7 +433,9 @@ export interface SimulationResult {
   // 62%밖에 못 쓴다는 뜻으로 읽히지만, 실제로는 자산 인출을 포함해 목표의 80%를 쓰고 있었다.
   // 이름과 분자·분모를 함께 드러내야 한다(아래 두 필드).
   goalAchievementRate: number;
-  // goalAchievementRate의 분자: 은퇴 후 연평균 월 소득(배당 + 국민연금 + 사적연금 + 기타, 세후).
+  // goalAchievementRate의 분자: 은퇴 후 연평균 월 «고정»소득(배당 + 국민연금 + 기타, 세후).
+  // 사적연금 인출은 빠진다 — 연금계좌라는 자산을 헐어 쓰는 것이라 일반자산 매도와 실질이
+  // 같고, 이 지표는 자산 매도·인출분을 제외한다고 스스로 선언한다.
   // goalAchievementRate의 분모: 은퇴 후 연평균 월 목표 생활비(연령대 배수·물가·의료비 반영).
   //
   // 엔진은 항상 채우지만 선택적이다 — calculatedTargetSpending·utility와 같은 관례로,

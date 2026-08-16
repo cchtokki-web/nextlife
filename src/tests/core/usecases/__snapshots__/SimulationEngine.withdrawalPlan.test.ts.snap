@@ -64,10 +64,10 @@ exports[`SimulationEngine withdrawalPlan (인출 정책 파라미터화) > 회�
   "depletionAge": null,
   "endingAssets": 424593359.5216822,
   "fireAge": null,
-  "goalAchievementRate": 91,
+  "goalAchievementRate": 49,
   "retirementAssetsAtRetirement": 563995420.2198206,
-  "retirementGrade": "안정",
-  "retirementScore": 81,
+  "retirementGrade": "보통",
+  "retirementScore": 71,
   "utilityComponents": {
     "bequestAdequacy": 1,
     "consumption": 35,
