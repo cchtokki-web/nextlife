@@ -14,6 +14,7 @@ import { describeDepletionAge } from '../../core/usecases/dashboard/describeDepl
 import { formatCurrencyUnit, renderRiskAlertsSection, renderStrategyRecommendationSection, renderExecutionRoadmapSection, renderSensitivityTableSection, renderMonteCarloSection, renderShortfallSummarySection, renderPlanVerdictSection, renderNationalPensionSection, renderKeyLeversSection } from '../../web/features/Pdf/pdfReportSections';
 import { describePrivatePensionLabel } from '../../web/features/Pdf/describePrivatePension';
 import { describeInvestmentAssetLabel } from '../../web/features/Pdf/describeInvestmentAsset';
+import { describeIsaAccountLabel } from '../../web/features/Pdf/describeIsaAccount';
 import { computePlanConfidence } from '../../core/usecases/dashboard/computePlanConfidence';
 import { computeKeyLevers } from '../../core/usecases/dashboard/computeKeyLevers';
 import { computePensionGapRisk } from '../../core/usecases/dashboard/computePensionGapRisk';
@@ -523,7 +524,7 @@ export default function Home() {
 
       if (isaAccounts && isaAccounts.length > 0) {
         isaAccounts.forEach(isa => {
-          pagesHtml += `<li style="margin-bottom: 4px;"><strong>${isa.name || 'ISA 계좌'}</strong> (${isa.type === 'general' ? '일반형' : '서민형'}): 현재 잔액 ${isa.balance.toLocaleString()} ${formatCurrencyUnit(isa.currency)}, 매월 ${isa.monthlyContribution.toLocaleString()} ${formatCurrencyUnit(isa.currency)} 납입, 예상 연 수익률 ${isa.annualReturn}%, 배당률 ${isa.dividendYield}%, 만기 ${isa.maturityYears}년</li>`;
+          pagesHtml += `<li style="margin-bottom: 4px;"><strong>${describeIsaAccountLabel(isa)}</strong>: 현재 잔액 ${isa.balance.toLocaleString()} ${formatCurrencyUnit(isa.currency)}, 매월 ${isa.monthlyContribution.toLocaleString()} ${formatCurrencyUnit(isa.currency)} 납입, 예상 연 수익률 ${isa.annualReturn}%, 배당률 ${isa.dividendYield}%, 만기 ${isa.maturityYears}년</li>`;
         });
       } else {
         pagesHtml += `<li>등록된 ISA 계좌 없음</li>`;
