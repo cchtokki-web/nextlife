@@ -525,8 +525,20 @@ export class LegacySimulationEngine implements SimulationEngineContract {
     
     if (retirementYearsResults.length > 0) {
       const totalSpendingSum = retirementYearsResults.reduce((sum, r) => sum + r.spending, 0);
-      // Include dividend income as a stable passive income source
-      const totalStableIncomeSum = retirementYearsResults.reduce((sum, r) => sum + r.pensionIncome + r.dividendIncome, 0);
+      // 안정소득 = 국민연금 + 배당. 종신 지급이거나 원금을 유지한 채 나오는 흐름이라
+      // 계좌가 비어 멈추지 않는다.
+      //
+      // 사적연금 인출은 뺀다. pensionIncome에는 국민연금과 사적연금이 함께 들어 있는데,
+      // 사적연금 인출은 연금계좌라는 자산을 헐어 쓰는 것이라 수동소득이 아니다. 세면
+      // 원금 인출이 이 20점을 채운다 — 실측으로 같은 6억을 사적연금으로 들면 69세에
+      // 고갈되는데 47점, 일반주식으로 들면 71세까지 버티는데 30점이었다. 더 빨리 고갈되는
+      // 계획이 그릇 때문에 17점 높게 나온 것이다.
+      //
+      // goalAchievementRate(cashFlowScore)와 fireAge도 같은 기준을 쓴다. 두 항목이 같은
+      // 개념을 서로 다르게 세면 점수를 설명할 수 없다.
+      const totalStableIncomeSum = retirementYearsResults.reduce(
+        (sum, r) => sum + (r.pensionIncome - r.privatePensionIncome) + r.dividendIncome, 0
+      );
       avgRetirementMonthlySpending = totalSpendingSum / retirementYearsResults.length / 12;
       avgStableIncome = totalStableIncomeSum / retirementYearsResults.length / 12;
     }
@@ -559,9 +571,9 @@ export class LegacySimulationEngine implements SimulationEngineContract {
 
     let retirementScore = Math.round(assetScore + cashFlowScore + pensionScore + longevityScore + inflationScore);
     
-    // Logical override: goalAchievementRate는 배당·연금 등 고정소득만 반영하고 자산 매도·인출분은
-    // 제외한 지표라서, 원금을 계획적으로 인출하며 사는 정상적인 시나리오에서는 100%에 거의 도달하지
-    // 못한다. 따라서 이 오버라이드는 goalAchievementRate 대신 실제 자산 추이(은퇴 시작 시점 대비
+    // Logical override: goalAchievementRate는 배당·국민연금·기타소득만 반영하고 자산 매도와
+    // 사적연금 인출은 제외한 지표라서, 원금을 계획적으로 인출하며 사는 정상적인 시나리오에서는
+    // 100%에 거의 도달하지 못한다. 따라서 이 오버라이드는 goalAchievementRate 대신 실제 자산 추이(은퇴 시작 시점 대비
     // 순감소 여부)로 판단한다: 기대수명까지 고갈되지 않고 자산이 은퇴 시작 시점보다 줄지 않았다면
     // 실질적으로 매우 안전한 시나리오이므로 점수 하한을 95점으로 보정한다.
     const endingAssets = yearlyResults.length > 0 ? yearlyResults[yearlyResults.length - 1].totalAssets : 0;
