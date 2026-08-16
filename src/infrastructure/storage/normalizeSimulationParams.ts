@@ -4,19 +4,30 @@ import type {
   AssetCurrency,
   AssetMarket,
   AssetSellOrderStrategy,
+  BequestStrategy,
   ComprehensiveTaxMode,
+  EconomicScenario,
   CustomYieldSnapshot,
   HealthcareAssumptions,
   InvestmentAsset,
   IsaAccount,
   IsaAccountType,
+  IsaFirstChoice,
   IsaMaturityDestination,
+  NationalPensionStrategy,
+  ObjectivePriority,
   OtherIncome,
   PrivatePension,
+  PrivatePensionStrategy,
   PrivatePensionType,
+  RetirementStrategy,
+  RiskProfile,
   SimulationParams,
   SpendingCurve,
+  SpendingShapePreset,
   SpendingStrategy,
+  SpendingStrategyChoice,
+  StrategyMode,
   TaxLawVersion,
   TaxSettings,
   UserProfile,
@@ -91,6 +102,9 @@ export function normalizeSimulationParams(raw: unknown): SimulationParams {
     customYieldSnapshot: normalizeYieldSnapshot(raw.customYieldSnapshot),
     healthcare: normalizeHealthcare(raw.healthcare),
     taxLawVersion: optionalOneOf(raw.taxLawVersion, TAX_LAW_VERSIONS, undefined),
+    // `strategy`는 «있음»과 «없음»이 서로 다른 상태다(아래 주석 참조). 그래서 키가 없으면
+    // 만들지 않고, 있으면 내용이 전부 깨져도 빈 객체로 남긴다.
+    ...('strategy' in raw ? { strategy: normalizeStrategy(raw.strategy) } : {}),
   };
 }
 
@@ -110,6 +124,29 @@ const SELL_ORDER_STRATEGIES: readonly AssetSellOrderStrategy[] = [
 ];
 const ISA_MATURITY_DESTINATIONS: readonly IsaMaturityDestination[] = ['pension', 'asset'];
 const TAX_LAW_VERSIONS: readonly TaxLawVersion[] = ['current'];
+const STRATEGY_MODES: readonly StrategyMode[] = ['simple', 'standard', 'expert'];
+const OBJECTIVE_PRIORITIES: readonly ObjectivePriority[] = [
+  'lifetime_spending', 'tax_minimization', 'wealth_maximization',
+  'bequest_maximization', 'ai_recommended',
+];
+const SPENDING_CHOICES: readonly SpendingStrategyChoice[] = [...SPENDING_STRATEGIES, 'ai'];
+const BEQUEST_STRATEGIES: readonly BequestStrategy[] = [
+  'spend_all', 'leave_some', 'maximize', 'target_amount',
+];
+const NATIONAL_PENSION_STRATEGIES: readonly NationalPensionStrategy[] = [
+  'early', 'normal', 'defer_1y', 'defer_2y', 'defer_max', 'ai_optimized',
+];
+const PRIVATE_PENSION_STRATEGIES: readonly PrivatePensionStrategy[] = [
+  'tax_first', 'spending_first', 'growth_first', 'minimum', 'ai_optimized',
+];
+const ISA_FIRST_CHOICES: readonly IsaFirstChoice[] = ['isa_first', 'pension_first', 'ai_optimized'];
+const RISK_PROFILES: readonly RiskProfile[] = [
+  'conservative', 'neutral', 'aggressive', 'custom', 'ai_recommended',
+];
+const ECONOMIC_SCENARIOS: readonly EconomicScenario[] = [
+  'long_term_average', 'recession', 'high_inflation', 'low_growth', 'ai_recommended',
+];
+const SPENDING_SHAPES: readonly SpendingShapePreset[] = ['flat', 'front_loaded', 'care_heavy'];
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -351,6 +388,41 @@ function normalizeYieldSnapshot(value: unknown): CustomYieldSnapshot | undefined
     privatePensions: numberMap(value.privatePensions),
     isaAccounts: numberMap(value.isaAccounts),
   };
+}
+
+/**
+ * 은퇴 전략 설정. resolveStrategy가 저장값을 기본값 «위에» 펼치므로, 깨진 값 하나가
+ * DEFAULT_RETIREMENT_STRATEGY의 해당 항목을 덮는다 — taxSettings와 같은 구조의 위험이다.
+ *
+ * **`strategy` 키의 존재 자체가 데이터다.** 없으면 「전략을 저장한 적 없음」이고,
+ * strategyFieldMap(고정 축 판정)과 verifiedSentinelPlan(센티널 판정)이 그 상태를 읽는다.
+ * 그래서 내용이 전부 깨져도 키를 지우지 않고 빈 객체로 남긴다.
+ *
+ * **`preferIsaFirst`의 boolean은 버리지 않는다.** 이 필드가 boolean이던 시절의 값이 실제로
+ * 저장돼 있고, E2EE라 서버 마이그레이션이 불가능해 resolveStrategy의 읽기 시점 변환
+ * (normalizeIsaFirstChoice)이 유일한 경로다. 여기서 「유니온에 없다」고 버리면 그 경로가
+ * 끊겨, 저장된 선택이 조용히 기본값으로 바뀐다.
+ */
+function normalizeStrategy(value: unknown): RetirementStrategy {
+  return (pickValid(value, {
+    mode: asOneOf(STRATEGY_MODES),
+    objective: asOneOf(OBJECTIVE_PRIORITIES),
+    spendingChoice: asOneOf(SPENDING_CHOICES),
+    bequestStrategy: asOneOf(BEQUEST_STRATEGIES),
+    nationalPensionStrategy: asOneOf(NATIONAL_PENSION_STRATEGIES),
+    privatePensionStrategy: asOneOf(PRIVATE_PENSION_STRATEGIES),
+    preferIsaFirst: (raw) =>
+      typeof raw === 'boolean' ? raw : asOneOf(ISA_FIRST_CHOICES)(raw),
+    riskProfile: asOneOf(RISK_PROFILES),
+    economicScenario: asOneOf(ECONOMIC_SCENARIOS),
+    spendingShape: asOneOf(SPENDING_SHAPES),
+    bequestSafetyMarginRate: asNumber,
+    minMonthlySpending: asNumber,
+    // 저장된 strategy는 «언제나» 부분 객체다. 타입은 전체를 요구하지만, 필드가 추가되기 전에
+    // 저장된 시나리오에는 그 필드가 없고 resolveStrategy가 기본값 위에 펼쳐 메운다
+    // (RetirementStrategy의 optional 세 필드 주석 참조). 여기서 빠진 필드를 채우면 그 시나리오만
+    // 옛 기본값에 고정되므로, 타입이 아니라 이 계약을 지킨다.
+  }) ?? {}) as unknown as RetirementStrategy;
 }
 
 /**

@@ -4,6 +4,7 @@ import { initialParams } from '@/infrastructure/storage/localStore';
 import { SimulationEngine } from '@/core/usecases/SimulationEngine';
 import { DEFAULT_TAX_SETTINGS, resolveTaxSettings } from '@/core/usecases/tax/taxRates';
 import { DEFAULT_HEALTHCARE } from '@/core/usecases/healthcare/defaultHealthcare';
+import { resolveStrategy } from '@/core/usecases/strategy/compileStrategy';
 
 // 저장 데이터는 손상되거나 낡은 채로 돌아온다. localStorage는 사용자가 직접 고칠 수 있고,
 // E2EE 시나리오는 복호화된 JSON이 그대로 올라오며, 예전 버전이 쓴 필드는 지금 타입과 다르다.
@@ -330,6 +331,58 @@ describe('normalizeSimulationParams', () => {
       const result = normalizeSimulationParams({ ...structuredClone(initialParams), healthcare: true });
 
       expect(result.healthcare).toBeUndefined();
+    });
+  });
+
+  describe('strategy', () => {
+    test('깨진 항목만 지우고 나머지 선택은 지킨다', () => {
+      const result = normalizeSimulationParams({
+        ...structuredClone(initialParams),
+        strategy: {
+          mode: 'wizard',
+          objective: 'tax_minimization',
+          riskProfile: 42,
+          bequestSafetyMarginRate: Number.NaN,
+          minMonthlySpending: 2000000,
+        },
+      });
+
+      expect(result.strategy).toEqual({
+        objective: 'tax_minimization',
+        minMonthlySpending: 2000000,
+      });
+    });
+
+    // preferIsaFirst는 boolean이던 시절의 값이 실제로 저장돼 있고, resolveStrategy의
+    // normalizeIsaFirstChoice가 그것을 3값 enum으로 옮긴다. E2EE라 서버 마이그레이션이
+    // 불가능해 읽는 시점의 변환이 유일한 경로다 — 여기서 버리면 그 경로가 끊긴다.
+    test('boolean으로 저장된 옛 preferIsaFirst를 버리지 않는다', () => {
+      const result = normalizeSimulationParams({
+        ...structuredClone(initialParams),
+        strategy: { preferIsaFirst: false },
+      });
+
+      expect(result.strategy?.preferIsaFirst).toBe(false);
+      expect(resolveStrategy(result).preferIsaFirst).toBe('pension_first');
+    });
+
+    // `strategy`의 «있음»과 «없음»은 서로 다른 상태다. 없으면 "전략을 저장한 적 없음"이고,
+    // strategyFieldMap과 verifiedSentinelPlan이 그것을 판정에 쓴다. 내용이 전부 깨졌다고
+    // 키를 지우면 저장한 적 있는 시나리오가 저장한 적 없는 것으로 바뀐다.
+    test('내용이 전부 깨져도 저장했다는 사실 자체는 지운다고 없애지 않는다', () => {
+      const result = normalizeSimulationParams({
+        ...structuredClone(initialParams),
+        strategy: { mode: 'wizard', riskProfile: null },
+      });
+
+      expect(result.strategy).toEqual({});
+    });
+
+    test('전략을 저장한 적 없으면 키를 만들지 않는다', () => {
+      const result = normalizeSimulationParams(structuredClone(initialParams));
+
+      expect(result.strategy).toBeUndefined();
+      expect('strategy' in result).toBe(false);
     });
   });
 
