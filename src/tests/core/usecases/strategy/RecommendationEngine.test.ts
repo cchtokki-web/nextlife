@@ -1,5 +1,6 @@
 import { describe, test, expect, vi } from 'vitest';
 import { makeYearlyResult as makeYearlyResultFixture } from '@/tests/fixtures/yearlyResult';
+import { allAxesLiveParams } from '@/tests/fixtures/allAxesLiveParams';
 import { SimulationEngine } from '@/core/usecases/SimulationEngine';
 import {
   recommendStrategy,
@@ -86,9 +87,15 @@ const paramsWithLargePension: SimulationParams = {
 // "privatePensions/nationalPension을 비우면 탐색 차원이 하나도 없다"를 검증하는 테스트들의
 // 기반이기도 한데, 일반자산이 하나라도 있으면 매도순서·인출개시나이 차원이 살아나 그 전제가 깨진다.
 //
-// 목표 생활비를 paramsWithLargePension(200만원)보다 높게 잡는 이유: 정기 인출은 부족분까지만
-// 일어난다(정기 인출 상한). 목표가 낮으면 균등분할액이 부족분에 눌려 baseline이 이미 최적에
-// 가까워지고, 격자 탐색이 이길 여지가 사라져 improved가 false가 된다.
+// **목표 생활비를 paramsWithLargePension(200만원)보다 높게 잡는 이유.**
+//
+// 정기 인출은 부족분까지만 일어난다(정기 인출 상한). 그래서 200만원 시나리오에서는 baseline이
+// 이미 격자 최적점이고, 개선 여지가 «원리적으로» 없다 — 현재 87점 = 추천 87점. 실측으로
+// 일반자산을 2개로 늘리거나 ISA를 더해 매도순서·만기 목적지 축을 살려도 마찬가지였다.
+//
+// 250만원부터 개선 여지가 생기고, 300만원이면 센티넬 축(privatePensionMonthlyTarget,
+// nationalPensionStartAge)까지 실제로 채워져 아래 verifiedSentinelPlan 테스트가 성립한다.
+// 목표를 낮추면 이 픽스처를 쓰는 네 테스트가 통째로 검증할 대상을 잃는다.
 const paramsWithOptimizableHeadroom: SimulationParams = {
   ...paramsWithLargePension,
   userProfile: { ...paramsWithLargePension.userProfile, targetMonthlySpending: 3_000_000 },
@@ -441,6 +448,53 @@ describe('recommendStrategy - 생활비 증액(Phase 2) 후보', () => {
     expect(recommendation.totalCandidateCount).toBe(baseCandidateCount + params.assets.length);
   });
 
+});
+
+// **개선이 없으면 현재 계획이 추천이다.**
+//
+// types.ts는 improved를 "recommendedUtility.score > currentUtility.score 여부"로 정의하는데,
+// 구현은 격자 최적안(finalUtility)으로 판정하면서 recommendedResult에는 그 최적안을 그대로
+// 담았다. 격자 argmax 집합에는 baseline이 들어 있지 않으므로, 개선이 없을 때 «현재보다 낮은
+// 점수»의 계획이 추천이라는 이름으로 나갔다(실측 89점 vs 현재 93점). 타입이 선언한 계약을
+// 구현이 지키지 않은 것이다.
+describe('recommendStrategy - 개선이 없을 때', () => {
+  // 가정 축을 확정해 강건성 재평가를 끄면 순수 argmax가 되고, 그 argmax가 baseline보다
+  // 낮은 점수를 받는 시나리오다.
+  const noHeadroom = () => compileStrategy({
+    ...allAxesLiveParams,
+    strategy: {
+      ...DEFAULT_RETIREMENT_STRATEGY,
+      riskProfile: 'neutral', economicScenario: 'recession', objective: 'lifetime_spending',
+    },
+  });
+
+  test('추천 효용이 현재 효용보다 낮지 않다', () => {
+    const engine = new SimulationEngine();
+    const fixed = noHeadroom();
+    const recommendation = recommendStrategy(fixed.params, engine, fixed.utilityConfig);
+
+    expect(recommendation.recommendedUtility.score)
+      .toBeGreaterThanOrEqual(recommendation.currentUtility.score);
+  });
+
+  test('improved는 recommendedUtility와 currentUtility의 비교와 일치한다', () => {
+    const engine = new SimulationEngine();
+    const fixed = noHeadroom();
+    const recommendation = recommendStrategy(fixed.params, engine, fixed.utilityConfig);
+
+    expect(recommendation.improved).toBe(
+      recommendation.recommendedUtility.score > recommendation.currentUtility.score
+    );
+  });
+
+  test('개선이 없으면 현재 계획과의 격차가 없다', () => {
+    const engine = new SimulationEngine();
+    const fixed = noHeadroom();
+    const recommendation = recommendStrategy(fixed.params, engine, fixed.utilityConfig);
+    expect(recommendation.improved).toBe(false); // 이 픽스처의 전제
+
+    expect(recommendation.deltas.endingAssets).toBe(0);
+  });
 });
 
 describe('recommendStrategy - recommendedResult', () => {

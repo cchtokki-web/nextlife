@@ -676,10 +676,21 @@ export function recommendStrategy(
   const improved = channelingOpt.finalUtility.score > currentUtility.score;
   // 후보 탐색은 성능 때문에 runForUtility를 쓰지만, 화면의 추천 결과에는 역산된 지속가능
   // 생활비(calculatedTargetSpending)도 필요하다. 채택된 최종 조합만 한 번 완전 실행한다.
+  //
+  // 개선이 없으면 «현재 계획»이 추천이다. 예전에는 이때도 격자 최적안(finalResult)을 그대로
+  // 담았는데, 그 최적안은 정의상 현재 계획보다 점수가 낮거나 같다 — 격자 argmax에 baseline이
+  // 들어 있지 않기 때문이다. 그래서 현재보다 «낮은» 점수의 계획이 추천이라는 이름으로 나갔고
+  // (실측 89점 vs 현재 93점), types.ts가 선언한 improved의 계약
+  // ("recommendedUtility.score > currentUtility.score 여부")도 그때 깨졌다.
+  //
+  // baselineResult는 이미 계산돼 있어 시뮬레이션이 추가로 늘지 않는다. 종전에 쓰던
+  // finalResult도 runForUtility 산출물이라 calculatedTargetSpending이 없었으므로 잃는 필드도 없다.
   const recommendedResult = improved
     ? engine.run(channelingOpt.finalParams, cfg)
-    : channelingOpt.finalResult;
-  const recommendedUtility = recommendedResult.utility ?? channelingOpt.finalUtility;
+    : baselineResult;
+  const recommendedUtility = improved
+    ? (recommendedResult.utility ?? channelingOpt.finalUtility)
+    : currentUtility;
   const deltas = computeDeltas(baselineResult, recommendedResult);
 
   // Phase 3/4의 시도량/실패량을 후보 통계에 합산해 AI advisor(계산 실패 감지)까지 흐르게 한다.
