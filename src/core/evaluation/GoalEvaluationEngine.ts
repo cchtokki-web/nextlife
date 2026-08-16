@@ -406,15 +406,26 @@ function evaluateGoal(
   }
 }
 
+/**
+ * 목표 하나의 순위 가중치. 1순위가 가장 무겁고 마지막 순위가 1이다.
+ *
+ * `weightedScore`와 추천 배지(RecommendationEngine)가 같은 저울을 써야 한다. 두 곳이 각자
+ * 가중치를 계산하면 「점수는 이 카드가 높은데 배지는 저 카드」가 설명 불가능해진다.
+ * 인자는 정규화된 목표 배열(`normalizeRetirementGoals`)의 것이어야 priority가 1..N이다.
+ */
+export function goalPriorityWeight(goal: RetirementGoal, goalCount: number): number {
+  return goalCount - goal.priority + 1;
+}
+
 function weightedGoalScore(
   goals: readonly RetirementGoal[],
   evaluations: readonly GoalEvaluation[],
   fallbackScore: number,
 ): number {
   if (goals.length === 0) return fallbackScore;
-  const totalWeight = goals.reduce((sum, goal) => sum + goals.length - goal.priority + 1, 0);
+  const totalWeight = goals.reduce((sum, goal) => sum + goalPriorityWeight(goal, goals.length), 0);
   const total = evaluations.reduce(
-    (sum, evaluation, index) => sum + evaluation.score * (goals.length - goals[index].priority + 1),
+    (sum, evaluation, index) => sum + evaluation.score * goalPriorityWeight(goals[index], goals.length),
     0,
   );
   return totalWeight > 0 ? clampScore(total / totalWeight) : 0;

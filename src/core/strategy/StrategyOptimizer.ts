@@ -27,6 +27,7 @@ import {
   RECOMMENDATION_PERSONAS,
   RecommendationEngine,
   noRecommendationReachesGoal,
+  selectPrimary,
   type CandidateRecommendation,
   type FinalStrategyRecommendations,
   type ValidatedStrategyCandidate,
@@ -410,7 +411,8 @@ export class StrategyOptimizer {
       // 2단계: 확정. 페르소나 승자만 전체 시행으로 다시 돌려, 사용자에게 보이는 숫자는
       // 언제나 config.trials 기준이 되게 한다. 선별 단계의 값은 화면에 나가지 않는다.
       const screenedRecommendations = this.recommendationEngine.recommend(
-        screened.map((item, index) => ({ ...item, rank: index + 1 }))
+        screened.map((item, index) => ({ ...item, rank: index + 1 })),
+        goals,
       );
       const confirmedById = new Map<string, Omit<ValidatedStrategyCandidate, 'rank'>>();
       if (useScreening) {
@@ -434,10 +436,9 @@ export class StrategyOptimizer {
           .filter((item): item is CandidateRecommendation => item !== null),
         primary: null,
       };
-      recommendations.primary = recommendations.recommendations
-        .find((item) => item.persona === 'BALANCED')
-        ?? recommendations.recommendations[0]
-        ?? null;
+      // 확정 확률로 다시 고른다. 선별 단계의 primary를 그대로 두면 화면의 ☆이 화면에 나가지
+      // 않는 200회 숫자를 근거로 붙는다.
+      recommendations.primary = selectPrimary(recommendations.recommendations, goals);
 
       // 확정된 후보만 순위에 올린다. 선별 정밀도와 확정 정밀도의 숫자를 한 목록에 섞지 않는다.
       const finalistLimit = positiveIntOption(options.monteCarlo.finalistLimit, 3, 'finalistLimit');

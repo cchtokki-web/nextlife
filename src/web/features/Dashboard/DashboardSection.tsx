@@ -294,6 +294,7 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
       <DashboardGroup title="NextLife 추천" description="목표에 가장 가까운 최종 전략과 현재 계획에서 바뀌는 점만 비교합니다.">
         <StrategyRecommendationCards
           recommendations={strategyOptimization?.recommendations?.recommendations}
+          primary={strategyOptimization?.recommendations?.primary}
           status={strategyOptimizationStatus}
           errorMessage={strategyOptimizationError}
           unsupportedHardGoals={strategyOptimization?.debug?.unsupportedHardGoals}

@@ -3,6 +3,33 @@ import { RecommendationEngine, noRecommendationReachesGoal } from '@/core/recomm
 import type { RankedStrategyCandidate } from '@/core/strategy/StrategyOptimizer';
 import { LegacySimulationAdapter } from '@/core/domain/input/LegacySimulationAdapter';
 import { initialParams } from '@/infrastructure/storage/localStore';
+import { normalizeRetirementGoals } from '@/core/entities/retirementGoal';
+import type { RetirementGoal, RetirementGoalType } from '@/core/entities/retirementGoal';
+import type { RetirementGoals } from '@/core/domain/input/retirement';
+
+/** 선택 목표를 우선순위 순으로 만든다. 배열 순서가 곧 1순위, 2순위… 다. */
+function goalsOf(...types: RetirementGoalType[]): RetirementGoals {
+  const selectedGoals: RetirementGoal[] = types.map((type, index) => ({
+    type,
+    priority: index + 1,
+    constraintType: 'SOFT',
+  }));
+  return { goals: [], selectedGoals };
+}
+
+/**
+ * `goalEvaluations`는 `normalizeRetirementGoals(selectedGoals)`와 위치가 맞아야 한다.
+ * DefaultGoalEvaluationEngine이 그 순서로 map 하므로, 테스트도 같은 규칙을 따른다.
+ */
+function evaluationsFor(goals: RetirementGoals, missed: readonly RetirementGoalType[]) {
+  return normalizeRetirementGoals(goals.selectedGoals ?? []).map((goal) => ({
+    goalType: goal.type,
+    score: missed.includes(goal.type) ? 0 : 100,
+    achieved: !missed.includes(goal.type),
+    measurement: { unit: 'NONE' } as const,
+    reason: '',
+  }));
+}
 
 function candidate(input: {
   id: string;
@@ -12,6 +39,8 @@ function candidate(input: {
   spendingProbability?: number;
   survivalProbability?: number;
   p10?: number;
+  goals?: RetirementGoals;
+  missed?: readonly RetirementGoalType[];
 }): RankedStrategyCandidate {
   const domain = LegacySimulationAdapter.fromLegacy(structuredClone(initialParams));
   return {
@@ -31,7 +60,7 @@ function candidate(input: {
     simulation: { yearlyResults: [], depletionAge: null, endingAssets: 100 },
     evaluation: {
       hardConstraintsSatisfied: true,
-      goalEvaluations: [],
+      goalEvaluations: input.goals ? evaluationsFor(input.goals, input.missed ?? []) : [],
       weightedScore: Math.round(input.goalProbability * 100),
       score: 0,
       utility: {
@@ -123,6 +152,119 @@ describe('RecommendationEngine', () => {
     const ids = result.recommendations.map((item) => item.candidate.candidate.id);
     expect(new Set(ids).size).toBe(ids.length);
     expect(ids).toEqual(['dual', 'front-loaded']);
+  });
+});
+
+/**
+ * ☆추천 배지의 의미는 「목표를 지키면서 가장 확률 높은 안」이다.
+ *
+ * 예전에는 균형형 고정이었다. 그래서 화면에 안정형 70% / 균형형 47%가 나란히 찍힌 채
+ * 47% 카드에 ☆이 붙었고, 사용자에게는 근거 없는 선택으로 보였다. 반대로 확률 최고만 고르면
+ * 은퇴를 늦추고 보수적으로 굴리는 안이 구조적으로 거의 항상 이겨, 목표 기반 서비스가
+ * 「목표를 포기하세요」를 기본값으로 내보내게 된다. 두 실패 사이를 가르는 것이 이 규칙이다.
+ */
+describe('primary 선정', () => {
+  const engine = new RecommendationEngine();
+
+  test('확률이 가장 높아도 상위 목표를 놓친 카드는 추천하지 않는다', () => {
+    const goals = goalsOf('EARLY_RETIREMENT', 'ASSET_SURVIVAL');
+    const candidates = [
+      candidate({
+        id: 'stable', allocation: 'CONSERVATIVE', spending: 'FIXED',
+        goalProbability: 0.7, survivalProbability: 0.99, p10: 90,
+        goals, missed: ['EARLY_RETIREMENT'],
+      }),
+      candidate({
+        id: 'balanced', allocation: 'BALANCED', spending: 'FIXED',
+        goalProbability: 0.47, goals, missed: [],
+      }),
+    ];
+
+    const result = engine.recommend(candidates, goals);
+
+    expect(result.primary?.candidate.candidate.id).toBe('balanced');
+  });
+
+  test('모든 카드가 목표를 지키면 확률이 가장 높은 카드를 추천한다', () => {
+    const goals = goalsOf('EARLY_RETIREMENT', 'ASSET_SURVIVAL');
+    const candidates = [
+      candidate({
+        id: 'stable', allocation: 'CONSERVATIVE', spending: 'FIXED',
+        goalProbability: 0.7, survivalProbability: 0.99, p10: 90, goals, missed: [],
+      }),
+      candidate({
+        id: 'balanced', allocation: 'BALANCED', spending: 'FIXED',
+        goalProbability: 0.47, goals, missed: [],
+      }),
+    ];
+
+    const result = engine.recommend(candidates, goals);
+
+    expect(result.primary?.candidate.candidate.id).toBe('stable');
+    expect(result.primary?.persona).toBe('STABLE');
+  });
+
+  // 놓친 개수가 아니라 가중치 합으로 센다. 1순위 하나를 놓치는 것이 5순위 둘을 놓치는 것보다
+  // 나쁘다는 판단은 weightedScore와 같은 가중치(N - priority + 1)에서 나온다.
+  test('놓친 목표는 개수가 아니라 우선순위 가중치로 비교한다', () => {
+    const goals = goalsOf('EARLY_RETIREMENT', 'ASSET_SURVIVAL', 'INHERITANCE');
+    const candidates = [
+      candidate({
+        id: 'stable', allocation: 'CONSERVATIVE', spending: 'FIXED',
+        goalProbability: 0.9, survivalProbability: 0.99, p10: 90,
+        goals, missed: ['EARLY_RETIREMENT'], // 가중치 3
+      }),
+      candidate({
+        id: 'balanced', allocation: 'BALANCED', spending: 'FIXED',
+        goalProbability: 0.5, goals, missed: ['ASSET_SURVIVAL', 'INHERITANCE'], // 가중치 2+1=3
+      }),
+    ];
+
+    const result = engine.recommend(candidates, goals);
+
+    // 손실 가중치가 3으로 동률이므로 확률이 가른다.
+    expect(result.primary?.candidate.candidate.id).toBe('stable');
+  });
+
+  test('선택한 목표가 없으면 확률이 가장 높은 카드를 추천한다', () => {
+    const candidates = [
+      candidate({
+        id: 'stable', allocation: 'CONSERVATIVE', spending: 'FIXED',
+        goalProbability: 0.3, survivalProbability: 0.99, p10: 90,
+      }),
+      candidate({
+        id: 'balanced', allocation: 'BALANCED', spending: 'FIXED', goalProbability: 0.8,
+      }),
+    ];
+
+    const result = engine.recommend(candidates, goalsOf());
+
+    expect(result.primary?.candidate.candidate.id).toBe('balanced');
+  });
+
+  // 모든 키가 동률일 때 승자를 후보 id 알파벳 순으로 정하지 않는다는 회귀 테스트.
+  test('완전 동률이면 균형형을 기본값으로 유지한다', () => {
+    const candidates = [
+      candidate({ id: 'aaa-stable', allocation: 'CONSERVATIVE', spending: 'FIXED', goalProbability: 0.6 }),
+      candidate({ id: 'zzz-balanced', allocation: 'BALANCED', spending: 'FIXED', goalProbability: 0.6 }),
+    ];
+
+    const result = engine.recommend(candidates, goalsOf());
+
+    expect(result.primary?.persona).toBe('BALANCED');
+  });
+
+  // goals를 넘기지 않는 경로는 「선택한 목표가 없다」와 같게 다룬다. 목표를 모르는데
+  // 「목표를 지킨 카드」를 가려낼 수는 없으므로, 남는 기준은 확률뿐이다.
+  test('goals 없이 호출하면 목표 미선택과 같게 확률로 고른다', () => {
+    const candidates = [
+      candidate({ id: 'stable', allocation: 'CONSERVATIVE', spending: 'FIXED', goalProbability: 0.9, survivalProbability: 0.99 }),
+      candidate({ id: 'balanced', allocation: 'BALANCED', spending: 'FIXED', goalProbability: 0.4 }),
+    ];
+
+    const result = engine.recommend(candidates);
+
+    expect(result.primary?.candidate.candidate.id).toBe('stable');
   });
 });
 

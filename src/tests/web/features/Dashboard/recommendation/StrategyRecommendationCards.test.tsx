@@ -237,13 +237,16 @@ describe('StrategyRecommendationCards', () => {
       candidate(3, 'GROWTH', 'FRONT_LOADED', 0.9),
     ];
 
+    const recommendations = [
+      { persona: 'STABLE' as const, label: '안정형' as const, candidate: candidates[0], reason: '하방 방어' },
+      { persona: 'BALANCED' as const, label: '균형형' as const, candidate: candidates[1], reason: '목표 균형' },
+      { persona: 'COMFORTABLE' as const, label: '여유형' as const, candidate: candidates[2], reason: '소비 여력' },
+    ];
+
     render(
       <StrategyRecommendationCards
-        recommendations={[
-          { persona: 'STABLE', label: '안정형', candidate: candidates[0], reason: '하방 방어' },
-          { persona: 'BALANCED', label: '균형형', candidate: candidates[1], reason: '목표 균형' },
-          { persona: 'COMFORTABLE', label: '여유형', candidate: candidates[2], reason: '소비 여력' },
-        ]}
+        recommendations={recommendations}
+        primary={recommendations[1]}
         status="done"
         params={params}
         formatValue={formatValue}
@@ -254,6 +257,56 @@ describe('StrategyRecommendationCards', () => {
     expect(screen.getByText('균형형')).toBeInTheDocument();
     expect(screen.getByText('여유형')).toBeInTheDocument();
     expect(within(cardTitled('균형형')).getByText('추천')).toBeInTheDocument();
+  });
+
+  // 엔진이 고르지 않은 카드를 「NextLife가 고른 안」으로 보여주지 않는다.
+  test('primary가 없으면 어느 카드에도 추천을 붙이지 않는다', () => {
+    const candidates = [
+      candidate(1, 'CONSERVATIVE', 'FIXED', 0.7),
+      candidate(2, 'BALANCED', 'FIXED', 0.47),
+    ];
+
+    render(
+      <StrategyRecommendationCards
+        recommendations={[
+          { persona: 'STABLE', label: '안정형', candidate: candidates[0], reason: '하방 방어' },
+          { persona: 'BALANCED', label: '균형형', candidate: candidates[1], reason: '목표 균형' },
+        ]}
+        status="done"
+        params={params}
+        formatValue={formatValue}
+      />
+    );
+
+    expect(screen.getByText('안정형')).toBeInTheDocument();
+    expect(screen.queryByText('추천')).not.toBeInTheDocument();
+  });
+
+  // ☆을 어디에 붙일지는 RecommendationEngine이 정한다. UI가 규칙을 다시 구현하면, 코어가
+  // 규칙을 바꿔도 화면만 옛 규칙으로 남는다. 워커를 건너온 primary는 구조적 복제라 배열
+  // 원소와 «다른 객체»이므로, 붙는 자리는 후보 id로 짚어야 한다.
+  test('☆추천은 코어가 고른 primary 카드에 붙는다', () => {
+    const candidates = [
+      candidate(1, 'CONSERVATIVE', 'FIXED', 0.7),
+      candidate(2, 'BALANCED', 'FIXED', 0.47),
+    ];
+    const recommendations = [
+      { persona: 'STABLE' as const, label: '안정형' as const, candidate: candidates[0], reason: '하방 방어' },
+      { persona: 'BALANCED' as const, label: '균형형' as const, candidate: candidates[1], reason: '목표 균형' },
+    ];
+
+    render(
+      <StrategyRecommendationCards
+        recommendations={recommendations}
+        primary={structuredClone(recommendations[0])}
+        status="done"
+        params={params}
+        formatValue={formatValue}
+      />
+    );
+
+    expect(within(cardTitled('안정형')).getByText('추천')).toBeInTheDocument();
+    expect(within(cardTitled('균형형')).queryByText('추천')).not.toBeInTheDocument();
   });
 });
 
@@ -515,13 +568,15 @@ describe('StrategyRecommendationCards 적용 버튼', () => {
   // 카드일 뿐 사용자가 반영한 카드가 아니어서, 둘을 같은 강조로 말하면 아직 아무것도
   // 적용하지 않은 화면이 "이미 하나 골라져 있다"로 읽힌다.
   function threeCards(props: CardProps = {}) {
+    const recommendations = [
+      { persona: 'STABLE' as const, label: '안정형' as const, candidate: candidate(1, 'CONSERVATIVE', 'FIXED', 0.97), reason: '하방 방어' },
+      { persona: 'BALANCED' as const, label: '균형형' as const, candidate: candidate(2, 'BALANCED', 'FIXED', 0.95), reason: '목표 균형' },
+      { persona: 'COMFORTABLE' as const, label: '여유형' as const, candidate: candidate(3, 'GROWTH', 'FRONT_LOADED', 0.9), reason: '소비 여력' },
+    ];
     return render(
       <StrategyRecommendationCards
-        recommendations={[
-          { persona: 'STABLE', label: '안정형', candidate: candidate(1, 'CONSERVATIVE', 'FIXED', 0.97), reason: '하방 방어' },
-          { persona: 'BALANCED', label: '균형형', candidate: candidate(2, 'BALANCED', 'FIXED', 0.95), reason: '목표 균형' },
-          { persona: 'COMFORTABLE', label: '여유형', candidate: candidate(3, 'GROWTH', 'FRONT_LOADED', 0.9), reason: '소비 여력' },
-        ]}
+        recommendations={recommendations}
+        primary={recommendations[1]}
         status="done"
         params={params}
         formatValue={formatValue}

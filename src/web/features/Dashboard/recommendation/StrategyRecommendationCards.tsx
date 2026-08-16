@@ -14,6 +14,11 @@ import styles from '../Dashboard.module.css';
 
 interface StrategyRecommendationCardsProps {
   recommendations?: readonly CandidateRecommendation[];
+  /**
+   * ☆추천이 붙을 카드. 선정 규칙은 RecommendationEngine.selectPrimary 한 곳에만 있다.
+   * 화면이 규칙을 다시 구현하면 코어가 규칙을 바꿔도 ☆만 옛 규칙으로 남는다.
+   */
+  primary?: CandidateRecommendation | null;
   status: StrategyOptimizationStatus;
   /** Worker failure detail. Without it an "오류" card cannot tell the user or support what broke. */
   errorMessage?: string;
@@ -314,6 +319,7 @@ export function StrategyRecommendationCards(props: StrategyRecommendationCardsPr
 
 function RecommendationBody({
   recommendations,
+  primary,
   status,
   errorMessage,
   unsupportedHardGoals,
@@ -385,8 +391,15 @@ function RecommendationBody({
     return <EmptyOutcomeCard outcome={outcome} />;
   }
 
-  const recommended = finalRecommendations.find((item) => item.persona === 'BALANCED')
-    ?? finalRecommendations[0];
+  // 워커를 건너온 primary는 구조적 복제라 배열 원소와 다른 객체다. 참조로 비교하면 ☆이
+  // 어느 카드에도 붙지 않는다. 후보 id로 짚는다.
+  //
+  // primary가 없으면 ☆을 아예 붙이지 않는다. 첫 카드로 폴백하면 엔진이 고르지 않은 카드가
+  // 「NextLife가 고른 안」으로 보인다 — 0%뿐인 후보군에서 ☆을 거두는 것과 같은 이유다.
+  const recommendedId = primary?.candidate.candidate.id;
+  const recommended = recommendedId === undefined
+    ? undefined
+    : finalRecommendations.find((item) => item.candidate.candidate.id === recommendedId);
   return (
     <>
       {unsupportedHardGoals && unsupportedHardGoals.length > 0 && (

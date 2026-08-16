@@ -370,6 +370,62 @@ describe('StrategyOptimizer', () => {
     expect(result.recommendations.primary?.persona).toBe('BALANCED');
   });
 
+  // 확정 단계(1000회 재실행)는 선별 단계와 다른 확률을 만든다. 그래서 primary를 그 자리에서
+  // 다시 고르는데, 이 재선정이 배지 규칙을 따르지 않으면 화면의 ☆만 옛 규칙으로 남는다.
+  test('목표를 모두 지킨 카드 중 확률이 가장 높은 것에 추천을 준다', () => {
+    const input = LegacySimulationAdapter.fromLegacy(structuredClone(initialParams));
+    input.goals.selectedGoals = [
+      { type: 'ASSET_SURVIVAL', priority: 1, constraintType: 'SOFT' },
+    ];
+    const candidates = [
+      candidate(input.strategy, 'stable', 60, { assetAllocation: 'CONSERVATIVE' }),
+      candidate(input.strategy, 'balanced', 60, { assetAllocation: 'BALANCED' }),
+    ];
+    const generator = { generate: () => fakeGeneration(candidates) } as unknown as StrategyGenerator;
+    const engine: SimulationEngine = { simulate: () => simulation(100) };
+    const achievedEvaluation = (score: number): GoalEvaluationResult => ({
+      ...evaluation(score),
+      goalEvaluations: [{
+        goalType: 'ASSET_SURVIVAL',
+        score: 100,
+        achieved: true,
+        measurement: { unit: 'NONE' },
+        reason: '',
+      }],
+    });
+    const evaluator: GoalEvaluationEngine = {
+      evaluate: vi.fn(() => achievedEvaluation(70)),
+    };
+    const idOf = (strategy: unknown) =>
+      candidates.find((item) => item.strategy === strategy)?.id;
+    const validate = vi.fn((_profile, _goals, strategy, config) => {
+      const probability = idOf(strategy) === 'stable' ? 0.7 : 0.47;
+      return {
+        trials: config.trials,
+        seed: config.seed,
+        goalSuccessProbability: probability,
+        spendingSuccessProbability: probability,
+        assetSurvivalProbability: probability,
+        terminalAssetMedian: 100,
+        terminalAssetP10: 50,
+        terminalAssetP90: 150,
+        shortfallProbability: 1 - probability,
+      };
+    });
+    const monteCarloEngine = { validate } satisfies StrategyMonteCarloEngine;
+
+    const result = new StrategyOptimizer(engine, evaluator, generator, monteCarloEngine).optimize(
+      input.profile,
+      input.goals,
+      input.strategy,
+      { monteCarlo: { config: { trials: 1_000, seed: 42, annualStdDev: 15 } } },
+    );
+
+    expect(result.recommendations.recommendations.map((item) => item.label))
+      .toEqual(['안정형', '균형형']);
+    expect(result.recommendations.primary?.candidate.candidate.id).toBe('stable');
+  });
+
   test('페르소나 라벨은 그 특성을 실제로 가진 후보에만 붙는다', () => {
     const input = LegacySimulationAdapter.fromLegacy(structuredClone(initialParams));
     // 결정론 점수는 GROWTH가 가장 높다(변동 없는 투영에서는 기대수익이 높을수록 유리).
