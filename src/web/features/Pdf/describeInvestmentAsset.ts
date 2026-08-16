@@ -1,9 +1,22 @@
 import type { InvestmentAsset } from '../../../core/entities/types';
 
-const TYPE_LABELS: Record<string, string> = {
+type InvestmentAssetType = InvestmentAsset['type'];
+
+// 종류가 늘면 컴파일러가 누락을 잡는다 — describePrivatePensionLabel의 TYPE_LABELS와 같은 이유.
+const TYPE_LABELS: Record<InvestmentAssetType, string> = {
   etf: 'ETF',
   stock: '개별주식',
 };
+
+/**
+ * 자산 종류의 표시 이름.
+ *
+ * 표가 타입을 전부 덮는데도 `?? '기타'`를 남기는 이유는 저장된 옛 시나리오에 지금 유니온에
+ * 없는 문자열이 들어 있을 수 있어서다(describePrivatePension의 labelForType 주석 참고).
+ */
+function labelForType(type: InvestmentAssetType): string {
+  return TYPE_LABELS[type] ?? '기타';
+}
 
 /**
  * 리포트에 인쇄할 투자자산 이름.
@@ -16,7 +29,7 @@ const TYPE_LABELS: Record<string, string> = {
  * 「undefined (IRP)」가 찍힌 적이 있어 두 자리가 같은 규칙을 쓰게 둔다.
  */
 export function describeInvestmentAssetLabel(asset: InvestmentAsset): string {
-  const typeLabel = TYPE_LABELS[asset.type] ?? '기타';
+  const typeLabel = labelForType(asset.type);
   const name = asset.name?.trim();
   return name ? `${name} (${typeLabel})` : typeLabel;
 }
