@@ -47,31 +47,35 @@ interface AssetGrowthChartProps {
 
 const COMPARE_COLORS = ['#10B981', '#F59E0B', '#EF4444', '#8B5CF6'];
 
-// 몬테카를로 분위수 시리즈. **띠(면적)가 아니라 각각 독립적인 선으로 그린다.**
+// 몬테카를로 하방 시리즈. **하위 10% 한 선만 그린다.**
 //
-// 처음에는 p10~p90을 채운 팬 차트로 그렸다. 보기에는 좋았지만 두 가지가 걸렸다.
-//   1. **축이 P90에 끌려간다.** 39년 뒤 상위 10%는 80억까지 벌어지는데 결정론 곡선은 10억
-//      언저리라, 정작 사용자가 봐야 할 주 곡선과 P50이 바닥에 눌려 읽히지 않았다.
-//   2. 띠를 만들려면 «하한»과 «폭»을 같은 stackId로 쌓아야 하는데, 그 하한은 사용자에게
-//      의미가 없는 유령 시리즈라 범례와 툴팁에서 따로 걸러 내야 했다.
+// 이 자리는 세 번 바뀌었다. 처음에는 p10~p90을 채운 팬 차트였고, 그 다음이 p10/p50/p90
+// 세 선이었다. 팬 차트를 버린 이유는 축이 P90에 끌려가서였다 — 39년 뒤 상위 10%는 80억까지
+// 벌어지는데 결정론 곡선은 10억 언저리라, 정작 봐야 할 주 곡선이 바닥에 눌렸다.
 //
-// 선 세 개로 바꾸면 둘 다 사라진다. 범례 버튼이 이미 시리즈 단위 토글이고(ChartLegend),
-// recharts는 hide된 시리즈를 축 도메인 계산에서 제외하므로(3.8의 combineGraphicalItemsSettings)
-// P90을 끄면 축이 곧바로 다시 맞춰진다. 사용자가 보고 싶은 경우만 골라서 볼 수 있다.
+// 세 선에서 한 선으로 줄인 이유는 다르다. 계열이 일곱 개가 되어 점선 넷이 서로 겹쳤고,
+// 그중 상위 10%는 위 축 문제 때문에 애초에 기본으로 꺼 둔 «죽은 범례»였다(게다가 ISA 자산과
+// 색·모양이 완전히 같아 구분되지도 않았다).
 //
-// 색은 의미를 따른다 — 나쁜 경우는 빨강, 좋은 경우는 초록.
-const PERCENTILE_SERIES = [
-  { dataKey: '하위10%', label: '나쁜 경우 (하위 10%)', color: 'var(--danger)' },
-  { dataKey: '중앙값', label: '중간 경우 (중앙값)', color: 'var(--warning)' },
-  { dataKey: '상위10%', label: '좋은 경우 (상위 10%)', color: 'var(--success)' },
-] as const;
+// **남긴 것이 하방인 이유**: 은퇴 계획에서 사용자가 봐야 할 것은 상방이 아니고, "목표 달성
+// 확률 82%"라는 숫자가 왜 나오는지는 이 선이 언제 0원에 닿는지를 보는 것이 가장 빠르다.
+// 별도 Monte Carlo 섹션의 분위수 표는 Pro 게이팅이라(MonteCarloSection의 isPro 분기),
+// 무료 사용자에게는 이 선이 유일한 하방 시각 정보이기도 하다.
+//
+// **이 선은 어느 실제 시행의 경로도 아니다.** 각 해의 10% 지점은 서로 다른 시행에서 온다.
+// 그래서 아래 범례 밑에 그 사실과 "주 곡선은 변동 없음 가정"임을 함께 밝힌다 — 둘을
+// 밝히지 않으면 사용자가 두 곡선 사이 간격을 오차범위로 읽는데, 결정론 곡선은 중앙값보다
+// 높으므로 그 간격은 실제 하방폭을 «과소»평가한다.
+const DOWNSIDE_SERIES = {
+  dataKey: '하위10%',
+  label: '나쁜 경우 (하위 10%)',
+  color: 'var(--danger)',
+} as const;
 
-// 처음 화면에서 꺼 두는 분위수. 위 1번(축이 P90에 끌려간다) 때문이다 — 상위 10%는 언제든
-// 범례 버튼으로 켤 수 있고, 켜는 순간 축이 그 폭에 맞춰 다시 그려진다.
-//
-// **하위 10%는 기본으로 켠다.** 은퇴 계획에서 사용자가 봐야 할 것은 상방이 아니라 하방이고,
-// "성공률 39%"라는 숫자가 왜 나오는지는 이 선이 언제 0원에 닿는지를 보는 것이 가장 빠르다.
-export const DEFAULT_HIDDEN_PERCENTILE_KEYS: Record<string, boolean> = { '상위10%': true };
+// 범례 아래에 붙는 고정 문구. ChartCaption(core의 generateChartCaptions)이 아니라 여기에
+// 두는 이유는 그 생성기가 MonteCarloResult를 받지 않기 때문이다 — 캡션으로 옮기려면
+// usecase 시그니처까지 바꿔야 한다.
+const DOWNSIDE_NOTE = '「나쁜 경우」는 시장 변동 시행에서 각 해의 나쁜 쪽 10% 지점이며, 한 사람의 실제 경로가 아닙니다. 총 자산액 곡선은 수익률이 매년 흔들리지 않는다고 가정한 값이라 실제 중앙값보다 높습니다.';
 
 // 범례 표기. 아래 <Area>/<Line> 선언의 name/dataKey/stroke/strokeDasharray와 짝을 이룬다 —
 // 어긋나면 범례가 차트에 없는 색이나 모양을 말한다.
@@ -101,10 +105,13 @@ export function AssetGrowthChart({
   // 붙어 있어, 고갈시킬 자산이 없는 사용자에게 존재하지 않는 사건을 알린다.
   const hasNoInvestableAsset = planOutcome.assetStatus === 'no_investable_asset';
 
-  // 분위수 선은 «간단히 보기»에서만 그린다. 구성 상세(주식/연금/ISA/현금)를 펼친 상태에
-  // 세 선까지 얹으면 시리즈가 아홉 개가 되어 어느 것도 읽히지 않는다.
+  // 하방 선은 «간단히 보기»에서만 그린다. 구성 상세(주식/연금/ISA/현금)를 펼친 상태에
+  // 한 선을 더 얹으면 시리즈가 일곱 개가 되어 어느 것도 읽히지 않는다.
+  //
+  // `?? []`는 방어다. 워커가 돌려준 payload에 이 필드가 없으면(개발 중 HMR로 워커 청크만
+  // 낡는 경우) 가드가 없을 때 `undefined.map`으로 대시보드 전체가 죽는다.
   const bandByAge = !showBreakdown && monteCarlo
-    ? new Map(monteCarlo.assetBand.map((b) => [b.age, b]))
+    ? new Map((monteCarlo.assetBand ?? []).map((b) => [b.age, b]))
     : undefined;
 
   const assetChartData = yearlyResults.map((r) => {
@@ -123,9 +130,7 @@ export function AssetGrowthChart({
     };
     const band = bandByAge?.get(r.age);
     if (band) {
-      dataPoint['하위10%'] = Math.max(0, Math.round(band.p10));
-      dataPoint['중앙값'] = Math.max(0, Math.round(band.p50));
-      dataPoint['상위10%'] = Math.max(0, Math.round(band.p90));
+      dataPoint[DOWNSIDE_SERIES.dataKey] = Math.max(0, Math.round(band.p10));
     }
     compareResults.forEach((comp) => {
       const compYear = comp.result.yearlyResults.find((yr) => yr.age === r.age);
@@ -152,11 +157,8 @@ export function AssetGrowthChart({
     : ASSET_LEGEND.filter((item) => item.dataKey !== '주식자산' && item.dataKey !== '연금자산');
   const legendItems: ChartLegendItem[] = [
     ...visibleAssetLegend,
-    // 분위수 세 개를 각각 범례 버튼으로 낸다. 범례가 곧 선택 스위치다 — 보고 싶은 경우만
-    // 켜면 축도 그에 맞춰 다시 그려진다(PERCENTILE_SERIES 주석 참고).
-    ...(bandByAge
-      ? PERCENTILE_SERIES.map((s) => ({ ...s, shape: 'dashed' as const }))
-      : []),
+    // 하방 선도 범례 버튼으로 낸다. 끄면 recharts가 축 도메인에서도 빼므로 축이 다시 맞춰진다.
+    ...(bandByAge ? [{ ...DOWNSIDE_SERIES, shape: 'dashed' as const }] : []),
     ...compareResults.map((comp, idx) => ({
       dataKey: `compare_${comp.id}`,
       label: `${comp.name} (비교)`,
@@ -225,6 +227,9 @@ export function AssetGrowthChart({
       {!hasNoInvestableAsset && (
         <ChartLegend items={legendItems} hiddenKeys={hiddenKeys} onToggle={onLegendClick} />
       )}
+      {bandByAge && !hasNoInvestableAsset && (
+        <p className="mt-1 text-xs text-foreground-muted">{DOWNSIDE_NOTE}</p>
+      )}
       {hasNoInvestableAsset ? (
         <p className="rounded-2xl border border-card-border bg-foreground/5 px-6 py-10 text-center text-sm text-foreground-muted">
           등록된 투자자산이 없어 자산 추이를 표시할 수 없습니다.
@@ -272,27 +277,22 @@ export function AssetGrowthChart({
                 formatter={(value: unknown, name: unknown) => [formatValue(Number(value), currency), String(name)]}
                 labelFormatter={(label) => `${label}세`}
               />
-              {/* 분위수 선을 먼저 그려 결정론 곡선 뒤에 놓는다. 각 선은 범례 버튼과 1:1로
-                  대응하고(hiddenKeys[dataKey]), 꺼진 시리즈는 recharts가 축 도메인에서도
-                  빼므로 P90을 끄면 축이 곧바로 다시 맞춰진다. */}
+              {/* 하방 선을 먼저 그려 결정론 곡선 뒤에 놓는다. 범례 버튼과 1:1로 대응하고
+                  (hiddenKeys[dataKey]), 끄면 recharts가 축 도메인에서도 빼므로 축이 곧바로
+                  자산총액 기준으로 다시 맞춰진다. */}
               {bandByAge && (
-                <>
-                  {PERCENTILE_SERIES.map((s) => (
-                    <Line
-                      key={s.dataKey}
-                      yAxisId="left"
-                      name={s.label}
-                      type="monotone"
-                      dataKey={s.dataKey}
-                      stroke={s.color}
-                      strokeDasharray="5 4"
-                      strokeWidth={1.5}
-                      dot={false}
-                      isAnimationActive={false}
-                      hide={!!hiddenKeys[s.dataKey]}
-                    />
-                  ))}
-                </>
+                <Line
+                  yAxisId="left"
+                  name={DOWNSIDE_SERIES.label}
+                  type="monotone"
+                  dataKey={DOWNSIDE_SERIES.dataKey}
+                  stroke={DOWNSIDE_SERIES.color}
+                  strokeDasharray="5 4"
+                  strokeWidth={1.5}
+                  dot={false}
+                  isAnimationActive={false}
+                  hide={!!hiddenKeys[DOWNSIDE_SERIES.dataKey]}
+                />
               )}
               <Area
                 yAxisId="left"

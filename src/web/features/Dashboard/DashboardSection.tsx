@@ -6,7 +6,7 @@ import { Award, Zap, TrendingUp, AlertTriangle } from 'lucide-react';
 import { SimulationParams, SimulationResult, StrategyRecommendation } from '../../../core/entities/types';
 import styles from './Dashboard.module.css';
 import { formatValue as formatValueForCurrency } from './charts/chartFormatters';
-import { AssetGrowthChart, DEFAULT_HIDDEN_PERCENTILE_KEYS } from './charts/AssetGrowthChart';
+import { AssetGrowthChart } from './charts/AssetGrowthChart';
 import { IncomeCompositionChart } from './charts/IncomeCompositionChart';
 import { SpendingCompositionChart } from './charts/SpendingCompositionChart';
 import { ShortfallSummaryCard } from './kpi/ShortfallSummaryCard';
@@ -98,15 +98,9 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
   appliedStrategy,
   onUndoStrategy,
 }) => {
-  // 초기값이 빈 객체가 아닌 이유: 몬테카를로 상위 10% 선은 처음 화면에서 꺼 둔다
-  // (DEFAULT_HIDDEN_PERCENTILE_KEYS 주석 참고 — 켜 두면 축이 그 선에 끌려가 주 곡선이 눌린다).
-  //
-  // **아래 assetChartHiddenKeys처럼 덮어쓰기(overlay)로 두지 않는다.** 덮어쓰면 사용자가
-  // 범례 버튼으로 켜도 다시 꺼져서 버튼이 동작하지 않는 것처럼 보인다. 기본값은 초기 상태로만
-  // 두고, 그 뒤로는 사용자의 선택이 이긴다.
-  const [hiddenKeys, setHiddenKeys] = React.useState<Record<string, boolean>>(
-    () => ({ ...DEFAULT_HIDDEN_PERCENTILE_KEYS })
-  );
+  // 세 차트가 이 상태 하나를 공유한다. 처음부터 숨길 시리즈는 없다 — 예전에는 몬테카를로
+  // 상위 10% 선을 꺼 두었지만(축이 그 선에 끌려가 주 곡선이 눌렸다) 그 계열 자체가 사라졌다.
+  const [hiddenKeys, setHiddenKeys] = React.useState<Record<string, boolean>>({});
   const [compositionChart, setCompositionChart] = React.useState<'income' | 'spending'>('income');
   // 자산 추이 차트 기본 단순화 모드: 켜지기 전까지는 주식자산/연금자산 breakdown을 숨기고
   // 자산총액/월생활비만 보여준다. 범례 클릭으로 저장된 hiddenKeys는 그대로 두고 덮어씌우기만 한다.
