@@ -505,8 +505,21 @@ describe('DashboardSection - 투자자산 미보유 계획', () => {
     render(<DashboardSection params={noAssetParams} result={noAssetResult} />);
 
     expect(screen.getByText(/자산 추이를 표시할 수 없습니다/)).toBeInTheDocument();
-    expect(screen.getByText('투자자산 없음')).toBeInTheDocument();
+    // 펼칠 구성(주식/연금/ISA/현금)이 전부 0원이라 토글이 있어도 아무 일이 일어나지 않는다.
     expect(screen.queryByRole('button', { name: '자산 구성 상세보기' })).not.toBeInTheDocument();
+  });
+
+  // 계획 판정(투자자산 소진 / 생활비 부족 / 유지됨)은 이 카드가 말하지 않는다. 같은 사실을
+  // 계획 진단 줄과 「생활비 재원 구성」 캡션, 「계획 상세 수치」가 이미 말하고 있어, 차트
+  // 머리의 배지는 가장 좁은 자리에서 같은 말을 반복하며 시선만 먼저 가져갔다.
+  test('자산 추이 차트 머리에 계획 판정 배지를 두지 않는다', () => {
+    render(<DashboardSection params={params} result={result} />);
+
+    const header = screen.getByText(/자산 추이 시뮬레이션/).closest('div');
+    expect(header).not.toBeNull();
+    expect(header!.textContent).not.toMatch(/투자자산 소진|생활비 부족|안정적인 노후 자산 유지됨/);
+    // 이 카드에서만 할 수 있는 조작은 그대로 남는다.
+    expect(screen.getByRole('button', { name: '자산 구성 상세보기' })).toBeInTheDocument();
   });
 
   test('실행 로드맵에서 없는 계좌의 인출 개시와 고갈 노드를 그리지 않는다', () => {
