@@ -145,6 +145,27 @@ describe('computeRiskAlerts', () => {
       expect(alerts[0].message).toContain('2억원');
     });
 
+    // **「만원」·「억원」은 원화의 단위다.** 엔진이 내놓는 금액은 원화가 아니라 표시 통화
+    // 기준이므로(types.ts의 totalAssets 주석), 구분 없이 만원으로 옮기면 달러를 쓰는
+    // 사용자에게 «$50,000이 5만원»으로 찍힌다 — 숫자도 단위도 틀린 문장이 된다.
+    // AGENTS.md의 「단위 변환은 표시 계층에서만」이 막으려는 것이 정확히 이 상황이다.
+    test('표시 통화가 달러면 원화 단위를 붙이지 않는다', () => {
+      const params: SimulationParams = {
+        ...baseParams,
+        displayCurrency: 'USD',
+        userProfile: { ...baseParams.userProfile, targetBequest: 200_000 },
+      };
+      const result = { ...makeResult([]), endingAssets: 50_000 };
+
+      const alerts = computeRiskAlerts(result, params);
+
+      expect(alerts).toHaveLength(1);
+      expect(alerts[0].message).toContain('$50,000');
+      expect(alerts[0].message).toContain('$200,000');
+      expect(alerts[0].message).not.toContain('만원');
+      expect(alerts[0].message).not.toContain('억');
+    });
+
     test('예상 잔여자산이 목표 상속자산 이상이면 알림이 없다', () => {
       const params: SimulationParams = { ...baseParams, userProfile: { ...baseParams.userProfile, targetBequest: 200000000 } };
       const result = { ...makeResult([]), endingAssets: 200000000 };

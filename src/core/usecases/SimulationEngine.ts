@@ -49,6 +49,10 @@ import {
 } from './withdrawal/WithdrawalEngine';
 import { calculateRetirementIncomeMetrics } from './metrics/SimulationMetricsCalculator';
 
+// 투영 루프가 도는 최대 연수. 사람의 나이 상한(120세)에서 태어난 해부터 세어도 넘을 수 없는
+// 값이라, 정상 입력을 자르지 않으면서 무한에 가까운 루프만 막는다.
+const MAX_PROJECTION_YEARS = 121;
+
 // 연 수익률(소수)을 월 복리율로. initializeAssets가 네 곳에서 같은 식을 반복하고 있었고,
 // 연도별 시장 충격을 얹으려면 같은 식이 다섯 번째로 필요해져 한 곳으로 모은다.
 //
@@ -761,7 +765,12 @@ export class LegacySimulationEngine implements SimulationEngineContract {
     const endAge = userProfile.expectancy;
     const totalYears = endAge - startAge + 1;
 
-    if (isNaN(totalYears) || totalYears <= 0) {
+    // 상한도 함께 막는다. 이 루프는 totalYears번 도는데, expectancy가 사람의 나이가 아닌
+    // 값이면(저장 데이터는 사용자가 직접 고칠 수 있다) 오류 없이 수억 번을 돌아 탭이 멈춘다.
+    // 멈춘 탭은 잘못된 숫자보다 진단하기 어렵다 — 아무 메시지도 남지 않기 때문이다.
+    // 로드 경계(normalizeSimulationParams)가 먼저 걸러 내지만, 엔진은 그 경계를 지나지 않은
+    // params로도 불릴 수 있으므로 계산하는 쪽에서도 스스로를 지킨다.
+    if (isNaN(totalYears) || totalYears <= 0 || totalYears > MAX_PROJECTION_YEARS) {
       return {
         yearlyResults: [], depletionAge: null, endingAssets: 0,
       };

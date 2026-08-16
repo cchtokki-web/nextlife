@@ -4,7 +4,11 @@ import { SimulationParams, ScenarioModel } from '../../../core/entities/types';
 import type { EncryptedData } from '../../../core/utils/crypto';
 import { useIsHydrated } from '../../hooks/useBrowserEnvironment';
 import { loadParams, saveParams, initialParams } from '../../../infrastructure/storage/localStore';
-import { normalizeSimulationParams } from '../../../infrastructure/storage/normalizeSimulationParams';
+import {
+  normalizeSimulationParamsWithIssues,
+  reportNormalizationIssues,
+} from '../../../infrastructure/storage/normalizeSimulationParams';
+import { describeIssue, financialIssues } from '../../../infrastructure/storage/normalizationIssues';
 import { activeScenarioKeyName, e2eeKeyName, e2eeBackedUpKeyName, LOCAL_ANALYZED_AT_KEY } from '../../../infrastructure/storage/storageKeys';
 import { encryptData, decryptData, isEncryptedPayload, generateBackupKey } from '../../../core/utils/crypto';
 import { MAX_SCENARIO_COUNT } from '../../../core/utils/scenarioLimits';
@@ -100,7 +104,8 @@ const convertToRepresentativeAssets = (params: SimulationParams): SimulationPara
  * 호출부마다 다시 생긴다.
  */
 const migrateParams = (raw: unknown, tickers: string[]): SimulationParams => {
-  const params = normalizeSimulationParams(raw);
+  const { params, issues } = normalizeSimulationParamsWithIssues(raw);
+  reportNormalizationIssues('시나리오 로드', issues);
   let changed = false;
   const migratedAssets = params.assets.map(asset => {
     if (asset.type === 'etf' && tickers.includes(asset.ticker) && asset.name !== asset.ticker) {
@@ -146,17 +151,30 @@ const fetchLatestParamsInfo = async (params: SimulationParams): Promise<Simulati
           const priceRes = await fetch(`/api/stock-price?ticker=${encodeURIComponent(asset.ticker)}`);
           if (priceRes.ok) {
             const priceData = await priceRes.json();
-            if (typeof priceData.price === 'number') {
-              const fetchedRawPrice = priceData.price;
-              const fetchedCurrency = priceData.currency || 'USD';
-
-              if (fetchedCurrency === 'USD' && asset.currency === 'KRW') {
-                fetchedPrice = Math.round(fetchedRawPrice * baseExchangeRate);
-              } else if (fetchedCurrency === 'KRW' && asset.currency === 'USD') {
-                fetchedPrice = Math.round((fetchedRawPrice / baseExchangeRate) * 100) / 100;
-              } else {
-                fetchedPrice = fetchedRawPrice;
-              }
+            const fetchedCurrency = priceData.currency;
+            // **통화를 모르면 가격을 쓰지 않는다.** 예전에는 `priceData.currency || 'USD'`로
+            // 미국 달러라고 «가정»했는데, 이 값은 야후 응답의 meta.currency를 그대로 넘긴
+            // 것이라(stock-price/route.ts) 응답 모양이 바뀌면 undefined가 된다. 그러면
+            // 069500 같은 원화 종목의 ₩35,000이 USD로 읽혀 환율이 곱해지고, 한 주 단가가
+            // ₩47,250,000이 된다 — 종목도 수량도 그대로라 화면에서는 아무것도 이상해
+            // 보이지 않고, 자산 총액만 1,350배가 된다. 게다가 이 값은 자동 저장을 타고
+            // 저장 데이터에 그대로 남는다.
+            //
+            // 저장된 단가를 그대로 두는 것이 안전한 실패다. 사용자가 직접 입력한 값이고,
+            // 시세 갱신은 편의 기능이지 계산의 전제가 아니다.
+            if (typeof priceData.price !== 'number') {
+              // 가격 자체가 없는 경우. API가 404로 답하는 정상 경로라 조용히 넘어간다.
+            } else if (fetchedCurrency !== 'USD' && fetchedCurrency !== 'KRW') {
+              console.error(
+                `[stock-price] ${asset.ticker}: 통화를 읽지 못해 시세 갱신을 건너뜁니다`,
+                { currency: fetchedCurrency },
+              );
+            } else if (fetchedCurrency === 'USD' && asset.currency === 'KRW') {
+              fetchedPrice = Math.round(priceData.price * baseExchangeRate);
+            } else if (fetchedCurrency === 'KRW' && asset.currency === 'USD') {
+              fetchedPrice = Math.round((priceData.price / baseExchangeRate) * 100) / 100;
+            } else {
+              fetchedPrice = priceData.price;
             }
           }
         } catch (err) {
@@ -1303,7 +1321,29 @@ export function useScenarios() {
             await fetch(`/api/scenarios/${s.id}`, { method: 'DELETE' });
             continue;
           }
-          const payload = survives ? normalizeSimulationParams(s.data) : initialParams;
+          // **여기서만 정제 결과가 저장 데이터를 «덮는다».** 다른 호출부는 읽기 시점의
+          // 교정이라 원본이 서버에 남지만, 이 PUT은 정제된 값을 새 키로 잠가 되쓰므로
+          // 정제 전 바이트가 사라진다. 통화를 읽지 못해 USD가 KRW로 바뀐 계좌가 있다면
+          // 그 오독이 영구화된다.
+          //
+          // 그래서 계산에 닿는 값이 바뀐 행은 정제 «전» 값으로 잠근다. 새 키로 열리게
+          // 한다는 이 함수의 목적은 그대로 달성되고, 교정은 다음 로드 때 읽기 시점에
+          // 다시 일어난다 — 원본을 지우지 않고서도 같은 화면을 얻는다.
+          let payload: unknown = initialParams;
+          if (survives) {
+            const { params, issues } = normalizeSimulationParamsWithIssues(s.data);
+            const risky = financialIssues(issues);
+            if (risky.length > 0) {
+              console.error(
+                `[정제] 시나리오 ${s.id}: 계산에 쓰이는 값 ${risky.length}건이 정제로 달라져 `
+                + '원본을 그대로 재암호화합니다',
+                risky.map(describeIssue),
+              );
+              payload = s.data;
+            } else {
+              payload = params;
+            }
+          }
           const encrypted = await encryptData(payload, newKey, userId);
           const res = await fetch(`/api/scenarios/${s.id}`, {
             method: 'PUT',

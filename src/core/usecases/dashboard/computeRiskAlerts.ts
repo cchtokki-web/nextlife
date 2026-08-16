@@ -1,6 +1,6 @@
-import { SimulationParams, SimulationResult, SimulationYearlyResult, UtilityConfig } from '../../entities/types';
+import { AssetCurrency, SimulationParams, SimulationResult, SimulationYearlyResult, UtilityConfig } from '../../entities/types';
 import { DEFAULT_UTILITY_CONFIG } from '../utility/utilityWeights';
-import { formatManwon } from '../utility/utilityAnalysis';
+import { formatManwon, formatMoney } from '../utility/utilityAnalysis';
 import { resolveStrategy } from '../strategy/compileStrategy';
 import { resolveTaxContext, TaxContext } from '../tax/taxContext';
 import { estimateHealthInsuranceCliff } from '../healthcare/estimateHealthInsuranceCliff';
@@ -56,18 +56,23 @@ function formatAgeRange(startAge: number, endAge: number): string {
 //
 // 이 카드가 필요한 이유는 computePensionGapRisk 주석에 있다 — 요약하면, 은퇴 후 자산 잔고가
 // 가장 크고 인출률도 가장 높은 구간이 여기라서 이 5년의 시장 하락이 전체 성공률을 좌우한다.
-function buildPensionGapAlert(gap: PensionGapRisk | null): RiskAlertCandidate | null {
+function buildPensionGapAlert(
+  gap: PensionGapRisk | null,
+  currency: AssetCurrency,
+): RiskAlertCandidate | null {
   if (gap === null) return null;
+  // gap의 금액은 전부 엔진이 낸 값이라 원화가 아니라 표시 통화 기준이다(types.ts).
+  const money = (amount: number) => formatMoney(amount, currency);
   const fundingMessage = gap.shortfallYears > 0
     ? gap.monthlyAssetWithdrawal > 0
-      ? `이 기간에는 자산에서 월 평균 ${formatManwon(gap.monthlyAssetWithdrawal)}을 인출하고, ` +
-        `${gap.shortfallYears}년은 계획 생활비를 월 평균 ${formatManwon(gap.averageMonthlyShortfall)} 채우지 못합니다. ` +
-        `인출액과 부족분을 합쳐 필요한 자금은 약 ${formatManwon(gap.bridgeAmount)}입니다.`
+      ? `이 기간에는 자산에서 월 평균 ${money(gap.monthlyAssetWithdrawal)}을 인출하고, ` +
+        `${gap.shortfallYears}년은 계획 생활비를 월 평균 ${money(gap.averageMonthlyShortfall)} 채우지 못합니다. ` +
+        `인출액과 부족분을 합쳐 필요한 자금은 약 ${money(gap.bridgeAmount)}입니다.`
       : `${gap.shortfallYears}년은 일반자산 인출 시작 조건 때문에 계획 생활비를 월 평균 ` +
-        `${formatManwon(gap.averageMonthlyShortfall)} 채우지 못합니다. 이 부족분을 메우는 데 필요한 ` +
-        `자금은 약 ${formatManwon(gap.bridgeAmount)}입니다.`
-    : `생활비를 위해 자산에서 월 평균 ${formatManwon(gap.monthlyAssetWithdrawal)}을 인출합니다. ` +
-      `이 기간의 시장 하락은 회복할 원금을 줄일 수 있으므로, 약 ${formatManwon(gap.bridgeAmount)}을 ` +
+        `${money(gap.averageMonthlyShortfall)} 채우지 못합니다. 이 부족분을 메우는 데 필요한 ` +
+        `자금은 약 ${money(gap.bridgeAmount)}입니다.`
+    : `생활비를 위해 자산에서 월 평균 ${money(gap.monthlyAssetWithdrawal)}을 인출합니다. ` +
+      `이 기간의 시장 하락은 회복할 원금을 줄일 수 있으므로, 약 ${money(gap.bridgeAmount)}을 ` +
       `변동성이 낮은 자금으로 확보하는 것이 좋습니다.`;
   return {
     sortAge: gap.fromAge,
@@ -199,6 +204,8 @@ function buildHealthInsuranceCliffAlert(
 // (= 본인 기대수명)다(types.ts). 다른 나이를 쓰면 그 시점에 없던 잔액을 제시하게 된다.
 function buildBequestShortfallAlert(params: SimulationParams, result: SimulationResult): RiskAlertCandidate | null {
   const { targetBequest, expectancy } = params.userProfile;
+  // endingAssets는 표시 통화 기준이고, targetBequest는 같은 화면에서 같은 단위로 입력받는다.
+  const money = (amount: number) => formatMoney(amount, params.displayCurrency);
   if (resolveStrategy(params).bequestStrategy !== 'target_amount') return null;
   if (targetBequest === undefined || targetBequest <= 0) return null;
   if (result.endingAssets >= targetBequest) return null;
@@ -211,8 +218,8 @@ function buildBequestShortfallAlert(params: SimulationParams, result: Simulation
       key: 'bequestShortfall',
       title: '목표 상속자산에 못 미칠 것으로 예상됩니다',
       message:
-        `${timing} 예상 잔여자산(약 ${formatManwon(result.endingAssets)})이 ` +
-        `목표 상속자산(약 ${formatManwon(targetBequest)})보다 약 ${formatManwon(shortfall)} 부족합니다.`,
+        `${timing} 예상 잔여자산(약 ${money(result.endingAssets)})이 ` +
+        `목표 상속자산(약 ${money(targetBequest)})보다 약 ${money(shortfall)} 부족합니다.`,
     },
   };
 }
@@ -232,10 +239,14 @@ export function computeRiskAlerts(
   cfg: UtilityConfig = DEFAULT_UTILITY_CONFIG
 ): RiskAlert[] {
   const { yearlyResults } = result;
+  // 「만원」·「억원」은 원화의 단위다. 엔진이 내놓는 금액은 표시 통화 기준이라, 이 값을
+  // 구분하지 않으면 달러 사용자에게 달러 숫자가 「만원」으로 찍힌다.
+  const displayCurrency = params.displayCurrency;
+  // 반면 privatePensionLimit은 세법이 «원화로» 정한 한도라 언제나 만원 표기가 맞다.
   const privatePensionLimit = params.taxSettings?.privatePensionLimit ?? 15000000;
 
   const candidates = [
-    buildPensionGapAlert(computePensionGapRisk(params, result)),
+    buildPensionGapAlert(computePensionGapRisk(params, result), displayCurrency),
     buildComprehensiveTaxAlert(yearlyResults),
     buildPrivatePensionLimitAlert(yearlyResults, privatePensionLimit),
     buildHealthInsuranceAlert(yearlyResults, cfg.healthInsuranceCeiling),

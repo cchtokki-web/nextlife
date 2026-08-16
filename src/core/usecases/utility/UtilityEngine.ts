@@ -246,10 +246,23 @@ function computePensionUtilizationRaw(
   );
 }
 
-// 적정 잔여자산(= 월 목표생활비 * appropriateBequestMonths). 사용자가 목표 금액을 지정하지
-// 않았을 때의 기준선이며 'maximize'의 ratio 분모이기도 하다.
-function appropriateBequestBalance(params: SimulationParams, cfg: UtilityConfig): number {
-  return params.userProfile.targetMonthlySpending * cfg.appropriateBequestMonths;
+/**
+ * 적정 잔여자산(= 월 목표생활비 × appropriateBequestMonths). 사용자가 목표 금액을 지정하지
+ * 않았을 때의 기준선이며 'maximize'의 ratio 분모이기도 하다.
+ *
+ * **분모를 기말 시점 화폐로 맞춘다.** 이 값과 비교되는 result.endingAssets는 기대수명 시점의
+ * 잔액이라 inflationMode가 'nominal'이면 그 시점의 명목 금액인데, 목표 월생활비는 오늘 값이다.
+ * 그대로 나누면 ratio가 (1+물가)^(기대수명−현재나이)배 부풀어, 2.5%·35년이면 약 2.4배가 된다.
+ * 지수 감쇠 구간에서는 이미 0점이라 차이가 없다는 것이 이 파일의 옛 기록인데, 그것은 «분모를
+ * 20% 움직였을 때»의 이야기다 — 2.4배는 적정선 근처의 계획(ratio 1 전후, 즉 점수가 실제로
+ * 갈리는 구간)을 만점에서 감점 구간으로 통째로 옮긴다.
+ *
+ * **화면 문구와 같은 함수를 쓴다(export하는 이유).** 같은 식이 explainBequestAdequacy에도
+ * 복사돼 있어, 한쪽만 고치면 리포트가 「적정 상속 자산 기준 8,400만원」이라고 적어 두고
+ * 점수는 다른 기준으로 매기는 상태가 된다.
+ */
+export function appropriateBequestBalance(params: SimulationParams, cfg: UtilityConfig): number {
+  return annualNeedAtExpectancy(params) / 12 * cfg.appropriateBequestMonths;
 }
 
 // 분모가 0(목표 생활비 미입력)이면 비율을 정의할 수 없다. 잔여자산이 있으면 "적정선의 2배"로

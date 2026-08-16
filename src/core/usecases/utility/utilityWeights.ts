@@ -93,6 +93,11 @@ export const DEFAULT_UTILITY_CONFIG: UtilityConfig = createUtilityConfig(
     // S를 낮추거나 B를 늘리면 corr는 조금 더 오르지만 추천 가능 건수가 함께 줄어든다.
     // 목표였던 비증액 악화를 1건까지 줄이면서 추천 손실이 가장 적은 지점을 택했다.
     // 남은 악화 6건 중 5건은 SPENDING_INCREASE_GATE가 승인한 의도된 증액이다.
+    // 하니스 페르소나는 전부 inflationMode: 'real'로 고정돼 있어, 아래 두 값은 실질 모드에서만
+    // 측정됐다. 그래도 명목 모드에 그대로 쓸 수 있는 것은 computeDepletionSafetyRaw가 분모를
+    // 기말 시점 화폐로 맞추기 때문이다 — 같은 구매력을 남긴 계획이면 두 모드가 같은 완충연수를
+    // 낸다(UtilityEngine.test.ts가 그 등가를 잠근다). 그 보정이 없던 시절에는 명목 모드의
+    // 완충연수가 약 2.4배 부풀어 이 두 값이 아무 역할도 하지 못했다.
     survivalBaseScore: 0.7, // 완충 0으로 기대수명에 도달한 계획의 원점수
     fullBufferYears: 5, // 완충 여유 5년치면 depletionSafety 만점
     taxBurdenCeiling: 0.3, // 평생 세부담률 30%에서 taxEfficiency 0점

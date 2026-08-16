@@ -146,6 +146,42 @@ describe('normalizeSimulationParams', () => {
     });
   });
 
+  // 나이는 금액이 아니라 «루프의 경계»다. SimulationEngine의 투영은
+  // `expectancy - currentAge + 1`번 도는데 NaN과 0 이하만 막으므로, 큰 값이 통과하면
+  // 오류 없이 수억 번을 돌아 탭이 멈춘다. 멈춘 탭은 아무 메시지도 남기지 않아 잘못된
+  // 숫자보다 진단하기 어렵다.
+  describe('나이', () => {
+    test('사람의 나이로 성립하지 않는 값은 기본값으로 되돌린다', () => {
+      const result = normalizeSimulationParams({
+        ...structuredClone(initialParams),
+        userProfile: { ...initialParams.userProfile, expectancy: 1e9 },
+      });
+
+      expect(result.userProfile.expectancy).toBe(initialParams.userProfile.expectancy);
+    });
+
+    // 120으로 «깎지» 않는다. 깎으면 사용자가 넣은 적 없는 기대수명이 계획에 남는다.
+    test('상한을 넘으면 잘라내는 것이 아니라 되돌린다', () => {
+      const result = normalizeSimulationParams({
+        ...structuredClone(initialParams),
+        userProfile: { ...initialParams.userProfile, expectancy: 500 },
+      });
+
+      expect(result.userProfile.expectancy).not.toBe(120);
+      expect(result.userProfile.expectancy).toBe(initialParams.userProfile.expectancy);
+    });
+
+    test('경계값 0과 120은 정상 입력이다', () => {
+      const result = normalizeSimulationParams({
+        ...structuredClone(initialParams),
+        userProfile: { ...initialParams.userProfile, currentAge: 0, expectancy: 120 },
+      });
+
+      expect(result.userProfile.currentAge).toBe(0);
+      expect(result.userProfile.expectancy).toBe(120);
+    });
+  });
+
   describe('유니온 리터럴', () => {
     test('허용되지 않은 값은 기본값으로 되돌린다', () => {
       const result = normalizeSimulationParams({
@@ -417,11 +453,12 @@ describe('normalizeSimulationParams', () => {
     // enabled는 `!healthcare.enabled`로만 검사돼, 문자열 'false'가 의료비를 켰다.
     // costGrowthRate가 NaN이면 그 해 의료비가 NaN이 되고 자산 전체가 NaN으로 번진다.
     //
-    // 픽스처가 'false'가 아니라 'true'인 것이 중요하다. DEFAULT_HEALTHCARE.enabled가 false라
-    // 'false'를 쓰면 「기본값으로 되돌렸다」와 「truthy로 읽었다」가 같은 답을 내 판별하지
-    // 못한다. 'true'는 두 가설이 갈리는 유일한 입력이다 — 그리고 이쪽이 위험한 방향이다:
-    // 사용자가 켜 둔 의료비가 조용히 꺼지면 계획이 실제보다 낙관적으로 보인다.
-    test('깨진 항목을 기본값으로 되돌린다', () => {
+    // **enabled만 기본값으로 되돌리지 않는다.** 키가 있는데 boolean이 아니면 사용자가 이
+    // 패널을 건드린 흔적이므로, 나머지 필드가 살아 있는 쪽(= 켜 둔 상태)을 택한다.
+    // 반대로 두면(기본값 false) 읽지 못한 설정이 「끔」과 구별되지 않고, 의료비는 비용이라
+    // 그 방향이 계획을 실제보다 안전해 보이게 만든다 — 월 30만원 + 80세 이후 월 150만원 +
+    // 3,000만원 충격이 통째로 빠진다. 잘못 켜지는 쪽은 비관적으로 틀릴 뿐이다.
+    test('깨진 항목을 기본값으로 되돌리되 의료비를 조용히 끄지는 않는다', () => {
       const result = normalizeSimulationParams({
         ...structuredClone(initialParams),
         healthcare: {
@@ -437,7 +474,10 @@ describe('normalizeSimulationParams', () => {
         },
       });
 
-      expect(result.healthcare?.enabled).toBe(DEFAULT_HEALTHCARE.enabled);
+      // 'true'는 판별력이 있는 유일한 입력이다. DEFAULT_HEALTHCARE.enabled가 false라
+      // 'false'를 쓰면 「기본값으로 되돌렸다」와 「truthy로 읽었다」가 같은 답을 낸다.
+      expect(result.healthcare?.enabled).toBe(true);
+      expect(DEFAULT_HEALTHCARE.enabled).toBe(false);
       expect(result.healthcare?.costGrowthRate).toBe(DEFAULT_HEALTHCARE.costGrowthRate);
       // 멀쩡한 사용자 입력은 지킨다.
       expect(result.healthcare?.baseMonthlyCost).toBe(400000);
@@ -448,6 +488,17 @@ describe('normalizeSimulationParams', () => {
       const result = normalizeSimulationParams({ ...structuredClone(initialParams), healthcare: true });
 
       expect(result.healthcare).toBeUndefined();
+    });
+
+    // 「지정한 적 없음」과 「읽지 못함」은 다르다. 키가 아예 없으면 사용자가 이 패널을
+    // 건드린 적이 없다는 뜻이므로 제품 기본값(끔)이 맞다.
+    test('enabled 키가 없으면 제품 기본값을 쓴다', () => {
+      const result = normalizeSimulationParams({
+        ...structuredClone(initialParams),
+        healthcare: { costGrowthRate: 5, baseMonthlyCost: 300000 },
+      });
+
+      expect(result.healthcare?.enabled).toBe(DEFAULT_HEALTHCARE.enabled);
     });
   });
 
