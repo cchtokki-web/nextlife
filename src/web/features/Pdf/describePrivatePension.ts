@@ -14,10 +14,11 @@ const TYPE_LABELS: Record<PrivatePensionType, string> = {
 /**
  * 계좌 종류의 표시 이름.
  *
- * 위 표가 타입을 전부 덮는데도 `?? '기타'`를 남기는 이유: 이 값은 로컬스토리지와 DB에서
- * 온다(loadParams는 `userProfile`과 `assets` 배열 유무만 보고 타입을 검증하지 않는다).
- * 즉 저장된 옛 시나리오에는 지금 유니온에 없는 문자열이 들어 있을 수 있다. 컴파일러가
- * 보는 세계와 런타임이 받는 세계가 달라서, 둘 다 막아야 한다.
+ * 위 표가 타입을 전부 덮는데도 `?? '기타'`를 남기는 이유: 이 값이 «정제를 거치지 않은»
+ * 경로로도 오기 때문이다. 화면과 PDF의 정상 경로는 normalizeSimulationParams를 지나고
+ * 거기서 알 수 없는 종류는 'savings'로 바뀌므로 이 폴백에 닿지 않지만, 그 경계를 지나지
+ * 않는 호출부(테스트 픽스처, API 응답을 바로 넘기는 자리)는 여전히 임의의 문자열을 준다.
+ * 컴파일러가 보는 세계와 런타임이 받는 세계가 달라서, 둘 다 막아야 한다.
  */
 function labelForType(type: PrivatePensionType): string {
   return TYPE_LABELS[type] ?? '기타';

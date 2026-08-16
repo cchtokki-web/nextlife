@@ -174,6 +174,9 @@ export function runMonteCarlo(
 
   // 연도별 하방 지점. 각 해마다 전 시행의 총자산을 모아 정렬하고 10% 지점만 취한다.
   // **해마다 다른 시행에서 온 값이라 어느 한 시행의 경로가 아니다**(MonteCarloResult 주석).
+  // 그래서 최악 10분위의 실제 경로 하나를 재실행해 함께 담아 봤으나, 화면·PDF 어디에서도
+  // 소비되지 않아 시뮬레이션 한 번의 비용만 남기고 걷어냈다. 그 한계는 이제 문구로 밝힌다
+  // (AssetGrowthChart의 DOWNSIDE_NOTE).
   const assetDownside: MonteCarloDownsideYear[] = [];
   const startAge = planned.params.userProfile.currentAge;
   for (let y = 0; y < years; y++) {
@@ -265,8 +268,3 @@ export class MonteCarloEngine implements StrategyMonteCarloEngine {
     };
   }
 }
-
-// 기말자산 기준 최악 10분위의 «실제 경로» 하나를 재실행해 담던 worstDecilePath가 여기 있었다.
-// 분위수 선이 어느 시행의 경로도 아니라는 한계를 보완하려던 것인데, 화면·PDF 어디에서도
-// 소비된 적이 없어 시뮬레이션을 한 번 더 돌리는 비용만 남아 있었다. 그 한계는 이제
-// AssetGrowthChart가 문구로 밝힌다(DOWNSIDE_NOTE).

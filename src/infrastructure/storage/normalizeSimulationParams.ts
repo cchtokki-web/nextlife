@@ -58,8 +58,14 @@ import { initialParams } from './defaultParams';
  * **원칙 3: 모르는 키는 건드리지 않는다.** 타입에 없는 키를 지우면 아직 반영되지 않은 새 필드나
  * 다른 버전이 쓴 값을 우리가 파괴한다. 그래서 raw를 펼친 위에 검증한 필드만 덮어쓴다.
  *
- * 검증 범위는 «계산에 닿는 필드»다. taxSettings·withdrawalPlan·customYieldSnapshot 같은 중첩
- * 구조는 아직 캐스팅 그대로이며, 이 함수를 넓힐 때 다음 후보다.
+ * **원칙 4: 없던 키를 만들지 않는다.** 선택 필드는 «값»뿐 아니라 «키의 존재»가 데이터다.
+ * RetirementModelAdapter가 `hasOwn`으로 「사용자가 이 항목을 설정한 적이 있는가」를 판정하기
+ * 때문이다. 객체 리터럴은 `{ k: undefined }`도 키를 만들므로, 값이 없을 때는 반드시
+ * `...('k' in raw ? { k: … } : {})` 꼴로 키 자체를 빼야 한다.
+ *
+ * 검증 범위는 «계산에 닿는 필드»다. 중첩 구조(taxSettings·withdrawalPlan·customYieldSnapshot·
+ * healthcare·strategy)도 pickValid로 항목 단위 정제를 거친다. 남은 것은 raw를 펼칠 때 그대로
+ * 실려 오는 «타입에 없는 키»뿐이며, 그것은 원칙 3에 따라 의도적으로 건드리지 않는다.
  */
 export function normalizeSimulationParams(raw: unknown): SimulationParams {
   if (!isRecord(raw)) return initialParams;
@@ -71,19 +77,22 @@ export function normalizeSimulationParams(raw: unknown): SimulationParams {
     retirementGoals: normalizeGoals(raw.retirementGoals),
     assets: normalizeList(raw.assets, normalizeAsset),
     nationalPension: {
+      // 원칙 2. 읽지 못한 값을 initialParams의 월 120만원으로 채우면 «종신 연금»을 지어내는
+      // 셈이라, 다른 어떤 필드보다 계획을 크게 낙관 쪽으로 흔든다. 0은 국민연금이 없는
+      // 정상 상태이기도 하고, 이 키가 아예 없던 옛 시나리오에서 엔진이 쓰던 값
+      // (SimulationEngine의 구조분해 기본값 `{ expectedMonthlyAmount: 0 }`)과도 같다.
       expectedMonthlyAmount: finite(
         isRecord(raw.nationalPension) ? raw.nationalPension.expectedMonthlyAmount : undefined,
-        initialParams.nationalPension.expectedMonthlyAmount,
+        0,
       ),
     },
     privatePensions: normalizeList(raw.privatePensions, normalizePrivatePension),
-    isaAccounts: raw.isaAccounts === undefined
-      ? undefined
-      : normalizeList(raw.isaAccounts, normalizeIsaAccount),
     otherIncomes: normalizeList(raw.otherIncomes, normalizeOtherIncome),
     inflationRate: finite(raw.inflationRate, initialParams.inflationRate),
     inflationMode: oneOf(raw.inflationMode, ['nominal', 'real'], initialParams.inflationMode),
-    baseExchangeRate: finite(raw.baseExchangeRate, initialParams.baseExchangeRate),
+    // 환율은 금액이 아니라 «나눗셈의 분모»다(SimulationEngine.convertValue). 0이면 USD 자산
+    // 평가액이 전부 Infinity가 되어 오류 없이 전 구간이 망가지므로 0을 통과시키지 않는다.
+    baseExchangeRate: positive(raw.baseExchangeRate, initialParams.baseExchangeRate),
     exchangeScenario: oneOf(
       raw.exchangeScenario,
       ['base', 'usd_up', 'usd_down'],
@@ -91,21 +100,39 @@ export function normalizeSimulationParams(raw: unknown): SimulationParams {
     ),
     displayCurrency: currency(raw.displayCurrency, initialParams.displayCurrency),
     yieldPreset: optionalOneOf(raw.yieldPreset, YIELD_PRESETS, initialParams.yieldPreset),
-    spendingStrategy: optionalOneOf(raw.spendingStrategy, SPENDING_STRATEGIES, undefined),
+    // 아래는 전부 원칙 4를 따른다 — 키가 없었으면 만들지 않는다.
+    ...onlyIfPresent(raw, 'isaAccounts', (v) => normalizeList(v, normalizeIsaAccount)),
+    ...onlyIfPresent(raw, 'spendingStrategy', (v) => optionalOneOf(v, SPENDING_STRATEGIES, undefined)),
     // 0이 「없음」과 같은 뜻인 값들. 깨졌으면 없는 것으로 둔다 — 두 필드 모두 미지정이
     // 기존 동작이며, 임의의 값을 채우면 저장된 시나리오의 숫자가 조용히 달라진다.
-    assetFloor: optionalFinite(raw.assetFloor),
-    cashYieldRate: optionalFinite(raw.cashYieldRate),
-    taxSettings: normalizeTaxSettings(raw.taxSettings),
-    withdrawalPlan: normalizeWithdrawalPlan(raw.withdrawalPlan),
-    spendingCurve: normalizeSpendingCurve(raw.spendingCurve),
-    customYieldSnapshot: normalizeYieldSnapshot(raw.customYieldSnapshot),
-    healthcare: normalizeHealthcare(raw.healthcare),
-    taxLawVersion: optionalOneOf(raw.taxLawVersion, TAX_LAW_VERSIONS, undefined),
+    ...onlyIfPresent(raw, 'assetFloor', optionalFinite),
+    ...onlyIfPresent(raw, 'cashYieldRate', optionalFinite),
+    ...onlyIfPresent(raw, 'taxSettings', normalizeTaxSettings),
+    ...onlyIfPresent(raw, 'withdrawalPlan', normalizeWithdrawalPlan),
+    ...onlyIfPresent(raw, 'spendingCurve', normalizeSpendingCurve),
+    ...onlyIfPresent(raw, 'customYieldSnapshot', normalizeYieldSnapshot),
+    ...onlyIfPresent(raw, 'healthcare', normalizeHealthcare),
+    ...onlyIfPresent(raw, 'taxLawVersion', (v) => optionalOneOf(v, TAX_LAW_VERSIONS, undefined)),
     // `strategy`는 «있음»과 «없음»이 서로 다른 상태다(아래 주석 참조). 그래서 키가 없으면
     // 만들지 않고, 있으면 내용이 전부 깨져도 빈 객체로 남긴다.
     ...('strategy' in raw ? { strategy: normalizeStrategy(raw.strategy) } : {}),
   };
+}
+
+/**
+ * 원칙 4의 도구. 키가 raw에 있을 때만 정제해 실어 보내고, 없으면 «키 자체를» 만들지 않는다.
+ *
+ * 삼항 연산자로 `undefined`를 대입하는 방식(`k: raw.k === undefined ? undefined : f(raw.k)`)은
+ * 이 일을 하지 못한다 — 객체 리터럴은 값이 undefined여도 키를 만들기 때문이다. 그래서
+ * 스프레드로 «항목이 없는 객체»를 합치는 이 꼴이어야 한다.
+ */
+function onlyIfPresent<K extends string, V>(
+  raw: Record<string, unknown>,
+  key: K,
+  normalize: (value: unknown) => V,
+): { [P in K]?: V } {
+  if (!(key in raw)) return {} as { [P in K]?: V };
+  return { [key]: normalize(raw[key]) } as { [P in K]?: V };
 }
 
 const CURRENCIES: readonly AssetCurrency[] = ['KRW', 'USD'];
@@ -156,6 +183,14 @@ function isRecord(value: unknown): value is Record<string, unknown> {
  *  문자열만 조용히 살리면 그렇지 않은 값과 처리가 갈려, 데이터가 왜 사라졌는지 설명할 수 없다. */
 function finite(value: unknown, fallback: number): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+}
+
+/**
+ * 0보다 큰 유한수만 통과시킨다. «금액»이 아니라 나눗셈의 분모나 주기처럼 0이 성립하지 않는
+ * 값에 쓴다 — 금액은 0이 「없음」이라는 정상 상태이므로 finite를 그대로 쓴다(원칙 2).
+ */
+function positive(value: unknown, fallback: number): number {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : fallback;
 }
 
 function optionalFinite(value: unknown): number | undefined {
@@ -219,8 +254,10 @@ function normalizeUserProfile(value: unknown): UserProfile {
     expectancy: finite(raw.expectancy, base.expectancy),
     targetMonthlySpending: finite(raw.targetMonthlySpending, base.targetMonthlySpending),
     // 0은 「상속하지 않고 다 쓴다」는 명시적 목표라 미지정과 다르다. 그 구분을 지키려면
-    // 깨진 값을 0으로 채워서는 안 되고 미지정으로 두어야 한다.
-    targetBequest: optionalFinite(raw.targetBequest),
+    // 깨진 값을 0으로 채워서는 안 되고 미지정으로 두어야 하며(원칙 2), 애초에 없던 키를
+    // 만들어서도 안 된다(원칙 4) — compileStrategy가 'maximize'에서 이 키를 «지워» 두고,
+    // computeBequestAdequacyRaw는 키의 유무로 채점 곡선을 고른다.
+    ...onlyIfPresent(raw, 'targetBequest', optionalFinite),
   };
 }
 
@@ -235,15 +272,16 @@ function normalizeAsset(raw: Record<string, unknown>, index: number): Investment
     averagePrice: finite(raw.averagePrice, 0),
     annualGrowthRate: finite(raw.annualGrowthRate, 0),
     dividendYield: finite(raw.dividendYield, 0),
-    contributionPeriod: optionalOneOf(raw.contributionPeriod, ['daily', 'weekly', 'monthly'] as const, undefined),
-    contributionAmount: optionalFinite(raw.contributionAmount),
     monthlyContribution: finite(raw.monthlyContribution, 0),
     reinvestDividend: bool(raw.reinvestDividend, false),
     currency: currency(raw.currency, 'KRW'),
-    assetMarket: optionalOneOf(raw.assetMarket, ASSET_MARKETS, undefined),
+    ...onlyIfPresent(raw, 'contributionPeriod', (v) =>
+      optionalOneOf(v, ['daily', 'weekly', 'monthly'] as const, undefined)),
+    ...onlyIfPresent(raw, 'contributionAmount', optionalFinite),
+    ...onlyIfPresent(raw, 'assetMarket', (v) => optionalOneOf(v, ASSET_MARKETS, undefined)),
     // 미지정이면 엔진이 평가액을 취득원가로 본다. 깨진 값을 0으로 채우면 평가액 전체가
     // 양도차익이 되어 세금이 폭증하므로, 반드시 미지정으로 되돌린다.
-    acquisitionCostBasis: optionalFinite(raw.acquisitionCostBasis),
+    ...onlyIfPresent(raw, 'acquisitionCostBasis', optionalFinite),
   };
 }
 
@@ -253,17 +291,16 @@ function normalizePrivatePension(raw: Record<string, unknown>, index: number): P
     // 세 종류 중 'savings'(연금저축)를 기본으로 둔다. IRP·퇴직연금은 인출 제약이 더 강해,
     // 알 수 없는 값을 그쪽으로 읽으면 있지도 않은 제약을 사용자에게 씌우게 된다.
     type: oneOf(raw.type, PRIVATE_PENSION_TYPES, 'savings'),
-    investmentType: optionalOneOf(raw.investmentType, INVESTMENT_TYPES, undefined),
-    ticker: optionalText(raw.ticker),
-    name: optionalText(raw.name),
     balance: finite(raw.balance, 0),
     monthlyContribution: finite(raw.monthlyContribution, 0),
     annualReturn: finite(raw.annualReturn, 0),
-    dividendYield: optionalFinite(raw.dividendYield),
     currency: currency(raw.currency, 'KRW'),
-    earlyChannelingEnabled: typeof raw.earlyChannelingEnabled === 'boolean'
-      ? raw.earlyChannelingEnabled
-      : undefined,
+    ...onlyIfPresent(raw, 'investmentType', (v) => optionalOneOf(v, INVESTMENT_TYPES, undefined)),
+    ...onlyIfPresent(raw, 'ticker', optionalText),
+    ...onlyIfPresent(raw, 'name', optionalText),
+    ...onlyIfPresent(raw, 'dividendYield', optionalFinite),
+    ...onlyIfPresent(raw, 'earlyChannelingEnabled', (v) =>
+      typeof v === 'boolean' ? v : undefined),
   };
 }
 
@@ -271,16 +308,18 @@ function normalizeIsaAccount(raw: Record<string, unknown>, index: number): IsaAc
   return {
     id: text(raw.id, `isa-${index}`),
     type: oneOf(raw.type, ISA_TYPES, 'general'),
-    investmentType: optionalOneOf(raw.investmentType, INVESTMENT_TYPES, undefined),
-    ticker: optionalText(raw.ticker),
-    name: optionalText(raw.name),
     balance: finite(raw.balance, 0),
     monthlyContribution: finite(raw.monthlyContribution, 0),
     annualReturn: finite(raw.annualReturn, 0),
     dividendYield: finite(raw.dividendYield, 0),
     currency: currency(raw.currency, 'KRW'),
-    // 0년 만기는 만기 처리가 매년 발동하는 뜻이 된다. 타입 주석이 밝힌 기본값 3년을 쓴다.
-    maturityYears: finite(raw.maturityYears, 3),
+    ...onlyIfPresent(raw, 'investmentType', (v) => optionalOneOf(v, INVESTMENT_TYPES, undefined)),
+    ...onlyIfPresent(raw, 'ticker', optionalText),
+    ...onlyIfPresent(raw, 'name', optionalText),
+    // 0년 이하 만기는 만기 처리가 매년(혹은 매 시점) 발동하는 뜻이 된다. 금액이 아니라
+    // «주기»라서 0을 「없음」으로 읽을 수 없으므로, 타입 주석이 밝힌 기본값 3년을 쓴다.
+    // `finite`만 쓰면 0이 유한수라 그대로 통과해 이 주석이 거짓말이 된다.
+    maturityYears: positive(raw.maturityYears, 3),
   };
 }
 
@@ -299,17 +338,25 @@ function normalizeOtherIncome(raw: Record<string, unknown>, index: number): Othe
  * 이 구조들은 전부 optional이고 소비처가 이미 미지정 기본값을 갖고 있다(resolveTaxSettings
  * 등). 그래서 키를 지우면 저장 전과 같은 「지정한 적 없음」 상태가 되어 기본값이 그대로 산다.
  * 반대로 여기서 기본값을 박아 넣으면, 나중에 기본값이 바뀌어도 이 시나리오만 옛 값에 고정된다.
+ *
+ * **지우는 것은 «깨진» 항목뿐이고, «모르는» 항목은 그대로 실어 보낸다(원칙 3).** validators를
+ * 순회하며 결과를 새 객체에 담기만 하면 검증기가 없는 키는 전부 사라진다. 그러면 TaxSettings에
+ * 필드를 추가하고 검증기 등록을 잊는 순간, 모든 사용자의 그 필드가 로드할 때마다 조용히
+ * 삭제된다 — E2EE라 서버에서 되살릴 방법이 없어 영구 손실이다. 최상위(:69)가 raw를 펼친 위에
+ * 덮어쓰는 것과 같은 이유로, 여기서도 원본을 펼친 위에 검증한 값을 덮어쓴다.
  */
 function pickValid(
   value: unknown,
   validators: Record<string, (raw: unknown) => unknown>,
 ): Record<string, unknown> | undefined {
   if (!isRecord(value)) return undefined;
-  const result: Record<string, unknown> = {};
+  const result: Record<string, unknown> = { ...value };
   for (const [key, validate] of Object.entries(validators)) {
     if (!(key in value)) continue;
     const normalized = validate(value[key]);
-    if (normalized !== undefined) result[key] = normalized;
+    // 깨진 항목은 값을 채우지 않고 키를 지운다 — 소비처의 미지정 기본값이 살아난다.
+    if (normalized === undefined) delete result[key];
+    else result[key] = normalized;
   }
   return result;
 }
@@ -455,8 +502,13 @@ function normalizeHealthcare(value: unknown): HealthcareAssumptions | undefined 
  * priority나 constraintType이 깨진 것만으로는 버리지 않는다 — 사용자가 고른 목표 자체는
  * 유효한 정보이고, 그것을 지우면 추천 결과가 통째로 달라진다.
  *
- * 순서를 지어내지 않으려고 깨진 priority는 뒤로 보낸다. 목표의 실제 정렬·중복 제거는
- * normalizeRetirementGoals가 맡으므로 여기서는 값의 모양만 맞춘다.
+ * 순서를 지어내지 않으려고 깨진 priority는 뒤로 보낸다. `index + 1`을 쓰면 안 된다 —
+ * normalizeRetirementGoals가 priority 오름차순으로 정렬하므로 첫 원소의 깨진 priority가 1이
+ * 되어 «가장 높은 우선순위»가 되고, 유효한 priority를 가진 다른 목표를 전부 제친다. 게다가
+ * 목표는 5개로 잘리므로(MAX_RETIREMENT_GOALS) 그 사이 사용자가 실제로 고른 목표가 밀려날 수
+ * 있다. 값을 읽지 못한 목표에 최상위 순위를 주는 것은 순서를 지어내는 일이다.
+ *
+ * 같은 값을 쓰므로 깨진 것끼리는 저장 순서를 지킨다 — Array.prototype.sort가 안정 정렬이다.
  */
 function normalizeGoals(value: unknown): RetirementGoal[] | undefined {
   if (value === undefined) return undefined;
@@ -466,9 +518,9 @@ function normalizeGoals(value: unknown): RetirementGoal[] | undefined {
     .filter((raw): boolean =>
       typeof raw.type === 'string'
       && (RETIREMENT_GOAL_TYPES as readonly string[]).includes(raw.type))
-    .map((raw, index) => ({
+    .map((raw) => ({
       type: raw.type as RetirementGoalType,
-      priority: finite(raw.priority, index + 1),
+      priority: finite(raw.priority, Number.MAX_SAFE_INTEGER),
       targetValue: optionalFinite(raw.targetValue),
       constraintType: oneOf(raw.constraintType, ['HARD', 'SOFT'], 'SOFT'),
     }));

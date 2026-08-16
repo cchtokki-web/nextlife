@@ -49,10 +49,22 @@ export async function generateReportPdf(pagesHtml: string, fileName: string): Pr
 
   try {
     const pages = container.querySelectorAll('.pdf-page');
-    const overflowingPages = Array.from(pages).flatMap((page, index) => {
-      const content = page.querySelector('.pdf-content') as HTMLElement | null;
-      return content && content.scrollHeight > content.clientHeight + 1 ? [index + 1] : [];
-    });
+    // **구조를 먼저 확인한다.** 넘침 검사는 `.pdf-content`의 높이를 재는데, 그 요소를 찾지
+    // 못하면 「넘치지 않았다」와 구별되지 않는다. 셀렉터가 어긋나는 순간(buildReportHtml이나
+    // reportStyles의 클래스명 변경) 가드가 조용히 모든 페이지를 통과시켜, 잘린 리포트를
+    // 막겠다는 이 함수의 목적이 오류 없이 사라진다. 페이지가 0개면 더 나쁘다 — jsPDF가
+    // 암묵적으로 갖는 빈 첫 장이 그대로 «성공»으로 저장된다.
+    if (pages.length === 0) {
+      throw new Error('리포트 페이지를 찾지 못했습니다 (.pdf-page 없음)');
+    }
+    const contents = Array.from(pages).map((page) =>
+      page.querySelector('.pdf-content') as HTMLElement | null);
+    const brokenPages = contents.flatMap((content, index) => content ? [] : [index + 1]);
+    if (brokenPages.length > 0) {
+      throw new Error(`리포트 페이지 구조가 손상됐습니다 (.pdf-content 없음): ${brokenPages.join(', ')}쪽`);
+    }
+    const overflowingPages = contents.flatMap((content, index) =>
+      content!.scrollHeight > content!.clientHeight + 1 ? [index + 1] : []);
     if (overflowingPages.length > 0) {
       throw new ReportPageOverflowError(overflowingPages);
     }
@@ -62,7 +74,9 @@ export async function generateReportPdf(pagesHtml: string, fileName: string): Pr
       if (i > 0) pdf.addPage();
 
       const canvas = await html2canvas(pages[i] as HTMLElement, {
-        scale: 2, // 고해상도
+        // 2배. 1배면 A4로 늘렸을 때 표의 10.5px 글자가 뭉개지고, 3배는 눈에 띄는 차이 없이
+        // 캔버스 픽셀이 2.25배가 되어 toDataURL에서 큰 리포트가 메모리로 막힌다.
+        scale: 2,
         useCORS: true,
         logging: false,
         width: PAGE_WIDTH_PX,

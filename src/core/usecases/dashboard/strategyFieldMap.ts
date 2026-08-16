@@ -1,4 +1,9 @@
-import type { NationalPensionStrategy, RiskProfile, SimulationParams } from '../../entities/types';
+import type {
+  AccountWithdrawalPolicy,
+  NationalPensionStrategy,
+  RiskProfile,
+  SimulationParams,
+} from '../../entities/types';
 import type { RetirementGoalType } from '../../entities/retirementGoal';
 import { normalizeRetirementGoals } from '../../entities/retirementGoal';
 import type { RankedStrategyCandidate } from '../../strategy/StrategyOptimizer';
@@ -15,11 +20,15 @@ import { NATIONAL_PENSION_NORMAL_START_AGE } from '../pension/nationalPensionRul
 //
 // React에 의존하지 않는다 — PDF 렌더러(.ts)와 화면(.tsx)이 함께 쓴다.
 
-const WITHDRAWAL_LABELS: Record<string, string> = {
+// 유니온으로 조여 둔다. `Record<string, string>`이면 축이 저장값을 그대로 읽는 지금 구조에서
+// PROPORTIONAL·CUSTOM이 라벨 없이 화면에 원문으로 찍히는데, 컴파일러가 그것을 잡지 못한다.
+const WITHDRAWAL_LABELS: Record<AccountWithdrawalPolicy, string> = {
   GENERAL_FIRST: '일반계좌 우선 인출',
   ISA_FIRST: 'ISA 우선 인출',
   PENSION_FIRST: '연금계좌 우선 인출',
   TAX_OPTIMIZED: '세금 최적화 순서로 인출',
+  PROPORTIONAL: '계좌별 비례 인출',
+  CUSTOM: '사용자 지정 순서로 인출',
 };
 
 const ALLOCATION_LABELS = {
@@ -210,20 +219,36 @@ export const STRATEGY_FIELD_MAP: readonly StrategyFieldSpec[] = [
   {
     key: 'withdrawalPolicy',
     label: '자산 인출',
+    // 이 축만 dimensions가 아니라 «시뮬레이션된 전략»을 읽는다. 다른 축과 다른 예외가 아니라
+    // 오히려 규칙 쪽이다 — assetAllocation도 같은 이유로 candidatePreset을 따로 둔다.
+    //
+    // dimensions를 읽으면 「현상 유지」 후보에서 깨진다. baselineDimensions는 미지정 정책을
+    // 'GENERAL_FIRST'로 적어 두는데(라벨용 기본값), 그러면 (1) 아무것도 바꾸지 않는 카드가
+    // "현재 설정 → 일반계좌 우선 인출"이라는 변경점을 표시하고, (2) 반영 버튼이 그 값을 실제로
+    // 저장한다. (2)는 표시 문제가 아니다: SimulationEngine은 accountWithdrawalPolicy가
+    // 미지정일 때만 기존 정기 균등분할 지급 경로를 타므로, 값을 박아 넣는 순간 카드가 보여 준
+    // 숫자와 «다른 계획»이 저장된다.
     differs: (params, ranked) =>
-      params.withdrawalPlan?.accountWithdrawalPolicy !== ranked.candidate.dimensions.withdrawalPolicy,
+      params.withdrawalPlan?.accountWithdrawalPolicy
+        !== ranked.candidate.strategy.withdrawalPolicy.accountWithdrawalPolicy,
     describe: (params, ranked) => {
       const current = params.withdrawalPlan?.accountWithdrawalPolicy;
-      const next = ranked.candidate.dimensions.withdrawalPolicy;
+      const next = ranked.candidate.strategy.withdrawalPolicy.accountWithdrawalPolicy;
       return {
-        before: current ? WITHDRAWAL_LABELS[current] ?? current : '현재 설정',
-        after: WITHDRAWAL_LABELS[next] ?? next,
+        before: current ? WITHDRAWAL_LABELS[current] : '현재 설정',
+        after: next ? WITHDRAWAL_LABELS[next] : '현재 설정',
       };
     },
     apply: (params, ranked) => {
+      const next = ranked.candidate.strategy.withdrawalPolicy.accountWithdrawalPolicy;
+      // 후보가 정책을 지정하지 않았다면(= 현상 유지) 반영할 것이 없다. 여기서 기본값을
+      // 채워 넣으면 위 주석의 (2)가 그대로 재현된다.
+      if (next === undefined) {
+        return { applied: false, reason: '현재 인출 정책을 그대로 두는 후보입니다' };
+      }
       const withdrawalPlan = {
         ...(params.withdrawalPlan ?? {}),
-        accountWithdrawalPolicy: ranked.candidate.dimensions.withdrawalPolicy,
+        accountWithdrawalPolicy: next,
       };
       // 후보 생성기와 같은 처리(StrategyGenerator.strategyFor). 남겨 두면 새 정책과 짝이
       // 맞지 않는 사용자 지정 순서가 유령처럼 남는다.

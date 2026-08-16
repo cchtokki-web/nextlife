@@ -556,7 +556,15 @@ export function useScenarios() {
     setMigratedForTickers(etfTickers);
     const updated = scenarios.map(s => {
       const migrated = migrateParams(s.data, etfTickers);
-      return migrated === s.data ? s : { ...s, data: migrated };
+      // 참조가 아니라 «내용»으로 비교한다. migrateParams는 normalizeSimulationParams를 지나며
+      // 언제나 새 객체를 만들므로, 참조 비교는 «바뀐 것이 없어도» 항상 다르다고 답한다.
+      // 그러면 여기서 setScenarios가 매번 돌고, page.tsx가 `analysis.sourceParams ===
+      // activeParams`로 분석의 신선도를 판정하므로 되돌아온 사용자의 대시보드가 아무것도
+      // 건드리지 않았는데 「다시 분석해 주세요」로 바뀐다(PDF 버튼도 함께 잠긴다).
+      //
+      // 내용 비교가 안전한 이유: 정규화는 값에 대해 멱등이고(같은 입력 → 같은 출력),
+      // lastSavedParamsRef도 이미 정규화된 JSON 문자열을 저장한다.
+      return JSON.stringify(migrated) === JSON.stringify(s.data) ? s : { ...s, data: migrated };
     });
     // 변형 가능한 플래그를 쌓지 않고 결과만 비교한다 — 렌더 중 변수 변형은 컴파일러가 막는다.
     if (updated.some((next, i) => next !== scenarios[i])) {

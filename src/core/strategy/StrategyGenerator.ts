@@ -57,7 +57,12 @@ export interface StrategyGenerationDebug {
   cappedCandidateCount: number;
   /** 현상 유지(무조정) 후보의 id. 격자 조합 하나와 완전히 같으면 그 조합의 id가 된다. */
   baselineCandidateId: string;
-  /** 현상 유지 후보와 같아 생성을 건너뛴 격자 조합 수. 0 또는 1이다. */
+  /**
+   * 격자 조합 하나와 완전히 같아 «현상 유지 후보»를 걷어낸 횟수. 0 또는 1이다.
+   *
+   * 방향에 주의한다 — 건너뛰는 쪽은 격자가 아니라 현상 유지다. 격자 조합은 그대로 만들어지고
+   * 먼저 넣어 둔 baseline이 목록에서 빠진다. 그래서 이 수를 격자 쪽에서 빼면 안 된다.
+   */
   baselineDuplicateCount: number;
   omittedAxes: ReadonlyArray<{ axis: OmittedAxis; reason: string }>;
 }
@@ -310,8 +315,10 @@ export class StrategyGenerator {
     // usecases 계통의 RecommendationEngine은 같은 이유로 topCandidates에 `plan: null`을 넣어
     // 두었다 — 이쪽에만 빠져 있었다.
     //
-    // 먼저 넣는 이유는 둘이다. maxCandidates 상한에 잘려 나가지 않게 하고, 모든 키가 동률일 때
-    // id 알파벳 tie-break('baseline' < 'retire-…')가 현상 유지를 남기게 한다.
+    // 먼저 넣는 이유는 maxCandidates 상한이다 — 상한에 잘려 나가지 않게 한다(대신 격자
+    // 조합 하나가 밀린다). 모든 키가 동률일 때 현상 유지가 이기는 것은 «순서»가 아니라 «id»
+    // 덕이다: RecommendationEngine의 세 비교자가 마지막 키로 id.localeCompare를 쓰고
+    // 'baseline' < 'retire-…'이므로, 배열 어느 자리에 있든 결과가 같다.
     const baseline: StrategyCandidate = {
       id: BASELINE_CANDIDATE_ID,
       dimensions: baselineDimensions(seed),

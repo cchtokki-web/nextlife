@@ -184,6 +184,11 @@ describe('renderStrategyRecommendationSection', () => {
     reason: '목표 성공확률과 목표 적합도, 자산배분의 균형을 우선했습니다.',
   };
 
+  const stable: CandidateRecommendation = {
+    persona: 'STABLE', label: '안정형', candidate: candidate(2, 0.70),
+    reason: '목표 달성 확률을 가장 우선했습니다.',
+  };
+
   test('페르소나 카드와 달라지는 점을 싣는다', () => {
     const html = renderStrategyRecommendationSection({
       recommendations: [balanced], status: 'done', params, formatValue,
@@ -192,6 +197,39 @@ describe('renderStrategyRecommendationSection', () => {
     expect(html).toContain('균형형');
     expect(html).toContain('94%');
     expect(html).toContain('현재 계획에서 달라지는 점');
+  });
+
+  // ☆추천 선정 규칙은 selectPrimary 한 곳에만 있어야 한다. 예전에 이 파일이
+  // `find(persona === 'BALANCED')`로 직접 골랐는데, 그 규칙은 「목표를 지킨 최고 확률 카드」로
+  // 바뀌면서 화면에서 삭제됐다. 규칙이 두 벌이면 같은 계획을 두고 화면은 안정형에,
+  // 리포트는 균형형에 별을 붙인다 — 리포트는 화면보다 오래 남고 그대로 인용된다.
+  describe('☆추천 배지', () => {
+    const star = '&#9733; 추천';
+
+    test('엔진이 고른 카드에만 붙는다 — 균형형이 아니어도 마찬가지다', () => {
+      const html = renderStrategyRecommendationSection({
+        recommendations: [balanced, stable], primary: stable,
+        status: 'done', params, formatValue,
+      });
+
+      const balancedIndex = html.indexOf('균형형');
+      const stableIndex = html.indexOf('안정형');
+      const starIndex = html.indexOf(star);
+      expect(starIndex).toBeGreaterThan(stableIndex);
+      expect(balancedIndex).toBeLessThan(stableIndex);
+      // 별은 하나뿐이고, 그것이 안정형 쪽이다.
+      expect(html.split(star)).toHaveLength(2);
+    });
+
+    // 첫 카드로 폴백하면 엔진이 고르지 않은 카드가 「추천」으로 인쇄된다.
+    test('엔진이 고르지 않았으면 어떤 카드에도 붙이지 않는다', () => {
+      const html = renderStrategyRecommendationSection({
+        recommendations: [balanced, stable], primary: null,
+        status: 'done', params, formatValue,
+      });
+
+      expect(html).not.toContain(star);
+    });
   });
 
   // 「현재 계획 N% → 추천 전략 적용 M%」 요약 바는 화면과 함께 걷어냈다. 두 숫자 모두 같은

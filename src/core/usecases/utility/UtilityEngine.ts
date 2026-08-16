@@ -57,12 +57,22 @@ export function targetAnnualSpendingForYear(
   return target * spendingMultiplierForAge(params.spendingCurve, r.age) + r.healthcareSpending;
 }
 
+// 기대수명 시점의 연간 목표 생활비. targetAnnualSpendingForYear와 같은 규칙을 쓰되 연령대
+// 배수·의료비는 빼고 «화폐 기준»만 맞춘다 — 기말자산과 나눌 분모라서다.
+function annualNeedAtExpectancy(params: SimulationParams): number {
+  const { userProfile, inflationRate = 2, inflationMode = 'real' } = params;
+  const base = userProfile.targetMonthlySpending * 12;
+  if (inflationMode !== 'nominal') return base;
+  const yearIndex = Math.max(0, userProfile.expectancy - userProfile.currentAge);
+  return base * Math.pow(1 + inflationRate / 100, yearIndex);
+}
+
 // 목표 대비 소비 충족률(ratio)의 연도별 효용. 부족분은 볼록(convex) 페널티로 강하게 반영하고,
 // **목표를 채운 해는 만점**이다.
 //
 // 예전에는 초과분을 √로 완만하게 보상해 ratio 2.0에서 상한 1.3을 줬고, computeConsumptionRaw이
 // 그 1.3으로 나눠 정규화했다. 그래서 **목표를 정확히 100% 달성한 계획이 영원히 1/1.3 = 77%
-// (35점 만점에 27점)를 받고, 만점을 받으려면 목표의 두 배를 써야 했다.** 51인 페르소나에서
+// (35점 만점에 27점)를 받고, 만점을 받으려면 목표의 두 배를 써야 했다.** 당시 51인 하니스에서
 // 소비축 만점자가 0명이고 최댓값이 정확히 27점으로 상수화된 것이 그 결과다 — 사용자가 정한
 // 목표를 채점 곡선이 "아직 부족하다"고 판정한 셈이다.
 //
@@ -106,7 +116,7 @@ export function computeConsumptionRaw(
  *
  * 축이 두 구간으로 이어져 있다.
  *
- *   고갈: (고갈나이 − 은퇴나이) / 은퇴기간 × survivalBaseScore   → [0, S)
+ *   고갈: (고갈나이 − 은퇴나이) / 은퇴기간 × survivalBaseScore   → [0, S]
  *   생존: S + (1 − S) × min(완충연수 / fullBufferYears, 1)        → [S, 1]
  *
  * **예전에는 생존이 곧 만점(1)이었다.** 그래서 완충자본을 다 태운 계획과 두둑이 남긴 계획이
@@ -125,6 +135,16 @@ export function computeConsumptionRaw(
  * **몬테카를로를 쓰지 않는다.** raw는 result·params만으로 결정된다는 재채점 불변식
  * (utilityRaws.test.ts)이 이 축에도 그대로 적용되고, 후보마다 MC를 붙이면 216개 × 300시행이
  * 된다. 완충 여유는 그 대용이며, 대용인 만큼 정확한 성공률이 아니라 «방향»을 맞추는 것이 목표다.
+ *
+ * **분자와 분모의 화폐 기준을 맞춘다.** endingAssets는 기대수명 시점의 잔액이라
+ * inflationMode가 'nominal'이면 «그 시점의 명목 금액»이다. 분모를 오늘 기준 목표 생활비로
+ * 두면 완충연수가 (1+물가)^(기대수명−현재나이)배 부풀어, 2.5%·35년이면 약 2.4배가 된다.
+ * fullBufferYears가 5년에서 포화하므로 명목 모드의 거의 모든 계획이 이 축 만점을 받아,
+ * 이 축을 새로 넣은 목적(완충자본을 태운 계획과 남긴 계획을 구분한다)이 통째로 사라진다.
+ * targetAnnualSpendingForYear가 쓰는 것과 같은 규칙으로 분모를 기대수명 시점으로 옮긴다.
+ *
+ * 연령대별 배수(spendingCurve)와 의료비는 분모에 넣지 않는다. 완충은 정밀한 잔여수명 계산이
+ * 아니라 배율의 «크기»를 보는 대용치이고, 기대수명 이후에는 배수를 정의할 구간 자체가 없다.
  */
 function computeDepletionSafetyRaw(
   params: SimulationParams,
@@ -132,16 +152,17 @@ function computeDepletionSafetyRaw(
   cfg: UtilityConfig,
 ): number {
   const { retirementAge } = params.userProfile;
-  const base = clamp(cfg.survivalBaseScore, 0, 1);
+  // survivalBaseScore·fullBufferYears의 범위는 createUtilityConfig가 강제한다. 여기서
+  // clamp나 EPSILON으로 받아 주면 잘못된 설정이 오류 대신 «만점»으로 조용히 바뀐다.
+  const base = cfg.survivalBaseScore;
 
   if (result.depletionAge === null) {
-    const annualNeed = params.userProfile.targetMonthlySpending * 12;
+    const annualNeed = annualNeedAtExpectancy(params);
     // 목표 생활비가 0이면 완충 «연수»가 정의되지 않는다. 그때는 버틴 것 자체로 만점이다
     // — 나눌 분모가 없는 것이지 여유가 없는 것이 아니다.
     if (annualNeed <= 0) return 1;
     const bufferYears = Math.max(0, result.endingAssets) / annualNeed;
-    const fullBuffer = Math.max(cfg.fullBufferYears, Number.EPSILON);
-    return clamp(base + (1 - base) * clamp(bufferYears / fullBuffer, 0, 1), 0, 1);
+    return clamp(base + (1 - base) * clamp(bufferYears / cfg.fullBufferYears, 0, 1), 0, 1);
   }
 
   if (result.depletionAge <= retirementAge) return 0;
@@ -240,7 +261,7 @@ function bequestRatio(endingAssets: number, appropriateBalance: number): number 
 
 // **이 축을 몬테카를로 기반으로 바꾸려는 시도를 한 번 검토하고 접었다. 기록해 둔다.**
 //
-// 51인 페르소나에서 AI가 "생활비를 20% 더 쓰라"고 권한 이유가 이 축이었다: 결정론 기말자산이
+// 당시 51인 하니스에서 AI가 "생활비를 20% 더 쓰라"고 권한 이유가 이 축이었다: 결정론 기말자산이
 // 적정선의 수십 배라 exp 감쇠로 0점인데, 자산을 더 쓰면 그 벌점이 조금 풀린다. 효용 1~3점을
 // 벌자고 MC 성공률 15~35%p를 지불하는 거래였다. 그리고 그 "과다 잔여"는 중앙값 환상이다 —
 // 결정론 기말 45억인 계획의 MC p10 기말자산이 0원이었다.

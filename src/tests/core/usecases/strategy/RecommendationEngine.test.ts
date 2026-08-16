@@ -1,6 +1,5 @@
 import { describe, test, expect, vi } from 'vitest';
 import { makeYearlyResult as makeYearlyResultFixture } from '@/tests/fixtures/yearlyResult';
-import { allAxesLiveParams } from '@/tests/fixtures/allAxesLiveParams';
 import { SimulationEngine } from '@/core/usecases/SimulationEngine';
 import {
   recommendStrategy,
@@ -482,14 +481,25 @@ describe('recommendStrategy - 개선이 없을 때', () => {
       .toBeGreaterThanOrEqual(recommendation.currentUtility.score);
   });
 
+  // **두 픽스처를 함께 본다.** 개선 여지가 없는 픽스처 하나만 쓰면 recommendedUtility가
+  // currentUtility와 같은 객체라 양변이 자동으로 false가 되고, 단언이 `false === false`로
+  // 무너져 어떤 회귀도 잡지 못한다. 개선이 «있는» 쪽까지 함께 걸어야 두 방향이 다 잠긴다.
   test('improved는 recommendedUtility와 currentUtility의 비교와 일치한다', () => {
     const engine = new SimulationEngine();
     const fixed = noHeadroom();
-    const recommendation = recommendStrategy(fixed.params, engine, fixed.utilityConfig);
 
-    expect(recommendation.improved).toBe(
-      recommendation.recommendedUtility.score > recommendation.currentUtility.score
-    );
+    const cases = [
+      recommendStrategy(fixed.params, engine, fixed.utilityConfig),
+      recommendStrategy(paramsWithOptimizableHeadroom, engine),
+    ];
+
+    for (const recommendation of cases) {
+      expect(recommendation.improved).toBe(
+        recommendation.recommendedUtility.score > recommendation.currentUtility.score
+      );
+    }
+    // 전제 확인: 두 갈래가 실제로 갈린다. 둘 다 같은 쪽이면 위 루프는 한 방향만 검사한다.
+    expect(cases.map((item) => item.improved)).toEqual([false, true]);
   });
 
   test('개선이 없으면 현재 계획과의 격차가 없다', () => {

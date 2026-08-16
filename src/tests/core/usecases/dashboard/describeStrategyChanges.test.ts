@@ -2,6 +2,10 @@ import { describe, expect, test } from 'vitest';
 import type { SimulationParams } from '@/core/entities/types';
 import type { RankedStrategyCandidate } from '@/core/strategy/StrategyOptimizer';
 import { describeStrategyChanges } from '@/core/usecases/dashboard/describeStrategyChanges';
+import { applyStrategyToParams } from '@/core/usecases/dashboard/applyStrategyToParams';
+import { StrategyGenerator, type StrategyCandidate } from '@/core/strategy/StrategyGenerator';
+import { LegacySimulationAdapter } from '@/core/domain/input/LegacySimulationAdapter';
+import { initialParams } from '@/infrastructure/storage/localStore';
 import { makeParams, makeRanked } from './strategyFieldFixtures';
 
 // 이 함수의 출력은 화면의 추천 카드와 PDF 리포트가 **함께** 쓴다. 여기서 잠근 문구가
@@ -123,5 +127,49 @@ describe('describeStrategyChanges', () => {
     // 계약 테스트가 describe와 apply를 같은 입력으로 묶으려면 이 시그니처가 유지돼야 한다.
     const ranked: RankedStrategyCandidate = makeRanked({});
     expect(() => describeStrategyChanges(makeParams(), ranked, formatValue)).not.toThrow();
+  });
+});
+
+// **「현상 유지」 후보는 아무 변경도 말하지 않아야 한다.**
+//
+// baselineDimensions는 미지정 인출정책을 'GENERAL_FIRST'로 «적어 둔다» — 격자와 같은 어휘로
+// 라벨을 붙이기 위한 기본값이다. 인출 축이 그 dimensions를 읽으면, 아무것도 바꾸지 않는
+// 카드가 "자산 인출: 현재 설정 → 일반계좌 우선 인출"을 내걸고 반영 버튼이 그 값을 실제로
+// 저장한다. SimulationEngine은 accountWithdrawalPolicy가 «미지정일 때만» 기존 정기
+// 균등분할 지급 경로를 타므로, 그 저장은 카드가 보여 준 것과 다른 계획을 만든다.
+//
+// 픽스처가 아니라 실제 StrategyGenerator 출력을 쓴다 — 손으로 만든 후보는 dimensions와
+// strategy를 늘 일치시켜서, 정확히 이 어긋남을 재현하지 못한다.
+describe('현상 유지 후보', () => {
+  const rankedFrom = (candidate: StrategyCandidate): RankedStrategyCandidate =>
+    ({ ...makeRanked(), candidate } as RankedStrategyCandidate);
+
+  test('인출정책을 지정한 적 없는 사용자에게 인출 변경을 내걸지 않는다', () => {
+    const legacy = structuredClone(initialParams);
+    delete legacy.withdrawalPlan;
+    const input = LegacySimulationAdapter.fromLegacy(legacy);
+    const result = new StrategyGenerator().generate(input.profile, input.goals, input.strategy);
+    const baseline = result.candidates.find((item) => item.id === result.debug.baselineCandidateId)!;
+
+    // 전제 확인: dimensions에는 라벨용 기본값이 적혀 있고, 시뮬레이션된 전략에는 없다.
+    expect(baseline.dimensions.withdrawalPolicy).toBe('GENERAL_FIRST');
+    expect(baseline.strategy.withdrawalPolicy.accountWithdrawalPolicy).toBeUndefined();
+
+    const changes = describeStrategyChanges(makeParams({ withdrawalPlan: undefined }), rankedFrom(baseline), formatValue);
+
+    expect(changes.map((change) => change.label)).not.toContain('자산 인출');
+  });
+
+  test('반영해도 시뮬레이션하지 않은 인출정책을 저장하지 않는다', () => {
+    const legacy = structuredClone(initialParams);
+    delete legacy.withdrawalPlan;
+    const input = LegacySimulationAdapter.fromLegacy(legacy);
+    const result = new StrategyGenerator().generate(input.profile, input.goals, input.strategy);
+    const baseline = result.candidates.find((item) => item.id === result.debug.baselineCandidateId)!;
+
+    const params = makeParams({ withdrawalPlan: undefined });
+    const applied = applyStrategyToParams(params, rankedFrom(baseline));
+
+    expect(applied.params.withdrawalPlan?.accountWithdrawalPolicy).toBeUndefined();
   });
 });

@@ -61,15 +61,28 @@ describe('SimulationEngine - 사적연금 정기 인출 상한', () => {
     expect(cashPeak).toBeLessThan(1_000_000);
   });
 
+  // 잔액이 작으면 균등분할액이 필요액을 넘지 못해 상한 자체가 발동하지 않는다. 그래서
+  // 「잉여가 없다」는 상한과 무관하게 성립하고, 이 테스트만으로는 상한을 검증하지 못한다.
+  // 검증하는 것은 그 옆의 성질이다: 잔액이 모자라면 «있는 만큼만» 나가고, 없는 돈을
+  // 인출한 것처럼 세지 않는다(총 인출액이 초기 잔액을 넘지 않는다).
   test('연금 잔액이 필요액에 못 미치면 있는 만큼만 쓰고 인출을 부풀리지 않는다', () => {
+    const balance = 30_000_000;
     const result = engine.runSingle(params({
       privatePensions: [
-        { id: 'irp', type: 'irp', balance: 30_000_000, monthlyContribution: 0, annualReturn: 4, currency: 'KRW' },
+        { id: 'irp', type: 'irp', balance, monthlyContribution: 0, annualReturn: 4, currency: 'KRW' },
       ],
     }));
 
     const cashPeak = Math.max(...result.yearlyResults.map((row) => row.cashAssets));
     expect(cashPeak).toBeLessThan(1_000_000);
+
+    // 연 4% 수익이 붙으므로 인출 총액은 초기 잔액보다 클 수 있지만, 무한정은 아니다.
+    // 잔액이 다 나가고 나면 인출도 멈춰야 한다.
+    const totalDrawn = result.yearlyResults.reduce((sum, row) => sum + row.privatePensionIncome, 0);
+    expect(totalDrawn).toBeGreaterThan(0);
+    expect(totalDrawn).toBeLessThan(balance * 3);
+    const lastYear = result.yearlyResults[result.yearlyResults.length - 1];
+    expect(lastYear.pensionAssets).toBeGreaterThanOrEqual(0);
   });
 
   // 상한이 하한을 침범하면 안 된다. 필요액이 균등분할액보다 큰 구간에서는 종전과 같이
@@ -82,6 +95,51 @@ describe('SimulationEngine - 사적연금 정기 인출 상한', () => {
     const firstYear = result.yearlyResults[0];
     // 6억 ÷ 360개월 ≈ 월 167만원, 연 2,000만원 수준. 상한을 걸어도 이 규모는 그대로 나와야 한다.
     expect(firstYear.privatePensionIncome).toBeGreaterThan(15_000_000);
+  });
+
+  // **상한이 하한을 침범하지 않는다는 것을 «생활비»로 확인한다.**
+  //
+  // 위 세 테스트는 전부 「잉여가 없다」(cashPeak가 작다)를 본다. 그 방향만 보면 상한을 너무
+  // 세게 걸어 «덜 빼는» 쪽으로 틀렸을 때 전부 통과한다 — 잉여는 더 줄어들 뿐이다. 그래서
+  // 반대 방향을 따로 잠근다: 사적연금이 유일한 재원인 계획에서도 목표 생활비가 채워지는가.
+  //
+  // 다만 이 단언이 세금 그로스업(`필요액 ÷ (1 - 세율)`)의 회귀 가드는 «아니다». 확인해 보면
+  // 그 나눗셈을 지워도 생활비는 그대로 채워진다 — Funding Gap 경로가 부족분을 다시 메우기
+  // 때문이다. 그로스업이 실제로 바꾸는 것은 잉여와 세금이며, 그쪽은 아래 다계좌 테스트가
+  // 잡는다(그로스업을 지우면 그 테스트가 깨진다).
+  test('상한을 걸어도 목표 생활비가 모자라지 않는다', () => {
+    const result = engine.runSingle(params({
+      assets: [],
+      // 균등분할액이 필요액을 넘어야 상한 구간에 들어간다. 넘지 않으면 상한 자체가 돌지 않는다.
+      privatePensions: [
+        { id: 'irp', type: 'irp', balance: 2_000_000_000, monthlyContribution: 0, annualReturn: 4, currency: 'KRW' },
+      ],
+    }));
+
+    const retired = result.yearlyResults.filter((row) => row.age >= 60);
+    expect(retired.length).toBeGreaterThan(0);
+    for (const row of retired) {
+      // 목표 3,500,000 × 12. 물가 0%·실질 모드라 전 구간 같은 금액이다.
+      expect(row.spending).toBeCloseTo(42_000_000, -4);
+    }
+  });
+
+  // **여러 계좌가 필요액을 «공유»한다.** 계좌마다 필요액을 새로 주면 계좌 수만큼 중복
+  // 인출되어, 같은 6억이라도 계좌를 쪼갠 사용자만 연금을 두 배로 빼게 된다.
+  // 기존 테스트는 전부 계좌 1개짜리라 이 갈래를 한 번도 지나지 않는다(기본 시나리오는 2개다).
+  test('계좌를 쪼개도 합계 인출액이 같다', () => {
+    const one = engine.runSingle(params());
+    const two = engine.runSingle(params({
+      privatePensions: [
+        { id: 'irp-a', type: 'irp', balance: 300_000_000, monthlyContribution: 0, annualReturn: 4, currency: 'KRW' },
+        { id: 'irp-b', type: 'irp', balance: 300_000_000, monthlyContribution: 0, annualReturn: 4, currency: 'KRW' },
+      ],
+    }));
+
+    for (const [index, row] of one.yearlyResults.entries()) {
+      expect(two.yearlyResults[index].privatePensionIncome).toBeCloseTo(row.privatePensionIncome, -3);
+    }
+    expect(two.endingAssets).toBeCloseTo(one.endingAssets, -3);
   });
 
   // 정책을 지정한 경로는 이 코드가 아예 돌지 않는다. 숫자가 한 자리도 변하면 안 된다.

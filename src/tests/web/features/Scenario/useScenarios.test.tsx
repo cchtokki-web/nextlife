@@ -246,7 +246,7 @@ describe('useScenarios — 로그인', () => {
   test('계정 기록이 실패해도 화면의 선택은 그대로다', async () => {
     signedIn();
     localStorage.setItem(KEY_NAME, 'KEY123');
-    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string, _init?: RequestInit) => {
       if (url === '/api/user/active-scenario') throw new Error('offline');
       if (url === '/api/scenarios') {
         return { ok: true, json: async () => ({ data: twoScenarios, lastActiveScenarioId: 's1' }) } as unknown as Response;
@@ -502,7 +502,7 @@ describe('useScenarios — 로그인', () => {
   test('이메일 전송이 실패하면 같은 키로 재시도할 수 있다', async () => {
     signedIn();
     let sendShouldFail = true;
-    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string, _init?: RequestInit) => {
       if (url === '/api/user/send-backup-key') {
         return sendShouldFail
           ? { ok: false, status: 429, json: async () => ({ error: '너무 많은 요청입니다.' }) } as unknown as Response

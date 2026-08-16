@@ -166,23 +166,38 @@ describe('RecommendationEngine', () => {
 describe('primary 선정', () => {
   const engine = new RecommendationEngine();
 
+  // **목표를 지킨 카드가 «균형형 카드가 아니어야» 이 테스트가 뜻을 갖는다.**
+  //
+  // 예전 규칙은 `find(persona === 'BALANCED')` 고정이었다. 목표를 지킨 카드가 균형형 자리에
+  // 앉으면 옛 규칙도 같은 답을 내므로 두 가설이 갈리지 않는다. 그래서 균형형 자리에
+  // «가장 높은 목표확률 + 목표 미달» 카드를 앉히고, 목표를 지킨 카드는 여유형 자리에 둔다.
+  //
+  // 여유형 자리에 앉히려면 «자격»과 «비교자»를 둘 다 맞춰야 한다: 여유형은 GROWTH +
+  // FRONT_LOADED 후보만 받고(qualifies), 그중 spendingSuccessProbability로 고른다.
+  // 하나라도 빠뜨리면 그 카드가 추천 목록에 아예 오르지 못해, 균형형 하나만 남은 목록에서
+  // 「목표를 지킨 카드를 골랐다」를 검증할 수 없다.
   test('확률이 가장 높아도 상위 목표를 놓친 카드는 추천하지 않는다', () => {
     const goals = goalsOf('EARLY_RETIREMENT', 'ASSET_SURVIVAL');
     const candidates = [
       candidate({
-        id: 'stable', allocation: 'CONSERVATIVE', spending: 'FIXED',
-        goalProbability: 0.7, survivalProbability: 0.99, p10: 90,
+        id: 'misses-goal', allocation: 'BALANCED', spending: 'FIXED',
+        goalProbability: 0.7, spendingProbability: 0.2, survivalProbability: 0.99, p10: 90,
         goals, missed: ['EARLY_RETIREMENT'],
       }),
       candidate({
-        id: 'balanced', allocation: 'BALANCED', spending: 'FIXED',
-        goalProbability: 0.47, goals, missed: [],
+        id: 'keeps-goal', allocation: 'GROWTH', spending: 'FRONT_LOADED',
+        goalProbability: 0.47, spendingProbability: 0.99,
+        goals, missed: [],
       }),
     ];
 
     const result = engine.recommend(candidates, goals);
 
-    expect(result.primary?.candidate.candidate.id).toBe('balanced');
+    expect(result.primary?.candidate.candidate.id).toBe('keeps-goal');
+    // 전제 확인: 탈락한 쪽이 실제로 «균형형 자리»를 차지했고 목표확률도 더 높다.
+    // 이 둘이 무너지면 위 단언은 옛 규칙과 구별되지 않는 채로 통과한다.
+    expect(result.recommendations.find((item) => item.persona === 'BALANCED')?.candidate.candidate.id)
+      .toBe('misses-goal');
   });
 
   test('모든 카드가 목표를 지키면 확률이 가장 높은 카드를 추천한다', () => {
@@ -226,20 +241,22 @@ describe('primary 선정', () => {
     expect(result.primary?.candidate.candidate.id).toBe('stable');
   });
 
+  // 위와 같은 이유로 «확률이 가장 높은 카드»를 균형형이 아닌 쪽에 둔다. 균형형에 최고
+  // 확률을 주면 옛 「균형형 고정」 규칙도 같은 답을 내 이 단언이 아무것도 구별하지 못한다.
   test('선택한 목표가 없으면 확률이 가장 높은 카드를 추천한다', () => {
     const candidates = [
       candidate({
         id: 'stable', allocation: 'CONSERVATIVE', spending: 'FIXED',
-        goalProbability: 0.3, survivalProbability: 0.99, p10: 90,
+        goalProbability: 0.8, survivalProbability: 0.99, p10: 90,
       }),
       candidate({
-        id: 'balanced', allocation: 'BALANCED', spending: 'FIXED', goalProbability: 0.8,
+        id: 'balanced', allocation: 'BALANCED', spending: 'FIXED', goalProbability: 0.3,
       }),
     ];
 
     const result = engine.recommend(candidates, goalsOf());
 
-    expect(result.primary?.candidate.candidate.id).toBe('balanced');
+    expect(result.primary?.candidate.candidate.id).toBe('stable');
   });
 
   // 모든 키가 동률일 때 승자를 후보 id 알파벳 순으로 정하지 않는다는 회귀 테스트.

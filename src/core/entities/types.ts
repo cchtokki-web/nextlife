@@ -433,15 +433,15 @@ export interface SimulationResult {
   // 62%밖에 못 쓴다는 뜻으로 읽히지만, 실제로는 자산 인출을 포함해 목표의 80%를 쓰고 있었다.
   // 이름과 분자·분모를 함께 드러내야 한다(아래 두 필드).
   goalAchievementRate: number;
+  // 아래 두 필드는 엔진이 항상 채우지만 선택적이다 — calculatedTargetSpending·utility와 같은
+  // 관례로, 손으로 만든 결과 객체(테스트 픽스처 등)에는 이 값이 존재하지 않는 것이 정직하다.
+  // 화면은 없으면 비율만 보여준다.
+  //
   // goalAchievementRate의 분자: 은퇴 후 연평균 월 «고정»소득(배당 + 국민연금 + 기타, 세후).
   // 사적연금 인출은 빠진다 — 연금계좌라는 자산을 헐어 쓰는 것이라 일반자산 매도와 실질이
   // 같고, 이 지표는 자산 매도·인출분을 제외한다고 스스로 선언한다.
-  // goalAchievementRate의 분모: 은퇴 후 연평균 월 목표 생활비(연령대 배수·물가·의료비 반영).
-  //
-  // 엔진은 항상 채우지만 선택적이다 — calculatedTargetSpending·utility와 같은 관례로,
-  // 손으로 만든 결과 객체(테스트 픽스처 등)에는 이 값이 존재하지 않는 것이 정직하다.
-  // 화면은 없으면 비율만 보여준다.
   avgRetirementMonthlyIncome?: number;
+  // goalAchievementRate의 분모: 은퇴 후 연평균 월 목표 생활비(연령대 배수·물가·의료비 반영).
   avgTargetMonthlySpending?: number;
   calculatedTargetSpending?: number; // 역산된 목표 생활비 (max_sustainable 모드 등에서 사용)
   retirementAssetsAtRetirement: number; // 은퇴 시작 시점 총자산 (해석/배너 표시용)
@@ -479,7 +479,7 @@ export interface UtilityConfig {
                                               // privatePensionTaxEfficiency 서브점수가 0이 됨 (기본 0.10)
   appropriateBequestMonths: number; // 사망 시 적정 총자산 = 월 목표생활비 * N개월 (기본 24)
   // 기대수명까지 «버티기는 했지만» 완충자본이 0인 계획의 depletionSafety 원점수 (기본 0.7).
-  // 고갈 구간 [0, S)와 생존 구간 [S, 1]의 경계이며, 두 구간이 여기서 이어진다.
+  // 고갈 구간 [0, S]와 생존 구간 [S, 1]의 경계이며, 두 구간이 여기서 이어진다.
   survivalBaseScore: number;
   // depletionSafety가 만점이 되는 완충 여유(연). 기말자산 ÷ 연 목표생활비가 이 값에 도달하면
   // 그 위로는 더 오르지 않는다 — 완충은 변동성을 견디는 힘이지 많을수록 좋기만 한 것이

@@ -158,8 +158,10 @@ export function MonteCarloSection({
                 <dd className="font-semibold">{formatValue(monteCarlo.endingAssets.p90)}</dd>
               </div>
             </dl>
-            {/* 「변동 없음 가정」 비교는 위 volatility-drag 섹션으로 옮겼다 — 무료 사용자에게
-                가장 필요한 설명이었기 때문이다. 여기 남기면 같은 문장이 두 번 나온다. */}
+            {/* 이 표에 「변동 없음 가정」을 나란히 놓지 않는다. 그 비교는 무료 사용자에게 가장
+                필요한 설명이라 volatility-drag 섹션이 맡고 있고, 여기서 되풀이하면 같은 문장이
+                한 화면에 두 번 나온다. 중앙값이 두 섹션에 함께 나오는 것은 의도다 — 저쪽은
+                「변동 없음 대비 얼마나 줄었나」의 한쪽 항이고, 이 표는 분포의 가운데다. */}
             {monteCarlo.depletion.count > 0 && (
               <p className="mt-1 text-xs text-danger">
                 자산이 먼저 바닥난 경우가 {monteCarlo.depletion.count.toLocaleString()}회 있었고,
