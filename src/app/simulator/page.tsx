@@ -15,6 +15,7 @@ import { formatCurrencyUnit, renderRiskAlertsSection, renderStrategyRecommendati
 import { describePrivatePensionLabel } from '../../web/features/Pdf/describePrivatePension';
 import { describeInvestmentAssetLabel } from '../../web/features/Pdf/describeInvestmentAsset';
 import { describeIsaAccountLabel } from '../../web/features/Pdf/describeIsaAccount';
+import { REPORT_STYLES } from '../../web/features/Pdf/reportStyles';
 import { computePlanConfidence } from '../../core/usecases/dashboard/computePlanConfidence';
 import { computeKeyLevers } from '../../core/usecases/dashboard/computeKeyLevers';
 import { computePensionGapRisk } from '../../core/usecases/dashboard/computePensionGapRisk';
@@ -206,6 +207,15 @@ export default function Home() {
 
       const formatValuePrint = (val: number): string => formatValue(val);
 
+      // 시계는 한 번만 읽는다. 예전에는 출력 일시와 저작권 연도가 각각 new Date()를 불러,
+      // 자정을 걸치면 한 문서 안에서 두 값이 다른 날짜를 가리킬 수 있었다.
+      // 아래 조립부에 넘길 때는 이미 포맷된 문자열로 넘긴다 — toLocaleString()은 실행
+      // 환경의 로케일에 따라 결과가 달라져, 조립을 순수 함수로 뽑은 뒤 테스트에서
+      // 재현할 수 없게 된다.
+      const generatedAt = new Date();
+      const generatedAtText = generatedAt.toLocaleString();
+      const copyrightYear = generatedAt.getFullYear();
+
       // 「NextLife 추천」. 화면의 추천 카드와 같은 데이터·같은 문구를 쓴다.
       //
       // 예전 이 자리에는 레거시 「🤖 AI 추천 전략」 체크리스트와 평생 효용 점수 페이지가
@@ -298,82 +308,7 @@ export default function Home() {
       container.style.width = '800px';
 
       const styleBlock = document.createElement('style');
-      styleBlock.innerHTML = `
-        .pdf-page {
-          width: 794px;
-          height: 1123px;
-          padding: 50px 50px 40px 50px;
-          box-sizing: border-box;
-          background-color: #ffffff;
-          color: #1e293b;
-          font-family: 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif;
-          display: flex;
-          flex-direction: column;
-          justify-content: space-between;
-          position: relative;
-        }
-        .pdf-content {
-          flex-grow: 1;
-          min-height: 0;
-        }
-        .pdf-data-table th,
-        .pdf-data-table td {
-          padding: 4px 5px !important;
-          line-height: 1.15;
-        }
-        .pdf-footer {
-          font-size: 10px;
-          color: #94a3b8;
-          border-top: 1px solid #cbd5e1;
-          padding-top: 10px;
-          display: flex;
-          justify-content: space-between;
-        }
-        .pdf-page ul {
-          list-style: disc;
-        }
-        .summary-grid {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          column-gap: 22px;
-          margin-top: 15px;
-        }
-        .summary-item {
-          display: grid;
-          grid-template-columns: minmax(0, 1fr) auto;
-          grid-template-rows: auto minmax(30px, auto);
-          column-gap: 14px;
-          min-height: 78px;
-          padding: 10px 0;
-          border-bottom: 1px dashed #e2e8f0;
-          box-sizing: border-box;
-        }
-        .summary-label {
-          margin: 0;
-          font-size: 13.5px;
-          font-weight: 600;
-          color: #475569;
-          line-height: 1.35;
-        }
-        .summary-note {
-          margin: 5px 0 0;
-          font-size: 9.5px;
-          font-weight: 400;
-          color: #94a3b8;
-          line-height: 1.45;
-        }
-        .summary-value {
-          grid-column: 2;
-          grid-row: 1 / span 2;
-          align-self: center;
-          max-width: 235px;
-          font-size: 15px;
-          color: #0f172a;
-          font-weight: 700;
-          line-height: 1.35;
-          text-align: right;
-        }
-      `;
+      styleBlock.innerHTML = REPORT_STYLES;
       container.appendChild(styleBlock);
 
       // **페이지·섹션 번호를 리터럴로 쓰지 않는다.**
@@ -422,7 +357,7 @@ export default function Home() {
         <div class="pdf-page">
           <div class="pdf-content">
             <h1 style="font-size: 26px; border-bottom: 3px solid #3b82f6; padding-bottom: 12px; color: #1e3a8a; margin-top: 0;">NextLife 은퇴 자산 시뮬레이션 결과 리포트</h1>
-            <p style="font-size: 11px; color: #64748b; margin-bottom: 25px;">출력 일시: ${new Date().toLocaleString()}</p>
+            <p style="font-size: 11px; color: #64748b; margin-bottom: 25px;">출력 일시: ${generatedAtText}</p>
             
             <h2 style="margin-top: 0; font-size: 17px; color: #0f172a; border-bottom: none; padding-bottom: 0; margin-bottom: 12px;">${nextSection()}. 현재 계획 진단</h2>
             ${planVerdictSectionHtml}
@@ -665,7 +600,7 @@ export default function Home() {
             <div style="margin-top: 25px; font-size: 10px; color: #64748b; border-top: 1px solid #cbd5e1; padding-top: 10px;">
               <p style="margin: 0 0 4px 0;"><strong>중요 투자 및 시뮬레이션 법적 면책 고지</strong></p>
               <p style="margin: 0; line-height: 1.4;">본 NextLife 웹 서비스에서 산출 및 표시되는 모든 결과는 사용자가 가정치와 과거 시장 데이터에 기반한 시뮬레이션 결과입니다. 이는 미래의 실제 자산 가치 및 수익률을 보장하지 않습니다. 실제 투자 결정 시에는 반드시 전문 공인 재무 설계사와 상의하시기 바랍니다.</p>
-              <p style="margin: 4px 0 0 0;">&copy; ${new Date().getFullYear()} NextLife. Created by TokkiLab. All rights reserved.</p>
+              <p style="margin: 4px 0 0 0;">&copy; ${copyrightYear} NextLife. Created by TokkiLab. All rights reserved.</p>
             </div>
           `;
         }
@@ -732,7 +667,7 @@ export default function Home() {
             <div style="margin-top: 25px; font-size: 10px; color: #64748b; border-top: 1px solid #cbd5e1; padding-top: 10px;">
               <p style="margin: 0 0 4px 0;"><strong>중요 투자 및 시뮬레이션 법적 면책 고지</strong></p>
               <p style="margin: 0; line-height: 1.4;">본 NextLife 웹 서비스에서 산출 및 표시되는 모든 결과는 사용자가 가정치와 과거 시장 데이터에 기반한 시뮬레이션 결과입니다. 이는 미래의 실제 자산 가치 및 수익률을 보장하지 않습니다. 실제 투자 결정 시에는 반드시 전문 공인 재무 설계사와 상의하시기 바랍니다.</p>
-              <p style="margin: 4px 0 0 0;">&copy; ${new Date().getFullYear()} NextLife. Created by TokkiLab. All rights reserved.</p>
+              <p style="margin: 4px 0 0 0;">&copy; ${copyrightYear} NextLife. Created by TokkiLab. All rights reserved.</p>
             </div>
           `;
         }
