@@ -111,6 +111,36 @@ export function MonteCarloSection({
           </dl>
         </section>
 
+        {/* **변동성 손실은 무료로 보여준다.**
+            충격의 기대값이 0이어도 복리로 굴리면 기하평균 < 산술평균이라 중앙값이 결정론
+            결과보다 낮게 나온다. 이건 버그가 아니라 "연 7%가 30년 내리 유지되는 경우는 거의
+            없다"의 정량적 실체다.
+
+            예전에는 이 설명이 아래 Pro 분포 안에 있었다. 그 사이 자산 추이 차트에서 중앙값
+            선을 걷어냈고(계열이 일곱 개라 점선끼리 겹쳤다), 그래서 무료 사용자는 낙관적인
+            결정론 곡선만 보고 그것을 기대값으로 읽게 됐다.
+
+            방향만 말하지 않고 «두 값을 나란히» 놓는다 — 얼마나 낮은지를 모르면 사용자가 할
+            수 있는 일이 없다. p50 하나를 무료로 여는 셈이지만, 차트의 「나쁜 경우」 선이
+            이미 연도별 p10을 무료로 보여주고 있어 분위수 자체가 Pro 전용인 적은 없었다. */}
+        <section data-testid="volatility-drag">
+          <h4 className="mb-2 text-sm font-semibold">시장이 흔들리면 얼마나 줄어드나</h4>
+          <dl className="grid grid-cols-2 gap-3 text-xs">
+            <div>
+              <dt className="text-foreground-muted">변동 없음 가정</dt>
+              <dd className="font-semibold">{formatValue(monteCarlo.deterministicEndingAssets)}</dd>
+            </div>
+            <div>
+              <dt className="text-foreground-muted">흔들릴 때 중앙값</dt>
+              <dd className="font-semibold">{formatValue(monteCarlo.endingAssets.p50)}</dd>
+            </div>
+          </dl>
+          <p className="mt-2 text-xs text-foreground-muted">
+            같은 평균 수익률이라도 해마다 오르내리면 결과는 이만큼 낮아집니다. 자산 추이 차트의
+            총 자산액 곡선은 흔들리지 않는다고 가정한 값이라 왼쪽에 해당합니다.
+          </p>
+        </section>
+
         {isPro && (
           <section data-testid="monte-carlo-distribution">
             <h4 className="mb-2 text-sm font-semibold">기대수명 시점 잔여자산 분포</h4>
@@ -128,13 +158,8 @@ export function MonteCarloSection({
                 <dd className="font-semibold">{formatValue(monteCarlo.endingAssets.p90)}</dd>
               </div>
             </dl>
-            {/* **변동성 손실을 숨기지 않는다.** 충격의 기대값이 0이어도 복리로 굴리면
-                기하평균 < 산술평균이라 중앙값이 결정론 결과보다 낮게 나온다. 이건 버그가
-                아니라 "연 7%가 30년 내리 유지되는 경우는 거의 없다"의 정량적 실체다. */}
-            <p className="mt-2 text-xs text-foreground-muted">
-              변동 없음 가정: {formatValue(monteCarlo.deterministicEndingAssets)} — 수익률이 매년 흔들리면
-              같은 평균 수익률이라도 결과 중앙값은 이보다 낮아집니다.
-            </p>
+            {/* 「변동 없음 가정」 비교는 위 volatility-drag 섹션으로 옮겼다 — 무료 사용자에게
+                가장 필요한 설명이었기 때문이다. 여기 남기면 같은 문장이 두 번 나온다. */}
             {monteCarlo.depletion.count > 0 && (
               <p className="mt-1 text-xs text-danger">
                 자산이 먼저 바닥난 경우가 {monteCarlo.depletion.count.toLocaleString()}회 있었고,

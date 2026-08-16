@@ -99,14 +99,32 @@ describe('MonteCarloSection', () => {
     expect(screen.getByText(/고정 시드 1/)).toBeInTheDocument();
   });
 
-  // **변동성 손실을 숨기지 않는다.**
-  // 중앙값이 결정론 결과보다 낮은 것은 버그가 아니라 이 기능의 존재 이유다.
-  test('중앙값과 변동 없음 가정을 나란히 보여준다', () => {
+  // **변동성 손실을 숨기지 않는다 — 무료 사용자에게도.**
+  //
+  // 중앙값이 결정론 결과보다 낮은 것은 버그가 아니라 이 기능의 존재 이유다. 그런데 이
+  // 설명이 Pro 게이팅 안에 있어, 무료 사용자는 자산 추이 차트의 낙관적인 결정론 곡선만
+  // 보고 그것을 기대값으로 읽었다. 차트에서 중앙값 선을 걷어내면서 그 창구가 아예 사라졌다.
+  //
+  // 방향("낮아집니다")만으로는 부족하다. 얼마나 낮은지를 모르면 사용자가 할 수 있는 일이
+  // 없다. 그래서 두 값을 «수치로» 나란히 놓는다.
+  test('변동성 손실을 무료 사용자에게도 두 수치로 보여준다', () => {
+    render(
+      <MonteCarloSection status="done" monteCarlo={makeMonteCarlo()} formatValue={formatValue} isPro={false} />
+    );
+
+    const drag = screen.getByTestId('volatility-drag');
+    expect(drag).toHaveTextContent(/변동 없음 가정/);
+    // 결정론 25억 vs 중앙값 18억 — 픽스처의 두 값이 모두 인쇄되어야 격차가 보인다.
+    expect(drag).toHaveTextContent(formatValue(2_500_000_000));
+    expect(drag).toHaveTextContent(formatValue(1_800_000_000));
+  });
+
+  test('Pro 사용자에게도 같은 설명을 보여준다', () => {
     render(
       <MonteCarloSection status="done" monteCarlo={makeMonteCarlo()} formatValue={formatValue} isPro={true} />
     );
 
-    expect(screen.getByText(/변동 없음 가정/)).toBeInTheDocument();
+    expect(screen.getByTestId('volatility-drag')).toBeInTheDocument();
   });
 
   test('무료 사용자에게도 성공률은 보여준다', () => {
