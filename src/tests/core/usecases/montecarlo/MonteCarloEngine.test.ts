@@ -78,13 +78,18 @@ describe('runMonteCarlo', () => {
     expect(mc.successRate).toBeLessThanOrEqual(1);
   });
 
-  test('모든 해에서 p10 ≤ p50 ≤ p90이다', () => {
-    const mc = runMonteCarlo(params(), engine, config());
+  // 예전에는 「모든 해에서 p10 ≤ p50 ≤ p90」으로 연도별 분위수를 지켰다. p50/p90이 사라지면서
+  // 그 단언이 성립하지 않게 되어, σ=0에서 하방이 결정론 곡선과 «정확히 일치»함을 대신 고정한다.
+  // 근사가 아니라 등식이므로 위 회귀 장치보다 강하다 — 분위수 계산이 한 자리라도 어긋나면 깨진다.
+  test('변동성이 0이면 연도별 하방이 결정론 자산 곡선과 일치한다', () => {
+    const deterministic = engine.runSingle(params());
+    const mc = runMonteCarlo(params(), engine, config({ annualStdDev: 0, trials: 10 }));
 
-    expect(mc.assetBand.length).toBeGreaterThan(0);
-    for (const year of mc.assetBand) {
-      expect(year.p10).toBeLessThanOrEqual(year.p50);
-      expect(year.p50).toBeLessThanOrEqual(year.p90);
+    expect(mc.assetDownside.length).toBeGreaterThan(0);
+    for (const year of mc.assetDownside) {
+      const row = deterministic.yearlyResults.find((r) => r.age === year.age);
+      expect(row, `${year.age}세 결정론 결과가 없다`).toBeDefined();
+      expect(year.p10).toBeCloseTo(row!.totalAssets, 6);
     }
   });
 
@@ -107,12 +112,12 @@ describe('runMonteCarlo', () => {
     expect(mc.endingAssets.p50).toBeLessThan(mc.deterministicEndingAssets);
   });
 
-  test('연도별 밴드는 시뮬레이션 연수와 같은 길이다', () => {
+  test('연도별 하방은 시뮬레이션 연수와 같은 길이다', () => {
     const mc = runMonteCarlo(params(), engine, config({ trials: 20 }));
 
-    expect(mc.assetBand).toHaveLength(85 - 55 + 1);
-    expect(mc.assetBand[0].age).toBe(55);
-    expect(mc.assetBand[mc.assetBand.length - 1].age).toBe(85);
+    expect(mc.assetDownside).toHaveLength(85 - 55 + 1);
+    expect(mc.assetDownside[0].age).toBe(55);
+    expect(mc.assetDownside[mc.assetDownside.length - 1].age).toBe(85);
   });
 
   test('시행 수와 시드, 변동성을 결과에 남긴다', () => {

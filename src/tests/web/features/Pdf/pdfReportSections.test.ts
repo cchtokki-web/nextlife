@@ -434,9 +434,9 @@ describe('renderPlanVerdictSection', () => {
     goalSuccessProbability: successRate,
     goalFailure: NO_GOAL_FAILURE, goalConditions: LEGACY_GOAL_CONDITIONS,
     plannedMonthlySpending: 3000000,
-    endingAssets: { p10, p50, p90: 977090000, mean: 300000000 },
-    assetBand: [], depletion: { count: 630, earliestAge: 72, medianAge: 84 },
-    deterministicEndingAssets: 0, worstDecilePath: [],
+    endingAssets: { p10, p50, p90: 977090000 },
+    assetDownside: [], depletion: { count: 630, earliestAge: 72, medianAge: 84 },
+    deterministicEndingAssets: 0,
   });
   const render = (successRate?: number, monteCarlo?: MonteCarloResult) =>
     renderPlanVerdictSection({
@@ -521,15 +521,14 @@ describe('renderMonteCarloSection', () => {
     goalSuccessProbability: 0.81,
     goalFailure: NO_GOAL_FAILURE, goalConditions: LEGACY_GOAL_CONDITIONS,
     plannedMonthlySpending: 3000000,
-    endingAssets: { p10: 200000000, p50: 1800000000, p90: 5200000000, mean: 2100000000 },
-    assetBand: [
-      { age: 60, p10: 400000000, p50: 480000000, p90: 560000000 },
-      { age: 70, p10: 350000000, p50: 900000000, p90: 1600000000 },
-      { age: 90, p10: 200000000, p50: 1800000000, p90: 5200000000 },
+    endingAssets: { p10: 200000000, p50: 1800000000, p90: 5200000000 },
+    assetDownside: [
+      { age: 60, p10: 400000000 },
+      { age: 70, p10: 350000000 },
+      { age: 90, p10: 200000000 },
     ],
     depletion: { count: 130, earliestAge: 79, medianAge: 86 },
     deterministicEndingAssets: 2500000000,
-    worstDecilePath: [],
   };
 
   const sequenceRisk: SequenceRiskResult = {

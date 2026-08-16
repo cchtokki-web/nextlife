@@ -1,5 +1,4 @@
 import type { GoalSuccessConditions } from '../usecases/goals/goalSuccessConditions';
-import { SimulationYearlyResult } from './types';
 
 // 몬테카를로 시뮬레이션의 입력과 결과.
 //
@@ -17,11 +16,11 @@ export interface MonteCarloConfig {
   annualStdDev: number;
 }
 
-export interface MonteCarloBandYear {
+// 연도별 하방 지점. p50/p90도 함께 들고 있었지만 차트가 세 선에서 한 선으로 줄면서
+// 소비처가 없어졌다 — 계산해서 워커 경계 너머로 실어 보내는 비용만 남아 있었다.
+export interface MonteCarloDownsideYear {
   age: number;
   p10: number;
-  p50: number;
-  p90: number;
 }
 
 // goalSuccessProbability의 세 판정 조건별 실패 시행 수. 판정식은 runMonteCarlo 한 곳에만
@@ -110,9 +109,12 @@ export interface MonteCarloResult {
   // 역산한 지속가능액(예: 월 223만원)이다(freezeSpendingPlan.ts). 밝히지 않으면 화면의
   // "생활비를 한 해도 줄이지 않을 확률"을 사용자는 자기 목표 기준으로 읽는다.
   plannedMonthlySpending: number;
-  endingAssets: { p10: number; p50: number; p90: number; mean: number };
-  // 연도별 총자산 분위수. 팬 차트용.
-  assetBand: MonteCarloBandYear[];
+  endingAssets: { p10: number; p50: number; p90: number };
+  // 연도별 총자산의 하위 10% 지점. 자산 추이 차트의 「나쁜 경우」 선이 유일한 소비처다.
+  //
+  // **각 해의 값은 서로 다른 시행에서 온다** — 이 배열은 어느 한 시행의 경로가 아니다.
+  // 화면도 그 사실을 문구로 밝힌다(AssetGrowthChart의 DOWNSIDE_NOTE).
+  assetDownside: MonteCarloDownsideYear[];
   depletion: {
     count: number;
     earliestAge: number | null;
@@ -120,11 +122,10 @@ export interface MonteCarloResult {
   };
   // 결정론 실행(충격 없음)의 기말자산.
   //
-  // 팬 차트에 겹쳐 그려 **변동성 손실**을 드러낸다: 충격의 기대값이 0이어도 복리로 굴리면
-  // 기하평균 < 산술평균이라 p50이 이 값보다 낮게 나온다. 그것이 이 기능의 존재 이유다.
+  // **변동성 손실**을 드러내는 값이다: 충격의 기대값이 0이어도 복리로 굴리면 기하평균 <
+  // 산술평균이라 p50이 이 값보다 낮게 나온다. MonteCarloSection이 두 값을 나란히 인쇄해
+  // 그 차이를 설명한다(Pro 한정).
   deterministicEndingAssets: number;
-  // 최악 10분위에 해당하는 대표 경로 하나. 밴드만으로는 "실제로 이런 인생"이 보이지 않는다.
-  worstDecilePath: SimulationYearlyResult[];
 }
 
 /**

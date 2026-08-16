@@ -111,7 +111,7 @@ export function AssetGrowthChart({
   // `?? []`는 방어다. 워커가 돌려준 payload에 이 필드가 없으면(개발 중 HMR로 워커 청크만
   // 낡는 경우) 가드가 없을 때 `undefined.map`으로 대시보드 전체가 죽는다.
   const bandByAge = !showBreakdown && monteCarlo
-    ? new Map((monteCarlo.assetBand ?? []).map((b) => [b.age, b]))
+    ? new Map((monteCarlo.assetDownside ?? []).map((b) => [b.age, b]))
     : undefined;
 
   const assetChartData = yearlyResults.map((r) => {

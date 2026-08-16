@@ -146,11 +146,10 @@ describe('AssetGrowthChart - 몬테카를로 하방 선', () => {
     goalSuccessProbability: 0.39,
     goalFailure: NO_GOAL_FAILURE, goalConditions: LEGACY_GOAL_CONDITIONS,
     plannedMonthlySpending: 2230000,
-    endingAssets: { p10: 0, p50: 100000000, p90: 8000000000, mean: 500000000 },
-    assetBand: [{ age: 60, p10: 10000000, p50: 300000000, p90: 900000000 }],
+    endingAssets: { p10: 0, p50: 100000000, p90: 8000000000 },
+    assetDownside: [{ age: 60, p10: 10000000 }],
     depletion: { count: 610, earliestAge: 72, medianAge: 84 },
     deterministicEndingAssets: 500000000,
-    worstDecilePath: [],
   };
 
   const renderChart = (props: Partial<React.ComponentProps<typeof AssetGrowthChart>> = {}) =>

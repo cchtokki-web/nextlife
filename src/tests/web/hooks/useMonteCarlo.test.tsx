@@ -52,9 +52,9 @@ function makeResult(successRate: number) {
     goalSuccessProbability: successRate,
     goalFailure: NO_GOAL_FAILURE, goalConditions: LEGACY_GOAL_CONDITIONS,
     plannedMonthlySpending: 3000000,
-    endingAssets: { p10: 1, p50: 2, p90: 3, mean: 2 },
-    assetBand: [], depletion: { count: 0, earliestAge: null, medianAge: null },
-    deterministicEndingAssets: 2, worstDecilePath: [],
+    endingAssets: { p10: 1, p50: 2, p90: 3 },
+    assetDownside: [], depletion: { count: 0, earliestAge: null, medianAge: null },
+    deterministicEndingAssets: 2,
   };
 }
 

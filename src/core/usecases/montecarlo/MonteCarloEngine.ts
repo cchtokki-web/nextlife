@@ -1,6 +1,6 @@
-import { SimulationParams, SimulationYearlyResult, StrategySimulationResult } from '../../entities/types';
+import { SimulationParams, StrategySimulationResult } from '../../entities/types';
 import {
-  MonteCarloBandYear,
+  MonteCarloDownsideYear,
   MonteCarloConfig,
   MonteCarloResult,
   StrategyMonteCarloValidationResult,
@@ -8,7 +8,7 @@ import {
 import type { RetirementGoals, RetirementProfile, RetirementStrategy } from '../../domain/input/retirement';
 import { LegacySimulationAdapter } from '../../domain/input/LegacySimulationAdapter';
 import { SimulationEngine } from '../SimulationEngine';
-import { FrozenSpendingPlan, freezeSpendingPlan, runFrozenPlan } from '../spending/freezeSpendingPlan';
+import { freezeSpendingPlan, runFrozenPlan } from '../spending/freezeSpendingPlan';
 import { hasSpendingShortfall } from '../spending/spendingShortfall';
 import { mulberry32, deriveSeed } from './rng';
 import { buildReturnShockPath } from './returnPath';
@@ -19,10 +19,8 @@ import { resolveGoalSuccessConditions } from '../goals/goalSuccessConditions';
 import { SHORTFALL_EPSILON_MONTHLY } from '../metrics/SimulationMetricsCalculator';
 
 // 한 시행에서 보관하는 것. 전 시행의 yearlyResults를 통째로 들면(1000 × 55년 × 30필드)
-// 수십 MB가 되므로 스칼라 두 개와 연도별 총자산만 남긴다. 최악 경로의 상세는 그 시행의
-// 시드로 한 번 더 돌려 얻는다(deriveSeed가 인덱스로 결정되므로 언제든 재현 가능하다).
+// 수십 MB가 되므로 스칼라 두 개와 연도별 총자산만 남긴다.
 interface TrialSummary {
-  index: number;
   endingAssets: number;
   depletionAge: number | null;
   hasUnmetSpending: boolean;
@@ -34,7 +32,6 @@ interface TrialSummary {
 }
 
 function summarize(
-  index: number,
   result: StrategySimulationResult,
   goalParams: SimulationParams,
 ): TrialSummary {
@@ -45,7 +42,6 @@ function summarize(
   ).find((row) => row.goalShortfall >= SHORTFALL_EPSILON_MONTHLY);
 
   return {
-    index,
     endingAssets: result.endingAssets,
     depletionAge: result.depletionAge,
     hasUnmetSpending: result.yearlyResults.some(hasSpendingShortfall),
@@ -55,7 +51,7 @@ function summarize(
 }
 
 // 지정한 시행 인덱스의 수익률 경로. 시드가 (기준 시드, 인덱스)로만 결정되므로 같은
-// 인덱스는 언제 호출해도 같은 경로를 준다 — 최악 경로 재실행이 이 성질에 기댄다.
+// 인덱스는 언제 호출해도 같은 경로를 준다 — 선별·확정 두 단계가 같은 난수를 쓰는 근거다.
 function pathForTrial(years: number, config: MonteCarloConfig, index: number) {
   return buildReturnShockPath(years, config.annualStdDev, mulberry32(deriveSeed(config.seed, index)));
 }
@@ -76,11 +72,10 @@ export function isSuccessfulTrial(depletionAge: number | null, successAge: numbe
 // 버티는가"이고, RecommendationEngine.SPENDING_INCREASE_GATE의 실측 임계(0.9/0.8)도
 // 그 기준으로 보정됐다. 생활 유지 성공률로 바꾸면 그 실측 근거가 통째로 무효가 된다.
 //
-// runMonteCarlo가 만드는 것 중 게이트가 쓰지 않는 것 — assetBand(연도별 분위수 정렬),
-// worstDecilePath(추가 runSingle 1회), 결정론 기준선(추가 runSingle 1회), 시행별
-// totalAssetsByYear 배열 — 을 전부 만들지 않는다. 성능보다 **계약**이 이유다: 게이트가
-// MonteCarloResult 전체를 받으면 나중에 누군가 assetBand나 worstDecilePath를 판정에
-// 끌어다 쓰고, 그 순간 게이트의 비용과 의미가 조용히 바뀐다.
+// runMonteCarlo가 만드는 것 중 게이트가 쓰지 않는 것 — assetDownside(연도별 분위수 정렬),
+// 결정론 기준선(추가 runSingle 1회), 시행별 totalAssetsByYear 배열 — 을 전부 만들지 않는다.
+// 성능보다 **계약**이 이유다: 게이트가 MonteCarloResult 전체를 받으면 나중에 누군가
+// assetDownside를 판정에 끌어다 쓰고, 그 순간 게이트의 비용과 의미가 조용히 바뀐다.
 //
 // 시드와 시행 인덱스 규칙이 runMonteCarlo와 같으므로(pathForTrial이 인덱스로만 결정된다)
 // trials가 작아도 이 표본은 화면 패널(1000 시행)의 앞부분 그대로다 — 게이트가 본 확률과
@@ -124,14 +119,12 @@ export function runMonteCarlo(
     // runSingle만 부른다. run()이면 시행당 31회가 되어 1000시행이 31,000회가 된다
     // (RecommendationEngine이 runForUtility를 도입한 것과 같은 판단).
     trials.push(summarize(
-      i,
       runFrozenPlan(engine, planned, pathForTrial(years, config, i)),
       params,
     ));
   }
 
   const endingSorted = trials.map((t) => t.endingAssets).sort((a, b) => a - b);
-  const mean = endingSorted.reduce((a, b) => a + b, 0) / (endingSorted.length || 1);
 
   // 자산 보존 성공 = successAge까지 고갈되지 않음. 판정식은 isSuccessfulTrial 한 곳에만 둔다.
   const succeeded = trials.filter((t) => isSuccessfulTrial(t.depletionAge, successAge));
@@ -179,8 +172,9 @@ export function runMonteCarlo(
     .filter((age): age is number => age !== null)
     .sort((a, b) => a - b);
 
-  // 연도별 분위수. 각 해마다 전 시행의 총자산을 모아 정렬한다.
-  const assetBand: MonteCarloBandYear[] = [];
+  // 연도별 하방 지점. 각 해마다 전 시행의 총자산을 모아 정렬하고 10% 지점만 취한다.
+  // **해마다 다른 시행에서 온 값이라 어느 한 시행의 경로가 아니다**(MonteCarloResult 주석).
+  const assetDownside: MonteCarloDownsideYear[] = [];
   const startAge = planned.params.userProfile.currentAge;
   for (let y = 0; y < years; y++) {
     const columnSorted = trials
@@ -188,11 +182,9 @@ export function runMonteCarlo(
       .filter((v): v is number => v !== undefined)
       .sort((a, b) => a - b);
     if (columnSorted.length === 0) continue;
-    assetBand.push({
+    assetDownside.push({
       age: startAge + y,
       p10: percentileOfSorted(columnSorted, 0.1),
-      p50: percentileOfSorted(columnSorted, 0.5),
-      p90: percentileOfSorted(columnSorted, 0.9),
     });
   }
 
@@ -211,16 +203,14 @@ export function runMonteCarlo(
       p10: percentileOfSorted(endingSorted, 0.1),
       p50: percentileOfSorted(endingSorted, 0.5),
       p90: percentileOfSorted(endingSorted, 0.9),
-      mean,
     },
-    assetBand,
+    assetDownside,
     depletion: {
       count: depletedAges.length,
       earliestAge: depletedAges.length > 0 ? depletedAges[0] : null,
       medianAge: depletedAges.length > 0 ? percentileOfSorted(depletedAges, 0.5) : null,
     },
     deterministicEndingAssets: deterministic.endingAssets,
-    worstDecilePath: extractWorstDecilePath(trials, planned, engine, config, years),
   };
 }
 
@@ -276,23 +266,7 @@ export class MonteCarloEngine implements StrategyMonteCarloEngine {
   }
 }
 
-// 기말자산 기준 최악 10분위에 해당하는 대표 시행 하나를 골라 상세를 재실행한다.
-//
-// 밴드(p10/p50/p90)만으로는 "실제로 이런 인생"이 보이지 않는다 — 각 해의 분위수는 서로 다른
-// 시행에서 온 값이라 그것을 이은 선은 어느 시행의 경로도 아니다. 실제 경로 하나가 필요하다.
-function extractWorstDecilePath(
-  trials: readonly TrialSummary[],
-  planned: FrozenSpendingPlan,
-  engine: SimulationEngine,
-  config: MonteCarloConfig,
-  years: number
-): SimulationYearlyResult[] {
-  if (trials.length === 0) return [];
-
-  const byEndingAssets = [...trials].sort((a, b) => a.endingAssets - b.endingAssets);
-  // 10분위 경계에 가장 가까운 시행. 최악 1개(이상치)가 아니라 "나쁜 축에 속하는 전형"을
-  // 보여주려는 것이므로 최소값이 아니라 10% 지점을 고른다.
-  const pick = byEndingAssets[Math.min(byEndingAssets.length - 1, Math.floor(byEndingAssets.length * 0.1))];
-
-  return runFrozenPlan(engine, planned, pathForTrial(years, config, pick.index)).yearlyResults;
-}
+// 기말자산 기준 최악 10분위의 «실제 경로» 하나를 재실행해 담던 worstDecilePath가 여기 있었다.
+// 분위수 선이 어느 시행의 경로도 아니라는 한계를 보완하려던 것인데, 화면·PDF 어디에서도
+// 소비된 적이 없어 시뮬레이션을 한 번 더 돌리는 비용만 남아 있었다. 그 한계는 이제
+// AssetGrowthChart가 문구로 밝힌다(DOWNSIDE_NOTE).

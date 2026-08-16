@@ -449,9 +449,9 @@ describe('DashboardSection - 평생 소비 최적화 결과 배너', () => {
           successRate: 1, spendingSuccessRate: 0.43, goalSuccessProbability: 0.43,
           goalFailure: NO_GOAL_FAILURE, goalConditions: LEGACY_GOAL_CONDITIONS,
           plannedMonthlySpending: 2230000,
-          endingAssets: { p10: 0, p50: 1, p90: 2, mean: 1 },
-          assetBand: [], depletion: { count: 0, earliestAge: null, medianAge: null },
-          deterministicEndingAssets: 1, worstDecilePath: [],
+          endingAssets: { p10: 0, p50: 1, p90: 2 },
+          assetDownside: [], depletion: { count: 0, earliestAge: null, medianAge: null },
+          deterministicEndingAssets: 1,
         }}
       />
     );
@@ -639,9 +639,9 @@ describe('DashboardSection - 현재 계획 진단', () => {
     goalSuccessProbability: goal,
     goalFailure: NO_GOAL_FAILURE, goalConditions: LEGACY_GOAL_CONDITIONS,
     plannedMonthlySpending: 3_000_000,
-    endingAssets: { p10: 0, p50: 1, p90: 2, mean: 1 },
-    assetBand: [], depletion: { count: 0, earliestAge: null, medianAge: null },
-    deterministicEndingAssets: 1, worstDecilePath: [],
+    endingAssets: { p10: 0, p50: 1, p90: 2 },
+    assetDownside: [], depletion: { count: 0, earliestAge: null, medianAge: null },
+    deterministicEndingAssets: 1,
   });
 
   test('생활 유지율이 아니라 목표 성공확률을 표시한다', () => {
