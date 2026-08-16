@@ -1,0 +1,474 @@
+import type { SimulationParams, SimulationResult, TaxSettings } from '../../../core/entities/types';
+import { describePrivatePensionLabel } from './describePrivatePension';
+import { describeInvestmentAssetLabel } from './describeInvestmentAsset';
+import { describeIsaAccountLabel } from './describeIsaAccount';
+import { computeMonthlySpendingComposition } from '../../../core/usecases/MonthlySpendingComposition';
+import { formatCurrencyUnit } from './pdfReportSections';
+import { NATIONAL_PENSION_NORMAL_START_AGE } from '../../../core/usecases/pension/nationalPensionRules';
+
+/** 이미 렌더된 섹션 조각들. 각 값은 pdfReportSections의 render*Section 결과다. */
+export interface ReportSectionHtml {
+  planVerdict: string;
+  strategyRecommendation: string;
+  riskAlerts: string;
+  shortfallSummary: string;
+  nationalPension: string;
+  executionRoadmap: string;
+  sensitivityTable: string;
+  keyLevers: string;
+  /** 워커가 아직 끝나지 않았으면 빈 문자열이고, 그때는 이 페이지를 통째로 생략한다. */
+  monteCarlo: string;
+}
+
+export interface ReportHtmlInput {
+  /** 결과(result)를 만든 params. 사용자가 입력한 원본이 아니다 — handleDownload 주석 참고. */
+  params: SimulationParams;
+  result: SimulationResult;
+  /** resolveTaxSettings를 이미 거친 «완전한» 설정. 부분 설정을 넘기면 화면과 값이 갈린다. */
+  taxSettings: Required<TaxSettings>;
+  displayCurrencyUnit: string;
+  formatValue: (value: number) => string;
+  /**
+   * 시계는 호출자가 읽어 «포맷된 문자열»로 넘긴다. toLocaleString()은 실행 환경의
+   * 로케일에 따라 결과가 달라져, 여기서 부르면 이 함수가 순수하지 않게 되고
+   * 골든 테스트가 환경에 따라 깨진다.
+   */
+  generatedAtText: string;
+  copyrightYear: number;
+  sections: ReportSectionHtml;
+}
+
+/**
+ * 리포트 전 페이지의 HTML을 만든다.
+ *
+ * **DOM도 jsPDF도 건드리지 않는 순수 함수다.** 같은 입력이면 같은 문자열을 준다 —
+ * 그래서 골든 스냅샷으로 잠글 수 있다(buildReportHtml.test.ts).
+ *
+ * 예전에는 page.tsx의 handleDownload 안에 632줄로 들어 있었다. 그 안에서는 DOM 생성·
+ * html2canvas·jsPDF와 뒤섞여 있어 조립 결과만 따로 확인할 방법이 없었고, 실제로
+ * 「undefined (IRP)」·「KODEX 200 (etf)」·「퇴직연금이 기타로」 같은 결함이 실물 PDF를
+ * 눈으로 훑기 전까지 드러나지 않았다.
+ *
+ * **아래 본문의 들여쓰기가 한 단계 깊은 것은 실수가 아니다.** 템플릿 리터럴 안의 공백은
+ * 곧 출력 HTML의 공백이라, 보기 좋게 당기는 순간 골든이 깨진다(실제로 한 번 깨뜨렸다).
+ * 원문 그대로 옮겼다.
+ *
+ * **번호 카운터의 순서 결합도 그대로다.** nextSection()/nextPage()는 템플릿 리터럴의
+ * 좌→우 평가 순서로 소비된다(아래 주석 참고). 이번 변경은 «이동»만 하고 그 설계는
+ * 손대지 않는다 — 이동과 재설계를 같이 하면 무엇이 틀어졌는지 가릴 수 없다.
+ */
+export function buildReportHtml(input: ReportHtmlInput): string {
+  const {
+    params: reportParams,
+    result,
+    taxSettings: currentTaxSettings,
+    displayCurrencyUnit,
+    formatValue: formatValuePrint,
+    generatedAtText,
+    copyrightYear,
+    sections,
+  } = input;
+
+  const { retirementScore, depletionAge, endingAssets, yearlyResults } = result;
+  const {
+    userProfile,
+    assets,
+    privatePensions,
+    isaAccounts,
+    nationalPension,
+    otherIncomes,
+    inflationRate,
+    inflationMode,
+    baseExchangeRate,
+  } = reportParams;
+
+  const {
+    planVerdict: planVerdictSectionHtml,
+    strategyRecommendation: strategyRecommendationHtml,
+    riskAlerts: riskAlertsSectionHtml,
+    shortfallSummary: shortfallSummarySectionHtml,
+    nationalPension: nationalPensionSectionHtml,
+    executionRoadmap: executionRoadmapSectionHtml,
+    sensitivityTable: sensitivityTableSectionHtml,
+    keyLevers: keyLeversSectionHtml,
+    monteCarlo: monteCarloHtml,
+  } = sections;
+
+      // **페이지·섹션 번호를 리터럴로 쓰지 않는다.**
+      //
+      // 예전에는 두 번호가 전부 하드코딩이었고, 조건부인 시장 변동성 페이지 때문에 실제로
+      // 어긋나 있었다: 「7. 시장 변동성 분석」과 「7. 연령별 소득원…」이 둘 다 7번이었고,
+      // 재원 구성 각주는 "5페이지 세금 설정과 6페이지 금융소득과세"를 고정 문자열로 가리켰다.
+      // 섹션 하나만 넣거나 빼도 문서 전체의 번호가 조용히 틀어지는 구조였다.
+      //
+      // 두 카운터는 **문서에 등장하는 순서대로** 소비된다(템플릿 리터럴은 왼쪽부터 평가된다).
+      let sectionNo = 0;
+      const nextSection = () => (sectionNo += 1);
+      let pageNo = 0;
+      const nextPage = () => (pageNo += 1);
+      // 각주가 가리키는 페이지 번호를 나중에 채우기 위한 자리표. 실제 번호는 그 페이지를
+      // 만들 때 확정되므로, 하드코딩 대신 치환으로 잇는다.
+      let taxSettingsPageNo = 0;
+      let firstYearlyTablePageNo = 0;
+
+      // 시장 변동 검증은 **진단·추천 바로 뒤에 둔다**(화면의 「계획의 근거」 첫 항목과 같다).
+      //
+      // 예전에는 마지막 고정 페이지였다. 그래서 1페이지의 "기대수명까지 고갈 없음"을 읽은
+      // 사용자가 여섯 페이지 뒤에야 "1,000회 중 37%만 남음"을 보게 됐다. 앞의 좋은 결과를
+      // 강조하고 뒤의 위험을 별도 페이지에 숨긴 구조였다. 수익률 순서 위험(같은 평균,
+      // 다른 순서)은 이 리포트에서 가장 값어치 있는 분석이기도 하다.
+      //
+      // 워커가 아직 끝나지 않았으면 이 페이지는 생략된다. 그때도 1페이지의 판정 블록이
+      // "아직 계산되지 않았습니다"라고 밝히므로(renderPlanVerdictSection), 리포트가
+      // 결정론 결과만 담은 채 완결된 문서처럼 보이는 일은 없다.
+      const monteCarloPageHtml = () => monteCarloHtml === '' ? '' : `
+        <div class="pdf-page">
+          <div class="pdf-content">
+            <h2 style="font-size: 16px; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; color: #0f172a; margin-top: 0; margin-bottom: 10px;">${nextSection()}. 시장 변동 검증</h2>
+            ${monteCarloHtml}
+          </div>
+          <div class="pdf-footer">
+            <span>NextLife 은퇴 자산 시뮬레이션 리포트</span>
+            <span>페이지 ${nextPage()} / {total_pages}</span>
+          </div>
+        </div>
+      `;
+
+      // Page 1: Summary and Settings
+      let pagesHtml = `
+        <div class="pdf-page">
+          <div class="pdf-content">
+            <h1 style="font-size: 26px; border-bottom: 3px solid #3b82f6; padding-bottom: 12px; color: #1e3a8a; margin-top: 0;">NextLife 은퇴 자산 시뮬레이션 결과 리포트</h1>
+            <p style="font-size: 11px; color: #64748b; margin-bottom: 25px;">출력 일시: ${generatedAtText}</p>
+            
+            <h2 style="margin-top: 0; font-size: 17px; color: #0f172a; border-bottom: none; padding-bottom: 0; margin-bottom: 12px;">${nextSection()}. 현재 계획 진단</h2>
+            ${planVerdictSectionHtml}
+            ${shortfallSummarySectionHtml}
+            ${riskAlertsSectionHtml}
+
+            <h2 style="font-size: 16px; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; color: #0f172a; margin-top: 25px; margin-bottom: 10px;">${nextSection()}. 시뮬레이션 설정 상태</h2>
+            <ul style="padding-left: 20px; margin-top: 5px; margin-bottom: 25px; font-size: 13px; line-height: 1.6;">
+              <li style="margin-bottom: 6px;"><strong>현재 나이:</strong> ${userProfile.currentAge}세 / <strong>은퇴 목표 나이:</strong> ${userProfile.retirementAge}세 / <strong>기대 수명:</strong> ${userProfile.expectancy}세</li>
+              <li style="margin-bottom: 6px;"><strong>목표 월 생활비:</strong> ${userProfile.targetMonthlySpending.toLocaleString()} ${displayCurrencyUnit}</li>
+              <li style="margin-bottom: 6px;"><strong>인출 전략:</strong> ${reportParams.spendingStrategy === 'dividend_only' ? '배당금(이자) 100% 소비' : reportParams.spendingStrategy === 'max_sustainable' ? '최대 가능 생활비 자동계산' : '고정 목표 생활비'}</li>
+              <li style="margin-bottom: 6px;"><strong>물가 상승률:</strong> ${inflationRate}% (${inflationMode === 'real' ? '실질 가치 기준 — 아래 모든 표의 생활비·연금 금액은 오늘 화폐가치로 고정 표시되며, 인플레이션은 자산 성장률에 사전 차감 반영되었습니다' : '명목 가치 기준 — 아래 모든 표의 생활비·연금 금액에 물가상승률이 매년 누적 반영되어 있습니다'})</li>
+              <li style="margin-bottom: 6px;"><strong>표시 통화 / 기준 환율:</strong> ${displayCurrencyUnit} / 1 $ = ${baseExchangeRate.toLocaleString()}원</li>
+            </ul>
+          </div>
+          <div class="pdf-footer">
+            <span>NextLife 은퇴 자산 시뮬레이션 리포트</span>
+            <span>페이지 ${nextPage()} / {total_pages}</span>
+          </div>
+        </div>
+
+        <div class="pdf-page">
+          <div class="pdf-content">
+            <h2 style="font-size: 16px; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; color: #0f172a; margin-top: 0; margin-bottom: 10px;">${nextSection()}. NextLife 추천</h2>
+            <p style="font-size: 11px; color: #64748b; margin-top: 0; margin-bottom: 14px;">목표에 가장 가까운 최종 전략과, 현재 계획에서 바뀌는 점만 비교합니다.</p>
+            ${strategyRecommendationHtml}
+          </div>
+          <div class="pdf-footer">
+            <span>NextLife 은퇴 자산 시뮬레이션 리포트</span>
+            <span>페이지 ${nextPage()} / {total_pages}</span>
+          </div>
+        </div>
+
+        ${monteCarloPageHtml()}
+
+        <div class="pdf-page">
+          <div class="pdf-content">
+            <h2 style="font-size: 16px; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; color: #0f172a; margin-top: 0; margin-bottom: 10px;">${nextSection()}. 실행 시점 및 민감도 분석</h2>
+            <p style="font-size: 11px; color: #64748b; margin-top: 0; margin-bottom: 14px;">무엇부터 손대야 하는지, 현재 설정에서 나이별로 무슨 일이 일어나는지, 그리고 핵심 가정이 바뀌었을 때 결과가 얼마나 민감한지를 보여줍니다.</p>
+
+            ${keyLeversSectionHtml}
+
+            <h3 style="font-size: 13px; color: #0f172a; margin-bottom: 8px;">실행 로드맵</h3>
+            ${executionRoadmapSectionHtml}
+
+            <h3 style="font-size: 13px; color: #0f172a; margin-top: 20px; margin-bottom: 8px;">민감도 분석 (자산 고갈 나이 기준)</h3>
+            ${sensitivityTableSectionHtml}
+          </div>
+          <div class="pdf-footer">
+            <span>NextLife 은퇴 자산 시뮬레이션 리포트</span>
+            <span>페이지 ${nextPage()} / {total_pages}</span>
+          </div>
+        </div>
+
+        <div class="pdf-page">
+          <div class="pdf-content">
+            <h2 style="font-size: 16px; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; color: #0f172a; margin-top: 0; margin-bottom: 10px;">${nextSection()}. 연금·자산 현황 및 세금 설정</h2>
+            <div style="font-size: 13px; line-height: 1.6; display: grid; grid-template-columns: 1fr; gap: 12px;">
+              <div>
+                <!-- nationalPension에는 ?.를 붙이지 않는다. SimulationParams의 «필수» 필드이고
+                     SimulationEngine도 옵셔널 체인 없이 읽는다 — 없었다면 이 리포트가 설명하는
+                     시뮬레이션 자체가 먼저 터졌을 것이다. 붙여 봐야 뒤가 체이닝되지 않아
+                     「undefined원」이 찍히므로 방어처럼 보일 뿐 방어가 아니었다. 저장 데이터의
+                     결손을 견디려면 그 자리는 loadParams(로드 경계)이지 여기가 아니다.
+                     아래 withdrawalPlan?.는 실제로 선택 필드라 ??와 함께 그대로 둔다. -->
+                <strong>국민연금:</strong> 예상 월 수령액 ${nationalPension.expectedMonthlyAmount.toLocaleString()}원 (${reportParams.withdrawalPlan?.nationalPensionStartAge ?? NATIONAL_PENSION_NORMAL_START_AGE}세부터 수령)
+                ${nationalPensionSectionHtml}
+              </div>
+              <div>
+                <strong>사적연금:</strong>
+                <ul style="padding-left: 20px; margin-top: 4px; margin-bottom: 0;">
+      `;
+
+      if (privatePensions && privatePensions.length > 0) {
+        privatePensions.forEach(p => {
+          pagesHtml += `<li style="margin-bottom: 4px;"><strong>${describePrivatePensionLabel(p)}</strong>: 현재 잔액 ${p.balance.toLocaleString()} ${formatCurrencyUnit(p.currency)}, 매월 ${p.monthlyContribution.toLocaleString()} ${formatCurrencyUnit(p.currency)} 납입, 예상 연 수익률 ${p.annualReturn}%</li>`;
+        });
+      } else {
+        pagesHtml += `<li>등록된 사적연금 없음</li>`;
+      }
+
+      pagesHtml += `
+                </ul>
+              </div>
+              <div>
+                <strong>투자 자산:</strong>
+                <ul style="padding-left: 20px; margin-top: 4px; margin-bottom: 0;">
+      `;
+
+      if (assets && assets.length > 0) {
+        assets.forEach(a => {
+          pagesHtml += `<li style="margin-bottom: 4px;"><strong>${describeInvestmentAssetLabel(a)}</strong>: ${a.quantity}주(개) x 평균단가 ${a.averagePrice.toLocaleString()} ${formatCurrencyUnit(a.currency)}, 매월 ${a.monthlyContribution.toLocaleString()} ${formatCurrencyUnit(a.currency)} 납입, 예상 연 수익률 ${a.annualGrowthRate}%, 배당률 ${a.dividendYield}%, 배당 재투자 ${a.reinvestDividend ? 'O' : 'X'}</li>`;
+        });
+      } else {
+        pagesHtml += `<li>등록된 투자 자산 없음</li>`;
+      }
+
+      pagesHtml += `
+                </ul>
+              </div>
+              <div>
+                <strong>ISA 계좌:</strong>
+                <ul style="padding-left: 20px; margin-top: 4px; margin-bottom: 0;">
+      `;
+
+      if (isaAccounts && isaAccounts.length > 0) {
+        isaAccounts.forEach(isa => {
+          pagesHtml += `<li style="margin-bottom: 4px;"><strong>${describeIsaAccountLabel(isa)}</strong>: 현재 잔액 ${isa.balance.toLocaleString()} ${formatCurrencyUnit(isa.currency)}, 매월 ${isa.monthlyContribution.toLocaleString()} ${formatCurrencyUnit(isa.currency)} 납입, 예상 연 수익률 ${isa.annualReturn}%, 배당률 ${isa.dividendYield}%, 만기 ${isa.maturityYears}년</li>`;
+        });
+      } else {
+        pagesHtml += `<li>등록된 ISA 계좌 없음</li>`;
+      }
+
+      pagesHtml += `
+                </ul>
+              </div>
+              <div>
+                <strong>기타 소득:</strong>
+                <ul style="padding-left: 20px; margin-top: 4px; margin-bottom: 0;">
+      `;
+
+      if (otherIncomes && otherIncomes.length > 0) {
+        otherIncomes.forEach(i => {
+          pagesHtml += `<li style="margin-bottom: 4px;"><strong>${i.label}</strong>: 매월 ${i.monthlyAmount.toLocaleString()} ${formatCurrencyUnit(i.currency)}</li>`;
+        });
+      } else {
+        pagesHtml += `<li>등록된 기타 소득 없음</li>`;
+      }
+
+      pagesHtml += `
+                </ul>
+              </div>
+            </div>
+
+            <h3 style="font-size: 13px; color: #0f172a; margin-top: 18px; margin-bottom: 6px;">세금 설정 (2024년 기준 단순화 모델)</h3>
+            <p style="font-size: 9.5px; color: #94a3b8; margin: 0 0 6px;">실제 과세는 계좌·상품·소득 구간과 최신 세법에 따라 달라질 수 있으며, 세액공제·지방소득세 등 일부 항목은 포함하지 않습니다.</p>
+            <ul style="padding-left: 20px; margin-top: 5px; margin-bottom: 0; font-size: 11px; line-height: 1.45;">
+              <li style="margin-bottom: 6px;"><strong>금융소득종합과세 반영:</strong> ${currentTaxSettings.enableComprehensiveTax ? `반영 (2천만원 초과분 ${currentTaxSettings.comprehensiveTaxRate}% 추가 과세)` : '미반영'}</li>
+              <li style="margin-bottom: 6px;"><strong>추가 건강보험료 반영:</strong> ${currentTaxSettings.enableHealthInsurance ? `반영 (초과분 ${currentTaxSettings.healthInsuranceRate}%)` : '미반영'}</li>
+              <li style="margin-bottom: 6px;"><strong>배당소득세율:</strong> 해외 주식/ETF ${currentTaxSettings.usDividendTaxRate}% / 국내 주식/ETF ${currentTaxSettings.domesticDividendTaxRate}%</li>
+              <li style="margin-bottom: 6px;"><strong>사적연금 고세율 과세 반영:</strong> ${currentTaxSettings.enablePrivatePensionTax ? '반영 - 한도 초과 시 고세율 적용' : '미반영 - 연령별 저율과세 유지'}</li>
+              <li style="margin-bottom: 6px;"><strong>사적연금 저율과세 한도(연간):</strong> ${currentTaxSettings.privatePensionLimit.toLocaleString()}원, 한도 초과 시 세율 ${currentTaxSettings.privatePensionExcessTaxRate}%</li>
+              <li style="margin-bottom: 6px;"><strong>사적연금 저율과세 한도 내 인출:</strong> ${currentTaxSettings.limitPrivatePensionToTaxLimit ? '한도 내 인출 (절세 최적화)' : '기본 인출 (일반 인출 계획)'}</li>
+            </ul>
+          </div>
+          <div class="pdf-footer">
+            <span>NextLife 은퇴 자산 시뮬레이션 리포트</span>
+            <span>페이지 ${(taxSettingsPageNo = nextPage())} / {total_pages}</span>
+          </div>
+        </div>
+      `;
+
+      // Tables (이후 페이지 수는 데이터 양에 따라 달라진다)
+      const chunks: typeof yearlyResults[] = [];
+      // 9pt 표와 4px 셀 여백에서는 A4 한 장에 42행이 잘림 없이 들어간다. 기존 30행은
+      // 10~12행짜리 반쪽 페이지를 반복해서 만들어 동일 샘플이 10페이지까지 늘어났다.
+      const rowsPerPage = 42;
+      for (let i = 0; i < yearlyResults.length; i += rowsPerPage) {
+        chunks.push(yearlyResults.slice(i, i + rowsPerPage));
+      }
+
+      const spendingComposition = computeMonthlySpendingComposition(yearlyResults, reportParams, result);
+      const spendingChunks: typeof spendingComposition[] = [];
+      for (let i = 0; i < spendingComposition.length; i += rowsPerPage) {
+        spendingChunks.push(spendingComposition.slice(i, i + rowsPerPage));
+      }
+      const hasSpendingSection = spendingChunks.length > 0;
+
+      // 의료비는 spending에 이미 합산되어 있어 "생활비" 열만 보면 왜 커졌는지 알 수 없다.
+      // 의료비 가정을 실제로 켠 시나리오에서만 열 이름과 각주로 포함 사실을 밝힌다.
+      //
+      // "별도 지출이 아니다"를 무조건 단언하면 안 된다. 자산이 고갈된 해에는 엔진이 실제
+      // 인출액을 가능한 만큼으로 깎으므로 spending < healthcareSpending이 되고, 그 해의
+      // 「생활비」 열에는 의료비 전액이 들어 있지 않다(types.ts SimulationYearlyResult
+      // .healthcareSpending의 "예외" 참조). 각주는 PDF에 그대로 인쇄되므로 단서를 붙인다.
+      const hasHealthcareCost = yearlyResults.some((yr) => yr.healthcareSpending > 0);
+      const healthcareNoteHtml = hasHealthcareCost
+        ? '<p style="font-size: 9.5px; color: #94a3b8; margin: 0 0 8px;">* 「생활비」 열에는 의료비·장기요양비가 합산되어 있습니다(별도 지출이 아니라 같은 금액의 내역입니다). 다만 자산이 고갈된 해에는 인출 가능한 금액까지만 표시되므로 의료비 전액이 반영되지 않을 수 있습니다.</p>'
+        : '';
+
+      const realValueNoteHtml = inflationMode === 'real'
+        ? '<p style="font-size: 9.5px; color: #94a3b8; margin: 0 0 8px;">* 아래 금액은 모두 오늘 시점 기준 실질 가치입니다(물가상승률은 자산 성장률에 사전 차감 반영되었습니다). 명목(미래 실제 지급) 금액이 아닙니다.</p>'
+        : '<p style="font-size: 9.5px; color: #94a3b8; margin: 0 0 8px;">* 아래 금액은 물가상승률이 매년 누적 반영된 명목 가치입니다.</p>';
+
+      // 섹션 번호는 여러 페이지로 나뉘어도 하나다 — 첫 청크에서만 소비한다.
+      const yearlyTableSectionNo = nextSection();
+      chunks.forEach((chunk, chunkIdx) => {
+        const pageNum = nextPage();
+        if (chunkIdx === 0) firstYearlyTablePageNo = pageNum;
+        const isLastChunk = chunkIdx === chunks.length - 1 && !hasSpendingSection;
+        pagesHtml += `
+          <div class="pdf-page">
+            <div class="pdf-content">
+              <h2 style="font-size: 15px; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; color: #0f172a; margin-top: 0; margin-bottom: 12px;">
+                ${yearlyTableSectionNo}. 연령별 소득원 및 자산 추이 (${chunkIdx + 1}/${chunks.length})
+              </h2>
+              ${realValueNoteHtml}
+              ${healthcareNoteHtml}
+              <table class="pdf-data-table" style="width: 100%; border-collapse: collapse; font-size: 9px;">
+                <thead>
+                  <tr>
+                    <th style="border: 1px solid #cbd5e1; padding: 7px 8px; text-align: center; background-color: #f1f5f9; font-weight: 700; color: #334155;">나이</th>
+                    <th style="border: 1px solid #cbd5e1; padding: 7px 8px; text-align: center; background-color: #f1f5f9; font-weight: 700; color: #334155;">연도</th>
+                    <th style="border: 1px solid #cbd5e1; padding: 7px 8px; text-align: right; background-color: #f1f5f9; font-weight: 700; color: #334155;">총 자산</th>
+                    <th style="border: 1px solid #cbd5e1; padding: 7px 8px; text-align: right; background-color: #f1f5f9; font-weight: 700; color: #334155;">총 소득</th>
+                    <th style="border: 1px solid #cbd5e1; padding: 7px 8px; text-align: right; background-color: #f1f5f9; font-weight: 700; color: #334155;">생활비${hasHealthcareCost ? '<br/>(의료비 포함)' : ''}</th>
+                    <th style="border: 1px solid #cbd5e1; padding: 7px 8px; text-align: right; background-color: #f1f5f9; font-weight: 700; color: #334155;">배당/투자</th>
+                    <th style="border: 1px solid #cbd5e1; padding: 7px 8px; text-align: right; background-color: #f1f5f9; font-weight: 700; color: #334155;">연금</th>
+                    <th style="border: 1px solid #cbd5e1; padding: 7px 8px; text-align: right; background-color: #f1f5f9; font-weight: 700; color: #334155;">기타</th>
+                    <th style="border: 1px solid #cbd5e1; padding: 7px 8px; text-align: right; background-color: #f1f5f9; font-weight: 700; color: #334155;">금융소득과세</th>
+                  </tr>
+                </thead>
+                <tbody>
+        `;
+
+        chunk.forEach((yr, idx) => {
+          const bg = idx % 2 === 1 ? 'background-color: #f8fafc;' : '';
+          pagesHtml += `
+            <tr style="${bg}">
+              <td style="border: 1px solid #cbd5e1; padding: 7px 8px; text-align: center;">${yr.age}세</td>
+              <td style="border: 1px solid #cbd5e1; padding: 7px 8px; text-align: center;">${yr.year}</td>
+              <td style="border: 1px solid #cbd5e1; padding: 7px 8px; text-align: right;">${formatValuePrint(yr.totalAssets)}</td>
+              <td style="border: 1px solid #cbd5e1; padding: 7px 8px; text-align: right;">${formatValuePrint(yr.totalIncome)}</td>
+              <td style="border: 1px solid #cbd5e1; padding: 7px 8px; text-align: right;">${formatValuePrint(yr.spending)}</td>
+              <td style="border: 1px solid #cbd5e1; padding: 7px 8px; text-align: right;">${formatValuePrint(yr.dividendIncome)}</td>
+              <td style="border: 1px solid #cbd5e1; padding: 7px 8px; text-align: right;">${formatValuePrint(yr.pensionIncome)}</td>
+              <td style="border: 1px solid #cbd5e1; padding: 7px 8px; text-align: right;">${formatValuePrint(yr.otherIncome)}</td>
+              <td style="border: 1px solid #cbd5e1; padding: 7px 8px; text-align: right; ${yr.hasTaxWarning ? 'color: #ef4444; font-weight: bold;' : ''}">${formatValuePrint(yr.comprehensiveTaxPaid)}${yr.hasTaxWarning ? ' ⚠️' : ''}</td>
+            </tr>
+          `;
+        });
+
+        pagesHtml += `
+                </tbody>
+              </table>
+        `;
+
+        if (isLastChunk) {
+          pagesHtml += `
+            <div style="margin-top: 25px; font-size: 10px; color: #64748b; border-top: 1px solid #cbd5e1; padding-top: 10px;">
+              <p style="margin: 0 0 4px 0;"><strong>중요 투자 및 시뮬레이션 법적 면책 고지</strong></p>
+              <p style="margin: 0; line-height: 1.4;">본 NextLife 웹 서비스에서 산출 및 표시되는 모든 결과는 사용자가 가정치와 과거 시장 데이터에 기반한 시뮬레이션 결과입니다. 이는 미래의 실제 자산 가치 및 수익률을 보장하지 않습니다. 실제 투자 결정 시에는 반드시 전문 공인 재무 설계사와 상의하시기 바랍니다.</p>
+              <p style="margin: 4px 0 0 0;">&copy; ${copyrightYear} NextLife. Created by TokkiLab. All rights reserved.</p>
+            </div>
+          `;
+        }
+
+        pagesHtml += `
+            </div>
+            <div class="pdf-footer">
+              <span>NextLife 은퇴 자산 시뮬레이션 리포트</span>
+              <span>페이지 ${pageNum} / {total_pages}</span>
+            </div>
+          </div>
+        `;
+      });
+
+      const spendingTableSectionNo = hasSpendingSection ? nextSection() : 0;
+      spendingChunks.forEach((chunk, chunkIdx) => {
+        const pageNum = nextPage();
+        const isLastChunk = chunkIdx === spendingChunks.length - 1;
+        pagesHtml += `
+          <div class="pdf-page">
+            <div class="pdf-content">
+              <h2 style="font-size: 15px; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; color: #0f172a; margin-top: 0; margin-bottom: 12px;">
+                ${spendingTableSectionNo}. 은퇴 후 월 생활비 재원 구성 (${chunkIdx + 1}/${spendingChunks.length})
+              </h2>
+              ${realValueNoteHtml}
+              <table class="pdf-data-table" style="width: 100%; border-collapse: collapse; font-size: 9px;">
+                <thead>
+                  <tr>
+                    <th style="border: 1px solid #cbd5e1; padding: 7px 8px; text-align: center; background-color: #f1f5f9; font-weight: 700; color: #334155;">나이</th>
+                    <th style="border: 1px solid #cbd5e1; padding: 7px 8px; text-align: right; background-color: #f1f5f9; font-weight: 700; color: #334155;">국민연금</th>
+                    <th style="border: 1px solid #cbd5e1; padding: 7px 8px; text-align: right; background-color: #f1f5f9; font-weight: 700; color: #334155;">사적연금</th>
+                    <th style="border: 1px solid #cbd5e1; padding: 7px 8px; text-align: right; background-color: #f1f5f9; font-weight: 700; color: #334155;">배당소득</th>
+                    <th style="border: 1px solid #cbd5e1; padding: 7px 8px; text-align: right; background-color: #f1f5f9; font-weight: 700; color: #334155;">기타소득</th>
+                    <th style="border: 1px solid #cbd5e1; padding: 7px 8px; text-align: right; background-color: #f1f5f9; font-weight: 700; color: #334155;">자산인출</th>
+                    <th style="border: 1px solid #cbd5e1; padding: 7px 8px; text-align: right; background-color: #f1f5f9; font-weight: 700; color: #334155;">자산부족</th>
+                  </tr>
+                </thead>
+                <tbody>
+        `;
+
+        chunk.forEach((d, idx) => {
+          const bg = idx % 2 === 1 ? 'background-color: #f8fafc;' : '';
+          pagesHtml += `
+            <tr style="${bg}">
+              <td style="border: 1px solid #cbd5e1; padding: 7px 8px; text-align: center;">${d.age}세</td>
+              <td style="border: 1px solid #cbd5e1; padding: 7px 8px; text-align: right;">${formatValuePrint(d.nationalUsed)}</td>
+              <td style="border: 1px solid #cbd5e1; padding: 7px 8px; text-align: right;">${formatValuePrint(d.privatePenUsed)}</td>
+              <td style="border: 1px solid #cbd5e1; padding: 7px 8px; text-align: right;">${formatValuePrint(d.dividendUsed)}</td>
+              <td style="border: 1px solid #cbd5e1; padding: 7px 8px; text-align: right;">${formatValuePrint(d.otherUsed)}</td>
+              <td style="border: 1px solid #cbd5e1; padding: 7px 8px; text-align: right;">${formatValuePrint(d.assetWithdrawal)}</td>
+              <td style="border: 1px solid #cbd5e1; padding: 7px 8px; text-align: right; ${d.shortfall > 0 ? 'color: #ef4444; font-weight: bold;' : ''}">${formatValuePrint(d.shortfall)}</td>
+            </tr>
+          `;
+        });
+
+        pagesHtml += `
+                </tbody>
+              </table>
+              <p style="margin-top: 10px; font-size: 10px; color: #64748b;">* 월 생활비 재원 구성은 연간 금액을 월 단위로 환산한 값이며, 사적연금 열은 저율과세 한도와 무관하게 실제 시뮬레이션 인출액을 그대로 반영합니다. 한도 초과 시 발생하는 세금은 {tax_page}페이지 세금 설정과 {yearly_page}페이지 금융소득과세 열을 참고하세요.</p>
+        `;
+
+        if (isLastChunk) {
+          pagesHtml += `
+            <div style="margin-top: 25px; font-size: 10px; color: #64748b; border-top: 1px solid #cbd5e1; padding-top: 10px;">
+              <p style="margin: 0 0 4px 0;"><strong>중요 투자 및 시뮬레이션 법적 면책 고지</strong></p>
+              <p style="margin: 0; line-height: 1.4;">본 NextLife 웹 서비스에서 산출 및 표시되는 모든 결과는 사용자가 가정치와 과거 시장 데이터에 기반한 시뮬레이션 결과입니다. 이는 미래의 실제 자산 가치 및 수익률을 보장하지 않습니다. 실제 투자 결정 시에는 반드시 전문 공인 재무 설계사와 상의하시기 바랍니다.</p>
+              <p style="margin: 4px 0 0 0;">&copy; ${copyrightYear} NextLife. Created by TokkiLab. All rights reserved.</p>
+            </div>
+          `;
+        }
+
+        pagesHtml += `
+            </div>
+            <div class="pdf-footer">
+              <span>NextLife 은퇴 자산 시뮬레이션 리포트</span>
+              <span>페이지 ${pageNum} / {total_pages}</span>
+            </div>
+          </div>
+        `;
+      });
+
+      // 카운터가 실제로 만들어 낸 장수 그대로다 — 더 이상 따로 세지 않는다.
+      pagesHtml = pagesHtml
+        .replaceAll('{total_pages}', pageNo.toString())
+        .replaceAll('{tax_page}', taxSettingsPageNo.toString())
+        .replaceAll('{yearly_page}', firstYearlyTablePageNo.toString());
+
+  return pagesHtml;
+}
