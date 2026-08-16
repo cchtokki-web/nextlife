@@ -482,7 +482,13 @@ export default function Home() {
             <h2 style="font-size: 16px; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; color: #0f172a; margin-top: 0; margin-bottom: 10px;">${nextSection()}. 연금·자산 현황 및 세금 설정</h2>
             <div style="font-size: 13px; line-height: 1.6; display: grid; grid-template-columns: 1fr; gap: 12px;">
               <div>
-                <strong>국민연금:</strong> 예상 월 수령액 ${nationalPension?.expectedMonthlyAmount.toLocaleString()}원 (${reportParams.withdrawalPlan?.nationalPensionStartAge ?? NATIONAL_PENSION_NORMAL_START_AGE}세부터 수령)
+                <!-- nationalPension에는 ?.를 붙이지 않는다. SimulationParams의 «필수» 필드이고
+                     SimulationEngine도 옵셔널 체인 없이 읽는다 — 없었다면 이 리포트가 설명하는
+                     시뮬레이션 자체가 먼저 터졌을 것이다. 붙여 봐야 뒤가 체이닝되지 않아
+                     「undefined원」이 찍히므로 방어처럼 보일 뿐 방어가 아니었다. 저장 데이터의
+                     결손을 견디려면 그 자리는 loadParams(로드 경계)이지 여기가 아니다.
+                     아래 withdrawalPlan?.는 실제로 선택 필드라 ??와 함께 그대로 둔다. -->
+                <strong>국민연금:</strong> 예상 월 수령액 ${nationalPension.expectedMonthlyAmount.toLocaleString()}원 (${reportParams.withdrawalPlan?.nationalPensionStartAge ?? NATIONAL_PENSION_NORMAL_START_AGE}세부터 수령)
                 ${nationalPensionSectionHtml}
               </div>
               <div>
