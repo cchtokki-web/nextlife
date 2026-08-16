@@ -53,9 +53,13 @@ const PLAN_EMBEDDED_GOALS: ReadonlySet<RetirementGoalType> = new Set(['EARLY_RET
 //   - 고른 목표는 확률을 바꾸지 못했다. 자산 고갈 방지를 HARD로 골라도, 아예 고르지 않아도
 //     같은 값이 나왔다.
 //
-// **레거시 시나리오는 건드리지 않는다.** retirementGoals 키가 없는 시나리오는 목표 화면을
-// 거친 적이 없다는 뜻이며(migrateRetirementGoals가 그 시나리오에는 필드를 쓰지 않는다),
-// 그때는 목표 도입 이전과 완전히 같은 조건을 쓴다. 저장된 결과가 조용히 달라지지 않는다.
+// **레거시 시나리오는 목표를 «지어내지» 않는다.** retirementGoals 키가 없으면 목표 화면을
+// 거친 적이 없다는 뜻이므로 판정 조건을 목표에서 만들지 않고 예전 세 조건을 그대로 쓴다.
+//
+// 다만 «값»까지 예전 그대로인 것은 아니다. migrateRetirementGoals가 로드 시점에 목표가 정하는
+// 축을 정규화하므로(normalizeGoalDrivenParams), 상속 목표가 없는 시나리오는 targetBequest 키가
+// 지워진 채 여기 도착한다 — 즉 아래 legacyTerminalGoal은 assetFloor나 0으로 떨어진다.
+// 그것이 새 규칙이다: 고르지 않은 상속 목표는 기말자산 조건이 되지 않는다.
 export function resolveGoalSuccessConditions(params: SimulationParams): GoalSuccessConditions {
   const legacyTerminalGoal = Math.max(0, params.userProfile.targetBequest ?? params.assetFloor ?? 0);
 

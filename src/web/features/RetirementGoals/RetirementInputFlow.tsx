@@ -98,11 +98,21 @@ export function RetirementInputFlow({
           type="button"
           disabled={!canAnalyze}
           title={blockedReason}
+          aria-describedby={blockedReason ? 'analysis-blocked-reason' : undefined}
           onClick={onStartAnalysis}
           className="w-full rounded-xl bg-primary px-4 py-2.5 text-sm font-bold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
         >
           분석 시작
         </button>
+        {/* 사유를 DOM에 «보이게» 렌더한다. title만 두면 터치 기기에서는 아무것도 뜨지 않고,
+            disabled 버튼은 포커스 대상이 아니라 스크린리더로도 도달할 수 없다. 사유가 다른
+            단계의 조건을 가리킬 때(목표 미선택)는 특히, 보이지 않으면 사용자는 자기가 무엇을
+            안 했는지 알 방법이 없다. */}
+        {blockedReason && (
+          <p id="analysis-blocked-reason" role="status" className="text-xs leading-relaxed text-foreground-muted">
+            {blockedReason}
+          </p>
+        )}
       </div>
 
       {step === 0 && (

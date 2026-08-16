@@ -12,13 +12,23 @@ function normalize(params: SimulationParams): SimulationParams {
 
 describe('normalizeGoalDrivenParams — 목표가 정하는 축', () => {
   test('「빠른 은퇴」를 고르지 않으면 국민연금 정상 개시 나이로 은퇴한다', () => {
-    const normalized = normalize({
+    const saved: SimulationParams = {
       ...initialParams,
+      userProfile: { ...initialParams.userProfile, retirementAge: 58 },
       retirementGoals: [{ type: 'ASSET_SURVIVAL', priority: 1, constraintType: 'HARD' }],
-    });
+    };
 
-    expect(initialParams.userProfile.retirementAge).not.toBe(NATIONAL_PENSION_NORMAL_START_AGE);
+    const normalized = normalize(saved);
     expect(normalized.userProfile.retirementAge).toBe(NATIONAL_PENSION_NORMAL_START_AGE);
+    // 바꿀 축이 없으면 strategy 키를 새로 만들지 않는다. 만들면 compileStrategy의
+    // "전략을 저장한 적 없는 시나리오는 입력이 비트 단위로 보존된다" 통과 경로가 조용히 죽는다.
+    expect('strategy' in normalized).toBe(false);
+  });
+
+  // 기본값이 정규화의 고정점이 아니면 새 시나리오가 만들어지자마자 저장값과 계산값이 어긋난다.
+  // (초기화·복호화 실패 폴백 등 migrateParams를 거치지 않고 initialParams를 그대로 쓰는 경로가 있다.)
+  test('기본 시나리오는 정규화해도 그대로다', () => {
+    expect(migrateRetirementGoals(initialParams)).toBe(initialParams);
   });
 
   test('「빠른 은퇴」를 고르면 그 목표값이 은퇴 나이가 된다', () => {
@@ -44,6 +54,22 @@ describe('normalizeGoalDrivenParams — 목표가 정하는 축', () => {
     expect(normalized.userProfile.targetMonthlySpending).toBe(2_800_000);
   });
 
+  // 생활비 안정과 여유 있는 소비는 «같은 필드»를 쓴다. 둘 다 고르면 우선순위가 앞선 쪽이
+  // 인출 목표가 된다 — 즉 목록에서 순서를 한 칸 올리는 것이 금액 선택이기도 하다.
+  // 우선순위 정렬은 normalizeRetirementGoals가 하므로 여기서는 결과만 고정한다.
+  test('생활비 목표가 둘이면 우선순위가 앞선 목표값이 인출 목표가 된다', () => {
+    const withOrder = (livingPriority: number, comfortPriority: number) => normalize({
+      ...initialParams,
+      retirementGoals: [
+        { type: 'LIVING_EXPENSE_STABILITY', priority: livingPriority, targetValue: 3_000_000, constraintType: 'SOFT' },
+        { type: 'COMFORTABLE_SPENDING', priority: comfortPriority, targetValue: 5_000_000, constraintType: 'SOFT' },
+      ],
+    });
+
+    expect(withOrder(1, 2).userProfile.targetMonthlySpending).toBe(3_000_000);
+    expect(withOrder(2, 1).userProfile.targetMonthlySpending).toBe(5_000_000);
+  });
+
   test('생활비 목표를 고르면 그 목표값이 목표 생활비가 된다', () => {
     const normalized = normalize({
       ...initialParams,
@@ -53,6 +79,58 @@ describe('normalizeGoalDrivenParams — 목표가 정하는 축', () => {
     });
 
     expect(normalized.userProfile.targetMonthlySpending).toBe(4_200_000);
+  });
+
+  // 0은 «입력하지 않았다»는 뜻이다. 0을 값으로 인정하면 목표 월 생활비가 0이 되고,
+  // UtilityEngine이 분모 0을 만점으로 읽어(target > 0 ? ratio : 1) 아무것도 못 쓰는 계획이
+  // 최고점을 받는다. 이 커밋이 없애려던 결함과 정확히 같은 종류다.
+  test('생활비 목표값이 0이면 저장된 목표 생활비를 지우지 않는다', () => {
+    const normalized = normalize({
+      ...initialParams,
+      retirementGoals: [
+        { type: 'LIVING_EXPENSE_STABILITY', priority: 1, targetValue: 0, constraintType: 'SOFT' },
+      ],
+    });
+
+    expect(normalized.userProfile.targetMonthlySpending)
+      .toBe(initialParams.userProfile.targetMonthlySpending);
+  });
+
+  test('상속 목표값이 0이면 자산 하한선을 세우지 않는다', () => {
+    const normalized = normalize({
+      ...initialParams,
+      retirementGoals: [
+        { type: 'INHERITANCE', priority: 1, targetValue: 0, constraintType: 'HARD' },
+      ],
+    });
+
+    expect('targetBequest' in normalized.userProfile).toBe(false);
+    // 바꿀 것이 없으면 strategy 키를 새로 만들지 않는다(통과 경로 보존). 엔진이 보는 값으로 읽는다.
+    expect(resolveStrategy(normalized).bequestStrategy).toBe('leave_some');
+  });
+
+  // 이미 65세를 지난 사용자를 65세로 되돌리면 그 사람의 계획이 통째로 사라진다.
+  test('현재 나이가 국민연금 개시 나이를 지났으면 그 나이를 은퇴 나이로 둔다', () => {
+    const normalized = normalize({
+      ...initialParams,
+      userProfile: { ...initialParams.userProfile, currentAge: 68, retirementAge: 68 },
+      retirementGoals: [{ type: 'ASSET_SURVIVAL', priority: 1, constraintType: 'HARD' }],
+    });
+
+    expect(normalized.userProfile.retirementAge).toBe(68);
+  });
+
+  // 목표값은 1세까지 허용된다(normalizeTargetValue의 clamp). 그 값이 그대로 내려오면
+  // 50세 사용자가 1세 은퇴로 분석을 돌린다.
+  test('현재 나이보다 이른 은퇴 목표는 현재 나이를 바닥으로 삼는다', () => {
+    const normalized = normalize({
+      ...initialParams,
+      retirementGoals: [
+        { type: 'EARLY_RETIREMENT', priority: 1, targetValue: 1, constraintType: 'HARD' },
+      ],
+    });
+
+    expect(normalized.userProfile.retirementAge).toBe(initialParams.userProfile.currentAge);
   });
 
   test('상속 목표가 없으면 「일부 남기기」로 되돌리고 목표 상속자산 키를 지운다', () => {

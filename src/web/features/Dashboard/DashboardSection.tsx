@@ -15,6 +15,7 @@ import { RiskAlertCards } from './risk/RiskAlertCards';
 import { MonteCarloSection } from './montecarlo/MonteCarloSection';
 import { MonteCarloResult } from '../../../core/entities/montecarlo';
 import { MonteCarloStatus } from '../../hooks/useMonteCarlo';
+import type { AppliedStrategySnapshot } from '../../hooks/useAppliedStrategy';
 import { SequenceRiskResult } from '../../../core/usecases/montecarlo/sequenceRisk';
 import { ExecutionRoadmap } from './roadmap/ExecutionRoadmap';
 import { computeExecutionRoadmap, selectDepletionAge } from '../../../core/usecases/dashboard/computeExecutionRoadmap';
@@ -64,7 +65,7 @@ interface DashboardSectionProps {
   // 실제 적용 대상은 사용자가 입력한 activeParams라서 여기서 결정하면 안 된다.
   onApplyStrategy?: (recommendation: CandidateRecommendation) => void;
   canApplyStrategy?: (recommendation: CandidateRecommendation) => boolean;
-  appliedCandidateId?: string;
+  appliedStrategy?: AppliedStrategySnapshot;
   onUndoStrategy?: () => void;
 }
 
@@ -94,7 +95,7 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
   strategyOptimizationError,
   onApplyStrategy,
   canApplyStrategy,
-  appliedCandidateId,
+  appliedStrategy,
   onUndoStrategy,
 }) => {
   // 초기값이 빈 객체가 아닌 이유: 몬테카를로 상위 10% 선은 처음 화면에서 꺼 둔다
@@ -302,7 +303,7 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
           formatValue={formatValue}
           onApplyStrategy={onApplyStrategy}
           canApplyStrategy={canApplyStrategy}
-          appliedCandidateId={appliedCandidateId}
+          appliedStrategy={appliedStrategy}
           onUndoStrategy={onUndoStrategy}
         />
       </DashboardGroup>

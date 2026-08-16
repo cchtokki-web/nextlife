@@ -75,7 +75,7 @@ export type StrategyFieldApplication =
 
 export interface StrategyFieldSpec {
   key: StrategyFieldKey;
-  /** 카드·PDF·배너가 함께 쓰는 축 이름. */
+  /** 카드·PDF가 함께 쓰는 축 이름. 적용 상태 알림의 「반영하지 못했습니다」도 이 이름을 쓴다. */
   label: string;
   /** 현재 계획이 추천과 다른가. describe와 apply가 **같은 술어**를 본다. */
   differs(params: SimulationParams, ranked: RankedStrategyCandidate): boolean;

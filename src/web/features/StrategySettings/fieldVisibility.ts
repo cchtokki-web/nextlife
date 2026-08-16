@@ -8,10 +8,10 @@ export type SectionId = 'basic' | 'pension' | 'investment' | 'economic' | 'advan
 // 섹션 → 그 섹션이 다루는 필드 경로. 한 경로는 정확히 한 섹션에만 속한다
 // (중복되면 변경 개수 배지가 이중 계산된다 — 테스트가 이를 막는다).
 //
-// **여기에 없는 축이 있다.** 은퇴 나이·목표 생활비·상속·생활비 전략·목표 우선순위는
-// 「은퇴 목표」 카드(RetirementInputFlow 3단계)가 유일한 편집 경로이며, 값은 목표에서
-// 파생된다(normalizeGoalDrivenParams). 이 패널에 다시 등록하면 같은 값을 두 화면이 각자
-// 편집하던 상태로 돌아간다 — 그것이 이 목록에서 goal 섹션을 걷어낸 이유다.
+// **여기에 없는 축이 있다.** 은퇴 나이·목표 생활비·목표 상속자산은 「은퇴 목표」 카드
+// (RetirementInputFlow 3단계)가 유일한 편집 경로이고, 생활비 전략·목표 우선순위는 아무도
+// 고르지 않는 고정값이다(normalizeGoalDrivenParams). 이 패널에 다시 등록하면 같은 값을 두
+// 화면이 각자 편집하던 상태로 돌아간다 — 그것이 이 목록에서 goal 섹션을 걷어낸 이유다.
 export const SECTION_FIELDS: Record<SectionId, ReadonlyArray<FieldPath>> = {
   basic: [
     'userProfile.currentAge',
@@ -83,7 +83,7 @@ const SIMPLE_FIELDS: ReadonlySet<FieldPath> = new Set([
   'assets.reinvestDividend',
 ]);
 
-// 표준 모드는 간편 + 상속 전략 + 투자 전략 + 경제 가정 주요 항목.
+// 표준 모드는 간편 + 투자 전략 + 경제 가정 주요 항목 + ISA 만기 자금.
 // 고급 설정(advanced)만 제외된다.
 const STANDARD_EXCLUDED: ReadonlySet<FieldPath> = new Set(SECTION_FIELDS.advanced);
 

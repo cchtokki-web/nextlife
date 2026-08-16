@@ -92,6 +92,15 @@ function candidate(
 
 const formatValue = (value: number) => `${Math.round(value / 10_000)}만원`;
 
+// 카드 한 장을 이름으로 집는다. 적용 상태 알림에도 같은 페르소나 이름이 들어가므로
+// «article» 안에서만 찾아야 한다.
+function cardTitled(label: string): HTMLElement {
+  const card = [...document.querySelectorAll('article')]
+    .find((article) => article.textContent?.includes(label));
+  if (!card) throw new Error(`${label} 카드를 찾지 못했습니다`);
+  return card as HTMLElement;
+}
+
 describe('StrategyRecommendationCards', () => {
   test('추천 결과가 없으면 후보만으로 페르소나를 지어내지 않는다', () => {
     render(
@@ -244,7 +253,7 @@ describe('StrategyRecommendationCards', () => {
     expect(screen.getByText('안정형')).toBeInTheDocument();
     expect(screen.getByText('균형형')).toBeInTheDocument();
     expect(screen.getByText('여유형')).toBeInTheDocument();
-    expect(within(screen.getByText('균형형').closest('article')!).getByText('추천')).toBeInTheDocument();
+    expect(within(cardTitled('균형형')).getByText('추천')).toBeInTheDocument();
   });
 });
 
@@ -343,12 +352,79 @@ describe('StrategyRecommendationCards 적용 버튼', () => {
     );
   }
 
-  // rerenderWith: 적용 전후로 appliedCandidateId만 바꿔 «같은» 컴포넌트를 다시 그린다.
+  // 적용 스냅샷. 실제 호출자(useAppliedStrategy)가 내려 주는 모양 그대로 만든다.
+  const snapshotOf = (candidateId: string, skippedLabels: string[] = []) => ({
+    candidateId, label: '균형형' as const, appliedLabels: ['은퇴 시점'], skippedLabels,
+  });
+
+  // rerenderWith: 적용 전후로 appliedStrategy만 바꿔 «같은» 컴포넌트를 다시 그린다.
   // 새로 render하면 로컬 state가 초기화되어 언마운트 없는 실제 화면 전환을 재현하지 못한다.
   function renderCards(props: CardProps = {}) {
     const view = render(cardsElement(props));
     return { ...view, rerenderWith: (next: CardProps) => view.rerender(cardsElement(next)) };
   }
+
+  // 「적용」을 누르면 재분석이 걸리고, useStrategyOptimization이 status를 idle로 되돌린 뒤
+  // 워커 검증이 끝날 때까지 카드 그리드가 통째로 사라진다(수 초). 되돌리기가 카드 안에만
+  // 있으면 사용자가 되돌리고 싶어 할 «바로 그 순간»에 취소 경로가 없어진다 — 그 사이 자동저장은
+  // 이미 돌고 있고 스냅샷은 메모리에만 있어, 새로고침하면 원본이 영영 사라진다.
+  test.each([
+    ['idle' as const],
+    ['running' as const],
+    ['error' as const],
+  ])('검증 상태가 %s여서 카드가 사라져도 되돌리기는 남는다', (status) => {
+    const onUndoStrategy = vi.fn();
+    renderCards({
+      status,
+      recommendations: undefined,
+      appliedStrategy: snapshotOf('candidate-1'),
+      onUndoStrategy,
+      onApplyStrategy: vi.fn(),
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: '적용 해제' }));
+    expect(onUndoStrategy).toHaveBeenCalledTimes(1);
+  });
+
+  // 결과가 카드 대신 안내로 대체되는 경우(도달 불가·후보 없음)도 같다.
+  test('추천이 도달 불가로 대체돼도 되돌리기는 남는다', () => {
+    const onUndoStrategy = vi.fn();
+    renderCards({
+      recommendations: [balanced],
+      outcome: { kind: 'no_candidate_reaches_goal', validatedCount: 12, personaCount: 1 },
+      appliedStrategy: snapshotOf('candidate-1'),
+      onUndoStrategy,
+      onApplyStrategy: vi.fn(),
+    });
+
+    expect(screen.getByText('어떤 전략으로도 목표에 도달하지 못합니다')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '적용 해제' }));
+    expect(onUndoStrategy).toHaveBeenCalledTimes(1);
+  });
+
+  // 적용된 카드가 보이면 그 카드가 해제를 맡는다. 같은 이름의 버튼이 둘이면 사용자는 두 개가
+  // 서로 다른 일을 한다고 읽는다.
+  test('적용된 카드가 보이면 해제 버튼은 하나뿐이다', () => {
+    renderCards({
+      appliedStrategy: snapshotOf('candidate-1'),
+      onUndoStrategy: vi.fn(),
+      onApplyStrategy: vi.fn(),
+    });
+
+    expect(screen.getAllByRole('button', { name: '적용 해제' })).toHaveLength(1);
+  });
+
+  // 반영하지 못한 축을 숨기면 「전략을 적용했다」는 화면의 약속과 실제가 조용히 어긋난다
+  // (applyStrategyToParams의 skipped 계약). 목표를 고르지 않은 사용자에게는 이것이 기본 동작이다.
+  test('반영하지 못한 축을 이름으로 밝힌다', () => {
+    renderCards({
+      appliedStrategy: snapshotOf('candidate-1', ['은퇴 시점', '월 생활비']),
+      onUndoStrategy: vi.fn(),
+      onApplyStrategy: vi.fn(),
+    });
+
+    expect(screen.getByText(/은퇴 시점, 월 생활비.*반영하지 못했습니다/)).toBeInTheDocument();
+  });
 
   // 설정을 바꿀 수 없는 읽기 전용 문맥이 같은 컴포넌트를 쓸 수 있다. 콜백이 없으면 액션 자체가 없어야 한다.
   test('적용 콜백이 없으면 버튼을 내지 않는다', () => {
@@ -373,7 +449,7 @@ describe('StrategyRecommendationCards 적용 버튼', () => {
   // 뒤로, 이 버튼이 화면에 남은 유일한 취소 경로다.
   test('적용한 전략은 그 자리에서 해제할 수 있다', () => {
     const onUndoStrategy = vi.fn();
-    renderCards({ onApplyStrategy: vi.fn(), appliedCandidateId: 'candidate-1', onUndoStrategy });
+    renderCards({ onApplyStrategy: vi.fn(), appliedStrategy: snapshotOf('candidate-1'), onUndoStrategy });
 
     const undoButton = screen.getByRole('button', { name: '적용 해제' });
     expect(undoButton).toBeEnabled();
@@ -385,7 +461,7 @@ describe('StrategyRecommendationCards 적용 버튼', () => {
 
   // 설정을 바꿀 수 없는 읽기 전용 문맥은 해제 콜백을 주지 않는다.
   test('해제 콜백이 없으면 적용됨으로만 표시한다', () => {
-    renderCards({ onApplyStrategy: vi.fn(), appliedCandidateId: 'candidate-1' });
+    renderCards({ onApplyStrategy: vi.fn(), appliedStrategy: snapshotOf('candidate-1') });
 
     expect(screen.getByRole('button', { name: '적용됨' })).toBeDisabled();
   });
@@ -400,8 +476,8 @@ describe('StrategyRecommendationCards 적용 버튼', () => {
     fireEvent.click(screen.getByRole('button', { name: '적용' }));
     expect(onApplyStrategy).toHaveBeenCalledWith(balanced);
 
-    // 적용이 반영되면 호출자가 appliedCandidateId를 내려 준다.
-    rerenderWith({ onApplyStrategy, onUndoStrategy, appliedCandidateId: 'candidate-1' });
+    // 적용이 반영되면 호출자가 스냅샷을 내려 준다.
+    rerenderWith({ onApplyStrategy, onUndoStrategy, appliedStrategy: snapshotOf('candidate-1') });
     fireEvent.click(screen.getByRole('button', { name: '적용 해제' }));
     expect(onUndoStrategy).toHaveBeenCalledTimes(1);
 
@@ -424,14 +500,14 @@ describe('StrategyRecommendationCards 적용 버튼', () => {
         formatValue={formatValue}
         onApplyStrategy={vi.fn()}
         onUndoStrategy={vi.fn()}
-        appliedCandidateId="candidate-2"
+        appliedStrategy={{ candidateId: 'candidate-2', label: '균형형', appliedLabels: [], skippedLabels: [] }}
       />
     );
 
     expect(screen.getAllByRole('button', { name: '적용 해제' })).toHaveLength(1);
     expect(screen.getAllByRole('button', { name: '적용' })).toHaveLength(2);
     expect(
-      within(screen.getByText('균형형').closest('article')!).getByRole('button', { name: '적용 해제' })
+      within(cardTitled('균형형')).getByRole('button', { name: '적용 해제' })
     ).toBeInTheDocument();
   });
 
@@ -456,18 +532,16 @@ describe('StrategyRecommendationCards 적용 버튼', () => {
     );
   }
 
-  function cardOf(label: string) {
-    return screen.getByText(label).closest('article')!;
-  }
+
 
   test('적용한 카드만 강조한다 — ☆추천 카드가 아니라', () => {
-    threeCards({ appliedCandidateId: 'candidate-3' });
+    threeCards({ appliedStrategy: snapshotOf('candidate-3') });
 
     // ☆추천은 균형형에 붙어 있지만, 강조는 사용자가 적용한 여유형이 가져간다.
-    expect(within(cardOf('균형형')).getByText('추천')).toBeInTheDocument();
-    expect(cardOf('여유형')).toHaveAttribute('aria-current', 'true');
-    expect(cardOf('균형형')).not.toHaveAttribute('aria-current');
-    expect(cardOf('안정형')).not.toHaveAttribute('aria-current');
+    expect(within(cardTitled('균형형')).getByText('추천')).toBeInTheDocument();
+    expect(cardTitled('여유형')).toHaveAttribute('aria-current', 'true');
+    expect(cardTitled('균형형')).not.toHaveAttribute('aria-current');
+    expect(cardTitled('안정형')).not.toHaveAttribute('aria-current');
   });
 
   test('적용한 전략이 없으면 어떤 카드도 강조하지 않는다', () => {

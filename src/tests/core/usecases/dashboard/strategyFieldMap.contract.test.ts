@@ -5,6 +5,7 @@ import { applyStrategyToParams } from '@/core/usecases/dashboard/applyStrategyTo
 import { describeStrategyChanges } from '@/core/usecases/dashboard/describeStrategyChanges';
 import { STRATEGY_FIELD_MAP } from '@/core/usecases/dashboard/strategyFieldMap';
 import { compileStrategy, resolveStrategy } from '@/core/usecases/strategy/compileStrategy';
+import { migrateRetirementGoals } from '@/core/usecases/goals/retirementGoalAdapter';
 import { makeParams, makeRanked, type RankedOverrides } from './strategyFieldFixtures';
 
 // describeStrategyChanges(카드가 말하는 것)와 applyStrategyToParams(실제로 일어나는 것)의
@@ -20,7 +21,10 @@ const formatValue = (value: number) => `${Math.round(value / 10_000)}만원`;
 // 그래서 국민연금 개시 나이는 언제나 수령 전략과 짝이 맞는다 — 저수준 나이만 60인데 전략은
 // 미정('ai_optimized' = 65세)인 params는 화면에 존재하지 않는 상태이고, 그런 픽스처를 쓰면
 // 「적용했는데 국민연금이 다시 달라 보인다」는 실패가 계약이 아니라 픽스처에서 나온다.
-const CURRENT_PLANS: SimulationParams[] = [
+// 카드가 실제로 받는 것은 «로드 정규화를 거친» params다(useScenarios의 migrateParams →
+// AnalysisRuntime의 effective). 원본 그대로 넣으면 describe/apply는 정규화 전 값을 보고
+// 비교 대상은 정규화 후 값이 되어, 계약이 아니라 픽스처가 실패를 만든다.
+const CURRENT_PLANS: SimulationParams[] = ([
   makeParams({
     userProfile: { currentAge: 50, retirementAge: 60, expectancy: 90, targetMonthlySpending: 3_000_000 },
     yieldPreset: 'conservative',
@@ -33,9 +37,23 @@ const CURRENT_PLANS: SimulationParams[] = [
     withdrawalPlan: { nationalPensionStartAge: 70, accountWithdrawalPolicy: 'TAX_OPTIMIZED' },
     strategy: { ...resolveStrategy(makeParams()), nationalPensionStrategy: 'defer_max', riskProfile: 'aggressive' },
   }),
-  // 저수준 필드를 하나도 정하지 않은 옛 시나리오.
+  // 저수준 필드를 하나도 정하지 않은 시나리오.
   makeParams({ yieldPreset: undefined, withdrawalPlan: undefined }),
-];
+  // 목표를 하나도 고르지 않은 계획. 은퇴 시점·월 생활비 축이 반영 «불가»가 되는 경로이며,
+  // 픽스처가 전부 목표를 갖고 있으면 그 분기를 계약 테스트가 한 번도 밟지 않는다.
+  makeParams({ retirementGoals: [] }),
+  // 정규화를 거치지 않은 저장 시나리오. 적용이 말하지 않은 축(생활비 전략·목표 우선순위)을
+  // 함께 바꾸면 「적용한 뒤에는 반영하지 못한 축만 남는다」가 즉시 깨진다.
+  makeParams({
+    strategy: {
+      ...resolveStrategy(makeParams()),
+      spendingChoice: 'dividend_only',
+      objective: 'tax_minimization',
+    },
+    userProfile: { currentAge: 50, retirementAge: 60, expectancy: 90, targetMonthlySpending: 3_000_000 },
+    retirementGoals: [{ type: 'ASSET_SURVIVAL', priority: 1, constraintType: 'HARD' }],
+  }),
+] as SimulationParams[]).map(migrateRetirementGoals);
 
 const CANDIDATE_AXES: RankedOverrides[] = [];
 for (const retirementAge of [60, 62]) {
@@ -92,7 +110,9 @@ describe('strategyFieldMap 계약', () => {
   test('compileStrategy를 통과한 뒤에도 반영 결과가 유지된다', () => {
     for (const { params, ranked } of COMBINATIONS) {
       const result = applyStrategyToParams(params, ranked);
-      const compiled = compileStrategy(result.params).params;
+      // 실제 경로는 「저장 → 로드 정규화 → 컴파일」이다. compileStrategy만 통과시키면
+      // migrateRetirementGoals가 되돌리는 축을 이 계약이 놓친다.
+      const compiled = compileStrategy(migrateRetirementGoals(result.params)).params;
       const remaining = describeStrategyChanges(compiled, ranked, formatValue);
 
       expect(remaining.map((change) => change.label).sort())

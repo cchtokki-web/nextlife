@@ -263,6 +263,33 @@
   background: var(--panel-bg);
 }
 
+/* 적용 상태 알림. 카드 그리드 «밖»에 있어 검증 상태(idle/running)나 결과 종류와 무관하게
+   남는다 — 그리드가 사라지는 동안에도 되돌리기가 화면에서 사라지면 안 된다. */
+.appliedStrategyStatus {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.75rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid color-mix(in srgb, var(--primary) 35%, var(--card-border));
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--primary) 8%, var(--panel-bg));
+}
+
+.appliedStrategyStatusTitle { font-size: 0.8rem; line-height: 1.5; color: var(--foreground); }
+
+/* 반영하지 못한 축. 숨기면 "전략을 적용했다"는 문장이 거짓이 된다. */
+.appliedStrategySkippedNote {
+  margin-top: 0.2rem;
+  font-size: 0.74rem;
+  line-height: 1.45;
+  color: var(--warning, #d97706);
+}
+
+.appliedStrategyStatus .undoAppliedStrategyButton { width: auto; flex-shrink: 0; }
+
 /* 지금 시나리오에 반영된 카드. ☆추천(엔진의 선택)이 아니라 «적용 상태»를 말한다 —
    적용한 것이 없으면 어떤 카드에도 붙지 않는다. */
 .appliedStrategyCard {

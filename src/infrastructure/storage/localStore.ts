@@ -4,7 +4,10 @@ import { SIMULATOR_PARAMS_KEY } from './storageKeys';
 export const initialParams: SimulationParams = {
   userProfile: {
     currentAge: 50,
-    retirementAge: 60,
+    // 국민연금 정상 개시 나이. 「빠른 은퇴」 목표를 고르지 않으면 계산도 이 나이로 돌아가므로
+    // (normalizeGoalDrivenParams), 기본값을 다른 값으로 두면 새 시나리오가 만들어지자마자
+    // 저장값과 계산값이 어긋난다.
+    retirementAge: 65,
     expectancy: 85,
     targetMonthlySpending: 3500000, // 350만 원 (통계청 50대 평균 소비지출 참고)
   },
