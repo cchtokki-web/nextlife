@@ -318,6 +318,16 @@ export function renderRiskAlertsSection(alerts: RiskAlert[]): string {
 // 추천 자리가 통째로 비는데, 그러면 "추천할 것이 없는 계획"으로 읽힌다.
 export function renderStrategyRecommendationSection(input: {
   recommendations?: readonly CandidateRecommendation[];
+  /**
+   * ☆추천 배지가 붙는 카드. 화면(StrategyRecommendationCards)이 받는 것과 같은 값이다.
+   *
+   * 여기서 규칙을 다시 쓰지 않는다. 예전에는 이 파일이 `find(persona === 'BALANCED')`로
+   * 직접 골랐는데, 그 규칙은 「목표를 지킨 최고 확률 카드」로 바뀌면서 화면에서 삭제됐다.
+   * 규칙이 두 벌이면 같은 계획을 두고 화면은 안정형에, 리포트는 균형형에 별을 붙인다.
+   * 없으면 «아무 카드에도» 붙이지 않는다 — 첫 카드로 폴백하면 엔진이 고르지 않은 카드가
+   * 추천으로 인쇄된다.
+   */
+  primary?: CandidateRecommendation | null;
   status: StrategyOptimizationStatus;
   unsupportedHardGoals?: readonly RetirementGoalType[];
   outcome?: OptimizationOutcome;
@@ -327,7 +337,7 @@ export function renderStrategyRecommendationSection(input: {
   formatValue: (value: number) => string;
 }): string {
   const {
-    recommendations, status, unsupportedHardGoals, outcome,
+    recommendations, primary, status, unsupportedHardGoals, outcome,
     sustainableSpendingAdvice, params, formatValue,
   } = input;
 
@@ -372,8 +382,9 @@ export function renderStrategyRecommendationSection(input: {
     return notice(describeEmptyOutcome(outcome));
   }
 
-  const recommended = finalRecommendations.find((item) => item.persona === 'BALANCED')
-    ?? finalRecommendations[0];
+  // 워커를 건너온 primary는 구조적 복제라 배열 원소와 다른 객체다. 화면과 같은 이유로
+  // 참조가 아니라 id로 맞춘다.
+  const recommendedId = primary?.candidate.candidate.id;
 
   // 검증할 수 없었던 HARD 목표를 밝힌다. 밝히지 않으면 "확인하지 않음"이 "확인해서 통과함"으로
   // 읽힌다 — 리포트는 화면보다 오래 남고 그대로 인용되므로 더 중요하다.
@@ -387,7 +398,8 @@ export function renderStrategyRecommendationSection(input: {
   const cardsHtml = finalRecommendations
     .map((recommendation) => {
       const candidate = recommendation.candidate;
-      const isRecommended = recommendation === recommended;
+      const isRecommended = recommendedId !== undefined
+        && recommendation.candidate.candidate.id === recommendedId;
       const changes = describeStrategyChanges(params, candidate, formatValue);
       const changesHtml = changes.length > 0
         ? `<table style="width: 100%; border-collapse: collapse; margin-top: 4px;">

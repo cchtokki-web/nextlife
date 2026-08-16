@@ -525,8 +525,8 @@ export class LegacySimulationEngine implements SimulationEngineContract {
     
     if (retirementYearsResults.length > 0) {
       const totalSpendingSum = retirementYearsResults.reduce((sum, r) => sum + r.spending, 0);
-      // 안정소득 = 국민연금 + 배당. 종신 지급이거나 원금을 유지한 채 나오는 흐름이라
-      // 계좌가 비어 멈추지 않는다.
+      // 안정소득 = 국민연금 + 배당 + 기타소득. 종신 지급이거나 원금을 유지한 채 나오는
+      // 흐름이라 계좌가 비어 멈추지 않는다.
       //
       // 사적연금 인출은 뺀다. pensionIncome에는 국민연금과 사적연금이 함께 들어 있는데,
       // 사적연금 인출은 연금계좌라는 자산을 헐어 쓰는 것이라 수동소득이 아니다. 세면
@@ -535,9 +535,12 @@ export class LegacySimulationEngine implements SimulationEngineContract {
       // 계획이 그릇 때문에 17점 높게 나온 것이다.
       //
       // goalAchievementRate(cashFlowScore)와 fireAge도 같은 기준을 쓴다. 두 항목이 같은
-      // 개념을 서로 다르게 세면 점수를 설명할 수 없다.
+      // 개념을 서로 다르게 세면 점수를 설명할 수 없다. 그래서 기타소득도 함께 센다 —
+      // 저 둘은 totalIncome(= 배당 + 연금 + 기타)에서 사적연금만 빼는 식이라 기타소득이
+      // 들어 있고, 여기만 빼면 임대소득이 있는 사용자가 25점짜리 cashFlowScore·FIRE
+      // 판정에서는 인정받고 20점짜리 이 축에서만 0으로 세이는 설명 불가능한 상태가 된다.
       const totalStableIncomeSum = retirementYearsResults.reduce(
-        (sum, r) => sum + (r.pensionIncome - r.privatePensionIncome) + r.dividendIncome, 0
+        (sum, r) => sum + (r.pensionIncome - r.privatePensionIncome) + r.dividendIncome + r.otherIncome, 0
       );
       avgRetirementMonthlySpending = totalSpendingSum / retirementYearsResults.length / 12;
       avgStableIncome = totalStableIncomeSum / retirementYearsResults.length / 12;

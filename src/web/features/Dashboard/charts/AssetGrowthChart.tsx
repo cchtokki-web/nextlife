@@ -53,7 +53,8 @@ const COMPARE_COLORS = ['#10B981', '#F59E0B', '#EF4444', '#8B5CF6'];
 // 세 선이었다. 팬 차트를 버린 이유는 축이 P90에 끌려가서였다 — 39년 뒤 상위 10%는 80억까지
 // 벌어지는데 결정론 곡선은 10억 언저리라, 정작 봐야 할 주 곡선이 바닥에 눌렸다.
 //
-// 세 선에서 한 선으로 줄인 이유는 다르다. 계열이 일곱 개가 되어 점선 넷이 서로 겹쳤고,
+// 세 선에서 한 선으로 줄인 이유는 다르다. 계열이 일곱 개가 되어 점선 다섯(ISA자산·현금·
+// 백분위 세 선)이 서로 겹쳤고,
 // 그중 상위 10%는 위 축 문제 때문에 애초에 기본으로 꺼 둔 «죽은 범례»였다(게다가 ISA 자산과
 // 색·모양이 완전히 같아 구분되지도 않았다).
 //
@@ -108,10 +109,15 @@ export function AssetGrowthChart({
   // 하방 선은 «간단히 보기»에서만 그린다. 구성 상세(주식/연금/ISA/현금)를 펼친 상태에
   // 한 선을 더 얹으면 시리즈가 일곱 개가 되어 어느 것도 읽히지 않는다.
   //
-  // `?? []`는 방어다. 워커가 돌려준 payload에 이 필드가 없으면(개발 중 HMR로 워커 청크만
-  // 낡는 경우) 가드가 없을 때 `undefined.map`으로 대시보드 전체가 죽는다.
-  const bandByAge = !showBreakdown && monteCarlo
-    ? new Map((monteCarlo.assetDownside ?? []).map((b) => [b.age, b]))
+  // 밴드가 «비어 있는» 경우까지 막아야 한다. 워커가 돌려준 payload에 이 필드가 없으면
+  // (개발 중 HMR로 워커 청크만 낡는 경우) 가드가 없을 때 `undefined.map`으로 대시보드
+  // 전체가 죽는데, `?? []`만 두면 반대쪽으로 조용히 실패한다 — `new Map([])`은 truthy라
+  // 범례 버튼과 DOWNSIDE_NOTE 문단은 그려지고 정작 선만 없는, 「설명은 있는데 그림이 없는」
+  // 화면이 된다. 무료 사용자에게는 이 선이 유일한 하방 신호라 더 그렇다(p10~p90 표는
+  // Pro 전용). 그래서 길이를 보고, 없으면 관련 UI를 통째로 내린다.
+  const downside = monteCarlo?.assetDownside;
+  const bandByAge = !showBreakdown && downside && downside.length > 0
+    ? new Map(downside.map((b) => [b.age, b]))
     : undefined;
 
   const assetChartData = yearlyResults.map((r) => {

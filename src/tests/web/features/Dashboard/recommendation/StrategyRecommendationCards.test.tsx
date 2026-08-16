@@ -640,6 +640,9 @@ describe('StrategyRecommendationCards 적용 버튼', () => {
             ...balanced.candidate.candidate.strategy,
             retirementAge: params.userProfile.retirementAge,
             nationalPensionStartAge: 60,
+            // 인출 축은 dimensions가 아니라 «시뮬레이션된 전략»을 본다(strategyFieldMap).
+            // dimensions만 맞추면 카드가 실제로 돌려보지 않은 정책을 변경점으로 내건다.
+            withdrawalPolicy: { accountWithdrawalPolicy: 'GENERAL_FIRST' as const },
           },
         },
       },

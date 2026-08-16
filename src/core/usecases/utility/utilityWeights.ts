@@ -15,6 +15,24 @@ export function createUtilityConfig(
   if (Math.abs(subWeightSum - 1) > 1e-9) {
     throw new Error(`UtilityConfig.pensionUtilizationSubWeights 합은 1이어야 합니다 (현재 ${subWeightSum})`);
   }
+  // 아래 값들은 전부 UtilityEngine에서 «나눗셈의 분모»로 쓰인다. 0이나 음수가 들어오면
+  // 몫이 Infinity가 되고, 그 뒤의 clamp(…, 0, 1)가 그것을 조용히 만점으로 바꾼다 —
+  // 예컨대 fullBufferYears가 0이면 살아남은 모든 계획이 depletionSafety 만점을 받아,
+  // 이 축을 넣은 목적(완충자본을 태운 계획과 남긴 계획의 구분)이 오류 없이 사라진다.
+  // 설정값은 사용자 입력이 아니라 프로그래머 입력이므로 조용히 보정하지 않고 즉시 터뜨린다.
+  const positives = {
+    fullBufferYears: rest.fullBufferYears,
+    appropriateBequestMonths: rest.appropriateBequestMonths,
+    privatePensionEffectiveTaxCeiling: rest.privatePensionEffectiveTaxCeiling,
+  };
+  for (const [name, value] of Object.entries(positives)) {
+    if (!Number.isFinite(value) || value <= 0) {
+      throw new Error(`UtilityConfig.${name}은 0보다 큰 유한수여야 합니다 (현재 ${value})`);
+    }
+  }
+  if (!Number.isFinite(rest.survivalBaseScore) || rest.survivalBaseScore < 0 || rest.survivalBaseScore > 1) {
+    throw new Error(`UtilityConfig.survivalBaseScore는 0~1이어야 합니다 (현재 ${rest.survivalBaseScore})`);
+  }
   return { weights, ...rest };
 }
 
@@ -39,6 +57,11 @@ export function createUtilityConfig(
 //
 // 참고로 완충연수 단독의 corr은 0.846으로 효용 총점(0.640)보다 높다. 그것은 결함이 아니라
 // 정의상 당연하다 — 총점은 소비·세금·연금 활용도까지 함께 재는 «다른 질문»이다.
+//
+// **새 축을 하나 더 넣는 안도 같이 재 보고 접었다.** 「안정소득(국민연금+배당) 충당률」을
+// 독립 축 후보로 측정했더니 corr 0.545로 효용 총점(0.640)보다 «낮았다». 축을 늘리면 모든
+// 가중치를 다시 배분해야 하는데, 그 대가로 목적함수가 생존율과 더 어긋나는 셈이라 근거가
+// 없다. 배점 재조정과 함께 이 질문도 다시 열지 않기 위해 남긴다.
 export const DEFAULT_UTILITY_CONFIG: UtilityConfig = createUtilityConfig(
   {
     consumption: 35,

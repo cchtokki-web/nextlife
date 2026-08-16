@@ -12,7 +12,7 @@ import { computeShortfallSummary } from '../../core/usecases/dashboard/computeSh
 import { describeDepletionAge } from '../../core/usecases/dashboard/describeDepletionAge';
 import { formatCurrencyUnit, renderRiskAlertsSection, renderStrategyRecommendationSection, renderExecutionRoadmapSection, renderSensitivityTableSection, renderMonteCarloSection, renderShortfallSummarySection, renderPlanVerdictSection, renderNationalPensionSection, renderKeyLeversSection } from '../../web/features/Pdf/pdfReportSections';
 import { buildReportHtml } from '../../web/features/Pdf/buildReportHtml';
-import { generateReportPdf } from '../../web/features/Pdf/generateReportPdf';
+import { generateReportPdf, ReportPageOverflowError } from '../../web/features/Pdf/generateReportPdf';
 import { computePlanConfidence } from '../../core/usecases/dashboard/computePlanConfidence';
 import { computeKeyLevers } from '../../core/usecases/dashboard/computeKeyLevers';
 import { computePensionGapRisk } from '../../core/usecases/dashboard/computePensionGapRisk';
@@ -206,6 +206,8 @@ export default function Home() {
       // 내고 있어 같은 계획의 두 문서가 서로 다른 축으로 서로 다른 전략을 권했다.
       const strategyRecommendationHtml = renderStrategyRecommendationSection({
         recommendations: strategyOptimization?.recommendations?.recommendations,
+        // 화면의 ☆추천과 같은 출처. 넘기지 않으면 리포트가 제 규칙으로 다시 고른다.
+        primary: strategyOptimization?.recommendations?.primary,
         status: strategyOptimizationStatus,
         unsupportedHardGoals: strategyOptimization?.debug?.unsupportedHardGoals,
         outcome: strategyOptimization?.outcome,
@@ -312,7 +314,22 @@ export default function Home() {
       await generateReportPdf(pagesHtml, 'NextLife_Simulation_Report.pdf');
     } catch (error) {
       console.error('Failed to generate PDF:', error);
-      alert('PDF 생성 중 오류가 발생했습니다. 다시 시도해 주세요.');
+      // 오류를 구분해서 알린다. 예전에는 무엇이 터졌든 "다시 시도해 주세요"였는데, 이 자리에
+      // 오는 오류는 대부분 «결정적»이라 다시 눌러도 똑같이 실패한다. 사용자를 무한 재시도로
+      // 보내는 안내이자, ReportPageOverflowError가 일부러 실어 온 「몇 쪽이 넘쳤는가」를
+      // 유일한 표시 지점에서 버리는 처리였다.
+      if (error instanceof ReportPageOverflowError) {
+        alert(
+          `리포트 ${error.pageNumbers.join(', ')}쪽의 내용이 페이지를 넘어서 저장을 중단했습니다.\n`
+          + '잘린 문서가 만들어지지 않도록 막은 것이며, 화면의 분석 결과는 정상입니다.'
+        );
+      } else if (error instanceof Error && /dynamically imported module/i.test(error.message)) {
+        // jspdf·html2canvas는 동적 import다. 오프라인이거나 배포 직후 낡은 청크를 물고 있으면
+        // 여기로 온다 — 이때만 「다시 시도」가 실제로 통하고, 필요한 것은 새로고침이다.
+        alert('리포트 생성 모듈을 불러오지 못했습니다. 네트워크를 확인한 뒤 새로고침해 주세요.');
+      } else {
+        alert('리포트를 만드는 중 오류가 발생했습니다. 화면의 분석 결과는 정상입니다.');
+      }
     } finally {
       setIsGeneratingPdf(false);
     }

@@ -119,4 +119,105 @@ describe('buildReportHtml', () => {
       expect(buildReportHtml(inputOf(noAccounts))).not.toBe(buildReportHtml(input()));
     });
   });
+
+  // 조립 결과는 generateReportPdf에서 `innerHTML`로 실제 DOM이 된다. 사용자가 자유롭게
+  // 적는 이름이 그대로 실리면 `<img src=x onerror=...>`가 붙는 즉시 실행되고, 공격이 아닌
+  // 평범한 `&`나 `<`도 <li>를 무너뜨린다 — 넘침 검사는 «높이»만 보므로 그 붕괴를 못 잡는다.
+  describe('사용자가 적은 이름', () => {
+    const withHostileNames = (): ReportHtmlInput => {
+      const base = input();
+      return {
+        ...base,
+        params: {
+          ...base.params,
+          assets: base.params.assets.map((asset, index) => index === 0
+            ? { ...asset, name: '<img src=x onerror="alert(1)">' }
+            : asset),
+          otherIncomes: [{
+            id: 'income-evil', label: 'A & B <script>alert(1)</script>',
+            monthlyAmount: 1_000_000, currency: 'KRW' as const,
+          }],
+        },
+      };
+    };
+
+    test('마크업을 실행 가능한 형태로 싣지 않는다', () => {
+      const html = buildReportHtml(withHostileNames());
+
+      expect(html).not.toContain('<img src=x');
+      expect(html).not.toContain('<script>alert(1)</script>');
+      expect(html).toContain('&lt;img src=x onerror=&quot;alert(1)&quot;&gt;');
+      expect(html).toContain('A &amp; B &lt;script&gt;');
+    });
+
+    // 이스케이프는 «표시»만 바꾼다. 이름이 사라지면 사용자는 자기 자산을 못 알아본다.
+    test('이름 자체는 지우지 않는다', () => {
+      const html = buildReportHtml(withHostileNames());
+
+      expect(html).toContain('A &amp; B');
+      expect(html).toContain('onerror=');
+    });
+  });
+
+  // **구조 계약.** 골든은 «이 입력»의 출력만 지킨다. 아래는 입력이 달라져도 유지돼야 하는
+  // 성질이라, 골든이 통과하는 채로도 깨질 수 있는 것들이다.
+  describe('절 번호와 쪽 번호', () => {
+    const sectionNumbers = (html: string): number[] =>
+      [...html.matchAll(/<h2[^>]*>\s*(\d+)\./g)].map((match) => Number(match[1]));
+
+    // 이 리팩터가 고친 버그가 정확히 이것이다 — 「7.」이 두 번 찍히고, 각주가 "5페이지
+    // 세금 설정과 6페이지"로 하드코딩돼 있었다. 몬테카를로 페이지가 빠지는 갈래에서
+    // 번호가 하나씩 당겨지므로, 그 갈래로 검사해야 뜻이 있다.
+    test('몬테카를로가 빠져도 절 번호가 1부터 중복 없이 이어진다', () => {
+      const html = buildReportHtml({
+        ...input(),
+        sections: { ...fixture.sections, monteCarlo: '' },
+      });
+
+      const numbers = sectionNumbers(html);
+      expect(numbers.length).toBeGreaterThan(0);
+      expect(numbers).toEqual(Array.from({ length: numbers.length }, (_, i) => i + 1));
+    });
+
+    // 치환되지 않은 자리표시자가 그대로 인쇄되면 「{total_pages}」 같은 문자열이 사용자가
+    // 내려받는 문서에 남는다. 골든은 이 입력에서만 그것이 없음을 보장한다.
+    test('치환하지 못한 자리표시자를 남기지 않는다', () => {
+      for (const html of [buildReportHtml(input()),
+        buildReportHtml({ ...input(), sections: { ...fixture.sections, monteCarlo: '' } })]) {
+        expect(html).not.toMatch(/\{[a-z_]+\}/);
+      }
+    });
+  });
+
+  // **여러 쪽으로 쪼개지는 갈래.** ROWS_PER_PAGE는 42인데 두 픽스처의 연도별 표는 36행과
+  // 27행이라, 골든은 «한 쪽짜리» 표만 지난다. 35세·기대수명 95세면 61행이 되어 이 경로를
+  // 타는데, 그때 절 번호가 두 쪽에 같은 값으로 붙는지·면책 고지가 한 번만 나오는지를
+  // 지금까지 아무것도 잠그지 않았다.
+  describe('연도별 표가 여러 쪽으로 나뉠 때', () => {
+    const manyRows = (): ReportHtmlInput => {
+      const base = input();
+      const rows = base.result.yearlyResults;
+      // 픽스처 행을 이어 붙여 42행을 넘긴다. 나이·연도는 이어지도록 다시 매긴다.
+      const extended = [...rows, ...rows].map((row, index) => ({
+        ...row,
+        age: rows[0].age + index,
+        year: rows[0].year + index,
+      }));
+      return { ...base, result: { ...base.result, yearlyResults: extended } };
+    };
+
+    test('쪽이 나뉘어도 절 번호는 하나이고 면책 고지는 한 번만 나온다', () => {
+      const html = buildReportHtml(manyRows());
+
+      expect(html).toContain('(1/2)');
+      expect(html).toContain('(2/2)');
+      // 두 쪽 머리글이 같은 절 번호를 달아야 한다. 서로 다르면 목차가 어긋난다.
+      const headings = [...html.matchAll(/(\d+)\. 연령별 소득원 및 자산 추이 \((\d)\/2\)/g)];
+      expect(headings).toHaveLength(2);
+      expect(headings[0][1]).toBe(headings[1][1]);
+      // 면책 고지는 마지막 쪽에만 붙는다.
+      expect(html.split('중요 투자 및 시뮬레이션 법적 면책 고지')).toHaveLength(2);
+    });
+  });
+
 });

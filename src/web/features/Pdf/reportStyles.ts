@@ -3,8 +3,14 @@
 // handleDownload 안에 78줄 문자열로 박혀 있던 것을 그대로 옮겼다. 보간이 하나도 없는
 // 완전 정적 문자열이라 상수로 두는 것이 맞고, 조립 로직과 섞여 있을 이유가 없었다.
 //
-// 이 스타일은 화면이 아니라 html2canvas가 캡처할 오프스크린 컨테이너에만 적용된다
-// (generateReportPdf 참고).
+// **셀렉터에 반드시 .pdf- 접두를 붙인다.** generateReportPdf가 이 문자열을 <style>로 만들어
+// 오프스크린 컨테이너 «안에» 넣지만, <style>의 삽입 위치는 CSS를 가두지 못한다 — 규칙은
+// 문서 전역이다. 지금 화면에 닿지 않는 것은 컨테이너에 넣었기 때문이 아니라 모든 셀렉터가
+// .pdf-*로 시작하기 때문이며, 접두 없는 규칙(예: `ul { list-style: disc; }`)을 하나 넣으면
+// PDF를 만드는 동안 앱 화면 전체가 그 규칙을 맞는다.
+//
+// .pdf-page의 794×1123px는 generateReportPdf의 PAGE_WIDTH_PX·PAGE_HEIGHT_PX와 같아야 한다
+// (reportStyles.test.ts가 강제한다). 어긋나면 모든 페이지가 잘린 채로 저장된다.
 export const REPORT_STYLES = `
         .pdf-page {
           width: 794px;

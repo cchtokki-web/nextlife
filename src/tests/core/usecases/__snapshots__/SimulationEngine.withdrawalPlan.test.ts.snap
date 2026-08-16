@@ -67,7 +67,7 @@ exports[`SimulationEngine withdrawalPlan (인출 정책 파라미터화) > 회�
   "goalAchievementRate": 49,
   "retirementAssetsAtRetirement": 563995420.2198206,
   "retirementGrade": "주의",
-  "retirementScore": 63,
+  "retirementScore": 66,
   "utilityComponents": {
     "bequestAdequacy": 1,
     "consumption": 35,

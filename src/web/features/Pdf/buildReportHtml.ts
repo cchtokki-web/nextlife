@@ -2,9 +2,14 @@ import type { SimulationParams, SimulationResult, SimulationYearlyResult, TaxSet
 import { describePrivatePensionLabel } from './describePrivatePension';
 import { describeInvestmentAssetLabel } from './describeInvestmentAsset';
 import { describeIsaAccountLabel } from './describeIsaAccount';
+import { escapeHtml } from './escapeHtml';
 import { computeMonthlySpendingComposition, type MonthlySpendingComposition } from '../../../core/usecases/MonthlySpendingComposition';
 import { formatCurrencyUnit } from './pdfReportSections';
-import { NATIONAL_PENSION_NORMAL_START_AGE } from '../../../core/usecases/pension/nationalPensionRules';
+import {
+  NATIONAL_PENSION_DEFERRED_MAX_AGE,
+  NATIONAL_PENSION_EARLY_MIN_AGE,
+  NATIONAL_PENSION_NORMAL_START_AGE,
+} from '../../../core/usecases/pension/nationalPensionRules';
 
 /** 이미 렌더된 섹션 조각들. 각 값은 pdfReportSections의 render*Section 결과다. */
 export interface ReportSectionHtml {
@@ -312,6 +317,17 @@ export function buildReportHtml(input: ReportHtmlInput): string {
     baseExchangeRate,
   } = reportParams;
 
+  // 저장값을 그대로 찍으면 안 된다. 엔진(SimulationEngine)과 explainNationalPension이 모두
+  // [60, 70]으로 clamp한 나이로 계산하므로, 옛 시나리오의 58 같은 값을 여기서만 원문으로
+  // 내면 「58세부터 수령」 바로 아래 표가 「60세 개시」라고 말하는 문서가 된다.
+  const nationalPensionClaimAge = Math.min(
+    NATIONAL_PENSION_DEFERRED_MAX_AGE,
+    Math.max(
+      NATIONAL_PENSION_EARLY_MIN_AGE,
+      reportParams.withdrawalPlan?.nationalPensionStartAge ?? NATIONAL_PENSION_NORMAL_START_AGE,
+    ),
+  );
+
   const {
     planVerdict: planVerdictSectionHtml,
     strategyRecommendation: strategyRecommendationHtml,
@@ -367,18 +383,20 @@ export function buildReportHtml(input: ReportHtmlInput): string {
       // Page 1: Summary and Settings
       // 네 목록을 먼저 만들어 둔다 — 템플릿 안에서 조립하면 pagesHtml += 가 네 번 끼어들어
       // 한 페이지의 HTML이 다섯 조각으로 끊긴다.
+      // 네 목록만이 이 문서에서 «사용자가 자유롭게 적은 문자열»을 싣는 자리다. 나머지는 전부
+      // 숫자이거나 우리가 고른 라벨이라, escapeHtml이 필요한 곳은 정확히 여기뿐이다.
       const accountListsHtml = [
         renderAccountList('사적연금', privatePensions, (p) =>
-          `<li style="margin-bottom: 4px;"><strong>${describePrivatePensionLabel(p)}</strong>: 현재 잔액 ${p.balance.toLocaleString()} ${formatCurrencyUnit(p.currency)}, 매월 ${p.monthlyContribution.toLocaleString()} ${formatCurrencyUnit(p.currency)} 납입, 예상 연 수익률 ${p.annualReturn}%</li>`,
+          `<li style="margin-bottom: 4px;"><strong>${escapeHtml(describePrivatePensionLabel(p))}</strong>: 현재 잔액 ${p.balance.toLocaleString()} ${formatCurrencyUnit(p.currency)}, 매월 ${p.monthlyContribution.toLocaleString()} ${formatCurrencyUnit(p.currency)} 납입, 예상 연 수익률 ${p.annualReturn}%</li>`,
           '등록된 사적연금 없음'),
         renderAccountList('투자 자산', assets, (a) =>
-          `<li style="margin-bottom: 4px;"><strong>${describeInvestmentAssetLabel(a)}</strong>: ${a.quantity}주(개) x 평균단가 ${a.averagePrice.toLocaleString()} ${formatCurrencyUnit(a.currency)}, 매월 ${a.monthlyContribution.toLocaleString()} ${formatCurrencyUnit(a.currency)} 납입, 예상 연 수익률 ${a.annualGrowthRate}%, 배당률 ${a.dividendYield}%, 배당 재투자 ${a.reinvestDividend ? 'O' : 'X'}</li>`,
+          `<li style="margin-bottom: 4px;"><strong>${escapeHtml(describeInvestmentAssetLabel(a))}</strong>: ${a.quantity}주(개) x 평균단가 ${a.averagePrice.toLocaleString()} ${formatCurrencyUnit(a.currency)}, 매월 ${a.monthlyContribution.toLocaleString()} ${formatCurrencyUnit(a.currency)} 납입, 예상 연 수익률 ${a.annualGrowthRate}%, 배당률 ${a.dividendYield}%, 배당 재투자 ${a.reinvestDividend ? 'O' : 'X'}</li>`,
           '등록된 투자 자산 없음'),
         renderAccountList('ISA 계좌', isaAccounts, (isa) =>
-          `<li style="margin-bottom: 4px;"><strong>${describeIsaAccountLabel(isa)}</strong>: 현재 잔액 ${isa.balance.toLocaleString()} ${formatCurrencyUnit(isa.currency)}, 매월 ${isa.monthlyContribution.toLocaleString()} ${formatCurrencyUnit(isa.currency)} 납입, 예상 연 수익률 ${isa.annualReturn}%, 배당률 ${isa.dividendYield}%, 만기 ${isa.maturityYears}년</li>`,
+          `<li style="margin-bottom: 4px;"><strong>${escapeHtml(describeIsaAccountLabel(isa))}</strong>: 현재 잔액 ${isa.balance.toLocaleString()} ${formatCurrencyUnit(isa.currency)}, 매월 ${isa.monthlyContribution.toLocaleString()} ${formatCurrencyUnit(isa.currency)} 납입, 예상 연 수익률 ${isa.annualReturn}%, 배당률 ${isa.dividendYield}%, 만기 ${isa.maturityYears}년</li>`,
           '등록된 ISA 계좌 없음'),
         renderAccountList('기타 소득', otherIncomes, (i) =>
-          `<li style="margin-bottom: 4px;"><strong>${i.label}</strong>: 매월 ${i.monthlyAmount.toLocaleString()} ${formatCurrencyUnit(i.currency)}</li>`,
+          `<li style="margin-bottom: 4px;"><strong>${escapeHtml(i.label)}</strong>: 매월 ${i.monthlyAmount.toLocaleString()} ${formatCurrencyUnit(i.currency)}</li>`,
           '등록된 기타 소득 없음'),
       ].join('\n');
 
@@ -446,13 +464,14 @@ export function buildReportHtml(input: ReportHtmlInput): string {
             <h2 style="font-size: 16px; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; color: #0f172a; margin-top: 0; margin-bottom: 10px;">${nextSection()}. 연금·자산 현황 및 세금 설정</h2>
             <div style="font-size: 13px; line-height: 1.6; display: grid; grid-template-columns: 1fr; gap: 12px;">
               <div>
-                <!-- nationalPension에는 ?.를 붙이지 않는다. SimulationParams의 «필수» 필드이고
-                     SimulationEngine도 옵셔널 체인 없이 읽는다 — 없었다면 이 리포트가 설명하는
-                     시뮬레이션 자체가 먼저 터졌을 것이다. 붙여 봐야 뒤가 체이닝되지 않아
-                     「undefined원」이 찍히므로 방어처럼 보일 뿐 방어가 아니었다. 저장 데이터의
-                     결손을 견디려면 그 자리는 loadParams(로드 경계)이지 여기가 아니다.
+                <!-- nationalPension에는 ?.를 붙이지 않는다. SimulationParams의 «필수» 필드이고,
+                     로드 경계(normalizeSimulationParams)가 이 객체를 반드시 채워서 내보낸다.
+                     붙여 봐야 뒤가 체이닝되지 않아 「undefined원」이 찍히므로 방어처럼 보일 뿐
+                     방어가 아니었다. 저장 데이터의 결손을 견디는 자리는 그 로드 경계이지
+                     여기가 아니다. (SimulationEngine도 체인 없이 읽지만 그쪽은 구조분해
+                     기본값을 두고 있어, 「없으면 먼저 터진다」는 근거는 성립하지 않는다.)
                      아래 withdrawalPlan?.는 실제로 선택 필드라 ??와 함께 그대로 둔다. -->
-                <strong>국민연금:</strong> 예상 월 수령액 ${nationalPension.expectedMonthlyAmount.toLocaleString()}원 (${reportParams.withdrawalPlan?.nationalPensionStartAge ?? NATIONAL_PENSION_NORMAL_START_AGE}세부터 수령)
+                <strong>국민연금:</strong> 예상 월 수령액 ${nationalPension.expectedMonthlyAmount.toLocaleString()}원 (${nationalPensionClaimAge}세부터 수령)
                 ${nationalPensionSectionHtml}
               </div>
 ${accountListsHtml}
