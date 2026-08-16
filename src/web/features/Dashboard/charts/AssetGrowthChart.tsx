@@ -12,7 +12,6 @@ import {
   type LegendPayload,
   type YAxisTickContentProps,
 } from 'recharts';
-import { TrendingDown } from 'lucide-react';
 import GlassCard from '../../../components/GlassCard';
 import styles from '../Dashboard.module.css';
 import { SimulationParams, SimulationResult } from '../../../../core/entities/types';
@@ -37,9 +36,8 @@ interface AssetGrowthChartProps {
   caption: string;
   showBreakdown: boolean;
   onToggleBreakdown: () => void;
-  // 배지가 서술할 세 사건. 예전에는 depletionAge 하나로 "고갈 / 안정" 이진 분기를 했는데,
-  // 그 판정은 (a) 총자산이 다시 올라가는 계획에서 사건 자체를 놓치고 (b) 계획한 생활비를
-  // 매년 못 채운 계획에 "안정적인 노후 자산 유지됨"을 붙였다.
+  // 이제 이 차트가 여기서 읽는 것은 assetStatus 하나뿐이다 — 투자자산이 전 구간 0원이면
+  // 축도 범례도 토글도 의미가 없어 통째로 내린다. 계획 판정 자체는 이 카드가 말하지 않는다.
   planOutcome: PlanOutcome;
   // 있으면 P10~P90 밴드를 겹쳐 그린다. MC가 아직이거나 미지원이면 undefined.
   monteCarlo?: MonteCarloResult;
@@ -102,8 +100,8 @@ export function AssetGrowthChart({
 }: AssetGrowthChartProps) {
   const currency = params.displayCurrency;
   const { yearlyResults } = result;
-  // 전 구간 0원인 축은 정보를 주지 않는다 — 게다가 "51세 자산 고갈 발생" 배지까지 함께
-  // 붙어 있어, 고갈시킬 자산이 없는 사용자에게 존재하지 않는 사건을 알린다.
+  // 전 구간 0원인 축은 정보를 주지 않는다. 고갈시킬 자산이 없는 사용자에게 빈 차트와
+  // 죽은 토글을 보여 주느니 「투자자산이 없어 표시할 수 없다」고 말하는 편이 낫다.
   const hasNoInvestableAsset = planOutcome.assetStatus === 'no_investable_asset';
 
   // 하방 선은 «간단히 보기»에서만 그린다. 구성 상세(주식/연금/ISA/현금)를 펼친 상태에
@@ -188,46 +186,23 @@ export function AssetGrowthChart({
             ({params.inflationMode === 'nominal' ? '명목가치' : '실질가치'} 기준)
           </span>
         </span>
-        {/* 배지는 «판정»이 아니라 «사건»을 말한다. 두 사건은 독립이므로 함께 뜰 수 있다.
-            예전 이진 분기가 놓치던 두 상태:
-              - 총자산이 0을 찍었다가 연금 잉여로 다시 오르는 계획 → depletionAge가 잡히지
-                않아 "안정적인 노후 자산 유지됨"이 붙었다.
-              - 계획한 생활비를 매년 못 채운 계획 → 자산은 남으므로 역시 "유지됨"이 붙었다. */}
-        <div className="flex flex-wrap items-center gap-2">
-          {hasNoInvestableAsset ? (
-            <span className="rounded-full border border-card-border px-3 py-1 text-xs font-semibold text-foreground-muted">
-              투자자산 없음
-            </span>
-          ) : (
-            <>
-              {planOutcome.investableDepletionAge !== null && (
-                <span className={styles.depletionAlertBadge}>
-                  <TrendingDown size={12} style={{ marginRight: '0.25rem', verticalAlign: 'middle' }} />
-                  {planOutcome.investableDepletionAge}세 투자자산 소진
-                </span>
-              )}
-              {planOutcome.spendingShortfall && (
-                <span className={styles.depletionAlertBadge}>
-                  생활비 부족 {planOutcome.spendingShortfall.years}년 (
-                  {planOutcome.spendingShortfall.firstAge}~{planOutcome.spendingShortfall.lastAge}세)
-                </span>
-              )}
-              {planOutcome.investableDepletionAge === null && !planOutcome.spendingShortfall && (
-                <span className={styles.successBadge}>안정적인 노후 자산 유지됨</span>
-              )}
-            </>
-          )}
-          {/* 펼칠 구성(주식/연금/ISA/현금)이 전부 0이므로 토글도 의미가 없다. */}
-          {!hasNoInvestableAsset && (
-            <button
-              type="button"
-              onClick={onToggleBreakdown}
-              className="rounded-full border border-card-border px-3 py-1 text-xs font-semibold text-foreground-muted hover:bg-foreground/5"
-            >
-              {showBreakdown ? '간단히 보기' : '자산 구성 상세보기'}
-            </button>
-          )}
-        </div>
+        {/* 이 자리에 계획 판정 배지(투자자산 소진 / 생활비 부족 / 유지됨)를 함께 두었다가
+            걷어냈다. 같은 사실을 화면이 이미 세 번 말하고 있었기 때문이다 — 1페이지의
+            계획 진단 줄, 「생활비 재원 구성」 차트의 캡션, 그리고 「계획 상세 수치」의
+            부족액 표. 차트 머리에 붙은 배지는 그중 가장 좁은 자리에서 가장 짧게 말해,
+            숫자를 더 주지 않으면서 시선만 먼저 가져갔다.
+
+            남긴 것은 이 카드에서만 할 수 있는 조작인 구성 토글뿐이다. */}
+        {/* 펼칠 구성(주식/연금/ISA/현금)이 전부 0이므로 토글도 의미가 없다. */}
+        {!hasNoInvestableAsset && (
+          <button
+            type="button"
+            onClick={onToggleBreakdown}
+            className="rounded-full border border-card-border px-3 py-1 text-xs font-semibold text-foreground-muted hover:bg-foreground/5"
+          >
+            {showBreakdown ? '간단히 보기' : '자산 구성 상세보기'}
+          </button>
+        )}
       </div>
       <ChartCaption>{caption}</ChartCaption>
       {!hasNoInvestableAsset && (
