@@ -64,7 +64,8 @@ describe('RetirementInputFlow', () => {
 
     const startButton = screen.getByRole('button', { name: '분석 시작' });
     expect(startButton).toBeDisabled();
-    expect(startButton).toHaveAttribute('title', expect.stringContaining('바뀐 설정이 없습니다'));
+    // 사유는 «보여야» 한다. title만으로는 터치 기기·스크린리더에 도달하지 않는다.
+    expect(screen.getByText(/바뀐 설정이 없습니다/)).toBeInTheDocument();
 
     // 설정을 바꾸면 결과가 더 이상 현재 것이 아니므로 호출자가 false를 내려 준다.
     rerender(
@@ -90,7 +91,9 @@ describe('RetirementInputFlow', () => {
 
     const startButton = screen.getByRole('button', { name: '분석 시작' });
     expect(startButton).toBeDisabled();
-    expect(startButton).toHaveAttribute('title', expect.stringContaining('목표를 1개 이상'));
+    expect(screen.getByText(/목표를 1개 이상/)).toBeInTheDocument();
+    // 사유 문단과 버튼이 실제로 연결되어야 보조기술이 함께 읽는다.
+    expect(startButton).toHaveAttribute('aria-describedby', 'analysis-blocked-reason');
   });
 
   // 목표는 골랐지만 목표값이 비어 있는 상태는 "고르기만 하면 된다"와 사유가 다르다.
@@ -110,7 +113,34 @@ describe('RetirementInputFlow', () => {
 
     const startButton = screen.getByRole('button', { name: '분석 시작' });
     expect(startButton).toBeDisabled();
-    expect(startButton).toHaveAttribute('title', expect.stringContaining('목표값을 입력'));
+    expect(screen.getByText(/목표값을 입력/)).toBeInTheDocument();
+  });
+
+  // 카드 시드가 «정규화된» 프로필에서 와야 한다. 저장된 옛 은퇴 나이를 그대로 시드하면
+  // 「빠른 은퇴」를 처음 고른 순간 카드에는 58세가 찍히는데 계산은 65세로 돌고 있어,
+  // 카드가 계산을 설명하지 못한다.
+  test('「빠른 은퇴」를 처음 고르면 계산에 쓰이는 은퇴 나이가 시드된다', () => {
+    const onChangeParams = vi.fn();
+    render(
+      <RetirementInputFlow
+        params={{
+          ...initialParams,
+          userProfile: { ...initialParams.userProfile, retirementAge: 58 },
+          retirementGoals: [
+            { type: 'ASSET_SURVIVAL' as const, priority: 1, constraintType: 'HARD' as const },
+          ],
+        }}
+        onChangeParams={onChangeParams}
+        onStartAnalysis={vi.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '3. 은퇴 목표' }));
+    fireEvent.click(screen.getByRole('button', { name: /빠른 은퇴/ }));
+
+    const next = onChangeParams.mock.calls[0][0];
+    expect(next.retirementGoals.find((goal: { type: string }) => goal.type === 'EARLY_RETIREMENT'))
+      .toMatchObject({ targetValue: 65 });
   });
 
   // 단계 이동은 상단 탭이 전담한다. 하단 이동 버튼이 되살아나면 마우스 동선이 다시 길어진다.

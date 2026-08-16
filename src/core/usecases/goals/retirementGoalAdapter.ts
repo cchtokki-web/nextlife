@@ -7,8 +7,8 @@ import { resolveStrategy } from '../strategy/compileStrategy';
 import { normalizeGoalDrivenParams } from './normalizeGoalDrivenParams';
 
 export function resolveRetirementGoals(params: SimulationParams): RetirementGoal[] {
-  // 기존 시나리오의 은퇴 나이·생활비는 그대로 보존하지만 사용자가 고르지 않은 목표를
-  // 선택된 것으로 꾸미지 않는다. 카드를 처음 선택할 때 그 레거시 값을 target 기본값으로 쓴다.
+  // 저수준 필드에서 목표를 «복원하지 않는다» — 사용자가 고르지 않은 목표를 선택된 것으로
+  // 꾸미지 않는다는 뜻이다. 카드를 처음 선택할 때 그 값을 target 기본값으로 쓸 뿐이다.
   if (!Array.isArray(params.retirementGoals)) return [];
   return normalizeRetirementGoals(params.retirementGoals);
 }
@@ -17,8 +17,9 @@ export function resolveRetirementGoals(params: SimulationParams): RetirementGoal
  * 저장된 시나리오를 «읽을 때» 목표 상태를 정돈한다. 화면과 계산이 보는 모든 params가 이
  * 함수를 지난다(useScenarios의 migrateParams).
  *
- * 목표 배열 정규화에 더해, 목표가 정하는 축(은퇴 나이·목표 생활비·상속·생활비 전략·목표
- * 우선순위)을 목표에서 다시 파생시킨다. 그 입력들은 고급 패널에서 제거되어 「은퇴 목표」
+ * 목표 배열 정규화에 더해, 목표가 정하는 축을 다시 세운다 — 은퇴 나이·목표 생활비·목표
+ * 상속자산은 목표에서 파생하고, 생활비 전략·목표 우선순위는 baseline으로 고정한다(뒤의 둘은
+ * 목표가 정하는 값이 아니라 «고르는 일 자체를 없앤» 축이다). 그 입력들은 고급 패널에서 제거되어 「은퇴 목표」
  * 카드가 유일한 편집 경로이므로, 저장된 옛 값이 남아 있으면 화면 어디에도 없는 값이 계산을
  * 좌우하게 된다. E2EE라 서버 마이그레이션이라는 선택지가 없어 읽는 시점에 할 수밖에 없다.
  *

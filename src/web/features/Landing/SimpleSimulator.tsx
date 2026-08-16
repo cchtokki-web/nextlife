@@ -10,6 +10,7 @@ import GlassCard from '../../components/GlassCard';
 import { Target, TrendingUp, Coins } from 'lucide-react';
 import { useSession } from 'next-auth/react';
 import { initialParams } from '../../../infrastructure/storage/localStore';
+import { retirementGoalDefinition } from '../RetirementGoals/goalCatalog';
 import { encryptData } from '../../../core/utils/crypto';
 import {
   SIMULATOR_PARAMS_KEY,
@@ -392,6 +393,18 @@ export function SimpleSimulator() {
                           retirementAge: input.retirementAge || initialParams.userProfile.retirementAge,
                           targetMonthlySpending: input.targetMonthlySpending || initialParams.userProfile.targetMonthlySpending,
                         },
+                        // 은퇴 나이는 «목표»로 옮겨 담는다. 시뮬레이터에서 그 축의 유일한 편집
+                        // 경로가 「빠른 은퇴」 카드이고, 목표가 없으면 정규화가 국민연금 개시
+                        // 나이로 되돌린다(normalizeGoalDrivenParams) — 여기서 옮기지 않으면
+                        // 방금 입력한 나이가 도착하자마자 사라지고 되찾을 화면도 없다.
+                        ...(input.retirementAge ? {
+                          retirementGoals: [{
+                            type: 'EARLY_RETIREMENT' as const,
+                            priority: 1,
+                            targetValue: input.retirementAge,
+                            constraintType: retirementGoalDefinition('EARLY_RETIREMENT').defaultConstraintType,
+                          }],
+                        } : {}),
                         assets: (input.currentAssets > 0 || input.monthlyInvestment > 0) ? adapted.assets : initialParams.assets,
                         nationalPension: input.nationalPension > 0 ? adapted.nationalPension : initialParams.nationalPension,
                         privatePensions: [],

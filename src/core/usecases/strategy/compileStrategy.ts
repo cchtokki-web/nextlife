@@ -352,8 +352,12 @@ export function compileStrategy(params: SimulationParams): CompiledStrategy {
 
   const spendingStrategy = resolveSpendingStrategy(strategy.spendingChoice);
 
-  // 소비 성향·안전마진은 「평생 소비 최적화」 전용 하위 입력이며, 그 조건은 화면
-  // (RetirementGoalSection의 `spendingChoice === 'max_sustainable'` 가드)과 **정확히 같아야 한다**.
+  // 소비 성향·안전마진은 「평생 소비 최적화」 전용 하위 입력이다.
+  //
+  // 그 전략을 고르는 화면은 이제 없다 — normalizeGoalDrivenParams가 모든 계획을
+  // spendingChoice 'target'으로 고정하므로, 아래 lifetimeOptimization 갈래는 정규화를 거치지
+  // 않은 입력(엔진 단위 테스트, 내부 최적화 엔진이 직접 만든 후보)에서만 참이 된다.
+  // 조건을 바꾸려면 그 정규화와 **정확히 같아야 한다**.
   //
   // 어긋나면 되돌릴 수 없는 유령 상태가 된다: 평생 소비 최적화에서 활동기 집중형과 마진 30%를
   // 고른 뒤 「목표 생활비 유지」로 되돌리면, 두 입력은 화면에서 사라지지만 계산에는 계속 남아

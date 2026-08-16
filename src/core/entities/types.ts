@@ -253,8 +253,12 @@ export interface CustomYieldSnapshot {
 export interface SimulationParams {
   userProfile: UserProfile;
   // 목표 기반 기본 입력. optional인 이유는 기존 로컬/E2EE 시나리오가 이 필드 없이 저장돼
-  // 있기 때문이다. 로드 경로의 migrateRetirementGoals가 기존 은퇴 나이·생활비에서 목표를
-  // 복원하며, 계산 엔진은 계속 기존 저수준 필드를 소비한다.
+  // 있기 때문이다.
+  //
+  // **방향에 주의한다.** 로드 경로의 migrateRetirementGoals는 저수준 필드에서 목표를 복원하지
+  // 않는다(고르지 않은 목표를 지어내지 않는다는 원칙). 반대로 목표에서 저수준 필드를
+  // 파생시킨다 — 은퇴 나이·목표 생활비·목표 상속자산이 그 대상이며, 계산 엔진은 계속 그
+  // 저수준 필드를 소비한다(normalizeGoalDrivenParams).
   retirementGoals?: RetirementGoal[];
   assets: InvestmentAsset[];
   nationalPension: NationalPension;

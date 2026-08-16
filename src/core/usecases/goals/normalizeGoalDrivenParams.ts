@@ -12,19 +12,28 @@ import { NATIONAL_PENSION_NORMAL_START_AGE } from '../pension/nationalPensionRul
  * 배당금만 소비가, 채점 분모는 목표 금액이, 목표 달성 확률은 부족분 판정식 때문에 구조적으로
  * 100%가). 이제 겹치는 입력은 고급 패널에서 사라졌고, 그 축들은 여기서 목표로부터 파생된다.
  *
- * **고르지 않은 목표의 축은 각 옵션이 화면에서 「권장」으로 표시하던 값으로 되돌린다.**
- * 임의의 새 가정이 아니라 strategyOptions의 recommended 배지 및 DEFAULT_RETIREMENT_STRATEGY와
- * 같은 값이며, 은퇴 나이만 상수가 없어 국민연금 정상 개시 나이를 쓴다.
+ * 축은 두 갈래다.
  *
- * **저장 데이터는 건드리지 않는다.** ScenarioModel.data가 E2EE라 서버 마이그레이션이라는
+ *  - **목표에서 파생되는 셋**: 은퇴 나이, 목표 월 생활비, 목표 상속자산(+상속 전략).
+ *    대응 목표를 고르면 그 targetValue가 값이 된다.
+ *  - **baseline으로 고정되는 둘**: 생활비 전략, 목표 우선순위. 목표가 정하지 않고 화면에도
+ *    편집 경로가 없다 — 값을 고르는 일 자체를 없앤 축이다.
+ *
+ * 고정·폴백에 쓰는 값은 임의로 정하지 않았다. DEFAULT_RETIREMENT_STRATEGY와 같은 값이며
+ * (제거된 고급 패널이 「권장」 배지를 달아 두었던 값들이다), 상수가 없는 두 축만 예외다 —
+ * 은퇴 나이는 국민연금 정상 개시 나이를 쓰고, 목표 월 생활비는 채점 분모라 저장값을 남긴다.
+ *
+ * **저장 데이터를 여기서 쓰지는 않는다.** ScenarioModel.data가 E2EE라 서버 마이그레이션이라는
  * 선택지가 없어, 읽는 시점 정규화가 유일한 경로다(normalizeIsaFirstChoice와 같은 이유).
+ * 다만 호출부(useScenarios의 로드 경로)가 이 결과를 시나리오 state로 삼으므로, 사용자가 이후
+ * 아무 값이나 바꾸면 자동저장이 정규화된 값을 저장한다. 즉 «되돌릴 수 없는 변환»이다.
  *
  * 멱등이며, 바꿀 것이 없으면 **입력 참조를 그대로 돌려준다** — compileStrategy의
  * "아무것도 바꾸지 않은 시나리오는 입력이 비트 단위로 보존된다" 통과 경로를 지키기 위해서다.
  *
- * `strategy`를 인자로 받는 이유: resolveStrategy는 compileStrategy에 있고 compileStrategy가
- * 이 함수를 부른다. 여기서 되import하면 순환이 되므로, 이미 전략을 손에 쥔 호출부가 넘긴다.
- * 반드시 «같은 params»에서 resolveStrategy로 읽은 값을 넘겨야 한다.
+ * `strategy`를 인자로 받는 이유: 호출부가 이미 resolveStrategy로 전략을 읽어 두었고, 여기서
+ * 다시 읽으면 같은 params에 대해 두 번 해석하게 된다. 반드시 «같은 params»에서 읽은 값을
+ * 넘겨야 한다 — 다른 params의 전략을 넘기면 조용히 그 값이 승격된다.
  */
 export function normalizeGoalDrivenParams(
   params: SimulationParams,
@@ -48,11 +57,21 @@ export function normalizeGoalDrivenParams(
   };
 }
 
+/**
+ * 목표값이 «쓸 수 있는 값»인 목표를 우선순위 순으로 찾는다.
+ *
+ * `0`을 값으로 인정하지 않는다. 0은 사용자가 입력창을 비웠거나 아직 채우지 않은 상태이고
+ * (셀렉터는 빈 칸을 undefined로 저장하지만 "0"은 숫자로 통과시킨다), 그 0이 파생되면
+ * 목표 월 생활비가 0이 되어 소비 만족도의 분모가 사라진다 — UtilityEngine은 분모가 0이면
+ * 채점 불가를 «만점»으로 읽으므로, 아무것도 못 쓰는 계획이 최고점을 받는다.
+ * 게다가 목표를 지워도 아래 폴백이 그 0을 그대로 물려받아 되돌릴 방법이 없어진다.
+ */
 function firstGoalWithTarget(
   goals: readonly RetirementGoal[],
   ...types: RetirementGoalType[]
 ): RetirementGoal | undefined {
-  return goals.find((goal) => types.includes(goal.type) && goal.targetValue !== undefined);
+  return goals.find((goal) =>
+    types.includes(goal.type) && goal.targetValue !== undefined && goal.targetValue > 0);
 }
 
 function normalizeUserProfile(
@@ -63,8 +82,15 @@ function normalizeUserProfile(
 
   // 「빠른 은퇴」를 고르지 않았으면 은퇴 나이를 정할 화면이 없다. 국민연금 정상 개시 나이를
   // 쓴다 — 새 가정을 만들지 않으면서 "연금이 시작될 때 일을 마친다"는 뜻이 되는 유일한 값이다.
-  const retirementAge = firstGoalWithTarget(goals, 'EARLY_RETIREMENT')?.targetValue
-    ?? NATIONAL_PENSION_NORMAL_START_AGE;
+  //
+  // 현재 나이보다 이르게는 두지 않는다. 이미 지난 나이에 은퇴하는 계획은 계산할 수 없고,
+  // 68세에 아직 일하는 사용자를 65세로 되돌리면 그 사람의 계획이 통째로 사라진다.
+  // 목표로 정한 나이도 같은 바닥을 적용한다 — 목표값은 1세까지 허용되기 때문이다
+  // (normalizeTargetValue의 clamp).
+  const retirementAge = Math.max(
+    current.currentAge,
+    firstGoalWithTarget(goals, 'EARLY_RETIREMENT')?.targetValue ?? NATIONAL_PENSION_NORMAL_START_AGE,
+  );
 
   // 생활비 목표가 없다고 이 값을 지우지는 않는다. 목표 금액은 모든 생활비 전략에서 소비
   // 만족도의 «분모»라 계산에 계속 필요하고, 이 축에는 「권장」 상수가 없다. 그래서 목표가

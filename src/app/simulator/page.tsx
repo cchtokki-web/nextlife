@@ -855,6 +855,11 @@ export default function Home() {
 
   const renderPage = (analysis: AnalysisRuntimeValue | null) => {
     const analysisIsCurrent = analysis?.sourceParams === activeParams;
+    // 「분석 시작」만은 추천 검증이 실패했을 때 다시 열어 둔다. 워커 오류는 일시적일 수 있는데,
+    // 결과가 「최신」이라는 이유로 버튼을 잠그면 설정을 억지로 건드리거나 새로고침하는 것 외에
+    // 재시도할 방법이 없다. 대시보드와 PDF는 analysisIsCurrent 그대로 둔다 — 결정론 결과와
+    // Monte Carlo는 멀쩡하므로 화면을 내릴 이유가 없다.
+    const canReanalyze = !analysisIsCurrent || analysis?.strategyOptimizationStatus === 'error';
     return (
     <main className={styles.main}>
       <Header saveStatus={saveStatus} isSaving={isSaving} lastSaved={lastSaved}>
@@ -1005,8 +1010,8 @@ export default function Home() {
                   params={activeParams}
                   onChangeParams={handleUpdateActiveParams}
                   // 결과가 현재 설정으로 계산된 것이면 다시 누를 이유가 없다. 판정은 두 값을
-                  // 모두 쥔 이곳에서만 할 수 있다.
-                  analysisIsCurrent={analysisIsCurrent}
+                  // 모두 쥔 이곳에서만 할 수 있다(추천 검증 실패는 예외 — canReanalyze 주석).
+                  analysisIsCurrent={!canReanalyze}
                   onStartAnalysis={() => {
                     setAnalysisRequest(buildAnalysisRequest(activeParams));
                     // 이 시나리오를 분석했다는 사실만 남긴다. 결과는 저장하지 않는다 —
@@ -1081,7 +1086,7 @@ export default function Home() {
                 // 입력한 activeParams다. 그 결정을 훅 한 곳에 두어 둘을 혼동할 여지를 없앤다.
                 onApplyStrategy={appliedStrategy.applyRecommendation}
                 canApplyStrategy={appliedStrategy.canApply}
-                appliedCandidateId={appliedStrategy.snapshot?.candidateId}
+                appliedStrategy={appliedStrategy.snapshot ?? undefined}
                 onUndoStrategy={appliedStrategy.undo}
               />
             ) : (

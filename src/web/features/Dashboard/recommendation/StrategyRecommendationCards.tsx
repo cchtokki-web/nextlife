@@ -7,6 +7,7 @@ import { describeStrategyChanges } from '../../../../core/usecases/dashboard/des
 import type { CandidateRecommendation } from '../../../../core/recommendation/RecommendationEngine';
 import type { SustainableSpendingAdvice } from '../../../../core/usecases/dashboard/computeSustainableSpendingAdvice';
 import type { StrategyOptimizationStatus } from '../../../hooks/useStrategyOptimization';
+import type { AppliedStrategySnapshot } from '../../../hooks/useAppliedStrategy';
 import { RETIREMENT_GOAL_CATALOG } from '../../RetirementGoals/goalCatalog';
 import GlassCard from '../../../components/GlassCard';
 import styles from '../Dashboard.module.css';
@@ -49,14 +50,14 @@ interface StrategyRecommendationCardsProps {
    */
   canApplyStrategy?: (recommendation: CandidateRecommendation) => boolean;
   /**
-   * 방금 적용한 후보. 그 카드는 적용 버튼 대신 「적용 해제」를 낸다.
+   * 방금 적용한 전략. 그 후보의 카드는 적용 버튼 대신 「적용 해제」를 낸다.
    *
-   * 호출자는 «되돌릴 수 있는 동안에만» 이 값을 채워야 한다. 카드는 이 값 하나로 해제
+   * 호출자는 «되돌릴 수 있는 동안에만» 이 값을 채워야 한다. 화면은 이 값 하나로 해제
    * 버튼을 내므로, 되돌릴 수 없는 상태에서 값이 남아 있으면 눌러도 아무 일이 없는 버튼이
-   * 생긴다. 현재 호출자(page.tsx)는 그 조건에서만 값을 갖는 useAppliedStrategy의
-   * snapshot에서 이 id를 가져와 조건을 만족한다.
+   * 생긴다. 현재 호출자(page.tsx)는 그 조건에서만 값을 갖는 useAppliedStrategy의 snapshot을
+   * 그대로 넘겨 조건을 만족한다.
    */
-  appliedCandidateId?: string;
+  appliedStrategy?: AppliedStrategySnapshot;
   /**
    * 적용한 전략을 적용 직전 설정으로 되돌린다. 없으면 적용된 카드를 「적용됨」 비활성
    * 표시로만 남긴다 — 설정을 바꿀 수 없는 읽기 전용 문맥을 위한 여지다.
@@ -89,7 +90,7 @@ function StrategyApplyAction({
   // 적용한 자리에서 바로 되돌린다. 화면에 남은 «유일한» 취소 경로다 — 대시보드 바깥의
   // 되돌리기 배너는 제거했다.
   //
-  // 되돌릴 수 있을 때에만 이 버튼이 뜬다는 보장은 호출부가 한다(appliedCandidateId 주석).
+  // 되돌릴 수 있을 때에만 이 버튼이 뜬다는 보장은 호출부가 한다(appliedStrategy 주석).
   if (applied && onUndo) {
     return (
       <div className={styles.strategyCardActions}>
@@ -243,7 +244,75 @@ function UnreachableGoalCard({
   );
 }
 
-export function StrategyRecommendationCards({
+/**
+ * 적용 상태를 카드 그리드 «밖»에서 한 번 더 말한다.
+ *
+ * 그리드는 검증 상태에 따라 통째로 사라진다 — 「적용」을 누르면 재분석이 걸리고, 그 순간
+ * useStrategyOptimization이 status를 idle로 되돌린 뒤 400ms 디바운스와 워커 검증이 끝날
+ * 때까지 스피너만 남는다(수 초). 되돌리기 버튼이 카드 안에만 있으면, 사용자가 되돌리고 싶어
+ * 할 «바로 그 순간»에 유일한 취소 경로가 사라진다. 그 사이 자동저장은 이미 돌고 있고
+ * 스냅샷은 메모리에만 있어(useAppliedStrategy), 새로고침하면 원본은 영영 사라진다.
+ *
+ * 반영하지 못한 축도 여기서 밝힌다. 밝히지 않으면 「전략을 적용했다」는 화면의 약속과 실제가
+ * 조용히 어긋난다(applyStrategyToParams의 skipped 계약).
+ */
+function AppliedStrategyStatus({
+  snapshot, onUndo, showUndo,
+}: {
+  snapshot: AppliedStrategySnapshot;
+  onUndo: () => void;
+  /** 적용된 카드가 화면에 있으면 그 카드의 버튼이 해제를 맡는다 — 같은 버튼을 두 번 두지 않는다. */
+  showUndo: boolean;
+}) {
+  return (
+    <div className={styles.appliedStrategyStatus} role="status">
+      <div>
+        <p className={styles.appliedStrategyStatusTitle}>
+          <strong>{snapshot.label}</strong> 전략을 적용했습니다
+          {snapshot.appliedLabels.length > 0 && <> · {snapshot.appliedLabels.join(', ')}</>}
+        </p>
+        {snapshot.skippedLabels.length > 0 && (
+          <p className={styles.appliedStrategySkippedNote}>
+            {snapshot.skippedLabels.join(', ')}은(는) 반영하지 못했습니다.
+          </p>
+        )}
+      </div>
+      {showUndo && (
+        <button type="button" className={styles.undoAppliedStrategyButton} onClick={onUndo}>
+          적용 해제
+        </button>
+      )}
+    </div>
+  );
+}
+
+export function StrategyRecommendationCards(props: StrategyRecommendationCardsProps) {
+  const { recommendations, status, outcome, appliedStrategy, onUndoStrategy } = props;
+
+  // 적용된 카드가 실제로 그려지는 경우에만 카드가 해제를 맡는다. 검증 중이거나(idle/running)
+  // 결과가 카드 대신 안내로 대체된 경우(도달 불가·후보 없음), 그리고 재생성된 후보 목록에
+  // 그 id가 없는 경우까지 여기서 함께 판정한다.
+  const appliedCardIsVisible = status === 'done'
+    && outcome?.kind !== 'no_candidate_reaches_goal'
+    && (recommendations ?? []).some(
+      (item) => item.candidate.candidate.id === appliedStrategy?.candidateId
+    );
+
+  return (
+    <>
+      {appliedStrategy && onUndoStrategy && (
+        <AppliedStrategyStatus
+          snapshot={appliedStrategy}
+          onUndo={onUndoStrategy}
+          showUndo={!appliedCardIsVisible}
+        />
+      )}
+      <RecommendationBody {...props} />
+    </>
+  );
+}
+
+function RecommendationBody({
   recommendations,
   status,
   errorMessage,
@@ -254,7 +323,7 @@ export function StrategyRecommendationCards({
   formatValue,
   onApplyStrategy,
   canApplyStrategy,
-  appliedCandidateId,
+  appliedStrategy,
   onUndoStrategy,
 }: StrategyRecommendationCardsProps) {
   if (status === 'running') {
@@ -300,7 +369,7 @@ export function StrategyRecommendationCards({
   // 그 선택은 실제로 일어난 적이 없었다.
   const finalRecommendations = recommendations ?? [];
 
-  // 카드 그리드보다 «먼저» 판정한다. 여기서 돌아서면 비교 바와 그리드가 통째로 건너뛰어져,
+  // 카드 그리드보다 «먼저» 판정한다. 여기서 돌아서면 그리드가 통째로 건너뛰어져,
   // 아래 렌더 경로 곳곳에 0% 조건을 흩뿌리지 않아도 된다.
   if (outcome?.kind === 'no_candidate_reaches_goal') {
     return (
@@ -340,7 +409,7 @@ export function StrategyRecommendationCards({
           // 적용 상태는 그 카드가 다른 카드와 다르게 보인다는 것으로 말한다. 아무것도
           // 적용하지 않았으면 어떤 카드도 강조하지 않는다 — 강조된 카드가 늘 하나 있으면
           // 사용자는 그것을 "이미 골라 둔 것"으로 읽는다.
-          const applied = candidate.candidate.id === appliedCandidateId;
+          const applied = candidate.candidate.id === appliedStrategy?.candidateId;
           return (
             <article
               key={candidate.candidate.id}
