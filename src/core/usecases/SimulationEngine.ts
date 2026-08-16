@@ -619,7 +619,16 @@ export class LegacySimulationEngine implements SimulationEngineContract {
           * Math.pow(1 + inflationRate / 100, elapsedYears)
         : userProfile.targetMonthlySpending * 12 * curveMultiplier)
         + year.healthcareSpending;
-      return year.totalIncome >= targetSpending;
+
+      // 사적연금 인출은 FIRE 소득이 아니다. 연금저축·IRP는 본인이 적립한 «자산»이고
+      // 인출은 원금 소진이라 계좌가 비면 멈춘다. 그것까지 세면 자산을 헐어 쓰는 계획이
+      // 「달성」으로 찍히고, 잔액이 클수록 FIRE가 빨라진다 — 사실과 반대 방향이다.
+      // (실측: 사적연금 10억을 넣으면 달성 나이가 65세에서 60세로 앞당겨졌다.)
+      //
+      // 국민연금·배당·기타소득은 남긴다. 종신 지급이거나 원금을 유지한 채 나오는 흐름이라
+      // 계좌가 비어 멈추지 않는다. 자산 매도는 애초에 totalIncome에 들어 있지 않다.
+      const sustainableIncome = year.totalIncome - year.privatePensionIncome;
+      return sustainableIncome >= targetSpending;
     });
 
     const { retirementScore, retirementGrade, retirementAssetsAtRetirement } =
