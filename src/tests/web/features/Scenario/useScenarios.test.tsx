@@ -349,6 +349,34 @@ describe('useScenarios — 로그인', () => {
     expect(result.current.needsKeyRestore).toBe(false);
   });
 
+  // 복호화된 payload는 서버에서 올라온 JSON이고, decryptData<SimulationParams>의 제네릭은
+  // 아무것도 검사하지 않는다. 예전 버전이 쓴 필드나 손상된 값이 그대로 엔진까지 갔다.
+  test('복호화된 시나리오의 깨진 값을 계산 전에 정제한다', async () => {
+    signedIn();
+    localStorage.setItem(KEY_NAME, 'KEY123');
+    decryptData.mockResolvedValue({
+      ...initialParams,
+      userProfile: { ...initialParams.userProfile, currentAge: '47' },
+      inflationRate: Number.NaN,
+      assets: [{ ...initialParams.assets[0], quantity: null }],
+    });
+    vi.stubGlobal('fetch', mockFetch({
+      '/api/scenarios': {
+        data: [{ id: 's1', name: 'x', isDefault: true, data: encrypted }],
+      },
+    }));
+
+    const { result } = renderHook(() => useScenarios());
+    await waitFor(() => expect(result.current.isLoaded).toBe(true));
+
+    const params = result.current.activeParams;
+    expect(params.userProfile.currentAge).toBe(initialParams.userProfile.currentAge);
+    expect(params.inflationRate).toBe(initialParams.inflationRate);
+    // 자산 자체는 남는다. 사용자가 화면에서 보고 고칠 수 있어야 한다.
+    expect(params.assets).toHaveLength(1);
+    expect(params.assets[0].quantity).toBe(0);
+  });
+
   // 키가 없는데 서버에 암호화된 데이터가 있으면 복호화할 수 없다. 이때 기본값으로 덮어
   // 저장해 버리면 사용자의 실제 데이터가 영구히 사라진다 — needsKeyRestore가 그것을 막는다.
   test('키가 없으면 복구를 요구하고 기본값으로 덮어쓰지 않는다', async () => {

@@ -4,6 +4,7 @@ import { SimulationParams, ScenarioModel } from '../../../core/entities/types';
 import type { EncryptedData } from '../../../core/utils/crypto';
 import { useIsHydrated } from '../../hooks/useBrowserEnvironment';
 import { loadParams, saveParams, initialParams } from '../../../infrastructure/storage/localStore';
+import { normalizeSimulationParams } from '../../../infrastructure/storage/normalizeSimulationParams';
 import { activeScenarioKeyName, e2eeKeyName, e2eeBackedUpKeyName, LOCAL_ANALYZED_AT_KEY } from '../../../infrastructure/storage/storageKeys';
 import { encryptData, decryptData, isEncryptedPayload, generateBackupKey } from '../../../core/utils/crypto';
 import { MAX_SCENARIO_COUNT } from '../../../core/utils/scenarioLimits';
@@ -87,8 +88,19 @@ const convertToRepresentativeAssets = (params: SimulationParams): SimulationPara
   return changed ? { ...params, assets: convertedAssets } : params;
 };
 
-const migrateParams = (params: SimulationParams, tickers: string[]): SimulationParams => {
-  if (!params.assets) return params;
+/**
+ * 로드된 시나리오를 지금 버전이 쓰는 모양으로 맞춘다.
+ *
+ * 로드 경로 다섯 곳이 전부 이 함수를 지나므로, 저장 데이터의 «정제»도 여기서 한다. 예전에는
+ * 로컬 저장소도 서버 payload도 검사 없이 `as SimulationParams`로 캐스팅됐고, 문자열 수량이나
+ * NaN 이율이 그대로 엔진까지 갔다. 복호화된 payload도 마찬가지다 —
+ * `decryptData<SimulationParams>`의 제네릭은 아무것도 검사하지 않는다.
+ *
+ * 그래서 인자를 unknown으로 받는다. 타입을 좁혀 받으면 「이미 검증된 값」이라는 거짓말이
+ * 호출부마다 다시 생긴다.
+ */
+const migrateParams = (raw: unknown, tickers: string[]): SimulationParams => {
+  const params = normalizeSimulationParams(raw);
   let changed = false;
   const migratedAssets = params.assets.map(asset => {
     if (asset.type === 'etf' && tickers.includes(asset.ticker) && asset.name !== asset.ticker) {
@@ -756,10 +768,8 @@ export function useScenarios() {
                 // E2EE 도입 이전에 저장된 평문 params, 또는 이 커밋 이전에 키 없는 세션이 덮어쓴
                 // 평문. 새로 생기지는 않는다 — 저장 경로 셋 모두, 그리고 서버가 잠긴 계정에 대한
                 // 평문 쓰기를 거부한다.
-                // isEncryptedPayload가 암호화 형태를 걸러냈지만 타입 시스템은 그 가드의 else를
-                // 좁혀 주지 못하므로 이 지점에서만 명시한다.
-                const plainData = s.data as SimulationParams;
-                const migrated = convertToRepresentativeAssets(migrateParams(plainData, etfTickers));
+                // 캐스팅하지 않는다 — migrateParams가 unknown을 받아 정제까지 맡는다.
+                const migrated = convertToRepresentativeAssets(migrateParams(s.data, etfTickers));
                 decryptedList.push({ ...s, name: displayName, data: migrated, analyzedAt: s.analyzedAt ?? null });
                 lastSavedParamsRef.current[s.id] = JSON.stringify(migrated);
                 plaintextIds.push(s.id);
@@ -1285,7 +1295,7 @@ export function useScenarios() {
             await fetch(`/api/scenarios/${s.id}`, { method: 'DELETE' });
             continue;
           }
-          const payload = survives ? (s.data as SimulationParams) : initialParams;
+          const payload = survives ? normalizeSimulationParams(s.data) : initialParams;
           const encrypted = await encryptData(payload, newKey, userId);
           const res = await fetch(`/api/scenarios/${s.id}`, {
             method: 'PUT',
