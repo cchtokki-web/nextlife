@@ -87,6 +87,8 @@ describe('retirement-domain-invariants / optimizer', () => {
         theoreticalCombinationCount: 2,
         generatedCandidateCount: 2,
         cappedCandidateCount: 0,
+        baselineCandidateId: 'baseline',
+        baselineDuplicateCount: 0,
         omittedAxes: [],
       },
     };

@@ -78,6 +78,8 @@ function fakeGeneration(candidates: StrategyCandidate[]): StrategyGenerationResu
       theoreticalCombinationCount: candidates.length,
       generatedCandidateCount: candidates.length,
       cappedCandidateCount: 0,
+      baselineCandidateId: 'baseline',
+      baselineDuplicateCount: 0,
       omittedAxes: [],
     },
   };
@@ -99,6 +101,29 @@ describe('StrategyOptimizer', () => {
     expect(result.debug.failedCandidateCount).toBe(0);
     expect(result.rankedCandidates).toHaveLength(3);
     expect(result.best?.rank).toBe(1);
+  });
+
+  // 격자에 현상 유지가 없으면 argmax는 반드시 어떤 조정을 고른다. 실제 생성기를 써서
+  // "현재 계획이 최선이면 현재 계획을 돌려준다"를 끝까지 확인한다 — 후보 목록에 넣는 것과
+  // 순위 경로가 그것을 살려 두는 것은 다른 문제다.
+  test('현재 계획이 가장 좋으면 아무것도 바꾸지 않는 안을 고른다', () => {
+    const input = LegacySimulationAdapter.fromLegacy(structuredClone(initialParams));
+    const seed = {
+      ...input.strategy,
+      spendingPolicy: { ...input.strategy.spendingPolicy, mode: 'max_sustainable' as const },
+    };
+    const engine = { simulate: vi.fn(() => simulation(100)) } satisfies SimulationEngine;
+    // 소비 모드를 그대로 둔 후보는 현상 유지 하나뿐이다(격자는 전부 target으로 고정한다).
+    const evaluator = {
+      evaluate: vi.fn((_profile, _goals, strategy) =>
+        evaluation(strategy.spendingPolicy.mode === 'max_sustainable' ? 100 : 50)),
+    } satisfies GoalEvaluationEngine;
+
+    const result = new StrategyOptimizer(engine, evaluator, new StrategyGenerator())
+      .optimize(input.profile, input.goals, seed);
+
+    expect(result.best?.candidate.id).toBe('baseline');
+    expect(result.best?.candidate.strategy).toEqual(seed);
   });
 
   test('HARD 은퇴 나이 위반 후보는 시뮬레이션 전에 제거한다', () => {

@@ -11,8 +11,12 @@ describe('StrategyGenerator', () => {
     const result = new StrategyGenerator().generate(input.profile, input.goals, input.strategy);
 
     expect(result.debug.theoreticalCombinationCount).toBe(648);
-    expect(result.debug.generatedCandidateCount).toBe(648);
+    // 격자 648 + 현상 유지 1. 기본 시나리오의 현재 설정은 격자 위에 없다 —
+    // 소비 모드·수익률 프리셋 반영 방식이 후보 생성 규칙과 어긋나기 때문이다.
+    expect(result.debug.generatedCandidateCount).toBe(649);
     expect(result.debug.cappedCandidateCount).toBe(0);
+    expect(result.debug.baselineDuplicateCount).toBe(0);
+    expect(result.debug.baselineCandidateId).toBe('baseline');
     expect(result.debug.axisSizes).toMatchObject({
       retirementAge: 8,
       nationalPensionStartAge: 3,
@@ -23,7 +27,7 @@ describe('StrategyGenerator', () => {
     expect(result.debug.omittedAxes.map((item) => item.axis)).toEqual([
       'privatePensionStartAge', 'cashBufferMonths', 'guardrail', 'spendingPolicyMode',
     ]);
-    expect(result.candidates).toHaveLength(648);
+    expect(result.candidates).toHaveLength(649);
     expect(input).toEqual(before);
   });
 
@@ -64,9 +68,13 @@ describe('StrategyGenerator', () => {
     );
 
     expect(result.candidates).toHaveLength(25);
-    expect(result.debug.cappedCandidateCount).toBe(623);
-    expect(result.debug.theoreticalCombinationCount).toBe(
-      result.debug.generatedCandidateCount + result.debug.cappedCandidateCount,
+    expect(result.debug.cappedCandidateCount).toBe(624);
+    // 현상 유지 후보 한 장이 격자 밖에서 더해지므로 총량은 격자보다 하나 많다. 그 한 장이
+    // 격자 조합과 같으면 그쪽을 건너뛰어(baselineDuplicateCount) 합이 다시 맞는다.
+    expect(result.debug.theoreticalCombinationCount + 1).toBe(
+      result.debug.generatedCandidateCount
+      + result.debug.cappedCandidateCount
+      + result.debug.baselineDuplicateCount,
     );
   });
 
@@ -150,7 +158,7 @@ describe('StrategyGenerator', () => {
 
   // C6: 후보 비교 기준을 맞추기 위해 소비 모드를 target으로 고정하는 것은 의도된 동작이다.
   // 그 사실은 omittedAxes로 고지되지만, 동작 자체를 고정하는 테스트가 없었다.
-  test('seed가 max_sustainable이어도 모든 후보를 target 모드로 고정한다', () => {
+  test('seed가 max_sustainable이어도 모든 격자 후보를 target 모드로 고정한다', () => {
     const input = LegacySimulationAdapter.fromLegacy(structuredClone(initialParams));
     const seed = {
       ...input.strategy,
@@ -161,9 +169,65 @@ describe('StrategyGenerator', () => {
       maxCandidates: 8,
     });
 
-    expect(result.candidates.length).toBeGreaterThan(0);
-    for (const candidate of result.candidates) {
+    const grid = result.candidates
+      .filter((candidate) => candidate.id !== result.debug.baselineCandidateId);
+    expect(grid.length).toBeGreaterThan(0);
+    for (const candidate of grid) {
       expect(candidate.strategy.spendingPolicy.mode).toBe('target');
     }
+  });
+});
+
+// 격자에 「아무것도 바꾸지 않는 안」이 없으면 argmax는 언제나 어떤 조정을 고르게 된다.
+// 현재 계획이 이미 최선인 사용자에게도 바꿀 것을 권하게 되고, 그 권고가 실제로는 손해인지
+// 아닌지를 판별할 기준선 자체가 후보 목록에 없다. 같은 결함을 usecases 계통의
+// RecommendationEngine은 이미 고쳤고(topCandidates에 plan: null 포함), 이쪽에 남아 있었다.
+describe('StrategyGenerator 현상 유지 후보', () => {
+  test('격자가 만들 수 없는 설정이어도 seed 그대로의 후보를 포함한다', () => {
+    const input = LegacySimulationAdapter.fromLegacy(structuredClone(initialParams));
+    // 두 설정 모두 격자 축이 표현하지 못한다 — 인출정책 축은 PROPORTIONAL을 제외하고,
+    // 소비 모드 축은 모든 후보를 target으로 고정한다.
+    const seed = {
+      ...input.strategy,
+      withdrawalPolicy: { ...input.strategy.withdrawalPolicy, accountWithdrawalPolicy: 'PROPORTIONAL' as const },
+      spendingPolicy: { ...input.strategy.spendingPolicy, mode: 'max_sustainable' as const },
+    };
+    const before = structuredClone(seed);
+
+    const result = new StrategyGenerator().generate(input.profile, input.goals, seed);
+
+    const baseline = result.candidates.find((item) => item.id === result.debug.baselineCandidateId);
+    expect(baseline).toBeDefined();
+    expect(baseline?.strategy).toEqual(before);
+    expect(baseline?.dimensions.withdrawalPolicy).toBe('PROPORTIONAL');
+    // seed를 훼손하지 않는다.
+    expect(seed).toEqual(before);
+  });
+
+  test('현상 유지 후보는 maxCandidates 상한에도 잘리지 않는다', () => {
+    const input = LegacySimulationAdapter.fromLegacy(structuredClone(initialParams));
+
+    const result = new StrategyGenerator().generate(input.profile, input.goals, input.strategy, {
+      maxCandidates: 1,
+    });
+
+    expect(result.candidates).toHaveLength(1);
+    expect(result.candidates[0].id).toBe(result.debug.baselineCandidateId);
+  });
+
+  test('seed가 이미 격자 위에 있으면 같은 조합을 두 번 만들지 않는다', () => {
+    const input = LegacySimulationAdapter.fromLegacy(structuredClone(initialParams));
+    // 격자가 실제로 만들어 내는 조합 하나를 그대로 seed로 되먹인다.
+    const probe = new StrategyGenerator().generate(input.profile, input.goals, input.strategy);
+    const onGrid = probe.candidates.find((item) => item.id === 'retire-62|np-65|GENERAL_FIRST|FIXED|BALANCED');
+    expect(onGrid).toBeDefined();
+
+    const result = new StrategyGenerator().generate(input.profile, input.goals, onGrid!.strategy);
+
+    const identical = result.candidates
+      .filter((item) => JSON.stringify(item.strategy) === JSON.stringify(onGrid!.strategy));
+    expect(identical).toHaveLength(1);
+    expect(result.debug.baselineDuplicateCount).toBe(1);
+    expect(result.debug.baselineCandidateId).toBe(identical[0].id);
   });
 });

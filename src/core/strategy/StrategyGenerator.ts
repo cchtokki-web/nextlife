@@ -18,11 +18,18 @@ export type NationalPensionTiming = 'EARLY' | 'NORMAL' | 'DEFERRED';
 export type SpendingPattern = 'FIXED' | 'FRONT_LOADED' | 'CARE_HEAVY';
 export type AssetAllocationPreset = 'CONSERVATIVE' | 'BALANCED' | 'GROWTH';
 
+/**
+ * 격자 축이 실제로 훑는 인출정책. PROPORTIONAL/CUSTOM은 엔진이 후보로 만들지 않는다.
+ * 현상 유지 후보는 이 축 밖의 값을 가질 수 있으므로 `StrategyDimensions`는 더 넓다.
+ */
+export type GridWithdrawalPolicy = Exclude<AccountWithdrawalPolicy, 'PROPORTIONAL' | 'CUSTOM'>;
+
 export interface StrategyDimensions {
   retirementAge: number;
   nationalPensionTiming: NationalPensionTiming;
   nationalPensionStartAge: number;
-  withdrawalPolicy: Exclude<AccountWithdrawalPolicy, 'PROPORTIONAL' | 'CUSTOM'>;
+  /** 격자 후보는 언제나 `GridWithdrawalPolicy`지만, 현상 유지 후보는 사용자의 현재 설정 그대로다. */
+  withdrawalPolicy: AccountWithdrawalPolicy;
   spendingPattern: SpendingPattern;
   assetAllocation: AssetAllocationPreset;
 }
@@ -44,9 +51,14 @@ export interface StrategyGenerationOptions {
 
 export interface StrategyGenerationDebug {
   axisSizes: Record<keyof StrategyDimensions, number>;
+  /** 격자 조합의 수. 현상 유지 후보는 격자 밖이므로 여기 포함되지 않는다. */
   theoreticalCombinationCount: number;
   generatedCandidateCount: number;
   cappedCandidateCount: number;
+  /** 현상 유지(무조정) 후보의 id. 격자 조합 하나와 완전히 같으면 그 조합의 id가 된다. */
+  baselineCandidateId: string;
+  /** 현상 유지 후보와 같아 생성을 건너뛴 격자 조합 수. 0 또는 1이다. */
+  baselineDuplicateCount: number;
   omittedAxes: ReadonlyArray<{ axis: OmittedAxis; reason: string }>;
 }
 
@@ -152,6 +164,75 @@ function strategyFor(
   };
 }
 
+function timingFor(startAge: number): NationalPensionTiming {
+  if (startAge < NATIONAL_PENSION_NORMAL_START_AGE) return 'EARLY';
+  return startAge > NATIONAL_PENSION_NORMAL_START_AGE ? 'DEFERRED' : 'NORMAL';
+}
+
+function sameCurve(left: SpendingCurve | undefined, right: SpendingCurve | undefined): boolean {
+  if (!left || !right) return false;
+  return left.breakpointAges.length === right.breakpointAges.length
+    && left.multipliers.length === right.multipliers.length
+    && left.breakpointAges.every((age, index) => age === right.breakpointAges[index])
+    && left.multipliers.every((value, index) => value === right.multipliers[index]);
+}
+
+/**
+ * 현상 유지 후보를 격자와 같은 어휘(`StrategyDimensions`)로 옮긴다.
+ *
+ * 축의 값은 seed에서 «읽기만» 한다. 격자 후보처럼 되돌려 쓰지 않으므로, 여기서 고른 라벨이
+ * 틀려도 전략 자체는 사용자의 현재 설정 그대로다. 라벨은 페르소나 자격(RecommendationEngine)과
+ * 변경점 표시(strategyFieldMap)에만 쓰인다.
+ */
+function baselineDimensions(seed: RetirementStrategy): StrategyDimensions {
+  const startAge = seed.nationalPensionStartAge ?? NATIONAL_PENSION_NORMAL_START_AGE;
+  const curve = seed.spendingPolicy.curve;
+  const spendingPattern: SpendingPattern =
+    sameCurve(curve, resolveSpendingCurve('front_loaded')) ? 'FRONT_LOADED'
+    : sameCurve(curve, resolveSpendingCurve('care_heavy')) ? 'CARE_HEAVY'
+    // 곡선이 없거나 프리셋 어느 쪽도 아니면 FIXED로 둔다. 변경점 표시가 이 값을 "바꿀 것이
+    // 없다"의 뜻으로 읽으므로(strategyFieldMap의 spendingPattern 축), 현상 유지에 맞는 기본이다.
+    : 'FIXED';
+  const preset = seed.legacySettings.yieldPreset;
+  return {
+    retirementAge: seed.retirementAge,
+    nationalPensionTiming: timingFor(startAge),
+    nationalPensionStartAge: startAge,
+    withdrawalPolicy: seed.withdrawalPolicy.accountWithdrawalPolicy ?? 'GENERAL_FIRST',
+    spendingPattern,
+    // 'custom'(자산별 직접 입력)과 미지정은 프리셋이 아니다. 라벨만 BALANCED로 두고,
+    // 실제 반영 판정은 프리셋을 직접 읽는 strategyFieldMap의 candidatePreset이 맡는다.
+    assetAllocation: preset === 'conservative' ? 'CONSERVATIVE'
+      : preset === 'aggressive' ? 'GROWTH'
+      : 'BALANCED',
+  };
+}
+
+/**
+ * 두 전략이 같은 계획인지 본다. 둘 다 같은 seed에서 spread로 만들어진 JSON 모양의 값이라
+ * 재귀 비교로 충분하다(Date·Map 등은 이 타입에 없다).
+ */
+function sameStrategy(left: unknown, right: unknown): boolean {
+  if (left === right) return true;
+  if (typeof left !== 'object' || typeof right !== 'object' || left === null || right === null) {
+    return false;
+  }
+  if (Array.isArray(left) !== Array.isArray(right)) return false;
+  const leftKeys = Object.keys(left as Record<string, unknown>);
+  const rightKeys = Object.keys(right as Record<string, unknown>);
+  if (leftKeys.length !== rightKeys.length) return false;
+  return leftKeys.every((key) =>
+    Object.prototype.hasOwnProperty.call(right, key)
+    && sameStrategy(
+      (left as Record<string, unknown>)[key],
+      (right as Record<string, unknown>)[key],
+    )
+  );
+}
+
+/** 현상 유지 후보의 id. 격자 id는 모두 `retire-`로 시작하므로 부딪히지 않는다. */
+const BASELINE_CANDIDATE_ID = 'baseline';
+
 /**
  * Explainable rule + bounded grid candidate generation.
  *
@@ -201,7 +282,7 @@ export class StrategyGenerator {
     const hasPrivatePension = profile.pensions.some((pension) => pension.kind === 'private');
     const accountClassCount = Number(profile.assets.some((asset) => asset.kind === 'investment'))
       + Number(hasIsa) + Number(hasPrivatePension);
-    const withdrawalPolicies: StrategyDimensions['withdrawalPolicy'][] = [
+    const withdrawalPolicies: GridWithdrawalPolicy[] = [
       'GENERAL_FIRST',
       ...(hasIsa ? ['ISA_FIRST' as const] : []),
       ...(hasPrivatePension ? ['PENSION_FIRST' as const] : []),
@@ -222,13 +303,27 @@ export class StrategyGenerator {
         ]
       : [{ label: 'BALANCED', preset: null }];
 
-    const candidates: StrategyCandidate[] = [];
+    // 현상 유지(무조정) 후보를 «격자보다 먼저» 넣는다.
+    //
+    // 이것이 없으면 argmax는 반드시 어떤 조정을 고른다. 현재 계획이 이미 최선인 사용자에게도
+    // 바꿀 것을 권하게 되고, 권고가 실제로 이득인지 판별할 기준선조차 후보 목록에 없다.
+    // usecases 계통의 RecommendationEngine은 같은 이유로 topCandidates에 `plan: null`을 넣어
+    // 두었다 — 이쪽에만 빠져 있었다.
+    //
+    // 먼저 넣는 이유는 둘이다. maxCandidates 상한에 잘려 나가지 않게 하고, 모든 키가 동률일 때
+    // id 알파벳 tie-break('baseline' < 'retire-…')가 현상 유지를 남기게 한다.
+    const baseline: StrategyCandidate = {
+      id: BASELINE_CANDIDATE_ID,
+      dimensions: baselineDimensions(seed),
+      strategy: structuredClone(seed),
+    };
+    const candidates: StrategyCandidate[] = [baseline];
     let cappedCandidateCount = 0;
+    let baselineDuplicateCount = 0;
+    let baselineCandidateId = BASELINE_CANDIDATE_ID;
     for (const retirementAge of retirementAges) {
       for (const nationalPensionStartAge of nationalPensionAges) {
-        const nationalPensionTiming: NationalPensionTiming = nationalPensionStartAge
-          < NATIONAL_PENSION_NORMAL_START_AGE ? 'EARLY'
-          : nationalPensionStartAge > NATIONAL_PENSION_NORMAL_START_AGE ? 'DEFERRED' : 'NORMAL';
+        const nationalPensionTiming = timingFor(nationalPensionStartAge);
         for (const withdrawalPolicy of withdrawalPolicies) {
           for (const spending of spendingCandidates) {
             for (const allocation of allocations) {
@@ -251,7 +346,16 @@ export class StrategyGenerator {
                 spending.label,
                 allocation.label,
               ].join('|');
-              candidates.push({ id, dimensions, strategy: strategyFor(seed, dimensions, spending, allocation) });
+              const strategy = strategyFor(seed, dimensions, spending, allocation);
+              // 사용자의 현재 설정이 이미 격자 위에 있는 흔한 경우. 같은 계획을 두 장 만들면
+              // 숫자가 완전히 같은 카드가 두 개 뜬다. 격자 쪽을 남기고 현상 유지를 걷어,
+              // 후보의 라벨과 id가 나머지 격자 후보와 같은 규칙을 따르게 한다.
+              if (baselineDuplicateCount === 0 && sameStrategy(strategy, baseline.strategy)) {
+                baselineDuplicateCount += 1;
+                baselineCandidateId = id;
+                candidates.splice(candidates.indexOf(baseline), 1);
+              }
+              candidates.push({ id, dimensions, strategy });
             }
           }
         }
@@ -278,6 +382,8 @@ export class StrategyGenerator {
         theoreticalCombinationCount,
         generatedCandidateCount: candidates.length,
         cappedCandidateCount,
+        baselineCandidateId,
+        baselineDuplicateCount,
         omittedAxes: OMITTED_AXES,
       },
     };
