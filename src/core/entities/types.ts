@@ -478,6 +478,13 @@ export interface UtilityConfig {
   privatePensionEffectiveTaxCeiling: number; // 사적연금 실효세율(연금세/(순인출+연금세))이 이 값에 도달하면
                                               // privatePensionTaxEfficiency 서브점수가 0이 됨 (기본 0.10)
   appropriateBequestMonths: number; // 사망 시 적정 총자산 = 월 목표생활비 * N개월 (기본 24)
+  // 기대수명까지 «버티기는 했지만» 완충자본이 0인 계획의 depletionSafety 원점수 (기본 0.7).
+  // 고갈 구간 [0, S)와 생존 구간 [S, 1]의 경계이며, 두 구간이 여기서 이어진다.
+  survivalBaseScore: number;
+  // depletionSafety가 만점이 되는 완충 여유(연). 기말자산 ÷ 연 목표생활비가 이 값에 도달하면
+  // 그 위로는 더 오르지 않는다 — 완충은 변동성을 견디는 힘이지 많을수록 좋기만 한 것이
+  // 아니고, 과다 잔여의 대가는 bequestAdequacy가 따로 매긴다 (기본 5).
+  fullBufferYears: number;
   taxBurdenCeiling: number; // 평생 세부담률이 이 값에 도달하면 taxEfficiency 0점 (기본 0.3)
   healthInsuranceCeiling: number; // 건강보험료/총소득 비율이 이 값에 도달하면 taxationRisk 산식의 건보료
                                    // 페널티 하위항목(가중치 0.3)이 최대치가 됨(taxationRisk 전체가 0점이
@@ -579,6 +586,13 @@ export interface StrategyRecommendation {
   // baseline과 동일한 결과(currentUtility를 만든 결과)가 그대로 채워진다. 결과 화면의
   // Before(baseline)/After(recommendedResult) 비교에 사용한다.
   recommendedResult: SimulationResult;
+  // recommendedResult를 만든 «바로 그» params. improved가 false이면 사용자의 원본 params다.
+  //
+  // 추천은 여러 단계가 쌓인 결과다 — 인출계획(Phase 1/2)·생활비 배수·자산별 배당 재투자
+  // (Phase 3)·사적연금 채널링과 신규 연금 납입(Phase 4). recommendedPlan 하나로는 그 조합을
+  // 복원할 수 없어서, 결과를 재현하려면 단계가 늘 때마다 재현 코드를 따라 고쳐야 했다
+  // (robustness.test.ts가 실제로 두 번 그렇게 깨졌다). 조합 자체를 돌려주면 그 추적이 끝난다.
+  recommendedParams: SimulationParams;
   // 개별 변경 항목의 독립적(marginal) 효과 목록. 두 종류의 항목이 섞여 있고 기준점(reference)이
   // 서로 다르다:
   //   (1) 인출계획(Phase 1/2) 항목: recommendedPlan이 identityPlan 대비 실제로 바뀐 필드 각각에

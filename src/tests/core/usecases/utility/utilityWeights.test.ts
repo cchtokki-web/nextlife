@@ -17,6 +17,8 @@ describe('createUtilityConfig', () => {
     },
     privatePensionEffectiveTaxCeiling: 0.1,
     appropriateBequestMonths: 24,
+    survivalBaseScore: 0.7,
+    fullBufferYears: 5,
     taxBurdenCeiling: 0.3,
     healthInsuranceCeiling: 0.05,
   };

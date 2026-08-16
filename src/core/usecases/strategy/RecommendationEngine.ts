@@ -685,8 +685,9 @@ export function recommendStrategy(
   //
   // baselineResult는 이미 계산돼 있어 시뮬레이션이 추가로 늘지 않는다. 종전에 쓰던
   // finalResult도 runForUtility 산출물이라 calculatedTargetSpending이 없었으므로 잃는 필드도 없다.
+  const recommendedParams = improved ? channelingOpt.finalParams : params;
   const recommendedResult = improved
-    ? engine.run(channelingOpt.finalParams, cfg)
+    ? engine.run(recommendedParams, cfg)
     : baselineResult;
   const recommendedUtility = improved
     ? (recommendedResult.utility ?? channelingOpt.finalUtility)
@@ -755,6 +756,7 @@ export function recommendStrategy(
     failedCandidateCount,
     deltas,
     recommendedResult,
+    recommendedParams,
     itemizedContributions,
   };
 }

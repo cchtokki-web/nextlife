@@ -1,4 +1,5 @@
 import { describe, test, expect } from 'vitest';
+import { initialParams } from '@/infrastructure/storage/localStore';
 import { generateRuleBasedAdvice } from '@/app/api/ai-advisor/ruleBasedAdvisor';
 import { SimulationResult, StrategyRecommendation, UtilityBreakdown } from '@/core/entities/types';
 
@@ -50,6 +51,7 @@ function makeRecommendation(
     totalCandidateCount: 12,
     failedCandidateCount: 0,
     recommendedResult: emptyResult,
+    recommendedParams: initialParams,
     itemizedContributions: [],
   };
 }

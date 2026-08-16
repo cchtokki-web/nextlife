@@ -1,4 +1,5 @@
 import { describe, test, expect } from 'vitest';
+import { initialParams } from '@/infrastructure/storage/localStore';
 import { computeExecutionRoadmap, selectDepletionAge } from '@/core/usecases/dashboard/computeExecutionRoadmap';
 import {
   CompleteWithdrawalPlan,
@@ -58,6 +59,7 @@ function makeRecommendation(
   return {
     currentUtility: utility,
     verifiedSentinelPlan: [],
+    recommendedParams: initialParams,
     recommendedUtility: utility,
     recommendedPlan,
     recommendedAssetReinvestment: null,

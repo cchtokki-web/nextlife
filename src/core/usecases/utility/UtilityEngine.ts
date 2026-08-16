@@ -101,16 +101,56 @@ export function computeConsumptionRaw(
   return normalized * (0.85 + 0.15 * stabilityFactor);
 }
 
-function computeDepletionSafetyRaw(params: SimulationParams, result: SimulationResult): number {
+/**
+ * 자산이 얼마나 오래, 그리고 얼마나 «여유 있게» 버티는가.
+ *
+ * 축이 두 구간으로 이어져 있다.
+ *
+ *   고갈: (고갈나이 − 은퇴나이) / 은퇴기간 × survivalBaseScore   → [0, S)
+ *   생존: S + (1 − S) × min(완충연수 / fullBufferYears, 1)        → [S, 1]
+ *
+ * **예전에는 생존이 곧 만점(1)이었다.** 그래서 완충자본을 다 태운 계획과 두둑이 남긴 계획이
+ * 같은 점수를 받았고, 목적함수 전체가 완충자본을 «낭비»로만 계산하게 됐다 —
+ * bequestAdequacy는 기말자산 과다를 지수적으로 감점하는데 그 감점을 상쇄할 축이 없었다.
+ * 실측(allAxesLiveParams): 기말 7.9억(MC 57.0%)과 0.6억(MC 40.3%)이 둘 다 만점이라,
+ * 완충자본을 태우는 계획이 8점 «높게» 나왔다. 효용이 계획의 생존율과 역방향으로 움직였다.
+ *
+ * 완충을 금액이 아니라 «연수»로 재는 이유: 같은 1억이라도 월 300만원 쓰는 계획에는 2.8년,
+ * 월 900만원 쓰는 계획에는 0.9년치다. 변동성을 견디는 힘은 금액이 아니라 그 배율이다.
+ *
+ * 경계에서 이어진다는 것이 중요하다. 기대수명에 정확히 0원으로 도달하는 계획은 고갈 구간의
+ * 상단(= S)이자 생존 구간의 하단(완충 0 → S)이다. 두 산식이 만나는 지점이 튀면 그 근처의
+ * 계획들이 산식 경계를 넘나들며 점수가 요동친다.
+ *
+ * **몬테카를로를 쓰지 않는다.** raw는 result·params만으로 결정된다는 재채점 불변식
+ * (utilityRaws.test.ts)이 이 축에도 그대로 적용되고, 후보마다 MC를 붙이면 216개 × 300시행이
+ * 된다. 완충 여유는 그 대용이며, 대용인 만큼 정확한 성공률이 아니라 «방향»을 맞추는 것이 목표다.
+ */
+function computeDepletionSafetyRaw(
+  params: SimulationParams,
+  result: SimulationResult,
+  cfg: UtilityConfig,
+): number {
   const { retirementAge } = params.userProfile;
-  if (result.depletionAge === null) return 1;
+  const base = clamp(cfg.survivalBaseScore, 0, 1);
+
+  if (result.depletionAge === null) {
+    const annualNeed = params.userProfile.targetMonthlySpending * 12;
+    // 목표 생활비가 0이면 완충 «연수»가 정의되지 않는다. 그때는 버틴 것 자체로 만점이다
+    // — 나눌 분모가 없는 것이지 여유가 없는 것이 아니다.
+    if (annualNeed <= 0) return 1;
+    const bufferYears = Math.max(0, result.endingAssets) / annualNeed;
+    const fullBuffer = Math.max(cfg.fullBufferYears, Number.EPSILON);
+    return clamp(base + (1 - base) * clamp(bufferYears / fullBuffer, 0, 1), 0, 1);
+  }
+
   if (result.depletionAge <= retirementAge) return 0;
 
   // 분모는 시뮬레이션이 실제로 돈 은퇴 후 기간, 즉 본인 기대수명까지다. depletionAge가
   // 바로 그 루프에서 판정된 값이므로 분자와 분모가 같은 기간을 가리켜야 한다.
   const span = params.userProfile.expectancy - retirementAge;
   if (span <= 0) return 0;
-  return clamp((result.depletionAge - retirementAge) / span, 0, 1);
+  return clamp((result.depletionAge - retirementAge) / span, 0, 1) * base;
 }
 
 // ratio(실제/적정)가 1 이하면 선형으로, 1을 초과하면(과다 잔여) 지수적으로 감점한다.
@@ -326,7 +366,7 @@ export function computeUtilityRaws(
 
   return {
     consumption: computeConsumptionRaw(params, retirementYears),
-    depletionSafety: computeDepletionSafetyRaw(params, result),
+    depletionSafety: computeDepletionSafetyRaw(params, result, cfg),
     pensionUtilization: computePensionUtilizationRaw(params, retirementYears, cfg),
     taxEfficiency: computeTaxEfficiencyRaw(result.yearlyResults, cfg),
     taxationRisk: computeTaxationRiskRaw(result.yearlyResults, cfg),

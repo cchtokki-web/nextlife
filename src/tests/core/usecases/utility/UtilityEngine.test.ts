@@ -374,11 +374,78 @@ describe('UtilityEngine.computeLifetimeUtility', () => {
     });
   });
 
-  test('자산 고갈이 없으면 depletionSafety가 만점, 조기 고갈되면 만점보다 낮다', () => {
+  test('자산 고갈이 없으면 depletionSafety가 조기 고갈보다 높다', () => {
     const noDepletion = computeLifetimeUtility(buildBalancedScenario(), baseParams);
     const depletion = computeLifetimeUtility(buildDepletionScenario(), baseParams);
 
     expect(noDepletion.components.depletionSafety).toBeGreaterThan(depletion.components.depletionSafety);
+  });
+
+  // 이 축이 「고갈했는가」라는 이분법이던 시절, 완충자본을 다 태운 계획과 두둑이 남긴 계획이
+  // 똑같이 만점을 받았다. 그래서 목적함수 전체가 완충자본을 «낭비»로만 계산했다 —
+  // bequestAdequacy는 기말자산 과다를 감점하는데 그 감점을 상쇄할 축이 하나도 없었다.
+  //
+  // 실측(allAxesLiveParams): 기말 7.9억(MC 57.0%)과 기말 0.6억(MC 40.3%)이 둘 다 20/20이었고,
+  // 그 결과 완충자본을 태우는 계획이 8점 «높게» 나왔다.
+  describe('depletionSafety — 완충 여유', () => {
+    // 마지막 해 자산만 다르고 나머지가 같은 두 계획.
+    const withBuffer = (endingAssets: number): SimulationResult => makeResult(
+      Array.from({ length: 36 }, (_, i) => makeYear(60 + i, {
+        totalAssets: i === 35 ? endingAssets : ANNUAL_TARGET * 10,
+        pensionAssets: ANNUAL_TARGET,
+      })),
+      null,
+    );
+
+    test('고갈하지 않아도 완충자본이 두꺼울수록 높다', () => {
+      const thin = computeLifetimeUtility(withBuffer(0), baseParams);
+      const thick = computeLifetimeUtility(withBuffer(ANNUAL_TARGET * 10), baseParams);
+
+      expect(thick.components.depletionSafety)
+        .toBeGreaterThan(thin.components.depletionSafety);
+    });
+
+    test('완충자본이 충분하면 만점이고 그 위로는 더 오르지 않는다', () => {
+      const full = computeLifetimeUtility(withBuffer(ANNUAL_TARGET * 10), baseParams);
+      const absurd = computeLifetimeUtility(withBuffer(ANNUAL_TARGET * 1000), baseParams);
+
+      expect(full.components.depletionSafety).toBe(DEFAULT_UTILITY_CONFIG.weights.depletionSafety);
+      expect(absurd.components.depletionSafety).toBe(full.components.depletionSafety);
+    });
+
+    // 기대수명에 정확히 0원으로 도달하는 계획은 「고갈」과 「완충 0」의 경계다. 두 가지가
+    // 서로 다른 산식으로 계산되므로, 경계에서 값이 튀면 그 근처의 계획들이 산식이 갈리는
+    // 지점을 넘나들며 점수가 요동친다.
+    test('고갈 구간과 생존 구간이 경계에서 이어진다', () => {
+      const survivesWithNothing = computeLifetimeUtility(withBuffer(0), baseParams);
+      const depletesAtExpectancy = computeLifetimeUtility(
+        makeResult(
+          Array.from({ length: 36 }, (_, i) => makeYear(60 + i, {
+            totalAssets: i === 35 ? 0 : ANNUAL_TARGET * 10,
+            pensionAssets: ANNUAL_TARGET,
+          })),
+          baseParams.userProfile.expectancy,
+        ),
+        baseParams,
+      );
+
+      expect(survivesWithNothing.components.depletionSafety)
+        .toBeCloseTo(depletesAtExpectancy.components.depletionSafety, 5);
+    });
+
+    // 완충 여유를 «금액»이 아니라 «연수»로 재는지 잠근다. 같은 금액이라도 생활비가 크면
+    // 그만큼 빨리 소진되므로 완충으로서의 값어치가 작다.
+    test('같은 금액이어도 생활비가 크면 완충 여유가 작다', () => {
+      const bigSpender: SimulationParams = {
+        ...baseParams,
+        userProfile: { ...baseParams.userProfile, targetMonthlySpending: 9000000 },
+      };
+      const modest = computeLifetimeUtility(withBuffer(ANNUAL_TARGET * 3), baseParams);
+      const hungry = computeLifetimeUtility(withBuffer(ANNUAL_TARGET * 3), bigSpender);
+
+      expect(hungry.components.depletionSafety)
+        .toBeLessThan(modest.components.depletionSafety);
+    });
   });
 
   // B6: depletionSafety의 정규화 분모는 은퇴 후 기간(기대수명 - 은퇴 나이)이다. 같은

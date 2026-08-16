@@ -1,4 +1,5 @@
 import { describe, test, expect, vi } from 'vitest';
+import { initialParams } from '@/infrastructure/storage/localStore';
 import { render, screen, fireEvent, within } from '@testing-library/react';
 import { DashboardSection } from '@/web/features/Dashboard/DashboardSection';
 import {
@@ -84,6 +85,7 @@ const zeroDeltas: StrategyRecommendation['deltas'] = {
 const recommendation: StrategyRecommendation = {
   currentUtility: utility,
   verifiedSentinelPlan: [],
+  recommendedParams: initialParams,
   recommendedUtility: { ...utility, score: 81 },
   recommendedPlan: null,
   recommendedAssetReinvestment: null,

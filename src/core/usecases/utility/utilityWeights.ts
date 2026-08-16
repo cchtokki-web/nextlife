@@ -39,6 +39,22 @@ export const DEFAULT_UTILITY_CONFIG: UtilityConfig = createUtilityConfig(
     },
     privatePensionEffectiveTaxCeiling: 0.1, // 사적연금 실효세율 10%에서 해당 서브점수 0점
     appropriateBequestMonths: 24, // 사망 시 총자산 적정치 = 월 목표생활비 * 24개월(2년치)
+    // 아래 두 값은 감이 아니라 하니스 실측으로 골랐다(`npm run harness:personas`, 54인).
+    // 재는 것은 corr(효용, MC 성공률) — 목적함수가 계획의 생존율과 같은 방향을 보는가 —
+    // 과 「비증액 악화」, 즉 더 쓰라고 하지도 않았는데 성공률을 떨어뜨린 추천의 수다.
+    //
+    //   S    B    corr    추천가능   악화   비증액 악화
+    //   0.7  3    0.629      38       7        2
+    //   0.7  5    0.640      37       6        1   ← 채택
+    //   0.7  8    0.645      36       6        1
+    //   0.6  5    0.664      36       6        1
+    //   0.8  5    0.612      37       7        2
+    //
+    // S를 낮추거나 B를 늘리면 corr는 조금 더 오르지만 추천 가능 건수가 함께 줄어든다.
+    // 목표였던 비증액 악화를 1건까지 줄이면서 추천 손실이 가장 적은 지점을 택했다.
+    // 남은 악화 6건 중 5건은 SPENDING_INCREASE_GATE가 승인한 의도된 증액이다.
+    survivalBaseScore: 0.7, // 완충 0으로 기대수명에 도달한 계획의 원점수
+    fullBufferYears: 5, // 완충 여유 5년치면 depletionSafety 만점
     taxBurdenCeiling: 0.3, // 평생 세부담률 30%에서 taxEfficiency 0점
     healthInsuranceCeiling: 0.05, // 건강보험료/총소득 비율 5%에서 관련 페널티 최대
   }

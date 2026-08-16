@@ -1,4 +1,5 @@
 import { describe, test, expect } from 'vitest';
+import { initialParams } from '@/infrastructure/storage/localStore';
 import { applyAiSentinels } from '@/core/usecases/strategy/applyAiSentinels';
 import { compileStrategy, DEFAULT_RETIREMENT_STRATEGY } from '@/core/usecases/strategy/compileStrategy';
 import { SimulationEngine } from '@/core/usecases/SimulationEngine';
@@ -76,6 +77,7 @@ function makeRecommendation(
   return {
     currentUtility: utility,
     verifiedSentinelPlan,
+    recommendedParams: initialParams,
     recommendedUtility: utility,
     recommendedPlan,
     recommendedAssetReinvestment: null,

@@ -460,8 +460,13 @@ describe('recommendStrategy - 생활비 증액(Phase 2) 후보', () => {
 describe('recommendStrategy - 개선이 없을 때', () => {
   // 가정 축을 확정해 강건성 재평가를 끄면 순수 argmax가 되고, 그 argmax가 baseline보다
   // 낮은 점수를 받는 시나리오다.
+  //
+  // 픽스처를 allAxesLiveParams에서 paramsWithLargePension으로 옮겼다. depletionSafety가
+  // 완충 여유를 보게 되면서(UtilityEngine) 전자에서는 어떤 가정 축 조합으로도 개선이
+  // 사라지지 않는다 — 완충을 남기는 후보가 실제로 점수를 더 받기 때문이다. 이 블록이 재는
+  // 것은 «개선이 없을 때의 계약»이므로, 개선이 실제로 없는 입력으로 바꾸는 것이 맞다.
   const noHeadroom = () => compileStrategy({
-    ...allAxesLiveParams,
+    ...paramsWithLargePension,
     strategy: {
       ...DEFAULT_RETIREMENT_STRATEGY,
       riskProfile: 'neutral', economicScenario: 'recession', objective: 'lifetime_spending',

@@ -1,4 +1,5 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest';
+import { initialParams } from '@/infrastructure/storage/localStore';
 import { buildSimulationContextText, POST } from '@/app/api/ai-advisor/route';
 import { SimulationResult, StrategyRecommendation, UtilityBreakdown } from '@/core/entities/types';
 import type { NextRequest } from 'next/server';
@@ -67,6 +68,7 @@ describe('buildSimulationContextText - Utility Score 반영', () => {
       totalCandidateCount: 12,
       failedCandidateCount: 0,
       recommendedResult: emptyResult,
+      recommendedParams: initialParams,
       itemizedContributions: [],
     };
     const text = buildSimulationContextText({ ...baseBody, utility: baseUtility, recommendation });
@@ -96,6 +98,7 @@ describe('buildSimulationContextText - Utility Score 반영', () => {
       totalCandidateCount: 1,
       failedCandidateCount: 0,
       recommendedResult: emptyResult,
+      recommendedParams: initialParams,
       itemizedContributions: [],
     };
     const text = buildSimulationContextText({ ...baseBody, utility: baseUtility, recommendation });
@@ -121,6 +124,7 @@ describe('buildSimulationContextText - Utility Score 반영', () => {
       totalCandidateCount: 12,
       failedCandidateCount: 0,
       recommendedResult: emptyResult,
+      recommendedParams: initialParams,
       itemizedContributions: [],
     };
     const text = buildSimulationContextText({ ...baseBody, utility: baseUtility, recommendation });

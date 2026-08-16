@@ -189,20 +189,22 @@ describe('recommendStrategy 통합 — 강건성 모드', () => {
     const compiled = compileStrategy({ ...allAxesLiveParams, strategy: DEFAULT_RETIREMENT_STRATEGY });
     const recommendation = recommendStrategy(compiled.params, engine, compiled.utilityConfig);
 
-    if (recommendation.recommendedPlan) {
-      const reproduced = engine.runForUtility({
-        ...compiled.params,
-        withdrawalPlan: { ...recommendation.recommendedPlan },
-        userProfile: {
-          ...compiled.params.userProfile,
-          targetMonthlySpending: Math.round(
-            compiled.params.userProfile.targetMonthlySpending
-            * (recommendation.recommendedPlan.monthlySpendingMultiplier ?? 1)
-          ),
-        },
-      });
-      expect(recommendation.recommendedResult.endingAssets).toBeCloseTo(reproduced.endingAssets, 6);
-    }
+    // 추천이 실제로 쓴 params를 그대로 다시 돌린다.
+    //
+    // 예전에는 recommendedPlan으로 params를 손수 재조립해 비교했는데, 그 재현은 단계가 늘 때마다
+    // 깨졌다 — Phase 3(자산별 배당 재투자)를 빠뜨려 한 번, Phase 4-B(신규 연금 납입)를 빠뜨려
+    // 또 한 번. 게다가 «재현이 틀린 것»과 «국면이 새어 나온 것»을 구분할 수 없어서, 깨질 때마다
+    // 진짜 결함인지 재현 누락인지 다시 조사해야 했다. 조합 자체를 받아 오면 그 모호함이 사라진다.
+    const reproduced = engine.runForUtility(recommendation.recommendedParams);
+    expect(recommendation.recommendedResult.endingAssets).toBeCloseTo(reproduced.endingAssets, 6);
+
+    // 그 params가 «사용자의» 가정 위에 서 있는지도 함께 본다. 강건성 재평가가 만든 국면
+    // params(수익률·물가를 바꾼 것)가 새어 나오면 이 단언이 깨진다 — 위의 동일성만으로는
+    // 국면 params를 그대로 돌려줘도 통과하기 때문이다.
+    expect(recommendation.recommendedParams.inflationRate).toBe(compiled.params.inflationRate);
+    expect(recommendation.recommendedParams.yieldPreset).toBe(compiled.params.yieldPreset);
+    expect(recommendation.recommendedParams.assets.map((asset) => asset.annualGrowthRate))
+      .toEqual(compiled.params.assets.map((asset) => asset.annualGrowthRate));
   });
 
   test('가정 축을 확정하면 강건성 재평가가 일어나지 않는다', () => {
