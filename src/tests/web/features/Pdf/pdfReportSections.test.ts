@@ -9,6 +9,7 @@ import {
   renderShortfallSummarySection,
   renderPlanVerdictSection,
 } from '@/web/features/Pdf/pdfReportSections';
+import { formatManwon } from '@/core/usecases/utility/utilityAnalysis';
 import { ShortfallReport } from '@/core/usecases/dashboard/computeShortfallSummary';
 import { computePlanConfidence } from '@/core/usecases/dashboard/computePlanConfidence';
 
@@ -572,9 +573,20 @@ describe('renderMonteCarloSection', () => {
     expect(html).toContain('상위 10%');
   });
 
-  // 변동성 손실은 화면과 PDF 모두에서 드러나야 한다.
-  test('변동 없음 가정과 나란히 놓아 변동성 손실을 드러낸다', () => {
-    expect(renderMonteCarloSection(monteCarlo, sequenceRisk)).toContain('변동 없음');
+  // **변동성 손실은 화면과 PDF가 같은 기준으로 드러낸다.**
+  //
+  // 예전에는 중앙값이 표 안에, 결정론 값이 표 «아래» 각주에 떨어져 있어 둘을 눈으로
+  // 이어 붙여야 격차가 보였다. 같은 표의 중앙값 열에 나란히 놓으면 위아래로 바로 읽힌다.
+  // 화면(MonteCarloSection의 volatility-drag)이 두 값을 붙여 놓는 것과 같은 기준이다.
+  test('변동 없음 가정을 분포와 같은 표에 실어 변동성 손실을 드러낸다', () => {
+    const html = renderMonteCarloSection(monteCarlo, sequenceRisk);
+
+    expect(html).toContain('변동 없음 가정');
+    // 결정론 25억이 표의 «행»으로 들어가야 한다 — 표 밖 각주가 아니라.
+    const tableEnd = html.indexOf('</table>');
+    expect(html.slice(0, tableEnd)).toContain(formatManwon(2_500_000_000));
+    // 중앙값 18억은 같은 표에 그대로 남는다.
+    expect(html.slice(0, tableEnd)).toContain(formatManwon(1_800_000_000));
   });
 
   test('순서 리스크가 있으면 경우별 비교를 싣는다', () => {

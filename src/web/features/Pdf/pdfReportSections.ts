@@ -680,11 +680,21 @@ export function renderMonteCarloSection(
           <td style="border: 1px solid #cbd5e1; padding: 6px 8px; font-size: 11px; text-align: right; font-weight: 700;">${formatManwon(monteCarlo.endingAssets.p50)}</td>
           <td style="border: 1px solid #cbd5e1; padding: 6px 8px; font-size: 11px; text-align: right;">${formatManwon(monteCarlo.endingAssets.p90)}</td>
         </tr>
+        <!-- 결정론 기준선을 «같은 표의 중앙값 열»에 올린다. 예전에는 표 아래 각주였는데,
+             그러면 독자가 표 안 중앙값과 표 밖 각주를 눈으로 이어 붙여야 격차가 보였다.
+             화면(MonteCarloSection의 volatility-drag)이 두 값을 붙여 놓는 것과 같은 기준이다.
+             분위수가 아니라 단일 경로의 값이라 하위/상위 칸은 비운다. -->
+        <tr>
+          <td style="border: 1px solid #cbd5e1; padding: 6px 8px; font-size: 11px; color: #64748b;">변동 없음 가정</td>
+          <td style="border: 1px solid #cbd5e1; padding: 6px 8px; font-size: 11px; text-align: right; color: #94a3b8;">—</td>
+          <td style="border: 1px solid #cbd5e1; padding: 6px 8px; font-size: 11px; text-align: right;">${formatManwon(monteCarlo.deterministicEndingAssets)}</td>
+          <td style="border: 1px solid #cbd5e1; padding: 6px 8px; font-size: 11px; text-align: right; color: #94a3b8;">—</td>
+        </tr>
       </tbody>
     </table>
     <p style="margin: 6px 0 0; font-size: 11px; color: #64748b;">
-      변동 없음 가정: ${formatManwon(monteCarlo.deterministicEndingAssets)} — 수익률이 매년 흔들리면
-      같은 평균 수익률이라도 결과 중앙값은 이보다 낮아집니다.
+      같은 평균 수익률이라도 해마다 오르내리면 결과는 이만큼 낮아집니다. 자산 추이 차트의
+      총 자산액 곡선은 흔들리지 않는다고 가정한 값이라 아랫줄에 해당합니다.
     </p>
     ${depletionText}
     ${sequenceSection}
