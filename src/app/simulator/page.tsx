@@ -11,8 +11,8 @@ import { resolvePlanAssetStatus } from '../../core/usecases/dashboard/resolvePla
 import { computeShortfallSummary } from '../../core/usecases/dashboard/computeShortfallSummary';
 import { describeDepletionAge } from '../../core/usecases/dashboard/describeDepletionAge';
 import { formatCurrencyUnit, renderRiskAlertsSection, renderStrategyRecommendationSection, renderExecutionRoadmapSection, renderSensitivityTableSection, renderMonteCarloSection, renderShortfallSummarySection, renderPlanVerdictSection, renderNationalPensionSection, renderKeyLeversSection } from '../../web/features/Pdf/pdfReportSections';
-import { REPORT_STYLES } from '../../web/features/Pdf/reportStyles';
 import { buildReportHtml } from '../../web/features/Pdf/buildReportHtml';
+import { generateReportPdf } from '../../web/features/Pdf/generateReportPdf';
 import { computePlanConfidence } from '../../core/usecases/dashboard/computePlanConfidence';
 import { computeKeyLevers } from '../../core/usecases/dashboard/computeKeyLevers';
 import { computePensionGapRisk } from '../../core/usecases/dashboard/computePensionGapRisk';
@@ -167,8 +167,6 @@ export default function Home() {
     setIsGeneratingPdf(true);
 
     try {
-      const jsPDF = (await import('jspdf')).default;
-      const html2canvas = (await import('html2canvas')).default;
 
       // retirementGrade는 꺼내지 않는다 — 1페이지 판정은 시장 변동을 반영한 밴드
       // (PlanConfidence.band)가 말하고, 결정론 등급만 크게 찍는 것이 정확히 이번에 없앤 문제다.
@@ -285,16 +283,6 @@ export default function Home() {
         })
       );
 
-      // Create a temporary container
-      const container = document.createElement('div');
-      container.style.position = 'absolute';
-      container.style.left = '-9999px';
-      container.style.top = '0';
-      container.style.width = '800px';
-
-      const styleBlock = document.createElement('style');
-      styleBlock.innerHTML = REPORT_STYLES;
-      container.appendChild(styleBlock);
 
       // 페이지 HTML 조립은 buildReportHtml이 전담한다 — DOM도 jsPDF도 모르는 순수 함수라
       // 골든 스냅샷으로 잠글 수 있다(buildReportHtml.test.ts). 예전에는 이 자리에 376줄이
@@ -321,45 +309,7 @@ export default function Home() {
         },
       });
 
-      // Append pages html
-      const pagesContainer = document.createElement('div');
-      pagesContainer.innerHTML = pagesHtml;
-      container.appendChild(pagesContainer);
-      document.body.appendChild(container);
-
-      const pages = container.querySelectorAll('.pdf-page');
-      const overflowingPages = Array.from(pages).flatMap((page, index) => {
-        const content = page.querySelector('.pdf-content') as HTMLElement | null;
-        return content && content.scrollHeight > content.clientHeight + 1 ? [index + 1] : [];
-      });
-      if (overflowingPages.length > 0) {
-        document.body.removeChild(container);
-        throw new Error(`PDF page overflow detected: ${overflowingPages.join(', ')}`);
-      }
-      const pdf = new jsPDF('p', 'mm', 'a4');
-
-      for (let i = 0; i < pages.length; i++) {
-        if (i > 0) {
-          pdf.addPage();
-        }
-        
-        const pageEl = pages[i] as HTMLElement;
-        const canvas = await html2canvas(pageEl, {
-          scale: 2, // High resolution
-          useCORS: true,
-          logging: false,
-          width: 794,
-          height: 1123
-        });
-
-        const imgData = canvas.toDataURL('image/jpeg', 1.0);
-        pdf.addImage(imgData, 'JPEG', 0, 0, 210, 297);
-      }
-
-      // Remove the temporary container
-      document.body.removeChild(container);
-
-      pdf.save('NextLife_Simulation_Report.pdf');
+      await generateReportPdf(pagesHtml, 'NextLife_Simulation_Report.pdf');
     } catch (error) {
       console.error('Failed to generate PDF:', error);
       alert('PDF 생성 중 오류가 발생했습니다. 다시 시도해 주세요.');
