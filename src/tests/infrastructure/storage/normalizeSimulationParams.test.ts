@@ -2,6 +2,8 @@ import { describe, test, expect } from 'vitest';
 import { normalizeSimulationParams } from '@/infrastructure/storage/normalizeSimulationParams';
 import { initialParams } from '@/infrastructure/storage/localStore';
 import { SimulationEngine } from '@/core/usecases/SimulationEngine';
+import { DEFAULT_TAX_SETTINGS, resolveTaxSettings } from '@/core/usecases/tax/taxRates';
+import { DEFAULT_HEALTHCARE } from '@/core/usecases/healthcare/defaultHealthcare';
 
 // 저장 데이터는 손상되거나 낡은 채로 돌아온다. localStorage는 사용자가 직접 고칠 수 있고,
 // E2EE 시나리오는 복호화된 JSON이 그대로 올라오며, 예전 버전이 쓴 필드는 지금 타입과 다르다.
@@ -178,6 +180,164 @@ describe('normalizeSimulationParams', () => {
       expect(result.privatePensions).toEqual([]);
       expect(result.inflationMode).toBe(initialParams.inflationMode);
     });
+  });
+
+  // 중첩 구조는 전부 optional이라 「빠져 있음」이 정상 상태다. 그래서 깨진 값은 값을
+  // 지어내는 대신 그 키를 지우는 것이 맞다 — 각 소비처가 이미 미지정 기본값을 갖고 있다.
+  describe('taxSettings', () => {
+    test('깨진 항목만 지우고 나머지 설정은 지킨다', () => {
+      const result = normalizeSimulationParams({
+        ...structuredClone(initialParams),
+        taxSettings: {
+          enableComprehensiveTax: 'yes',
+          enableHealthInsurance: false,
+          usDividendTaxRate: '15',
+          domesticDividendTaxRate: 22,
+          comprehensiveTaxMode: 'guess',
+        },
+      });
+
+      expect(result.taxSettings).toEqual({
+        enableHealthInsurance: false,
+        domesticDividendTaxRate: 22,
+      });
+    });
+
+    test('resolveTaxSettings가 지워진 항목을 기본값으로 메운다', () => {
+      const params = normalizeSimulationParams({
+        ...structuredClone(initialParams),
+        taxSettings: { usDividendTaxRate: Number.NaN, domesticDividendTaxRate: 22 },
+      });
+      const resolved = resolveTaxSettings(params.taxSettings);
+
+      expect(resolved.usDividendTaxRate).toBe(DEFAULT_TAX_SETTINGS.usDividendTaxRate);
+      expect(resolved.domesticDividendTaxRate).toBe(22);
+    });
+
+    test('객체가 아니면 키 자체를 지운다', () => {
+      const result = normalizeSimulationParams({ ...structuredClone(initialParams), taxSettings: 'off' });
+
+      expect(result.taxSettings).toBeUndefined();
+    });
+  });
+
+  describe('withdrawalPlan', () => {
+    test('깨진 항목만 지운다', () => {
+      const result = normalizeSimulationParams({
+        ...structuredClone(initialParams),
+        withdrawalPlan: {
+          accountWithdrawalPolicy: 'RANDOM_FIRST',
+          assetSellOrderStrategy: 'high_dividend_first',
+          nationalPensionStartAge: '65',
+          monthlySpendingMultiplier: 1.2,
+        },
+      });
+
+      expect(result.withdrawalPlan).toEqual({
+        assetSellOrderStrategy: 'high_dividend_first',
+        monthlySpendingMultiplier: 1.2,
+      });
+    });
+
+    test('사용자 지정 인출 순서는 알 수 없는 항목만 걸러낸다', () => {
+      const result = normalizeSimulationParams({
+        ...structuredClone(initialParams),
+        withdrawalPlan: {
+          accountWithdrawalPolicy: 'CUSTOM',
+          customWithdrawalOrder: ['ISA', 42, 'GENERAL', null],
+        },
+      });
+
+      expect(result.withdrawalPlan?.customWithdrawalOrder).toEqual(['ISA', 'GENERAL']);
+    });
+  });
+
+  describe('spendingCurve', () => {
+    // 배수 길이 = 구간 길이 + 1이 무너지면 뒤쪽 나이의 배수가 undefined가 되어 그 해
+    // 목표 생활비가 NaN이 된다. 길이 계약은 타입 주석이 명시한 것이지만 강제는 없었다.
+    test('배수 길이가 맞지 않으면 곡선을 통째로 지운다', () => {
+      const result = normalizeSimulationParams({
+        ...structuredClone(initialParams),
+        spendingCurve: { breakpointAges: [70, 80], multipliers: [1.2, 1] },
+      });
+
+      expect(result.spendingCurve).toBeUndefined();
+    });
+
+    test('숫자가 아닌 값이 섞여 있으면 지운다', () => {
+      const result = normalizeSimulationParams({
+        ...structuredClone(initialParams),
+        spendingCurve: { breakpointAges: [70, '80'], multipliers: [1.2, 1, 0.8] },
+      });
+
+      expect(result.spendingCurve).toBeUndefined();
+    });
+
+    test('올바른 곡선은 그대로 둔다', () => {
+      const curve = { breakpointAges: [70, 80], multipliers: [1.2, 1, 0.8] };
+      const result = normalizeSimulationParams({ ...structuredClone(initialParams), spendingCurve: curve });
+
+      expect(result.spendingCurve).toEqual(curve);
+    });
+  });
+
+  describe('customYieldSnapshot', () => {
+    test('숫자가 아닌 항목만 걸러낸다', () => {
+      const result = normalizeSimulationParams({
+        ...structuredClone(initialParams),
+        customYieldSnapshot: {
+          assets: { 'asset-1': 7, 'asset-2': '9' },
+          privatePensions: { 'pension-1': 4 },
+          isaAccounts: 'none',
+        },
+      });
+
+      expect(result.customYieldSnapshot).toEqual({
+        assets: { 'asset-1': 7 },
+        privatePensions: { 'pension-1': 4 },
+        isaAccounts: {},
+      });
+    });
+  });
+
+  describe('healthcare', () => {
+    // enabled는 `!healthcare.enabled`로만 검사돼, 문자열 'false'가 의료비를 켰다.
+    // costGrowthRate가 NaN이면 그 해 의료비가 NaN이 되고 자산 전체가 NaN으로 번진다.
+    test('깨진 항목을 기본값으로 되돌린다', () => {
+      const result = normalizeSimulationParams({
+        ...structuredClone(initialParams),
+        healthcare: {
+          enabled: 'false',
+          costGrowthRate: Number.NaN,
+          baseMonthlyCost: 400000,
+          longTermCareEnabled: true,
+          longTermCareStartAge: 80,
+          longTermCareMonthlyCost: 1500000,
+          shockEnabled: false,
+          shockAge: 75,
+          shockAmount: 30000000,
+        },
+      });
+
+      expect(result.healthcare?.enabled).toBe(DEFAULT_HEALTHCARE.enabled);
+      expect(result.healthcare?.costGrowthRate).toBe(DEFAULT_HEALTHCARE.costGrowthRate);
+      // 멀쩡한 사용자 입력은 지킨다.
+      expect(result.healthcare?.baseMonthlyCost).toBe(400000);
+      expect(result.healthcare?.longTermCareEnabled).toBe(true);
+    });
+
+    test('객체가 아니면 키 자체를 지운다', () => {
+      const result = normalizeSimulationParams({ ...structuredClone(initialParams), healthcare: true });
+
+      expect(result.healthcare).toBeUndefined();
+    });
+  });
+
+  test('taxLawVersion은 알려진 값만 남긴다', () => {
+    expect(normalizeSimulationParams({ ...structuredClone(initialParams), taxLawVersion: 'current' })
+      .taxLawVersion).toBe('current');
+    expect(normalizeSimulationParams({ ...structuredClone(initialParams), taxLawVersion: '2019' })
+      .taxLawVersion).toBeUndefined();
   });
 
   // 정제의 목적은 형식이 아니라 「엔진이 NaN을 먹지 않는 것」이다.

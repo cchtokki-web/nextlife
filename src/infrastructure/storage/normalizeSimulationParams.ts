@@ -1,19 +1,30 @@
 import type {
   AccountInvestmentType,
+  AccountWithdrawalPolicy,
   AssetCurrency,
   AssetMarket,
+  AssetSellOrderStrategy,
+  ComprehensiveTaxMode,
+  CustomYieldSnapshot,
+  HealthcareAssumptions,
   InvestmentAsset,
   IsaAccount,
   IsaAccountType,
+  IsaMaturityDestination,
   OtherIncome,
   PrivatePension,
   PrivatePensionType,
   SimulationParams,
+  SpendingCurve,
   SpendingStrategy,
+  TaxLawVersion,
+  TaxSettings,
   UserProfile,
+  WithdrawalPlan,
 } from '../../core/entities/types';
 import type { RetirementGoal, RetirementGoalType } from '../../core/entities/retirementGoal';
 import { RETIREMENT_GOAL_TYPES } from '../../core/entities/retirementGoal';
+import { DEFAULT_HEALTHCARE } from '../../core/usecases/healthcare/defaultHealthcare';
 import { initialParams } from './defaultParams';
 
 /**
@@ -74,6 +85,12 @@ export function normalizeSimulationParams(raw: unknown): SimulationParams {
     // 기존 동작이며, 임의의 값을 채우면 저장된 시나리오의 숫자가 조용히 달라진다.
     assetFloor: optionalFinite(raw.assetFloor),
     cashYieldRate: optionalFinite(raw.cashYieldRate),
+    taxSettings: normalizeTaxSettings(raw.taxSettings),
+    withdrawalPlan: normalizeWithdrawalPlan(raw.withdrawalPlan),
+    spendingCurve: normalizeSpendingCurve(raw.spendingCurve),
+    customYieldSnapshot: normalizeYieldSnapshot(raw.customYieldSnapshot),
+    healthcare: normalizeHealthcare(raw.healthcare),
+    taxLawVersion: optionalOneOf(raw.taxLawVersion, TAX_LAW_VERSIONS, undefined),
   };
 }
 
@@ -84,6 +101,15 @@ const PRIVATE_PENSION_TYPES: readonly PrivatePensionType[] = ['irp', 'savings', 
 const ISA_TYPES: readonly IsaAccountType[] = ['general', 'low_income'];
 const YIELD_PRESETS = ['conservative', 'base', 'aggressive', 'custom'] as const;
 const SPENDING_STRATEGIES: readonly SpendingStrategy[] = ['target', 'dividend_only', 'max_sustainable'];
+const COMPREHENSIVE_TAX_MODES: readonly ComprehensiveTaxMode[] = ['progressive_credit', 'flat'];
+const WITHDRAWAL_POLICIES: readonly AccountWithdrawalPolicy[] = [
+  'GENERAL_FIRST', 'ISA_FIRST', 'PENSION_FIRST', 'TAX_OPTIMIZED', 'PROPORTIONAL', 'CUSTOM',
+];
+const SELL_ORDER_STRATEGIES: readonly AssetSellOrderStrategy[] = [
+  'input_order', 'low_dividend_first', 'high_dividend_first',
+];
+const ISA_MATURITY_DESTINATIONS: readonly IsaMaturityDestination[] = ['pension', 'asset'];
+const TAX_LAW_VERSIONS: readonly TaxLawVersion[] = ['current'];
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -227,6 +253,128 @@ function normalizeOtherIncome(raw: Record<string, unknown>, index: number): Othe
     label: text(raw.label, ''),
     monthlyAmount: finite(raw.monthlyAmount, 0),
     currency: currency(raw.currency, 'KRW'),
+  };
+}
+
+/**
+ * 선택 항목만 담긴 부분 설정을 정제한다. 깨진 항목은 **값을 채우지 않고 키를 지운다.**
+ *
+ * 이 구조들은 전부 optional이고 소비처가 이미 미지정 기본값을 갖고 있다(resolveTaxSettings
+ * 등). 그래서 키를 지우면 저장 전과 같은 「지정한 적 없음」 상태가 되어 기본값이 그대로 산다.
+ * 반대로 여기서 기본값을 박아 넣으면, 나중에 기본값이 바뀌어도 이 시나리오만 옛 값에 고정된다.
+ */
+function pickValid(
+  value: unknown,
+  validators: Record<string, (raw: unknown) => unknown>,
+): Record<string, unknown> | undefined {
+  if (!isRecord(value)) return undefined;
+  const result: Record<string, unknown> = {};
+  for (const [key, validate] of Object.entries(validators)) {
+    if (!(key in value)) continue;
+    const normalized = validate(value[key]);
+    if (normalized !== undefined) result[key] = normalized;
+  }
+  return result;
+}
+
+const asBool = (raw: unknown): boolean | undefined =>
+  typeof raw === 'boolean' ? raw : undefined;
+const asNumber = (raw: unknown): number | undefined => optionalFinite(raw);
+const asOneOf = <T extends string>(allowed: readonly T[]) => (raw: unknown): T | undefined =>
+  typeof raw === 'string' && (allowed as readonly string[]).includes(raw) ? raw as T : undefined;
+
+function normalizeTaxSettings(value: unknown): TaxSettings | undefined {
+  return pickValid(value, {
+    enableComprehensiveTax: asBool,
+    enableHealthInsurance: asBool,
+    usDividendTaxRate: asNumber,
+    domesticDividendTaxRate: asNumber,
+    comprehensiveTaxMode: asOneOf(COMPREHENSIVE_TAX_MODES),
+    comprehensiveTaxRate: asNumber,
+    healthInsuranceRate: asNumber,
+    enableCapitalGainsTax: asBool,
+    capitalGainsTaxRate: asNumber,
+    enablePrivatePensionTax: asBool,
+    privatePensionLimit: asNumber,
+    privatePensionExcessTaxRate: asNumber,
+    limitPrivatePensionToTaxLimit: asBool,
+    enablePensionComprehensiveComparison: asBool,
+  }) as TaxSettings | undefined;
+}
+
+function normalizeWithdrawalPlan(value: unknown): WithdrawalPlan | undefined {
+  return pickValid(value, {
+    accountWithdrawalPolicy: asOneOf(WITHDRAWAL_POLICIES),
+    // 알 수 없는 항목만 걸러낸다. 계좌 유형이 아니라 구체 계좌 id도 올 수 있으므로
+    // 문자열이면 남긴다 — 없는 id는 엔진이 조용히 건너뛴다.
+    customWithdrawalOrder: (raw) => Array.isArray(raw)
+      ? raw.filter((item): item is string => typeof item === 'string')
+      : undefined,
+    privatePensionMonthlyTarget: asNumber,
+    nationalPensionStartAge: asNumber,
+    assetSellOrderStrategy: asOneOf(SELL_ORDER_STRATEGIES),
+    isaMaturityDestination: asOneOf(ISA_MATURITY_DESTINATIONS),
+    generalAssetWithdrawalStartAge: asNumber,
+    monthlySpendingMultiplier: asNumber,
+  }) as WithdrawalPlan | undefined;
+}
+
+/**
+ * 곡선은 항목별 복구가 불가능하다 — 「배수 길이 = 구간 길이 + 1」이 무너지면 뒤쪽 나이의
+ * 배수가 undefined가 되어 그 해 목표 생활비가 NaN이 되는데, 어느 쪽 배열이 맞는지 알 수 없다.
+ * 통째로 지우면 전 구간 1.0(= 곡선을 쓰지 않는 기존 동작)으로 안전하게 돌아간다.
+ */
+function normalizeSpendingCurve(value: unknown): SpendingCurve | undefined {
+  if (!isRecord(value)) return undefined;
+  const { breakpointAges, multipliers } = value;
+  if (!Array.isArray(breakpointAges) || !Array.isArray(multipliers)) return undefined;
+  if (multipliers.length !== breakpointAges.length + 1) return undefined;
+  const allFinite = [...breakpointAges, ...multipliers]
+    .every((item) => typeof item === 'number' && Number.isFinite(item));
+  if (!allFinite) return undefined;
+  return { breakpointAges: breakpointAges as number[], multipliers: multipliers as number[] };
+}
+
+/** id → 수익률 맵. 값이 숫자가 아니면 그 항목만 버린다 — 복원할 값이 없다는 뜻이다. */
+function numberMap(value: unknown): Record<string, number> {
+  if (!isRecord(value)) return {};
+  return Object.fromEntries(
+    Object.entries(value)
+      .filter(([, rate]) => typeof rate === 'number' && Number.isFinite(rate)),
+  ) as Record<string, number>;
+}
+
+function normalizeYieldSnapshot(value: unknown): CustomYieldSnapshot | undefined {
+  if (!isRecord(value)) return undefined;
+  return {
+    assets: numberMap(value.assets),
+    privatePensions: numberMap(value.privatePensions),
+    isaAccounts: numberMap(value.isaAccounts),
+  };
+}
+
+/**
+ * 의료비 설정만 항목별 «기본값 되돌리기»를 한다. 다른 부분 설정과 달리 모든 필드가 필수라
+ * 키를 지울 수 없기 때문이다.
+ *
+ * 특히 `enabled`가 중요하다. 엔진은 `!healthcare.enabled`로만 검사하므로 문자열 'false'가
+ * 의료비를 켰고, 그 상태에서 `costGrowthRate`가 NaN이면 자산 전체가 NaN으로 번졌다.
+ */
+function normalizeHealthcare(value: unknown): HealthcareAssumptions | undefined {
+  if (!isRecord(value)) return undefined;
+  return {
+    enabled: bool(value.enabled, DEFAULT_HEALTHCARE.enabled),
+    costGrowthRate: finite(value.costGrowthRate, DEFAULT_HEALTHCARE.costGrowthRate),
+    baseMonthlyCost: finite(value.baseMonthlyCost, DEFAULT_HEALTHCARE.baseMonthlyCost),
+    longTermCareEnabled: bool(value.longTermCareEnabled, DEFAULT_HEALTHCARE.longTermCareEnabled),
+    longTermCareStartAge: finite(value.longTermCareStartAge, DEFAULT_HEALTHCARE.longTermCareStartAge),
+    longTermCareMonthlyCost: finite(
+      value.longTermCareMonthlyCost,
+      DEFAULT_HEALTHCARE.longTermCareMonthlyCost,
+    ),
+    shockEnabled: bool(value.shockEnabled, DEFAULT_HEALTHCARE.shockEnabled),
+    shockAge: finite(value.shockAge, DEFAULT_HEALTHCARE.shockAge),
+    shockAmount: finite(value.shockAmount, DEFAULT_HEALTHCARE.shockAmount),
   };
 }
 
