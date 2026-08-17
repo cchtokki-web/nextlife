@@ -1,5 +1,7 @@
 import { describe, test, expect } from 'vitest';
 import { SimpleSimulationAdapter, SimpleSimulationInput } from '@/core/usecases/SimpleSimulationAdapter';
+import { DEFAULT_PLAN_HORIZON_AGE } from '@/core/usecases/planHorizon';
+import { initialParams } from '@/infrastructure/storage/localStore';
 
 describe('SimpleSimulationAdapter', () => {
   const baseInput: SimpleSimulationInput = {
@@ -149,15 +151,23 @@ describe('SimpleSimulationAdapter', () => {
   });
 
   describe('그 외 필드 스모크 테스트', () => {
-    test('userProfile이 입력값 그대로 매핑되고 expectancy는 기본값 100세로 채워진다', () => {
+    test('userProfile이 입력값 그대로 매핑되고 expectancy는 제품 기본값으로 채워진다', () => {
       const params = SimpleSimulationAdapter.adapt(baseInput);
 
       expect(params.userProfile).toEqual({
         currentAge: 45,
         retirementAge: 62,
-        expectancy: 100,
+        expectancy: DEFAULT_PLAN_HORIZON_AGE,
         targetMonthlySpending: 3000000,
       });
+    });
+
+    // 이 어댑터는 예전에 100세를 자기 안에 적어 두었다. 랜딩 차트가 75세에서 잘려 화면
+    // 숫자는 같았지만, 랜딩이 세운 계획과 시뮬레이터가 이어받는 계획은 서로 다른 기간을
+    // 뜻하고 있었다. 두 곳이 다시 갈라지면 여기서 멈춘다.
+    test('기대수명 기본값은 새 시나리오(initialParams)와 같은 값이다', () => {
+      expect(SimpleSimulationAdapter.adapt(baseInput).userProfile.expectancy)
+        .toBe(initialParams.userProfile.expectancy);
     });
 
     test('nationalPension, privatePensions, isaAccounts, otherIncomes가 합리적인 기본값으로 채워진다', () => {

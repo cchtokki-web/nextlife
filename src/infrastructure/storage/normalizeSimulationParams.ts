@@ -259,10 +259,23 @@ function positive(value: unknown, fallback: number): number {
 }
 
 /** 사람의 나이로 성립하는 값만 통과시킨다. 벗어나면 «보정»이 아니라 기본값으로 되돌린다 —
- *  120으로 깎아 두면 사용자가 넣은 적 없는 기대수명이 계획에 남는다. */
+ *  120으로 깎아 두면 사용자가 넣은 적 없는 기대수명이 계획에 남는다.
+ *
+ *  하한이 1인 이유. 예전에는 0을 통과시켰는데, 그러면 이 함수가 스스로 내건 「성립하는
+ *  값만」이라는 규칙과 어긋난다 — 0세 은퇴도 0세 기대수명도 뜻하는 바가 없다. 게다가
+ *  currentAge 0은 엔진의 totalYears 가드(<= 0)를 통과해 0세부터 시작하는 86년짜리 계획이
+ *  조용히 돌아간다. 입력 경계(ageInput.parseAge)와 목표 경계
+ *  (retirementGoal.normalizeTargetValue)가 이미 1을 쓰고 있었고, 세 곳이 서로 다른 답을
+ *  갖고 있을 이유가 없다. 화면으로는 0을 만들 수 없으므로 이 하한에 걸리는 것은 손으로
+ *  고친 JSON과 손상된 저장 데이터뿐이며, 그때 기본값으로 되돌리는 것이 이 함수의 본래
+ *  동작이다. */
+const MIN_HUMAN_AGE = 1;
 const MAX_HUMAN_AGE = 120;
 function humanAge(value: unknown, fallback: number): number {
-  return typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= MAX_HUMAN_AGE
+  return typeof value === 'number'
+    && Number.isFinite(value)
+    && value >= MIN_HUMAN_AGE
+    && value <= MAX_HUMAN_AGE
     ? value
     : fallback;
 }
