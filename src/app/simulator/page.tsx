@@ -629,7 +629,7 @@ export default function Home() {
                 // 적용 대상은 센티널이 적용된 analysis.effective.params가 아니라 사용자가
                 // 입력한 activeParams다. 그 결정을 훅 한 곳에 두어 둘을 혼동할 여지를 없앤다.
                 onApplyStrategy={appliedStrategy.applyRecommendation}
-                canApplyStrategy={appliedStrategy.canApply}
+                previewStrategyApply={appliedStrategy.previewApply}
                 appliedStrategy={appliedStrategy.snapshot ?? undefined}
                 onUndoStrategy={appliedStrategy.undo}
               />

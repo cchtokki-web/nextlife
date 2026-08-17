@@ -4,6 +4,7 @@ import React, { type ReactNode } from 'react';
 import { type LegendPayload } from 'recharts';
 import { Award, Zap, TrendingUp, AlertTriangle } from 'lucide-react';
 import { SimulationParams, SimulationResult, StrategyRecommendation } from '../../../core/entities/types';
+import type { StrategyApplyPreview } from '../../../core/usecases/dashboard/applyStrategyToParams';
 import { initialParams } from '../../../infrastructure/storage/localStore';
 import { describeSpendingCurve } from '../../../core/usecases/spending/spendingCurve';
 import styles from './Dashboard.module.css';
@@ -66,8 +67,17 @@ interface DashboardSectionProps {
   // 추천 카드의 적용 액션. 여기서는 그대로 통과시키기만 한다 — «무엇에» 적용할지는
   // page.tsx가 정한다. 이 컴포넌트가 받는 params는 센티널이 적용된 표시용 값이고,
   // 실제 적용 대상은 사용자가 입력한 activeParams라서 여기서 결정하면 안 된다.
-  onApplyStrategy?: (recommendation: CandidateRecommendation) => void;
-  canApplyStrategy?: (recommendation: CandidateRecommendation) => boolean;
+  // 두 콜백의 두 번째 인자는 추천 카드가 「달라지는 점」을 서술한 기준 params다. 카드가
+  // 스스로 넘기므로 이 컴포넌트는 그대로 통과시킨다 — 여기서 채우면 카드가 실제로 본 값과
+  // 어긋날 수 있다.
+  onApplyStrategy?: (
+    recommendation: CandidateRecommendation,
+    simulatedParams: SimulationParams,
+  ) => void;
+  previewStrategyApply?: (
+    recommendation: CandidateRecommendation,
+    simulatedParams: SimulationParams,
+  ) => StrategyApplyPreview;
   appliedStrategy?: AppliedStrategySnapshot;
   onUndoStrategy?: () => void;
 }
@@ -97,7 +107,7 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
   strategyOptimizationStatus = 'idle',
   strategyOptimizationError,
   onApplyStrategy,
-  canApplyStrategy,
+  previewStrategyApply,
   appliedStrategy,
   onUndoStrategy,
 }) => {
@@ -351,7 +361,7 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
           params={params}
           formatValue={formatValue}
           onApplyStrategy={onApplyStrategy}
-          canApplyStrategy={canApplyStrategy}
+          previewStrategyApply={previewStrategyApply}
           appliedStrategy={appliedStrategy}
           onUndoStrategy={onUndoStrategy}
         />

@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest';
-import { applyStrategyToParams } from '@/core/usecases/dashboard/applyStrategyToParams';
+import { applyStrategyToParams, previewStrategyApply } from '@/core/usecases/dashboard/applyStrategyToParams';
+import { describeStrategyChanges } from '@/core/usecases/dashboard/describeStrategyChanges';
 import { compileStrategy, resolveStrategy } from '@/core/usecases/strategy/compileStrategy';
 import { makeParams, makeRanked } from './strategyFieldFixtures';
 
@@ -39,6 +40,143 @@ describe('applyStrategyToParams — 생활비 배분', () => {
 
     expect(labelsOf(result.applied)).not.toContain('생활비 배분');
     expect(result.skipped).toEqual([]);
+  });
+});
+
+// 버튼 활성화는 «카드가 말한 것»과 «실제로 반영되는 것»의 교집합으로 정한다.
+//
+// 두 기준이 서로 다른 params를 본다는 사실이 이 함수가 있는 이유다: 카드는 센티널이 채운
+// effective.params를, 적용은 사용자가 입력한 activeParams를 본다.
+describe('previewStrategyApply', () => {
+  const formatValue = (value: number) => `${Math.round(value / 10_000)}만원`;
+
+  // 사용자가 국민연금 개시 나이를 정한 적이 없는 계획.
+  const target = makeParams({ withdrawalPlan: { accountWithdrawalPolicy: 'ISA_FIRST' } });
+  // applyAiSentinels가 66세를 채워 엔진에 들어간 값. 카드는 이것을 「현재 계획」으로 서술한다.
+  const simulated = makeParams({
+    withdrawalPlan: { nationalPensionStartAge: 66, accountWithdrawalPolicy: 'ISA_FIRST' },
+  });
+
+  /**
+   * 회귀: 「핵심 설정은 유지하고 시장 변동 안정성만 재검증한 전략입니다」라고 적힌 균형형
+   * 카드에 적용 버튼이 살아 있었다.
+   *
+   * 후보의 개시 나이(66세)는 센티널이 채운 계산 기준과 같아 카드에 변경점이 뜨지 않는데,
+   * 사용자 설정에는 그 값이 없어(=기본 65세) 적용 대상으로는 잡혔다. 눌렀다면 카드가 말한
+   * 적 없는 국민연금 축이 'defer_1y'로 설정에 확정됐을 것이다.
+   */
+  test('센티널이 채운 축만 반영되는 후보는 적용할 수 없다', () => {
+    const ranked = makeRanked({ retirementAge: 60, nationalPensionStartAge: 66 });
+
+    // 카드가 「달라지는 점」을 하나도 보여 주지 않는 상태라는 것을 먼저 고정한다.
+    expect(describeStrategyChanges(simulated, ranked, formatValue)).toEqual([]);
+    expect(labelsOf(applyStrategyToParams(target, ranked, simulated).applied)).toEqual(['국민연금']);
+
+    expect(previewStrategyApply(target, simulated, ranked).canApply).toBe(false);
+  });
+
+  test('카드가 말한 축이 실제로 반영되면 적용할 수 있다', () => {
+    const ranked = makeRanked({ retirementAge: 63, nationalPensionStartAge: 66 });
+
+    expect(labelsOf(describeStrategyChanges(simulated, ranked, formatValue))).toEqual(['은퇴 시점']);
+    expect(previewStrategyApply(target, simulated, ranked).canApply).toBe(true);
+  });
+
+  // 집합의 «크기»만 비교하면(변경점도 있고 반영할 것도 있으니 참) 통과하는 조합이다.
+  // 카드는 은퇴 시점을 말했는데 실제로 반영되는 것은 국민연금 하나뿐이다.
+  test('카드가 말한 축과 반영되는 축이 서로 다르면 적용할 수 없다', () => {
+    const noGoals = { retirementGoals: [] };
+    const ranked = makeRanked({ retirementAge: 63, nationalPensionStartAge: 66 });
+
+    const targetWithoutGoals = makeParams({ ...target, ...noGoals });
+    const simulatedWithoutGoals = makeParams({ ...simulated, ...noGoals });
+
+    expect(labelsOf(describeStrategyChanges(simulatedWithoutGoals, ranked, formatValue)))
+      .toEqual(['은퇴 시점']);
+    const outcome = applyStrategyToParams(targetWithoutGoals, ranked, simulatedWithoutGoals);
+    expect(labelsOf(outcome.applied)).toEqual(['국민연금']);
+    expect(labelsOf(outcome.skipped)).toEqual(['은퇴 시점']);
+
+    expect(previewStrategyApply(targetWithoutGoals, simulatedWithoutGoals, ranked).canApply).toBe(false);
+  });
+
+  test('반영할 축이 하나도 없으면 적용할 수 없다', () => {
+    const ranked = makeRanked({ retirementAge: 60, nationalPensionStartAge: 65 });
+
+    expect(previewStrategyApply(target, target, ranked).canApply).toBe(false);
+  });
+
+  /**
+   * 회귀: 카드는 「국민연금 66세 → 65세」라는 변경점을 또렷이 보여 주는데 버튼이
+   * 「반영할 수 있는 설정이 없습니다」로 잠겨 있었다.
+   *
+   * 후보가 원하는 65세가 사용자 설정의 «기본값»과 같아서, 사용자 설정만 보던 판정이 「바꿀
+   * 것 없음」으로 읽었다. 실제로 필요한 일은 65세를 확정해 센티널이 66세로 올리지 못하게
+   * 하는 것이고, 그 계획은 화면에서 만들 방법이 아예 없었다.
+   */
+  test('카드가 말한 축이 사용자 설정의 기본값과 같아도 적용할 수 있다', () => {
+    const ranked = makeRanked({ retirementAge: 60, nationalPensionStartAge: 65 });
+
+    expect(labelsOf(describeStrategyChanges(simulated, ranked, formatValue))).toEqual(['국민연금']);
+    expect(previewStrategyApply(target, simulated, ranked).canApply).toBe(true);
+  });
+});
+
+// 카드가 「현재 계획」이라 부르는 기준(센티널 적용 후)과 값을 써 넣을 사용자 설정이 서로
+// 다를 때, 반영 대상은 두 기준의 «합집합»이다.
+describe('applyStrategyToParams — 서술 기준이 사용자 설정과 어긋날 때', () => {
+  // 사용자가 국민연금 개시 나이를 정한 적 없는 계획(=기본 65세)과, 센티널이 66세를 채워
+  // 엔진에 들어간 계산 기준.
+  const target = makeParams({ withdrawalPlan: { accountWithdrawalPolicy: 'ISA_FIRST' } });
+  const simulated = makeParams({
+    withdrawalPlan: { nationalPensionStartAge: 66, accountWithdrawalPolicy: 'ISA_FIRST' },
+  });
+
+  // 서술 기준 쪽에서만 다른 축. 반영하지 않으면 카드가 약속한 계획이 만들어지지 않는다.
+  test('사용자 설정에서는 같아 보여도 카드가 말한 축이면 반영한다', () => {
+    const ranked = makeRanked({ retirementAge: 60, nationalPensionStartAge: 65 });
+
+    const result = applyStrategyToParams(target, ranked, simulated);
+
+    expect(labelsOf(result.applied)).toEqual(['국민연금']);
+    // 'normal'로 «확정»해야 재분석에서 센티널이 다시 66세를 채우지 못한다.
+    expect(result.params.strategy?.nationalPensionStrategy).toBe('normal');
+    expect(compileStrategy(result.params).params.withdrawalPlan?.nationalPensionStartAge).toBe(65);
+  });
+
+  /**
+   * 사용자 설정 쪽에서만 다른 축(카드는 말하지 않은 축). 이것을 반영에서 빼면 안 된다 —
+   * 다른 축을 반영하며 strategy 객체가 실체화될 때 withStrategy가 사용자 설정의 65세로
+   * 이 축을 고정해, 카드가 시뮬레이션한 66세 계획이 65세 계획으로 바뀐다.
+   */
+  test('카드가 말하지 않았어도 사용자 설정과 다르면 반영해 계획을 재현한다', () => {
+    const ranked = makeRanked({
+      retirementAge: 60, nationalPensionStartAge: 66, assetAllocation: 'GROWTH',
+    });
+
+    const result = applyStrategyToParams(target, ranked, simulated);
+
+    expect(labelsOf(result.applied)).toEqual(['국민연금', '투자 성향']);
+    expect(compileStrategy(result.params).params.withdrawalPlan?.nationalPensionStartAge).toBe(66);
+  });
+
+  test('서술 기준을 생략하면 사용자 설정 하나만 본다', () => {
+    const ranked = makeRanked({ retirementAge: 60, nationalPensionStartAge: 65 });
+
+    expect(applyStrategyToParams(target, ranked).applied).toEqual([]);
+    expect(applyStrategyToParams(target, ranked).params).toBe(target);
+  });
+
+  // 실제 흐름은 「적용 → 재분석 → 새 서술 기준」이다. 그 경로에서 두 번째 적용이 무동작이
+  // 되지 않으면 사용자가 같은 버튼을 눌러 설정이 계속 새 객체로 갈린다.
+  test('적용 후 재컴파일한 기준으로 다시 적용하면 바뀔 것이 없다', () => {
+    const ranked = makeRanked({ retirementAge: 60, nationalPensionStartAge: 65 });
+
+    const once = applyStrategyToParams(target, ranked, simulated);
+    const twice = applyStrategyToParams(once.params, ranked, compileStrategy(once.params).params);
+
+    expect(twice.applied).toEqual([]);
+    expect(twice.params).toBe(once.params);
   });
 });
 

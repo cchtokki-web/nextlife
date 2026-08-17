@@ -1,10 +1,11 @@
 import { describe, expect, test } from 'vitest';
 import type { SimulationParams } from '@/core/entities/types';
 import type { StrategyDimensions } from '@/core/strategy/StrategyGenerator';
-import { applyStrategyToParams } from '@/core/usecases/dashboard/applyStrategyToParams';
+import { applyStrategyToParams, previewStrategyApply } from '@/core/usecases/dashboard/applyStrategyToParams';
 import { describeStrategyChanges } from '@/core/usecases/dashboard/describeStrategyChanges';
 import { STRATEGY_FIELD_MAP } from '@/core/usecases/dashboard/strategyFieldMap';
 import { compileStrategy, resolveStrategy } from '@/core/usecases/strategy/compileStrategy';
+import { paramsWithSentinelOverlay } from '@/core/usecases/strategy/verifiedSentinelPlan';
 import { migrateRetirementGoals } from '@/core/usecases/goals/retirementGoalAdapter';
 import { makeParams, makeRanked, type RankedOverrides } from './strategyFieldFixtures';
 
@@ -127,6 +128,59 @@ describe('strategyFieldMap 계약', () => {
 
       expect(twice.applied).toEqual([]);
       expect(twice.params).toBe(once.params);
+    }
+  });
+});
+
+/**
+ * 카드가 「현재 계획」이라 부르는 기준은 사용자가 입력한 params가 아니라 **센티널 자동 채움이
+ * 끝난** analysis.effective.params다. 두 기준이 어긋난 상태에서도 위 계약이 그대로 서야 한다.
+ *
+ * 이 조합을 검증하지 않던 때 두 방향으로 깨졌다. 후보와 서술 기준이 같은 축은 반영에서 빠져
+ * withStrategy가 사용자 설정 값으로 되돌렸고(카드의 계획이 만들어지지 않음), 반대로 후보와
+ * 사용자 설정이 같은 축은 카드가 변경점으로 보여 주는데도 반영되지 않았다(버튼이 잠김).
+ */
+describe('strategyFieldMap 계약 — 센티널로 어긋난 서술 기준', () => {
+  // applyAiSentinels가 채우는 값의 격자. 실제 센티널 경로와 같은 함수로 얹는다.
+  const SENTINEL_AGES = [60, 66, 70];
+
+  const DIVERGED = CURRENT_PLANS.flatMap((params) => {
+    const compiled = compileStrategy(params).params;
+    return SENTINEL_AGES.map((age) => ({
+      params,
+      simulated: paramsWithSentinelOverlay(compiled, { nationalPensionStartAge: age }),
+    }));
+  });
+
+  test('적용한 뒤 컴파일하면 반영하지 못한 축만 「달라지는 점」으로 남는다', () => {
+    for (const { params, simulated } of DIVERGED) {
+      for (const axes of CANDIDATE_AXES) {
+        const ranked = makeRanked(axes);
+        const result = applyStrategyToParams(params, ranked, simulated);
+        // 실제 경로는 「저장 → 로드 정규화 → 컴파일」이다.
+        const after = compileStrategy(migrateRetirementGoals(result.params)).params;
+
+        expect(describeStrategyChanges(after, ranked, formatValue).map((c) => c.label).sort())
+          .toEqual(result.skipped.map((skip) => skip.label).sort());
+      }
+    }
+  });
+
+  // 카드가 변경점을 보여 주는데 버튼이 잠기는 상태를 금지한다. 반영할 수 없는 축(대응 목표
+  // 미선택 등)만 남은 경우는 정당한 잠김이므로 제외한다.
+  test('카드가 보여 준 변경점 중 반영 가능한 것이 있으면 버튼이 열린다', () => {
+    for (const { params, simulated } of DIVERGED) {
+      for (const axes of CANDIDATE_AXES) {
+        const ranked = makeRanked(axes);
+        const described = describeStrategyChanges(simulated, ranked, formatValue);
+        if (described.length === 0) continue;
+
+        const result = applyStrategyToParams(params, ranked, simulated);
+        const skippedLabels = new Set(result.skipped.map((skip) => skip.label));
+        const reachable = described.some((change) => !skippedLabels.has(change.label));
+
+        expect(previewStrategyApply(params, simulated, ranked).canApply).toBe(reachable);
+      }
     }
   });
 });
