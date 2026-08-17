@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { RecommendationEngine, noRecommendationReachesGoal } from '@/core/recommendation/RecommendationEngine';
+import { RecommendationEngine, improvesOnCurrentPlan, noRecommendationReachesGoal } from '@/core/recommendation/RecommendationEngine';
 import type { RankedStrategyCandidate } from '@/core/strategy/StrategyOptimizer';
 import { LegacySimulationAdapter } from '@/core/domain/input/LegacySimulationAdapter';
 import { initialParams } from '@/infrastructure/storage/localStore';
@@ -315,5 +315,34 @@ describe('noRecommendationReachesGoal', () => {
   // 두면 no_persona_matched·no_candidate_survived가 설명하던 원인이 0% 문구로 덮인다.
   test('추천이 없는 것은 도달 불가와 다른 사건이다', () => {
     expect(noRecommendationReachesGoal([])).toBe(false);
+  });
+});
+
+// **추천이 현재 계획보다 나쁠 수 있다.** 세 카드는 「더 나은가」가 아니라 「특성을 가졌는가」로
+// 뽑히기 때문이다(RECOMMENDATION_PERSONAS.qualifies). 안정형은 보수적 배분, 여유형은 은퇴초기
+// 집중형만 오를 수 있으므로, 균형·평탄 계획을 쓰는 사용자에게 두 카드는 정의상 «변경»을
+// 제안한다 — 그 변경이 이득인지는 자격 조건이 아니다.
+//
+// 그래서 개선 여부는 별도로 판정한다. 규칙을 한 곳에 두어야 ☆배지·경고 배너·카드의 증감
+// 표시가 같은 답을 말한다.
+describe('improvesOnCurrentPlan', () => {
+  const withProbability = (goalProbability: number) =>
+    candidate({ id: `c-${goalProbability}`, allocation: 'BALANCED', spending: 'FIXED', goalProbability });
+
+  test('현재 계획보다 확률이 높아야 개선이다', () => {
+    expect(improvesOnCurrentPlan(withProbability(0.7), 0.67)).toBe(true);
+    expect(improvesOnCurrentPlan(withProbability(0.55), 0.67)).toBe(false);
+  });
+
+  // 같으면 바꿀 이유가 없다. 「변경 없음」과 「같은 결과를 위한 변경」 중 후자를 권하면
+  // 사용자는 이득 없는 조작을 하게 된다.
+  test('같은 확률은 개선이 아니다', () => {
+    expect(improvesOnCurrentPlan(withProbability(0.67), 0.67)).toBe(false);
+  });
+
+  // 현재 확률을 모르는 상태(몬테카를로 미완료)에서 「개선이 아니다」라고 하면, 측정되지 않은
+  // 것이 나쁜 것으로 둔갑한다. 판정하지 않고 종전 동작을 유지한다.
+  test('현재 확률을 모르면 판정하지 않는다', () => {
+    expect(improvesOnCurrentPlan(withProbability(0.1), undefined)).toBe(true);
   });
 });

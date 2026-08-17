@@ -56,6 +56,32 @@ export function noRecommendationReachesGoal(
     && recommendations.every((item) => item.candidate.monteCarlo.goalSuccessProbability === 0);
 }
 
+/**
+ * 이 추천이 «지금 계획보다» 나은가.
+ *
+ * 세 카드는 「더 나은가」가 아니라 「특성을 가졌는가」로 뽑힌다(RECOMMENDATION_PERSONAS의
+ * qualifies). 안정형에는 보수적 배분만, 여유형에는 은퇴초기 집중형만 오를 수 있으므로,
+ * 균형·평탄 계획을 쓰는 사용자에게 그 두 카드는 정의상 «변경»을 제안한다 — 그 변경이
+ * 이득인지는 자격 조건이 아니다. 현상 유지 후보가 생성 단계에 있지만 균형형 슬롯
+ * 하나에서만 겨룰 수 있어, 세 카드가 모두 지금보다 나쁠 수 있다.
+ *
+ * 그 사실을 화면이 밝히려면 판정이 필요하고, 판정은 한 곳에만 있어야 한다 — ☆배지와
+ * 「유지하는 편이 낫다」 안내와 카드의 증감 표시가 서로 다른 답을 말하면 안 된다.
+ *
+ * **같으면 개선이 아니다.** 같은 결과를 위한 변경을 권하면 사용자는 이득 없는 조작을 한다.
+ *
+ * **현재 확률을 모르면 판정하지 않는다**(true를 돌려준다). 몬테카를로가 아직 끝나지 않은
+ * 상태에서 「개선이 아니다」라고 하면 측정되지 않은 것이 나쁜 것으로 둔갑한다.
+ */
+export function improvesOnCurrentPlan(
+  candidate: RankedStrategyCandidate,
+  currentGoalSuccessProbability: number | undefined,
+): boolean {
+  if (currentGoalSuccessProbability === undefined) return true;
+  if (!isValidatedCandidate(candidate)) return true;
+  return candidate.monteCarlo.goalSuccessProbability > currentGoalSuccessProbability;
+}
+
 export interface FinalStrategyRecommendations {
   recommendations: CandidateRecommendation[];
   /** ☆추천 배지가 붙는 카드. 선정 규칙은 `selectPrimary` 참조. */

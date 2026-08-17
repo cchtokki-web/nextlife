@@ -316,6 +316,9 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
         <StrategyRecommendationCards
           recommendations={strategyOptimization?.recommendations?.recommendations}
           primary={strategyOptimization?.recommendations?.primary}
+          // 진단 카드가 방금 보여준 그 숫자를 그대로 넘긴다. 카드가 스스로 다시 계산하면
+          // 같은 화면의 위아래가 다른 확률로 비교하게 된다.
+          currentGoalProbability={currentGoalProbability}
           status={strategyOptimizationStatus}
           errorMessage={strategyOptimizationError}
           unsupportedHardGoals={strategyOptimization?.debug?.unsupportedHardGoals}

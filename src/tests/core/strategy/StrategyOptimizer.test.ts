@@ -6,6 +6,7 @@ import type { SimulationEngine } from '@/core/simulation/SimulationEngine';
 import { LegacySimulationEngine } from '@/core/simulation/LegacySimulationEngine';
 import type { StrategyCandidate, StrategyGenerationResult } from '@/core/strategy/StrategyGenerator';
 import { StrategyGenerator } from '@/core/strategy/StrategyGenerator';
+import { personaAwareShortlist } from '@/core/strategy/StrategyOptimizer';
 import { StrategyOptimizer } from '@/core/strategy/StrategyOptimizer';
 import type { StrategyMonteCarloEngine } from '@/core/usecases/montecarlo/MonteCarloEngine';
 import { VOLATILITY_BY_YIELD_PRESET } from '@/core/usecases/montecarlo/volatilityPresets';
@@ -1014,5 +1015,51 @@ describe('StrategyOptimizer', () => {
     const best = result.rankedCandidates[0].evaluation;
     expect(Number.isFinite(best.weightedScore)).toBe(true);
     expect(best.goalEvaluations.length).toBeGreaterThan(0);
+  });
+});
+
+// **현상 유지 후보는 선별 단계에서 잘리지 않아야 한다.**
+//
+// 생성 단계는 같은 이유로 이미 그것을 보호한다(StrategyGenerator가 baseline을 격자보다 먼저
+// 넣어 maxCandidates 상한에 잘리지 않게 한다). 선별 단계에는 그 보호가 없었다: accepted는
+// 결정론 점수 순인데, 그 점수는 변동성을 보지 않아 「지금 계획」이 뒤로 밀릴 수 있다. 밀리면
+// 몬테카를로를 받지 못하고, 그러면 균형형 슬롯에서 지금보다 나쁜 안이 이긴다 — 사용자가 이미
+// 최선인 계획을 쓰고 있어도 화면은 바꾸라고 말한다.
+describe('personaAwareShortlist — 현상 유지 보호', () => {
+  const item = (id: string, allocation: 'CONSERVATIVE' | 'BALANCED' | 'GROWTH') => ({
+    candidate: {
+      id,
+      dimensions: {
+        retirementAge: 60,
+        nationalPensionTiming: 'NORMAL' as const,
+        nationalPensionStartAge: 65,
+        withdrawalPolicy: 'GENERAL_FIRST' as const,
+        spendingPattern: 'FIXED' as const,
+        assetAllocation: allocation,
+      },
+    },
+  } as unknown as Parameters<typeof personaAwareShortlist>[0][number]);
+
+  // 결정론 점수 순으로 baseline이 한참 뒤에 있는 상황.
+  const accepted = [
+    ...Array.from({ length: 30 }, (_, i) => item(`grid-${i}`, 'GROWTH')),
+    item('baseline', 'BALANCED'),
+  ];
+
+  test('결정론 순위가 낮아도 현상 유지는 선별에 남는다', () => {
+    const shortlist = personaAwareShortlist(accepted, 12, 'baseline');
+
+    expect(shortlist.map((i) => i.candidate.id)).toContain('baseline');
+  });
+
+  test('상한을 넘겨 담지 않는다', () => {
+    expect(personaAwareShortlist(accepted, 12, 'baseline')).toHaveLength(12);
+  });
+
+  test('현상 유지가 accepted에 없으면 아무것도 바뀌지 않는다', () => {
+    const withoutBaseline = accepted.filter((i) => i.candidate.id !== 'baseline');
+
+    expect(personaAwareShortlist(withoutBaseline, 12, 'baseline'))
+      .toEqual(personaAwareShortlist(withoutBaseline, 12, undefined));
   });
 });
