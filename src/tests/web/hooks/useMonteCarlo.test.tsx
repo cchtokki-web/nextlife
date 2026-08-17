@@ -53,7 +53,7 @@ function makeResult(successRate: number) {
     goalFailure: NO_GOAL_FAILURE, goalConditions: LEGACY_GOAL_CONDITIONS,
     plannedMonthlySpending: 3000000,
     endingAssets: { p10: 1, p50: 2, p90: 3 },
-    assetDownside: [], depletion: { count: 0, earliestAge: null, medianAge: null },
+    assetBands: [], depletion: { count: 0, earliestAge: null, medianAge: null },
     deterministicEndingAssets: 2,
   };
 }

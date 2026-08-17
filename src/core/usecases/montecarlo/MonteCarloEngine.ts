@@ -1,6 +1,6 @@
 import { SimulationParams, StrategySimulationResult } from '../../entities/types';
 import {
-  MonteCarloDownsideYear,
+  MonteCarloAssetBandYear,
   MonteCarloConfig,
   MonteCarloResult,
   StrategyMonteCarloValidationResult,
@@ -72,10 +72,10 @@ export function isSuccessfulTrial(depletionAge: number | null, successAge: numbe
 // 버티는가"이고, RecommendationEngine.SPENDING_INCREASE_GATE의 실측 임계(0.9/0.8)도
 // 그 기준으로 보정됐다. 생활 유지 성공률로 바꾸면 그 실측 근거가 통째로 무효가 된다.
 //
-// runMonteCarlo가 만드는 것 중 게이트가 쓰지 않는 것 — assetDownside(연도별 분위수 정렬),
+// runMonteCarlo가 만드는 것 중 게이트가 쓰지 않는 것 — assetBands(연도별 분위수 정렬),
 // 결정론 기준선(추가 runSingle 1회), 시행별 totalAssetsByYear 배열 — 을 전부 만들지 않는다.
 // 성능보다 **계약**이 이유다: 게이트가 MonteCarloResult 전체를 받으면 나중에 누군가
-// assetDownside를 판정에 끌어다 쓰고, 그 순간 게이트의 비용과 의미가 조용히 바뀐다.
+// assetBands를 판정에 끌어다 쓰고, 그 순간 게이트의 비용과 의미가 조용히 바뀐다.
 //
 // 시드와 시행 인덱스 규칙이 runMonteCarlo와 같으므로(pathForTrial이 인덱스로만 결정된다)
 // trials가 작아도 이 표본은 화면 패널(1000 시행)의 앞부분 그대로다 — 게이트가 본 확률과
@@ -172,12 +172,12 @@ export function runMonteCarlo(
     .filter((age): age is number => age !== null)
     .sort((a, b) => a - b);
 
-  // 연도별 하방 지점. 각 해마다 전 시행의 총자산을 모아 정렬하고 10% 지점만 취한다.
+  // 연도별 분위수. 각 해마다 전 시행의 총자산을 모아 정렬하고 10%·50% 지점을 취한다.
   // **해마다 다른 시행에서 온 값이라 어느 한 시행의 경로가 아니다**(MonteCarloResult 주석).
   // 그래서 최악 10분위의 실제 경로 하나를 재실행해 함께 담아 봤으나, 화면·PDF 어디에서도
   // 소비되지 않아 시뮬레이션 한 번의 비용만 남기고 걷어냈다. 그 한계는 이제 문구로 밝힌다
-  // (AssetGrowthChart의 DOWNSIDE_NOTE).
-  const assetDownside: MonteCarloDownsideYear[] = [];
+  // (AssetGrowthChart의 MEDIAN_NOTE).
+  const assetBands: MonteCarloAssetBandYear[] = [];
   const startAge = planned.params.userProfile.currentAge;
   for (let y = 0; y < years; y++) {
     const columnSorted = trials
@@ -185,9 +185,10 @@ export function runMonteCarlo(
       .filter((v): v is number => v !== undefined)
       .sort((a, b) => a - b);
     if (columnSorted.length === 0) continue;
-    assetDownside.push({
+    assetBands.push({
       age: startAge + y,
       p10: percentileOfSorted(columnSorted, 0.1),
+      p50: percentileOfSorted(columnSorted, 0.5),
     });
   }
 
@@ -207,7 +208,7 @@ export function runMonteCarlo(
       p50: percentileOfSorted(endingSorted, 0.5),
       p90: percentileOfSorted(endingSorted, 0.9),
     },
-    assetDownside,
+    assetBands,
     depletion: {
       count: depletedAges.length,
       earliestAge: depletedAges.length > 0 ? depletedAges[0] : null,

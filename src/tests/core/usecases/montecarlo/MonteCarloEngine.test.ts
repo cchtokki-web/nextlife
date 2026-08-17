@@ -85,8 +85,8 @@ describe('runMonteCarlo', () => {
     const deterministic = engine.runSingle(params());
     const mc = runMonteCarlo(params(), engine, config({ annualStdDev: 0, trials: 10 }));
 
-    expect(mc.assetDownside.length).toBeGreaterThan(0);
-    for (const year of mc.assetDownside) {
+    expect(mc.assetBands.length).toBeGreaterThan(0);
+    for (const year of mc.assetBands) {
       const row = deterministic.yearlyResults.find((r) => r.age === year.age);
       expect(row, `${year.age}세 결정론 결과가 없다`).toBeDefined();
       expect(year.p10).toBeCloseTo(row!.totalAssets, 6);
@@ -115,9 +115,29 @@ describe('runMonteCarlo', () => {
   test('연도별 하방은 시뮬레이션 연수와 같은 길이다', () => {
     const mc = runMonteCarlo(params(), engine, config({ trials: 20 }));
 
-    expect(mc.assetDownside).toHaveLength(85 - 55 + 1);
-    expect(mc.assetDownside[0].age).toBe(55);
-    expect(mc.assetDownside[mc.assetDownside.length - 1].age).toBe(85);
+    expect(mc.assetBands).toHaveLength(85 - 55 + 1);
+    expect(mc.assetBands[0].age).toBe(55);
+    expect(mc.assetBands[mc.assetBands.length - 1].age).toBe(85);
+  });
+
+  // 진단 카드의 「N세 예상자산(중앙값)」과 자산 추이 차트의 곡선이 **같은 값**이어야 한다.
+  // 기말자산은 마지막 해의 총자산이므로(SimulationEngine의 endingAssets), 같은 시행 집합을
+  // 같은 분위수 함수로 자른 두 값은 등식으로 맞는다. 어긋나면 화면 두 곳이 또 다른 숫자를
+  // 말하게 되고, 그것이 애초에 이 밴드를 만든 이유다.
+  test('마지막 해의 중앙값은 기말자산 중앙값과 정확히 같다', () => {
+    const mc = runMonteCarlo(params(), engine, config({ trials: 50 }));
+
+    const last = mc.assetBands[mc.assetBands.length - 1];
+    expect(last.age).toBe(85);
+    expect(last.p50).toBe(mc.endingAssets.p50);
+  });
+
+  test('연도별 밴드의 하방은 중앙값을 넘지 않는다', () => {
+    const mc = runMonteCarlo(params(), engine, config({ trials: 50, annualStdDev: 20 }));
+
+    for (const year of mc.assetBands) {
+      expect(year.p10, `${year.age}세`).toBeLessThanOrEqual(year.p50);
+    }
   });
 
   test('시행 수와 시드, 변동성을 결과에 남긴다', () => {

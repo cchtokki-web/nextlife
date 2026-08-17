@@ -1,6 +1,6 @@
 import { describe, test, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { AssetGrowthChart } from '@/web/features/Dashboard/charts/AssetGrowthChart';
+import { AssetGrowthChart, buildAssetChartData } from '@/web/features/Dashboard/charts/AssetGrowthChart';
 import { MonteCarloResult } from '@/core/entities/montecarlo';
 import { SimulationParams, SimulationResult, SimulationYearlyResult } from '@/core/entities/types';
 import { makeYearlyResult as sharedYearlyResult } from '@/tests/fixtures/yearlyResult';
@@ -60,6 +60,10 @@ describe('AssetGrowthChart - 단순화 모드 토글', () => {
 
     expect(screen.queryByRole('button', { name: /주식\/ETF 자산/ })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /연금 자산/ })).not.toBeInTheDocument();
+    // ISA·현금도 구성 계열이다. 총액이 중앙값일 때 이 점선들만 기준 수익률로 남으면
+    // 한 화면에서 부분과 전체가 다른 기준을 말한다.
+    expect(screen.queryByRole('button', { name: /ISA 자산/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^현금/ })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /총 자산액/ })).toBeInTheDocument();
 
     rerender(
@@ -78,6 +82,7 @@ describe('AssetGrowthChart - 단순화 모드 토글', () => {
 
     expect(screen.getByRole('button', { name: /주식\/ETF 자산/ })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /연금 자산/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /ISA 자산/ })).toBeInTheDocument();
   });
 
   test('showBreakdown이 false면 "자산 구성 상세보기" 버튼을, true면 "간단히 보기" 버튼을 보여준다', () => {
@@ -133,10 +138,10 @@ describe('AssetGrowthChart - 단순화 모드 토글', () => {
   });
 });
 
-// 몬테카를로 하방 선. 팬 차트 → 세 선(p10/p50/p90) → 한 선(p10)으로 두 번 줄었다.
-// 팬 차트를 버린 것은 축이 P90에 끌려가서였고, 세 선을 한 선으로 줄인 것은 계열이 일곱 개가
-// 되어 점선끼리 겹쳤기 때문이다. 남긴 것이 하방인 이유는 DOWNSIDE_SERIES 주석 참고.
-describe('AssetGrowthChart - 몬테카를로 하방 선', () => {
+// 총 자산액 곡선의 기준. 예전에는 결정론 1회 실행이었고 그 옆에 「나쁜 경우(하위 10%)」
+// 점선을 함께 그렸다. 진단 카드의 「N세 예상자산」이 중앙값이 된 뒤로 그 곡선만 다른 기준을
+// 말하게 되어, 곡선을 중앙값으로 바꾸고 하방 선은 걷어냈다.
+describe('AssetGrowthChart - 총 자산액 곡선의 기준', () => {
   const monteCarlo: MonteCarloResult = {
     trials: 1000,
     seed: 1,
@@ -147,7 +152,7 @@ describe('AssetGrowthChart - 몬테카를로 하방 선', () => {
     goalFailure: NO_GOAL_FAILURE, goalConditions: LEGACY_GOAL_CONDITIONS,
     plannedMonthlySpending: 2230000,
     endingAssets: { p10: 0, p50: 100000000, p90: 8000000000 },
-    assetDownside: [{ age: 60, p10: 10000000 }],
+    assetBands: [{ age: 60, p10: 10000000, p50: 250000000 }],
     depletion: { count: 610, earliestAge: 72, medianAge: 84 },
     deterministicEndingAssets: 500000000,
   };
@@ -169,53 +174,74 @@ describe('AssetGrowthChart - 몬테카를로 하방 선', () => {
       />
     );
 
-  test('하방 선 하나만 범례 버튼으로 노출된다', () => {
-    renderChart();
+  test('모든 해에 밴드가 있으면 총 자산액을 중앙값으로 그린다', () => {
+    const data = buildAssetChartData(result.yearlyResults, [], new Map(
+      monteCarlo.assetBands.map((b) => [b.age, b])
+    ));
 
-    expect(screen.getByRole('button', { name: /나쁜 경우 \(하위 10%\)/ })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /중간 경우/ })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /좋은 경우/ })).not.toBeInTheDocument();
+    expect(data.usesMedian).toBe(true);
+    expect(data.rows[0]['자산총액']).toBe(250000000);
   });
 
-  // 범례 버튼의 aria-pressed가 곧 "지금 이 선이 보이는가"다.
-  test('숨긴 하방 선은 버튼이 눌리지 않은 상태로 표시된다', () => {
-    renderChart({ hiddenKeys: { '하위10%': true } });
+  test('밴드가 없으면 기준 수익률 경로 값을 그대로 쓴다', () => {
+    const data = buildAssetChartData(result.yearlyResults, [], undefined);
 
-    expect(screen.getByRole('button', { name: /나쁜 경우/ })).toHaveAttribute('aria-pressed', 'false');
+    expect(data.usesMedian).toBe(false);
+    expect(data.rows[0]['자산총액']).toBe(500000000);
   });
 
-  test('하방 버튼을 누르면 그 dataKey로 토글이 올라간다', () => {
-    const onLegendClick = vi.fn();
-    renderChart({ onLegendClick });
+  // 해마다 기준이 갈리면 한 곡선 안에서 두 기준이 섞인다. 그럴 바에는 곡선 전체를
+  // 기준 수익률로 되돌리는 편이 정직하다.
+  test('한 해라도 밴드가 비면 곡선 전체를 기준 수익률로 되돌린다', () => {
+    const twoYears = [...result.yearlyResults, makeYearlyResult({ age: 61 })];
 
-    fireEvent.click(screen.getByRole('button', { name: /나쁜 경우/ }));
+    const data = buildAssetChartData(twoYears, [], new Map(
+      monteCarlo.assetBands.map((b) => [b.age, b])
+    ));
 
-    expect(onLegendClick).toHaveBeenCalledTimes(1);
-    expect(onLegendClick.mock.calls[0][0]).toMatchObject({ dataKey: '하위10%' });
+    expect(data.usesMedian).toBe(false);
+    expect(data.rows[0]['자산총액']).toBe(500000000);
   });
 
-  // 사용자가 두 곡선 사이 간격을 오차범위로 읽으면 실제 하방폭을 과소평가한다 —
-  // 결정론 곡선은 중앙값보다 높기 때문이다. 그 사실을 문구로 밝힌다.
-  test('하방 선의 의미와 주 곡선의 가정을 문구로 밝힌다', () => {
+  test('어느 기준으로 그렸는지 범례에 적는다', () => {
+    const { rerender } = renderChart();
+    expect(screen.getByRole('button', { name: /총 자산액 \(중앙값\)/ })).toBeInTheDocument();
+
+    rerender(
+      <AssetGrowthChart
+        params={params}
+        result={result}
+        compareResults={[]}
+        hiddenKeys={{}}
+        onLegendClick={() => {}}
+        caption=""
+        showBreakdown={false}
+        onToggleBreakdown={() => {}}
+        planOutcome={{ assetStatus: 'sustained', investableDepletionAge: null, spendingShortfall: null }}
+      />
+    );
+    expect(screen.getByRole('button', { name: /총 자산액 \(기준 수익률\)/ })).toBeInTheDocument();
+  });
+
+  // 각 해의 중앙값은 서로 다른 시행에서 온다 — 이 곡선은 한 사람의 실제 경로가 아니다.
+  test('중앙값 곡선의 한계를 문구로 밝힌다', () => {
     renderChart();
 
     expect(screen.getByText(/한 사람의 실제 경로가 아닙니다/)).toBeInTheDocument();
-    expect(screen.getByText(/실제 중앙값보다 높습니다/)).toBeInTheDocument();
   });
 
-  // 구성 상세를 펼치면 시리즈가 일곱 개가 되어 어느 것도 읽히지 않는다.
-  test('자산 구성 상세를 펼치면 하방 선을 그리지 않는다', () => {
+  test('「나쁜 경우」 선은 더 이상 그리지 않는다', () => {
+    renderChart();
+
+    expect(screen.queryByRole('button', { name: /나쁜 경우/ })).not.toBeInTheDocument();
+  });
+
+  // 구성 계열(주식/연금/ISA/현금)은 기준 수익률 경로의 «분해»다. 중앙값 총액 아래에 두면
+  // 부분의 합이 총액과 맞지 않는다. 그래서 상세보기에서는 총액도 기준 수익률로 되돌린다.
+  test('자산 구성 상세에서는 총액도 기준 수익률로 되돌린다', () => {
     renderChart({ showBreakdown: true });
 
-    expect(screen.queryByRole('button', { name: /나쁜 경우/ })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /총 자산액 \(기준 수익률\)/ })).toBeInTheDocument();
     expect(screen.queryByText(/한 사람의 실제 경로가 아닙니다/)).not.toBeInTheDocument();
-  });
-
-  // MC가 아직 안 끝났거나(워커 지연) 미지원 환경이면 나머지 차트는 그대로 그려져야 한다.
-  test('몬테카를로 결과가 없으면 하방 범례를 만들지 않는다', () => {
-    renderChart({ monteCarlo: undefined });
-
-    expect(screen.queryByRole('button', { name: /나쁜 경우/ })).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /총 자산액/ })).toBeInTheDocument();
   });
 });

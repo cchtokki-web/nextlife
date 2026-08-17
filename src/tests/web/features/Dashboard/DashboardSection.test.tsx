@@ -485,7 +485,7 @@ describe('DashboardSection - 평생 소비 최적화 결과 배너', () => {
           goalFailure: NO_GOAL_FAILURE, goalConditions: LEGACY_GOAL_CONDITIONS,
           plannedMonthlySpending: 2230000,
           endingAssets: { p10: 0, p50: 1, p90: 2 },
-          assetDownside: [], depletion: { count: 0, earliestAge: null, medianAge: null },
+          assetBands: [], depletion: { count: 0, earliestAge: null, medianAge: null },
           deterministicEndingAssets: 1,
         }}
       />
@@ -688,7 +688,7 @@ describe('DashboardSection - 현재 계획 진단', () => {
     goalFailure: NO_GOAL_FAILURE, goalConditions: LEGACY_GOAL_CONDITIONS,
     plannedMonthlySpending: 3_000_000,
     endingAssets: { p10: 0, p50: 1, p90: 2 },
-    assetDownside: [], depletion: { count: 0, earliestAge: null, medianAge: null },
+    assetBands: [], depletion: { count: 0, earliestAge: null, medianAge: null },
     deterministicEndingAssets: 1,
   });
 

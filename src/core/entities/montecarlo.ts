@@ -16,11 +16,18 @@ export interface MonteCarloConfig {
   annualStdDev: number;
 }
 
-// 연도별 하방 지점. p50/p90도 함께 들고 있었지만 차트가 세 선에서 한 선으로 줄면서
-// 소비처가 없어졌다 — 계산해서 워커 경계 너머로 실어 보내는 비용만 남아 있었다.
-export interface MonteCarloDownsideYear {
+// 연도별 자산 분위수. 한때 p10만 남긴 적이 있다(차트가 세 선에서 한 선으로 줄면서 p50/p90의
+// 소비처가 없어졌다). 중앙값이 돌아온 이유는 선이 하나 더 필요해서가 아니라 **기준을 맞추기
+// 위해서**다 — 진단 카드의 「N세 예상자산」이 중앙값이 된 뒤로 자산 추이 차트만 결정론
+// 곡선을 그리면, 한 화면이 다시 두 기준을 말한다.
+//
+// p10은 「나쁜 경우」 선이 걷히면서 지금은 그리는 곳이 없다. 지우지 않은 것은 이미 정렬한
+// 열에서 한 번 더 자르는 값이라 비용이 사실상 없고, 하방을 다시 낼 때 계산 위치가 흩어지는
+// 편이 더 나쁘기 때문이다.
+export interface MonteCarloAssetBandYear {
   age: number;
   p10: number;
+  p50: number;
 }
 
 // goalSuccessProbability의 세 판정 조건별 실패 시행 수. 판정식은 runMonteCarlo 한 곳에만
@@ -110,11 +117,15 @@ export interface MonteCarloResult {
   // "생활비를 한 해도 줄이지 않을 확률"을 사용자는 자기 목표 기준으로 읽는다.
   plannedMonthlySpending: number;
   endingAssets: { p10: number; p50: number; p90: number };
-  // 연도별 총자산의 하위 10% 지점. 자산 추이 차트의 「나쁜 경우」 선이 유일한 소비처다.
+  // 연도별 총자산의 분위수. 자산 추이 차트의 곡선이 유일한 소비처다.
   //
   // **각 해의 값은 서로 다른 시행에서 온다** — 이 배열은 어느 한 시행의 경로가 아니다.
-  // 화면도 그 사실을 문구로 밝힌다(AssetGrowthChart의 DOWNSIDE_NOTE).
-  assetDownside: MonteCarloDownsideYear[];
+  // 화면도 그 사실을 문구로 밝힌다(AssetGrowthChart의 MEDIAN_NOTE).
+  //
+  // 마지막 해의 p50은 endingAssets.p50과 **등식으로** 같다(기말자산 = 마지막 해의 총자산).
+  // 진단 카드의 「N세 예상자산(중앙값)」과 차트의 끝점이 같은 숫자여야 하므로 그 등식을
+  // MonteCarloEngine 테스트가 고정한다.
+  assetBands: MonteCarloAssetBandYear[];
   depletion: {
     count: number;
     earliestAge: number | null;

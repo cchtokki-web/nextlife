@@ -117,9 +117,13 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
     }
   };
 
+  // 간단히 보기에서 내리는 구성 계열. 예전에는 주식·연금 둘뿐이었고 ISA·현금은 남아 있었다.
+  // 총 자산액 곡선이 중앙값으로 바뀐 뒤로 그 둘만 남으면 부분(기준 수익률)과 전체(중앙값)가
+  // 한 그림에서 다른 기준을 말한다 — 구성 계열은 상세보기에 모은다(AssetGrowthChart의
+  // BREAKDOWN_KEYS와 같은 목록이라 범례와 그림이 어긋나지 않는다).
   const assetChartHiddenKeys = showAssetBreakdown
     ? hiddenKeys
-    : { ...hiddenKeys, 주식자산: true, 연금자산: true };
+    : { ...hiddenKeys, 주식자산: true, 연금자산: true, ISA자산: true, 현금: true };
 
   const params: SimulationParams = React.useMemo(() => ({
     ...rawParams,
@@ -294,7 +298,7 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
           {terminalAssetDisplay.trials !== null && (
             <p className={styles.planFactNote} data-testid="terminal-asset-basis-note">
               시장 변동을 {terminalAssetDisplay.trials.toLocaleString()}회 반영한 중앙값입니다.
-              변동이 없다고 가정한 기준 수익률 경로(자산 추이 차트의 곡선)에서는{' '}
+              변동이 없다고 가정한 기준 수익률 경로에서는{' '}
               {formatValue(terminalAssetDisplay.deterministicAmount)}입니다.
             </p>
           )}

@@ -121,8 +121,10 @@ export function MonteCarloSection({
             결정론 곡선만 보고 그것을 기대값으로 읽게 됐다.
 
             방향만 말하지 않고 «두 값을 나란히» 놓는다 — 얼마나 낮은지를 모르면 사용자가 할
-            수 있는 일이 없다. p50 하나를 무료로 여는 셈이지만, 차트의 「나쁜 경우」 선이
-            이미 연도별 p10을 무료로 보여주고 있어 분위수 자체가 Pro 전용인 적은 없었다. */}
+            수 있는 일이 없다.
+
+            지금은 차트도 진단 카드도 중앙값을 말하므로 이 블록이 남은 이유가 바뀌었다:
+            **두 기준의 격차 자체**가 여기서만 보인다. 화면의 다른 자리는 어느 한쪽만 쓴다. */}
         <section data-testid="volatility-drag">
           <h4 className="mb-2 text-sm font-semibold">시장이 흔들리면 얼마나 줄어드나</h4>
           <dl className="grid grid-cols-2 gap-3 text-xs">
@@ -137,7 +139,7 @@ export function MonteCarloSection({
           </dl>
           <p className="mt-2 text-xs text-foreground-muted">
             같은 평균 수익률이라도 해마다 오르내리면 결과는 이만큼 낮아집니다. 자산 추이 차트의
-            총 자산액 곡선은 흔들리지 않는다고 가정한 값이라 왼쪽에 해당합니다.
+            총 자산액 곡선과 진단 카드의 「예상자산」은 오른쪽 값을 기준으로 합니다.
           </p>
         </section>
 
