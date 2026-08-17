@@ -5,6 +5,7 @@ import { describeStrategyChanges } from '@/core/usecases/dashboard/describeStrat
 import { applyStrategyToParams } from '@/core/usecases/dashboard/applyStrategyToParams';
 import { StrategyGenerator, type StrategyCandidate } from '@/core/strategy/StrategyGenerator';
 import { LegacySimulationAdapter } from '@/core/domain/input/LegacySimulationAdapter';
+import { resolveStrategy } from '@/core/usecases/strategy/compileStrategy';
 import { initialParams } from '@/infrastructure/storage/localStore';
 import { makeParams, makeRanked } from './strategyFieldFixtures';
 
@@ -38,7 +39,7 @@ describe('describeStrategyChanges', () => {
       { label: '월 생활비', before: '300만원', after: '350만원' },
       { label: '자산 인출', before: '일반계좌 우선 인출', after: 'ISA 우선 인출' },
       { label: '투자 성향', before: '보수적 자산배분', after: '성장형 자산배분' },
-      { label: '생활비 배분', before: '연령대별 동일 기준', after: '은퇴 초기에 생활비를 더 사용' },
+      { label: '생활비 배분', before: '생활비를 일정하게 유지', after: '통계 기준으로 감소' },
     ]);
   });
 
@@ -92,9 +93,10 @@ describe('describeStrategyChanges', () => {
     }
   });
 
-  // 이 축만 현재 params를 보지 않고 후보의 값만 본다. 의도된 현행 동작이므로 잠근다 —
-  // 바꾸면 PDF 리포트 문구까지 함께 움직인다.
-  test('생활비 배분은 FIXED가 아닐 때만, 현재 설정과 무관하게 나온다', () => {
+  // 다른 축과 같이 현재 설정과 비교한다. 예전에는 후보 값만 보고 판정했는데, 그때는
+  // 반영 경로가 없어 현재 설정이 «언제나» 곡선 없음이었기 때문이다. 이제 계획이 곡선을
+  // 가질 수 있으므로 같은 배분을 쓰는 계획에 없는 변경점이 뜨면 안 된다.
+  test('생활비 배분도 현재 설정과 다를 때만 나온다', () => {
     const params = makeParams();
 
     expect(describeStrategyChanges(params, makeRanked({ spendingPattern: 'FIXED' }), formatValue))
@@ -103,9 +105,19 @@ describe('describeStrategyChanges', () => {
     expect(describeStrategyChanges(params, makeRanked({ spendingPattern: 'CARE_HEAVY' }), formatValue))
       .toContainEqual({
         label: '생활비 배분',
-        before: '연령대별 동일 기준',
-        after: '후기 의료·돌봄 지출에 대비',
+        before: '생활비를 일정하게 유지',
+        after: '완만하게 감소',
       });
+  });
+
+  test('이미 그 배분을 쓰는 계획에는 생활비 배분 변경점이 없다', () => {
+    const base = makeParams();
+    const params = makeParams({
+      strategy: { ...resolveStrategy(base), spendingShape: 'care_heavy' },
+    });
+
+    expect(describeStrategyChanges(params, makeRanked({ spendingPattern: 'CARE_HEAVY' }), formatValue))
+      .not.toContainEqual(expect.objectContaining({ label: '생활비 배분' }));
   });
 
   test('금액 축에만 formatValue를 쓴다', () => {

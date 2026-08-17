@@ -159,18 +159,42 @@ describe('compileStrategy - 연령대별 생활비 곡선', () => {
     expect(curve.multipliers.length).toBe(curve.breakpointAges.length + 1);
   });
 
-  test('평생 소비 최적화가 아니면 소비 성향을 골라 두었어도 곡선이 생기지 않는다', () => {
-    // 화면(RetirementGoalSection)이 소비 성향 입력을 max_sustainable에서만 보여주므로,
-    // 컴파일도 같은 조건이어야 한다. 어긋나면 되돌릴 수 없는 유령 상태가 된다: 평생 소비
-    // 최적화에서 활동기 집중형을 고른 뒤 「목표 생활비 유지」로 되돌리면, 입력은 화면에서
-    // 사라지지만 60대 목표는 계속 1.2배로 계산되고 그 설정을 볼 방법이 없다.
-    for (const choice of ['target', 'ai', 'dividend_only'] as const) {
+  // 「생활비 배분」은 이제 추천이 반영하고 「고급 / 전문가 설정」이 소유하는 축이다. 목표
+  // 기반 계획은 언제나 spendingChoice 'target'이므로, 여기서 모드를 따지면 추천이 고른
+  // 곡선이 계산에 닿지 못한다 — 카드가 곡선을 켠 확률을 보여 주고 적용하면 곡선 없는
+  // 계획이 저장되던 결함이 정확히 그것이었다.
+  test('목표 생활비 유지 모드에서도 소비 성향이 곡선으로 해소된다', () => {
+    const result = compileStrategy(withStrategy({
+      spendingChoice: 'target',
+      spendingShape: 'care_heavy',
+    }));
+    const curve = result.params.spendingCurve!;
+
+    expect(curve.multipliers[0]).toBeGreaterThan(curve.multipliers[curve.multipliers.length - 1]);
+    expect(curve.multipliers.length).toBe(curve.breakpointAges.length + 1);
+  });
+
+  // 곡선 생성은 생활비 «모드»와 무관하다. 예전에는 max_sustainable에서만 만들었고, 그
+  // 근거는 「소비 성향 입력이 그 모드에서만 화면에 보인다」였다. 지금은 ‹생활비 전략›
+  // 섹션이 모든 모드에서 그 값을 보여 주므로 조건의 근거 자체가 사라졌다.
+  test('생활비 모드와 무관하게 소비 성향이 곡선을 정한다', () => {
+    for (const choice of ['target', 'ai', 'dividend_only', 'max_sustainable'] as const) {
       const result = compileStrategy(withStrategy({
         spendingChoice: choice,
         spendingShape: 'front_loaded',
       }));
 
-      expect('spendingCurve' in result.params).toBe(false);
+      expect(result.params.spendingCurve, choice).toBeDefined();
+    }
+  });
+
+  // 곡선을 고르지 않은 계획은 어떤 모드에서도 곡선 코드 경로를 타지 않아야 한다 —
+  // 위 변경이 「모든 계획에 곡선이 생긴다」로 번지지 않았음을 고정한다.
+  test("소비 성향이 'flat'이면 어떤 모드에서도 키가 생기지 않는다", () => {
+    for (const choice of ['target', 'ai', 'dividend_only', 'max_sustainable'] as const) {
+      const result = compileStrategy(withStrategy({ spendingChoice: choice, spendingShape: 'flat' }));
+
+      expect('spendingCurve' in result.params, choice).toBe(false);
     }
   });
 });

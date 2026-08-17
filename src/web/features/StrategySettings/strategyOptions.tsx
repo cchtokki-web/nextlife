@@ -1,12 +1,12 @@
 import {
-  Activity, CalendarClock, CalendarMinus, CalendarPlus, CloudRain, Flame,
-  Leaf, PiggyBank, Rocket, Shield, ShieldCheck, SlidersHorizontal,
+  Activity, CalendarClock, CalendarMinus, CalendarPlus, CloudRain, Equal, Flame,
+  HeartPulse, Leaf, PiggyBank, Plane, Rocket, Shield, ShieldCheck, SlidersHorizontal,
   Sparkles, TrendingDown, Wallet,
 } from 'lucide-react';
 import {
   EconomicScenario, IsaFirstChoice, NationalPensionStrategy,
   PrivatePensionStrategy, RiskProfile, SimulationParams,
-  StrategyMode, StrategyRecommendation,
+  SpendingShapePreset, StrategyMode, StrategyRecommendation,
 } from '../../../core/entities/types';
 import { RadioCardOption } from '../../components/form';
 import { FieldPath } from './fieldVisibility';
@@ -126,6 +126,32 @@ export const PRIVATE_PENSION_OPTIONS: ReadonlyArray<RadioCardOption<PrivatePensi
     // 이 축을 확정하지 않지만, 자동 선택 상태에서는 저수준 계산값으로 안전하게 반영할 수 있다.
     description: '여러 인출 금액을 비교해 더 나은 금액을 계산에 자동 반영합니다. 조건이 바뀌면 다시 선택합니다.',
     icon: <Sparkles size={16} />, recommended: true,
+  },
+];
+
+/**
+ * 은퇴 후 목표 생활비를 나이대별로 어떻게 나눌지.
+ *
+ * 입력한 금액은 언제나 «60대에 쓸 금액»이고, 세 곡선은 그 뒤로 얼마나 줄어드는지만 다르다
+ * (배수와 출처는 spendingCurve.ts가 소유한다). 설명에 감소폭을 적어 두는 이유: 이 선택이
+ * 「목표 생활비 350만원」의 뜻을 나이대별로 바꾸므로, 고르는 자리에서 얼마나 바뀌는지
+ * 보이지 않으면 총액을 정한 화면과 어긋나 읽힌다.
+ */
+export const SPENDING_SHAPE_OPTIONS: ReadonlyArray<RadioCardOption<SpendingShapePreset>> = [
+  {
+    value: 'flat', label: '일정하게 유지',
+    description: '은퇴 후 모든 나이에 같은 금액을 씁니다. 가장 보수적인 가정입니다.',
+    icon: <Equal size={16} />, recommended: true,
+  },
+  {
+    value: 'front_loaded', label: '통계 기준으로 감소',
+    description: '국민연금 적정생활비 조사를 따릅니다. 70대 −14%, 80대 이후 −24%.',
+    icon: <Plane size={16} />,
+  },
+  {
+    value: 'care_heavy', label: '완만하게 감소',
+    description: '의료·돌봄 부담이 커서 통계만큼 줄지 않는 경우. 70대 −7%, 80대 이후 −12%.',
+    icon: <HeartPulse size={16} />,
   },
 ];
 

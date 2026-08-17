@@ -186,25 +186,39 @@ describe('normalizeGoalDrivenParams — 고급 설정에서 사라진 축', () =
     expect(normalize(saved).strategy?.objective).toBe('ai_recommended');
   });
 
-  // 소비 성향·최소 생활비·안전마진은 「평생 소비 최적화」에서만 보이던 하위 입력이다.
-  // 그 전략이 사라진 뒤에도 값이 남아 있으면 화면 어디에도 없는 값이 곡선과 하한선을 움직인다.
-  test('평생 소비 최적화 전용 하위 입력은 무동작 값으로 되돌린다', () => {
+  // 최소 생활비·안전마진은 「평생 소비 최적화」에서만 보이던 하위 입력이다. 그 전략이
+  // 사라진 뒤에도 값이 남아 있으면 화면 어디에도 없는 값이 하한선을 움직인다.
+  //
+  // 소비 성향(spendingShape)은 이 목록에서 빠졌다 — ‹생활비 전략› 섹션이 그 값을 화면에
+  // 되돌려 놓았으므로 「화면에 없는 값」이 아니게 됐다(바로 위 테스트가 그것을 고정한다).
+  test('화면에 없는 평생 소비 최적화 하위 입력은 무동작 값으로 되돌린다', () => {
     const saved: SimulationParams = {
       ...initialParams,
       strategy: {
         ...resolveStrategy(initialParams),
         spendingChoice: 'max_sustainable',
-        spendingShape: 'front_loaded',
         minMonthlySpending: 2_000_000,
         bequestSafetyMarginRate: 30,
       },
     };
 
     const normalized = normalize(saved);
-    expect(normalized.strategy?.spendingShape).toBe('flat');
     expect(normalized.strategy?.bequestSafetyMarginRate).toBe(0);
     expect(normalized.strategy?.minMonthlySpending).toBeUndefined();
-    expect(compileStrategy(migrateRetirementGoals(saved)).params.spendingCurve).toBeUndefined();
+    expect(compileStrategy(migrateRetirementGoals(saved)).params.assetFloor).not.toBe(30);
+  });
+
+  // 「생활비 배분」은 ‹생활비 전략› 섹션이 소유하고 추천이 반영하는 축이 됐다. 여기서
+  // 눌러쓰면 적용 버튼이 방금 넣은 값을 다음 로드가 지운다 — 사용자에게는 버튼이 고장 난
+  // 것으로 보인다.
+  test('생활비 배분은 정규화가 눌러쓰지 않는다', () => {
+    const saved: SimulationParams = {
+      ...initialParams,
+      strategy: { ...resolveStrategy(initialParams), spendingShape: 'care_heavy' },
+    };
+
+    expect(normalize(saved).strategy?.spendingShape).toBe('care_heavy');
+    expect(compileStrategy(migrateRetirementGoals(saved)).params.spendingCurve).toBeDefined();
   });
 
   test('연금·투자·경제 축은 건드리지 않는다', () => {

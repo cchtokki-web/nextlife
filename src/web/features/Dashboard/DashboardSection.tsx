@@ -5,6 +5,7 @@ import { type LegendPayload } from 'recharts';
 import { Award, Zap, TrendingUp, AlertTriangle } from 'lucide-react';
 import { SimulationParams, SimulationResult, StrategyRecommendation } from '../../../core/entities/types';
 import { initialParams } from '../../../infrastructure/storage/localStore';
+import { describeSpendingCurve } from '../../../core/usecases/spending/spendingCurve';
 import styles from './Dashboard.module.css';
 import { formatValue as formatValueForCurrency } from './charts/chartFormatters';
 import { AssetGrowthChart } from './charts/AssetGrowthChart';
@@ -138,6 +139,15 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
   const currency = params.displayCurrency;
   const formatValue = (val: number) => formatValueForCurrency(val, currency);
 
+  // 「생활비 배분」이 목표 생활비를 나이대별로 얼마로 바꿨는지. 곡선이 없으면 빈 배열이라
+  // 아래 표시가 통째로 사라진다 — 나열할 구간이 없다는 뜻이지 오류가 아니다.
+  const spendingBands = React.useMemo(() => describeSpendingCurve(
+    params.spendingCurve,
+    params.userProfile.targetMonthlySpending,
+    params.userProfile.retirementAge,
+    params.userProfile.expectancy,
+  ), [params]);
+
   // 목표 우선순위가 정한 효용 배점을 포함해 legacy 입력을 새 Domain/Input 경계로 변환한다.
   const utilityConfig = React.useMemo(() => compileStrategy(params).utilityConfig, [params]);
   const domainInput = React.useMemo(
@@ -258,9 +268,23 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
           </div>
           <dl className={styles.currentPlanFacts} aria-label="현재 계획">
             <div><dt>은퇴</dt><dd>{params.userProfile.retirementAge}세</dd></div>
-            <div><dt>월 생활비 목표</dt><dd>{formatValue(metrics.targetSpending)}</dd></div>
+            {/* 「생활비 배분」을 고르면 목표가 나이대별로 달라지고, 이 칸은 그 평균을 보여준다
+                (SimulationMetricsCalculator의 average(goalMonthly)). 평균이라는 말을 빼면
+                사용자가 은퇴 목표 단계에서 입력한 금액과 다른 숫자가 이유 없이 서 있게 된다. */}
+            <div>
+              <dt>{spendingBands.length > 0 ? '월 생활비 목표(평균)' : '월 생활비 목표'}</dt>
+              <dd>{formatValue(metrics.targetSpending)}</dd>
+            </div>
             <div><dt>{params.userProfile.expectancy}세 예상자산</dt><dd>{formatValue(metrics.terminalAssets)}</dd></div>
           </dl>
+          {/* 평균이라고만 하면 "그래서 나는 얼마를 쓰는가"에 답하지 못한다. 구간을 그대로 편다. */}
+          {spendingBands.length > 0 && (
+            <p className={styles.spendingBandNote} data-testid="spending-band-note">
+              연령대별 배분을 적용해 {spendingBands.map((band) => (
+                `${band.fromAge}~${band.toAge ?? params.userProfile.expectancy}세 ${formatValue(band.monthlyAmount)}`
+              )).join(' · ')}으로 계산했습니다.
+            </p>
+          )}
           {monteCarlo && monteCarlo.goalConditions.basis !== 'legacy_plan' && (
             <GoalCoverageNote conditions={monteCarlo.goalConditions} />
           )}

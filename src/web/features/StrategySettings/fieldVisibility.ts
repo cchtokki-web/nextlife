@@ -3,7 +3,7 @@ import { StrategyMode } from '../../../core/entities/types';
 // SimulationParams 안의 값을 가리키는 점 경로. diffDefaults가 같은 표기를 쓴다.
 export type FieldPath = string;
 
-export type SectionId = 'pension' | 'investment' | 'economic' | 'advanced';
+export type SectionId = 'spending' | 'pension' | 'investment' | 'economic' | 'advanced';
 
 // 섹션 → 그 섹션이 다루는 필드 경로. 한 경로는 정확히 한 섹션에만 속한다
 // (중복되면 변경 개수 배지가 이중 계산된다 — 테스트가 이를 막는다).
@@ -15,6 +15,12 @@ export type SectionId = 'pension' | 'investment' | 'economic' | 'advanced';
 // 목록에서 goal 섹션과 basic 섹션을 걷어낸 이유다. fieldVisibility.test.ts의
 // INPUT_FLOW_FIELDS가 그 경로들이 다시 들어오지 못하게 막는다.
 export const SECTION_FIELDS: Record<SectionId, ReadonlyArray<FieldPath>> = {
+  // 은퇴 후 목표 생활비를 나이대별로 어떻게 나눌지. 「목표 생활비 350만원」이라는 «총액»은
+  // 은퇴 목표 카드가 정하고, 그것을 연령대에 어떻게 배분할지만 여기서 정한다 — 두 축이
+  // 다른 화면에 있는 이유다.
+  spending: [
+    'strategy.spendingShape',
+  ],
   pension: [
     'strategy.nationalPensionStrategy',
     'strategy.privatePensionStrategy',
@@ -68,8 +74,8 @@ export const SECTION_FIELDS: Record<SectionId, ReadonlyArray<FieldPath>> = {
   ],
 };
 
-// 간편 모드에서 보이는 필드. 연금 전략 2개 + 배당 재투자.
-// "필수 입력만" 원칙의 예외는 배당 재투자 하나이며 근거는 아래 주석에 있다.
+// 간편 모드에서 보이는 필드. 연금 전략 2개 + 배당 재투자 + 생활비 배분.
+// "필수 입력만" 원칙의 예외는 뒤의 둘이며 근거는 아래 주석에 있다.
 const SIMPLE_FIELDS: ReadonlySet<FieldPath> = new Set([
   'strategy.nationalPensionStrategy',
   'strategy.privatePensionStrategy',
@@ -77,6 +83,10 @@ const SIMPLE_FIELDS: ReadonlySet<FieldPath> = new Set([
   // (Phase 3가 자산별로 독립 평가한다) 대시보드 체크리스트가 간편 모드에서도 그 항목을
   // 제시하는데, 숨기면 지시를 실행할 컨트롤이 화면에 하나도 없게 된다.
   'assets.reinvestDividend',
+  // 생활비 배분도 같은 이유로 여기 있다. 추천의 「생활비 배분」 축이 이 값을 실제로
+  // 반영하므로(strategyFieldMap), 숨기면 적용된 곡선을 되돌릴 컨트롤이 화면에 하나도
+  // 없게 된다 — 화면에 없는 값이 생활비 목표를 움직이던 예전 상태로 돌아간다.
+  'strategy.spendingShape',
 ]);
 
 // 표준 모드는 간편 + 투자 전략 + 경제 가정 주요 항목 + ISA 만기 자금.

@@ -126,9 +126,14 @@ function normalizeStrategy(
     // 목표 우선순위는 목표 카드가 정한다(createGoalUtilityConfig). 'ai_recommended'는
     // "특정 축으로 기울이지 않음"이라 목표 가중치를 그대로 통과시키는 baseline이다.
     objective: 'ai_recommended',
-    // 아래 둘은 평생 소비 최적화 전용 하위 입력이었다. 그 전략이 사라졌으므로 무동작 값으로
-    // 되돌린다 — 남겨 두면 화면 어디에도 없는 값이 곡선과 하한선을 계속 움직인다.
-    spendingShape: 'flat',
+    // 안전마진은 평생 소비 최적화 전용 하위 입력이었다. 그 전략이 사라졌으므로 무동작
+    // 값으로 되돌린다 — 남겨 두면 화면 어디에도 없는 값이 하한선을 계속 움직인다.
+    //
+    // **spendingShape는 여기서 빠졌다.** 같은 이유로 함께 눌러쓰고 있었으나, 이제 그 축은
+    // 「고급 / 전문가 설정」의 ‹생활비 전략› 섹션이 소유하고 추천의 「생활비 배분」이
+    // 반영한다. 여기서 계속 눌러쓰면 적용 버튼이 방금 넣은 값을 다음 로드가 지운다.
+    // 되돌리려면 그 섹션도 함께 걷어내야 한다 — 화면에 없는 값이 곡선을 움직이는 상태가
+    // 예전 결함이었다.
     bequestSafetyMarginRate: 0,
     // 상속 목표를 골랐을 때만 인출에 하한선을 건다. 고르지 않았으면 「일부 남기기」 —
     // 하한선을 걸지 않고 2년치 생활비를 적정선으로 «채점»만 하는 권장값이다.
@@ -145,7 +150,6 @@ function sameNormalizedAxes(current: RetirementStrategy, next: RetirementStrateg
   return current.spendingChoice === next.spendingChoice
     && current.objective === next.objective
     && current.bequestStrategy === next.bequestStrategy
-    && (current.spendingShape ?? 'flat') === next.spendingShape
     && (current.bequestSafetyMarginRate ?? 0) === next.bequestSafetyMarginRate
     && current.minMonthlySpending === undefined;
 }

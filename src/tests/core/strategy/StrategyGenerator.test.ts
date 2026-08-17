@@ -49,7 +49,7 @@ describe('StrategyGenerator', () => {
 
     expect(growth).toBeDefined();
     expect(growth?.strategy.withdrawalPolicy.accountWithdrawalPolicy).toBe('PENSION_FIRST');
-    expect(growth?.strategy.spendingPolicy.curve?.multipliers).toEqual([1.2, 1, 0.8]);
+    expect(growth?.strategy.spendingPolicy.curve?.multipliers).toEqual([1, 0.86, 0.76]);
     expect(growth?.strategy.assetAllocation?.accountProjections).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ accountKind: 'investment', annualReturn: 9 }),
