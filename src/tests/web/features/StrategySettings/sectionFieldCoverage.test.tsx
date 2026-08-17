@@ -25,7 +25,6 @@ vi.mock('@/web/features/StrategySettings/fieldVisibility', async (importOriginal
 });
 
 const { SECTION_FIELDS } = await import('@/web/features/StrategySettings/fieldVisibility');
-const { BasicInfoSection } = await import('@/web/features/StrategySettings/sections/BasicInfoSection');
 const { PensionStrategySection } = await import('@/web/features/StrategySettings/sections/PensionStrategySection');
 const { InvestmentStrategySection } = await import('@/web/features/StrategySettings/sections/InvestmentStrategySection');
 const { EconomicAssumptionSection } = await import('@/web/features/StrategySettings/sections/EconomicAssumptionSection');
@@ -78,7 +77,6 @@ describe('SECTION_FIELDS 경로 렌더 계약', () => {
   test('모든 SECTION_FIELDS 경로는 어느 섹션에선가 실제로 렌더된다', () => {
     render(
       <>
-        <BasicInfoSection {...sectionProps} />
         <PensionStrategySection {...sectionProps} ai={ai} />
         <InvestmentStrategySection {...sectionProps} ai={ai} />
         <EconomicAssumptionSection {...sectionProps} />

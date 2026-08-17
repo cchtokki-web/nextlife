@@ -143,6 +143,104 @@ describe('RetirementInputFlow', () => {
       .toMatchObject({ targetValue: 65 });
   });
 
+  // 현재 나이·기대수명은 이 단계가 «유일한» 편집 경로다. 고급/전문가 설정 패널에 같은
+  // 입력을 되살리면 같은 값을 두 화면이 각자 편집하던 상태로 돌아간다
+  // (fieldVisibility.ts의 SECTION_FIELDS 주석, fieldVisibility.test.ts의 INPUT_FLOW_FIELDS).
+  //
+  // 아래 가드는 삭제한 BasicInfoSection.test.tsx에서 옮겨 왔다. 나이 입력은 디바운스
+  // 자동저장(useScenarios)과 겹치므로, 값을 지운 상태(Number('') === 0)가 저장되면 E2EE
+  // 저장소에 0이 영구히 남고 currentAge 0은 엔진 가드를 통과해 전혀 다른 기간을 계산한다.
+  describe('개인정보 단계의 나이 입력', () => {
+    const renderFlow = (onChangeParams = vi.fn()) => {
+      render(
+        <RetirementInputFlow
+          params={initialParams}
+          onChangeParams={onChangeParams}
+          onStartAnalysis={vi.fn()}
+        />
+      );
+      return onChangeParams;
+    };
+
+    test('현재 나이와 기대수명을 표시한다', () => {
+      renderFlow();
+
+      expect(screen.getByLabelText('현재 나이')).toHaveValue(50);
+      expect(screen.getByLabelText('기대수명')).toHaveValue(85);
+    });
+
+    // 은퇴 나이는 「은퇴 목표」의 «빠른 은퇴» 카드가 유일한 편집 경로다.
+    test('은퇴 나이는 이 단계에서 편집하지 않는다', () => {
+      renderFlow();
+
+      expect(screen.queryByLabelText('목표 은퇴 나이')).toBeNull();
+      expect(screen.getAllByRole('spinbutton')).toHaveLength(2);
+    });
+
+    test('현재 나이를 바꾸면 userProfile.currentAge만 바뀐 params로 호출된다', () => {
+      const onChangeParams = renderFlow();
+
+      fireEvent.change(screen.getByLabelText('현재 나이'), { target: { value: '48' } });
+
+      expect(onChangeParams).toHaveBeenCalledWith({
+        ...initialParams,
+        userProfile: { ...initialParams.userProfile, currentAge: 48 },
+      });
+    });
+
+    test.each([
+      ['현재 나이'],
+      ['기대수명'],
+    ])('%s를 비우면 아무것도 저장하지 않는다', (label) => {
+      const onChangeParams = renderFlow();
+
+      fireEvent.change(screen.getByLabelText(label), { target: { value: '' } });
+
+      expect(onChangeParams).not.toHaveBeenCalled();
+    });
+
+    test('나이 입력에 min/max 범위가 걸려 있다', () => {
+      renderFlow();
+
+      expect(screen.getByLabelText('현재 나이')).toHaveAttribute('min', '1');
+      expect(screen.getByLabelText('현재 나이')).toHaveAttribute('max', '120');
+      expect(screen.getByLabelText('기대수명')).toHaveAttribute('max', '130');
+    });
+
+    test('범위를 벗어난 값은 클램프해서 저장한다', () => {
+      const onChangeParams = renderFlow();
+
+      fireEvent.change(screen.getByLabelText('기대수명'), { target: { value: '9999' } });
+
+      expect(onChangeParams).toHaveBeenCalledWith({
+        ...initialParams,
+        userProfile: { ...initialParams.userProfile, expectancy: 130 },
+      });
+    });
+
+    // 하한이 0이면 0세가 저장 가능하고, currentAge 0은 SimulationEngine의 totalYears
+    // 가드(<= 0)를 통과해 91년짜리 시뮬레이션이 조용히 돈다. 사람 나이의 하한은 1이다.
+    test.each([
+      ['현재 나이', 'currentAge'],
+      ['기대수명', 'expectancy'],
+    ] as const)('%s의 음수·0은 1로 클램프한다', (label, key) => {
+      const onChangeParams = renderFlow();
+
+      fireEvent.change(screen.getByLabelText(label), { target: { value: '-5' } });
+      fireEvent.change(screen.getByLabelText(label), { target: { value: '0' } });
+
+      expect(onChangeParams).toHaveBeenCalledTimes(2);
+      expect(onChangeParams).toHaveBeenNthCalledWith(1, {
+        ...initialParams,
+        userProfile: { ...initialParams.userProfile, [key]: 1 },
+      });
+      expect(onChangeParams).toHaveBeenNthCalledWith(2, {
+        ...initialParams,
+        userProfile: { ...initialParams.userProfile, [key]: 1 },
+      });
+    });
+  });
+
   // 단계 이동은 상단 탭이 전담한다. 하단 이동 버튼이 되살아나면 마우스 동선이 다시 길어진다.
   test('하단 이동 버튼 없이 단계 탭만 제공한다', () => {
     render(

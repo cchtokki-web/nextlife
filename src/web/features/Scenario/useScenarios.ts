@@ -1121,6 +1121,17 @@ export function useScenarios() {
     }
   }, [status, localKey, session]);
 
+  // 파일 불러오기도 다른 로드 경로와 같은 정제(migrateParams)를 지나야 한다. 예전에는
+  // ScenarioManager가 `json.userProfile`의 존재만 확인하고 handleUpdateScenarioData로
+  // 직행했다 — 조작된 JSON의 expectancy: 1e9가 상태·엔진·E2EE 저장소까지 그대로 들어가고,
+  // 그 값은 오류 없이 10억 번 도는 루프가 된다(normalizeSimulationParams의 humanAge 주석).
+  //
+  // raw를 unknown으로 받는 이유는 migrateParams와 같다: 타입을 좁혀 받으면 「이미 검증된
+  // 값」이라는 거짓말이 호출부마다 다시 생긴다.
+  const importScenarioData = useCallback((id: string, raw: unknown) => {
+    return handleUpdateScenarioData(id, migrateParams(raw, etfTickers));
+  }, [handleUpdateScenarioData, etfTickers]);
+
   return {
     scenarios,
     activeScenarioId,
@@ -1131,6 +1142,7 @@ export function useScenarios() {
     activeParams,
     handleUpdateActiveParams,
     handleUpdateScenarioData,
+    importScenarioData,
     handleCreateScenario,
     handleDuplicateScenario,
     handleDeleteScenario,

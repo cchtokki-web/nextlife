@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Coins, LineChart, Settings2, TrendingUp, User } from 'lucide-react';
+import { Coins, LineChart, Settings2, TrendingUp } from 'lucide-react';
 import {
   IsaFirstChoice, NationalPensionStrategy, SimulationParams, StrategyMode, StrategyRecommendation,
 } from '../../../core/entities/types';
@@ -11,7 +11,6 @@ import {
 import { SentinelApplication } from '../../../core/usecases/strategy/applyAiSentinels';
 import { SettingSection } from '../../components/form';
 import { AdvancedSection } from './sections/AdvancedSection';
-import { BasicInfoSection } from './sections/BasicInfoSection';
 import { EconomicAssumptionSection } from './sections/EconomicAssumptionSection';
 import { InvestmentStrategySection } from './sections/InvestmentStrategySection';
 import { PensionStrategySection } from './sections/PensionStrategySection';
@@ -39,8 +38,10 @@ export interface StrategySettingsPanelProps {
 const HIGHLIGHT_DURATION_MS = 800;
 
 // 섹션 표시 메타. 순서가 화면 순서다.
+//
+// 「기본 정보」(현재 나이·기대수명)는 여기 없다. 그 두 값은 「개인정보」 단계가 유일한
+// 편집 경로다 — 근거는 fieldVisibility.ts의 SECTION_FIELDS 주석에 있다.
 const SECTIONS: ReadonlyArray<{ id: SectionId; title: string; icon: React.ReactNode }> = [
-  { id: 'basic', title: '기본 정보', icon: <User size={16} /> },
   { id: 'pension', title: '연금 전략', icon: <Coins size={16} /> },
   { id: 'investment', title: '투자 전략', icon: <TrendingUp size={16} /> },
   { id: 'economic', title: '경제 가정', icon: <LineChart size={16} /> },
@@ -150,11 +151,9 @@ export function StrategySettingsPanel({
     onChangeParams({ ...params, strategy: { ...strategy, mode: nextMode } });
   };
 
-  // 섹션 본문 렌더링. SECTIONS의 6개 id가 모두 여기서 처리된다.
+  // 섹션 본문 렌더링. SECTIONS의 id가 모두 여기서 처리된다.
   const renderSectionBody = (id: SectionId, sectionProps: SectionProps) => {
     switch (id) {
-      case 'basic':
-        return <BasicInfoSection {...sectionProps} />;
       case 'pension':
         return (
           <PensionStrategySection
