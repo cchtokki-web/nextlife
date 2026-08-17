@@ -56,15 +56,22 @@ const COMPARE_COLORS = ['#10B981', '#F59E0B', '#EF4444', '#8B5CF6'];
 // 이번에 바뀐 것은 선의 «개수»가 아니라 **주 곡선의 기준**이다. 진단 카드의
 // 「N세 예상자산」이 중앙값이 된 뒤로 이 차트만 결정론 곡선을 그리면 한 화면이 다시 두
 // 기준을 말한다. 그래서 주 곡선을 연도별 중앙값으로 바꾸고, 함께 있던 「나쁜 경우」 점선은
-// 걷어냈다(사용자 요청).
+// 걷어냈다(사용자 요청). 간단히 보기와 상세보기가 **같은 총액**을 말해야 하므로 기준은
+// 두 화면에 똑같이 적용한다 — 토글을 눌렀다고 총액이 달라지면 그 자체가 새로운 혼란이다.
 //
 // **이 곡선은 어느 실제 시행의 경로도 아니다.** 각 해의 50% 지점은 서로 다른 시행에서 온다.
 // 밝히지 않으면 사용자가 이 선을 "내 자산이 이렇게 흘러간다"로 읽는다.
 const MEDIAN_NOTE = '총 자산액 곡선은 시장 변동 시행에서 각 해의 중앙값이며, 한 사람의 실제 경로가 아닙니다.';
 
-// 구성 계열(주식/연금/ISA/현금)은 **기준 수익률 경로의 분해**다. 중앙값 총액 아래에 두면
-// 부분의 합이 총액과 맞지 않으므로, 간단히 보기에서는 넷 다 내리고 상세보기에서만 낸다.
-// 상세보기에서는 총액도 기준 수익률로 되돌아간다(아래 usesMedian 참조).
+// 구성 계열(주식/연금/ISA/현금)은 **기준 수익률 경로의 분해**라 총액과 기준이 다르다.
+//
+// 구성별 중앙값을 따로 구해 맞추는 방법은 없다 — 분위수는 더하기가 되지 않아서, 각 계열의
+// 중앙값을 더해도 총액의 중앙값이 되지 않는다(각 해의 50% 지점이 계열마다 다른 시행에서
+// 온다). 그래서 맞추는 대신 **다르다고 말한다.** 상세보기에서만 붙인다: 구성 계열을 그리지
+// 않는 화면에서는 읽을 이유가 없는 문장이다.
+const BREAKDOWN_BASIS_NOTE = ' 구성 계열(주식·연금·ISA·현금)은 변동이 없다고 가정한 기준 수익률 경로라, 합계가 총 자산액과 일치하지 않습니다.';
+
+// 간단히 보기에서 내리는 구성 계열. 총액과 기준이 다른 선을 기본 화면에 두지 않는다.
 const BREAKDOWN_KEYS = ['주식자산', '연금자산', 'ISA자산', '현금'] as const;
 
 // 범례 표기. 아래 <Area>/<Line> 선언의 name/dataKey/stroke/strokeDasharray와 짝을 이룬다 —
@@ -150,10 +157,8 @@ export function AssetGrowthChart({
   // 밴드가 «비어 있는» 경우까지 막아야 한다. 워커가 돌려준 payload에 이 필드가 없으면
   // (개발 중 HMR로 워커 청크만 낡는 경우) 가드가 없을 때 `undefined.map`으로 대시보드
   // 전체가 죽는다. 길이를 보고 없으면 기준 수익률 경로로 되돌린다.
-  //
-  // 상세보기에서는 밴드를 아예 만들지 않는다 — 구성 계열과 총액의 기준을 맞추기 위해서다.
   const bands = monteCarlo?.assetBands;
-  const bandByAge = !showBreakdown && bands && bands.length > 0
+  const bandByAge = bands && bands.length > 0
     ? new Map(bands.map((b) => [b.age, b]))
     : undefined;
 
@@ -227,7 +232,9 @@ export function AssetGrowthChart({
         <ChartLegend items={legendItems} hiddenKeys={hiddenKeys} onToggle={onLegendClick} />
       )}
       {usesMedian && !hasNoInvestableAsset && (
-        <p className="mt-1 text-xs text-foreground-muted">{MEDIAN_NOTE}</p>
+        <p className="mt-1 text-xs text-foreground-muted">
+          {MEDIAN_NOTE}{showBreakdown ? BREAKDOWN_BASIS_NOTE : ''}
+        </p>
       )}
       {hasNoInvestableAsset ? (
         <p className="rounded-2xl border border-card-border bg-foreground/5 px-6 py-10 text-center text-sm text-foreground-muted">

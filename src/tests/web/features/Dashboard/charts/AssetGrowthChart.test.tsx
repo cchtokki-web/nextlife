@@ -236,12 +236,25 @@ describe('AssetGrowthChart - 총 자산액 곡선의 기준', () => {
     expect(screen.queryByRole('button', { name: /나쁜 경우/ })).not.toBeInTheDocument();
   });
 
-  // 구성 계열(주식/연금/ISA/현금)은 기준 수익률 경로의 «분해»다. 중앙값 총액 아래에 두면
-  // 부분의 합이 총액과 맞지 않는다. 그래서 상세보기에서는 총액도 기준 수익률로 되돌린다.
-  test('자산 구성 상세에서는 총액도 기준 수익률로 되돌린다', () => {
+  test('자산 구성 상세에서도 총액은 중앙값으로 그린다', () => {
     renderChart({ showBreakdown: true });
 
-    expect(screen.getByRole('button', { name: /총 자산액 \(기준 수익률\)/ })).toBeInTheDocument();
-    expect(screen.queryByText(/한 사람의 실제 경로가 아닙니다/)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /총 자산액 \(중앙값\)/ })).toBeInTheDocument();
+  });
+
+  // 구성 계열(주식/연금/ISA/현금)은 기준 수익률 경로의 «분해»다. 중앙값과는 다른 기준이라
+  // 부분의 합이 총액과 맞지 않는다 — 화면에 두 기준이 함께 있는 이상 그 사실을 말해야 한다.
+  // 분위수는 더하기가 되지 않으므로 구성별 중앙값을 따로 구해도 합은 맞지 않는다.
+  test('상세에서는 구성 계열이 다른 기준임을 밝힌다', () => {
+    renderChart({ showBreakdown: true });
+
+    expect(screen.getByText(/합계가 총 자산액과 일치하지 않습니다/)).toBeInTheDocument();
+  });
+
+  test('간단히 보기에는 구성 계열 안내를 붙이지 않는다', () => {
+    renderChart();
+
+    // 구성 계열을 그리지 않는 화면에서 그 주의사항은 읽을 이유가 없는 문장이다.
+    expect(screen.queryByText(/합계가 총 자산액과 일치하지 않습니다/)).not.toBeInTheDocument();
   });
 });
