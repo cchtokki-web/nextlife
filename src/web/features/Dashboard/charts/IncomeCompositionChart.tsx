@@ -7,7 +7,7 @@ import styles from '../Dashboard.module.css';
 import { SimulationParams, SimulationResult } from '../../../../core/entities/types';
 import { computeMonthlySpendingComposition } from '../../../../core/usecases/MonthlySpendingComposition';
 import { formatValue, MultilineYAxisTick, RECHARTS_TOOLTIP_STYLE, Y_AXIS_WIDTH } from './chartFormatters';
-import { ChartLegend, type ChartLegendItem } from './ChartLegend';
+import { ChartLegend, legendColorOf, type ChartLegendItem } from './ChartLegend';
 import { ChartCaption } from './ChartCaption';
 
 // recharts는 Bar의 label render prop에 대한 공개 타입을 제공하지 않는다 — 실제 런타임에
@@ -81,10 +81,12 @@ export function IncomeCompositionTooltip({
   return (
     <div style={{ ...RECHARTS_TOOLTIP_STYLE, padding: '10px 12px' }}>
       <div style={{ fontWeight: 700, marginBottom: 6 }}>{row.age}세</div>
+      {/* 막대와 같은 색으로 말한다. 색이 없으면 사용자가 「어느 줄이 어느 띠인가」를
+          눈으로 이어야 한다 — 소득원이 넷이고 스택이라 그 잇기가 특히 어렵다. */}
       {INCOME_KEYS.filter((key) => row[key] > 0).map((key) => (
         <div key={key} style={{ display: 'flex', justifyContent: 'space-between', gap: 16 }}>
-          <span>{key}</span>
-          <span>{formatValue(row[key], currency)}</span>
+          <span style={{ color: legendColorOf(INCOME_LEGEND, key) }}>{key}</span>
+          <span style={{ color: legendColorOf(INCOME_LEGEND, key) }}>{formatValue(row[key], currency)}</span>
         </div>
       ))}
       {total === 0 && <div style={{ opacity: 0.7 }}>이 해에는 연금·배당·기타소득이 없습니다.</div>}
