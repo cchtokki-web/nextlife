@@ -167,16 +167,29 @@ function positiveIntOption(value: number | undefined, fallback: number, name: st
 }
 
 /**
- * Keeps the shortlist able to answer every persona.
+ * Keeps the shortlist able to answer every persona — and to answer "keep your current plan".
  *
  * Ranking by deterministic score alone systematically eliminates CONSERVATIVE allocations before
  * the persona stage — a higher assumed return always scores better in a projection with no
  * variance — so 안정형 had no conservative candidate left to describe. Reserve room for each
  * persona's defining trait first, then fill the remainder by score.
+ *
+ * **현상 유지 후보를 가장 먼저 담는다.** 생성 단계는 같은 이유로 이미 그것을 보호한다
+ * (StrategyGenerator가 baseline을 격자보다 먼저 넣어 maxCandidates 상한에 잘리지 않게 한다).
+ * 선별 단계에는 그 보호가 없어서, 결정론 점수가 뒤로 밀린 「지금 계획」은 몬테카를로를 받지
+ * 못했다. 그러면 균형형 슬롯에서 지금보다 나쁜 안이 이기고, 이미 최선인 계획을 쓰는
+ * 사용자에게도 화면이 바꾸라고 말한다 — 현상 유지 후보를 만든 목적 자체가 무너진다.
+ *
+ * 자리를 예약할 뿐 이기게 하지 않는다. 페르소나 비교자가 여전히 승자를 정하므로, 더 나은
+ * 후보가 있으면 현상 유지는 정당하게 진다.
+ *
+ * 테스트를 위해 export한다 — 이 보호는 `optimize` 전체를 돌리지 않고는 관측할 수 없는데,
+ * 그 경로는 결정론 점수 순서에 의존해 "밀린 baseline"을 재현하기 어렵다.
  */
-function personaAwareShortlist(
+export function personaAwareShortlist(
   accepted: readonly Omit<RankedStrategyCandidate, 'rank'>[],
   limit: number,
+  baselineCandidateId?: string,
 ): Omit<RankedStrategyCandidate, 'rank'>[] {
   const reservedPerPersona = 2;
   const picked = new Set<string>();
@@ -187,6 +200,13 @@ function personaAwareShortlist(
     picked.add(item.candidate.id);
     shortlist.push(item);
   };
+
+  // 현상 유지가 먼저다. 격자 조합과 같은 id를 갖게 된 경우(generator가 중복을 걷어낸 경우)도
+  // 그 id로 짚으므로 같은 전략이 두 번 담기지 않는다.
+  const baseline = baselineCandidateId === undefined
+    ? undefined
+    : accepted.find((item) => item.candidate.id === baselineCandidateId);
+  if (baseline) take(baseline);
 
   // `accepted` is already sorted by deterministic score, so "first match" is "best match".
   for (const definition of RECOMMENDATION_PERSONAS) {
@@ -369,7 +389,9 @@ export class StrategyOptimizer {
         200,
         'screeningTrials',
       );
-      const shortlist = personaAwareShortlist(accepted, shortlistLimit);
+      const shortlist = personaAwareShortlist(
+        accepted, shortlistLimit, generated.debug.baselineCandidateId,
+      );
       deterministicShortlistCount = shortlist.length;
 
       // Candidate allocations already carry the project's conservative/base/aggressive risk

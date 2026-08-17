@@ -4,7 +4,7 @@ import type { RetirementGoalType } from '../../../../core/entities/retirementGoa
 import type { OptimizationOutcome } from '../../../../core/strategy/StrategyOptimizer';
 // 「달라지는 점」 문구는 core가 소유한다 — PDF 리포트가 같은 함수를 쓴다.
 import { describeStrategyChanges } from '../../../../core/usecases/dashboard/describeStrategyChanges';
-import type { CandidateRecommendation } from '../../../../core/recommendation/RecommendationEngine';
+import { improvesOnCurrentPlan, type CandidateRecommendation } from '../../../../core/recommendation/RecommendationEngine';
 import type { SustainableSpendingAdvice } from '../../../../core/usecases/dashboard/computeSustainableSpendingAdvice';
 import type { StrategyOptimizationStatus } from '../../../hooks/useStrategyOptimization';
 import type { AppliedStrategySnapshot } from '../../../hooks/useAppliedStrategy';
@@ -19,6 +19,15 @@ interface StrategyRecommendationCardsProps {
    * 화면이 규칙을 다시 구현하면 코어가 규칙을 바꿔도 ☆만 옛 규칙으로 남는다.
    */
   primary?: CandidateRecommendation | null;
+  /**
+   * 진단 카드가 보여주는 «현재 계획»의 목표 달성 확률. 세 카드가 그보다 나은지 판정하는 데
+   * 쓴다 — 페르소나는 「더 나은가」가 아니라 「특성을 가졌는가」로 뽑히므로, 지금보다 나쁜
+   * 안이 ☆추천을 달고 올라올 수 있다(improvesOnCurrentPlan 주석).
+   *
+   * 몬테카를로가 끝나기 전에는 undefined다. 그때는 비교를 «말하지 않는다» — 측정되지 않은
+   * 것을 나쁜 것으로 표시하면 안 된다.
+   */
+  currentGoalProbability?: number;
   status: StrategyOptimizationStatus;
   /** Worker failure detail. Without it an "오류" card cannot tell the user or support what broke. */
   errorMessage?: string;
@@ -320,6 +329,7 @@ export function StrategyRecommendationCards(props: StrategyRecommendationCardsPr
 function RecommendationBody({
   recommendations,
   primary,
+  currentGoalProbability,
   status,
   errorMessage,
   unsupportedHardGoals,
@@ -396,10 +406,20 @@ function RecommendationBody({
   //
   // primary가 없으면 ☆을 아예 붙이지 않는다. 첫 카드로 폴백하면 엔진이 고르지 않은 카드가
   // 「NextLife가 고른 안」으로 보인다 — 0%뿐인 후보군에서 ☆을 거두는 것과 같은 이유다.
+  //
+  // 지금 계획보다 나쁜 안에는 ☆을 붙이지 않는다. ☆는 「고를 만한 안」이라는 뜻이고,
+  // 그 뜻이 거짓이 되면 배지가 사용자를 잘못된 조작으로 이끈다. 판정은 core가 소유한다.
   const recommendedId = primary?.candidate.candidate.id;
   const recommended = recommendedId === undefined
     ? undefined
-    : finalRecommendations.find((item) => item.candidate.candidate.id === recommendedId);
+    : finalRecommendations
+      .filter((item) => improvesOnCurrentPlan(item.candidate, currentGoalProbability))
+      .find((item) => item.candidate.candidate.id === recommendedId);
+
+  // 세 카드가 모두 지금보다 나쁘면 사용자가 할 «옳은 일»은 아무것도 하지 않는 것이다.
+  // 그 말을 하지 않으면 화면은 셋 중 하나를 고르라는 뜻으로만 읽힌다.
+  const noneImproves = currentGoalProbability !== undefined
+    && finalRecommendations.every((item) => !improvesOnCurrentPlan(item.candidate, currentGoalProbability));
   return (
     <>
       {unsupportedHardGoals && unsupportedHardGoals.length > 0 && (
@@ -413,6 +433,12 @@ function RecommendationBody({
       {/* 「현재 계획 N% → 추천 전략 적용 M%」 비교 바는 제거했다. 왼쪽 숫자는 바로 위 진단
           카드의 「목표 달성 확률」과 같은 값이고, 오른쪽 숫자는 아래 ☆추천 카드의 「목표 달성
           확률」과 같은 값이라 화면에 같은 두 숫자가 세 번 나왔다. */}
+      {noneImproves && (
+        <GlassCard className={styles.noImprovementNotice} role="note">
+          현재 계획을 유지하는 편이 낫습니다. 아래 추천은 모두 지금보다 목표 달성 확률이 낮습니다.
+        </GlassCard>
+      )}
+
       <div className={styles.recommendationGrid}>
         {finalRecommendations.map((recommendation) => {
           const candidate = recommendation.candidate;
@@ -444,7 +470,21 @@ function RecommendationBody({
               </header>
 
               <dl className={styles.strategyMetrics}>
-                <div><dt>목표 달성 확률</dt><dd>{Math.round(probability * 100)}%</dd></div>
+                <div>
+                  <dt>목표 달성 확률</dt>
+                  <dd>
+                    {Math.round(probability * 100)}%
+                    {/* 증감을 백분율«점»으로 말한다. 확률의 차이는 비율이 아니다 —
+                        67%에서 47%로 내려간 것을 "30% 감소"로 적으면 다른 뜻이 된다. */}
+                    {currentGoalProbability !== undefined && (
+                      <span className={styles.strategyDelta}>
+                        현재 계획 {Math.round(currentGoalProbability * 100)}%보다{' '}
+                        {Math.abs(Math.round(probability * 100) - Math.round(currentGoalProbability * 100))}%p{' '}
+                        {improvesOnCurrentPlan(candidate, currentGoalProbability) ? '높음' : '낮음'}
+                      </span>
+                    )}
+                  </dd>
+                </div>
                 <div><dt>생활비</dt><dd>월 {formatValue(candidate.candidate.strategy.targetMonthlySpending)}</dd></div>
                 {/* 결정론 경로의 endingAssets로 대체하지 않는다. 같은 라벨 아래에서 1,000회
                     시행의 중앙값과 단일 경로 값이 섞이면 사용자는 둘을 구분할 수 없다. */}

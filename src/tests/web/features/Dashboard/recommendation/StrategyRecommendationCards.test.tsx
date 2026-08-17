@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
 import type { SimulationParams } from '@/core/entities/types';
-import type { ValidatedStrategyCandidate } from '@/core/recommendation/RecommendationEngine';
+import type { CandidateRecommendation, ValidatedStrategyCandidate } from '@/core/recommendation/RecommendationEngine';
 import { DEFAULT_UTILITY_CONFIG } from '@/core/usecases/utility/utilityWeights';
 import { describeStrategyChanges } from '@/core/usecases/dashboard/describeStrategyChanges';
 import { StrategyRecommendationCards } from '@/web/features/Dashboard/recommendation/StrategyRecommendationCards';
@@ -650,5 +650,80 @@ describe('StrategyRecommendationCards 적용 버튼', () => {
     renderCards({ recommendations: [sameAsCurrent], onApplyStrategy: vi.fn() });
 
     expect(screen.getByRole('button', { name: /달라지는 점이 없습니다/ })).toBeDisabled();
+  });
+});
+
+// 세 카드는 「더 나은가」가 아니라 「특성을 가졌는가」로 뽑히므로(RECOMMENDATION_PERSONAS),
+// 현재 계획보다 나쁜 안이 ☆추천을 달고 올라올 수 있다. 사용자는 그 사실을 알 방법이 없었다.
+describe('StrategyRecommendationCards - 현재 계획과의 비교', () => {
+  const worse = {
+    persona: 'BALANCED' as const,
+    label: '균형형' as const,
+    candidate: candidate(1, 'BALANCED', 'FIXED', 0.47),
+    reason: '목표 균형',
+  };
+  const better = {
+    persona: 'STABLE' as const,
+    label: '안정형' as const,
+    candidate: candidate(2, 'CONSERVATIVE', 'FIXED', 0.82),
+    reason: '보수적',
+  };
+
+  const renderWith = (recommendations: CandidateRecommendation[], currentGoalProbability?: number) => render(
+    <StrategyRecommendationCards
+      recommendations={recommendations}
+      primary={recommendations[0]}
+      status="done"
+      params={params}
+      formatValue={formatValue}
+      currentGoalProbability={currentGoalProbability}
+    />
+  );
+
+  test('현재 계획보다 낮은 카드는 얼마나 낮은지 밝힌다', () => {
+    renderWith([worse], 0.67);
+
+    expect(screen.getByText(/현재 계획 67%보다 20%p 낮음/)).toBeInTheDocument();
+  });
+
+  test('현재 계획보다 높은 카드는 얼마나 높은지 밝힌다', () => {
+    renderWith([better], 0.67);
+
+    expect(screen.getByText(/현재 계획 67%보다 15%p 높음/)).toBeInTheDocument();
+  });
+
+  // ☆는 「고를 만한 안」이라는 뜻이다. 지금보다 나쁜 안에 붙으면 그 뜻이 거짓이 된다.
+  test('현재 계획보다 나쁜 카드에는 ☆추천을 붙이지 않는다', () => {
+    renderWith([worse], 0.67);
+
+    expect(screen.queryByText('추천')).not.toBeInTheDocument();
+  });
+
+  test('현재 계획보다 나은 카드에는 그대로 붙인다', () => {
+    renderWith([better], 0.67);
+
+    expect(screen.getByText('추천')).toBeInTheDocument();
+  });
+
+  test('세 추천이 모두 지금보다 나쁘면 유지를 권한다', () => {
+    renderWith([worse], 0.67);
+
+    expect(screen.getByText(/현재 계획을 유지하는 편이 낫습니다/)).toBeInTheDocument();
+  });
+
+  test('하나라도 나으면 유지를 권하지 않는다', () => {
+    renderWith([worse, better], 0.67);
+
+    expect(screen.queryByText(/현재 계획을 유지하는 편이 낫습니다/)).not.toBeInTheDocument();
+  });
+
+  // 몬테카를로가 아직 끝나지 않은 상태에서 「나쁘다」고 말하면 측정되지 않은 것이 나쁜 것으로
+  // 둔갑한다. 비교할 수 없으면 아무 말도 하지 않고 종전 화면 그대로 둔다.
+  test('현재 확률을 모르면 비교를 말하지 않는다', () => {
+    renderWith([worse], undefined);
+
+    // 카드에는 언제나 「현재 계획에서 달라지는 점」 제목이 있으므로 증감 문구만 좁혀 본다.
+    expect(screen.queryByText(/현재 계획 \d+%보다/)).not.toBeInTheDocument();
+    expect(screen.getByText('추천')).toBeInTheDocument();
   });
 });

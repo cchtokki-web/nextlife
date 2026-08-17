@@ -631,3 +631,22 @@
   line-height: 1.55;
   color: var(--foreground-muted);
 }
+
+/* 추천 카드의 확률 아래에 붙는 「현재 계획보다 N%p 높음/낮음」. 카드가 지금보다 나쁜지를
+   숫자로 말하는 자리다 — 페르소나는 개선 여부로 뽑히지 않으므로 이 줄이 없으면 사용자는
+   비교할 방법이 없다. */
+.strategyDelta {
+  display: block;
+  margin-top: 0.15rem;
+  font-size: 0.7rem;
+  font-weight: 500;
+  color: var(--foreground-muted);
+}
+
+/* 세 추천이 모두 현재 계획보다 나쁠 때의 안내. */
+.noImprovementNotice {
+  margin-bottom: 0.85rem;
+  font-size: 0.85rem;
+  line-height: 1.55;
+  color: var(--foreground);
+}
