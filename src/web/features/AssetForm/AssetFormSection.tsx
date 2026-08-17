@@ -6,6 +6,7 @@ import styles from './AssetForm.module.css';
 import compStyles from '../../styles/components.module.css';
 import { Plus, Trash2, Wallet, Landmark, PiggyBank, DollarSign, ExternalLink, ChevronDown, ChevronUp, RefreshCw } from 'lucide-react';
 import { predefinedAssets } from './predefinedAssets';
+import { initialParams } from '../../../infrastructure/storage/localStore';
 import { resolveRiskProfileYieldPreset, resolveStrategy } from '../../../core/usecases/strategy/compileStrategy';
 import { isEconomicScenarioGoverning } from '../../../core/usecases/scenario/economicScenarios';
 
@@ -76,7 +77,9 @@ type TabType = 'stocks' | 'pensions' | 'isa' | 'other';
 export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawParams, onChangeParams }) => {
   const params: SimulationParams = {
     ...rawParams,
-    userProfile: rawParams?.userProfile || { currentAge: 35, retirementAge: 60, expectancy: 90, targetMonthlySpending: 3000000 },
+    // 폴백은 앱이 새 시나리오에 넣는 값(initialParams)과 같아야 한다. 여기에 리터럴을
+    // 적어 두면 같은 "기본 프로필"의 정의가 둘이 되고, 둘이 조용히 어긋난다.
+    userProfile: rawParams?.userProfile || initialParams.userProfile,
     assets: rawParams?.assets || [],
     nationalPension: rawParams?.nationalPension || { expectedMonthlyAmount: 0 },
     privatePensions: rawParams?.privatePensions || [],

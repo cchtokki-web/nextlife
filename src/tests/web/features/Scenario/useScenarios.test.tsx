@@ -171,6 +171,45 @@ describe('useScenarios — 비로그인', () => {
     await waitFor(() => expect(result.current.isLoaded).toBe(true));
     expect(saveParams).not.toHaveBeenCalled();
   });
+
+  // 파일 불러오기는 예전에 `json.userProfile`의 존재만 확인하고 캐스팅해 넘겼다. 그래서
+  // 조작된 JSON의 expectancy: 1e9가 상태·엔진·저장소까지 그대로 들어갔고, 그 값은 오류
+  // 없이 10억 번 도는 루프가 된다. 다른 로드 경로와 같은 정제를 지나야 한다.
+  describe('importScenarioData', () => {
+    test('불러온 JSON의 범위 밖 나이를 정제해 저장한다', async () => {
+      signedOut();
+      const { result } = renderHook(() => useScenarios());
+      await waitFor(() => expect(result.current.isLoaded).toBe(true));
+      saveParams.mockClear();
+
+      await act(async () => {
+        await result.current.importScenarioData('local-default', {
+          ...initialParams,
+          userProfile: { ...initialParams.userProfile, expectancy: 1e9 },
+        });
+      });
+
+      // humanAge는 「보정」이 아니라 기본값 복귀다 — 120으로 깎아 두면 사용자가 넣은 적
+      // 없는 기대수명이 계획에 남는다(normalizeSimulationParams의 humanAge 주석).
+      expect(result.current.activeParams.userProfile.expectancy)
+        .toBe(initialParams.userProfile.expectancy);
+      expect(saveParams).toHaveBeenCalled();
+    });
+
+    test('시나리오 형태가 아닌 값을 넘겨도 기본값으로 복구해 저장한다', async () => {
+      signedOut();
+      const { result } = renderHook(() => useScenarios());
+      await waitFor(() => expect(result.current.isLoaded).toBe(true));
+
+      await act(async () => {
+        await result.current.importScenarioData('local-default', { userProfile: 'not-an-object' });
+      });
+
+      expect(result.current.activeParams.userProfile.currentAge)
+        .toBe(initialParams.userProfile.currentAge);
+      expect(Array.isArray(result.current.activeParams.assets)).toBe(true);
+    });
+  });
 });
 
 describe('useScenarios — 로그인', () => {

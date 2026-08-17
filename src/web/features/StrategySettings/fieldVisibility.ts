@@ -3,20 +3,18 @@ import { StrategyMode } from '../../../core/entities/types';
 // SimulationParams 안의 값을 가리키는 점 경로. diffDefaults가 같은 표기를 쓴다.
 export type FieldPath = string;
 
-export type SectionId = 'basic' | 'pension' | 'investment' | 'economic' | 'advanced';
+export type SectionId = 'pension' | 'investment' | 'economic' | 'advanced';
 
 // 섹션 → 그 섹션이 다루는 필드 경로. 한 경로는 정확히 한 섹션에만 속한다
 // (중복되면 변경 개수 배지가 이중 계산된다 — 테스트가 이를 막는다).
 //
-// **여기에 없는 축이 있다.** 은퇴 나이·목표 생활비·목표 상속자산은 「은퇴 목표」 카드
-// (RetirementInputFlow 3단계)가 유일한 편집 경로이고, 생활비 전략·목표 우선순위는 아무도
-// 고르지 않는 고정값이다(normalizeGoalDrivenParams). 이 패널에 다시 등록하면 같은 값을 두
-// 화면이 각자 편집하던 상태로 돌아간다 — 그것이 이 목록에서 goal 섹션을 걷어낸 이유다.
+// **여기에 없는 축이 있다.** 현재 나이·기대수명은 「개인정보」(RetirementInputFlow 1단계),
+// 은퇴 나이·목표 생활비·목표 상속자산은 「은퇴 목표」 카드(3단계)가 유일한 편집 경로이고,
+// 생활비 전략·목표 우선순위는 아무도 고르지 않는 고정값이다(normalizeGoalDrivenParams).
+// 이 패널에 다시 등록하면 같은 값을 두 화면이 각자 편집하던 상태로 돌아간다 — 그것이 이
+// 목록에서 goal 섹션과 basic 섹션을 걷어낸 이유다. fieldVisibility.test.ts의
+// INPUT_FLOW_FIELDS가 그 경로들이 다시 들어오지 못하게 막는다.
 export const SECTION_FIELDS: Record<SectionId, ReadonlyArray<FieldPath>> = {
-  basic: [
-    'userProfile.currentAge',
-    'userProfile.expectancy',
-  ],
   pension: [
     'strategy.nationalPensionStrategy',
     'strategy.privatePensionStrategy',
@@ -70,11 +68,9 @@ export const SECTION_FIELDS: Record<SectionId, ReadonlyArray<FieldPath>> = {
   ],
 };
 
-// 간편 모드에서 보이는 필드. 나이 2개 + 연금 전략 2개 + 배당 재투자.
+// 간편 모드에서 보이는 필드. 연금 전략 2개 + 배당 재투자.
 // "필수 입력만" 원칙의 예외는 배당 재투자 하나이며 근거는 아래 주석에 있다.
 const SIMPLE_FIELDS: ReadonlySet<FieldPath> = new Set([
-  'userProfile.currentAge',
-  'userProfile.expectancy',
   'strategy.nationalPensionStrategy',
   'strategy.privatePensionStrategy',
   // 배당 재투자는 "필수 입력"은 아니지만 여기 있어야 한다. AI 추천이 이 값을 자주 권하고

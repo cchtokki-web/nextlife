@@ -52,7 +52,6 @@ describe('StrategySettingsPanel', () => {
     test('간편 모드에서는 투자 전략·경제 가정·고급 설정이 없다', () => {
       const has = renderIn('simple');
 
-      expect(has('기본 정보')).toBe(true);
       expect(has('연금 전략')).toBe(true);
       expect(has('투자 전략')).toBe(false);
       expect(has('경제 가정')).toBe(false);
@@ -67,12 +66,14 @@ describe('StrategySettingsPanel', () => {
       expect(has('고급 설정')).toBe(false);
     });
 
-    // 「은퇴 목표」 섹션은 없다 — 그 축들은 「은퇴 목표」 카드가 유일한 편집 경로다.
-    test('전문가 모드에서는 5개 섹션이 모두 보인다', () => {
+    // 「기본 정보」·「은퇴 목표」 섹션은 없다 — 현재 나이·기대수명은 「개인정보」 단계가,
+    // 은퇴 나이·목표 생활비·상속 목표는 「은퇴 목표」 카드가 유일한 편집 경로다.
+    test('전문가 모드에서는 4개 섹션이 모두 보인다', () => {
       const has = renderIn('expert');
 
+      expect(has('기본 정보')).toBe(false);
       expect(has('은퇴 목표')).toBe(false);
-      for (const title of ['기본 정보', '연금 전략', '투자 전략', '경제 가정', '고급 설정']) {
+      for (const title of ['연금 전략', '투자 전략', '경제 가정', '고급 설정']) {
         expect(has(title), title).toBe(true);
       }
     });
@@ -99,12 +100,26 @@ describe('StrategySettingsPanel', () => {
   test('기본값과 다른 값이 있으면 해당 섹션에 변경 개수 배지가 표시된다', () => {
     const params = {
       ...initialParams,
-      userProfile: { ...initialParams.userProfile, currentAge: 42 },
+      strategy: { ...DEFAULT_RETIREMENT_STRATEGY, nationalPensionStrategy: 'defer_max' as const },
     };
 
     render(<StrategySettingsPanel params={params} onChangeParams={vi.fn()} {...noRecommendation} />);
 
     expect(screen.getByText('1개 변경')).toBeInTheDocument();
+  });
+
+  // 나이를 바꿔도 이 패널은 아무것도 세지 않는다. 세는 순간 「개인정보」 단계에서만
+  // 되돌릴 수 있는 배지가 패널에 붙어, 펼쳐도 지울 방법이 없는 상태가 된다.
+  test('개인정보 단계가 소유한 나이는 이 패널에 배지를 만들지 않는다', () => {
+    const params = {
+      ...initialParams,
+      userProfile: { ...initialParams.userProfile, currentAge: 42, expectancy: 95 },
+    };
+
+    render(<StrategySettingsPanel params={params} onChangeParams={vi.fn()} {...noRecommendation} />);
+
+    expect(screen.queryByText(/개 변경/)).not.toBeInTheDocument();
+    expect(screen.queryByTestId('hidden-section-notice')).not.toBeInTheDocument();
   });
 
   // 숨긴 섹션의 값도 계산에는 그대로 들어간다. 섹션을 통째로 없애면 그 사실을 알릴
@@ -586,8 +601,8 @@ describe('StrategySettingsPanel', () => {
         <StrategySettingsPanel params={initialParams} onChangeParams={vi.fn()} {...noRecommendation} />
       );
 
-      fireEvent.click(screen.getByRole('button', { name: /기본 정보/ }));
-      fireEvent.change(screen.getByLabelText('현재 나이'), { target: { value: '48' } });
+      fireEvent.click(screen.getByRole('button', { name: /연금 전략/ }));
+      fireEvent.click(screen.getByRole('radio', { name: /최대 연기/ }));
 
       expect(container.querySelectorAll('[data-highlighted]')).toHaveLength(1);
 

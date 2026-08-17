@@ -4,10 +4,28 @@ import {
 } from '@/web/features/StrategySettings/fieldVisibility';
 import { StrategyMode } from '@/core/entities/types';
 
-// 「은퇴 목표」 섹션은 없다. 그 축들은 「은퇴 목표」 카드가 유일한 편집 경로다
-// (normalizeGoalDrivenParams).
-const ALL_SECTIONS: SectionId[] = ['basic', 'pension', 'investment', 'economic', 'advanced'];
+// 「기본 정보」·「은퇴 목표」 섹션은 없다. 그 축들은 RetirementInputFlow의 각 단계가
+// 유일한 편집 경로다 (아래 INPUT_FLOW_FIELDS).
+const ALL_SECTIONS: SectionId[] = ['pension', 'investment', 'economic', 'advanced'];
 const ALL_MODES: StrategyMode[] = ['simple', 'standard', 'expert'];
+
+// 기본 흐름(RetirementInputFlow 1·2·3단계)이 편집하는 경로. 설정 패널에 등록되는 순간
+// 같은 값을 두 화면이 각자 편집하던 상태로 돌아간다.
+const INPUT_FLOW_FIELDS = [
+  // 1단계 개인정보
+  'userProfile.currentAge',
+  'userProfile.expectancy',
+  // 3단계 은퇴 목표와 그것이 정하는 축(normalizeGoalDrivenParams)
+  'userProfile.retirementAge',
+  'userProfile.targetMonthlySpending',
+  'userProfile.targetBequest',
+  'strategy.spendingChoice',
+  'strategy.objective',
+  'strategy.bequestStrategy',
+  'strategy.spendingShape',
+  'strategy.minMonthlySpending',
+  'strategy.bequestSafetyMarginRate',
+];
 
 describe('fieldVisibility', () => {
   test('모든 섹션에 필드 목록이 정의되어 있다', () => {
@@ -35,26 +53,22 @@ describe('fieldVisibility', () => {
     }
   });
 
-  test('간편 모드에서도 나이와 연금 전략은 보인다', () => {
-    expect(isFieldVisible('simple', 'userProfile.currentAge')).toBe(true);
-    expect(isFieldVisible('simple', 'userProfile.expectancy')).toBe(true);
+  test('간편 모드에서도 연금 전략은 보인다', () => {
     expect(isFieldVisible('simple', 'strategy.nationalPensionStrategy')).toBe(true);
+    expect(isFieldVisible('simple', 'strategy.privatePensionStrategy')).toBe(true);
   });
 
-  // 이 패널에 다시 등록하면 같은 값을 두 화면이 각자 편집하던 상태로 돌아간다.
-  test('목표가 정하는 축은 어떤 모드에서도 이 패널에 없다', () => {
-    const goalDriven = [
-      'userProfile.retirementAge',
-      'userProfile.targetMonthlySpending',
-      'userProfile.targetBequest',
-      'strategy.spendingChoice',
-      'strategy.objective',
-      'strategy.bequestStrategy',
-      'strategy.spendingShape',
-      'strategy.minMonthlySpending',
-      'strategy.bequestSafetyMarginRate',
-    ];
-    for (const path of goalDriven) {
+  // 등록 자체를 막는다. isFieldVisible만 보면 "등록은 됐는데 모든 모드에서 숨은" 상태를
+  // 통과시키는데, 그 상태에서는 변경 개수 배지가 세는 필드를 되돌릴 입력이 화면에 없다.
+  test('기본 흐름이 편집하는 경로는 설정 패널에 등록되지 않는다', () => {
+    const registered = new Set(ALL_SECTIONS.flatMap((s) => SECTION_FIELDS[s]));
+    for (const path of INPUT_FLOW_FIELDS) {
+      expect(registered.has(path), path).toBe(false);
+    }
+  });
+
+  test('기본 흐름이 편집하는 경로는 어떤 모드에서도 보이지 않는다', () => {
+    for (const path of INPUT_FLOW_FIELDS) {
       for (const mode of ALL_MODES) {
         expect(isFieldVisible(mode, path), `${path} @ ${mode}`).toBe(false);
       }
@@ -84,7 +98,6 @@ describe('fieldVisibility', () => {
 
   describe('isSectionVisible', () => {
     test('간편 모드에서는 투자·경제·고급 섹션이 통째로 숨는다', () => {
-      expect(isSectionVisible('simple', 'basic')).toBe(true);
       expect(isSectionVisible('simple', 'pension')).toBe(true);
       expect(isSectionVisible('simple', 'investment')).toBe(false);
       expect(isSectionVisible('simple', 'economic')).toBe(false);

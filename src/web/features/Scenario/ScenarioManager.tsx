@@ -131,8 +131,11 @@ export const ScenarioManager: React.FC<{ scenarioState: ScenarioState }> = ({ sc
     reader.onload = (event) => {
       try {
         const json = JSON.parse(event.target?.result as string);
+        // userProfile 유무는 "시나리오 파일이 맞는가"의 최소 판별일 뿐이다. 값의 정제는
+        // importScenarioData가 다른 로드 경로와 같은 migrateParams로 처리한다 — 여기서
+        // 캐스팅해 넘기면 조작된 JSON이 그대로 상태와 엔진까지 들어간다.
         if (json && typeof json === 'object' && json.userProfile) {
-          scenarioState.handleUpdateScenarioData(importTargetId, json);
+          scenarioState.importScenarioData(importTargetId, json);
           scenarioState.setActiveScenarioId(importTargetId);
           alert('시나리오 데이터를 성공적으로 불러왔습니다.');
         } else {
