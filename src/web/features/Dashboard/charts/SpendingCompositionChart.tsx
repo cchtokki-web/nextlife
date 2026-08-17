@@ -18,7 +18,7 @@ import styles from '../Dashboard.module.css';
 import { SimulationParams, SimulationResult } from '../../../../core/entities/types';
 import { computeMonthlySpendingComposition } from '../../../../core/usecases/MonthlySpendingComposition';
 import { formatValue, MultilineYAxisTick, RECHARTS_TOOLTIP_STYLE, Y_AXIS_WIDTH } from './chartFormatters';
-import { ChartLegend, type ChartLegendItem } from './ChartLegend';
+import { ChartLegend, legendColorOf, type ChartLegendItem } from './ChartLegend';
 import { ChartCaption } from './ChartCaption';
 
 interface SpendingCompositionChartProps {
@@ -80,10 +80,14 @@ export function SpendingCompositionTooltip({
         <span>목표 생활비</span>
         <strong>{formatValue(row.목표생활비, currency)}</strong>
       </div>
+      {/* 띠와 같은 색으로 말한다. 예전에는 「자산부족」 한 줄만 붉게 칠했는데, 그 색조차
+          범례(#EF4444)와 다른 값을 여기 적어 둔 것이었다. 색은 범례에서만 가져온다. */}
       {SOURCE_KEYS.filter((key) => row[key] > 0).map((key) => (
         <div key={key} style={{ display: 'flex', justifyContent: 'space-between', gap: 16 }}>
-          <span style={key === '자산부족' ? { color: '#F87171' } : undefined}>{key}</span>
-          <span style={key === '자산부족' ? { color: '#F87171' } : undefined}>{formatValue(row[key], currency)}</span>
+          <span style={{ color: legendColorOf(SPENDING_SOURCE_LEGEND, key) }}>{key}</span>
+          <span style={{ color: legendColorOf(SPENDING_SOURCE_LEGEND, key) }}>
+            {formatValue(row[key], currency)}
+          </span>
         </div>
       ))}
       {coverageRate !== null && (

@@ -11,6 +11,20 @@ export interface ChartLegendItem {
   shape?: 'area' | 'line' | 'dashed';
 }
 
+// 범례 항목의 색을 dataKey로 찾는다. **색의 출처는 범례 목록 하나다.**
+//
+// 툴팁이 색을 다시 적으면 범례·그래프·툴팁 세 곳이 각자의 색을 갖게 되고, 그 어긋남은 아무
+// 오류도 내지 않는다 — 사용자만 초록 띠와 보라 글자를 눈으로 이어야 한다.
+//
+// 목록에 없는 키에는 undefined를 준다(색 없음). 임의의 기본색을 돌려주면 범례에 없는 계열이
+// 있는 것처럼 보인다.
+export function legendColorOf(
+  items: readonly ChartLegendItem[],
+  dataKey: string,
+): string | undefined {
+  return items.find((item) => item.dataKey === dataKey)?.color;
+}
+
 interface ChartLegendProps {
   items: readonly ChartLegendItem[];
   hiddenKeys: Record<string, boolean>;
