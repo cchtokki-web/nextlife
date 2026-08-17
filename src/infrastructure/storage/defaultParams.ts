@@ -1,4 +1,5 @@
 import { SimulationParams } from '../../core/entities/types';
+import { DEFAULT_PLAN_HORIZON_AGE } from '../../core/usecases/planHorizon';
 
 // 새 시나리오의 기본값이자 «로드 실패 시의 안전한 바닥». normalizeSimulationParams가
 // 필드별 기본값을 여기서 읽으므로, localStore와 별도 모듈로 둔다 — 같은 파일에 두면
@@ -10,7 +11,7 @@ export const initialParams: SimulationParams = {
     // (normalizeGoalDrivenParams), 기본값을 다른 값으로 두면 새 시나리오가 만들어지자마자
     // 저장값과 계산값이 어긋난다.
     retirementAge: 65,
-    expectancy: 85,
+    expectancy: DEFAULT_PLAN_HORIZON_AGE,
     targetMonthlySpending: 3500000, // 350만 원 (통계청 50대 평균 소비지출 참고)
   },
   retirementGoals: [],

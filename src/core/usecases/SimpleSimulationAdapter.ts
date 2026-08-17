@@ -1,6 +1,7 @@
 import { SimulationParams, InvestmentAsset, UserProfile } from '../entities/types';
 import { v4 as uuidv4 } from 'uuid';
 import { resolveTaxSettings } from './tax/taxRates';
+import { DEFAULT_PLAN_HORIZON_AGE } from './planHorizon';
 
 export type InvestmentPropensity = 'conservative' | 'neutral' | 'aggressive';
 
@@ -27,7 +28,10 @@ export class SimpleSimulationAdapter {
     } = input;
 
     // 기본 가정치 설정
-    const expectancy = 100; // 기대 수명 100세
+    //
+    // 기대수명은 제품 전체가 쓰는 기본값을 그대로 쓴다. 여기에 따로 적어 두면 랜딩이
+    // 세운 계획과 시뮬레이터가 이어받는 계획이 서로 다른 기간을 뜻하게 된다.
+    const expectancy = DEFAULT_PLAN_HORIZON_AGE;
     const inflationRate = 2.0; // 연 물가상승률 2%
     const inflationMode = 'real'; // 실질가치 기준
     const baseExchangeRate = 1400; // 환율 무관 (KRW로만 계산)

@@ -392,6 +392,11 @@ export function SimpleSimulator() {
                           currentAge: input.currentAge || initialParams.userProfile.currentAge,
                           retirementAge: input.retirementAge || initialParams.userProfile.retirementAge,
                           targetMonthlySpending: input.targetMonthlySpending || initialParams.userProfile.targetMonthlySpending,
+                          // 방금 화면에 그린 계획이 몇 살까지의 것인지도 함께 넘긴다. 여기서
+                          // 빠뜨리면 시뮬레이터는 initialParams의 기대수명으로 계획을 다시
+                          // 세우는데, 두 값이 같은 지금은 티가 나지 않고 어댑터의 가정이
+                          // 바뀌는 순간에만 조용히 어긋난다.
+                          expectancy: adapted.userProfile.expectancy,
                         },
                         // 은퇴 나이는 «목표»로 옮겨 담는다. 시뮬레이터에서 그 축의 유일한 편집
                         // 경로가 「빠른 은퇴」 카드이고, 목표가 없으면 정규화가 국민연금 개시

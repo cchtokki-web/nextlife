@@ -171,14 +171,39 @@ describe('normalizeSimulationParams', () => {
       expect(result.userProfile.expectancy).toBe(initialParams.userProfile.expectancy);
     });
 
-    test('경계값 0과 120은 정상 입력이다', () => {
+    test('경계값 1과 120은 정상 입력이다', () => {
       const result = normalizeSimulationParams({
         ...structuredClone(initialParams),
-        userProfile: { ...initialParams.userProfile, currentAge: 0, expectancy: 120 },
+        userProfile: { ...initialParams.userProfile, currentAge: 1, expectancy: 120 },
       });
 
-      expect(result.userProfile.currentAge).toBe(0);
+      expect(result.userProfile.currentAge).toBe(1);
       expect(result.userProfile.expectancy).toBe(120);
+    });
+
+    // 0세 은퇴도 0세 기대수명도 뜻하는 바가 없다. 게다가 currentAge 0은 엔진의
+    // totalYears 가드(<= 0)를 통과해 0세부터 시작하는 계획이 조용히 돌아간다.
+    // 입력 경계(parseAge)와 목표 경계(normalizeTargetValue)가 이미 1을 쓴다.
+    test.each([
+      ['currentAge'],
+      ['retirementAge'],
+      ['expectancy'],
+    ] as const)('%s 0은 성립하지 않으므로 기본값으로 되돌린다', (key) => {
+      const result = normalizeSimulationParams({
+        ...structuredClone(initialParams),
+        userProfile: { ...initialParams.userProfile, [key]: 0 },
+      });
+
+      expect(result.userProfile[key]).toBe(initialParams.userProfile[key]);
+    });
+
+    test('음수도 기본값으로 되돌린다', () => {
+      const result = normalizeSimulationParams({
+        ...structuredClone(initialParams),
+        userProfile: { ...initialParams.userProfile, currentAge: -5 },
+      });
+
+      expect(result.userProfile.currentAge).toBe(initialParams.userProfile.currentAge);
     });
   });
 
