@@ -117,11 +117,9 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
     }
   };
 
-  // 간단히 보기에서 내리는 구성 계열. 예전에는 주식·연금 둘뿐이었고 ISA·현금은 남아 있었다.
-  // 총 자산액 곡선이 중앙값으로 바뀐 뒤로 그 둘만 남으면 부분(기준 수익률)과 전체(중앙값)가
-  // 기본 화면에서 다른 기준을 말한다 — 구성 계열은 상세보기에 모으고, 거기서는 두 기준이
-  // 다르다는 사실을 문구로 밝힌다(AssetGrowthChart의 BREAKDOWN_KEYS·BREAKDOWN_BASIS_NOTE와
-  // 같은 목록이라 범례와 그림이 어긋나지 않는다).
+  // 간단히 보기에서 내리는 구성 계열. AssetGrowthChart의 BREAKDOWN_KEYS와 «같은 목록»이어야
+  // 한다 — 범례는 그 목록으로 버튼을 빼고 그림은 이 오버레이로 선을 숨기므로, 어긋나면
+  // 눌러도 아무 일도 일어나지 않는 버튼이 생긴다.
   const assetChartHiddenKeys = showAssetBreakdown
     ? hiddenKeys
     : { ...hiddenKeys, 주식자산: true, 연금자산: true, ISA자산: true, 현금: true };

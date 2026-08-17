@@ -63,15 +63,17 @@ const COMPARE_COLORS = ['#10B981', '#F59E0B', '#EF4444', '#8B5CF6'];
 // 밝히지 않으면 사용자가 이 선을 "내 자산이 이렇게 흘러간다"로 읽는다.
 const MEDIAN_NOTE = '총 자산액 곡선은 시장 변동 시행에서 각 해의 중앙값이며, 한 사람의 실제 경로가 아닙니다.';
 
-// 구성 계열(주식/연금/ISA/현금)은 **기준 수익률 경로의 분해**라 총액과 기준이 다르다.
+// 구성 계열의 값이 «어떻게 나온 것인지». 합이 총액과 맞는다고 해서 그 값이 각 계열의
+// 중앙값인 것은 아니다 — 수준은 중앙값에서, 비율은 기준 수익률 경로에서 왔다. 밝히지 않으면
+// 사용자가 「연금 자산 7억」을 "연금의 중앙값"으로 읽는다.
 //
-// 구성별 중앙값을 따로 구해 맞추는 방법은 없다 — 분위수는 더하기가 되지 않아서, 각 계열의
-// 중앙값을 더해도 총액의 중앙값이 되지 않는다(각 해의 50% 지점이 계열마다 다른 시행에서
-// 온다). 그래서 맞추는 대신 **다르다고 말한다.** 상세보기에서만 붙인다: 구성 계열을 그리지
-// 않는 화면에서는 읽을 이유가 없는 문장이다.
-const BREAKDOWN_BASIS_NOTE = ' 구성 계열(주식·연금·ISA·현금)은 변동이 없다고 가정한 기준 수익률 경로라, 합계가 총 자산액과 일치하지 않습니다.';
+// 상세보기에서만 붙인다: 구성 계열을 그리지 않는 화면에서는 읽을 이유가 없는 문장이고,
+// 읽을 이유가 없는 문장은 나머지 문구의 신뢰까지 깎는다.
+const BREAKDOWN_BASIS_NOTE = ' 구성 계열(주식·연금·ISA·현금)은 그 해 중앙값 총액을 기준 수익률 경로의 구성비로 나눈 값입니다.';
 
-// 간단히 보기에서 내리는 구성 계열. 총액과 기준이 다른 선을 기본 화면에 두지 않는다.
+// 간단히 보기에서 내리는 구성 계열. 기본 화면은 총액과 생활비만 본다 — 넷은 토글로 낸다.
+// (예전에는 주식·연금만 내리고 ISA·현금은 남아 있었다. 점선 둘이 기본 화면에 남아 있을
+// 이유가 처음부터 없었고, 총액 기준이 바뀌면서 그 어긋남이 눈에 띄었다.)
 const BREAKDOWN_KEYS = ['주식자산', '연금자산', 'ISA자산', '현금'] as const;
 
 // 범례 표기. 아래 <Area>/<Line> 선언의 name/dataKey/stroke/strokeDasharray와 짝을 이룬다 —
@@ -98,8 +100,18 @@ export interface AssetChartData {
  * 안에서 두 기준이 섞이는데, 그 뒤섞임은 화면 어디에도 드러나지 않는다 — 한 해라도 비면
  * 곡선 전체를 기준 수익률로 되돌리는 편이 정직하다.
  *
- * 구성 계열(주식/연금/ISA/현금)과 비교 시나리오는 언제나 기준 수익률 경로다. 비교 대상
- * 시나리오는 몬테카를로를 돌리지 않으므로 중앙값 자체가 없다.
+ * **구성 계열은 총액에 맞춰 나눈다.** 총액만 중앙값으로 바꿨을 때 실제 화면에서 88세
+ * 「연금 자산 18억 1,040만원」이 「총 자산액(중앙값) 8억 1,488만원」 위에 서 있었다. 부분이
+ * 전체를 넘는 그림은 어떤 문구로도 설명되지 않는다.
+ *
+ * 계열별 중앙값을 따로 구하는 방법으로는 맞출 수 없다 — 분위수는 더하기가 되지 않아 각
+ * 계열의 중앙값을 더해도 총액의 중앙값이 되지 않는다(각 해의 50% 지점이 계열마다 다른
+ * 시행에서 온다). 그래서 «구성비»만 기준 수익률 경로에서 가져와 중앙값 총액에 적용한다.
+ * 비율은 실제 경로의 것이고 수준은 중앙값의 것이며, 그 사실을 차트가 문구로 밝힌다
+ * (BREAKDOWN_BASIS_NOTE).
+ *
+ * 비교 시나리오는 언제나 기준 수익률 경로다 — 비교 대상은 몬테카를로를 돌리지 않으므로
+ * 중앙값 자체가 없다.
  */
 export function buildAssetChartData(
   yearlyResults: SimulationResult['yearlyResults'],
@@ -111,17 +123,23 @@ export function buildAssetChartData(
     && yearlyResults.every((r) => bandByAge.has(r.age));
 
   const rows = yearlyResults.map((r) => {
+    const total = usesMedian ? bandByAge!.get(r.age)!.p50 : r.totalAssets;
+    // 기준 수익률 총액이 0인 해에는 나눌 구성비가 없다. 0으로 나누면 Infinity·NaN이
+    // 그대로 차트에 흘러 들어가 축이 깨진다.
+    const share = !usesMedian ? 1 : r.totalAssets > 0 ? total / r.totalAssets : 0;
+
     const dataPoint: Record<string, number> = {
       age: r.age,
-      자산총액: Math.max(0, Math.round(usesMedian ? bandByAge!.get(r.age)!.p50 : r.totalAssets)),
-      주식자산: Math.max(0, Math.round(r.stockAssets)),
-      연금자산: Math.max(0, Math.round(r.pensionAssets)),
+      자산총액: Math.max(0, Math.round(total)),
+      주식자산: Math.max(0, Math.round(r.stockAssets * share)),
+      연금자산: Math.max(0, Math.round(r.pensionAssets * share)),
       // ISA는 자산총액에는 들어 있는데 시리즈가 없어서, 주식+연금과 총액 사이가
       // 라벨 없는 공백으로 보였다.
-      ISA자산: Math.max(0, Math.round(r.isaAssets)),
+      ISA자산: Math.max(0, Math.round(r.isaAssets * share)),
       // 쓰고 남은 현금. 성장하지 않으므로 이 띠가 두꺼워진다는 것은 "굴리지 않고 쌓아 두는
       // 돈이 늘고 있다"는 뜻이다 — 자산 총액만 봐서는 보이지 않는 정보다.
-      현금: Math.max(0, Math.round(r.cashAssets)),
+      현금: Math.max(0, Math.round(r.cashAssets * share)),
+      // 생활비는 자산의 «부분»이 아니라 계획값이다(우측 축). 총액 기준과 무관하게 그대로 둔다.
       월생활비: Math.max(0, Math.round(r.spending / 12)),
     };
     compareResults.forEach((comp) => {

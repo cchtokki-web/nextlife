@@ -188,6 +188,53 @@ describe('AssetGrowthChart - 총 자산액 곡선의 기준', () => {
 
     expect(data.usesMedian).toBe(false);
     expect(data.rows[0]['자산총액']).toBe(500000000);
+    // 구성 계열도 손대지 않는다 — 총액과 같은 기준(기준 수익률 경로)이라 이미 합이 맞는다.
+    expect(data.rows[0]['주식자산']).toBe(200000000);
+    expect(data.rows[0]['연금자산']).toBe(300000000);
+  });
+
+  // **부분의 합이 전체와 맞아야 한다.** 총액만 중앙값으로 바꿨을 때 실제 화면에서
+  // 88세 「연금 자산 18억 1,040만원」이 「총 자산액(중앙값) 8억 1,488만원」 위에 서 있었다.
+  // 구성 계열이 기준 수익률 경로 그대로였기 때문이다.
+  //
+  // 계열별 중앙값을 따로 구해도 합은 맞지 않는다(분위수는 더하기가 되지 않는다). 그래서
+  // «구성비»만 기준 수익률 경로에서 가져와 중앙값 총액에 적용한다.
+  test('중앙값을 쓸 때 구성 계열도 그 총액에 맞춰 나눈다', () => {
+    const data = buildAssetChartData(result.yearlyResults, [], new Map(
+      monteCarlo.assetBands.map((b) => [b.age, b])
+    ));
+
+    // 기준 수익률 경로는 총 5억(주식 2억 + 연금 3억)이고 중앙값 총액은 2.5억이다.
+    // 구성비 40:60을 그대로 유지한 채 절반으로 줄어야 한다.
+    expect(data.rows[0]['주식자산']).toBe(100000000);
+    expect(data.rows[0]['연금자산']).toBe(150000000);
+  });
+
+  test('구성 계열의 합은 총 자산액과 같다', () => {
+    const data = buildAssetChartData(result.yearlyResults, [], new Map(
+      monteCarlo.assetBands.map((b) => [b.age, b])
+    ));
+
+    const row = data.rows[0];
+    const parts = row['주식자산'] + row['연금자산'] + row['ISA자산'] + row['현금'];
+    // 반올림 오차만 허용한다. 만원 단위로 표시되므로 화면에서는 보이지 않는 차이다.
+    expect(Math.abs(parts - row['자산총액'])).toBeLessThanOrEqual(4);
+  });
+
+  // 기준 수익률 경로의 총액이 0인 해에는 나눌 구성비가 없다. 0으로 나누면 Infinity·NaN이
+  // 차트에 그대로 흘러 들어가 축이 깨진다.
+  test('기준 수익률 총액이 0인 해는 구성 계열을 0으로 둔다', () => {
+    const depleted = [makeYearlyResult({
+      age: 60, totalAssets: 0, stockAssets: 0, pensionAssets: 0,
+    })];
+
+    const data = buildAssetChartData(depleted, [], new Map([
+      [60, { age: 60, p10: 0, p50: 30000000 }],
+    ]));
+
+    expect(data.rows[0]['주식자산']).toBe(0);
+    expect(data.rows[0]['연금자산']).toBe(0);
+    expect(Number.isFinite(data.rows[0]['자산총액'])).toBe(true);
   });
 
   // 해마다 기준이 갈리면 한 곡선 안에서 두 기준이 섞인다. 그럴 바에는 곡선 전체를
@@ -242,19 +289,18 @@ describe('AssetGrowthChart - 총 자산액 곡선의 기준', () => {
     expect(screen.getByRole('button', { name: /총 자산액 \(중앙값\)/ })).toBeInTheDocument();
   });
 
-  // 구성 계열(주식/연금/ISA/현금)은 기준 수익률 경로의 «분해»다. 중앙값과는 다른 기준이라
-  // 부분의 합이 총액과 맞지 않는다 — 화면에 두 기준이 함께 있는 이상 그 사실을 말해야 한다.
-  // 분위수는 더하기가 되지 않으므로 구성별 중앙값을 따로 구해도 합은 맞지 않는다.
-  test('상세에서는 구성 계열이 다른 기준임을 밝힌다', () => {
+  // 구성 계열의 값이 «어떻게 나온 것인지»를 밝힌다. 합이 맞는다고 해서 그 값이 각 계열의
+  // 중앙값인 것은 아니다 — 구성비는 기준 수익률 경로에서 왔다.
+  test('상세에서는 구성 계열을 어떻게 나눴는지 밝힌다', () => {
     renderChart({ showBreakdown: true });
 
-    expect(screen.getByText(/합계가 총 자산액과 일치하지 않습니다/)).toBeInTheDocument();
+    expect(screen.getByText(/기준 수익률 경로의 구성비/)).toBeInTheDocument();
   });
 
   test('간단히 보기에는 구성 계열 안내를 붙이지 않는다', () => {
     renderChart();
 
     // 구성 계열을 그리지 않는 화면에서 그 주의사항은 읽을 이유가 없는 문장이다.
-    expect(screen.queryByText(/합계가 총 자산액과 일치하지 않습니다/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/기준 수익률 경로의 구성비/)).not.toBeInTheDocument();
   });
 });
