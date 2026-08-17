@@ -27,6 +27,7 @@ import {
   PLAN_CONFIDENCE_BAND_TIER,
 } from '../../../core/usecases/dashboard/computePlanConfidence';
 import { explainGoalShortfall } from '../../../core/usecases/dashboard/explainGoalShortfall';
+import { resolveTerminalAssetDisplay } from '../../../core/usecases/dashboard/resolveTerminalAssetDisplay';
 import type { GoalSuccessConditions } from '../../../core/usecases/goals/goalSuccessConditions';
 import { retirementGoalDefinition } from '../RetirementGoals/goalCatalog';
 import { KeyLeversCard } from './recommendation/KeyLeversCard';
@@ -246,6 +247,9 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
       : currentGoalProbability !== undefined && currentGoalProbability < 0.9
         ? '시장 하락 시 생활비 목표를 유지할 여유 부족'
         : '현재 가정에서 발견된 중대한 위험 없음');
+  // 「N세 예상자산」이 어느 기준의 값인가. monteCarloForDisplay를 쓰므로 워커가 끝나기 전에는
+  // 자동으로 기준 수익률 경로로 되돌아간다.
+  const terminalAssetDisplay = resolveTerminalAssetDisplay(metrics.terminalAssets, monteCarloForDisplay);
   const appliedSentinelLabels = describeSentinelAxes(sentinels?.appliedFields ?? []);
 
   return (
@@ -275,11 +279,28 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
               <dt>{spendingBands.length > 0 ? '월 생활비 목표(평균)' : '월 생활비 목표'}</dt>
               <dd>{formatValue(metrics.targetSpending)}</dd>
             </div>
-            <div><dt>{params.userProfile.expectancy}세 예상자산</dt><dd>{formatValue(metrics.terminalAssets)}</dd></div>
+            {/* 기준을 라벨에 적는다. 이 카드의 확률과 실패 시행 수는 몬테카를로인데 이 칸만
+                결정론 1회 실행이던 때, 같은 계획의 두 숫자가 4배 넘게 벌어졌다(실측 11.44억
+                대 2.67억). 어느 기준을 쓸지는 resolveTerminalAssetDisplay가 정한다. */}
+            <div>
+              <dt>{`${params.userProfile.expectancy}세 예상자산(${
+                terminalAssetDisplay.basis === 'monte_carlo_median' ? '중앙값' : '기준 수익률'
+              })`}</dt>
+              <dd>{formatValue(terminalAssetDisplay.amount)}</dd>
+            </div>
           </dl>
+          {/* 자산 추이 차트는 흔들리지 않는 경로라 결정론 값에서 끝난다. 밝히지 않으면 KPI와
+              차트가 이유 없이 어긋난 채로 남는다. */}
+          {terminalAssetDisplay.trials !== null && (
+            <p className={styles.planFactNote} data-testid="terminal-asset-basis-note">
+              시장 변동을 {terminalAssetDisplay.trials.toLocaleString()}회 반영한 중앙값입니다.
+              변동이 없다고 가정한 기준 수익률 경로(자산 추이 차트의 곡선)에서는{' '}
+              {formatValue(terminalAssetDisplay.deterministicAmount)}입니다.
+            </p>
+          )}
           {/* 평균이라고만 하면 "그래서 나는 얼마를 쓰는가"에 답하지 못한다. 구간을 그대로 편다. */}
           {spendingBands.length > 0 && (
-            <p className={styles.spendingBandNote} data-testid="spending-band-note">
+            <p className={styles.planFactNote} data-testid="spending-band-note">
               연령대별 배분을 적용해 {spendingBands.map((band) => (
                 `${band.fromAge}~${band.toAge ?? params.userProfile.expectancy}세 ${formatValue(band.monthlyAmount)}`
               )).join(' · ')}으로 계산했습니다.

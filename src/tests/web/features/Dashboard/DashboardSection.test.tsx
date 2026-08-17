@@ -826,4 +826,55 @@ describe('DashboardSection - 현재 계획 진단', () => {
     expect(diagnosis().textContent).toContain('🟡');
     expect(diagnosis().textContent).not.toContain('🔴');
   });
+
+  // 이 카드의 확률과 실패 시행 수는 몬테카를로인데 「예상자산」만 결정론 1회 실행이었다.
+  // 두 값은 같은 계획에서도 크게 벌어진다(실측 11.44억 대 2.67억) — 사용자에게는 추천을
+  // 적용하면 자산이 반토막 나는 것처럼 읽혔다. 기준을 하나로 맞추고, 어느 기준인지 밝힌다.
+  const facts = () => within(diagnosis()).getByLabelText('현재 계획');
+
+  test('몬테카를로가 끝나면 예상자산은 중앙값을 쓴다', () => {
+    render(
+      <DashboardSection
+        params={params} result={result}
+        monteCarloStatus="done"
+        monteCarlo={{
+          ...monteCarloWith(0.67, 0.67),
+          endingAssets: { p10: 0, p50: 100_000_000, p90: 900_000_000 },
+        }}
+      />
+    );
+
+    // result.endingAssets는 5억이다. 그 값이 이 칸에 남아 있으면 기준이 섞인 상태 그대로다.
+    expect(within(facts()).getByText('90세 예상자산(중앙값)')).toBeInTheDocument();
+    expect(facts().textContent).toContain('1억원');
+    expect(facts().textContent).not.toContain('5억원');
+  });
+
+  test('중앙값을 쓸 때 기준 수익률 경로의 값을 함께 밝힌다', () => {
+    render(
+      <DashboardSection
+        params={params} result={result}
+        monteCarloStatus="done"
+        monteCarlo={{
+          ...monteCarloWith(0.67, 0.67),
+          endingAssets: { p10: 0, p50: 100_000_000, p90: 900_000_000 },
+        }}
+      />
+    );
+
+    // 자산 추이 차트는 흔들리지 않는 경로라 5억에서 끝난다. 밝히지 않으면 KPI와 차트가
+    // 이유 없이 어긋난 채로 남는다.
+    const note = screen.getByTestId('terminal-asset-basis-note');
+    expect(note.textContent).toContain('1,000회');
+    expect(note.textContent).toContain('5억원');
+  });
+
+  test('몬테카를로 전에는 기준 수익률 경로임을 밝히고 그 값을 쓴다', () => {
+    render(<DashboardSection params={params} result={result} monteCarloStatus="running" />);
+
+    // 칸을 비우면 계산이 실패한 것으로 읽힌다. 대신 무엇을 보고 있는지를 말한다.
+    expect(within(facts()).getByText('90세 예상자산(기준 수익률)')).toBeInTheDocument();
+    expect(facts().textContent).toContain('5억원');
+    expect(screen.queryByTestId('terminal-asset-basis-note')).not.toBeInTheDocument();
+  });
 });
