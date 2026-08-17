@@ -5,8 +5,45 @@ import { makeParams, makeRanked } from './strategyFieldFixtures';
 
 const labelsOf = (items: readonly { label: string }[]) => items.map((item) => item.label);
 
+describe('applyStrategyToParams — 생활비 배분', () => {
+  // 이 축은 오래 「반영할 수 없음」으로 남아 있었고, 그래서 카드가 곡선을 켜고 계산한
+  // 확률을 보여 준 뒤 적용하면 곡선 없는 계획이 저장됐다. 두 숫자가 어긋나던 원인이다.
+  test('후보의 생활비 배분이 계획의 소비 성향으로 반영된다', () => {
+    const params = makeParams();
+    const ranked = makeRanked({ spendingPattern: 'CARE_HEAVY' });
+
+    const result = applyStrategyToParams(params, ranked);
+
+    expect(result.skipped).toEqual([]);
+    expect(labelsOf(result.applied)).toContain('생활비 배분');
+    expect(resolveStrategy(result.params).spendingShape).toBe('care_heavy');
+  });
+
+  // 반영된 값이 컴파일까지 살아남아야 실제 계산이 달라진다. 저수준 곡선만 보고 판단하면
+  // compileStrategy가 전략에서 곡선을 다시 만들며 덮어쓴다.
+  test('반영한 소비 성향이 컴파일된 곡선까지 이어진다', () => {
+    const result = applyStrategyToParams(makeParams(), makeRanked({ spendingPattern: 'CARE_HEAVY' }));
+
+    const curve = compileStrategy(result.params).params.spendingCurve!;
+    expect(curve.multipliers[0]).toBeGreaterThan(curve.multipliers[curve.multipliers.length - 1]);
+  });
+
+  // 현재 계획이 이미 그 배분이면 바꿀 것이 없다. 예전에는 후보 값만 보고 판정해서,
+  // 이미 같은 값을 쓰는 계획에도 「연령대별 동일 기준 → …」이라는 변경점이 떴다.
+  test('현재 계획이 이미 같은 배분이면 변경점으로 세지 않는다', () => {
+    const params = makeParams({
+      strategy: { ...resolveStrategy(makeParams()), spendingShape: 'care_heavy' },
+    });
+
+    const result = applyStrategyToParams(params, makeRanked({ spendingPattern: 'CARE_HEAVY' }));
+
+    expect(labelsOf(result.applied)).not.toContain('생활비 배분');
+    expect(result.skipped).toEqual([]);
+  });
+});
+
 describe('applyStrategyToParams', () => {
-  test('여섯 축 중 반영 가능한 다섯 축을 적용하고 나머지 하나는 사유와 함께 남긴다', () => {
+  test('여섯 축을 모두 적용한다', () => {
     const params = makeParams({
       userProfile: { currentAge: 50, retirementAge: 60, expectancy: 90, targetMonthlySpending: 3_000_000 },
       yieldPreset: 'conservative',
@@ -24,15 +61,9 @@ describe('applyStrategyToParams', () => {
     const result = applyStrategyToParams(params, ranked);
 
     expect(labelsOf(result.applied)).toEqual([
-      '은퇴 시점', '국민연금', '월 생활비', '자산 인출', '투자 성향',
+      '은퇴 시점', '국민연금', '월 생활비', '자산 인출', '투자 성향', '생활비 배분',
     ]);
-    expect(result.skipped).toEqual([
-      {
-        key: 'spendingPattern',
-        label: '생활비 배분',
-        reason: '목표액 기준 계획에는 연령대별 생활비 곡선을 적용할 수 없습니다',
-      },
-    ]);
+    expect(result.skipped).toEqual([]);
     expect(result.params.userProfile.retirementAge).toBe(62);
     expect(result.params.userProfile.targetMonthlySpending).toBe(3_500_000);
     expect(result.params.withdrawalPlan?.nationalPensionStartAge).toBe(70);

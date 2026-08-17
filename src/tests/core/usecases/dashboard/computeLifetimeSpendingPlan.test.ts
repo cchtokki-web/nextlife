@@ -58,9 +58,9 @@ describe('computeLifetimeSpendingPlan', () => {
   });
 
   test('최소 생활비 경고는 기준액이 아니라 구간 최저액으로 판정한다', () => {
-    // 활동기 집중형에서 60대는 넉넉해도 80대가 최소선 아래로 내려갈 수 있다. 사용자가
-    // 걱정하는 것은 그 구간이므로, 기준액으로 판정하면 정작 문제인 경우를 놓친다.
-    // 기준액 500만 → 80대는 400만이다. 최소 생활비 450만이면 경고해야 한다.
+    // 뒤로 갈수록 덜 쓰는 곡선에서 60대는 넉넉해도 80대가 최소선 아래로 내려갈 수 있다.
+    // 사용자가 걱정하는 것은 그 구간이므로, 기준액으로 판정하면 정작 문제인 경우를 놓친다.
+    // 기준액 500만 → 80대는 배수 0.76이라 380만이다. 최소 생활비 450만이면 경고해야 한다.
     const withMinimum = params({
       spendingCurve: resolveSpendingCurve('front_loaded'),
       strategy: { ...DEFAULT_RETIREMENT_STRATEGY, minMonthlySpending: 4_500_000 },
@@ -68,7 +68,7 @@ describe('computeLifetimeSpendingPlan', () => {
 
     const plan = computeLifetimeSpendingPlan(withMinimum, resultWith(5_000_000));
 
-    expect(plan!.belowMinimum).toEqual({ minMonthlySpending: 4_500_000, lowestMonthly: 4_000_000 });
+    expect(plan!.belowMinimum).toEqual({ minMonthlySpending: 4_500_000, lowestMonthly: 3_800_000 });
   });
 
   test('모든 구간이 최소 생활비 이상이면 경고하지 않는다', () => {

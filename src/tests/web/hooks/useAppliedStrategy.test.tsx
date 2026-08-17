@@ -95,9 +95,10 @@ describe('useAppliedStrategy', () => {
       scenarioId: 'scenario-1',
       candidateId: 'candidate-1',
       label: '균형형',
-      skippedLabels: ['생활비 배분'],
+      skippedLabels: [],
     });
     expect(result.current.snapshot?.appliedLabels).toContain('은퇴 시점');
+    expect(result.current.snapshot?.appliedLabels).toContain('생활비 배분');
   });
 
   test('되돌리면 적용 직전 params로 복구하고 스냅샷을 지운다', () => {
@@ -173,9 +174,9 @@ describe('useAppliedStrategy', () => {
     const { result } = setup();
 
     expect(result.current.canApply(recommendation({ retirementAge: 63 }))).toBe(true);
-    // 생활비 배분만 다른 후보는 반영 경로가 없어 눌러도 아무 일이 일어나지 않는다.
+    // 여섯 축이 모두 현재 설정과 같은 후보(현상 유지)는 눌러도 바뀔 것이 없다.
     expect(result.current.canApply(recommendation({
-      retirementAge: 60, spendingPattern: 'FRONT_LOADED', targetMonthlySpending: 3_000_000,
+      retirementAge: 60, targetMonthlySpending: 3_000_000,
     }))).toBe(false);
   });
 

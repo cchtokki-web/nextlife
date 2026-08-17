@@ -36,7 +36,7 @@ function params(overrides: Partial<SimulationParams> = {}): SimulationParams {
   };
 }
 
-const FRONT_LOADED = resolveSpendingCurve('front_loaded')!; // 경계 [70,80], 배수 [1.2,1.0,0.8]
+const FRONT_LOADED = resolveSpendingCurve('front_loaded')!; // 경계 [70,80], 배수 [1,0.86,0.76]
 
 const spendingAt = (result: { yearlyResults: { age: number; spending: number }[] }, age: number) =>
   result.yearlyResults.find((y) => y.age === age)!.spending;
@@ -59,19 +59,19 @@ describe('SimulationEngine - 연령대별 생활비 곡선', () => {
     // 자산이 충분해 목표를 전 구간 충족하는 시나리오여야 배수비가 그대로 드러난다.
     expect(result.depletionAge).toBeNull();
 
-    const at65 = spendingAt(result, 65); // 배수 1.2
-    const at75 = spendingAt(result, 75); // 배수 1.0
-    const at85 = spendingAt(result, 85); // 배수 0.8
+    const at65 = spendingAt(result, 65); // 배수 1
+    const at75 = spendingAt(result, 75); // 배수 0.86
+    const at85 = spendingAt(result, 85); // 배수 0.76
 
-    expect(at65 / at75).toBeCloseTo(1.2, 5);
-    expect(at85 / at75).toBeCloseTo(0.8, 5);
+    expect(at75 / at65).toBeCloseTo(0.86, 5);
+    expect(at85 / at65).toBeCloseTo(0.76, 5);
   });
 
   test('경계 나이는 다음 구간의 첫 해다', () => {
     const result = engine.run(params({ spendingCurve: FRONT_LOADED }));
 
-    expect(spendingAt(result, 69) / spendingAt(result, 70)).toBeCloseTo(1.2, 5);
-    expect(spendingAt(result, 80) / spendingAt(result, 79)).toBeCloseTo(0.8, 5);
+    expect(spendingAt(result, 70) / spendingAt(result, 69)).toBeCloseTo(0.86, 5);
+    expect(spendingAt(result, 80) / spendingAt(result, 79)).toBeCloseTo(0.76 / 0.86, 5);
   });
 
   test('곡선은 은퇴 후에만 적용된다', () => {
@@ -138,19 +138,21 @@ describe('max_sustainable 역산과 곡선의 공존', () => {
     expect(high.calculatedTargetSpending!).toBeLessThan(low.calculatedTargetSpending!);
   });
 
-  test('활동기 집중형은 균등형보다 기준액이 낮게 역산된다', () => {
-    // 같은 자산으로 앞을 더 쓰려면 기준액을 낮춰야 한다 — 곡선이 "공짜로 더 쓰는 수단"이
-    // 아니라 배분의 재조정임을 고정한다.
+  test('뒤로 갈수록 덜 쓰는 곡선은 균등형보다 기준액이 높게 역산된다', () => {
+    // 곡선이 "공짜로 더 쓰는 수단"이 아니라 배분의 재조정임을 고정한다. 통계 곡선은
+    // 70대 0.86·80대 0.76이라 총 지출이 균등형보다 적고, 그만큼 은퇴 «직후» 기준액을
+    // 더 잡을 수 있다. 방향이 뒤집힌 것은 배수가 통계 기반으로 바뀌었기 때문이다
+    // (예전 [1.2,1.0,0.8]은 앞을 더 써서 기준액이 낮아졌다).
     const flat = engine.run(params({ spendingStrategy: 'max_sustainable' }));
     const front = engine.run(params({ spendingStrategy: 'max_sustainable', spendingCurve: FRONT_LOADED }));
 
-    expect(front.calculatedTargetSpending!).toBeLessThan(flat.calculatedTargetSpending!);
+    expect(front.calculatedTargetSpending!).toBeGreaterThan(flat.calculatedTargetSpending!);
   });
 });
 
 describe('채점 분모와 차트 목표선이 같은 곡선을 본다', () => {
   test('곡선 구간을 모두 충족한 계획은 소비 효용이 만점이다', () => {
-    // UtilityEngine의 targetAnnualSpendingForYear에 곡선을 곱하지 않으면, 배수 0.8 구간이
+    // UtilityEngine의 targetAnnualSpendingForYear에 곡선을 곱하지 않으면, 배수 0.76 구간이
     // "목표 초과 소비"로 읽혀 만점이 나오지 않거나(clamp 전) 결손이 감춰진다.
     const withCurve = params({ spendingCurve: FRONT_LOADED });
     const result = engine.run(withCurve);

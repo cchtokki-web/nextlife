@@ -13,6 +13,7 @@ import {
 import { makeYearlyResult as sharedYearlyResult } from '@/tests/fixtures/yearlyResult';
 import { DEFAULT_RETIREMENT_STRATEGY } from '@/core/usecases/strategy/compileStrategy';
 import { NO_GOAL_FAILURE, LEGACY_GOAL_CONDITIONS } from '@/tests/fixtures/goalFailure';
+import { resolveSpendingCurve } from '@/core/usecases/spending/spendingCurve';
 
 vi.mock('next-auth/react', () => ({
   useSession: () => ({ data: null }),
@@ -304,6 +305,38 @@ describe('DashboardSection - 자동 반영된 설정 표기', () => {
 // 있는가"를 계산해 calculatedTargetSpending에 담는다. 그런데 배너 조건이
 // spendingStrategy === 'max_sustainable'로 묶여 있어, 고정 생활비로 계획한 사용자는
 // 상속 목표가 0원인데 수억을 남기거나 반대로 자산이 고갈되는데도 아무 말을 듣지 못했다.
+// 「생활비 배분」을 고르면 목표 생활비가 나이대별로 달라지는데, 진단 카드는 그 평균을
+// 보여준다(SimulationMetricsCalculator의 average(goalMonthly)). 밝히지 않으면 사용자가
+// 목표 단계에서 입력한 300만원과 다른 숫자가 이유 없이 서 있게 된다.
+describe('DashboardSection - 연령대별 생활비 배분 공개', () => {
+  const curved: SimulationParams = { ...params, spendingCurve: resolveSpendingCurve('care_heavy') };
+
+  test('곡선이 있으면 월 생활비 목표가 평균임을 밝힌다', () => {
+    render(<DashboardSection params={curved} result={result} />);
+
+    expect(within(screen.getByLabelText('현재 계획')).getByText('월 생활비 목표(평균)'))
+      .toBeInTheDocument();
+  });
+
+  test('연령대별 금액을 구간으로 나열한다', () => {
+    render(<DashboardSection params={curved} result={result} />);
+
+    // 은퇴 60세·기대수명 90세, 완만한 감소형(1 / 0.93 / 0.88), 기준 300만원.
+    const note = screen.getByTestId('spending-band-note');
+    expect(note).toHaveTextContent('60~69세');
+    expect(note).toHaveTextContent('300만원');
+    expect(note).toHaveTextContent('80~90세');
+    expect(note).toHaveTextContent('264만원');
+  });
+
+  test('곡선이 없으면 평균이라고 하지도, 구간을 나열하지도 않는다', () => {
+    render(<DashboardSection params={params} result={result} />);
+
+    expect(planFact('월 생활비 목표')).toBeTruthy();
+    expect(screen.queryByTestId('spending-band-note')).not.toBeInTheDocument();
+  });
+});
+
 describe('DashboardSection - 지속가능 생활비 제안 배너', () => {
   test('지속가능 생활비는 목표액과 분리해 엔진 역산액을 표시한다', () => {
     const tightResult: SimulationResult = { ...result, calculatedTargetSpending: 2160000 };

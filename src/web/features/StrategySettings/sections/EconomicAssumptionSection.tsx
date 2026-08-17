@@ -194,6 +194,17 @@ export function EconomicAssumptionSection({ params, onChangeParams, mode, change
         />
       )}
 
+      {/* 이중 계상 경고. 「생활비 배분」의 근거인 국민연금 적정생활비에는 보건의료비가 이미
+          포함되어 있다(지출 비중 3위). 그 금액을 참고해 목표를 잡은 사용자가 이 항목까지 켜면
+          같은 돈이 두 번 나간다 — 계산은 정직하지만 결과는 실제보다 비관적이 된다. 끄라고
+          하지는 않는다: 목표를 자기 지출 실적으로 잡았다면 이 항목이 맞다. */}
+      {healthcareEnabled && isFieldVisible(mode, 'healthcare.enabled') && (
+        <p className="text-xs leading-relaxed text-amber-400/90">
+          목표 월 생활비를 국민연금 적정생활비 같은 통계로 정했다면 그 안에 이미 보건의료비가
+          들어 있습니다. 이 항목을 함께 켜면 의료비가 두 번 계산됩니다.
+        </p>
+      )}
+
       {healthcareEnabled && (
         <>
           <div className="grid grid-cols-2 items-end gap-3.5 sm:gap-4">

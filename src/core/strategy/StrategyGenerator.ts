@@ -1,4 +1,4 @@
-import type { AccountWithdrawalPolicy, SpendingCurve } from '../entities/types';
+import type { AccountWithdrawalPolicy, SpendingCurve, SpendingShapePreset } from '../entities/types';
 import type {
   AccountProjection,
   RetirementGoals,
@@ -16,6 +16,19 @@ import { YIELD_PRESET_RATES } from '../usecases/scenario/applyYieldPreset';
 
 export type NationalPensionTiming = 'EARLY' | 'NORMAL' | 'DEFERRED';
 export type SpendingPattern = 'FIXED' | 'FRONT_LOADED' | 'CARE_HEAVY';
+
+/**
+ * 격자 축의 소비 패턴 ↔ 계획에 저장되는 소비 성향. **양쪽이 같은 표를 봐야 한다.**
+ *
+ * 후보를 만들 때(spendingCandidates)와 추천을 계획에 반영할 때(strategyFieldMap)가 각자
+ * 매핑을 적으면, 후보는 care_heavy로 채점되고 반영은 front_loaded로 되는 어긋남이 조용히
+ * 생긴다. 그 어긋남은 확률이 재현되지 않는 것으로만 드러나 원인을 짚기 어렵다.
+ */
+export const SPENDING_SHAPE_BY_PATTERN: Record<SpendingPattern, SpendingShapePreset> = {
+  FIXED: 'flat',
+  FRONT_LOADED: 'front_loaded',
+  CARE_HEAVY: 'care_heavy',
+};
 export type AssetAllocationPreset = 'CONSERVATIVE' | 'BALANCED' | 'GROWTH';
 
 /**
@@ -294,11 +307,9 @@ export class StrategyGenerator {
       ...(accountClassCount >= 2 ? ['TAX_OPTIMIZED' as const] : []),
     ];
 
-    const spendingCandidates: SpendingCandidate[] = [
-      { label: 'FIXED' },
-      { label: 'FRONT_LOADED', curve: resolveSpendingCurve('front_loaded') },
-      { label: 'CARE_HEAVY', curve: resolveSpendingCurve('care_heavy') },
-    ];
+    const spendingCandidates: SpendingCandidate[] = (
+      Object.keys(SPENDING_SHAPE_BY_PATTERN) as SpendingPattern[]
+    ).map((label) => ({ label, curve: resolveSpendingCurve(SPENDING_SHAPE_BY_PATTERN[label]) }));
     const hasMarketAccount = profile.assets.length > 0 || hasPrivatePension;
     const allocations: AllocationCandidate[] = hasMarketAccount
       ? [

@@ -3,10 +3,12 @@ import type {
   NationalPensionStrategy,
   RiskProfile,
   SimulationParams,
+  SpendingShapePreset,
 } from '../../entities/types';
 import type { RetirementGoalType } from '../../entities/retirementGoal';
 import { normalizeRetirementGoals } from '../../entities/retirementGoal';
 import type { RankedStrategyCandidate } from '../../strategy/StrategyOptimizer';
+import { SPENDING_SHAPE_BY_PATTERN, type SpendingPattern } from '../../strategy/StrategyGenerator';
 import { NATIONAL_PENSION_STRATEGY_AGES, resolveStrategy } from '../strategy/compileStrategy';
 import { applyRetirementGoals } from '../goals/retirementGoalAdapter';
 import { NATIONAL_PENSION_NORMAL_START_AGE } from '../pension/nationalPensionRules';
@@ -37,10 +39,13 @@ const ALLOCATION_LABELS = {
   GROWTH: '성장형 자산배분',
 } as const;
 
+// 「생활비 전략」 섹션의 SPENDING_SHAPE_OPTIONS와 같은 것을 가리키는 이름이어야 한다 —
+// 카드가 「통계 기준으로 감소」라고 말했는데 설정 화면에 그 이름이 없으면 사용자는 방금
+// 적용한 것을 되돌릴 항목을 찾지 못한다.
 const SPENDING_LABELS = {
   FIXED: '생활비를 일정하게 유지',
-  FRONT_LOADED: '은퇴 초기에 생활비를 더 사용',
-  CARE_HEAVY: '후기 의료·돌봄 지출에 대비',
+  FRONT_LOADED: '통계 기준으로 감소',
+  CARE_HEAVY: '완만하게 감소',
 } as const;
 
 /**
@@ -285,24 +290,41 @@ export const STRATEGY_FIELD_MAP: readonly StrategyFieldSpec[] = [
   {
     key: 'spendingPattern',
     label: '생활비 배분',
-    // 이 축만 현재 설정을 보지 않고 후보의 값만 본다. 의도된 현행 동작이다 —
-    // 판정 기준을 바꾸면 화면과 PDF 리포트의 문구가 함께 움직인다.
-    differs: (_params, ranked) => ranked.candidate.dimensions.spendingPattern !== 'FIXED',
-    describe: (_params, ranked) => ({
-      before: '연령대별 동일 기준',
+    // 다른 축과 같이 «현재 설정»과 비교한다. 예전에는 후보 값만 보고 'FIXED'가 아니면
+    // 무조건 변경으로 셌는데, 그때는 반영 경로가 없어 현재 설정이 언제나 곡선 없음이었기
+    // 때문이다. 이제 계획이 곡선을 가질 수 있으므로 같은 배분을 쓰는 계획에 「연령대별
+    // 동일 기준 → …」이라는 없는 변경점이 뜨면 안 된다.
+    differs: (params, ranked) => currentShape(params) !== candidateShape(ranked),
+    describe: (params, ranked) => ({
+      before: SPENDING_LABELS[patternOf(currentShape(params))],
       after: SPENDING_LABELS[ranked.candidate.dimensions.spendingPattern],
     }),
-    // 반영 경로가 막혀 있다. compileStrategy는 생활비 모드가 '최대 지속가능'일 때만 곡선을
-    // 만드는데(그 밖에는 spendingCurve 키를 지운다), 추천 후보는 전부 '목표액' 모드로
-    // 고정 생성된다. 곡선을 살리려고 모드를 바꾸면 추천의 목표 생활비가 무시되므로 두
-    // 요구가 정면으로 충돌한다. 계산 경로를 넓히는 것은 기존 저장 시나리오의 결과를
-    // 바꾸는 일이라 별도 작업으로 둔다.
-    apply: () => ({
-      applied: false,
-      reason: '목표액 기준 계획에는 연령대별 생활비 곡선을 적용할 수 없습니다',
+    // 소비 성향은 전략 축이므로 저수준 spendingCurve가 아니라 strategy.spendingShape에
+    // 써야 한다. 곡선만 써 넣으면 compileStrategy가 전략에서 곡선을 다시 만들며 덮어쓴다
+    // (nationalPensionStrategy·riskProfile이 같은 이유로 전략 축에 쓰는 것과 같다).
+    apply: (params, ranked) => ({
+      applied: true,
+      params: withStrategy(params, { spendingShape: candidateShape(ranked) }),
     }),
   },
 ];
+
+function currentShape(params: SimulationParams): SpendingShapePreset {
+  return resolveStrategy(params).spendingShape ?? 'flat';
+}
+
+function candidateShape(ranked: RankedStrategyCandidate): SpendingShapePreset {
+  return SPENDING_SHAPE_BY_PATTERN[ranked.candidate.dimensions.spendingPattern];
+}
+
+/** 소비 성향 → 격자 축 라벨. SPENDING_LABELS를 현재 설정 쪽에도 쓰기 위한 역방향이다. */
+function patternOf(shape: SpendingShapePreset): SpendingPattern {
+  const found = (Object.keys(SPENDING_SHAPE_BY_PATTERN) as SpendingPattern[])
+    .find((pattern) => SPENDING_SHAPE_BY_PATTERN[pattern] === shape);
+  // 표가 SpendingShapePreset 전체를 덮으므로 도달하지 않는다. 손상된 시나리오의 알 수 없는
+  // 값이 여기 오면 「일정하게 유지」로 읽어 두는 편이 화면이 비는 것보다 낫다.
+  return found ?? 'FIXED';
+}
 
 function currentPensionAge(params: SimulationParams): number {
   return params.withdrawalPlan?.nationalPensionStartAge ?? NATIONAL_PENSION_NORMAL_START_AGE;

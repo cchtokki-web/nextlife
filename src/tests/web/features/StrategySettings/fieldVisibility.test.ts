@@ -6,7 +6,7 @@ import { StrategyMode } from '@/core/entities/types';
 
 // 「기본 정보」·「은퇴 목표」 섹션은 없다. 그 축들은 RetirementInputFlow의 각 단계가
 // 유일한 편집 경로다 (아래 INPUT_FLOW_FIELDS).
-const ALL_SECTIONS: SectionId[] = ['pension', 'investment', 'economic', 'advanced'];
+const ALL_SECTIONS: SectionId[] = ['spending', 'pension', 'investment', 'economic', 'advanced'];
 const ALL_MODES: StrategyMode[] = ['simple', 'standard', 'expert'];
 
 // 기본 흐름(RetirementInputFlow 1·2·3단계)이 편집하는 경로. 설정 패널에 등록되는 순간
@@ -22,9 +22,11 @@ const INPUT_FLOW_FIELDS = [
   'strategy.spendingChoice',
   'strategy.objective',
   'strategy.bequestStrategy',
-  'strategy.spendingShape',
   'strategy.minMonthlySpending',
   'strategy.bequestSafetyMarginRate',
+  // strategy.spendingShape는 이 목록에서 빠졌다. 추천이 반영하는 축이 되면서 되돌릴
+  // 컨트롤이 필요해졌고, 그래서 ‹생활비 전략› 섹션이 소유한다. 다시 여기로 옮기려면
+  // normalizeGoalDrivenParams가 그 값을 눌러쓰는 것부터 되살려야 한다.
 ];
 
 describe('fieldVisibility', () => {
@@ -50,6 +52,15 @@ describe('fieldVisibility', () => {
   test('간편 모드에서는 고급 설정 필드가 보이지 않는다', () => {
     for (const path of SECTION_FIELDS.advanced) {
       expect(isFieldVisible('simple', path), `${path}`).toBe(false);
+    }
+  });
+
+  // 추천이 이 축을 실제로 반영하므로(strategyFieldMap의 spendingPattern) 되돌릴 컨트롤이
+  // 화면에 있어야 한다. assets.reinvestDividend를 간편 모드에 남긴 것과 같은 이유이며,
+  // 숨기면 화면에 없는 값이 생활비 곡선을 움직이던 예전 상태로 돌아간다.
+  test('생활비 배분은 어떤 모드에서도 보인다', () => {
+    for (const mode of ALL_MODES) {
+      expect(isFieldVisible(mode, 'strategy.spendingShape'), mode).toBe(true);
     }
   });
 

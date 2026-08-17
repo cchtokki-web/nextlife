@@ -396,9 +396,15 @@ export function compileStrategy(params: SimulationParams): CompiledStrategy {
     : inheritanceAssetFloor;
   // 'flat'·미지정이면 undefined다 — 그때는 아래에서 키 자체를 지워, 곡선을 설정한 적 없는
   // 시나리오가 곡선 코드 경로를 아예 타지 않게 한다.
-  const spendingCurve = lifetimeOptimization
-    ? resolveSpendingCurve(strategy.spendingShape)
-    : undefined;
+  //
+  // **생활비 모드를 따지지 않는다.** 예전에는 max_sustainable에서만 곡선을 만들었는데,
+  // 목표 기반 계획은 언제나 'target'이라 추천이 고른 「생활비 배분」이 계산에 닿지 못했다.
+  // 그 결과 카드는 곡선을 켠 확률을 보여 주고 적용하면 곡선 없는 계획이 저장됐다.
+  //
+  // 예전 조건의 근거였던 「화면에 없는 값이 계산을 움직인다」는 위험은 축을 「고급 / 전문가
+  // 설정」의 ‹생활비 전략› 섹션에 노출해 해소했다 — 이제 이 값은 화면에서 보이고 되돌릴 수
+  // 있다. 노출을 걷어내면 그 위험이 그대로 돌아오므로 두 변경은 함께 움직여야 한다.
+  const spendingCurve = resolveSpendingCurve(strategy.spendingShape);
 
   // 경제 시나리오 → 리스크 성향 순으로 적용한다. 둘 다 수익률을 건드리므로
   // 순서가 결과를 결정한다: 시나리오는 물가·환율을, 리스크 성향은 수익률을 지배한다.
