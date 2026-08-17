@@ -5,6 +5,7 @@ import type { OptimizationOutcome } from '../../../../core/strategy/StrategyOpti
 // 「달라지는 점」 문구는 core가 소유한다 — PDF 리포트가 같은 함수를 쓴다.
 import { describeStrategyChanges } from '../../../../core/usecases/dashboard/describeStrategyChanges';
 import { improvesOnCurrentPlan, type CandidateRecommendation } from '../../../../core/recommendation/RecommendationEngine';
+import type { StrategyApplyPreview } from '../../../../core/usecases/dashboard/applyStrategyToParams';
 import type { SustainableSpendingAdvice } from '../../../../core/usecases/dashboard/computeSustainableSpendingAdvice';
 import type { StrategyOptimizationStatus } from '../../../hooks/useStrategyOptimization';
 import type { AppliedStrategySnapshot } from '../../../hooks/useAppliedStrategy';
@@ -55,14 +56,27 @@ interface StrategyRecommendationCardsProps {
    * 추천 전략을 사용자의 시나리오 설정에 반영한다. 없으면 적용 액션 자체를 내지 않는다 —
    * 설정을 바꿀 수 없는 읽기 전용 문맥을 위한 여지다(PDF 리포트는 이 컴포넌트가 아니라
    * pdfReportSections가 따로 그리며, 공유하는 것은 describeStrategyChanges뿐이다).
+   *
+   * previewStrategyApply와 같은 이유로 서술 기준 params를 함께 넘긴다 — 반영 대상을 사용자
+   * 설정만으로 고르면 카드가 말한 축이 반영에서 빠질 수 있다.
    */
-  onApplyStrategy?: (recommendation: CandidateRecommendation) => void;
+  onApplyStrategy?: (
+    recommendation: CandidateRecommendation,
+    simulatedParams: SimulationParams,
+  ) => void;
   /**
-   * 지금 적용하면 실제로 바뀌는 설정이 있는가. 아래 「달라지는 점」의 개수로 대신 세면 안
-   * 된다 — 그 목록은 센티널이 채운 계산용 params 기준이고, 적용 대상은 사용자가 입력한
-   * 설정이라 국민연금·투자 성향 축에서 두 판정이 엇갈린다.
+   * 지금 적용하면 무슨 일이 일어나는가 — 버튼을 열지 여부와, 「달라지는 점」에 적지 않았지만
+   * 함께 확정될 축.
+   *
+   * 「달라지는 점」의 «개수»로 대신 세면 안 된다 — 목록은 센티널이 채운 계산용 params
+   * 기준이고 적용 대상은 사용자가 입력한 설정이라, 국민연금처럼 센티널이 채우는 축에서 두
+   * 판정이 엇갈린다. 그래서 판정은 호출자에게 맡기되, 카드가 서술에 쓴 params(아래 `params`)를
+   * 함께 넘겨 호출자가 «같은 기준»으로 대조하게 한다.
    */
-  canApplyStrategy?: (recommendation: CandidateRecommendation) => boolean;
+  previewStrategyApply?: (
+    recommendation: CandidateRecommendation,
+    simulatedParams: SimulationParams,
+  ) => StrategyApplyPreview;
   /**
    * 방금 적용한 전략. 그 후보의 카드는 적용 버튼 대신 「적용 해제」를 낸다.
    *
@@ -81,6 +95,7 @@ interface StrategyRecommendationCardsProps {
 
 interface StrategyApplyActionProps {
   recommendation: CandidateRecommendation;
+  /** 서술 기준 params는 카드가 이미 채워 넘긴다 — 액션은 그대로 부르기만 한다. */
   onApply: (recommendation: CandidateRecommendation) => void;
   canApply: boolean;
   /** 카드가 「달라지는 점」을 하나라도 보여주고 있는가. 비활성 문구를 고르는 데만 쓴다. */
@@ -338,7 +353,7 @@ function RecommendationBody({
   params,
   formatValue,
   onApplyStrategy,
-  canApplyStrategy,
+  previewStrategyApply,
   appliedStrategy,
   onUndoStrategy,
 }: StrategyRecommendationCardsProps) {
@@ -449,6 +464,13 @@ function RecommendationBody({
           // 적용하지 않았으면 어떤 카드도 강조하지 않는다 — 강조된 카드가 늘 하나 있으면
           // 사용자는 그것을 "이미 골라 둔 것"으로 읽는다.
           const applied = candidate.candidate.id === appliedStrategy?.candidateId;
+          // 버튼 활성화와 예고 문구는 «한 번의» 판정에서 나온다. 두 번 물으면 "확정됩니다"만
+          // 뜨고 버튼은 잠긴 카드가 생길 수 있다.
+          //
+          // 판정자가 없는 읽기 전용 문맥에서는 카드가 아는 것만으로 폴백한다 — 그 문맥에는
+          // 반영 대상 자체가 없으므로 예고할 축도 없다.
+          const preview = previewStrategyApply?.(recommendation, params)
+            ?? { canApply: changes.length > 0, pinned: [] };
           return (
             <article
               key={candidate.candidate.id}
@@ -505,13 +527,23 @@ function RecommendationBody({
                 ) : (
                   <p>핵심 설정은 유지하고 시장 변동 안정성만 재검증한 전략입니다.</p>
                 )}
+                {/* 위 목록이 "이것만 바뀐다"는 약속으로 읽히지 않게, 함께 확정될 축을 누르기
+                    «전»에 말한다. 적용 후의 알림에만 있으면 사용자는 되돌리기로만 알게 된다.
+                    버튼이 잠긴 카드에서는 일어날 일 자체가 없으므로 내지 않는다. */}
+                {preview.canApply && preview.pinned.length > 0 && (
+                  <p className={styles.strategyPinNote}>
+                    적용하면 NextLife가 자동으로 고른{' '}
+                    {preview.pinned.map((field) => field.label).join(', ')}이(가) 지금 값 그대로
+                    설정에 함께 확정됩니다.
+                  </p>
+                )}
               </div>
 
               {onApplyStrategy && (
                 <StrategyApplyAction
                   recommendation={recommendation}
-                  onApply={onApplyStrategy}
-                  canApply={canApplyStrategy?.(recommendation) ?? changes.length > 0}
+                  onApply={(item) => onApplyStrategy(item, params)}
+                  canApply={preview.canApply}
                   hasDescribedChanges={changes.length > 0}
                   applied={applied}
                   onUndo={onUndoStrategy}

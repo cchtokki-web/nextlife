@@ -4,6 +4,7 @@ import type { SimulationParams } from '@/core/entities/types';
 import type { CandidateRecommendation, ValidatedStrategyCandidate } from '@/core/recommendation/RecommendationEngine';
 import { DEFAULT_UTILITY_CONFIG } from '@/core/usecases/utility/utilityWeights';
 import { describeStrategyChanges } from '@/core/usecases/dashboard/describeStrategyChanges';
+import { previewStrategyApply } from '@/core/usecases/dashboard/applyStrategyToParams';
 import { StrategyRecommendationCards } from '@/web/features/Dashboard/recommendation/StrategyRecommendationCards';
 
 const params: SimulationParams = {
@@ -329,7 +330,7 @@ describe('StrategyRecommendationCards 목표 도달 불가', () => {
         params={params}
         formatValue={formatValue}
         onApplyStrategy={vi.fn()}
-        canApplyStrategy={() => true}
+        previewStrategyApply={() => ({ canApply: true, pinned: [] })}
       />
     );
 
@@ -494,7 +495,7 @@ describe('StrategyRecommendationCards 적용 버튼', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '적용' }));
 
-    expect(onApplyStrategy).toHaveBeenCalledWith(balanced);
+    expect(onApplyStrategy).toHaveBeenCalledWith(balanced, params);
     expect(screen.queryByRole('button', { name: '취소' })).not.toBeInTheDocument();
   });
 
@@ -527,7 +528,7 @@ describe('StrategyRecommendationCards 적용 버튼', () => {
     const { rerenderWith } = renderCards({ onApplyStrategy, onUndoStrategy });
 
     fireEvent.click(screen.getByRole('button', { name: '적용' }));
-    expect(onApplyStrategy).toHaveBeenCalledWith(balanced);
+    expect(onApplyStrategy).toHaveBeenCalledWith(balanced, params);
 
     // 적용이 반영되면 호출자가 스냅샷을 내려 준다.
     rerenderWith({ onApplyStrategy, onUndoStrategy, appliedStrategy: snapshotOf('candidate-1') });
@@ -609,18 +610,77 @@ describe('StrategyRecommendationCards 적용 버튼', () => {
   // 설정이다. 둘의 판정이 엇갈리면 눌러도 아무 일이 없거나(침묵 실패) 적용할 것이 있는데
   // 버튼이 잠긴다. 그래서 활성 여부는 «적용하는 쪽»이 판정한다.
   test('적용 가능 여부는 카드가 아니라 호출자가 판정한다', () => {
-    const canApplyStrategy = vi.fn().mockReturnValue(false);
-    renderCards({ onApplyStrategy: vi.fn(), canApplyStrategy });
+    const previewStrategyApply = vi.fn().mockReturnValue({ canApply: false, pinned: [] });
+    renderCards({ onApplyStrategy: vi.fn(), previewStrategyApply });
 
-    expect(canApplyStrategy).toHaveBeenCalledWith(balanced);
+    // 서술에 쓴 params를 함께 넘긴다. 호출자가 활성 설정만 보고 판정하면 센티널이 채운 축에서
+    // 카드와 버튼이 엇갈린다(「달라지는 점 없음」인데 버튼이 켜지는 결함).
+    expect(previewStrategyApply).toHaveBeenCalledWith(balanced, params);
     // 카드에는 달라지는 점이 있지만 실제 설정에는 반영할 것이 없는 상태다.
     expect(screen.getByRole('button', { name: '반영할 수 있는 설정이 없습니다' })).toBeDisabled();
   });
 
   test('호출자가 적용 가능하다고 하면 카드 목록이 비어 있어도 누를 수 있다', () => {
-    renderCards({ onApplyStrategy: vi.fn(), canApplyStrategy: () => true });
+    renderCards({
+      onApplyStrategy: vi.fn(),
+      previewStrategyApply: () => ({ canApply: true, pinned: [] }),
+    });
 
     expect(screen.getByRole('button', { name: '적용' })).toBeEnabled();
+  });
+
+  // 「달라지는 점」 목록이 "이것만 바뀐다"는 약속으로 읽히지 않게, 함께 확정될 축을 누르기
+  // «전»에 말한다. 적용 후의 알림에만 있으면 사용자는 되돌리기 화면에서야 알게 된다.
+  test('카드가 말하지 않았지만 함께 확정될 축을 미리 예고한다', () => {
+    renderCards({
+      onApplyStrategy: vi.fn(),
+      previewStrategyApply: () => ({
+        canApply: true,
+        pinned: [{ key: 'nationalPensionStartAge' as const, label: '국민연금' }],
+      }),
+    });
+
+    expect(screen.getByText(/국민연금.*지금 값 그대로/)).toBeInTheDocument();
+  });
+
+  /**
+   * 위 두 테스트는 예고 «표시»만 본다. 이것은 core의 실제 판정을 page.tsx와 같은 방식으로
+   * 물려, 「카드가 말하지 않은 축」이 실제로 어떤 상황에서 생기는지까지 함께 고정한다.
+   */
+  test('실제 판정을 물리면 센티널이 채운 축이 예고로 나온다', () => {
+    // 사용자 설정은 60세인데, 센티널이 65세로 올려 그 계획이 계산·서술의 기준이 됐다.
+    const simulated: SimulationParams = {
+      ...params,
+      withdrawalPlan: { nationalPensionStartAge: 65, accountWithdrawalPolicy: 'GENERAL_FIRST' },
+    };
+    const activeParams: SimulationParams = {
+      ...params,
+      withdrawalPlan: { nationalPensionStartAge: 60, accountWithdrawalPolicy: 'GENERAL_FIRST' },
+    };
+    renderCards({
+      params: simulated,
+      onApplyStrategy: vi.fn(),
+      previewStrategyApply: (rec, basis) => previewStrategyApply(activeParams, basis, rec.candidate),
+    });
+
+    const card = cardTitled('균형형');
+    // 후보의 개시 나이(65세)는 서술 기준과 같아 「달라지는 점」에 오르지 않는다...
+    expect(within(card).queryByText('국민연금')).toBeNull();
+    // ...하지만 사용자 설정(60세)에는 적용되므로 미리 밝힌다.
+    expect(within(card).getByText(/국민연금.*지금 값 그대로/)).toBeInTheDocument();
+    expect(within(card).getByRole('button', { name: '적용' })).toBeEnabled();
+  });
+
+  test('버튼이 잠긴 카드에는 확정 예고를 내지 않는다', () => {
+    renderCards({
+      onApplyStrategy: vi.fn(),
+      previewStrategyApply: () => ({
+        canApply: false,
+        pinned: [{ key: 'nationalPensionStartAge' as const, label: '국민연금' }],
+      }),
+    });
+
+    expect(screen.queryByText(/지금 값 그대로/)).toBeNull();
   });
 
   test('달라지는 점이 없으면 적용할 것도 없다', () => {

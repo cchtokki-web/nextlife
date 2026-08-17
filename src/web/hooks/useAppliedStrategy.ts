@@ -3,7 +3,9 @@
 import { useCallback, useState } from 'react';
 import type { SimulationParams } from '../../core/entities/types';
 import type { CandidateRecommendation } from '../../core/recommendation/RecommendationEngine';
-import { applyStrategyToParams } from '../../core/usecases/dashboard/applyStrategyToParams';
+import {
+  applyStrategyToParams, previewStrategyApply, type StrategyApplyPreview,
+} from '../../core/usecases/dashboard/applyStrategyToParams';
 
 // 추천 전략을 현재 시나리오에 반영하고, 적용 직전 상태로 되돌린다.
 //
@@ -36,6 +38,12 @@ interface AppliedStrategyRecord extends AppliedStrategySnapshot {
   appliedParams: SimulationParams;
 }
 
+// 매 렌더 새 객체를 만들면 카드가 이 값을 의존성으로 쓰는 순간 무한 갱신이 된다.
+const NOTHING_TO_APPLY: StrategyApplyPreview = Object.freeze({
+  canApply: false,
+  pinned: Object.freeze([]),
+});
+
 interface UseAppliedStrategyOptions {
   activeParams: SimulationParams;
   activeScenarioId: string | null;
@@ -49,15 +57,33 @@ export interface UseAppliedStrategyResult {
   /** 되돌릴 수 있는 상태일 때만 값이 있다. */
   snapshot: AppliedStrategySnapshot | null;
   /**
-   * 이 추천을 지금 적용하면 실제로 바뀌는 설정이 있는가.
+   * 이 추천을 지금 적용하면 무슨 일이 일어나는가 — 버튼을 열어도 되는지와, 카드가 말하지
+   * 않았지만 함께 확정될 축을 «한 번에» 낸다. 둘을 따로 물으면 서로 다른 판정이 화면에
+   * 동시에 뜰 수 있다.
    *
-   * 카드가 「달라지는 점」을 세어 판단하게 두면 안 된다. 카드가 받는 params는 센티널이
-   * 채운 계산용 값이고 적용 대상은 사용자가 입력한 activeParams라서, 국민연금·투자 성향처럼
-   * 센티널이 채우는 축에서는 둘의 판정이 엇갈린다. 그러면 카드가 변경을 보여주는데 눌러도
-   * 아무 일이 없거나(침묵 실패), 반대로 적용할 것이 있는데 버튼이 잠긴다.
+   * 카드가 「달라지는 점」의 개수만으로 판단하게 두면 안 된다. 카드가 받는 params는 센티널이
+   * 채운 계산용 값이고 적용 대상은 사용자가 입력한 activeParams라서, 국민연금처럼 센티널이
+   * 채우는 축에서는 둘의 판정이 엇갈린다. 그러면 카드가 변경을 보여주는데 눌러도 아무 일이
+   * 없거나(침묵 실패), 반대로 카드가 아무 변경도 말하지 않은 후보의 버튼이 켜진다.
+   *
+   * 그래서 «두 기준을 모두» 본다. 적용 대상은 이 훅이 알고 있고, 서술 기준은 카드가
+   * simulatedParams로 넘긴다 — 카드가 자기가 서술에 쓴 바로 그 params를 넘기므로 두 판정이
+   * 다른 것을 볼 여지가 구조적으로 없다.
    */
-  canApply: (recommendation: CandidateRecommendation) => boolean;
-  applyRecommendation: (recommendation: CandidateRecommendation) => void;
+  previewApply: (
+    recommendation: CandidateRecommendation,
+    simulatedParams: SimulationParams,
+  ) => StrategyApplyPreview;
+  /**
+   * simulatedParams는 previewApply와 «같은 이유로» 필요하다 — 반영 대상을 사용자 설정 기준으로만
+   * 고르면, 카드가 「국민연금 66세 → 65세」라고 말한 축이 사용자 설정에서는 기본값과 같아
+   * 반영에서 빠진다. 그러면 재분석에서 센티널이 다시 66세를 채워 카드의 계획이 만들어지지
+   * 않는다(applyStrategyToParams 머리말).
+   */
+  applyRecommendation: (
+    recommendation: CandidateRecommendation,
+    simulatedParams: SimulationParams,
+  ) => void;
   undo: () => void;
   /** 설정은 건드리지 않고 되돌리기만 없앤다(전체 초기화 등). */
   forget: () => void;
@@ -80,17 +106,25 @@ export function useAppliedStrategy({
     && record.scenarioId === activeScenarioId
     && record.appliedParams === activeParams;
 
-  const canApply = useCallback((recommendation: CandidateRecommendation) => {
-    if (activeScenarioId === null) return false;
-    return applyStrategyToParams(activeParams, recommendation.candidate).applied.length > 0;
+  const previewApply = useCallback((
+    recommendation: CandidateRecommendation,
+    simulatedParams: SimulationParams,
+  ): StrategyApplyPreview => {
+    // 활성 시나리오가 없으면 applyRecommendation이 무동작이다. 버튼도 열지 않고 예고할
+    // 것도 없다 — 두 값을 따로 판정하면 "확정됩니다"라는 예고만 남는 상태가 생긴다.
+    if (activeScenarioId === null) return NOTHING_TO_APPLY;
+    return previewStrategyApply(activeParams, simulatedParams, recommendation.candidate);
   }, [activeParams, activeScenarioId]);
 
-  const applyRecommendation = useCallback((recommendation: CandidateRecommendation) => {
+  const applyRecommendation = useCallback((
+    recommendation: CandidateRecommendation,
+    simulatedParams: SimulationParams,
+  ) => {
     // 활성 시나리오가 없으면 handleUpdateActiveParams가 무동작이다. 그대로 두면 설정은
     // 그대로인데 카드만 "적용됨"으로 바뀐다.
     if (activeScenarioId === null) return;
 
-    const outcome = applyStrategyToParams(activeParams, recommendation.candidate);
+    const outcome = applyStrategyToParams(activeParams, recommendation.candidate, simulatedParams);
     if (outcome.applied.length === 0) return;
 
     // 이 참조 하나만 쓴다. 아래 두 호출이 서로 다른 객체를 받으면 analysisIsCurrent가
@@ -125,5 +159,5 @@ export function useAppliedStrategy({
 
   const forget = useCallback(() => setRecord(null), []);
 
-  return { snapshot: canUndo ? record : null, canApply, applyRecommendation, undo, forget };
+  return { snapshot: canUndo ? record : null, previewApply, applyRecommendation, undo, forget };
 }

@@ -319,6 +319,17 @@
 .strategyChanges dd b { color: var(--foreground-muted); }
 .strategyChanges dd strong { color: var(--foreground); }
 
+/* 위 목록에 없지만 적용하면 함께 확정되는 축의 예고. 목록과 같은 무게로 보이면 "또 하나의
+   변경점"으로 읽히므로 한 단계 낮춘다 — 계획은 달라지지 않고 설정만 고정된다는 뜻이다.
+   적용 후 알림의 「반영하지 못했습니다」(.appliedStrategySkippedNote)와 같은 크기를 쓴다. */
+.strategyChanges .strategyPinNote {
+  margin-top: 0.6rem;
+  font-size: 0.68rem;
+  line-height: 1.5;
+  color: var(--foreground-muted);
+  opacity: 0.85;
+}
+
 /* margin-top: auto — 남는 세로 공간을 전부 위쪽에 몰아 버튼을 카드 바닥에 고정한다.
    padding-top은 본문이 카드를 꽉 채웠을 때의 최소 간격이다. */
 .strategyCardActions { display: grid; gap: 0.5rem; margin-top: auto; padding-top: 0.9rem; }
