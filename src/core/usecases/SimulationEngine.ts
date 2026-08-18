@@ -28,6 +28,7 @@ import {
   calculateCapitalGainsTaxKRW,
 } from './tax/TaxEngine';
 import { TaxContext, resolveTaxContext } from './tax/taxContext';
+import { PENSION_RETURN_SHOCK_BETA } from './scenario/economicScenarios';
 import { InvalidSimulationInputError } from '../entities/errors';
 import {
   getNationalPensionAdjustmentFactor,
@@ -340,8 +341,12 @@ export class LegacySimulationEngine implements SimulationEngineContract {
     for (const asset of activeAssets) {
       asset.growthRateMonthly = toMonthlyCompoundRate(asset.growthRateAnnual + shock);
     }
+    // 사적연금만 배율을 곱한다. 이 저장소가 이미 연금을 더 보수적으로 배분된 것으로 보고
+    // 별도 수익률을 쓰기 때문이다(PENSION_RETURN_SHOCK_BETA 주석). ISA는 assets와 구조가
+    // 같은 시장 연동 계좌라 배율이 없다(= 1.0).
+    const pensionShock = shock * PENSION_RETURN_SHOCK_BETA;
     for (const pension of activePensions) {
-      pension.returnRateMonthly = toMonthlyCompoundRate(pension.returnRateAnnual + shock);
+      pension.returnRateMonthly = toMonthlyCompoundRate(pension.returnRateAnnual + pensionShock);
     }
     for (const isa of activeIsas) {
       isa.returnRateMonthly = toMonthlyCompoundRate(isa.returnRateAnnual + shock);
