@@ -82,37 +82,37 @@ describe('AssetFormSection - 전략이 수익률을 지배할 때', () => {
     fireEvent.click(screen.getByText('자산1'));
   };
 
-  test('리스크 성향이 명시적이면 연 성장률 입력이 비활성화되고 이유가 표시된다', () => {
+  test('리스크 성향이 명시적이면 연 총수익률 입력이 비활성화되고 이유가 표시된다', () => {
     renderExpanded({
       ...withAsset,
       strategy: { ...DEFAULT_RETIREMENT_STRATEGY, riskProfile: 'conservative' },
     });
 
-    expect(screen.getByLabelText('연 성장률')).toBeDisabled();
+    expect(screen.getByLabelText('연 총수익률')).toBeDisabled();
     expect(screen.getByText(/리스크 성향/)).toBeInTheDocument();
   });
 
-  test('경제 시나리오가 명시적이면 연 성장률 입력이 비활성화되고 이유가 표시된다', () => {
+  test('경제 시나리오가 명시적이면 연 총수익률 입력이 비활성화되고 이유가 표시된다', () => {
     renderExpanded({
       ...withAsset,
       strategy: { ...DEFAULT_RETIREMENT_STRATEGY, economicScenario: 'recession' },
     });
 
-    expect(screen.getByLabelText('연 성장률')).toBeDisabled();
+    expect(screen.getByLabelText('연 총수익률')).toBeDisabled();
     expect(screen.getByText(/경제 시나리오/)).toBeInTheDocument();
   });
 
   test('둘 다 AI 추천(미정)이면 입력이 열려 있고 안내 문구도 없다', () => {
     renderExpanded({ ...withAsset, strategy: { ...DEFAULT_RETIREMENT_STRATEGY } });
 
-    expect(screen.getByLabelText('연 성장률')).toBeEnabled();
+    expect(screen.getByLabelText('연 총수익률')).toBeEnabled();
     expect(screen.queryByText(/이 값을 결정합니다/)).not.toBeInTheDocument();
   });
 
   test('전략이 아예 없는(레거시) 시나리오에서도 입력이 열려 있다', () => {
     renderExpanded(withAsset);
 
-    expect(screen.getByLabelText('연 성장률')).toBeEnabled();
+    expect(screen.getByLabelText('연 총수익률')).toBeEnabled();
   });
 
   test('배당률은 프리셋이 건드리지 않으므로 계속 편집할 수 있다', () => {
@@ -130,11 +130,11 @@ describe('AssetFormSection - 전략이 수익률을 지배할 때', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /연금 자산/ }));
     fireEvent.click(screen.getByText(/IRP 연금 계좌/));
-    expect(screen.getByLabelText('연 주가 상승률')).toBeDisabled();
+    expect(screen.getByLabelText('연 총수익률')).toBeDisabled();
 
     fireEvent.click(screen.getByRole('button', { name: /ISA 계좌/ }));
     fireEvent.click(screen.getByText(/중개형 ISA/));
-    expect(screen.getByLabelText('연 기대 수익률')).toBeDisabled();
+    expect(screen.getByLabelText('연 총수익률')).toBeDisabled();
   });
 
   // A2(2): 실시간 조회 버튼은 totalReturn을 덮어쓰면서 yieldPreset을
@@ -176,7 +176,7 @@ describe('AssetFormSection - 전략이 수익률을 지배할 때', () => {
 });
 
 // A3(WCAG 2.5.3): 보이는 라벨과 접근성 이름이 달라선 안 된다. 음성 제어 사용자가 화면에
-// 보이는 "연 주가 상승률"이라고 말했을 때 aria-label이 "연 수익률"이면 잡히지 않는다.
+// 보이는 "연 총수익률"이라고 말했을 때 aria-label이 "연 수익률"이면 잡히지 않는다.
 describe('AssetFormSection - 수익률 입력의 접근성 이름', () => {
   test('사적연금 수익률 입력의 접근성 이름이 보이는 라벨과 같다', () => {
     const params = withPensionAndIsa(DEFAULT_RETIREMENT_STRATEGY);
@@ -185,7 +185,7 @@ describe('AssetFormSection - 수익률 입력의 접근성 이름', () => {
     fireEvent.click(screen.getByRole('button', { name: /연금 자산/ }));
     fireEvent.click(screen.getByText(/IRP 연금 계좌/));
 
-    expect(screen.getByLabelText('연 주가 상승률')).toHaveAccessibleName('연 주가 상승률');
+    expect(screen.getByLabelText('연 총수익률')).toHaveAccessibleName('연 총수익률');
   });
 
   test('ISA 수익률 입력의 접근성 이름이 보이는 라벨과 같다', () => {
@@ -195,7 +195,7 @@ describe('AssetFormSection - 수익률 입력의 접근성 이름', () => {
     fireEvent.click(screen.getByRole('button', { name: /ISA 계좌/ }));
     fireEvent.click(screen.getByText(/중개형 ISA/));
 
-    expect(screen.getByLabelText('연 기대 수익률')).toHaveAccessibleName('연 기대 수익률');
+    expect(screen.getByLabelText('연 총수익률')).toHaveAccessibleName('연 총수익률');
   });
 
   test('예금형 사적연금은 "연 이자율 (금리)"로 읽힌다', () => {

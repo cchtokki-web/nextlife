@@ -6,6 +6,7 @@ import styles from './AssetForm.module.css';
 import compStyles from '../../styles/components.module.css';
 import { Plus, Trash2, Wallet, Landmark, PiggyBank, DollarSign, ExternalLink, ChevronDown, ChevronUp, RefreshCw } from 'lucide-react';
 import { predefinedAssets } from './predefinedAssets';
+import { ReturnBreakdownHint } from './ReturnBreakdownHint';
 import { initialParams } from '../../../infrastructure/storage/localStore';
 import { resolveRiskProfileYieldPreset, resolveStrategy } from '../../../core/usecases/strategy/compileStrategy';
 import { isEconomicScenarioGoverning } from '../../../core/usecases/scenario/economicScenarios';
@@ -601,7 +602,7 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
             name: pa.name,
             ticker: pa.ticker,
             currency: pa.currency,
-            totalReturn: Math.round((pa.totalReturn + pa.dividendYield) * 10) / 10,
+            totalReturn: pa.totalReturn,
           });
           fetchPensionInfo(id, pa.ticker);
         } else if (type === 'isa') {
@@ -609,7 +610,7 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
             name: pa.name,
             ticker: pa.ticker,
             currency: pa.currency,
-            totalReturn: Math.round((pa.totalReturn + pa.dividendYield) * 10) / 10,
+            totalReturn: pa.totalReturn,
           });
           fetchIsaInfo(id, pa.ticker);
         }
@@ -912,7 +913,7 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                       <div className={styles.priceInputWrapper}>
                         <div className={styles.priceInputGrow}>
                           <InputField
-                            label="연 성장률"
+                            label="연 총수익률"
                             type="number"
                             step="0.1"
                             value={asset.totalReturn}
@@ -958,6 +959,7 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                           />
                         </button>
                       </div>
+                      <ReturnBreakdownHint totalReturn={asset.totalReturn} dividendYield={asset.dividendYield} />
                       <SelectField
                         label="적립 주기"
                         value={asset.contributionPeriod || 'monthly'}
@@ -1235,7 +1237,7 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                                       name: pa.name,
                                       ticker: pa.ticker,
                                       currency: pa.currency,
-                                      totalReturn: Math.round((pa.totalReturn + pa.dividendYield) * 10) / 10,
+                                      totalReturn: pa.totalReturn,
                                     });
                                     setFocusedAssetId(null);
                                     setAutocompleteIndex(-1);
@@ -1312,7 +1314,7 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                       <div className={styles.priceInputWrapper}>
                         <div className={styles.priceInputGrow}>
                           <InputField
-                            label="연 주가 상승률"
+                            label="연 총수익률"
                             type="number"
                             step="0.1"
                             value={pension.totalReturn}
@@ -1337,7 +1339,7 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                       <div className={styles.priceInputWrapper}>
                         <div className={styles.priceInputGrow}>
                           <InputField
-                            label="연 기대 배당률"
+                            label="연 배당률"
                             type="number"
                             step="0.1"
                             value={pension.dividendYield || 0}
@@ -1358,10 +1360,11 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                           />
                         </button>
                       </div>
+                      <ReturnBreakdownHint totalReturn={pension.totalReturn} dividendYield={pension.dividendYield || 0} />
                     </>
                   ) : (
                     <InputField
-                      label={pension.investmentType === 'deposit' ? '연 이자율 (금리)' : '연 주가 상승률'}
+                      label={pension.investmentType === 'deposit' ? '연 이자율 (금리)' : '연 총수익률'}
                       type="number"
                       step="0.1"
                       value={pension.totalReturn}
@@ -1478,7 +1481,7 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                                           name: pa.name,
                                           ticker: pa.ticker,
                                           currency: pa.currency,
-                                          totalReturn: Math.round((pa.totalReturn + pa.dividendYield) * 10) / 10,
+                                          totalReturn: pa.totalReturn,
                                         });
                                         setFocusedAssetId(null);
                                         setAutocompleteIndex(-1);
@@ -1537,7 +1540,7 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                           <div className={styles.priceInputWrapper}>
                             <div className={styles.priceInputGrow}>
                               <InputField
-                                label="연 주가 상승률"
+                                label="연 총수익률"
                                 type="number"
                                 step="0.1"
                                 value={isa.totalReturn}
@@ -1562,7 +1565,7 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                           <div className={styles.priceInputWrapper}>
                             <div className={styles.priceInputGrow}>
                               <InputField
-                                label="연 기대 배당률"
+                                label="연 배당률"
                                 type="number"
                                 step="0.1"
                                 value={isa.dividendYield || 0}
@@ -1583,6 +1586,7 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                               />
                             </button>
                           </div>
+                          <ReturnBreakdownHint totalReturn={isa.totalReturn} dividendYield={isa.dividendYield || 0} />
                         </>
                       ) : isa.investmentType === 'deposit' ? (
                         <InputField
@@ -1597,7 +1601,7 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                       ) : (
                         <>
                           <InputField
-                            label="연 기대 수익률"
+                            label="연 총수익률"
                             type="number"
                             step="0.1"
                             value={isa.totalReturn}
@@ -1606,13 +1610,14 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                             suffixText="%"
                           />
                           <InputField
-                            label="연 기대 배당률"
+                            label="연 배당률"
                             type="number"
                             step="0.1"
                             value={isa.dividendYield}
                             onChange={(e) => handleUpdateIsaAccount(isa.id, 'dividendYield', Number(e.target.value))}
                             suffixText="%"
                           />
+                          <ReturnBreakdownHint totalReturn={isa.totalReturn} dividendYield={isa.dividendYield} />
                         </>
                       )}
                     </div>
