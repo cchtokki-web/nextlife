@@ -474,6 +474,39 @@ describe('normalizeSimulationParams', () => {
     });
   });
 
+  describe('예금형 계좌의 배당률', () => {
+    // 예금형 ISA는 화면에 배당 입력칸이 없다(AssetFormSection의 investmentType 분기).
+    // 그런데 신규 ISA의 기본 dividendYield가 1.5라, 유형만 예금으로 바꾸면 사용자가
+    // 볼 수도 고칠 수도 없는 배당률이 계좌에 남는다. 총수익률 모델에서 그 값은 총합을
+    // 늘리지는 못하지만, 가격상승분을 갉아먹고 배당소득으로 집계된다.
+    test('예금형 ISA의 dividendYield를 0으로 지운다', () => {
+      const params = normalizeSimulationParams({
+        ...initialParams,
+        isaAccounts: [{
+          id: 'isa-1', type: 'general', investmentType: 'deposit',
+          balance: 1_000_000, monthlyContribution: 0,
+          totalReturn: 3, dividendYield: 1.5, currency: 'KRW', maturityYears: 3,
+        }],
+      });
+
+      expect(params.isaAccounts?.[0].dividendYield).toBe(0);
+      expect(params.isaAccounts?.[0].totalReturn).toBe(3);
+    });
+
+    test('예금형이 아니면 배당률을 그대로 둔다', () => {
+      const params = normalizeSimulationParams({
+        ...initialParams,
+        isaAccounts: [{
+          id: 'isa-1', type: 'general', investmentType: 'custom',
+          balance: 1_000_000, monthlyContribution: 0,
+          totalReturn: 7, dividendYield: 1.5, currency: 'KRW', maturityYears: 3,
+        }],
+      });
+
+      expect(params.isaAccounts?.[0].dividendYield).toBe(1.5);
+    });
+  });
+
   describe('healthcare', () => {
     // enabled는 `!healthcare.enabled`로만 검사돼, 문자열 'false'가 의료비를 켰다.
     // costGrowthRate가 NaN이면 그 해 의료비가 NaN이 되고 자산 전체가 NaN으로 번진다.

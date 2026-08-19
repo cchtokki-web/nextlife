@@ -127,7 +127,7 @@ describe('SimulationEngine - 양도소득세 통합', () => {
         {
           id: 'dividend-asset', type: 'etf', ticker: 'DIV', name: '국내 고배당 ETF',
           quantity: 20_000, averagePrice: 100_000,
-          totalReturn: 0, dividendYield: 5,
+          totalReturn: 5, dividendYield: 5,
           monthlyContribution: 0, reinvestDividend: false,
           currency: 'KRW', assetMarket: 'KR_ETF',
         },

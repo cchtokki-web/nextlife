@@ -23,7 +23,7 @@ export const initialParams: SimulationParams = {
       name: 'KODEX 200',
       quantity: 2000,
       averagePrice: 35000, // 약 7,000만 원
-      totalReturn: 5,
+      totalReturn: 7, // 예전 성장률 5 + 배당 2 (총수익률 표기로 이관)
       dividendYield: 2.0,
       monthlyContribution: 400000,
       reinvestDividend: true,
@@ -36,7 +36,7 @@ export const initialParams: SimulationParams = {
       name: 'TIGER 미국S&P500',
       quantity: 4000,
       averagePrice: 15000, // 약 6,000만 원
-      totalReturn: 8,
+      totalReturn: 9.5, // 예전 성장률 8 + 배당 1.5 (총수익률 표기로 이관)
       dividendYield: 1.5,
       monthlyContribution: 300000,
       reinvestDividend: true,

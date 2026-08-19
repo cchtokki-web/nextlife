@@ -113,7 +113,7 @@ describe('금융소득종합과세 — 엔진 통합(원천징수액 배선 검�
           id: 'a1', type: 'etf', ticker: 'A', name: '국내 고배당 ETF',
           // 평가액 20억 × 5% = 연 1억원. 성장률 0으로 두어 평가액이 변하지 않게 한다.
           quantity: 20000, averagePrice: 100000,
-          totalReturn: 0, dividendYield: 5,
+          totalReturn: 5, dividendYield: 5,
           monthlyContribution: 0, reinvestDividend: false,
           currency: 'KRW', assetMarket: 'KR_ETF',
         },

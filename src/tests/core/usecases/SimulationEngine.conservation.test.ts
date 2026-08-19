@@ -12,13 +12,15 @@ import { SimulationParams } from '@/core/entities/types';
 //   (2) 세금이 증발했다        — 세금 필드에는 기록됐는데 자산에서 빠지지 않아 좌변 > 우변
 //   (3) 매도액/인출액이 사라졌다 — 원가 회계나 통화 변환 실수
 //
-// ## 왜 성장률을 0으로 두는가
+// ## 왜 가격상승분을 0으로 두는가
 //
 // 투자 수익은 "외부에서 들어온 돈"인데 SimulationYearlyResult에 노출되지 않는다(연간
-// 성장분 필드가 없다). 성장률이 0이 아니면 우변을 결과 필드만으로 재구성할 수 없다.
-// 배당은 preTaxTotalIncome에 실려 있으므로 배당수익률은 0이 아니어도 된다 — 즉 이
-// 픽스처는 "성장 없는 고배당 포트폴리오"이며, 세금 경로(배당세·종합과세·건보료·연금세)는
-// 전부 살아 있다.
+// 성장분 필드가 없다). 가격상승분이 0이 아니면 우변을 결과 필드만으로 재구성할 수 없다.
+// 배당은 preTaxTotalIncome에 실려 있으므로 배당수익률은 0이 아니어도 된다.
+//
+// 총수익률 표기에서 "가격상승 0"은 `totalReturn === dividendYield`다 — 총수익률 전부가
+// 현금으로 나오고 원금은 제자리인 포트폴리오. 즉 이 픽스처는 "성장 없는 고배당
+// 포트폴리오"이며, 세금 경로(배당세·종합과세·건보료·연금세)는 전부 살아 있다.
 //
 // ## 왜 ISA를 넣지 않는가
 //
@@ -91,13 +93,13 @@ const baseParams: SimulationParams = {
     {
       id: 'a1', type: 'etf', ticker: 'A', name: '무성장 고배당1',
       quantity: 4000, averagePrice: 100000,
-      totalReturn: 0, dividendYield: 5,
+      totalReturn: 5, dividendYield: 5, // 총수익률 전부가 배당 = 가격상승 0
       monthlyContribution: 500000, reinvestDividend: false, currency: 'KRW',
     },
     {
       id: 'a2', type: 'etf', ticker: 'B', name: '무성장 고배당2',
       quantity: 2000, averagePrice: 100000,
-      totalReturn: 0, dividendYield: 3,
+      totalReturn: 3, dividendYield: 3, // 총수익률 전부가 배당 = 가격상승 0
       monthlyContribution: 300000, reinvestDividend: false, currency: 'KRW',
     },
   ],

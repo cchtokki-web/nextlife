@@ -1,8 +1,18 @@
+// **여기의 totalReturn은 배당을 포함한 값이다.**
+//
+// 예전에는 이 표가 가격상승률과 배당률을 따로 들고 있었고 엔진이 둘을 더해 굴렸다.
+// 즉 SCHD는 언제나 10.5%로 계산돼 왔다. 총수익률 표기로 옮기면서 그 합을 그대로 적었다 —
+// 값을 새로 정하지 않고 지금까지의 동작을 보존한 것이다.
+//
+// 그래서 이 숫자들이 높아 보인다면, 그것은 표기가 바뀌어서가 아니라 원래 그랬던 것이
+// 드러난 것이다. 값 자체를 고칠 때는 근거를 함께 적을 것.
+
 export interface PredefinedAsset {
   ticker: string;
   name: string;
   type: 'stock' | 'etf';
   currency: 'USD' | 'KRW';
+  /** 배당을 포함한 연 총수익률 %. dividendYield를 빼면 가격상승률이 된다. */
   totalReturn: number;
   dividendYield: number;
 }
@@ -14,7 +24,7 @@ export const predefinedAssets: PredefinedAsset[] = [
     name: 'Vanguard S&P 500 ETF',
     type: 'etf',
     currency: 'USD',
-    totalReturn: 8.0,
+    totalReturn: 9.4,
     dividendYield: 1.4,
   },
   {
@@ -22,7 +32,7 @@ export const predefinedAssets: PredefinedAsset[] = [
     name: 'Invesco QQQ Trust',
     type: 'etf',
     currency: 'USD',
-    totalReturn: 9.0,
+    totalReturn: 9.6,
     dividendYield: 0.6,
   },
   {
@@ -30,7 +40,7 @@ export const predefinedAssets: PredefinedAsset[] = [
     name: 'Schwab US Dividend Equity ETF',
     type: 'etf',
     currency: 'USD',
-    totalReturn: 7.0,
+    totalReturn: 10.5,
     dividendYield: 3.5,
   },
   {
@@ -38,7 +48,7 @@ export const predefinedAssets: PredefinedAsset[] = [
     name: 'SPDR S&P 500 ETF Trust',
     type: 'etf',
     currency: 'USD',
-    totalReturn: 8.0,
+    totalReturn: 9.4,
     dividendYield: 1.4,
   },
   {
@@ -46,7 +56,7 @@ export const predefinedAssets: PredefinedAsset[] = [
     name: 'SPDR Portfolio S&P 500 ETF',
     type: 'etf',
     currency: 'USD',
-    totalReturn: 8.0,
+    totalReturn: 9.4,
     dividendYield: 1.4,
   },
   {
@@ -54,7 +64,7 @@ export const predefinedAssets: PredefinedAsset[] = [
     name: 'JPMorgan Equity Premium Income ETF',
     type: 'etf',
     currency: 'USD',
-    totalReturn: 5.0,
+    totalReturn: 13.0,
     dividendYield: 8.0,
   },
   {
@@ -62,7 +72,7 @@ export const predefinedAssets: PredefinedAsset[] = [
     name: 'iShares 20+ Year Treasury Bond ETF',
     type: 'etf',
     currency: 'USD',
-    totalReturn: 3.5,
+    totalReturn: 7.5,
     dividendYield: 4.0,
   },
   {
@@ -70,7 +80,7 @@ export const predefinedAssets: PredefinedAsset[] = [
     name: 'Vanguard Real Estate ETF',
     type: 'etf',
     currency: 'USD',
-    totalReturn: 5.0,
+    totalReturn: 9.2,
     dividendYield: 4.2,
   },
 
@@ -80,7 +90,7 @@ export const predefinedAssets: PredefinedAsset[] = [
     name: 'Apple Inc.',
     type: 'stock',
     currency: 'USD',
-    totalReturn: 9.0,
+    totalReturn: 9.5,
     dividendYield: 0.5,
   },
   {
@@ -88,7 +98,7 @@ export const predefinedAssets: PredefinedAsset[] = [
     name: 'Microsoft Corporation',
     type: 'stock',
     currency: 'USD',
-    totalReturn: 10.0,
+    totalReturn: 10.7,
     dividendYield: 0.7,
   },
   {
@@ -96,7 +106,7 @@ export const predefinedAssets: PredefinedAsset[] = [
     name: 'NVIDIA Corporation',
     type: 'stock',
     currency: 'USD',
-    totalReturn: 12.0,
+    totalReturn: 12.1,
     dividendYield: 0.1,
   },
   {
@@ -112,7 +122,7 @@ export const predefinedAssets: PredefinedAsset[] = [
     name: 'Alphabet Inc.',
     type: 'stock',
     currency: 'USD',
-    totalReturn: 9.0,
+    totalReturn: 9.4,
     dividendYield: 0.4,
   },
   {
@@ -128,7 +138,7 @@ export const predefinedAssets: PredefinedAsset[] = [
     name: 'Meta Platforms, Inc.',
     type: 'stock',
     currency: 'USD',
-    totalReturn: 9.0,
+    totalReturn: 9.4,
     dividendYield: 0.4,
   },
   {
@@ -136,7 +146,7 @@ export const predefinedAssets: PredefinedAsset[] = [
     name: 'Realty Income Corporation',
     type: 'stock',
     currency: 'USD',
-    totalReturn: 4.0,
+    totalReturn: 9.5,
     dividendYield: 5.5,
   },
 
@@ -146,7 +156,7 @@ export const predefinedAssets: PredefinedAsset[] = [
     name: 'KODEX 200 (삼성)',
     type: 'etf',
     currency: 'KRW',
-    totalReturn: 6.0,
+    totalReturn: 8.0,
     dividendYield: 2.0,
   },
   {
@@ -154,7 +164,7 @@ export const predefinedAssets: PredefinedAsset[] = [
     name: 'TIGER 미국S&P500 (미래에셋)',
     type: 'etf',
     currency: 'KRW',
-    totalReturn: 8.0,
+    totalReturn: 9.3,
     dividendYield: 1.3,
   },
   {
@@ -162,7 +172,7 @@ export const predefinedAssets: PredefinedAsset[] = [
     name: 'TIGER 미국나스닥100 (미래에셋)',
     type: 'etf',
     currency: 'KRW',
-    totalReturn: 9.0,
+    totalReturn: 9.5,
     dividendYield: 0.5,
   },
   {
@@ -170,7 +180,7 @@ export const predefinedAssets: PredefinedAsset[] = [
     name: 'TIGER 미국배당다우존스 (미래에셋)',
     type: 'etf',
     currency: 'KRW',
-    totalReturn: 7.0,
+    totalReturn: 10.5,
     dividendYield: 3.5,
   },
   {
@@ -178,7 +188,7 @@ export const predefinedAssets: PredefinedAsset[] = [
     name: 'KODEX 미국반도체MV (삼성)',
     type: 'etf',
     currency: 'KRW',
-    totalReturn: 9.5,
+    totalReturn: 9.8,
     dividendYield: 0.3,
   },
   {
@@ -186,7 +196,7 @@ export const predefinedAssets: PredefinedAsset[] = [
     name: 'ACE 미국S&P500 (한국투자)',
     type: 'etf',
     currency: 'KRW',
-    totalReturn: 8.0,
+    totalReturn: 9.3,
     dividendYield: 1.3,
   },
   {
@@ -194,7 +204,7 @@ export const predefinedAssets: PredefinedAsset[] = [
     name: 'TIGER 미국필라델피아반도체나스닥',
     type: 'etf',
     currency: 'KRW',
-    totalReturn: 9.5,
+    totalReturn: 9.8,
     dividendYield: 0.3,
   },
 
@@ -204,7 +214,7 @@ export const predefinedAssets: PredefinedAsset[] = [
     name: '삼성전자',
     type: 'stock',
     currency: 'KRW',
-    totalReturn: 6.0,
+    totalReturn: 8.5,
     dividendYield: 2.5,
   },
   {
@@ -212,7 +222,7 @@ export const predefinedAssets: PredefinedAsset[] = [
     name: 'SK하이닉스',
     type: 'stock',
     currency: 'KRW',
-    totalReturn: 8.0,
+    totalReturn: 9.0,
     dividendYield: 1.0,
   },
   {
@@ -220,7 +230,7 @@ export const predefinedAssets: PredefinedAsset[] = [
     name: '현대차',
     type: 'stock',
     currency: 'KRW',
-    totalReturn: 5.0,
+    totalReturn: 9.5,
     dividendYield: 4.5,
   },
   {
@@ -228,7 +238,7 @@ export const predefinedAssets: PredefinedAsset[] = [
     name: 'NAVER',
     type: 'stock',
     currency: 'KRW',
-    totalReturn: 7.0,
+    totalReturn: 7.8,
     dividendYield: 0.8,
   },
   {
@@ -236,7 +246,7 @@ export const predefinedAssets: PredefinedAsset[] = [
     name: '카카오',
     type: 'stock',
     currency: 'KRW',
-    totalReturn: 7.0,
+    totalReturn: 7.4,
     dividendYield: 0.4,
   },
   {
@@ -260,7 +270,7 @@ export const predefinedAssets: PredefinedAsset[] = [
     name: 'KB금융',
     type: 'stock',
     currency: 'KRW',
-    totalReturn: 4.0,
+    totalReturn: 9.5,
     dividendYield: 5.5,
   },
 
@@ -278,7 +288,7 @@ export const predefinedAssets: PredefinedAsset[] = [
     name: '사적연금(ETF)',
     type: 'etf',
     currency: 'KRW',
-    totalReturn: 7.0,
+    totalReturn: 8.5,
     dividendYield: 1.5,
   },
 ];

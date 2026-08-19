@@ -18,7 +18,7 @@ describe('SimulationEngine withdrawalPlan (인출 정책 파라미터화)', () =
         name: 'S&P 500 ETF',
         quantity: 100,
         averagePrice: 500, // 500 USD
-        totalReturn: 8,
+        totalReturn: 10,
         dividendYield: 2,
         monthlyContribution: 100,
         reinvestDividend: true,

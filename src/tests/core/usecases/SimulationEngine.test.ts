@@ -117,7 +117,7 @@ describe('SimulationEngine TDD Tests', () => {
           name: 'High Dividend',
           quantity: 10000,
           averagePrice: 100, // 100 USD
-          totalReturn: 5,
+          totalReturn: 9,
           dividendYield: 4, // 배당률 4% -> 1,000,000 USD 자산 기준 연간 40,000 USD (약 5,400만 원) 배당 발생
           monthlyContribution: 0,
           reinvestDividend: false,
@@ -311,7 +311,7 @@ describe('SimulationEngine TDD Tests', () => {
           name: '완만하게 줄어드는 자산',
           quantity: 5000000,
           averagePrice: 100, // 5억 원
-          totalReturn: 5,
+          totalReturn: 6,
           dividendYield: 1,
           monthlyContribution: 0,
           reinvestDividend: false,
@@ -355,7 +355,7 @@ describe('SimulationEngine TDD Tests', () => {
           name: '이미 은퇴한 사용자의 자산',
           quantity: 10000000,
           averagePrice: 100, // 10억 원
-          totalReturn: 3,
+          totalReturn: 3.5,
           dividendYield: 0.5,
           monthlyContribution: 0,
           reinvestDividend: false,

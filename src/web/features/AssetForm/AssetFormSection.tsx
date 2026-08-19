@@ -151,7 +151,8 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
       .filter((rs) => !predefinedTickers.has(rs.ticker))
       .map((rs) => ({
         ...rs,
-        totalReturn: rs.type === 'etf' ? 7.0 : 6.0,
+        // 예전 성장률 7.0/6.0 + 배당 1.5/1.0 (총수익률 표기로 이관)
+        totalReturn: rs.type === 'etf' ? 8.5 : 7.0,
         dividendYield: rs.type === 'etf' ? 1.5 : 1.0,
       }));
     return [...matchingPredefined, ...additionalRealtime].slice(0, 8);
@@ -346,7 +347,7 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
       name: '신규 자산',
       quantity: 0,
       averagePrice: 0,
-      totalReturn: 6,
+      totalReturn: 8, // 예전 성장률 6 + 배당 2 (총수익률 표기로 이관)
       dividendYield: 2,
       contributionPeriod: 'daily',
       contributionAmount: 0,
@@ -489,7 +490,7 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
       investmentType: 'custom',
       balance: 0,
       monthlyContribution: 0,
-      totalReturn: 5,
+      totalReturn: 6.5, // 예전 성장률 5 + 배당 1.5 (총수익률 표기로 이관)
       dividendYield: 1.5,
       currency: 'KRW',
       maturityYears: 3,

@@ -94,16 +94,23 @@ export async function GET(request: NextRequest) {
     }
 
     // Sanity checks and conservative adjustments
-    // Cap long-term CAGR at 9.5% for general assets to avoid overly optimistic projections
+    //
+    // **상한을 맨 마지막에 건다.** 예전에는 가격 CAGR에만 걸려 있어 배당이 상한을
+    // 우회했다 — 상한이 9.5%인데 배당 8%인 종목이 실효 17.5%로 조회되는 식이었다.
     if (isNaN(cagr)) cagr = 6.0; // 데이터 계산 실패 시에만 기본값 사용
-    else if (cagr > 9.5) cagr = 9.5;
-    else if (cagr < 0) cagr = 0; // 실시간 조회 값이 마이너스여도 연 성장률 최소값은 0으로 한다
+    else if (cagr < 0) cagr = 0; // 실시간 조회 값이 마이너스여도 가격 상승률 최소값은 0으로 한다
 
     if (dividendYield > 30 || dividendYield < 0 || isNaN(dividendYield)) dividendYield = 0;
 
+    // 배당을 포함한 총수익률에 장기 상한을 건다. 상한에 걸리면 totalReturn < dividendYield가
+    // 되어 가격상승률이 음수가 되는 종목이 생긴다 — 분배금이 총수익률을 넘는 상품의 NAV
+    // 잠식을 그대로 표현한 것이라 의도된 결과다.
+    let totalReturn = cagr + dividendYield;
+    if (totalReturn > 9.5) totalReturn = 9.5;
+
     return Response.json({
       ticker,
-      totalReturn: Math.round(cagr * 10) / 10,
+      totalReturn: Math.round(totalReturn * 10) / 10,
       dividendYield: Math.round(dividendYield * 10) / 10,
     });
 

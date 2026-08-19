@@ -14,28 +14,31 @@ describe('SimpleSimulationAdapter', () => {
     propensity: 'neutral',
   };
 
-  describe('투자성향별 성장률/배당률 매핑 (하드코딩 숫자 검증)', () => {
-    test('conservative(안전추구)는 연 성장률 1.0%, 배당률 3.0%로 매핑된다', () => {
+  // 총수익률 표기로 옮기면서 기대값이 «가격상승률»에서 «총수익률»로 바뀌었다.
+  // 숫자는 예전 성장률 + 배당률이며, 즉 이 어댑터가 만드는 포트폴리오의 실효 수익률은
+  // 예전과 같다 — 무엇을 적느냐만 달라졌다.
+  describe('투자성향별 총수익률/배당률 매핑 (하드코딩 숫자 검증)', () => {
+    test('conservative(안전추구)는 연 총수익률 4.0%, 배당률 3.0%로 매핑된다', () => {
       const params = SimpleSimulationAdapter.adapt({ ...baseInput, propensity: 'conservative' });
 
       expect(params.assets).toHaveLength(1);
-      expect(params.assets[0].totalReturn).toBe(1.0);
+      expect(params.assets[0].totalReturn).toBe(4.0);
       expect(params.assets[0].dividendYield).toBe(3.0);
     });
 
-    test('neutral(중립형)은 연 성장률 3.0%, 배당률 4.0%로 매핑된다', () => {
+    test('neutral(중립형)은 연 총수익률 7.0%, 배당률 4.0%로 매핑된다', () => {
       const params = SimpleSimulationAdapter.adapt({ ...baseInput, propensity: 'neutral' });
 
       expect(params.assets).toHaveLength(1);
-      expect(params.assets[0].totalReturn).toBe(3.0);
+      expect(params.assets[0].totalReturn).toBe(7.0);
       expect(params.assets[0].dividendYield).toBe(4.0);
     });
 
-    test('aggressive(공격형)는 연 성장률 8.0%, 배당률 1.5%로 매핑된다', () => {
+    test('aggressive(공격형)는 연 총수익률 9.5%, 배당률 1.5%로 매핑된다', () => {
       const params = SimpleSimulationAdapter.adapt({ ...baseInput, propensity: 'aggressive' });
 
       expect(params.assets).toHaveLength(1);
-      expect(params.assets[0].totalReturn).toBe(8.0);
+      expect(params.assets[0].totalReturn).toBe(9.5);
       expect(params.assets[0].dividendYield).toBe(1.5);
     });
 

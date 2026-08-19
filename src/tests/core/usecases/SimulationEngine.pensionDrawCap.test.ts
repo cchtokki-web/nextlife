@@ -33,7 +33,7 @@ function params(overrides: Partial<SimulationParams> = {}): SimulationParams {
     assets: [
       {
         id: 'etf', type: 'etf', ticker: '069500', name: 'KODEX 200',
-        quantity: 3_000, averagePrice: 100_000, totalReturn: 5, dividendYield: 2,
+        quantity: 3_000, averagePrice: 100_000, totalReturn: 7, dividendYield: 2,
         monthlyContribution: 0, reinvestDividend: true, currency: 'KRW',
       },
     ],

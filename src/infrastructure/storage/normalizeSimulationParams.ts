@@ -404,13 +404,16 @@ function normalizePrivatePension(raw: Record<string, unknown>, index: number): P
 }
 
 function normalizeIsaAccount(raw: Record<string, unknown>, index: number): IsaAccount {
+  const investmentType = optionalOneOf(raw.investmentType, INVESTMENT_TYPES, undefined);
   return {
     id: text(raw.id, `isa-${index}`),
     type: oneOf(raw.type, ISA_TYPES, 'general'),
     balance: finite(raw.balance, 0),
     monthlyContribution: finite(raw.monthlyContribution, 0),
     totalReturn: finite(raw.totalReturn, 0),
-    dividendYield: finite(raw.dividendYield, 0),
+    // 예금형은 화면에 배당 입력칸이 없다(AssetFormSection의 investmentType 분기).
+    // 숨은 칸에 값이 남아 있으면 사용자가 볼 수도 고칠 수도 없는 수익률이 된다.
+    dividendYield: investmentType === 'deposit' ? 0 : finite(raw.dividendYield, 0),
     currency: currency(raw.currency, 'KRW'),
     ...onlyIfPresent(raw, 'investmentType', (v) => optionalOneOf(v, INVESTMENT_TYPES, undefined)),
     ...onlyIfPresent(raw, 'ticker', optionalText),

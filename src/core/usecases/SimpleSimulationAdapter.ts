@@ -43,17 +43,17 @@ export class SimpleSimulationAdapter {
     switch (propensity) {
       case 'conservative':
         // 예적금, 채권 위주
-        totalReturn = 1.0; 
+        totalReturn = 4.0; // 예전 성장률 1.0 + 배당 3.0 (총수익률 표기로 이관)
         dividendYield = 3.0; // 이자 수익
         break;
       case 'neutral':
         // 배당 ETF, 채권 혼합
-        totalReturn = 3.0;
+        totalReturn = 7.0; // 예전 성장률 3.0 + 배당 4.0 (총수익률 표기로 이관)
         dividendYield = 4.0;
         break;
       case 'aggressive':
         // 성장형 ETF
-        totalReturn = 8.0;
+        totalReturn = 9.5; // 예전 성장률 8.0 + 배당 1.5 (총수익률 표기로 이관)
         dividendYield = 1.5;
         break;
     }

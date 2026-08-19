@@ -49,6 +49,7 @@ import {
   taxFreeAccount,
 } from './withdrawal/WithdrawalEngine';
 import { calculateRetirementIncomeMetrics } from './metrics/SimulationMetricsCalculator';
+import { priceGrowthRate } from './returns/decomposeReturn';
 
 // 투영 루프가 도는 최대 연수. 사람의 나이 상한(120세)에서 태어난 해부터 세어도 넘을 수 없는
 // 값이라, 정상 입력을 자르지 않으면서 무한에 가까운 루프만 막는다.
@@ -422,9 +423,12 @@ export class LegacySimulationEngine implements SimulationEngineContract {
     const infRateAnnual = inflationRate / 100;
 
     const activeAssets: ActiveAsset[] = assets.map((asset) => {
+      // 총수익률에서 배당분을 뺀 나머지가 가격상승분이다. 배당은 아래 divRateMonthly로
+      // 따로 흐르므로, 여기서 빼지 않으면 배당이 두 번 계산된다.
+      const priceGrowthPercent = priceGrowthRate(asset.totalReturn, asset.dividendYield);
       const growthRateAnnual = inflationMode === 'real'
-        ? (asset.totalReturn - inflationRate) / 100
-        : asset.totalReturn / 100;
+        ? (priceGrowthPercent - inflationRate) / 100
+        : priceGrowthPercent / 100;
       const growthRateMonthly = toMonthlyCompoundRate(growthRateAnnual);
       const divRateMonthly = (asset.dividendYield / 100) / 12;
       
@@ -452,13 +456,12 @@ export class LegacySimulationEngine implements SimulationEngineContract {
     });
 
     const activePensions: ActivePension[] = privatePensions.map((p) => {
-      let totalReturnAnnual = p.totalReturn;
-      if (p.investmentType === 'etf' && p.dividendYield) {
-        totalReturnAnnual += p.dividendYield;
-      }
+      // **분해하지 않는다.** 연금 계좌 안에는 배당세도 재투자 선택지도 없어 총수익률만이
+      // 결과를 결정하고, 성장(기하 복리)과 배당(단리)의 월율 규약이 달라 분해하면 의미
+      // 변경을 넘어 산술까지 바뀐다. p.dividendYield는 표시 전용이다(타입 주석 참조).
       const returnRateAnnual = inflationMode === 'real'
-        ? (totalReturnAnnual - inflationRate) / 100
-        : totalReturnAnnual / 100;
+        ? (p.totalReturn - inflationRate) / 100
+        : p.totalReturn / 100;
       const returnRateMonthly = toMonthlyCompoundRate(returnRateAnnual);
 
       return {
@@ -470,9 +473,10 @@ export class LegacySimulationEngine implements SimulationEngineContract {
     });
 
     const activeIsas: ActiveIsa[] = (isaAccounts || []).map((isa) => {
+      const priceGrowthPercent = priceGrowthRate(isa.totalReturn, isa.dividendYield);
       const returnRateAnnual = inflationMode === 'real'
-        ? (isa.totalReturn - inflationRate) / 100
-        : isa.totalReturn / 100;
+        ? (priceGrowthPercent - inflationRate) / 100
+        : priceGrowthPercent / 100;
       const returnRateMonthly = toMonthlyCompoundRate(returnRateAnnual);
       const divRateMonthly = (isa.dividendYield / 100) / 12;
 
