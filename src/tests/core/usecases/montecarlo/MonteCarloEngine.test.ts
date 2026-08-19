@@ -14,6 +14,7 @@ import { buildReturnShockPath } from '@/core/usecases/montecarlo/returnPath';
 import { mulberry32, deriveSeed } from '@/core/usecases/montecarlo/rng';
 import { simulationYearCount } from '@/core/usecases/montecarlo/horizon';
 import { PENSION_RETURN_SHOCK_BETA } from '@/core/usecases/scenario/economicScenarios';
+import { YIELD_PRESET_RATES } from '@/core/usecases/scenario/applyYieldPreset';
 import { DEFAULT_RETIREMENT_STRATEGY } from '@/core/usecases/strategy/compileStrategy';
 
 const engine = new SimulationEngine();
@@ -403,10 +404,21 @@ describe('resolveMonteCarloConfig', () => {
       .toBe(VOLATILITY_BY_YIELD_PRESET.aggressive);
   });
 
-  test('프리셋이 없거나 custom이면 base 변동성을 쓴다', () => {
+  // **예전 이름은 「프리셋이 없거나 custom이면 base 변동성을 쓴다」였다.** 지금은 그 경우
+  // 보유 자산의 수익률에서 유도하며, 이 픽스처의 자산이 중립형과 같은 7%라 결과가 15%p로
+  // 같을 뿐이다. 유도 규칙 자체는 volatilityPresets.test.ts가 잠근다.
+  test('프리셋이 없거나 custom이면 보유 자산의 수익률에서 유도한다', () => {
+    // 픽스처의 주식 성장률이 7% = 중립형 앵커라 유도 결과도 중립형 변동성이다.
+    expect(params().assets[0].annualGrowthRate).toBe(YIELD_PRESET_RATES.base.stockGrowth);
+
     expect(resolveMonteCarloConfig(params()).annualStdDev).toBe(VOLATILITY_BY_YIELD_PRESET.base);
     expect(resolveMonteCarloConfig(params({ yieldPreset: 'custom' })).annualStdDev)
       .toBe(VOLATILITY_BY_YIELD_PRESET.base);
+
+    // 같은 자리에서 수익률만 낮추면 변동성도 따라 내려간다 — 이것이 실제로 바뀐 동작이다.
+    const conservativeAssets = params().assets.map((a) => ({ ...a, annualGrowthRate: 5 }));
+    expect(resolveMonteCarloConfig(params({ assets: conservativeAssets })).annualStdDev)
+      .toBe(VOLATILITY_BY_YIELD_PRESET.conservative);
   });
 
   test('시드는 고정 상수다', () => {

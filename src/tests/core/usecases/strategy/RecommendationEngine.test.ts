@@ -289,11 +289,16 @@ const paramsWithDepletionRisk: SimulationParams = {
 // 결정론 판정만으로 증액을 허용하던 시절 AI가 정확히 이런 계획에 "생활비를 20% 늘리라"고
 // 권했다. 51인 페르소나 실측에서 증액 추천을 받은 24명 전원의 성공률이 떨어졌고, 그 하락폭이
 // 최대 35%p였다.
-// yieldPreset을 지우면 몬테카를로 변동성이 기본값 σ=15로 돌아간다. 자산은 같은 8억이지만
+// yieldPreset을 'base'로 올리면 몬테카를로 변동성이 σ=15가 된다. 자산은 같은 8억이지만
 // 성공률이 80%로 떨어져 게이트 문턱(90%) 아래가 된다 — 결정론 결과는 여전히 'sustained'다.
+//
+// **예전에는 이 자리가 `yieldPreset: undefined`였다.** 미지정이면 무조건 base(σ=15)로
+// 떨어지던 시절의 표현이다. 지금은 미지정이 「보유 자산의 수익률에서 유도」를 뜻하고, 이
+// 픽스처의 자산은 성장률 3%라 유도하면 안정형(σ=10)으로 잘려 paramsWithSurplusAssetOnly와
+// 구분이 사라진다. 두 픽스처의 차이는 «변동성뿐»이어야 하므로 그 값을 명시한다.
 const paramsWithSurplusButFragile: SimulationParams = {
   ...paramsWithSurplusAssetOnly,
-  yieldPreset: undefined,
+  yieldPreset: 'base',
 };
 
 // baseline 게이트는 통과하지만(93%) 증액 후보 중 큰 쪽만 후보 게이트(80%)에 걸리는 계획.
