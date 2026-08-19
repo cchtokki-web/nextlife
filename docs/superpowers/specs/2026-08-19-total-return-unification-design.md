@@ -254,6 +254,50 @@ totalReturn 키가 있으면            → finite(raw.totalReturn, 0)
 `montecarlo/volatilityPresets`)는 값을 올리지 않고 새 의미에 맞춰 기대값을 다시 계산한다.
 각 갱신은 개별로 확인한다 — 일괄 치환하지 않는다.
 
+## 구현 중 확정된 사항
+
+설계에 없던 판단이 필요했던 곳들. 구현 결과를 문서에 되돌린다.
+
+**저장 계층이 아닌 마이그레이션 pre-pass.** 옛 키를 정제(`normalizeSimulationParams`)
+«안»에서 읽으면, 정제 전후를 비교해 이슈를 만드는 `collectNormalizationIssues`가
+「totalReturn이 없었는데 생겼다」를 금액 이슈로 보고한다. 옛 시나리오를 열 때마다 거짓
+경고가 쏟아지므로, 별도 함수(`migrateLegacyReturnKeys`)를 정제보다 «앞»에 두고 정제와
+이슈 수집이 모두 마이그레이션된 raw를 보게 했다.
+
+**개명 범위에 `scripts/`가 포함된다.** `scripts/harness/personas.ts`와
+`scripts/generate_100_cases.ts`가 같은 필드를 쓴다. 설계는 `src`만 셌다.
+
+**PDF 골든 픽스처는 JSON 캡처다.** `src/tests/fixtures/pdfReport/reportCapture.json`이
+실제 앱에서 뜬 옛 형식 데이터라 키 개명 대상에 들어간다. 개명만 한 커밋에서 이 골든 HTML은
+한 글자도 바뀌지 않았고, 그것이 개명이 동작을 건드리지 않았다는 가장 강한 증거가 됐다.
+
+**BSD sed는 `\b` 단어경계를 지원하지 않는다.** macOS에서 `sed -i '' -E 's/\bfoo\b/bar/g'`는
+exit 0으로 «아무것도 바꾸지 않고» 끝난다. 전역 치환은 `perl -pi -e`로 했다.
+
+**개별 판단이 필요했던 테스트는 셋이 아니라 셋 + 하나였다.**
+
+| 파일 | 판단 |
+|---|---|
+| `SimulationEngine.conservation` | "성장 0"의 표현이 `totalReturn === dividendYield`로 바뀐다. 옛 표기(`totalReturn: 0`)는 이제 가격상승 −D를 뜻해 보존식이 깨진다 |
+| `montecarlo/MonteCarloEngine` | 변동성 유도 기준이 총수익률이 되어 픽스처가 중립형이 아니라 공격형 앵커에 얹힌다. 배당이 큰 포트폴리오가 수익률은 배당까지 챙기면서 위험은 배당 없는 자산 취급을 받던 것이 고쳐진 결과다 |
+| `SimpleSimulationAdapter` | 하드코딩 매핑값을 직접 단언하던 테스트라 기대값을 총수익률로 다시 적었다 |
+| `web/features/AssetForm/AssetFormSection` | 라벨 문자열로 입력을 찾는 테스트 7건. 새 라벨로 갱신 |
+
+`marketTaxTreatment`와 `DividendReinvestmentOptimizer`는 설계가 예상한 것과 달리 기계적
+이관만으로 통과했다. `volatilityPresets.test.ts`도 마찬가지다 — 그쪽은 유도 «규칙»만
+검증하고 픽스처를 쓰지 않는다.
+
+**배당에는 세금이 붙는다는 사실이 회귀 테스트의 형태를 바꿨다.** 총수익률 7%·배당 3%인
+자산은 배당 0%인 자산보다 «조금 적게» 쌓인다 — 배당 몫에 배당소득세(국내 ETF 15.4%)가
+먼저 붙고 세후만 재투자되기 때문이다. 그래서 "같다"가 아니라 "1보다 작고 0.99보다 크다"로
+고정했다. 배당이 통째로 더해지던 예전에는 이 비율이 1.05였다 — 부호부터 반대다.
+
+**예금형 ISA 누수는 두 겹으로 닫힌다.** 총수익률 모델에서는 남은 `dividendYield`가 총합을
+늘리지 못하므로(가격상승분이 그만큼 줄 뿐) 숫자 문제는 이미 사라진다. 정제에서 0으로
+지우는 것은 «사용자가 볼 수도 고칠 수도 없는 값을 남기지 않는다»는 별개의 이유다.
+그래서 엔진 테스트는 "총수익률을 늘리지 않는다"를, 정제 테스트는 "0으로 지운다"를 각각
+고정한다.
+
 ## 구현 순서
 
 1. `priceGrowthRate` 헬퍼 + 단위 테스트, 회귀 테스트 2~4번 작성 (실패 확인)
