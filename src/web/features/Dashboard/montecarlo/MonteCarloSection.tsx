@@ -5,6 +5,7 @@ import GlassCard from '../../../components/GlassCard';
 import { MonteCarloResult } from '../../../../core/entities/montecarlo';
 import { SequenceRiskResult } from '../../../../core/usecases/montecarlo/sequenceRisk';
 import { MonteCarloStatus } from '../../../hooks/useMonteCarlo';
+import { describeMonteCarloAssumptions } from '../../../../core/usecases/montecarlo/describeAssumptions';
 
 interface MonteCarloSectionProps {
   status: MonteCarloStatus;
@@ -72,6 +73,9 @@ export function MonteCarloSection({
   // 「평생 소비 최적화」에서 판정 기준은 사용자가 입력한 목표가 아니라 엔진이 역산한
   // 지속가능액이다. 밝히지 않으면 사용자는 자기 목표(예: 월 350만원) 기준으로 읽는다.
   const plannedMonthly = formatValue(monteCarlo.plannedMonthlySpending);
+  // 문구는 core가 만든다. PDF와 «같은 문장»이어야 하고, 그 판정 규칙(어느 축이 사용자 입력을
+  // 덮었는지)은 엔진의 것이기 때문이다(describeMonteCarloAssumptions 주석).
+  const assumptionCopy = describeMonteCarloAssumptions(monteCarlo);
 
   return (
     <GlassCard>
@@ -85,9 +89,16 @@ export function MonteCarloSection({
             수익률이 해마다 오르내리는 상황을 {monteCarlo.trials.toLocaleString()}회 시뮬레이션한 결과입니다.
           </p>
           <p className="mt-1 text-xs leading-relaxed text-foreground-muted">
-            계산 가정: 연 변동성 {monteCarlo.annualStdDev ?? 15}%p · 정규분포 · 모든 위험자산이 같은
-            시장 충격을 공유 · 고정 시드 {monteCarlo.seed}
+            계산 가정: {assumptionCopy.calculation}
           </p>
+          {/* 미정으로 둔 축이 있을 때만 나온다. 설정 화면이 「네 가지 경기 국면 모두에서 견디는
+              인출 계획을 고릅니다」라고 약속하기 때문에, 그 비교가 «이 확률»에는 들어가지 않았다는
+              사실을 여기서 밝히지 않으면 사용자는 위 숫자를 4국면 검증의 산물로 읽는다. */}
+          {assumptionCopy.robustness && (
+            <p className="mt-1 text-xs leading-relaxed text-foreground-muted">
+              {assumptionCopy.robustness}
+            </p>
+          )}
           {/* 두 확률을 나란히 놓는다. 예전에는 자산 유지 확률이 큰 글씨로 먼저 나오고 생활비
               쪽이 작은 글씨 부연이었는데, 사용자가 실제로 두려워하는 것은 "죽을 때 잔액이
               0원인가"가 아니라 "살아 있는 동안 쓸 돈이 모자라는가"다. 그리고 옛 정의는 생활비

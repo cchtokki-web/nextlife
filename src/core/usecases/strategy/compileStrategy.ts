@@ -207,6 +207,15 @@ const RISK_PROFILE_PRESETS: Record<
   aggressive: 'aggressive',
 };
 
+// 리스크 성향의 표시 이름. **여기가 유일한 출처다**(ECONOMIC_SCENARIO_LABELS와 같은 이유).
+export const RISK_PROFILE_LABELS: Record<RiskProfile, string> = {
+  conservative: '안정형',
+  neutral: '중립형',
+  aggressive: '공격형',
+  custom: '사용자 직접입력',
+  ai_recommended: '입력 수익률 유지',
+};
+
 // 리스크 성향이 수익률을 지배할 수 있는 값인지. "미정"과 "직접입력"을 여기서 한 번만
 // 걸러내고, 그 분기가 "여기가 센티널을 처리하는 자리"임을 코드 흐름으로 드러낸다.
 function isGoverningRiskProfile(profile: RiskProfile): profile is GoverningRiskProfile {

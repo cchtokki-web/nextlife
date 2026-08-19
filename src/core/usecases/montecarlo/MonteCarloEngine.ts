@@ -17,6 +17,8 @@ import { simulationYearCount } from './horizon';
 import { computeMonthlySpendingComposition } from '../MonthlySpendingComposition';
 import { resolveGoalSuccessConditions } from '../goals/goalSuccessConditions';
 import { SHORTFALL_EPSILON_MONTHLY } from '../metrics/SimulationMetricsCalculator';
+import { PENSION_RETURN_SHOCK_BETA } from '../scenario/economicScenarios';
+import { resolveStrategy } from '../strategy/compileStrategy';
 
 // 한 시행에서 보관하는 것. 전 시행의 yearlyResults를 통째로 들면(1000 × 55년 × 30필드)
 // 수십 MB가 되므로 스칼라 두 개와 연도별 총자산만 남긴다.
@@ -107,6 +109,10 @@ export function runMonteCarlo(
   const planned = freezeSpendingPlan(params, engine);
   const years = simulationYearCount(planned.params);
 
+  // 원본 params에서 읽는다. planned.params는 생활비를 고정한 뒤의 것이지만 전략 축은
+  // 건드리지 않으므로 같은 값이고, 「사용자가 무엇을 골랐는가」의 출처는 원본이 옳다.
+  const strategy = resolveStrategy(params);
+
   // 결정론 기준선. 팬 차트에 겹쳐 그려 변동성 손실을 드러내는 데 쓴다.
   //
   // run()이 아니라 runSingle을 부른다 — run()은 이진탐색 30회를 더 돌지만 여기서 필요한
@@ -196,6 +202,14 @@ export function runMonteCarlo(
     trials: config.trials,
     seed: config.seed,
     annualStdDev: config.annualStdDev,
+    // 결과가 «어떤 세계에서 나왔는지»를 결과 자신이 들고 다닌다. 화면은 워커 경계 너머에
+    // 있어 params를 갖고 있지 않고, 화면과 PDF가 각자 params를 읽어 판정하면 두 곳이
+    // 어긋난다(describeMonteCarloAssumptions 주석).
+    assumptions: {
+      economicScenario: strategy.economicScenario,
+      riskProfile: strategy.riskProfile,
+      pensionShockBeta: PENSION_RETURN_SHOCK_BETA,
+    },
     successAge,
     successRate: trials.length > 0 ? succeeded.length / trials.length : 0,
     spendingSuccessRate: trials.length > 0 ? spendingSucceeded.length / trials.length : 0,
