@@ -91,13 +91,13 @@ const baseParams: SimulationParams = {
     {
       id: 'a1', type: 'etf', ticker: 'A', name: '무성장 고배당1',
       quantity: 4000, averagePrice: 100000,
-      annualGrowthRate: 0, dividendYield: 5,
+      totalReturn: 0, dividendYield: 5,
       monthlyContribution: 500000, reinvestDividend: false, currency: 'KRW',
     },
     {
       id: 'a2', type: 'etf', ticker: 'B', name: '무성장 고배당2',
       quantity: 2000, averagePrice: 100000,
-      annualGrowthRate: 0, dividendYield: 3,
+      totalReturn: 0, dividendYield: 3,
       monthlyContribution: 300000, reinvestDividend: false, currency: 'KRW',
     },
   ],
@@ -106,7 +106,7 @@ const baseParams: SimulationParams = {
   privatePensions: [
     {
       id: 'p1', type: 'irp', balance: 300000000,
-      monthlyContribution: 400000, annualReturn: 0, currency: 'KRW',
+      monthlyContribution: 400000, totalReturn: 0, currency: 'KRW',
     },
   ],
   otherIncomes: [{ id: 'o1', label: '임대소득', monthlyAmount: 500000, currency: 'KRW' }],

@@ -50,7 +50,7 @@ describe('retirement-domain-invariants / cash flow', () => {
       assets: [{
         ...retirementParams().assets[0],
         quantity: 5_000,
-        annualGrowthRate: 4,
+        totalReturn: 4,
         dividendYield: 2,
         monthlyContribution: 100_000,
       }],

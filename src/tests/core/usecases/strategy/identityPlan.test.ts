@@ -26,15 +26,15 @@ import { SimulationParams } from '@/core/entities/types';
 const base: SimulationParams = {
   userProfile: { currentAge: 55, retirementAge: 61, expectancy: 90, targetMonthlySpending: 3000000 },
   assets: [
-    { id: 'a1', type: 'etf', ticker: 'A', name: '자산1', quantity: 3000, averagePrice: 100000, annualGrowthRate: 5, dividendYield: 2, monthlyContribution: 0, reinvestDividend: false, currency: 'KRW' },
-    { id: 'a2', type: 'etf', ticker: 'B', name: '자산2', quantity: 2000, averagePrice: 100000, annualGrowthRate: 5, dividendYield: 4, monthlyContribution: 0, reinvestDividend: false, currency: 'KRW' },
+    { id: 'a1', type: 'etf', ticker: 'A', name: '자산1', quantity: 3000, averagePrice: 100000, totalReturn: 5, dividendYield: 2, monthlyContribution: 0, reinvestDividend: false, currency: 'KRW' },
+    { id: 'a2', type: 'etf', ticker: 'B', name: '자산2', quantity: 2000, averagePrice: 100000, totalReturn: 5, dividendYield: 4, monthlyContribution: 0, reinvestDividend: false, currency: 'KRW' },
   ],
   isaAccounts: [
-    { id: 'isa-1', type: 'general', balance: 20000000, monthlyContribution: 0, annualReturn: 5, dividendYield: 0, currency: 'KRW', maturityYears: 3 },
+    { id: 'isa-1', type: 'general', balance: 20000000, monthlyContribution: 0, totalReturn: 5, dividendYield: 0, currency: 'KRW', maturityYears: 3 },
   ],
   nationalPension: { expectedMonthlyAmount: 1000000 },
   privatePensions: [
-    { id: 'p1', type: 'irp', balance: 300000000, monthlyContribution: 0, annualReturn: 4, currency: 'KRW' },
+    { id: 'p1', type: 'irp', balance: 300000000, monthlyContribution: 0, totalReturn: 4, currency: 'KRW' },
   ],
   otherIncomes: [],
   inflationRate: 0,

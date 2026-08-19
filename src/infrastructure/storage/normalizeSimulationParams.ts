@@ -37,6 +37,7 @@ import type { RetirementGoal, RetirementGoalType } from '../../core/entities/ret
 import { RETIREMENT_GOAL_TYPES } from '../../core/entities/retirementGoal';
 import { DEFAULT_HEALTHCARE } from '../../core/usecases/healthcare/defaultHealthcare';
 import { initialParams } from './defaultParams';
+import { migrateLegacyReturnKeys } from './migrateLegacyReturnKeys';
 import {
   collectNormalizationIssues,
   describeIssue,
@@ -58,8 +59,11 @@ export function normalizeSimulationParamsWithIssues(raw: unknown): {
   params: SimulationParams;
   issues: NormalizationIssue[];
 } {
-  const params = normalizeSimulationParams(raw);
-  return { params, issues: collectNormalizationIssues(raw, params) };
+  // 옛 수익률 키를 먼저 옮긴다. 이슈 수집이 마이그레이션 «전»의 raw를 보면
+  // 「totalReturn이 없었는데 생겼다」를 금액 이슈로 잘못 보고한다.
+  const migrated = migrateLegacyReturnKeys(raw);
+  const params = normalizeSimulationParams(migrated);
+  return { params, issues: collectNormalizationIssues(migrated, params) };
 }
 
 /**
@@ -116,7 +120,10 @@ export function reportNormalizationIssues(source: string, issues: readonly Norma
  * healthcare·strategy)도 pickValid로 항목 단위 정제를 거친다. 남은 것은 raw를 펼칠 때 그대로
  * 실려 오는 «타입에 없는 키»뿐이며, 그것은 원칙 3에 따라 의도적으로 건드리지 않는다.
  */
-export function normalizeSimulationParams(raw: unknown): SimulationParams {
+export function normalizeSimulationParams(rawInput: unknown): SimulationParams {
+  // 이 함수를 직접 부르는 호출부가 40여 곳이라 여기서도 옛 데이터를 받을 수 있다.
+  // 마이그레이션이 멱등이라 WithIssues 경로에서 두 번 돌아도 안전하다.
+  const raw = migrateLegacyReturnKeys(rawInput);
   if (!isRecord(raw)) return initialParams;
 
   return {
@@ -362,7 +369,7 @@ function normalizeAsset(raw: Record<string, unknown>, index: number): Investment
     name: text(raw.name, ''),
     quantity: finite(raw.quantity, 0),
     averagePrice: finite(raw.averagePrice, 0),
-    annualGrowthRate: finite(raw.annualGrowthRate, 0),
+    totalReturn: finite(raw.totalReturn, 0),
     dividendYield: finite(raw.dividendYield, 0),
     monthlyContribution: finite(raw.monthlyContribution, 0),
     reinvestDividend: bool(raw.reinvestDividend, false),
@@ -385,7 +392,7 @@ function normalizePrivatePension(raw: Record<string, unknown>, index: number): P
     type: oneOf(raw.type, PRIVATE_PENSION_TYPES, 'savings'),
     balance: finite(raw.balance, 0),
     monthlyContribution: finite(raw.monthlyContribution, 0),
-    annualReturn: finite(raw.annualReturn, 0),
+    totalReturn: finite(raw.totalReturn, 0),
     currency: currency(raw.currency, 'KRW'),
     ...onlyIfPresent(raw, 'investmentType', (v) => optionalOneOf(v, INVESTMENT_TYPES, undefined)),
     ...onlyIfPresent(raw, 'ticker', optionalText),
@@ -402,7 +409,7 @@ function normalizeIsaAccount(raw: Record<string, unknown>, index: number): IsaAc
     type: oneOf(raw.type, ISA_TYPES, 'general'),
     balance: finite(raw.balance, 0),
     monthlyContribution: finite(raw.monthlyContribution, 0),
-    annualReturn: finite(raw.annualReturn, 0),
+    totalReturn: finite(raw.totalReturn, 0),
     dividendYield: finite(raw.dividendYield, 0),
     currency: currency(raw.currency, 'KRW'),
     ...onlyIfPresent(raw, 'investmentType', (v) => optionalOneOf(v, INVESTMENT_TYPES, undefined)),

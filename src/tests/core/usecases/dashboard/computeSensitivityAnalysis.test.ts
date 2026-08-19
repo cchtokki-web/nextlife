@@ -8,15 +8,15 @@ const baseParams: SimulationParams = {
   userProfile: { currentAge: 40, retirementAge: 60, expectancy: 90, targetMonthlySpending: 3000000 },
   assets: [
     { id: 'a1', type: 'etf', ticker: 'SPY', name: 'S&P500', quantity: 10, averagePrice: 400000,
-      annualGrowthRate: 7, dividendYield: 1.5, monthlyContribution: 500000, reinvestDividend: true, currency: 'KRW' },
+      totalReturn: 7, dividendYield: 1.5, monthlyContribution: 500000, reinvestDividend: true, currency: 'KRW' },
   ],
   nationalPension: { expectedMonthlyAmount: 1000000 },
   privatePensions: [
-    { id: 'p1', type: 'irp', balance: 50000000, monthlyContribution: 300000, annualReturn: 4, currency: 'KRW' },
+    { id: 'p1', type: 'irp', balance: 50000000, monthlyContribution: 300000, totalReturn: 4, currency: 'KRW' },
   ],
   isaAccounts: [
     { id: 'i1', type: 'general', balance: 20000000, monthlyContribution: 200000,
-      annualReturn: 5, dividendYield: 2, currency: 'KRW', maturityYears: 3 },
+      totalReturn: 5, dividendYield: 2, currency: 'KRW', maturityYears: 3 },
   ],
   otherIncomes: [],
   inflationRate: 2,
@@ -44,7 +44,7 @@ function makeResult(
 
 // 기준선도 이제 computeSensitivityAnalysis가 직접 계산한다 — 변형이 하나도 걸리지 않은 호출.
 function isBaselineCall(p: SimulationParams): boolean {
-  return p.assets[0]?.annualGrowthRate === baseParams.assets[0]?.annualGrowthRate
+  return p.assets[0]?.totalReturn === baseParams.assets[0]?.totalReturn
     && p.inflationRate === baseParams.inflationRate
     && p.userProfile.retirementAge === baseParams.userProfile.retirementAge;
 }
@@ -54,8 +54,8 @@ function makeMockEngine(
   baseline: SimulationResult = makeResult(88)
 ): SimulationEngine {
   const runSingle = vi.fn((params: SimulationParams) => {
-    if (params.assets[0]?.annualGrowthRate === 5) return makeResult(depletionAgeByLabel['returnDown']);
-    if (params.assets[0]?.annualGrowthRate === 9) return makeResult(depletionAgeByLabel['returnUp']);
+    if (params.assets[0]?.totalReturn === 5) return makeResult(depletionAgeByLabel['returnDown']);
+    if (params.assets[0]?.totalReturn === 9) return makeResult(depletionAgeByLabel['returnUp']);
     if (params.inflationRate === 3) return makeResult(depletionAgeByLabel['inflationUp']);
     if (params.inflationRate === 1) return makeResult(depletionAgeByLabel['inflationDown']);
     if (params.userProfile.retirementAge === 57) return makeResult(depletionAgeByLabel['retirementEarlier']);
@@ -79,13 +79,13 @@ describe('computeSensitivityAnalysis', () => {
     computeSensitivityAnalysis(baseParams, engine);
 
     const calls = callsOf(engine);
-    const returnDownCall = calls.find((c) => c[0].assets[0].annualGrowthRate === 5)![0];
-    expect(returnDownCall.privatePensions[0].annualReturn).toBe(2); // 4 - 2
-    expect(returnDownCall.isaAccounts![0].annualReturn).toBe(3); // 5 - 2
+    const returnDownCall = calls.find((c) => c[0].assets[0].totalReturn === 5)![0];
+    expect(returnDownCall.privatePensions[0].totalReturn).toBe(2); // 4 - 2
+    expect(returnDownCall.isaAccounts![0].totalReturn).toBe(3); // 5 - 2
 
-    const returnUpCall = calls.find((c) => c[0].assets[0].annualGrowthRate === 9)![0];
-    expect(returnUpCall.privatePensions[0].annualReturn).toBe(6); // 4 + 2
-    expect(returnUpCall.isaAccounts![0].annualReturn).toBe(7); // 5 + 2
+    const returnUpCall = calls.find((c) => c[0].assets[0].totalReturn === 9)![0];
+    expect(returnUpCall.privatePensions[0].totalReturn).toBe(6); // 4 + 2
+    expect(returnUpCall.isaAccounts![0].totalReturn).toBe(7); // 5 + 2
   });
 
   test('물가상승률/은퇴시점 시나리오는 해당 필드만 바꾸고 나머지는 baseParams와 동일하다', () => {
@@ -97,7 +97,7 @@ describe('computeSensitivityAnalysis', () => {
 
     const calls = callsOf(engine);
     const inflationUpCall = calls.find((c) => c[0].inflationRate === 3)![0];
-    expect(inflationUpCall.assets[0].annualGrowthRate).toBe(7); // 변경 없음
+    expect(inflationUpCall.assets[0].totalReturn).toBe(7); // 변경 없음
     expect(inflationUpCall.userProfile.retirementAge).toBe(60); // 변경 없음
 
     const retirementEarlierCall = calls.find((c) => c[0].userProfile.retirementAge === 57)![0];
@@ -189,7 +189,7 @@ describe('computeSensitivityAnalysis', () => {
       userProfile: { ...baseParams.userProfile, expectancy: 100 },
     };
     const runSingle = vi.fn((p: SimulationParams) => {
-      if (p.assets[0]?.annualGrowthRate === 5) return makeResult(95);
+      if (p.assets[0]?.totalReturn === 5) return makeResult(95);
       return makeResult(null);
     });
     const engine = { runSingle } as unknown as SimulationEngine;
@@ -208,7 +208,7 @@ describe('computeSensitivityAnalysis', () => {
   describe('연속형 지표', () => {
     test('기말자산과 baseline 대비 증감을 함께 보고한다', () => {
       const runSingle = vi.fn((params: SimulationParams) => {
-        if (params.assets[0]?.annualGrowthRate === 5) return makeResult(null, { endingAssets: 820000000 });
+        if (params.assets[0]?.totalReturn === 5) return makeResult(null, { endingAssets: 820000000 });
         if (isBaselineCall(params)) return makeResult(null, { endingAssets: 2500000000 });
         return makeResult(null, { endingAssets: 3000000000 });
       });
@@ -289,7 +289,7 @@ describe('computeSensitivityAnalysis', () => {
       userProfile: { currentAge: 51, retirementAge: 60, expectancy: 90, targetMonthlySpending: 3500000 },
       assets: [
         { id: 'a1', type: 'etf', ticker: 'QQQ', name: 'QQQ', quantity: 100, averagePrice: 1000000,
-          annualGrowthRate: 7, dividendYield: 1.5, monthlyContribution: 1000000,
+          totalReturn: 7, dividendYield: 1.5, monthlyContribution: 1000000,
           reinvestDividend: true, currency: 'KRW' },
       ],
       nationalPension: { expectedMonthlyAmount: 2000000 },
@@ -353,7 +353,7 @@ describe('computeSensitivityAnalysis', () => {
 
   test('특정 시나리오가 예외를 던져도 나머지 5개는 정상 반환된다', () => {
     const runSingle = vi.fn((params: SimulationParams) => {
-      if (params.assets[0]?.annualGrowthRate === 5) throw new Error('시뮬레이션 실패');
+      if (params.assets[0]?.totalReturn === 5) throw new Error('시뮬레이션 실패');
       return makeResult(85);
     });
     const engine = { runSingle } as unknown as SimulationEngine;

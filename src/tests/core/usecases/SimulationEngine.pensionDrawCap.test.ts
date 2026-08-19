@@ -33,14 +33,14 @@ function params(overrides: Partial<SimulationParams> = {}): SimulationParams {
     assets: [
       {
         id: 'etf', type: 'etf', ticker: '069500', name: 'KODEX 200',
-        quantity: 3_000, averagePrice: 100_000, annualGrowthRate: 5, dividendYield: 2,
+        quantity: 3_000, averagePrice: 100_000, totalReturn: 5, dividendYield: 2,
         monthlyContribution: 0, reinvestDividend: true, currency: 'KRW',
       },
     ],
     isaAccounts: [],
     nationalPension: { expectedMonthlyAmount: 1_200_000 },
     privatePensions: [
-      { id: 'irp', type: 'irp', balance: 600_000_000, monthlyContribution: 0, annualReturn: 4, currency: 'KRW' },
+      { id: 'irp', type: 'irp', balance: 600_000_000, monthlyContribution: 0, totalReturn: 4, currency: 'KRW' },
     ],
     otherIncomes: [],
     inflationRate: 0,
@@ -69,7 +69,7 @@ describe('SimulationEngine - 사적연금 정기 인출 상한', () => {
     const balance = 30_000_000;
     const result = engine.runSingle(params({
       privatePensions: [
-        { id: 'irp', type: 'irp', balance, monthlyContribution: 0, annualReturn: 4, currency: 'KRW' },
+        { id: 'irp', type: 'irp', balance, monthlyContribution: 0, totalReturn: 4, currency: 'KRW' },
       ],
     }));
 
@@ -112,7 +112,7 @@ describe('SimulationEngine - 사적연금 정기 인출 상한', () => {
       assets: [],
       // 균등분할액이 필요액을 넘어야 상한 구간에 들어간다. 넘지 않으면 상한 자체가 돌지 않는다.
       privatePensions: [
-        { id: 'irp', type: 'irp', balance: 2_000_000_000, monthlyContribution: 0, annualReturn: 4, currency: 'KRW' },
+        { id: 'irp', type: 'irp', balance: 2_000_000_000, monthlyContribution: 0, totalReturn: 4, currency: 'KRW' },
       ],
     }));
 
@@ -131,8 +131,8 @@ describe('SimulationEngine - 사적연금 정기 인출 상한', () => {
     const one = engine.runSingle(params());
     const two = engine.runSingle(params({
       privatePensions: [
-        { id: 'irp-a', type: 'irp', balance: 300_000_000, monthlyContribution: 0, annualReturn: 4, currency: 'KRW' },
-        { id: 'irp-b', type: 'irp', balance: 300_000_000, monthlyContribution: 0, annualReturn: 4, currency: 'KRW' },
+        { id: 'irp-a', type: 'irp', balance: 300_000_000, monthlyContribution: 0, totalReturn: 4, currency: 'KRW' },
+        { id: 'irp-b', type: 'irp', balance: 300_000_000, monthlyContribution: 0, totalReturn: 4, currency: 'KRW' },
       ],
     }));
 

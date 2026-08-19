@@ -12,7 +12,7 @@ describe('retirement-domain-invariants / Monte Carlo', () => {
       assets: [{
         ...retirementParams().assets[0],
         quantity: 5_000,
-        annualGrowthRate: 6,
+        totalReturn: 6,
         dividendYield: 2,
       }],
     });

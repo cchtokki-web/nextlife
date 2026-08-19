@@ -18,7 +18,7 @@ describe('SimulationEngine 자산 매도 순서 전략', () => {
         name: '저배당 성장주',
         quantity: 1,
         averagePrice: 30000000, // 3천만 원
-        annualGrowthRate: 0,
+        totalReturn: 0,
         dividendYield: 0.5,
         monthlyContribution: 0,
         reinvestDividend: false,
@@ -31,7 +31,7 @@ describe('SimulationEngine 자산 매도 순서 전략', () => {
         name: '고배당주',
         quantity: 1,
         averagePrice: 30000000, // 3천만 원
-        annualGrowthRate: 0,
+        totalReturn: 0,
         dividendYield: 6,
         monthlyContribution: 0,
         reinvestDividend: false,
@@ -96,7 +96,7 @@ describe('SimulationEngine ISA 만기 자금 이동 목적지', () => {
         name: '일반자산',
         quantity: 1,
         averagePrice: 5000000,
-        annualGrowthRate: 0,
+        totalReturn: 0,
         dividendYield: 0,
         monthlyContribution: 0,
         reinvestDividend: false,
@@ -110,7 +110,7 @@ describe('SimulationEngine ISA 만기 자금 이동 목적지', () => {
         type: 'irp',
         balance: 5000000,
         monthlyContribution: 0,
-        annualReturn: 0,
+        totalReturn: 0,
         currency: 'KRW',
       },
     ],
@@ -120,7 +120,7 @@ describe('SimulationEngine ISA 만기 자금 이동 목적지', () => {
         type: 'general',
         balance: 10000000, // 1천만 원, 성장 없음 -> 만기 시 수익 0, 세금 0, 순액 그대로 이전
         monthlyContribution: 0,
-        annualReturn: 0,
+        totalReturn: 0,
         dividendYield: 0,
         currency: 'KRW',
         maturityYears: 1,
@@ -172,12 +172,12 @@ describe('SimulationEngine 계좌군 인출 정책', () => {
     assets: [{
       id: 'general', type: 'etf', ticker: 'GENERAL', name: '일반자산',
       quantity: 1, averagePrice: 20_000_000, acquisitionCostBasis: 20_000_000,
-      annualGrowthRate: 0, dividendYield: 0, monthlyContribution: 0,
+      totalReturn: 0, dividendYield: 0, monthlyContribution: 0,
       reinvestDividend: false, currency: 'KRW', assetMarket: 'KR_ETF',
     }],
     isaAccounts: [{
       id: 'isa', type: 'general', balance: 20_000_000, monthlyContribution: 0,
-      annualReturn: 0, dividendYield: 0, currency: 'KRW', maturityYears: 100,
+      totalReturn: 0, dividendYield: 0, currency: 'KRW', maturityYears: 100,
     }],
     nationalPension: { expectedMonthlyAmount: 0 },
     privatePensions: [],
@@ -227,7 +227,7 @@ describe('SimulationEngine 계좌군 인출 정책', () => {
       isaAccounts: [],
       privatePensions: [{
         id: 'irp', type: 'irp', balance: 20_000_000, monthlyContribution: 0,
-        annualReturn: 0, currency: 'KRW',
+        totalReturn: 0, currency: 'KRW',
       }],
     };
     const generalFirst = engine.runSingle({

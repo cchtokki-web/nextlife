@@ -34,9 +34,9 @@ interface ScenarioDefinition {
 function shiftReturn(params: SimulationParams, delta: number): SimulationParams {
   return {
     ...params,
-    assets: params.assets.map((a) => ({ ...a, annualGrowthRate: a.annualGrowthRate + delta })),
-    privatePensions: params.privatePensions.map((p) => ({ ...p, annualReturn: p.annualReturn + delta })),
-    isaAccounts: params.isaAccounts?.map((i) => ({ ...i, annualReturn: i.annualReturn + delta })),
+    assets: params.assets.map((a) => ({ ...a, totalReturn: a.totalReturn + delta })),
+    privatePensions: params.privatePensions.map((p) => ({ ...p, totalReturn: p.totalReturn + delta })),
+    isaAccounts: params.isaAccounts?.map((i) => ({ ...i, totalReturn: i.totalReturn + delta })),
   };
 }
 

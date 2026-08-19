@@ -19,7 +19,7 @@ function paramsWithMarket(market: AssetMarket): SimulationParams {
         // 누진세액이 원천징수액을 넘어 추가 납부가 실제로 발생한다(더 낮은 금액에서는
         // 원천징수 공제로 0이 되어 "합산되었는가"를 종합과세로는 확인할 수 없다).
         quantity: 20000, averagePrice: 100000,
-        annualGrowthRate: 0, dividendYield: 5,
+        totalReturn: 0, dividendYield: 5,
         monthlyContribution: 0, reinvestDividend: false,
         currency: 'KRW', assetMarket: market,
       },

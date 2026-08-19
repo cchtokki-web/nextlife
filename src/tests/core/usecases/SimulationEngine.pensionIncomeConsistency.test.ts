@@ -27,14 +27,14 @@ function params(overrides: Partial<SimulationParams> = {}): SimulationParams {
     assets: [
       {
         id: 'etf', type: 'etf', ticker: '069500', name: 'KODEX 200',
-        quantity: 3_000, averagePrice: 100_000, annualGrowthRate: 5, dividendYield: 3,
+        quantity: 3_000, averagePrice: 100_000, totalReturn: 5, dividendYield: 3,
         monthlyContribution: 0, reinvestDividend: false, currency: 'KRW',
       },
     ],
     isaAccounts: [],
     nationalPension: { expectedMonthlyAmount: 1_000_000 },
     privatePensions: [
-      { id: 'irp', type: 'irp', balance: 300_000_000, monthlyContribution: 0, annualReturn: 4, currency: 'KRW' },
+      { id: 'irp', type: 'irp', balance: 300_000_000, monthlyContribution: 0, totalReturn: 4, currency: 'KRW' },
     ],
     otherIncomes: [
       { id: 'rent', label: '상가 임대료', monthlyAmount: 3_000_000, currency: 'KRW' },

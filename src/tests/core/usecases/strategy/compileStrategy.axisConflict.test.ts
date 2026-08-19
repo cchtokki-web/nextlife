@@ -21,13 +21,13 @@ const baseParams: SimulationParams = {
   assets: [
     {
       id: 'a1', type: 'etf', ticker: 'X', name: 'X', quantity: 1, averagePrice: 1,
-      annualGrowthRate: 7, dividendYield: 2, monthlyContribution: 0,
+      totalReturn: 7, dividendYield: 2, monthlyContribution: 0,
       reinvestDividend: false, currency: 'KRW',
     },
   ],
   nationalPension: { expectedMonthlyAmount: 1000000 },
   privatePensions: [
-    { id: 'p1', type: 'irp', balance: 1000, monthlyContribution: 0, annualReturn: 4, currency: 'KRW' },
+    { id: 'p1', type: 'irp', balance: 1000, monthlyContribution: 0, totalReturn: 4, currency: 'KRW' },
   ],
   otherIncomes: [],
   inflationRate: 2.5,
@@ -142,8 +142,8 @@ describe('네 축이 동시에 저수준 필드를 정하는 경우', () => {
 
   test('수익률은 나중에 적용되는 리스크 성향이 정한 값이 남는다', () => {
     // 시나리오의 주식 6% / 연금 3%가 아니라 안정형 프리셋의 5% / 3%다.
-    expect(compiled.params.assets[0].annualGrowthRate).toBe(5);
-    expect(compiled.params.privatePensions[0].annualReturn).toBe(3);
+    expect(compiled.params.assets[0].totalReturn).toBe(5);
+    expect(compiled.params.privatePensions[0].totalReturn).toBe(3);
     expect(compiled.params.yieldPreset).toBe('conservative');
   });
 

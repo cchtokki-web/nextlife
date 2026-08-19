@@ -89,7 +89,7 @@ describe('ExpertDetailsPanel', () => {
     assets: [
       {
         id: 'a1', type: 'etf', ticker: 'KODEX', name: '국내 ETF', quantity: 10000,
-        averagePrice: 100000, annualGrowthRate: 6, dividendYield: 2,
+        averagePrice: 100000, totalReturn: 6, dividendYield: 2,
         monthlyContribution: 0, reinvestDividend: false, currency: 'KRW',
       },
     ],

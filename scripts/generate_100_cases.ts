@@ -22,7 +22,7 @@ function generateAsset(): InvestmentAsset {
     name: isUSD ? 'US ETF' : 'KR ETF',
     quantity: qty,
     averagePrice: price,
-    annualGrowthRate: randomFloat(3, 12),
+    totalReturn: randomFloat(3, 12),
     dividendYield: randomFloat(0, 5),
     monthlyContribution: randomInt(0, 1000000),
     reinvestDividend: Math.random() > 0.5,
@@ -38,7 +38,7 @@ function generatePension(): PrivatePension {
     investmentType: 'etf',
     balance: randomInt(10000000, 100000000),
     monthlyContribution: randomInt(100000, 1000000),
-    annualReturn: randomFloat(3, 8),
+    totalReturn: randomFloat(3, 8),
     currency: 'KRW'
   };
 }

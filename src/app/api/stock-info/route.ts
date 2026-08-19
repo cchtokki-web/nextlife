@@ -103,7 +103,7 @@ export async function GET(request: NextRequest) {
 
     return Response.json({
       ticker,
-      annualGrowthRate: Math.round(cagr * 10) / 10,
+      totalReturn: Math.round(cagr * 10) / 10,
       dividendYield: Math.round(dividendYield * 10) / 10,
     });
 

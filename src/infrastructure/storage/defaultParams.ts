@@ -23,7 +23,7 @@ export const initialParams: SimulationParams = {
       name: 'KODEX 200',
       quantity: 2000,
       averagePrice: 35000, // 약 7,000만 원
-      annualGrowthRate: 5,
+      totalReturn: 5,
       dividendYield: 2.0,
       monthlyContribution: 400000,
       reinvestDividend: true,
@@ -36,7 +36,7 @@ export const initialParams: SimulationParams = {
       name: 'TIGER 미국S&P500',
       quantity: 4000,
       averagePrice: 15000, // 약 6,000만 원
-      annualGrowthRate: 8,
+      totalReturn: 8,
       dividendYield: 1.5,
       monthlyContribution: 300000,
       reinvestDividend: true,
@@ -52,7 +52,7 @@ export const initialParams: SimulationParams = {
       type: 'irp',
       balance: 50000000, // 5,000만 원
       monthlyContribution: 400000, // 40만 원
-      annualReturn: 4,
+      totalReturn: 4,
       currency: 'KRW',
     },
     {
@@ -60,7 +60,7 @@ export const initialParams: SimulationParams = {
       type: 'savings',
       balance: 60000000, // 6,000만 원
       monthlyContribution: 500000, // 50만 원
-      annualReturn: 4,
+      totalReturn: 4,
       currency: 'KRW',
     },
   ],

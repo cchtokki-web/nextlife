@@ -7,7 +7,7 @@ const baseParams: SimulationParams = {
   assets: [],
   nationalPension: { expectedMonthlyAmount: 0 },
   privatePensions: [
-    { id: 'p1', type: 'irp', balance: 1000000000, monthlyContribution: 0, annualReturn: 0, currency: 'KRW' },
+    { id: 'p1', type: 'irp', balance: 1000000000, monthlyContribution: 0, totalReturn: 0, currency: 'KRW' },
   ],
   otherIncomes: [],
   inflationRate: 0,
@@ -96,7 +96,7 @@ describe('SimulationEngine 의료비 통합', () => {
       ...baseParams,
       assets: [{
         id: 'a1', type: 'etf', ticker: 'HOLD', name: '현금성 자산',
-        quantity: 1, averagePrice: 0, annualGrowthRate: 0, dividendYield: 0,
+        quantity: 1, averagePrice: 0, totalReturn: 0, dividendYield: 0,
         monthlyContribution: 0, reinvestDividend: false, currency: 'KRW',
       }],
     };

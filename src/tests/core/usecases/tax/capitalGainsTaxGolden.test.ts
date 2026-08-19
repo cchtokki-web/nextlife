@@ -50,7 +50,7 @@ function sellingScenario(market: AssetMarket, acquisitionCostBasis?: number): Si
         id: 'a1', type: 'etf', ticker: 'A', name: '해외 ETF',
         // 평가액 10억. 성장·배당 0으로 두어 매도만 일어나게 한다.
         quantity: 10000, averagePrice: 100000,
-        annualGrowthRate: 0, dividendYield: 0,
+        totalReturn: 0, dividendYield: 0,
         monthlyContribution: 0, reinvestDividend: false,
         currency: 'KRW', assetMarket: market,
         ...(acquisitionCostBasis !== undefined ? { acquisitionCostBasis } : {}),
@@ -127,7 +127,7 @@ describe('SimulationEngine - 양도소득세 통합', () => {
         {
           id: 'dividend-asset', type: 'etf', ticker: 'DIV', name: '국내 고배당 ETF',
           quantity: 20_000, averagePrice: 100_000,
-          annualGrowthRate: 0, dividendYield: 5,
+          totalReturn: 0, dividendYield: 5,
           monthlyContribution: 0, reinvestDividend: false,
           currency: 'KRW', assetMarket: 'KR_ETF',
         },

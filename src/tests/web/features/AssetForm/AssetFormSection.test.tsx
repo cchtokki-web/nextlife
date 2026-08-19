@@ -30,12 +30,12 @@ const withPensionAndIsa = (
   ...baseParams,
   strategy,
   privatePensions: [{
-    id: 'p1', type: 'irp', balance: 1000, monthlyContribution: 0, annualReturn: 5,
+    id: 'p1', type: 'irp', balance: 1000, monthlyContribution: 0, totalReturn: 5,
     currency: 'KRW', investmentType: pensionInvestmentType, ticker: 'AAA',
   }],
   isaAccounts: [{
     id: 'i1', type: 'general', balance: 1000, monthlyContribution: 0,
-    annualReturn: 5, dividendYield: 1.5, currency: 'KRW', maturityYears: 3,
+    totalReturn: 5, dividendYield: 1.5, currency: 'KRW', maturityYears: 3,
   }],
 });
 
@@ -71,7 +71,7 @@ describe('AssetFormSection - 전략이 수익률을 지배할 때', () => {
     ...baseParams,
     assets: [{
       id: 'a1', type: 'etf', ticker: 'AAA', name: '자산1', quantity: 10, averagePrice: 1000,
-      annualGrowthRate: 12, dividendYield: 2, monthlyContribution: 0,
+      totalReturn: 12, dividendYield: 2, monthlyContribution: 0,
       reinvestDividend: false, currency: 'KRW',
     }],
   };
@@ -137,7 +137,7 @@ describe('AssetFormSection - 전략이 수익률을 지배할 때', () => {
     expect(screen.getByLabelText('연 기대 수익률')).toBeDisabled();
   });
 
-  // A2(2): 실시간 조회 버튼은 annualGrowthRate/annualReturn을 덮어쓰면서 yieldPreset을
+  // A2(2): 실시간 조회 버튼은 totalReturn을 덮어쓰면서 yieldPreset을
   // 'custom'으로까지 찍는다. 입력만 잠그고 이 버튼을 남기면 지배 중에도 버튼 하나로
   // 화면상 수익률과 'custom' 표식이 동시에 바뀌고 엔진은 여전히 프리셋으로 계산한다.
   test('지배 중이면 자산의 실시간 성장률/배당률 조회 버튼도 비활성화된다', () => {
@@ -203,7 +203,7 @@ describe('AssetFormSection - 수익률 입력의 접근성 이름', () => {
       ...baseParams,
       privatePensions: [{
         id: 'p1', type: 'irp', balance: 1000, monthlyContribution: 0,
-        annualReturn: 5, currency: 'KRW', investmentType: 'deposit',
+        totalReturn: 5, currency: 'KRW', investmentType: 'deposit',
       }],
     };
     render(<AssetFormSection params={params} onChangeParams={vi.fn()} />);
@@ -222,7 +222,7 @@ describe('AssetFormSection - 사적연금 수령 개시 나이 UI 제거됨', ()
     const params: SimulationParams = {
       ...baseParams,
       privatePensions: [
-        { id: 'pension-1', type: 'irp', balance: 100000000, monthlyContribution: 0, annualReturn: 5, currency: 'KRW' },
+        { id: 'pension-1', type: 'irp', balance: 100000000, monthlyContribution: 0, totalReturn: 5, currency: 'KRW' },
       ],
     };
     render(<AssetFormSection params={params} onChangeParams={vi.fn()} />);

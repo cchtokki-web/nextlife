@@ -135,7 +135,7 @@ describe('normalizeSimulationParams', () => {
         baseExchangeRate: 0,
         isaAccounts: [{
           id: 'isa-1', type: 'general', balance: 1000, monthlyContribution: 0,
-          annualReturn: 5, dividendYield: 0, currency: 'KRW',
+          totalReturn: 5, dividendYield: 0, currency: 'KRW',
           // 0년 만기는 만기 처리가 매년 발동하는 뜻이 된다.
           maturityYears: 0,
         }],
@@ -252,12 +252,12 @@ describe('normalizeSimulationParams', () => {
     test('원소의 깨진 숫자는 0으로 두고 원소는 남긴다', () => {
       const result = normalizeSimulationParams({
         ...structuredClone(initialParams),
-        assets: [{ ...initialParams.assets[0], quantity: '2000', annualGrowthRate: null }],
+        assets: [{ ...initialParams.assets[0], quantity: '2000', totalReturn: null }],
       });
 
       expect(result.assets).toHaveLength(1);
       expect(result.assets[0].quantity).toBe(0);
-      expect(result.assets[0].annualGrowthRate).toBe(0);
+      expect(result.assets[0].totalReturn).toBe(0);
       expect(result.assets[0].name).toBe('KODEX 200');
     });
 
@@ -266,7 +266,7 @@ describe('normalizeSimulationParams', () => {
         ...structuredClone(initialParams),
         assets: [{ ...initialParams.assets[0], type: 'crypto', currency: 'BTC' }],
         privatePensions: [{ ...initialParams.privatePensions[0], type: 'unknown' }],
-        isaAccounts: [{ id: 'isa-1', type: 'vip', balance: 1000, monthlyContribution: 0, annualReturn: 4, dividendYield: 0, currency: 'KRW', maturityYears: 3 }],
+        isaAccounts: [{ id: 'isa-1', type: 'vip', balance: 1000, monthlyContribution: 0, totalReturn: 4, dividendYield: 0, currency: 'KRW', maturityYears: 3 }],
       });
 
       expect(result.assets[0].type).toBe('etf');
@@ -294,7 +294,7 @@ describe('normalizeSimulationParams', () => {
         userProfile: { ...initialParams.userProfile, targetBequest: 'broken' },
         assets: [{
           id: 'a1', type: 'etf', ticker: 'X', name: 'n', quantity: 10, averagePrice: 1000,
-          annualGrowthRate: 5, dividendYield: 1, monthlyContribution: 0,
+          totalReturn: 5, dividendYield: 1, monthlyContribution: 0,
           reinvestDividend: false, currency: 'KRW',
           acquisitionCostBasis: Number.NaN,
         }],

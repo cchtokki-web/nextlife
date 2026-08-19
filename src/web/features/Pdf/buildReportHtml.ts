@@ -387,13 +387,13 @@ export function buildReportHtml(input: ReportHtmlInput): string {
       // 숫자이거나 우리가 고른 라벨이라, escapeHtml이 필요한 곳은 정확히 여기뿐이다.
       const accountListsHtml = [
         renderAccountList('사적연금', privatePensions, (p) =>
-          `<li style="margin-bottom: 4px;"><strong>${escapeHtml(describePrivatePensionLabel(p))}</strong>: 현재 잔액 ${p.balance.toLocaleString()} ${formatCurrencyUnit(p.currency)}, 매월 ${p.monthlyContribution.toLocaleString()} ${formatCurrencyUnit(p.currency)} 납입, 예상 연 수익률 ${p.annualReturn}%</li>`,
+          `<li style="margin-bottom: 4px;"><strong>${escapeHtml(describePrivatePensionLabel(p))}</strong>: 현재 잔액 ${p.balance.toLocaleString()} ${formatCurrencyUnit(p.currency)}, 매월 ${p.monthlyContribution.toLocaleString()} ${formatCurrencyUnit(p.currency)} 납입, 예상 연 수익률 ${p.totalReturn}%</li>`,
           '등록된 사적연금 없음'),
         renderAccountList('투자 자산', assets, (a) =>
-          `<li style="margin-bottom: 4px;"><strong>${escapeHtml(describeInvestmentAssetLabel(a))}</strong>: ${a.quantity}주(개) x 평균단가 ${a.averagePrice.toLocaleString()} ${formatCurrencyUnit(a.currency)}, 매월 ${a.monthlyContribution.toLocaleString()} ${formatCurrencyUnit(a.currency)} 납입, 예상 연 수익률 ${a.annualGrowthRate}%, 배당률 ${a.dividendYield}%, 배당 재투자 ${a.reinvestDividend ? 'O' : 'X'}</li>`,
+          `<li style="margin-bottom: 4px;"><strong>${escapeHtml(describeInvestmentAssetLabel(a))}</strong>: ${a.quantity}주(개) x 평균단가 ${a.averagePrice.toLocaleString()} ${formatCurrencyUnit(a.currency)}, 매월 ${a.monthlyContribution.toLocaleString()} ${formatCurrencyUnit(a.currency)} 납입, 예상 연 수익률 ${a.totalReturn}%, 배당률 ${a.dividendYield}%, 배당 재투자 ${a.reinvestDividend ? 'O' : 'X'}</li>`,
           '등록된 투자 자산 없음'),
         renderAccountList('ISA 계좌', isaAccounts, (isa) =>
-          `<li style="margin-bottom: 4px;"><strong>${escapeHtml(describeIsaAccountLabel(isa))}</strong>: 현재 잔액 ${isa.balance.toLocaleString()} ${formatCurrencyUnit(isa.currency)}, 매월 ${isa.monthlyContribution.toLocaleString()} ${formatCurrencyUnit(isa.currency)} 납입, 예상 연 수익률 ${isa.annualReturn}%, 배당률 ${isa.dividendYield}%, 만기 ${isa.maturityYears}년</li>`,
+          `<li style="margin-bottom: 4px;"><strong>${escapeHtml(describeIsaAccountLabel(isa))}</strong>: 현재 잔액 ${isa.balance.toLocaleString()} ${formatCurrencyUnit(isa.currency)}, 매월 ${isa.monthlyContribution.toLocaleString()} ${formatCurrencyUnit(isa.currency)} 납입, 예상 연 수익률 ${isa.totalReturn}%, 배당률 ${isa.dividendYield}%, 만기 ${isa.maturityYears}년</li>`,
           '등록된 ISA 계좌 없음'),
         renderAccountList('기타 소득', otherIncomes, (i) =>
           `<li style="margin-bottom: 4px;"><strong>${escapeHtml(i.label)}</strong>: 매월 ${i.monthlyAmount.toLocaleString()} ${formatCurrencyUnit(i.currency)}</li>`,

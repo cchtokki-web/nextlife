@@ -91,7 +91,7 @@ export class RetirementModelAdapter {
     const pensions: PensionProfile[] = [
       { kind: 'national', account: config.nationalPension },
       ...config.privatePensions.map((pension): PensionProfile => {
-        const { monthlyContribution: _monthlyContribution, annualReturn: _annualReturn,
+        const { monthlyContribution: _monthlyContribution, totalReturn: _annualReturn,
           dividendYield: _dividendYield, earlyChannelingEnabled: _earlyChannelingEnabled,
           ...account } = pension;
         return { kind: 'private', account };
@@ -101,12 +101,12 @@ export class RetirementModelAdapter {
     const assets: AssetAccount[] = [
       ...config.assets.map((asset): AssetAccount => {
         const { monthlyContribution: _monthlyContribution, contributionPeriod: _contributionPeriod,
-          contributionAmount: _contributionAmount, annualGrowthRate: _annualGrowthRate,
+          contributionAmount: _contributionAmount, totalReturn: _annualGrowthRate,
           dividendYield: _dividendYield, reinvestDividend: _reinvestDividend, ...account } = asset;
         return { kind: 'investment', account };
       }),
       ...(config.isaAccounts ?? []).map((isa): AssetAccount => {
-        const { monthlyContribution: _monthlyContribution, annualReturn: _annualReturn,
+        const { monthlyContribution: _monthlyContribution, totalReturn: _annualReturn,
           dividendYield: _dividendYield, ...account } = isa;
         return { kind: 'isa', account };
       }),
@@ -163,20 +163,20 @@ export class RetirementModelAdapter {
           ...config.assets.map((asset) => ({
             accountKind: 'investment' as const,
             accountId: asset.id,
-            annualReturn: asset.annualGrowthRate,
+            totalReturn: asset.totalReturn,
             dividendYield: asset.dividendYield,
             reinvestDividend: asset.reinvestDividend,
           })),
           ...config.privatePensions.map((pension) => ({
             accountKind: 'private_pension' as const,
             accountId: pension.id,
-            annualReturn: pension.annualReturn,
+            totalReturn: pension.totalReturn,
             ...(hasOwn(pension, 'dividendYield') ? { dividendYield: pension.dividendYield } : {}),
           })),
           ...(config.isaAccounts ?? []).map((isa) => ({
             accountKind: 'isa' as const,
             accountId: isa.id,
-            annualReturn: isa.annualReturn,
+            totalReturn: isa.totalReturn,
             dividendYield: isa.dividendYield,
           })),
         ],
@@ -240,7 +240,7 @@ export class RetirementModelAdapter {
           ...(hasOwn(contribution, 'periodicAmount')
             ? { contributionAmount: contribution.periodicAmount }
             : {}),
-          annualGrowthRate: projection.annualReturn,
+          totalReturn: projection.totalReturn,
           dividendYield: projection.dividendYield,
           reinvestDividend: projection.reinvestDividend,
         };
@@ -259,7 +259,7 @@ export class RetirementModelAdapter {
         return {
           ...account,
           monthlyContribution: contribution.monthlyAmount,
-          annualReturn: projection.annualReturn,
+          totalReturn: projection.totalReturn,
           ...(hasOwn(projection, 'dividendYield') ? { dividendYield: projection.dividendYield } : {}),
           ...(privateEarly.has(account.id) ? { earlyChannelingEnabled: privateEarly.get(account.id) } : {}),
         };
@@ -278,7 +278,7 @@ export class RetirementModelAdapter {
         return {
           ...account,
           monthlyContribution: contribution.monthlyAmount,
-          annualReturn: projection.annualReturn,
+          totalReturn: projection.totalReturn,
           dividendYield: projection.dividendYield,
         };
       });

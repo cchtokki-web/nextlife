@@ -279,7 +279,7 @@ describe('UtilityEngine.computeLifetimeUtility', () => {
       type: 'irp' as const,
       balance: 50000000,
       monthlyContribution: 0,
-      annualReturn: 5,
+      totalReturn: 5,
       currency: 'KRW' as const,
     };
 

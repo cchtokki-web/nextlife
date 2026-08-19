@@ -42,7 +42,7 @@ describe('SimulationEngine 입력 검증 / 음수 목표 생활비', () => {
     const base = retirementParams();
     expect(() => new SimulationEngine().run({
       ...base,
-      assets: [{ ...base.assets[0], annualGrowthRate: -3 }],
+      assets: [{ ...base.assets[0], totalReturn: -3 }],
     })).not.toThrow();
   });
 

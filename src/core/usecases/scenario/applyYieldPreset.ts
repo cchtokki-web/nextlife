@@ -1,6 +1,6 @@
 import { CustomYieldSnapshot, SimulationParams } from '../../entities/types';
 
-// 리스크 성향별 연 기대수익률. **단위는 %** (0.05가 아니라 5), 자산의 annualGrowthRate와
+// 리스크 성향별 연 기대수익률. **단위는 %** (0.05가 아니라 5), 자산의 totalReturn와
 // 사적연금 expectedReturn에 그대로 대입된다.
 //
 // **출처(git 이력 추적 결과)**: 근거 문서는 이 저장소에 없다. 확인된 것은 변경 이력뿐이다.
@@ -45,16 +45,16 @@ export function applyYieldPreset(
 
   const customYieldSnapshot = params.yieldPreset === 'custom' ? captureCustomYieldSnapshot(params) : params.customYieldSnapshot;
 
-  // ISA도 annualReturn을 가진 시장 연동 계좌이므로 주식과 같은 값으로 맞춘다 —
+  // ISA도 totalReturn을 가진 시장 연동 계좌이므로 주식과 같은 값으로 맞춘다 —
   // 여기서만 빼두면 "보수적"을 골라도 ISA 홀로 높은 수익률을 유지해 계좌 간 서열이
   // 프리셋이 아니라 사용자 입력값으로 결정된다(economicScenarios.ts의 같은 판단 참조).
   // 키가 없는 옛 시나리오 데이터에 빈 배열을 새로 심지 않도록 있을 때만 교체한다.
-  const isaAccounts = params.isaAccounts?.map((i) => ({ ...i, annualReturn: stockGrowth }));
+  const isaAccounts = params.isaAccounts?.map((i) => ({ ...i, totalReturn: stockGrowth }));
 
   return {
     ...params,
-    assets: (params.assets ?? []).map((a) => ({ ...a, annualGrowthRate: stockGrowth })),
-    privatePensions: (params.privatePensions ?? []).map((p) => ({ ...p, annualReturn: pensionReturn })),
+    assets: (params.assets ?? []).map((a) => ({ ...a, totalReturn: stockGrowth })),
+    privatePensions: (params.privatePensions ?? []).map((p) => ({ ...p, totalReturn: pensionReturn })),
     ...(isaAccounts ? { isaAccounts } : {}),
     yieldPreset: preset,
     customYieldSnapshot,
@@ -63,9 +63,9 @@ export function applyYieldPreset(
 
 function captureCustomYieldSnapshot(params: SimulationParams): CustomYieldSnapshot {
   return {
-    assets: Object.fromEntries((params.assets ?? []).map((a) => [a.id, a.annualGrowthRate])),
-    privatePensions: Object.fromEntries((params.privatePensions ?? []).map((p) => [p.id, p.annualReturn])),
-    isaAccounts: Object.fromEntries((params.isaAccounts ?? []).map((i) => [i.id, i.annualReturn])),
+    assets: Object.fromEntries((params.assets ?? []).map((a) => [a.id, a.totalReturn])),
+    privatePensions: Object.fromEntries((params.privatePensions ?? []).map((p) => [p.id, p.totalReturn])),
+    isaAccounts: Object.fromEntries((params.isaAccounts ?? []).map((i) => [i.id, i.totalReturn])),
   };
 }
 
@@ -82,14 +82,14 @@ export function restoreCustomYieldPreset(params: SimulationParams): SimulationPa
   // 복원이 터지지 않도록 빈 맵으로 방어한다(그 경우 ISA는 현재 값을 유지한다).
   const isaSnapshot = snapshot.isaAccounts ?? {};
   const isaAccounts = params.isaAccounts?.map((i) =>
-    i.id in isaSnapshot ? { ...i, annualReturn: isaSnapshot[i.id] } : i
+    i.id in isaSnapshot ? { ...i, totalReturn: isaSnapshot[i.id] } : i
   );
 
   return {
     ...params,
-    assets: (params.assets ?? []).map((a) => (a.id in snapshot.assets ? { ...a, annualGrowthRate: snapshot.assets[a.id] } : a)),
+    assets: (params.assets ?? []).map((a) => (a.id in snapshot.assets ? { ...a, totalReturn: snapshot.assets[a.id] } : a)),
     privatePensions: (params.privatePensions ?? []).map((p) =>
-      p.id in snapshot.privatePensions ? { ...p, annualReturn: snapshot.privatePensions[p.id] } : p
+      p.id in snapshot.privatePensions ? { ...p, totalReturn: snapshot.privatePensions[p.id] } : p
     ),
     ...(isaAccounts ? { isaAccounts } : {}),
     yieldPreset: 'custom',

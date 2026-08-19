@@ -19,7 +19,7 @@ describe('SimpleSimulationAdapter', () => {
       const params = SimpleSimulationAdapter.adapt({ ...baseInput, propensity: 'conservative' });
 
       expect(params.assets).toHaveLength(1);
-      expect(params.assets[0].annualGrowthRate).toBe(1.0);
+      expect(params.assets[0].totalReturn).toBe(1.0);
       expect(params.assets[0].dividendYield).toBe(3.0);
     });
 
@@ -27,7 +27,7 @@ describe('SimpleSimulationAdapter', () => {
       const params = SimpleSimulationAdapter.adapt({ ...baseInput, propensity: 'neutral' });
 
       expect(params.assets).toHaveLength(1);
-      expect(params.assets[0].annualGrowthRate).toBe(3.0);
+      expect(params.assets[0].totalReturn).toBe(3.0);
       expect(params.assets[0].dividendYield).toBe(4.0);
     });
 
@@ -35,7 +35,7 @@ describe('SimpleSimulationAdapter', () => {
       const params = SimpleSimulationAdapter.adapt({ ...baseInput, propensity: 'aggressive' });
 
       expect(params.assets).toHaveLength(1);
-      expect(params.assets[0].annualGrowthRate).toBe(8.0);
+      expect(params.assets[0].totalReturn).toBe(8.0);
       expect(params.assets[0].dividendYield).toBe(1.5);
     });
 

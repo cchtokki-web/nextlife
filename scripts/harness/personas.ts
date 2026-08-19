@@ -30,7 +30,7 @@ function krEtf(valueKRW: number, opts: Partial<InvestmentAsset> = {}): Investmen
     id: `kr-${Math.round(valueKRW)}-${opts.ticker ?? 'KODEX200'}`,
     type: 'etf', ticker: 'KODEX200', name: 'KODEX 200',
     quantity: 1, averagePrice: valueKRW,
-    annualGrowthRate: 5, dividendYield: 2,
+    totalReturn: 5, dividendYield: 2,
     monthlyContribution: 0, reinvestDividend: true,
     currency: 'KRW', assetMarket: 'KR_ETF',
     ...opts,
@@ -42,7 +42,7 @@ function usEtf(valueKRW: number, opts: Partial<InvestmentAsset> = {}): Investmen
     id: `us-${Math.round(valueKRW)}-${opts.ticker ?? 'VOO'}`,
     type: 'etf', ticker: 'VOO', name: 'S&P500 ETF',
     quantity: 1, averagePrice: valueKRW / FX, // USD 표시 평가액
-    annualGrowthRate: 8, dividendYield: 1.3,
+    totalReturn: 8, dividendYield: 1.3,
     monthlyContribution: 0, reinvestDividend: true,
     currency: 'USD', assetMarket: 'US_ETF',
     ...opts,
@@ -52,21 +52,21 @@ function usEtf(valueKRW: number, opts: Partial<InvestmentAsset> = {}): Investmen
 function irp(balance: number, monthly: number, ret = 4): PrivatePension {
   return {
     id: `irp-${balance}-${monthly}`, type: 'irp', investmentType: 'etf', name: 'IRP',
-    balance, monthlyContribution: monthly, annualReturn: ret, currency: 'KRW',
+    balance, monthlyContribution: monthly, totalReturn: ret, currency: 'KRW',
   };
 }
 
 function savingsPension(balance: number, monthly: number, ret = 4): PrivatePension {
   return {
     id: `sv-${balance}-${monthly}`, type: 'savings', investmentType: 'etf', name: '연금저축',
-    balance, monthlyContribution: monthly, annualReturn: ret, currency: 'KRW',
+    balance, monthlyContribution: monthly, totalReturn: ret, currency: 'KRW',
   };
 }
 
 function isa(balance: number, monthly: number, type: IsaAccount['type'] = 'general'): IsaAccount {
   return {
     id: `isa-${balance}-${monthly}`, type, investmentType: 'etf', name: 'ISA',
-    balance, monthlyContribution: monthly, annualReturn: 6, dividendYield: 2,
+    balance, monthlyContribution: monthly, totalReturn: 6, dividendYield: 2,
     currency: 'KRW', maturityYears: 3,
   };
 }
@@ -198,7 +198,7 @@ P('40대 중 달러 편중', 'USD 100% 노출. 환율 시나리오가 결과를 
     npMonthly: 1_400_000 }));
 P('40대 중 고배당 편중', '배당 4.5% 편중. 금융소득종합과세 절벽에 걸리나',
   base({ currentAge: 45, retirementAge: 58, expectancy: 88, monthlySpending: 3_500_000,
-    assets: [krEtf(4 * 억, { dividendYield: 4.5, annualGrowthRate: 3, reinvestDividend: false, monthlyContribution: 300_000 })],
+    assets: [krEtf(4 * 억, { dividendYield: 4.5, totalReturn: 3, reinvestDividend: false, monthlyContribution: 300_000 })],
     pensions: [irp(4_000 * 만, 300_000)], npMonthly: 1_300_000 }));
 P('40대 중 ISA 적극', 'ISA 만기 행선지 선택이 실제로 차이를 만드나',
   base({ currentAge: 46, retirementAge: 60, expectancy: 90, monthlySpending: 3_500_000,
@@ -244,7 +244,7 @@ P('50대 초 일반자산 편중', '반대 케이스. 연금이 거의 없다',
     pensions: [irp(2_000 * 만, 200_000)], npMonthly: 1_400_000 }));
 P('50대 초 고배당 은퇴', '배당만으로 살겠다는 계획의 실체',
   base({ currentAge: 53, retirementAge: 57, expectancy: 88, monthlySpending: 3_000_000,
-    assets: [krEtf(5 * 억, { dividendYield: 5, annualGrowthRate: 2, reinvestDividend: false, monthlyContribution: 0 })],
+    assets: [krEtf(5 * 억, { dividendYield: 5, totalReturn: 2, reinvestDividend: false, monthlyContribution: 0 })],
     pensions: [irp(5_000 * 만, 300_000)], npMonthly: 1_400_000 }));
 P('50대 초 장수 100세', '50대에서 100세 가정이면 얼마나 달라지나',
   base({ currentAge: 53, retirementAge: 62, expectancy: 100, monthlySpending: 3_000_000,
@@ -313,7 +313,7 @@ P('60대 초 사적연금 과다', '연금계좌 4억. 저율과세 한도 초�
     pensions: [irp(2.5 * 억, 0), savingsPension(1.5 * 억, 0)], npMonthly: 1_600_000 }));
 P('60대 초 고배당 인출', '배당 4.5% 3.5억. 종합과세 문턱 근처',
   base({ currentAge: 62, retirementAge: 62, expectancy: 90, monthlySpending: 3_200_000,
-    assets: [krEtf(3.5 * 억, { dividendYield: 4.5, annualGrowthRate: 2.5, reinvestDividend: false })],
+    assets: [krEtf(3.5 * 억, { dividendYield: 4.5, totalReturn: 2.5, reinvestDividend: false })],
     pensions: [irp(6_000 * 만, 0)], npMonthly: 1_500_000 }));
 P('60대 초 달러 인출', 'USD 자산 인출 시 양도세+환율',
   base({ currentAge: 63, retirementAge: 63, expectancy: 90, monthlySpending: 3_000_000,

@@ -18,7 +18,7 @@ describe('SimulationEngine 일반계좌(자산) 인출 시점 지연', () => {
         name: '일반자산',
         quantity: 1,
         averagePrice: 50000000, // 5천만 원
-        annualGrowthRate: 0,
+        totalReturn: 0,
         dividendYield: 0,
         monthlyContribution: 0,
         reinvestDividend: false,
@@ -32,7 +32,7 @@ describe('SimulationEngine 일반계좌(자산) 인출 시점 지연', () => {
         type: 'irp',
         balance: 200000000, // 2억 원 (자산이 잠긴 동안 shortfall을 충당할 여유)
         monthlyContribution: 0,
-        annualReturn: 0,
+        totalReturn: 0,
         currency: 'KRW',
       },
     ],

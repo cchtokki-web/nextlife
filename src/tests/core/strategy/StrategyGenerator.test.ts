@@ -52,8 +52,8 @@ describe('StrategyGenerator', () => {
     expect(growth?.strategy.spendingPolicy.curve?.multipliers).toEqual([1, 0.86, 0.76]);
     expect(growth?.strategy.assetAllocation?.accountProjections).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ accountKind: 'investment', annualReturn: 9 }),
-        expect.objectContaining({ accountKind: 'private_pension', annualReturn: 6 }),
+        expect.objectContaining({ accountKind: 'investment', totalReturn: 9 }),
+        expect.objectContaining({ accountKind: 'private_pension', totalReturn: 6 }),
       ]),
     );
   });

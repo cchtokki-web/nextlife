@@ -10,7 +10,7 @@ import { InvestmentAsset, SimulationParams } from '@/core/entities/types';
 function asset(overrides: Partial<InvestmentAsset> & { id: string }): InvestmentAsset {
   return {
     type: 'etf', ticker: 'X', name: '자산', quantity: 1, averagePrice: 100_000_000,
-    annualGrowthRate: 7, dividendYield: 0, monthlyContribution: 0,
+    totalReturn: 7, dividendYield: 0, monthlyContribution: 0,
     reinvestDividend: false, currency: 'KRW',
     ...overrides,
   };
@@ -67,8 +67,8 @@ describe('resolveMonteCarloConfig - 직접 입력 수익률에서 변동성 유�
   // **이 작업의 핵심.** 예전에는 자산에 3%를 넣든 12%를 넣든 변동성이 15%p로 같았다.
   // 수익률만 사용자 값을 쓰고 변동성은 남의 프리셋을 쓰는 비대칭이었다.
   test('custom 프리셋이면 보유 자산의 수익률에서 변동성을 유도한다', () => {
-    const conservativeInput = params({ assets: [asset({ id: 'a', annualGrowthRate: 5 })], yieldPreset: 'custom' });
-    const aggressiveInput = params({ assets: [asset({ id: 'a', annualGrowthRate: 9 })], yieldPreset: 'custom' });
+    const conservativeInput = params({ assets: [asset({ id: 'a', totalReturn: 5 })], yieldPreset: 'custom' });
+    const aggressiveInput = params({ assets: [asset({ id: 'a', totalReturn: 9 })], yieldPreset: 'custom' });
 
     expect(resolveMonteCarloConfig(conservativeInput).annualStdDev)
       .toBeCloseTo(VOLATILITY_BY_YIELD_PRESET.conservative, 10);
@@ -77,7 +77,7 @@ describe('resolveMonteCarloConfig - 직접 입력 수익률에서 변동성 유�
   });
 
   test('프리셋이 미지정이어도 같은 유도를 쓴다', () => {
-    const low = params({ assets: [asset({ id: 'a', annualGrowthRate: 5 })] });
+    const low = params({ assets: [asset({ id: 'a', totalReturn: 5 })] });
 
     expect(resolveMonteCarloConfig(low).annualStdDev)
       .toBeCloseTo(VOLATILITY_BY_YIELD_PRESET.conservative, 10);
@@ -89,8 +89,8 @@ describe('resolveMonteCarloConfig - 직접 입력 수익률에서 변동성 유�
     const weighted = params({
       yieldPreset: 'custom',
       assets: [
-        asset({ id: 'big', annualGrowthRate: 5, quantity: 1, averagePrice: 900_000_000 }),
-        asset({ id: 'small', annualGrowthRate: 9, quantity: 1, averagePrice: 100_000_000 }),
+        asset({ id: 'big', totalReturn: 5, quantity: 1, averagePrice: 900_000_000 }),
+        asset({ id: 'small', totalReturn: 9, quantity: 1, averagePrice: 100_000_000 }),
       ],
     });
 
@@ -105,8 +105,8 @@ describe('resolveMonteCarloConfig - 직접 입력 수익률에서 변동성 유�
       yieldPreset: 'custom',
       baseExchangeRate: 1000,
       assets: [
-        asset({ id: 'krw', annualGrowthRate: 5, quantity: 1, averagePrice: 100_000_000, currency: 'KRW' }),
-        asset({ id: 'usd', annualGrowthRate: 9, quantity: 1, averagePrice: 100_000, currency: 'USD' }),
+        asset({ id: 'krw', totalReturn: 5, quantity: 1, averagePrice: 100_000_000, currency: 'KRW' }),
+        asset({ id: 'usd', totalReturn: 9, quantity: 1, averagePrice: 100_000, currency: 'USD' }),
       ],
     });
 
@@ -118,9 +118,9 @@ describe('resolveMonteCarloConfig - 직접 입력 수익률에서 변동성 유�
   test('ISA도 시장 연동 계좌이므로 함께 가중한다', () => {
     const withIsa = params({
       yieldPreset: 'custom',
-      assets: [asset({ id: 'a', annualGrowthRate: 5, quantity: 1, averagePrice: 100_000_000 })],
+      assets: [asset({ id: 'a', totalReturn: 5, quantity: 1, averagePrice: 100_000_000 })],
       isaAccounts: [{ id: 'i', type: 'general', balance: 100_000_000, monthlyContribution: 0,
-        annualReturn: 9, dividendYield: 0, currency: 'KRW', maturityYears: 3 }],
+        totalReturn: 9, dividendYield: 0, currency: 'KRW', maturityYears: 3 }],
     });
 
     expect(resolveMonteCarloConfig(withIsa).annualStdDev).toBeCloseTo(volatilityForStockReturn(7), 10);
@@ -134,7 +134,7 @@ describe('resolveMonteCarloConfig - 직접 입력 수익률에서 변동성 유�
       assets: [],
       isaAccounts: [],
       privatePensions: [{ id: 'p', type: 'irp', balance: 500_000_000, monthlyContribution: 0,
-        annualReturn: 4, currency: 'KRW' }],
+        totalReturn: 4, currency: 'KRW' }],
     });
 
     expect(resolveMonteCarloConfig(pensionOnly).annualStdDev).toBe(VOLATILITY_BY_YIELD_PRESET.base);
@@ -143,7 +143,7 @@ describe('resolveMonteCarloConfig - 직접 입력 수익률에서 변동성 유�
   test('잔액이 전부 0이면 base로 되돌린다', () => {
     const empty = params({
       yieldPreset: 'custom',
-      assets: [asset({ id: 'a', annualGrowthRate: 9, quantity: 0, averagePrice: 0 })],
+      assets: [asset({ id: 'a', totalReturn: 9, quantity: 0, averagePrice: 0 })],
     });
 
     expect(resolveMonteCarloConfig(empty).annualStdDev).toBe(VOLATILITY_BY_YIELD_PRESET.base);
@@ -155,7 +155,7 @@ describe('resolveMonteCarloConfig - 직접 입력 수익률에서 변동성 유�
   test('명시적 프리셋은 자산 수익률과 무관하게 프리셋 값을 쓴다', () => {
     const conflicting = params({
       yieldPreset: 'conservative',
-      assets: [asset({ id: 'a', annualGrowthRate: 9 })],
+      assets: [asset({ id: 'a', totalReturn: 9 })],
     });
 
     expect(resolveMonteCarloConfig(conflicting).annualStdDev).toBe(VOLATILITY_BY_YIELD_PRESET.conservative);

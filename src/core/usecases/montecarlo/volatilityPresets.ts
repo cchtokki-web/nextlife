@@ -104,10 +104,10 @@ function marketWeightedStockReturn(params: SimulationParams): number | null {
     currency === 'USD' ? amount * params.baseExchangeRate : amount;
 
   for (const asset of params.assets ?? []) {
-    add(toKRW(asset.quantity * asset.averagePrice, asset.currency), asset.annualGrowthRate);
+    add(toKRW(asset.quantity * asset.averagePrice, asset.currency), asset.totalReturn);
   }
   for (const isa of params.isaAccounts ?? []) {
-    add(toKRW(isa.balance, isa.currency), isa.annualReturn);
+    add(toKRW(isa.balance, isa.currency), isa.totalReturn);
   }
 
   return totalValue > 0 ? weightedSum / totalValue : null;

@@ -398,14 +398,14 @@ describe('실제 SimulationEngine 출력과의 계약', () => {
       {
         id: 'a1', name: '국내 ETF', ticker: 'KODEX', type: 'etf', assetMarket: 'KR_ETF', currency: 'KRW',
         quantity: 20000, averagePrice: 100000, monthlyContribution: 0,
-        annualGrowthRate: 6, dividendYield: 2, reinvestDividend: false,
+        totalReturn: 6, dividendYield: 2, reinvestDividend: false,
       },
     ],
     nationalPension: { expectedMonthlyAmount: 1000000 },
     privatePensions: [
       {
         id: 'p1', name: '연금저축', type: 'savings', currency: 'KRW', balance: 300000000,
-        monthlyContribution: 0, annualReturn: 4,
+        monthlyContribution: 0, totalReturn: 4,
       },
     ],
     // 배당·기타소득이 동시에 있으면 두 항목이 remainingAfterPension을 비례 배분하면서

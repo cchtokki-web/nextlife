@@ -20,11 +20,11 @@ export const allAxesLiveParams: SimulationParams = {
     targetMonthlySpending: 3000000,
   },
   assets: [
-    { id: 'a1', type: 'etf', ticker: 'A', name: '자산1', quantity: 1, averagePrice: 100, annualGrowthRate: 5, dividendYield: 2, monthlyContribution: 0, reinvestDividend: false, currency: 'KRW' },
-    { id: 'a2', type: 'etf', ticker: 'B', name: '자산2', quantity: 1, averagePrice: 100, annualGrowthRate: 5, dividendYield: 4, monthlyContribution: 0, reinvestDividend: false, currency: 'KRW' },
+    { id: 'a1', type: 'etf', ticker: 'A', name: '자산1', quantity: 1, averagePrice: 100, totalReturn: 5, dividendYield: 2, monthlyContribution: 0, reinvestDividend: false, currency: 'KRW' },
+    { id: 'a2', type: 'etf', ticker: 'B', name: '자산2', quantity: 1, averagePrice: 100, totalReturn: 5, dividendYield: 4, monthlyContribution: 0, reinvestDividend: false, currency: 'KRW' },
   ],
   isaAccounts: [
-    { id: 'isa-1', type: 'general', balance: 1000000, monthlyContribution: 0, annualReturn: 5, dividendYield: 0, currency: 'KRW', maturityYears: 3 },
+    { id: 'isa-1', type: 'general', balance: 1000000, monthlyContribution: 0, totalReturn: 5, dividendYield: 0, currency: 'KRW', maturityYears: 3 },
   ],
   nationalPension: { expectedMonthlyAmount: 1000000 },
   privatePensions: [
@@ -33,7 +33,7 @@ export const allAxesLiveParams: SimulationParams = {
       type: 'irp',
       balance: 600000000,
       monthlyContribution: 0,
-      annualReturn: 4,
+      totalReturn: 4,
       currency: 'KRW',
     },
   ],

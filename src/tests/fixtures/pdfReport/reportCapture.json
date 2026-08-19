@@ -28,7 +28,7 @@
         "name": "KODEX 200",
         "quantity": 2000,
         "averagePrice": 35000,
-        "annualGrowthRate": 5,
+        "totalReturn": 5,
         "dividendYield": 2,
         "monthlyContribution": 400000,
         "reinvestDividend": true,
@@ -41,7 +41,7 @@
         "name": "TIGER 미국S&P500",
         "quantity": 4000,
         "averagePrice": 15000,
-        "annualGrowthRate": 8,
+        "totalReturn": 8,
         "dividendYield": 1.5,
         "monthlyContribution": 300000,
         "reinvestDividend": true,
@@ -57,7 +57,7 @@
         "type": "irp",
         "balance": 50000000,
         "monthlyContribution": 400000,
-        "annualReturn": 4,
+        "totalReturn": 4,
         "currency": "KRW"
       },
       {
@@ -65,7 +65,7 @@
         "type": "savings",
         "balance": 60000000,
         "monthlyContribution": 500000,
-        "annualReturn": 4,
+        "totalReturn": 4,
         "currency": "KRW"
       }
     ],
@@ -83,7 +83,7 @@
         "investmentType": "custom",
         "balance": 0,
         "monthlyContribution": 0,
-        "annualReturn": 5,
+        "totalReturn": 5,
         "dividendYield": 1.5,
         "currency": "KRW",
         "maturityYears": 3

@@ -50,10 +50,10 @@ const baseParams: SimulationParams = {
   assets: [],
   nationalPension: { expectedMonthlyAmount: 0 },
   privatePensions: [
-    { id: 'pension-1', type: 'irp', balance: 500000000, monthlyContribution: 0, annualReturn: 4, currency: 'KRW' },
+    { id: 'pension-1', type: 'irp', balance: 500000000, monthlyContribution: 0, totalReturn: 4, currency: 'KRW' },
   ],
   isaAccounts: [
-    { id: 'isa-1', type: 'general', balance: 10000000, monthlyContribution: 0, annualReturn: 6, dividendYield: 0, currency: 'KRW', maturityYears: 99 },
+    { id: 'isa-1', type: 'general', balance: 10000000, monthlyContribution: 0, totalReturn: 6, dividendYield: 0, currency: 'KRW', maturityYears: 99 },
   ],
   otherIncomes: [],
   inflationRate: 0,
@@ -128,7 +128,7 @@ function makeAsset(overrides: Partial<InvestmentAsset>): InvestmentAsset {
     name: 'S&P500',
     quantity: 10,
     averagePrice: 400000,
-    annualGrowthRate: 7,
+    totalReturn: 7,
     dividendYield: 3,
     monthlyContribution: 0,
     reinvestDividend: true,

@@ -20,7 +20,7 @@ describe('SimulationEngine TDD Tests', () => {
         name: 'S&P 500 ETF',
         quantity: 100,
         averagePrice: 500, // 500 USD
-        annualGrowthRate: 8, // 8%
+        totalReturn: 8, // 8%
         dividendYield: 2, // 2%
         monthlyContribution: 100, // 100 USD 매달 추가 매수
         reinvestDividend: true,
@@ -36,7 +36,7 @@ describe('SimulationEngine TDD Tests', () => {
         type: 'irp',
         balance: 50000000, // 5,000만 원
         monthlyContribution: 500000, // 50만 원 매월 추가 적립
-        annualReturn: 5, // 5%
+        totalReturn: 5, // 5%
         currency: 'KRW',
       },
     ],
@@ -117,7 +117,7 @@ describe('SimulationEngine TDD Tests', () => {
           name: 'High Dividend',
           quantity: 10000,
           averagePrice: 100, // 100 USD
-          annualGrowthRate: 5,
+          totalReturn: 5,
           dividendYield: 4, // 배당률 4% -> 1,000,000 USD 자산 기준 연간 40,000 USD (약 5,400만 원) 배당 발생
           monthlyContribution: 0,
           reinvestDividend: false,
@@ -266,7 +266,7 @@ describe('SimulationEngine TDD Tests', () => {
           name: '대규모 저배당 성장자산',
           quantity: 5000000,
           averagePrice: 100, // 5억 원
-          annualGrowthRate: 9, // 자본 성장률 9%
+          totalReturn: 9, // 자본 성장률 9%
           dividendYield: 1, // 배당률 1% (고정소득 커버율을 낮게 유지)
           monthlyContribution: 0,
           reinvestDividend: false,
@@ -311,7 +311,7 @@ describe('SimulationEngine TDD Tests', () => {
           name: '완만하게 줄어드는 자산',
           quantity: 5000000,
           averagePrice: 100, // 5억 원
-          annualGrowthRate: 5,
+          totalReturn: 5,
           dividendYield: 1,
           monthlyContribution: 0,
           reinvestDividend: false,
@@ -355,7 +355,7 @@ describe('SimulationEngine TDD Tests', () => {
           name: '이미 은퇴한 사용자의 자산',
           quantity: 10000000,
           averagePrice: 100, // 10억 원
-          annualGrowthRate: 3,
+          totalReturn: 3,
           dividendYield: 0.5,
           monthlyContribution: 0,
           reinvestDividend: false,
@@ -393,7 +393,7 @@ describe('SimulationEngine TDD Tests', () => {
     assets: [], // 금융소득(배당) 자체가 없어 종합과세 판정 기준은 항상 0
     nationalPension: { expectedMonthlyAmount: 1000000 }, // 연 1,200만 원
     privatePensions: [
-      { id: 'pension-1', type: 'irp', balance: 50000000, monthlyContribution: 0, annualReturn: 3, currency: 'KRW' },
+      { id: 'pension-1', type: 'irp', balance: 50000000, monthlyContribution: 0, totalReturn: 3, currency: 'KRW' },
     ],
     otherIncomes: [],
     inflationRate: 0,

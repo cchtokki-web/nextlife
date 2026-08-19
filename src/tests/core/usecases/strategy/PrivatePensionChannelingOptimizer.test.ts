@@ -39,7 +39,7 @@ function makePension(overrides: Partial<SimulationParams['privatePensions'][numb
     investmentType: 'deposit' as const,
     balance: 100000000,
     monthlyContribution: 0,
-    annualReturn: 4,
+    totalReturn: 4,
     dividendYield: 0,
     currency: 'KRW' as const,
     ...overrides,
@@ -52,7 +52,7 @@ function makeIsa(overrides: Partial<NonNullable<SimulationParams['isaAccounts']>
     type: 'general' as const,
     balance: 0,
     monthlyContribution: 0,
-    annualReturn: 5,
+    totalReturn: 5,
     dividendYield: 2,
     currency: 'KRW' as const,
     maturityYears: 3,
@@ -97,7 +97,7 @@ function transferAccounts(params: SimulationParams): PrivatePension[] {
 function contributionProfile(params: SimulationParams): string[] {
   return params.privatePensions
     .filter((p) => p.monthlyContribution > 0)
-    .map((p) => `${p.annualReturn}|${p.investmentType}|${p.dividendYield}|${p.monthlyContribution}|${p.currency}`)
+    .map((p) => `${p.totalReturn}|${p.investmentType}|${p.dividendYield}|${p.monthlyContribution}|${p.currency}`)
     .sort();
 }
 
@@ -230,8 +230,8 @@ describe('optimizePrivatePensionChanneling - 채널링 레그 params', () => {
     const { engine, runForUtility } = makeEngineByLeg({ channeling: 80 });
     const params = paramsWithBothLegs({
       privatePensions: [
-        makePension({ id: 'p-low', monthlyContribution: 500000, annualReturn: 2, investmentType: 'deposit', dividendYield: 0 }),
-        makePension({ id: 'p-high', monthlyContribution: 500000, annualReturn: 8, investmentType: 'etf', dividendYield: 3 }),
+        makePension({ id: 'p-low', monthlyContribution: 500000, totalReturn: 2, investmentType: 'deposit', dividendYield: 0 }),
+        makePension({ id: 'p-high', monthlyContribution: 500000, totalReturn: 8, investmentType: 'etf', dividendYield: 3 }),
       ],
     });
 
@@ -337,7 +337,7 @@ describe('optimizePrivatePensionChanneling - 신규계좌 레그 params', () => 
   test('신규계좌 후보는 채널링을 켜지 않고 월 75만원 계좌만 추가한다', () => {
     const { engine, runForUtility } = makeEngineByLeg({ newPension: 80 });
     const params = paramsWithBothLegs({
-      privatePensions: [makePension({ id: 'existing-1', monthlyContribution: 300000, annualReturn: 3, investmentType: 'etf', dividendYield: 1 })],
+      privatePensions: [makePension({ id: 'existing-1', monthlyContribution: 300000, totalReturn: 3, investmentType: 'etf', dividendYield: 1 })],
       withdrawalPlan: { nationalPensionStartAge: 63, isaMaturityDestination: 'pension' },
     });
 
@@ -352,7 +352,7 @@ describe('optimizePrivatePensionChanneling - 신규계좌 레그 params', () => 
     expect(added.monthlyContribution).toBe(750000);
     expect(added.balance).toBe(0);
     // 신규 계좌는 템플릿 계좌의 운용 조건을 복사한다
-    expect(added.annualReturn).toBe(3);
+    expect(added.totalReturn).toBe(3);
     expect(added.investmentType).toBe('etf');
     expect(added.dividendYield).toBe(1);
     // withdrawalPlan은 건드리지 않는다
@@ -657,7 +657,7 @@ describe('optimizePrivatePensionChanneling - SimulationEngine 회귀', () => {
           name: '일반자산',
           quantity: 1,
           averagePrice: 100000000,
-          annualGrowthRate: 5,
+          totalReturn: 5,
           dividendYield: 0,
           monthlyContribution: 0,
           reinvestDividend: false,

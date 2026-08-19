@@ -18,7 +18,7 @@ describe('SimulationEngine withdrawalPlan (인출 정책 파라미터화)', () =
         name: 'S&P 500 ETF',
         quantity: 100,
         averagePrice: 500, // 500 USD
-        annualGrowthRate: 8,
+        totalReturn: 8,
         dividendYield: 2,
         monthlyContribution: 100,
         reinvestDividend: true,
@@ -34,7 +34,7 @@ describe('SimulationEngine withdrawalPlan (인출 정책 파라미터화)', () =
         type: 'irp',
         balance: 300000000, // 3억 원 (인출 정책 차이가 잘 드러나도록 충분히 큰 잔액)
         monthlyContribution: 500000,
-        annualReturn: 5,
+        totalReturn: 5,
         currency: 'KRW',
       },
     ],
@@ -160,8 +160,8 @@ describe('SimulationEngine withdrawalPlan (인출 정책 파라미터화)', () =
       assets: [],
       nationalPension: { expectedMonthlyAmount: 0 },
       privatePensions: [
-        { id: 'pension-1', type: 'irp', balance: 300000000, monthlyContribution: 0, annualReturn: 5, currency: 'KRW' },
-        { id: 'pension-2', type: 'savings', balance: 300000000, monthlyContribution: 0, annualReturn: 5, currency: 'KRW' },
+        { id: 'pension-1', type: 'irp', balance: 300000000, monthlyContribution: 0, totalReturn: 5, currency: 'KRW' },
+        { id: 'pension-2', type: 'savings', balance: 300000000, monthlyContribution: 0, totalReturn: 5, currency: 'KRW' },
       ],
       otherIncomes: [
         { id: 'income-1', label: '임대소득', monthlyAmount: 3000000, currency: 'KRW' }, // shortfall 방지용 충분한 소득
@@ -194,7 +194,7 @@ describe('SimulationEngine withdrawalPlan (인출 정책 파라미터화)', () =
       assets: [],
       nationalPension: { expectedMonthlyAmount: 0 },
       privatePensions: [
-        { id: 'pension-1', type: 'irp', balance: 300000000, monthlyContribution: 0, annualReturn: 5, currency: 'KRW' },
+        { id: 'pension-1', type: 'irp', balance: 300000000, monthlyContribution: 0, totalReturn: 5, currency: 'KRW' },
       ],
       // 목표(40만원)에 20만원 모자라게 둔다. 정기 인출은 부족분까지만 일어나므로(정기 인출
       // 상한), 소득이 목표를 넘으면 55세 이후에도 인출이 0이라 아래 후반부 단언이 성립하지
@@ -224,7 +224,7 @@ describe('SimulationEngine withdrawalPlan (인출 정책 파라미터화)', () =
       assets: [], // 일반자산 없음 -> shortfall 시 바로 사적연금으로 갈 수밖에 없는 상황
       nationalPension: { expectedMonthlyAmount: 0 },
       privatePensions: [
-        { id: 'pension-1', type: 'irp', balance: 300000000, monthlyContribution: 0, annualReturn: 5, currency: 'KRW' },
+        { id: 'pension-1', type: 'irp', balance: 300000000, monthlyContribution: 0, totalReturn: 5, currency: 'KRW' },
       ],
       otherIncomes: [],
       inflationRate: 0,

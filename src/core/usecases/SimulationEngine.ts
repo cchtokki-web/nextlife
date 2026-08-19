@@ -423,8 +423,8 @@ export class LegacySimulationEngine implements SimulationEngineContract {
 
     const activeAssets: ActiveAsset[] = assets.map((asset) => {
       const growthRateAnnual = inflationMode === 'real'
-        ? (asset.annualGrowthRate - inflationRate) / 100
-        : asset.annualGrowthRate / 100;
+        ? (asset.totalReturn - inflationRate) / 100
+        : asset.totalReturn / 100;
       const growthRateMonthly = toMonthlyCompoundRate(growthRateAnnual);
       const divRateMonthly = (asset.dividendYield / 100) / 12;
       
@@ -452,7 +452,7 @@ export class LegacySimulationEngine implements SimulationEngineContract {
     });
 
     const activePensions: ActivePension[] = privatePensions.map((p) => {
-      let totalReturnAnnual = p.annualReturn;
+      let totalReturnAnnual = p.totalReturn;
       if (p.investmentType === 'etf' && p.dividendYield) {
         totalReturnAnnual += p.dividendYield;
       }
@@ -471,8 +471,8 @@ export class LegacySimulationEngine implements SimulationEngineContract {
 
     const activeIsas: ActiveIsa[] = (isaAccounts || []).map((isa) => {
       const returnRateAnnual = inflationMode === 'real'
-        ? (isa.annualReturn - inflationRate) / 100
-        : isa.annualReturn / 100;
+        ? (isa.totalReturn - inflationRate) / 100
+        : isa.totalReturn / 100;
       const returnRateMonthly = toMonthlyCompoundRate(returnRateAnnual);
       const divRateMonthly = (isa.dividendYield / 100) / 12;
 

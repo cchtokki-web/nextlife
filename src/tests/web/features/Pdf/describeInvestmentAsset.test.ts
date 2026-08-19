@@ -13,7 +13,7 @@ function asset(overrides: Partial<InvestmentAsset> = {}): InvestmentAsset {
     name: 'KODEX 200',
     quantity: 2000,
     averagePrice: 35_000,
-    annualGrowthRate: 5,
+    totalReturn: 5,
     dividendYield: 2,
     monthlyContribution: 400_000,
     reinvestDividend: true,

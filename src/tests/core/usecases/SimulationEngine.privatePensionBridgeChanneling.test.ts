@@ -18,7 +18,7 @@ describe('SimulationEngine 사적연금 브릿지 조기인출(Phase 4)', () => 
         type: 'irp',
         balance: 100000000,
         monthlyContribution: 0,
-        annualReturn: 0,
+        totalReturn: 0,
         currency: 'KRW',
         earlyChannelingEnabled: true,
       },
@@ -29,7 +29,7 @@ describe('SimulationEngine 사적연금 브릿지 조기인출(Phase 4)', () => 
         type: 'general',
         balance: 0,
         monthlyContribution: 0,
-        annualReturn: 0,
+        totalReturn: 0,
         dividendYield: 0,
         currency: 'KRW',
         maturityYears: 99, // 테스트 기간 내 만기가 발생하지 않도록 충분히 길게 설정

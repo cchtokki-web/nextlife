@@ -49,7 +49,7 @@ const convertToRepresentativeAssets = (params: SimulationParams): SimulationPara
         name: 'KODEX 200',
         quantity: qty,
         averagePrice: avgPrice,
-        annualGrowthRate: 5.0,
+        totalReturn: 5.0,
         dividendYield: 2.0,
         currency: 'KRW' as const,
         assetMarket: 'KR_ETF' as const
@@ -65,7 +65,7 @@ const convertToRepresentativeAssets = (params: SimulationParams): SimulationPara
         name: 'TIGER 미국S&P500',
         quantity: qty,
         averagePrice: avgPrice,
-        annualGrowthRate: 8.0,
+        totalReturn: 8.0,
         dividendYield: 1.5,
         currency: 'KRW' as const,
         assetMarket: 'KR_ETF' as const
@@ -81,7 +81,7 @@ const convertToRepresentativeAssets = (params: SimulationParams): SimulationPara
         name: 'TIGER 미국나스닥100',
         quantity: qty,
         averagePrice: avgPrice,
-        annualGrowthRate: 9.0,
+        totalReturn: 9.0,
         dividendYield: 0.5,
         currency: 'KRW' as const,
         assetMarket: 'KR_ETF' as const
@@ -143,7 +143,7 @@ const fetchLatestParamsInfo = async (params: SimulationParams): Promise<Simulati
         if (!asset.ticker || asset.ticker === 'NEW') return asset;
         
         let fetchedPrice = asset.averagePrice;
-        let fetchedGrowth = asset.annualGrowthRate;
+        let fetchedGrowth = asset.totalReturn;
         let fetchedYield = asset.dividendYield;
 
         try {
@@ -186,8 +186,8 @@ const fetchLatestParamsInfo = async (params: SimulationParams): Promise<Simulati
           const infoRes = await fetch(`/api/stock-info?ticker=${encodeURIComponent(asset.ticker)}`);
           if (infoRes.ok) {
             const infoData = await infoRes.json();
-            if (infoData.annualGrowthRate !== undefined) {
-              fetchedGrowth = infoData.annualGrowthRate;
+            if (infoData.totalReturn !== undefined) {
+              fetchedGrowth = infoData.totalReturn;
             }
             if (infoData.dividendYield !== undefined) {
               fetchedYield = infoData.dividendYield;
@@ -200,7 +200,7 @@ const fetchLatestParamsInfo = async (params: SimulationParams): Promise<Simulati
         return {
           ...asset,
           averagePrice: fetchedPrice,
-          annualGrowthRate: fetchedGrowth,
+          totalReturn: fetchedGrowth,
           dividendYield: fetchedYield,
         };
       })

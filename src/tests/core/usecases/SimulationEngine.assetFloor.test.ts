@@ -21,14 +21,14 @@ function params(overrides: Partial<SimulationParams> = {}): SimulationParams {
     assets: [
       {
         id: 'a1', type: 'etf', ticker: 'A', name: '자산', quantity: 6000, averagePrice: 100000,
-        annualGrowthRate: 3, dividendYield: 1, monthlyContribution: 0,
+        totalReturn: 3, dividendYield: 1, monthlyContribution: 0,
         reinvestDividend: false, currency: 'KRW',
       },
     ],
     isaAccounts: [],
     nationalPension: { expectedMonthlyAmount: 0 },
     privatePensions: [
-      { id: 'p1', type: 'irp', balance: 200000000, monthlyContribution: 0, annualReturn: 3, currency: 'KRW' },
+      { id: 'p1', type: 'irp', balance: 200000000, monthlyContribution: 0, totalReturn: 3, currency: 'KRW' },
     ],
     otherIncomes: [],
     inflationRate: 0,

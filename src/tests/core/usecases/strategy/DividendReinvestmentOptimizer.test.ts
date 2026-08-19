@@ -28,7 +28,7 @@ function makeAsset(overrides: Partial<InvestmentAsset>): InvestmentAsset {
     name: 'S&P500',
     quantity: 10,
     averagePrice: 400000,
-    annualGrowthRate: 7,
+    totalReturn: 7,
     dividendYield: 3,
     monthlyContribution: 0,
     reinvestDividend: true,

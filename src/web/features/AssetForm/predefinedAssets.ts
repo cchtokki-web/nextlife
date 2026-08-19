@@ -3,7 +3,7 @@ export interface PredefinedAsset {
   name: string;
   type: 'stock' | 'etf';
   currency: 'USD' | 'KRW';
-  annualGrowthRate: number;
+  totalReturn: number;
   dividendYield: number;
 }
 
@@ -14,7 +14,7 @@ export const predefinedAssets: PredefinedAsset[] = [
     name: 'Vanguard S&P 500 ETF',
     type: 'etf',
     currency: 'USD',
-    annualGrowthRate: 8.0,
+    totalReturn: 8.0,
     dividendYield: 1.4,
   },
   {
@@ -22,7 +22,7 @@ export const predefinedAssets: PredefinedAsset[] = [
     name: 'Invesco QQQ Trust',
     type: 'etf',
     currency: 'USD',
-    annualGrowthRate: 9.0,
+    totalReturn: 9.0,
     dividendYield: 0.6,
   },
   {
@@ -30,7 +30,7 @@ export const predefinedAssets: PredefinedAsset[] = [
     name: 'Schwab US Dividend Equity ETF',
     type: 'etf',
     currency: 'USD',
-    annualGrowthRate: 7.0,
+    totalReturn: 7.0,
     dividendYield: 3.5,
   },
   {
@@ -38,7 +38,7 @@ export const predefinedAssets: PredefinedAsset[] = [
     name: 'SPDR S&P 500 ETF Trust',
     type: 'etf',
     currency: 'USD',
-    annualGrowthRate: 8.0,
+    totalReturn: 8.0,
     dividendYield: 1.4,
   },
   {
@@ -46,7 +46,7 @@ export const predefinedAssets: PredefinedAsset[] = [
     name: 'SPDR Portfolio S&P 500 ETF',
     type: 'etf',
     currency: 'USD',
-    annualGrowthRate: 8.0,
+    totalReturn: 8.0,
     dividendYield: 1.4,
   },
   {
@@ -54,7 +54,7 @@ export const predefinedAssets: PredefinedAsset[] = [
     name: 'JPMorgan Equity Premium Income ETF',
     type: 'etf',
     currency: 'USD',
-    annualGrowthRate: 5.0,
+    totalReturn: 5.0,
     dividendYield: 8.0,
   },
   {
@@ -62,7 +62,7 @@ export const predefinedAssets: PredefinedAsset[] = [
     name: 'iShares 20+ Year Treasury Bond ETF',
     type: 'etf',
     currency: 'USD',
-    annualGrowthRate: 3.5,
+    totalReturn: 3.5,
     dividendYield: 4.0,
   },
   {
@@ -70,7 +70,7 @@ export const predefinedAssets: PredefinedAsset[] = [
     name: 'Vanguard Real Estate ETF',
     type: 'etf',
     currency: 'USD',
-    annualGrowthRate: 5.0,
+    totalReturn: 5.0,
     dividendYield: 4.2,
   },
 
@@ -80,7 +80,7 @@ export const predefinedAssets: PredefinedAsset[] = [
     name: 'Apple Inc.',
     type: 'stock',
     currency: 'USD',
-    annualGrowthRate: 9.0,
+    totalReturn: 9.0,
     dividendYield: 0.5,
   },
   {
@@ -88,7 +88,7 @@ export const predefinedAssets: PredefinedAsset[] = [
     name: 'Microsoft Corporation',
     type: 'stock',
     currency: 'USD',
-    annualGrowthRate: 10.0,
+    totalReturn: 10.0,
     dividendYield: 0.7,
   },
   {
@@ -96,7 +96,7 @@ export const predefinedAssets: PredefinedAsset[] = [
     name: 'NVIDIA Corporation',
     type: 'stock',
     currency: 'USD',
-    annualGrowthRate: 12.0,
+    totalReturn: 12.0,
     dividendYield: 0.1,
   },
   {
@@ -104,7 +104,7 @@ export const predefinedAssets: PredefinedAsset[] = [
     name: 'Tesla, Inc.',
     type: 'stock',
     currency: 'USD',
-    annualGrowthRate: 12.0,
+    totalReturn: 12.0,
     dividendYield: 0.0,
   },
   {
@@ -112,7 +112,7 @@ export const predefinedAssets: PredefinedAsset[] = [
     name: 'Alphabet Inc.',
     type: 'stock',
     currency: 'USD',
-    annualGrowthRate: 9.0,
+    totalReturn: 9.0,
     dividendYield: 0.4,
   },
   {
@@ -120,7 +120,7 @@ export const predefinedAssets: PredefinedAsset[] = [
     name: 'Amazon.com, Inc.',
     type: 'stock',
     currency: 'USD',
-    annualGrowthRate: 9.0,
+    totalReturn: 9.0,
     dividendYield: 0.0,
   },
   {
@@ -128,7 +128,7 @@ export const predefinedAssets: PredefinedAsset[] = [
     name: 'Meta Platforms, Inc.',
     type: 'stock',
     currency: 'USD',
-    annualGrowthRate: 9.0,
+    totalReturn: 9.0,
     dividendYield: 0.4,
   },
   {
@@ -136,7 +136,7 @@ export const predefinedAssets: PredefinedAsset[] = [
     name: 'Realty Income Corporation',
     type: 'stock',
     currency: 'USD',
-    annualGrowthRate: 4.0,
+    totalReturn: 4.0,
     dividendYield: 5.5,
   },
 
@@ -146,7 +146,7 @@ export const predefinedAssets: PredefinedAsset[] = [
     name: 'KODEX 200 (삼성)',
     type: 'etf',
     currency: 'KRW',
-    annualGrowthRate: 6.0,
+    totalReturn: 6.0,
     dividendYield: 2.0,
   },
   {
@@ -154,7 +154,7 @@ export const predefinedAssets: PredefinedAsset[] = [
     name: 'TIGER 미국S&P500 (미래에셋)',
     type: 'etf',
     currency: 'KRW',
-    annualGrowthRate: 8.0,
+    totalReturn: 8.0,
     dividendYield: 1.3,
   },
   {
@@ -162,7 +162,7 @@ export const predefinedAssets: PredefinedAsset[] = [
     name: 'TIGER 미국나스닥100 (미래에셋)',
     type: 'etf',
     currency: 'KRW',
-    annualGrowthRate: 9.0,
+    totalReturn: 9.0,
     dividendYield: 0.5,
   },
   {
@@ -170,7 +170,7 @@ export const predefinedAssets: PredefinedAsset[] = [
     name: 'TIGER 미국배당다우존스 (미래에셋)',
     type: 'etf',
     currency: 'KRW',
-    annualGrowthRate: 7.0,
+    totalReturn: 7.0,
     dividendYield: 3.5,
   },
   {
@@ -178,7 +178,7 @@ export const predefinedAssets: PredefinedAsset[] = [
     name: 'KODEX 미국반도체MV (삼성)',
     type: 'etf',
     currency: 'KRW',
-    annualGrowthRate: 9.5,
+    totalReturn: 9.5,
     dividendYield: 0.3,
   },
   {
@@ -186,7 +186,7 @@ export const predefinedAssets: PredefinedAsset[] = [
     name: 'ACE 미국S&P500 (한국투자)',
     type: 'etf',
     currency: 'KRW',
-    annualGrowthRate: 8.0,
+    totalReturn: 8.0,
     dividendYield: 1.3,
   },
   {
@@ -194,7 +194,7 @@ export const predefinedAssets: PredefinedAsset[] = [
     name: 'TIGER 미국필라델피아반도체나스닥',
     type: 'etf',
     currency: 'KRW',
-    annualGrowthRate: 9.5,
+    totalReturn: 9.5,
     dividendYield: 0.3,
   },
 
@@ -204,7 +204,7 @@ export const predefinedAssets: PredefinedAsset[] = [
     name: '삼성전자',
     type: 'stock',
     currency: 'KRW',
-    annualGrowthRate: 6.0,
+    totalReturn: 6.0,
     dividendYield: 2.5,
   },
   {
@@ -212,7 +212,7 @@ export const predefinedAssets: PredefinedAsset[] = [
     name: 'SK하이닉스',
     type: 'stock',
     currency: 'KRW',
-    annualGrowthRate: 8.0,
+    totalReturn: 8.0,
     dividendYield: 1.0,
   },
   {
@@ -220,7 +220,7 @@ export const predefinedAssets: PredefinedAsset[] = [
     name: '현대차',
     type: 'stock',
     currency: 'KRW',
-    annualGrowthRate: 5.0,
+    totalReturn: 5.0,
     dividendYield: 4.5,
   },
   {
@@ -228,7 +228,7 @@ export const predefinedAssets: PredefinedAsset[] = [
     name: 'NAVER',
     type: 'stock',
     currency: 'KRW',
-    annualGrowthRate: 7.0,
+    totalReturn: 7.0,
     dividendYield: 0.8,
   },
   {
@@ -236,7 +236,7 @@ export const predefinedAssets: PredefinedAsset[] = [
     name: '카카오',
     type: 'stock',
     currency: 'KRW',
-    annualGrowthRate: 7.0,
+    totalReturn: 7.0,
     dividendYield: 0.4,
   },
   {
@@ -244,7 +244,7 @@ export const predefinedAssets: PredefinedAsset[] = [
     name: '삼성바이오로직스',
     type: 'stock',
     currency: 'KRW',
-    annualGrowthRate: 8.0,
+    totalReturn: 8.0,
     dividendYield: 0.0,
   },
   {
@@ -252,7 +252,7 @@ export const predefinedAssets: PredefinedAsset[] = [
     name: 'LG에너지솔루션',
     type: 'stock',
     currency: 'KRW',
-    annualGrowthRate: 8.0,
+    totalReturn: 8.0,
     dividendYield: 0.0,
   },
   {
@@ -260,7 +260,7 @@ export const predefinedAssets: PredefinedAsset[] = [
     name: 'KB금융',
     type: 'stock',
     currency: 'KRW',
-    annualGrowthRate: 4.0,
+    totalReturn: 4.0,
     dividendYield: 5.5,
   },
 
@@ -270,7 +270,7 @@ export const predefinedAssets: PredefinedAsset[] = [
     name: '사적연금(예금)',
     type: 'etf',
     currency: 'KRW',
-    annualGrowthRate: 3.0,
+    totalReturn: 3.0,
     dividendYield: 0.0,
   },
   {
@@ -278,7 +278,7 @@ export const predefinedAssets: PredefinedAsset[] = [
     name: '사적연금(ETF)',
     type: 'etf',
     currency: 'KRW',
-    annualGrowthRate: 7.0,
+    totalReturn: 7.0,
     dividendYield: 1.5,
   },
 ];

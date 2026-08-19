@@ -24,12 +24,12 @@ function params(overrides: Partial<SimulationParams> = {}): SimulationParams {
     userProfile: { currentAge: 55, retirementAge: 60, expectancy: 85, targetMonthlySpending: 2500000 },
     assets: [
       { id: 'a1', type: 'etf', ticker: 'SPY', name: 'S&P500', quantity: 400, averagePrice: 500000,
-        annualGrowthRate: 7, dividendYield: 2, monthlyContribution: 500000, reinvestDividend: true, currency: 'KRW' },
+        totalReturn: 7, dividendYield: 2, monthlyContribution: 500000, reinvestDividend: true, currency: 'KRW' },
     ],
     isaAccounts: [],
     nationalPension: { expectedMonthlyAmount: 1000000 },
     privatePensions: [
-      { id: 'p1', type: 'irp', balance: 50000000, monthlyContribution: 300000, annualReturn: 4, currency: 'KRW' },
+      { id: 'p1', type: 'irp', balance: 50000000, monthlyContribution: 300000, totalReturn: 4, currency: 'KRW' },
     ],
     otherIncomes: [],
     inflationRate: 2,
@@ -409,14 +409,14 @@ describe('resolveMonteCarloConfig', () => {
   // 같을 뿐이다. 유도 규칙 자체는 volatilityPresets.test.ts가 잠근다.
   test('프리셋이 없거나 custom이면 보유 자산의 수익률에서 유도한다', () => {
     // 픽스처의 주식 성장률이 7% = 중립형 앵커라 유도 결과도 중립형 변동성이다.
-    expect(params().assets[0].annualGrowthRate).toBe(YIELD_PRESET_RATES.base.stockGrowth);
+    expect(params().assets[0].totalReturn).toBe(YIELD_PRESET_RATES.base.stockGrowth);
 
     expect(resolveMonteCarloConfig(params()).annualStdDev).toBe(VOLATILITY_BY_YIELD_PRESET.base);
     expect(resolveMonteCarloConfig(params({ yieldPreset: 'custom' })).annualStdDev)
       .toBe(VOLATILITY_BY_YIELD_PRESET.base);
 
     // 같은 자리에서 수익률만 낮추면 변동성도 따라 내려간다 — 이것이 실제로 바뀐 동작이다.
-    const conservativeAssets = params().assets.map((a) => ({ ...a, annualGrowthRate: 5 }));
+    const conservativeAssets = params().assets.map((a) => ({ ...a, totalReturn: 5 }));
     expect(resolveMonteCarloConfig(params({ assets: conservativeAssets })).annualStdDev)
       .toBe(VOLATILITY_BY_YIELD_PRESET.conservative);
   });
@@ -458,7 +458,7 @@ describe('goalFailure — 목표 달성 확률을 떨어뜨린 원인', () => {
     // 이 조합이 "기말자산은 큰데 목표 달성 확률만 바닥"의 원인이다.
     const capped = runMonteCarlo(params({
       privatePensions: [
-        { id: 'p1', type: 'irp', balance: 1_500_000_000, monthlyContribution: 0, annualReturn: 4, currency: 'KRW' },
+        { id: 'p1', type: 'irp', balance: 1_500_000_000, monthlyContribution: 0, totalReturn: 4, currency: 'KRW' },
       ],
       withdrawalPlan: { privatePensionMonthlyTarget: 300_000 },
     }), engine, { trials: 30, seed: 7, annualStdDev: 12 });

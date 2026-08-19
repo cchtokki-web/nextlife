@@ -18,12 +18,12 @@ function params(overrides: Partial<SimulationParams> = {}): SimulationParams {
     userProfile: { currentAge: 55, retirementAge: 60, expectancy: 85, targetMonthlySpending: 2500000 },
     assets: [
       { id: 'a1', type: 'etf', ticker: 'SPY', name: 'S&P500', quantity: 400, averagePrice: 500000,
-        annualGrowthRate: 7, dividendYield: 2, monthlyContribution: 500000, reinvestDividend: true, currency: 'KRW' },
+        totalReturn: 7, dividendYield: 2, monthlyContribution: 500000, reinvestDividend: true, currency: 'KRW' },
     ],
     isaAccounts: [],
     nationalPension: { expectedMonthlyAmount: 1000000 },
     privatePensions: [
-      { id: 'p1', type: 'irp', balance: 50000000, monthlyContribution: 300000, annualReturn: 4, currency: 'KRW' },
+      { id: 'p1', type: 'irp', balance: 50000000, monthlyContribution: 300000, totalReturn: 4, currency: 'KRW' },
     ],
     otherIncomes: [],
     inflationRate: 2,
@@ -57,7 +57,7 @@ describe('computeSequenceRisk', () => {
       userProfile: { currentAge: 55, retirementAge: 90, expectancy: 70, targetMonthlySpending: 0 },
       assets: [
         { id: 'a1', type: 'etf', ticker: 'SPY', name: 'S&P500', quantity: 400, averagePrice: 500000,
-          annualGrowthRate: 7, dividendYield: 0, monthlyContribution: 0, reinvestDividend: true, currency: 'KRW' },
+          totalReturn: 7, dividendYield: 0, monthlyContribution: 0, reinvestDividend: true, currency: 'KRW' },
       ],
       privatePensions: [],
       nationalPension: { expectedMonthlyAmount: 0 },

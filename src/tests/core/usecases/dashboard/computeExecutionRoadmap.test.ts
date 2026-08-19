@@ -17,7 +17,7 @@ const baseParams: SimulationParams = {
   assets: [
     {
       id: 'asset-1', type: 'etf', ticker: 'SPY', name: 'S&P 500', quantity: 100,
-      averagePrice: 500000, annualGrowthRate: 7, dividendYield: 1.5,
+      averagePrice: 500000, totalReturn: 7, dividendYield: 1.5,
       monthlyContribution: 0, reinvestDividend: true, currency: 'KRW',
     },
   ],
@@ -25,7 +25,7 @@ const baseParams: SimulationParams = {
   privatePensions: [
     {
       id: 'pension-1', type: 'irp', balance: 200000000,
-      monthlyContribution: 0, annualReturn: 5, currency: 'KRW',
+      monthlyContribution: 0, totalReturn: 5, currency: 'KRW',
     },
   ],
   otherIncomes: [],

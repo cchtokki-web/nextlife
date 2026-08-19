@@ -15,7 +15,7 @@ function pension(overrides: Partial<PrivatePension> = {}): PrivatePension {
     type: 'irp',
     balance: 50_000_000,
     monthlyContribution: 400_000,
-    annualReturn: 4,
+    totalReturn: 4,
     currency: 'KRW',
     ...overrides,
   };
