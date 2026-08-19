@@ -1,5 +1,6 @@
 import { SimulationParams } from '../../entities/types';
 import { MonteCarloConfig } from '../../entities/montecarlo';
+import { YIELD_PRESET_RATES } from '../scenario/applyYieldPreset';
 
 // 수익률 프리셋별 연 변동성(%p).
 //
@@ -41,15 +42,102 @@ export function annualStdDevForYieldPreset(
     : fallback;
 }
 
+// **직접 입력한 수익률 → 연 변동성.**
+//
+// 예전에는 프리셋을 고르지 않은 사용자 — 즉 「입력 수익률 유지」(기본값)와 「사용자
+// 직접입력」을 고른 사람 전부 — 가 자산에 3%를 넣든 12%를 넣든 같은 15%p로 계산됐다.
+// **수익률만 사용자 값을 쓰고 변동성은 남의 프리셋을 쓰는 비대칭**이었다.
+//
+// 새 숫자를 만들지 않는다. 저장소의 두 표가 이미 세 쌍의 (수익률, 변동성)을 갖고 있고,
+// 그 세 점이 한 직선 위에 오차 없이 놓인다:
+//   안정형 5% → 10%p · 중립형 7% → 15%p · 공격형 9% → 20%p
+// 양 끝 앵커로 직선을 긋고 그 위에 사용자의 수익률을 얹는다. 기울기를 상수로 적어 두면
+// 두 표를 고쳤을 때 이 선만 옛 값에 남으므로, 매번 표에서 계산한다.
+//
+// **불확실**: 두 표 모두 근거가 기록된 적이 없다(YIELD_PRESET_RATES 주석은 base·aggressive
+// 값의 출처가 없다고 명시하고, VOLATILITY_BY_YIELD_PRESET은 "대략적 구간이지 실측값이
+// 아니다"라고 적혀 있다). 세 점이 정확히 선형인 것은 우연일 가능성이 높다. 그럼에도 이
+// 유도를 쓰는 이유는 위의 비대칭이 더 나쁘기 때문이지, 이 직선이 옳다고 볼 근거가 있어서가
+// 아니다. 실측 변동성 자료가 생기면 이 함수부터 갈아낄 자리다.
+export function volatilityForStockReturn(stockReturnPercent: number): number {
+  // 표가 `as const`라 값이 리터럴 타입이 된다. number로 넓히지 않으면 아래 0 나눗셈 가드가
+  // 「9와 5는 겹칠 수 없다」는 타입 오류가 된다 — 지금의 표에서는 참이지만, 그 가드는 표를
+  // 고칠 미래를 위한 것이다.
+  const lowReturn: number = YIELD_PRESET_RATES.conservative.stockGrowth;
+  const highReturn: number = YIELD_PRESET_RATES.aggressive.stockGrowth;
+  const lowVol: number = VOLATILITY_BY_YIELD_PRESET.conservative;
+  const highVol: number = VOLATILITY_BY_YIELD_PRESET.aggressive;
+
+  // 두 앵커의 수익률이 같아지면(표를 그렇게 고치면) 직선을 그을 수 없다. 0으로 나누는
+  // 대신 유도를 포기하고 중립형으로 떨어뜨린다 — 화면이 NaN을 인쇄하는 것보다 낫다.
+  if (highReturn === lowReturn) return VOLATILITY_BY_YIELD_PRESET.base;
+
+  const slope = (highVol - lowVol) / (highReturn - lowReturn);
+  const derived = lowVol + slope * (stockReturnPercent - lowReturn);
+
+  // **구간 밖으로 나가지 않는다.** 저장소가 근거를 표명한 범위는 [안정형, 공격형]뿐이고,
+  // 그 밖에서는 곧 음수 변동성이 나온다(이 직선에서 수익률 1%가 0%p다).
+  return Math.min(highVol, Math.max(lowVol, derived));
+}
+
+// 시장 연동 계좌(주식·ETF 자산과 ISA)의 잔액 가중 평균 수익률. 유도할 입력이 없으면 null.
+//
+// **사적연금은 넣지 않는다.** 연금은 이미 PENSION_RETURN_SHOCK_BETA로 충격이 따로 줄어들고,
+// 연금 쪽 요율표(3/4/6)는 변동성 표와 선형이 아니어서 얹을 직선이 없다.
+//
+// 단순평균이 아니라 잔액 가중인 이유: 100만원짜리 고위험 자산 하나가 10억짜리 안전 자산과
+// 같은 무게를 가지면, 포트폴리오의 성격을 말하지 못한다.
+function marketWeightedStockReturn(params: SimulationParams): number | null {
+  let weightedSum = 0;
+  let totalValue = 0;
+
+  const add = (value: number, ratePercent: number) => {
+    if (!(value > 0)) return;
+    weightedSum += value * ratePercent;
+    totalValue += value;
+  };
+
+  // 통화 환산은 SimulationEngine.convertValue와 같은 규칙이다(USD → KRW는 환율을 곱한다).
+  // exchangeScenario의 ±10% 배율은 일부러 적용하지 않는다 — 여기서 구하는 것은 금액이
+  // 아니라 «무게»이고, 모든 USD 자산에 같은 배율을 곱해도 가중평균은 바뀌지 않는다.
+  const toKRW = (amount: number, currency: 'KRW' | 'USD') =>
+    currency === 'USD' ? amount * params.baseExchangeRate : amount;
+
+  for (const asset of params.assets ?? []) {
+    add(toKRW(asset.quantity * asset.averagePrice, asset.currency), asset.annualGrowthRate);
+  }
+  for (const isa of params.isaAccounts ?? []) {
+    add(toKRW(isa.balance, isa.currency), isa.annualReturn);
+  }
+
+  return totalValue > 0 ? weightedSum / totalValue : null;
+}
+
 // 결정론 params에서 MC 설정을 유도한다. 저장되는 값이 아니다(MonteCarloConfig 주석).
 export function resolveMonteCarloConfig(params: SimulationParams): MonteCarloConfig {
-  // 'custom'이거나 미지정이면 base를 쓴다. custom은 사용자가 자산별 수익률을 직접
-  // 정한 경우인데, 거기서 변동성을 추론할 방법이 없다(수익률과 변동성은 독립 입력이다).
-  const annualStdDev = annualStdDevForYieldPreset(params.yieldPreset);
+  const preset = params.yieldPreset;
+  const presetVolatility = preset === 'conservative' || preset === 'base' || preset === 'aggressive'
+    ? VOLATILITY_BY_YIELD_PRESET[preset]
+    : null;
+
+  // 프리셋을 고른 경우는 엔진이 수익률 자체를 프리셋 값으로 덮어쓰므로 유도해도 같은 값이
+  // 나온다. 그래도 프리셋 경로를 먼저 두는 이유는 «순서»다 — 이 함수는 덮어쓰기 전의
+  // params로도 불릴 수 있고, 그때 사용자가 남겨 둔 옛 수익률에서 유도하면 안 된다.
+  //
+  // 'custom'·미지정이면 사용자가 넣은 수익률에서 유도한다. 유도할 자산이 하나도 없으면
+  // (연금만 보유, 또는 잔액 0) 종전처럼 base다.
+  const derived = presetVolatility ?? derivedVolatility(params);
 
   return {
     trials: DEFAULT_MONTE_CARLO_TRIALS,
     seed: DEFAULT_MONTE_CARLO_SEED,
-    annualStdDev,
+    annualStdDev: derived,
   };
+}
+
+function derivedVolatility(params: SimulationParams): number {
+  const stockReturn = marketWeightedStockReturn(params);
+  return stockReturn === null
+    ? VOLATILITY_BY_YIELD_PRESET.base
+    : volatilityForStockReturn(stockReturn);
 }
