@@ -9,6 +9,10 @@ import {
   SpendingShapePreset, StrategyMode, StrategyRecommendation,
 } from '../../../core/entities/types';
 import { RadioCardOption } from '../../components/form';
+// 라벨은 core가 소유한다. 설정 화면과 결과 화면의 가정 공시가 각자 문자열을 들고 있으면,
+// 사용자가 고른 이름과 결과에 찍히는 이름이 갈릴 수 있다. 아이콘과 설명문은 화면의 것이다.
+import { ECONOMIC_SCENARIO_LABELS } from '../../../core/usecases/scenario/economicScenarios';
+import { RISK_PROFILE_LABELS } from '../../../core/usecases/strategy/compileStrategy';
 import { FieldPath } from './fieldVisibility';
 
 // 각 섹션이 공유하는 props. 섹션은 자기 값 읽기/쓰기와 노출 판정에 필요한 것만 받는다.
@@ -157,27 +161,27 @@ export const SPENDING_SHAPE_OPTIONS: ReadonlyArray<RadioCardOption<SpendingShape
 
 export const RISK_PROFILE_OPTIONS: ReadonlyArray<RadioCardOption<RiskProfile>> = [
   {
-    value: 'conservative', label: '안정형',
+    value: 'conservative', label: RISK_PROFILE_LABELS.conservative,
     description: '수익은 낮아도 흔들림이 적은 쪽으로 계산합니다. (주식 5%)',
     icon: <ShieldCheck size={16} />,
   },
   {
-    value: 'neutral', label: '중립형',
+    value: 'neutral', label: RISK_PROFILE_LABELS.neutral,
     description: '장기 평균 수준의 수익을 가정합니다. (주식 7%)',
     icon: <Activity size={16} />,
   },
   {
-    value: 'aggressive', label: '공격형',
+    value: 'aggressive', label: RISK_PROFILE_LABELS.aggressive,
     description: '높은 수익을 가정하되 그만큼 변동도 크다고 봅니다. (주식 9%)',
     icon: <Flame size={16} />,
   },
   {
-    value: 'custom', label: '사용자 직접입력',
+    value: 'custom', label: RISK_PROFILE_LABELS.custom,
     description: '자산마다 직접 입력한 수익률을 그대로 씁니다. 프리셋으로 덮어쓰지 않습니다.',
     icon: <SlidersHorizontal size={16} />,
   },
   {
-    value: 'ai_recommended', label: '입력 수익률 유지',
+    value: 'ai_recommended', label: RISK_PROFILE_LABELS.ai_recommended,
     // 나이·은퇴 시점을 보고 프리셋을 고르는 로직은 코드베이스에 없다. compileStrategy의
     // RISK_PROFILE_PRESETS에 'ai_recommended' 항목이 없어 applyYieldPreset이 호출되지
     // 않는 것이 전부다 — 즉 "미정"이며, 아무것도 덮어쓰지 않는다.
@@ -188,27 +192,27 @@ export const RISK_PROFILE_OPTIONS: ReadonlyArray<RadioCardOption<RiskProfile>> =
 
 export const ECONOMIC_SCENARIO_OPTIONS: ReadonlyArray<RadioCardOption<EconomicScenario>> = [
   {
-    value: 'long_term_average', label: '장기 평균',
+    value: 'long_term_average', label: ECONOMIC_SCENARIO_LABELS.long_term_average,
     description: '지난 수십 년의 평균적인 물가와 성장을 가정합니다.',
     icon: <Activity size={16} />,
   },
   {
-    value: 'recession', label: '장기 침체',
+    value: 'recession', label: ECONOMIC_SCENARIO_LABELS.recession,
     description: '성장이 오래 정체되고 원화가 약해지는 국면입니다.',
     icon: <CloudRain size={16} />,
   },
   {
-    value: 'high_inflation', label: '고물가',
+    value: 'high_inflation', label: ECONOMIC_SCENARIO_LABELS.high_inflation,
     description: '물가가 연 5% 오르는 국면입니다. 실질 구매력이 빠르게 줄어듭니다.',
     icon: <Flame size={16} />,
   },
   {
-    value: 'low_growth', label: '저성장',
+    value: 'low_growth', label: ECONOMIC_SCENARIO_LABELS.low_growth,
     description: '물가는 안정적이지만 자산이 잘 늘지 않는 국면입니다.',
     icon: <TrendingDown size={16} />,
   },
   {
-    value: 'ai_recommended', label: '직접 입력값 유지',
+    value: 'ai_recommended', label: ECONOMIC_SCENARIO_LABELS.ai_recommended,
     // 이 선택지는 '장기 평균'과 의미가 다르다. '장기 평균'은 프로필이 있어 물가·환율·수익률을
     // 일괄 대체하지만, 'ai_recommended'는 ECONOMIC_SCENARIO_PROFILES에 항목이 없어(=미정)
     // 아무것도 대체하지 않는다. 둘을 "같은 뜻"으로 적어 두면 언젠가 프로필을 채우게 되고,

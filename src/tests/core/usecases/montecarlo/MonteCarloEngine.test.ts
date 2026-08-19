@@ -13,6 +13,8 @@ import { freezeSpendingPlan, runFrozenPlan } from '@/core/usecases/spending/free
 import { buildReturnShockPath } from '@/core/usecases/montecarlo/returnPath';
 import { mulberry32, deriveSeed } from '@/core/usecases/montecarlo/rng';
 import { simulationYearCount } from '@/core/usecases/montecarlo/horizon';
+import { PENSION_RETURN_SHOCK_BETA } from '@/core/usecases/scenario/economicScenarios';
+import { DEFAULT_RETIREMENT_STRATEGY } from '@/core/usecases/strategy/compileStrategy';
 
 const engine = new SimulationEngine();
 
@@ -41,6 +43,35 @@ function params(overrides: Partial<SimulationParams> = {}): SimulationParams {
 function config(overrides: Partial<MonteCarloConfig> = {}): MonteCarloConfig {
   return { trials: 200, seed: 2026, annualStdDev: 15, ...overrides };
 }
+
+describe('runMonteCarlo - 가정 공시', () => {
+  // 결과가 «어떤 세계에서 나왔는지»를 결과 자신이 들고 다녀야 한다. 화면과 PDF가 params를
+  // 따로 읽어 판정하면 두 곳이 어긋나고, 워커 경계 너머의 화면은 params를 갖고 있지도 않다.
+  test('결과에 경제 시나리오·리스크 성향·연금 배율을 함께 싣는다', () => {
+    const mc = runMonteCarlo(params(), engine, config({ trials: 5 }));
+
+    expect(mc.assumptions).toBeDefined();
+    expect(mc.assumptions!.pensionShockBeta).toBe(PENSION_RETURN_SHOCK_BETA);
+  });
+
+  // 전략을 저장한 적 없는 계획은 두 축이 모두 미정이다(DEFAULT_RETIREMENT_STRATEGY).
+  test('전략이 없으면 두 축 모두 미정으로 싣는다', () => {
+    const mc = runMonteCarlo(params(), engine, config({ trials: 5 }));
+
+    expect(mc.assumptions!.economicScenario).toBe('ai_recommended');
+    expect(mc.assumptions!.riskProfile).toBe('ai_recommended');
+  });
+
+  test('사용자가 고른 축을 그대로 싣는다', () => {
+    const chosen = params({
+      strategy: { ...DEFAULT_RETIREMENT_STRATEGY, economicScenario: 'high_inflation', riskProfile: 'conservative' },
+    });
+    const mc = runMonteCarlo(chosen, engine, config({ trials: 5 }));
+
+    expect(mc.assumptions!.economicScenario).toBe('high_inflation');
+    expect(mc.assumptions!.riskProfile).toBe('conservative');
+  });
+});
 
 describe('runMonteCarlo', () => {
   // **σ=0이면 몬테카를로는 결정론이어야 한다.**

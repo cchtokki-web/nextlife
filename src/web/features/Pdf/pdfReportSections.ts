@@ -1,4 +1,5 @@
 import { RiskAlert } from '../../../core/usecases/dashboard/computeRiskAlerts';
+import { describeMonteCarloAssumptions } from '../../../core/usecases/montecarlo/describeAssumptions';
 import { ExecutionRoadmap } from '../../../core/usecases/dashboard/computeExecutionRoadmap';
 import { SensitivityScenario } from '../../../core/usecases/dashboard/computeSensitivityAnalysis';
 import { PlanAssetStatus } from '../../../core/usecases/dashboard/resolvePlanAssetStatus';
@@ -622,6 +623,9 @@ export function renderMonteCarloSection(
 
   const assetPercent = Math.round(monteCarlo.successRate * 100);
   const spendingPercent = Math.round(monteCarlo.spendingSuccessRate * 100);
+  // 화면(MonteCarloSection)과 «같은 문장»이어야 한다. 두 벌로 두었던 대가는
+  // describeMonteCarloAssumptions 주석에 있다.
+  const assumptionCopy = describeMonteCarloAssumptions(monteCarlo);
 
   const depletionText = monteCarlo.depletion.count > 0
     ? `<p style="margin: 6px 0 0; font-size: 11px; color: #dc2626;">자산이 먼저 바닥난 경우가 ${monteCarlo.depletion.count.toLocaleString()}회 있었고, 가장 이른 시점은 ${monteCarlo.depletion.earliestAge}세였습니다.</p>`
@@ -674,8 +678,11 @@ export function renderMonteCarloSection(
       두 확률은 서로 다른 실패를 셉니다: 연금이 생활비를 덮으면 자산이 바닥나도 생활은 유지됩니다.
     </p>
     <p style="margin: 4px 0 0; font-size: 10px; color: #64748b;">
-      계산 가정: 연 변동성 ${monteCarlo.annualStdDev ?? 15}%p · 정규분포 · 모든 위험자산이 같은 시장 충격을 공유 · 고정 시드 ${monteCarlo.seed}
+      계산 가정: ${assumptionCopy.calculation}
     </p>
+    ${assumptionCopy.robustness
+      ? `<p style="margin: 2px 0 0; font-size: 10px; color: #64748b;">${assumptionCopy.robustness}</p>`
+      : ''}
     <table style="width: 100%; border-collapse: collapse; margin-top: 8px;">
       <thead>
         <tr>

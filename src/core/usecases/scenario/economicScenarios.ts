@@ -45,6 +45,19 @@ export const ECONOMIC_SCENARIO_PROFILES: Record<GoverningEconomicScenario, Econo
   },
 };
 
+// 경제 시나리오의 표시 이름. **여기가 유일한 출처다.**
+//
+// 설정 화면의 선택지(strategyOptions.tsx)와 결과 화면의 가정 공시가 각자 문자열을 들고
+// 있으면, 사용자는 「고물가」를 골랐는데 결과에는 다른 이름이 찍히는 일이 언제든 생긴다.
+// 아이콘과 설명문은 화면의 것이지만 이름은 도메인의 것이라 여기 둔다.
+export const ECONOMIC_SCENARIO_LABELS: Record<EconomicScenario, string> = {
+  long_term_average: '장기 평균',
+  recession: '장기 침체',
+  high_inflation: '고물가',
+  low_growth: '저성장',
+  ai_recommended: '직접 입력값 유지',
+};
+
 // **사적연금이 받는 시장 충격의 배율(베타).**
 //
 // 위 프로필은 이미 사적연금을 주식보다 보수적으로 본다(장기 평균에서 주식 7% / 연금 4%).

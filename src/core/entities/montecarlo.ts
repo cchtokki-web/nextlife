@@ -1,4 +1,5 @@
 import type { GoalSuccessConditions } from '../usecases/goals/goalSuccessConditions';
+import type { EconomicScenario, RiskProfile } from './types';
 
 // 몬테카를로 시뮬레이션의 입력과 결과.
 //
@@ -47,11 +48,38 @@ export interface GoalFailureBreakdown {
   terminalAssetGoal: number;
 }
 
+// 몬테카를로 결과가 전제한 가정. 값이 아니라 **선택**을 담는다 — 물가·수익률 같은 수치는
+// 이미 params에 있고, 여기 필요한 것은 "그 수치를 사용자가 정했는가, 프리셋이 덮었는가"다.
+export interface MonteCarloAssumptions {
+  economicScenario: EconomicScenario;
+  riskProfile: RiskProfile;
+  // 사적연금이 받는 시장 충격의 배율(PENSION_RETURN_SHOCK_BETA). 상수를 화면이 다시
+  // import하지 않고 결과와 함께 다니게 해, 이 결과를 만든 «그때»의 배율이 인쇄된다.
+  pensionShockBeta: number;
+}
+
 export interface MonteCarloResult {
   trials: number;
   seed: number;
   // 화면·PDF에서 결과 가정을 숨기지 않기 위한 실제 연 변동성(%p).
+  //
+  // **주식·ISA 기준값이다.** 사적연금은 이 값에 PENSION_RETURN_SHOCK_BETA를 곱한 폭으로
+  // 흔들린다. 하나의 숫자로 모든 계좌를 말하던 시절의 필드라, 이제 이것만 인쇄하면
+  // 연금까지 15%p로 흔들린다는 뜻으로 읽힌다 — 표시는 assumptions와 «함께» 해야 한다
+  // (describeMonteCarloAssumptions가 그 조합을 한 곳에서 만든다).
   annualStdDev?: number;
+  // 이 확률이 **어떤 세계에서 나온 값인지**. annualStdDev와 같은 이유로 여기 둔다:
+  // 결과 가정을 화면·PDF에서 숨기지 않기 위해서다.
+  //
+  // 특히 두 축이 미정('ai_recommended')일 때가 중요하다. 그때 설정 화면은 「네 가지 경기
+  // 국면 모두에서 견디는 인출 계획을 고릅니다」라고 말하지만, 여기 실린 확률은 그 4국면
+  // 비교의 산물이 아니라 **사용자 입력 가정 하나**로 계산한 값이다. 강건성 비교는 어느
+  // 인출 계획을 추천할지 고르는 데만 쓰인다(robustness.ts). 밝히지 않으면 사용자는 표시된
+  // 확률이 4국면 검증을 통과한 값이라고 읽는다.
+  //
+  // optional인 이유는 annualStdDev와 같다 — 이 필드가 없던 시절의 직렬화된 결과와 기존
+  // 테스트 픽스처가 그대로 동작해야 한다.
+  assumptions?: MonteCarloAssumptions;
   // 성공 판정 기준 나이 = 시뮬레이션 종료 나이(본인 기대수명). 결정론 시뮬레이션의
   // 고갈 판정과 같은 나이를 써야 성공률과 화면 문구가 어긋나지 않는다.
   //
