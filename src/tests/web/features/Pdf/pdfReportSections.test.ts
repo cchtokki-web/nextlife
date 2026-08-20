@@ -599,7 +599,7 @@ describe('renderMonteCarloSection', () => {
 
     expect(html).toContain('연 변동성 18%p');
     expect(html).toContain('정규분포');
-    expect(html).toContain('같은 시장 충격');
+    expect(html).toContain('계좌별 충격은 기대수익률에 비례');
     expect(html).toContain('고정 시드 1');
   });
 

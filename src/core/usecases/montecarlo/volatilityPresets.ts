@@ -1,6 +1,7 @@
 import { SimulationParams } from '../../entities/types';
 import { MonteCarloConfig } from '../../entities/montecarlo';
 import { YIELD_PRESET_RATES } from '../scenario/applyYieldPreset';
+import { weightedAverageTotalReturn } from '../returns/portfolioReturn';
 
 // 수익률 프리셋별 연 변동성(%p).
 //
@@ -80,39 +81,6 @@ export function volatilityForStockReturn(stockReturnPercent: number): number {
   return Math.min(highVol, Math.max(lowVol, derived));
 }
 
-// 시장 연동 계좌(주식·ETF 자산과 ISA)의 잔액 가중 평균 수익률. 유도할 입력이 없으면 null.
-//
-// **사적연금은 넣지 않는다.** 연금은 이미 PENSION_RETURN_SHOCK_BETA로 충격이 따로 줄어들고,
-// 연금 쪽 요율표(3/4/6)는 변동성 표와 선형이 아니어서 얹을 직선이 없다.
-//
-// 단순평균이 아니라 잔액 가중인 이유: 100만원짜리 고위험 자산 하나가 10억짜리 안전 자산과
-// 같은 무게를 가지면, 포트폴리오의 성격을 말하지 못한다.
-function marketWeightedStockReturn(params: SimulationParams): number | null {
-  let weightedSum = 0;
-  let totalValue = 0;
-
-  const add = (value: number, ratePercent: number) => {
-    if (!(value > 0)) return;
-    weightedSum += value * ratePercent;
-    totalValue += value;
-  };
-
-  // 통화 환산은 SimulationEngine.convertValue와 같은 규칙이다(USD → KRW는 환율을 곱한다).
-  // exchangeScenario의 ±10% 배율은 일부러 적용하지 않는다 — 여기서 구하는 것은 금액이
-  // 아니라 «무게»이고, 모든 USD 자산에 같은 배율을 곱해도 가중평균은 바뀌지 않는다.
-  const toKRW = (amount: number, currency: 'KRW' | 'USD') =>
-    currency === 'USD' ? amount * params.baseExchangeRate : amount;
-
-  for (const asset of params.assets ?? []) {
-    add(toKRW(asset.quantity * asset.averagePrice, asset.currency), asset.totalReturn);
-  }
-  for (const isa of params.isaAccounts ?? []) {
-    add(toKRW(isa.balance, isa.currency), isa.totalReturn);
-  }
-
-  return totalValue > 0 ? weightedSum / totalValue : null;
-}
-
 // 결정론 params에서 MC 설정을 유도한다. 저장되는 값이 아니다(MonteCarloConfig 주석).
 export function resolveMonteCarloConfig(params: SimulationParams): MonteCarloConfig {
   const preset = params.yieldPreset;
@@ -124,8 +92,9 @@ export function resolveMonteCarloConfig(params: SimulationParams): MonteCarloCon
   // 나온다. 그래도 프리셋 경로를 먼저 두는 이유는 «순서»다 — 이 함수는 덮어쓰기 전의
   // params로도 불릴 수 있고, 그때 사용자가 남겨 둔 옛 수익률에서 유도하면 안 된다.
   //
-  // 'custom'·미지정이면 사용자가 넣은 수익률에서 유도한다. 유도할 자산이 하나도 없으면
-  // (연금만 보유, 또는 잔액 0) 종전처럼 base다.
+  // 'custom'·미지정이면 사용자가 넣은 수익률에서 유도한다. 유도할 잔액이 하나도 없으면
+  // 종전처럼 base다 — 사적연금이 가중평균에 들어온 뒤로 "연금만 보유"는 더 이상 이
+  // 갈래를 타지 않는다(weightedAverageTotalReturn 주석).
   const derived = presetVolatility ?? derivedVolatility(params);
 
   return {
@@ -136,8 +105,8 @@ export function resolveMonteCarloConfig(params: SimulationParams): MonteCarloCon
 }
 
 function derivedVolatility(params: SimulationParams): number {
-  const stockReturn = marketWeightedStockReturn(params);
-  return stockReturn === null
+  const averageReturn = weightedAverageTotalReturn(params);
+  return averageReturn === null
     ? VOLATILITY_BY_YIELD_PRESET.base
-    : volatilityForStockReturn(stockReturn);
+    : volatilityForStockReturn(averageReturn);
 }

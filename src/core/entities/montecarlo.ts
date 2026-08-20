@@ -53,9 +53,6 @@ export interface GoalFailureBreakdown {
 export interface MonteCarloAssumptions {
   economicScenario: EconomicScenario;
   riskProfile: RiskProfile;
-  // 사적연금이 받는 시장 충격의 배율(PENSION_RETURN_SHOCK_BETA). 상수를 화면이 다시
-  // import하지 않고 결과와 함께 다니게 해, 이 결과를 만든 «그때»의 배율이 인쇄된다.
-  pensionShockBeta: number;
 }
 
 export interface MonteCarloResult {
@@ -63,10 +60,10 @@ export interface MonteCarloResult {
   seed: number;
   // 화면·PDF에서 결과 가정을 숨기지 않기 위한 실제 연 변동성(%p).
   //
-  // **주식·ISA 기준값이다.** 사적연금은 이 값에 PENSION_RETURN_SHOCK_BETA를 곱한 폭으로
-  // 흔들린다. 하나의 숫자로 모든 계좌를 말하던 시절의 필드라, 이제 이것만 인쇄하면
-  // 연금까지 15%p로 흔들린다는 뜻으로 읽힌다 — 표시는 assumptions와 «함께» 해야 한다
-  // (describeMonteCarloAssumptions가 그 조합을 한 곳에서 만든다).
+  // **포트폴리오 «전체» 기준값이다.** 계좌마다 받는 폭은 이 값에 각자의 배율을 곱한
+  // 것이며, 그 배율의 잔액가중 평균이 1.0이라 전체로는 이 값과 같다(shockBeta 주석).
+  // 즉 이 숫자 하나로 "어느 한 계좌가 얼마나 흔들리는가"를 말할 수는 없다 — 표시는
+  // describeMonteCarloAssumptions가 만드는 문장과 «함께» 해야 한다.
   annualStdDev?: number;
   // 이 확률이 **어떤 세계에서 나온 값인지**. annualStdDev와 같은 이유로 여기 둔다:
   // 결과 가정을 화면·PDF에서 숨기지 않기 위해서다.

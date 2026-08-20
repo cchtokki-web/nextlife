@@ -1,10 +1,6 @@
 import { describe, test, expect } from 'vitest';
 import { SimulationEngine } from '@/core/usecases/SimulationEngine';
 import { SimulationParams } from '@/core/entities/types';
-import {
-  ECONOMIC_SCENARIO_PROFILES,
-  PENSION_RETURN_SHOCK_BETA,
-} from '@/core/usecases/scenario/economicScenarios';
 
 // **연도별 시장 수익률 충격 통로.**
 //
@@ -40,6 +36,13 @@ function params(overrides: Partial<SimulationParams> = {}): SimulationParams {
     ...overrides,
   };
 }
+
+// 픽스처의 잔액가중 평균 총수익률. 엔진의 함수를 부르지 않고 여기서 다시 계산해,
+// 유도 규칙이 바뀌면 이 스위트가 알아채게 한다.
+//   주식 400×500,000 = 2억 @ 7% · ISA 2천만 @ 5% · 연금 5천만 @ 4%
+const PORTFOLIO_AVERAGE =
+  (200_000_000 * 7 + 20_000_000 * 5 + 50_000_000 * 4) / 270_000_000;
+const betaOf = (totalReturn: number) => totalReturn / PORTFOLIO_AVERAGE;
 
 const YEARS = 85 - 55 + 1;
 const zeros = new Array(YEARS).fill(0);
@@ -103,15 +106,20 @@ describe('SimulationEngine - returnPath', () => {
   // 상수 충격은 수익률을 통째로 올린 것과 같아야 한다 — 통로가 실제로 "연 수익률에 %p
   // 가산"으로 동작하는지를 고정한다. 사적연금·ISA까지 함께 움직이는지도 여기서 잡힌다.
   //
-  // **사적연금 항만 배율이 붙는다.** 예전에는 세 버킷에 같은 +3을 더했는데, 그것이 곧
-  // "연금이 100% 주식과 같은 폭으로 흔들린다"는 가정이었다(PENSION_RETURN_SHOCK_BETA 주석).
-  test('상수 충격은 모든 계좌의 연 수익률을 그만큼 올린 것과 같다', () => {
+  // **계좌마다 배율이 다르다.** 예전에는 세 버킷에 같은 +3을 더했고(=연금이 100% 주식과
+  // 같이 흔들린다), 그다음에는 연금만 상수 0.571배를 받았다. 지금은 각 계좌의 기대수익률과
+  // 포트폴리오 가중평균의 비를 쓴다.
+  test('상수 충격은 각 계좌의 연 수익률을 자기 배율만큼 올린 것과 같다', () => {
     const shifted = params({
-      assets: params().assets.map((a) => ({ ...a, totalReturn: a.totalReturn + 3 })),
-      privatePensions: params().privatePensions.map((p) => ({
-        ...p, totalReturn: p.totalReturn + 3 * PENSION_RETURN_SHOCK_BETA,
+      assets: params().assets.map((a) => ({
+        ...a, totalReturn: a.totalReturn + 3 * betaOf(a.totalReturn),
       })),
-      isaAccounts: params().isaAccounts!.map((i) => ({ ...i, totalReturn: i.totalReturn + 3 })),
+      privatePensions: params().privatePensions.map((p) => ({
+        ...p, totalReturn: p.totalReturn + 3 * betaOf(p.totalReturn),
+      })),
+      isaAccounts: params().isaAccounts!.map((i) => ({
+        ...i, totalReturn: i.totalReturn + 3 * betaOf(i.totalReturn),
+      })),
     });
 
     const viaParams = engine.runSingle(shifted);
@@ -183,26 +191,16 @@ describe('SimulationEngine - returnPath', () => {
     }
   });
 
-  // **사적연금은 주식보다 작은 폭으로 흔들린다.**
+  // **계좌마다 받는 충격의 폭이 다르다.**
   //
-  // 이 저장소는 사적연금이 더 보수적으로 배분된다고 이미 가정하고 있다
-  // (ECONOMIC_SCENARIO_PROFILES: 주식 7% / 연금 4%, economicScenarios.ts의 주석 참고).
-  // 그런데 충격은 오래도록 두 버킷에 같은 폭으로 걸렸다 — **수익률에서만 보수적이고
-  // 변동성에서는 100% 주식과 동일**했다. 그 결과 연금 비중이 큰 계획일수록 몬테카를로
-  // 성공률이 실제보다 낮게 나왔다.
+  // 이 저장소는 사적연금이 더 보수적으로 배분된다고 이미 가정하고 있다. 그런데 충격은
+  // 오래도록 두 버킷에 같은 폭으로 걸렸다 — 수익률에서만 보수적이고 변동성에서는 100%
+  // 주식과 동일했다. 그다음에는 연금만 상수 배율(장기 평균 프로필의 4/7)을 받았는데,
+  // 그 상수는 연금 계좌에 무엇이 들어 있든 언제나 43%를 깎아 총수익률 14%짜리 커버드콜을
+  // 담은 IRP도 채권처럼 흔들렸다.
   //
-  // 배율은 새로 만든 가정이 아니라 위 프로필에서 유도한 값이다. 여기서 그 유도를 다시
-  // 적어 두는 이유는 프로필이 바뀌면 엔진도 함께 움직여야 함을 고정하기 위해서다.
-  const pensionBeta =
-    ECONOMIC_SCENARIO_PROFILES.long_term_average.pensionReturnRate
-    / ECONOMIC_SCENARIO_PROFILES.long_term_average.stockGrowthRate;
-
-  test('충격 배율은 장기 평균 프로필의 연금/주식 수익률 비에서 유도된다', () => {
-    // 엔진이 쓰는 상수가 프로필과 따로 놀면, 프로필을 고쳐도 변동성만 옛 가정에 남는다.
-    expect(PENSION_RETURN_SHOCK_BETA).toBe(pensionBeta);
-    expect(PENSION_RETURN_SHOCK_BETA).toBeGreaterThan(0);
-    expect(PENSION_RETURN_SHOCK_BETA).toBeLessThan(1);
-  });
+  // 지금은 계좌의 기대수익률과 포트폴리오 가중평균의 비를 쓴다(shockBeta). 배율의
+  // 잔액가중 평균이 1.0이라는 성질은 portfolioReturn.test.ts가 고정한다.
 
   function singleYearPlan(overrides: Partial<SimulationParams>): SimulationParams {
     return params({
@@ -216,37 +214,54 @@ describe('SimulationEngine - returnPath', () => {
     });
   }
 
-  const STOCK_ONLY = singleYearPlan({
+  // 잔액이 같고 기대수익률만 다른 두 버킷. 가중평균은 6%이므로
+  //   β_주식 = 10/6 = 1.667,  β_연금 = 2/6 = 0.333
+  // 배당률이 0이라 성장분만 움직이고, 월 기하복리를 12번 돌면 정확히 (1+연율)이 된다.
+  const MIXED = singleYearPlan({
     assets: [{
-      id: 's', type: 'etf', ticker: 'S', name: '주식', quantity: 1, averagePrice: 200_000_000,
-      totalReturn: 0, dividendYield: 0, monthlyContribution: 0,
+      id: 's', type: 'etf', ticker: 'S', name: '주식', quantity: 1, averagePrice: 100_000_000,
+      totalReturn: 10, dividendYield: 0, monthlyContribution: 0,
       reinvestDividend: false, currency: 'KRW',
     }],
-  });
-
-  const PENSION_ONLY = singleYearPlan({
     privatePensions: [{
-      id: 'p', type: 'irp', balance: 200_000_000, monthlyContribution: 0,
-      totalReturn: 0, currency: 'KRW',
+      id: 'p', type: 'irp', balance: 100_000_000, monthlyContribution: 0,
+      totalReturn: 2, currency: 'KRW',
     }],
   });
 
-  test('같은 충격에서 사적연금은 같은 규모의 주식자산보다 덜 흔들린다', () => {
-    const stock = engine.runSingle(STOCK_ONLY, [10]).yearlyResults[0];
-    const pension = engine.runSingle(PENSION_ONLY, [10]).yearlyResults[0];
+  test('같은 충격에서 기대수익률이 낮은 계좌가 덜 흔들린다', () => {
+    const base = engine.runSingle(MIXED).yearlyResults[0];
+    const shocked = engine.runSingle(MIXED, [6]).yearlyResults[0];
 
-    // 전제: 충격이 없으면 두 계획의 기말자산이 같다(둘 다 수익률 0%).
-    expect(engine.runSingle(PENSION_ONLY).yearlyResults[0].closingAssets)
-      .toBeCloseTo(engine.runSingle(STOCK_ONLY).yearlyResults[0].closingAssets, 6);
+    const stockGain = shocked.stockAssets - base.stockAssets;
+    const pensionGain = shocked.pensionAssets - base.pensionAssets;
 
-    expect(pension.closingAssets).toBeLessThan(stock.closingAssets);
-    expect(pension.closingAssets).toBeGreaterThan(200_000_000);
+    expect(pensionGain).toBeLessThan(stockGain);
+    // 폭의 비는 배율의 비와 같다: (10/6) / (2/6) = 5
+    expect(stockGain / pensionGain).toBeCloseTo(5, 6);
   });
 
-  test('사적연금이 받는 충격은 주식 충격에 연금/주식 수익률 비를 곱한 값이다', () => {
-    const shocked = engine.runSingle(PENSION_ONLY, [10]).yearlyResults[0];
+  test('계좌가 받는 충격은 그 계좌의 기대수익률 / 포트폴리오 가중평균 배다', () => {
+    const shocked = engine.runSingle(MIXED, [6]).yearlyResults[0];
 
-    expect(shocked.closingAssets).toBeCloseTo(200_000_000 * (1 + 0.1 * pensionBeta), 6);
+    // 주식: 10% + 6 × (10/6) = 20%
+    expect(shocked.stockAssets).toBeCloseTo(100_000_000 * 1.20, 6);
+    // 연금: 2% + 6 × (2/6) = 4%
+    expect(shocked.pensionAssets).toBeCloseTo(100_000_000 * 1.04, 6);
+  });
+
+  // 계좌가 하나뿐이면 그 계좌가 곧 가중평균이므로 배율은 1이다 — 충격이 그대로 걸린다.
+  test('단일 계좌 포트폴리오는 충격을 그대로 받는다', () => {
+    const stockOnly = singleYearPlan({
+      assets: [{
+        id: 's', type: 'etf', ticker: 'S', name: '주식', quantity: 1, averagePrice: 200_000_000,
+        totalReturn: 5, dividendYield: 0, monthlyContribution: 0,
+        reinvestDividend: false, currency: 'KRW',
+      }],
+    });
+
+    expect(engine.runSingle(stockOnly, [10]).yearlyResults[0].closingAssets)
+      .toBeCloseTo(200_000_000 * 1.15, 6);
   });
 
   // 순서가 결과를 바꾼다는 것 자체가 시퀀스 리스크의 정의다. 같은 원소를 순서만 바꿔
