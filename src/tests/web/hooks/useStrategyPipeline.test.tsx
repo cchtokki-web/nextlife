@@ -13,7 +13,7 @@ const sentinelParams: SimulationParams = {
   assets: [
     {
       id: 'a1', type: 'etf', ticker: 'X', name: 'X', quantity: 1000, averagePrice: 100000,
-      annualGrowthRate: 7, dividendYield: 2, monthlyContribution: 0,
+      totalReturn: 9, dividendYield: 2, monthlyContribution: 0,
       reinvestDividend: false, currency: 'KRW',
     },
   ],

@@ -133,7 +133,7 @@ function cloneProjection(
   const rates = YIELD_PRESET_RATES[preset];
   return {
     ...projection,
-    annualReturn: projection.accountKind === 'private_pension'
+    totalReturn: projection.accountKind === 'private_pension'
       ? rates.pensionReturn
       : rates.stockGrowth,
   };

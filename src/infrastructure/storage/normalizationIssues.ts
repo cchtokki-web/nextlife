@@ -41,7 +41,7 @@ export interface NormalizationIssue {
 /** 이 이름으로 끝나는 경로는 금액·수량·통화·나이·비율이다. 하나라도 틀리면 숫자가 달라진다. */
 const FINANCIAL_LEAVES = new Set([
   'quantity', 'averagePrice', 'balance', 'monthlyContribution', 'contributionAmount',
-  'acquisitionCostBasis', 'annualGrowthRate', 'annualReturn', 'dividendYield',
+  'acquisitionCostBasis', 'totalReturn', 'dividendYield',
   'monthlyAmount', 'expectedMonthlyAmount', 'targetMonthlySpending', 'targetBequest',
   'currency', 'displayCurrency', 'baseExchangeRate', 'inflationRate', 'inflationMode',
   'currentAge', 'retirementAge', 'expectancy', 'maturityYears',

@@ -30,7 +30,7 @@ export interface IncomeProfile {
 
 export type PrivatePensionAccount = Omit<
   PrivatePension,
-  'monthlyContribution' | 'annualReturn' | 'dividendYield' | 'earlyChannelingEnabled'
+  'monthlyContribution' | 'totalReturn' | 'dividendYield' | 'earlyChannelingEnabled'
 >;
 
 export type PensionProfile =
@@ -45,14 +45,14 @@ export type AssetAccount =
         | 'monthlyContribution'
         | 'contributionPeriod'
         | 'contributionAmount'
-        | 'annualGrowthRate'
+        | 'totalReturn'
         | 'dividendYield'
         | 'reinvestDividend'
       >;
     }
   | {
       kind: 'isa';
-      account: Omit<IsaAccount, 'monthlyContribution' | 'annualReturn' | 'dividendYield'>;
+      account: Omit<IsaAccount, 'monthlyContribution' | 'totalReturn' | 'dividendYield'>;
     };
 
 /** Existing recurring deposits are FACTs about the user's current plan. */
@@ -102,20 +102,20 @@ export type AccountProjection =
   | {
       accountKind: 'investment';
       accountId: string;
-      annualReturn: number;
+      totalReturn: number;
       dividendYield: number;
       reinvestDividend: boolean;
     }
   | {
       accountKind: 'private_pension';
       accountId: string;
-      annualReturn: number;
+      totalReturn: number;
       dividendYield?: number;
     }
   | {
       accountKind: 'isa';
       accountId: string;
-      annualReturn: number;
+      totalReturn: number;
       dividendYield: number;
     };
 

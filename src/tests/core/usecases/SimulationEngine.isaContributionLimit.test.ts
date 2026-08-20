@@ -12,7 +12,7 @@ const ANNUAL_LIMIT = TAX_LAW_PROFILES.current.isaAnnualLimitKRW; // 2,000만원
 function isa(id: string, monthlyContribution: number): IsaAccount {
   return {
     id, type: 'general', balance: 0, monthlyContribution,
-    annualReturn: 0, dividendYield: 0, currency: 'KRW', maturityYears: 100,
+    totalReturn: 0, dividendYield: 0, currency: 'KRW', maturityYears: 100,
   };
 }
 

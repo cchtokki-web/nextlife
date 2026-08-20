@@ -30,7 +30,7 @@ describe('정제 보고', () => {
     const { params, issues } = withIssues({
       assets: [{
         id: 'a1', type: 'etf', ticker: 'VOO', name: 'VOO',
-        quantity: 100, averagePrice: 500, annualGrowthRate: 7, dividendYield: 1.5,
+        quantity: 100, averagePrice: 500, totalReturn: 7, dividendYield: 1.5,
         monthlyContribution: 0, reinvestDividend: false, currency: 'usd',
       }],
     });
@@ -49,7 +49,7 @@ describe('정제 보고', () => {
     const { params, issues } = withIssues({
       assets: [{
         id: 'a1', type: 'etf', ticker: '069500', name: 'KODEX 200',
-        quantity: '2000', averagePrice: 35_000, annualGrowthRate: 5, dividendYield: 2,
+        quantity: '2000', averagePrice: 35_000, totalReturn: 5, dividendYield: 2,
         monthlyContribution: 0, reinvestDividend: false, currency: 'KRW',
       }],
     });
@@ -74,7 +74,7 @@ describe('정제 보고', () => {
     const { params, issues } = withIssues({
       assets: [
         { id: 'a1', type: 'etf', ticker: 'X', name: 'X', quantity: 1, averagePrice: 1,
-          annualGrowthRate: 0, dividendYield: 0, monthlyContribution: 0,
+          totalReturn: 0, dividendYield: 0, monthlyContribution: 0,
           reinvestDividend: false, currency: 'KRW' },
         'this is not an asset',
       ],
@@ -101,7 +101,7 @@ describe('정제 보고', () => {
       assets: [{
         // name이 문자열이 아니라 ''가 되고(표시), quantity가 0이 된다(계산).
         id: 'a1', type: 'etf', ticker: 'X', name: 42,
-        quantity: null, averagePrice: 1, annualGrowthRate: 0, dividendYield: 0,
+        quantity: null, averagePrice: 1, totalReturn: 0, dividendYield: 0,
         monthlyContribution: 0, reinvestDividend: false, currency: 'KRW',
       }],
     });

@@ -18,7 +18,7 @@ function params(overrides: Partial<SimulationParams> = {}): SimulationParams {
     assets: [
       {
         id: 'a1', type: 'etf', ticker: 'A', name: '자산', quantity: 10000, averagePrice: 100000,
-        annualGrowthRate: 3, dividendYield: 1, monthlyContribution: 0,
+        totalReturn: 3, dividendYield: 1, monthlyContribution: 0,
         reinvestDividend: false, currency: 'KRW',
       },
     ],

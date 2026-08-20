@@ -429,7 +429,7 @@ describe('StrategySettingsPanel', () => {
         ...withMode('standard'),
         assets: [{
           id: 'a1', type: 'etf' as const, ticker: 'AAA', name: '자산1', quantity: 1, averagePrice: 1000,
-          annualGrowthRate: 6, dividendYield: 2, monthlyContribution: 0,
+          totalReturn: 6, dividendYield: 2, monthlyContribution: 0,
           reinvestDividend: true, currency: 'KRW' as const,
         }],
       };

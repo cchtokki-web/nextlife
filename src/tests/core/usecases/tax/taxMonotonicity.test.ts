@@ -81,7 +81,7 @@ describe('시뮬레이션 단조성 (이진탐색의 전제)', () => {
       {
         id: 'a1', type: 'etf', ticker: 'A', name: '해외 ETF',
         quantity: 10000, averagePrice: 100000,
-        annualGrowthRate: 4, dividendYield: 3,
+        totalReturn: 4, dividendYield: 3,
         monthlyContribution: 0, reinvestDividend: false,
         currency: 'KRW', assetMarket: 'US_ETF',
         acquisitionCostBasis: 400000000,
@@ -90,7 +90,7 @@ describe('시뮬레이션 단조성 (이진탐색의 전제)', () => {
     isaAccounts: [],
     nationalPension: { expectedMonthlyAmount: 1500000 },
     privatePensions: [
-      { id: 'p1', type: 'irp', balance: 300000000, monthlyContribution: 0, annualReturn: 4, currency: 'KRW' },
+      { id: 'p1', type: 'irp', balance: 300000000, monthlyContribution: 0, totalReturn: 4, currency: 'KRW' },
     ],
     otherIncomes: [],
     inflationRate: 0,

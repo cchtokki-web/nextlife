@@ -38,7 +38,7 @@ describe('SimulationEngine - fireAge', () => {
   test('사적연금 인출만으로 생활비를 채우는 계획은 FIRE가 아니다', () => {
     const result = engine.run(params({
       privatePensions: [
-        { id: 'irp', type: 'irp', balance: 1_000_000_000, monthlyContribution: 0, annualReturn: 4, currency: 'KRW' },
+        { id: 'irp', type: 'irp', balance: 1_000_000_000, monthlyContribution: 0, totalReturn: 4, currency: 'KRW' },
       ],
     }));
 
@@ -64,7 +64,7 @@ describe('SimulationEngine - fireAge', () => {
     const withPension = engine.run({
       ...base,
       privatePensions: [
-        { id: 'irp', type: 'irp', balance: 1_000_000_000, monthlyContribution: 0, annualReturn: 4, currency: 'KRW' },
+        { id: 'irp', type: 'irp', balance: 1_000_000_000, monthlyContribution: 0, totalReturn: 4, currency: 'KRW' },
       ],
     });
 
@@ -77,7 +77,7 @@ describe('SimulationEngine - fireAge', () => {
     const result = engine.run(params({
       assets: [{
         id: 'div', type: 'stock', ticker: 'DIV', name: '고배당',
-        quantity: 100_000, averagePrice: 10_000, annualGrowthRate: 0, dividendYield: 4,
+        quantity: 100_000, averagePrice: 10_000, totalReturn: 0, dividendYield: 4,
         monthlyContribution: 0, reinvestDividend: false, currency: 'KRW',
       }],
     }));

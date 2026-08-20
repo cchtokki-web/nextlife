@@ -358,3 +358,16 @@
 .autocompleteItemActive {
   background: var(--card-border);
 }
+
+/* 총수익률 입력 아래의 분해 표시(ReturnBreakdownHint).
+   입력칸과 한 덩어리로 읽히도록 여백을 좁게 두고, 값이 아니라 «해설»이므로 본문보다 낮은 대비를 준다. */
+.returnBreakdown {
+  font-size: 12px;
+  color: var(--color-text-secondary, #64748b);
+  margin-top: 4px;
+  line-height: 1.5;
+}
+
+.returnBreakdownNotice {
+  margin-top: 2px;
+}

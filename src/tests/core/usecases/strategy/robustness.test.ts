@@ -203,8 +203,8 @@ describe('recommendStrategy 통합 — 강건성 모드', () => {
     // 국면 params를 그대로 돌려줘도 통과하기 때문이다.
     expect(recommendation.recommendedParams.inflationRate).toBe(compiled.params.inflationRate);
     expect(recommendation.recommendedParams.yieldPreset).toBe(compiled.params.yieldPreset);
-    expect(recommendation.recommendedParams.assets.map((asset) => asset.annualGrowthRate))
-      .toEqual(compiled.params.assets.map((asset) => asset.annualGrowthRate));
+    expect(recommendation.recommendedParams.assets.map((asset) => asset.totalReturn))
+      .toEqual(compiled.params.assets.map((asset) => asset.totalReturn));
   });
 
   test('가정 축을 확정하면 강건성 재평가가 일어나지 않는다', () => {

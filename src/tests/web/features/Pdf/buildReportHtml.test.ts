@@ -93,6 +93,41 @@ describe('buildReportHtml', () => {
     expect(withoutMc.length).toBeLessThan(withMc.length);
   });
 
+  // 세 계좌 목록이 «연 총수익률»을 같은 형식으로 말하는지 고정한다.
+  //
+  // 이 문서가 오래 거짓말을 했던 자리다. 예전에는 "예상 연 수익률 7%"라고 적힌 자산이
+  // 엔진에서 10%로 굴렀고, 사적연금은 배당률이 아예 출력되지 않아 4%로 표시된 계좌가
+  // 실제로는 7~14%였다 — 사용자가 그것을 확인할 방법이 문서 어디에도 없었다.
+  describe('수익률 표기', () => {
+    test('투자 자산과 ISA는 배당을 «포함»한다고 밝힌다', () => {
+      const html = buildReportHtml(input());
+
+      expect(html).toContain('연 총수익률 5% (배당 2% 포함), 배당 재투자');
+      expect(html).toContain('연 총수익률 5% (배당 1.5% 포함), 만기');
+      expect(html).not.toContain('예상 연 수익률');
+    });
+
+    // 골든 픽스처의 사적연금에는 dividendYield가 없어 이 갈래를 지나지 않는다.
+    test('사적연금은 배당률이 있을 때만 괄호를 붙인다', () => {
+      const base = input();
+      const withDividend: ReportHtmlInput = {
+        ...base,
+        params: {
+          ...base.params,
+          privatePensions: base.params.privatePensions.map((pension, index) => index === 0
+            ? { ...pension, investmentType: 'etf' as const, dividendYield: 3.3 }
+            : pension),
+        },
+      };
+
+      const html = buildReportHtml(withDividend);
+
+      expect(html).toContain('연 총수익률 4% (배당 3.3% 포함)');
+      // 배당률이 없는 두 번째 연금은 괄호 없이 남는다 — 없는 정보를 0%라고 지어내지 않는다.
+      expect(html).toContain('연 총수익률 4%</li>');
+    });
+  });
+
   describe('계좌가 하나도 없고 기타소득만 있는 계획', () => {
     test('고정한 출력과 한 글자도 다르지 않다', () => {
       expect(buildReportHtml(inputOf(noAccounts))).toBe(noAccounts.html);

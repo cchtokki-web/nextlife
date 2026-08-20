@@ -37,23 +37,23 @@ export class SimpleSimulationAdapter {
     const baseExchangeRate = 1400; // 환율 무관 (KRW로만 계산)
 
     // 성향에 따른 수익률 및 배당률 설정 (안전추구, 중립, 공격형)
-    let annualGrowthRate = 0;
+    let totalReturn = 0;
     let dividendYield = 0;
     
     switch (propensity) {
       case 'conservative':
         // 예적금, 채권 위주
-        annualGrowthRate = 1.0; 
+        totalReturn = 4.0; // 예전 성장률 1.0 + 배당 3.0 (총수익률 표기로 이관)
         dividendYield = 3.0; // 이자 수익
         break;
       case 'neutral':
         // 배당 ETF, 채권 혼합
-        annualGrowthRate = 3.0;
+        totalReturn = 7.0; // 예전 성장률 3.0 + 배당 4.0 (총수익률 표기로 이관)
         dividendYield = 4.0;
         break;
       case 'aggressive':
         // 성장형 ETF
-        annualGrowthRate = 8.0;
+        totalReturn = 9.5; // 예전 성장률 8.0 + 배당 1.5 (총수익률 표기로 이관)
         dividendYield = 1.5;
         break;
     }
@@ -66,7 +66,7 @@ export class SimpleSimulationAdapter {
       name: propensity === 'conservative' ? '예금/채권 혼합' : (propensity === 'neutral' ? '배당ETF/채권 혼합' : '성장형 ETF'),
       quantity: 1, // 수량 1개로 통치고 단가 = 총자산
       averagePrice: currentAssets,
-      annualGrowthRate,
+      totalReturn,
       dividendYield,
       monthlyContribution: monthlyInvestment,
       reinvestDividend: true, // 배당 재투자 가정

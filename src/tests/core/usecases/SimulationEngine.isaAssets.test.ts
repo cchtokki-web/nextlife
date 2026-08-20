@@ -9,13 +9,13 @@ import { IsaAccount, InvestmentAsset, SimulationParams } from '@/core/entities/t
 
 const isa: IsaAccount = {
   id: 'isa-1', type: 'general', balance: 300000000, monthlyContribution: 0,
-  annualReturn: 5, dividendYield: 0, currency: 'KRW', maturityYears: 100,
+  totalReturn: 5, dividendYield: 0, currency: 'KRW', maturityYears: 100,
 };
 
 const stock: InvestmentAsset = {
   id: 'a1', type: 'etf', ticker: 'A', name: '주식',
   quantity: 3000, averagePrice: 100000,
-  annualGrowthRate: 5, dividendYield: 2,
+  totalReturn: 5, dividendYield: 2,
   monthlyContribution: 0, reinvestDividend: false, currency: 'KRW',
 };
 
@@ -42,7 +42,7 @@ describe('SimulationEngine - isaAssets', () => {
       assets: [stock],
       isaAccounts: [isa],
       privatePensions: [
-        { id: 'p1', type: 'irp', balance: 200000000, monthlyContribution: 0, annualReturn: 4, currency: 'KRW' },
+        { id: 'p1', type: 'irp', balance: 200000000, monthlyContribution: 0, totalReturn: 4, currency: 'KRW' },
       ],
     }));
 

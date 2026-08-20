@@ -21,7 +21,7 @@ const baseParams: SimulationParams = {
       type: 'irp',
       balance: 300000000,
       monthlyContribution: 0,
-      annualReturn: 5,
+      totalReturn: 5,
       currency: 'KRW',
     },
   ],
@@ -116,7 +116,7 @@ describe('generateCandidatePlans', () => {
     const candidates = generateCandidatePlans({
       ...baseParams,
       assets: [
-        { id: 'a1', type: 'etf', ticker: 'A', name: '자산1', quantity: 1, averagePrice: 100, annualGrowthRate: 5, dividendYield: 2, monthlyContribution: 0, reinvestDividend: false, currency: 'KRW' },
+        { id: 'a1', type: 'etf', ticker: 'A', name: '자산1', quantity: 1, averagePrice: 100, totalReturn: 5, dividendYield: 2, monthlyContribution: 0, reinvestDividend: false, currency: 'KRW' },
       ],
     });
     for (const c of candidates) {
@@ -128,8 +128,8 @@ describe('generateCandidatePlans', () => {
     const twoAssetParams: SimulationParams = {
       ...baseParams,
       assets: [
-        { id: 'a1', type: 'etf', ticker: 'A', name: '자산1', quantity: 1, averagePrice: 100, annualGrowthRate: 5, dividendYield: 2, monthlyContribution: 0, reinvestDividend: false, currency: 'KRW' },
-        { id: 'a2', type: 'etf', ticker: 'B', name: '자산2', quantity: 1, averagePrice: 100, annualGrowthRate: 5, dividendYield: 4, monthlyContribution: 0, reinvestDividend: false, currency: 'KRW' },
+        { id: 'a1', type: 'etf', ticker: 'A', name: '자산1', quantity: 1, averagePrice: 100, totalReturn: 5, dividendYield: 2, monthlyContribution: 0, reinvestDividend: false, currency: 'KRW' },
+        { id: 'a2', type: 'etf', ticker: 'B', name: '자산2', quantity: 1, averagePrice: 100, totalReturn: 5, dividendYield: 4, monthlyContribution: 0, reinvestDividend: false, currency: 'KRW' },
       ],
     };
     const candidates = generateCandidatePlans(twoAssetParams);
@@ -146,7 +146,7 @@ describe('generateCandidatePlans', () => {
     const withIsaButNoAsset: SimulationParams = {
       ...baseParams,
       isaAccounts: [
-        { id: 'isa-1', type: 'general', balance: 1000000, monthlyContribution: 0, annualReturn: 5, dividendYield: 0, currency: 'KRW', maturityYears: 3 },
+        { id: 'isa-1', type: 'general', balance: 1000000, monthlyContribution: 0, totalReturn: 5, dividendYield: 0, currency: 'KRW', maturityYears: 3 },
       ],
     }; // assets가 여전히 []
     for (const c of generateCandidatePlans(withIsaButNoAsset)) {
@@ -156,7 +156,7 @@ describe('generateCandidatePlans', () => {
     const withAll: SimulationParams = {
       ...withIsaButNoAsset,
       assets: [
-        { id: 'a1', type: 'etf', ticker: 'A', name: '자산1', quantity: 1, averagePrice: 100, annualGrowthRate: 5, dividendYield: 2, monthlyContribution: 0, reinvestDividend: false, currency: 'KRW' },
+        { id: 'a1', type: 'etf', ticker: 'A', name: '자산1', quantity: 1, averagePrice: 100, totalReturn: 5, dividendYield: 2, monthlyContribution: 0, reinvestDividend: false, currency: 'KRW' },
       ],
     };
     const distinctDestinations = new Set(generateCandidatePlans(withAll).map((c) => c.isaMaturityDestination));
@@ -184,7 +184,7 @@ describe('generateCandidatePlans', () => {
     const withAsset: SimulationParams = {
       ...baseParams,
       assets: [
-        { id: 'a1', type: 'etf', ticker: 'A', name: '자산1', quantity: 1, averagePrice: 100, annualGrowthRate: 5, dividendYield: 2, monthlyContribution: 0, reinvestDividend: false, currency: 'KRW' },
+        { id: 'a1', type: 'etf', ticker: 'A', name: '자산1', quantity: 1, averagePrice: 100, totalReturn: 5, dividendYield: 2, monthlyContribution: 0, reinvestDividend: false, currency: 'KRW' },
       ],
     };
     const candidates = generateCandidatePlans(withAsset);
@@ -204,11 +204,11 @@ describe('generateCandidatePlans', () => {
       userProfile: { ...baseParams.userProfile, retirementAge: 61, expectancy: 95 },
       nationalPension: { expectedMonthlyAmount: 1000000 },
       assets: [
-        { id: 'a1', type: 'etf', ticker: 'A', name: '자산1', quantity: 1, averagePrice: 100, annualGrowthRate: 5, dividendYield: 2, monthlyContribution: 0, reinvestDividend: false, currency: 'KRW' },
-        { id: 'a2', type: 'etf', ticker: 'B', name: '자산2', quantity: 1, averagePrice: 100, annualGrowthRate: 5, dividendYield: 4, monthlyContribution: 0, reinvestDividend: false, currency: 'KRW' },
+        { id: 'a1', type: 'etf', ticker: 'A', name: '자산1', quantity: 1, averagePrice: 100, totalReturn: 5, dividendYield: 2, monthlyContribution: 0, reinvestDividend: false, currency: 'KRW' },
+        { id: 'a2', type: 'etf', ticker: 'B', name: '자산2', quantity: 1, averagePrice: 100, totalReturn: 5, dividendYield: 4, monthlyContribution: 0, reinvestDividend: false, currency: 'KRW' },
       ],
       isaAccounts: [
-        { id: 'isa-1', type: 'general', balance: 1000000, monthlyContribution: 0, annualReturn: 5, dividendYield: 0, currency: 'KRW', maturityYears: 3 },
+        { id: 'isa-1', type: 'general', balance: 1000000, monthlyContribution: 0, totalReturn: 5, dividendYield: 0, currency: 'KRW', maturityYears: 3 },
       ],
     };
 

@@ -58,7 +58,7 @@ const paramsWithLargePension: SimulationParams = {
       type: 'irp',
       balance: 600000000,
       monthlyContribution: 0,
-      annualReturn: 4,
+      totalReturn: 4,
       currency: 'KRW',
     },
   ],
@@ -106,7 +106,7 @@ const paramsWithOptimizableHeadroom: SimulationParams = {
       name: '일반자산',
       quantity: 3000,
       averagePrice: 10000,
-      annualGrowthRate: 4,
+      totalReturn: 8,
       dividendYield: 4,
       monthlyContribution: 0,
       reinvestDividend: false,
@@ -127,7 +127,7 @@ const paramsWithAssetsAndIsa: SimulationParams = {
       name: '고배당주',
       quantity: 1000,
       averagePrice: 10000,
-      annualGrowthRate: 2,
+      totalReturn: 10,
       dividendYield: 8,
       monthlyContribution: 0,
       reinvestDividend: false,
@@ -140,7 +140,7 @@ const paramsWithAssetsAndIsa: SimulationParams = {
       name: '저배당 성장주',
       quantity: 1000,
       averagePrice: 10000,
-      annualGrowthRate: 8,
+      totalReturn: 8.5,
       dividendYield: 0.5,
       monthlyContribution: 0,
       reinvestDividend: false,
@@ -153,7 +153,7 @@ const paramsWithAssetsAndIsa: SimulationParams = {
       type: 'general',
       balance: 50000000,
       monthlyContribution: 0,
-      annualReturn: 5,
+      totalReturn: 7,
       dividendYield: 2,
       currency: 'KRW',
       maturityYears: 3,
@@ -247,7 +247,7 @@ describe('recommendStrategy', () => {
 // 사라진다. 이 조합(8억 / 성장 3% / 배당 4%)이 그 두 조건을 함께 만족한다.
 //
 // yieldPreset이 'conservative'인 것은 **몬테카를로 변동성만** 낮추기 위해서다(σ 15 → 10).
-// recommendStrategy는 applyYieldPreset을 거치지 않으므로 자산의 annualGrowthRate/dividendYield는
+// recommendStrategy는 applyYieldPreset을 거치지 않으므로 자산의 totalReturn/dividendYield는
 // 위에 적은 값 그대로 쓰인다 — resolveMonteCarloConfig만 이 필드를 본다.
 const paramsWithSurplusAssetOnly: SimulationParams = {
   userProfile: { currentAge: 60, retirementAge: 60, expectancy: 90, targetMonthlySpending: 3000000 },
@@ -259,7 +259,7 @@ const paramsWithSurplusAssetOnly: SimulationParams = {
       name: '고배당 자산',
       quantity: 16000,
       averagePrice: 50000,
-      annualGrowthRate: 3,
+      totalReturn: 7,
       dividendYield: 4,
       monthlyContribution: 0,
       reinvestDividend: false,
@@ -1120,7 +1120,7 @@ describe('recommendStrategy - Phase 3 배당 재투자 통합', () => {
           name: '성장자산',
           quantity: 1,
           averagePrice: 30000000,
-          annualGrowthRate: 10,
+          totalReturn: 10,
           dividendYield: 0,
           monthlyContribution: 0,
           reinvestDividend: true,
@@ -1133,7 +1133,7 @@ describe('recommendStrategy - Phase 3 배당 재투자 통합', () => {
           name: '테스트자산',
           quantity: 1,
           averagePrice: 30000000,
-          annualGrowthRate: 1,
+          totalReturn: 9,
           dividendYield: 8,
           monthlyContribution: 0,
           reinvestDividend: true,
@@ -1201,7 +1201,7 @@ describe('recommendStrategy - Phase 3 배당 재투자 통합', () => {
           name: '테스트자산',
           quantity: 1,
           averagePrice: 30000000,
-          annualGrowthRate: 12,
+          totalReturn: 20,
           dividendYield: 8,
           monthlyContribution: 0,
           reinvestDividend: true,
@@ -1214,7 +1214,7 @@ describe('recommendStrategy - Phase 3 배당 재투자 통합', () => {
           name: '저성장자산',
           quantity: 1,
           averagePrice: 30000000,
-          annualGrowthRate: 1,
+          totalReturn: 9,
           dividendYield: 8,
           monthlyContribution: 0,
           reinvestDividend: false,
@@ -1275,17 +1275,17 @@ describe('recommendStrategy - Phase 4 사적연금 채널링 통합', () => {
       // 항상 채택됨)로 확인된 안정 구간의 중간값이라 knife-edge가 아니다.
       userProfile: { ...paramsWithLargePension.userProfile, currentAge: 50, retirementAge: 60, expectancy: 90, targetMonthlySpending: 25000000 },
       privatePensions: [
-        { id: 'pension-1', type: 'irp', balance: 600000000, monthlyContribution: 0, annualReturn: 2, currency: 'KRW' },
+        { id: 'pension-1', type: 'irp', balance: 600000000, monthlyContribution: 0, totalReturn: 2, currency: 'KRW' },
       ],
       isaAccounts: [
-        { id: 'isa-1', type: 'general', balance: 10000000, monthlyContribution: 0, annualReturn: 6, dividendYield: 0, currency: 'KRW', maturityYears: 99 },
+        { id: 'isa-1', type: 'general', balance: 10000000, monthlyContribution: 0, totalReturn: 6, dividendYield: 0, currency: 'KRW', maturityYears: 99 },
       ],
     };
 
     const result = recommendStrategy(params, engine);
 
     // ISA 수익률(6%)이 사적연금 수익률(2%)보다 높은 시나리오라 채널링이 유리해야 한다.
-    // 만약 이 assertion이 실패하면(유리하지 않다고 나오면) annualReturn 격차를 더 벌려서
+    // 만약 이 assertion이 실패하면(유리하지 않다고 나오면) totalReturn 격차를 더 벌려서
     // 결정론적으로 채택되는 시나리오를 다시 찾는다 — 실제 엔진 기반 통합 테스트이므로 근사치가
     // 아니라 실제 계산 결과에 의존한다.
     expect(result.recommendedPrivatePensionChanneling).toBe(true);
@@ -1319,10 +1319,10 @@ describe('recommendStrategy - Phase 4 사적연금 채널링 통합', () => {
       assets: [],
       nationalPension: { expectedMonthlyAmount: 1000000 },
       privatePensions: [
-        { id: 'pension-1', type: 'irp', balance: 600000000, monthlyContribution: 0, annualReturn: 2, currency: 'KRW' },
+        { id: 'pension-1', type: 'irp', balance: 600000000, monthlyContribution: 0, totalReturn: 2, currency: 'KRW' },
       ],
       isaAccounts: [
-        { id: 'isa-1', type: 'general', balance: 10000000, monthlyContribution: 0, annualReturn: 6, dividendYield: 0, currency: 'KRW', maturityYears: 99 },
+        { id: 'isa-1', type: 'general', balance: 10000000, monthlyContribution: 0, totalReturn: 6, dividendYield: 0, currency: 'KRW', maturityYears: 99 },
       ],
       otherIncomes: [],
       inflationRate: 0,
@@ -1382,7 +1382,7 @@ describe('recommendStrategy - Phase 4 사적연금 채널링 통합', () => {
       ...paramsWithLargePension,
       userProfile: { ...paramsWithLargePension.userProfile, currentAge: 50, retirementAge: 55, expectancy: 90 },
       isaAccounts: [
-        { id: 'isa-1', type: 'general', balance: 10000000, monthlyContribution: 0, annualReturn: 6, dividendYield: 0, currency: 'KRW', maturityYears: 99 },
+        { id: 'isa-1', type: 'general', balance: 10000000, monthlyContribution: 0, totalReturn: 6, dividendYield: 0, currency: 'KRW', maturityYears: 99 },
       ],
     };
 
@@ -1397,10 +1397,10 @@ describe('recommendStrategy - Phase 4 사적연금 채널링 통합', () => {
       ...paramsWithLargePension,
       userProfile: { ...paramsWithLargePension.userProfile, currentAge: 50, retirementAge: 60, expectancy: 90, targetMonthlySpending: 25000000 },
       privatePensions: [
-        { id: 'pension-1', type: 'irp', balance: 600000000, monthlyContribution: 0, annualReturn: 2, currency: 'KRW' },
+        { id: 'pension-1', type: 'irp', balance: 600000000, monthlyContribution: 0, totalReturn: 2, currency: 'KRW' },
       ],
       isaAccounts: [
-        { id: 'isa-1', type: 'general', balance: 10000000, monthlyContribution: 0, annualReturn: 6, dividendYield: 0, currency: 'KRW', maturityYears: 99 },
+        { id: 'isa-1', type: 'general', balance: 10000000, monthlyContribution: 0, totalReturn: 6, dividendYield: 0, currency: 'KRW', maturityYears: 99 },
       ],
     };
 

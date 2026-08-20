@@ -37,13 +37,13 @@ function params(overrides: Partial<SimulationParams> = {}): SimulationParams {
 // 수익률·배당을 맞춘 6억. 담는 «그릇»만 다르다.
 const asPrivatePension = params({
   privatePensions: [
-    { id: 'irp', type: 'irp', balance: 600_000_000, monthlyContribution: 0, annualReturn: 2, currency: 'KRW' },
+    { id: 'irp', type: 'irp', balance: 600_000_000, monthlyContribution: 0, totalReturn: 2, currency: 'KRW' },
   ],
 });
 const asGeneralStock = params({
   assets: [{
     id: 's', type: 'stock', ticker: 'S', name: '주식',
-    quantity: 60_000, averagePrice: 10_000, annualGrowthRate: 2, dividendYield: 0,
+    quantity: 60_000, averagePrice: 10_000, totalReturn: 2, dividendYield: 0,
     monthlyContribution: 0, reinvestDividend: true, currency: 'KRW',
   }],
 });

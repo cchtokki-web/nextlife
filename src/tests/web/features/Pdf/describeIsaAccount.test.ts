@@ -14,7 +14,7 @@ function isa(overrides: Partial<IsaAccount> = {}): IsaAccount {
     type: 'general',
     balance: 30_000_000,
     monthlyContribution: 0,
-    annualReturn: 5,
+    totalReturn: 5,
     dividendYield: 2,
     currency: 'KRW',
     maturityYears: 3,

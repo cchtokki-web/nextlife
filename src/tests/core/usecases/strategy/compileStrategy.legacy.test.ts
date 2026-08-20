@@ -23,14 +23,14 @@ const legacyBase: SimulationParams = {
     {
       id: 'a1', name: '국내 ETF', ticker: 'KODEX', type: 'etf', assetMarket: 'KR_ETF', currency: 'KRW',
       quantity: 10000, averagePrice: 50000, monthlyContribution: 500000,
-      annualGrowthRate: 6, dividendYield: 2, reinvestDividend: true,
+      totalReturn: 6, dividendYield: 2, reinvestDividend: true,
     },
   ],
   nationalPension: { expectedMonthlyAmount: 1000000 },
   privatePensions: [
     {
       id: 'p1', name: '연금저축', type: 'savings', currency: 'KRW', balance: 100000000,
-      monthlyContribution: 300000, annualReturn: 5, investmentType: 'custom', dividendYield: 0,
+      monthlyContribution: 300000, totalReturn: 5, investmentType: 'custom', dividendYield: 0,
     },
   ],
   otherIncomes: [],

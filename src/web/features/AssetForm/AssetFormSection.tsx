@@ -6,6 +6,7 @@ import styles from './AssetForm.module.css';
 import compStyles from '../../styles/components.module.css';
 import { Plus, Trash2, Wallet, Landmark, PiggyBank, DollarSign, ExternalLink, ChevronDown, ChevronUp, RefreshCw } from 'lucide-react';
 import { predefinedAssets } from './predefinedAssets';
+import { ReturnBreakdownHint } from './ReturnBreakdownHint';
 import { initialParams } from '../../../infrastructure/storage/localStore';
 import { resolveRiskProfileYieldPreset, resolveStrategy } from '../../../core/usecases/strategy/compileStrategy';
 import { isEconomicScenarioGoverning } from '../../../core/usecases/scenario/economicScenarios';
@@ -112,7 +113,7 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
 
   // 실시간 조회 버튼도 같은 이유로 잠근다.
   //
-  // fetchAssetInfo/fetchPensionInfo/fetchIsaInfo는 annualGrowthRate·annualReturn을 덮어쓰면서
+  // fetchAssetInfo/fetchPensionInfo/fetchIsaInfo는 totalReturn을 덮어쓰면서
   // yieldPreset을 'custom'으로까지 찍는다. 입력만 비활성화하고 이 버튼을 열어두면, 지배 중에도
   // 버튼 하나로 화면상 수익률과 '직접입력' 표식이 동시에 바뀌는데 엔진은 여전히 프리셋으로
   // 계산한다 — 입력을 잠가서 없애려던 바로 그 불일치가 다른 문으로 되돌아온다.
@@ -151,7 +152,8 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
       .filter((rs) => !predefinedTickers.has(rs.ticker))
       .map((rs) => ({
         ...rs,
-        annualGrowthRate: rs.type === 'etf' ? 7.0 : 6.0,
+        // 예전 성장률 7.0/6.0 + 배당 1.5/1.0 (총수익률 표기로 이관)
+        totalReturn: rs.type === 'etf' ? 8.5 : 7.0,
         dividendYield: rs.type === 'etf' ? 1.5 : 1.0,
       }));
     return [...matchingPredefined, ...additionalRealtime].slice(0, 8);
@@ -220,13 +222,13 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
       const res = await fetch(`/api/stock-info?ticker=${encodeURIComponent(ticker)}`);
       if (res.ok) {
         const data = await res.json();
-        if (data.annualGrowthRate !== undefined || data.dividendYield !== undefined) {
+        if (data.totalReturn !== undefined || data.dividendYield !== undefined) {
           onChangeParams((prevParams: SimulationParams) => {
             const updated = prevParams.assets.map((asset) => {
               if (asset.id === id) {
                 return {
                   ...asset,
-                  ...(data.annualGrowthRate !== undefined && { annualGrowthRate: data.annualGrowthRate }),
+                  ...(data.totalReturn !== undefined && { totalReturn: data.totalReturn }),
                   ...(data.dividendYield !== undefined && { dividendYield: data.dividendYield }),
                 };
               }
@@ -250,14 +252,14 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
       const res = await fetch(`/api/stock-info?ticker=${encodeURIComponent(ticker)}`);
       if (res.ok) {
         const data = await res.json();
-        if (data.annualGrowthRate !== undefined || data.dividendYield !== undefined) {
-          const annualGrowthRate = data.annualGrowthRate || 0;
-          const dividendYield = data.dividendYield || 0;
-          
+        if (data.totalReturn !== undefined || data.dividendYield !== undefined) {
+          const fetchedTotalReturn = data.totalReturn || 0;
+          const fetchedDividendYield = data.dividendYield || 0;
+
           onChangeParams((prevParams: SimulationParams) => {
             const updated = prevParams.privatePensions.map((p) => {
               if (p.id === id) {
-                return { ...p, annualReturn: annualGrowthRate, dividendYield };
+                return { ...p, totalReturn: fetchedTotalReturn, dividendYield: fetchedDividendYield };
               }
               return p;
             });
@@ -279,14 +281,14 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
       const res = await fetch(`/api/stock-info?ticker=${encodeURIComponent(ticker)}`);
       if (res.ok) {
         const data = await res.json();
-        if (data.annualGrowthRate !== undefined || data.dividendYield !== undefined) {
-          const annualReturn = data.annualGrowthRate || 0;
-          const dividendYield = data.dividendYield || 0;
-          
+        if (data.totalReturn !== undefined || data.dividendYield !== undefined) {
+          const fetchedTotalReturn = data.totalReturn || 0;
+          const fetchedDividendYield = data.dividendYield || 0;
+
           onChangeParams((prevParams: SimulationParams) => {
             const updated = (prevParams.isaAccounts || []).map((isa) => {
               if (isa.id === id) {
-                return { ...isa, annualReturn, dividendYield };
+                return { ...isa, totalReturn: fetchedTotalReturn, dividendYield: fetchedDividendYield };
               }
               return isa;
             });
@@ -346,7 +348,7 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
       name: '신규 자산',
       quantity: 0,
       averagePrice: 0,
-      annualGrowthRate: 6,
+      totalReturn: 8, // 예전 성장률 6 + 배당 2 (총수익률 표기로 이관)
       dividendYield: 2,
       contributionPeriod: 'daily',
       contributionAmount: 0,
@@ -403,8 +405,8 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
         return asset;
       });
       const isGrowthRateChanged = typeof updates === 'string'
-        ? updates === 'annualGrowthRate'
-        : 'annualGrowthRate' in updates;
+        ? updates === 'totalReturn'
+        : 'totalReturn' in updates;
       const presetUpdate = isGrowthRateChanged ? { yieldPreset: 'custom' as const } : {};
       return { ...prevParams, assets: updated, ...presetUpdate };
     });
@@ -426,7 +428,7 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
       investmentType: 'custom',
       balance: 0,
       monthlyContribution: 0,
-      annualReturn: 5,
+      totalReturn: 5,
       currency: 'KRW',
     };
     onChangeParams({
@@ -466,8 +468,8 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
         return p;
       });
       const isReturnChanged = typeof updates === 'string'
-        ? updates === 'annualReturn'
-        : 'annualReturn' in updates;
+        ? updates === 'totalReturn'
+        : 'totalReturn' in updates;
       const presetUpdate = isReturnChanged ? { yieldPreset: 'custom' as const } : {};
       return { ...prevParams, privatePensions: updated, ...presetUpdate };
     });
@@ -489,7 +491,7 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
       investmentType: 'custom',
       balance: 0,
       monthlyContribution: 0,
-      annualReturn: 5,
+      totalReturn: 6.5, // 예전 성장률 5 + 배당 1.5 (총수익률 표기로 이관)
       dividendYield: 1.5,
       currency: 'KRW',
       maturityYears: 3,
@@ -590,7 +592,7 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
             ticker: pa.ticker,
             type: pa.type,
             currency: pa.currency,
-            annualGrowthRate: pa.annualGrowthRate,
+            totalReturn: pa.totalReturn,
             dividendYield: pa.dividendYield,
           });
           fetchAssetInfo(id, pa.ticker);
@@ -600,7 +602,7 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
             name: pa.name,
             ticker: pa.ticker,
             currency: pa.currency,
-            annualReturn: Math.round((pa.annualGrowthRate + pa.dividendYield) * 10) / 10,
+            totalReturn: pa.totalReturn,
           });
           fetchPensionInfo(id, pa.ticker);
         } else if (type === 'isa') {
@@ -608,7 +610,7 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
             name: pa.name,
             ticker: pa.ticker,
             currency: pa.currency,
-            annualReturn: Math.round((pa.annualGrowthRate + pa.dividendYield) * 10) / 10,
+            totalReturn: pa.totalReturn,
           });
           fetchIsaInfo(id, pa.ticker);
         }
@@ -801,7 +803,7 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                                         ticker: pa.ticker,
                                         type: pa.type,
                                         currency: pa.currency,
-                                        annualGrowthRate: pa.annualGrowthRate,
+                                        totalReturn: pa.totalReturn,
                                         dividendYield: pa.dividendYield,
                                       });
                                       setFocusedAssetId(null);
@@ -911,12 +913,12 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                       <div className={styles.priceInputWrapper}>
                         <div className={styles.priceInputGrow}>
                           <InputField
-                            label="연 성장률"
+                            label="연 총수익률"
                             type="number"
                             step="0.1"
-                            value={asset.annualGrowthRate}
+                            value={asset.totalReturn}
                             disabled={yieldGovernedBy !== null}
-                            onChange={(e) => handleUpdateAsset(asset.id, 'annualGrowthRate', Number(e.target.value))}
+                            onChange={(e) => handleUpdateAsset(asset.id, 'totalReturn', Number(e.target.value))}
                             suffixText="%"
                           />
                         </div>
@@ -957,6 +959,7 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                           />
                         </button>
                       </div>
+                      <ReturnBreakdownHint totalReturn={asset.totalReturn} dividendYield={asset.dividendYield} />
                       <SelectField
                         label="적립 주기"
                         value={asset.contributionPeriod || 'monthly'}
@@ -1234,7 +1237,7 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                                       name: pa.name,
                                       ticker: pa.ticker,
                                       currency: pa.currency,
-                                      annualReturn: Math.round((pa.annualGrowthRate + pa.dividendYield) * 10) / 10,
+                                      totalReturn: pa.totalReturn,
                                     });
                                     setFocusedAssetId(null);
                                     setAutocompleteIndex(-1);
@@ -1311,12 +1314,12 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                       <div className={styles.priceInputWrapper}>
                         <div className={styles.priceInputGrow}>
                           <InputField
-                            label="연 주가 상승률"
+                            label="연 총수익률"
                             type="number"
                             step="0.1"
-                            value={pension.annualReturn}
+                            value={pension.totalReturn}
                             disabled={yieldGovernedBy !== null}
-                            onChange={(e) => handleUpdatePrivatePension(pension.id, 'annualReturn', Number(e.target.value))}
+                            onChange={(e) => handleUpdatePrivatePension(pension.id, 'totalReturn', Number(e.target.value))}
                             suffixText="%"
                           />
                         </div>
@@ -1336,7 +1339,7 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                       <div className={styles.priceInputWrapper}>
                         <div className={styles.priceInputGrow}>
                           <InputField
-                            label="연 기대 배당률"
+                            label="연 배당률"
                             type="number"
                             step="0.1"
                             value={pension.dividendYield || 0}
@@ -1357,15 +1360,16 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                           />
                         </button>
                       </div>
+                      <ReturnBreakdownHint totalReturn={pension.totalReturn} dividendYield={pension.dividendYield || 0} />
                     </>
                   ) : (
                     <InputField
-                      label={pension.investmentType === 'deposit' ? '연 이자율 (금리)' : '연 주가 상승률'}
+                      label={pension.investmentType === 'deposit' ? '연 이자율 (금리)' : '연 총수익률'}
                       type="number"
                       step="0.1"
-                      value={pension.annualReturn}
+                      value={pension.totalReturn}
                       disabled={yieldGovernedBy !== null}
-                      onChange={(e) => handleUpdatePrivatePension(pension.id, 'annualReturn', Number(e.target.value))}
+                      onChange={(e) => handleUpdatePrivatePension(pension.id, 'totalReturn', Number(e.target.value))}
                       suffixText="%"
                     />
                   )}
@@ -1477,7 +1481,7 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                                           name: pa.name,
                                           ticker: pa.ticker,
                                           currency: pa.currency,
-                                          annualReturn: Math.round((pa.annualGrowthRate + pa.dividendYield) * 10) / 10,
+                                          totalReturn: pa.totalReturn,
                                         });
                                         setFocusedAssetId(null);
                                         setAutocompleteIndex(-1);
@@ -1536,12 +1540,12 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                           <div className={styles.priceInputWrapper}>
                             <div className={styles.priceInputGrow}>
                               <InputField
-                                label="연 주가 상승률"
+                                label="연 총수익률"
                                 type="number"
                                 step="0.1"
-                                value={isa.annualReturn}
+                                value={isa.totalReturn}
                                 disabled={yieldGovernedBy !== null}
-                                onChange={(e) => handleUpdateIsaAccount(isa.id, 'annualReturn', Number(e.target.value))}
+                                onChange={(e) => handleUpdateIsaAccount(isa.id, 'totalReturn', Number(e.target.value))}
                                 suffixText="%"
                               />
                             </div>
@@ -1561,7 +1565,7 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                           <div className={styles.priceInputWrapper}>
                             <div className={styles.priceInputGrow}>
                               <InputField
-                                label="연 기대 배당률"
+                                label="연 배당률"
                                 type="number"
                                 step="0.1"
                                 value={isa.dividendYield || 0}
@@ -1582,36 +1586,38 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                               />
                             </button>
                           </div>
+                          <ReturnBreakdownHint totalReturn={isa.totalReturn} dividendYield={isa.dividendYield || 0} />
                         </>
                       ) : isa.investmentType === 'deposit' ? (
                         <InputField
                           label="연 이자율 (금리)"
                           type="number"
                           step="0.1"
-                          value={isa.annualReturn}
+                          value={isa.totalReturn}
                           disabled={yieldGovernedBy !== null}
-                          onChange={(e) => handleUpdateIsaAccount(isa.id, 'annualReturn', Number(e.target.value))}
+                          onChange={(e) => handleUpdateIsaAccount(isa.id, 'totalReturn', Number(e.target.value))}
                           suffixText="%"
                         />
                       ) : (
                         <>
                           <InputField
-                            label="연 기대 수익률"
+                            label="연 총수익률"
                             type="number"
                             step="0.1"
-                            value={isa.annualReturn}
+                            value={isa.totalReturn}
                             disabled={yieldGovernedBy !== null}
-                            onChange={(e) => handleUpdateIsaAccount(isa.id, 'annualReturn', Number(e.target.value))}
+                            onChange={(e) => handleUpdateIsaAccount(isa.id, 'totalReturn', Number(e.target.value))}
                             suffixText="%"
                           />
                           <InputField
-                            label="연 기대 배당률"
+                            label="연 배당률"
                             type="number"
                             step="0.1"
                             value={isa.dividendYield}
                             onChange={(e) => handleUpdateIsaAccount(isa.id, 'dividendYield', Number(e.target.value))}
                             suffixText="%"
                           />
+                          <ReturnBreakdownHint totalReturn={isa.totalReturn} dividendYield={isa.dividendYield} />
                         </>
                       )}
                     </div>

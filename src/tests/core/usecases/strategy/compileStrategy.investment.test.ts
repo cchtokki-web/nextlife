@@ -8,13 +8,13 @@ const baseParams: SimulationParams = {
   assets: [
     {
       id: 'a1', type: 'etf', ticker: 'X', name: 'X', quantity: 1, averagePrice: 1,
-      annualGrowthRate: 7, dividendYield: 2, monthlyContribution: 0,
+      totalReturn: 7, dividendYield: 2, monthlyContribution: 0,
       reinvestDividend: true, currency: 'KRW',
     },
   ],
   nationalPension: { expectedMonthlyAmount: 0 },
   privatePensions: [
-    { id: 'p1', type: 'irp', balance: 1000, monthlyContribution: 0, annualReturn: 4, currency: 'KRW' },
+    { id: 'p1', type: 'irp', balance: 1000, monthlyContribution: 0, totalReturn: 4, currency: 'KRW' },
   ],
   otherIncomes: [],
   inflationRate: 2.5,
@@ -43,7 +43,7 @@ describe('compileStrategy 투자/경제 축', () => {
       riskProfile: 'aggressive', // 주식 9%
     }));
 
-    expect(r.params.assets[0].annualGrowthRate).toBe(9);
+    expect(r.params.assets[0].totalReturn).toBe(9);
     // 물가는 여전히 시나리오가 지배한다.
     expect(r.params.inflationRate).toBe(ECONOMIC_SCENARIO_PROFILES.recession!.inflationRate);
   });
@@ -54,7 +54,7 @@ describe('compileStrategy 투자/경제 축', () => {
       riskProfile: 'ai_recommended',
     }));
 
-    expect(r.params.assets[0].annualGrowthRate)
+    expect(r.params.assets[0].totalReturn)
       .toBe(ECONOMIC_SCENARIO_PROFILES.recession!.stockGrowthRate);
   });
 
@@ -71,13 +71,13 @@ describe('compileStrategy 투자/경제 축', () => {
     // '사용자 직접입력'은 프리셋 매핑이 없어야 한다. RISK_PROFILE_PRESETS에 항목이
     // 생기면 applyYieldPreset이 호출되어 직접 입력한 값이 조용히 덮어써진다.
     const params = withStrategy({ riskProfile: 'custom' });
-    params.assets = [{ ...params.assets[0], annualGrowthRate: 11.5 }];
-    params.privatePensions = [{ ...params.privatePensions[0], annualReturn: 6.5 }];
+    params.assets = [{ ...params.assets[0], totalReturn: 11.5 }];
+    params.privatePensions = [{ ...params.privatePensions[0], totalReturn: 6.5 }];
 
     const r = compileStrategy(params);
 
-    expect(r.params.assets[0].annualGrowthRate).toBe(11.5);
-    expect(r.params.privatePensions[0].annualReturn).toBe(6.5);
+    expect(r.params.assets[0].totalReturn).toBe(11.5);
+    expect(r.params.privatePensions[0].totalReturn).toBe(6.5);
     expect(r.params.yieldPreset).toBeUndefined();
   });
 
@@ -89,7 +89,7 @@ describe('compileStrategy 투자/경제 축', () => {
       riskProfile: 'custom',
     }));
 
-    expect(r.params.assets[0].annualGrowthRate)
+    expect(r.params.assets[0].totalReturn)
       .toBe(ECONOMIC_SCENARIO_PROFILES.recession!.stockGrowthRate);
   });
 
@@ -101,6 +101,6 @@ describe('compileStrategy 투자/경제 축', () => {
     const r = compileStrategy(params);
 
     expect(r.params.assets[0].reinvestDividend).toBe(false);
-    expect(r.params.assets[0].annualGrowthRate).toBe(9);
+    expect(r.params.assets[0].totalReturn).toBe(9);
   });
 });

@@ -13,7 +13,7 @@ function makeParams(overrides: Partial<SimulationParams> = {}): SimulationParams
     userProfile: { currentAge: 59, retirementAge: 60, expectancy: 63, targetMonthlySpending: 3000000 },
     assets: [
       { id: 'a1', type: 'etf', ticker: 'SPY', name: 'S&P500', quantity: 100, averagePrice: 1000000,
-        annualGrowthRate: 5, dividendYield: 2, monthlyContribution: 0, reinvestDividend: false, currency: 'KRW' },
+        totalReturn: 5, dividendYield: 2, monthlyContribution: 0, reinvestDividend: false, currency: 'KRW' },
     ],
     nationalPension: { expectedMonthlyAmount: 1000000 },
     privatePensions: [],

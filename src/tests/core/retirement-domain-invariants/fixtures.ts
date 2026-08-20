@@ -18,7 +18,7 @@ export function retirementParams(
       quantity: 100_000,
       averagePrice: 100_000,
       acquisitionCostBasis: 5_000_000_000,
-      annualGrowthRate: 0,
+      totalReturn: 0,
       dividendYield: 0,
       monthlyContribution: 0,
       reinvestDividend: false,
@@ -58,6 +58,6 @@ export function unusedAssetsRegressionParams(): SimulationParams {
       expectancy: 90,
       targetMonthlySpending: 5_000_000,
     },
-    assets: [{ ...base.assets[0], quantity: 100_000, averagePrice: 100_000, annualGrowthRate: 0 }],
+    assets: [{ ...base.assets[0], quantity: 100_000, averagePrice: 100_000, totalReturn: 0 }],
   };
 }

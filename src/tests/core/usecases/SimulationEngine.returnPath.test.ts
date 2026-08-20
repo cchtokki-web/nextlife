@@ -21,15 +21,15 @@ function params(overrides: Partial<SimulationParams> = {}): SimulationParams {
     userProfile: { currentAge: 55, retirementAge: 60, expectancy: 85, targetMonthlySpending: 2000000 },
     assets: [
       { id: 'a1', type: 'etf', ticker: 'SPY', name: 'S&P500', quantity: 400, averagePrice: 500000,
-        annualGrowthRate: 7, dividendYield: 2, monthlyContribution: 500000, reinvestDividend: true, currency: 'KRW' },
+        totalReturn: 7, dividendYield: 2, monthlyContribution: 500000, reinvestDividend: true, currency: 'KRW' },
     ],
     isaAccounts: [
       { id: 'i1', type: 'general', balance: 20000000, monthlyContribution: 200000,
-        annualReturn: 5, dividendYield: 2, currency: 'KRW', maturityYears: 3 },
+        totalReturn: 5, dividendYield: 2, currency: 'KRW', maturityYears: 3 },
     ],
     nationalPension: { expectedMonthlyAmount: 1000000 },
     privatePensions: [
-      { id: 'p1', type: 'irp', balance: 50000000, monthlyContribution: 300000, annualReturn: 4, currency: 'KRW' },
+      { id: 'p1', type: 'irp', balance: 50000000, monthlyContribution: 300000, totalReturn: 4, currency: 'KRW' },
     ],
     otherIncomes: [],
     inflationRate: 2,
@@ -81,7 +81,7 @@ describe('SimulationEngine - returnPath', () => {
       },
       assets: [{
         id: 'shock-only', type: 'etf', ticker: 'SHOCK', name: '충격 검증 자산',
-        quantity: 1, averagePrice: 200_000_000, annualGrowthRate: 0,
+        quantity: 1, averagePrice: 200_000_000, totalReturn: 0,
         dividendYield: 0, monthlyContribution: 0, reinvestDividend: false, currency: 'KRW',
       }],
       isaAccounts: [],
@@ -107,11 +107,11 @@ describe('SimulationEngine - returnPath', () => {
   // "연금이 100% 주식과 같은 폭으로 흔들린다"는 가정이었다(PENSION_RETURN_SHOCK_BETA 주석).
   test('상수 충격은 모든 계좌의 연 수익률을 그만큼 올린 것과 같다', () => {
     const shifted = params({
-      assets: params().assets.map((a) => ({ ...a, annualGrowthRate: a.annualGrowthRate + 3 })),
+      assets: params().assets.map((a) => ({ ...a, totalReturn: a.totalReturn + 3 })),
       privatePensions: params().privatePensions.map((p) => ({
-        ...p, annualReturn: p.annualReturn + 3 * PENSION_RETURN_SHOCK_BETA,
+        ...p, totalReturn: p.totalReturn + 3 * PENSION_RETURN_SHOCK_BETA,
       })),
-      isaAccounts: params().isaAccounts!.map((i) => ({ ...i, annualReturn: i.annualReturn + 3 })),
+      isaAccounts: params().isaAccounts!.map((i) => ({ ...i, totalReturn: i.totalReturn + 3 })),
     });
 
     const viaParams = engine.runSingle(shifted);
@@ -219,7 +219,7 @@ describe('SimulationEngine - returnPath', () => {
   const STOCK_ONLY = singleYearPlan({
     assets: [{
       id: 's', type: 'etf', ticker: 'S', name: '주식', quantity: 1, averagePrice: 200_000_000,
-      annualGrowthRate: 0, dividendYield: 0, monthlyContribution: 0,
+      totalReturn: 0, dividendYield: 0, monthlyContribution: 0,
       reinvestDividend: false, currency: 'KRW',
     }],
   });
@@ -227,7 +227,7 @@ describe('SimulationEngine - returnPath', () => {
   const PENSION_ONLY = singleYearPlan({
     privatePensions: [{
       id: 'p', type: 'irp', balance: 200_000_000, monthlyContribution: 0,
-      annualReturn: 0, currency: 'KRW',
+      totalReturn: 0, currency: 'KRW',
     }],
   });
 

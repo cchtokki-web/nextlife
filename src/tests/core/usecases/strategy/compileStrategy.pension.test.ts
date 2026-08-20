@@ -9,7 +9,7 @@ const baseParams: SimulationParams = {
   assets: [
     {
       id: 'a1', type: 'etf', ticker: 'X', name: 'X', quantity: 1, averagePrice: 1,
-      annualGrowthRate: 7, dividendYield: 2, monthlyContribution: 0,
+      totalReturn: 7, dividendYield: 2, monthlyContribution: 0,
       reinvestDividend: false, currency: 'KRW',
     },
   ],

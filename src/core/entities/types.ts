@@ -29,8 +29,15 @@ export interface InvestmentAsset {
   name: string;
   quantity: number;
   averagePrice: number;
-  annualGrowthRate: number; // % 단위, 예: 8% -> 8
-  dividendYield: number; // % 단위, 예: 3% -> 3
+  /** 배당을 포함한 연 총수익률. % 단위, 예: 10.5% -> 10.5 */
+  totalReturn: number;
+  /**
+   * totalReturn 중 «현금으로 분배되는» 비율. % 단위, 예: 3% -> 3
+   *
+   * 가격상승률은 `totalReturn - dividendYield`로 파생된다(priceGrowthRate). 이 값이
+   * totalReturn보다 크면 가격상승률이 음수가 되며, 커버드콜·고배당 ETF에서 정상이다.
+   */
+  dividendYield: number;
   contributionPeriod?: 'daily' | 'weekly' | 'monthly';
   contributionAmount?: number;
   monthlyContribution: number;
@@ -62,8 +69,17 @@ export interface PrivatePension {
   name?: string;
   balance: number;
   monthlyContribution: number;
-  annualReturn: number; // % 단위 (ETF인 경우 연 성장률로 사용)
-  dividendYield?: number; // % 단위 (ETF인 경우 연 배당률)
+  /** 배당을 포함한 연 총수익률. % 단위 */
+  totalReturn: number;
+  /**
+   * 표시 전용. **엔진 계산에 쓰이지 않는다.**
+   *
+   * 연금 계좌 안에서는 배당세도 재투자 선택지도 없어 총수익률만이 결과를 결정한다.
+   * 게다가 엔진의 두 월율 규약이 달라(성장은 기하 복리, 배당은 단리) 분해하면 의미
+   * 변경을 넘어 산술까지 바뀐다. 그래서 이 값은 화면의 파생값 표시와 시세 조회
+   * 일관성을 위해서만 존재한다.
+   */
+  dividendYield?: number;
   currency: AssetCurrency;
   // 사적연금 조기수령 채널링(Phase 4) 전용 내부 필드. true면 55세(PRIVATE_PENSION_MIN_START_AGE)부터
   // retirementAge 이전(재직 중)에도 저율과세 한도 내에서 조기 인출해 ISA로 재투자한다. AI 추천
@@ -233,19 +249,21 @@ export interface IsaAccount {
   name?: string;
   balance: number;
   monthlyContribution: number;
-  annualReturn: number; // % 단위
-  dividendYield: number; // % 단위
+  /** 배당을 포함한 연 총수익률. % 단위 */
+  totalReturn: number;
+  /** totalReturn 중 현금으로 분배되는 비율. % 단위 */
+  dividendYield: number;
   currency: AssetCurrency;
   maturityYears: number; // 기본 3년
 }
 
 // 자산/사적연금/ISA별 "사용자 프리셋"(직접입력 수익률) 스냅샷. 시장 수익률 프리셋(보수적/기본값/
-// 공격적)으로 전환하면 자산의 annualGrowthRate/annualReturn이 프리셋 값으로 덮어써지므로, 그
+// 공격적)으로 전환하면 자산·연금·ISA의 totalReturn이 프리셋 값으로 덮어써지므로, 그
 // 직전 시점의 직접입력 값을 id 기준으로 보존해 두었다가 "사용자 프리셋" 재선택 시 되돌린다.
 export interface CustomYieldSnapshot {
-  assets: Record<string, number>; // InvestmentAsset.id -> annualGrowthRate
-  privatePensions: Record<string, number>; // PrivatePension.id -> annualReturn
-  // IsaAccount.id -> annualReturn. ISA가 프리셋 대상에 들어오기 전에 저장된 스냅샷에는
+  assets: Record<string, number>; // InvestmentAsset.id -> totalReturn
+  privatePensions: Record<string, number>; // PrivatePension.id -> totalReturn
+  // IsaAccount.id -> totalReturn. ISA가 프리셋 대상에 들어오기 전에 저장된 스냅샷에는
   // 이 키가 없으므로 optional이다 — 필수로 바꾸면 이미 저장된 시나리오가 타입과 어긋난다.
   isaAccounts?: Record<string, number>;
 }

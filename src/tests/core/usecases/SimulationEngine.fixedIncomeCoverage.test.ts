@@ -33,7 +33,7 @@ function params(overrides: Partial<SimulationParams> = {}): SimulationParams {
 }
 
 const bigPension: SimulationParams['privatePensions'] = [
-  { id: 'irp', type: 'irp', balance: 1_000_000_000, monthlyContribution: 0, annualReturn: 4, currency: 'KRW' },
+  { id: 'irp', type: 'irp', balance: 1_000_000_000, monthlyContribution: 0, totalReturn: 4, currency: 'KRW' },
 ];
 
 describe('goalAchievementRate (고정소득 커버율)', () => {

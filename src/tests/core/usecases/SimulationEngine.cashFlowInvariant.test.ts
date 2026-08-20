@@ -16,7 +16,7 @@ function params(overrides: Partial<SimulationParams> = {}): SimulationParams {
       id: 'liquid', type: 'etf', ticker: 'LIQUID', name: '매도 가능한 일반자산',
       quantity: 100_000, averagePrice: 100_000,
       acquisitionCostBasis: 5_000_000_000,
-      annualGrowthRate: 0, dividendYield: 0, monthlyContribution: 0,
+      totalReturn: 0, dividendYield: 0, monthlyContribution: 0,
       reinvestDividend: false, currency: 'KRW', assetMarket: 'US_ETF',
     }],
     isaAccounts: [],

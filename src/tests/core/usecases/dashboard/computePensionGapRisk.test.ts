@@ -12,7 +12,7 @@ function params(overrides: Partial<SimulationParams> = {}): SimulationParams {
     userProfile: { currentAge: 59, retirementAge: 60, expectancy: 90, targetMonthlySpending: 2500000 },
     assets: [
       { id: 'a1', type: 'etf', ticker: 'SPY', name: 'S&P500', quantity: 600, averagePrice: 500000,
-        annualGrowthRate: 5, dividendYield: 2, monthlyContribution: 0, reinvestDividend: true, currency: 'KRW' },
+        totalReturn: 5, dividendYield: 2, monthlyContribution: 0, reinvestDividend: true, currency: 'KRW' },
     ],
     isaAccounts: [],
     nationalPension: { expectedMonthlyAmount: 2000000 },
@@ -68,7 +68,7 @@ describe('computePensionGapRisk', () => {
       userProfile: { currentAge: 59, retirementAge: 60, expectancy: 90, targetMonthlySpending: 3500000 },
       privatePensions: [{
         id: 'p1', name: 'IRP', type: 'irp', balance: 100000000, monthlyContribution: 0,
-        annualReturn: 5, dividendYield: 0, investmentType: 'etf', currency: 'KRW',
+        totalReturn: 5, dividendYield: 0, investmentType: 'etf', currency: 'KRW',
       }],
     });
     const gap = computePensionGapRisk(p, engine.run(p))!;

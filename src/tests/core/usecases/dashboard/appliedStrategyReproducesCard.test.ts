@@ -38,14 +38,14 @@ const params: SimulationParams = {
   assets: [
     {
       id: 'a1', type: 'etf', ticker: 'SPY', name: 'S&P500', quantity: 620, averagePrice: 500_000,
-      annualGrowthRate: 7, dividendYield: 2, monthlyContribution: 250_000,
+      totalReturn: 7, dividendYield: 2, monthlyContribution: 250_000,
       reinvestDividend: true, currency: 'KRW',
     },
   ],
   isaAccounts: [],
   nationalPension: { expectedMonthlyAmount: 1_200_000 },
   privatePensions: [
-    { id: 'p1', type: 'irp', balance: 55_000_000, monthlyContribution: 350_000, annualReturn: 4, currency: 'KRW' },
+    { id: 'p1', type: 'irp', balance: 55_000_000, monthlyContribution: 350_000, totalReturn: 4, currency: 'KRW' },
   ],
   otherIncomes: [],
   inflationRate: 2.5,

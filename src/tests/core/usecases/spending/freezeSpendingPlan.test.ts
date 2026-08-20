@@ -11,13 +11,13 @@ function maxSustainableParams(overrides: Partial<SimulationParams> = {}): Simula
     assets: [
       {
         id: 'a1', type: 'etf', ticker: 'QQQ', name: 'QQQ', quantity: 100, averagePrice: 1000000,
-        annualGrowthRate: 7, dividendYield: 1.5, monthlyContribution: 1000000,
+        totalReturn: 7, dividendYield: 1.5, monthlyContribution: 1000000,
         reinvestDividend: true, currency: 'KRW',
       },
     ],
     nationalPension: { expectedMonthlyAmount: 2000000 },
     privatePensions: [
-      { id: 'p1', type: 'irp', balance: 60000000, monthlyContribution: 300000, annualReturn: 4, currency: 'KRW' },
+      { id: 'p1', type: 'irp', balance: 60000000, monthlyContribution: 300000, totalReturn: 4, currency: 'KRW' },
     ],
     otherIncomes: [],
     inflationRate: 2.5,

@@ -24,12 +24,12 @@ function params(overrides: Partial<SimulationParams> = {}): SimulationParams {
     userProfile: { currentAge: 55, retirementAge: 60, expectancy: 85, targetMonthlySpending: 2500000 },
     assets: [
       { id: 'a1', type: 'etf', ticker: 'SPY', name: 'S&P500', quantity: 400, averagePrice: 500000,
-        annualGrowthRate: 7, dividendYield: 2, monthlyContribution: 500000, reinvestDividend: true, currency: 'KRW' },
+        totalReturn: 9, dividendYield: 2, monthlyContribution: 500000, reinvestDividend: true, currency: 'KRW' },
     ],
     isaAccounts: [],
     nationalPension: { expectedMonthlyAmount: 1000000 },
     privatePensions: [
-      { id: 'p1', type: 'irp', balance: 50000000, monthlyContribution: 300000, annualReturn: 4, currency: 'KRW' },
+      { id: 'p1', type: 'irp', balance: 50000000, monthlyContribution: 300000, totalReturn: 4, currency: 'KRW' },
     ],
     otherIncomes: [],
     inflationRate: 2,
@@ -405,18 +405,23 @@ describe('resolveMonteCarloConfig', () => {
   });
 
   // **예전 이름은 「프리셋이 없거나 custom이면 base 변동성을 쓴다」였다.** 지금은 그 경우
-  // 보유 자산의 수익률에서 유도하며, 이 픽스처의 자산이 중립형과 같은 7%라 결과가 15%p로
-  // 같을 뿐이다. 유도 규칙 자체는 volatilityPresets.test.ts가 잠근다.
-  test('프리셋이 없거나 custom이면 보유 자산의 수익률에서 유도한다', () => {
-    // 픽스처의 주식 성장률이 7% = 중립형 앵커라 유도 결과도 중립형 변동성이다.
-    expect(params().assets[0].annualGrowthRate).toBe(YIELD_PRESET_RATES.base.stockGrowth);
+  // 보유 자산의 수익률에서 유도한다. 유도 규칙 자체는 volatilityPresets.test.ts가 잠근다.
+  //
+  // 유도의 «기준»이 총수익률이라는 점이 중요하다. 예전에는 배당을 뺀 가격상승률만 가중해서,
+  // 배당이 큰 포트폴리오일수록 실제로 굴러가는 수익률보다 낮은 변동성을 받았다 — 수익률은
+  // 배당까지 챙기면서 위험은 배당 없는 자산 취급을 받은 셈이다. 이 픽스처가 그 사례다:
+  // 총수익률 9%로 굴러가는데 예전 기준으로는 7%(중립형)로 읽혀 15%p를 받았다.
+  test('프리셋이 없거나 custom이면 보유 자산의 총수익률에서 유도한다', () => {
+    // 픽스처의 총수익률 9% = 공격형 앵커라 유도 결과도 공격형 변동성이다.
+    expect(params().assets[0].totalReturn).toBe(YIELD_PRESET_RATES.aggressive.stockGrowth);
 
-    expect(resolveMonteCarloConfig(params()).annualStdDev).toBe(VOLATILITY_BY_YIELD_PRESET.base);
+    expect(resolveMonteCarloConfig(params()).annualStdDev)
+      .toBe(VOLATILITY_BY_YIELD_PRESET.aggressive);
     expect(resolveMonteCarloConfig(params({ yieldPreset: 'custom' })).annualStdDev)
-      .toBe(VOLATILITY_BY_YIELD_PRESET.base);
+      .toBe(VOLATILITY_BY_YIELD_PRESET.aggressive);
 
-    // 같은 자리에서 수익률만 낮추면 변동성도 따라 내려간다 — 이것이 실제로 바뀐 동작이다.
-    const conservativeAssets = params().assets.map((a) => ({ ...a, annualGrowthRate: 5 }));
+    // 같은 자리에서 수익률만 낮추면 변동성도 따라 내려간다 — 이것이 유도의 핵심이다.
+    const conservativeAssets = params().assets.map((a) => ({ ...a, totalReturn: 5 }));
     expect(resolveMonteCarloConfig(params({ assets: conservativeAssets })).annualStdDev)
       .toBe(VOLATILITY_BY_YIELD_PRESET.conservative);
   });
@@ -458,7 +463,7 @@ describe('goalFailure — 목표 달성 확률을 떨어뜨린 원인', () => {
     // 이 조합이 "기말자산은 큰데 목표 달성 확률만 바닥"의 원인이다.
     const capped = runMonteCarlo(params({
       privatePensions: [
-        { id: 'p1', type: 'irp', balance: 1_500_000_000, monthlyContribution: 0, annualReturn: 4, currency: 'KRW' },
+        { id: 'p1', type: 'irp', balance: 1_500_000_000, monthlyContribution: 0, totalReturn: 4, currency: 'KRW' },
       ],
       withdrawalPlan: { privatePensionMonthlyTarget: 300_000 },
     }), engine, { trials: 30, seed: 7, annualStdDev: 12 });

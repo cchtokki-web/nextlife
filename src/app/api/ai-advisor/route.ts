@@ -192,7 +192,7 @@ export function buildSimulationContextText(body: AiAdvisorRequestBody): string {
 
   if (Array.isArray(privatePensions) && privatePensions.length > 0) {
     const summary = privatePensions
-      .map((p) => `${p.name ?? p.type}(잔액 ${toManwon(p.balance)}만, 월 ${toManwon(p.monthlyContribution)}만 납입, 수익률 ${p.annualReturn}%)`)
+      .map((p) => `${p.name ?? p.type}(잔액 ${toManwon(p.balance)}만, 월 ${toManwon(p.monthlyContribution)}만 납입, 총수익률 ${p.totalReturn}%)`)
       .join(', ');
     lines.push(`- 사적연금: ${summary}`);
   } else {
@@ -201,7 +201,7 @@ export function buildSimulationContextText(body: AiAdvisorRequestBody): string {
 
   if (Array.isArray(assets) && assets.length > 0) {
     const summary = assets
-      .map((a) => `${a.name}(${a.type}, 연 성장률 ${a.annualGrowthRate}%, 배당률 ${a.dividendYield}%, 월 ${toManwon(a.monthlyContribution)}만 납입)`)
+      .map((a) => `${a.name}(${a.type}, 연 총수익률 ${a.totalReturn}%(배당 ${a.dividendYield}% 포함), 월 ${toManwon(a.monthlyContribution)}만 납입)`)
       .join(', ');
     lines.push(`- 투자 자산: ${summary}`);
   } else {

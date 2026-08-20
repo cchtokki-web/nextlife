@@ -14,19 +14,19 @@ function config(policy: AccountWithdrawalPolicy): SimulationParams {
     },
     assets: [{
       id: 'general', type: 'etf', ticker: 'GENERAL', name: '일반자산',
-      quantity: 10_000, averagePrice: 100_000, annualGrowthRate: 0,
+      quantity: 10_000, averagePrice: 100_000, totalReturn: 0,
       dividendYield: 0, monthlyContribution: 0, reinvestDividend: false,
       currency: 'KRW',
     }],
     isaAccounts: [{
       id: 'isa', type: 'general', balance: 1_000_000_000,
-      monthlyContribution: 0, annualReturn: 0, dividendYield: 0,
+      monthlyContribution: 0, totalReturn: 0, dividendYield: 0,
       currency: 'KRW', maturityYears: 100,
     }],
     nationalPension: { expectedMonthlyAmount: 0 },
     privatePensions: [{
       id: 'pension', type: 'irp', balance: 1_000_000_000,
-      monthlyContribution: 0, annualReturn: 0, currency: 'KRW',
+      monthlyContribution: 0, totalReturn: 0, currency: 'KRW',
     }],
     otherIncomes: [],
     inflationRate: 0,

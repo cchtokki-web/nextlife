@@ -135,7 +135,7 @@ describe('normalizeSimulationParams', () => {
         baseExchangeRate: 0,
         isaAccounts: [{
           id: 'isa-1', type: 'general', balance: 1000, monthlyContribution: 0,
-          annualReturn: 5, dividendYield: 0, currency: 'KRW',
+          totalReturn: 5, dividendYield: 0, currency: 'KRW',
           // 0년 만기는 만기 처리가 매년 발동하는 뜻이 된다.
           maturityYears: 0,
         }],
@@ -252,12 +252,12 @@ describe('normalizeSimulationParams', () => {
     test('원소의 깨진 숫자는 0으로 두고 원소는 남긴다', () => {
       const result = normalizeSimulationParams({
         ...structuredClone(initialParams),
-        assets: [{ ...initialParams.assets[0], quantity: '2000', annualGrowthRate: null }],
+        assets: [{ ...initialParams.assets[0], quantity: '2000', totalReturn: null }],
       });
 
       expect(result.assets).toHaveLength(1);
       expect(result.assets[0].quantity).toBe(0);
-      expect(result.assets[0].annualGrowthRate).toBe(0);
+      expect(result.assets[0].totalReturn).toBe(0);
       expect(result.assets[0].name).toBe('KODEX 200');
     });
 
@@ -266,7 +266,7 @@ describe('normalizeSimulationParams', () => {
         ...structuredClone(initialParams),
         assets: [{ ...initialParams.assets[0], type: 'crypto', currency: 'BTC' }],
         privatePensions: [{ ...initialParams.privatePensions[0], type: 'unknown' }],
-        isaAccounts: [{ id: 'isa-1', type: 'vip', balance: 1000, monthlyContribution: 0, annualReturn: 4, dividendYield: 0, currency: 'KRW', maturityYears: 3 }],
+        isaAccounts: [{ id: 'isa-1', type: 'vip', balance: 1000, monthlyContribution: 0, totalReturn: 4, dividendYield: 0, currency: 'KRW', maturityYears: 3 }],
       });
 
       expect(result.assets[0].type).toBe('etf');
@@ -294,7 +294,7 @@ describe('normalizeSimulationParams', () => {
         userProfile: { ...initialParams.userProfile, targetBequest: 'broken' },
         assets: [{
           id: 'a1', type: 'etf', ticker: 'X', name: 'n', quantity: 10, averagePrice: 1000,
-          annualGrowthRate: 5, dividendYield: 1, monthlyContribution: 0,
+          totalReturn: 5, dividendYield: 1, monthlyContribution: 0,
           reinvestDividend: false, currency: 'KRW',
           acquisitionCostBasis: Number.NaN,
         }],
@@ -471,6 +471,39 @@ describe('normalizeSimulationParams', () => {
         privatePensions: { 'pension-1': 4 },
         isaAccounts: {},
       });
+    });
+  });
+
+  describe('예금형 계좌의 배당률', () => {
+    // 예금형 ISA는 화면에 배당 입력칸이 없다(AssetFormSection의 investmentType 분기).
+    // 그런데 신규 ISA의 기본 dividendYield가 1.5라, 유형만 예금으로 바꾸면 사용자가
+    // 볼 수도 고칠 수도 없는 배당률이 계좌에 남는다. 총수익률 모델에서 그 값은 총합을
+    // 늘리지는 못하지만, 가격상승분을 갉아먹고 배당소득으로 집계된다.
+    test('예금형 ISA의 dividendYield를 0으로 지운다', () => {
+      const params = normalizeSimulationParams({
+        ...initialParams,
+        isaAccounts: [{
+          id: 'isa-1', type: 'general', investmentType: 'deposit',
+          balance: 1_000_000, monthlyContribution: 0,
+          totalReturn: 3, dividendYield: 1.5, currency: 'KRW', maturityYears: 3,
+        }],
+      });
+
+      expect(params.isaAccounts?.[0].dividendYield).toBe(0);
+      expect(params.isaAccounts?.[0].totalReturn).toBe(3);
+    });
+
+    test('예금형이 아니면 배당률을 그대로 둔다', () => {
+      const params = normalizeSimulationParams({
+        ...initialParams,
+        isaAccounts: [{
+          id: 'isa-1', type: 'general', investmentType: 'custom',
+          balance: 1_000_000, monthlyContribution: 0,
+          totalReturn: 7, dividendYield: 1.5, currency: 'KRW', maturityYears: 3,
+        }],
+      });
+
+      expect(params.isaAccounts?.[0].dividendYield).toBe(1.5);
     });
   });
 

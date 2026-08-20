@@ -99,7 +99,7 @@ function buildNewPensionAccount(templatePension: PrivatePension): PrivatePension
     id: NEW_PENSION_ID,
     type: 'irp',
     investmentType: templatePension.investmentType,
-    annualReturn: templatePension.annualReturn,
+    totalReturn: templatePension.totalReturn,
     dividendYield: templatePension.dividendYield,
     balance: 0,
     monthlyContribution: NEW_PENSION_MONTHLY_CONTRIBUTION,
@@ -108,7 +108,7 @@ function buildNewPensionAccount(templatePension: PrivatePension): PrivatePension
 }
 
 // 이전용 계좌 생성 헬퍼. 원본 계좌 하나당 하나씩 만들고, 납입액뿐 아니라 운용 조건
-// (annualReturn/investmentType/dividendYield)과 통화까지 원본 그대로 복제한다. 잔액만 0에서
+// (totalReturn/investmentType/dividendYield)과 통화까지 원본 그대로 복제한다. 잔액만 0에서
 // 시작하고, 이 계좌 자체는 채널링 대상이 아니다(넣자마자 다시 빼면 순유입 보존이 무의미해진다).
 function buildTransferPensionAccount(source: PrivatePension): PrivatePension {
   return {

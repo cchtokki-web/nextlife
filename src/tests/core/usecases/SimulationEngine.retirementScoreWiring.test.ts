@@ -20,7 +20,7 @@ const base: SimulationParams = {
   assets: [{
     id: 'a1', name: '현금성', ticker: 'CASH', type: 'stock', currency: 'KRW',
     quantity: 40000, averagePrice: 10000, monthlyContribution: 0,
-    annualGrowthRate: 0, dividendYield: 0, reinvestDividend: false,
+    totalReturn: 0, dividendYield: 0, reinvestDividend: false,
   }],
   nationalPension: { expectedMonthlyAmount: 0 },
   privatePensions: [],
