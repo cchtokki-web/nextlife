@@ -1,6 +1,5 @@
 import { describe, test, expect } from 'vitest';
 import { describeMonteCarloAssumptions } from '@/core/usecases/montecarlo/describeAssumptions';
-import { PENSION_RETURN_SHOCK_BETA } from '@/core/usecases/scenario/economicScenarios';
 
 // 화면(MonteCarloSection)과 PDF(pdfReportSections)가 같은 문장을 쓰게 하는 단일 출처.
 //
@@ -15,22 +14,24 @@ function copy(economicScenario: string, riskProfile: string) {
     assumptions: {
       economicScenario: economicScenario as never,
       riskProfile: riskProfile as never,
-      pensionShockBeta: PENSION_RETURN_SHOCK_BETA,
     },
   });
 }
 
 describe('describeMonteCarloAssumptions', () => {
-  test('사적연금 충격 배율을 밝힌다', () => {
-    // ① 이후 연금은 주식의 0.57배로 흔들린다. 밝히지 않으면 사용자는 15%p가 모든 계좌에
-    // 걸린 것으로 읽는다.
-    expect(copy('ai_recommended', 'ai_recommended').calculation).toContain('0.57');
+  // 밝히지 않으면 사용자는 15%p가 모든 계좌에 똑같이 걸린 것으로 읽는다. 이제는 배율이
+  // 포트폴리오 구성에 따라 계좌마다 달라지므로 숫자 하나가 아니라 «규칙»을 적는다.
+  test('충격이 계좌마다 다르다는 것을 밝힌다', () => {
+    expect(copy('ai_recommended', 'ai_recommended').calculation)
+      .toContain('계좌별 충격은 기대수익률에 비례');
   });
 
-  // **회귀 방지.** 이 문장이 예전 문구였고, 연금 배율이 생긴 뒤로 거짓이 됐다.
-  test('「모든 위험자산이 같은 시장 충격을 공유」라고 말하지 않는다', () => {
-    expect(copy('ai_recommended', 'ai_recommended').calculation)
-      .not.toContain('모든 위험자산이 같은 시장 충격');
+  // **회귀 방지.** 두 문장 모두 한때 이 자리에 있었고, 배율 규칙이 바뀔 때마다 거짓이 됐다.
+  test('충격이 균일하다고 말하지 않는다', () => {
+    const { calculation } = copy('ai_recommended', 'ai_recommended');
+
+    expect(calculation).not.toContain('모든 위험자산이 같은 시장 충격');
+    expect(calculation).not.toContain('주식·ISA는 같은 시장 충격');
   });
 
   test('두 축이 모두 미정이면 입력값을 그대로 썼다고 말한다', () => {

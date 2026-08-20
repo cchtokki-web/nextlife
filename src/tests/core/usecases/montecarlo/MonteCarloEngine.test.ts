@@ -5,7 +5,7 @@ import {
   runMonteCarlo,
 } from '@/core/usecases/montecarlo/MonteCarloEngine';
 import { LegacySimulationAdapter } from '@/core/domain/input/LegacySimulationAdapter';
-import { resolveMonteCarloConfig, VOLATILITY_BY_YIELD_PRESET } from '@/core/usecases/montecarlo/volatilityPresets';
+import { volatilityForStockReturn, resolveMonteCarloConfig, VOLATILITY_BY_YIELD_PRESET } from '@/core/usecases/montecarlo/volatilityPresets';
 import { SimulationEngine } from '@/core/usecases/SimulationEngine';
 import { SimulationParams } from '@/core/entities/types';
 import { MonteCarloConfig } from '@/core/entities/montecarlo';
@@ -13,8 +13,6 @@ import { freezeSpendingPlan, runFrozenPlan } from '@/core/usecases/spending/free
 import { buildReturnShockPath } from '@/core/usecases/montecarlo/returnPath';
 import { mulberry32, deriveSeed } from '@/core/usecases/montecarlo/rng';
 import { simulationYearCount } from '@/core/usecases/montecarlo/horizon';
-import { PENSION_RETURN_SHOCK_BETA } from '@/core/usecases/scenario/economicScenarios';
-import { YIELD_PRESET_RATES } from '@/core/usecases/scenario/applyYieldPreset';
 import { DEFAULT_RETIREMENT_STRATEGY } from '@/core/usecases/strategy/compileStrategy';
 
 const engine = new SimulationEngine();
@@ -48,11 +46,16 @@ function config(overrides: Partial<MonteCarloConfig> = {}): MonteCarloConfig {
 describe('runMonteCarlo - 가정 공시', () => {
   // 결과가 «어떤 세계에서 나왔는지»를 결과 자신이 들고 다녀야 한다. 화면과 PDF가 params를
   // 따로 읽어 판정하면 두 곳이 어긋나고, 워커 경계 너머의 화면은 params를 갖고 있지도 않다.
-  test('결과에 경제 시나리오·리스크 성향·연금 배율을 함께 싣는다', () => {
+  //
+  // 충격 배율은 더 이상 여기 실리지 않는다. 계좌마다 다르고 포트폴리오 구성에서
+  // 유도되므로 스칼라 하나로 말할 수 없다 — 문장은 describeMonteCarloAssumptions가
+  // «규칙»으로 적는다.
+  test('결과에 경제 시나리오와 리스크 성향을 함께 싣는다', () => {
     const mc = runMonteCarlo(params(), engine, config({ trials: 5 }));
 
     expect(mc.assumptions).toBeDefined();
-    expect(mc.assumptions!.pensionShockBeta).toBe(PENSION_RETURN_SHOCK_BETA);
+    expect(mc.assumptions!.economicScenario).toBeDefined();
+    expect(mc.assumptions!.riskProfile).toBeDefined();
   });
 
   // 전략을 저장한 적 없는 계획은 두 축이 모두 미정이다(DEFAULT_RETIREMENT_STRATEGY).
@@ -405,25 +408,28 @@ describe('resolveMonteCarloConfig', () => {
   });
 
   // **예전 이름은 「프리셋이 없거나 custom이면 base 변동성을 쓴다」였다.** 지금은 그 경우
-  // 보유 자산의 수익률에서 유도한다. 유도 규칙 자체는 volatilityPresets.test.ts가 잠근다.
+  // 보유 계좌의 수익률에서 유도한다. 유도 규칙 자체는 volatilityPresets.test.ts가 잠근다.
   //
-  // 유도의 «기준»이 총수익률이라는 점이 중요하다. 예전에는 배당을 뺀 가격상승률만 가중해서,
-  // 배당이 큰 포트폴리오일수록 실제로 굴러가는 수익률보다 낮은 변동성을 받았다 — 수익률은
-  // 배당까지 챙기면서 위험은 배당 없는 자산 취급을 받은 셈이다. 이 픽스처가 그 사례다:
-  // 총수익률 9%로 굴러가는데 예전 기준으로는 7%(중립형)로 읽혀 15%p를 받았다.
-  test('프리셋이 없거나 custom이면 보유 자산의 총수익률에서 유도한다', () => {
-    // 픽스처의 총수익률 9% = 공격형 앵커라 유도 결과도 공격형 변동성이다.
-    expect(params().assets[0].totalReturn).toBe(YIELD_PRESET_RATES.aggressive.stockGrowth);
+  // 이 픽스처는 유도가 두 번 고쳐진 자리를 함께 지킨다:
+  //   ① 기준이 «총수익률»이다. 예전에는 배당을 뺀 가격상승률만 가중해서, 배당이 큰
+  //      포트폴리오가 수익률은 배당까지 챙기면서 위험은 배당 없는 자산 취급을 받았다.
+  //   ② «사적연금»도 가중에 들어온다. 예전에는 자산과 ISA만 셌고, 연금이 포트폴리오의
+  //      절반이어도 변동성 유도에서 통째로 빠졌다.
+  test('프리셋이 없거나 custom이면 자산과 연금을 함께 가중해 유도한다', () => {
+    // 주식 2억 @ 9% + 연금 5천만 @ 4% → 가중평균 8%
+    const derived = volatilityForStockReturn(8);
 
-    expect(resolveMonteCarloConfig(params()).annualStdDev)
-      .toBe(VOLATILITY_BY_YIELD_PRESET.aggressive);
+    expect(resolveMonteCarloConfig(params()).annualStdDev).toBeCloseTo(derived, 10);
     expect(resolveMonteCarloConfig(params({ yieldPreset: 'custom' })).annualStdDev)
-      .toBe(VOLATILITY_BY_YIELD_PRESET.aggressive);
+      .toBeCloseTo(derived, 10);
+
+    // 연금이 평균을 끌어내린 만큼 주식만 봤을 때(9% = 공격형)보다 낮다.
+    expect(derived).toBeLessThan(VOLATILITY_BY_YIELD_PRESET.aggressive);
 
     // 같은 자리에서 수익률만 낮추면 변동성도 따라 내려간다 — 이것이 유도의 핵심이다.
     const conservativeAssets = params().assets.map((a) => ({ ...a, totalReturn: 5 }));
     expect(resolveMonteCarloConfig(params({ assets: conservativeAssets })).annualStdDev)
-      .toBe(VOLATILITY_BY_YIELD_PRESET.conservative);
+      .toBeLessThan(derived);
   });
 
   test('시드는 고정 상수다', () => {

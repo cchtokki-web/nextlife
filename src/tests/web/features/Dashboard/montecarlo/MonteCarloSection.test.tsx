@@ -95,7 +95,7 @@ describe('MonteCarloSection', () => {
 
     expect(screen.getByText(/연 변동성 18%p/)).toBeInTheDocument();
     expect(screen.getByText(/정규분포/)).toBeInTheDocument();
-    expect(screen.getByText(/같은 시장 충격/)).toBeInTheDocument();
+    expect(screen.getByText(/계좌별 충격은 기대수익률에 비례/)).toBeInTheDocument();
     expect(screen.getByText(/고정 시드 1/)).toBeInTheDocument();
   });
 

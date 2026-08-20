@@ -126,9 +126,10 @@ describe('resolveMonteCarloConfig - 직접 입력 수익률에서 변동성 유�
     expect(resolveMonteCarloConfig(withIsa).annualStdDev).toBeCloseTo(volatilityForStockReturn(7), 10);
   });
 
-  // 사적연금은 이미 PENSION_RETURN_SHOCK_BETA로 따로 줄어들고, 연금 쪽 표(3/4/6)는
-  // 변동성 표와 선형이 아니라 유도할 직선이 없다.
-  test('주식·ISA가 없으면 유도할 입력이 없어 base로 되돌린다', () => {
+  // **예전에는 여기서 base로 되돌렸다.** 연금이 가중평균에서 통째로 빠져 있었기 때문이다.
+  // 그 근거("연금은 어차피 상수 배율로 따로 줄어든다")는 배율이 계좌별로 유도되면서
+  // 사라졌다 — 연금도 사용자가 넣은 수익률을 갖는 시장 연동 계좌다.
+  test('연금만 보유해도 그 수익률에서 유도한다', () => {
     const pensionOnly = params({
       yieldPreset: 'custom',
       assets: [],
@@ -137,7 +138,25 @@ describe('resolveMonteCarloConfig - 직접 입력 수익률에서 변동성 유�
         totalReturn: 4, currency: 'KRW' }],
     });
 
-    expect(resolveMonteCarloConfig(pensionOnly).annualStdDev).toBe(VOLATILITY_BY_YIELD_PRESET.base);
+    expect(resolveMonteCarloConfig(pensionOnly).annualStdDev)
+      .toBeCloseTo(volatilityForStockReturn(4), 10);
+    // 4%는 안정형 앵커(5%)보다 낮아 구간 하한에 걸린다 — base(15%p)가 아니다.
+    expect(resolveMonteCarloConfig(pensionOnly).annualStdDev)
+      .toBeLessThan(VOLATILITY_BY_YIELD_PRESET.base);
+  });
+
+  test('연금이 섞이면 가중평균이 그만큼 내려간다', () => {
+    const mixed = params({
+      yieldPreset: 'custom',
+      assets: [asset({ id: 'a', totalReturn: 9, quantity: 1, averagePrice: 100_000_000 })],
+      isaAccounts: [],
+      privatePensions: [{ id: 'p', type: 'irp', balance: 100_000_000, monthlyContribution: 0,
+        totalReturn: 3, currency: 'KRW' }],
+    });
+
+    // (100M×9 + 100M×3) / 200M = 6
+    expect(resolveMonteCarloConfig(mixed).annualStdDev)
+      .toBeCloseTo(volatilityForStockReturn(6), 10);
   });
 
   test('잔액이 전부 0이면 base로 되돌린다', () => {

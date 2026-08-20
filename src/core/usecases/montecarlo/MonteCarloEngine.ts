@@ -17,7 +17,6 @@ import { simulationYearCount } from './horizon';
 import { computeMonthlySpendingComposition } from '../MonthlySpendingComposition';
 import { resolveGoalSuccessConditions } from '../goals/goalSuccessConditions';
 import { SHORTFALL_EPSILON_MONTHLY } from '../metrics/SimulationMetricsCalculator';
-import { PENSION_RETURN_SHOCK_BETA } from '../scenario/economicScenarios';
 import { resolveStrategy } from '../strategy/compileStrategy';
 
 // 한 시행에서 보관하는 것. 전 시행의 yearlyResults를 통째로 들면(1000 × 55년 × 30필드)
@@ -208,7 +207,6 @@ export function runMonteCarlo(
     assumptions: {
       economicScenario: strategy.economicScenario,
       riskProfile: strategy.riskProfile,
-      pensionShockBeta: PENSION_RETURN_SHOCK_BETA,
     },
     successAge,
     successRate: trials.length > 0 ? succeeded.length / trials.length : 0,

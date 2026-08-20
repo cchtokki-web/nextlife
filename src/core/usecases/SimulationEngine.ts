@@ -28,7 +28,6 @@ import {
   calculateCapitalGainsTaxKRW,
 } from './tax/TaxEngine';
 import { TaxContext, resolveTaxContext } from './tax/taxContext';
-import { PENSION_RETURN_SHOCK_BETA } from './scenario/economicScenarios';
 import { InvalidSimulationInputError } from '../entities/errors';
 import {
   getNationalPensionAdjustmentFactor,
@@ -50,6 +49,7 @@ import {
 } from './withdrawal/WithdrawalEngine';
 import { calculateRetirementIncomeMetrics } from './metrics/SimulationMetricsCalculator';
 import { priceGrowthRate } from './returns/decomposeReturn';
+import { shockBeta, weightedAverageTotalReturn } from './returns/portfolioReturn';
 
 // 투영 루프가 도는 최대 연수. 사람의 나이 상한(120세)에서 태어난 해부터 세어도 넘을 수 없는
 // 값이라, 정상 입력을 자르지 않으면서 무한에 가까운 루프만 막는다.
@@ -71,6 +71,9 @@ interface ActiveAsset extends InvestmentAsset {
   growthRateAnnual: number;
   growthRateMonthly: number;
   divRateMonthly: number;
+  // 이 계좌가 시장 충격을 받는 배율(shockBeta). 잔액가중 평균이 1.0이 되도록 정의되어,
+  // 포트폴리오 전체 충격은 유도된 변동성 그대로이고 계좌 «간» 분산만 기대수익률을 따른다.
+  shockBeta: number;
   taxRate: number;
   // 이 자산의 배당이 금융소득종합과세·건보료 판정 기준액에 합산되는가
   // (getMarketTaxTreatment가 배당세율과 함께 한 번에 정한다).
@@ -117,6 +120,9 @@ interface ActivePension extends PrivatePension {
   // ActiveAsset.growthRateAnnual과 같은 이유로 보존한다.
   returnRateAnnual: number;
   returnRateMonthly: number;
+  // 이 계좌가 시장 충격을 받는 배율(shockBeta). 잔액가중 평균이 1.0이 되도록 정의되어,
+  // 포트폴리오 전체 충격은 유도된 변동성 그대로이고 계좌 «간» 분산만 기대수익률을 따른다.
+  shockBeta: number;
 }
 
 interface ActiveIsa extends IsaAccount {
@@ -127,6 +133,9 @@ interface ActiveIsa extends IsaAccount {
   returnRateAnnual: number;
   returnRateMonthly: number;
   divRateMonthly: number;
+  // 이 계좌가 시장 충격을 받는 배율(shockBeta). 잔액가중 평균이 1.0이 되도록 정의되어,
+  // 포트폴리오 전체 충격은 유도된 변동성 그대로이고 계좌 «간» 분산만 기대수익률을 따른다.
+  shockBeta: number;
 }
 
 function pensionWithdrawalAccountType(type: PrivatePension['type']): WithdrawalAccountType {
@@ -339,18 +348,20 @@ export class LegacySimulationEngine implements SimulationEngineContract {
     shockAnnualPercentPoints: number
   ): void {
     const shock = shockAnnualPercentPoints / 100;
+
+    // **계좌마다 배율이 다르다.** 예전에는 사적연금만 상수 배율(4/7)을 받고 나머지는
+    // 1.0이었다. 그 상수는 연금 계좌에 무엇이 들어 있든 언제나 43%를 깎아, 총수익률
+    // 14%짜리 커버드콜을 담은 IRP도 채권처럼 흔들렸다. 지금은 각 계좌의 기대수익률과
+    // 포트폴리오 가중평균의 비를 쓴다(shockBeta 주석). 잔액가중 평균이 1.0이므로
+    // 포트폴리오 전체가 받는 충격의 크기는 유도된 변동성 그대로다.
     for (const asset of activeAssets) {
-      asset.growthRateMonthly = toMonthlyCompoundRate(asset.growthRateAnnual + shock);
+      asset.growthRateMonthly = toMonthlyCompoundRate(asset.growthRateAnnual + shock * asset.shockBeta);
     }
-    // 사적연금만 배율을 곱한다. 이 저장소가 이미 연금을 더 보수적으로 배분된 것으로 보고
-    // 별도 수익률을 쓰기 때문이다(PENSION_RETURN_SHOCK_BETA 주석). ISA는 assets와 구조가
-    // 같은 시장 연동 계좌라 배율이 없다(= 1.0).
-    const pensionShock = shock * PENSION_RETURN_SHOCK_BETA;
     for (const pension of activePensions) {
-      pension.returnRateMonthly = toMonthlyCompoundRate(pension.returnRateAnnual + pensionShock);
+      pension.returnRateMonthly = toMonthlyCompoundRate(pension.returnRateAnnual + shock * pension.shockBeta);
     }
     for (const isa of activeIsas) {
-      isa.returnRateMonthly = toMonthlyCompoundRate(isa.returnRateAnnual + shock);
+      isa.returnRateMonthly = toMonthlyCompoundRate(isa.returnRateAnnual + shock * isa.shockBeta);
     }
   }
 
@@ -422,6 +433,10 @@ export class LegacySimulationEngine implements SimulationEngineContract {
     
     const infRateAnnual = inflationRate / 100;
 
+    // 계좌별 충격 배율의 분모. 시장 연동 계좌 전체의 잔액가중 평균 총수익률이다.
+    // 유도할 잔액이 없으면(전부 0) shockBeta가 모든 계좌에 1을 준다.
+    const portfolioAverageReturn = weightedAverageTotalReturn(params) ?? 0;
+
     const activeAssets: ActiveAsset[] = assets.map((asset) => {
       // 총수익률에서 배당분을 뺀 나머지가 가격상승분이다. 배당은 아래 divRateMonthly로
       // 따로 흐르므로, 여기서 빼지 않으면 배당이 두 번 계산된다.
@@ -443,6 +458,7 @@ export class LegacySimulationEngine implements SimulationEngineContract {
         growthRateAnnual,
         growthRateMonthly,
         divRateMonthly,
+        shockBeta: shockBeta(asset.totalReturn, portfolioAverageReturn),
         taxRate: dividendTaxRate,
         includedInFinancialIncome,
         capitalGainsTaxable,
@@ -469,6 +485,7 @@ export class LegacySimulationEngine implements SimulationEngineContract {
         currentBalance: p.balance,
         returnRateAnnual,
         returnRateMonthly,
+        shockBeta: shockBeta(p.totalReturn, portfolioAverageReturn),
       };
     });
 
@@ -488,6 +505,7 @@ export class LegacySimulationEngine implements SimulationEngineContract {
         returnRateAnnual,
         returnRateMonthly,
         divRateMonthly,
+        shockBeta: shockBeta(isa.totalReturn, portfolioAverageReturn),
       };
     });
 
