@@ -48,14 +48,15 @@ describe('compileStrategy 투자/경제 축', () => {
     expect(r.params.inflationRate).toBe(ECONOMIC_SCENARIO_PROFILES.recession!.inflationRate);
   });
 
-  test('리스크 성향이 ai_recommended면 시나리오 수익률을 덮어쓰지 않는다', () => {
+  test('리스크 성향이 ai_recommended면 경제 시나리오를 골라도 자산 수익률은 사용자 입력 그대로다', () => {
+    // 경제 시나리오는 더 이상 수익률을 지배하지 않는다(물가·환율만 지배한다).
+    // riskProfile도 ai_recommended라 프리셋이 없으므로, 어느 축도 수익률을 건드리지 않는다.
     const r = compileStrategy(withStrategy({
       economicScenario: 'recession',
       riskProfile: 'ai_recommended',
     }));
 
-    expect(r.params.assets[0].totalReturn)
-      .toBe(ECONOMIC_SCENARIO_PROFILES.recession!.stockGrowthRate);
+    expect(r.params.assets[0].totalReturn).toBe(baseParams.assets[0].totalReturn);
   });
 
   test('안정형/중립형/공격형이 각각 yieldPreset으로 번역된다', () => {
@@ -81,16 +82,15 @@ describe('compileStrategy 투자/경제 축', () => {
     expect(r.params.yieldPreset).toBeUndefined();
   });
 
-  test('custom은 경제 시나리오가 정한 수익률도 덮어쓰지 않는다', () => {
-    // ai_recommended와 같은 메커니즘이다 — 시나리오는 여전히 적용되고, 리스크 성향만
-    // 그 위에 아무것도 얹지 않는다.
+  test('custom이어도 경제 시나리오가 자산 수익률을 덮어쓰지 않는다', () => {
+    // ai_recommended와 같은 메커니즘이다 — 경제 시나리오는 물가·환율만 적용하고,
+    // 리스크 성향(custom)도 그 위에 아무것도 얹지 않는다.
     const r = compileStrategy(withStrategy({
       economicScenario: 'recession',
       riskProfile: 'custom',
     }));
 
-    expect(r.params.assets[0].totalReturn)
-      .toBe(ECONOMIC_SCENARIO_PROFILES.recession!.stockGrowthRate);
+    expect(r.params.assets[0].totalReturn).toBe(baseParams.assets[0].totalReturn);
   });
 
   test('리스크 성향 프리셋을 적용해도 자산별 reinvestDividend가 보존된다', () => {

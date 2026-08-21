@@ -62,7 +62,7 @@ function describeWorld(assumptions: NonNullable<MonteCarloResult['assumptions']>
   const governing: string[] = [];
 
   if (isEconomicScenarioGoverning(assumptions.economicScenario)) {
-    governing.push(`「${ECONOMIC_SCENARIO_LABELS[assumptions.economicScenario]}」 국면의 물가·환율·수익률`);
+    governing.push(`「${ECONOMIC_SCENARIO_LABELS[assumptions.economicScenario]}」 국면의 물가·환율`);
   }
   if (resolveRiskProfileYieldPreset(assumptions.riskProfile) !== null) {
     governing.push(`「${RISK_PROFILE_LABELS[assumptions.riskProfile]}」 수익률`);

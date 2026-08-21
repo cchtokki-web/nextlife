@@ -2,13 +2,6 @@ import { EconomicScenario, SimulationParams } from '../../entities/types';
 
 export interface EconomicScenarioProfile {
   inflationRate: number; // %
-  // % — 모든 주식/ETF 자산과 ISA 계좌에 일괄 적용.
-  // ISA에 별도 요율을 두지 않는 이유: 이 모델에서 ISA는 assets와 구조가 같은 시장 연동
-  // 계좌다(totalReturn + dividendYield로 굴러가고 세제만 다르다). 반면 사적연금은 더
-  // 보수적인 배분을 가정해 별도 요율을 쓴다. computeSensitivityAnalysis.shiftReturn도
-  // "시장 전체가 함께 움직인다"는 같은 전제로 세 버킷을 동일 폭만큼 움직인다.
-  stockGrowthRate: number;
-  pensionReturnRate: number; // % — 모든 사적연금 계좌에 일괄 적용
   exchangeScenario: SimulationParams['exchangeScenario'];
 }
 
@@ -31,18 +24,10 @@ export type GoverningEconomicScenario = Exclude<EconomicScenario, 'ai_recommende
 // 프로필을 주면 사용자가 경제 가정에서 직접 입력한 물가상승률이 매 컴파일마다
 // 조용히 덮어써진다.
 export const ECONOMIC_SCENARIO_PROFILES: Record<GoverningEconomicScenario, EconomicScenarioProfile> = {
-  long_term_average: {
-    inflationRate: 2.5, stockGrowthRate: 7, pensionReturnRate: 4, exchangeScenario: 'base',
-  },
-  recession: {
-    inflationRate: 1.5, stockGrowthRate: 3, pensionReturnRate: 2, exchangeScenario: 'usd_up',
-  },
-  high_inflation: {
-    inflationRate: 5, stockGrowthRate: 6, pensionReturnRate: 3, exchangeScenario: 'usd_up',
-  },
-  low_growth: {
-    inflationRate: 2, stockGrowthRate: 4, pensionReturnRate: 2.5, exchangeScenario: 'base',
-  },
+  long_term_average: { inflationRate: 2.5, exchangeScenario: 'base' },
+  recession: { inflationRate: 1.5, exchangeScenario: 'usd_up' },
+  high_inflation: { inflationRate: 5, exchangeScenario: 'usd_up' },
+  low_growth: { inflationRate: 2, exchangeScenario: 'base' },
 };
 
 // 경제 시나리오의 표시 이름. **여기가 유일한 출처다.**
@@ -89,18 +74,13 @@ export function applyEconomicScenario(
   const profile = resolveEconomicScenarioProfile(scenario);
   if (!profile) return params;
 
-  // isaAccounts는 키가 없을 수도 있으므로(옛 시나리오 데이터) 있을 때만 교체한다.
-  // 빈 배열을 새로 심으면 "ISA를 만든 적 없음"과 "ISA를 다 지움"이 구분되지 않는다.
-  const isaAccounts = params.isaAccounts?.map((i) => ({ ...i, totalReturn: profile.stockGrowthRate }));
-
+  // **수익률은 건드리지 않는다.** 물가·환율은 사용자가 알 도리가 없는 거시 환경이라
+  // 국면이 정하는 것이 맞지만, 수익률은 「내 포트폴리오의 가정」이라 사용자 입력이
+  // 유일한 출처다. 예전에는 여기서 주식·연금·ISA를 함께 덮었고, compileStrategy가
+  // 리스크 성향을 나중에 적용해 그 값을 다시 덮었으므로 실제로는 효과도 없었다.
   return {
     ...params,
     inflationRate: profile.inflationRate,
     exchangeScenario: profile.exchangeScenario,
-    assets: (params.assets ?? []).map((a) => ({ ...a, totalReturn: profile.stockGrowthRate })),
-    privatePensions: (params.privatePensions ?? []).map((p) => ({
-      ...p, totalReturn: profile.pensionReturnRate,
-    })),
-    ...(isaAccounts ? { isaAccounts } : {}),
   };
 }

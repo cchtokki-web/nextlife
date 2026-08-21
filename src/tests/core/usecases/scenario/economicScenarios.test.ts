@@ -37,44 +37,20 @@ describe('ECONOMIC_SCENARIO_PROFILES', () => {
     }
   });
 
-  // 상대 비교(toBeGreaterThan)와 "프로필을 다시 참조해 같은지" 비교만으로는 같은 프로필
-  // 안에서 두 필드를 맞바꾼 실수(recession의 stockGrowthRate 3과 pensionReturnRate 2)가
-  // 드러나지 않는다. 네 프로필의 절대값을 통째로 고정해 그 부류의 회귀를 잡는다.
+  // 네 프로필의 물가상승률·환율 시나리오 값을 통째로 고정해 회귀를 잡는다.
   // taxLawProfiles.test.ts가 이미 같은 방식으로 세율표를 고정하고 있다.
   test('네 프로필의 값이 정확히 고정되어 있다', () => {
     expect(ECONOMIC_SCENARIO_PROFILES).toEqual({
-      long_term_average: {
-        inflationRate: 2.5, stockGrowthRate: 7, pensionReturnRate: 4, exchangeScenario: 'base',
-      },
-      recession: {
-        inflationRate: 1.5, stockGrowthRate: 3, pensionReturnRate: 2, exchangeScenario: 'usd_up',
-      },
-      high_inflation: {
-        inflationRate: 5, stockGrowthRate: 6, pensionReturnRate: 3, exchangeScenario: 'usd_up',
-      },
-      low_growth: {
-        inflationRate: 2, stockGrowthRate: 4, pensionReturnRate: 2.5, exchangeScenario: 'base',
-      },
+      long_term_average: { inflationRate: 2.5, exchangeScenario: 'base' },
+      recession: { inflationRate: 1.5, exchangeScenario: 'usd_up' },
+      high_inflation: { inflationRate: 5, exchangeScenario: 'usd_up' },
+      low_growth: { inflationRate: 2, exchangeScenario: 'base' },
     });
-  });
-
-  test('모든 프로필에서 주식 수익률이 사적연금 수익률보다 높다', () => {
-    // 사적연금은 더 보수적인 배분을 가정한다(EconomicScenarioProfile 주석). 두 필드를
-    // 맞바꾸면 이 불변식이 먼저 깨진다.
-    for (const s of GOVERNING) {
-      const p = ECONOMIC_SCENARIO_PROFILES[s];
-      expect(p.stockGrowthRate, s).toBeGreaterThan(p.pensionReturnRate);
-    }
   });
 
   test('고물가는 장기 평균보다 물가상승률이 높다', () => {
     expect(ECONOMIC_SCENARIO_PROFILES.high_inflation.inflationRate)
       .toBeGreaterThan(ECONOMIC_SCENARIO_PROFILES.long_term_average.inflationRate);
-  });
-
-  test('장기 침체는 장기 평균보다 주식 수익률이 낮다', () => {
-    expect(ECONOMIC_SCENARIO_PROFILES.recession.stockGrowthRate)
-      .toBeLessThan(ECONOMIC_SCENARIO_PROFILES.long_term_average.stockGrowthRate);
   });
 
   test('AI 추천(미정)에는 프로필이 없다', () => {
@@ -95,22 +71,21 @@ describe('ECONOMIC_SCENARIO_PROFILES', () => {
 });
 
 describe('applyEconomicScenario', () => {
-  test('물가·환율 시나리오·수익률을 한꺼번에 교체한다', () => {
+  test('물가와 환율만 교체한다', () => {
     const r = applyEconomicScenario(params, 'high_inflation');
     const profile = ECONOMIC_SCENARIO_PROFILES.high_inflation!;
 
     expect(r.inflationRate).toBe(profile.inflationRate);
     expect(r.exchangeScenario).toBe(profile.exchangeScenario);
-    expect(r.assets[0].totalReturn).toBe(profile.stockGrowthRate);
-    expect(r.privatePensions[0].totalReturn).toBe(profile.pensionReturnRate);
+    expect(r.assets[0].totalReturn).toBe(params.assets[0].totalReturn);
+    expect(r.privatePensions[0].totalReturn).toBe(params.privatePensions[0].totalReturn);
   });
 
-  // B1: ISA는 assets와 같은 시장 연동 계좌인데(totalReturn + dividendYield로 성장하고
-  // 엔진이 자기 totalReturn으로 굴린다) 시나리오에서만 빠져 있었다. "장기 침체"를 골라
-  // 주식이 7% → 3%로 떨어지는 동안 ISA만 사용자 입력값을 유지하면, 구성상 ISA가 항상
-  // 최고 수익 버킷이 되어 isaMaturityDestination 추천과 연금→ISA 채널링 판정이
-  // 그 인공물 쪽으로 편향된다.
-  test('ISA 계좌 수익률도 주식 수익률로 함께 교체한다', () => {
+  // B1: ISA는 assets와 같은 시장 연동 계좌다(totalReturn + dividendYield로 성장하고
+  // 엔진이 자기 totalReturn으로 굴린다). 수익률은 「내 포트폴리오의 가정」이라 경제
+  // 시나리오가 아니라 사용자 입력이 유일한 출처여야 하므로, assets·privatePensions와
+  // 마찬가지로 ISA도 시나리오가 건드리지 않아야 한다.
+  test('ISA 계좌 수익률도 건드리지 않는다', () => {
     const withIsa: SimulationParams = {
       ...params,
       isaAccounts: [{
@@ -121,7 +96,7 @@ describe('applyEconomicScenario', () => {
 
     const r = applyEconomicScenario(withIsa, 'recession');
 
-    expect(r.isaAccounts![0].totalReturn).toBe(ECONOMIC_SCENARIO_PROFILES.recession!.stockGrowthRate);
+    expect(r.isaAccounts![0].totalReturn).toBe(9);
   });
 
   test('ISA 계좌가 없어도 크래시하지 않는다', () => {
@@ -148,5 +123,48 @@ describe('applyEconomicScenario', () => {
 
     expect(r.inflationRate).toBe(3.7);
     expect(r).toEqual(custom);
+  });
+});
+
+describe('경제 시나리오는 수익률을 지배하지 않는다', () => {
+  // 물가·환율은 거시 환경이라 서비스가 제시하지만, 수익률은 「내 포트폴리오의 가정」이라
+  // 사용자 입력이 유일한 출처다. 예전에는 국면을 고르면 주식·연금·ISA 수익률이 함께
+  // 갈렸고, 리스크 성향과 겹쳐 실제로는 아무 효과도 없는 필드였다.
+  const params = {
+    userProfile: { currentAge: 50, retirementAge: 60, expectancy: 90, targetMonthlySpending: 3_000_000 },
+    assets: [{
+      id: 'a', type: 'etf', ticker: 'X', name: 'X', quantity: 1, averagePrice: 100_000_000,
+      totalReturn: 9.5, dividendYield: 0.4, monthlyContribution: 0,
+      reinvestDividend: true, currency: 'KRW', assetMarket: 'US_ETF',
+    }],
+    privatePensions: [{
+      id: 'p', type: 'irp', investmentType: 'etf', name: 'IRP', balance: 50_000_000,
+      monthlyContribution: 0, totalReturn: 6.4, dividendYield: 2.9, currency: 'KRW',
+    }],
+    isaAccounts: [{
+      id: 'i', type: 'general', investmentType: 'etf', name: 'ISA', balance: 10_000_000,
+      monthlyContribution: 0, totalReturn: 7, dividendYield: 3, currency: 'KRW', maturityYears: 3,
+    }],
+    otherIncomes: [],
+    nationalPension: { expectedMonthlyAmount: 0 },
+    inflationRate: 2.5, inflationMode: 'nominal', baseExchangeRate: 1400,
+    exchangeScenario: 'base', displayCurrency: 'KRW',
+  } as unknown as SimulationParams;
+
+  for (const scenario of ['long_term_average', 'recession', 'high_inflation', 'low_growth'] as const) {
+    test(`${scenario}: 총수익률이 입력값 그대로다`, () => {
+      const applied = applyEconomicScenario(params, scenario);
+
+      expect(applied.assets.map((a) => a.totalReturn)).toEqual([9.5]);
+      expect(applied.privatePensions.map((p) => p.totalReturn)).toEqual([6.4]);
+      expect(applied.isaAccounts!.map((i) => i.totalReturn)).toEqual([7]);
+    });
+  }
+
+  test('물가와 환율은 여전히 지배한다', () => {
+    const applied = applyEconomicScenario(params, 'high_inflation');
+
+    expect(applied.inflationRate).toBe(5);
+    expect(applied.exchangeScenario).toBe('usd_up');
   });
 });
