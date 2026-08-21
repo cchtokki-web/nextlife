@@ -63,6 +63,7 @@ function makeRecommendation(
     recommendedUtility: utility,
     recommendedPlan,
     recommendedAssetReinvestment: null,
+    verifiedAssetReinvestment: null,
     recommendedPrivatePensionChanneling,
     recommendedNewPensionContribution: null,
     channelingIncludesAccountTransfer,

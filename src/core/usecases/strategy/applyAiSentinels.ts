@@ -1,4 +1,6 @@
-import { ItemizedContributionField, SentinelAxisField, SentinelOverlay, StrategyRecommendation } from '../../entities/types';
+import {
+  ItemizedContributionField, SentinelAxisField, SentinelOverlay, SimulationParams, StrategyRecommendation,
+} from '../../entities/types';
 import { CompiledStrategy } from './compileStrategy';
 import { SENTINEL_AXES, canFillSentinelAxis, paramsWithSentinelOverlay } from './verifiedSentinelPlan';
 
@@ -25,6 +27,41 @@ const NO_APPLIED_VALUES: SentinelOverlay = Object.freeze({});
 
 function none(compiled: CompiledStrategy): SentinelApplication {
   return { compiled, appliedFields: NO_APPLIED_FIELDS, appliedValues: NO_APPLIED_VALUES };
+}
+
+// 배당 재투자 축을 채운다.
+//
+// 인출계획 축들과 달리 이 값은 withdrawalPlan이 아니라 자산 배열 안에 있어 SentinelOverlay로
+// 표현할 수 없다. 그래서 오버레이가 아니라 자산 배열을 직접 갈아끼우고, 채웠다는 사실만
+// appliedFields('assetReinvestment')로 알린다 — 체크리스트가 "이미 적용된 항목"을 걸러내는
+// 통로가 인출계획 축과 같아진다.
+//
+// 채울 값은 여기서 고르지 않는다. recommendStrategy가 사용자의 계획 위에서 개선을 확인한
+// 것만 verifiedAssetReinvestment에 담고(그 축이 'ai_optimized'일 때만), 이 함수는 그것을
+// 그대로 적용한다.
+function fillDividendAxis(
+  compiled: CompiledStrategy,
+  recommendation: StrategyRecommendation
+): { params: SimulationParams; applied: boolean } {
+  const overrides = recommendation.verifiedAssetReinvestment;
+  if (!overrides) return { params: compiled.params, applied: false };
+
+  // 이미 같은 값이 들어 있으면 "채웠다"고 말하지 않고 배열도 새로 만들지 않는다 —
+  // 참조가 바뀌면 화면의 하위 useMemo가 전부 무효화되어 가장 무거운 렌더가 다시 돈다.
+  const assets = compiled.params.assets;
+  if (!assets.some((asset) => asset.id in overrides && asset.reinvestDividend !== overrides[asset.id])) {
+    return { params: compiled.params, applied: false };
+  }
+
+  return {
+    params: {
+      ...compiled.params,
+      assets: assets.map((asset) =>
+        asset.id in overrides ? { ...asset, reinvestDividend: overrides[asset.id] } : asset
+      ),
+    },
+    applied: true,
+  };
 }
 
 function axisFor(field: SentinelAxisField) {
@@ -70,24 +107,34 @@ export function applyAiSentinels(
     if (!axis || !canFillSentinelAxis(axis, compiled.params)) break;
     applicable = step;
   }
-  if (!applicable) return none(compiled);
 
   // 개선이 확인된 조합만 적용한다. 사슬은 생성 시점에 이미 이 조건을 만족하지만,
   // 판정을 여기에도 두어 "이 함수가 적용하는 것은 반드시 기준선보다 나은 것"을 국소적으로
   // 읽을 수 있게 한다.
-  if (applicable.utility.score <= recommendation.currentUtility.score) return none(compiled);
+  const overlay: SentinelOverlay =
+    applicable && applicable.utility.score > recommendation.currentUtility.score
+      ? applicable.planOverrides
+      : NO_APPLIED_VALUES;
 
   // 이미 같은 값이 들어 있는 축은 "채웠다"고 말하지 않는다. 전부 같으면 새 객체를 만들지
   // 않는다 — 참조가 바뀌면 화면의 하위 useMemo가 전부 무효화되어 가장 무거운 렌더가 다시 돈다.
-  const overlay = applicable.planOverrides;
   const changedFields = (Object.keys(overlay) as SentinelAxisField[]).filter(
     (field) => overlay[field] !== compiled.params.withdrawalPlan?.[field]
   );
-  if (changedFields.length === 0) return none(compiled);
+
+  // 배당 축은 인출계획 사슬과 독립이다. 사슬이 비어도(인출계획에는 개선이 없어도) 채운다.
+  const withPlan = changedFields.length === 0
+    ? compiled.params
+    : paramsWithSentinelOverlay(compiled.params, overlay);
+  const dividend = fillDividendAxis({ ...compiled, params: withPlan }, recommendation);
+
+  if (changedFields.length === 0 && !dividend.applied) return none(compiled);
 
   return {
-    compiled: { ...compiled, params: paramsWithSentinelOverlay(compiled.params, overlay) },
-    appliedFields: changedFields,
-    appliedValues: overlay,
+    compiled: { ...compiled, params: dividend.params },
+    appliedFields: dividend.applied
+      ? [...changedFields, 'assetReinvestment' as const]
+      : changedFields,
+    appliedValues: changedFields.length === 0 ? NO_APPLIED_VALUES : overlay,
   };
 }

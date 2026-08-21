@@ -1,23 +1,28 @@
 'use client';
 
-import { FieldRow, RadioCardGroup, SwitchField } from '../../../components/form';
+import { FieldRow, RadioCardGroup } from '../../../components/form';
 import { resolveStrategy } from '../../../../core/usecases/strategy/compileStrategy';
 import { NATIONAL_PENSION_NORMAL_START_AGE } from '../../../../core/usecases/pension/nationalPensionRules';
 import { explainNationalPension, NationalPensionExplanation } from '../../../../core/usecases/pension/explainNationalPension';
 import { formatManwon } from '../../../../core/usecases/utility/utilityAnalysis';
 import { isFieldVisible } from '../fieldVisibility';
 import {
-  AiRecommendationState, ISA_FIRST_OPTIONS, NATIONAL_PENSION_OPTIONS, PRIVATE_PENSION_OPTIONS, SectionProps,
+  AiRecommendationState, DIVIDEND_OPTIONS, ISA_FIRST_OPTIONS, NATIONAL_PENSION_OPTIONS, PRIVATE_PENSION_OPTIONS,
+  SectionProps,
 } from '../strategyOptions';
 
 type Props = SectionProps & {
   ai: AiRecommendationState;
   // 엔진에 실제로 들어간 국민연금 개시 나이. AI 배지의 '적용/추천' 판정에 쓴다.
   effectiveNationalPensionStartAge?: number;
+  // 자동 채움이 이번 계산에서 배당 축을 실제로 채웠는가(sentinels.appliedFields).
+  // 국민연금과 같은 이유로 화면이 스스로 판정하지 않는다 — 「AI 최적화」로 두어도 개선이
+  // 확인되지 않으면 채우지 않으므로, 전략 값만 보고 '적용됨'이라 말하면 거짓이 된다.
+  dividendAutoApplied?: boolean;
 };
 
 export function PensionStrategySection({
-  params, onChangeParams, mode, changed, ai, effectiveNationalPensionStartAge,
+  params, onChangeParams, mode, changed, ai, effectiveNationalPensionStartAge, dividendAutoApplied,
 }: Props) {
   const strategy = resolveStrategy(params);
 
@@ -25,20 +30,16 @@ export function PensionStrategySection({
     onChangeParams({ ...params, strategy: { ...strategy, ...patch } });
   };
 
-  // 배당 재투자 스위치는 "설정"이 아니라 "일괄 적용 버튼"이다. 표시 상태는 자산들에서
-  // 파생하고(모두 켜짐 / 모두 꺼짐 / 혼합), 누르면 그 순간 모든 자산을 갱신한다.
-  // compileStrategy는 이 값을 건드리지 않으므로 이후 자산별로 고친 값이 그대로 살아남는다.
-  const reinvestState: 'all' | 'none' | 'mixed' =
-    params.assets.every((a) => a.reinvestDividend) ? 'all'
-      : params.assets.every((a) => !a.reinvestDividend) ? 'none'
-        : 'mixed';
+  // 「자동으로 선택」일 때 자산별로 저장된 값이 갈려 있으면 그 사실을 말해 준다. 그 값들은
+  // 지워지지 않고 AI가 개선을 확인하지 못한 자산에서 그대로 계산에 쓰이므로, 화면이 아무
+  // 말도 하지 않으면 "자동인데 왜 자산마다 다르지"를 확인할 방법이 없다.
+  const perAssetMixed =
+    params.assets.length > 0
+    && !params.assets.every((a) => a.reinvestDividend === params.assets[0].reinvestDividend);
 
-  const applyReinvestToAllAssets = (next: boolean) => {
-    onChangeParams({
-      ...params,
-      assets: params.assets.map((a) => ({ ...a, reinvestDividend: next })),
-    });
-  };
+  const dividendRecommendedCount = ai.improved
+    ? Object.keys(ai.recommendation?.recommendedAssetReinvestment ?? {}).length
+    : 0;
 
   const plan = ai.improved ? ai.recommendation?.recommendedPlan : undefined;
   const nationalHint = plan?.nationalPensionStartAge !== undefined
@@ -130,18 +131,26 @@ export function PensionStrategySection({
         </FieldRow>
       )}
 
-      {isFieldVisible(mode, 'assets.reinvestDividend') && params.assets.length > 0 && (
-        <SwitchField
+      {isFieldVisible(mode, 'strategy.dividendStrategy') && params.assets.length > 0 && (
+        <FieldRow
           label="배당금 재투자"
-          description={
-            reinvestState === 'mixed'
-              ? '자산마다 다르게 설정되어 있습니다. 여기서 켜거나 끄면 모든 자산에 한 번에 적용됩니다.'
-              : '받은 배당을 쓰지 않고 다시 사들여 복리로 굴립니다. 모든 자산에 한 번에 적용됩니다.'
-          }
-          checked={reinvestState === 'all'}
-          onChange={applyReinvestToAllAssets}
-          changed={changed.has('assets.reinvestDividend')}
-        />
+          tooltipText="배당을 다시 사들이면 복리로 불어나지만 생활비로 쓰려면 자산을 팔아야 하고, 현금으로 받으면 그해 생활비가 되는 대신 복리가 멈춥니다."
+          changed={changed.has('strategy.dividendStrategy')}
+          aiHint={dividendRecommendedCount > 0 ? `자산 ${dividendRecommendedCount}개를 바꾸면 유리` : undefined}
+          aiHintApplied={dividendAutoApplied}
+        >
+          <RadioCardGroup
+            name="dividend-strategy" ariaLabel="배당금 재투자" value={strategy.dividendStrategy ?? 'ai_optimized'}
+            options={DIVIDEND_OPTIONS}
+            onChange={(v) => setStrategy({ dividendStrategy: v })}
+          />
+          {strategy.dividendStrategy === 'ai_optimized' && perAssetMixed && (
+            <p className="text-xs text-foreground-muted">
+              자산마다 저장된 설정이 다릅니다. 그 값이 기준선이 되고, 바꾸는 편이 나은 자산만 계산에서 뒤집힙니다.
+              {mode === 'expert' ? ' 자산별 설정은 「내 자산」에서 바꿉니다.' : ''}
+            </p>
+          )}
+        </FieldRow>
       )}
     </>
   );

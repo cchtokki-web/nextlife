@@ -579,6 +579,22 @@ describe('normalizeSimulationParams', () => {
       });
     });
 
+    test('배당 전략은 유니온 값만 남기고, 없으면 기본값이 자동으로 선택이다', () => {
+      const kept = normalizeSimulationParams({
+        ...structuredClone(initialParams),
+        strategy: { dividendStrategy: 'cash_all' },
+      });
+      expect(kept.strategy?.dividendStrategy).toBe('cash_all');
+
+      const dropped = normalizeSimulationParams({
+        ...structuredClone(initialParams),
+        strategy: { dividendStrategy: 'sometimes' },
+      });
+      expect('dividendStrategy' in (dropped.strategy ?? {})).toBe(false);
+      // 저장한 적 없는 축은 resolveStrategy가 기본값으로 메운다 — 그 기본이 AI 위임이다.
+      expect(resolveStrategy(dropped).dividendStrategy).toBe('ai_optimized');
+    });
+
     // preferIsaFirst는 boolean이던 시절의 값이 실제로 저장돼 있고, resolveStrategy의
     // normalizeIsaFirstChoice가 그것을 3값 enum으로 옮긴다. E2EE라 서버 마이그레이션이
     // 불가능해 읽는 시점의 변환이 유일한 경로다 — 여기서 버리면 그 경로가 끊긴다.

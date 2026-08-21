@@ -741,12 +741,29 @@ export function recommendStrategy(
     ? buildVerifiedSentinelPlan(params, identityPlan, recommendedPlan, currentUtility, engine, cfg)
     : NO_VERIFIED_SENTINEL_STEPS;
 
+  // 배당 재투자 축도 같은 이유로 사용자의 계획 위에서 다시 검증한다.
+  //
+  // 위 Phase 3는 bestPlan(= 인출계획까지 최적화된 상태) 위에서 평가됐다. 그 인출계획이
+  // 사용자에게 적용되지 않는 상태 — 개시 나이를 직접 정해 둔 사용자 — 에서 배당 축만 떼어
+  // 자동 적용하면 한 번도 평가된 적 없는 조합이 되고, 사용자의 현재 계획보다 나빠질 수 있다.
+  //
+  // bestPlan이 null이면 위 Phase 3가 이미 identityPlan 위에서 돌았고 기준선도
+  // baseline(bestResult===baselineResult, bestUtility===currentUtility)이라 같은 계산이다.
+  // 그 결과를 그대로 쓰면 시뮬레이션 N회를 아낀다.
+  const dividendSentinel = resolveStrategy(params).dividendStrategy !== 'ai_optimized'
+    ? null
+    : bestPlan === null
+      ? reinvestOpt.recommendedAssetReinvestment
+      : optimizeDividendReinvestment(params, identityPlan, baselineResult, currentUtility, engine, cfg)
+        .recommendedAssetReinvestment;
+
   return {
     currentUtility,
     verifiedSentinelPlan,
     recommendedUtility,
     recommendedPlan,
     recommendedAssetReinvestment: reinvestOpt.recommendedAssetReinvestment,
+    verifiedAssetReinvestment: dividendSentinel,
     recommendedPrivatePensionChanneling: channelingOpt.recommendedPrivatePensionChanneling,
     recommendedNewPensionContribution: channelingOpt.recommendedNewPensionContribution,
     channelingIncludesAccountTransfer: channelingOpt.channelingIncludesAccountTransfer,

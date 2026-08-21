@@ -1,6 +1,7 @@
 import {
-  BequestStrategy, IsaFirstChoice, NationalPensionStrategy, PrivatePensionStrategy, RetirementStrategy, RiskProfile,
-  SimulationParams, SpendingStrategy, SpendingStrategyChoice, UtilityConfig, WithdrawalPlan,
+  BequestStrategy, DividendStrategy, InvestmentAsset, IsaFirstChoice, NationalPensionStrategy, PrivatePensionStrategy,
+  RetirementStrategy, RiskProfile, SimulationParams, SpendingStrategy, SpendingStrategyChoice, UtilityConfig,
+  WithdrawalPlan,
 } from '../../entities/types';
 import {
   NATIONAL_PENSION_EARLY_MIN_AGE, NATIONAL_PENSION_NORMAL_START_AGE,
@@ -56,6 +57,13 @@ export const DEFAULT_RETIREMENT_STRATEGY: RetirementStrategy = {
   // 0이면 resolveAssetFloor가 기존과 같은 값을 낸다.
   bequestSafetyMarginRate: 0,
   // 미지정 = 경고 없음. 0을 기본값으로 두면 "월 0원 미만"이라는 무의미한 판정이 생긴다.
+  //
+  // 배당 재투자를 AI에게 맡기는 것이 기본이다. preferIsaFirst에서 'ai_optimized'를 기본값으로
+  // 두지 않은 이유("전략을 저장한 적 없는 시나리오의 곡선이 조용히 바뀐다")가 여기에는
+  // 해당하지 않는다 — 이 축의 자동 채움은 «사용자의 현재 계획 위에서» 효용이 실제로 오르는
+  // 것이 확인된 자산만 뒤집는다(verifiedAssetReinvestment). 확인되지 않으면 저장된 자산별 값이
+  // 그대로 계산에 들어가므로, 기존 시나리오의 결과는 그대로이거나 더 나아진다.
+  dividendStrategy: 'ai_optimized',
 };
 
 // 전략 컴파일러 이전에 출시되어 사용자 데이터에 남아 있는 저수준 필드에서 전략 축을 유도한다.
@@ -100,6 +108,22 @@ export function resolveStrategy(params: SimulationParams): RetirementStrategy {
     ...(params.strategy ?? {}),
   };
   return { ...resolved, preferIsaFirst: normalizeIsaFirstChoice(resolved.preferIsaFirst) };
+}
+
+// 「전부 재투자」·「전부 현금 수령」을 자산 배열에 실체화한다.
+//
+// 'ai_optimized'이면 입력 배열을 «참조 그대로» 돌려준다. 새 배열을 만들면 화면의 하위
+// useMemo가 매 렌더 무효화되고, compileStrategy가 멱등이라는 성질도 참조 수준에서 깨진다.
+// 바꿀 자산이 하나도 없을 때도 같은 이유로 원본을 그대로 돌려준다.
+function applyDividendStrategy(
+  assets: InvestmentAsset[],
+  dividendStrategy: DividendStrategy | undefined
+): InvestmentAsset[] {
+  if (dividendStrategy !== 'reinvest_all' && dividendStrategy !== 'cash_all') return assets;
+
+  const next = dividendStrategy === 'reinvest_all';
+  if (assets.every((asset) => asset.reinvestDividend === next)) return assets;
+  return assets.map((asset) => (asset.reinvestDividend === next ? asset : { ...asset, reinvestDividend: next }));
 }
 
 // preferIsaFirst가 boolean이던 시절에 저장된 값을 3값 enum으로 옮긴다.
@@ -453,10 +477,12 @@ export function compileStrategy(params: SimulationParams): CompiledStrategy {
     withdrawalPlan.privatePensionMonthlyTarget = privatePensionMonthlyTarget;
   }
 
-  // 배당 재투자는 compileStrategy가 건드리지 않는다. 「연금 전략」의 스위치는 "설정"이 아니라
-  // "일괄 적용 버튼"이며, 눌린 그 순간에만 params.assets를 직접 갱신한다. 여기서 매번
-  // 덮어쓰면 AssetFormSection의 자산별 토글이 조용히 뭉개진다.
-  const assets = economyApplied.assets;
+  // 배당 재투자: 사용자가 「전부 재투자」·「전부 현금 수령」을 명시한 경우에만 전 자산을 덮어쓴다.
+  //
+  // 'ai_optimized'(기본)이면 손대지 않는다. 그래야 저장된 자산별 값이 기준선으로 남고,
+  // applyAiSentinels가 개선이 확인된 자산만 그 위에서 뒤집을 수 있다 — 국민연금 개시 나이의
+  // 센티널과 같은 구조다. 여기서 매번 덮어쓰면 전문가가 자산별로 정한 값이 조용히 뭉개진다.
+  const assets = applyDividendStrategy(economyApplied.assets, strategy.dividendStrategy);
 
   // targetBequest와 같은 이유로 undefined일 때는 키 자체를 지운다 —
   // `assetFloor: undefined`를 남기면 구조 비교·직렬화에서 "키가 없는 것"과 달라진다.

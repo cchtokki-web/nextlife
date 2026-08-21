@@ -81,6 +81,7 @@ function makeRecommendation(
     recommendedUtility: utility,
     recommendedPlan,
     recommendedAssetReinvestment: null,
+    verifiedAssetReinvestment: null,
     recommendedPrivatePensionChanneling: null,
     recommendedNewPensionContribution: null,
     channelingIncludesAccountTransfer: false,
@@ -397,5 +398,74 @@ describe('applyAiSentinels 통합', () => {
     // 다음 추천이 이미 적용된 값 위에서 계산되어 되먹임이 시작된다.
     expect(compiled.params.withdrawalPlan?.nationalPensionStartAge).toBe(before);
     expect(before).toBe(65);
+  });
+});
+
+// 배당 재투자 축은 인출계획(withdrawalPlan)이 아니라 자산 배열 안에 있어 오버레이로 표현되지
+// 않는다. 자동 채움이 이 축을 어떻게 다루는지 고정한다.
+describe('applyAiSentinels - 배당 재투자 축', () => {
+  const withDividend = (
+    recommendedPlan: CompleteWithdrawalPlan | null,
+    verifiedAssetReinvestment: Record<string, boolean> | null,
+    verifiedSentinelPlan?: StrategyRecommendation['verifiedSentinelPlan']
+  ): StrategyRecommendation => ({
+    ...makeRecommendation(recommendedPlan, true, verifiedSentinelPlan),
+    verifiedAssetReinvestment,
+  });
+
+  test('검증된 자산별 값을 계산에 넣고 assetReinvestment를 채운 축으로 보고한다', () => {
+    const compiled = compiledFor('normal');
+    const { compiled: applied, appliedFields } = applyAiSentinels(
+      compiled,
+      withDividend(null, { a1: true }, [])
+    );
+
+    expect(applied.params.assets[0].reinvestDividend).toBe(true);
+    expect(appliedFields).toContain('assetReinvestment');
+  });
+
+  // 인출계획 축과 독립이다. 사슬이 비어 있다고 배당 축까지 건너뛰면, 개시 나이를 직접 정해 둔
+  // 사용자에게는 이 축의 자동 채움이 영영 돌지 않는다.
+  test('인출계획 사슬이 비어 있어도 배당 축은 채운다', () => {
+    const { appliedFields } = applyAiSentinels(compiledFor('defer_max'), withDividend(null, { a1: true }, []));
+    expect(appliedFields).toEqual(['assetReinvestment']);
+  });
+
+  test('개시 나이와 함께 채우면 두 축이 모두 보고된다', () => {
+    const { compiled: applied, appliedFields } = applyAiSentinels(
+      compiledFor('ai_optimized'),
+      withDividend(plan(68), { a1: true })
+    );
+
+    expect(applied.params.withdrawalPlan?.nationalPensionStartAge).toBe(68);
+    expect(applied.params.assets[0].reinvestDividend).toBe(true);
+    expect(appliedFields).toEqual(['nationalPensionStartAge', 'assetReinvestment']);
+  });
+
+  test('검증된 값이 없으면 입력을 그대로 돌려준다', () => {
+    const compiled = compiledFor('normal');
+    const result = applyAiSentinels(compiled, withDividend(null, null, []));
+
+    expect(result.compiled).toBe(compiled);
+    expect(result.appliedFields).toEqual([]);
+  });
+
+  // 참조가 바뀌면 화면의 하위 useMemo가 전부 무효화되어 가장 무거운 렌더가 다시 돈다.
+  test('이미 같은 값이면 채웠다고 말하지 않고 참조도 유지한다', () => {
+    const compiled = compiledFor('normal');
+    const result = applyAiSentinels(compiled, withDividend(null, { a1: false }, []));
+
+    expect(result.compiled).toBe(compiled);
+    expect(result.appliedFields).toEqual([]);
+  });
+
+  test('개선이 없는 추천(improved=false)이면 배당 축도 채우지 않는다', () => {
+    const compiled = compiledFor('normal');
+    const result = applyAiSentinels(compiled, {
+      ...makeRecommendation(null, false, []),
+      verifiedAssetReinvestment: { a1: true },
+    });
+
+    expect(result.compiled).toBe(compiled);
   });
 });
