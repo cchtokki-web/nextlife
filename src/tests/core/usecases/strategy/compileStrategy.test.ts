@@ -298,3 +298,58 @@ describe('compileStrategy - 상속 안전마진', () => {
     expect(result.params.assetFloor).toBe(100_000_000);
   });
 });
+
+// 배당 재투자 축. 저장은 자산별 boolean에 하고, 이 축은 «누가 그 값을 정하는가»만 말한다.
+describe('compileStrategy - 배당 재투자', () => {
+  const assets: SimulationParams['assets'] = [
+    {
+      id: 'a1', type: 'etf', ticker: 'A', name: 'A', quantity: 1, averagePrice: 1000,
+      totalReturn: 7, dividendYield: 2, monthlyContribution: 0, reinvestDividend: true, currency: 'KRW',
+    },
+    {
+      id: 'a2', type: 'etf', ticker: 'B', name: 'B', quantity: 1, averagePrice: 1000,
+      totalReturn: 7, dividendYield: 2, monthlyContribution: 0, reinvestDividend: false, currency: 'KRW',
+    },
+  ];
+  const withAssets = (patch: Partial<RetirementStrategy>): SimulationParams => ({
+    ...withStrategy(patch), assets,
+  });
+
+  test("'reinvest_all'은 전 자산을 재투자로 실체화한다", () => {
+    const result = compileStrategy(withAssets({ dividendStrategy: 'reinvest_all' }));
+    expect(result.params.assets.map((a) => a.reinvestDividend)).toEqual([true, true]);
+  });
+
+  test("'cash_all'은 전 자산을 현금 수령으로 실체화한다", () => {
+    const result = compileStrategy(withAssets({ dividendStrategy: 'cash_all' }));
+    expect(result.params.assets.map((a) => a.reinvestDividend)).toEqual([false, false]);
+  });
+
+  // 여기서 덮어쓰면 저장된 자산별 값이 사라져 자동 채움의 기준선이 없어지고,
+  // 전문가가 자산별로 정한 값도 조용히 뭉개진다.
+  test("'ai_optimized'는 자산 배열을 손대지 않는다(참조까지 그대로)", () => {
+    const params = withAssets({ dividendStrategy: 'ai_optimized' });
+    const result = compileStrategy(params);
+
+    expect(result.params.assets).toBe(params.assets);
+  });
+
+  test('미지정 전략도 기본값이 ai_optimized라 자산을 손대지 않는다', () => {
+    const params = { ...baseParams, assets };
+    expect(compileStrategy(params).params.assets).toBe(assets);
+  });
+
+  test('이미 전부 같은 값이면 배열을 새로 만들지 않는다', () => {
+    const allTrue = assets.map((a) => ({ ...a, reinvestDividend: true }));
+    const params = { ...withStrategy({ dividendStrategy: 'reinvest_all' }), assets: allTrue };
+
+    expect(compileStrategy(params).params.assets).toBe(allTrue);
+  });
+
+  test('두 번 컴파일해도 결과가 같다', () => {
+    const once = compileStrategy(withAssets({ dividendStrategy: 'cash_all' }));
+    const twice = compileStrategy(once.params);
+
+    expect(twice.params.assets).toEqual(once.params.assets);
+  });
+});

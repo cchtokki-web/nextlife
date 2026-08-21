@@ -8,6 +8,7 @@ import type {
   ComprehensiveTaxMode,
   EconomicScenario,
   CustomYieldSnapshot,
+  DividendStrategy,
   HealthcareAssumptions,
   InvestmentAsset,
   IsaAccount,
@@ -247,6 +248,7 @@ const ECONOMIC_SCENARIOS = coversUnion<EconomicScenario>()([
   'long_term_average', 'recession', 'high_inflation', 'low_growth', 'ai_recommended',
 ]);
 const SPENDING_SHAPES = coversUnion<SpendingShapePreset>()(['flat', 'front_loaded', 'care_heavy']);
+const DIVIDEND_STRATEGIES = coversUnion<DividendStrategy>()(['ai_optimized', 'reinvest_all', 'cash_all']);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -566,6 +568,7 @@ function normalizeStrategy(value: unknown): RetirementStrategy {
     riskProfile: asOneOf(RISK_PROFILES),
     economicScenario: asOneOf(ECONOMIC_SCENARIOS),
     spendingShape: asOneOf(SPENDING_SHAPES),
+    dividendStrategy: asOneOf(DIVIDEND_STRATEGIES),
     bequestSafetyMarginRate: asNumber,
     minMonthlySpending: asNumber,
     // 저장된 strategy는 «언제나» 부분 객체다. 타입은 전체를 요구하지만, 필드가 추가되기 전에

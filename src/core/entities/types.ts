@@ -657,6 +657,16 @@ export interface StrategyRecommendation {
   // WithdrawalPlan이 아니라 은퇴 "전" 축적기 파라미터(자산 배열 내부 값)라 별도 필드로 분리했다.
   // 변경 권장이 없으면(자산 없음/개선 없음/통합 검증 실패) null.
   recommendedAssetReinvestment: Record<string, boolean> | null;
+  // 같은 축을 «사용자의 실제 계획» 위에서 다시 검증한 결과. 자동 채움(applyAiSentinels)이
+  // 쓰는 유일한 값이다.
+  //
+  // recommendedAssetReinvestment는 Phase 1+2가 고른 인출계획(bestPlan) 위에서 평가된다.
+  // 그 인출계획이 사용자에게 적용되지 않는 상태(사용자가 개시 나이를 직접 정해 둔 경우 등)에서
+  // 배당 축만 떼어 오면 엔진이 한 번도 평가한 적 없는 조합이 되고, baseline보다 나빠질 수 있다 —
+  // verifiedSentinelPlan이 인출계획 축에 대해 막고 있는 것과 같은 함정이다.
+  // 그래서 identityPlan(= 사용자의 계획) 위에서 한 번 더 평가해, 사용자의 현재 효용을 실제로
+  // 넘는 조합만 여기 담는다. 개선이 없거나 이 축이 센티널이 아니면 null.
+  verifiedAssetReinvestment: Record<string, boolean> | null;
   // 사적연금 조기수령 채널링(Phase 4-A) 권장 여부. 채택되면 true, 아니면 null(전제 조건
   // 불충족 또는 개선 없음). recommendedPlan/recommendedAssetReinvestment와 마찬가지로 독립된
   // 축(축적기 파라미터 중에서도 은퇴 전 인출이라는 새로운 층위)이다.
@@ -734,6 +744,15 @@ export interface ItemizedContribution {
 
 export type StrategyMode = 'simple' | 'standard' | 'expert';
 
+/**
+ * 배당을 다시 사들일지 현금으로 받을지.
+ *
+ * 저장소는 여전히 자산별 `InvestmentAsset.reinvestDividend`다. 이 축은 «누가 그 값을 정하는가»를
+ * 말한다 — 'reinvest_all'/'cash_all'이면 compileStrategy가 전 자산을 그 값으로 덮어쓰고,
+ * 'ai_optimized'이면 저장된 자산별 값을 기준선으로 두되 AI가 개선을 확인한 자산만 계산에서 뒤집는다.
+ */
+export type DividendStrategy = 'ai_optimized' | 'reinvest_all' | 'cash_all';
+
 // 모든 계산의 목적 함수. UtilityConfig.weights 프리셋으로 번역된다.
 export type ObjectivePriority =
   | 'lifetime_spending'
@@ -802,6 +821,9 @@ export interface RetirementStrategy {
   // 채점 기준(userProfile.targetBequest)은 건드리지 않는다 — 두 값의 역할 구분을 지킨다.
   // 미지정·0이면 기존 동작.
   bequestSafetyMarginRate?: number;
+  // 배당 재투자를 누가 정하는가. 미지정이면 'ai_optimized'(기본)으로 해소된다.
+  // 자산별 값을 지우지 않으므로, 이 축을 바꿔도 전문가가 손으로 넣은 값은 저장본에 남는다.
+  dividendStrategy?: DividendStrategy;
   // 역산된 생활비가 이 값에 못 미치면 화면이 경고한다. **엔진 params로 내려가지 않는다** —
   // 시뮬레이션을 바꾸지 않고 판정만 하기 때문이다. 이진탐색의 성공 조건에 넣으면 계획
   // 전체가 실패로 떨어져 "얼마까지 쓸 수 있는가"라는 답 자체가 사라진다.

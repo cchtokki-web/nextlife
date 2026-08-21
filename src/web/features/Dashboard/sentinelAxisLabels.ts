@@ -16,6 +16,8 @@ const SENTINEL_AXIS_LABELS: Partial<Record<ItemizedContributionField, string>> =
   isaMaturityDestination: 'ISA 만기 자금 이전처',
   assetSellOrderStrategy: '자산 매도 순서',
   generalAssetWithdrawalStartAge: '일반계좌 인출 개시 나이',
+  // 인출계획 축이 아니라 자산 배열 안의 값이지만, 자동 채움이 계산에 넣는다는 점은 같다.
+  assetReinvestment: '배당 재투자',
 };
 
 export function describeSentinelAxes(

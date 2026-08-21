@@ -90,6 +90,7 @@ const recommendation: StrategyRecommendation = {
   recommendedUtility: { ...utility, score: 81 },
   recommendedPlan: null,
   recommendedAssetReinvestment: null,
+  verifiedAssetReinvestment: null,
   recommendedPrivatePensionChanneling: null,
   recommendedNewPensionContribution: null,
   channelingIncludesAccountTransfer: false,

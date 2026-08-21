@@ -42,6 +42,7 @@ function makeRecommendation(
       monthlySpendingMultiplier: 1,
     } : null,
     recommendedAssetReinvestment: null,
+    verifiedAssetReinvestment: null,
     recommendedPrivatePensionChanneling: null,
     recommendedNewPensionContribution,
     channelingIncludesAccountTransfer: false,

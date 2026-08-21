@@ -4,7 +4,7 @@ import {
   Sparkles, TrendingDown, Wallet,
 } from 'lucide-react';
 import {
-  EconomicScenario, IsaFirstChoice, NationalPensionStrategy,
+  DividendStrategy, EconomicScenario, IsaFirstChoice, NationalPensionStrategy,
   PrivatePensionStrategy, RiskProfile, SimulationParams,
   SpendingShapePreset, StrategyMode, StrategyRecommendation,
 } from '../../../core/entities/types';
@@ -61,6 +61,30 @@ export const ISA_FIRST_OPTIONS: ReadonlyArray<RadioCardOption<IsaFirstChoice>> =
     value: 'ai_optimized', label: '자동으로 선택',
     description: '두 행선지를 비교해 더 나은 쪽을 계산에 자동 반영합니다. 조건이 바뀌면 다시 선택합니다.',
     icon: <Sparkles size={16} />, recommended: true,
+  },
+];
+
+// 배당을 다시 사들일지 현금으로 받을지.
+//
+// 저장은 여전히 자산별로 되지만(InvestmentAsset.reinvestDividend), 그것을 «누가 정하는가»가
+// 이 축이다. 자산마다 손으로 정하는 화면은 전문가 모드에만 남는다 — 목표 기반 흐름에서
+// 자산 입력 단계는 「내 자산이 이렇다」는 사실을 받는 자리이고, 재투자 여부는 사실이 아니라
+// 인출 전략의 일부이기 때문이다.
+export const DIVIDEND_OPTIONS: ReadonlyArray<RadioCardOption<DividendStrategy>> = [
+  {
+    value: 'ai_optimized', label: '자동으로 선택',
+    description: '자산마다 재투자와 현금 수령을 비교해, 지금 계획보다 나아지는 쪽만 계산에 반영합니다.',
+    icon: <Sparkles size={16} />, recommended: true,
+  },
+  {
+    value: 'reinvest_all', label: '전부 재투자',
+    description: '받은 배당을 쓰지 않고 다시 사들여 복리로 굴립니다. 생활비로 쓰려면 자산을 팔아야 합니다.',
+    icon: <Rocket size={16} />,
+  },
+  {
+    value: 'cash_all', label: '전부 현금 수령',
+    description: '배당을 현금으로 받아 그해 생활비에 씁니다. 그만큼 자산을 덜 팔아도 됩니다.',
+    icon: <Wallet size={16} />,
   },
 ];
 

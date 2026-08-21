@@ -25,9 +25,11 @@ export const SECTION_FIELDS: Record<SectionId, ReadonlyArray<FieldPath>> = {
     'strategy.nationalPensionStrategy',
     'strategy.privatePensionStrategy',
     'strategy.preferIsaFirst',
-    // 자산 배열 내부 값을 가리키는 가상 경로. diffDefaults가 "자산 중 하나라도
-    // 기본값과 다른가"로 해석한다 (배열 인덱스별 경로를 만들지 않기 위한 장치).
-    'assets.reinvestDividend',
+    // 배당을 재투자할지 현금으로 받을지. 자산별 boolean(assets.reinvestDividend)은 여기 없다 —
+    // 그 값을 렌더하는 유일한 화면이 「내 자산」이고(전문가 모드 전용), 같은 값을 두 화면이
+    // 각자 편집하던 상태로 돌아가지 않기 위해서다. 위 SECTION_FIELDS 머리말의 INPUT_FLOW_FIELDS와
+    // 같은 이유이며, fieldVisibility.test.ts가 그 경로가 다시 들어오지 못하게 막는다.
+    'strategy.dividendStrategy',
   ],
   investment: [
     // 'yieldPreset'은 여기에 없다. 이 섹션에 그 필드를 렌더하는 입력이 없기 때문이다
@@ -82,7 +84,7 @@ const SIMPLE_FIELDS: ReadonlySet<FieldPath> = new Set([
   // 배당 재투자는 "필수 입력"은 아니지만 여기 있어야 한다. AI 추천이 이 값을 자주 권하고
   // (Phase 3가 자산별로 독립 평가한다) 대시보드 체크리스트가 간편 모드에서도 그 항목을
   // 제시하는데, 숨기면 지시를 실행할 컨트롤이 화면에 하나도 없게 된다.
-  'assets.reinvestDividend',
+  'strategy.dividendStrategy',
   // 생활비 배분도 같은 이유로 여기 있다. 추천의 「생활비 배분」 축이 이 값을 실제로
   // 반영하므로(strategyFieldMap), 숨기면 적용된 곡선을 되돌릴 컨트롤이 화면에 하나도
   // 없게 된다 — 화면에 없는 값이 생활비 목표를 움직이던 예전 상태로 돌아간다.

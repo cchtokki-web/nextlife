@@ -289,3 +289,54 @@ describe('AssetFormSection - 매일 적립의 월 환산', () => {
     expect(next.assets[0].monthlyContribution).toBe(500_000);
   });
 });
+
+// 배당 재투자는 「내 자산」이 받는 «사실»이 아니라 인출 전략의 결정이다. 그래서 자산별
+// 컨트롤은 전문가 모드에만 남고, 나머지 모드에서는 「연금 전략」의 배당금 재투자 축이
+// 유일한 편집 경로다.
+describe('AssetFormSection - 자산별 배당 재투자', () => {
+  const withAsset = (strategy?: SimulationParams['strategy']): SimulationParams => ({
+    ...baseParams,
+    ...(strategy ? { strategy } : {}),
+    assets: [{
+      id: 'a1', type: 'etf', ticker: 'AAA', name: '자산1', quantity: 10, averagePrice: 1000,
+      totalReturn: 12, dividendYield: 2, monthlyContribution: 0,
+      reinvestDividend: true, currency: 'KRW',
+    }],
+  });
+
+  const renderExpandedAsset = (params: SimulationParams) => {
+    render(<AssetFormSection params={params} onChangeParams={vi.fn()} />);
+    fireEvent.click(screen.getByText('자산1'));
+  };
+
+  test('간편 모드에서는 자산별 배당 재투자 입력을 렌더링하지 않는다', () => {
+    renderExpandedAsset(withAsset({ ...DEFAULT_RETIREMENT_STRATEGY, mode: 'simple' }));
+
+    expect(screen.queryByText('배당 재투자 여부')).not.toBeInTheDocument();
+  });
+
+  test('전략이 없는(레거시) 시나리오도 기본 모드가 간편이라 렌더링하지 않는다', () => {
+    renderExpandedAsset(withAsset());
+
+    expect(screen.queryByText('배당 재투자 여부')).not.toBeInTheDocument();
+  });
+
+  test('전문가 모드에서는 자산별로 편집할 수 있다', () => {
+    renderExpandedAsset(withAsset({ ...DEFAULT_RETIREMENT_STRATEGY, mode: 'expert' }));
+
+    expect(screen.getByText('배당 재투자 여부')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('세후 재투자 활성화')).toBeEnabled();
+  });
+
+  // 「전부 재투자」·「전부 현금 수령」은 compileStrategy가 전 자산을 덮어쓴다. 잠그지 않으면
+  // 여기서 고친 값이 화면에만 남고 엔진은 전략이 정한 값으로 돈다 — 수익률 입력이 리스크
+  // 성향에 지배될 때와 같은 처리다.
+  test('전략이 값을 결정하는 중이면 자산별 입력을 잠근다', () => {
+    renderExpandedAsset(withAsset({
+      ...DEFAULT_RETIREMENT_STRATEGY, mode: 'expert', dividendStrategy: 'cash_all',
+    }));
+
+    expect(screen.getByDisplayValue('세후 재투자 활성화')).toBeDisabled();
+    expect(screen.getByText(/「연금 전략」이 결정하는 중/)).toBeInTheDocument();
+  });
+});

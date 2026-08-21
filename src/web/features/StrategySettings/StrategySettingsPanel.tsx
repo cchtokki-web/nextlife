@@ -85,6 +85,11 @@ function describeAutomaticApplication(
     case 'generalAssetWithdrawalStartAge':
       return values.generalAssetWithdrawalStartAge === undefined
         ? null : `일반 자산 인출: ${values.generalAssetWithdrawalStartAge}세부터`;
+    // 이 축만 값이 SentinelOverlay에 없다 — 자산 배열 안에 있어 인출계획 오버레이로 표현되지
+    // 않는다. 자산 이름과 개수를 여기까지 실어 나르는 대신, «무엇을 자동으로 정했는지»만
+    // 말한다. 자산별 결과는 「내 자산」의 각 카드가 보여준다(전문가 모드).
+    case 'assetReinvestment':
+      return '배당 재투자: 자산마다 유리한 쪽을 선택';
     default:
       return null;
   }
@@ -115,6 +120,9 @@ export function StrategySettingsPanel({
   const effectiveNationalPensionStartAge =
     sentinels?.appliedValues.nationalPensionStartAge
     ?? NATIONAL_PENSION_STRATEGY_AGES[strategy.nationalPensionStrategy];
+  // 이번 계산에서 배당 축이 실제로 자동 채워졌는가. 국민연금 개시 나이와 같은 이유로
+  // 화면이 스스로 판정하지 않고 자동 채움의 결과를 그대로 읽는다.
+  const dividendAutoApplied = sentinels?.appliedFields.includes('assetReinvestment') ?? false;
   const effectivePreferIsaFirst: IsaFirstChoice =
     sentinels?.appliedValues.isaMaturityDestination === 'asset' ? 'isa_first'
       : sentinels?.appliedValues.isaMaturityDestination === 'pension' ? 'pension_first'
@@ -164,6 +172,7 @@ export function StrategySettingsPanel({
             {...sectionProps}
             ai={ai}
             effectiveNationalPensionStartAge={effectiveNationalPensionStartAge}
+            dividendAutoApplied={dividendAutoApplied}
           />
         );
       case 'investment':
@@ -198,20 +207,27 @@ export function StrategySettingsPanel({
       const recommended = ai.recommendation?.recommendedAssetReinvestment;
       if (!recommended) return null;
 
+      // 자동 채움이 이미 이 축을 계산에 넣었으면 적용할 것이 없다. 여기서 params까지 고쳐
+      // 「적용」이라고 말하면, 엔진이 이미 그 값으로 도는데 버튼이 다시 할 일을 만드는
+      // 자리가 된다 — 이 패널이 국민연금에서 한 번 고친 결함과 같은 형태다.
+      if (dividendAutoApplied) return null;
+
       // 이미 권장값과 같으면 적용할 것이 없다.
       const changesAnything = params.assets.some(
         (a) => a.id in recommended && a.reinvestDividend !== recommended[a.id]
       );
       if (!changesAnything) return null;
 
-      // 자산별 권장값을 그대로 적용한다. 전역 스위치는 표시 상태를 자산에서 파생하므로
-      // 별도로 갱신할 필요가 없다.
+      // 자산별 권장값을 그대로 적용한다. 권장값은 자산마다 다를 수 있어 「전부 재투자」·
+      // 「전부 현금 수령」으로는 표현되지 않으므로, 축은 「자동으로 선택」으로 돌려놓는다.
+      // 그러지 않으면 compileStrategy가 방금 적은 값을 곧바로 한 값으로 덮어쓴다.
       const changedAssetCount = params.assets.filter(
         (a) => a.id in recommended && a.reinvestDividend !== recommended[a.id]
       ).length;
       return {
         params: {
           ...params,
+          strategy: { ...strategy, dividendStrategy: 'ai_optimized' },
           assets: params.assets.map((a) =>
             a.id in recommended ? { ...a, reinvestDividend: recommended[a.id] } : a
           ),

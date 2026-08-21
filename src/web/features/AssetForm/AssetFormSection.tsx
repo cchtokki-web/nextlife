@@ -100,6 +100,20 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
   // 부분 적용은 "눌렀는데 일부만 반영된다"는 더 나쁜 상태가 된다.
   // 이유는 원래 제목 뒤에 덧붙인다 — 제목을 통째로 갈아치우면 툴팁만 보고는 이 버튼이
   // 무슨 버튼이었는지 알 수 없다. 화면 상단 배너가 같은 이유를 이미 문장으로 설명한다.
+  // 배당 재투자를 «자산별로» 정하는 화면은 전문가 모드에만 둔다.
+  //
+  // 목표 기반 흐름에서 이 화면은 「내 자산이 이렇다」는 사실을 받는 자리다. 재투자 여부는
+  // 사실이 아니라 인출 전략의 결정이며(배당을 그해 생활비로 쓸 것인가, 남겨서 나중에 팔
+  // 것인가), 그 결정은 「연금 전략」의 배당금 재투자 축이 담당한다 — 기본값은 AI가 자산마다
+  // 판단해 개선이 확인된 것만 계산에 반영하는 「자동으로 선택」이다.
+  // 전문가만 그 기준선을 자산별로 손으로 정한다.
+  const dividendStrategy = strategy.dividendStrategy ?? 'ai_optimized';
+  const showPerAssetDividend = strategy.mode === 'expert';
+  // 「전부 재투자」·「전부 현금 수령」을 고르면 compileStrategy가 전 자산을 그 값으로 덮어쓴다.
+  // 수익률 입력을 리스크 성향이 지배할 때와 같은 처리를 한다 — 잠그지 않으면 여기서 고친
+  // 값이 화면에만 남고 엔진은 전략이 정한 값으로 돈다.
+  const dividendGoverned = dividendStrategy !== 'ai_optimized';
+
   const yieldFetchTitle = (base: string): string =>
     yieldGovernedBy
       ? `${base} (「투자 전략」의 ${yieldGovernedBy}이(가) 수익률을 결정하는 동안에는 쓸 수 없습니다)`
@@ -1030,15 +1044,19 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                         }}
                         suffixText={asset.currency === 'KRW' ? '원' : asset.currency}
                       />
-                      <SelectField
-                        label="배당 재투자 여부"
-                        value={asset.reinvestDividend ? 'true' : 'false'}
-                        onChange={(e) => handleUpdateAsset(asset.id, 'reinvestDividend', e.target.value === 'true')}
-                        options={[
-                          { value: 'true', label: '세후 재투자 활성화' },
-                          { value: 'false', label: '현금 수령 (재투자 미수행)' },
-                        ]}
-                      />
+                      {showPerAssetDividend && (
+                        <SelectField
+                          label="배당 재투자 여부"
+                          labelSecondary={dividendGoverned ? '「연금 전략」이 결정하는 중' : '기준선 — AI가 더 나은 쪽을 고릅니다'}
+                          value={asset.reinvestDividend ? 'true' : 'false'}
+                          disabled={dividendGoverned}
+                          onChange={(e) => handleUpdateAsset(asset.id, 'reinvestDividend', e.target.value === 'true')}
+                          options={[
+                            { value: 'true', label: '세후 재투자 활성화' },
+                            { value: 'false', label: '현금 수령 (재투자 미수행)' },
+                          ]}
+                        />
+                      )}
                     </div>
                   )}
                 </div>

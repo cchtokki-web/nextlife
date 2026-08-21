@@ -30,10 +30,6 @@ function readBaseline(path: FieldPath): unknown {
   return readPath(initialParams, path);
 }
 
-// 자산 배열 내부 값을 가리키는 가상 경로. 배열 인덱스별 경로를 만들지 않기 위해
-// "자산 중 하나라도 기본값과 다른가"로 축약해 판정한다.
-const ASSET_REINVEST_PATH: FieldPath = 'assets.reinvestDividend';
-
 // 최신 환율 자동 조회가 켜져 있는 동안 baseExchangeRate는 사용자가 정한 값이 아니라
 // 실시간 시세다(「경제 가정」을 열 때마다 덮어써지고, 입력도 비활성화된다). 이것을 변경으로
 // 세면 사용자가 손대지 않았는데 "1개 변경" / "숨겨진 사용자 설정 1개" 배지가 붙는다.
@@ -58,15 +54,6 @@ function isStrategyGovernedTaxLimit(params: SimulationParams, path: FieldPath): 
   ) !== null;
 }
 
-function isAssetReinvestChanged(params: SimulationParams): boolean {
-  const baseline = new Map(initialParams.assets.map((a) => [a.id, a.reinvestDividend]));
-  return params.assets.some((a) => {
-    const base = baseline.get(a.id);
-    // initialParams에 없는 자산(사용자가 추가한 것)은 기준값이 없으므로 변경으로 보지 않는다.
-    return base !== undefined && a.reinvestDividend !== base;
-  });
-}
-
 // 현재 params가 기본값과 다른 필드 경로의 집합.
 // FieldRow의 "사용자 설정" 배지와 SettingSection의 변경 개수 배지가 모두 이 결과를 쓴다.
 export function collectChangedPaths(params: SimulationParams): ReadonlySet<FieldPath> {
@@ -74,11 +61,6 @@ export function collectChangedPaths(params: SimulationParams): ReadonlySet<Field
 
   for (const section of Object.keys(SECTION_FIELDS) as SectionId[]) {
     for (const path of SECTION_FIELDS[section]) {
-      if (path === ASSET_REINVEST_PATH) {
-        if (isAssetReinvestChanged(params)) changed.add(path);
-        continue;
-      }
-
       if (isAutoFetchedExchangeRate(params, path)) continue;
       if (isStrategyGovernedTaxLimit(params, path)) continue;
 

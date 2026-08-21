@@ -48,7 +48,7 @@ describe('PensionStrategySection', () => {
     });
   });
 
-  test('ISA 만기 행선지 3택과 배당 재투자 스위치를 렌더링한다', () => {
+  test('ISA 만기 행선지 3택과 배당 재투자 3택을 렌더링한다', () => {
     render(
       <PensionStrategySection
         params={initialParams} onChangeParams={vi.fn()}
@@ -62,10 +62,18 @@ describe('PensionStrategySection', () => {
     for (const label of [/연금 계좌로/, /일반 자산으로/, /자동으로 선택/]) {
       expect(isa.getByRole('radio', { name: label })).toBeInTheDocument();
     }
-    expect(screen.getByRole('switch', { name: /배당금 재투자/ })).toBeInTheDocument();
+    // 배당 재투자도 같은 이유로 스위치에서 3택이 됐다. boolean에는 「AI에게 맡김」을 담을
+    // 자리가 없어, 사용자가 한 번도 고른 적 없는데도 항상 켬/끔 중 하나를 명시적으로
+    // 고른 것처럼 취급됐다.
+    const dividend = within(screen.getByRole('radiogroup', { name: '배당금 재투자' }));
+    for (const label of [/자동으로 선택/, /전부 재투자/, /전부 현금 수령/]) {
+      expect(dividend.getByRole('radio', { name: label })).toBeInTheDocument();
+    }
   });
 
-  test('배당금 재투자를 끄면 모든 자산의 reinvestDividend가 false가 된다', () => {
+  // 자산 배열을 직접 갈아치우지 않는다. 저장된 자산별 값은 「자동으로 선택」에서 기준선으로
+  // 쓰이므로, 축을 바꿨다고 지워 버리면 되돌릴 방법이 없다. 실체화는 compileStrategy가 한다.
+  test('「전부 현금 수령」을 고르면 전략 축만 바뀌고 자산은 그대로다', () => {
     const onChangeParams = vi.fn();
     render(
       <PensionStrategySection
@@ -74,15 +82,18 @@ describe('PensionStrategySection', () => {
       />
     );
 
-    fireEvent.click(screen.getByRole('switch', { name: /배당금 재투자/ }));
+    fireEvent.click(
+      within(screen.getByRole('radiogroup', { name: '배당금 재투자' }))
+        .getByRole('radio', { name: /전부 현금 수령/ })
+    );
 
     expect(onChangeParams).toHaveBeenCalledWith({
       ...initialParams,
-      assets: initialParams.assets.map((a) => ({ ...a, reinvestDividend: false })),
+      strategy: { ...DEFAULT_RETIREMENT_STRATEGY, dividendStrategy: 'cash_all' },
     });
   });
 
-  test('자산마다 설정이 다르면 스위치가 꺼진 상태로 보이고 혼합 안내를 표시한다', () => {
+  test('「자동으로 선택」인데 자산별 설정이 갈리면 그 사실을 안내한다', () => {
     const mixed = {
       ...initialParams,
       assets: [
@@ -98,8 +109,11 @@ describe('PensionStrategySection', () => {
       />
     );
 
-    expect(screen.getByRole('switch', { name: /배당금 재투자/ })).not.toBeChecked();
-    expect(screen.getByText(/자산마다 다르게 설정되어 있습니다/)).toBeInTheDocument();
+    expect(
+      within(screen.getByRole('radiogroup', { name: '배당금 재투자' }))
+        .getByRole('radio', { name: /자동으로 선택/ })
+    ).toBeChecked();
+    expect(screen.getByText(/자산마다 저장된 설정이 다릅니다/)).toBeInTheDocument();
   });
 
   test('AI가 연기 수령을 추천하면 힌트를 표시한다', () => {

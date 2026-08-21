@@ -252,6 +252,7 @@ describe('StrategySettingsPanel', () => {
         monthlySpendingMultiplier: 1.1,
       },
       recommendedAssetReinvestment: null,
+      verifiedAssetReinvestment: null,
     } as unknown as StrategyRecommendation;
 
     render(
@@ -283,6 +284,7 @@ describe('StrategySettingsPanel', () => {
         isaMaturityDestination: 'asset',
       },
       recommendedAssetReinvestment: null,
+      verifiedAssetReinvestment: null,
     } as unknown as StrategyRecommendation;
 
     render(
@@ -313,6 +315,7 @@ describe('StrategySettingsPanel', () => {
         monthlySpendingMultiplier: 1,
       },
       recommendedAssetReinvestment: null,
+      verifiedAssetReinvestment: null,
     } as unknown as StrategyRecommendation;
 
     // 국민연금 전략이 이미 'normal'(65세)이고 ISA도 연금 이전인 상태.
@@ -345,6 +348,7 @@ describe('StrategySettingsPanel', () => {
           monthlySpendingMultiplier: 1,
         },
         recommendedAssetReinvestment: null,
+        verifiedAssetReinvestment: null,
       } as unknown as StrategyRecommendation;
 
       const sentinelParams = {
@@ -379,6 +383,7 @@ describe('StrategySettingsPanel', () => {
           monthlySpendingMultiplier: 1,
         },
         recommendedAssetReinvestment: null,
+        verifiedAssetReinvestment: null,
       } as unknown as StrategyRecommendation;
 
       const sentinelParams = {
@@ -407,6 +412,7 @@ describe('StrategySettingsPanel', () => {
           monthlySpendingMultiplier: 1,
         },
         recommendedAssetReinvestment: null,
+        verifiedAssetReinvestment: null,
       } as unknown as StrategyRecommendation;
 
       render(
@@ -461,6 +467,7 @@ describe('StrategySettingsPanel', () => {
         isaMaturityDestination: 'pension',
       },
       recommendedAssetReinvestment: null,
+      verifiedAssetReinvestment: null,
     } as unknown as StrategyRecommendation);
 
     test('생활비 배수가 있어도 적용 버튼을 내지 않는다', () => {
@@ -624,6 +631,7 @@ describe('StrategySettingsPanel', () => {
       improved: true,
       recommendedPlan: { nationalPensionStartAge: 70, isaMaturityDestination: 'pension', monthlySpendingMultiplier: 1 },
       recommendedAssetReinvestment: null,
+      verifiedAssetReinvestment: null,
     } as unknown as StrategyRecommendation;
 
     const expandPension = () => {
