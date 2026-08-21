@@ -144,7 +144,11 @@ export function EconomicAssumptionSection({ params, onChangeParams, mode, change
         )}
 
         {isFieldVisible(mode, 'displayCurrency') && (
-          <FieldRow label="대시보드 기준 통화" changed={changed.has('displayCurrency')}>
+          <FieldRow
+            label="대시보드 기준 통화"
+            changed={changed.has('displayCurrency')}
+            className="col-span-2"
+          >
             <SelectField
               label="" aria-label="대시보드 기준 통화"
               value={params.displayCurrency}

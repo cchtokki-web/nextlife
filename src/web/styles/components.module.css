@@ -159,9 +159,9 @@
   appearance: none;
   background-image: var(--select-arrow);
   background-repeat: no-repeat;
-  background-position-x: 95%;
-  background-position-y: 50%;
-  padding-right: 2rem !important;
+  background-position: right 0.85rem center;
+  padding-right: 2.25rem !important;
+  text-overflow: ellipsis;
 }
 
 .grid {
