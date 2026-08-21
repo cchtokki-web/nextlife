@@ -79,7 +79,7 @@ function renderYearlyTablePages(args: {
         if (chunkIdx === 0) firstPageNo = pageNum;
         const isLastChunk = chunkIdx === chunks.length - 1 && !hasSpendingSection;
         out += `
-          <div class="pdf-page">
+          <div class="pdf-page"${chunkIdx === 0 ? ' data-page-anchor="yearly"' : ''}>
             <div class="pdf-content">
               <h2 style="font-size: 15px; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; color: #0f172a; margin-top: 0; margin-bottom: 12px;">
                 ${yearlyTableSectionNo}. 연령별 소득원 및 자산 추이 (${chunkIdx + 1}/${chunks.length})
@@ -139,7 +139,7 @@ function renderYearlyTablePages(args: {
             </div>
             <div class="pdf-footer">
               <span>NextLife 은퇴 자산 시뮬레이션 리포트</span>
-              <span>페이지 ${pageNum} / {total_pages}</span>
+              <span class="pdf-page-number">페이지 ${pageNum} / {total_pages}</span>
             </div>
           </div>
         `;
@@ -206,7 +206,7 @@ function renderSpendingTablePages(args: {
         out += `
                 </tbody>
               </table>
-              <p style="margin-top: 10px; font-size: 10px; color: #64748b;">* 월 생활비 재원 구성은 연간 금액을 월 단위로 환산한 값이며, 사적연금 열은 저율과세 한도와 무관하게 실제 시뮬레이션 인출액을 그대로 반영합니다. 한도 초과 시 발생하는 세금은 {tax_page}페이지 세금 설정과 {yearly_page}페이지 금융소득과세 열을 참고하세요.</p>
+              <p style="margin-top: 10px; font-size: 10px; color: #64748b;">* 월 생활비 재원 구성은 연간 금액을 월 단위로 환산한 값이며, 사적연금 열은 저율과세 한도와 무관하게 실제 시뮬레이션 인출액을 그대로 반영합니다. 한도 초과 시 발생하는 세금은 <span data-page-ref="tax">{tax_page}</span>페이지 세금 설정과 <span data-page-ref="yearly">{yearly_page}</span>페이지 금융소득과세 열을 참고하세요.</p>
         `;
 
         if (isLastChunk) {
@@ -223,7 +223,7 @@ function renderSpendingTablePages(args: {
             </div>
             <div class="pdf-footer">
               <span>NextLife 은퇴 자산 시뮬레이션 리포트</span>
-              <span>페이지 ${pageNum} / {total_pages}</span>
+              <span class="pdf-page-number">페이지 ${pageNum} / {total_pages}</span>
             </div>
           </div>
         `;
@@ -348,6 +348,13 @@ export function buildReportHtml(input: ReportHtmlInput): string {
       // 섹션 하나만 넣거나 빼도 문서 전체의 번호가 조용히 틀어지는 구조였다.
       //
       // 두 카운터는 **문서에 등장하는 순서대로** 소비된다(템플릿 리터럴은 왼쪽부터 평가된다).
+      //
+      // **쪽 번호는 여기서 «잠정»으로 찍힌다.** 이 함수는 각 조각이 실제로 몇 픽셀을
+      // 차지하는지 모르므로(DOM이 없다), 내용이 한 장을 넘치면 reflowReportPages가 그리기
+      // 직전에 이어지는 쪽을 만들어 넣는다. 그 순간 여기서 매긴 번호는 밀린다. 그래서
+      // 쪽 번호는 class="pdf-page-number"로, 번호를 가리키는 각주는 data-page-ref로,
+      // 가리켜지는 쪽은 data-page-anchor로 표시해 둔다 — 그 표시가 없으면 재배치 뒤
+      // 「7페이지 세금 설정」이 다른 쪽을 가리키게 된다.
       let sectionNo = 0;
       const nextSection = () => (sectionNo += 1);
       let pageNo = 0;
@@ -375,7 +382,7 @@ export function buildReportHtml(input: ReportHtmlInput): string {
           </div>
           <div class="pdf-footer">
             <span>NextLife 은퇴 자산 시뮬레이션 리포트</span>
-            <span>페이지 ${nextPage()} / {total_pages}</span>
+            <span class="pdf-page-number">페이지 ${nextPage()} / {total_pages}</span>
           </div>
         </div>
       `;
@@ -422,7 +429,7 @@ export function buildReportHtml(input: ReportHtmlInput): string {
           </div>
           <div class="pdf-footer">
             <span>NextLife 은퇴 자산 시뮬레이션 리포트</span>
-            <span>페이지 ${nextPage()} / {total_pages}</span>
+            <span class="pdf-page-number">페이지 ${nextPage()} / {total_pages}</span>
           </div>
         </div>
 
@@ -434,7 +441,7 @@ export function buildReportHtml(input: ReportHtmlInput): string {
           </div>
           <div class="pdf-footer">
             <span>NextLife 은퇴 자산 시뮬레이션 리포트</span>
-            <span>페이지 ${nextPage()} / {total_pages}</span>
+            <span class="pdf-page-number">페이지 ${nextPage()} / {total_pages}</span>
           </div>
         </div>
 
@@ -455,11 +462,11 @@ export function buildReportHtml(input: ReportHtmlInput): string {
           </div>
           <div class="pdf-footer">
             <span>NextLife 은퇴 자산 시뮬레이션 리포트</span>
-            <span>페이지 ${nextPage()} / {total_pages}</span>
+            <span class="pdf-page-number">페이지 ${nextPage()} / {total_pages}</span>
           </div>
         </div>
 
-        <div class="pdf-page">
+        <div class="pdf-page" data-page-anchor="tax">
           <div class="pdf-content">
             <h2 style="font-size: 16px; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; color: #0f172a; margin-top: 0; margin-bottom: 10px;">${nextSection()}. 연금·자산 현황 및 세금 설정</h2>
             <div style="font-size: 13px; line-height: 1.6; display: grid; grid-template-columns: 1fr; gap: 12px;">
@@ -490,7 +497,7 @@ ${accountListsHtml}
           </div>
           <div class="pdf-footer">
             <span>NextLife 은퇴 자산 시뮬레이션 리포트</span>
-            <span>페이지 ${(taxSettingsPageNo = nextPage())} / {total_pages}</span>
+            <span class="pdf-page-number">페이지 ${(taxSettingsPageNo = nextPage())} / {total_pages}</span>
           </div>
         </div>
       `;
