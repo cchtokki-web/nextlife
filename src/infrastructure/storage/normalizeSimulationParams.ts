@@ -38,6 +38,7 @@ import { RETIREMENT_GOAL_TYPES } from '../../core/entities/retirementGoal';
 import { DEFAULT_HEALTHCARE } from '../../core/usecases/healthcare/defaultHealthcare';
 import { initialParams } from './defaultParams';
 import { migrateLegacyReturnKeys } from './migrateLegacyReturnKeys';
+import { migrateDailyContributionBasis } from './migrateDailyContributionBasis';
 import {
   collectNormalizationIssues,
   describeIssue,
@@ -59,9 +60,9 @@ export function normalizeSimulationParamsWithIssues(raw: unknown): {
   params: SimulationParams;
   issues: NormalizationIssue[];
 } {
-  // 옛 수익률 키를 먼저 옮긴다. 이슈 수집이 마이그레이션 «전»의 raw를 보면
-  // 「totalReturn이 없었는데 생겼다」를 금액 이슈로 잘못 보고한다.
-  const migrated = migrateLegacyReturnKeys(raw);
+  // 옛 저장본 보정을 먼저 돌린다. 이슈 수집이 마이그레이션 «전»의 raw를 보면
+  // 「totalReturn이 없었는데 생겼다」나 「월 적립액이 대체됐다」를 금액 이슈로 잘못 보고한다.
+  const migrated = migrateDailyContributionBasis(migrateLegacyReturnKeys(raw));
   const params = normalizeSimulationParams(migrated);
   return { params, issues: collectNormalizationIssues(migrated, params) };
 }
@@ -123,7 +124,7 @@ export function reportNormalizationIssues(source: string, issues: readonly Norma
 export function normalizeSimulationParams(rawInput: unknown): SimulationParams {
   // 이 함수를 직접 부르는 호출부가 40여 곳이라 여기서도 옛 데이터를 받을 수 있다.
   // 마이그레이션이 멱등이라 WithIssues 경로에서 두 번 돌아도 안전하다.
-  const raw = migrateLegacyReturnKeys(rawInput);
+  const raw = migrateDailyContributionBasis(migrateLegacyReturnKeys(rawInput));
   if (!isRecord(raw)) return initialParams;
 
   return {
