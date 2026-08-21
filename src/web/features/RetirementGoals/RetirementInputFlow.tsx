@@ -7,8 +7,8 @@ import { applyRetirementGoals, resolveRetirementGoals } from '../../../core/usec
 import { normalizeGoalDrivenParams } from '../../../core/usecases/goals/normalizeGoalDrivenParams';
 import { resolveStrategy } from '../../../core/usecases/strategy/compileStrategy';
 import { AssetFormSection } from '../AssetForm/AssetFormSection';
-import InputField from '../../components/InputField';
-import { AGE_MAX, AGE_MIN, EXPECTANCY_MAX, parseAge } from '../StrategySettings/ageInput';
+import { AgeField } from '../StrategySettings/AgeField';
+import { AGE_MAX, EXPECTANCY_MAX } from '../StrategySettings/ageInput';
 import { RetirementGoalSelector } from './RetirementGoalSelector';
 
 interface RetirementInputFlowProps {
@@ -63,14 +63,11 @@ export function RetirementInputFlow({
         : undefined;
   const canAnalyze = blockedReason === undefined;
 
-  const setProfileAge = (key: 'currentAge' | 'expectancy', raw: string, max: number) => {
-    const age = parseAge(raw, max);
-    if (age !== null) {
-      onChangeParams({
-        ...params,
-        userProfile: { ...params.userProfile, [key]: age },
-      });
-    }
+  const setProfileAge = (key: 'currentAge' | 'expectancy', age: number) => {
+    onChangeParams({
+      ...params,
+      userProfile: { ...params.userProfile, [key]: age },
+    });
   };
 
   return (
@@ -124,15 +121,15 @@ export function RetirementInputFlow({
             </p>
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <InputField
-              label="현재 나이" type="number" suffixText="세" min={AGE_MIN} max={AGE_MAX}
+            <AgeField
+              label="현재 나이" suffixText="세" max={AGE_MAX}
               value={params.userProfile.currentAge}
-              onChange={(event) => setProfileAge('currentAge', event.target.value, AGE_MAX)}
+              onChangeAge={(age) => setProfileAge('currentAge', age)}
             />
-            <InputField
-              label="기대수명" type="number" suffixText="세" min={AGE_MIN} max={EXPECTANCY_MAX}
+            <AgeField
+              label="기대수명" suffixText="세" max={EXPECTANCY_MAX}
               value={params.userProfile.expectancy}
-              onChange={(event) => setProfileAge('expectancy', event.target.value, EXPECTANCY_MAX)}
+              onChangeAge={(age) => setProfileAge('expectancy', age)}
             />
           </div>
         </section>

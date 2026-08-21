@@ -1,6 +1,8 @@
 import React, { useState, useRef, useCallback } from 'react';
 import { SimulationParams, InvestmentAsset, PrivatePension, OtherIncome, AssetCurrency, IsaAccount } from '../../../core/entities/types';
 import { InputField } from '../../components/InputField';
+import { AmountField } from '../../components/fields/AmountField';
+import { NumberField } from '../../components/fields/NumberField';
 import { SelectField } from '../../components/SelectField';
 import styles from './AssetForm.module.css';
 import compStyles from '../../styles/components.module.css';
@@ -827,25 +829,18 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                           { value: 'OTHER', label: '기타 자산 (비과세 등)' },
                         ]}
                       />
-                      <InputField
+                      <NumberField
                         label="수량"
-                        type="number"
                         value={asset.quantity}
-                        onChange={(e) => handleUpdateAsset(asset.id, 'quantity', Number(e.target.value))}
+                        onChangeValue={(quantity) => handleUpdateAsset(asset.id, 'quantity', quantity)}
                       />
                       <div className={styles.priceInputWrapper}>
                         <div className={styles.priceInputGrow}>
-                          <InputField
+                          <AmountField
                             label="현재 단가"
-                            type="text"
-                            value={asset.averagePrice === 0 ? '0' : asset.averagePrice.toLocaleString(undefined, { maximumFractionDigits: 2 })}
-                            onChange={(e) => {
-                              const rawValue = e.target.value.replace(/,/g, '');
-                              const numValue = rawValue === '' ? 0 : Number(rawValue);
-                              if (!isNaN(numValue)) {
-                                handleUpdateAsset(asset.id, 'averagePrice', numValue);
-                              }
-                            }}
+                            maximumFractionDigits={2}
+                            value={asset.averagePrice}
+                            onChangeValue={(price) => handleUpdateAsset(asset.id, 'averagePrice', price)}
                             suffixText={asset.currency === 'KRW' ? '원' : asset.currency}
                           />
                         </div>
@@ -892,13 +887,12 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                       <div className={styles.returnFieldGroup}>
                         <div className={styles.priceInputWrapper}>
                           <div className={styles.priceInputGrow}>
-                            <InputField
+                            <NumberField
                               label="연 총수익률"
-                              type="number"
                               step="0.1"
                               value={asset.totalReturn}
                               disabled={yieldGovernedBy !== null}
-                              onChange={(e) => handleUpdateAsset(asset.id, 'totalReturn', Number(e.target.value))}
+                              onChangeValue={(rate) => handleUpdateAsset(asset.id, 'totalReturn', rate)}
                               suffixText="%"
                             />
                           </div>
@@ -917,12 +911,11 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                         </div>
                         <div className={styles.priceInputWrapper}>
                           <div className={styles.priceInputGrow}>
-                            <InputField
+                            <NumberField
                               label="연 배당률"
-                              type="number"
                               step="0.1"
                               value={asset.dividendYield}
-                              onChange={(e) => handleUpdateAsset(asset.id, 'dividendYield', Number(e.target.value))}
+                              onChangeValue={(rate) => handleUpdateAsset(asset.id, 'dividendYield', rate)}
                               suffixText="%"
                             />
                           </div>
@@ -970,7 +963,7 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                           { value: 'monthly', label: '매월' },
                         ]}
                       />
-                      <InputField
+                      <AmountField
                         label={
                           (asset.contributionPeriod || 'monthly') === 'daily'
                             ? '매일 적립 투자금'
@@ -978,27 +971,18 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                             ? '매주 적립 투자금'
                             : '월 적립 투자금'
                         }
-                        type="text"
-                        value={
-                          (asset.contributionAmount ?? asset.monthlyContribution) === 0
-                            ? '0'
-                            : (asset.contributionAmount ?? asset.monthlyContribution).toLocaleString()
-                        }
-                        onChange={(e) => {
-                          const rawValue = e.target.value.replace(/,/g, '');
-                          const numValue = rawValue === '' ? 0 : Number(rawValue);
-                          if (!isNaN(numValue)) {
-                            const period = asset.contributionPeriod || 'monthly';
-                            const roundedMonthly = roundContributionForCurrency(
-                              toMonthlyContribution(numValue, period),
-                              asset.currency
-                            );
+                        value={asset.contributionAmount ?? asset.monthlyContribution}
+                        onChangeValue={(numValue) => {
+                          const period = asset.contributionPeriod || 'monthly';
+                          const roundedMonthly = roundContributionForCurrency(
+                            toMonthlyContribution(numValue, period),
+                            asset.currency
+                          );
 
-                            handleUpdateAsset(asset.id, {
-                              contributionAmount: numValue,
-                              monthlyContribution: roundedMonthly,
-                            });
-                          }
+                          handleUpdateAsset(asset.id, {
+                            contributionAmount: numValue,
+                            monthlyContribution: roundedMonthly,
+                          });
                         }}
                         onStepUp={() => {
                           const currentAmount = asset.contributionAmount ?? asset.monthlyContribution;
@@ -1062,17 +1046,10 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                 * 수령액은 매년 설정된 물가상승률과 동일하게 인상되어 적용됩니다.
               </p>
               <div className={compStyles.grid}>
-                  <InputField
+                  <AmountField
                     label="예상 월 수령액"
-                    type="text"
-                    value={params.nationalPension.expectedMonthlyAmount === 0 ? '0' : params.nationalPension.expectedMonthlyAmount.toLocaleString()}
-                    onChange={(e) => {
-                      const rawValue = e.target.value.replace(/,/g, '');
-                      const numValue = rawValue === '' ? 0 : Number(rawValue);
-                      if (!isNaN(numValue)) {
-                        handleNationalPensionChange(numValue);
-                      }
-                    }}
+                    value={params.nationalPension.expectedMonthlyAmount}
+                    onChangeValue={handleNationalPensionChange}
                     onStepUp={() => {
                       handleNationalPensionChange(params.nationalPension.expectedMonthlyAmount + 10000);
                     }}
@@ -1249,17 +1226,10 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                       { value: 'USD', label: 'USD ($)' },
                     ]}
                   />
-                  <InputField
+                  <AmountField
                     label="현재 적립 잔액 (평가 금액)"
-                    type="text"
-                    value={pension.balance === 0 ? '0' : pension.balance.toLocaleString()}
-                    onChange={(e) => {
-                      const rawValue = e.target.value.replace(/,/g, '');
-                      const numValue = rawValue === '' ? 0 : Number(rawValue);
-                      if (!isNaN(numValue)) {
-                        handleUpdatePrivatePension(pension.id, 'balance', numValue);
-                      }
-                    }}
+                    value={pension.balance}
+                    onChangeValue={(balance) => handleUpdatePrivatePension(pension.id, 'balance', balance)}
                     onStepUp={() => {
                       handleUpdatePrivatePension(pension.id, 'balance', pension.balance + (pension.currency === 'KRW' ? 100000 : 100));
                     }}
@@ -1268,17 +1238,10 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                     }}
                     suffixText={pension.currency === 'KRW' ? '원' : pension.currency}
                   />
-                  <InputField
+                  <AmountField
                     label="월 추가 적립금"
-                    type="text"
-                    value={pension.monthlyContribution === 0 ? '0' : pension.monthlyContribution.toLocaleString()}
-                    onChange={(e) => {
-                      const rawValue = e.target.value.replace(/,/g, '');
-                      const numValue = rawValue === '' ? 0 : Number(rawValue);
-                      if (!isNaN(numValue)) {
-                        handleUpdatePrivatePension(pension.id, 'monthlyContribution', numValue);
-                      }
-                    }}
+                    value={pension.monthlyContribution}
+                    onChangeValue={(amount) => handleUpdatePrivatePension(pension.id, 'monthlyContribution', amount)}
                     onStepUp={() => {
                       handleUpdatePrivatePension(pension.id, 'monthlyContribution', pension.monthlyContribution + (pension.currency === 'KRW' ? 10000 : 10));
                     }}
@@ -1292,13 +1255,12 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                       <div className={styles.returnFieldGroup}>
                         <div className={styles.priceInputWrapper}>
                           <div className={styles.priceInputGrow}>
-                            <InputField
+                            <NumberField
                               label="연 총수익률"
-                              type="number"
                               step="0.1"
                               value={pension.totalReturn}
                               disabled={yieldGovernedBy !== null}
-                              onChange={(e) => handleUpdatePrivatePension(pension.id, 'totalReturn', Number(e.target.value))}
+                              onChangeValue={(rate) => handleUpdatePrivatePension(pension.id, 'totalReturn', rate)}
                               suffixText="%"
                             />
                           </div>
@@ -1317,12 +1279,11 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                         </div>
                         <div className={styles.priceInputWrapper}>
                           <div className={styles.priceInputGrow}>
-                            <InputField
+                            <NumberField
                               label="연 배당률"
-                              type="number"
                               step="0.1"
                               value={pension.dividendYield || 0}
-                              onChange={(e) => handleUpdatePrivatePension(pension.id, 'dividendYield', Number(e.target.value))}
+                              onChangeValue={(rate) => handleUpdatePrivatePension(pension.id, 'dividendYield', rate)}
                               suffixText="%"
                             />
                           </div>
@@ -1343,13 +1304,12 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                       </div>
                     </>
                   ) : (
-                    <InputField
+                    <NumberField
                       label={pension.investmentType === 'deposit' ? '연 이자율 (금리)' : '연 총수익률'}
-                      type="number"
                       step="0.1"
                       value={pension.totalReturn}
                       disabled={yieldGovernedBy !== null}
-                      onChange={(e) => handleUpdatePrivatePension(pension.id, 'totalReturn', Number(e.target.value))}
+                      onChangeValue={(rate) => handleUpdatePrivatePension(pension.id, 'totalReturn', rate)}
                       suffixText="%"
                     />
                   )}
@@ -1486,33 +1446,22 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                           )}
                         </div>
                       )}
-                      <InputField
+                      <NumberField
                         label="만기 기간 (년)"
-                        type="number"
                         value={isa.maturityYears}
-                        onChange={(e) => handleUpdateIsaAccount(isa.id, 'maturityYears', Number(e.target.value))}
+                        onChangeValue={(years) => handleUpdateIsaAccount(isa.id, 'maturityYears', years)}
                         suffixText="년"
                       />
-                      <InputField
+                      <AmountField
                         label="현재 잔액"
-                        type="text"
-                        value={isa.balance === 0 ? '0' : isa.balance.toLocaleString()}
-                        onChange={(e) => {
-                          const rawValue = e.target.value.replace(/,/g, '');
-                          const numValue = rawValue === '' ? 0 : Number(rawValue);
-                          if (!isNaN(numValue)) handleUpdateIsaAccount(isa.id, 'balance', numValue);
-                        }}
+                        value={isa.balance}
+                        onChangeValue={(balance) => handleUpdateIsaAccount(isa.id, 'balance', balance)}
                         suffixText={isa.currency === 'KRW' ? '원' : isa.currency}
                       />
-                      <InputField
+                      <AmountField
                         label="월 적립액"
-                        type="text"
-                        value={isa.monthlyContribution === 0 ? '0' : isa.monthlyContribution.toLocaleString()}
-                        onChange={(e) => {
-                          const rawValue = e.target.value.replace(/,/g, '');
-                          const numValue = rawValue === '' ? 0 : Number(rawValue);
-                          if (!isNaN(numValue)) handleUpdateIsaAccount(isa.id, 'monthlyContribution', numValue);
-                        }}
+                        value={isa.monthlyContribution}
+                        onChangeValue={(amount) => handleUpdateIsaAccount(isa.id, 'monthlyContribution', amount)}
                         suffixText={isa.currency === 'KRW' ? '원' : isa.currency}
                       />
                       {isa.investmentType === 'etf' ? (
@@ -1520,13 +1469,12 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                           <div className={styles.returnFieldGroup}>
                             <div className={styles.priceInputWrapper}>
                               <div className={styles.priceInputGrow}>
-                                <InputField
+                                <NumberField
                                   label="연 총수익률"
-                                  type="number"
                                   step="0.1"
                                   value={isa.totalReturn}
                                   disabled={yieldGovernedBy !== null}
-                                  onChange={(e) => handleUpdateIsaAccount(isa.id, 'totalReturn', Number(e.target.value))}
+                                  onChangeValue={(rate) => handleUpdateIsaAccount(isa.id, 'totalReturn', rate)}
                                   suffixText="%"
                                 />
                               </div>
@@ -1545,12 +1493,11 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                             </div>
                             <div className={styles.priceInputWrapper}>
                               <div className={styles.priceInputGrow}>
-                                <InputField
+                                <NumberField
                                   label="연 배당률"
-                                  type="number"
                                   step="0.1"
                                   value={isa.dividendYield || 0}
-                                  onChange={(e) => handleUpdateIsaAccount(isa.id, 'dividendYield', Number(e.target.value))}
+                                  onChangeValue={(rate) => handleUpdateIsaAccount(isa.id, 'dividendYield', rate)}
                                   suffixText="%"
                                 />
                               </div>
@@ -1571,33 +1518,30 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                           </div>
                         </>
                       ) : isa.investmentType === 'deposit' ? (
-                        <InputField
+                        <NumberField
                           label="연 이자율 (금리)"
-                          type="number"
                           step="0.1"
                           value={isa.totalReturn}
                           disabled={yieldGovernedBy !== null}
-                          onChange={(e) => handleUpdateIsaAccount(isa.id, 'totalReturn', Number(e.target.value))}
+                          onChangeValue={(rate) => handleUpdateIsaAccount(isa.id, 'totalReturn', rate)}
                           suffixText="%"
                         />
                       ) : (
                         <>
                           <div className={styles.returnFieldGroup}>
-                            <InputField
+                            <NumberField
                               label="연 총수익률"
-                              type="number"
                               step="0.1"
                               value={isa.totalReturn}
                               disabled={yieldGovernedBy !== null}
-                              onChange={(e) => handleUpdateIsaAccount(isa.id, 'totalReturn', Number(e.target.value))}
+                              onChangeValue={(rate) => handleUpdateIsaAccount(isa.id, 'totalReturn', rate)}
                               suffixText="%"
                             />
-                            <InputField
+                            <NumberField
                               label="연 배당률"
-                              type="number"
                               step="0.1"
                               value={isa.dividendYield}
-                              onChange={(e) => handleUpdateIsaAccount(isa.id, 'dividendYield', Number(e.target.value))}
+                              onChangeValue={(rate) => handleUpdateIsaAccount(isa.id, 'dividendYield', rate)}
                               suffixText="%"
                             />
                             <ReturnBreakdownHint totalReturn={isa.totalReturn} dividendYield={isa.dividendYield} />
@@ -1642,22 +1586,15 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                       { value: 'USD', label: 'USD ($)' },
                     ]}
                   />
-                  <InputField
+                  <AmountField
                     label="월 예상 소득"
                     // 이 시뮬레이터는 기타소득에 세금을 매기지 않는다. 소득원 설명이 자유 입력이라
                     // 월세인지 근로소득인지 알 수 없고, 사용자가 세전/세후 중 무엇을 넣었는지도
                     // 알 수 없다. 모르는 상태에서 세금을 물리면 임의로 소득을 깎는 것이므로,
                     // "세후를 넣어 달라"고 명시해 현재 동작을 의도된 계약으로 만든다.
                     labelSecondary="세금·공과금을 뺀 실수령액"
-                    type="text"
-                    value={income.monthlyAmount === 0 ? '0' : income.monthlyAmount.toLocaleString()}
-                    onChange={(e) => {
-                      const rawValue = e.target.value.replace(/,/g, '');
-                      const numValue = rawValue === '' ? 0 : Number(rawValue);
-                      if (!isNaN(numValue)) {
-                        handleUpdateOtherIncome(income.id, 'monthlyAmount', numValue);
-                      }
-                    }}
+                    value={income.monthlyAmount}
+                    onChangeValue={(amount) => handleUpdateOtherIncome(income.id, 'monthlyAmount', amount)}
                     suffixText={income.currency === 'KRW' ? '원' : income.currency}
                   />
                 </div>

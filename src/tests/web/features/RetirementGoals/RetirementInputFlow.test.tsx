@@ -199,6 +199,50 @@ describe('RetirementInputFlow', () => {
       expect(onChangeParams).not.toHaveBeenCalled();
     });
 
+    // 지운 상태를 «저장»하지 않는 것과 «화면에 보여 주지» 않는 것은 다른 문제다. 제어
+    // 입력이라 저장을 건너뛰면 다음 렌더가 옛 값을 그대로 되돌려 놓고, 그러면 사용자는
+    // 첫 자리를 지울 수 없다 — 값이 1이면 뒤에 덧붙이는 것 말고는 아무 편집도 못 한다.
+    test.each([
+      ['현재 나이'],
+      ['기대수명'],
+    ])('%s를 비우면 저장은 건너뛰되 화면은 빈 칸으로 남는다', (label) => {
+      const onChangeParams = renderFlow();
+      const input = screen.getByLabelText(label);
+
+      fireEvent.change(input, { target: { value: '' } });
+
+      expect(input).toHaveValue(null);
+      expect(onChangeParams).not.toHaveBeenCalled();
+    });
+
+    test('비운 뒤 새로 입력한 나이가 그대로 저장된다', () => {
+      const onChangeParams = renderFlow();
+      const input = screen.getByLabelText('현재 나이');
+
+      fireEvent.change(input, { target: { value: '' } });
+      fireEvent.change(input, { target: { value: '4' } });
+      fireEvent.change(input, { target: { value: '45' } });
+
+      expect(input).toHaveValue(45);
+      expect(onChangeParams).toHaveBeenLastCalledWith({
+        ...initialParams,
+        userProfile: { ...initialParams.userProfile, currentAge: 45 },
+      });
+    });
+
+    // 빈 칸으로 두고 떠나면 저장된 값이 다시 보여야 한다. 빈 칸이 남으면 화면과 실제
+    // 계산에 쓰이는 값이 어긋난 채로 다음 단계로 넘어간다.
+    test('비운 채로 포커스를 잃으면 저장된 나이로 되돌아간다', () => {
+      renderFlow();
+      const input = screen.getByLabelText('현재 나이');
+
+      fireEvent.change(input, { target: { value: '' } });
+      fireEvent.blur(input);
+
+      expect(input).toHaveValue(50);
+    });
+
+
     test('나이 입력에 min/max 범위가 걸려 있다', () => {
       renderFlow();
 
