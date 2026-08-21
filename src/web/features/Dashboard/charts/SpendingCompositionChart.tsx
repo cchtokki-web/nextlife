@@ -17,7 +17,9 @@ import GlassCard from '../../../components/GlassCard';
 import styles from '../Dashboard.module.css';
 import { SimulationParams, SimulationResult } from '../../../../core/entities/types';
 import { computeMonthlySpendingComposition } from '../../../../core/usecases/MonthlySpendingComposition';
-import { formatValue, MultilineYAxisTick, RECHARTS_TOOLTIP_STYLE, Y_AXIS_WIDTH } from './chartFormatters';
+import {
+  formatValue, MultilineYAxisTick, RECHARTS_TOOLTIP_STYLE, REFERENCE_LABEL_FONT_SIZE, Y_AXIS_WIDTH,
+} from './chartFormatters';
 import { ChartLegend, legendColorOf, type ChartLegendItem } from './ChartLegend';
 import { ChartCaption } from './ChartCaption';
 
@@ -243,7 +245,7 @@ export function SpendingCompositionChart({ params, result, hiddenKeys, onLegendC
                   value: `사적연금 저율과세 한도 (${formatValue(monthlyPensionLimit, currency)}/월)`,
                   fill: '#F8FAFC',
                   position: 'insideBottomLeft',
-                  fontSize: '0.65rem',
+                  fontSize: REFERENCE_LABEL_FONT_SIZE,
                   fontWeight: 600,
                   offset: 10,
                 }}
