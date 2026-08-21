@@ -6,10 +6,12 @@ import {
 } from '../../../../core/entities/types';
 import { resolveStrategy } from '../../../../core/usecases/strategy/compileStrategy';
 import { isEconomicScenarioGoverning } from '../../../../core/usecases/scenario/economicScenarios';
-import InputField from '../../../components/InputField';
 import SelectField from '../../../components/SelectField';
 import { FieldRow, SwitchField } from '../../../components/form';
-import { AGE_MAX, AGE_MIN, parseAge } from '../ageInput';
+import { AmountField } from '../../../components/fields/AmountField';
+import { NumberField } from '../../../components/fields/NumberField';
+import { AgeField } from '../AgeField';
+import { AGE_MAX } from '../ageInput';
 import { currencySuffix } from '../currencySuffix';
 import { isFieldVisible } from '../fieldVisibility';
 import { DEFAULT_HEALTHCARE, SectionProps } from '../strategyOptions';
@@ -117,11 +119,11 @@ export function EconomicAssumptionSection({ params, onChangeParams, mode, change
       <div className="grid grid-cols-2 items-end gap-3.5 sm:gap-4">
         {isFieldVisible(mode, 'inflationRate') && (
           <FieldRow label="물가상승률" changed={changed.has('inflationRate')}>
-            <InputField
-              label="" aria-label="물가상승률" type="number" step="0.1" suffixText="%"
+            <NumberField
+              label="" aria-label="물가상승률" step="0.1" suffixText="%"
               value={params.inflationRate}
               disabled={scenarioGoverns}
-              onChange={(e) => onChangeParams({ ...params, inflationRate: Number(e.target.value) })}
+              onChangeValue={(rate) => onChangeParams({ ...params, inflationRate: rate })}
             />
           </FieldRow>
         )}
@@ -132,19 +134,11 @@ export function EconomicAssumptionSection({ params, onChangeParams, mode, change
             tooltipText="1달러를 원화로 환산할 때 쓰는 값입니다."
             changed={changed.has('baseExchangeRate')}
           >
-            <InputField
-              label="" aria-label="적용 환율" type="text" suffixText="원"
-              value={params.baseExchangeRate.toLocaleString()}
+            <AmountField
+              label="" aria-label="적용 환율" suffixText="원"
+              value={params.baseExchangeRate}
               disabled={autoExchangeRate}
-              onChange={(e) => {
-                const raw = e.target.value.replace(/,/g, '');
-                if (raw === '' || !isNaN(Number(raw))) {
-                  onChangeParams({
-                    ...params,
-                    baseExchangeRate: raw === '' ? 0 : Number(raw),
-                  });
-                }
-              }}
+              onChangeValue={(rate) => onChangeParams({ ...params, baseExchangeRate: rate })}
             />
           </FieldRow>
         )}
@@ -215,16 +209,11 @@ export function EconomicAssumptionSection({ params, onChangeParams, mode, change
                 label="은퇴 시점 월 의료비"
                 changed={changed.has('healthcare.baseMonthlyCost')}
               >
-                <InputField
-                  label="" aria-label="은퇴 시점 월 의료비" type="text"
+                <AmountField
+                  label="" aria-label="은퇴 시점 월 의료비"
                   suffixText={currencySuffix(params.displayCurrency)}
-                  value={(healthcare?.baseMonthlyCost ?? 0).toLocaleString()}
-                  onChange={(e) => {
-                    const raw = e.target.value.replace(/,/g, '');
-                    if (raw === '' || !isNaN(Number(raw))) {
-                      setHealthcare({ baseMonthlyCost: raw === '' ? 0 : Number(raw) });
-                    }
-                  }}
+                  value={healthcare?.baseMonthlyCost ?? 0}
+                  onChangeValue={(cost) => setHealthcare({ baseMonthlyCost: cost })}
                 />
               </FieldRow>
             )}
@@ -234,10 +223,10 @@ export function EconomicAssumptionSection({ params, onChangeParams, mode, change
                 tooltipText="의료비는 보통 일반 물가보다 빠르게 오릅니다. 실질 기준으로 볼 때는 물가상승률을 넘는 부분만 반영됩니다."
                 changed={changed.has('healthcare.costGrowthRate')}
               >
-                <InputField
-                  label="" aria-label="의료비 증가율" type="number" step="0.1" suffixText="%"
+                <NumberField
+                  label="" aria-label="의료비 증가율" step="0.1" suffixText="%"
                   value={healthcare?.costGrowthRate ?? DEFAULT_HEALTHCARE.costGrowthRate}
-                  onChange={(e) => setHealthcare({ costGrowthRate: Number(e.target.value) })}
+                  onChangeValue={(rate) => setHealthcare({ costGrowthRate: rate })}
                 />
               </FieldRow>
             )}
@@ -257,17 +246,14 @@ export function EconomicAssumptionSection({ params, onChangeParams, mode, change
             <div className="grid grid-cols-2 items-end gap-3.5 sm:gap-4">
               {isFieldVisible(mode, 'healthcare.longTermCareStartAge') && (
                 <FieldRow label="장기요양 시작 나이" changed={changed.has('healthcare.longTermCareStartAge')}>
-                  <InputField
-                    label="" aria-label="장기요양 시작 나이" type="number" suffixText="세"
-                    min={AGE_MIN} max={AGE_MAX}
+                  {/* 나이 입력은 AgeField가 전담한다. 맨 Number()는 빈 입력을 0으로 저장해
+                      "0세부터 장기요양"이 되고, 디바운스 자동저장이 그 값을 암호화 저장소에
+                      영구화한다. 저장을 건너뛰기만 하면 이번엔 필드를 비울 수 없어진다. */}
+                  <AgeField
+                    label="" aria-label="장기요양 시작 나이" suffixText="세"
+                    max={AGE_MAX}
                     value={healthcare.longTermCareStartAge}
-                    // BasicInfoSection과 같은 규약(ageInput.parseAge)을 쓴다. 맨 Number()는
-                    // 빈 입력을 0으로 저장해 "0세부터 장기요양"이 되고, 디바운스 자동저장이
-                    // 그 값을 암호화 저장소에 영구화한다.
-                    onChange={(e) => {
-                      const age = parseAge(e.target.value, AGE_MAX);
-                      if (age !== null) setHealthcare({ longTermCareStartAge: age });
-                    }}
+                    onChangeAge={(age) => setHealthcare({ longTermCareStartAge: age })}
                   />
                 </FieldRow>
               )}
@@ -280,16 +266,11 @@ export function EconomicAssumptionSection({ params, onChangeParams, mode, change
                   tooltipText="요양이 시작되는 나이 기준 금액입니다. 그 이후에는 의료비 증가율만큼 오릅니다."
                   changed={changed.has('healthcare.longTermCareMonthlyCost')}
                 >
-                  <InputField
-                    label="" aria-label="장기요양 시작 시점 월 비용" type="text"
+                  <AmountField
+                    label="" aria-label="장기요양 시작 시점 월 비용"
                     suffixText={currencySuffix(params.displayCurrency)}
-                    value={healthcare.longTermCareMonthlyCost.toLocaleString()}
-                    onChange={(e) => {
-                      const raw = e.target.value.replace(/,/g, '');
-                      if (raw === '' || !isNaN(Number(raw))) {
-                        setHealthcare({ longTermCareMonthlyCost: raw === '' ? 0 : Number(raw) });
-                      }
-                    }}
+                    value={healthcare.longTermCareMonthlyCost}
+                    onChangeValue={(cost) => setHealthcare({ longTermCareMonthlyCost: cost })}
                   />
                 </FieldRow>
               )}
@@ -310,14 +291,11 @@ export function EconomicAssumptionSection({ params, onChangeParams, mode, change
             <div className="grid grid-cols-2 items-end gap-3.5 sm:gap-4">
               {isFieldVisible(mode, 'healthcare.shockAge') && (
                 <FieldRow label="급증 발생 나이" changed={changed.has('healthcare.shockAge')}>
-                  <InputField
-                    label="" aria-label="급증 발생 나이" type="number" suffixText="세"
-                    min={AGE_MIN} max={AGE_MAX}
+                  <AgeField
+                    label="" aria-label="급증 발생 나이" suffixText="세"
+                    max={AGE_MAX}
                     value={healthcare.shockAge}
-                    onChange={(e) => {
-                      const age = parseAge(e.target.value, AGE_MAX);
-                      if (age !== null) setHealthcare({ shockAge: age });
-                    }}
+                    onChangeAge={(age) => setHealthcare({ shockAge: age })}
                   />
                 </FieldRow>
               )}
@@ -330,16 +308,11 @@ export function EconomicAssumptionSection({ params, onChangeParams, mode, change
                   tooltipText="증가율을 곱하지 않고 입력한 금액 그대로 그 해에 한 번 나갑니다."
                   changed={changed.has('healthcare.shockAmount')}
                 >
-                  <InputField
-                    label="" aria-label="급증 시 1회 금액" type="text"
+                  <AmountField
+                    label="" aria-label="급증 시 1회 금액"
                     suffixText={currencySuffix(params.displayCurrency)}
-                    value={healthcare.shockAmount.toLocaleString()}
-                    onChange={(e) => {
-                      const raw = e.target.value.replace(/,/g, '');
-                      if (raw === '' || !isNaN(Number(raw))) {
-                        setHealthcare({ shockAmount: raw === '' ? 0 : Number(raw) });
-                      }
-                    }}
+                    value={healthcare.shockAmount}
+                    onChangeValue={(amount) => setHealthcare({ shockAmount: amount })}
                   />
                 </FieldRow>
               )}

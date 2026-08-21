@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { EconomicAssumptionSection } from '@/web/features/StrategySettings/sections/EconomicAssumptionSection';
@@ -540,5 +541,67 @@ describe('EconomicAssumptionSection - 의료비 가정', () => {
       expect(screen.getByRole('switch', { name: /의료비를 따로 계산/ })).toBeInTheDocument();
       expect(screen.getByLabelText('급증 시 1회 금액')).toBeInTheDocument();
     });
+  });
+});
+
+// 부모가 실제로 값을 되돌려 주는 상태. 제어 입력의 버그는 «다음 렌더가 옛 값을 덮어쓰는»
+// 데서 나오므로, onChangeParams를 mock으로만 두면 그 순간이 재현되지 않는다.
+function StatefulEconomicSection({ initial }: { initial: SimulationParams }) {
+  const [params, setParams] = useState(initial);
+  return (
+    <EconomicAssumptionSection
+      params={params} onChangeParams={setParams as (p: SimulationParams) => void}
+      mode="expert" changed={new Set()}
+    />
+  );
+}
+
+describe('EconomicAssumptionSection 소수 입력', () => {
+  // 브라우저는 type=number 입력에서 "2." 처럼 아직 숫자가 아닌 텍스트에 대해 value로
+  // 빈 문자열을 돌려준다. 그 0을 저장하면 소수점을 찍는 순간 화면이 0으로 덮여
+  // 2.5%를 칠 방법이 없어진다.
+  test('물가상승률에 소수점을 찍어도 값이 0으로 덮이지 않는다', () => {
+    render(<StatefulEconomicSection initial={noAutoRate} />);
+    const input = screen.getByLabelText('물가상승률');
+
+    fireEvent.change(input, { target: { value: '3' } });
+    fireEvent.change(input, { target: { value: '3.' } });
+
+    expect(input).not.toHaveValue(0);
+
+    fireEvent.change(input, { target: { value: '3.5' } });
+
+    expect(input).toHaveValue(3.5);
+  });
+
+  test('물가상승률을 지우면 화면만 비고 저장된 값은 유지된다', () => {
+    render(<StatefulEconomicSection initial={noAutoRate} />);
+    const input = screen.getByLabelText('물가상승률');
+
+    fireEvent.change(input, { target: { value: '' } });
+
+    expect(input).toHaveValue(null);
+
+    fireEvent.blur(input);
+
+    expect(input).toHaveValue(2.5);
+  });
+
+  test('금액을 지우면 0으로 저장하되 화면은 빈 칸으로 남는다', () => {
+    const healthcare: HealthcareAssumptions = {
+      enabled: true, costGrowthRate: 5, baseMonthlyCost: 300000,
+      longTermCareEnabled: false, longTermCareStartAge: 80, longTermCareMonthlyCost: 1500000,
+      shockEnabled: false, shockAge: 75, shockAmount: 30000000,
+    };
+    render(<StatefulEconomicSection initial={{ ...noAutoRate, healthcare }} />);
+    const input = screen.getByLabelText('은퇴 시점 월 의료비');
+
+    fireEvent.change(input, { target: { value: '' } });
+
+    expect(input).toHaveValue('');
+
+    fireEvent.change(input, { target: { value: '500000' } });
+
+    expect(input).toHaveValue('500,000');
   });
 });

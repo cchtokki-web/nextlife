@@ -5,8 +5,9 @@ import {
   resolvePrivatePensionTaxLimitOverride, resolveStrategy,
 } from '../../../../core/usecases/strategy/compileStrategy';
 import { resolveTaxSettings } from '../../../../core/usecases/tax/taxRates';
-import InputField from '../../../components/InputField';
 import SelectField from '../../../components/SelectField';
+import { AmountField } from '../../../components/fields/AmountField';
+import { NumberField } from '../../../components/fields/NumberField';
 import { FieldRow, SwitchField } from '../../../components/form';
 import { SECTION_FIELDS, isFieldVisible } from '../fieldVisibility';
 import { SectionProps } from '../strategyOptions';
@@ -67,11 +68,11 @@ export function AdvancedSection({ params, onChangeParams, mode, changed }: Secti
     const path = `taxSettings.${key}`;
     return isFieldVisible(mode, path) && (
       <FieldRow label={label} tooltipText={tooltip} changed={changed.has(path)}>
-        <InputField
-          label="" aria-label={label} type="number" step="0.1" suffixText="%"
+        <NumberField
+          label="" aria-label={label} step="0.1" suffixText="%"
           value={tax[key]}
           disabled={disabled}
-          onChange={(e) => setTax({ [key]: Number(e.target.value) })}
+          onChangeValue={(rate) => setTax({ [key]: rate })}
         />
       </FieldRow>
     );
@@ -108,12 +109,10 @@ export function AdvancedSection({ params, onChangeParams, mode, changed }: Secti
           }
           changed={changed.has('cashYieldRate')}
         >
-          <InputField
-            label="" aria-label="남는 현금 수익률" type="number" step="0.1" suffixText="%"
+          <NumberField
+            label="" aria-label="남는 현금 수익률" step="0.1" suffixText="%"
             value={params.cashYieldRate ?? 0}
-            onChange={(e) =>
-              onChangeParams({ ...params, cashYieldRate: Number(e.target.value) })
-            }
+            onChangeValue={(rate) => onChangeParams({ ...params, cashYieldRate: rate })}
           />
         </FieldRow>
       )}
@@ -165,15 +164,10 @@ export function AdvancedSection({ params, onChangeParams, mode, changed }: Secti
             tooltipText="이 금액까지는 낮은 세율이 적용됩니다."
             changed={changed.has('taxSettings.privatePensionLimit')}
           >
-            <InputField
-              label="" aria-label="사적연금 저율과세 한도" type="text" suffixText="원"
-              value={tax.privatePensionLimit.toLocaleString()}
-              onChange={(e) => {
-                const raw = e.target.value.replace(/,/g, '');
-                if (raw === '' || !isNaN(Number(raw))) {
-                  setTax({ privatePensionLimit: raw === '' ? 0 : Number(raw) });
-                }
-              }}
+            <AmountField
+              label="" aria-label="사적연금 저율과세 한도" suffixText="원"
+              value={tax.privatePensionLimit}
+              onChangeValue={(limit) => setTax({ privatePensionLimit: limit })}
               // 구 세금 설정 화면에 있던 ±100만원 스텝 버튼. 금액이 커서 직접 타이핑하면
               // 자릿수를 틀리기 쉬운 필드라 그대로 복원한다.
               onStepUp={() => setTax({

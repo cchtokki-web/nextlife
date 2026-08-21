@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { describe, test, expect, vi, beforeAll } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { AssetFormSection } from '@/web/features/AssetForm/AssetFormSection';
@@ -287,5 +288,71 @@ describe('AssetFormSection - 매일 적립의 월 환산', () => {
     const next = applyFirstChange(onChangeParams, monthlyAsset);
     expect(next.assets[0].contributionAmount).toBe(24_000); // 500,000 × 12 / 250
     expect(next.assets[0].monthlyContribution).toBe(500_000);
+  });
+});
+
+// 제어 입력의 버그는 «다음 렌더가 옛 값을 덮어쓰는» 데서 나온다. onChangeParams를 mock으로만
+// 두면 그 순간이 재현되지 않으므로, 실제로 값을 되돌려 주는 부모를 만든다.
+function StatefulAssetForm({ initial }: { initial: SimulationParams }) {
+  const [params, setParams] = useState(initial);
+  return <AssetFormSection params={params} onChangeParams={setParams} />;
+}
+
+describe('AssetFormSection - 숫자 입력 중간 상태', () => {
+  const asset: SimulationParams = {
+    ...baseParams,
+    assets: [{
+      id: 'a1', type: 'etf', ticker: 'AAA', name: '자산1', quantity: 10, averagePrice: 1000,
+      totalReturn: 12, dividendYield: 2, monthlyContribution: 500000,
+      reinvestDividend: false, currency: 'KRW',
+    }],
+  };
+
+  const renderExpanded = (params: SimulationParams = asset) => {
+    render(<StatefulAssetForm initial={params} />);
+    fireEvent.click(screen.getByText('자산1'));
+  };
+
+  // 브라우저는 type=number 입력에서 "12." 처럼 아직 숫자가 아닌 텍스트에 대해 value로
+  // 빈 문자열을 돌려준다. 그 0을 저장하면 소수점을 찍는 순간 수익률이 0%로 덮인다.
+  test('연 총수익률에 소수점을 찍어도 0으로 덮이지 않는다', () => {
+    renderExpanded();
+    const input = screen.getByLabelText('연 총수익률');
+
+    fireEvent.change(input, { target: { value: '12.' } });
+
+    expect(input).not.toHaveValue(0);
+
+    fireEvent.change(input, { target: { value: '12.5' } });
+
+    expect(input).toHaveValue(12.5);
+  });
+
+  test('연 총수익률을 지우면 화면만 비고 포커스를 잃으면 되돌아온다', () => {
+    renderExpanded();
+    const input = screen.getByLabelText('연 총수익률');
+
+    fireEvent.change(input, { target: { value: '' } });
+
+    expect(input).toHaveValue(null);
+
+    fireEvent.blur(input);
+
+    expect(input).toHaveValue(12);
+  });
+
+  // 금액 필드는 빈 값을 0으로 «저장»한다. 그 0을 화면에도 되돌려 그리면 «0»이 눌어붙어
+  // 지울 수 없고, 새 금액을 치려면 0 뒤에 이어 붙이는 수밖에 없다.
+  test('월 적립 투자금을 지우면 화면은 빈 칸으로 남는다', () => {
+    renderExpanded();
+    const input = screen.getByLabelText('월 적립 투자금');
+
+    fireEvent.change(input, { target: { value: '' } });
+
+    expect(input).toHaveValue('');
+
+    fireEvent.change(input, { target: { value: '300000' } });
+
+    expect(input).toHaveValue('300,000');
   });
 });

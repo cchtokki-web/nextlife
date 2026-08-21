@@ -23,8 +23,45 @@ import { isDevMode } from '../../../core/utils/isDevMode';
 import { ScenarioComparisonCards } from './ScenarioComparisonCards';
 import styles from './SimpleSimulator.module.css';
 import { useIsHydrated } from '../../hooks/useBrowserEnvironment';
+import { useNumericDraft } from '../../components/fields/numericDraft';
 
+// 만원 단위 금액 입력.
+//
+// 저장값(원)을 곧바로 화면에 되돌려 그리면 값을 지우는 순간 0이 다시 찍혀 «0»을 지울 수
+// 없게 된다. 타이핑 중간 상태는 초안이 쥔다 — 사정은 numericDraft.ts 주석 참고.
+function ManWonInput({
+  name, value, onChangeWon,
+}: {
+  name: string;
+  value: number;
+  onChangeWon: (won: number) => void;
+}) {
+  const draft = useNumericDraft({
+    value,
+    format: (won) => (won / 10000).toLocaleString(),
+    parse: (raw) => {
+      const digits = raw.replace(/[^0-9]/g, '');
+      return digits === '' ? 0 : Number(digits) * 10000;
+    },
+    onCommit: onChangeWon,
+    // 타이핑 중에도 만원 단위 콤마를 유지한다. 지운 상태(빈 칸)는 그대로 둔다.
+    formatDraft: (raw) => {
+      const digits = raw.replace(/[^0-9]/g, '');
+      return digits === '' ? '' : Number(digits).toLocaleString();
+    },
+  });
 
+  return (
+    <input
+      name={name}
+      type="text"
+      value={draft.value}
+      onChange={draft.onChange}
+      onBlur={draft.onBlur}
+      className={styles.input}
+    />
+  );
+}
 
 function readSavedInput(): Partial<SimpleSimulationInput> | null {
   try {
@@ -115,10 +152,6 @@ export function SimpleSimulator() {
     setInput(prev => ({ ...prev, propensity: val }));
   };
 
-  const formatManWon = (val: number) => {
-    return (val / 10000).toLocaleString();
-  };
-
   const formatResultValue = (val: number): string => {
     if (val <= 0) return '0원';
     const valueInMan = Math.round(val / 10000);
@@ -206,15 +239,10 @@ export function SimpleSimulator() {
               <div className={styles.inputGroup}>
                 <label>현재 모은 자산</label>
                 <div className={styles.inputWrapper}>
-                  <input 
+                  <ManWonInput
                     name="currentAssets"
-                    type="text" 
-                    value={formatManWon(input.currentAssets)}
-                    onChange={(e) => {
-                      const val = Number(e.target.value.replace(/[^0-9]/g, ''));
-                      setInput(prev => ({ ...prev, currentAssets: val * 10000 }));
-                    }}
-                    className={styles.input}
+                    value={input.currentAssets}
+                    onChangeWon={(won) => setInput(prev => ({ ...prev, currentAssets: won }))}
                   />
                   <span className={styles.unit}>만원</span>
                 </div>
@@ -223,15 +251,10 @@ export function SimpleSimulator() {
               <div className={styles.inputGroup}>
                 <label>매월 투자(저축)액</label>
                 <div className={styles.inputWrapper}>
-                  <input 
+                  <ManWonInput
                     name="monthlyInvestment"
-                    type="text" 
-                    value={formatManWon(input.monthlyInvestment)}
-                    onChange={(e) => {
-                      const val = Number(e.target.value.replace(/[^0-9]/g, ''));
-                      setInput(prev => ({ ...prev, monthlyInvestment: val * 10000 }));
-                    }}
-                    className={styles.input}
+                    value={input.monthlyInvestment}
+                    onChangeWon={(won) => setInput(prev => ({ ...prev, monthlyInvestment: won }))}
                   />
                   <span className={styles.unit}>만원</span>
                 </div>
@@ -240,15 +263,10 @@ export function SimpleSimulator() {
               <div className={styles.inputGroup}>
                 <label>예상 국민연금 (월)</label>
                 <div className={styles.inputWrapper}>
-                  <input 
+                  <ManWonInput
                     name="nationalPension"
-                    type="text" 
-                    value={formatManWon(input.nationalPension)}
-                    onChange={(e) => {
-                      const val = Number(e.target.value.replace(/[^0-9]/g, ''));
-                      setInput(prev => ({ ...prev, nationalPension: val * 10000 }));
-                    }}
-                    className={styles.input}
+                    value={input.nationalPension}
+                    onChangeWon={(won) => setInput(prev => ({ ...prev, nationalPension: won }))}
                   />
                   <span className={styles.unit}>만원</span>
                 </div>
@@ -257,15 +275,10 @@ export function SimpleSimulator() {
               <div className={styles.inputGroup}>
                 <label>은퇴 후 목표 월 생활비</label>
                 <div className={styles.inputWrapper}>
-                  <input 
+                  <ManWonInput
                     name="targetMonthlySpending"
-                    type="text" 
-                    value={formatManWon(input.targetMonthlySpending)}
-                    onChange={(e) => {
-                      const val = Number(e.target.value.replace(/[^0-9]/g, ''));
-                      setInput(prev => ({ ...prev, targetMonthlySpending: val * 10000 }));
-                    }}
-                    className={styles.input}
+                    value={input.targetMonthlySpending}
+                    onChangeWon={(won) => setInput(prev => ({ ...prev, targetMonthlySpending: won }))}
                   />
                   <span className={styles.unit}>만원</span>
                 </div>
