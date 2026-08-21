@@ -14,9 +14,35 @@
   align-items: center;
 }
 
+/*
+ * 안내 문구를 단 라벨.
+ *
+ * 예전에는 라벨 본문과 안내 문구가 한 줄을 다투며 «둘 다» 접혔다. 한국어는 글자 단위로
+ * 줄바꿈되므로 「총 취득원가」가 「총 / 취득원가」로 쪼개져 필드 이름을 읽을 수 없었다.
+ * 본문을 접지 않게 고정하고, 안내 문구는 한 줄에 들어가면 오른쪽에 붙고 길면 통째로
+ * 다음 줄로 내려가게 둔다.
+ */
+.labelWithSecondary {
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: 0.5rem;
+  row-gap: 0.15rem;
+}
+
+.labelWithSecondary > span:first-child {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
 .labelSecondary {
   font-size: 0.75rem;
+  font-weight: 400;
   color: var(--foreground-muted);
+  /* 줄을 바꿀지 말지는 flex가 정한다. 0 1 auto라 제 내용만큼만 차지하고, 한 줄에
+     남을 때는 space-between이 오른쪽 끝으로 민다. */
+  flex: 0 1 auto;
+  min-width: 0;
+  line-height: 1.35;
 }
 
 .inputWrapper {

@@ -147,7 +147,7 @@ export const InputField = React.forwardRef<HTMLInputElement, InputFieldProps>(({
   return (
     <div className={styles.formGroup}>
       {label && (
-        <label className={styles.label} htmlFor={inputId}>
+        <label className={`${styles.label} ${labelSecondary ? styles.labelWithSecondary : ''}`} htmlFor={inputId}>
           <span>{label}</span>
           {labelSecondary && <span className={styles.labelSecondary}>{labelSecondary}</span>}
         </label>
