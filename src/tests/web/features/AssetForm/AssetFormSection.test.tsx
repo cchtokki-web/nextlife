@@ -233,3 +233,59 @@ describe('AssetFormSection - 사적연금 수령 개시 나이 UI 제거됨', ()
     expect(screen.queryByText('수령 개시 나이')).not.toBeInTheDocument();
   });
 });
+
+// 「매일 적립」은 달력일이 아니라 영업일 250일로 월 환산한다. 엔진에는 monthlyContribution
+// 하나만 넘어가므로, 이 환산이 어긋나면 연 납입액이 그대로 46% 부풀려진다.
+describe('AssetFormSection - 매일 적립의 월 환산', () => {
+  const dailyAsset: SimulationParams = {
+    ...baseParams,
+    assets: [{
+      id: 'a1', type: 'etf', ticker: 'AAA', name: '자산1', quantity: 10, averagePrice: 1000,
+      totalReturn: 12, dividendYield: 2, monthlyContribution: 0,
+      contributionPeriod: 'daily', contributionAmount: 0,
+      reinvestDividend: false, currency: 'KRW',
+    }],
+  };
+
+  const applyFirstChange = (
+    onChangeParams: ReturnType<typeof vi.fn>,
+    params: SimulationParams
+  ): SimulationParams => {
+    const updater = onChangeParams.mock.calls[0][0] as (prev: SimulationParams) => SimulationParams;
+    return updater(params);
+  };
+
+  test('매일 15,000원을 넣으면 월 적립액이 영업일 기준 312,500원이 된다', () => {
+    const onChangeParams = vi.fn();
+    render(<AssetFormSection params={dailyAsset} onChangeParams={onChangeParams} />);
+    fireEvent.click(screen.getByText('자산1'));
+
+    fireEvent.change(screen.getByLabelText('매일 적립 투자금'), { target: { value: '15,000' } });
+
+    const next = applyFirstChange(onChangeParams, dailyAsset);
+    expect(next.assets[0].contributionAmount).toBe(15_000);
+    expect(next.assets[0].monthlyContribution).toBe(312_500);
+  });
+
+  test('매월에서 매일로 주기를 바꿔도 연 납입액이 유지된다', () => {
+    const monthlyAsset: SimulationParams = {
+      ...dailyAsset,
+      assets: [{
+        ...dailyAsset.assets[0],
+        contributionPeriod: 'monthly',
+        contributionAmount: 500_000,
+        monthlyContribution: 500_000,
+      }],
+    };
+    const onChangeParams = vi.fn();
+    render(<AssetFormSection params={monthlyAsset} onChangeParams={onChangeParams} />);
+    fireEvent.click(screen.getByText('자산1'));
+
+    // SelectField의 라벨은 select와 연결돼 있지 않아 현재 선택값으로 찾는다.
+    fireEvent.change(screen.getByDisplayValue('매월'), { target: { value: 'daily' } });
+
+    const next = applyFirstChange(onChangeParams, monthlyAsset);
+    expect(next.assets[0].contributionAmount).toBe(24_000); // 500,000 × 12 / 250
+    expect(next.assets[0].monthlyContribution).toBe(500_000);
+  });
+});

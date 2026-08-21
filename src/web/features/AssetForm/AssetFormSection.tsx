@@ -10,6 +10,12 @@ import { ReturnBreakdownHint } from './ReturnBreakdownHint';
 import { initialParams } from '../../../infrastructure/storage/localStore';
 import { resolveRiskProfileYieldPreset, resolveStrategy } from '../../../core/usecases/strategy/compileStrategy';
 import { isEconomicScenarioGoverning } from '../../../core/usecases/scenario/economicScenarios';
+import {
+  convertContributionAmount,
+  roundContributionForCurrency,
+  toMonthlyContribution,
+  type ContributionPeriod,
+} from '../../../core/domain/input/contributionPeriod';
 
 // /api/stock-search가 돌려주는 항목 중 이 화면이 쓰는 필드. 자동완성 목록을 predefinedAssets와
 // 같은 모양으로 합치기 위해 필요한 것만 선언한다.
@@ -22,33 +28,6 @@ interface StockSuggestion {
   currency: AssetCurrency;
   exchDisp?: string;
 }
-
-const convertAmountOnPeriodChange = (amount: number, fromPeriod: 'daily' | 'weekly' | 'monthly', toPeriod: 'daily' | 'weekly' | 'monthly'): number => {
-  let monthlyAmount = amount;
-  if (fromPeriod === 'daily') {
-    monthlyAmount = amount * 365 / 12;
-  } else if (fromPeriod === 'weekly') {
-    monthlyAmount = amount * 52 / 12;
-  }
-  
-  if (toPeriod === 'daily') {
-    return monthlyAmount * 12 / 365;
-  } else if (toPeriod === 'weekly') {
-    return monthlyAmount * 12 / 52;
-  } else {
-    return monthlyAmount;
-  }
-};
-
-const calculateMonthlyFromPeriod = (amount: number, period: 'daily' | 'weekly' | 'monthly'): number => {
-  if (period === 'daily') {
-    return amount * 365 / 12;
-  } else if (period === 'weekly') {
-    return amount * 52 / 12;
-  } else {
-    return amount;
-  }
-};
 
 // 새로 추가하는 항목의 id.
 //
@@ -964,21 +943,18 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                         label="적립 주기"
                         value={asset.contributionPeriod || 'monthly'}
                         onChange={(e) => {
-                          const newPeriod = e.target.value as 'daily' | 'weekly' | 'monthly';
+                          const newPeriod = e.target.value as ContributionPeriod;
                           const currentPeriod = asset.contributionPeriod || 'monthly';
                           const currentAmount = asset.contributionAmount ?? asset.monthlyContribution;
 
-                          let newAmount = convertAmountOnPeriodChange(currentAmount, currentPeriod, newPeriod);
-                          if (asset.currency === 'KRW') {
-                            newAmount = Math.round(newAmount);
-                          } else {
-                            newAmount = Math.round(newAmount * 100) / 100;
-                          }
-
-                          const newMonthly = calculateMonthlyFromPeriod(newAmount, newPeriod);
-                          const roundedMonthly = asset.currency === 'KRW' 
-                            ? Math.round(newMonthly) 
-                            : Math.round(newMonthly * 100) / 100;
+                          const newAmount = roundContributionForCurrency(
+                            convertContributionAmount(currentAmount, currentPeriod, newPeriod),
+                            asset.currency
+                          );
+                          const roundedMonthly = roundContributionForCurrency(
+                            toMonthlyContribution(newAmount, newPeriod),
+                            asset.currency
+                          );
 
                           handleUpdateAsset(asset.id, {
                             contributionPeriod: newPeriod,
@@ -987,7 +963,7 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                           });
                         }}
                         options={[
-                          { value: 'daily', label: '매일' },
+                          { value: 'daily', label: '매일(영업일 기준)' },
                           { value: 'weekly', label: '매주' },
                           { value: 'monthly', label: '매월' },
                         ]}
@@ -1011,10 +987,10 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                           const numValue = rawValue === '' ? 0 : Number(rawValue);
                           if (!isNaN(numValue)) {
                             const period = asset.contributionPeriod || 'monthly';
-                            const monthlyVal = calculateMonthlyFromPeriod(numValue, period);
-                            const roundedMonthly = asset.currency === 'KRW' 
-                              ? Math.round(monthlyVal) 
-                              : Math.round(monthlyVal * 100) / 100;
+                            const roundedMonthly = roundContributionForCurrency(
+                              toMonthlyContribution(numValue, period),
+                              asset.currency
+                            );
 
                             handleUpdateAsset(asset.id, {
                               contributionAmount: numValue,
@@ -1026,10 +1002,10 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                           const currentAmount = asset.contributionAmount ?? asset.monthlyContribution;
                           const nextAmount = currentAmount + 5000;
                           const period = asset.contributionPeriod || 'monthly';
-                          const monthlyVal = calculateMonthlyFromPeriod(nextAmount, period);
-                          const roundedMonthly = asset.currency === 'KRW' 
-                            ? Math.round(monthlyVal) 
-                            : Math.round(monthlyVal * 100) / 100;
+                          const roundedMonthly = roundContributionForCurrency(
+                            toMonthlyContribution(nextAmount, period),
+                            asset.currency
+                          );
 
                           handleUpdateAsset(asset.id, {
                             contributionAmount: nextAmount,
@@ -1040,10 +1016,10 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                           const currentAmount = asset.contributionAmount ?? asset.monthlyContribution;
                           const nextAmount = Math.max(0, currentAmount - 5000);
                           const period = asset.contributionPeriod || 'monthly';
-                          const monthlyVal = calculateMonthlyFromPeriod(nextAmount, period);
-                          const roundedMonthly = asset.currency === 'KRW' 
-                            ? Math.round(monthlyVal) 
-                            : Math.round(monthlyVal * 100) / 100;
+                          const roundedMonthly = roundContributionForCurrency(
+                            toMonthlyContribution(nextAmount, period),
+                            asset.currency
+                          );
 
                           handleUpdateAsset(asset.id, {
                             contributionAmount: nextAmount,
