@@ -99,6 +99,12 @@ export function MultilineYAxisTick({ x, y, payload, textAnchor, fill, currency }
   );
 }
 
+// 기준선(ReferenceLine) 라벨의 공통 타이포그래피. 10px대 굵은 한글은 받침이 뭉개져
+// 「시작」이 「시삭」처럼 읽혔다 — 라틴 글자에서는 문제가 되지 않던 크기다. 두 차트가
+// 같은 요소를 그리므로 값은 여기 한 곳에만 둔다. 숫자로 두면 recharts가 SVG font-size
+// 속성에 px로 그대로 넘긴다(rem은 차트 바깥 폰트 크기에 따라 더 작아질 수 있다).
+export const REFERENCE_LABEL_FONT_SIZE = 12;
+
 export const RECHARTS_TOOLTIP_STYLE = {
   background: 'rgba(17, 24, 39, 0.85)',
   border: '1px solid var(--card-border)',

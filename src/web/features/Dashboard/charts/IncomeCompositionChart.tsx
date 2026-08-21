@@ -6,7 +6,9 @@ import GlassCard from '../../../components/GlassCard';
 import styles from '../Dashboard.module.css';
 import { SimulationParams, SimulationResult } from '../../../../core/entities/types';
 import { computeMonthlySpendingComposition } from '../../../../core/usecases/MonthlySpendingComposition';
-import { formatValue, MultilineYAxisTick, RECHARTS_TOOLTIP_STYLE, Y_AXIS_WIDTH } from './chartFormatters';
+import {
+  formatValue, MultilineYAxisTick, RECHARTS_TOOLTIP_STYLE, REFERENCE_LABEL_FONT_SIZE, Y_AXIS_WIDTH,
+} from './chartFormatters';
 import { ChartLegend, legendColorOf, type ChartLegendItem } from './ChartLegend';
 import { ChartCaption } from './ChartCaption';
 
@@ -40,10 +42,13 @@ export const INCOME_LEGEND: ChartLegendItem[] = [
   { dataKey: '기타소득', label: '기타소득', color: '#F59E0B' },
 ];
 
-// 범례 아래로 추가로 비우는 여백(px). 이 차트만 막대 위에 ⚠️ 표시를 그리고(Bar label의
-// `y - 8`) 국민연금 개시 기준선 라벨을 플롯 최상단에 얹기 때문에, 범례 높이만큼만 비우면
-// 그 둘이 첫 눈금선에 닿는다.
+// 막대 위 ⚠️ 표시(Bar label의 `y - 8`)가 첫 눈금선에 닿지 않도록 비우는 여백(px).
 const BAR_LABEL_HEADROOM = 12;
+
+// 플롯 위쪽 여백. ⚠️ 여백만 잡으면 국민연금 개시 기준선 라벨이 들어갈 자리가 없어
+// 글자 윗부분이 SVG 바깥으로 잘려 나갔다 — 라벨이 「깨져」 보이던 원인이다.
+// 라벨 한 줄(글자 높이 + position:'top'의 기본 offset 5px)을 더 확보한다.
+const CHART_TOP_MARGIN = BAR_LABEL_HEADROOM + REFERENCE_LABEL_FONT_SIZE + 5;
 
 export interface IncomeChartRow {
   age: number;
@@ -141,7 +146,7 @@ export function IncomeCompositionChart({
       <div className={styles.chartScrollWrapper}>
         <div className={styles.chartContainer}>
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={pensionChartData} margin={{ top: BAR_LABEL_HEADROOM, right: 43, left: 0, bottom: 0 }}>
+            <BarChart data={pensionChartData} margin={{ top: CHART_TOP_MARGIN, right: 43, left: 0, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(255, 255, 255, 0.05)" />
               <XAxis
                 dataKey="age"
@@ -179,7 +184,7 @@ export function IncomeCompositionChart({
                     value: `${nationalPensionStartAge}세 국민연금 시작`,
                     fill: 'var(--foreground-muted)',
                     position: 'top',
-                    fontSize: '0.65rem',
+                    fontSize: REFERENCE_LABEL_FONT_SIZE,
                     fontWeight: 600,
                   }}
                 />
