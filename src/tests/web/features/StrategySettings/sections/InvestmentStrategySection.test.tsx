@@ -67,8 +67,8 @@ describe('InvestmentStrategySection', () => {
     });
   });
 
-  // 기본 riskProfile은 'ai_recommended'(= 아무것도 하지 않음)라, 기본 상태에서 수익률을
-  // 결정하는 것은 경제 시나리오다. 설명문이 그 사실을 그대로 말해야 한다.
+  // 경제 시나리오는 물가·환율만 정하고, 자산·사적연금의 수익률은 리스크 성향(governing한
+  // 값을 고른 경우)만 정한다. 설명문이 그 역할 구분을 정확히 말해야 한다.
   test('시나리오와 리스크 성향의 역할 구분을 설명문으로 알린다', () => {
     render(
       <InvestmentStrategySection
@@ -77,7 +77,7 @@ describe('InvestmentStrategySection', () => {
       />
     );
 
-    expect(screen.getByText(/경제 시나리오는 물가·환율뿐 아니라 보유 자산과 사적연금의 수익률까지 함께 바꿉니다/))
+    expect(screen.getByText(/경제 시나리오는 물가·환율만 바꿉니다/))
       .toBeInTheDocument();
     expect(screen.getByText(/입력 수익률 유지.*가 아닌 값으로 고른 경우에만/)).toBeInTheDocument();
   });
@@ -94,7 +94,7 @@ describe('InvestmentStrategySection', () => {
 
     expect(screen.queryByRole('radiogroup', { name: '리스크 성향' })).not.toBeInTheDocument();
     expect(screen.queryByRole('radiogroup', { name: '경제 시나리오' })).not.toBeInTheDocument();
-    expect(screen.queryByText(/경제 시나리오는 물가·환율뿐 아니라/))
+    expect(screen.queryByText(/경제 시나리오는 물가·환율만 바꿉니다/))
       .not.toBeInTheDocument();
   });
 });
