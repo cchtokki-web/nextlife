@@ -50,6 +50,7 @@ import {
 import { calculateRetirementIncomeMetrics } from './metrics/SimulationMetricsCalculator';
 import { priceGrowthRate } from './returns/decomposeReturn';
 import { shockBeta, weightedAverageTotalReturn } from './returns/portfolioReturn';
+import { assertLedgerConsistent, buildYearLedger } from './ledger/YearLedger';
 
 // 투영 루프가 도는 최대 연수. 사람의 나이 상한(120세)에서 태어난 해부터 세어도 넘을 수 없는
 // 값이라, 정상 입력을 자르지 않으면서 무한에 가까운 루프만 막는다.
@@ -854,6 +855,19 @@ export class LegacySimulationEngine implements SimulationEngineContract {
       let annualWithheldFinancialTaxKRW = 0;
       let annualPrivatePensionPreTaxKRW = 0;
       let annualNationalPensionPreTaxKRW = 0;
+      // 일반계좌·ISA에서 발생한 **세전** 배당 총액(표시 통화). 재투자 여부와 무관하게
+      // 전액이 여기 쌓인다 — 회계식에서 배당은 「투자 총수익」의 일부이지 외부에서 새로
+      // 들어온 돈이 아니기 때문이다(YearlyLedger 주석).
+      let annualGrossDividendDisplay = 0;
+      // 위 세전 배당에서 배당세를 뺀 몫이 어디로 갔는가. 계좌 밖으로 나온 것(생활비 재원)과
+      // 계좌 안에 남은 것(재투자·ISA 내부)을 나눠 센다 — 「쓸 수 있는 돈인가」가 갈리기 때문이다.
+      let annualDividendRetainedNetDisplay = 0;
+      // 그 해 실제로 납입된 금액(한도로 잘린 뒤). ISA 납입은 법정 한도에 걸려 입력값보다
+      // 작을 수 있으므로 입력에서 되계산할 수 없고, 실제 납입 지점에서 세어야 한다.
+      let annualContributionsDisplay = 0;
+      // 국민연금·기타소득의 «세전» 연간 합계(표시 통화). 원장의 외부유입 항이다.
+      let annualNationalPensionPreTaxDisplay = 0;
+      let annualOtherPreTaxDisplay = 0;
 
       // 생활비와 별개의 지출 라인. 은퇴 후에만 발생하며 spending에 합산된다.
       // infRateAnnual은 소수(inflationRate / 100)이므로 % 단위로 되돌려 넘긴다.
@@ -958,9 +972,21 @@ export class LegacySimulationEngine implements SimulationEngineContract {
           );
           isa.totalInvested += contribution;
           isa.monthsSinceInception += 1;
+          annualContributionsDisplay += this.convertValue(contribution, isa.currency, displayCurrency, exchangeRate);
 
+          // **ISA 계좌 «안에서» 생긴 배당은 사용자의 배당소득이 아니다.** 위에서 보듯
+          // 전액이 계좌 잔액에 남고 한 푼도 손에 들어오지 않는다. 그런데도 예전에는
+          // annualDividendIncome에 더해져, 화면의 「배당소득」과 생활비 재원 구성이
+          // 실재하지 않는 소득을 세고 있었다(커버드콜 ISA의 21.2% 분배율이 그대로
+          // 배당소득으로 잡혔다). 실제로 ISA에서 자금을 «인출»했을 때만 외부 현금흐름이
+          // 되며, 그 경로는 아래 WithdrawalEngine의 ISA 계좌가 담당한다.
+          //
+          // 대신 원장의 투자 총수익에는 반드시 들어간다 — 잔액은 실제로 그만큼 늘었으므로
+          // 어디에도 세지 않으면 총자산 항등식이 깨진다.
           const divDisplay = this.convertValue(dividend, isa.currency, displayCurrency, exchangeRate);
-          annualDividendIncome += divDisplay;
+          annualGrossDividendDisplay += divDisplay;
+          // ISA는 만기에 한 번에 정산하므로 발생 시점의 원천징수가 없다 — 세전 전액이 계좌에 남는다.
+          annualDividendRetainedNetDisplay += divDisplay;
           annualPreTaxTotalIncome += divDisplay;
 
           if (isa.monthsSinceInception >= isa.maturityYears * 12) {
@@ -1025,6 +1051,9 @@ export class LegacySimulationEngine implements SimulationEngineContract {
           annualInvestmentReturn += this.convertValue(
             growth, asset.currency, displayCurrency, exchangeRate
           );
+          // 세전 배당은 재투자 여부와 무관하게 전액이 투자 총수익이다(YearlyLedger 주석).
+          annualGrossDividendDisplay += this.convertValue(dividendRaw, asset.currency, displayCurrency, exchangeRate);
+          annualContributionsDisplay += this.convertValue(contribution, asset.currency, displayCurrency, exchangeRate);
           // 적립금은 새로 취득한 금액이므로 원가에 더한다. 성장분(growth)은 평가차익이라 더하지 않는다.
           asset.costBasis += contribution;
 
@@ -1042,7 +1071,16 @@ export class LegacySimulationEngine implements SimulationEngineContract {
             asset.currentValue += dividendNet;
             // 세후 배당으로 다시 사들인 것이므로 새 취득이다.
             asset.costBasis += dividendNet;
-            annualDividendIncome += this.convertValue(dividendNet, asset.currency, displayCurrency, exchangeRate);
+            // **재투자한 배당은 배당«소득»이 아니다.** 현금이 계좌를 떠나지 않으므로
+            // 생활비로 쓸 수 없고, 쓰려면 자산을 팔아야 한다(그때는 양도세가 붙는다).
+            // 예전에는 여기서 annualDividendIncome에 더해, 배당을 전액 재투자하는 계획도
+            // 화면에는 「배당소득 월 40만원」이 찍혔다. 그 숫자를 재원으로 세는
+            // MonthlySpendingComposition은 그만큼 자산인출을 과소 표시했고,
+            // 은퇴 준비도의 「고정소득」 축과 목표 달성률도 함께 부풀었다.
+            //
+            // 잔액이 늘어난 사실은 위 annualGrossDividendDisplay가 투자 총수익으로 세므로
+            // 총자산 항등식은 그대로 성립한다.
+            annualDividendRetainedNetDisplay += this.convertValue(dividendNet, asset.currency, displayCurrency, exchangeRate);
             annualDividendTaxPaid += this.convertValue(dividendTax, asset.currency, displayCurrency, exchangeRate);
             annualPreTaxTotalIncome += this.convertValue(dividendRaw, asset.currency, displayCurrency, exchangeRate);
           } else {
@@ -1109,6 +1147,7 @@ export class LegacySimulationEngine implements SimulationEngineContract {
           annualInvestmentReturn += this.convertValue(
             growth, pension.currency, displayCurrency, exchangeRate
           );
+          annualContributionsDisplay += this.convertValue(contribution, pension.currency, displayCurrency, exchangeRate);
 
           // 계좌군 정책을 명시한 새 경로에서는 사적연금을 여기서 선지급하지 않는다. Funding Gap
           // 아래의 단일 WithdrawalEngine 호출이 GENERAL/ISA/PENSION 우선순위를 실제로 결정한다.
@@ -1294,9 +1333,11 @@ export class LegacySimulationEngine implements SimulationEngineContract {
         annualNationalPensionIncome += monthlyNationalPensionDisplay;
         annualNationalPensionTaxPaid += monthlyNatTaxDisplay;
         annualPreTaxTotalIncome += monthlyNatPreTaxTotalDisplay;
-        
+        annualNationalPensionPreTaxDisplay += monthlyNatPreTaxTotalDisplay;
+
         annualOtherIncome += monthlyOtherIncomeTotalDisplay;
         annualPreTaxTotalIncome += monthlyOtherPreTaxTotalDisplay;
+        annualOtherPreTaxDisplay += monthlyOtherPreTaxTotalDisplay;
 
         const monthlyTotalIncome = monthlyDividendIncomeNetDisplay + monthlyPensionIncomeNetDisplay + monthlyNationalPensionDisplay + monthlyOtherIncomeTotalDisplay;
         // dividend_only는 목표 생활비를 쓰지 않고 "그달 들어온 소득만큼만" 쓰는 전략이라
@@ -1690,6 +1731,29 @@ export class LegacySimulationEngine implements SimulationEngineContract {
         + annualHealthInsurancePaidDisplay
         + annualCapitalGainsTaxPaidDisplay;
 
+      // 한 해의 회계 원장. 결과에 실린 스칼라들이 하나의 항등식으로 설명되는지를 여기서
+      // 매년 확인한다 — 설명되지 않으면 던진다(assertLedgerConsistent 주석).
+      const ledger = buildYearLedger({
+        age: currentAge,
+        beginningAssets: openingAssets,
+        endingAssets: totalAssetsDisplay,
+        priceGain: annualInvestmentReturn,
+        grossDividend: annualGrossDividendDisplay,
+        dividendPaidOutNet: annualDividendIncome,
+        dividendRetainedNet: annualDividendRetainedNetDisplay,
+        nationalPensionPreTax: annualNationalPensionPreTaxDisplay,
+        otherIncome: annualOtherPreTaxDisplay,
+        contributions: annualContributionsDisplay,
+        privatePensionWithdrawal: annualPrivatePensionWithdrawal,
+        taxableAccountWithdrawal: annualGeneralAssetWithdrawal,
+        isaWithdrawal: annualIsaWithdrawal,
+        living: annualSpending,
+        // 건보료는 원장에서 따로 세므로 여기서 뺀다. taxes 자체는 화면 계약이라 그대로 둔다.
+        tax: taxes - annualHealthInsurancePaidDisplay,
+        healthInsurance: annualHealthInsurancePaidDisplay,
+      });
+      assertLedgerConsistent(ledger);
+
       yearlyResults.push({
         age: currentAge, year: currentYear, totalAssets: totalAssetsDisplay,
         employmentIncome: 0,
@@ -1713,6 +1777,7 @@ export class LegacySimulationEngine implements SimulationEngineContract {
         spending: annualSpending, unmetSpending: annualUnmetSpending,
         healthcareSpending: annualHealthcareCost,
         hasTaxWarning,
+        ledger,
         preTaxTotalIncome: annualPreTaxTotalIncome,
         dividendTaxPaid: annualDividendTaxPaid, pensionTaxPaid: annualPensionTaxPaid,
         nationalPensionTaxPaid: annualNationalPensionTaxPaid, comprehensiveTaxPaid: annualComprehensiveTaxPaidDisplay,

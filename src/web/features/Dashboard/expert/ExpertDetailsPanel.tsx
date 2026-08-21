@@ -9,6 +9,7 @@ import { estimateHealthInsuranceCliff } from '../../../../core/usecases/healthca
 import { resolveTaxContext } from '../../../../core/usecases/tax/taxContext';
 import { YearlyChart } from '../YearlyChart';
 import { SensitivityAnalysisSection } from './SensitivityAnalysisSection';
+import { LedgerDebugPanel } from './LedgerDebugPanel';
 
 interface ExpertDetailsPanelProps {
   result: SimulationResult;
@@ -118,6 +119,11 @@ export function ExpertDetailsPanel({
               <h4 className="mb-2 text-sm font-semibold">연도별 상세 내역</h4>
               <YearlyChart params={params} result={result} />
             </section>
+          )}
+
+          {/* 개발 모드에서만 보이는 회계 원장. LoginForm이 쓰는 것과 같은 플래그다. */}
+          {process.env.NEXT_PUBLIC_DEV_MODE === 'true' && (
+            <LedgerDebugPanel result={result} params={params} />
           )}
       </div>
     </GlassCard>

@@ -343,8 +343,20 @@ function computeTaxationRiskRaw(yearlyResults: SimulationYearlyResult[], cfg: Ut
 
   const warningRatio = yearlyResults.filter((r) => r.hasTaxWarning).length / yearlyResults.length;
   const healthInsuranceTotal = sum(yearlyResults.map((r) => r.healthInsurancePaid));
-  const totalIncomeAll = sum(yearlyResults.map((r) => r.totalIncome));
-  const healthInsuranceRatio = totalIncomeAll > 0 ? healthInsuranceTotal / totalIncomeAll : 0;
+  // 분모는 그 해 **인식한** 세후 총소득이다 — totalIncome(실제로 손에 쥔 현금)에 계좌 안에
+  // 남은 세후 배당을 되더한 값.
+  //
+  // 되더하지 않으면 배당을 전액 재투자하는 계획에서 분모가 0이 되어 건보료 페널티가 통째로
+  // 사라진다. 재투자한 배당도 건보료가 부과되는 금융소득이므로(계좌 밖으로 나오지 않았을 뿐
+  // 소득으로 인식되고 원천징수까지 된다) 분자에는 그 부담이 들어 있는데 분모에서만 빠지는 셈이다.
+  // 이 축의 5% 문턱(healthInsuranceCeiling)은 「세후 인식 소득 대비」로 보정된 값이라, 분모를
+  // 세전으로 바꾸는 대신 인식 기준을 복원한다.
+  //
+  // ledger가 없는 결과(손으로 만든 픽스처)에서는 0으로 본다 = 재투자분이 없는 계획과 같다.
+  const recognizedIncome = sum(yearlyResults.map(
+    (r) => r.totalIncome + (r.ledger?.investmentReturn.dividendRetainedNet ?? 0)
+  ));
+  const healthInsuranceRatio = recognizedIncome > 0 ? healthInsuranceTotal / recognizedIncome : 0;
 
   const penalty = 0.7 * warningRatio + 0.3 * clamp(healthInsuranceRatio / cfg.healthInsuranceCeiling, 0, 1);
   return clamp(1 - penalty, 0, 1);

@@ -18,7 +18,7 @@ exports[`SimulationEngine withdrawalPlan (인출 정책 파라미터화) > 회�
     "spending": 85435386.69838452,
     "stockAssets": 334409063.6269582,
     "totalAssets": 424593359.5216822,
-    "totalIncome": 84833278.03173886,
+    "totalIncome": 79360281.90130013,
   },
   "은퇴시점": {
     "age": 60,
@@ -36,7 +36,7 @@ exports[`SimulationEngine withdrawalPlan (인출 정책 파라미터화) > 회�
     "spending": 40730695.66406249,
     "stockAssets": 129838963.44390567,
     "totalAssets": 563995420.2198206,
-    "totalIncome": 21934037.607229088,
+    "totalIncome": 19835402.70765987,
   },
   "첫해": {
     "age": 55,
@@ -54,7 +54,7 @@ exports[`SimulationEngine withdrawalPlan (인출 정책 파라미터화) > 회�
     "spending": 0,
     "stockAssets": 75832768.26374455,
     "totalAssets": 402969057.0285433,
-    "totalIncome": 7211326.244132227,
+    "totalIncome": 6000000,
   },
 }
 `;
@@ -64,10 +64,10 @@ exports[`SimulationEngine withdrawalPlan (인출 정책 파라미터화) > 회�
   "depletionAge": null,
   "endingAssets": 424593359.5216822,
   "fireAge": null,
-  "goalAchievementRate": 49,
+  "goalAchievementRate": 45,
   "retirementAssetsAtRetirement": 563995420.2198206,
   "retirementGrade": "주의",
-  "retirementScore": 66,
+  "retirementScore": 64,
   "utilityComponents": {
     "bequestAdequacy": 6,
     "consumption": 35,

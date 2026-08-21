@@ -15,3 +15,14 @@ export class InvalidTaxInputError extends DomainError {}
  * 보정해도(0으로 두어도) 여전히 실제보다 낙관적인 결과를 만든다.
  */
 export class InvalidSimulationInputError extends DomainError {}
+
+/**
+ * 한 해의 총자산 흐름이 회계 항등식으로 설명되지 않을 때.
+ *
+ *   기말 = 기초 + 투자총수익 + 진짜외부유입 − 생활비 − 세금 − 건보료
+ *
+ * 이 식이 깨지는 것은 «표시»가 아니라 «계산»의 결함이다 — 현금흐름이 두 번 세어졌거나
+ * 증발했다는 뜻이므로, 조용히 보정하면 그 결함이 그대로 화면의 숫자가 된다. 성공률에
+ * 보정계수를 곱하거나 자산을 임의로 더해 메우는 대신 여기서 멈춘다.
+ */
+export class SimulationConsistencyError extends DomainError {}

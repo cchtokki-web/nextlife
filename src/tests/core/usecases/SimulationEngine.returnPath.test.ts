@@ -151,7 +151,11 @@ describe('SimulationEngine - returnPath', () => {
     const baseline = engine.runSingle(params());
     const shocked = engine.runSingle(params(), new Array(YEARS).fill(5));
 
-    const firstYearDividend = (r: typeof baseline) => r.yearlyResults[0].dividendIncome;
+    // dividendIncome이 아니라 원장의 «세전 배당 발생액»으로 잰다. 이 픽스처의 자산은
+    // reinvestDividend=true이고 ISA 배당은 계좌 안에 남으므로, 발생한 배당이 한 푼도
+    // dividendIncome에 잡히지 않는다(그것이 그 필드의 정의다 — 쓸 수 있는 현금만 센다).
+    // 충격이 배당률에 새는지는 «발생액»으로만 잴 수 있다.
+    const firstYearDividend = (r: typeof baseline) => r.yearlyResults[0].ledger!.investmentReturn.dividend;
     // 배당률 자체가 5%p 올랐다면 배당이 2~3배가 된다. 평가액 성장에 딸린 차이는 10% 미만이다.
     expect(firstYearDividend(shocked)).toBeLessThan(firstYearDividend(baseline) * 1.1);
   });
