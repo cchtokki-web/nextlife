@@ -340,6 +340,82 @@ export interface SimulationParams {
   taxLawVersion?: TaxLawVersion;
 }
 
+/**
+ * 한 해의 총자산 회계 원장. 결과에 실린 스칼라 필드들이 **하나의 항등식**으로 설명되는지를
+ * 직접 확인할 수 있는 유일한 자리다.
+ *
+ *   기말 총자산
+ *   = 기초 총자산
+ *   + 투자 총수익 (가격수익 + 배당 + 이자)
+ *   + 진짜 외부 유입 (국민연금 세전 + 기타소득 + 신규 납입)
+ *   − 생활비 − 세금 − 건강보험료
+ *
+ * **내부 이동은 이 식에 넣지 않는다.** 사적연금 인출, 일반계좌 ETF 매도, ISA 인출, 계좌
+ * 이체는 자산의 «형태»만 바꾸므로 총자산 관점에서 손익이 아니다. 그 금액들은 아래
+ * internalWithdrawals에 정보로만 싣는다 — 식에 넣는 순간 인출과 소비가 모두 자산 감소로
+ * 계산되어 이중차감이 된다.
+ *
+ * 이 원장이 없던 동안 "60~64세 부족자금은 982만원인데 자산은 1.7억 줄었다"처럼 서로
+ * 모순되어 보이는 두 숫자를 대조할 방법이 없었다. residual이 0이면 두 숫자는 모순이 아니다.
+ */
+export interface YearlyLedger {
+  age: number;
+  beginningAssets: number;
+  investmentReturn: {
+    /** priceGain + dividend. 시장 연동 계좌 전체의 총수익이다. */
+    total: number;
+    // 가격수익 + 현금 이자 + 사적연금 총수익.
+    //
+    // **사적연금은 배당을 분해하지 않는다**(계좌 안에 배당세도 재투자 선택지도 없어
+    // 총수익률만이 결과를 정한다 — decomposeReturn.ts 주석). 그래서 연금의 총수익은
+    // dividend가 아니라 여기 들어온다. 연금 계좌의 배당을 배당소득으로 세지 않는다는
+    // 규칙이 이 배치로 구조상 보장된다.
+    priceGain: number;
+    /** 일반계좌·ISA에서 발생한 **세전** 배당. 재투자 여부와 무관하게 전액이 여기 잡힌다. */
+    dividend: number;
+    // 세후 배당이 어디로 갔는가. 위 dividend(세전)에서 배당세를 뺀 몫이 이 둘로 갈린다.
+    //
+    // 둘을 나누는 이유는 «쓸 수 있는 돈인가»가 갈리기 때문이다. 계좌 밖으로 나온 배당만
+    // 생활비 재원이 되고, 계좌 안에 남은 배당은 쓰려면 자산을 팔아야 한다(양도세가 붙는다).
+    // 총자산 항등식에서는 둘 다 이미 위 dividend로 한 번 세어졌으므로, 이 두 값은 정보성이며
+    // 항등식에 다시 넣지 않는다.
+    /** 계좌 밖으로 «나온» 세후 배당. SimulationYearlyResult.dividendIncome과 같은 금액이다. */
+    dividendPaidOutNet: number;
+    /** 계좌 «안에» 남은 세후 배당(재투자분 + ISA 내부 배당). 생활비로 쓸 수 없다. */
+    dividendRetainedNet: number;
+  };
+  /** 포트폴리오 밖에서 «새로» 들어온 돈. 계좌 간 이동은 절대 포함하지 않는다. */
+  externalIncome: {
+    total: number;
+    /** 국민연금 세전 수령액. 세금은 아래 expenses.tax에서 한 번만 뺀다. */
+    nationalPension: number;
+    /** 임대소득 등 기타 외부소득. */
+    other: number;
+    /** 은퇴 전 신규 납입액(일반자산 + 사적연금 + ISA). 한도로 잘린 뒤의 실제 납입액이다. */
+    contributions: number;
+  };
+  /**
+   * 계좌 «안에서 밖으로» 나온 것이 아니라 계좌 «사이»를 옮긴 금액. 정보성이며 위 항등식에
+   * 들어가지 않는다.
+   */
+  internalWithdrawals: {
+    privatePension: number;
+    taxableAccount: number;
+    isa: number;
+  };
+  expenses: {
+    living: number;
+    tax: number;
+    healthInsurance: number;
+  };
+  endingAssets: number;
+  /**
+   * endingAssets − (항등식이 예측한 기말자산). 정상이면 부동소수점 오차만 남는다.
+   * 이 값이 커진다는 것은 어떤 현금흐름이 두 번 세어졌거나 어디론가 증발했다는 뜻이다.
+   */
+  residual: number;
+}
+
 export interface SimulationYearlyResult {
   age: number;
   year: number;
@@ -434,6 +510,13 @@ export interface SimulationYearlyResult {
   // 표시 목적으로 쓰는 곳은 Math.min(spending, healthcareSpending)을 고려할 것.
   healthcareSpending: number;
   hasTaxWarning: boolean; // 연간 금융소득이 2,000만원 초과 여부
+  /**
+   * 그 해 총자산 흐름의 회계 원장(YearlyLedger 주석 참고). 엔진이 항상 채운다.
+   *
+   * 선택 필드인 이유는 손으로 만든 결과 객체(테스트 픽스처, 저장된 옛 결과)에는 이 값이
+   * 없는 것이 정직하기 때문이다 — utility·calculatedTargetSpending과 같은 관례다.
+   */
+  ledger?: YearlyLedger;
 }
 
 export interface SimulationResult {
