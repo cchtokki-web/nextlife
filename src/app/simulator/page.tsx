@@ -640,11 +640,12 @@ export default function Home() {
                   <h2 className="mt-4 text-lg font-bold text-foreground">
                     {analysis ? '입력 변경사항을 다시 분석해 주세요' : '은퇴 계획을 만들어 보세요'}
                   </h2>
-                  <p className="mt-2 max-w-md text-sm leading-relaxed text-foreground-muted">
+                  {/* 한국어 문장이 '눌러 / 주세요.'처럼 어절 중간에서 끊기지 않도록
+                      break-keep으로 어절을 붙이고 text-balance로 줄 길이를 고르게 맞춘다. */}
+                  <p className="mt-2 max-w-md text-sm leading-relaxed text-balance break-keep text-foreground-muted">
                     {analysis
                       ? '현재 결과는 이전 입력 기준이므로 숨겼습니다. 입력 패널 위쪽의 분석 시작을 다시 눌러 주세요.'
-                      : <>개인정보와 자산정보를 확인하고 원하는 은퇴 목표를 선택한 뒤
-                        &lsquo;분석 시작&rsquo;을 눌러 주세요.</>}
+                      : <>개인정보와 자산정보를 확인하고 원하는 은퇴 목표를 선택한 뒤 &lsquo;분석 시작&rsquo;을 눌러 주세요.</>}
                   </p>
                 </div>
               </GlassCard>
