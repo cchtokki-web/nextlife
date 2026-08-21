@@ -889,56 +889,58 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                         }}
                         suffixText={asset.currency === 'KRW' ? '원' : asset.currency}
                       />
-                      <div className={styles.priceInputWrapper}>
-                        <div className={styles.priceInputGrow}>
-                          <InputField
-                            label="연 총수익률"
-                            type="number"
-                            step="0.1"
-                            value={asset.totalReturn}
-                            disabled={yieldGovernedBy !== null}
-                            onChange={(e) => handleUpdateAsset(asset.id, 'totalReturn', Number(e.target.value))}
-                            suffixText="%"
-                          />
+                      <div className={styles.returnFieldGroup}>
+                        <div className={styles.priceInputWrapper}>
+                          <div className={styles.priceInputGrow}>
+                            <InputField
+                              label="연 총수익률"
+                              type="number"
+                              step="0.1"
+                              value={asset.totalReturn}
+                              disabled={yieldGovernedBy !== null}
+                              onChange={(e) => handleUpdateAsset(asset.id, 'totalReturn', Number(e.target.value))}
+                              suffixText="%"
+                            />
+                          </div>
+                          <button
+                            type="button"
+                            className={`${compStyles.button} ${compStyles.buttonSecondary} ${styles.priceFetchButton}`}
+                            onClick={() => fetchAssetInfo(asset.id, asset.ticker)}
+                            disabled={fetchingInfoMap[asset.id] || asset.ticker === 'NEW' || yieldGovernedBy !== null}
+                            title={yieldFetchTitle('실시간 성장률/배당률 조회')}
+                          >
+                            <RefreshCw
+                              size={22}
+                              className={fetchingInfoMap[asset.id] ? styles.spinner : ''}
+                            />
+                          </button>
                         </div>
-                        <button
-                          type="button"
-                          className={`${compStyles.button} ${compStyles.buttonSecondary} ${styles.priceFetchButton}`}
-                          onClick={() => fetchAssetInfo(asset.id, asset.ticker)}
-                          disabled={fetchingInfoMap[asset.id] || asset.ticker === 'NEW' || yieldGovernedBy !== null}
-                          title={yieldFetchTitle('실시간 성장률/배당률 조회')}
-                        >
-                          <RefreshCw
-                            size={22}
-                            className={fetchingInfoMap[asset.id] ? styles.spinner : ''}
-                          />
-                        </button>
-                      </div>
-                      <div className={styles.priceInputWrapper}>
-                        <div className={styles.priceInputGrow}>
-                          <InputField
-                            label="연 배당률"
-                            type="number"
-                            step="0.1"
-                            value={asset.dividendYield}
-                            onChange={(e) => handleUpdateAsset(asset.id, 'dividendYield', Number(e.target.value))}
-                            suffixText="%"
-                          />
+                        <div className={styles.priceInputWrapper}>
+                          <div className={styles.priceInputGrow}>
+                            <InputField
+                              label="연 배당률"
+                              type="number"
+                              step="0.1"
+                              value={asset.dividendYield}
+                              onChange={(e) => handleUpdateAsset(asset.id, 'dividendYield', Number(e.target.value))}
+                              suffixText="%"
+                            />
+                          </div>
+                          <button
+                            type="button"
+                            className={`${compStyles.button} ${compStyles.buttonSecondary} ${styles.priceFetchButton}`}
+                            onClick={() => fetchAssetInfo(asset.id, asset.ticker)}
+                            disabled={fetchingInfoMap[asset.id] || asset.ticker === 'NEW' || yieldGovernedBy !== null}
+                            title={yieldFetchTitle('실시간 성장률/배당률 조회')}
+                          >
+                            <RefreshCw
+                              size={22}
+                              className={fetchingInfoMap[asset.id] ? styles.spinner : ''}
+                            />
+                          </button>
                         </div>
-                        <button
-                          type="button"
-                          className={`${compStyles.button} ${compStyles.buttonSecondary} ${styles.priceFetchButton}`}
-                          onClick={() => fetchAssetInfo(asset.id, asset.ticker)}
-                          disabled={fetchingInfoMap[asset.id] || asset.ticker === 'NEW' || yieldGovernedBy !== null}
-                          title={yieldFetchTitle('실시간 성장률/배당률 조회')}
-                        >
-                          <RefreshCw
-                            size={22}
-                            className={fetchingInfoMap[asset.id] ? styles.spinner : ''}
-                          />
-                        </button>
+                        <ReturnBreakdownHint totalReturn={asset.totalReturn} dividendYield={asset.dividendYield} />
                       </div>
-                      <ReturnBreakdownHint totalReturn={asset.totalReturn} dividendYield={asset.dividendYield} />
                       <SelectField
                         label="적립 주기"
                         value={asset.contributionPeriod || 'monthly'}
@@ -1287,56 +1289,58 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                   />
                   {pension.investmentType === 'etf' ? (
                     <>
-                      <div className={styles.priceInputWrapper}>
-                        <div className={styles.priceInputGrow}>
-                          <InputField
-                            label="연 총수익률"
-                            type="number"
-                            step="0.1"
-                            value={pension.totalReturn}
-                            disabled={yieldGovernedBy !== null}
-                            onChange={(e) => handleUpdatePrivatePension(pension.id, 'totalReturn', Number(e.target.value))}
-                            suffixText="%"
-                          />
+                      <div className={styles.returnFieldGroup}>
+                        <div className={styles.priceInputWrapper}>
+                          <div className={styles.priceInputGrow}>
+                            <InputField
+                              label="연 총수익률"
+                              type="number"
+                              step="0.1"
+                              value={pension.totalReturn}
+                              disabled={yieldGovernedBy !== null}
+                              onChange={(e) => handleUpdatePrivatePension(pension.id, 'totalReturn', Number(e.target.value))}
+                              suffixText="%"
+                            />
+                          </div>
+                          <button
+                            type="button"
+                            className={`${compStyles.button} ${compStyles.buttonSecondary} ${styles.priceFetchButton}`}
+                            onClick={() => fetchPensionInfo(pension.id, pension.ticker!)}
+                            disabled={fetchingInfoMap[pension.id] || !pension.ticker || yieldGovernedBy !== null}
+                            title={yieldFetchTitle('실시간 수익률 조회')}
+                          >
+                            <RefreshCw
+                              size={22}
+                              className={fetchingInfoMap[pension.id] ? styles.spinner : ''}
+                            />
+                          </button>
                         </div>
-                        <button
-                          type="button"
-                          className={`${compStyles.button} ${compStyles.buttonSecondary} ${styles.priceFetchButton}`}
-                          onClick={() => fetchPensionInfo(pension.id, pension.ticker!)}
-                          disabled={fetchingInfoMap[pension.id] || !pension.ticker || yieldGovernedBy !== null}
-                          title={yieldFetchTitle('실시간 수익률 조회')}
-                        >
-                          <RefreshCw
-                            size={22}
-                            className={fetchingInfoMap[pension.id] ? styles.spinner : ''}
-                          />
-                        </button>
-                      </div>
-                      <div className={styles.priceInputWrapper}>
-                        <div className={styles.priceInputGrow}>
-                          <InputField
-                            label="연 배당률"
-                            type="number"
-                            step="0.1"
-                            value={pension.dividendYield || 0}
-                            onChange={(e) => handleUpdatePrivatePension(pension.id, 'dividendYield', Number(e.target.value))}
-                            suffixText="%"
-                          />
+                        <div className={styles.priceInputWrapper}>
+                          <div className={styles.priceInputGrow}>
+                            <InputField
+                              label="연 배당률"
+                              type="number"
+                              step="0.1"
+                              value={pension.dividendYield || 0}
+                              onChange={(e) => handleUpdatePrivatePension(pension.id, 'dividendYield', Number(e.target.value))}
+                              suffixText="%"
+                            />
+                          </div>
+                          <button
+                            type="button"
+                            className={`${compStyles.button} ${compStyles.buttonSecondary} ${styles.priceFetchButton}`}
+                            onClick={() => fetchPensionInfo(pension.id, pension.ticker!)}
+                            disabled={fetchingInfoMap[pension.id] || !pension.ticker || yieldGovernedBy !== null}
+                            title={yieldFetchTitle('실시간 수익률/배당률 조회')}
+                          >
+                            <RefreshCw
+                              size={22}
+                              className={fetchingInfoMap[pension.id] ? styles.spinner : ''}
+                            />
+                          </button>
                         </div>
-                        <button
-                          type="button"
-                          className={`${compStyles.button} ${compStyles.buttonSecondary} ${styles.priceFetchButton}`}
-                          onClick={() => fetchPensionInfo(pension.id, pension.ticker!)}
-                          disabled={fetchingInfoMap[pension.id] || !pension.ticker || yieldGovernedBy !== null}
-                          title={yieldFetchTitle('실시간 수익률/배당률 조회')}
-                        >
-                          <RefreshCw
-                            size={22}
-                            className={fetchingInfoMap[pension.id] ? styles.spinner : ''}
-                          />
-                        </button>
+                        <ReturnBreakdownHint totalReturn={pension.totalReturn} dividendYield={pension.dividendYield || 0} />
                       </div>
-                      <ReturnBreakdownHint totalReturn={pension.totalReturn} dividendYield={pension.dividendYield || 0} />
                     </>
                   ) : (
                     <InputField
@@ -1513,56 +1517,58 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                       />
                       {isa.investmentType === 'etf' ? (
                         <>
-                          <div className={styles.priceInputWrapper}>
-                            <div className={styles.priceInputGrow}>
-                              <InputField
-                                label="연 총수익률"
-                                type="number"
-                                step="0.1"
-                                value={isa.totalReturn}
-                                disabled={yieldGovernedBy !== null}
-                                onChange={(e) => handleUpdateIsaAccount(isa.id, 'totalReturn', Number(e.target.value))}
-                                suffixText="%"
-                              />
+                          <div className={styles.returnFieldGroup}>
+                            <div className={styles.priceInputWrapper}>
+                              <div className={styles.priceInputGrow}>
+                                <InputField
+                                  label="연 총수익률"
+                                  type="number"
+                                  step="0.1"
+                                  value={isa.totalReturn}
+                                  disabled={yieldGovernedBy !== null}
+                                  onChange={(e) => handleUpdateIsaAccount(isa.id, 'totalReturn', Number(e.target.value))}
+                                  suffixText="%"
+                                />
+                              </div>
+                              <button
+                                type="button"
+                                className={`${compStyles.button} ${compStyles.buttonSecondary} ${styles.priceFetchButton}`}
+                                onClick={() => fetchIsaInfo(isa.id, isa.ticker!)}
+                                disabled={fetchingInfoMap[isa.id] || !isa.ticker || yieldGovernedBy !== null}
+                                title={yieldFetchTitle('실시간 수익률 조회')}
+                              >
+                                <RefreshCw
+                                  size={22}
+                                  className={fetchingInfoMap[isa.id] ? styles.spinner : ''}
+                                />
+                              </button>
                             </div>
-                            <button
-                              type="button"
-                              className={`${compStyles.button} ${compStyles.buttonSecondary} ${styles.priceFetchButton}`}
-                              onClick={() => fetchIsaInfo(isa.id, isa.ticker!)}
-                              disabled={fetchingInfoMap[isa.id] || !isa.ticker || yieldGovernedBy !== null}
-                              title={yieldFetchTitle('실시간 수익률 조회')}
-                            >
-                              <RefreshCw
-                                size={22}
-                                className={fetchingInfoMap[isa.id] ? styles.spinner : ''}
-                              />
-                            </button>
-                          </div>
-                          <div className={styles.priceInputWrapper}>
-                            <div className={styles.priceInputGrow}>
-                              <InputField
-                                label="연 배당률"
-                                type="number"
-                                step="0.1"
-                                value={isa.dividendYield || 0}
-                                onChange={(e) => handleUpdateIsaAccount(isa.id, 'dividendYield', Number(e.target.value))}
-                                suffixText="%"
-                              />
+                            <div className={styles.priceInputWrapper}>
+                              <div className={styles.priceInputGrow}>
+                                <InputField
+                                  label="연 배당률"
+                                  type="number"
+                                  step="0.1"
+                                  value={isa.dividendYield || 0}
+                                  onChange={(e) => handleUpdateIsaAccount(isa.id, 'dividendYield', Number(e.target.value))}
+                                  suffixText="%"
+                                />
+                              </div>
+                              <button
+                                type="button"
+                                className={`${compStyles.button} ${compStyles.buttonSecondary} ${styles.priceFetchButton}`}
+                                onClick={() => fetchIsaInfo(isa.id, isa.ticker!)}
+                                disabled={fetchingInfoMap[isa.id] || !isa.ticker || yieldGovernedBy !== null}
+                                title={yieldFetchTitle('실시간 수익률/배당률 조회')}
+                              >
+                                <RefreshCw
+                                  size={22}
+                                  className={fetchingInfoMap[isa.id] ? styles.spinner : ''}
+                                />
+                              </button>
                             </div>
-                            <button
-                              type="button"
-                              className={`${compStyles.button} ${compStyles.buttonSecondary} ${styles.priceFetchButton}`}
-                              onClick={() => fetchIsaInfo(isa.id, isa.ticker!)}
-                              disabled={fetchingInfoMap[isa.id] || !isa.ticker || yieldGovernedBy !== null}
-                              title={yieldFetchTitle('실시간 수익률/배당률 조회')}
-                            >
-                              <RefreshCw
-                                size={22}
-                                className={fetchingInfoMap[isa.id] ? styles.spinner : ''}
-                              />
-                            </button>
+                            <ReturnBreakdownHint totalReturn={isa.totalReturn} dividendYield={isa.dividendYield || 0} />
                           </div>
-                          <ReturnBreakdownHint totalReturn={isa.totalReturn} dividendYield={isa.dividendYield || 0} />
                         </>
                       ) : isa.investmentType === 'deposit' ? (
                         <InputField
@@ -1576,24 +1582,26 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                         />
                       ) : (
                         <>
-                          <InputField
-                            label="연 총수익률"
-                            type="number"
-                            step="0.1"
-                            value={isa.totalReturn}
-                            disabled={yieldGovernedBy !== null}
-                            onChange={(e) => handleUpdateIsaAccount(isa.id, 'totalReturn', Number(e.target.value))}
-                            suffixText="%"
-                          />
-                          <InputField
-                            label="연 배당률"
-                            type="number"
-                            step="0.1"
-                            value={isa.dividendYield}
-                            onChange={(e) => handleUpdateIsaAccount(isa.id, 'dividendYield', Number(e.target.value))}
-                            suffixText="%"
-                          />
-                          <ReturnBreakdownHint totalReturn={isa.totalReturn} dividendYield={isa.dividendYield} />
+                          <div className={styles.returnFieldGroup}>
+                            <InputField
+                              label="연 총수익률"
+                              type="number"
+                              step="0.1"
+                              value={isa.totalReturn}
+                              disabled={yieldGovernedBy !== null}
+                              onChange={(e) => handleUpdateIsaAccount(isa.id, 'totalReturn', Number(e.target.value))}
+                              suffixText="%"
+                            />
+                            <InputField
+                              label="연 배당률"
+                              type="number"
+                              step="0.1"
+                              value={isa.dividendYield}
+                              onChange={(e) => handleUpdateIsaAccount(isa.id, 'dividendYield', Number(e.target.value))}
+                              suffixText="%"
+                            />
+                            <ReturnBreakdownHint totalReturn={isa.totalReturn} dividendYield={isa.dividendYield} />
+                          </div>
                         </>
                       )}
                     </div>

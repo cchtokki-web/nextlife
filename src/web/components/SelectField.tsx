@@ -17,7 +17,7 @@ export const SelectField: React.FC<SelectFieldProps> = ({
   return (
     <div className={styles.formGroup}>
       {label && (
-        <label className={styles.label}>
+        <label className={`${styles.label} ${labelSecondary ? styles.labelWithSecondary : ''}`}>
           <span>{label}</span>
           {labelSecondary && <span className={styles.labelSecondary}>{labelSecondary}</span>}
         </label>
