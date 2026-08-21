@@ -1,3 +1,4 @@
+import { reflowReportPages } from './reflowReportPages';
 import { REPORT_STYLES } from './reportStyles';
 
 /** A4 794×1123px — REPORT_STYLES의 .pdf-page 크기와 반드시 같아야 한다. */
@@ -6,6 +7,19 @@ const PAGE_HEIGHT_PX = 1123;
 /** jsPDF의 A4 세로 크기(mm). */
 const PAGE_WIDTH_MM = 210;
 const PAGE_HEIGHT_MM = 297;
+
+/** 쪽 구조가 성한지 본다. 성하지 않으면 무엇이 어디서 깨졌는지 밝히고 멈춘다. */
+function assertPageStructure(container: HTMLElement): void {
+  const pages = container.querySelectorAll('.pdf-page');
+  if (pages.length === 0) {
+    throw new Error('리포트 페이지를 찾지 못했습니다 (.pdf-page 없음)');
+  }
+  const brokenPages = Array.from(pages).flatMap((page, index) =>
+    page.querySelector('.pdf-content') === null ? [index + 1] : []);
+  if (brokenPages.length > 0) {
+    throw new Error(`리포트 페이지 구조가 손상됐습니다 (.pdf-content 없음): ${brokenPages.join(', ')}쪽`);
+  }
+}
 
 export class ReportPageOverflowError extends Error {
   constructor(readonly pageNumbers: readonly number[]) {
@@ -20,9 +34,10 @@ export class ReportPageOverflowError extends Error {
  * buildReportHtml과 책임이 갈린다 — 저쪽은 «무엇을 쓸지», 여기는 «어떻게 그릴지»다.
  * 그래서 이 함수는 리포트 내용을 전혀 모르고, 반대로 buildReportHtml은 DOM을 모른다.
  *
- * **넘침 검사를 먼저 하고 그리기 시작한다.** 한 페이지라도 내용이 넘치면 잘린 문서가
- * 만들어지는데, html2canvas는 그것을 알려 주지 않는다. 잘린 리포트를 조용히 내주느니
- * 실패하는 편이 낫다.
+ * **재배치하고, 넘침을 검사하고, 그리기 시작한다.** 한 페이지라도 내용이 넘치면 잘린
+ * 문서가 만들어지는데, html2canvas는 그것을 알려 주지 않는다. 넘치는 쪽은 우선
+ * reflowReportPages가 이어지는 쪽으로 흘려보내고, 그러고도 남는 넘침만 실패로 다룬다 —
+ * 잘린 리포트를 조용히 내주느니 실패하는 편이 낫다.
  *
  * jsPDF와 html2canvas는 동적 import다 — 리포트를 내려받지 않는 사용자가 그 번들을
  * 받게 할 이유가 없다.
@@ -48,23 +63,27 @@ export async function generateReportPdf(pagesHtml: string, fileName: string): Pr
   document.body.appendChild(container);
 
   try {
-    const pages = container.querySelectorAll('.pdf-page');
     // **구조를 먼저 확인한다.** 넘침 검사는 `.pdf-content`의 높이를 재는데, 그 요소를 찾지
     // 못하면 「넘치지 않았다」와 구별되지 않는다. 셀렉터가 어긋나는 순간(buildReportHtml이나
     // reportStyles의 클래스명 변경) 가드가 조용히 모든 페이지를 통과시켜, 잘린 리포트를
     // 막겠다는 이 함수의 목적이 오류 없이 사라진다. 페이지가 0개면 더 나쁘다 — jsPDF가
     // 암묵적으로 갖는 빈 첫 장이 그대로 «성공»으로 저장된다.
-    if (pages.length === 0) {
-      throw new Error('리포트 페이지를 찾지 못했습니다 (.pdf-page 없음)');
-    }
+    //
+    // 재배치보다 먼저 본다. reflowReportPages는 구조가 성한 쪽만 다루므로, 순서가 바뀌면
+    // 「구조가 손상됐다」는 정확한 진단이 「넘쳤다」로 뭉개진다.
+    assertPageStructure(container);
+
+    // 넘치는 쪽을 이어지는 쪽으로 흘려보낸다. 예전에는 이 단계가 없어, 부족액 요약과
+    // 리스크 알림이 함께 실리는 계획이면 1쪽이 넘쳐 저장 자체가 중단됐다.
+    reflowReportPages(container);
+
+    const pages = container.querySelectorAll('.pdf-page');
     const contents = Array.from(pages).map((page) =>
-      page.querySelector('.pdf-content') as HTMLElement | null);
-    const brokenPages = contents.flatMap((content, index) => content ? [] : [index + 1]);
-    if (brokenPages.length > 0) {
-      throw new Error(`리포트 페이지 구조가 손상됐습니다 (.pdf-content 없음): ${brokenPages.join(', ')}쪽`);
-    }
+      page.querySelector('.pdf-content') as HTMLElement);
+    // 재배치로도 담기지 않는 쪽이 남을 수 있다 — 한 덩어리가 그 자체로 한 장보다 클 때다.
+    // 그때는 잘린 문서를 조용히 내주느니 멈춘다.
     const overflowingPages = contents.flatMap((content, index) =>
-      content!.scrollHeight > content!.clientHeight + 1 ? [index + 1] : []);
+      content.scrollHeight > content.clientHeight + 1 ? [index + 1] : []);
     if (overflowingPages.length > 0) {
       throw new ReportPageOverflowError(overflowingPages);
     }

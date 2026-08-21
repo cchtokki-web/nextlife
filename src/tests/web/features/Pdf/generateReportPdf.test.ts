@@ -116,6 +116,74 @@ describe('generateReportPdf', () => {
   });
 });
 
+// **재배치가 가드보다 먼저 돈다.** 예전에는 넘치는 쪽이 곧 저장 실패였다 — 부족액 요약과
+// 리스크 알림이 함께 실리는 계획이면 1쪽이 넘쳐, 리포트가 가장 필요한 사용자가 문서를
+// 받지 못했다. 이제는 넘치는 쪽을 이어지는 쪽으로 흘려보내고, 그러고도 남는 넘침만 막는다.
+describe('넘치는 쪽 재배치', () => {
+  const original = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'getBoundingClientRect');
+
+  // data-h를 높이로 삼는 가짜 레이아웃. .pdf-content는 위쪽 0에서 시작하고, 자식은 앞선
+  // 형제들의 높이를 누적한 자리에 놓인다 — reflowReportPages가 실제로 재는 방식과 같다.
+  beforeEach(() => {
+    Object.defineProperty(HTMLElement.prototype, 'getBoundingClientRect', {
+      configurable: true,
+      value(this: HTMLElement) {
+        if (this.classList.contains('pdf-content')) return { top: 0, bottom: 0 } as DOMRect;
+        let bottom = 0;
+        for (const sibling of Array.from(this.parentElement?.children ?? [])) {
+          bottom += Number((sibling as HTMLElement).dataset.h ?? 0);
+          if (sibling === this) break;
+        }
+        return { top: 0, bottom } as DOMRect;
+      },
+    });
+    // 넘침 가드도 같은 높이를 본다. 재배치로 내용이 빠지면 저절로 줄어든다.
+    Object.defineProperty(HTMLElement.prototype, 'scrollHeight', {
+      configurable: true,
+      get(this: HTMLElement) {
+        if (!this.classList.contains('pdf-content')) return 0;
+        return Array.from(this.children)
+          .reduce((sum, child) => sum + Number((child as HTMLElement).dataset.h ?? 0), 0);
+      },
+    });
+  });
+
+  afterEach(() => {
+    if (original) Object.defineProperty(HTMLElement.prototype, 'getBoundingClientRect', original);
+  });
+
+  const tallPage = (heights: number[]) =>
+    '<div class="pdf-page"><div class="pdf-content">'
+    + heights.map((h) => `<div data-h="${h}">내용</div>`).join('')
+    + '</div><div class="pdf-footer"><span>NextLife</span>'
+    + '<span class="pdf-page-number">페이지 1 / 1</span></div></div>';
+
+  test('한 장을 넘는 쪽은 나눠서 저장한다 — 더 이상 중단하지 않는다', async () => {
+    // clientHeight는 위쪽 beforeEach가 .pdf-content에 100으로 심어 둔다.
+    await generateReportPdf(tallPage([60, 60]), 'report.pdf');
+
+    expect(html2canvas).toHaveBeenCalledTimes(2);
+    expect(save).toHaveBeenCalledWith('report.pdf');
+  });
+
+  test('나뉜 쪽의 바닥글 번호를 다시 매긴다', async () => {
+    await generateReportPdf(tallPage([60, 60]), 'report.pdf');
+
+    // 컨테이너는 저장 뒤 걷히므로, 그려진 요소를 html2canvas가 받은 인자로 확인한다.
+    const rendered = html2canvas.mock.calls.map((call) =>
+      ((call as unknown[])[0] as HTMLElement).querySelector('.pdf-page-number')?.textContent);
+    expect(rendered).toEqual(['페이지 1 / 2', '페이지 2 / 2']);
+  });
+
+  // 한 덩어리가 그 자체로 한 장보다 크면 나눌 수 없다. 그때는 예전처럼 멈춘다.
+  test('나눌 수 없는 덩어리는 여전히 중단한다', async () => {
+    const promise = generateReportPdf(tallPage([300]), 'report.pdf');
+
+    await expect(promise).rejects.toBeInstanceOf(ReportPageOverflowError);
+    expect(save).not.toHaveBeenCalled();
+  });
+});
+
 // 두 값이 어긋나면 html2canvas가 CSS보다 작은 영역을 캡처해 모든 페이지가 잘린다.
 // "반드시 같아야 한다"고 주석에 적어 두는 것만으로는 어긋남을 막지 못한다.
 describe('페이지 크기', () => {
