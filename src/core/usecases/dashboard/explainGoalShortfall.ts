@@ -56,6 +56,10 @@ export function explainGoalShortfall({
   // 고갈이 몇 번이든 0이라(GoalFailureBreakdown 주석), 그 값을 빼면 고갈로 무너진 시행이
   // 통째로 「생활비 미달」로 넘어가 인출 설정을 잘못 지목한다.
   const depletion = goalFailure.observedAssetDepletionCount;
+  // 시행 수·시행 개수는 모두 천 단위 구분자를 붙인다. 이 문장은 화면과 PDF가 함께 쓰는데,
+  // PDF의 이웃 문단이 「1,000회 시뮬레이션」이라고 적는 마당에 같은 쪽에서 「1000회」가
+  // 섞이면 금액을 전부 구분자로 적는 문서에서 오식으로 읽힌다(리포트 전반의 표기 관례).
+  const count = (value: number) => value.toLocaleString();
   const spendingOnly = spendingShortfall - depletion;
   const terminalOnly = terminalShortfall - depletion;
   const cause: GoalFailureCause = depletion >= spendingOnly && depletion >= terminalOnly
@@ -67,14 +71,14 @@ export function explainGoalShortfall({
   if (cause === 'depletion') {
     return {
       cause,
-      headline: `${trials}회 중 ${depletion}회에서 기대수명 전에 자산이 고갈됩니다.`,
+      headline: `${count(trials)}회 중 ${count(depletion)}회에서 기대수명 전에 자산이 고갈됩니다.`,
     };
   }
 
   if (cause === 'terminal') {
     return {
       cause,
-      headline: `${trials}회 중 ${terminalShortfall}회에서 기말자산이 목표(${formatValue(goalFailure.terminalAssetGoal)})에 못 미칩니다.`,
+      headline: `${count(trials)}회 중 ${count(terminalShortfall)}회에서 기말자산이 목표(${formatValue(goalFailure.terminalAssetGoal)})에 못 미칩니다.`,
       hint: '상속 목표액을 낮추면 달성 확률이 올라갑니다.',
     };
   }
@@ -82,7 +86,7 @@ export function explainGoalShortfall({
   const fromAge = goalFailure.medianFirstShortfallAge;
   return {
     cause,
-    headline: `${trials}회 중 ${spendingShortfall}회에서 목표 생활비를 채우지 못합니다`
+    headline: `${count(trials)}회 중 ${count(spendingShortfall)}회에서 목표 생활비를 채우지 못합니다`
       + (fromAge !== null ? ` (평균적으로 ${fromAge}세부터).` : '.'),
     // 자산이 살아남는데도 목표를 못 채우는 시행이 있을 때만 설정을 지목한다. 고갈이
     // 원인의 대부분이면 "인출 설정 때문"이라는 문장은 사실이 아니다. 순수한 인과 판단이라

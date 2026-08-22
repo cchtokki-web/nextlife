@@ -653,7 +653,7 @@ describe('renderMonteCarloSection', () => {
     }, sequenceRisk, mcParams);
 
     expect(html).toContain('목표를 달성하지 못한 시행의 원인');
-    expect(html).toContain('1000회 중 420회에서 기대수명 전에 자산이 고갈됩니다.');
+    expect(html).toContain('1,000회 중 420회에서 기대수명 전에 자산이 고갈됩니다.');
     expect(html).not.toContain('목표 생활비를 채우지 못합니다');
   });
 
