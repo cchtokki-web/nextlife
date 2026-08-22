@@ -220,6 +220,21 @@ describe('DashboardSection - IA 순서', () => {
     expect(screen.getByText('세금 및 건강보험료 (은퇴 이후 연평균)')).toBeInTheDocument();
   });
 
+  test('계획의 근거 토글은 열기와 닫기 동작을 글로 안내한다', () => {
+    const { container } = render(
+      <DashboardSection params={params} result={result} recommendation={recommendation} />
+    );
+
+    const details = container.querySelector('details');
+    expect(details).not.toHaveAttribute('open');
+    expect(screen.getByText('자세히 보기')).toBeInTheDocument();
+    expect(screen.getByText('접기')).toBeInTheDocument();
+
+    fireEvent.click(container.querySelector('summary')!);
+
+    expect(details).toHaveAttribute('open');
+  });
+
   test('자산 추이 차트는 기본으로 단순화 모드이며, "자산 구성 상세보기" 버튼을 제공한다', () => {
     render(<DashboardSection params={params} result={result} recommendation={recommendation} />);
     expect(screen.getByRole('button', { name: '자산 구성 상세보기' })).toBeInTheDocument();

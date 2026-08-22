@@ -2,7 +2,7 @@
 
 import React, { type ReactNode } from 'react';
 import { type LegendPayload } from 'recharts';
-import { Award, Zap, TrendingUp, AlertTriangle } from 'lucide-react';
+import { Award, Zap, TrendingUp, AlertTriangle, ChevronDown } from 'lucide-react';
 import { SimulationParams, SimulationResult, StrategyRecommendation } from '../../../core/entities/types';
 import type { StrategyApplyPreview } from '../../../core/usecases/dashboard/applyStrategyToParams';
 import { initialParams } from '../../../infrastructure/storage/localStore';
@@ -373,11 +373,16 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
           열어야 세금 표에 닿았다). */}
       <details className={styles.detailedAnalysis}>
         <summary>
-          <span>
+          <span className={styles.detailedAnalysisHeading}>
             {/* 부제에 아래 그룹 제목을 그대로 나열하지 않는다 — 같은 문자열이 summary와
                 본문에 두 번 생겨 "어느 쪽이 그 섹션인가"가 모호해진다. */}
             <strong>계획의 근거</strong>
             <small>위 판정을 뒷받침하는 차트와 확률 검증, 세부 수치를 모두 확인할 수 있습니다</small>
+          </span>
+          <span className={styles.detailedAnalysisToggle} aria-hidden="true">
+            <span className={styles.detailedAnalysisOpenLabel}>자세히 보기</span>
+            <span className={styles.detailedAnalysisCloseLabel}>접기</span>
+            <ChevronDown size={16} strokeWidth={2} />
           </span>
         </summary>
         <div className={styles.detailedAnalysisContent}>
