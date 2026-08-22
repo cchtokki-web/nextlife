@@ -26,11 +26,18 @@ export const YIELD_PRESET_RATES = {
 } as const;
 
 // 구 설정 UI(시뮬레이션 설정/핵심 설정 카드)에 있던 "시장 수익률 프리셋 적용" 로직을 순수
-// 함수로 추출한 것. 그 UI들은 제거되었고, 지금은 compileStrategy가 「투자 전략」의 리스크 성향을
-// 프리셋으로 번역할 때 이 함수를 호출한다.
+// 함수로 추출한 것. 그 UI들은 제거되었다. compileStrategy가 계산 시점에 이 함수를 부르던
+// 경로도 이후 제거되었다 — 프리셋이 계산을 지배하지 않도록 하기 위해서다. 지금 이 함수를
+// 부르는 곳은 셋이다.
+//   - YieldPresetHelper.tsx: 입력 도우미. 사용자가 프리셋 버튼을 누르면 이 함수가 반환한
+//     값을 그대로 저장값(SimulationParams)에 써서, 입력칸에 값이 찍히고 보이고 고칠 수 있다.
+//   - computeSensitivityAnalysis의 수익률 축 3행(안정형/중립형/공격형): 계획은 그대로 두고
+//     결과만 비교하는 렌즈이므로 계산용 사본에만 적용한다.
+//   - robustness.ts의 가정 변형(assumption variants): 몬테카를로 강건성 점검에 쓰는 사본.
 //
-// restoreCustomYieldPreset은 프리셋 버튼과 함께 사라진 "사용자 프리셋 복원" 동작을 위한 것이라
-// 현재 호출부가 없다. customYieldSnapshot을 되돌릴 UI가 다시 생기면 그대로 쓸 수 있도록 남겨 둔다.
+// restoreCustomYieldPreset은 프리셋 버튼과 함께 사라졌던 "사용자 프리셋 복원" 동작을 위한
+// 것이다. YieldPresetHelper의 「직접 입력값으로 되돌리기」 버튼이 그 되돌릴 UI다 — 스냅샷이
+// 있을 때만 나타나 이 함수를 부른다.
 //
 // assets/privatePensions를 ?? []로 방어하는 이유: 이 함수를 호출하는 쪽(page.tsx가 넘기는
 // activeParams)이 과거 시나리오 데이터라서 최신 필드를 다 갖추지 못했을 가능성이 있다 —

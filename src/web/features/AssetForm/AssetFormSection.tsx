@@ -7,6 +7,7 @@ import compStyles from '../../styles/components.module.css';
 import { Plus, Trash2, Wallet, Landmark, PiggyBank, DollarSign, ExternalLink, ChevronDown, ChevronUp, RefreshCw } from 'lucide-react';
 import { predefinedAssets } from './predefinedAssets';
 import { ReturnBreakdownHint } from './ReturnBreakdownHint';
+import { YieldPresetHelper } from './YieldPresetHelper';
 import { initialParams } from '../../../infrastructure/storage/localStore';
 import { resolveStrategy } from '../../../core/usecases/strategy/compileStrategy';
 import {
@@ -612,6 +613,8 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
 
       {isSectionExpanded && (
         <>
+          <YieldPresetHelper params={params} onChangeParams={onChangeParams} />
+
           {/* Tab Menu */}
           <div className={styles.tabList}>
         <button
