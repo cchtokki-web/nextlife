@@ -918,16 +918,27 @@ export class LegacySimulationEngine implements SimulationEngineContract {
       // 아닌 캡이 사유 자리를 차지해 진짜 원인을 가린다 — 수익이 조금이라도 난 ISA를 가진
       // 계정이면 언제나 그 ISA가 사유가 되어, 다른 모든 원인이 조용히 설명된 것으로 처리된다.
       // 그래서 «관찰된 사실»로만 기록한다(recordBlockedWithdrawal 호출부 참고).
-      let blockedWithdrawalReason: YearLedgerDiagnostics['blockedWithdrawalReason'];
+      //
+      // 칸은 «단계마다» 따로 둔다. 한 칸을 두 단계가 나눠 쓰면, 뒤에 도는 2단계의 assetFloor가
+      // 앞서 1단계가 본 legalAge·isaPrincipalExhausted를 덮는다 — assetFloor 우선 규칙 때문에.
+      // 그러면 그 해를 실제로 막은 사실(계층 1이 법정 캡에 막혔다)이 사라지고, 그 위층 이야기가
+      // 원인 자리를 차지한다. 단계를 나누면 아래 우선순위는 «한 단계 안»의 규칙으로 남는다.
+      const blockedWithdrawalReasonByPhase: {
+        hardFloor?: NonNullable<YearLedgerDiagnostics['blockedWithdrawalReason']>;
+        target?: NonNullable<YearLedgerDiagnostics['blockedWithdrawalReason']>;
+      } = {};
       const recordBlockedWithdrawal = (
+        fundingHardFloor: boolean,
         reason: NonNullable<YearLedgerDiagnostics['blockedWithdrawalReason']>
       ) => {
-        // assetFloor는 «닿을 수 있는 돈»을 막은 유일한 사유다. 한 해에 여러 사유가 관찰되면
-        // 그것이 남는다 — 나머지는 애초에 닿을 수 없던 돈에 대한 설명이라 그 위에 덮으면
-        // 사용자가 읽는 이유가 실제 원인에서 멀어진다.
-        if (blockedWithdrawalReason === 'assetFloor') return;
-        if (blockedWithdrawalReason !== undefined && reason !== 'assetFloor') return;
-        blockedWithdrawalReason = reason;
+        const phase = fundingHardFloor ? 'hardFloor' : 'target';
+        const recorded = blockedWithdrawalReasonByPhase[phase];
+        // assetFloor는 «닿을 수 있는 돈»을 막은 유일한 사유다. 한 단계에서 여러 사유가
+        // 관찰되면 그것이 남는다 — 나머지는 애초에 닿을 수 없던 돈에 대한 설명이라 그 위에
+        // 덮으면 사용자가 읽는 이유가 실제 원인에서 멀어진다.
+        if (recorded === 'assetFloor') return;
+        if (recorded !== undefined && reason !== 'assetFloor') return;
+        blockedWithdrawalReasonByPhase[phase] = reason;
       };
       // 계층 밖 사유로 상속 하한선이 침범당했는가(YearLedgerDiagnostics.assetFloorBreachedBy).
       let assetFloorBreachedBy: YearLedgerDiagnostics['assetFloorBreachedBy'];
@@ -1773,18 +1784,18 @@ export class LegacySimulationEngine implements SimulationEngineContract {
               // 여유를 다 쓰고 멈췄다. WithdrawalEngine은 headroom이 마르면 «루프를 끊으므로»
               // 뒤에 남은 계좌는 닿아 보지도 못했다. 그 계좌들의 캡을 사유로 적으면 이 인출을
               // 막은 적 없는 원인을 지어내는 것이고, 진짜 원인인 하한선이 가려진다.
-              recordBlockedWithdrawal('assetFloor');
+              recordBlockedWithdrawal(fundingHardFloor, 'assetFloor');
             } else if (
               // 여유가 아니라 «가용액»이 말랐다 — 엔진이 적격 계좌를 끝까지 돌고도 모자랐다.
               // 그렇다면 닿지 못한 돈은 정확히 계층 밖(법정) 캡 뒤에 있는 돈이고 그 캡이 원인이다.
               !canWithdrawPrivatePension(currentAge)
               && activePensions.some((p) => p.currentBalance > 0)
             ) {
-              recordBlockedWithdrawal('legalAge');
+              recordBlockedWithdrawal(fundingHardFloor, 'legalAge');
             } else if (
               activeIsas.some((i) => isIsaPrincipalExhausted(i.currentBalance, i.totalInvested))
             ) {
-              recordBlockedWithdrawal('isaPrincipalExhausted');
+              recordBlockedWithdrawal(fundingHardFloor, 'isaPrincipalExhausted');
             }
           }
           // 하한선을 «실제로» 넘겨 꺼냈을 때만 깬 것으로 센다. 1단계라도 여유 안에서 끝난
@@ -2006,6 +2017,13 @@ export class LegacySimulationEngine implements SimulationEngineContract {
       // 남은 잔액 중 인출 엔진이 «닿을 수 있는» 금액. 연말 세금 징수까지 끝난 뒤에 재므로
       // 그 해 어느 시점보다도 작다 — 불변식이 과하게 울지 않는 쪽으로 안전하다.
       const withdrawableAtFloorPhase = withdrawableNowDisplay(currentAge, true);
+
+      // 한 해에 하나만 표시하므로 «앞선·더 구체적인» 관찰이 남는다. 1단계는 계층 1(HARD
+      // 생활비 바닥)을 막은 사실이라 2단계(목표 생활비)보다 먼저 일어나고 더 좁게 말한다.
+      // 1단계가 아무것도 보지 못한 해에만 2단계 사유가 올라온다 — 바닥이 없는 계획은
+      // 1단계가 아예 돌지 않으므로(hardFloorNetNeed = 0) 예전과 같은 값이 나온다.
+      const blockedWithdrawalReason = blockedWithdrawalReasonByPhase.hardFloor
+        ?? blockedWithdrawalReasonByPhase.target;
 
       const diagnostics: YearLedgerDiagnostics = {
         brokenPreferences: [...brokenPreferences],

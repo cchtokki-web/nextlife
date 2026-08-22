@@ -203,3 +203,75 @@ describe('막힌 사유는 실제 원인일 때만 붙는다', () => {
     }
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 위 네 건은 «손으로 만든» 원장으로 불변식 함수만 검사한다. 그것으로는 「엔진이 그 불변식에
+// 도달하는가」가 고정되지 않는다. 실측: recordBlockedWithdrawal을 통째로 no-op으로 바꿔도
+// 전체 테스트 중 SimulationConsistencyError로 깨지는 것은 «한 건도 없었다». 사유가 남는 기존
+// 시나리오는 전부 「닿을 수 있는 돈이 0인 해」라 전제(withdrawableNowAtFloorPhase > 1원)에서
+// 걸러졌기 때문이다 — 불변식의 살아 있는 경로는 테스트되지 않은 채였다.
+//
+// 아래 한 건이 그 빈칸을 메운다. 실제 엔진 실행에서 «부족 > 1원»과 «인출 가능 자산 > 1원»이
+// 같은 해에 동시에 참이 되게 만든다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// 두 조건을 한 해에 겹치는 방법: ISA 만기.
+//   ① 납입원금이 먼저 마른다 → 그 뒤 달들은 «잔액이 있는데» 못 꺼내 부족이 쌓이고
+//      사유(isaPrincipalExhausted)가 남는다.
+//   ② 같은 해 12월에 ISA가 만기(3년 = 36개월)를 맞아 잔액 전액이 일반자산으로 옮겨진다
+//      → 그 순간부터 «전액이 인출 가능»해지고, 12월치를 쓰고도 돈이 남은 채 해가 끝난다.
+// 그래서 연말의 인출 가능액은 0이 아니고, 그 해의 부족은 사유로만 설명된다.
+function isaPrincipalDriesThenMatures(): SimulationParams {
+  return {
+    userProfile: { currentAge: 60, retirementAge: 60, expectancy: 66, targetMonthlySpending: 10_000_000 },
+    // 만기 자금을 받을 그릇. 일부러 작게 둬 첫 달에 비고, 이후 인출은 전부 ISA가 감당한다.
+    assets: [{
+      id: 'a', type: 'etf', ticker: 'X', name: 'X', quantity: 1, averagePrice: 1_000_000,
+      totalReturn: 0, dividendYield: 0, monthlyContribution: 0,
+      reinvestDividend: true, currency: 'KRW', assetMarket: 'OTHER',
+    }],
+    isaAccounts: [{
+      id: 'i', type: 'general', investmentType: 'etf', name: 'ISA',
+      balance: 300_000_000, monthlyContribution: 0, totalReturn: 8, dividendYield: 0,
+      currency: 'KRW', maturityYears: 3,
+    }],
+    // 만기 자금의 목적지를 «명시»한다. 미지정 기본값은 'pension'이고, 연금이 없을 때
+    // 일반자산으로 떨어지는 것은 뒤쪽 폴백이다 — 이 테스트가 폴백에 기대지 않게 한다.
+    withdrawalPlan: { isaMaturityDestination: 'asset' },
+    otherIncomes: [], privatePensions: [],
+    nationalPension: { expectedMonthlyAmount: 0 },
+    inflationRate: 0, inflationMode: 'nominal', baseExchangeRate: 1400,
+    exchangeScenario: 'base', displayCurrency: 'KRW',
+    hardSpendingFloor: 10_000_000,
+  } as unknown as SimulationParams;
+}
+
+describe('불변식의 엔진 경로', () => {
+  test('부족과 인출 가능 자산이 같은 해에 겹쳐도, 사유가 남아 있으면 던지지 않는다', () => {
+    // 사유 기록을 없애면 이 호출 자체가 SimulationConsistencyError로 던진다 — 그것이 이
+    // 테스트가 지키는 것이다(위 절 주석의 실측).
+    const result = new SimulationEngine().runSingle(isaPrincipalDriesThenMatures());
+
+    const blocked = result.yearlyResults.filter((y) => y.ledger!.diagnostics.unmetHardSpending > 1);
+    expect(blocked.length).toBeGreaterThan(0);
+
+    // 불변식의 «전제»가 실제로 성립한 해가 있어야 이 테스트가 의미를 갖는다. 전제가 깨지면
+    // (연말 인출 가능액이 0이 되면) 사유를 지워도 던지지 않으므로, 아래 두 단언이 함께
+    // 서 있어야 한다.
+    const armed = blocked.filter((y) => y.totalAssets > 1);
+    expect(armed.length, '부족과 잔여 인출 가능 자산이 겹치는 해가 없다').toBeGreaterThan(0);
+
+    for (const year of armed) {
+      const d = year.ledger!.diagnostics;
+      expect(d.blockedWithdrawalReason, `${year.age}세`).toBe('isaPrincipalExhausted');
+
+      // 엔진이 만든 «그 해의 실제 숫자»로 불변식을 다시 돌린다. 사유만 지우면 던져야 한다.
+      // 연말 총자산을 인출 가능액 자리에 넣는 것은 이 해에는 정확하다 — ISA는 이미 만기
+      // 정산으로 비었고 남은 것은 전부 일반자산이다.
+      const { blockedWithdrawalReason: _removed, ...withoutReason } = d;
+      expect(() => assertSpendingShortfallExplained(
+        { ...year.ledger!, diagnostics: withoutReason }, year.totalAssets
+      ), `${year.age}세`).toThrow(SimulationConsistencyError);
+    }
+  });
+});
