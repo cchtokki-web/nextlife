@@ -45,15 +45,21 @@ export const YIELD_PRESET_RATES = {
 //
 // yieldPreset이 'custom'인 상태(자산별 직접입력)에서 다른 프리셋을 적용하면 직접입력 값이
 // 사라지므로, 덮어쓰기 직전의 값을 customYieldSnapshot에 보관해 둔다 — restoreCustomYieldPreset이
-// 이 스냅샷으로 되돌린다. 이미 프리셋 상태에서 다른 프리셋으로 바꾸는 경우는 되돌릴 직접입력 값이
-// 없으므로 기존 스냅샷(있다면 더 이전의 직접입력 값)을 그대로 유지한다.
+// 이 스냅샷으로 되돌린다. customYieldSnapshot이 아직 없는 경우(저장된 기본값 'base' 등 프리셋
+// 상태로 시작해 한 번도 직접입력을 거치지 않은 params 포함)에도 지금 값이 사용자가 마지막으로
+// 본 값이므로 최초 1회는 반드시 캡처한다 — 그래야 되돌리기 버튼이 나타난다. 이미 스냅샷이 있는
+// 상태에서 다른 프리셋으로 바꾸는 경우(프리셋→프리셋)는 되돌릴 직접입력 값이 새로 생기지 않으므로
+// 기존 스냅샷(더 이전의 직접입력 값)을 덮어쓰지 않고 그대로 유지한다. 즉 "첫 캡처가 이긴다."
 export function applyYieldPreset(
   params: SimulationParams,
   preset: 'conservative' | 'base' | 'aggressive'
 ): SimulationParams {
   const { stockGrowth, pensionReturn } = YIELD_PRESET_RATES[preset];
 
-  const customYieldSnapshot = params.yieldPreset === 'custom' ? captureCustomYieldSnapshot(params) : params.customYieldSnapshot;
+  const customYieldSnapshot =
+    params.yieldPreset === 'custom' || params.customYieldSnapshot === undefined
+      ? captureCustomYieldSnapshot(params)
+      : params.customYieldSnapshot;
 
   // ISA도 totalReturn을 가진 시장 연동 계좌이므로 주식과 같은 값으로 맞춘다 —
   // 여기서만 빼두면 "보수적"을 골라도 ISA 홀로 높은 수익률을 유지해 계좌 간 서열이
