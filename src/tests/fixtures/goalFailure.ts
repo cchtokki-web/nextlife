@@ -7,6 +7,7 @@ import type { GoalSuccessConditions } from '../../core/usecases/goals/goalSucces
 export const NO_GOAL_FAILURE: GoalFailureBreakdown = {
   spendingShortfall: 0,
   assetDepletion: 0,
+  observedAssetDepletionCount: 0,
   terminalShortfall: 0,
   medianFirstShortfallAge: null,
   terminalAssetGoal: 0,

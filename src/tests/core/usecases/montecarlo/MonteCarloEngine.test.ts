@@ -541,6 +541,41 @@ describe('goalSuccessProbability — 선택한 목표가 판정 조건을 정한
     expect(spendingOnly.successRate).toBeLessThanOrEqual(1);
   });
 
+  // 판정에서 빠진 조건이라도 **관측은 지워지지 않는다.** 예전에는 게이트가 닫히면 고갈
+  // 시행 수가 0으로만 남아, 원인 진단이 420회 고갈을 「목표 생활비 미달」로 설명하고
+  // 있지도 않은 인출 설정 문제를 지목했다(explainGoalShortfall).
+  test('자산 고갈 방지를 고르지 않아도 실제 고갈 시행 수는 관측값으로 남는다', () => {
+    const depleting = runMonteCarlo(params({
+      userProfile: { currentAge: 55, retirementAge: 60, expectancy: 90, targetMonthlySpending: 8_000_000 },
+      privatePensions: [],
+      retirementGoals: [{ type: 'LIVING_EXPENSE_STABILITY', priority: 1, constraintType: 'SOFT' }],
+    }), engine, { trials: 20, seed: 7, annualStdDev: 15 });
+
+    expect(depleting.goalConditions.requireAssetSurvival).toBe(false);
+    // 목표 판정값은 게이트가 닫혀 있으므로 0 그대로다.
+    expect(depleting.goalFailure.assetDepletion).toBe(0);
+    // 관측값은 실제 개수다.
+    expect(depleting.goalFailure.observedAssetDepletionCount).toBeGreaterThan(0);
+    // 술어가 다르므로 등식은 아니다(depletion.count는 successAge를 묻지 않는다). 관측값은
+    // 언제나 그 부분집합이어야 한다.
+    expect(depleting.goalFailure.observedAssetDepletionCount)
+      .toBeLessThanOrEqual(depleting.depletion.count);
+    // 확률은 이 필드와 무관하다 — 이번 변경은 보고 값만 더한 것이다.
+    expect(depleting.successRate).toBe(1 - depleting.goalFailure.observedAssetDepletionCount / 20);
+  });
+
+  test('자산 고갈 방지를 고른 계획에서는 관측값과 판정값이 같다', () => {
+    const guarded = runMonteCarlo(params({
+      userProfile: { currentAge: 55, retirementAge: 60, expectancy: 90, targetMonthlySpending: 8_000_000 },
+      privatePensions: [],
+      retirementGoals: [{ type: 'ASSET_SURVIVAL', priority: 1, constraintType: 'HARD' }],
+    }), engine, { trials: 20, seed: 7, annualStdDev: 15 });
+
+    expect(guarded.goalConditions.requireAssetSurvival).toBe(true);
+    expect(guarded.goalFailure.observedAssetDepletionCount).toBeGreaterThan(0);
+    expect(guarded.goalFailure.assetDepletion).toBe(guarded.goalFailure.observedAssetDepletionCount);
+  });
+
   test('판정할 수 없는 목표만 골라도 100%가 되지 않는다', () => {
     const qualitativeOnly = runMonteCarlo(params({
       retirementGoals: [{ type: 'TAX_OPTIMIZATION', priority: 1, constraintType: 'SOFT' }],

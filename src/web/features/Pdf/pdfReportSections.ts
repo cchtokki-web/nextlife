@@ -24,6 +24,7 @@ import { RetirementGoalType } from '../../../core/entities/retirementGoal';
 import { RETIREMENT_GOAL_CONSTRAINT_LABELS } from '../../../core/entities/retirementGoal';
 import { hardConstraintLabel, RETIREMENT_GOAL_CATALOG } from '../RetirementGoals/goalCatalog';
 import { describeStrategyChanges } from '../../../core/usecases/dashboard/describeStrategyChanges';
+import { explainGoalShortfall } from '../../../core/usecases/dashboard/explainGoalShortfall';
 import type { StrategyOptimizationStatus } from '../../hooks/useStrategyOptimization';
 
 export function formatCurrencyUnit(currency: 'KRW' | 'USD'): '원' | '$' {
@@ -610,7 +611,10 @@ export function renderSensitivityTableSection(
 // 리포트 전체가 막히면 안 된다 — 개별 실패를 격리하는 computeSensitivityAnalysis와 같은 원칙이다.
 export function renderMonteCarloSection(
   monteCarlo: MonteCarloResult | undefined,
-  sequenceRisk: SequenceRiskResult | undefined
+  sequenceRisk: SequenceRiskResult | undefined,
+  // 실패 원인을 만든 «설정»을 지목하려면 필요하다(explainGoalShortfall). optional로 두지
+  // 않는 이유는 그러면 호출자가 빠뜨렸을 때 원인 문장이 조용히 사라지기 때문이다.
+  params: SimulationParams
 ): string {
   if (!monteCarlo) return '';
 
@@ -623,6 +627,24 @@ export function renderMonteCarloSection(
   const depletionText = monteCarlo.depletion.count > 0
     ? `<p style="margin: 6px 0 0; font-size: 11px; color: #dc2626;">자산이 먼저 바닥난 경우가 ${monteCarlo.depletion.count.toLocaleString()}회 있었고, 가장 이른 시점은 ${monteCarlo.depletion.earliestAge}세였습니다.</p>`
     : '';
+
+  // 화면(DashboardSection의 「목표를 달성하지 못한 시행의 원인」)과 **같은 문장**이어야 한다.
+  // 위 depletionText는 「무슨 일이 있었는가」만 말하고 원인은 말하지 않아, 예전에는 화면이
+  // "목표 생활비를 못 채운다"라고 하는 같은 시행을 리포트는 "자산이 바닥났다"로만 적었다.
+  // 두 문서가 같은 시행을 다르게 설명하면 사용자는 어느 조치를 해야 할지 알 수 없다 —
+  // describeMonteCarloAssumptions를 한 벌로 모은 것과 같은 이유다.
+  const shortfall = explainGoalShortfall({
+    goalFailure: monteCarlo.goalFailure,
+    trials: monteCarlo.trials,
+    params,
+    formatValue: formatManwon,
+  });
+  const shortfallHtml = shortfall.cause === 'none'
+    ? ''
+    : `<p style="margin: 6px 0 0; font-size: 11px; color: #0f172a;"><strong>목표를 달성하지 못한 시행의 원인</strong> — ${shortfall.headline}</p>`
+      + (shortfall.hint
+        ? `<p style="margin: 2px 0 0; font-size: 10px; color: #64748b;">${shortfall.hint}</p>`
+        : '');
 
   const sequenceRows = sequenceRisk
     ? sequenceRisk.cases
@@ -709,6 +731,7 @@ export function renderMonteCarloSection(
       총 자산액 곡선은 흔들리지 않는다고 가정한 값이라 아랫줄에 해당합니다.
     </p>
     ${depletionText}
+    ${shortfallHtml}
     ${sequenceSection}
   `;
 }

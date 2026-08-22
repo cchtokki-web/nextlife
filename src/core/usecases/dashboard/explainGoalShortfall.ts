@@ -45,13 +45,24 @@ export function explainGoalShortfall({
   formatValue,
 }: ExplainGoalShortfallInput): GoalShortfallExplanation {
   const { spendingShortfall, assetDepletion, terminalShortfall } = goalFailure;
+  // **이 판정만 목표 값을 쓴다.** 여기서 묻는 것은 "설명할 «목표» 실패가 있는가"이고, 그
+  // 답은 판정 조건이 정한다 — 고르지 않은 조건 때문에 실패한 시행은 없으므로 관측된 고갈이
+  // 있어도 설명할 목표 실패는 없다. 아래 원인 판정은 반대로 전부 관측값을 쓴다.
   if (spendingShortfall === 0 && assetDepletion === 0 && terminalShortfall === 0) {
     return { cause: 'none', headline: '모든 시행에서 목표 조건을 만족했습니다.' };
   }
 
-  const spendingOnly = spendingShortfall - assetDepletion;
-  const terminalOnly = terminalShortfall - assetDepletion;
-  const cause: GoalFailureCause = assetDepletion >= spendingOnly && assetDepletion >= terminalOnly
+  // **원인은 관측값으로만 가른다.** assetDepletion은 「자산 고갈 방지」를 고르지 않으면 실제
+  // 고갈이 몇 번이든 0이라(GoalFailureBreakdown 주석), 그 값을 빼면 고갈로 무너진 시행이
+  // 통째로 「생활비 미달」로 넘어가 인출 설정을 잘못 지목한다.
+  const depletion = goalFailure.observedAssetDepletionCount;
+  // 시행 수·시행 개수는 모두 천 단위 구분자를 붙인다. 이 문장은 화면과 PDF가 함께 쓰는데,
+  // PDF의 이웃 문단이 「1,000회 시뮬레이션」이라고 적는 마당에 같은 쪽에서 「1000회」가
+  // 섞이면 금액을 전부 구분자로 적는 문서에서 오식으로 읽힌다(리포트 전반의 표기 관례).
+  const count = (value: number) => value.toLocaleString();
+  const spendingOnly = spendingShortfall - depletion;
+  const terminalOnly = terminalShortfall - depletion;
+  const cause: GoalFailureCause = depletion >= spendingOnly && depletion >= terminalOnly
     ? 'depletion'
     : spendingOnly >= terminalOnly
       ? 'spending'
@@ -60,14 +71,14 @@ export function explainGoalShortfall({
   if (cause === 'depletion') {
     return {
       cause,
-      headline: `${trials}회 중 ${assetDepletion}회에서 기대수명 전에 자산이 고갈됩니다.`,
+      headline: `${count(trials)}회 중 ${count(depletion)}회에서 기대수명 전에 자산이 고갈됩니다.`,
     };
   }
 
   if (cause === 'terminal') {
     return {
       cause,
-      headline: `${trials}회 중 ${terminalShortfall}회에서 기말자산이 목표(${formatValue(goalFailure.terminalAssetGoal)})에 못 미칩니다.`,
+      headline: `${count(trials)}회 중 ${count(terminalShortfall)}회에서 기말자산이 목표(${formatValue(goalFailure.terminalAssetGoal)})에 못 미칩니다.`,
       hint: '상속 목표액을 낮추면 달성 확률이 올라갑니다.',
     };
   }
@@ -75,11 +86,18 @@ export function explainGoalShortfall({
   const fromAge = goalFailure.medianFirstShortfallAge;
   return {
     cause,
-    headline: `${trials}회 중 ${spendingShortfall}회에서 목표 생활비를 채우지 못합니다`
+    headline: `${count(trials)}회 중 ${count(spendingShortfall)}회에서 목표 생활비를 채우지 못합니다`
       + (fromAge !== null ? ` (평균적으로 ${fromAge}세부터).` : '.'),
     // 자산이 살아남는데도 목표를 못 채우는 시행이 있을 때만 설정을 지목한다. 고갈이
-    // 원인의 대부분이면 "인출 설정 때문"이라는 문장은 사실이 아니다.
-    ...(spendingShortfall > assetDepletion ? withdrawalBlockHint(params, formatValue) : {}),
+    // 원인의 대부분이면 "인출 설정 때문"이라는 문장은 사실이 아니다. 순수한 인과 판단이라
+    // 관측된 고갈 수를 쓴다 — 목표 게이트가 닫혔다고 고갈이 사라지는 것은 아니다.
+    //
+    // 오늘은 어느 값을 써도 결과가 같다: spending 분기에 도달했다는 사실 자체가
+    // spendingOnly > depletion, 즉 spendingShortfall > depletion을 뜻하고 assetDepletion은
+    // 언제나 depletion 이하이기 때문이다. 그래도 관측값을 쓰는 것은 위 분기식이 바뀌는 날
+    // 이 줄만 조용히 틀리지 않게 하기 위해서다(그래서 이 줄만 되돌리는 변이는 테스트로
+    // 잡히지 않는다).
+    ...(spendingShortfall > depletion ? withdrawalBlockHint(params, formatValue) : {}),
   };
 }
 

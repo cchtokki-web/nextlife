@@ -150,8 +150,11 @@ export function runMonteCarlo(
   const { terminalAssetGoal } = conditions;
   const failsSpending = (t: TrialSummary) =>
     conditions.requireSpendingTarget && t.firstGoalShortfallAge !== null;
+  // 고갈 **관측** 술어. 여기서 관측값과 목표 판정값을 함께 유도한다 — 두 곳에 같은 식을
+  // 복사해 두면 한쪽만 바뀐 채 조용히 갈라진다.
+  const depletedTrial = (t: TrialSummary) => !isSuccessfulTrial(t.depletionAge, successAge);
   const failsSurvival = (t: TrialSummary) =>
-    conditions.requireAssetSurvival && !isSuccessfulTrial(t.depletionAge, successAge);
+    conditions.requireAssetSurvival && depletedTrial(t);
   const failsTerminal = (t: TrialSummary) =>
     terminalAssetGoal > 0 && t.endingAssets < terminalAssetGoal;
 
@@ -167,6 +170,10 @@ export function runMonteCarlo(
   const goalFailure = {
     spendingShortfall: shortfallAges.length,
     assetDepletion: trials.filter(failsSurvival).length,
+    // 게이트 없는 관측값. 자산 고갈 방지를 고르지 않은 계획에서 위 값은 0이 되므로, 원인
+    // 진단이 그 0을 「고갈이 없었다」로 읽지 않도록 실제 개수를 함께 싣는다
+    // (GoalFailureBreakdown 주석).
+    observedAssetDepletionCount: trials.filter(depletedTrial).length,
     terminalShortfall: trials.filter(failsTerminal).length,
     medianFirstShortfallAge: shortfallAges.length > 0 ? percentileOfSorted(shortfallAges, 0.5) : null,
     terminalAssetGoal,
