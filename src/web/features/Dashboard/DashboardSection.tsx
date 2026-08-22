@@ -323,11 +323,14 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
           {monteCarlo && monteCarlo.goalConditions.basis !== 'legacy_plan' && (
             <GoalCoverageNote conditions={monteCarlo.goalConditions} />
           )}
-          {goalShortfallExplanation && goalShortfallExplanation.cause !== 'none' && (
+          {/* **cause로 가르지 않는다.** 목표를 다 달성했는데도 자산은 실제로 고갈된 계획은
+              cause가 'none'이면서(확률이 정말 100%다) 할 말이 있다. 예전에 여기서 cause를
+              보고 잘랐더니 그 문장이 한 번도 화면에 닿지 못했다. 제목도 여기서 적지 않는다 —
+              그 경우에는 「목표를 달성하지 못한 시행의 원인」이 바로 아래 문장을 부정한다.
+              「보여줄지」와 「어떤 제목으로」는 문장을 만든 곳이 함께 정한다. */}
+          {goalShortfallExplanation && goalShortfallExplanation.label !== undefined && (
             <div className={styles.goalShortfallReason}>
-              {/* "확률이 낮은 이유"라고 쓰지 않는다. 89%인 계획에도 실패 시행은 있고,
-                  그때 이 제목은 사실이 아닌 것을 단정한다. */}
-              <span>목표를 달성하지 못한 시행의 원인</span>
+              <span>{goalShortfallExplanation.label}</span>
               <p>{goalShortfallExplanation.headline}</p>
               {goalShortfallExplanation.hint && (
                 <p className={styles.goalShortfallHint}>{goalShortfallExplanation.hint}</p>

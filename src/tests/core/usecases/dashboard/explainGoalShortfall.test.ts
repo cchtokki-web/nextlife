@@ -51,6 +51,9 @@ describe('explainGoalShortfall', () => {
     expect(result.cause).toBe('none');
     expect(result.headline).toBe('모든 시행에서 목표 조건을 만족했습니다.');
     expect(result.hint).toBeUndefined();
+    // 제목이 없으면 화면·PDF 모두 아무것도 그리지 않는다. 할 말이 없는 계획에까지 문장을
+    // 새로 찍기 시작하면 소음만 는다.
+    expect(result.label).toBeUndefined();
   });
 
   // PDF에서 이 문장은 「자산이 먼저 바닥난 경우가 N회…」 «바로 아래»에 찍힌다. 목표를 다
@@ -67,6 +70,8 @@ describe('explainGoalShortfall', () => {
     });
 
     expect(result.cause).toBe('none');
+    // 실패한 시행이 «한 번도 없으므로» 실패 원인 제목을 붙이면 아래 문장을 정면으로 부정한다.
+    expect(result.label).toBe('확률에 반영되지 않은 사실');
     expect(result.headline).toBe(
       '고른 목표는 1,000회 모두 달성했습니다. 다만 420회(가장 이른 62세)에서 자산이 기대수명 전에'
       + ' 바닥났습니다. 「자산 고갈 방지」를 목표로 고르지 않아 이 확률에는 반영되지 않았습니다.'
@@ -99,6 +104,7 @@ describe('explainGoalShortfall', () => {
       formatValue,
     });
     expect(result.cause).toBe('depletion');
+    expect(result.label).toBe('목표를 달성하지 못한 시행의 원인');
     expect(result.headline).toContain('610회');
   });
 

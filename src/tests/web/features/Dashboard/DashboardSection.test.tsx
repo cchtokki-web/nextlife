@@ -746,6 +746,49 @@ describe('DashboardSection - 현재 계획 진단', () => {
     expect(diagnosis().textContent).toContain('사적연금');
   });
 
+  // 확률이 100%인데도 할 말이 남는 유일한 경우다. 연금이 후반 생활비를 덮으면 잔액이 0을
+  // 찍고도 고른 목표는 전부 통과하므로, 원인 블록을 cause !== 'none'으로 잘라 두면 이
+  // 사실이 화면에 한 번도 닿지 못한다(그렇게 한동안 죽어 있던 문장이다).
+  test('목표를 다 달성했어도 자산이 실제로 고갈됐으면 그 사실을 적는다', () => {
+    render(
+      <DashboardSection
+        params={params} result={result}
+        monteCarloStatus="done"
+        monteCarlo={{
+          ...monteCarloWith(1, 1),
+          // 「자산 고갈 방지」를 고르지 않아 판정값은 전부 0이지만 실제로는 420회 고갈됐다.
+          goalFailure: {
+            spendingShortfall: 0, assetDepletion: 0, observedAssetDepletionCount: 420,
+            observedEarliestDepletionAge: 62,
+            terminalShortfall: 0, medianFirstShortfallAge: null, terminalAssetGoal: 0,
+          },
+        }}
+      />
+    );
+
+    expect(diagnosis().textContent).toContain('확률에 반영되지 않은 사실');
+    expect(diagnosis().textContent).toContain('고른 목표는 1,000회 모두 달성했습니다.');
+    expect(diagnosis().textContent).toContain('420회(가장 이른 62세)');
+    // 목표를 놓친 시행이 한 번도 없으므로 실패 원인 제목을 붙이면 바로 아래 문장을 부정한다.
+    expect(diagnosis().textContent).not.toContain('목표를 달성하지 못한 시행의 원인');
+  });
+
+  // 위 게이트를 넓히면서 «아무 일도 없는» 계획에까지 문장이 새로 생기면, 고친 것이 아니라
+  // 소음을 하나 더한 것이다. 오늘 조용한 자리는 조용한 채로 남아야 한다.
+  test('실패 시행도 관측 고갈도 없으면 원인 블록을 아예 그리지 않는다', () => {
+    render(
+      <DashboardSection
+        params={params} result={result}
+        monteCarloStatus="done"
+        monteCarlo={monteCarloWith(1, 1)}
+      />
+    );
+
+    expect(diagnosis().textContent).not.toContain('확률에 반영되지 않은 사실');
+    expect(diagnosis().textContent).not.toContain('목표를 달성하지 못한 시행의 원인');
+    expect(diagnosis().textContent).not.toContain('모든 시행에서 목표 조건을 만족했습니다');
+  });
+
   // 판정하지 않은 목표를 밝히지 않으면 "판정하지 않음"이 "판정해서 통과함"으로 읽힌다.
   test('확률에 반영되지 않은 목표를 밝힌다', () => {
     render(

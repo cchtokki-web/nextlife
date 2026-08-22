@@ -12,6 +12,18 @@ export type GoalFailureCause = 'spending' | 'depletion' | 'terminal' | 'none';
 
 export interface GoalShortfallExplanation {
   cause: GoalFailureCause;
+  // headline을 감싸는 **제목**. 화면과 PDF가 이 값을 그대로 찍는다.
+  //
+  // 제목까지 여기서 정하는 이유: 두 화면이 제목을 각자 적어 두었더니, 문장이 늘어날 때
+  // 제목은 따라오지 못해 「목표를 달성하지 못한 시행의 원인」 아래에 「고른 목표는 1,000회
+  // 모두 달성했습니다」가 놓이는 조합이 만들어졌다. 문장과 제목은 한 문서의 앞뒤라
+  // 한 곳에서 함께 정해야 서로를 부정하지 않는다.
+  //
+  // **undefined면 두 화면 모두 아무것도 그리지 않는다.** 실패도 고갈도 없는 계획에
+  // 「모든 시행에서 목표 조건을 만족했습니다」를 새로 찍기 시작하면, 오늘 조용한 자리에
+  // 소음이 하나 생길 뿐 사용자가 할 일은 늘지 않는다. headline은 그대로 두어 다른
+  // 호출자가 문장이 필요할 때 쓰게 하고, 「보여줄지」만 이 값으로 가른다.
+  label?: string;
   // "왜 이 확률인가"의 한 줄 요약.
   headline: string;
   // 원인을 만든 **설정**을 지목하는 문장. 지목할 설정을 찾지 못하면 undefined다 —
@@ -25,6 +37,19 @@ export interface ExplainGoalShortfallInput {
   params: SimulationParams;
   formatValue: (value: number) => string;
 }
+
+// 목표 실패가 있는 계획에 붙는 제목.
+//
+// 「확률이 낮은 이유」라고 쓰지 않는다 — 89%인 계획에도 실패 시행은 있고, 그때 이 제목은
+// 사실이 아닌 것을 단정한다.
+const FAILURE_CAUSE_LABEL = '목표를 달성하지 못한 시행의 원인';
+
+// 목표는 전부 달성했지만 자산이 실제로 고갈된 계획에 붙는 제목.
+//
+// 위 제목을 그대로 쓸 수 없다. 이 경우 목표를 놓친 시행은 «한 번도 없어서», 「목표를
+// 달성하지 못한 시행의 원인」이라는 제목이 바로 아래 문장을 정면으로 부정한다.
+// 문장의 마지막 절(「이 확률에는 반영되지 않았습니다」)이 그대로 제목이 된다.
+const UNCOUNTED_FACT_LABEL = '확률에 반영되지 않은 사실';
 
 // 목표 달성 확률이 낮은 이유를 문장으로 만든다.
 //
@@ -81,6 +106,7 @@ export function explainGoalShortfall({
     const earliestAge = goalFailure.observedEarliestDepletionAge;
     return {
       cause: 'none',
+      label: UNCOUNTED_FACT_LABEL,
       headline: `고른 목표는 ${count(trials)}회 모두 달성했습니다.`
         + ` 다만 ${count(depletion)}회`
         + (earliestAge !== null ? `(가장 이른 ${earliestAge}세)` : '')
@@ -100,6 +126,7 @@ export function explainGoalShortfall({
   if (cause === 'depletion') {
     return {
       cause,
+      label: FAILURE_CAUSE_LABEL,
       headline: `${count(trials)}회 중 ${count(depletion)}회에서 기대수명 전에 자산이 고갈됩니다.`,
     };
   }
@@ -107,6 +134,7 @@ export function explainGoalShortfall({
   if (cause === 'terminal') {
     return {
       cause,
+      label: FAILURE_CAUSE_LABEL,
       headline: `${count(trials)}회 중 ${count(terminalShortfall)}회에서 기말자산이 목표(${formatValue(goalFailure.terminalAssetGoal)})에 못 미칩니다.`,
       hint: '상속 목표액을 낮추면 달성 확률이 올라갑니다.',
     };
@@ -115,6 +143,7 @@ export function explainGoalShortfall({
   const fromAge = goalFailure.medianFirstShortfallAge;
   return {
     cause,
+    label: FAILURE_CAUSE_LABEL,
     headline: `${count(trials)}회 중 ${count(spendingShortfall)}회에서 목표 생활비를 채우지 못합니다`
       + (fromAge !== null ? ` (평균적으로 ${fromAge}세부터).` : '.'),
     // 자산이 살아남는데도 목표를 못 채우는 시행이 있을 때만 설정을 지목한다. 고갈이
