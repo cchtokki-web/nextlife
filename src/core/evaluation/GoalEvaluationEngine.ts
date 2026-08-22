@@ -622,6 +622,11 @@ function yieldedLayerTwoGoals(
  * 목표의 점수와 unmetSpending으로 드러난다. 그것까지 「목표 충돌」이라 부르면 평범한 계획이
  * 전부 충돌로 보고되어 진짜 충돌이 묻힌다.
  */
+// **여기에 새 목표 «유형»을 담기 시작하면 describeGoalConflict도 함께 고쳐야 한다.**
+// 그쪽 describeShortfall의 switch는 오늘 이 함수와 yieldedLayerTwoGoals가 담는 네 유형만
+// 다루고, 나머지는 throw한다. 그 switch는 «타입으로» 망라적이지 않아 tsc가 잡아주지 않는다 —
+// 도달 불가를 보장하는 것은 오직 이 함수의 런타임 불변식이다. 한쪽만 고치면 화면이
+// 오류 경계로 넘어간다(조용히 빠뜨리는 것보다는 낫지만, 여기서 막는 것이 더 낫다).
 function detectGoalConflict(
   goals: readonly RetirementGoal[],
   strategy: RetirementStrategy,
