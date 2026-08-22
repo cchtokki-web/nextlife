@@ -204,3 +204,30 @@ npm run harness:personas
 
 **되돌림 검증:** 각 단계의 새 테스트가 그 단계를 되돌렸을 때 실패하는지 확인하고
 개수를 보고한다. 양쪽 다 통과하는 테스트는 없는 것과 같다.
+
+**5단계 결과 (2026-08-23).** `npx tsc --noEmit` 통과, `npm test` 2544 passing / 0 failing
+(231 파일), `npm run harness:personas` 통과.
+
+움직이면 안 되는 것 — 둘 다 움직이지 않았다.
+`engineRegression.json`은 md5 `9333c0a2…`로 작업 전후 동일하고, 페르소나 CSV는 기준 커밋
+(3cd1db9)에서 다시 뽑은 것과 `diff`로 한 바이트도 다르지 않다. 표시 전용 변경이 맞다.
+
+되돌림 검증 — 화면과 리포트를 «따로» 뒤집었다. 한쪽만 무너지는 회귀가 빠져나가면 안 된다.
+
+| 되돌린 것 | 실패한 새 테스트 |
+|---|---|
+| 화면: 충돌 블록 삭제 | 2 |
+| 화면: 블록을 진단 카드 «안»으로 이동 | 1 |
+| 리포트: 섹션이 언제나 빈 문자열 | 1 |
+| 리포트: buildReportHtml의 배선 삭제 | 1 |
+| 리포트: 블록을 추천 «뒤»로 이동 | 1 |
+| 리포트: page.tsx가 sections에서 누락 | tsc 컴파일 실패 |
+
+**남긴 문제 — `describeShortfall`의 `default`는 «타입»으로 닫혀 있지 않다.**
+`ConflictingGoal.goalType`은 `RetirementGoalType` 전체(10개)라, 네 유형만 다루는 그 switch의
+`default`는 타입상 도달 가능하다. `RetirementGoalType`에 멤버가 늘어도 `tsc`는 그 자리에서
+아무 말도 하지 않는다. 그 분기가 지금 도달하지 않는 근거는 «다른 파일»의 런타임 불변식
+(`detectGoalConflict`/`yieldedLayerTwoGoals`가 네 유형만 담는다)뿐이며, 타입 시스템이
+지키고 있지 않다. 화면은 React라 그 throw가 렌더를 끊는다 — `src/app/simulator/error.tsx`가
+받아 내므로 백지가 되지는 않지만 시뮬레이터 화면 전체가 오류 화면으로 바뀐다.
+**지시에 따라 조용히 완화하지 않고 남겨 보고한다.**
