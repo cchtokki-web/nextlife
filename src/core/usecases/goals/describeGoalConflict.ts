@@ -5,7 +5,7 @@ import { formatManwon } from '../utility/utilityAnalysis';
 // 목표의 표시 이름은 카탈로그가 유일한 출처다. 여기에 짧은 별명을 새로 두면 목표 선택
 // 화면이 「상속 자산 확보」라 부른 것을 충돌 블록이 다른 이름으로 부르게 되고, 사용자는
 // 자기가 고른 목표가 어느 것인지 짚지 못한다 — 세 벌이던 어휘를 하나로 합친 이유다.
-import { retirementGoalDefinition } from '../../../web/features/RetirementGoals/goalCatalog';
+import { RETIREMENT_GOAL_LABELS } from '../../entities/retirementGoal';
 
 /**
  * 화면과 PDF가 «같은 문장»을 쓰기 위한 단일 출처. 문구를 두 벌로 두면 반드시 갈라진다.
@@ -33,7 +33,7 @@ const TITLE = '동시에 달성하기 어려운 목표가 있습니다';
  */
 function describeShortfall(goal: ConflictingGoal): string | undefined {
   if (!(goal.shortfall.amount > 0)) return undefined;
-  const label = retirementGoalDefinition(goal.goalType).label;
+  const label = RETIREMENT_GOAL_LABELS[goal.goalType];
 
   switch (goal.goalType) {
     // 계층 1. 바닥은 «월» 금액이라 기간을 밝히지 않으면 연 금액으로 읽힌다.
@@ -72,11 +72,11 @@ export function describeGoalConflict(verdict: GoalConflictVerdict): GoalConflict
   // 「지켰다/달성했다」로 쓰지 않는다. 이긴 쪽도 미달일 수 있어 그 경우 거짓이 된다
   // (ConflictingGoal.shortfall 주석). 우선순위가 «적용됐다»는 사실만 말한다.
   //
-  // 양보한 목표의 이름은 카탈로그에서 가져온다. 계층 2에서 양보하는 것은 상속만이 아니라
+  // 양보한 목표의 이름은 도메인 라벨에서 가져온다. 계층 2에서 양보하는 것은 상속만이 아니라
   // 자산 고갈 방지일 수도 있어, 「상속」을 문장에 박아 두면 절반은 틀린 말이 된다.
   const lead = verdict.yieldedGoal !== undefined
     ? `「${RETIREMENT_GOAL_CONSTRAINT_LABELS.HARD}」로 설정한 생활비를 `
-      + `${retirementGoalDefinition(verdict.yieldedGoal).label} 목표보다 우선했습니다. `
+      + `${RETIREMENT_GOAL_LABELS[verdict.yieldedGoal]} 목표보다 우선했습니다. `
       + '그래도 두 목표를 모두 충족하기에는 자산이 부족합니다.'
     // 여럿이 함께 양보했거나 같은 계층끼리 부딪힌 경우. 하나를 임의로 패자로 만들지 않는다.
     : '현재 조건에서는 아래 목표를 모두 충족할 수 없어 어느 하나를 임의로 우선하지 않았습니다.';

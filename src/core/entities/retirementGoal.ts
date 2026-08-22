@@ -38,6 +38,28 @@ export const RETIREMENT_GOAL_CONSTRAINT_LABELS: Record<RetirementGoalConstraintT
 };
 
 /**
+ * 목표의 표시 이름. **여기가 유일한 출처다** — 목표 선택 화면·추천 카드·PDF·충돌 문구가
+ * 같은 말을 쓴다.
+ *
+ * 강도 라벨 바로 옆에 두는 이유: 예전에는 이름이 web의 goalCatalog에만 있어서,
+ * core가 목표 이름을 말해야 할 때(describeGoalConflict) core → web import가 생겼다.
+ * 계산 계층이 화면 계층을 향하는 그 방향은 AGENTS.md가 금지한다. 이름은 도메인의 것이고
+ * 설명문·입력 라벨 같은 «화면의» 메타데이터만 goalCatalog에 남는다.
+ */
+export const RETIREMENT_GOAL_LABELS: Record<RetirementGoalType, string> = {
+  LIVING_EXPENSE_STABILITY: '생활비 안정',
+  EARLY_RETIREMENT: '빠른 은퇴',
+  ASSET_SURVIVAL: '자산 고갈 방지',
+  COMFORTABLE_SPENDING: '여유 있는 소비',
+  HOUSING_STABILITY: '주거 안정',
+  PENSION_OPTIMIZATION: '연금 최대 활용',
+  TAX_OPTIMIZATION: '세금 최소화',
+  RISK_REDUCTION: '투자 위험 최소화',
+  INHERITANCE: '상속 자산 확보',
+  ASSET_GROWTH: '자산 성장',
+};
+
+/**
  * 생활비에 «관한» 목표 유형. 유형은 「무엇에 관한 목표인가」만 말하고, 얼마나 구속력이
  * 있는지는 constraintType이 따로 정한다(스펙 「유형과 강도를 분리한다」).
  */
