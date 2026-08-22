@@ -63,18 +63,29 @@
 
 **단계**
 
-- [ ] **1-1.** `SimulationResult` → `StrategySimulationResult` 간극을 «측정»한다.
+- [x] **1-1.** `SimulationResult` → `StrategySimulationResult` 간극을 «측정»한다.
       기존 어댑터로 변환 가능한가, 아니면 `DefaultGoalEvaluationEngine`이 실제로 읽는 필드가
       `SimulationResult`에 이미 다 있는가. **새 시뮬레이션을 돌려야 한다면 그 비용을 재고
       보고하라** — 화면은 매 입력마다 재계산되므로 한 번의 추가 시뮬레이션이 체감된다.
-- [ ] **1-2.** 실패하는 테스트를 쓴다: HARD 생활비 + HARD 상속으로 충돌이 서는 계획에서
+- [x] **1-2.** 실패하는 테스트를 쓴다: HARD 생활비 + HARD 상속으로 충돌이 서는 계획에서
       `evaluation.goalConflict.goalConflict === true`이고 `conflictingGoals`에 양쪽이 들어간다.
       충돌이 없는 평범한 계획에서는 `goalConflict === false`이고 `conflictingGoals`가 빈 배열이다.
-- [ ] **1-3.** 구현한다. `DefaultGoalEvaluationEngine.evaluate`를 통째로 부르는 것이
+- [x] **1-3.** 구현한다. `DefaultGoalEvaluationEngine.evaluate`를 통째로 부르는 것이
       가장 단순하지만 효용 계산까지 함께 돈다. **비용을 재고 정하라** — 무시할 만하면
       단순한 쪽이 옳고, 무겁다면 `detectGoalConflict`가 필요로 하는 것만 좁혀 뽑는다.
       어느 쪽이든 «판정 규칙을 복제하지 마라». 규칙은 `GoalEvaluationEngine.ts`에만 있어야 한다.
-- [ ] **1-4.** 테스트 통과 확인 → 커밋.
+- [x] **1-4.** 테스트 통과 확인 → 커밋.
+
+**1-1 측정 결과 (2026-08-23).** 간극은 «없었다». `StrategySimulationResult`가 요구하는 셋
+(`yearlyResults`·`depletionAge`·`endingAssets`)을 `SimulationResult`가 이미 전부 같은 형으로
+가지고 있어 그대로 넘어간다 — 어댑터도, 두 번째 시뮬레이션도 필요 없다.
+`DefaultGoalEvaluationEngine.evaluate`를 통째로 부르는 비용은 실측 0.040ms/회로,
+화면이 이미 돌리는 `LegacyEvaluationEngine.evaluate`(0.068ms)의 절반이고
+시뮬레이션 한 번(0.83ms)의 5%다. 그래서 좁히지 않고 통째로 불러 세 필드만 받는다.
+
+**3·4단계가 읽을 자리:** `evaluation.goalConflict`
+(`RetirementEvaluation.goalConflict: GoalConflictVerdict`, 필수 필드) →
+`describeGoalConflict(evaluation.goalConflict)` → `undefined`면 그리지 않는다.
 
 ---
 
@@ -112,13 +123,13 @@
 
 **단계**
 
-- [ ] **2-1.** 실패하는 테스트를 쓴다 — 네 가지를 «문장 전문»으로 고정한다:
+- [x] **2-1.** 실패하는 테스트를 쓴다 — 네 가지를 «문장 전문»으로 고정한다:
       (a) `yieldedGoal` 있음 → 「우선했습니다」 문장 + 양쪽 미달이 «모두» 들어간다
       (b) `yieldedGoal` 없음 → 「임의로 우선하지 않았습니다」 문장 + 미달 «전부»
       (c) 충돌 없음 → `undefined`
       (d) 이긴 쪽 미달이 0인 경우 → 그 항목은 목록에서 빠지되 문장은 그대로다
       **enum이나 배열 길이만 검사하지 마라** — 문구가 틀려도 통과한다.
-- [ ] **2-2.** 미달 서식을 «목표 유형»으로 가른다. 스펙의 표:
+- [x] **2-2.** 미달 서식을 «목표 유형»으로 가른다. 스펙의 표:
 
       | 목표 | `unit` | 문구 |
       |---|---|---|
@@ -130,9 +141,9 @@
       «반대 방향»이다. 단위로 가르면 둘 중 하나가 반드시 틀린 말을 한다.
       **은퇴 나이 분기는 만들지 않는다** — `EARLY_RETIREMENT`는 planning constraint라
       `conflictingGoals`에 들어오지 않는다(스펙). 도달하지 않는 분기는 검증할 수 없다.
-- [ ] **2-3.** 목표 이름은 `RETIREMENT_GOAL_CONSTRAINT_LABELS`와 같은 단일 출처를 쓴다.
+- [x] **2-3.** 목표 이름은 `RETIREMENT_GOAL_CONSTRAINT_LABELS`와 같은 단일 출처를 쓴다.
       새 라벨을 «선언하지 마라» — 1502876이 세 벌이던 어휘를 하나로 합친 곳이다.
-- [ ] **2-4.** 통과 확인 → 커밋.
+- [x] **2-4.** 통과 확인 → 커밋.
 
 ---
 
