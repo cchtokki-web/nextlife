@@ -30,6 +30,8 @@ import {
 import { explainGoalShortfall } from '../../../core/usecases/dashboard/explainGoalShortfall';
 import { resolveTerminalAssetDisplay } from '../../../core/usecases/dashboard/resolveTerminalAssetDisplay';
 import type { GoalSuccessConditions } from '../../../core/usecases/goals/goalSuccessConditions';
+import { describeGoalConflict } from '../../../core/usecases/goals/describeGoalConflict';
+import GlassCard from '../../components/GlassCard';
 import { RETIREMENT_GOAL_CONSTRAINT_LABELS } from '../../../core/entities/retirementGoal';
 import { retirementGoalDefinition } from '../RetirementGoals/goalCatalog';
 import { KeyLeversCard } from './recommendation/KeyLeversCard';
@@ -265,6 +267,10 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
   // 자동으로 기준 수익률 경로로 되돌아간다.
   const terminalAssetDisplay = resolveTerminalAssetDisplay(metrics.terminalAssets, monteCarloForDisplay);
   const appliedSentinelLabels = describeSentinelAxes(sentinels?.appliedFields ?? []);
+  // 충돌이 없으면 undefined다. 그 «하나»로 「그리지 않는다」를 판정한다 — 빈 배열이나 빈
+  // 문자열을 따로 검사하기 시작하면 화면과 PDF가 각자의 「비었다」 기준을 갖게 되고, 한쪽만
+  // 조용해지는 날 아무도 알아채지 못한다. 문장도 여기서 짓지 않는다(describeGoalConflict).
+  const goalConflict = describeGoalConflict(evaluation.goalConflict);
 
   return (
     <div className={styles.container}>
@@ -349,6 +355,20 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
           )}
         </section>
       </DashboardGroup>
+
+      {/* 「내가 고른 목표들이 서로 맞지 않는다」. 진단 카드 «안»이 아니라 그 아래에 둔다 —
+          그 카드는 「내 계획이 어떤가」를 말하는 자리이고 충돌은 다른 층위의 사실이다(스펙).
+          그리고 추천보다 «앞»이어야 한다. 무엇이 부딪히는지를 먼저 알아야 추천이 왜 그런
+          모양인지 이해된다. */}
+      {goalConflict && (
+        <GlassCard className={styles.goalConflictNotice} role="note" aria-labelledby="goal-conflict-title">
+          <strong id="goal-conflict-title">{goalConflict.title}</strong>
+          <p>{goalConflict.lead}</p>
+          <ul>
+            {goalConflict.shortfalls.map((shortfall) => <li key={shortfall}>{shortfall}</li>)}
+          </ul>
+        </GlassCard>
+      )}
 
       <DashboardGroup title="NextLife 추천" description="목표에 가장 가까운 최종 전략과 현재 계획에서 바뀌는 점만 비교합니다.">
         <StrategyRecommendationCards
