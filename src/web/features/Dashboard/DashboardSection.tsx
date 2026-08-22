@@ -30,6 +30,7 @@ import {
 import { explainGoalShortfall } from '../../../core/usecases/dashboard/explainGoalShortfall';
 import { resolveTerminalAssetDisplay } from '../../../core/usecases/dashboard/resolveTerminalAssetDisplay';
 import type { GoalSuccessConditions } from '../../../core/usecases/goals/goalSuccessConditions';
+import { RETIREMENT_GOAL_CONSTRAINT_LABELS } from '../../../core/entities/retirementGoal';
 import { retirementGoalDefinition } from '../RetirementGoals/goalCatalog';
 import { KeyLeversCard } from './recommendation/KeyLeversCard';
 import { NATIONAL_PENSION_NORMAL_START_AGE } from '../../../core/usecases/pension/nationalPensionRules';
@@ -477,6 +478,24 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
                   가장 적은 구간이 월 <strong>{formatValue(lifetimeSpendingPlan.belowMinimum.lowestMonthly)}</strong>으로,
                   설정한 최소 생활비({formatValue(lifetimeSpendingPlan.belowMinimum.minMonthlySpending)})보다 낮습니다.
                   목표 상속자산을 줄이거나 은퇴 시점을 늦추는 방향을 검토해 보세요.
+                </StatusNotice>
+              )}
+              {/* 탐색은 바닥을 떼고 돈다(SimulationEngine.sustainabilityTrialParams). 그래서
+                  「어떤 생활비로도 바닥에 닿지 못한다」는 사실은 시뮬레이션 결과가 아니라
+                  탐색값과 바닥을 견준 이 자리에서만 드러난다. 침묵하면 사용자가 못박은
+                  조건이 조용히 사라진다.
+                  max_sustainable 계획에서만 뜬다 — 고정 생활비 계획은 엔진이 1단계에서
+                  해마다 바닥을 실제로 채우므로, 탐색값으로 미달을 말하면 같은 실행의 원장이
+                  반증한다(computeSustainableSpendingAdvice 주석). */}
+              {sustainableSpendingAdvice?.kind === 'below_hard_floor' && (
+                <StatusNotice
+                  tone="danger" icon={<AlertTriangle size={19} aria-hidden="true" />}
+                  title={`${RETIREMENT_GOAL_CONSTRAINT_LABELS.HARD}로 정한 생활비를 지속할 수 없습니다`}
+                >
+                  지속 가능한 한도는 월 <strong>{formatValue(sustainableSpendingAdvice.sustainableMonthly)}</strong>으로,
+                  {RETIREMENT_GOAL_CONSTRAINT_LABELS.HARD}로 정한 월 {formatValue(sustainableSpendingAdvice.hardFloorMonthly)}보다
+                  월 {formatValue(sustainableSpendingAdvice.difference)} 모자랍니다.
+                  생활비 목표를 낮추거나 조건 강도를 「{RETIREMENT_GOAL_CONSTRAINT_LABELS.SOFT}」으로 바꾸는 방향을 검토해 보세요.
                 </StatusNotice>
               )}
               {sustainableSpendingAdvice?.kind === 'can_spend_more' && (

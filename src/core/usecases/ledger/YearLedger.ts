@@ -1,4 +1,4 @@
-import type { YearlyLedger } from '../../entities/types';
+import type { YearLedgerDiagnostics, YearlyLedger } from '../../entities/types';
 import { SimulationConsistencyError } from '../../entities/errors';
 
 /** buildYearLedger의 입력. 엔진이 한 해 동안 누적한 원시 값들을 그대로 받는다. */
@@ -27,6 +27,8 @@ export interface YearLedgerInput {
   /** 건강보험료를 «제외한» 모든 세금의 합. */
   tax: number;
   healthInsurance: number;
+  /** 그 해 인출이 무엇을 깼고 무엇에 막혔는가. 항등식 계산에는 쓰이지 않는다. */
+  diagnostics: YearLedgerDiagnostics;
 }
 
 export function buildYearLedger(input: YearLedgerInput): YearlyLedger {
@@ -70,6 +72,7 @@ export function buildYearLedger(input: YearLedgerInput): YearlyLedger {
     },
     endingAssets: input.endingAssets,
     residual: input.endingAssets - expected,
+    diagnostics: input.diagnostics,
   };
 }
 
@@ -114,6 +117,37 @@ export function assertLedgerConsistent(ledger: YearlyLedger): void {
     + `− 세금 ${Math.round(ledger.expenses.tax).toLocaleString()} `
     + `− 건보료 ${Math.round(ledger.expenses.healthInsurance).toLocaleString()} `
     + `≠ 기말 ${Math.round(ledger.endingAssets).toLocaleString()}`
+  );
+}
+
+/**
+ * 인출 가능한 자산이 있는데 HARD 생활비 바닥이 부족하면 «반드시» 사유가 있어야 한다.
+ *
+ * **조용히 보정하지 않는 이유는 assertLedgerConsistent와 같다.** 이유 없는 생활비 부족은
+ * 그 자체가 결함이고, 화면에 그대로 흘러가면 사용자가 설명을 요구할 수 없다.
+ *
+ * 전제의 「인출 가능」은 원시 잔액이 아니라 그 시점에 법적·정책상 꺼낼 수 있는 금액이다.
+ * 두 질문은 다르다 — 이 엔진은 연말 세금 징수에서 인출 엔진 «밖»으로도 자산을 판다. 잔액이
+ * 남았다는 사실만으로는 「인출 엔진이 거기에 닿을 수 있었다」가 되지 않는다.
+ * 1단계는 일반자산 개시 나이를 깨므로 그 제한을 빼고 센다.
+ */
+export function assertSpendingShortfallExplained(
+  ledger: YearlyLedger,
+  withdrawableNowAtFloorPhase: number,
+): void {
+  const d = ledger.diagnostics;
+  // 원 미만의 부족은 사유가 필요한 부족이 아니라 세후 필요액 역산의 잔돈이다. 화면에 보이지
+  // 않으므로 사용자가 설명을 요구할 수도 없다 — ABSOLUTE_TOLERANCE_KRW와 같은 근거다.
+  if (d.unmetHardSpending <= ABSOLUTE_TOLERANCE_KRW) return;
+  // 꺼낼 것이 남지 않은 부족은 «정의상» 설명된 것이다. 이 불변식이 잡는 것은 그 반대편,
+  // 즉 «닿을 수 있는 돈이 남았는데도 부족했고 아무 사유도 남지 않은» 해뿐이다.
+  if (withdrawableNowAtFloorPhase <= ABSOLUTE_TOLERANCE_KRW) return;
+  if (d.blockedWithdrawalReason !== undefined) return;
+
+  throw new SimulationConsistencyError(
+    `${ledger.age}세: 인출 가능 자산 ${Math.round(withdrawableNowAtFloorPhase).toLocaleString()}원이 `
+    + `있는데 HARD 생활비 ${Math.round(d.unmetHardSpending).toLocaleString()}원이 부족한데 `
+    + `사유가 기록되지 않았습니다.`
   );
 }
 
@@ -164,5 +198,25 @@ export function formatYearLedger(ledger: YearlyLedger): string {
     '',
     `설명되지 않는 차이 ${won(ledger.residual)}`,
   ];
+
+  // 진단은 항등식이 «설명하지 못하는» 것을 설명한다. 아무것도 깨지 않고 아무것도 막히지
+  // 않은 해에는 한 줄도 붙이지 않는다 — 조용한 해를 시끄럽게 만들지 않기 위해서다.
+  const d = ledger.diagnostics;
+  if (
+    d.brokenPreferences.length > 0
+    || d.blockedWithdrawalReason !== undefined
+    || d.unmetHardSpending > 0
+  ) {
+    lines.push('', '진단');
+    if (d.unmetHardSpending > 0) lines.push(`  생활비 바닥 미달  ${won(d.unmetHardSpending)}`);
+    if (d.unmetTargetSpending > 0) lines.push(`  목표 생활비 미달  ${won(d.unmetTargetSpending)}`);
+    if (d.brokenPreferences.length > 0) {
+      lines.push(`  깬 선호          ${d.brokenPreferences.join(', ')}`);
+      if (d.overrideReason !== undefined) lines.push(`  깬 이유          ${d.overrideReason}`);
+    }
+    if (d.blockedWithdrawalReason !== undefined) {
+      lines.push(`  인출이 막힌 이유  ${d.blockedWithdrawalReason}`);
+    }
+  }
   return lines.join('\n');
 }

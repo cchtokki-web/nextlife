@@ -92,12 +92,20 @@ function normalizeUserProfile(
     firstGoalWithTarget(goals, 'EARLY_RETIREMENT')?.targetValue ?? NATIONAL_PENSION_NORMAL_START_AGE,
   );
 
-  // 생활비 목표가 없다고 이 값을 지우지는 않는다. 목표 금액은 모든 생활비 전략에서 소비
-  // 만족도의 «분모»라 계산에 계속 필요하고, 이 축에는 「권장」 상수가 없다. 그래서 목표가
-  // 없으면 저장값을 그대로 둔다.
-  const targetMonthlySpending =
-    firstGoalWithTarget(goals, 'LIVING_EXPENSE_STABILITY', 'COMFORTABLE_SPENDING')?.targetValue
-    ?? current.targetMonthlySpending;
+  // 생활비 목표가 여럿이면 «가장 큰» 값이 목표다. 예전에는 우선순위가 높은 쪽이 이겨
+  // (firstGoalWithTarget) 「생활비 안정」을 1순위에 둔 사용자의 「여유 있는 소비」 금액이
+  // 계산에 닿지 못했다. 사용자가 고른 두 값이 둘 다 계산에 닿게 한다.
+  //
+  // 목표가 하나도 없으면 저장값을 그대로 둔다 — 목표 금액은 모든 생활비 전략에서 소비
+  // 만족도의 «분모»라 계산에 계속 필요하고, 이 축에는 「권장」 상수가 없다.
+  const spendingTargets = goals
+    .filter((goal) =>
+      (goal.type === 'LIVING_EXPENSE_STABILITY' || goal.type === 'COMFORTABLE_SPENDING')
+      && goal.targetValue !== undefined && goal.targetValue > 0)
+    .map((goal) => goal.targetValue as number);
+  const targetMonthlySpending = spendingTargets.length > 0
+    ? Math.max(...spendingTargets)
+    : current.targetMonthlySpending;
 
   const targetBequest = firstGoalWithTarget(goals, 'INHERITANCE')?.targetValue;
 

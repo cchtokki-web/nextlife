@@ -1,3 +1,4 @@
+import type { HardConstraintFailureCode } from '../../../core/evaluation/GoalEvaluationEngine';
 import type {
   RetirementGoalConstraintType,
   RetirementGoalType,
@@ -63,4 +64,22 @@ export const RETIREMENT_GOAL_CATALOG: readonly RetirementGoalDefinition[] = [
 
 export function retirementGoalDefinition(type: RetirementGoalType): RetirementGoalDefinition {
   return RETIREMENT_GOAL_CATALOG.find((goal) => goal.type === type)!;
+}
+
+/**
+ * 후보를 막은 필수(HARD) 조건의 표시 이름. **여기가 유일한 출처다** — 추천 카드와 PDF가
+ * 각각 같은 표를 들고 있었고, 코드가 하나 늘면 한쪽만 갱신돼 다른 쪽은 원문 코드를
+ * (`HARD_MINIMUM_ENDING_ASSETS`) 그대로 노출했다.
+ */
+const HARD_CONSTRAINT_LABELS: Record<HardConstraintFailureCode, string> = {
+  HARD_RETIREMENT_AGE: '희망 은퇴 나이',
+  HARD_SPENDING_SHORTFALL: '목표 생활비 유지',
+  HARD_ASSET_SURVIVAL: '자산 고갈 방지',
+  HARD_MINIMUM_ENDING_ASSETS: '최소 기말자산',
+  HARD_UNSPECIFIED: '사유가 기록되지 않은 필수 조건',
+};
+
+/** 모르는 코드는 원문 그대로 보여 준다 — 침묵하면 「막힌 이유가 없다」로 읽힌다. */
+export function hardConstraintLabel(code: string): string {
+  return HARD_CONSTRAINT_LABELS[code as HardConstraintFailureCode] ?? code;
 }

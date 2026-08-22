@@ -1,0 +1,390 @@
+# 목표 강도가 인출 행동을 지배한다 — 제약 계층과 목표 충돌
+
+작성일: 2026-08-22
+
+## 배경
+
+2026-08-22 계산 정합성 감사에서 세 결함이 나왔고, 셋 다 뿌리가 하나다.
+**엔진의 인출 경로가 사용자의 목표를 모른다.**
+
+| ID | 증상 | 실측 |
+|---|---|---|
+| AUDIT-001 | `withdrawalPlan.accountWithdrawalPolicy`가 미지정이면 ISA가 인출 계좌로 «등록조차» 되지 않는다 | ISA 2억, 목표 월 300만원 → 매년 3,600만원 전액 미충족, ISA 잔액 2억 그대로, `depletionAge`는 null이라 리포트는 「평생 유지」 |
+| AUDIT-002 | `limitPrivatePensionToTaxLimit`가 켜지면 연 1,500만원이 «인출 상한»이 된다 | 연금 5억, 목표 월 500만원 → 인출 1,500만원 고정, 부족 4,582만원/년, 잔액 4.4억 잔존 |
+| AUDIT-003 | 「목표 달성 확률」이 자기 주변확률을 넘는다 | 목표 30.4% > 생활 유지 30.2% |
+
+AUDIT-001의 게이트는 설계가 아니라 유물이다. 같은 함수가 정책 기본값을 `'GENERAL_FIRST'`로
+채우는데(`SimulationEngine.ts:1574`) 그 정책의 순서에는 ISA가 들어 있다
+(`WithdrawalEngine.ts:74`). 엔진이 「GENERAL_FIRST를 쓴다」고 말하면서 정렬할 ISA 계좌를
+주지 않는다.
+
+AUDIT-002는 지시문 §11이 지적한 것이다 — 「인출 가능 여부 ≠ 저율과세 여부」. 한도를 넘으면
+세율이 오를 뿐이고, 초과분 정산 경로(연말 16.5% 분리과세 vs 종합과세 비교,
+`TaxEngine.ts:269-306`)는 이미 있다.
+
+**셋을 개별로 고치면 같은 자리로 돌아온다.** 인출을 막는 장치가 최소 다섯 개인데
+무엇이 무엇을 이기는지 어디에도 적혀 있지 않기 때문이다.
+
+`constraintType`(HARD/SOFT)은 이미 다섯 곳에서 쓰인다 — 하드 제약 필터, 효용 계수, 추천
+자격, 상속 하한선, 자산 고갈 방지 하한선. 그러나 전부 **후보 선택과 채점**이다.
+`SimulationEngine.ts`는 `retirementGoals`·`constraintType`·`EARLY_RETIREMENT`를
+**한 번도 읽지 않는다(0건)**. 돈을 실제로 꺼내는 순간에는 목표 강도가 아무 영향도 주지 않는다.
+
+## 목표
+
+- 무엇이 무엇을 이기는지 **하나의 계층**으로 정하고, 인출 경로가 그 계층을 따른다.
+- HARD 생활비 목표를 충족할 수 있는데 «전략 선호» 때문에 못 채우는 상태를 없앤다.
+- HARD 목표끼리 충돌하면 엔진이 조용히 하나를 포기하지 않고 **목표 충돌**로 보고한다.
+- **인출 가능한 자산이 있는데 HARD 생활비가 부족한 해에는 반드시 사유가 남는다.**
+
+## 비목표
+
+- 새 금융 제도·세율·수익률 가정을 만들지 않는다 (AGENTS.md).
+- 프리셋 값(5/7/9·3/4/6)과 경제 국면의 물가·환율 값을 바꾸지 않는다.
+- 세율표·연금 과세 규칙을 손대지 않는다. 이 작업은 «언제 인출하는가»만 바꾼다.
+- **목표별 기본 강도(`goalCatalog.ts`의 `defaultConstraintType`)를 바꾸지 않는다.**
+  「생활비 안정」은 지금처럼 `SOFT`로 남는다.
+- **저장된 `constraintType` 값을 마이그레이션하거나 자동 변경하지 않는다.**
+- `strategy.minMonthlySpending`의 뜻을 바꾸지 않는다 — 평가·대시보드 경고용 값 그대로다.
+
+## 제약 계층
+
+```
+[계층 밖 — 물리적·법적 실행 가능성. 어떤 목표도 깨지 못한다]
+   · 인출할 자산이 없음
+   · 사적연금 만 55세 개시 (PRIVATE_PENSION_MIN_START_AGE)
+   · ISA 중도인출은 납입원금(totalInvested) 범위
+
+[목표 제약 계층 — 위가 아래를 깬다]
+   1. HARD 생활비 바닥   hardSpendingFloor
+   2. 그 밖의 HARD 목표   상속 하한선, 자산 고갈 방지 (= assetFloor)
+   3. SOFT 목표          목표생활비 등
+   4. 전략 선호          계좌 우선순위, 월 인출 목표, 일반자산 인출 개시 나이
+   5. 세제 최적화         저율과세 한도
+```
+
+「생존(인출할 자산이 없음)」은 목표가 아니라 **실행 가능성**이므로 계층 밖이다. 법정 제약과
+마찬가지로 우선순위로 깨는 대상이 아니다. 계층 밖 제약에 막혀 부족이 나면 «깨는» 것이
+아니라 **사유를 남긴다**.
+
+세제상 유리한 인출 한도는 HARD 제약이 아니라 **최적화 선호**다. 세율이 높아진다는 이유만으로
+사용 가능한 자산의 인출을 막지 않는다.
+
+### 동일 계층 HARD 충돌 — 임의 희생 금지
+
+자동 우선 적용은 **계층이 다를 때만** 한다. 같은 계층의 HARD 목표끼리 충돌하면 엔진이 어느
+하나를 고르지 않는다 — **둘 다 깨지 않고**, 더 강하게 묶는 쪽이 구속되며, 두 목표와
+부족액을 충돌로 기록한다. 엔진은 선택한 척하지 않는다.
+
+**오늘 계층 2의 런타임 제약은 서로 충돌하지 않는다.** 상속 하한선과 자산 고갈 방지 하한선이
+`Math.max`로 «합쳐져» 하나의 스칼라가 되기 때문이다(`compileStrategy.ts:370-382`). 자산
+고갈 방지 HARD는 없던 바닥을 1로 올릴 뿐 상속 하한선을 낮추지 못한다 — 순수하게 단조롭다.
+이 규칙은 지금 발동하지 않지만, 계층 2에 다른 종류의 런타임 제약이 추가되는 날을 위해
+명문화한다.
+
+### 빠른 은퇴는 planning constraint
+
+`EARLY_RETIREMENT`는 이 런타임 계층에 없다. HARD 빠른 은퇴의 뜻은 **최적화·AI가 은퇴 나이를
+자동으로 늦추지 못한다**는 것이고, 그것은 후보 생성·선별 단계의 제약이다.
+
+확인된 경로: 목표값이 `userProfile.retirementAge`로 옮겨지고
+(`normalizeGoalDrivenParams.ts:90-93`), 후보 격자에 그 나이가 추가되며
+(`StrategyGenerator.ts:233-246`), HARD면 시뮬레이션 «전에» 후보가 탈락하고
+(`HardConstraintFilter.ts:31-37` → `StrategyOptimizer.ts:337`), 사후 평가에서 다시 검사된다
+(`GoalEvaluationEngine.ts:456-459`). 몬테카를로 판정 조건에서는 명시적으로 제외된다
+(`goalSuccessConditions.ts:32-44`) — 모든 시행이 이미 그 나이에 은퇴하기 때문이다.
+
+연도별 인출 루프는 이 목표를 읽지 않는다. 그대로 둔다.
+
+## 유형과 강도를 분리한다
+
+`constraintType`은 실제 도메인 값이고 **사용자가 모든 목표에 대해 자유롭게 바꾼다**
+(`RetirementGoalSelector.tsx:176-188`의 `<select>`). 따라서 「여유 있는 소비는 SOFT」 같은
+가정을 코드에 박지 않는다. 유형은 «무엇에 관한 목표인가», 강도는 «얼마나 구속력이 있는가»만
+정한다. `defaultConstraintType`은 목표를 처음 고를 때의 **씨앗일 뿐**이다.
+
+```
+생활비 목표 := { LIVING_EXPENSE_STABILITY, COMFORTABLE_SPENDING } 중
+               targetValue가 있고 > 0 인 것     ← firstGoalWithTarget의 기존 가드 유지
+
+targetMonthlySpending = max(생활비 목표들의 targetValue)
+                        하나도 없으면 저장값 유지 (현재 규칙 그대로)
+
+hardSpendingFloor     = max(생활비 목표들 중 constraintType === 'HARD' 인 것의 targetValue)
+                        하나도 없으면 undefined (= 런타임 바닥 없음)
+```
+
+성질:
+
+- `hardSpendingFloor ≤ targetMonthlySpending`이 **구조적으로** 성립한다(부분집합의 max).
+- 안정 250 SOFT만 → 바닥 없음 / 목표 250 (**기본 상태**. 기능이 꺼진 것이 아니라 평가 목표로 동작한다)
+- 안정 250 HARD만 → 바닥 250 / 목표 250
+- 안정 250 HARD + 여유 350 SOFT → 바닥 250 / 목표 350
+- 안정 250 SOFT + 여유 350 HARD → 바닥 350 / 목표 350
+
+**전례가 있다.** `targetBequest`는 INHERITANCE 목표에서 «유형»으로 나오지만
+(`normalizeGoalDrivenParams.ts:102`), 인출을 막는 `assetFloor`는 그 목표가 HARD일 때만
+선다(`compileStrategy.ts:368`). 채점용 값과 구속용 값을 강도로 가르는 같은 방식이다.
+
+### `hardSpendingFloor`는 새 파라미터다 — `minMonthlySpending`을 재사용하지 않는다
+
+`strategy.minMonthlySpending`은 **평가·대시보드 경고용**이며 타입 주석이 그 의도를 못박고
+있다(`types.ts:830-833`) — 「엔진 params로 내려가지 않는다 (…) 이진탐색의 성공 조건에 넣으면
+계획 전체가 실패로 떨어져 "얼마까지 쓸 수 있는가"라는 답 자체가 사라진다」.
+
+그 뜻을 바꾸지 않는다. 런타임 바닥은 **별도 파생 파라미터** `SimulationParams.hardSpendingFloor`로
+내린다. 한 이름에 두 뜻을 붙이지 않는다.
+
+| | `strategy.minMonthlySpending` | `params.hardSpendingFloor` |
+|---|---|---|
+| 출처 | 저장값 (지금은 아무도 쓰지 않음) | HARD 생활비 목표에서 유도 |
+| 소비처 | `computeLifetimeSpendingPlan` 경고 | 엔진 인출 1단계 |
+| 엔진 도달 | 안 함 | 함 |
+
+유도 위치는 `compileStrategy`다 — `assetFloor`가 유도되는 바로 그 자리이고, 이미
+`params.retirementGoals`를 읽는 유일한 번역 계층이다.
+
+**저장된 `minMonthlySpending`은 손대지 않는다.** `normalizeGoalDrivenParams.ts:143`의
+`delete next.minMonthlySpending`는 그대로 둔다 — 그 필드의 삭제는 이 작업과 무관한
+기존 결정이고, 되살리면 화면에 없는 값이 경고를 만든다.
+
+### 생활비 자체를 탐색하는 계산에서는 바닥을 뗀다
+
+`findMaxSustainable`/`findMaxSustainableValue`는 생활비가 자유변수인 이진탐색이다. 여기에
+생활비 바닥을 제약으로 걸면 바닥 미만의 모든 시행이 실패로 읽혀 탐색이 0으로 붕괴한다 —
+`assetFloor`가 같은 이유로 `sustainabilityTrialParams`에서 제거된다
+(`SimulationEngine.ts:228-241`의 `delete trial.assetFloor`).
+
+**`hardSpendingFloor`도 같은 방식으로 제거하고 탐색한다.** 탐색이 끝난 뒤 결과와 바닥을
+비교해 미달을 «평가»로 보고한다.
+
+```
+지속가능 생활비 227만원
+HARD 생활비 바닥 250만원
+  → 탐색 실패가 아니라 「월 23만원 부족」으로 보고
+```
+
+## 인출 규칙
+
+한 해의 인출은 두 단계로 나뉜다.
+
+**1단계 — HARD 생활비 바닥 충당 (계층 1).**
+전략 선호와 세제 최적화를 **깬다**: 저율과세 한도 클램프, 월 인출 목표 클램프, 일반자산 인출
+개시 나이를 무시한다. 계층 밖 제약(연금 55세, ISA 원금)과 더 높은 것은 없으므로 계층 2의
+`assetFloor`만이 이 단계와 다툰다 — 계층 1이 이기고, 그 사실을 충돌로 기록한다.
+
+**2단계 — 목표생활비까지 추가 충당 (계층 3).**
+전략 선호를 **지킨다**. 여기서 못 채운 몫은 SOFT 목표 미달로 기록하고 추가 인출을 강제하지 않는다.
+
+`hardSpendingFloor`가 `undefined`면 1단계는 **돌지 않는다** — 지금 동작과 같다. 목표를
+고르지 않았거나 생활비 목표를 SOFT로 둔 계획의 결과가 바뀌지 않는 근거다.
+
+**구현 주의**: 1단계와 2단계를 «별도 루프»로 만들지 않는다. 인출 루프는 월 12회 × 연 40회를
+도는 자리이고 세금 누적·원장 집계가 그 위에 서 있다. 기존 루프에 「지금 채우는 것이 바닥인가」
+플래그를 넘겨 클램프 적용 여부만 가른다.
+
+### 세 결함이 닫히는 방식
+
+- **AUDIT-001**: ISA 등록 게이트를 제거한다. 정책 기본값이 이미 `GENERAL_FIRST`이고 그 순서에
+  ISA가 마지막으로 들어 있으므로, 등록만 하면 다른 계좌를 다 쓴 뒤에만 쓰인다. 인출 한도는
+  지금처럼 `min(잔액, 납입원금)`을 유지한다 — 한국 ISA가 납입원금 범위 내 중도인출을
+  허용하므로 모델이 현실과 맞고, 수익금은 만기까지 남아 비과세 한도 계산에 들어간다.
+- **AUDIT-002**: 1단계에서 저율과세 한도·월 인출 목표 클램프를 무시한다. 2단계에서는 지킨다.
+  한도 잔량 카운터(`monthlyPensionPreTaxLimitRemainingKRW`)는 **양쪽 모두에서 계속 차감한다** —
+  연말 정산이 그 값을 봐야 초과분에 16.5%가 제대로 붙는다.
+- **AUDIT-003**: 아래 「판정」 절.
+
+## 엔진은 목표를 모른다 — 지켜야 할 계층 구조
+
+`SimulationEngine.ts`는 목표를 한 번도 읽지 않는다. 목표는 오직 «파생 params»로만 도달한다 —
+은퇴 나이, 목표생활비, 목표상속자산, `assetFloor`, 그리고 이번에 더할 `hardSpendingFloor`.
+이것이 이 저장소의 UI/계산 분리다. **그 분리를 깨지 않는다.**
+
+- 엔진에 목표 배열을 넘기지 않는다.
+- **엔진은 목표 «이름»을 말하지 않는다.** 원장에는 자기가 아는 말로만 적는다 —
+  「바닥을 채우려고 `assetFloor`를 깼다」, 「연금 개시 나이에 막혔다」.
+- 그 기록을 **목표 유형으로 번역하는 것은 평가 계층**(`GoalEvaluationEngine`)의 일이다.
+  「`assetFloor`가 깨졌다」 + 「그 하한선은 HARD 상속 목표에서 나왔다」 → 「HARD 생활비 ↔
+  HARD 상속 충돌」.
+
+이 구분을 지키지 않으면 목표 화면이 바뀔 때마다 계산 엔진이 따라 바뀌는 결합이 생긴다.
+
+## 연도별 진단
+
+`YearlyLedger`에 회계 항등식과 분리된 `diagnostics` 서브객체를 더한다. **camelCase를 쓴다** —
+이 파일의 다른 모든 필드(`unmetSpending`, `healthInsurancePaid`, `dividendPaidOutNet`)와
+표기를 맞춘다.
+
+엔진이 «아는 말»만 남긴다.
+
+| 필드 | 뜻 |
+|---|---|
+| `brokenPreferences` | 바닥을 채우려고 깬 선호 (`'pensionTaxLimit'` \| `'pensionMonthlyTarget'` \| `'generalAssetStartAge'` \| `'assetFloor'`) |
+| `overrideReason` | 왜 깼는가 (`'hardSpendingFloor'`) |
+| `unmetHardSpending` | HARD 바닥 미달액 (계층 1 실패) |
+| `unmetTargetSpending` | 목표생활비 미달액 (계층 3 실패, 기존 `unmetSpending`) |
+| `blockedWithdrawalReason` | 인출 가능 자산이 있는데 못 꺼낸 이유 (`'legalAge'` \| `'isaPrincipalExhausted'` \| `'assetFloor'`) |
+
+요청된 `constraint_broken`과 `preference_overridden`은 같은 것을 두 번 부르는 이름이라
+`brokenPreferences` 하나로 합쳤다. `constraint_type`은 목록의 각 원소가 이미 종류를 말하므로
+두지 않는다.
+
+**목표 충돌은 원장이 아니라 평가 계층 산출물이다** — `goalConflict`, `conflictingGoals`,
+`yieldedGoal`. `GoalEvaluationEngine`이 원장의 `brokenPreferences`·`blockedWithdrawalReason`을
+읽어 목표 유형으로 번역하고, 어떤 목표가 충돌했는지·어느 것을 우선했는지·양보한 목표가 얼마나
+미달인지를 결과에 싣는다. 기존 `HardConstraintFailure` 구조를 확장하고 평행한 새 타입을
+만들지 않는다.
+
+### 설명되지 않는 부족을 금지하는 불변식
+
+전제는 원시 잔액이 아니라 **그 시점에 법적·정책상 인출 가능한 금액**이다.
+
+```
+withdrawableNow(age, 단계) :=
+     현금
+   + 일반자산            (2단계에서만 age ≥ generalAssetWithdrawalStartAge 조건 적용)
+   + min(ISA 잔액, ISA 납입원금)
+   + 사적연금 잔액        (age ≥ 55 일 때만)
+
+withdrawableNow(age, 1단계) > 0  ∧  unmetHardSpending > 0
+  ⟹  blockedWithdrawalReason ≠ undefined
+```
+
+1단계는 `generalAssetWithdrawalStartAge`(계층 4)를 깨므로 1단계의 `withdrawableNow`는 그 나이
+제한을 **빼고** 계산한다. 계층 밖 제약만 남긴다. 두 계산은 한 함수에 단계를 파라미터로 넘겨
+두 벌이 갈라지지 않게 한다.
+
+이 조건이 깨지면 `assertLedgerConsistent`와 같은 자리에서 **던진다.** 조용히 보정하지 않는다 —
+이유 없는 생활비 부족은 그 자체가 결함이고, 화면에 흘러가면 사용자가 설명을 요구할 수 없다.
+
+## 판정 (AUDIT-003)
+
+「목표 달성 확률」의 생활비 조건은 **목표 대비**로 유지한다. 그 이름이 뜻하는 것은 사용자가
+«요구한» 금액이지 계획이 «겨냥한» 금액이 아니다.
+
+대신 잘못된 불변식을 걷어낸다. `monte-carlo.test.ts:83`의
+`goalSuccessProbability ≤ spendingSuccessRate`는 성립할 수 없다 —
+
+| 지표 | 술어 | 기준 |
+|---|---|---|
+| `spendingSuccessRate` | `unmetSpending > 0` (엡실론 없음) | 계획 대비 |
+| `goalSuccessProbability`의 생활비 조건 | `goalShortfall ≥ 월 1만원` | 목표 대비 |
+
+두 집합은 포함관계가 아니다. `≤ successRate`(자산 생존)는 같은 술어를 쓰므로 **유지한다.**
+두 술어가 각각 무엇을 재는지는 `spendingShortfall.ts`에 한 곳으로 모아 적는다.
+
+## 표시
+
+저장 값은 `'HARD' | 'SOFT'`로 둔다. 사람이 읽는 곳만 한글로 쓴다.
+
+**문구를 새로 짓지 않는다.** 목표 선택 화면이 이미 쓰는 말을 그대로 올린다
+(`RetirementGoalSelector.tsx:186-187`).
+
+| 값 | 표시 |
+|---|---|
+| `HARD` | 반드시 지키기 |
+| `SOFT` | 가능하면 달성 |
+
+라벨 단일 출처를 도메인(`entities/retirementGoal.ts`)에 두고 셀렉터가 그것을 쓰게 한다.
+이미 두 파일에 «각각» 선언된 `HARD_CONSTRAINT_LABELS`
+(`StrategyRecommendationCards.tsx:170`, `pdfReportSections.ts:463`)도 같은 출처로 합친다.
+
+### 강도의 행동 차이를 목표 선택 화면이 설명한다
+
+기본 강도를 바꾸지 않으므로, 사용자가 «무엇을 고르는지» 알 수 있어야 한다. 조건 강도 셀렉터
+아래에 그 목표에 실제로 일어나는 일을 적는다.
+
+> **가능하면 달성** — 목표 생활비에 미달해도 허용합니다. 세금이나 인출 순서를 강제로 깨지 않습니다.
+>
+> **반드시 지키기** — 법적으로 인출 가능한 자산이 있다면 계좌 순서·월 인출 목표·세제
+> 최적화보다 생활비 충당을 우선합니다.
+
+이 문구는 생활비 목표에만 붙인다. 다른 목표 유형은 강도의 뜻이 다르므로 일반 문구를 쓰지 않는다.
+
+## 호환성
+
+저장된 시나리오의 계산 결과가 바뀌는 계획은 **세 부류**다. HARD 생활비 목표만이 아니다 —
+이 범위의 다른 두 수정이 목표와 무관한 계획에도 닿는다. 누가 영향을 받는지 여기 적어 둔다.
+
+**1. HARD 생활비 목표를 가진 계획** — 인출 1단계가 돌면서 계층 2·3(상속 하한선·전략 선호·
+세제 최적화)을 바닥까지 깬다. 기본 강도가 SOFT이므로 이 부류는 저장 시나리오의 소수다.
+
+**2. ISA를 가진 계획 — 목표가 하나도 없어도 바뀐다.** AUDIT-001을 닫으면서 「계좌군 정책을
+명시한 경로에서만 ISA를 인출 후보로 등록한다」는 게이트를 지웠다. 정책 미지정이 기본이므로,
+그동안 ISA는 «인출 계좌로 등록조차» 되지 않은 채 잔액만 들고 있었다. 이제 납입원금 범위에서
+헐린다(순서상 마지막). **버그 수정이 의도대로 낸 결과이지 회귀가 아니다** — 꺼낼 수 없던 돈이
+꺼내진다. 실측(페르소나 하니스 31행 「50대 중 표준+ISA」, `retirementGoals` 없음):
+
+| 지표 | 이전 | 이후 |
+| --- | --- | --- |
+| `recEndingAssets` | 70,132,635 | 159,447,782 |
+| `recScore` | 57 | 60 |
+| `spendMultiplier` | 1 | 0.9 |
+| `mcRecSuccess` | 46.9 | 61.1 |
+
+**3. 생활비 목표를 «둘» 가진 계획 — 강도와 무관하다.** 위 유도 규칙이
+`targetMonthlySpending`을 「우선순위가 가장 높은 목표의 값」에서 「목표들의 max」로 바꾼다
+(`normalizeGoalDrivenParams.ts`). 둘 다 SOFT여도 적용되므로, 안정 250 SOFT + 여유 350 SOFT를
+저장해 둔 계획은 목표 생활비가 250에서 350으로 «올라간다». 사용자가 고른 두 값이 둘 다 계산에
+닿게 하는 것이 이 규칙의 취지이고, 그 대가로 이 부류의 결과가 움직인다.
+
+**조용히 적용한다.** 세 부류 모두 방향이 한결같기 때문이다 — 엔진이 「쓸 수 있는데 못 쓴다」고
+과소보고하던 것을 멈추거나(1·2), 사용자가 이미 고른 값을 계산에 닿게 하는 것(3)이다. 다만
+3은 목표 생활비가 오르는 만큼 달성도 점수가 «내려갈» 수 있다 — 계획이 나빠진 것이 아니라
+분모가 사용자가 고른 값으로 바로잡힌 것이다.
+
+바뀌지 않는 계획: 생활비 목표가 없거나 하나뿐이고 ISA도 없는 계획. `engineRegression.json`의
+두 케이스와 `auditReportCase.json`이 여기 해당하며, 그래서 그 골든들이 값 이동을 잡는 그물로
+쓰인다(아래 「테스트」).
+
+저장된 `constraintType`을 마이그레이션하거나 자동 변경하지 않는다. `hardSpendingFloor`는
+매 컴파일마다 목표에서 유도되므로 저장되지 않으며, 따라서 마이그레이션 대상이 아니다.
+
+## 테스트
+
+`SimulationEngine.auditFindings.test.ts`가 이미 실패 상태로 준비돼 있다(6건 중 4건 실패,
+2건 대조군). 그 파일이 통과 기준이 된다.
+
+추가로 고정할 것:
+
+1. **유도** — 강도 기반 max. 네 조합(안정만 SOFT/HARD, 안정+여유 조합)과 `floor ≤ target`. 멱등.
+2. **계층** — 바닥을 채우려고 저율과세 한도·월 인출 목표·일반자산 개시 나이가 각각 깨진다.
+3. **2단계 경계** — 바닥을 넘는 몫에는 선호가 그대로 적용된다(1단계가 2단계까지 열지 않는다).
+4. **바닥 없음** — `hardSpendingFloor`가 `undefined`면 1단계가 돌지 않고 결과가 안 바뀐다.
+5. **목표 충돌** — HARD 생활비 ↔ HARD 상속 하한선에서 충돌이 서고, 상속이 양보하며, 미달액이 기록된다.
+6. **설명되지 않는 부족 금지** — 1단계 기준 인출 가능 자산이 있는데 바닥이 부족한데 사유가 없으면 던진다.
+7. **탐색 분리** — `findMaxSustainable`이 바닥을 떼고 돌며, 지속가능 227 / 바닥 250이면
+   탐색 실패가 아니라 「월 23만원 부족」으로 보고된다.
+8. **AUDIT-003** — 두 술어가 다른 것을 잰다는 사실을 고정하고 `≤ successRate`는 유지한다.
+
+`engineRegression.json`의 두 케이스는 `retirementGoals`가 없어 바닥이 서지 않는다.
+**값이 움직이면 안 된다** — 움직였다면 1단계가 목표 없는 계획까지 건드린 것이다.
+`auditReportCase.json`도 HARD 생활비 목표가 없어 같은 기준이 적용된다.
+
+## 구현 순서
+
+1. `hardSpendingFloor` 유도 (`compileStrategy`) + 테스트 1
+2. ISA 등록 게이트 제거 (AUDIT-001)
+3. 인출 2단계 분리 (AUDIT-002) + 테스트 2·3·4
+4. 원장 진단 + 설명되지 않는 부족 금지 불변식 + 테스트 6
+5. 목표 충돌 판정 (평가 계층) + 테스트 5
+6. 탐색에서 바닥 제거 + 사후 비교 보고 + 테스트 7
+7. AUDIT-003 불변식 정정 + 테스트 8
+8. 한글 라벨 단일 출처 + 강도 안내 문구 + 전체 검증
+
+## 후속 과제 (이번 범위 밖)
+
+- **`HOUSING_STABILITY`는 기본 강도가 `HARD`인데 실제 정량 효과가 없다.** 언제나 0점이고
+  (`GoalEvaluationEngine.ts:394-401`) 하드 제약 실패도 내지 않으며 `unsupportedHardGoals`로
+  빠진다(`:498-500`). 기본 강도와 실제 효과가 어긋나 있다. 별도 이슈로 다룬다.
+
+## 위험과 대응
+
+| 위험 | 대응 |
+|---|---|
+| 1단계가 너무 열어 목표 없는 계획까지 바뀐다 | `hardSpendingFloor`가 `undefined`면 1단계를 아예 돌지 않는다. `engineRegression.json`이 그 경계를 지킨다 |
+| 상속 하한선을 깨는 것이 사용자 의도와 반대일 수 있다 | 깨는 것 자체를 «충돌»로 보고하므로 조용히 일어나지 않는다. 어느 쪽을 우선할지 다시 정할 근거가 화면에 남는다 |
+| 원장 필드가 늘어 `buildYearLedger`가 비대해진다 | 진단은 `diagnostics` 서브객체로 분리한다. 회계 항등식 계산은 지금 필드만 본다 |
+| 「설명되지 않는 부족 금지」가 정상 계산에서 던진다 | 그 경우는 실제 결함이다. 폴백을 두지 않는 이유는 `assertLedgerConsistent` 주석과 같다 |
+| 세금이 이중으로 붙는다 | 한도 잔량 카운터를 1·2단계 모두에서 차감해 연말 정산이 총 인출액을 본다 |
+| 기능이 기본으로 꺼져 있어 아무도 못 쓴다 | 기본 강도를 바꾸는 대신 목표 선택 화면이 강도의 행동 차이를 설명한다. 기본값 변경은 저장된 모든 시나리오의 결과를 조용히 바꾸므로 택하지 않는다 |

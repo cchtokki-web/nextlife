@@ -91,8 +91,13 @@ describe('retirement-domain-invariants / Monte Carlo', () => {
         { trials: 40, seed: 7, annualStdDev: 18 },
       );
 
+      // 목표 성공은 「생활비 충족 ∧ 자산 생존 ∧ 기말자산 목표」의 교집합이지만, 생활비 조건이
+      // spendingSuccessRate와 «다른 술어»다 —
+      //   spendingSuccessRate            : year.unmetSpending > 0        (엔진 원장, 엡실론 없음, 계획 대비)
+      //   goalSuccessProbability의 생활비 : goalShortfall ≥ 월 1만원      (재구성, 엡실론 있음, 목표 대비)
+      // 두 집합은 포함관계가 아니므로 부등식이 성립하지 않는다. 실측(2026-08-22): 목표 30.4% >
+      // 생활 유지 30.2%. 자산 생존은 같은 술어(isSuccessfulTrial)를 쓰므로 그쪽만 남긴다.
       expect(mc.goalSuccessProbability).toBeLessThanOrEqual(mc.successRate);
-      expect(mc.goalSuccessProbability).toBeLessThanOrEqual(mc.spendingSuccessRate);
     }
   });
 

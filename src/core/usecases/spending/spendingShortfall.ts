@@ -13,6 +13,17 @@ import { SimulationYearlyResult } from '../../entities/types';
 // 달리 인출 경로가 정확히 0으로 닫아 두는 원장값이라(잔여 부족분을 명시적으로 0 대입) 잔차가
 // 없다. 여기에 엡실론을 넣으면 meetsSustainabilityGoal의 판정이 이동해 max_sustainable
 // 역산 금액이 앱 전체에서 바뀐다.
+//
+// 이 엡실론 없는 술어(hasSpendingShortfall)와, MonteCarloEngine이 goalSuccessProbability의
+// 생활비 조건으로 쓰는 goalShortfall >= SHORTFALL_EPSILON_MONTHLY(재구성값, 목표 대비)는
+// 서로 다른 두 질문에 답한다. 전자는 "이 계획이 계획한 만큼 지출했는가"(엔진 원장), 후자는
+// "이 시행이 사용자가 고른 목표를 만족했는가"(엡실론 있는 재구성)다. 월 1만원 미만으로
+// 결손이 난 시행은 전자로는 실패, 후자로는 성공이 되어 두 지표 사이에 포함관계가 성립하지
+// 않는다 — spendingSuccessRate(엔진 원장 기준)와 goalSuccessProbability의 생활비 조건
+// (목표 재구성 기준)을 같은 잣대로 취급해 하나가 다른 하나의 상한이라고 가정하지 말 것.
+// 두 술어를 하나로 합치는 것은 이 파일의 범위가 아니다(그러면 어느 한쪽이 보고하는 확률이
+// 바뀐다) — 자세한 재현은 src/tests/core/usecases/SimulationEngine.auditFindings.test.ts의
+// [AUDIT-003]을 참고.
 export interface SpendingShortfallSpan {
   years: number;
   firstAge: number;

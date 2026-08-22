@@ -189,7 +189,13 @@ describe('SimulationEngine 계좌군 인출 정책', () => {
     displayCurrency: 'KRW',
   };
 
-  test('정책 미지정 기존 시나리오는 생활비 부족분으로 ISA 원금을 인출하지 않는다', () => {
+  // 회귀 테스트: 인출 정책을 명시하지 않아도(기본값 GENERAL_FIRST) ISA는 인출 후보로
+  // 등록된다. GENERAL_FIRST의 계좌 순서에는 ISA가 포함되어 있으므로(마지막 순번),
+  // 다른 계좌가 없는 이 시나리오에서는 정책을 명시하지 않아도 ISA_FIRST와 동일하게
+  // ISA 원금으로 생활비 부족분을 채운다. (예전에는 정책을 명시한 경로에서만 ISA를
+  // 후보로 등록해, 정책 기본값과 모순된 채로 ISA만 든 계획의 생활비가 매년 전액
+  // 미충족으로 기록됐다.)
+  test('정책을 명시하지 않아도 ISA 원금으로 생활비 부족분을 채운다', () => {
     const engine = new SimulationEngine();
     const isaOnly: SimulationParams = { ...accountPolicyParams, assets: [] };
     const legacy = engine.runSingle(isaOnly).yearlyResults[0];
@@ -198,8 +204,8 @@ describe('SimulationEngine 계좌군 인출 정책', () => {
       withdrawalPlan: { accountWithdrawalPolicy: 'ISA_FIRST' },
     }).yearlyResults[0];
 
-    expect(legacy.isaAssets).toBe(20_000_000);
-    expect(legacy.unmetSpending).toBe(12_000_000);
+    expect(legacy.isaAssets).toBe(8_000_000);
+    expect(legacy.unmetSpending).toBe(0);
     expect(optedIn.isaAssets).toBe(8_000_000);
     expect(optedIn.unmetSpending).toBe(0);
   });

@@ -3,6 +3,7 @@ import {
   RetirementStrategy, RiskProfile, SimulationParams, SpendingStrategy, SpendingStrategyChoice, UtilityConfig,
   WithdrawalPlan,
 } from '../../entities/types';
+import { hardSpendingFloorTarget } from '../../entities/retirementGoal';
 import {
   NATIONAL_PENSION_EARLY_MIN_AGE, NATIONAL_PENSION_NORMAL_START_AGE,
 } from '../pension/nationalPensionRules';
@@ -380,6 +381,19 @@ export function compileStrategy(params: SimulationParams): CompiledStrategy {
   const assetFloor = hasHardAssetSurvivalGoal
     ? Math.max(1, inheritanceAssetFloor ?? 0)
     : inheritanceAssetFloor;
+  // 생활비 목표에서 «강도»로 바닥을 유도한다. 유형으로 강도를 추론하지 않는다 —
+  // constraintType은 사용자가 모든 목표에 대해 자유롭게 고르는 값이고, goalCatalog의
+  // defaultConstraintType은 처음 고를 때의 씨앗일 뿐이다.
+  //
+  // 「어느 목표가 바닥을 세우는가」는 도메인의 hardSpendingFloorTarget 하나에 있다(가드의
+  // 근거도 그 주석에). 평가 계층이 «같은» 규칙으로 미달을 판정해야 하기 때문이다.
+  // 여기서 하는 일은 그 값들을 하나의 바닥으로 합치는 것뿐이다.
+  const hardSpendingTargets = (params.retirementGoals ?? [])
+    .map(hardSpendingFloorTarget)
+    .filter((target): target is number => target !== undefined);
+  const hardSpendingFloor = hardSpendingTargets.length > 0
+    ? Math.max(...hardSpendingTargets)
+    : undefined;
   // 'flat'·미지정이면 undefined다 — 그때는 아래에서 키 자체를 지워, 곡선을 설정한 적 없는
   // 시나리오가 곡선 코드 경로를 아예 타지 않게 한다.
   //
@@ -458,6 +472,8 @@ export function compileStrategy(params: SimulationParams): CompiledStrategy {
   };
   if (assetFloor === undefined) delete compiledParams.assetFloor;
   else compiledParams.assetFloor = assetFloor;
+  if (hardSpendingFloor === undefined) delete compiledParams.hardSpendingFloor;
+  else compiledParams.hardSpendingFloor = hardSpendingFloor;
   if (spendingCurve === undefined) delete compiledParams.spendingCurve;
   else compiledParams.spendingCurve = spendingCurve;
 

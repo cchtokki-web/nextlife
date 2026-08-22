@@ -322,6 +322,16 @@ export interface SimulationParams {
   // 기본 상속 전략('leave_some')은 targetBequest를 채우지만 하한선은 세우지 않는다 —
   // 세우면 전략을 저장한 적 없는 모든 시나리오의 곡선이 조용히 바뀐다.
   assetFloor?: number;
+  // HARD 생활비 목표에서 유도된 월 생활비 바닥(displayCurrency 기준). 이 금액까지는
+  // 전략 선호(계좌 순서·월 인출 목표·일반자산 개시 나이)와 세제 최적화(저율과세 한도)를
+  // 깨고 채운다. 미지정이면 바닥이 없고 인출 동작은 기존과 비트 단위로 동일하다.
+  //
+  // **strategy.minMonthlySpending과 다르다.** 그쪽은 화면 경고용이며 엔진에 내려가지
+  // 않는다(그 필드의 주석 참조). 한 이름에 두 뜻을 붙이지 않으려고 별도 필드를 둔다.
+  //
+  // assetFloor와 같은 이유로 withdrawalPlan이 아니라 최상위에 둔다 — 후보 탐색이
+  // withdrawalPlan을 통째로 교체하므로 그 안에 두면 모든 후보에서 조용히 사라진다.
+  hardSpendingFloor?: number;
   // 쓰고 남은 현금(SimulationYearlyResult.cashAssets)에 붙는 연 수익률 %.
   // 미지정·0이면 이자가 붙지 않는다(= 기존 동작과 비트 단위로 동일).
   //
@@ -361,6 +371,46 @@ export interface SimulationParams {
  * 이 원장이 없던 동안 "60~64세 부족자금은 982만원인데 자산은 1.7억 줄었다"처럼 서로
  * 모순되어 보이는 두 숫자를 대조할 방법이 없었다. residual이 0이면 두 숫자는 모순이 아니다.
  */
+/**
+ * 그 해 인출이 «무엇을 깼고 무엇에 막혔는가»의 기록. 회계 항등식과는 분리된 서브객체다 —
+ * 항등식(기말 = 기초 + 투자총수익 + 외부유입 − 생활비 − 세금 − 건보료)에는 들어가지 않는다.
+ *
+ * **엔진은 목표를 모른다.** 여기에는 엔진이 «아는 말»만 들어온다 — 「일반자산 개시 나이를
+ * 깼다」, 「연금 개시 나이에 막혔다」. 그것을 목표 유형(HARD 생활비 ↔ HARD 상속 충돌 등)으로
+ * 번역하는 것은 평가 계층(GoalEvaluationEngine)의 일이며, 이 파일에도 엔진에도 목표 이름을
+ * 들이지 않는다. 그 분리를 깨면 목표 화면이 바뀔 때마다 계산 엔진이 따라 바뀐다.
+ */
+export interface YearLedgerDiagnostics {
+  /**
+   * HARD 생활비 바닥을 채우려고 «실제로 넘겨 인출한» 선호. 1단계가 돌았다는 사실만으로는
+   * 기록하지 않는다 — 한도 안에서 끝난 달은 아무것도 깨지 않았다.
+   */
+  brokenPreferences: ReadonlyArray<
+    'pensionTaxLimit' | 'pensionMonthlyTarget' | 'generalAssetStartAge' | 'assetFloor'>;
+  /** 왜 깼는가. 지금 선호를 깰 수 있는 사유는 HARD 생활비 바닥 하나뿐이다. */
+  overrideReason?: 'hardSpendingFloor';
+  /** HARD 바닥 미달액(계층 1 실패). 바닥이 없는 계획에서는 항상 0이다. */
+  unmetHardSpending: number;
+  /** 목표 생활비 미달액(계층 3 실패). SimulationYearlyResult.unmetSpending과 같은 금액이다. */
+  unmetTargetSpending: number;
+  /** 잔액은 남았는데 꺼내지 못한 이유. 없으면 「꺼낼 것이 없었다」는 뜻이다. */
+  blockedWithdrawalReason?: 'legalAge' | 'isaPrincipalExhausted' | 'assetFloor';
+  /**
+   * 계층 «밖» 사유로 assetFloor가 침범당했다.
+   *
+   * 세금 징수는 인출 엔진을 거치지 않고 자산을 직접 판다. 그래서 하한선을 지키지 않는다 —
+   * 그리고 «그것이 옳다». 납세 의무는 목표가 우선순위로 깰 수 있는 계층 안이 아니라 물리적·
+   * 법적 실행 가능성과 같은 계층 «밖»에 있다. 상속을 남기고 싶다는 이유로 세금을 안 낼 수는
+   * 없으므로 세금이 이긴다. 결함은 그 침범이 «조용히» 일어나는 것뿐이라 여기에 적는다.
+   *
+   * brokenPreferences의 'assetFloor'와는 «다른» 사실이다. 그쪽은 HARD 생활비 바닥을 채우려고
+   * 계층 1이 계층 2를 이긴 것이고, 이쪽은 어떤 목표도 이기지 않은 계층 밖의 침범이다. 한 해에
+   * 둘이 함께 일어날 수 있으므로 자리를 나눠 둔다 — 한 자리에 겹쳐 적으면 평가 계층이
+   * 「목표 충돌」과 「제도상 불가피」를 구분하지 못한다.
+   */
+  assetFloorBreachedBy?: 'taxObligation';
+}
+
 export interface YearlyLedger {
   age: number;
   beginningAssets: number;
@@ -417,6 +467,11 @@ export interface YearlyLedger {
    * 이 값이 커진다는 것은 어떤 현금흐름이 두 번 세어졌거나 어디론가 증발했다는 뜻이다.
    */
   residual: number;
+  /**
+   * 그 해 인출의 진단(YearLedgerDiagnostics 주석 참고). **항등식에는 들어가지 않는다** —
+   * 그래서 회계 행에 필드를 섞지 않고 서브객체로 둔다.
+   */
+  diagnostics: YearLedgerDiagnostics;
 }
 
 export interface SimulationYearlyResult {

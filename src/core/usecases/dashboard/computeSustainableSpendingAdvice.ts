@@ -23,6 +23,17 @@ export type SustainableSpendingAdvice =
       sustainableMonthly: number;
       currentMonthly: number;
       difference: number;
+    }
+  | {
+      // 어떤 생활비로도 HARD 생활비 바닥에 닿지 못한다. difference = 월 미달액.
+      //
+      // 위 둘과 달리 «계획이 겨냥한 금액»이 아니라 사용자가 「반드시 지키기」로 못박은
+      // 바닥과 견준 결과다. 그래서 조언(줄이세요/늘리세요)이 아니라 사실 보고에 가깝다.
+      // max_sustainable 계획에서만 선다 — 탐색값이 곧 그 계획의 생활비인 유일한 전략이다.
+      kind: 'below_hard_floor';
+      sustainableMonthly: number;
+      hardFloorMonthly: number;
+      difference: number;
     };
 
 // 조언을 시작하는 비율 경계.
@@ -35,19 +46,56 @@ export type SustainableSpendingAdvice =
 const CAN_SPEND_MORE_RATIO = 1.1; // 지속가능액이 목표의 110%를 넘을 때
 const OVERSPENDING_RATIO = 0.95; // 지속가능액이 목표의 95%에 못 미칠 때
 
+/**
+ * 탐색이 끝난 뒤의 사후 비교. 지속 가능한 최대 생활비가 HARD 바닥에 못 미치면 그 미달을 낸다.
+ *
+ * 엔진은 이 비교를 하지 못한다. 탐색이 정직하려면 바닥을 떼고 돌아야 하고
+ * (SimulationEngine.sustainabilityTrialParams), 그래서 바닥과의 대조는 탐색이 끝난 뒤 결과와
+ * params를 «둘 다» 보는 이 자리의 몫이다.
+ */
+function belowHardFloorAdvice(
+  calculatedTargetSpending: number | undefined,
+  hardSpendingFloor: number | undefined,
+): SustainableSpendingAdvice | null {
+  if (calculatedTargetSpending === undefined) return null;
+  if (hardSpendingFloor === undefined || hardSpendingFloor <= 0) return null;
+  if (calculatedTargetSpending >= hardSpendingFloor) return null;
+
+  // 탐색이 0으로 수렴한 계획에서도 말한다. can_spend_more가 0을 침묵으로 처리하는 것과 다른
+  // 이유다 — 저쪽은 「월 0원까지 쓸 수 있습니다」라는 무의미한 권유가 되지만, 이쪽은 HARD
+  // 제약이 100% 미달이라는 가장 강한 사실이고 미달액(= 바닥 전액)도 지어낸 값이 아니다.
+  return {
+    kind: 'below_hard_floor',
+    sustainableMonthly: calculatedTargetSpending,
+    hardFloorMonthly: hardSpendingFloor,
+    difference: hardSpendingFloor - calculatedTargetSpending,
+  };
+}
+
 export function computeSustainableSpendingAdvice(
   // SimulationEngine이 `params.spendingStrategy || 'target'`으로 폴백하는 것과 같은 규칙으로
   // undefined를 다룬다.
   spendingStrategy: SpendingStrategy | undefined,
   targetMonthlySpending: number,
-  calculatedTargetSpending: number | undefined
+  calculatedTargetSpending: number | undefined,
+  // HARD 생활비 목표에서 유도된 월 바닥(SimulationParams.hardSpendingFloor). 없으면 undefined —
+  // 그때는 견줄 기준이 없으므로 바닥 판정 자체가 서지 않는다.
+  hardSpendingFloor?: number
 ): SustainableSpendingAdvice | null {
   const strategy = spendingStrategy || 'target';
 
-  // max_sustainable: 이 값이 이미 실제 생활비로 적용된 상태라 제안할 것이 없다.
-  //   기존 "최대 고정 생활비 산출 완료" 배너가 그 사실을 이미 알린다.
-  // dividend_only: 목표 생활비를 쓰지 않고 그달 소득만큼만 쓰므로 목표와의 비교가
-  //   성립하지 않는다.
+  // max_sustainable: 탐색값이 «곧» 이 계획의 생활비다. 그래서 바닥과 견줄 수 있는 유일한
+  //   전략이고, 미달이면 그것이 이 계획이 실제로 쓰게 될 금액의 미달이다. 그 밖에 제안할
+  //   것은 없다 — 기존 "최대 고정 생활비 산출 완료" 배너가 나머지를 이미 알린다.
+  // target: 탐색값은 참고치일 뿐 계획이 쓰는 금액이 아니다. 엔진은 1단계에서 선호를 깨면서
+  //   해마다 바닥을 실제로 채우므로(원장의 actualSpending), 탐색값을 바닥과 견주면 같은
+  //   실행의 원장이 반증하는 말을 하게 된다 — 「월 131만원 부족」인데 원장에는 연 3,000만원이
+  //   찍혀 있는 식이다. 이 전략의 바닥 미달은 «원장»으로 재야 하고, 그것은 task 4의
+  //   diagnostics(unmetHardSpending·brokenPreferences·blockedWithdrawalReason)의 몫이다.
+  // dividend_only: 목표 생활비를 쓰지 않고 그달 소득만큼만 쓰므로 어느 비교도 성립하지 않는다.
+  if (strategy === 'max_sustainable') {
+    return belowHardFloorAdvice(calculatedTargetSpending, hardSpendingFloor);
+  }
   if (strategy !== 'target') return null;
 
   // 이진탐색이 0으로 수렴한 계획(어떤 생활비로도 목표를 만족하지 못함)에서 "월 0원까지 쓸 수

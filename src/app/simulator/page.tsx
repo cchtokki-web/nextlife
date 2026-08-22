@@ -217,6 +217,7 @@ export default function Home() {
           reportParams.spendingStrategy,
           reportParams.userProfile.targetMonthlySpending,
           result.calculatedTargetSpending,
+          reportParams.hardSpendingFloor,
         ),
         params: reportParams,
         formatValue: formatValuePrint,

@@ -21,7 +21,8 @@ import { SequenceRiskResult } from '../../../core/usecases/montecarlo/sequenceRi
 import { OptimizationOutcome } from '../../../core/strategy/StrategyOptimizer';
 import { CandidateRecommendation } from '../../../core/recommendation/RecommendationEngine';
 import { RetirementGoalType } from '../../../core/entities/retirementGoal';
-import { RETIREMENT_GOAL_CATALOG } from '../RetirementGoals/goalCatalog';
+import { RETIREMENT_GOAL_CONSTRAINT_LABELS } from '../../../core/entities/retirementGoal';
+import { hardConstraintLabel, RETIREMENT_GOAL_CATALOG } from '../RetirementGoals/goalCatalog';
 import { describeStrategyChanges } from '../../../core/usecases/dashboard/describeStrategyChanges';
 import type { StrategyOptimizationStatus } from '../../hooks/useStrategyOptimization';
 
@@ -391,7 +392,7 @@ export function renderStrategyRecommendationSection(input: {
   // 읽힌다 — 리포트는 화면보다 오래 남고 그대로 인용되므로 더 중요하다.
   const unsupportedHtml = unsupportedHardGoals && unsupportedHardGoals.length > 0
     ? `<p style="margin: 0 0 10px; font-size: 11px; color: #b45309; background-color: #fffbeb; border: 1px solid #fde68a; border-radius: 6px; padding: 8px 10px;">
-         <strong>다음 필수(HARD) 목표는 현재 검증할 수 없습니다:</strong> ${unsupportedHardGoals.map(goalLabel).join(', ')}.
+         <strong>다음 「${RETIREMENT_GOAL_CONSTRAINT_LABELS.HARD}」 목표는 현재 검증할 수 없습니다:</strong> ${unsupportedHardGoals.map(goalLabel).join(', ')}.
          아래 추천은 이 목표를 만족하는지 확인하지 않은 결과입니다.
        </p>`
     : '';
@@ -460,14 +461,6 @@ function goalLabel(type: RetirementGoalType): string {
   return RETIREMENT_GOAL_CATALOG.find((goal) => goal.type === type)?.label ?? type;
 }
 
-const HARD_CONSTRAINT_LABELS: Record<string, string> = {
-  HARD_RETIREMENT_AGE: '희망 은퇴 나이',
-  HARD_SPENDING_SHORTFALL: '목표 생활비 유지',
-  HARD_ASSET_SURVIVAL: '자산 고갈 방지',
-  HARD_MINIMUM_ENDING_ASSETS: '최소 기말자산',
-  HARD_UNSPECIFIED: '사유가 기록되지 않은 필수 조건',
-};
-
 // 결과가 없는 네 가지 원인을 구분한다. 화면(EmptyOutcomeCard)과 같은 이유다 — 하나로 묶으면
 // 엔진이 전부 예외로 죽은 경우에도 "당신의 목표가 불가능하다"는 뜻으로 읽힌다.
 function describeEmptyOutcome(outcome?: OptimizationOutcome): string {
@@ -483,9 +476,9 @@ function describeEmptyOutcome(outcome?: OptimizationOutcome): string {
     return `전략 ${outcome.validatedCount}개를 검증했지만 모두 목표 달성 확률이 0%입니다. 목표 생활비를 낮추거나, 은퇴 전 저축·연금 납입을 늘려야 합니다.`;
   }
   if (outcome?.kind === 'no_candidate_survived') {
-    const blocked = outcome.blockedBy.map((code) => HARD_CONSTRAINT_LABELS[code] ?? code).join(', ');
+    const blocked = outcome.blockedBy.map(hardConstraintLabel).join(', ');
     const base = outcome.hardConstraintRejectedCount > 0
-      ? `선택한 필수(HARD) 목표를 동시에 만족하는 전략을 찾지 못했습니다${blocked ? ` — 후보를 막은 조건: ${blocked}` : ''}. 해당 목표를 선택 목표(SOFT)로 바꾸거나 목표치를 조정하면 후보를 찾을 수 있습니다.`
+      ? `「${RETIREMENT_GOAL_CONSTRAINT_LABELS.HARD}」로 정한 목표를 동시에 만족하는 전략을 찾지 못했습니다${blocked ? ` — 후보를 막은 조건: ${blocked}` : ''}. 해당 목표의 조건 강도를 「${RETIREMENT_GOAL_CONSTRAINT_LABELS.SOFT}」으로 바꾸거나 목표치를 조정하면 후보를 찾을 수 있습니다.`
       : '';
     const failed = outcome.failedCount > 0
       ? `${base ? ' ' : ''}또한 전략 ${outcome.failedCount}개는 계산 중 오류로 평가하지 못했습니다.${outcome.firstFailureReason ? ` (원인: ${outcome.firstFailureReason})` : ''}`

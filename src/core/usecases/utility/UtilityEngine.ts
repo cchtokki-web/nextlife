@@ -32,6 +32,39 @@ function sum(values: number[]): number {
   return values.reduce((s, v) => s + v, 0);
 }
 
+// 월 금액 하나를 그 나이 해의 연 금액으로 옮긴다(명목: 매년 물가상승률 복리 / 실질: 고정).
+//
+// 목표 생활비와 HARD 생활비 바닥이 «같은» 화폐 규칙을 써야 해서 한 곳에 둔다. 바닥만 물가를
+// 안 타면 해가 갈수록 바닥이 조용히 낮아져 「반드시 지키기」가 이름만 남는다 —
+// SimulationParams.hardSpendingFloor를 읽는 엔진 쪽 주석과 같은 이유다.
+//
+// 연령대 배수(spendingCurve)와 의료비는 «여기 없다». 어느 것에 곱하고 더할지는 부르는 쪽이
+// 정한다: 목표 생활비는 둘 다 반영하고(아래), 바닥은 배수를 곱하지 않는다(곡선은 「이만큼
+// 쓰겠다」는 선호이지 「이만큼은 반드시 쓴다」가 아니다).
+export function annualAmountForYear(
+  params: SimulationParams,
+  monthlyAmount: number,
+  age: number,
+): number {
+  return monthlyAmount * 12 * inflationFactorForYear(params, age);
+}
+
+/**
+ * 시작 나이 기준 그 해의 물가 배수. 명목 모드에서만 1을 넘고, 실질 모드에서는 언제나 1이다.
+ *
+ * **여기가 그 식의 유일한 출처다.** 같은 식을 SimulationEngine의 HARD 생활비 바닥이 다시
+ * 쓴다(`monthlyHardSpendingFloorDisplay`). 두 벌로 두면 한쪽만 고쳐졌을 때 엔진이 «채우는»
+ * 바닥과 평가가 «재는» 바닥이 해가 갈수록 벌어진다 — 실측 상대오차가 지금은 0이지만,
+ * 같은 값이라는 사실이 우연이어서는 안 된다.
+ *
+ * 곱셈 순서를 바꾸지 않는다. `base * factor` 형태를 유지해야 기존 결과가 비트 단위로 보존된다.
+ */
+export function inflationFactorForYear(params: SimulationParams, age: number): number {
+  const { userProfile, inflationRate = 2, inflationMode = 'real' } = params;
+  if (inflationMode !== 'nominal') return 1;
+  return Math.pow(1 + inflationRate / 100, age - userProfile.currentAge);
+}
+
 // 해당 연도의 목표 연간 생활비(인플레이션 반영). SimulationEngine의 목표 생활비 산출 로직과
 // 동일한 규칙(명목: 매년 물가상승률 복리 반영 / 실질: 고정)을 따른다.
 //
@@ -45,12 +78,7 @@ export function targetAnnualSpendingForYear(
   params: SimulationParams,
   r: SimulationYearlyResult,
 ): number {
-  const { userProfile, inflationRate = 2, inflationMode = 'real' } = params;
-  const yearIndex = r.age - userProfile.currentAge;
-  const base = userProfile.targetMonthlySpending * 12;
-  const target = inflationMode === 'nominal'
-    ? base * Math.pow(1 + inflationRate / 100, yearIndex)
-    : base;
+  const target = annualAmountForYear(params, params.userProfile.targetMonthlySpending, r.age);
   // 연령대별 배수는 엔진이 실제 지출에 이미 반영했으므로 분모에도 같은 배수가 들어가야 한다.
   // 빼먹으면 배수가 1 미만인 구간이 "목표 초과 소비"로 읽혀 점수가 부풀고(clamp되어 만점),
   // 1을 넘는 구간이 결손으로 잡힌다.

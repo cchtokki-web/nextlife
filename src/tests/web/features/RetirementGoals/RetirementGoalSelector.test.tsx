@@ -102,6 +102,24 @@ describe('RetirementGoalSelector', () => {
     expect(constraint).toHaveValue('HARD');
   });
 
+  // 강도의 «행동» 차이는 생활비 목표에서만 참이다. 「반드시 지키기」가 계좌 순서·월 인출
+  // 목표·세제 최적화를 깨는 것은 인출 시점의 규칙이고, 은퇴 나이나 기말자산의 HARD는
+  // 후보를 거르는 조건일 뿐이다. 같은 문구를 모든 목표에 붙이면 거짓 설명이 된다.
+  test('강도 안내는 생활비 목표에만 붙는다', () => {
+    render(<SelectorHarness />);
+
+    fireEvent.click(screen.getByRole('button', { name: /생활비 안정/ }));
+    expect(screen.getByText(/계좌 순서·월 인출 목표·세제 최적화보다 생활비 충당을 우선합니다/))
+      .toBeInTheDocument();
+    expect(screen.getByText(/세금이나 인출 순서를 강제로 깨지 않습니다/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /여유 있는 소비/ }));
+    expect(screen.getAllByText(/생활비 충당을 우선합니다/)).toHaveLength(2);
+
+    fireEvent.click(screen.getByRole('button', { name: /빠른 은퇴/ }));
+    expect(screen.getAllByText(/생활비 충당을 우선합니다/)).toHaveLength(2);
+  });
+
   test('우선순위 이동 버튼으로 선택 순서를 바꾼다', () => {
     render(<SelectorHarness />);
     fireEvent.click(screen.getByRole('button', { name: /빠른 은퇴/ }));
