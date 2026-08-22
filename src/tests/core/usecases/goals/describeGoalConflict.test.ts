@@ -90,6 +90,35 @@ describe('이긴 쪽 미달이 0인 경우', () => {
   });
 });
 
+describe('미달이 «전부» 0인 경우', () => {
+  // 세 생산자 모두 Math.max(0, …)로 깎으므로 도달할 수 있는 상태다. 예전에는 설명이
+  // 만들어져 화면과 PDF가 「자산이 부족합니다」 밑에 빈 <ul>을 그렸다 — 바로 아래 데이터가
+  // 반증하는 문장이었다.
+  test('설명 자체를 만들지 않는다 — 문장만 남고 근거가 비는 일은 없다', () => {
+    expect(describeGoalConflict({
+      goalConflict: true,
+      conflictingGoals: [spendingShortfall(0), { ...inheritanceShortfall, shortfall: { unit: 'MONEY', amount: 0 } }],
+      yieldedGoal: 'INHERITANCE',
+    })).toBeUndefined();
+  });
+
+  test('기간 미달이 0인 목표도 마찬가지다', () => {
+    expect(describeGoalConflict({
+      goalConflict: true,
+      conflictingGoals: [spendingShortfall(0), { ...assetSurvivalShortfall, shortfall: { unit: 'YEARS', amount: 0 } }],
+    })).toBeUndefined();
+  });
+
+  test('하나라도 0이 아니면 설명은 남는다 — 경계는 「전부 0」이다', () => {
+    const described = describeGoalConflict({
+      goalConflict: true,
+      conflictingGoals: [spendingShortfall(10_000), { ...inheritanceShortfall, shortfall: { unit: 'MONEY', amount: 0 } }],
+      yieldedGoal: 'INHERITANCE',
+    });
+    expect(described?.shortfalls).toEqual(['생활비 안정 월 1만원 부족']);
+  });
+});
+
 describe('충돌이 없으면 undefined다', () => {
   test('판정이 「충돌 없음」이면 그릴 것이 없다', () => {
     // 빈 문자열이나 빈 배열이 아니라 undefined다. 소비자마다 「비었다」의 기준을 새로

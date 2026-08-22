@@ -63,10 +63,27 @@ export const RETIREMENT_GOAL_LABELS: Record<RetirementGoalType, string> = {
  * 생활비에 «관한» 목표 유형. 유형은 「무엇에 관한 목표인가」만 말하고, 얼마나 구속력이
  * 있는지는 constraintType이 따로 정한다(스펙 「유형과 강도를 분리한다」).
  */
-export const SPENDING_GOAL_TYPES: readonly RetirementGoalType[] = [
+export const SPENDING_GOAL_TYPES = [
   'LIVING_EXPENSE_STABILITY',
   'COMFORTABLE_SPENDING',
-];
+] as const satisfies readonly RetirementGoalType[];
+
+/**
+ * 위 배열이 «유형 수준에서» 말하는 것. 배열에서 유도하므로 둘은 갈라질 수 없다.
+ *
+ * 필요한 이유는 hardSpendingFloorTarget의 반환값(number | undefined)에 「어느 유형이
+ * 통과했는가」가 실리지 않기 때문이다. 그 사실을 호출부가 다시 쓰면 규칙이 두 벌이 되고,
+ * 여기서 유도해 두면 생활비 유형이 하나 늘 때 그 사실이 타입을 타고 호출부까지 흘러간다.
+ */
+export type SpendingGoalType = (typeof SPENDING_GOAL_TYPES)[number];
+
+/**
+ * 유형이 생활비에 관한 것인가. `includes` 대신 이 술어를 쓰면 `goal.type`이 실제로 좁혀져,
+ * 「생활비 목표만 담는다」는 약속을 tsc가 검사할 수 있게 된다.
+ */
+export function isSpendingGoalType(type: RetirementGoalType): type is SpendingGoalType {
+  return SPENDING_GOAL_TYPES.some((spendingType) => spendingType === type);
+}
 
 /**
  * 이 목표가 세우는 런타임 생활비 바닥(월 금액). 바닥을 세우지 않는 목표는 undefined다.
@@ -82,7 +99,7 @@ export const SPENDING_GOAL_TYPES: readonly RetirementGoalType[] = [
  */
 export function hardSpendingFloorTarget(goal: RetirementGoal): number | undefined {
   if (goal.constraintType !== 'HARD') return undefined;
-  if (!SPENDING_GOAL_TYPES.includes(goal.type)) return undefined;
+  if (!isSpendingGoalType(goal.type)) return undefined;
   if (goal.targetValue === undefined || !(goal.targetValue > 0)) return undefined;
   return goal.targetValue;
 }
