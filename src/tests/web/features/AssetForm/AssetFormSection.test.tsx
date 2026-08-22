@@ -93,7 +93,7 @@ describe('AssetFormSection - 수익률 입력은 전략에 잠기지 않는다',
     });
 
     expect(screen.getByLabelText('연 총수익률')).toBeEnabled();
-    expect(screen.queryByText(/이 값을 결정합니다/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/수익률 값을 결정합니다/)).not.toBeInTheDocument();
   });
 
   test('경제 시나리오가 명시적이어도 연 총수익률 입력은 열려 있고 안내 문구가 없다', () => {
@@ -103,14 +103,14 @@ describe('AssetFormSection - 수익률 입력은 전략에 잠기지 않는다',
     });
 
     expect(screen.getByLabelText('연 총수익률')).toBeEnabled();
-    expect(screen.queryByText(/이 값을 결정합니다/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/수익률 값을 결정합니다/)).not.toBeInTheDocument();
   });
 
   test('둘 다 AI 추천(미정)이어도 입력이 열려 있고 안내 문구도 없다', () => {
     renderExpanded({ ...withAsset, strategy: { ...DEFAULT_RETIREMENT_STRATEGY } });
 
     expect(screen.getByLabelText('연 총수익률')).toBeEnabled();
-    expect(screen.queryByText(/이 값을 결정합니다/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/수익률 값을 결정합니다/)).not.toBeInTheDocument();
   });
 
   test('전략이 아예 없는(레거시) 시나리오에서도 입력이 열려 있다', () => {
