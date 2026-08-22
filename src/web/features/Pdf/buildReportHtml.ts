@@ -14,6 +14,14 @@ import {
 /** 이미 렌더된 섹션 조각들. 각 값은 pdfReportSections의 render*Section 결과다. */
 export interface ReportSectionHtml {
   planVerdict: string;
+  /**
+   * 「내가 고른 목표들이 서로 맞지 않는다」. 충돌이 없으면 빈 문자열이고, 그때는 자리 자체가
+   * 생기지 않는다 — 빈 껍데기도 「충돌 없음」 문구도 두지 않는다.
+   *
+   * 선택 필드로 두지 않는다. 빠뜨려도 컴파일이 통과하면 충돌은 「없다」가 아니라 조용히
+   * 사라지고, 그 침묵은 「목표가 서로 맞는다」와 구분되지 않는다.
+   */
+  goalConflict: string;
   strategyRecommendation: string;
   riskAlerts: string;
   shortfallSummary: string;
@@ -330,6 +338,17 @@ export function buildReportHtml(input: ReportHtmlInput): string {
 
   const {
     planVerdict: planVerdictSectionHtml,
+    // 목표 충돌 고지. 「현재 계획 진단」 아래, 「NextLife 추천」 «위»에 놓는다 — 무엇이
+    // 부딪히는지를 먼저 알아야 추천이 왜 그런 모양인지 이해된다(스펙). 추천 절 «안»이
+    // 아닌 이유도 같다: 충돌은 추천의 근거가 아니라 목표들 사이의 사실이다.
+    //
+    // 절 번호를 주지 않는다. 조건부로만 나타나는 고지에 번호를 매기면 계획에 따라 뒤
+    // 절들의 번호가 밀린다(리스크 알림도 같은 이유로 번호가 없다).
+    //
+    // 아래 조립에서 이 값은 「NextLife 추천」 제목 «바로 앞»에 이어 붙는다. 줄을 따로
+    // 잡지 않는 이유는, 충돌이 없는 계획의 리포트가 빈 줄 하나도 얻지 않아야 하기
+    // 때문이다 — 없는 것은 자리도 만들지 않는다.
+    goalConflict: goalConflictSectionHtml,
     strategyRecommendation: strategyRecommendationHtml,
     riskAlerts: riskAlertsSectionHtml,
     shortfallSummary: shortfallSummarySectionHtml,
@@ -435,7 +454,7 @@ export function buildReportHtml(input: ReportHtmlInput): string {
 
         <div class="pdf-page">
           <div class="pdf-content">
-            <h2 style="font-size: 16px; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; color: #0f172a; margin-top: 0; margin-bottom: 10px;">${nextSection()}. NextLife 추천</h2>
+            ${goalConflictSectionHtml}<h2 style="font-size: 16px; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; color: #0f172a; margin-top: 0; margin-bottom: 10px;">${nextSection()}. NextLife 추천</h2>
             <p style="font-size: 11px; color: #64748b; margin-top: 0; margin-bottom: 14px;">목표에 가장 가까운 최종 전략과, 현재 계획에서 바뀌는 점만 비교합니다.</p>
             ${strategyRecommendationHtml}
           </div>

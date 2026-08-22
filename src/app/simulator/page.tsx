@@ -10,7 +10,7 @@ import { computeSensitivityAnalysis } from '../../core/usecases/dashboard/comput
 import { resolvePlanAssetStatus } from '../../core/usecases/dashboard/resolvePlanAssetStatus';
 import { computeShortfallSummary } from '../../core/usecases/dashboard/computeShortfallSummary';
 import { describeDepletionAge } from '../../core/usecases/dashboard/describeDepletionAge';
-import { formatCurrencyUnit, renderRiskAlertsSection, renderStrategyRecommendationSection, renderExecutionRoadmapSection, renderSensitivityTableSection, renderMonteCarloSection, renderShortfallSummarySection, renderPlanVerdictSection, renderNationalPensionSection, renderKeyLeversSection } from '../../web/features/Pdf/pdfReportSections';
+import { formatCurrencyUnit, renderRiskAlertsSection, renderStrategyRecommendationSection, renderExecutionRoadmapSection, renderSensitivityTableSection, renderMonteCarloSection, renderShortfallSummarySection, renderPlanVerdictSection, renderGoalConflictSection, renderNationalPensionSection, renderKeyLeversSection } from '../../web/features/Pdf/pdfReportSections';
 import { buildReportHtml } from '../../web/features/Pdf/buildReportHtml';
 import { generateReportPdf, ReportPageOverflowError } from '../../web/features/Pdf/generateReportPdf';
 import { computePlanConfidence } from '../../core/usecases/dashboard/computePlanConfidence';
@@ -19,6 +19,8 @@ import { computePensionGapRisk } from '../../core/usecases/dashboard/computePens
 import { computeSustainableSpendingAdvice } from '../../core/usecases/dashboard/computeSustainableSpendingAdvice';
 import { explainNationalPension } from '../../core/usecases/pension/explainNationalPension';
 import { resolveTaxSettings } from '../../core/usecases/tax/taxRates';
+import { LegacySimulationAdapter } from '../../core/domain/input/LegacySimulationAdapter';
+import { LegacyEvaluationEngine } from '../../core/evaluation/LegacyEvaluationEngine';
 import { useMediaQuery } from '../../web/hooks/useBrowserEnvironment';
 import { initialParams } from '../../infrastructure/storage/localStore';
 import { ScenarioManager } from '../../web/features/Scenario/ScenarioManager';
@@ -250,6 +252,15 @@ export default function Home() {
           goalSuccessProbability: monteCarlo.goalSuccessProbability,
         }
       );
+      // 목표 충돌 판정. 화면(DashboardSection)과 «같은 엔진의 같은 필드»를 읽는다 —
+      // 판정을 여기서 다시 세우면 같은 계획의 두 문서가 다른 충돌을 말할 수 있다.
+      // 이 평가는 시뮬레이션을 다시 돌리지 않는다. 이미 나온 result를 읽기만 한다.
+      const domainInput = LegacySimulationAdapter.fromLegacy(reportParams, effective.utilityConfig);
+      const goalConflictSectionHtml = renderGoalConflictSection(
+        new LegacyEvaluationEngine().evaluate(
+          domainInput.profile, domainInput.goals, domainInput.strategy, result,
+        ).goalConflict,
+      );
       const planVerdictSectionHtml = renderPlanVerdictSection({
         expectancy: userProfile.expectancy,
         deterministicDepletionText: describeDepletionAge(depletionAge, userProfile.expectancy, planAssetStatus),
@@ -301,6 +312,7 @@ export default function Home() {
         copyrightYear,
         sections: {
           planVerdict: planVerdictSectionHtml,
+          goalConflict: goalConflictSectionHtml,
           strategyRecommendation: strategyRecommendationHtml,
           riskAlerts: riskAlertsSectionHtml,
           shortfallSummary: shortfallSummarySectionHtml,

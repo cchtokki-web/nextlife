@@ -8,6 +8,7 @@ import {
   renderMonteCarloSection,
   renderShortfallSummarySection,
   renderPlanVerdictSection,
+  renderGoalConflictSection,
 } from '@/web/features/Pdf/pdfReportSections';
 import { formatManwon } from '@/core/usecases/utility/utilityAnalysis';
 import { ShortfallReport } from '@/core/usecases/dashboard/computeShortfallSummary';
@@ -699,5 +700,45 @@ describe('renderMonteCarloSection', () => {
 
     expect(html).toContain('87%');
     expect(html).not.toContain('나쁜 해가 먼저');
+  });
+});
+
+// 리포트는 화면보다 오래 남고 그대로 인용된다. 충돌을 여기서 빠뜨리면 「목표가 서로 맞았다」로
+// 읽히므로, 화면과 «같은 문장»이 실려야 한다.
+describe('renderGoalConflictSection', () => {
+  const conflicted = {
+    goalConflict: true,
+    conflictingGoals: [
+      {
+        goalType: 'LIVING_EXPENSE_STABILITY' as const,
+        constraintLayer: 1 as const,
+        shortfall: { unit: 'MONTHLY_MONEY' as const, amount: 120_000 },
+      },
+      {
+        goalType: 'INHERITANCE' as const,
+        constraintLayer: 2 as const,
+        shortfall: { unit: 'MONEY' as const, amount: 84_000_000 },
+      },
+    ],
+    yieldedGoal: 'INHERITANCE' as const,
+  };
+
+  test('화면과 같은 문장을 싣는다', () => {
+    const html = renderGoalConflictSection(conflicted);
+
+    expect(html).toContain('동시에 달성하기 어려운 목표가 있습니다');
+    // 「지켰다」가 아니라 「우선했다」다 — 이긴 쪽도 미달일 수 있어 「지켰다」는 거짓이 된다.
+    expect(html).toContain(
+      '「반드시 지키기」로 설정한 생활비를 상속 자산 확보 목표보다 우선했습니다.'
+      + ' 그래도 두 목표를 모두 충족하기에는 자산이 부족합니다.'
+    );
+    // 이긴 쪽 미달을 빼면 「양보해서 지켜냈다」로 읽힌다. 양쪽이 함께 와야 한다.
+    expect(html).toContain('생활비 안정 월 12만원 부족');
+    expect(html).toContain('상속 자산 확보 8,400만원 부족');
+  });
+
+  test('충돌이 없으면 빈 문자열이다', () => {
+    // 빈 껍데기도, 「충돌 없음」 문구도 두지 않는다 — 없는 것은 말하지 않는다.
+    expect(renderGoalConflictSection({ goalConflict: false, conflictingGoals: [] })).toBe('');
   });
 });

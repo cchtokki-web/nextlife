@@ -22,6 +22,8 @@ import { OptimizationOutcome } from '../../../core/strategy/StrategyOptimizer';
 import { CandidateRecommendation } from '../../../core/recommendation/RecommendationEngine';
 import { RetirementGoalType } from '../../../core/entities/retirementGoal';
 import { RETIREMENT_GOAL_CONSTRAINT_LABELS } from '../../../core/entities/retirementGoal';
+import type { GoalConflictVerdict } from '../../../core/evaluation/EvaluationEngine';
+import { describeGoalConflict } from '../../../core/usecases/goals/describeGoalConflict';
 import { hardConstraintLabel, RETIREMENT_GOAL_CATALOG } from '../RetirementGoals/goalCatalog';
 import { describeStrategyChanges } from '../../../core/usecases/dashboard/describeStrategyChanges';
 import { explainGoalShortfall } from '../../../core/usecases/dashboard/explainGoalShortfall';
@@ -306,6 +308,37 @@ export function renderRiskAlertsSection(alerts: RiskAlert[]): string {
   return `
     <h3 style="font-size: 13px; color: #0f172a; margin-top: 20px; margin-bottom: 8px;">⚠ 리스크 알림</h3>
     ${itemsHtml}
+  `;
+}
+
+/**
+ * 「내가 고른 목표들이 서로 맞지 않는다」. 「현재 계획 진단」 아래, 「NextLife 추천」 위에
+ * 놓인다(buildReportHtml) — 무엇이 부딪히는지를 먼저 알아야 추천의 모양이 설명된다.
+ *
+ * **문장을 여기서 짓지 않는다.** describeGoalConflict가 화면과 이 리포트에 같은 말을 준다.
+ * 문구를 두 벌로 두면 반드시 갈라지고, 리포트는 화면보다 오래 남아 그대로 인용된다.
+ *
+ * 판정을 «필수» 인자로 받는다. 선택 인자로 두면 호출자가 빠뜨렸을 때 컴파일이 통과하고
+ * 충돌은 「없다」가 아니라 조용히 사라진다 — renderMonteCarloSection이 params를 필수로
+ * 받게 한 것과 같은 이유다.
+ */
+export function renderGoalConflictSection(verdict: GoalConflictVerdict): string {
+  const described = describeGoalConflict(verdict);
+  // 충돌이 없으면 undefined다. 그 하나로 「그리지 않는다」를 판정한다 — 빈 배열이나 빈
+  // 문자열을 따로 검사하면 화면과 리포트가 각자의 「비었다」 기준을 갖게 된다.
+  if (described === undefined) return '';
+
+  const itemsHtml = described.shortfalls
+    .map((shortfall) => `<li style="margin-bottom: 3px;">${shortfall}</li>`)
+    .join('');
+  // 「검증하지 못한 HARD 목표」 고지와 같은 경고 색을 쓴다. 같은 무게의 두 고지가 서로 다른
+  // 색으로 말하면 읽는 사람은 둘을 다른 종류의 사건으로 받아들인다.
+  return `
+    <div style="border: 1px solid #fde68a; background-color: #fffbeb; border-radius: 8px; padding: 12px 14px; margin-bottom: 14px;">
+      <p style="margin: 0; font-size: 12px; font-weight: 700; color: #b45309;">⚠ ${described.title}</p>
+      <p style="margin: 4px 0 0; font-size: 11px; color: #b45309;">${described.lead}</p>
+      <ul style="margin: 6px 0 0; padding-left: 18px; font-size: 11px; color: #b45309;">${itemsHtml}</ul>
+    </div>
   `;
 }
 

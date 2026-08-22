@@ -93,6 +93,32 @@ describe('buildReportHtml', () => {
     expect(withoutMc.length).toBeLessThan(withMc.length);
   });
 
+  // 목표 충돌 고지가 «어디에» 놓이는가. 문장은 renderGoalConflictSection이 소유하므로
+  // 여기서 시험하는 것은 자리뿐이다 — 추천보다 «뒤»에 놓이면 사용자는 추천이 왜 그런
+  // 모양인지 모른 채 먼저 읽게 된다.
+  describe('목표 충돌 고지', () => {
+    const conflictHtml = '<div id="goal-conflict-probe">동시에 달성하기 어려운 목표가 있습니다</div>';
+
+    test('「현재 계획 진단」 뒤, 「NextLife 추천」 앞에 놓인다', () => {
+      const html = buildReportHtml({
+        ...input(),
+        sections: { ...fixture.sections, goalConflict: conflictHtml },
+      });
+
+      expect(html).toContain(conflictHtml);
+      expect(html.indexOf('현재 계획 진단')).toBeLessThan(html.indexOf(conflictHtml));
+      expect(html.indexOf(conflictHtml)).toBeLessThan(html.indexOf('. NextLife 추천'));
+    });
+
+    test('충돌이 없으면 빈 줄 하나도 만들지 않는다', () => {
+      // 「없는 것은 자리도 만들지 않는다」. 골든 출력이 한 글자도 변하지 않아야 한다.
+      expect(buildReportHtml({
+        ...input(),
+        sections: { ...fixture.sections, goalConflict: '' },
+      })).toBe(fixture.html);
+    });
+  });
+
   // 세 계좌 목록이 «연 총수익률»을 같은 형식으로 말하는지 고정한다.
   //
   // 이 문서가 오래 거짓말을 했던 자리다. 예전에는 "예상 연 수익률 7%"라고 적힌 자산이
