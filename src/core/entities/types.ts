@@ -322,6 +322,16 @@ export interface SimulationParams {
   // 기본 상속 전략('leave_some')은 targetBequest를 채우지만 하한선은 세우지 않는다 —
   // 세우면 전략을 저장한 적 없는 모든 시나리오의 곡선이 조용히 바뀐다.
   assetFloor?: number;
+  // HARD 생활비 목표에서 유도된 월 생활비 바닥(displayCurrency 기준). 이 금액까지는
+  // 전략 선호(계좌 순서·월 인출 목표·일반자산 개시 나이)와 세제 최적화(저율과세 한도)를
+  // 깨고 채운다. 미지정이면 바닥이 없고 인출 동작은 기존과 비트 단위로 동일하다.
+  //
+  // **strategy.minMonthlySpending과 다르다.** 그쪽은 화면 경고용이며 엔진에 내려가지
+  // 않는다(그 필드의 주석 참조). 한 이름에 두 뜻을 붙이지 않으려고 별도 필드를 둔다.
+  //
+  // assetFloor와 같은 이유로 withdrawalPlan이 아니라 최상위에 둔다 — 후보 탐색이
+  // withdrawalPlan을 통째로 교체하므로 그 안에 두면 모든 후보에서 조용히 사라진다.
+  hardSpendingFloor?: number;
   // 쓰고 남은 현금(SimulationYearlyResult.cashAssets)에 붙는 연 수익률 %.
   // 미지정·0이면 이자가 붙지 않는다(= 기존 동작과 비트 단위로 동일).
   //

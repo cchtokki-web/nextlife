@@ -206,6 +206,7 @@ export const LEGACY_SIMULATION_FIELD_CLASSIFICATION = {
   spendingStrategy: 'STRATEGY',
   spendingCurve: 'STRATEGY',
   assetFloor: 'STRATEGY',
+  hardSpendingFloor: 'STRATEGY',
   cashYieldRate: 'STRATEGY',
   taxSettings: 'STRATEGY',
   withdrawalPlan: 'STRATEGY',

@@ -54,10 +54,14 @@ describe('normalizeGoalDrivenParams — 목표가 정하는 축', () => {
     expect(normalized.userProfile.targetMonthlySpending).toBe(2_800_000);
   });
 
-  // 생활비 안정과 여유 있는 소비는 «같은 필드»를 쓴다. 둘 다 고르면 우선순위가 앞선 쪽이
-  // 인출 목표가 된다 — 즉 목록에서 순서를 한 칸 올리는 것이 금액 선택이기도 하다.
-  // 우선순위 정렬은 normalizeRetirementGoals가 하므로 여기서는 결과만 고정한다.
-  test('생활비 목표가 둘이면 우선순위가 앞선 목표값이 인출 목표가 된다', () => {
+  // 생활비 안정과 여유 있는 소비는 «같은 필드»를 쓴다. 둘 다 고르면 «가장 큰» 금액이
+  // 인출 목표가 된다 — 목록의 순서(우선순위)는 이 값에 영향을 주지 않는다.
+  //
+  // 예전 규칙은 우선순위가 앞선 쪽이 이겼다(firstGoalWithTarget). 그래서 「생활비 안정」을
+  // 1순위에 둔 사용자의 「여유 있는 소비」 금액이 계산에 닿지 못했다
+  // (2026-08-22 goal-constraint-hierarchy 설계 문서). 우선순위를 바꿔도 결과가 같아야
+  // «순서와 무관하다»는 것이 고정된다.
+  test('생활비 목표가 둘이면 큰 쪽의 목표값이 인출 목표가 된다 (우선순위 무관)', () => {
     const withOrder = (livingPriority: number, comfortPriority: number) => normalize({
       ...initialParams,
       retirementGoals: [
@@ -66,7 +70,7 @@ describe('normalizeGoalDrivenParams — 목표가 정하는 축', () => {
       ],
     });
 
-    expect(withOrder(1, 2).userProfile.targetMonthlySpending).toBe(3_000_000);
+    expect(withOrder(1, 2).userProfile.targetMonthlySpending).toBe(5_000_000);
     expect(withOrder(2, 1).userProfile.targetMonthlySpending).toBe(5_000_000);
   });
 

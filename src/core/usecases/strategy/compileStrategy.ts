@@ -3,6 +3,7 @@ import {
   RetirementStrategy, RiskProfile, SimulationParams, SpendingStrategy, SpendingStrategyChoice, UtilityConfig,
   WithdrawalPlan,
 } from '../../entities/types';
+import type { RetirementGoalType } from '../../entities/retirementGoal';
 import {
   NATIONAL_PENSION_EARLY_MIN_AGE, NATIONAL_PENSION_NORMAL_START_AGE,
 } from '../pension/nationalPensionRules';
@@ -380,6 +381,23 @@ export function compileStrategy(params: SimulationParams): CompiledStrategy {
   const assetFloor = hasHardAssetSurvivalGoal
     ? Math.max(1, inheritanceAssetFloor ?? 0)
     : inheritanceAssetFloor;
+  // 생활비 목표에서 «강도»로 바닥을 유도한다. 유형으로 강도를 추론하지 않는다 —
+  // constraintType은 사용자가 모든 목표에 대해 자유롭게 고르는 값이고, goalCatalog의
+  // defaultConstraintType은 처음 고를 때의 씨앗일 뿐이다.
+  //
+  // targetValue > 0 가드는 normalizeGoalDrivenParams.firstGoalWithTarget의 것과 같다:
+  // 0은 「입력창을 비웠다」이지 「생활비 0원이 목표」가 아니다.
+  const SPENDING_GOAL_TYPES: readonly RetirementGoalType[] =
+    ['LIVING_EXPENSE_STABILITY', 'COMFORTABLE_SPENDING'];
+  const hardSpendingTargets = (params.retirementGoals ?? [])
+    .filter((goal) => SPENDING_GOAL_TYPES.includes(goal.type)
+      && goal.constraintType === 'HARD'
+      && goal.targetValue !== undefined
+      && goal.targetValue > 0)
+    .map((goal) => goal.targetValue as number);
+  const hardSpendingFloor = hardSpendingTargets.length > 0
+    ? Math.max(...hardSpendingTargets)
+    : undefined;
   // 'flat'·미지정이면 undefined다 — 그때는 아래에서 키 자체를 지워, 곡선을 설정한 적 없는
   // 시나리오가 곡선 코드 경로를 아예 타지 않게 한다.
   //
@@ -458,6 +476,8 @@ export function compileStrategy(params: SimulationParams): CompiledStrategy {
   };
   if (assetFloor === undefined) delete compiledParams.assetFloor;
   else compiledParams.assetFloor = assetFloor;
+  if (hardSpendingFloor === undefined) delete compiledParams.hardSpendingFloor;
+  else compiledParams.hardSpendingFloor = hardSpendingFloor;
   if (spendingCurve === undefined) delete compiledParams.spendingCurve;
   else compiledParams.spendingCurve = spendingCurve;
 
