@@ -473,7 +473,7 @@ describe('recommendStrategy - 개선이 없을 때', () => {
     ...paramsWithLargePension,
     strategy: {
       ...DEFAULT_RETIREMENT_STRATEGY,
-      riskProfile: 'neutral', economicScenario: 'recession', objective: 'lifetime_spending',
+      riskProfile: 'custom', economicScenario: 'recession', objective: 'lifetime_spending',
     },
   });
 

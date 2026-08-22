@@ -774,10 +774,10 @@ export type NationalPensionStrategy =
 export type PrivatePensionStrategy =
   | 'tax_first' | 'spending_first' | 'growth_first' | 'minimum' | 'ai_optimized';
 
-// 'custom'과 'ai_recommended'는 둘 다 "수익률 프리셋을 적용하지 않는다"는 같은 동작이지만
-// 뜻이 다르다: 'custom'은 사용자가 자산별로 직접 넣은 값을 쓰겠다는 명시적 선택이고,
-// 'ai_recommended'는 아직 정하지 않았다는 뜻이다.
-export type RiskProfile = 'conservative' | 'neutral' | 'aggressive' | 'custom' | 'ai_recommended';
+// 수익률을 «지배하는» 값(conservative/neutral/aggressive)은 2026-08-22에 제거됐다.
+// 수익률의 유일한 출처는 사용자 입력이고, 프리셋은 자산 폼의 「일괄 채우기」 도우미와
+// 민감도·강건성 렌즈로만 남는다. 남는 두 값의 차이는 강건성 검증 on/off 하나다.
+export type RiskProfile = 'custom' | 'ai_recommended';
 
 export type EconomicScenario =
   | 'long_term_average' | 'recession' | 'high_inflation' | 'low_growth' | 'ai_recommended';

@@ -68,12 +68,12 @@ describe('runMonteCarlo - 가정 공시', () => {
 
   test('사용자가 고른 축을 그대로 싣는다', () => {
     const chosen = params({
-      strategy: { ...DEFAULT_RETIREMENT_STRATEGY, economicScenario: 'high_inflation', riskProfile: 'conservative' },
+      strategy: { ...DEFAULT_RETIREMENT_STRATEGY, economicScenario: 'high_inflation', riskProfile: 'custom' },
     });
     const mc = runMonteCarlo(chosen, engine, config({ trials: 5 }));
 
     expect(mc.assumptions!.economicScenario).toBe('high_inflation');
-    expect(mc.assumptions!.riskProfile).toBe('conservative');
+    expect(mc.assumptions!.riskProfile).toBe('custom');
   });
 });
 

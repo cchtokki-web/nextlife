@@ -228,7 +228,7 @@ describe('normalizeGoalDrivenParams — 고급 설정에서 사라진 축', () =
         ...resolveStrategy(initialParams),
         nationalPensionStrategy: 'defer_max',
         privatePensionStrategy: 'tax_first',
-        riskProfile: 'conservative',
+        riskProfile: 'ai_recommended',
         economicScenario: 'high_inflation',
         preferIsaFirst: 'isa_first',
       },
@@ -237,7 +237,7 @@ describe('normalizeGoalDrivenParams — 고급 설정에서 사라진 축', () =
     expect(normalize(saved).strategy).toMatchObject({
       nationalPensionStrategy: 'defer_max',
       privatePensionStrategy: 'tax_first',
-      riskProfile: 'conservative',
+      riskProfile: 'ai_recommended',
       economicScenario: 'high_inflation',
       preferIsaFirst: 'isa_first',
     });

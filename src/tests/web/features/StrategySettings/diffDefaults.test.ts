@@ -26,7 +26,7 @@ describe('collectChangedPaths', () => {
   test('전략 하위 필드를 바꾸면 strategy.* 경로가 잡힌다', () => {
     const params = {
       ...initialParams,
-      strategy: { ...DEFAULT_RETIREMENT_STRATEGY, riskProfile: 'conservative' as const },
+      strategy: { ...DEFAULT_RETIREMENT_STRATEGY, riskProfile: 'custom' as const },
     };
 
     expect(collectChangedPaths(params).has('strategy.riskProfile')).toBe(true);

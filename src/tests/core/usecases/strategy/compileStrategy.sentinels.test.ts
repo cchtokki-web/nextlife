@@ -1,7 +1,7 @@
 import { describe, test, expect } from 'vitest';
 import {
   NATIONAL_PENSION_STRATEGY_AGES, compileStrategy, DEFAULT_RETIREMENT_STRATEGY,
-  resolvePrivatePensionTaxLimitOverride, resolveRiskProfileYieldPreset,
+  resolvePrivatePensionTaxLimitOverride,
 } from '@/core/usecases/strategy/compileStrategy';
 import { OBJECTIVE_WEIGHT_PRESETS } from '@/core/usecases/strategy/objectivePresets';
 import { resolveEconomicScenarioProfile } from '@/core/usecases/scenario/economicScenarios';
@@ -14,9 +14,11 @@ import { RetirementStrategy, SimulationParams } from '@/core/entities/types';
 //
 // 이 브랜치에서 같은 사고가 세 번 났다: 'ai_*' 값에 매핑 테이블 항목이 채워져 사용자가
 // 직접 저장해 둔 설정(저율과세 한도, 물가상승률, 경제 시나리오)이 조용히 덮어써졌다.
-// 리스크 성향과 경제 시나리오는 이제 Record<Exclude<...>>가 컴파일 타임에 막지만,
-// 나머지 세 축은 완전 Record를 유지해야 해서(모든 키가 값을 가져야 한다) "우연히 baseline과
-// 같은 값"이라 안전할 뿐 타입이 강제하지 않는다. 조용한 네 번째 사고는 여기서 잡는다.
+// 경제 시나리오는 Record<Exclude<...>>가 컴파일 타임에 막고, 리스크 성향은 2026-08-22에
+// 지배값(conservative/neutral/aggressive) 자체가 타입에서 제거되어 애초에 이 사고를
+// 일으킬 값이 없다. 나머지 세 축은 완전 Record를 유지해야 해서(모든 키가 값을 가져야 한다)
+// "우연히 baseline과 같은 값"이라 안전할 뿐 타입이 강제하지 않는다. 조용한 네 번째 사고는
+// 여기서 잡는다.
 const baseParams: SimulationParams = {
   userProfile: { currentAge: 50, retirementAge: 60, expectancy: 85, targetMonthlySpending: 3000000 },
   assets: [],
@@ -55,13 +57,6 @@ describe("'ai_*' 센티널은 baseline과 동일하다", () => {
     // withdrawalRatio도 null이어야 월 인출 목표 키가 아예 생기지 않는다.
     const r = compileStrategy(withStrategy({ privatePensionStrategy: 'ai_optimized' }));
     expect(r.params.withdrawalPlan?.privatePensionMonthlyTarget).toBeUndefined();
-  });
-
-  test('리스크 성향: ai_recommended와 custom은 수익률 프리셋을 정하지 않는다', () => {
-    expect(resolveRiskProfileYieldPreset('ai_recommended')).toBeNull();
-    expect(resolveRiskProfileYieldPreset('custom')).toBeNull();
-    // 대조군 — 나머지 성향은 실제로 프리셋을 정한다.
-    expect(resolveRiskProfileYieldPreset('neutral')).toBe('base');
   });
 
   test('경제 시나리오: ai_recommended는 프로필이 없다', () => {

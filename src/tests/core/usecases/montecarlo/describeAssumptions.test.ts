@@ -50,8 +50,11 @@ describe('describeMonteCarloAssumptions', () => {
     expect(calculation).not.toContain('입력하신 물가');
   });
 
-  test('리스크 성향이 지배하면 그 성향의 이름을 밝힌다', () => {
-    expect(copy('ai_recommended', 'conservative').calculation).toContain('안정형');
+  // 2026-08-22: 리스크 성향은 더 이상 수익률을 지배하지 않는다. 저장된 옛 시나리오에
+  // 남은 레거시 값('conservative' 등)이 들어와도 governing 문구를 만들지 않고 "입력하신
+  // 가정 그대로"로 떨어져야 한다.
+  test('리스크 성향은 더 이상 수익률을 지배하지 않는다', () => {
+    expect(copy('ai_recommended', 'conservative').calculation).toContain('입력하신');
   });
 
   // 'custom'은 "자산마다 직접 넣은 값을 그대로 쓴다"는 뜻이라 지배가 아니다.

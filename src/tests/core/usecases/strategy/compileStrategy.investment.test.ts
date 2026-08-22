@@ -37,17 +37,9 @@ describe('compileStrategy 투자/경제 축', () => {
     expect(r.params.exchangeScenario).toBe(ECONOMIC_SCENARIO_PROFILES.high_inflation!.exchangeScenario);
   });
 
-  test('리스크 성향이 시나리오보다 나중에 적용되어 수익률의 최종 승자가 된다', () => {
-    const r = compileStrategy(withStrategy({
-      economicScenario: 'recession', // 주식 3%
-      riskProfile: 'aggressive', // 주식 9%
-    }));
-
-    expect(r.params.assets[0].totalReturn).toBe(9);
-    // 물가는 여전히 시나리오가 지배한다.
-    expect(r.params.inflationRate).toBe(ECONOMIC_SCENARIO_PROFILES.recession!.inflationRate);
-  });
-
+  // 2026-08-22: 리스크 성향은 더 이상 수익률을 지배하지 않는다. 예전에는 'aggressive'
+  // 같은 지배값을 고르면 경제 시나리오보다 나중에 적용되어 최종 승자가 됐지만, 이제
+  // riskProfile은 'custom' | 'ai_recommended' 둘뿐이고 어느 쪽도 수익률을 건드리지 않는다.
   test('리스크 성향이 ai_recommended면 경제 시나리오를 골라도 자산 수익률은 사용자 입력 그대로다', () => {
     // 경제 시나리오는 더 이상 수익률을 지배하지 않는다(물가·환율만 지배한다).
     // riskProfile도 ai_recommended라 프리셋이 없으므로, 어느 축도 수익률을 건드리지 않는다.
@@ -59,18 +51,10 @@ describe('compileStrategy 투자/경제 축', () => {
     expect(r.params.assets[0].totalReturn).toBe(baseParams.assets[0].totalReturn);
   });
 
-  test('안정형/중립형/공격형이 각각 yieldPreset으로 번역된다', () => {
-    expect(compileStrategy(withStrategy({ riskProfile: 'conservative' })).params.yieldPreset)
-      .toBe('conservative');
-    expect(compileStrategy(withStrategy({ riskProfile: 'neutral' })).params.yieldPreset)
-      .toBe('base');
-    expect(compileStrategy(withStrategy({ riskProfile: 'aggressive' })).params.yieldPreset)
-      .toBe('aggressive');
-  });
-
   test('리스크 성향이 custom이면 자산·연금에 직접 입력한 수익률을 그대로 쓴다', () => {
-    // '사용자 직접입력'은 프리셋 매핑이 없어야 한다. RISK_PROFILE_PRESETS에 항목이
-    // 생기면 applyYieldPreset이 호출되어 직접 입력한 값이 조용히 덮어써진다.
+    // '사용자 직접입력'은 프리셋 매핑이 없어야 한다. RiskProfile에서 지배값
+    // (conservative/neutral/aggressive)이 통째로 제거됐으므로, applyYieldPreset이
+    // 호출되어 직접 입력한 값이 조용히 덮어써질 경로 자체가 없다.
     const params = withStrategy({ riskProfile: 'custom' });
     params.assets = [{ ...params.assets[0], totalReturn: 11.5 }];
     params.privatePensions = [{ ...params.privatePensions[0], totalReturn: 6.5 }];
@@ -93,14 +77,16 @@ describe('compileStrategy 투자/경제 축', () => {
     expect(r.params.assets[0].totalReturn).toBe(baseParams.assets[0].totalReturn);
   });
 
-  test('리스크 성향 프리셋을 적용해도 자산별 reinvestDividend가 보존된다', () => {
-    // applyYieldPreset이 자산 배열을 새로 만들지만 reinvestDividend는 스프레드로 유지된다.
-    const params = withStrategy({ riskProfile: 'aggressive' });
-    params.assets = [{ ...params.assets[0], reinvestDividend: false }];
+  // 2026-08-22: compileStrategy는 어떤 riskProfile 값에도 자산 배열을 다시 만들지
+  // 않는다(applyYieldPreset 호출 경로가 없다). reinvestDividend·totalReturn 모두
+  // 입력 그대로 통과해야 한다.
+  test('리스크 성향과 무관하게 자산별 reinvestDividend와 수익률이 보존된다', () => {
+    const params = withStrategy({ riskProfile: 'ai_recommended' });
+    params.assets = [{ ...params.assets[0], reinvestDividend: false, totalReturn: 12.3 }];
 
     const r = compileStrategy(params);
 
     expect(r.params.assets[0].reinvestDividend).toBe(false);
-    expect(r.params.assets[0].totalReturn).toBe(9);
+    expect(r.params.assets[0].totalReturn).toBe(12.3);
   });
 });

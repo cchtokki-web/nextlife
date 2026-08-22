@@ -210,14 +210,16 @@ describe('applyStrategyToParams', () => {
   });
 
   // 이 테스트가 이 기능의 핵심이다. compileStrategy는 분석할 때마다 params.strategy에서
-  // 국민연금 개시 나이와 수익률 프리셋을 다시 계산해 저수준 필드를 덮어쓴다. 저수준 필드만
-  // 써 넣으면 적용 버튼을 눌러도 재분석 결과가 그대로다 — 사용자에게는 버튼이 고장 난 것으로 보인다.
+  // 국민연금 개시 나이를 다시 계산해 저수준 필드를 덮어쓴다. 저수준 필드만 써 넣으면
+  // 적용 버튼을 눌러도 재분석 결과가 그대로다 — 사용자에게는 버튼이 고장 난 것으로 보인다.
+  // (수익률 프리셋은 2026-08-22부터 저수준 필드(yieldPreset)에 쓴 값이 그대로 남는다 —
+  // riskProfile이 더 이상 그 값을 지배하지 않는다.)
   test('compileStrategy를 통과한 뒤에도 추천값이 살아남는다', () => {
     const params = makeParams({
       userProfile: { currentAge: 50, retirementAge: 60, expectancy: 90, targetMonthlySpending: 3_000_000 },
       yieldPreset: 'conservative',
       withdrawalPlan: { nationalPensionStartAge: 60, accountWithdrawalPolicy: 'GENERAL_FIRST' },
-      strategy: { ...resolveStrategy(makeParams()), nationalPensionStrategy: 'early', riskProfile: 'conservative' },
+      strategy: { ...resolveStrategy(makeParams()), nationalPensionStrategy: 'early', riskProfile: 'ai_recommended' },
     });
     const ranked = makeRanked({
       retirementAge: 62,
@@ -248,13 +250,19 @@ describe('applyStrategyToParams', () => {
     }
   });
 
-  test('수익률 프리셋과 리스크 성향을 함께 기록한다', () => {
+  // 2026-08-22: 리스크 성향은 더 이상 수익률을 지배하지 않는다(compileStrategy가
+  // riskProfile을 보고 yieldPreset을 되돌리는 경로가 없어졌다). 그래서 프리셋을
+  // 반영해도 리스크 성향은 사용자가 실제로 고른(또는 고르지 않은) 값 그대로 남는다 —
+  // 예전에는 함께 쓰지 않으면 compileStrategy가 프리셋을 옛 성향으로 되돌렸지만,
+  // 지금은 그럴 일이 없다. (strategy 자체는 다른 축과 같은 이유로 여전히 실체화될 수
+  // 있다 — nationalPensionStrategy를 「현재 값」에 고정하는 부수효과 때문이다. 그래서
+  // 원본 params.strategy가 아니라 resolveStrategy(params)와 비교한다.)
+  test('수익률 프리셋을 기록하되 리스크 성향은 건드리지 않는다', () => {
     const params = makeParams({ yieldPreset: 'base' });
     const result = applyStrategyToParams(params, makeRanked({ assetAllocation: 'CONSERVATIVE' }));
 
     expect(result.params.yieldPreset).toBe('conservative');
-    // 리스크 성향을 함께 쓰지 않으면 compileStrategy가 프리셋을 옛 성향으로 되돌린다.
-    expect(result.params.strategy?.riskProfile).toBe('conservative');
+    expect(result.params.strategy?.riskProfile).toBe(resolveStrategy(params).riskProfile);
   });
 
   test('최대 지속가능 생활비 시나리오는 목표액 모드로 내린다', () => {

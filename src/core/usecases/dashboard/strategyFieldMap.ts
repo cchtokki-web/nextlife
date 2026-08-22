@@ -1,7 +1,6 @@
 import type {
   AccountWithdrawalPolicy,
   NationalPensionStrategy,
-  RiskProfile,
   SimulationParams,
   SpendingShapePreset,
 } from '../../entities/types';
@@ -47,19 +46,6 @@ const SPENDING_LABELS = {
   FRONT_LOADED: '통계 기준으로 감소',
   CARE_HEAVY: '완만하게 감소',
 } as const;
-
-/**
- * 수익률 프리셋 → 리스크 성향. compileStrategy의 RISK_PROFILE_PRESETS를 뒤집은 것이다.
- *
- * 두 값을 **함께** 써야 하는 이유: compileStrategy는 리스크 성향이 지배값이면
- * applyYieldPreset으로 yieldPreset을 다시 덮어쓴다. 프리셋만 써 넣으면 분석을 다시
- * 돌리는 순간 사용자의 옛 성향으로 되돌아가, 버튼이 아무 일도 하지 않은 것처럼 보인다.
- */
-const RISK_PROFILE_BY_PRESET: Record<'conservative' | 'base' | 'aggressive', RiskProfile> = {
-  conservative: 'conservative',
-  base: 'neutral',
-  aggressive: 'aggressive',
-};
 
 /**
  * 국민연금 개시 나이 → 전략 enum. compileStrategy의 NATIONAL_PENSION_STRATEGY_AGES에서
@@ -272,18 +258,23 @@ export const STRATEGY_FIELD_MAP: readonly StrategyFieldSpec[] = [
     }),
     apply: (params, ranked) => {
       const preset = candidatePreset(ranked);
-      // 'custom'(자산별 직접 입력)이나 미지정은 프리셋이 아니라서 리스크 성향으로 옮길 수
-      // 없다. 시장성 자산이 하나도 없는 시나리오에서 후보가 프리셋 없이 생성될 때 나온다.
-      if (preset === undefined || !(preset in RISK_PROFILE_BY_PRESET)) {
+      // 'custom'(자산별 직접 입력)이나 미지정은 반영할 프리셋이 없다. 시장성 자산이
+      // 하나도 없는 시나리오에서 후보가 프리셋 없이 생성될 때 나온다.
+      //
+      // 2026-08-22: 예전에는 이 프리셋을 riskProfile에도 함께 써서 "지배값"으로
+      // 고정했다 — compileStrategy가 riskProfile을 보고 yieldPreset을 다시 덮어썼기
+      // 때문이다. 이제 riskProfile은 어떤 수익률도 지배하지 않으므로(2026-08-22 수익률
+      // 가정 축 분리) riskProfile을 쓸 필요는 없다. 그래도 withStrategy(patch={})는
+      // 그대로 통과시킨다 — strategy가 아직 없으면 이 호출이 처음으로 그것을
+      // 실체화하는 자리일 수 있고, withStrategy의 pinned 로직이 없으면 손대지 않은
+      // nationalPensionStrategy가 기본값('ai_optimized' = 65세)으로 조용히 채워져
+      // 반영하지 않은 국민연금 축이 함께 옮겨간다.
+      if (preset === undefined || preset === 'custom') {
         return { applied: false, reason: '후보가 수익률 프리셋을 지정하지 않았습니다' };
       }
-      const governing = preset as keyof typeof RISK_PROFILE_BY_PRESET;
       return {
         applied: true,
-        params: withStrategy(
-          { ...params, yieldPreset: governing },
-          { riskProfile: RISK_PROFILE_BY_PRESET[governing] },
-        ),
+        params: withStrategy({ ...params, yieldPreset: preset }, {}),
       };
     },
   },

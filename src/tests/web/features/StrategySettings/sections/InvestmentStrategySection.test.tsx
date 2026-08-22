@@ -16,9 +16,14 @@ describe('InvestmentStrategySection', () => {
     );
 
     // 두 그룹 모두 'AI 추천' 옵션을 가지므로 그룹으로 좁혀 찾는다.
+    // 2026-08-22: 수익률을 지배하던 세 선택지(안정형/중립형/공격형)는 제거됐다 —
+    // 리스크 성향은 이제 '사용자 직접입력'/'입력 수익률 유지' 둘뿐이다.
     const risk = within(screen.getByRole('radiogroup', { name: '리스크 성향' }));
-    for (const label of [/안정형/, /중립형/, /공격형/, /사용자 직접입력/, /입력 수익률 유지/]) {
+    for (const label of [/사용자 직접입력/, /입력 수익률 유지/]) {
       expect(risk.getByRole('radio', { name: label })).toBeInTheDocument();
+    }
+    for (const label of [/안정형/, /중립형/, /공격형/]) {
+      expect(risk.queryByRole('radio', { name: label })).not.toBeInTheDocument();
     }
 
     const scenario = within(screen.getByRole('radiogroup', { name: '경제 시나리오' }));
@@ -27,23 +32,29 @@ describe('InvestmentStrategySection', () => {
     }
   });
 
-  test('리스크 성향을 고르면 strategy.riskProfile이 반영된다', () => {
+  test('입력 수익률 유지를 고르면 strategy.riskProfile이 ai_recommended가 된다', () => {
+    // 기본값이 이미 'ai_recommended'라 그 라디오를 클릭해도 change 이벤트가 나지 않는다.
+    // 'custom'에서 시작해 실제로 값이 바뀌는 경로를 검증한다.
+    const params = {
+      ...initialParams,
+      strategy: { ...DEFAULT_RETIREMENT_STRATEGY, riskProfile: 'custom' as const },
+    };
     const onChangeParams = vi.fn();
     render(
       <InvestmentStrategySection
-        params={initialParams} onChangeParams={onChangeParams}
+        params={params} onChangeParams={onChangeParams}
         mode="standard" changed={new Set()} ai={noAi}
       />
     );
 
     fireEvent.click(
       within(screen.getByRole('radiogroup', { name: '리스크 성향' }))
-        .getByRole('radio', { name: /공격형/ })
+        .getByRole('radio', { name: /입력 수익률 유지/ })
     );
 
     expect(onChangeParams).toHaveBeenCalledWith({
-      ...initialParams,
-      strategy: { ...DEFAULT_RETIREMENT_STRATEGY, riskProfile: 'aggressive' },
+      ...params,
+      strategy: { ...DEFAULT_RETIREMENT_STRATEGY, riskProfile: 'ai_recommended' },
     });
   });
 
@@ -67,8 +78,9 @@ describe('InvestmentStrategySection', () => {
     });
   });
 
-  // 경제 시나리오는 물가·환율만 정하고, 자산·사적연금의 수익률은 리스크 성향(governing한
-  // 값을 고른 경우)만 정한다. 설명문이 그 역할 구분을 정확히 말해야 한다.
+  // 2026-08-22: 경제 시나리오는 물가·환율만 정하고, 리스크 성향은 더 이상 수익률을
+  // 정하지 않는다(자산·연금·ISA에 입력한 수익률이 항상 그대로 쓰인다). 설명문이 그
+  // 사실을 정확히 말해야 한다.
   test('시나리오와 리스크 성향의 역할 구분을 설명문으로 알린다', () => {
     render(
       <InvestmentStrategySection
@@ -79,7 +91,7 @@ describe('InvestmentStrategySection', () => {
 
     expect(screen.getByText(/경제 시나리오는 물가·환율만 바꿉니다/))
       .toBeInTheDocument();
-    expect(screen.getByText(/입력 수익률 유지.*가 아닌 값으로 고른 경우에만/)).toBeInTheDocument();
+    expect(screen.getByText(/리스크 성향은 수익률을 바꾸지 않습니다/)).toBeInTheDocument();
   });
 
   test('간편 모드에서는 두 필드가 모두 숨겨지므로 역할 구분 설명문도 렌더되지 않는다', () => {

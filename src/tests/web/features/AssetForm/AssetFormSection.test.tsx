@@ -61,12 +61,16 @@ describe('AssetFormSection - 인적사항 탭 제거됨', () => {
   });
 });
 
-// B2: compileStrategy는 리스크 성향(또는 경제 시나리오)이 명시적이면 applyYieldPreset/
-// applyEconomicScenario로 자산·연금·ISA 수익률을 통째로 덮어쓴다. 이 폼은 compiled.params가
-// 아니라 원본 params를 받으므로, 입력을 열어두면 사용자는 자기 입력값을 보면서 엔진은
-// 프리셋 값으로 계산하는 상태가 된다. 저율과세 한도·물가상승률과 같은 처리를 한다:
-// 전략이 지배 중이면 비활성화하고 이유를 표시한다.
-describe('AssetFormSection - 전략이 수익률을 지배할 때', () => {
+// 2026-08-22 회귀 가드: 예전에는 compileStrategy가 리스크 성향(또는 경제 시나리오)이
+// 명시적이면 applyYieldPreset/applyEconomicScenario로 자산·연금·ISA 수익률을 통째로
+// 덮어썼다. 이 폼은 compiled.params가 아니라 원본 params를 받으므로, 그 시절에는 입력을
+// 열어두면 사용자는 자기 입력값을 보면서 엔진은 프리셋 값으로 계산하는 상태가 됐다 —
+// 그래서 지배 중이면 입력을 잠그고 이유를 표시했다.
+//
+// 이제 어느 축도 수익률을 지배하지 않는다(2026-08-22 수익률 가정 축 분리). 폼이 받는
+// 원본 params의 수익률 입력이 곧 엔진이 쓰는 값이므로, 잠글 이유 자체가 없다. 이 블록은
+// 그 잠금이 다시 생기지 않는지 지킨다.
+describe('AssetFormSection - 수익률 입력은 전략에 잠기지 않는다', () => {
   const withAsset: SimulationParams = {
     ...baseParams,
     assets: [{
@@ -82,27 +86,27 @@ describe('AssetFormSection - 전략이 수익률을 지배할 때', () => {
     fireEvent.click(screen.getByText('자산1'));
   };
 
-  test('리스크 성향이 명시적이면 연 총수익률 입력이 비활성화되고 이유가 표시된다', () => {
+  test('리스크 성향이 custom이어도 연 총수익률 입력은 열려 있고 안내 문구가 없다', () => {
     renderExpanded({
       ...withAsset,
-      strategy: { ...DEFAULT_RETIREMENT_STRATEGY, riskProfile: 'conservative' },
+      strategy: { ...DEFAULT_RETIREMENT_STRATEGY, riskProfile: 'custom' },
     });
 
-    expect(screen.getByLabelText('연 총수익률')).toBeDisabled();
-    expect(screen.getByText(/리스크 성향/)).toBeInTheDocument();
+    expect(screen.getByLabelText('연 총수익률')).toBeEnabled();
+    expect(screen.queryByText(/이 값을 결정합니다/)).not.toBeInTheDocument();
   });
 
-  test('경제 시나리오가 명시적이면 연 총수익률 입력이 비활성화되고 이유가 표시된다', () => {
+  test('경제 시나리오가 명시적이어도 연 총수익률 입력은 열려 있고 안내 문구가 없다', () => {
     renderExpanded({
       ...withAsset,
       strategy: { ...DEFAULT_RETIREMENT_STRATEGY, economicScenario: 'recession' },
     });
 
-    expect(screen.getByLabelText('연 총수익률')).toBeDisabled();
-    expect(screen.getByText(/경제 시나리오/)).toBeInTheDocument();
+    expect(screen.getByLabelText('연 총수익률')).toBeEnabled();
+    expect(screen.queryByText(/이 값을 결정합니다/)).not.toBeInTheDocument();
   });
 
-  test('둘 다 AI 추천(미정)이면 입력이 열려 있고 안내 문구도 없다', () => {
+  test('둘 다 AI 추천(미정)이어도 입력이 열려 있고 안내 문구도 없다', () => {
     renderExpanded({ ...withAsset, strategy: { ...DEFAULT_RETIREMENT_STRATEGY } });
 
     expect(screen.getByLabelText('연 총수익률')).toBeEnabled();
@@ -115,51 +119,40 @@ describe('AssetFormSection - 전략이 수익률을 지배할 때', () => {
     expect(screen.getByLabelText('연 총수익률')).toBeEnabled();
   });
 
-  test('배당률은 프리셋이 건드리지 않으므로 계속 편집할 수 있다', () => {
+  test('배당률은 언제나 계속 편집할 수 있다', () => {
     renderExpanded({
       ...withAsset,
-      strategy: { ...DEFAULT_RETIREMENT_STRATEGY, riskProfile: 'aggressive' },
+      strategy: { ...DEFAULT_RETIREMENT_STRATEGY, riskProfile: 'custom' },
     });
 
     expect(screen.getByLabelText('연 배당률')).toBeEnabled();
   });
 
-  test('사적연금·ISA 수익률 입력도 함께 비활성화된다', () => {
-    const params = withPensionAndIsa({ ...DEFAULT_RETIREMENT_STRATEGY, riskProfile: 'conservative' });
+  test('사적연금·ISA 수익률 입력도 함께 열려 있다', () => {
+    const params = withPensionAndIsa({ ...DEFAULT_RETIREMENT_STRATEGY, riskProfile: 'custom' });
     render(<AssetFormSection params={params} onChangeParams={vi.fn()} />);
 
     fireEvent.click(screen.getByRole('button', { name: /연금 자산/ }));
     fireEvent.click(screen.getByText(/IRP 연금 계좌/));
-    expect(screen.getByLabelText('연 총수익률')).toBeDisabled();
+    expect(screen.getByLabelText('연 총수익률')).toBeEnabled();
 
     fireEvent.click(screen.getByRole('button', { name: /ISA 계좌/ }));
     fireEvent.click(screen.getByText(/중개형 ISA/));
-    expect(screen.getByLabelText('연 총수익률')).toBeDisabled();
+    expect(screen.getByLabelText('연 총수익률')).toBeEnabled();
   });
 
-  // A2(2): 실시간 조회 버튼은 totalReturn을 덮어쓰면서 yieldPreset을
-  // 'custom'으로까지 찍는다. 입력만 잠그고 이 버튼을 남기면 지배 중에도 버튼 하나로
-  // 화면상 수익률과 'custom' 표식이 동시에 바뀌고 엔진은 여전히 프리셋으로 계산한다.
-  test('지배 중이면 자산의 실시간 성장률/배당률 조회 버튼도 비활성화된다', () => {
+  test('실시간 성장률/배당률 조회 버튼은 언제나 쓸 수 있다', () => {
     renderExpanded({
       ...withAsset,
-      strategy: { ...DEFAULT_RETIREMENT_STRATEGY, riskProfile: 'conservative' },
+      strategy: { ...DEFAULT_RETIREMENT_STRATEGY, riskProfile: 'custom' },
     });
-
-    for (const button of screen.getAllByTitle(/실시간 성장률\/배당률 조회/)) {
-      expect(button).toBeDisabled();
-    }
-  });
-
-  test('지배하지 않으면 실시간 조회 버튼은 평소대로 쓸 수 있다', () => {
-    renderExpanded({ ...withAsset, strategy: { ...DEFAULT_RETIREMENT_STRATEGY } });
 
     for (const button of screen.getAllByTitle(/실시간 성장률\/배당률 조회/)) {
       expect(button).toBeEnabled();
     }
   });
 
-  test('지배 중이면 사적연금의 실시간 수익률 조회 버튼도 비활성화된다', () => {
+  test('사적연금의 실시간 수익률 조회 버튼도 언제나 쓸 수 있다', () => {
     const params = withPensionAndIsa(
       { ...DEFAULT_RETIREMENT_STRATEGY, economicScenario: 'recession' },
       'etf'
@@ -170,7 +163,7 @@ describe('AssetFormSection - 전략이 수익률을 지배할 때', () => {
     fireEvent.click(screen.getByText(/IRP 연금 계좌/));
 
     for (const button of screen.getAllByTitle(/실시간 수익률/)) {
-      expect(button).toBeDisabled();
+      expect(button).toBeEnabled();
     }
   });
 });

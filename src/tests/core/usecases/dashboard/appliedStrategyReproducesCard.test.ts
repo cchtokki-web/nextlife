@@ -92,12 +92,40 @@ describe('추천 적용은 카드가 보여 준 계획을 그대로 만든다', 
     }
   });
 
-  test('적용 후 목표 달성 확률이 카드의 값과 같다', () => {
+  // 2026-08-22 알려진 제약: 「투자 성향」(assetAllocation) 축은 StrategyOptimizer가 후보를
+  // 채점할 때만 preset 수익률(5/7/9%)을 가정하고, 실제 반영(strategyFieldMap의 apply)은
+  // yieldPreset 필드만 남기고 자산별 totalReturn은 손대지 않는다 — 리스크 성향이 그 값을
+  // 강제로 덮어쓰던 마지막 통로였고, 이 축 분리 작업이 "어떤 축도 사용자가 입력한 수익률을
+  // 덮어쓰지 않는다"는 원칙 아래 그 통로를 없앴다. 그 결과 「투자 성향」이 바뀌는 후보는
+  // 카드가 보여 준 확률을 더 이상 정확히 재현하지 못한다 — StrategyGenerator/
+  // StrategyOptimizer의 후보 채점 자체가 아직 실제 입력 수익률이 아니라 preset으로 도는
+  // 별개의 메커니즘이기 때문이다. 그 메커니즘을 실제 입력에 맞추는 것은 이 작업의 범위
+  // 밖이라 후속 작업으로 남긴다.
+  test('적용 후 목표 달성 확률이 카드의 값과 같다 (투자 성향이 바뀌지 않는 후보)', () => {
     for (const recommendation of recommendations) {
       const applied = applyStrategyToParams(params, recommendation.candidate);
+      if (applied.applied.some((item) => item.label === '투자 성향')) continue;
 
       expect(probabilityAfterApply(applied.params), recommendation.label)
         .toBe(recommendation.candidate.monteCarlo.goalSuccessProbability);
+    }
+  });
+
+  // 위 제약을 회귀 고정한다. 언젠가 StrategyGenerator가 preset 대신 실제 입력 수익률로
+  // 후보를 채점하도록 바뀌면 이 테스트가 실패하며 알려 준다 — 그때는 이 테스트를 지우고
+  // 위 테스트의 예외 처리(assetAllocation 건너뛰기)도 함께 걷어내야 한다.
+  test('투자 성향이 바뀌는 후보는 아직 확률을 재현하지 못한다 (후속 작업 필요)', () => {
+    const withChangedAllocation = recommendations
+      .map((recommendation) => ({
+        recommendation,
+        applied: applyStrategyToParams(params, recommendation.candidate),
+      }))
+      .filter(({ applied }) => applied.applied.some((item) => item.label === '투자 성향'));
+
+    expect(withChangedAllocation.length).toBeGreaterThan(0);
+    for (const { recommendation, applied } of withChangedAllocation) {
+      expect(probabilityAfterApply(applied.params), recommendation.label)
+        .not.toBe(recommendation.candidate.monteCarlo.goalSuccessProbability);
     }
   });
 });

@@ -1,6 +1,6 @@
 import {
   Activity, CalendarClock, CalendarMinus, CalendarPlus, CloudRain, Equal, Flame,
-  HeartPulse, Leaf, PiggyBank, Plane, Rocket, Shield, ShieldCheck, SlidersHorizontal,
+  HeartPulse, Leaf, PiggyBank, Plane, Rocket, Shield, SlidersHorizontal,
   Sparkles, TrendingDown, Wallet,
 } from 'lucide-react';
 import {
@@ -184,21 +184,6 @@ export const SPENDING_SHAPE_OPTIONS: ReadonlyArray<RadioCardOption<SpendingShape
 ];
 
 export const RISK_PROFILE_OPTIONS: ReadonlyArray<RadioCardOption<RiskProfile>> = [
-  {
-    value: 'conservative', label: RISK_PROFILE_LABELS.conservative,
-    description: '수익은 낮아도 흔들림이 적은 쪽으로 계산합니다. (주식 5%)',
-    icon: <ShieldCheck size={16} />,
-  },
-  {
-    value: 'neutral', label: RISK_PROFILE_LABELS.neutral,
-    description: '장기 평균 수준의 수익을 가정합니다. (주식 7%)',
-    icon: <Activity size={16} />,
-  },
-  {
-    value: 'aggressive', label: RISK_PROFILE_LABELS.aggressive,
-    description: '높은 수익을 가정하되 그만큼 변동도 크다고 봅니다. (주식 9%)',
-    icon: <Flame size={16} />,
-  },
   {
     value: 'custom', label: RISK_PROFILE_LABELS.custom,
     description: '자산마다 직접 입력한 수익률을 그대로 씁니다. 프리셋으로 덮어쓰지 않습니다.',

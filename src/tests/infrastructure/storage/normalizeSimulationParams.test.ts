@@ -653,3 +653,35 @@ describe('normalizeSimulationParams', () => {
     }
   });
 });
+
+describe('지배하는 리스크 성향은 「입력 수익률 유지」로 떨어진다', () => {
+  // asOneOf가 목록에 없는 문자열에 undefined를 돌려주고 pickValid가 그 키를 떨어뜨리므로,
+  // resolveStrategy가 기본값으로 메운다. 값 변환이 없어 멱등이다.
+  for (const legacy of ['conservative', 'neutral', 'aggressive']) {
+    test(`${legacy}는 저장 키에서 사라진다`, () => {
+      const normalized = normalizeSimulationParams({
+        userProfile: { currentAge: 50, retirementAge: 60, expectancy: 90, targetMonthlySpending: 3_000_000 },
+        assets: [], privatePensions: [], isaAccounts: [], otherIncomes: [],
+        nationalPension: { expectedMonthlyAmount: 0 },
+        inflationRate: 2.5, inflationMode: 'real', baseExchangeRate: 1400,
+        exchangeScenario: 'base', displayCurrency: 'KRW',
+        strategy: { riskProfile: legacy },
+      });
+
+      expect(normalized.strategy?.riskProfile).toBeUndefined();
+    });
+  }
+
+  test('두 번 적용해도 같다 (멱등)', () => {
+    const once = normalizeSimulationParams({
+      userProfile: { currentAge: 50, retirementAge: 60, expectancy: 90, targetMonthlySpending: 3_000_000 },
+      assets: [], privatePensions: [], isaAccounts: [], otherIncomes: [],
+      nationalPension: { expectedMonthlyAmount: 0 },
+      inflationRate: 2.5, inflationMode: 'real', baseExchangeRate: 1400,
+      exchangeScenario: 'base', displayCurrency: 'KRW',
+      strategy: { riskProfile: 'conservative' },
+    });
+
+    expect(normalizeSimulationParams(once)).toEqual(once);
+  });
+});

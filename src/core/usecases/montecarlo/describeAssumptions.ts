@@ -1,6 +1,5 @@
 import { MonteCarloResult } from '../../entities/montecarlo';
 import { ECONOMIC_SCENARIO_LABELS, isEconomicScenarioGoverning } from '../scenario/economicScenarios';
-import { RISK_PROFILE_LABELS, resolveRiskProfileYieldPreset } from '../strategy/compileStrategy';
 
 // **몬테카를로 결과의 가정 공시 문구를 만드는 단일 출처.**
 //
@@ -63,9 +62,6 @@ function describeWorld(assumptions: NonNullable<MonteCarloResult['assumptions']>
 
   if (isEconomicScenarioGoverning(assumptions.economicScenario)) {
     governing.push(`「${ECONOMIC_SCENARIO_LABELS[assumptions.economicScenario]}」 국면의 물가·환율`);
-  }
-  if (resolveRiskProfileYieldPreset(assumptions.riskProfile) !== null) {
-    governing.push(`「${RISK_PROFILE_LABELS[assumptions.riskProfile]}」 수익률`);
   }
 
   // 덮은 축이 하나도 없으면 사용자가 넣은 값 그대로 계산한 것이다. 'custom'(자산별 직접

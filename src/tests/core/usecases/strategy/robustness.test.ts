@@ -35,7 +35,7 @@ describe('resolveAssumptionVariants', () => {
   test('두 가정 축이 모두 확정이면 국면이 없다 (강건성 모드 꺼짐)', () => {
     const params = compileStrategy({
       ...allAxesLiveParams,
-      strategy: { ...DEFAULT_RETIREMENT_STRATEGY, riskProfile: 'neutral', economicScenario: 'recession' },
+      strategy: { ...DEFAULT_RETIREMENT_STRATEGY, riskProfile: 'custom', economicScenario: 'recession' },
     }).params;
 
     expect(resolveAssumptionVariants(params)).toEqual([]);
@@ -44,7 +44,7 @@ describe('resolveAssumptionVariants', () => {
   test('경제 시나리오가 미정이면 네 국면을 만든다', () => {
     const params = compileStrategy({
       ...allAxesLiveParams,
-      strategy: { ...DEFAULT_RETIREMENT_STRATEGY, riskProfile: 'neutral' },
+      strategy: { ...DEFAULT_RETIREMENT_STRATEGY, riskProfile: 'custom' },
     }).params;
 
     expect(resolveAssumptionVariants(params).map((v) => v.label)).toEqual([
@@ -215,7 +215,7 @@ describe('recommendStrategy 통합 — 강건성 모드', () => {
       ...allAxesLiveParams,
       strategy: {
         ...DEFAULT_RETIREMENT_STRATEGY,
-        riskProfile: 'neutral', economicScenario: 'recession', objective: 'lifetime_spending',
+        riskProfile: 'custom', economicScenario: 'recession', objective: 'lifetime_spending',
       },
     });
 
