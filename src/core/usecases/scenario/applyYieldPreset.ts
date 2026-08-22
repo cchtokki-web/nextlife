@@ -17,7 +17,8 @@ import { CustomYieldSnapshot, SimulationParams } from '../../entities/types';
 // 이 상수는 applyYieldPreset 외에 volatilityPresets의 volatilityForStockReturn도 소비한다 —
 // 프리셋 수익률과 프리셋 변동성을 잇는 직선의 양 끝 앵커다. 값을 바꾸면 몬테카를로 σ도 함께
 // 움직인다. (2026-08-22부터 StrategyGenerator는 이 표를 쓰지 않는다 — 추천 후보는 사용자가
-// 입력한 수익률 가정을 그대로 물려받는다.)
+// 입력한 수익률 가정을 그대로 물려받는다.) computeSensitivityAnalysis의 수익률 축(안정형/
+// 중립형/공격형 3행)도 이 표를 소비한다 — 계획을 바꾸지 않고 결과만 비교하는 렌즈다.
 export const YIELD_PRESET_RATES = {
   conservative: { stockGrowth: 5, pensionReturn: 3 },
   base: { stockGrowth: 7, pensionReturn: 4 },

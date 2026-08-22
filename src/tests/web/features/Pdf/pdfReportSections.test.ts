@@ -380,15 +380,15 @@ describe('renderSensitivityTableSection', () => {
 
   test('시나리오를 표 행으로 렌더링하며, depletionAge가 null이면 "평생 유지"를 표시한다', () => {
     const scenarios: SensitivityScenario[] = [
-      { key: 'returnDown', label: '투자수익률 -2%p', depletionAge: 82, deltaYears: -6,
+      { key: 'yieldConservative', label: '안정형 가정 (주식 5%)', depletionAge: 82, deltaYears: -6,
         endingAssets: 0, endingAssetsDelta: -2500000000, unmetSpendingYears: 8 },
-      { key: 'returnUp', label: '투자수익률 +2%p', depletionAge: null, deltaYears: 4,
+      { key: 'yieldAggressive', label: '공격형 가정 (주식 9%)', depletionAge: null, deltaYears: 4,
         endingAssets: 5000000000, endingAssetsDelta: 2500000000, unmetSpendingYears: 0 },
     ];
     const html = renderSensitivityTableSection(scenarios);
-    expect(html).toContain('투자수익률 -2%p');
+    expect(html).toContain('안정형 가정 (주식 5%)');
     expect(html).toContain('82세');
-    expect(html).toContain('투자수익률 +2%p');
+    expect(html).toContain('공격형 가정 (주식 9%)');
     expect(html).toContain('평생 유지');
   });
 
@@ -396,9 +396,9 @@ describe('renderSensitivityTableSection', () => {
   // 주지 못했다. 기말자산 열이 그 구분을 만든다.
   test('고갈이 없어도 기말자산과 증감으로 시나리오가 구분된다', () => {
     const scenarios: SensitivityScenario[] = [
-      { key: 'returnDown', label: '투자수익률 -2%p', depletionAge: null, deltaYears: null,
+      { key: 'yieldConservative', label: '안정형 가정 (주식 5%)', depletionAge: null, deltaYears: null,
         endingAssets: 820000000, endingAssetsDelta: -1680000000, unmetSpendingYears: 0 },
-      { key: 'returnUp', label: '투자수익률 +2%p', depletionAge: null, deltaYears: null,
+      { key: 'yieldAggressive', label: '공격형 가정 (주식 9%)', depletionAge: null, deltaYears: null,
         endingAssets: 5100000000, endingAssetsDelta: 2600000000, unmetSpendingYears: 0 },
     ];
     const html = renderSensitivityTableSection(scenarios);
@@ -413,9 +413,9 @@ describe('renderSensitivityTableSection', () => {
   // 보여주면 안 된다.
   test('투자자산이 없으면 결과가 baseline과 동일한 행을 접고 몇 개를 접었는지 밝힌다', () => {
     const scenarios: SensitivityScenario[] = [
-      { key: 'returnDown', label: '투자수익률 -2%p', depletionAge: 51, deltaYears: 0,
+      { key: 'yieldConservative', label: '안정형 가정 (주식 5%)', depletionAge: 51, deltaYears: 0,
         endingAssets: 0, endingAssetsDelta: 0, unmetSpendingYears: 31 },
-      { key: 'returnUp', label: '투자수익률 +2%p', depletionAge: 51, deltaYears: 0,
+      { key: 'yieldAggressive', label: '공격형 가정 (주식 9%)', depletionAge: 51, deltaYears: 0,
         endingAssets: 0, endingAssetsDelta: 0, unmetSpendingYears: 31 },
       { key: 'retirementLater', label: '은퇴시점 +3년', depletionAge: 51, deltaYears: 0,
         endingAssets: 0, endingAssetsDelta: 0, unmetSpendingYears: 28 },
@@ -427,8 +427,8 @@ describe('renderSensitivityTableSection', () => {
       planAssetStatus: 'no_investable_asset',
     });
 
-    expect(html).not.toContain('투자수익률 -2%p');
-    expect(html).not.toContain('투자수익률 +2%p');
+    expect(html).not.toContain('안정형 가정 (주식 5%)');
+    expect(html).not.toContain('공격형 가정 (주식 9%)');
     expect(html).toContain('은퇴시점 +3년');
     expect(html).toContain('투자자산이 없어');
     expect(html).toContain('2개 가정은 생략');
@@ -436,7 +436,7 @@ describe('renderSensitivityTableSection', () => {
 
   test('투자자산이 있으면 baseline 정보를 넘겨도 행을 접지 않는다', () => {
     const scenarios: SensitivityScenario[] = [
-      { key: 'returnDown', label: '투자수익률 -2%p', depletionAge: null, deltaYears: null,
+      { key: 'yieldConservative', label: '안정형 가정 (주식 5%)', depletionAge: null, deltaYears: null,
         endingAssets: 820000000, endingAssetsDelta: -1680000000, unmetSpendingYears: 0 },
     ];
 
@@ -446,13 +446,13 @@ describe('renderSensitivityTableSection', () => {
       planAssetStatus: 'sustained',
     });
 
-    expect(html).toContain('투자수익률 -2%p');
+    expect(html).toContain('안정형 가정 (주식 5%)');
     expect(html).not.toContain('생략');
   });
 
   test('생활비를 채우지 못한 해가 있으면 표에 함께 적는다', () => {
     const scenarios: SensitivityScenario[] = [
-      { key: 'returnDown', label: '투자수익률 -2%p', depletionAge: null, deltaYears: null,
+      { key: 'yieldConservative', label: '안정형 가정 (주식 5%)', depletionAge: null, deltaYears: null,
         endingAssets: 100000000, endingAssetsDelta: -500000000, unmetSpendingYears: 5 },
     ];
 

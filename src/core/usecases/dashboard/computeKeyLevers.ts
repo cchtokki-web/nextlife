@@ -131,13 +131,13 @@ function buildTargetSpendingLever({ shortfall, formatValue }: KeyLeversInput): K
 }
 
 function buildInvestmentReturnLever({ sensitivity, formatValue }: KeyLeversInput): KeyLever | null {
-  const up = findScenario(sensitivity, 'returnUp');
-  const down = findScenario(sensitivity, 'returnDown');
+  const up = findScenario(sensitivity, 'yieldAggressive');
+  const down = findScenario(sensitivity, 'yieldConservative');
   if (!up && !down) return null;
 
   const parts: string[] = [];
-  if (up) parts.push(`+2%p면 ${describeScenario(up, formatValue)}`);
-  if (down) parts.push(`−2%p면 ${describeScenario(down, formatValue)}`);
+  if (up) parts.push(`공격형 가정(주식 9%)이면 ${describeScenario(up, formatValue)}`);
+  if (down) parts.push(`안정형 가정(주식 5%)이면 ${describeScenario(down, formatValue)}`);
 
   return {
     key: 'investmentReturn',
@@ -145,7 +145,7 @@ function buildInvestmentReturnLever({ sensitivity, formatValue }: KeyLeversInput
     // 수익률은 «정하는» 것이 아니라 «기대하는» 것이다. 그 구분을 밝히지 않으면 이 항목이
     // "수익률을 2%p 올리세요"라는 실행 불가능한 조언으로 읽힌다.
     detail:
-      `연 수익률 ${parts.join(' / ')}. 다만 수익률은 정할 수 있는 값이 아니라 자산 배분의 결과이며, ` +
+      `${parts.join(' / ')}. 다만 수익률은 정할 수 있는 값이 아니라 자산 배분의 결과이며, ` +
       '기대수익을 높이면 위 두 방향의 폭도 함께 커집니다.',
   };
 }
