@@ -55,13 +55,19 @@ describe('SimulationEngine - unmetSpending', () => {
   });
 
   // 이 항등식이 성립해야 unmetSpending을 "쓰려 했던 금액 − 실제로 쓴 금액"으로 읽을 수 있다.
-  test('실제 지출과 미충족의 합은 목표 생활비와 같다', () => {
+  //
+  // **원 단위로 성립한다.** unmetSpending은 달마다 원 단위로 반올림되고(roundToWon) spending은
+  // 반올림하지 않으므로, 합은 목표에서 월 0.5원 = 연 6원까지 벗어날 수 있다. 그 반올림이
+  // 1e-9원짜리 잡음을 HARD 미달로 읽던 것을 끊는다(money.ts).
+  // 여기에 그보다 촘촘한 허용오차를 쓰면 이 픽스처의 미달이 «정수라서» 통과할 뿐이고,
+  // 소수 미달이 나오는 계획에서 깨진다.
+  test('실제 지출과 미충족의 합은 목표 생활비와 원 단위로 같다', () => {
     const result = engine.run(params({
       otherIncomes: [{ id: 'rent', label: '임대소득', monthlyAmount: 400000, currency: 'KRW' }],
     }));
 
     for (const year of result.yearlyResults) {
-      expect(year.spending + year.unmetSpending).toBeCloseTo(12000000, 6);
+      expect(Math.abs(year.spending + year.unmetSpending - 12_000_000)).toBeLessThanOrEqual(6);
     }
   });
 
