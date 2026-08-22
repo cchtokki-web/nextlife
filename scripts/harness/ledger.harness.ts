@@ -40,6 +40,17 @@ const OUT_DIR = process.env.HARNESS_OUT ?? path.join(process.cwd(), 'scripts/har
 const INPUT = process.env.LEDGER_INPUT
   ?? path.join(process.cwd(), 'scripts/harness/input/report-case.json');
 
+// 기본 경로의 파일은 «저장소에 없다» — 실제 사용자의 자산·소득이 담긴 시나리오라
+// 커밋하지 않기 때문이다(.gitignore). 없을 때 raw ENOENT를 내면 「하니스가 고장났다」로
+// 읽히므로, 무엇을 해야 하는지 말하고 멈춘다.
+if (!fs.existsSync(INPUT)) {
+  throw new Error(
+    `원장 하니스에 입력이 필요합니다: ${INPUT}\n`
+    + '  LEDGER_INPUT=<시나리오.json> npm run harness:ledger\n'
+    + '  (기본 경로의 파일은 실제 재무 데이터라 저장소에 두지 않습니다)'
+  );
+}
+
 const 만 = 10_000;
 
 function writeOut(name: string, body: string) {

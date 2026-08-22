@@ -115,7 +115,13 @@ AUDIT-003에서 거짓 불변식은 제거했지만 **화면상의 증상은 그
 
 ---
 
-## 7. `npm run harness:personas`가 항상 1건 실패로 보고된다
+## 7. `npm run harness:personas`가 항상 1건 실패로 보고된다  ✅ 해결 (아래 커밋)
+
+> **해결됨.** 설정의 `include`가 `**/*.harness.ts`라 스크립트 이름과 달리 원장 하니스까지
+> 함께 돌았다. `harness:personas`는 페르소나만 돌리고 `harness:ledger`를 따로 뒀다.
+> 원장 하니스는 입력이 없으면 raw ENOENT 대신 «무엇을 해야 하는지» 말하고 멈춘다.
+> 겸사겸사 `/scripts/harness/input/`을 `.gitignore`에 넣었다 — 기본 경로가 그곳을
+> 가리키는데 실제 사용자의 자산·소득이 담기는 자리라 커밋되면 안 된다.
 
 설정이 `ledger.harness.ts`도 함께 돌리는데, 기본 입력 파일
 `scripts/harness/input/report-case.json`이 없어 ENOENT가 난다. 페르소나 하니스 자체는
