@@ -9,7 +9,8 @@ import type { StrategyApplyPreview } from '../../../../core/usecases/dashboard/a
 import type { SustainableSpendingAdvice } from '../../../../core/usecases/dashboard/computeSustainableSpendingAdvice';
 import type { StrategyOptimizationStatus } from '../../../hooks/useStrategyOptimization';
 import type { AppliedStrategySnapshot } from '../../../hooks/useAppliedStrategy';
-import { RETIREMENT_GOAL_CATALOG } from '../../RetirementGoals/goalCatalog';
+import { RETIREMENT_GOAL_CONSTRAINT_LABELS } from '../../../../core/entities/retirementGoal';
+import { hardConstraintLabel, RETIREMENT_GOAL_CATALOG } from '../../RetirementGoals/goalCatalog';
 import GlassCard from '../../../components/GlassCard';
 import styles from '../Dashboard.module.css';
 
@@ -167,14 +168,6 @@ function goalLabel(type: RetirementGoalType): string {
   return RETIREMENT_GOAL_CATALOG.find((goal) => goal.type === type)?.label ?? type;
 }
 
-const HARD_CONSTRAINT_LABELS: Record<string, string> = {
-  HARD_RETIREMENT_AGE: '희망 은퇴 나이',
-  HARD_SPENDING_SHORTFALL: '목표 생활비 유지',
-  HARD_ASSET_SURVIVAL: '자산 고갈 방지',
-  HARD_MINIMUM_ENDING_ASSETS: '최소 기말자산',
-  HARD_UNSPECIFIED: '사유가 기록되지 않은 필수 조건',
-};
-
 /**
  * 결과가 없을 때 원인별로 다른 안내를 낸다. 예전에는 네 가지 원인이 모두
  * "현재 목표 조건을 만족하는 추천 후보가 없습니다" 하나로 표시돼, 엔진이 전부 예외로 죽은
@@ -201,16 +194,15 @@ function EmptyOutcomeCard({ outcome }: { outcome?: OptimizationOutcome }) {
   }
 
   if (outcome?.kind === 'no_candidate_survived') {
-    const blocked = outcome.blockedBy
-      .map((code) => HARD_CONSTRAINT_LABELS[code] ?? code)
-      .join(', ');
+    const blocked = outcome.blockedBy.map(hardConstraintLabel).join(', ');
     return (
       <GlassCard className="text-sm text-foreground-muted">
         {outcome.hardConstraintRejectedCount > 0 && (
           <p>
-            선택한 필수(HARD) 목표를 동시에 만족하는 전략을 찾지 못했습니다
-            {blocked && <> — 후보를 막은 조건: {blocked}</>}. 해당 목표를 선택 목표(SOFT)로
-            바꾸거나 목표치를 조정하면 후보를 찾을 수 있습니다.
+            「{RETIREMENT_GOAL_CONSTRAINT_LABELS.HARD}」로 정한 목표를 동시에 만족하는 전략을
+            찾지 못했습니다{blocked && <> — 후보를 막은 조건: {blocked}</>}. 해당 목표의 조건
+            강도를 「{RETIREMENT_GOAL_CONSTRAINT_LABELS.SOFT}」으로 바꾸거나 목표치를 조정하면
+            후보를 찾을 수 있습니다.
           </p>
         )}
         {outcome.failedCount > 0 && (
@@ -439,7 +431,9 @@ function RecommendationBody({
     <>
       {unsupportedHardGoals && unsupportedHardGoals.length > 0 && (
         <GlassCard className={styles.unsupportedHardGoalNotice} role="note">
-          <strong>다음 필수(HARD) 목표는 현재 검증할 수 없습니다:</strong>{' '}
+          <strong>
+            다음 「{RETIREMENT_GOAL_CONSTRAINT_LABELS.HARD}」 목표는 현재 검증할 수 없습니다:
+          </strong>{' '}
           {unsupportedHardGoals.map(goalLabel).join(', ')}. 아래 추천은 이 목표를 만족하는지
           확인하지 않은 결과입니다.
         </GlassCard>

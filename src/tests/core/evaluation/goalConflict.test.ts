@@ -178,7 +178,9 @@ describe('계획이 바닥보다 낮게 겨냥하면 자산이 남아도 HARD �
       .toEqual(['HARD_SPENDING_SHORTFALL']);
     expect(evaluated.hardConstraintFailures[0].goalType).toBe('LIVING_EXPENSE_STABILITY');
     // 월 300만원 목표에 실제 228만원 — 72만원이 영구적으로 모자란다.
-    expect(evaluated.hardConstraintFailures[0].reason).toContain('720000');
+    // 사유는 사람이 읽는 문장이므로 금액에 천 단위 구분자와 단위가 붙는다.
+    expect(evaluated.hardConstraintFailures[0].reason).toContain('월 720,000원');
+    expect(evaluated.hardConstraintFailures[0].reason).toContain('월 3,000,000원');
   });
 });
 

@@ -30,6 +30,7 @@ import {
 import { explainGoalShortfall } from '../../../core/usecases/dashboard/explainGoalShortfall';
 import { resolveTerminalAssetDisplay } from '../../../core/usecases/dashboard/resolveTerminalAssetDisplay';
 import type { GoalSuccessConditions } from '../../../core/usecases/goals/goalSuccessConditions';
+import { RETIREMENT_GOAL_CONSTRAINT_LABELS } from '../../../core/entities/retirementGoal';
 import { retirementGoalDefinition } from '../RetirementGoals/goalCatalog';
 import { KeyLeversCard } from './recommendation/KeyLeversCard';
 import { NATIONAL_PENSION_NORMAL_START_AGE } from '../../../core/usecases/pension/nationalPensionRules';
@@ -489,12 +490,12 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
               {sustainableSpendingAdvice?.kind === 'below_hard_floor' && (
                 <StatusNotice
                   tone="danger" icon={<AlertTriangle size={19} aria-hidden="true" />}
-                  title="반드시 지키기로 정한 생활비를 지속할 수 없습니다"
+                  title={`${RETIREMENT_GOAL_CONSTRAINT_LABELS.HARD}로 정한 생활비를 지속할 수 없습니다`}
                 >
                   지속 가능한 한도는 월 <strong>{formatValue(sustainableSpendingAdvice.sustainableMonthly)}</strong>으로,
-                  반드시 지키기로 정한 월 {formatValue(sustainableSpendingAdvice.hardFloorMonthly)}보다
+                  {RETIREMENT_GOAL_CONSTRAINT_LABELS.HARD}로 정한 월 {formatValue(sustainableSpendingAdvice.hardFloorMonthly)}보다
                   월 {formatValue(sustainableSpendingAdvice.difference)} 모자랍니다.
-                  생활비 목표를 낮추거나 조건 강도를 「가능하면 달성」으로 바꾸는 방향을 검토해 보세요.
+                  생활비 목표를 낮추거나 조건 강도를 「{RETIREMENT_GOAL_CONSTRAINT_LABELS.SOFT}」으로 바꾸는 방향을 검토해 보세요.
                 </StatusNotice>
               )}
               {sustainableSpendingAdvice?.kind === 'can_spend_more' && (

@@ -36,6 +36,15 @@ export type HardConstraintFailureCode =
    */
   | 'HARD_UNSPECIFIED';
 
+/**
+ * 사유 문장에 들어가는 금액. 원 단위 정수 + 천 단위 구분자 + 단위까지 붙여야 사람이 읽을 수
+ * 있다 — `HARD 목표 3000000`은 300만원인지 30만원인지 눈으로 세어야 한다. 형식만 바꿀 뿐
+ * 값을 환산하지 않는다(만원·억원 접기는 표시 계층의 일이다).
+ */
+function krw(amount: number): string {
+  return `${Math.round(amount).toLocaleString('ko-KR')}원`;
+}
+
 export interface HardConstraintFailure {
   code: HardConstraintFailureCode;
   /** Absent only for HARD_UNSPECIFIED, where no goal was named by the rejecting engine. */
@@ -683,13 +692,17 @@ export class DefaultGoalEvaluationEngine implements GoalEvaluationEngine {
         // 「반드시 월 300만원」이 250만원으로 조용히 달성 처리된다.
         const floorShortfall = worstMonthlyHardSpendingShortfall(goal, strategy, result, params);
         if (hasShortfall || floorShortfall > 0) {
+          // 부족이 잡혔다면 이 목표가 바닥을 세웠다는 뜻이라 목표치가 반드시 있다. 사유에
+          // 적는 금액도 엔진이 실제로 세운 바닥과 같은 함수에서 뽑는다 — targetValue를
+          // 직접 읽으면 가드(0·undefined)가 갈라진다.
+          const floorMonthly = hardSpendingFloorTarget(goal) ?? 0;
           hardConstraintFailures.push({
             code: 'HARD_SPENDING_SHORTFALL',
             goalType: goal.type,
             reason: hasShortfall
               ? '은퇴 기간 중 목표 생활비 미충족 연도가 있습니다.'
-              : `계획이 겨냥한 생활비가 HARD 목표 ${goal.targetValue}에 못 미쳐 월 `
-                + `${Math.round(floorShortfall)}이 모자랍니다.`,
+              : `계획이 겨냥한 생활비가 HARD 목표 월 ${krw(floorMonthly)}에 못 미쳐 `
+                + `월 ${krw(floorShortfall)}이 모자랍니다.`,
           });
         }
         continue;
@@ -712,7 +725,7 @@ export class DefaultGoalEvaluationEngine implements GoalEvaluationEngine {
           hardConstraintFailures.push({
             code: 'HARD_MINIMUM_ENDING_ASSETS',
             goalType: goal.type,
-            reason: `기말 자산이 HARD 목표 ${goal.targetValue}에 미달합니다.`,
+            reason: `기말 자산이 HARD 목표 ${krw(goal.targetValue)}에 미달합니다.`,
           });
         }
         continue;

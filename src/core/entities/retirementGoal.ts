@@ -25,6 +25,19 @@ export interface RetirementGoal {
 export const MAX_RETIREMENT_GOALS = 5;
 
 /**
+ * 조건 강도의 표시 이름. **여기가 유일한 출처다** — 목표 선택 화면·대시보드 안내·추천 카드·
+ * PDF가 같은 말을 쓴다. 저장되는 값은 언제나 `'HARD' | 'SOFT'`이고, 사람이 읽는 자리에서만
+ * 이 이름으로 바꾼다.
+ *
+ * 한 곳에 두는 이유는 라벨 자체가 계약이기 때문이다. 화면이 「반드시 지키기」라 부른 것을
+ * 다른 화면이 「필수」라 부르면, 사용자는 자기가 못박은 조건이 어디서 깨졌는지 추적할 수 없다.
+ */
+export const RETIREMENT_GOAL_CONSTRAINT_LABELS: Record<RetirementGoalConstraintType, string> = {
+  HARD: '반드시 지키기',
+  SOFT: '가능하면 달성',
+};
+
+/**
  * 생활비에 «관한» 목표 유형. 유형은 「무엇에 관한 목표인가」만 말하고, 얼마나 구속력이
  * 있는지는 constraintType이 따로 정한다(스펙 「유형과 강도를 분리한다」).
  */

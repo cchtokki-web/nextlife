@@ -13,7 +13,7 @@ import {
   YearLedgerDiagnostics,
 } from '../entities/types';
 import { getRetirementGrade, RetirementGrade } from '../entities/retirementGrade';
-import { computeLifetimeUtility } from './utility/UtilityEngine';
+import { computeLifetimeUtility, inflationFactorForYear } from './utility/UtilityEngine';
 import { computeAnnualHealthcareCostBreakdown } from './healthcare/healthcareCosts';
 import { spendingMultiplierForAge } from './spending/spendingCurve';
 import { hasSpendingShortfall } from './spending/spendingShortfall';
@@ -996,7 +996,8 @@ export class LegacySimulationEngine implements SimulationEngineContract {
 
       // HARD 생활비 목표에서 유도된 이 해의 월 바닥(SimulationParams.hardSpendingFloor 주석).
       // 목표 생활비와 **같은** 물가 처리를 한다 — 명목 모드에서 바닥만 물가를 안 타면 해가
-      // 갈수록 바닥이 조용히 낮아져 「반드시 지키기」가 이름만 남는다.
+      // 갈수록 바닥이 조용히 낮아져 「반드시 지키기」가 이름만 남는다. 그래서 물가 배수는
+      // 평가 계층이 쓰는 것과 같은 함수(inflationFactorForYear) 하나에서만 나온다.
       //
       // 연령대별 배수(spendingCurve)는 곱하지 않는다. 그 곡선은 「이만큼 쓰겠다」는 선호이지
       // 「이만큼은 반드시 쓴다」가 아니다. 곡선이 목표를 바닥 아래로 내린 해에는 아래
@@ -1005,9 +1006,7 @@ export class LegacySimulationEngine implements SimulationEngineContract {
       //
       // 은퇴 전에는 목표 생활비가 0이라 부족분도 0이므로 바닥도 서지 않는다.
       const monthlyHardSpendingFloorDisplay = (params.hardSpendingFloor !== undefined && isRetired)
-        ? (inflationMode === 'nominal'
-          ? params.hardSpendingFloor * Math.pow(1 + infRateAnnual, y)
-          : params.hardSpendingFloor)
+        ? params.hardSpendingFloor * inflationFactorForYear(params, currentAge)
         : 0;
 
       let monthlyNationalPensionDisplay = 0;

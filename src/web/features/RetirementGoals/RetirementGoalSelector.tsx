@@ -5,6 +5,8 @@ import {
   MAX_RETIREMENT_GOALS,
   moveRetirementGoal,
   normalizeRetirementGoals,
+  RETIREMENT_GOAL_CONSTRAINT_LABELS,
+  SPENDING_GOAL_TYPES,
   type RetirementGoal,
   type RetirementGoalConstraintType,
   type RetirementGoalType,
@@ -182,10 +184,28 @@ export function RetirementGoalSelector({
                       })}
                       className="h-10 w-full rounded-lg border border-card-border bg-black/20 px-3 text-sm text-foreground outline-none focus:border-primary"
                     >
-                      <option value="HARD">반드시 지키기</option>
-                      <option value="SOFT">가능하면 달성</option>
+                      <option value="HARD">{RETIREMENT_GOAL_CONSTRAINT_LABELS.HARD}</option>
+                      <option value="SOFT">{RETIREMENT_GOAL_CONSTRAINT_LABELS.SOFT}</option>
                     </select>
                   </label>
+                  {/* 생활비 목표에만 붙인다. 다른 유형에서는 강도의 «뜻»이 달라서다 —
+                      은퇴 나이나 기말자산의 HARD는 후보를 거르는 조건이지, 인출 중에
+                      계좌 순서를 깨는 규칙이 아니다. 같은 문구를 붙이면 거짓이 된다. */}
+                  {SPENDING_GOAL_TYPES.includes(definition.type) && (
+                    <p className="text-xs leading-relaxed text-foreground-muted">
+                      <strong className="text-foreground">
+                        {RETIREMENT_GOAL_CONSTRAINT_LABELS.SOFT}
+                      </strong>
+                      {' '}— 목표 생활비에 미달해도 허용합니다. 세금이나 인출 순서를 강제로
+                      깨지 않습니다.
+                      <br />
+                      <strong className="text-foreground">
+                        {RETIREMENT_GOAL_CONSTRAINT_LABELS.HARD}
+                      </strong>
+                      {' '}— 법적으로 인출 가능한 자산이 있다면 계좌 순서·월 인출 목표·세제
+                      최적화보다 생활비 충당을 우선합니다.
+                    </p>
+                  )}
                 </div>
               </div>
             );

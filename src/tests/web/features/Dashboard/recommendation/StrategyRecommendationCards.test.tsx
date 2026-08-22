@@ -135,7 +135,7 @@ describe('StrategyRecommendationCards', () => {
     // 계산이 깨진 경우: 목표가 불가능하다고 말하면 안 된다.
     expect(screen.getByText(/계산 중 오류로 평가하지 못했습니다/)).toBeInTheDocument();
     expect(screen.getByText(/projection exploded/)).toBeInTheDocument();
-    expect(screen.queryByText(/필수\(HARD\) 목표를 동시에 만족하는 전략을 찾지 못했습니다/))
+    expect(screen.queryByText(/목표를 동시에 만족하는 전략을 찾지 못했습니다/))
       .not.toBeInTheDocument();
     unmount();
 
@@ -154,7 +154,7 @@ describe('StrategyRecommendationCards', () => {
     );
 
     // 목표가 충돌한 경우: 무엇이 막았는지와 조정 방법을 알려준다.
-    expect(screen.getByText(/필수\(HARD\) 목표를 동시에 만족하는 전략을 찾지 못했습니다/))
+    expect(screen.getByText(/목표를 동시에 만족하는 전략을 찾지 못했습니다/))
       .toBeInTheDocument();
     expect(screen.getByText(/자산 고갈 방지/)).toBeInTheDocument();
     expect(screen.queryByText(/계산 중 오류/)).not.toBeInTheDocument();
@@ -189,7 +189,7 @@ describe('StrategyRecommendationCards', () => {
       />
     );
 
-    expect(screen.getByText(/다음 필수\(HARD\) 목표는 현재 검증할 수 없습니다/)).toBeInTheDocument();
+    expect(screen.getByText(/목표는 현재 검증할 수 없습니다/)).toBeInTheDocument();
     expect(screen.getByText(/주거 안정/)).toBeInTheDocument();
   });
 

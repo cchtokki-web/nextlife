@@ -1,6 +1,7 @@
 import { describe, test, expect } from 'vitest';
 import { SimulationEngine } from '@/core/usecases/SimulationEngine';
 import { SimulationParams } from '@/core/entities/types';
+import { hardSpendingFloorTarget, type RetirementGoal } from '@/core/entities/retirementGoal';
 import { runMonteCarlo } from '@/core/usecases/montecarlo/MonteCarloEngine';
 import { normalizeSimulationParams } from '@/infrastructure/storage/normalizeSimulationParams';
 import { migrateRetirementGoals } from '@/core/usecases/goals/retirementGoalAdapter';
@@ -11,8 +12,9 @@ import auditCase from '@/tests/fixtures/auditReportCase.json';
 
 // 계산 정합성 감사(2026-08-22)에서 «재현»한 결함들을 고정한다.
 //
-// **이 파일의 테스트는 현재 실패한다.** 수정 전에 결함을 실행 가능한 형태로 남기는 것이
-// 목적이고, 각 테스트는 "무엇이 옳은가"를 단언한다. 수정이 승인되면 이 파일이 통과 기준이 된다.
+// 처음에는 «실패하는» 파일이었다. 수정 전에 결함을 실행 가능한 형태로 남기는 것이 목적이었고,
+// 각 테스트는 "무엇이 옳은가"를 단언한다. 이제 전부 통과하며, 단언은 그대로 통과 기준이 된다 —
+// 통과시키려고 단언을 약하게 고치지 않는다.
 //
 // 감사 하니스: `scripts/harness/ledger.harness.ts`
 //   npx vitest run --config vitest.harness.config.ts scripts/harness/ledger.harness.ts
@@ -88,8 +90,20 @@ describe('[AUDIT-002] 사적연금 저율과세 한도가 실제 인출 한도�
   //
   // 지시문 §11: 「인출 가능 여부 ≠ 저율과세 여부」. 한도를 넘으면 세율이 오를 뿐,
   // 인출 자체가 막혀서는 안 된다.
+  //
+  // 「반드시 지키기」로 정한 생활비 목표가 있어야 인출이 세제 최적화보다 우선한다. 엔진은
+  // 목표를 모르므로(엔진에 retirementGoals는 없다) compileStrategy와 «같은» 규칙인
+  // hardSpendingFloorTarget으로 바닥을 유도해 파라미터로 넘긴다 — 화면에서 목표를 고른
+  // 계획이 엔진에 도달하는 모습 그대로다.
+  const HARD_SPENDING_GOAL: RetirementGoal = {
+    type: 'LIVING_EXPENSE_STABILITY', priority: 1,
+    constraintType: 'HARD', targetValue: 5_000_000,
+  };
+
   const pensionOnly = (limit: boolean) => baseParams({
     userProfile: { currentAge: 60, retirementAge: 60, expectancy: 62, targetMonthlySpending: 5_000_000 },
+    retirementGoals: [HARD_SPENDING_GOAL],
+    hardSpendingFloor: hardSpendingFloorTarget(HARD_SPENDING_GOAL),
     privatePensions: [{
       id: 'p', type: 'irp', investmentType: 'etf', name: 'IRP',
       balance: 500_000_000, monthlyContribution: 0,
@@ -101,7 +115,9 @@ describe('[AUDIT-002] 사적연금 저율과세 한도가 실제 인출 한도�
   test('한도를 켜도 잔액이 충분하면 목표 생활비를 채운다', () => {
     const result = new SimulationEngine().runSingle(pensionOnly(true));
 
-    // 5억이 남아 있는데 연 1,500만원만 꺼내 4,582만원을 부족으로 기록하는 상태.
+    // 5억이 남아 있는데 연 1,500만원만 꺼내 4,582만원을 부족으로 기록하던 상태.
+    // 저율과세 한도는 세율의 경계이지 인출의 문이 아니다 — 「반드시 지키기」 바닥이 서면
+    // 1단계가 한도를 넘겨서라도 생활비를 채운다.
     for (const year of result.yearlyResults) {
       expect(year.unmetSpending).toBe(0);
     }
