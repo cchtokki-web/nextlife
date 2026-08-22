@@ -1469,32 +1469,39 @@ export class LegacySimulationEngine implements SimulationEngineContract {
               });
           }
 
-          // 기존 저장 시나리오는 생활비에 ISA를 쓰지 않았다. 계좌군 정책을 명시한 새 경로에서만
-          // ISA를 후보로 등록해 opt-in 호환성을 지킨다. 중도인출은 프로젝트가 확실히 추적하는
-          // 납입원금 범위로 제한하고, 수익금 과세 규칙은 새로 가정하지 않는다.
-          if (withdrawalPlan?.accountWithdrawalPolicy !== undefined) {
-            for (const isa of activeIsas) {
-              withdrawalAccounts.push(taxFreeAccount({
-                id: isa.id,
-                type: 'ISA',
-                balance: () => this.convertValue(
-                  isa.currentBalance, isa.currency, displayCurrency, exchangeRate
-                ),
-                availableGross: () => Math.min(
-                  this.convertValue(isa.currentBalance, isa.currency, displayCurrency, exchangeRate),
-                  this.convertValue(isa.totalInvested, isa.currency, displayCurrency, exchangeRate)
-                ),
-                withdraw: (grossDisplay) => {
-                  const grossIsaCurrency = this.convertValue(
-                    grossDisplay, displayCurrency, isa.currency, exchangeRate
-                  );
-                  const actual = Math.min(isa.currentBalance, isa.totalInvested, grossIsaCurrency);
-                  isa.currentBalance -= actual;
-                  isa.totalInvested -= actual;
-                  return this.convertValue(actual, isa.currency, displayCurrency, exchangeRate);
-                },
-              }));
-            }
+          // ISA도 인출 계좌로 등록한다. 예전에는 계좌군 정책을 «명시»한 경로에서만
+          // 등록했는데(옛 시나리오 호환), 그 게이트가 정책 기본값과 모순이었다 —
+          // 아래 withdrawalEngine 호출은 정책 미지정 시 'GENERAL_FIRST'를 쓰고
+          // 그 순서에는 ISA가 마지막으로 들어 있다(WithdrawalEngine의 POLICY_ORDER).
+          // 즉 엔진은 「GENERAL_FIRST를 쓴다」고 말하면서 정렬할 ISA를 주지 않았고,
+          // ISA만 들고 있는 계획은 잔액이 그대로인 채 매년 생활비 전액이 미충족으로
+          // 기록됐다(총자산이 줄지 않아 고갈로도 잡히지 않는다).
+          //
+          // 중도인출은 프로젝트가 확실히 추적하는 납입원금(totalInvested) 범위로
+          // 제한한다 — 한국 ISA가 그 범위의 중도인출을 허용하므로 모델이 현실과 맞고,
+          // 수익금은 만기까지 남아 비과세 한도 계산에 그대로 들어간다.
+          // 순서상 마지막이므로 다른 계좌를 다 쓴 뒤에만 헐린다.
+          for (const isa of activeIsas) {
+            withdrawalAccounts.push(taxFreeAccount({
+              id: isa.id,
+              type: 'ISA',
+              balance: () => this.convertValue(
+                isa.currentBalance, isa.currency, displayCurrency, exchangeRate
+              ),
+              availableGross: () => Math.min(
+                this.convertValue(isa.currentBalance, isa.currency, displayCurrency, exchangeRate),
+                this.convertValue(isa.totalInvested, isa.currency, displayCurrency, exchangeRate)
+              ),
+              withdraw: (grossDisplay) => {
+                const grossIsaCurrency = this.convertValue(
+                  grossDisplay, displayCurrency, isa.currency, exchangeRate
+                );
+                const actual = Math.min(isa.currentBalance, isa.totalInvested, grossIsaCurrency);
+                isa.currentBalance -= actual;
+                isa.totalInvested -= actual;
+                return this.convertValue(actual, isa.currency, displayCurrency, exchangeRate);
+              },
+            }));
           }
 
           // 사적연금은 55세부터만 법적으로 인출할 수 있다. 세후 필요액을 기준으로 세전 인출액을
