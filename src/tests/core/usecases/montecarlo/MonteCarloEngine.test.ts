@@ -14,6 +14,8 @@ import { buildReturnShockPath } from '@/core/usecases/montecarlo/returnPath';
 import { mulberry32, deriveSeed } from '@/core/usecases/montecarlo/rng';
 import { simulationYearCount } from '@/core/usecases/montecarlo/horizon';
 import { DEFAULT_RETIREMENT_STRATEGY } from '@/core/usecases/strategy/compileStrategy';
+import { resolveSpendingCurve } from '@/core/usecases/spending/spendingCurve';
+import { explainGoalShortfall } from '@/core/usecases/dashboard/explainGoalShortfall';
 
 const engine = new SimulationEngine();
 
@@ -564,6 +566,65 @@ describe('goalSuccessProbability — 선택한 목표가 판정 조건을 정한
     expect(depleting.successRate).toBe(1 - depleting.goalFailure.observedAssetDepletionCount / 20);
   });
 
+  // 「판정 카운트가 전부 0인데 자산은 고갈됐다」는 모순처럼 보이지만 실제로 도달한다.
+  // depletionAge는 «중간에» 0을 찍은 나이이고 endingAssets는 «마지막» 잔액이다. 연금이
+  // 후반 생활비를 덮으면 잔액이 다시 쌓여, 고갈과 「생활비 미달 없음」·「기말자산 통과」가
+  // 동시에 성립한다(MonteCarloResult.spendingSuccessRate 주석의 79세 경로).
+  //
+  // 이 상태를 만들어 두는 이유: explainGoalShortfall이 이 조합에 붙이는 문장이
+  // 손으로 만든 breakdown에서만 성립하는 가짜 상태가 아님을 고정하기 위해서다.
+  test('연금이 후반 생활비를 덮으면 고갈이 있어도 판정 카운트가 전부 0이 된다', () => {
+    // 65세 은퇴, 국민연금이 70대 생활비를 «거의» 덮는다(부족분이 판정 엡실론 미만).
+    // 60대 적자로 자산이 73세에 마르고, 80세에 생활비 곡선이 내려가면서 잉여가 다시 쌓인다.
+    const pensionCarried = params({
+      userProfile: { currentAge: 65, retirementAge: 65, expectancy: 90, targetMonthlySpending: 2_500_000 },
+      assets: [
+        { id: 'a1', type: 'etf', ticker: 'X', name: '예금', quantity: 1, averagePrice: 22_000_000,
+          totalReturn: 0, dividendYield: 0, monthlyContribution: 0, reinvestDividend: true, currency: 'KRW' },
+      ],
+      privatePensions: [],
+      nationalPension: { expectedMonthlyAmount: 2_275_000 },
+      inflationRate: 0,
+      spendingCurve: resolveSpendingCurve('front_loaded'),
+      retirementGoals: [{ type: 'LIVING_EXPENSE_STABILITY', priority: 1, constraintType: 'SOFT' }],
+    });
+    // 변동성 0. 이 조합은 «생활비 부족분이 엡실론 미만»이라는 좁은 조건 위에 서 있어서,
+    // 충격을 주면 시행마다 다른 이야기가 되어 고정할 것이 없어진다.
+    const mc = runMonteCarlo(pensionCarried, engine, { trials: 20, seed: 2026, annualStdDev: 0 });
+
+    expect(mc.goalFailure.spendingShortfall).toBe(0);
+    expect(mc.goalFailure.assetDepletion).toBe(0);
+    expect(mc.goalFailure.terminalShortfall).toBe(0);
+    expect(mc.goalSuccessProbability).toBe(1);
+    // 그런데 자산은 실제로 바닥났고, 기말에는 다시 쌓여 있다.
+    expect(mc.goalFailure.observedAssetDepletionCount).toBe(20);
+    expect(mc.goalFailure.observedEarliestDepletionAge).toBe(73);
+    expect(mc.endingAssets.p50).toBeGreaterThan(0);
+
+    // 화면·PDF가 이 상태에 붙이는 문장(문구 자체는 explainGoalShortfall 테스트가 고정한다).
+    const explanation = explainGoalShortfall({
+      goalFailure: mc.goalFailure,
+      trials: mc.trials,
+      params: pensionCarried,
+      formatValue: (v) => `${Math.round(v / 10_000).toLocaleString()}만원`,
+    });
+    expect(explanation.headline).toContain('20회(가장 이른 73세)');
+    expect(explanation.headline).not.toBe('모든 시행에서 목표 조건을 만족했습니다.');
+  });
+
+  // 개수와 나이가 «같은 술어»에서 나와야 한다. depletion.earliestAge는 successAge를 묻지
+  // 않는 다른 술어라, 한 문장 안에서 개수는 이쪽 나이는 저쪽에서 가져오면 경계가 갈라지는
+  // 날 조용히 어긋난다(GoalFailureBreakdown 주석).
+  test('관측 고갈이 없으면 관측 고갈 나이도 없다', () => {
+    const safe = runMonteCarlo(params({
+      userProfile: { currentAge: 55, retirementAge: 60, expectancy: 85, targetMonthlySpending: 500_000 },
+      retirementGoals: [{ type: 'LIVING_EXPENSE_STABILITY', priority: 1, constraintType: 'SOFT' }],
+    }), engine, { trials: 20, seed: 7, annualStdDev: 5 });
+
+    expect(safe.goalFailure.observedAssetDepletionCount).toBe(0);
+    expect(safe.goalFailure.observedEarliestDepletionAge).toBeNull();
+  });
+
   test('자산 고갈 방지를 고른 계획에서는 관측값과 판정값이 같다', () => {
     const guarded = runMonteCarlo(params({
       userProfile: { currentAge: 55, retirementAge: 60, expectancy: 90, targetMonthlySpending: 8_000_000 },
@@ -585,6 +646,41 @@ describe('goalSuccessProbability — 선택한 목표가 판정 조건을 정한
     expect(qualitativeOnly.goalConditions.unmeasuredGoals).toEqual(['TAX_OPTIMIZATION']);
     expect(qualitativeOnly.goalConditions.requireSpendingTarget).toBe(true);
     expect(qualitativeOnly.goalConditions.requireAssetSurvival).toBe(true);
+  });
+
+  // 「자산 성장」은 판정 가능한 «유형»이지만 목표액을 묻는 UI가 없어(goalCatalog에 target이
+  // 없다) 단독으로 고르면 세 조건이 모두 빈다. 유형만 보는 가드는 그것을 'selected_goals'로
+  // 통과시켰고, 그래서 은퇴 직후 자산이 바닥나는 계획도 **언제나 100%**를 받았다.
+  //
+  // **이 테스트가 고정하는 것은 확률 그 자체다.** basis만 검사하면 조건은 켜졌는데 확률이
+  // 100% 그대로인 상태를 놓친다.
+  test('자산 성장만 고른 계획도 100%가 되지 않는다', () => {
+    const doomed = params({
+      userProfile: { currentAge: 60, retirementAge: 60, expectancy: 90, targetMonthlySpending: 4_000_000 },
+      assets: [
+        { id: 'a1', type: 'etf', ticker: 'SPY', name: 'S&P500', quantity: 100, averagePrice: 1_000_000,
+          totalReturn: 4, dividendYield: 0, monthlyContribution: 0, reinvestDividend: true, currency: 'KRW' },
+      ],
+      privatePensions: [],
+      nationalPension: { expectedMonthlyAmount: 500_000 },
+      retirementGoals: [{ type: 'ASSET_GROWTH', priority: 1, constraintType: 'SOFT' }],
+    });
+    const mc = runMonteCarlo(doomed, engine, { trials: 100, seed: 2026, annualStdDev: 15 });
+
+    // 전 시행이 실제로 고갈되는 계획이다 — 100%가 나올 여지가 없다.
+    expect(mc.goalFailure.observedAssetDepletionCount).toBe(100);
+    expect(mc.goalConditions.basis).toBe('plan_defaults');
+    expect(mc.goalSuccessProbability).toBeLessThan(1);
+  });
+
+  // 목표를 고르지 않은 계획은 이 변경과 무관하다(legacy_plan). 목표 화면을 거친 적 없는
+  // 시나리오까지 건드리면 저장된 모든 계획의 확률이 움직인다.
+  test('목표 키가 없는 계획은 예전 조건 그대로다', () => {
+    const legacy = runMonteCarlo(params(), engine, config);
+
+    expect(legacy.goalConditions.basis).toBe('legacy_plan');
+    expect(legacy.goalConditions.requireSpendingTarget).toBe(true);
+    expect(legacy.goalConditions.requireAssetSurvival).toBe(true);
   });
 
   test('상속을 고르면 그 목표액이 다시 조건이 된다', () => {

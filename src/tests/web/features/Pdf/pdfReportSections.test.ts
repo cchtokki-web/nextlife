@@ -648,6 +648,7 @@ describe('renderMonteCarloSection', () => {
       // 「자산 고갈 방지」를 고르지 않아 판정값은 0이지만 실제로는 420회 고갈된 계획.
       goalFailure: {
         spendingShortfall: 420, assetDepletion: 0, observedAssetDepletionCount: 420,
+        observedEarliestDepletionAge: 62,
         terminalShortfall: 0, medianFirstShortfallAge: 73, terminalAssetGoal: 0,
       },
     }, sequenceRisk, mcParams);

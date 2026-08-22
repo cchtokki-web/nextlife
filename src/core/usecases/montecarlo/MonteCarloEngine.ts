@@ -67,6 +67,18 @@ export function isSuccessfulTrial(depletionAge: number | null, successAge: numbe
   return depletionAge === null || depletionAge > successAge;
 }
 
+// 고갈로 판정된 시행들 중 가장 이른 고갈 나이. 호출자가 이미 술어로 걸러 온 배열만 받는다 —
+// 여기서 다시 거르면 술어가 두 벌이 되어 개수와 나이가 갈라진다.
+//
+// 걸러진 시행은 정의상 depletionAge가 null이 아니지만(isSuccessfulTrial), 타입은 그 사실을
+// 모르므로 null을 걸러 낸 뒤 최솟값을 취한다. 남는 것이 없으면 null이다.
+function earliestDepletionAge(depleted: readonly TrialSummary[]): number | null {
+  return depleted.reduce<number | null>((earliest, t) => {
+    if (t.depletionAge === null) return earliest;
+    return earliest === null || t.depletionAge < earliest ? t.depletionAge : earliest;
+  }, null);
+}
+
 // **자산 보존** 성공률만 필요한 호출자를 위한 경량 진입점(추천 엔진의 생활비 증액 게이트).
 //
 // 게이트가 자산 보존 기준을 쓰는 것은 의도다 — 그 게이트가 묻는 것은 "더 써도 자산이
@@ -167,13 +179,18 @@ export function runMonteCarlo(
     .map((t) => t.firstGoalShortfallAge)
     .filter((age): age is number => age !== null)
     .sort((a, b) => a - b);
+  // 게이트 없는 관측 고갈 시행. 개수와 가장 이른 나이를 **이 한 배열에서** 뽑는다 —
+  // 원인 문장이 둘을 나란히 말하므로 술어가 갈리면 한 문장이 조용히 어긋난다
+  // (GoalFailureBreakdown.observedEarliestDepletionAge 주석).
+  const depletedTrials = trials.filter(depletedTrial);
   const goalFailure = {
     spendingShortfall: shortfallAges.length,
     assetDepletion: trials.filter(failsSurvival).length,
     // 게이트 없는 관측값. 자산 고갈 방지를 고르지 않은 계획에서 위 값은 0이 되므로, 원인
     // 진단이 그 0을 「고갈이 없었다」로 읽지 않도록 실제 개수를 함께 싣는다
     // (GoalFailureBreakdown 주석).
-    observedAssetDepletionCount: trials.filter(depletedTrial).length,
+    observedAssetDepletionCount: depletedTrials.length,
+    observedEarliestDepletionAge: earliestDepletionAge(depletedTrials),
     terminalShortfall: trials.filter(failsTerminal).length,
     medianFirstShortfallAge: shortfallAges.length > 0 ? percentileOfSorted(shortfallAges, 0.5) : null,
     terminalAssetGoal,

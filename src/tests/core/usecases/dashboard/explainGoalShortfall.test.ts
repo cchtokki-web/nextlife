@@ -32,17 +32,63 @@ function breakdown(overrides: Partial<GoalFailureBreakdown> = {}): GoalFailureBr
   };
   // 관측 고갈 수를 따로 주지 않으면 「자산 고갈 방지」를 고른 계획으로 본다(관측 = 판정).
   // 게이트가 닫힌 계획은 이 값을 명시적으로 넘겨 두 값을 갈라 놓는다.
+  const observedAssetDepletionCount = overrides.observedAssetDepletionCount ?? merged.assetDepletion;
   return {
     ...merged,
-    observedAssetDepletionCount: overrides.observedAssetDepletionCount ?? merged.assetDepletion,
+    observedAssetDepletionCount,
+    // 개수와 «같은 술어»에서 나와야 하는 값이라, 개수가 0이면 나이도 없다.
+    // `??`가 아니라 키 유무로 가른다 — null을 «명시적으로» 넘긴 경우를 기본값으로 덮으면
+    // "나이가 없는 상태"를 테스트할 방법이 사라진다.
+    observedEarliestDepletionAge: 'observedEarliestDepletionAge' in overrides
+      ? (overrides.observedEarliestDepletionAge ?? null)
+      : (observedAssetDepletionCount > 0 ? 70 : null),
   };
 }
 
 describe('explainGoalShortfall', () => {
-  test('실패 시행이 없으면 none을 돌려준다', () => {
+  test('실패 시행이 없고 고갈도 없으면 모두 만족했다고만 말한다', () => {
     const result = explainGoalShortfall({ goalFailure: breakdown(), trials: 1000, params: params(), formatValue });
     expect(result.cause).toBe('none');
+    expect(result.headline).toBe('모든 시행에서 목표 조건을 만족했습니다.');
     expect(result.hint).toBeUndefined();
+  });
+
+  // PDF에서 이 문장은 「자산이 먼저 바닥난 경우가 N회…」 «바로 아래»에 찍힌다. 목표를 다
+  // 지킨 것은 사실이지만 그 사실«만» 적으면 한 쪽이 서로 다른 두 말을 한다.
+  //
+  // **문장 전문을 고정한다.** cause enum만 검사하면 개수·나이가 틀려도 통과한다 —
+  // 고갈을 생활비 미달로 설명하던 버그(78d19dc)가 그렇게 오래 살아남았다.
+  test('고른 목표를 다 지켰어도 자산이 실제로 고갈됐으면 두 사실을 함께 적는다', () => {
+    const result = explainGoalShortfall({
+      goalFailure: breakdown({ observedAssetDepletionCount: 420, observedEarliestDepletionAge: 62 }),
+      trials: 1000,
+      params: params(),
+      formatValue,
+    });
+
+    expect(result.cause).toBe('none');
+    expect(result.headline).toBe(
+      '고른 목표는 1,000회 모두 달성했습니다. 다만 420회(가장 이른 62세)에서 자산이 기대수명 전에'
+      + ' 바닥났습니다. 「자산 고갈 방지」를 목표로 고르지 않아 이 확률에는 반영되지 않았습니다.'
+    );
+    // 행동 유도 문장을 붙이지 않는다 — 목표를 추가하면 확률은 오히려 떨어진다.
+    expect(result.hint).toBeUndefined();
+  });
+
+  test('관측 고갈 나이가 없으면 괄호를 통째로 뺀다', () => {
+    // 없는 나이를 지어내지 않는다. 개수와 나이는 같은 술어에서 오므로 실제로는 함께 있거나
+    // 함께 없지만, 타입이 그것을 모르는 이상 문장이 「가장 이른 null세」가 되어서는 안 된다.
+    const result = explainGoalShortfall({
+      goalFailure: breakdown({ observedAssetDepletionCount: 3, observedEarliestDepletionAge: null }),
+      trials: 1000,
+      params: params(),
+      formatValue,
+    });
+
+    expect(result.headline).toBe(
+      '고른 목표는 1,000회 모두 달성했습니다. 다만 3회에서 자산이 기대수명 전에 바닥났습니다.'
+      + ' 「자산 고갈 방지」를 목표로 고르지 않아 이 확률에는 반영되지 않았습니다.'
+    );
   });
 
   test('자산 고갈이 지배적이면 고갈을 원인으로 말한다', () => {

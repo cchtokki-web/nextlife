@@ -7,8 +7,10 @@ import type { SimulationParams } from '../../entities/types';
 
 // 목표 달성 확률이 무엇을 근거로 조건을 골랐는지.
 //   selected_goals    = 사용자가 고른 목표에서 조건을 유도했다
-//   plan_defaults     = 고른 목표 중 시행으로 판정할 수 있는 것이 하나도 없어 계획의 기본
-//                       조건(생활비 유지·자산 고갈)으로 계산했다
+//   plan_defaults     = 고른 목표에서 «활성 조건»이 하나도 나오지 않아 계획의 기본
+//                       조건(생활비 유지·자산 고갈)으로 계산했다. 판정 가능한 목표를 아예
+//                       고르지 않은 경우와, 골랐지만 그 목표가 조건을 만들지 못한 경우
+//                       (목표액 없는 「자산 성장」 단독)가 모두 여기로 온다
 //   legacy_plan       = 목표를 한 번도 고른 적 없는 시나리오다. 목표 도입 이전과 같은
 //                       조건(생활비·고갈·기말자산)을 그대로 쓴다
 export type GoalConditionBasis = 'selected_goals' | 'plan_defaults' | 'legacy_plan';
@@ -79,10 +81,28 @@ export function resolveGoalSuccessConditions(params: SimulationParams): GoalSucc
     .filter((goal) => !MEASURABLE_GOALS.has(goal.type) && !PLAN_EMBEDDED_GOALS.has(goal.type))
     .map((goal) => goal.type);
 
-  if (measurable.length === 0) {
-    // 판정할 목표가 없다고 해서 100%를 줄 수는 없다. "계획대로 굴러가는가"라는 최소한의
-    // 질문(생활비를 계획대로 쓰며 기대수명까지 자산이 버티는가)으로 되돌아간다.
-    // 기말자산 조건은 넣지 않는다 — 사용자가 요구한 적 없는 금액이기 때문이다.
+  const requireSpendingTarget = measurable.some((goal) =>
+    goal.type === 'LIVING_EXPENSE_STABILITY' || goal.type === 'COMFORTABLE_SPENDING');
+  const requireAssetSurvival = measurable.some((goal) => goal.type === 'ASSET_SURVIVAL');
+  const terminalAssetGoal = terminalAssetGoalOf(measurable, params);
+
+  // **판별 기준은 「판정 가능한 «유형»을 골랐는가」가 아니라 「활성 «조건»이 남았는가」다.**
+  // 유형만 보면 구멍이 생긴다: 「자산 성장」은 판정 가능한 유형이지만 목표액을 묻는 UI가
+  // 없어(goalCatalog에 target 필드가 없다) 상속 목표를 함께 고르지 않으면 terminalAssetGoal이
+  // 0으로 풀린다. 그러면 세 조건이 모두 비어 있는데도 'selected_goals'로 빠져나가, 62세에
+  // 자산이 바닥나는 계획조차 «판정할 것이 없다»는 이유로 언제나 100%를 받는다.
+  //
+  // 판정할 조건이 없다고 해서 100%를 줄 수는 없다. "계획대로 굴러가는가"라는 최소한의
+  // 질문(생활비를 계획대로 쓰며 기대수명까지 자산이 버티는가)으로 되돌아간다.
+  // 기말자산 조건은 넣지 않는다 — 사용자가 요구한 적 없는 금액이기 때문이다.
+  //
+  // 판정 가능한 목표를 «하나도» 고르지 않은 경우도 세 조건이 모두 비므로 이 한 분기가
+  // 함께 덮는다. 두 벌로 두면 같은 뜻의 가드가 갈라진다.
+  //
+  // unmeasuredGoals는 여기서도 «유형» 기준 그대로다. 그 필드가 답하는 질문은 「고른 목표 중
+  // 이 확률이 판정하지 못한 것이 무엇인가」이고, 「자산 성장」은 조건이 비었을 뿐 판정 대상
+  // 유형이므로 미반영 목록에 넣으면 다른 사실을 말하게 된다.
+  if (!requireSpendingTarget && !requireAssetSurvival && terminalAssetGoal <= 0) {
     return {
       basis: 'plan_defaults',
       requireSpendingTarget: true,
@@ -94,10 +114,9 @@ export function resolveGoalSuccessConditions(params: SimulationParams): GoalSucc
 
   return {
     basis: 'selected_goals',
-    requireSpendingTarget: measurable.some((goal) =>
-      goal.type === 'LIVING_EXPENSE_STABILITY' || goal.type === 'COMFORTABLE_SPENDING'),
-    requireAssetSurvival: measurable.some((goal) => goal.type === 'ASSET_SURVIVAL'),
-    terminalAssetGoal: terminalAssetGoalOf(measurable, params),
+    requireSpendingTarget,
+    requireAssetSurvival,
+    terminalAssetGoal,
     unmeasuredGoals,
   };
 }
