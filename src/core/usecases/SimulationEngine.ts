@@ -36,7 +36,12 @@ import {
   NATIONAL_PENSION_EARLY_MIN_AGE,
   NATIONAL_PENSION_DEFERRED_MAX_AGE,
 } from './pension/nationalPensionRules';
-import { PRIVATE_PENSION_MIN_START_AGE, clampPrivatePensionStartAge } from './pension/privatePensionRules';
+import {
+  PRIVATE_PENSION_MIN_START_AGE,
+  canWithdrawPrivatePension,
+  clampPrivatePensionStartAge,
+} from './pension/privatePensionRules';
+import { isIsaPrincipalExhausted, isaWithdrawableGross } from './isa/isaRules';
 import { sortAssetsForWithdrawal } from './strategy/assetOrdering';
 import type { SimulationEngine as SimulationEngineContract } from '../simulation/SimulationEngine';
 import type { RetirementGoals, RetirementProfile, RetirementStrategy } from '../domain/input/retirement';
@@ -842,12 +847,12 @@ export class LegacySimulationEngine implements SimulationEngineContract {
         }
       }
       for (const isa of activeIsas) {
-        total += Math.min(
-          this.convertValue(isa.currentBalance, isa.currency, displayCurrency, exchangeRate),
-          this.convertValue(isa.totalInvested, isa.currency, displayCurrency, exchangeRate)
+        total += this.convertValue(
+          isaWithdrawableGross(isa.currentBalance, isa.totalInvested),
+          isa.currency, displayCurrency, exchangeRate
         );
       }
-      if (age >= PRIVATE_PENSION_MIN_START_AGE) {
+      if (canWithdrawPrivatePension(age)) {
         for (const pension of activePensions) {
           total += this.convertValue(
             pension.currentBalance, pension.currency, displayCurrency, exchangeRate
@@ -890,9 +895,22 @@ export class LegacySimulationEngine implements SimulationEngineContract {
       // 무엇에 막혔는가. 목표의 «이름»은 여기 들어오지 않는다(엔진은 목표를 모른다).
       const brokenPreferences = new Set<BrokenWithdrawalPreference>();
       let annualUnmetHardSpending = 0;
-      // 보호자산 하한선(assetFloor)이 인출을 실제로 잘랐는가. 「하한선이 있다」가 아니라
-      // 「그 여유를 다 쓰고도 필요액이 남았다」일 때만 참이 된다.
-      let assetFloorBlockedWithdrawal = false;
+      // 인출이 막힌 사유. **연말에 포트폴리오를 훑어 추론하지 않는다.** 그 방식은 「그 순간
+      // 이 인출을 막은 것」이 아니라 「연말에 어떤 캡이 존재했는가」를 세므로, 실제 원인이
+      // 아닌 캡이 사유 자리를 차지해 진짜 원인을 가린다 — 수익이 조금이라도 난 ISA를 가진
+      // 계정이면 언제나 그 ISA가 사유가 되어, 다른 모든 원인이 조용히 설명된 것으로 처리된다.
+      // 그래서 «관찰된 사실»로만 기록한다(recordBlockedWithdrawal 호출부 참고).
+      let blockedWithdrawalReason: YearLedgerDiagnostics['blockedWithdrawalReason'];
+      const recordBlockedWithdrawal = (
+        reason: NonNullable<YearLedgerDiagnostics['blockedWithdrawalReason']>
+      ) => {
+        // assetFloor는 «닿을 수 있는 돈»을 막은 유일한 사유다. 한 해에 여러 사유가 관찰되면
+        // 그것이 남는다 — 나머지는 애초에 닿을 수 없던 돈에 대한 설명이라 그 위에 덮으면
+        // 사용자가 읽는 이유가 실제 원인에서 멀어진다.
+        if (blockedWithdrawalReason === 'assetFloor') return;
+        if (blockedWithdrawalReason !== undefined && reason !== 'assetFloor') return;
+        blockedWithdrawalReason = reason;
+      };
       let annualDividendTaxPaid = 0;
       let annualPensionTaxPaid = 0;
       let annualNationalPensionTaxPaid = 0;
@@ -1332,7 +1350,7 @@ export class LegacySimulationEngine implements SimulationEngineContract {
             annualWithdrawal += drawAmountDisplay;
           } else if (
             !isRetired &&
-            currentAge >= PRIVATE_PENSION_MIN_START_AGE &&
+            canWithdrawPrivatePension(currentAge) &&
             pension.earlyChannelingEnabled &&
             pension.currentBalance > 0 &&
             activeIsas.length > 0
@@ -1581,15 +1599,18 @@ export class LegacySimulationEngine implements SimulationEngineContract {
               balance: () => this.convertValue(
                 isa.currentBalance, isa.currency, displayCurrency, exchangeRate
               ),
-              availableGross: () => Math.min(
-                this.convertValue(isa.currentBalance, isa.currency, displayCurrency, exchangeRate),
-                this.convertValue(isa.totalInvested, isa.currency, displayCurrency, exchangeRate)
+              availableGross: () => this.convertValue(
+                isaWithdrawableGross(isa.currentBalance, isa.totalInvested),
+                isa.currency, displayCurrency, exchangeRate
               ),
               withdraw: (grossDisplay) => {
                 const grossIsaCurrency = this.convertValue(
                   grossDisplay, displayCurrency, isa.currency, exchangeRate
                 );
-                const actual = Math.min(isa.currentBalance, isa.totalInvested, grossIsaCurrency);
+                const actual = Math.min(
+                  isaWithdrawableGross(isa.currentBalance, isa.totalInvested),
+                  grossIsaCurrency
+                );
                 isa.currentBalance -= actual;
                 isa.totalInvested -= actual;
                 return this.convertValue(actual, isa.currency, displayCurrency, exchangeRate);
@@ -1599,7 +1620,7 @@ export class LegacySimulationEngine implements SimulationEngineContract {
 
           // 사적연금은 55세부터만 법적으로 인출할 수 있다. 세후 필요액을 기준으로 세전 인출액을
           // 역산하며, 사용자 전략의 월 목표와 저율과세 한도는 계약상 가용액으로 유지한다.
-          if (currentAge >= PRIVATE_PENSION_MIN_START_AGE) {
+          if (canWithdrawPrivatePension(currentAge)) {
             const taxRate = getPrivatePensionIncomeTaxRate(currentAge, taxCtx);
             for (const pension of activePensions) {
               withdrawalAccounts.push({
@@ -1712,14 +1733,31 @@ export class LegacySimulationEngine implements SimulationEngineContract {
             },
             liquidatableHeadroom: protectedHeadroom,
           });
-          // 하한선이 «실제로» 잘랐는가. 여유를 다 쓰고도 필요액이 남은 경우만이다. 여유가 0인
-          // 해는 인출이 아예 시작되지 않으므로 gross 0 ≥ headroom 0으로 함께 잡힌다.
-          if (
-            Number.isFinite(protectedHeadroom)
-            && withdrawal.unfulfilledAmount > 0
-            && withdrawal.grossWithdrawal + 1 >= protectedHeadroom
-          ) {
-            assetFloorBlockedWithdrawal = true;
+          // 무엇이 이 인출을 막았는가 — «이 호출에서 관찰된» 사실만 적는다.
+          //
+          // 전제부터가 관찰이다. 필요액이 남은 채로 끝났을 때만 무언가가 막은 것이고,
+          // 원 미만의 잔여는 세후 필요액 역산의 잔돈이라 막힌 것이 아니다.
+          if (withdrawal.unfulfilledAmount > 1) {
+            if (
+              Number.isFinite(protectedHeadroom)
+              && withdrawal.grossWithdrawal + 1 >= protectedHeadroom
+            ) {
+              // 여유를 다 쓰고 멈췄다. WithdrawalEngine은 headroom이 마르면 «루프를 끊으므로»
+              // 뒤에 남은 계좌는 닿아 보지도 못했다. 그 계좌들의 캡을 사유로 적으면 이 인출을
+              // 막은 적 없는 원인을 지어내는 것이고, 진짜 원인인 하한선이 가려진다.
+              recordBlockedWithdrawal('assetFloor');
+            } else if (
+              // 여유가 아니라 «가용액»이 말랐다 — 엔진이 적격 계좌를 끝까지 돌고도 모자랐다.
+              // 그렇다면 닿지 못한 돈은 정확히 계층 밖(법정) 캡 뒤에 있는 돈이고 그 캡이 원인이다.
+              !canWithdrawPrivatePension(currentAge)
+              && activePensions.some((p) => p.currentBalance > 0)
+            ) {
+              recordBlockedWithdrawal('legalAge');
+            } else if (
+              activeIsas.some((i) => isIsaPrincipalExhausted(i.currentBalance, i.totalInvested))
+            ) {
+              recordBlockedWithdrawal('isaPrincipalExhausted');
+            }
           }
           annualWithdrawal += withdrawal.grossWithdrawal;
           for (const item of withdrawal.withdrawalsByAccount) {
@@ -1912,28 +1950,6 @@ export class LegacySimulationEngine implements SimulationEngineContract {
       // 남은 잔액 중 인출 엔진이 «닿을 수 있는» 금액. 연말 세금 징수까지 끝난 뒤에 재므로
       // 그 해 어느 시점보다도 작다 — 불변식이 과하게 울지 않는 쪽으로 안전하다.
       const withdrawableAtFloorPhase = withdrawableNowDisplay(currentAge, true);
-
-      // 잔액은 남았는데 꺼내지 못한 이유. 부족이 «있을 때만» 기록한다 — 다 채운 해에
-      // 「무엇에 막혔다」를 남기면 사실이 아니다.
-      //
-      // 우선순위는 「닿을 수 있는 돈을 막은 것」이 먼저다. 법정 나이와 ISA 납입원금은 애초에
-      // 위 withdrawableAtFloorPhase에 세어지지 않으므로 그 둘이 원인일 때는 잔액이 남아도
-      // 「닿을 수 있는 돈」은 0이다. assetFloor만이 닿을 수 있는 돈을 막는다.
-      const blockedWithdrawalReason = ((): YearLedgerDiagnostics['blockedWithdrawalReason'] => {
-        if (annualUnmetHardSpending <= 0 && annualUnmetSpending <= 0) return undefined;
-        if (assetFloorBlockedWithdrawal) return 'assetFloor';
-        if (
-          currentAge < PRIVATE_PENSION_MIN_START_AGE
-          && activePensions.some((p) => p.currentBalance > 0)
-        ) {
-          return 'legalAge';
-        }
-        // 중도인출이 납입원금까지만 허용되므로 그 위의 수익금은 잔액이 있어도 꺼낼 수 없다.
-        if (activeIsas.some((i) => i.currentBalance > i.totalInvested)) {
-          return 'isaPrincipalExhausted';
-        }
-        return undefined;
-      })();
 
       const diagnostics: YearLedgerDiagnostics = {
         brokenPreferences: [...brokenPreferences],
