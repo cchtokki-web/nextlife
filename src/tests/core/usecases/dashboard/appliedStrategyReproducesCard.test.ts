@@ -6,7 +6,6 @@ import { MonteCarloEngine } from '@/core/usecases/montecarlo/MonteCarloEngine';
 import { resolveMonteCarloConfig } from '@/core/usecases/montecarlo/volatilityPresets';
 import { applyStrategyToParams } from '@/core/usecases/dashboard/applyStrategyToParams';
 import { compileStrategy } from '@/core/usecases/strategy/compileStrategy';
-import type { CandidateRecommendation } from '@/core/recommendation/RecommendationEngine';
 import type { SimulationParams } from '@/core/entities/types';
 
 /**
@@ -68,16 +67,6 @@ function recommend() {
   return optimized.recommendations?.recommendations ?? [];
 }
 
-// StrategyOptimizer가 이 후보를 채점할 때 실제 보유 자산의 수익률이 아니라
-// annualStdDevForYieldPreset의 preset 분기(conservative/base/aggressive)로 σ를 정했는지.
-// 안정형/균형형/여유형은 legacySettings.yieldPreset이 항상 이 셋 중 하나이므로 사실상 항상
-// true다 — resolveMonteCarloConfig가 더 이상 이 필드를 읽지 않는 지금, 이 값이 true인
-// 후보는 「적용 후 재채점」의 σ와 「후보 채점」의 σ가 우연이 아닌 한 어긋난다.
-function usesPresetVolatilityAtScoring(recommendation: CandidateRecommendation): boolean {
-  const preset = recommendation.candidate.candidate.strategy.legacySettings.yieldPreset;
-  return preset === 'conservative' || preset === 'base' || preset === 'aggressive';
-}
-
 // 적용된 계획을 대시보드와 같은 방식으로 다시 채점한다.
 function probabilityAfterApply(applied: SimulationParams): number {
   const compiled = compileStrategy(applied);
@@ -103,69 +92,12 @@ describe('추천 적용은 카드가 보여 준 계획을 그대로 만든다', 
     }
   });
 
-  // 2026-08-22 알려진 제약: 「투자 성향」(assetAllocation) 축은 StrategyOptimizer가 후보를
-  // 채점할 때만 preset 수익률(5/7/9%)을 가정하고, 실제 반영(strategyFieldMap의 apply)은
-  // yieldPreset 필드만 남기고 자산별 totalReturn은 손대지 않는다 — 리스크 성향이 그 값을
-  // 강제로 덮어쓰던 마지막 통로였고, 이 축 분리 작업이 "어떤 축도 사용자가 입력한 수익률을
-  // 덮어쓰지 않는다"는 원칙 아래 그 통로를 없앴다. 그 결과 「투자 성향」이 바뀌는 후보는
-  // 카드가 보여 준 확률을 더 이상 정확히 재현하지 못한다 — StrategyGenerator/
-  // StrategyOptimizer의 후보 채점 자체가 아직 실제 입력 수익률이 아니라 preset으로 도는
-  // 별개의 메커니즘이기 때문이다. 그 메커니즘을 실제 입력에 맞추는 것은 이 작업의 범위
-  // 밖이라 후속 작업으로 남긴다.
-  //
-  // **같은 이유로 몬테카를로 변동성(σ)도 어긋난다(2026-08-22 수익률 가정 축 분리).**
-  // StrategyOptimizer는 후보를 채점할 때 여전히 annualStdDevForYieldPreset으로 후보의
-  // legacySettings.yieldPreset(conservative/base/aggressive)을 직접 읽어 σ를 정한다.
-  // 반면 이 작업 이후 resolveMonteCarloConfig(적용 후 재채점 경로가 쓰는 함수)는 그 필드를
-  // 더 이상 읽지 않고 언제나 실제 보유 자산의 수익률에서 σ를 유도한다. 안정형/균형형/여유형
-  // 후보는 legacySettings.yieldPreset이 항상 세 프리셋 중 하나로 채워지므로, 두 σ가 우연히
-  // 일치하지 않는 한 이 축도 「투자 성향」과 같은 재현 불가 상태다. StrategyOptimizer의 후보
-  // 채점 자체를 실제 입력 수익률로 유도하도록 바꾸는 것은 이 작업의 범위 밖이라 후속
-  // 작업으로 남긴다(annualStdDevForYieldPreset을 지우지 않고 그대로 둔 이유이기도 하다).
-  test('적용 후 목표 달성 확률이 카드의 값과 같다 (투자 성향·위험 성향이 바뀌지 않는 후보)', () => {
+  test('적용 후 목표 달성 확률이 카드의 값과 같다', () => {
     for (const recommendation of recommendations) {
       const applied = applyStrategyToParams(params, recommendation.candidate);
-      if (applied.applied.some((item) => item.label === '투자 성향')) continue;
-      if (usesPresetVolatilityAtScoring(recommendation)) continue;
 
       expect(probabilityAfterApply(applied.params), recommendation.label)
         .toBe(recommendation.candidate.monteCarlo.goalSuccessProbability);
-    }
-  });
-
-  // 위 제약을 회귀 고정한다. 언젠가 StrategyGenerator가 preset 대신 실제 입력 수익률로
-  // 후보를 채점하도록 바뀌면 이 테스트가 실패하며 알려 준다 — 그때는 이 테스트를 지우고
-  // 위 테스트의 예외 처리(assetAllocation 건너뛰기)도 함께 걷어내야 한다.
-  test('투자 성향이 바뀌는 후보는 아직 확률을 재현하지 못한다 (후속 작업 필요)', () => {
-    const withChangedAllocation = recommendations
-      .map((recommendation) => ({
-        recommendation,
-        applied: applyStrategyToParams(params, recommendation.candidate),
-      }))
-      .filter(({ applied }) => applied.applied.some((item) => item.label === '투자 성향'));
-
-    expect(withChangedAllocation.length).toBeGreaterThan(0);
-    for (const { recommendation, applied } of withChangedAllocation) {
-      expect(probabilityAfterApply(applied.params), recommendation.label)
-        .not.toBe(recommendation.candidate.monteCarlo.goalSuccessProbability);
-    }
-  });
-
-  // 위 제약(σ 불일치)도 같은 방식으로 회귀 고정한다. 안정형/균형형/여유형은 항상
-  // legacySettings.yieldPreset이 세 프리셋 중 하나이므로, 이 목록이 비어 있으면(=하나도
-  // preset 채점을 쓰지 않으면) 위 필터 자체가 죽은 코드라는 뜻이라 먼저 알아야 한다.
-  test('위험 성향(σ) 불일치가 있는 후보는 아직 확률을 재현하지 못한다 (후속 작업 필요)', () => {
-    const withPresetVolatility = recommendations.filter(usesPresetVolatilityAtScoring);
-
-    expect(withPresetVolatility.length).toBeGreaterThan(0);
-    for (const recommendation of withPresetVolatility) {
-      const applied = applyStrategyToParams(params, recommendation.candidate);
-      // 투자 성향까지 함께 바뀌는 후보는 이미 위 테스트가 다루는 불일치라 이 축만 따로
-      // 재지 못한다 — σ 불일치만 남기려면 그 축은 제외한다.
-      if (applied.applied.some((item) => item.label === '투자 성향')) continue;
-
-      expect(probabilityAfterApply(applied.params), recommendation.label)
-        .not.toBe(recommendation.candidate.monteCarlo.goalSuccessProbability);
     }
   });
 });

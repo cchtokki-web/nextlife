@@ -15,7 +15,6 @@ function candidate(retirementAge: number): StrategyCandidate {
       nationalPensionStartAge: 65,
       withdrawalPolicy: 'GENERAL_FIRST',
       spendingPattern: 'FIXED',
-      assetAllocation: 'BALANCED',
     },
   };
 }

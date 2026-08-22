@@ -9,7 +9,6 @@ import { StrategyGenerator } from '@/core/strategy/StrategyGenerator';
 import { personaAwareShortlist } from '@/core/strategy/StrategyOptimizer';
 import { StrategyOptimizer } from '@/core/strategy/StrategyOptimizer';
 import type { StrategyMonteCarloEngine } from '@/core/usecases/montecarlo/MonteCarloEngine';
-import { VOLATILITY_BY_YIELD_PRESET } from '@/core/usecases/montecarlo/volatilityPresets';
 import { initialParams } from '@/infrastructure/storage/localStore';
 
 const utility = (score: number): UtilityBreakdown => ({
@@ -58,7 +57,6 @@ function candidate(
       nationalPensionStartAge: 65,
       withdrawalPolicy: 'GENERAL_FIRST',
       spendingPattern: 'FIXED',
-      assetAllocation: 'BALANCED',
       ...dimensionOverrides,
     },
   };
@@ -74,7 +72,6 @@ function fakeGeneration(candidates: StrategyCandidate[]): StrategyGenerationResu
         nationalPensionStartAge: 1,
         withdrawalPolicy: 1,
         spendingPattern: 1,
-        assetAllocation: 1,
       },
       theoreticalCombinationCount: candidates.length,
       generatedCandidateCount: candidates.length,
@@ -306,26 +303,27 @@ describe('StrategyOptimizer', () => {
     );
 
     const trialCounts = validate.mock.calls.map((call) => call[3].trials);
-    // 12개는 선별(200), 페르소나 승자 1개만 확정(1000). 예전의 평면적 20 × 1000과 대비된다.
+    // 12개는 선별(200), 페르소나 승자만 확정(1000). 예전의 평면적 20 × 1000과 대비된다.
+    // 후보가 전부 FIXED라 여유형은 비고, 안정형·균형형 둘만 승자를 낸다.
     expect(trialCounts.filter((t) => t === 200)).toHaveLength(12);
-    expect(trialCounts.filter((t) => t === 1_000)).toHaveLength(1);
+    expect(trialCounts.filter((t) => t === 1_000)).toHaveLength(2);
     expect(validate.mock.calls.every((call) => call[3].seed === 42)).toBe(true);
 
     expect(result.debug.deterministicShortlistCount).toBe(12);
     expect(result.debug.monteCarloValidatedCount).toBe(12);
-    expect(result.debug.monteCarloConfirmedCount).toBe(1);
+    expect(result.debug.monteCarloConfirmedCount).toBe(2);
 
     // 추천과 순위에 실린 값은 반드시 전체 시행 결과여야 한다.
     const recommended = result.recommendations.recommendations[0];
     expect(recommended.candidate.monteCarlo.goalSuccessProbability).toBe(0.9);
     expect(recommended.candidate.monteCarlo.terminalAssetMedian).toBe(1_000);
-    expect(result.rankedCandidates).toHaveLength(1);
-    expect(result.rankedCandidates[0].monteCarlo?.trials).toBe(1_000);
+    expect(result.rankedCandidates).toHaveLength(2);
+    expect(result.rankedCandidates.every((item) => item.monteCarlo?.trials === 1_000)).toBe(true);
   });
 
   test('screeningTrials가 config.trials 이상이면 단일 패스로 동작한다', () => {
     const input = LegacySimulationAdapter.fromLegacy(structuredClone(initialParams));
-    const candidates = [candidate(input.strategy, 'a', 60, { assetAllocation: 'BALANCED' })];
+    const candidates = [candidate(input.strategy, 'a', 60)];
     const generator = { generate: () => fakeGeneration(candidates) } as unknown as StrategyGenerator;
     const validate = vi.fn((_p, _g, _s, config) => ({
       trials: config.trials, seed: config.seed,
@@ -390,10 +388,11 @@ describe('StrategyOptimizer', () => {
     expect(result.debug.deterministicShortlistCount).toBe(12);
     expect(result.debug.monteCarloValidatedCount).toBe(12);
     expect(result.debug.monteCarloFailures).toEqual([]);
-    // 후보 30개가 모두 BALANCED/FIXED이므로 균형형만 성립한다. 예전에는 특성 일치를 정렬
-    // 우선순위로만 썼기 때문에 같은 후보들에 안정형·여유형 라벨까지 붙었다.
-    expect(result.recommendations.recommendations.map((item) => item.label)).toEqual(['균형형']);
-    expect(result.recommendations.primary?.persona).toBe('BALANCED');
+    // 후보 30개가 모두 FIXED이므로 여유형은 성립하지 않는다. 안정형·균형형은 자격 조건이
+    // 아니라 비교자로 정의되므로 언제나 채워진다 — 예전에는 자산배분 라벨이 그 둘의 자격
+    // 조건이었고, 그 축은 사용자가 실행할 수 있는 조정이 아니어서 없앴다.
+    expect(result.recommendations.recommendations.map((item) => item.label))
+      .toEqual(['안정형', '균형형']);
   });
 
   // 확정 단계(1000회 재실행)는 선별 단계와 다른 확률을 만든다. 그래서 primary를 그 자리에서
@@ -404,8 +403,8 @@ describe('StrategyOptimizer', () => {
       { type: 'ASSET_SURVIVAL', priority: 1, constraintType: 'SOFT' },
     ];
     const candidates = [
-      candidate(input.strategy, 'stable', 60, { assetAllocation: 'CONSERVATIVE' }),
-      candidate(input.strategy, 'balanced', 60, { assetAllocation: 'BALANCED' }),
+      candidate(input.strategy, 'stable', 60),
+      candidate(input.strategy, 'balanced', 60),
     ];
     const generator = { generate: () => fakeGeneration(candidates) } as unknown as StrategyGenerator;
     const engine: SimulationEngine = { simulate: () => simulation(100) };
@@ -452,19 +451,15 @@ describe('StrategyOptimizer', () => {
     expect(result.recommendations.primary?.candidate.candidate.id).toBe('stable');
   });
 
-  test('페르소나 라벨은 그 특성을 실제로 가진 후보에만 붙는다', () => {
+  test('여유형 라벨은 그 특성을 실제로 가진 후보에만 붙는다', () => {
     const input = LegacySimulationAdapter.fromLegacy(structuredClone(initialParams));
-    // 결정론 점수는 GROWTH가 가장 높다(변동 없는 투영에서는 기대수익이 높을수록 유리).
-    // 보수적 후보는 점수 최하위라 예전 shortlist에서 항상 잘려나갔고, 그 결과 안정형 자리를
-    // 성장형 전략이 차지한 채 "보수적 자산배분을 우선했습니다"라는 문구가 붙었다.
+    // 은퇴초기 집중형은 결정론 점수가 가장 낮게 나오기 쉬워 shortlist에서 먼저 잘린다.
+    // 그러면 여유형 자리에 평탄한 계획이 앉은 채 "은퇴 초반 소비 여력을 우선했습니다"라는
+    // 문구가 붙는다. personaAwareShortlist가 그 자리를 먼저 예약하는 이유다.
     const candidates = [
       ...Array.from({ length: 8 }, (_, index) =>
-        candidate(input.strategy, `growth-${index}`, 60, {
-          assetAllocation: 'GROWTH',
-          spendingPattern: 'FRONT_LOADED',
-        })),
-      candidate(input.strategy, 'balanced', 60, { assetAllocation: 'BALANCED' }),
-      candidate(input.strategy, 'conservative', 60, { assetAllocation: 'CONSERVATIVE' }),
+        candidate(input.strategy, `fixed-${index}`, 60, { spendingPattern: 'FIXED' })),
+      candidate(input.strategy, 'front-loaded', 60, { spendingPattern: 'FRONT_LOADED' }),
     ];
     const generator = { generate: () => fakeGeneration(candidates) } as unknown as StrategyGenerator;
     const engine: SimulationEngine = { simulate: () => simulation(100) };
@@ -492,15 +487,14 @@ describe('StrategyOptimizer', () => {
       input.profile,
       input.goals,
       input.strategy,
-      // 점수 상위 4개만 뽑으면 전부 GROWTH다. 그래도 페르소나별 자리를 먼저 확보해야 한다.
+      // 점수 상위 4개만 뽑으면 전부 FIXED다. 그래도 여유형 자리를 먼저 확보해야 한다.
       { monteCarlo: { config: { trials: 100, seed: 42, annualStdDev: 15 }, shortlistLimit: 4 } },
     );
 
     const byLabel = new Map(
       result.recommendations.recommendations.map((item) => [item.label, item.candidate]),
     );
-    expect(byLabel.get('안정형')?.candidate.dimensions.assetAllocation).toBe('CONSERVATIVE');
-    expect(byLabel.get('균형형')?.candidate.dimensions.assetAllocation).toBe('BALANCED');
+    expect(byLabel.get('여유형')?.candidate.id).toBe('front-loaded');
     expect(byLabel.get('여유형')?.candidate.dimensions.spendingPattern).toBe('FRONT_LOADED');
   });
 
@@ -547,11 +541,15 @@ describe('StrategyOptimizer', () => {
     });
   });
 
-  test('검증된 후보가 있어도 페르소나 특성이 없으면 그 사실을 따로 알린다', () => {
+  // 자산배분 축을 없앤 뒤로 안정형·균형형은 자격 조건 없이 비교자만으로 정의된다. 그래서
+  // 몬테카를로를 통과한 후보가 하나라도 있으면 추천은 반드시 채워지고, no_persona_matched는
+  // 방어적 분기로만 남는다(여유형 하나가 비는 것은 정상이며 outcome을 바꾸지 않는다).
+  test('검증된 후보가 하나뿐이어도 페르소나를 비우지 않는다', () => {
     const input = LegacySimulationAdapter.fromLegacy(structuredClone(initialParams));
-    // GROWTH + FIXED만 있으면 어떤 페르소나 조건에도 맞지 않는다.
+    // 페르소나 조건에 맞는 후보가 없으려면 모든 후보가 몬테카를로 검증을 통과하지 못해야
+    // 한다 — 안정형·균형형은 자격 조건이 없으므로, 검증된 후보가 있으면 반드시 채워진다.
     const candidates = [
-      candidate(input.strategy, 'growth', 60, { assetAllocation: 'GROWTH', spendingPattern: 'FIXED' }),
+      candidate(input.strategy, 'fixed', 60, { spendingPattern: 'FIXED' }),
     ];
     const generator = { generate: () => fakeGeneration(candidates) } as unknown as StrategyGenerator;
     const monteCarloEngine = {
@@ -572,13 +570,13 @@ describe('StrategyOptimizer', () => {
       monteCarlo: { config: { trials: 10, seed: 1, annualStdDev: 15 } },
     });
 
-    expect(result.recommendations.recommendations).toHaveLength(0);
-    expect(result.outcome).toEqual({ kind: 'no_persona_matched', validatedCount: 1 });
+    expect(result.recommendations.recommendations.map((item) => item.label)).toEqual(['안정형']);
+    expect(result.outcome).toEqual({ kind: 'ok' });
   });
 
   test('정상적으로 추천이 만들어지면 outcome은 ok다', () => {
     const input = LegacySimulationAdapter.fromLegacy(structuredClone(initialParams));
-    const candidates = [candidate(input.strategy, 'balanced', 60, { assetAllocation: 'BALANCED' })];
+    const candidates = [candidate(input.strategy, 'balanced', 60)];
     const generator = { generate: () => fakeGeneration(candidates) } as unknown as StrategyGenerator;
     const monteCarloEngine = {
       validate: (_p, _g, _s, config) => ({
@@ -606,8 +604,8 @@ describe('StrategyOptimizer', () => {
   test('추천이 전부 0%면 ok가 아니라 도달 불가로 알린다', () => {
     const input = LegacySimulationAdapter.fromLegacy(structuredClone(initialParams));
     const candidates = [
-      candidate(input.strategy, 'balanced', 60, { assetAllocation: 'BALANCED', spendingPattern: 'FIXED' }),
-      candidate(input.strategy, 'front', 61, { assetAllocation: 'BALANCED', spendingPattern: 'FRONT_LOADED' }),
+      candidate(input.strategy, 'balanced', 60, { spendingPattern: 'FIXED' }),
+      candidate(input.strategy, 'front', 61, { spendingPattern: 'FRONT_LOADED' }),
     ];
     const generator = { generate: () => fakeGeneration(candidates) } as unknown as StrategyGenerator;
     const monteCarloEngine = {
@@ -642,8 +640,8 @@ describe('StrategyOptimizer', () => {
   test('추천 중 하나라도 0%를 넘으면 그대로 ok다', () => {
     const input = LegacySimulationAdapter.fromLegacy(structuredClone(initialParams));
     const candidates = [
-      candidate(input.strategy, 'balanced', 60, { assetAllocation: 'BALANCED', spendingPattern: 'FIXED' }),
-      candidate(input.strategy, 'front', 61, { assetAllocation: 'BALANCED', spendingPattern: 'FRONT_LOADED' }),
+      candidate(input.strategy, 'balanced', 60, { spendingPattern: 'FIXED' }),
+      candidate(input.strategy, 'front', 61, { spendingPattern: 'FRONT_LOADED' }),
     ];
     const generator = { generate: () => fakeGeneration(candidates) } as unknown as StrategyGenerator;
     const monteCarloEngine = {
@@ -734,7 +732,11 @@ describe('StrategyOptimizer', () => {
     expect(result.debug.monteCarloValidatedCount).toBe(0);
   });
 
-  test('후보별 수익률 프리셋의 변동성을 적용하면서 trials와 seed는 공통으로 유지한다', () => {
+  // **후보마다 σ를 다시 정하지 않는다.** 예전에는 후보의 legacySettings.yieldPreset을 읽어
+  // 프리셋 변동성(10/15/20%p)으로 갈아끼웠다. 자산배분 축이 사라져 후보들의 수익률 가정이
+  // 모두 같아진 지금 그 덮어쓰기는 카드가 약속한 확률을 적용 후 재현되지 못하게 만들 뿐이다 —
+  // 재채점 경로(resolveMonteCarloConfig)는 실제 입력 수익률에서 σ를 유도하기 때문이다.
+  test('후보의 수익률 프리셋과 무관하게 호출자가 준 설정을 그대로 쓴다', () => {
     const input = LegacySimulationAdapter.fromLegacy(structuredClone(initialParams));
     const presets = ['conservative', 'base', 'aggressive'] as const;
     const candidates = presets.map((preset) => {
@@ -766,8 +768,8 @@ describe('StrategyOptimizer', () => {
       generator,
       { validate } satisfies StrategyMonteCarloEngine,
     ).optimize(input.profile, input.goals, input.strategy, {
-      // 이 테스트의 대상은 프리셋별 변동성 매핑이다. 선별/확정 2단계를 끄고 단일 패스로 둬야
-      // 후보마다 호출이 하나씩만 남아 config를 그대로 비교할 수 있다.
+      // 선별/확정 2단계를 끄고 단일 패스로 둬야 후보마다 호출이 하나씩만 남아 config를
+      // 그대로 비교할 수 있다.
       monteCarlo: {
         config: { trials: 1_000, seed: 2026, annualStdDev: 99 },
         screeningTrials: 1_000,
@@ -779,21 +781,9 @@ describe('StrategyOptimizer', () => {
       call[3],
     ]));
     expect(configsByPreset).toEqual({
-      conservative: {
-        trials: 1_000,
-        seed: 2026,
-        annualStdDev: VOLATILITY_BY_YIELD_PRESET.conservative,
-      },
-      base: {
-        trials: 1_000,
-        seed: 2026,
-        annualStdDev: VOLATILITY_BY_YIELD_PRESET.base,
-      },
-      aggressive: {
-        trials: 1_000,
-        seed: 2026,
-        annualStdDev: VOLATILITY_BY_YIELD_PRESET.aggressive,
-      },
+      conservative: { trials: 1_000, seed: 2026, annualStdDev: 99 },
+      base: { trials: 1_000, seed: 2026, annualStdDev: 99 },
+      aggressive: { trials: 1_000, seed: 2026, annualStdDev: 99 },
     });
   });
 
@@ -802,8 +792,8 @@ describe('StrategyOptimizer', () => {
   test('Monte Carlo가 전부 실패하면 HARD 탈락과 구분해 보고한다', () => {
     const input = LegacySimulationAdapter.fromLegacy(structuredClone(initialParams));
     const candidates = [
-      candidate(input.strategy, 'a', 60, { assetAllocation: 'BALANCED' }),
-      candidate(input.strategy, 'b', 61, { assetAllocation: 'BALANCED' }),
+      candidate(input.strategy, 'a', 60),
+      candidate(input.strategy, 'b', 61),
     ];
     const generator = { generate: () => fakeGeneration(candidates) } as unknown as StrategyGenerator;
 
@@ -831,8 +821,8 @@ describe('StrategyOptimizer', () => {
   test('확률 순위의 1순위 키는 생활비가 아니라 목표 성공확률이다', () => {
     const input = LegacySimulationAdapter.fromLegacy(structuredClone(initialParams));
     const candidates = [
-      candidate(input.strategy, 'goal-best', 60, { assetAllocation: 'BALANCED' }),
-      candidate(input.strategy, 'spending-best', 61, { assetAllocation: 'BALANCED' }),
+      candidate(input.strategy, 'goal-best', 60),
+      candidate(input.strategy, 'spending-best', 61),
     ];
     const generator = { generate: () => fakeGeneration(candidates) } as unknown as StrategyGenerator;
     // 두 지표의 순서를 일부러 반대로 만든다.
@@ -892,15 +882,9 @@ describe('StrategyOptimizer', () => {
     // 점수 순: filler들이 가장 높고, 그다음 dual, 마지막이 대안 front-loaded.
     const candidates = [
       ...Array.from({ length: 6 }, (_, i) =>
-        candidate(input.strategy, `filler-${i}`, 60, {
-          assetAllocation: 'BALANCED', spendingPattern: 'FIXED',
-        })),
-      candidate(input.strategy, 'dual', 61, {
-        assetAllocation: 'CONSERVATIVE', spendingPattern: 'FRONT_LOADED',
-      }),
-      candidate(input.strategy, 'alt-front', 62, {
-        assetAllocation: 'GROWTH', spendingPattern: 'FRONT_LOADED',
-      }),
+        candidate(input.strategy, `filler-${i}`, 60, { spendingPattern: 'FIXED' })),
+      candidate(input.strategy, 'dual', 61, { spendingPattern: 'FRONT_LOADED' }),
+      candidate(input.strategy, 'alt-front', 62, { spendingPattern: 'FRONT_LOADED' }),
     ];
     const order = new Map(candidates.map((item, index) => [item.id, 100 - index]));
     const generator = { generate: () => fakeGeneration(candidates) } as unknown as StrategyGenerator;

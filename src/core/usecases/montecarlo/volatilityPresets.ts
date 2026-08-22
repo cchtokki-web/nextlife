@@ -33,16 +33,6 @@ export const DEFAULT_MONTE_CARLO_SEED = 20260101;
 // 안정적이다. 그 이상은 표시 정밀도에 기여하지 않으면서 계산 시간만 늘린다.
 export const DEFAULT_MONTE_CARLO_TRIALS = 1000;
 
-/** Single source of truth for translating the existing return preset into market volatility. */
-export function annualStdDevForYieldPreset(
-  preset: SimulationParams['yieldPreset'],
-  fallback: number = VOLATILITY_BY_YIELD_PRESET.base,
-): number {
-  return preset === 'conservative' || preset === 'base' || preset === 'aggressive'
-    ? VOLATILITY_BY_YIELD_PRESET[preset]
-    : fallback;
-}
-
 // **직접 입력한 수익률 → 연 변동성.**
 //
 // 예전에는 프리셋을 고르지 않은 사용자 — 즉 「입력 수익률 유지」(기본값)와 「사용자

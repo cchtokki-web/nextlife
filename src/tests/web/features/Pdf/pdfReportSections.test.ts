@@ -141,7 +141,6 @@ describe('renderStrategyRecommendationSection', () => {
         nationalPensionStartAge: 65,
         withdrawalPolicy: 'ISA_FIRST',
         spendingPattern: 'FIXED',
-        assetAllocation: 'BALANCED',
       },
       strategy: {
         targetMonthlySpending: 3_500_000,

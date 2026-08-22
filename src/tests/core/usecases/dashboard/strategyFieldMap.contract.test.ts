@@ -60,17 +60,14 @@ const CANDIDATE_AXES: RankedOverrides[] = [];
 for (const retirementAge of [60, 62]) {
   for (const nationalPensionStartAge of [60, 65, 70]) {
     for (const withdrawalPolicy of ['GENERAL_FIRST', 'ISA_FIRST'] as StrategyDimensions['withdrawalPolicy'][]) {
-      for (const assetAllocation of ['CONSERVATIVE', 'BALANCED', 'GROWTH'] as const) {
-        for (const spendingPattern of ['FIXED', 'FRONT_LOADED'] as const) {
-          CANDIDATE_AXES.push({
-            retirementAge,
-            nationalPensionStartAge,
-            withdrawalPolicy,
-            assetAllocation,
-            spendingPattern,
-            targetMonthlySpending: 3_500_000,
-          });
-        }
+      for (const spendingPattern of ['FIXED', 'FRONT_LOADED'] as const) {
+        CANDIDATE_AXES.push({
+          retirementAge,
+          nationalPensionStartAge,
+          withdrawalPolicy,
+          spendingPattern,
+          targetMonthlySpending: 3_500_000,
+        });
       }
     }
   }

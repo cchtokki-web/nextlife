@@ -12,7 +12,7 @@ import { NATIONAL_PENSION_STRATEGY_AGES, resolveStrategy } from '../strategy/com
 import { applyRetirementGoals } from '../goals/retirementGoalAdapter';
 import { NATIONAL_PENSION_NORMAL_START_AGE } from '../pension/nationalPensionRules';
 
-// 추천 전략과 사용자 설정을 잇는 **여섯 축의 단일 테이블**.
+// 추천 전략과 사용자 설정을 잇는 **다섯 축의 단일 테이블**.
 //
 // 「현재 계획에서 달라지는 점」을 서술하는 일(describeStrategyChanges)과 그 값을 실제로
 // 설정에 반영하는 일(applyStrategyToParams)은 같은 매핑을 봐야 한다. 두 함수를 나란히
@@ -31,12 +31,6 @@ const WITHDRAWAL_LABELS: Record<AccountWithdrawalPolicy, string> = {
   PROPORTIONAL: '계좌별 비례 인출',
   CUSTOM: '사용자 지정 순서로 인출',
 };
-
-const ALLOCATION_LABELS = {
-  CONSERVATIVE: '보수적 자산배분',
-  BALANCED: '균형 자산배분',
-  GROWTH: '성장형 자산배분',
-} as const;
 
 // 「생활비 전략」 섹션의 SPENDING_SHAPE_OPTIONS와 같은 것을 가리키는 이름이어야 한다 —
 // 카드가 「통계 기준으로 감소」라고 말했는데 설정 화면에 그 이름이 없으면 사용자는 방금
@@ -65,7 +59,6 @@ export type StrategyFieldKey =
   | 'nationalPensionStartAge'
   | 'targetMonthlySpending'
   | 'withdrawalPolicy'
-  | 'assetAllocation'
   | 'spendingPattern';
 
 /** 반영 결과. 반영할 수 없으면 조용히 넘기지 않고 사유를 돌려준다. */
@@ -95,7 +88,7 @@ export interface StrategyFieldSpec {
  * resolveStrategy는 저수준 withdrawalPlan.nationalPensionStartAge에서 수령 전략을 유도하지
  * 않는다(seedStrategyFromLegacyParams는 생활비·상속 축만 유도한다). 그래서 전략 객체를
  * 처음 실체화하는 순간 이 축이 기본값 'ai_optimized'(=65세)로 채워지고, compileStrategy가
- * 그 값으로 개시 나이를 덮어쓴다. 즉 「투자 성향」만 바꾸려던 적용이 국민연금 개시 나이까지
+ * 그 값으로 개시 나이를 덮어쓴다. 즉 「생활비 배분」만 바꾸려던 적용이 국민연금 개시 나이까지
  * 함께 옮긴다 — 카드가 말하지 않은 변경이다.
  *
  * 반영하지 않기로 한 축은 건드리지 않는다는 원칙에 따라, 아직 전략을 저장한 적 없는
@@ -210,8 +203,8 @@ export const STRATEGY_FIELD_MAP: readonly StrategyFieldSpec[] = [
   {
     key: 'withdrawalPolicy',
     label: '자산 인출',
-    // 이 축만 dimensions가 아니라 «시뮬레이션된 전략»을 읽는다. 다른 축과 다른 예외가 아니라
-    // 오히려 규칙 쪽이다 — assetAllocation도 같은 이유로 candidatePreset을 따로 둔다.
+    // 이 축은 dimensions가 아니라 «시뮬레이션된 전략»을 읽는다. 다른 축과 다른 예외가 아니라
+    // 오히려 규칙 쪽이다.
     //
     // dimensions를 읽으면 「현상 유지」 후보에서 깨진다. baselineDimensions는 미지정 정책을
     // 'GENERAL_FIRST'로 적어 두는데(라벨용 기본값), 그러면 (1) 아무것도 바꾸지 않는 카드가
@@ -245,37 +238,6 @@ export const STRATEGY_FIELD_MAP: readonly StrategyFieldSpec[] = [
       // 맞지 않는 사용자 지정 순서가 유령처럼 남는다.
       delete withdrawalPlan.customWithdrawalOrder;
       return { applied: true, params: { ...params, withdrawalPlan } };
-    },
-  },
-  {
-    key: 'assetAllocation',
-    label: '투자 성향',
-    differs: (params, ranked) => params.yieldPreset !== candidatePreset(ranked),
-    describe: (params, ranked) => ({
-      before: params.yieldPreset === 'conservative' ? '보수적 자산배분'
-        : params.yieldPreset === 'aggressive' ? '성장형 자산배분' : '균형 자산배분',
-      after: ALLOCATION_LABELS[ranked.candidate.dimensions.assetAllocation],
-    }),
-    apply: (params, ranked) => {
-      const preset = candidatePreset(ranked);
-      // 'custom'(자산별 직접 입력)이나 미지정은 반영할 프리셋이 없다. 시장성 자산이
-      // 하나도 없는 시나리오에서 후보가 프리셋 없이 생성될 때 나온다.
-      //
-      // 2026-08-22: 예전에는 이 프리셋을 riskProfile에도 함께 써서 "지배값"으로
-      // 고정했다 — compileStrategy가 riskProfile을 보고 yieldPreset을 다시 덮어썼기
-      // 때문이다. 이제 riskProfile은 어떤 수익률도 지배하지 않으므로(2026-08-22 수익률
-      // 가정 축 분리) riskProfile을 쓸 필요는 없다. 그래도 withStrategy(patch={})는
-      // 그대로 통과시킨다 — strategy가 아직 없으면 이 호출이 처음으로 그것을
-      // 실체화하는 자리일 수 있고, withStrategy의 pinned 로직이 없으면 손대지 않은
-      // nationalPensionStrategy가 기본값('ai_optimized' = 65세)으로 조용히 채워져
-      // 반영하지 않은 국민연금 축이 함께 옮겨간다.
-      if (preset === undefined || preset === 'custom') {
-        return { applied: false, reason: '후보가 수익률 프리셋을 지정하지 않았습니다' };
-      }
-      return {
-        applied: true,
-        params: withStrategy({ ...params, yieldPreset: preset }, {}),
-      };
     },
   },
   {
@@ -319,8 +281,4 @@ function patternOf(shape: SpendingShapePreset): SpendingPattern {
 
 function currentPensionAge(params: SimulationParams): number {
   return params.withdrawalPlan?.nationalPensionStartAge ?? NATIONAL_PENSION_NORMAL_START_AGE;
-}
-
-function candidatePreset(ranked: RankedStrategyCandidate): SimulationParams['yieldPreset'] {
-  return ranked.candidate.strategy.legacySettings.yieldPreset;
 }

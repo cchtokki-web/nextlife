@@ -33,7 +33,6 @@ function evaluationsFor(goals: RetirementGoals, missed: readonly RetirementGoalT
 
 function candidate(input: {
   id: string;
-  allocation: 'CONSERVATIVE' | 'BALANCED' | 'GROWTH';
   spending: 'FIXED' | 'FRONT_LOADED' | 'CARE_HEAVY';
   goalProbability: number;
   spendingProbability?: number;
@@ -54,7 +53,6 @@ function candidate(input: {
         nationalPensionStartAge: 65,
         withdrawalPolicy: 'GENERAL_FIRST',
         spendingPattern: input.spending,
-        assetAllocation: input.allocation,
       },
     },
     simulation: { yearlyResults: [], depletionAge: null, endingAssets: 100 },
@@ -94,17 +92,19 @@ function candidate(input: {
 describe('RecommendationEngine', () => {
   test('Monte Carlo 검증 후보를 서로 다른 안정형·균형형·여유형으로 선택한다', () => {
     const candidates = [
-      candidate({ id: 'stable', allocation: 'CONSERVATIVE', spending: 'FIXED', goalProbability: 0.8, survivalProbability: 0.99, p10: 90 }),
-      candidate({ id: 'balanced', allocation: 'BALANCED', spending: 'FIXED', goalProbability: 0.95 }),
-      candidate({ id: 'comfortable', allocation: 'GROWTH', spending: 'FRONT_LOADED', goalProbability: 0.9, spendingProbability: 0.97 }),
-      candidate({ id: 'growth', allocation: 'GROWTH', spending: 'FIXED', goalProbability: 0.99 }),
+      candidate({ id: 'defensive', spending: 'FIXED', goalProbability: 0.8, survivalProbability: 0.99, p10: 90 }),
+      candidate({ id: 'middling', spending: 'FIXED', goalProbability: 0.95 }),
+      candidate({ id: 'front-loaded', spending: 'FRONT_LOADED', goalProbability: 0.9, spendingProbability: 0.97 }),
+      candidate({ id: 'highest-probability', spending: 'FIXED', goalProbability: 0.99 }),
     ];
 
     const result = new RecommendationEngine().recommend(candidates);
 
     expect(result.recommendations.map((item) => item.label)).toEqual(['안정형', '균형형', '여유형']);
+    // 안정형은 자산 존속확률·하위 10% 잔여자산이 가장 높은 안, 균형형은 남은 것 중 목표
+    // 달성확률이 가장 높은 안, 여유형은 다시 남은 것 중 은퇴초기 집중형이다.
     expect(result.recommendations.map((item) => item.candidate.candidate.id)).toEqual([
-      'stable', 'balanced', 'comfortable',
+      'defensive', 'highest-probability', 'front-loaded',
     ]);
     expect(new Set(result.recommendations.map((item) => item.candidate.candidate.id)).size).toBe(3);
     expect(result.primary?.persona).toBe('BALANCED');
@@ -112,7 +112,7 @@ describe('RecommendationEngine', () => {
 
   test('검증되지 않은 후보를 추천하거나 후보 수를 부풀리지 않는다', () => {
     const validated = candidate({
-      id: 'validated', allocation: 'BALANCED', spending: 'FIXED', goalProbability: 0.9,
+      id: 'validated', spending: 'FIXED', goalProbability: 0.9,
     });
     const unvalidated = { ...validated, candidate: { ...validated.candidate, id: 'unvalidated' } };
     delete unvalidated.monteCarlo;
@@ -123,12 +123,11 @@ describe('RecommendationEngine', () => {
     expect(result.recommendations[0].candidate.candidate.id).toBe('validated');
   });
 
-  // C7: qualifies가 하드 필터가 된 뒤로, CONSERVATIVE + FRONT_LOADED 후보는 안정형과 여유형
-  // 양쪽 조건을 동시에 만족한다. 그래서 `used` Set이 실제로 중재를 하게 됐는데, 기존 테스트
-  // 입력(CONSERVATIVE/FIXED, GROWTH/FRONT_LOADED)은 애초에 겹칠 수 없어 이를 검증하지 못했다.
+  // C7: 안정형·균형형은 자격 조건 없이 비교자만으로 정의되므로, 어떤 후보든 세 페르소나
+  // 중 둘 이상의 조건을 동시에 만족한다. 그래서 `used` Set이 실제로 중재를 한다.
   test('두 페르소나 조건을 동시에 만족하는 후보를 중복 배정하지 않는다', () => {
     const dual = candidate({
-      id: 'dual', allocation: 'CONSERVATIVE', spending: 'FRONT_LOADED', goalProbability: 0.9,
+      id: 'dual', spending: 'FRONT_LOADED', goalProbability: 0.9,
     });
 
     const result = new RecommendationEngine().recommend([dual]);
@@ -141,10 +140,10 @@ describe('RecommendationEngine', () => {
 
   test('겹치는 후보가 있어도 각 페르소나에는 서로 다른 후보가 간다', () => {
     const dual = candidate({
-      id: 'dual', allocation: 'CONSERVATIVE', spending: 'FRONT_LOADED', goalProbability: 0.9,
+      id: 'dual', spending: 'FRONT_LOADED', goalProbability: 0.9,
     });
     const frontLoaded = candidate({
-      id: 'front-loaded', allocation: 'GROWTH', spending: 'FRONT_LOADED', goalProbability: 0.8,
+      id: 'front-loaded', spending: 'FRONT_LOADED', goalProbability: 0.8,
     });
 
     const result = new RecommendationEngine().recommend([dual, frontLoaded]);
@@ -170,23 +169,21 @@ describe('primary 선정', () => {
   //
   // 예전 규칙은 `find(persona === 'BALANCED')` 고정이었다. 목표를 지킨 카드가 균형형 자리에
   // 앉으면 옛 규칙도 같은 답을 내므로 두 가설이 갈리지 않는다. 그래서 균형형 자리에
-  // «가장 높은 목표확률 + 목표 미달» 카드를 앉히고, 목표를 지킨 카드는 여유형 자리에 둔다.
+  // «가장 높은 목표확률 + 목표 미달» 카드를 앉히고, 목표를 지킨 카드는 안정형 자리에 둔다.
   //
-  // 여유형 자리에 앉히려면 «자격»과 «비교자»를 둘 다 맞춰야 한다: 여유형은 GROWTH +
-  // FRONT_LOADED 후보만 받고(qualifies), 그중 spendingSuccessProbability로 고른다.
-  // 하나라도 빠뜨리면 그 카드가 추천 목록에 아예 오르지 못해, 균형형 하나만 남은 목록에서
-  // 「목표를 지킨 카드를 골랐다」를 검증할 수 없다.
+  // 안정형 자리에 앉히려면 그 비교자의 첫 키를 이겨야 한다 — 자산 존속확률이다. 균형형은
+  // 남은 후보 중 목표 달성확률이 가장 높은 것을 가져가므로, 목표를 놓친 쪽이 그 자리에 온다.
   test('확률이 가장 높아도 상위 목표를 놓친 카드는 추천하지 않는다', () => {
     const goals = goalsOf('EARLY_RETIREMENT', 'ASSET_SURVIVAL');
     const candidates = [
       candidate({
-        id: 'misses-goal', allocation: 'BALANCED', spending: 'FIXED',
-        goalProbability: 0.7, spendingProbability: 0.2, survivalProbability: 0.99, p10: 90,
+        id: 'misses-goal', spending: 'FIXED',
+        goalProbability: 0.7, spendingProbability: 0.2, survivalProbability: 0.5, p10: 50,
         goals, missed: ['EARLY_RETIREMENT'],
       }),
       candidate({
-        id: 'keeps-goal', allocation: 'GROWTH', spending: 'FRONT_LOADED',
-        goalProbability: 0.47, spendingProbability: 0.99,
+        id: 'keeps-goal', spending: 'FIXED',
+        goalProbability: 0.47, spendingProbability: 0.99, survivalProbability: 0.99, p10: 90,
         goals, missed: [],
       }),
     ];
@@ -204,11 +201,11 @@ describe('primary 선정', () => {
     const goals = goalsOf('EARLY_RETIREMENT', 'ASSET_SURVIVAL');
     const candidates = [
       candidate({
-        id: 'stable', allocation: 'CONSERVATIVE', spending: 'FIXED',
+        id: 'stable', spending: 'FIXED',
         goalProbability: 0.7, survivalProbability: 0.99, p10: 90, goals, missed: [],
       }),
       candidate({
-        id: 'balanced', allocation: 'BALANCED', spending: 'FIXED',
+        id: 'balanced', spending: 'FIXED',
         goalProbability: 0.47, goals, missed: [],
       }),
     ];
@@ -225,12 +222,12 @@ describe('primary 선정', () => {
     const goals = goalsOf('EARLY_RETIREMENT', 'ASSET_SURVIVAL', 'INHERITANCE');
     const candidates = [
       candidate({
-        id: 'stable', allocation: 'CONSERVATIVE', spending: 'FIXED',
+        id: 'stable', spending: 'FIXED',
         goalProbability: 0.9, survivalProbability: 0.99, p10: 90,
         goals, missed: ['EARLY_RETIREMENT'], // 가중치 3
       }),
       candidate({
-        id: 'balanced', allocation: 'BALANCED', spending: 'FIXED',
+        id: 'balanced', spending: 'FIXED',
         goalProbability: 0.5, goals, missed: ['ASSET_SURVIVAL', 'INHERITANCE'], // 가중치 2+1=3
       }),
     ];
@@ -246,11 +243,11 @@ describe('primary 선정', () => {
   test('선택한 목표가 없으면 확률이 가장 높은 카드를 추천한다', () => {
     const candidates = [
       candidate({
-        id: 'stable', allocation: 'CONSERVATIVE', spending: 'FIXED',
+        id: 'stable', spending: 'FIXED',
         goalProbability: 0.8, survivalProbability: 0.99, p10: 90,
       }),
       candidate({
-        id: 'balanced', allocation: 'BALANCED', spending: 'FIXED', goalProbability: 0.3,
+        id: 'balanced', spending: 'FIXED', goalProbability: 0.3,
       }),
     ];
 
@@ -262,8 +259,8 @@ describe('primary 선정', () => {
   // 모든 키가 동률일 때 승자를 후보 id 알파벳 순으로 정하지 않는다는 회귀 테스트.
   test('완전 동률이면 균형형을 기본값으로 유지한다', () => {
     const candidates = [
-      candidate({ id: 'aaa-stable', allocation: 'CONSERVATIVE', spending: 'FIXED', goalProbability: 0.6 }),
-      candidate({ id: 'zzz-balanced', allocation: 'BALANCED', spending: 'FIXED', goalProbability: 0.6 }),
+      candidate({ id: 'aaa-stable', spending: 'FIXED', goalProbability: 0.6 }),
+      candidate({ id: 'zzz-balanced', spending: 'FIXED', goalProbability: 0.6 }),
     ];
 
     const result = engine.recommend(candidates, goalsOf());
@@ -275,8 +272,8 @@ describe('primary 선정', () => {
   // 「목표를 지킨 카드」를 가려낼 수는 없으므로, 남는 기준은 확률뿐이다.
   test('goals 없이 호출하면 목표 미선택과 같게 확률로 고른다', () => {
     const candidates = [
-      candidate({ id: 'stable', allocation: 'CONSERVATIVE', spending: 'FIXED', goalProbability: 0.9, survivalProbability: 0.99 }),
-      candidate({ id: 'balanced', allocation: 'BALANCED', spending: 'FIXED', goalProbability: 0.4 }),
+      candidate({ id: 'stable', spending: 'FIXED', goalProbability: 0.9, survivalProbability: 0.99 }),
+      candidate({ id: 'balanced', spending: 'FIXED', goalProbability: 0.4 }),
     ];
 
     const result = engine.recommend(candidates);
@@ -294,8 +291,8 @@ describe('noRecommendationReachesGoal', () => {
 
   test('모든 추천이 0%면 도달하지 못한 것으로 본다', () => {
     const recommendations = recommend([
-      candidate({ id: 'balanced', allocation: 'BALANCED', spending: 'FIXED', goalProbability: 0 }),
-      candidate({ id: 'comfortable', allocation: 'BALANCED', spending: 'FRONT_LOADED', goalProbability: 0 }),
+      candidate({ id: 'balanced', spending: 'FIXED', goalProbability: 0 }),
+      candidate({ id: 'comfortable', spending: 'FRONT_LOADED', goalProbability: 0 }),
     ]);
 
     expect(recommendations).toHaveLength(2);
@@ -304,8 +301,8 @@ describe('noRecommendationReachesGoal', () => {
 
   test('하나라도 0%를 넘으면 고를 이유가 있으므로 도달 불가가 아니다', () => {
     const recommendations = recommend([
-      candidate({ id: 'balanced', allocation: 'BALANCED', spending: 'FIXED', goalProbability: 0 }),
-      candidate({ id: 'comfortable', allocation: 'BALANCED', spending: 'FRONT_LOADED', goalProbability: 0.01 }),
+      candidate({ id: 'balanced', spending: 'FIXED', goalProbability: 0 }),
+      candidate({ id: 'comfortable', spending: 'FRONT_LOADED', goalProbability: 0.01 }),
     ]);
 
     expect(noRecommendationReachesGoal(recommendations)).toBe(false);
@@ -318,16 +315,16 @@ describe('noRecommendationReachesGoal', () => {
   });
 });
 
-// **추천이 현재 계획보다 나쁠 수 있다.** 세 카드는 「더 나은가」가 아니라 「특성을 가졌는가」로
-// 뽑히기 때문이다(RECOMMENDATION_PERSONAS.qualifies). 안정형은 보수적 배분, 여유형은 은퇴초기
-// 집중형만 오를 수 있으므로, 균형·평탄 계획을 쓰는 사용자에게 두 카드는 정의상 «변경»을
-// 제안한다 — 그 변경이 이득인지는 자격 조건이 아니다.
+// **추천이 현재 계획보다 나쁠 수 있다.** 세 카드는 「더 나은가」가 아니라 「무엇을 가장 잘
+// 하는가」로 뽑히기 때문이다(RECOMMENDATION_PERSONAS의 qualifies·compare). 여유형에는 은퇴초기
+// 집중형만 오를 수 있고 안정형·균형형은 각자의 비교자 1등을 가져가므로, 평탄한 계획을 쓰는
+// 사용자에게도 카드는 정의상 «변경»을 제안한다 — 그 변경이 이득인지는 선정 기준이 아니다.
 //
 // 그래서 개선 여부는 별도로 판정한다. 규칙을 한 곳에 두어야 ☆배지·경고 배너·카드의 증감
 // 표시가 같은 답을 말한다.
 describe('improvesOnCurrentPlan', () => {
   const withProbability = (goalProbability: number) =>
-    candidate({ id: `c-${goalProbability}`, allocation: 'BALANCED', spending: 'FIXED', goalProbability });
+    candidate({ id: `c-${goalProbability}`, spending: 'FIXED', goalProbability });
 
   test('현재 계획보다 확률이 높아야 개선이다', () => {
     expect(improvesOnCurrentPlan(withProbability(0.7), 0.67)).toBe(true);

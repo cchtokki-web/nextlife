@@ -22,7 +22,6 @@ import {
   type StrategyGenerationOptions,
 } from './StrategyGenerator';
 import type { StrategyMonteCarloEngine } from '../usecases/montecarlo/MonteCarloEngine';
-import { annualStdDevForYieldPreset } from '../usecases/montecarlo/volatilityPresets';
 import {
   RECOMMENDATION_PERSONAS,
   RecommendationEngine,
@@ -169,10 +168,10 @@ function positiveIntOption(value: number | undefined, fallback: number, name: st
 /**
  * Keeps the shortlist able to answer every persona — and to answer "keep your current plan".
  *
- * Ranking by deterministic score alone systematically eliminates CONSERVATIVE allocations before
- * the persona stage — a higher assumed return always scores better in a projection with no
- * variance — so 안정형 had no conservative candidate left to describe. Reserve room for each
- * persona's defining trait first, then fill the remainder by score.
+ * Ranking by deterministic score alone systematically eliminates the traits a persona needs before
+ * the persona stage — 여유형이 요구하는 FRONT_LOADED 후보가 대표적이다. 결정론 점수만으로
+ * 자르면 그 축을 가진 후보가 한 장도 남지 않아 카드 자체가 사라진다. 페르소나가 내세우는
+ * 특성의 자리를 먼저 예약하고, 나머지를 점수순으로 채운다.
  *
  * **현상 유지 후보를 가장 먼저 담는다.** 생성 단계는 같은 이유로 이미 그것을 보호한다
  * (StrategyGenerator가 baseline을 격자보다 먼저 넣어 maxCandidates 상한에 잘리지 않게 한다).
@@ -394,27 +393,20 @@ export class StrategyOptimizer {
       );
       deterministicShortlistCount = shortlist.length;
 
-      // Candidate allocations already carry the project's conservative/base/aggressive risk
-      // preset. Keep common random numbers (seed), but do not grant a higher expected-return
-      // candidate the lower volatility supplied for another allocation.
-      const configFor = (
-        item: Omit<RankedStrategyCandidate, 'rank'>,
-        trials: number,
-      ): MonteCarloConfig => ({
-        ...fullConfig,
-        trials,
-        annualStdDev: annualStdDevForYieldPreset(
-          item.candidate.strategy.legacySettings.yieldPreset,
-          fullConfig.annualStdDev,
-        ),
-      });
+      // **모든 후보가 같은 σ를 쓴다.** 예전에는 후보의 yieldPreset으로 σ를 다시 정했다 —
+      // 후보마다 수익률 가정이 달랐을 때, 높은 수익률 후보가 다른 자산배분의 낮은 변동성을
+      // 빌려 쓰는 것을 막기 위해서였다. 자산배분 축이 사라져 후보들의 수익률이 모두 같아진
+      // 지금은 그 덮어쓰기가 해로울 뿐이다: 채점은 프리셋 σ로, 적용 후 재채점(몬테카를로는
+      // 이제 실제 입력 수익률에서 σ를 유도한다)은 다른 σ로 돌아, 카드가 약속한 확률을
+      // 적용된 계획이 재현하지 못한다.
+      const configFor = (trials: number): MonteCarloConfig => ({ ...fullConfig, trials });
 
       const validate = (
         item: Omit<RankedStrategyCandidate, 'rank'>,
         trials: number,
       ): Omit<ValidatedStrategyCandidate, 'rank'> | null => {
         try {
-          const monteCarlo = engine.validate(profile, goals, item.candidate.strategy, configFor(item, trials));
+          const monteCarlo = engine.validate(profile, goals, item.candidate.strategy, configFor(trials));
           return { ...item, monteCarlo };
         } catch (error) {
           monteCarloFailures.push({ candidateId: item.candidate.id, reason: errorMessage(error) });

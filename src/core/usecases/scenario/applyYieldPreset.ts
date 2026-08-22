@@ -14,8 +14,10 @@ import { CustomYieldSnapshot, SimulationParams } from '../../entities/types';
 // **명목/실질**: 명목 수익률이다. inflationMode가 'real'이면 엔진이 inflationRate를 별도로
 // 차감하므로, 이 값 자체를 실질로 바꾸면 물가가 두 번 반영된다.
 //
-// 이 상수는 이제 applyYieldPreset뿐 아니라 StrategyGenerator의 assetAllocation 축
-// (CONSERVATIVE/BALANCED/GROWTH)도 소비한다. 값을 바꾸면 후보 생성 결과가 함께 바뀐다.
+// 이 상수는 applyYieldPreset 외에 volatilityPresets의 volatilityForStockReturn도 소비한다 —
+// 프리셋 수익률과 프리셋 변동성을 잇는 직선의 양 끝 앵커다. 값을 바꾸면 몬테카를로 σ도 함께
+// 움직인다. (2026-08-22부터 StrategyGenerator는 이 표를 쓰지 않는다 — 추천 후보는 사용자가
+// 입력한 수익률 가정을 그대로 물려받는다.)
 export const YIELD_PRESET_RATES = {
   conservative: { stockGrowth: 5, pensionReturn: 3 },
   base: { stockGrowth: 7, pensionReturn: 4 },

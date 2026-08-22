@@ -36,7 +36,6 @@ describe('retirement-domain-invariants / optimizer', () => {
           nationalPensionStartAge: 65,
           withdrawalPolicy: 'GENERAL_FIRST',
           spendingPattern: 'FIXED',
-          assetAllocation: 'BALANCED',
         },
       },
       {
@@ -48,7 +47,6 @@ describe('retirement-domain-invariants / optimizer', () => {
           nationalPensionStartAge: 65,
           withdrawalPolicy: 'GENERAL_FIRST',
           spendingPattern: 'FIXED',
-          assetAllocation: 'BALANCED',
         },
       },
     ];
@@ -82,7 +80,6 @@ describe('retirement-domain-invariants / optimizer', () => {
           nationalPensionStartAge: 1,
           withdrawalPolicy: 1,
           spendingPattern: 1,
-          assetAllocation: 1,
         },
         theoreticalCombinationCount: 2,
         generatedCandidateCount: 2,

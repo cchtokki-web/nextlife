@@ -18,7 +18,7 @@ import { makeParams, makeRanked } from './strategyFieldFixtures';
 const formatValue = (value: number) => `${Math.round(value / 10_000)}만원`;
 
 describe('describeStrategyChanges', () => {
-  test('여섯 축이 모두 다르면 고정된 순서로 나열한다', () => {
+  test('다섯 축이 모두 다르면 고정된 순서로 나열한다', () => {
     const params = makeParams({
       userProfile: { currentAge: 50, retirementAge: 60, expectancy: 90, targetMonthlySpending: 3_000_000 },
       yieldPreset: 'conservative',
@@ -29,7 +29,6 @@ describe('describeStrategyChanges', () => {
       nationalPensionStartAge: 65,
       targetMonthlySpending: 3_500_000,
       withdrawalPolicy: 'ISA_FIRST',
-      assetAllocation: 'GROWTH',
       spendingPattern: 'FRONT_LOADED',
     });
 
@@ -38,7 +37,6 @@ describe('describeStrategyChanges', () => {
       { label: '국민연금', before: '60세', after: '65세' },
       { label: '월 생활비', before: '300만원', after: '350만원' },
       { label: '자산 인출', before: '일반계좌 우선 인출', after: 'ISA 우선 인출' },
-      { label: '투자 성향', before: '보수적 자산배분', after: '성장형 자산배분' },
       { label: '생활비 배분', before: '생활비를 일정하게 유지', after: '통계 기준으로 감소' },
     ]);
   });
@@ -54,7 +52,6 @@ describe('describeStrategyChanges', () => {
       nationalPensionStartAge: 65,
       targetMonthlySpending: 3_500_000,
       withdrawalPolicy: 'ISA_FIRST',
-      assetAllocation: 'BALANCED',
       spendingPattern: 'FIXED',
     });
 
@@ -77,19 +74,18 @@ describe('describeStrategyChanges', () => {
       .toContainEqual({ label: '자산 인출', before: '현재 설정', after: '세금 최적화 순서로 인출' });
   });
 
-  test('투자 성향 before는 프리셋 세 가지 외에는 균형으로 적는다', () => {
-    const cases: [SimulationParams['yieldPreset'], string][] = [
-      ['conservative', '보수적 자산배분'],
-      ['aggressive', '성장형 자산배분'],
-      ['custom', '균형 자산배분'],
-      [undefined, '균형 자산배분'],
+  // 「투자 성향」 축은 2026-08-22에 없앴다. 그 축은 yieldPreset을 갈아끼우는 가정 변경일
+  // 뿐이었고, 사용자가 실행할 수 있는 조정이 아니었다. 어떤 수익률 가정을 쓰고 있든 카드는
+  // 그것을 변경점으로 말하지 않아야 한다.
+  test('수익률 가정은 어떤 값이어도 변경점이 되지 않는다', () => {
+    const presets: SimulationParams['yieldPreset'][] = [
+      'conservative', 'base', 'aggressive', 'custom', undefined,
     ];
 
-    for (const [preset, expected] of cases) {
+    for (const preset of presets) {
       const params = makeParams({ yieldPreset: preset });
-      const ranked = makeRanked({ assetAllocation: 'BALANCED' });
-      expect(describeStrategyChanges(params, ranked, formatValue))
-        .toContainEqual({ label: '투자 성향', before: expected, after: '균형 자산배분' });
+      const changes = describeStrategyChanges(params, makeRanked(), formatValue);
+      expect(changes.map((change) => change.label)).not.toContain('투자 성향');
     }
   });
 
