@@ -141,15 +141,21 @@ function withdrawalBlocked(over: Record<string, unknown>): SimulationParams {
   } as unknown as SimulationParams;
 }
 
+// 상속 하한선이 인출을 막는 것은 «2단계 전용» 사실이다. 1단계(HARD 생활비 바닥)는 계층 1이라
+// 계층 2인 하한선을 넘겨서라도 채우므로 1단계에서는 막히지 않는다
+// (SimulationEngine.assetFloorBreak.test.ts). 그래서 아래 두 시나리오는 바닥을 목표 생활비보다
+// «낮게» 두어 2단계가 실제로 도는 해를 만든다 — 그 2단계가 하한선에 막힌다.
 describe('막힌 사유는 실제 원인일 때만 붙는다', () => {
-  test('상속 하한선이 인출을 자른 해는 assetFloor가 남는다', () => {
+  test('상속 하한선이 2단계 인출을 자른 해는 assetFloor가 남는다', () => {
     const result = new SimulationEngine().runSingle(
-      withdrawalBlocked({ assetFloor: 280_000_000 })
+      withdrawalBlocked({ assetFloor: 280_000_000, hardSpendingFloor: 1_000_000 })
     );
 
     for (const year of result.yearlyResults) {
       const d = year.ledger!.diagnostics;
-      expect(d.unmetHardSpending, `${year.age}세`).toBeGreaterThan(0);
+      // 계층 1은 끝까지 채워진다 — 하한선이 자른 것은 목표 생활비(계층 3)뿐이다.
+      expect(d.unmetHardSpending, `${year.age}세`).toBe(0);
+      expect(d.unmetTargetSpending, `${year.age}세`).toBeGreaterThan(0);
       expect(d.blockedWithdrawalReason, `${year.age}세`).toBe('assetFloor');
     }
   });
@@ -161,12 +167,13 @@ describe('막힌 사유는 실제 원인일 때만 붙는다', () => {
   test('수익이 난 ISA를 들고 있어도 하한선이 원인이면 ISA를 사유로 적지 않는다', () => {
     const result = new SimulationEngine().runSingle(withdrawalBlocked({
       assetFloor: 280_000_000,
+      hardSpendingFloor: 1_000_000,
       isaAccounts: [isaAccount(10_000_000, 5)],
     }));
 
     for (const year of result.yearlyResults) {
       const d = year.ledger!.diagnostics;
-      expect(d.unmetHardSpending, `${year.age}세`).toBeGreaterThan(0);
+      expect(d.unmetTargetSpending, `${year.age}세`).toBeGreaterThan(0);
       expect(d.blockedWithdrawalReason, `${year.age}세`).toBe('assetFloor');
       expect(d.blockedWithdrawalReason, `${year.age}세`).not.toBe('isaPrincipalExhausted');
     }

@@ -395,6 +395,20 @@ export interface YearLedgerDiagnostics {
   unmetTargetSpending: number;
   /** 잔액은 남았는데 꺼내지 못한 이유. 없으면 「꺼낼 것이 없었다」는 뜻이다. */
   blockedWithdrawalReason?: 'legalAge' | 'isaPrincipalExhausted' | 'assetFloor';
+  /**
+   * 계층 «밖» 사유로 assetFloor가 침범당했다.
+   *
+   * 세금 징수는 인출 엔진을 거치지 않고 자산을 직접 판다. 그래서 하한선을 지키지 않는다 —
+   * 그리고 «그것이 옳다». 납세 의무는 목표가 우선순위로 깰 수 있는 계층 안이 아니라 물리적·
+   * 법적 실행 가능성과 같은 계층 «밖»에 있다. 상속을 남기고 싶다는 이유로 세금을 안 낼 수는
+   * 없으므로 세금이 이긴다. 결함은 그 침범이 «조용히» 일어나는 것뿐이라 여기에 적는다.
+   *
+   * brokenPreferences의 'assetFloor'와는 «다른» 사실이다. 그쪽은 HARD 생활비 바닥을 채우려고
+   * 계층 1이 계층 2를 이긴 것이고, 이쪽은 어떤 목표도 이기지 않은 계층 밖의 침범이다. 한 해에
+   * 둘이 함께 일어날 수 있으므로 자리를 나눠 둔다 — 한 자리에 겹쳐 적으면 평가 계층이
+   * 「목표 충돌」과 「제도상 불가피」를 구분하지 못한다.
+   */
+  assetFloorBreachedBy?: 'taxObligation';
 }
 
 export interface YearlyLedger {

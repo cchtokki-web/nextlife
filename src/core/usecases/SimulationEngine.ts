@@ -911,6 +911,8 @@ export class LegacySimulationEngine implements SimulationEngineContract {
         if (blockedWithdrawalReason !== undefined && reason !== 'assetFloor') return;
         blockedWithdrawalReason = reason;
       };
+      // 계층 밖 사유로 상속 하한선이 침범당했는가(YearLedgerDiagnostics.assetFloorBreachedBy).
+      let assetFloorBreachedBy: YearLedgerDiagnostics['assetFloorBreachedBy'];
       let annualDividendTaxPaid = 0;
       let annualPensionTaxPaid = 0;
       let annualNationalPensionTaxPaid = 0;
@@ -1714,14 +1716,19 @@ export class LegacySimulationEngine implements SimulationEngineContract {
           // 호출해 전부 0을 돌려받았으므로 결과는 같다.
           if (netCashRequired <= 0) return 0;
           // 보호자산(assetFloor) 여유는 단계마다 다시 잰다 — 1단계가 이미 자산을 줄였기
-          // 때문이다. 한 번만 재면 2단계가 이미 쓴 여유를 다시 쓴다.
-          // **이 하한선은 이 태스크에서 손대지 않는다**(계층 2, 후속 태스크의 몫).
-          const protectedHeadroom = assetFloorDisplay > 0
+          // 때문이다. 한 번만 재면 2단계가 이미 쓴 여유를 다시 쓴다. 1단계가 하한선 «아래»로
+          // 내려간 해에는 이 값이 음수가 되는데, Math.max(0, ...)이 0으로 눌러 2단계는
+          // 아무것도 더 꺼내지 못한다(WithdrawalEngine은 headroom이 0이면 루프를 끊는다).
+          const floorHeadroom = assetFloorDisplay > 0
             ? Math.max(0, currentTotalAssetsDisplay(
               deferredWithdrawalCapitalGainsTaxReserveDisplay
                 + annualWithdrawalCapitalGainsTaxReserveDisplay
             ) - assetFloorDisplay)
             : Infinity;
+          // 계층 1(HARD 생활비 바닥)이 계층 2(assetFloor = 상속 하한선·고갈 방지)를 «이긴다».
+          // 1단계는 하한선을 넘겨서라도 바닥을 채운다. 2단계(계층 3)는 그대로 지킨다 —
+          // 목표 생활비까지 채우자고 상속 하한선을 깨지는 않는다.
+          const protectedHeadroom = fundingHardFloor ? Infinity : floorHeadroom;
           const withdrawal = withdrawalEngine.withdraw({
             age: currentAge,
             year: currentYear,
@@ -1739,7 +1746,11 @@ export class LegacySimulationEngine implements SimulationEngineContract {
           // 원 미만의 잔여는 세후 필요액 역산의 잔돈이라 막힌 것이 아니다.
           if (withdrawal.unfulfilledAmount > 1) {
             if (
-              Number.isFinite(protectedHeadroom)
+              // 1단계에서는 도달할 수 없는 가지다(위에서 Infinity를 넘긴다). 그래도 조건에
+              // «명시»해 둔다 — 하한선이 인출을 막는 것은 이제 2단계 전용 사실이고, 그
+              // 의도가 코드에 남아 있어야 나중에 Infinity가 사라져도 뜻이 흐려지지 않는다.
+              !fundingHardFloor
+              && Number.isFinite(protectedHeadroom)
               && withdrawal.grossWithdrawal + 1 >= protectedHeadroom
             ) {
               // 여유를 다 쓰고 멈췄다. WithdrawalEngine은 headroom이 마르면 «루프를 끊으므로»
@@ -1758,6 +1769,13 @@ export class LegacySimulationEngine implements SimulationEngineContract {
             ) {
               recordBlockedWithdrawal('isaPrincipalExhausted');
             }
+          }
+          // 하한선을 «실제로» 넘겨 꺼냈을 때만 깬 것으로 센다. 1단계라도 여유 안에서 끝난
+          // 달은 아무것도 깨지 않았다 — 계층은 「필요할 때만」 아래를 깬다. 원 미만 초과는
+          // 세후 필요액 역산의 잔돈이라 뺀다. floorHeadroom이 Infinity면(하한선이 없으면)
+          // 이 조건은 언제나 거짓이다 — 깰 것이 없다.
+          if (fundingHardFloor && withdrawal.grossWithdrawal > floorHeadroom + 1) {
+            brokenPreferences.add('assetFloor');
           }
           annualWithdrawal += withdrawal.grossWithdrawal;
           for (const item of withdrawal.withdrawalsByAccount) {
@@ -1808,6 +1826,15 @@ export class LegacySimulationEngine implements SimulationEngineContract {
             - completedCashFlow.actualSpending
         );
       }
+
+      // 연말 세금 징수 «직전»의 총자산. 아래 collectTax들은 인출 엔진을 거치지 않고 자산을
+      // 직접 팔므로 상속 하한선을 지키지 않는다 — 그리고 그것이 옳다(계층 밖). 여기서 재는
+      // 이유는 그 침범이 조용히 일어나지 않게 하기 위해서다. 이 시점부터 아래 총자산 확정까지
+      // 잔액을 건드리는 것은 collectTax뿐이므로, 줄어든 만큼은 전부 세금이다.
+      const assetsBeforeYearEndTaxDisplay = currentTotalAssetsDisplay(
+        deferredWithdrawalCapitalGainsTaxReserveDisplay
+          + annualWithdrawalCapitalGainsTaxReserveDisplay
+      );
 
       // Taxes
       const { comprehensiveTaxKRW, healthInsuranceKRW, healthInsuranceIncomeBasisKRW } = calculateComprehensiveTaxAndHealthInsuranceKRW(
@@ -1936,6 +1963,18 @@ export class LegacySimulationEngine implements SimulationEngineContract {
       const cashAssetsDisplay = cashBucketDisplay + reservedTaxCashDisplay;
       const totalAssetsDisplay = stockAssetsDisplay + pensionAssetsDisplay + isaAssetsDisplay + cashAssetsDisplay;
 
+      // 납세로 하한선이 깨졌다면 «기록»한다. 고치지 않는다 — 세금을 하한선 앞에서 멈추게
+      // 만들면 국가가 돈을 안 받는 세계를 시뮬레이션하게 된다. 조건은 「세금이 실제로 자산을
+      // 줄였고(원 단위 잔돈은 제외), 그 결과가 하한선 아래」다. 이미 하한선 아래였던 해에도
+      // 세금이 더 팔았다면 그 돈은 하한선 «아래»에서 나온 것이므로 침범으로 센다.
+      if (
+        assetFloorDisplay > 0
+        && totalAssetsDisplay < assetFloorDisplay
+        && totalAssetsDisplay + 1 < assetsBeforeYearEndTaxDisplay
+      ) {
+        assetFloorBreachedBy = 'taxObligation';
+      }
+
       const hasTaxWarning = annualRawFinancialIncomeKRW > taxCtx.profile.financialIncomeThresholdKRW;
       const pensionIncome = annualNationalPensionIncome + annualPrivatePensionIncome;
       const totalIncome = annualDividendIncome + pensionIncome + annualOtherIncome;
@@ -1958,6 +1997,7 @@ export class LegacySimulationEngine implements SimulationEngineContract {
         unmetHardSpending: annualUnmetHardSpending,
         unmetTargetSpending: annualUnmetSpending,
         ...(blockedWithdrawalReason !== undefined ? { blockedWithdrawalReason } : {}),
+        ...(assetFloorBreachedBy !== undefined ? { assetFloorBreachedBy } : {}),
       };
 
       // 한 해의 회계 원장. 결과에 실린 스칼라들이 하나의 항등식으로 설명되는지를 여기서
