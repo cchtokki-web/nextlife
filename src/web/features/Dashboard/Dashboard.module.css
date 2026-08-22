@@ -388,36 +388,41 @@
 .detailedAnalysis > summary:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
 
 .detailedAnalysis > summary::-webkit-details-marker { display: none; }
-.detailedAnalysis > summary span { display: flex; flex-direction: column; gap: 0.2rem; }
-.detailedAnalysis > summary strong { font-family: var(--font-display); color: var(--foreground); }
-.detailedAnalysis > summary small { font-size: 0.75rem; color: var(--foreground-muted); }
-
-/* 접힘 토글. 예전에는 글리프 하나만 띄우어 폭 전체를 차지하는 바의 오른쪽 끝에
-   떠 있었다 — 바가 넓을수록 제목과 멀어져 «누를 수 있는 것»으로 읽히지 않는다.
-   원형 배경과 테두리를 줘 버튼으로 보이게 하고 글리프도 키운다. */
-.detailedAnalysis > summary::after {
-  content: '+';
+.detailedAnalysisHeading {
   display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-width: 0;
+}
+.detailedAnalysisHeading strong { font-family: var(--font-display); color: var(--foreground); }
+.detailedAnalysisHeading small { font-size: 0.75rem; color: var(--foreground-muted); }
+
+/* summary 전체가 클릭 영역이고, 오른쪽 컨트롤은 상태와 동작을 설명하는 시각적 단서다.
+   +/− 아이콘은 추가·삭제 액션처럼 읽히므로 명시적인 라벨과 chevron을 사용한다. */
+.detailedAnalysisToggle {
+  display: inline-flex;
   align-items: center;
   justify-content: center;
   flex: none;
+  gap: 0.3rem;
   margin-left: auto;
-  width: 2.5rem;
-  height: 2.5rem;
-  border-radius: 999px;
-  border: 1px solid color-mix(in srgb, var(--primary) 40%, transparent);
-  background: color-mix(in srgb, var(--primary) 12%, transparent);
+  padding: 0.45rem 0.65rem;
+  border-radius: 10px;
   color: var(--primary);
-  font-size: 1.6rem;
-  font-weight: 400;
+  font-size: 0.75rem;
+  font-weight: 700;
   line-height: 1;
-  transition: background 0.2s ease, border-color 0.2s ease;
+  white-space: nowrap;
+  transition: color 0.2s ease, background 0.2s ease;
 }
-.detailedAnalysis > summary:hover::after {
-  background: color-mix(in srgb, var(--primary) 24%, transparent);
-  border-color: color-mix(in srgb, var(--primary) 75%, transparent);
+.detailedAnalysis > summary:hover .detailedAnalysisToggle {
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
 }
-.detailedAnalysis[open] > summary::after { content: '−'; }
+.detailedAnalysisToggle svg { transition: transform 0.2s ease; }
+.detailedAnalysisCloseLabel { display: none; }
+.detailedAnalysis[open] .detailedAnalysisOpenLabel { display: none; }
+.detailedAnalysis[open] .detailedAnalysisCloseLabel { display: inline; }
+.detailedAnalysis[open] .detailedAnalysisToggle svg { transform: rotate(180deg); }
 .detailedAnalysisContent { display: flex; flex-direction: column; gap: 2rem; padding: 0 1rem 1rem; }
 
 /* 평생 소비 최적화의 연령 구간별 금액. 문장 안에 이어 쓰면 "60~69세 580만원 70~79세
