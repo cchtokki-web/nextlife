@@ -251,13 +251,23 @@ export class LegacySimulationEngine implements SimulationEngineContract {
       userProfile: { ...params.userProfile, targetMonthlySpending },
     };
     delete trial.assetFloor;
-    // assetFloor와 같은 이유로 HARD 생활비 바닥도 뗀다. 방향만 반대다 — 이쪽은 탐색이 시험하는
-    // 생활비가 무엇이든 인출을 «바닥까지 끌어올리므로», 바닥 미만의 모든 시행이 같은 경로를
-    // 돌고 함께 실패해 탐색이 0으로 붕괴한다. 시험한 금액이 아니라 바닥을 재는 탐색은 자기가
-    // 보고하는 값과 다른 것을 재는 셈이다.
+    // assetFloor와 같은 이유로 HARD 생활비 바닥도 뗀다. 다만 깨지는 방식이 다르다 —
+    // **탐색이 바닥을 그대로 되돌려 준다.**
+    //
+    // 1단계는 바닥까지만 선호를 깨고 그 위로는 지킨다(hardFloorNetNeed). 그래서 선호가
+    // 인출을 막고 있는 계획에서는 시행 ≤ 바닥이면 부족분 전체를 선호를 깨고 채워 성공하고,
+    // 시행 > 바닥이면 바닥 위쪽이 선호에 막혀 실패한다. 이진탐색이 정확히 바닥으로 수렴한다.
+    // 사용자가 넣은 입력값을 계산 결과라고 내놓는 셈이다.
+    //
+    // 실측(연금 5억·저율과세 한도 ON·60→70세). 이 계획의 «실제» 용량은 선호를 지키면
+    // 월 1,181,250원, 선호를 깨면 월 3,446,596원 두 개다:
+    //   바닥 없음 → 1,181,250 / 바닥 100만 → 1,181,250 / 바닥 250만 → **2,499,999**
+    //   바닥 400만 → 3,446,596 / 바닥 1,000만 → 3,446,596
+    // 바닥이 두 용량 사이에 있으면 답이 둘 중 어느 것도 아닌 바닥 자신이 된다.
     //
     // 바닥은 탐색의 **성공 조건이 아니라 탐색 결과와 비교할 기준**이다. 탐색이 끝난 뒤
-    // 지속가능액과 바닥을 견주어 미달을 보고하는 일은 computeSustainableSpendingAdvice가 맡는다.
+    // 지속가능액과 바닥을 견주어 미달을 보고하는 일은 computeSustainableSpendingAdvice가 맡는다
+    // (탐색값이 곧 생활비인 max_sustainable 계획에 한해서다).
     delete trial.hardSpendingFloor;
     return trial;
   }

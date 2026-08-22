@@ -482,7 +482,10 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
               {/* 탐색은 바닥을 떼고 돈다(SimulationEngine.sustainabilityTrialParams). 그래서
                   「어떤 생활비로도 바닥에 닿지 못한다」는 사실은 시뮬레이션 결과가 아니라
                   탐색값과 바닥을 견준 이 자리에서만 드러난다. 침묵하면 사용자가 못박은
-                  조건이 조용히 사라진다. */}
+                  조건이 조용히 사라진다.
+                  max_sustainable 계획에서만 뜬다 — 고정 생활비 계획은 엔진이 1단계에서
+                  해마다 바닥을 실제로 채우므로, 탐색값으로 미달을 말하면 같은 실행의 원장이
+                  반증한다(computeSustainableSpendingAdvice 주석). */}
               {sustainableSpendingAdvice?.kind === 'below_hard_floor' && (
                 <StatusNotice
                   tone="danger" icon={<AlertTriangle size={19} aria-hidden="true" />}
