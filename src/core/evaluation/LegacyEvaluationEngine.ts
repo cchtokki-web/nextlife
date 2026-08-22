@@ -56,7 +56,8 @@ export class LegacyEvaluationEngine implements EvaluationEngine {
       sustainableSpendingAdvice: computeSustainableSpendingAdvice(
         params.spendingStrategy,
         params.userProfile.targetMonthlySpending,
-        result.calculatedTargetSpending
+        result.calculatedTargetSpending,
+        params.hardSpendingFloor
       ),
       utilityExplanations: explainUtilityComponents(
         params,

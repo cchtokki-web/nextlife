@@ -239,10 +239,10 @@ export class LegacySimulationEngine implements SimulationEngineContract {
     return { ...result, utility };
   }
 
-  // 이진탐색 한 회의 시행 params. 목표 생활비만 바꾸고, **상속 하한선은 떼어 낸다.**
+  // 이진탐색 한 회의 시행 params. 목표 생활비만 바꾸고, **두 바닥은 떼어 낸다.**
   //
-  // 하한선을 인출 경로에 건 채로 탐색하면 이진탐색이 깨진다: 인출이 막힐 뿐 자산은 늘
-  // 하한선 위에 남으므로 어떤 생활비를 넣어도 "성공"으로 읽혀 탐색이 상한(5천만원)까지
+  // 상속 하한선(assetFloor)을 인출 경로에 건 채로 탐색하면 이진탐색이 깨진다: 인출이 막힐 뿐
+  // 자산은 늘 하한선 위에 남으므로 어떤 생활비를 넣어도 "성공"으로 읽혀 탐색이 상한(5천만원)까지
   // 올라간다. 여기서는 생활비 자체가 자유변수이므로, 하한선은 인출 제약이 아니라
   // **탐색의 성공 조건**(meetsSustainabilityGoal)으로 표현하는 것이 옳다.
   private sustainabilityTrialParams(params: SimulationParams, targetMonthlySpending: number): SimulationParams {
@@ -251,6 +251,14 @@ export class LegacySimulationEngine implements SimulationEngineContract {
       userProfile: { ...params.userProfile, targetMonthlySpending },
     };
     delete trial.assetFloor;
+    // assetFloor와 같은 이유로 HARD 생활비 바닥도 뗀다. 방향만 반대다 — 이쪽은 탐색이 시험하는
+    // 생활비가 무엇이든 인출을 «바닥까지 끌어올리므로», 바닥 미만의 모든 시행이 같은 경로를
+    // 돌고 함께 실패해 탐색이 0으로 붕괴한다. 시험한 금액이 아니라 바닥을 재는 탐색은 자기가
+    // 보고하는 값과 다른 것을 재는 셈이다.
+    //
+    // 바닥은 탐색의 **성공 조건이 아니라 탐색 결과와 비교할 기준**이다. 탐색이 끝난 뒤
+    // 지속가능액과 바닥을 견주어 미달을 보고하는 일은 computeSustainableSpendingAdvice가 맡는다.
+    delete trial.hardSpendingFloor;
     return trial;
   }
 

@@ -23,6 +23,16 @@ export type SustainableSpendingAdvice =
       sustainableMonthly: number;
       currentMonthly: number;
       difference: number;
+    }
+  | {
+      // 어떤 생활비로도 HARD 생활비 바닥에 닿지 못한다. difference = 월 미달액.
+      //
+      // 위 둘과 달리 «계획이 겨냥한 금액»이 아니라 사용자가 「반드시 지키기」로 못박은
+      // 바닥과 견준 결과다. 그래서 조언(줄이세요/늘리세요)이 아니라 사실 보고에 가깝다.
+      kind: 'below_hard_floor';
+      sustainableMonthly: number;
+      hardFloorMonthly: number;
+      difference: number;
     };
 
 // 조언을 시작하는 비율 경계.
@@ -40,9 +50,37 @@ export function computeSustainableSpendingAdvice(
   // undefined를 다룬다.
   spendingStrategy: SpendingStrategy | undefined,
   targetMonthlySpending: number,
-  calculatedTargetSpending: number | undefined
+  calculatedTargetSpending: number | undefined,
+  // HARD 생활비 목표에서 유도된 월 바닥(SimulationParams.hardSpendingFloor). 없으면 undefined —
+  // 그때는 견줄 기준이 없으므로 바닥 판정 자체가 서지 않는다.
+  hardSpendingFloor?: number
 ): SustainableSpendingAdvice | null {
   const strategy = spendingStrategy || 'target';
+
+  // 바닥 미달은 «전략 게이트 앞»에서 판정한다.
+  //
+  // 아래 두 조언은 「계획이 겨냥한 금액과 견주어 어떻게 조정할까」라서 고정 생활비 계획에서만
+  // 뜻이 있지만, 이것은 「어떤 생활비로도 사용자가 못박은 바닥에 닿지 못한다」는 탐색 결과
+  // 자체의 성질이라 전략과 무관하게 참이다. 특히 max_sustainable에서는 탐색값이 곧 실제
+  // 생활비가 되므로, 여기서 침묵하면 바닥 미달을 말할 자리가 사라진다.
+  //
+  // 엔진은 이 비교를 하지 못한다. 탐색이 정직하려면 바닥을 떼고 돌아야 하고
+  // (SimulationEngine.sustainabilityTrialParams), 그래서 바닥과의 대조는 탐색이 끝난 뒤
+  // 결과와 params를 «둘 다» 보는 이 자리의 몫이다.
+  if (calculatedTargetSpending !== undefined
+    && hardSpendingFloor !== undefined
+    && hardSpendingFloor > 0
+    && calculatedTargetSpending < hardSpendingFloor) {
+    // 탐색이 0으로 수렴한 계획에서도 말한다. 아래 can_spend_more가 0을 침묵으로 처리하는 것과
+    // 다른 이유다 — 저쪽은 「월 0원까지 쓸 수 있습니다」라는 무의미한 권유가 되지만, 이쪽은
+    // HARD 제약이 100% 미달이라는 가장 강한 사실이고 미달액(=바닥 전액)도 지어낸 값이 아니다.
+    return {
+      kind: 'below_hard_floor',
+      sustainableMonthly: calculatedTargetSpending,
+      hardFloorMonthly: hardSpendingFloor,
+      difference: hardSpendingFloor - calculatedTargetSpending,
+    };
+  }
 
   // max_sustainable: 이 값이 이미 실제 생활비로 적용된 상태라 제안할 것이 없다.
   //   기존 "최대 고정 생활비 산출 완료" 배너가 그 사실을 이미 알린다.
