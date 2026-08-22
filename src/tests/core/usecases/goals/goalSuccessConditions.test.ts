@@ -117,6 +117,34 @@ describe('resolveGoalSuccessConditions', () => {
       expect(conditions.unmeasuredGoals).toEqual(['TAX_OPTIMIZATION']);
     });
 
+    test('판정 가능한 목표를 골라도 활성 조건이 없으면 계획의 기본 조건으로 되돌아간다', () => {
+      // 「자산 성장」은 판정 가능한 유형이지만 목표액을 묻는 UI가 없어(goalCatalog에 target이
+      // 없다) 단독으로 고르면 세 조건이 «모두» 빈다. 유형만 보는 가드는 이것을 통과시켜,
+      // 62세에 자산이 바닥나는 계획에도 언제나 100%를 준다.
+      const conditions = resolveGoalSuccessConditions(withGoals(
+        [{ type: 'ASSET_GROWTH', priority: 1, constraintType: 'SOFT' }],
+      ));
+
+      expect(conditions.basis).toBe('plan_defaults');
+      expect(conditions.requireSpendingTarget).toBe(true);
+      expect(conditions.requireAssetSurvival).toBe(true);
+      expect(conditions.terminalAssetGoal).toBe(0);
+      // 「자산 성장」은 조건이 비었을 뿐 판정 대상 «유형»이다. 미반영 목록은 유형 기준
+      // 그대로라 여기 들어가지 않는다 — 두 필드가 답하는 질문이 다르다.
+      expect(conditions.unmeasuredGoals).toEqual([]);
+    });
+
+    test('자산 성장이라도 목표액이 살아 있으면 고른 목표 기준을 유지한다', () => {
+      // 구멍만 막는다. 조건이 «하나라도» 나오는 정상 경로는 건드리지 않는다.
+      const conditions = resolveGoalSuccessConditions(withGoals(
+        [{ type: 'ASSET_GROWTH', priority: 1, constraintType: 'SOFT', targetValue: 500_000_000 }],
+      ));
+
+      expect(conditions.basis).toBe('selected_goals');
+      expect(conditions.terminalAssetGoal).toBe(500_000_000);
+      expect(conditions.requireAssetSurvival).toBe(false);
+    });
+
     test('빠른 은퇴는 계획에 이미 반영되므로 미반영 목록에 넣지 않는다', () => {
       // 목표 은퇴 나이는 applyRetirementGoals가 userProfile.retirementAge로 옮겨 모든 시행이
       // 그 나이에 은퇴한다. 미반영이라고 말하면 반영된 목표를 반영되지 않았다고 하는 셈이다.

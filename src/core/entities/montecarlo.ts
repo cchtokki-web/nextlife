@@ -53,6 +53,14 @@ export interface GoalFailureBreakdown {
   // 보고 successAge를 묻지 않는다. 시뮬레이션 루프가 기대수명에서 끝나 오늘은 두 값이
   // 일치하지만(successAge 주석의 경계 불일치 참조) 정의가 다르므로 합치지 않는다.
   observedAssetDepletionCount: number;
+  // 위 관측 고갈 시행 중 **가장 이른 고갈 나이**. 관측 고갈이 없으면 null.
+  //
+  // **개수와 «같은 술어»에서 나온 값이어야 한다.** 원인 문장은 「420회(가장 이른 62세)」처럼
+  // 개수와 나이를 «한 문장 안»에서 나란히 말하는데, MonteCarloResult.depletion.earliestAge는
+  // 술어가 다르다(depletionAge !== null만 보고 successAge를 묻지 않는다 — 위 주석 참조).
+  // 오늘은 두 값이 같지만 정의가 다르므로, 개수는 이쪽에서 나이는 저쪽에서 가져오면 경계가
+  // 갈라지는 날 한 문장이 조용히 어긋난다. 그래서 여기에 함께 싣는다.
+  observedEarliestDepletionAge: number | null;
   // 기말자산이 목표(targetBequest 또는 assetFloor)에 못 미친 시행 수.
   terminalShortfall: number;
   // 생활비 미달이 **처음 발생한 나이**의 중앙값. 미달 시행이 없으면 null.

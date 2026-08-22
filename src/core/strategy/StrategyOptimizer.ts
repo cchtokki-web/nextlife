@@ -18,6 +18,7 @@ import {
 import {
   StrategyGenerator,
   type StrategyCandidate,
+  type StrategyDimensions,
   type StrategyGenerationDebug,
   type StrategyGenerationOptions,
 } from './StrategyGenerator';
@@ -61,6 +62,13 @@ export interface StrategyOptimizerDebug {
   rejectionReasons: Partial<Record<PreSimulationRejectionCode | GoalEvaluationResult['hardConstraintFailures'][number]['code'], number>>;
   unsupportedHardGoals: RetirementGoalType[];
   simulationFailures: Array<{ candidateId: string; reason: string }>;
+  /**
+   * 결정론 결과가 앞선 후보와 «완전히 같아» 접힌 후보의 수. Monte Carlo 경로에서만 센다.
+   *
+   * 0이 아니라는 것은 격자의 어떤 축이 이 계획에서 아무 일도 하지 않는다는 뜻이다 —
+   * 예컨대 인출기 내내 잔액이 0인 ISA에 대한 ISA_FIRST가 그렇다. 진단에 쓰려고 남긴다.
+   */
+  duplicateOutcomeCount: number;
   deterministicShortlistCount: number;
   /** Candidates screened at the reduced trial count. */
   monteCarloValidatedCount: number;
@@ -219,6 +227,138 @@ export function personaAwareShortlist(
   return shortlist;
 }
 
+/**
+ * 사용자가 실제로 조정하게 되는 축. 「현재 계획에 얼마나 가까운가」를 이 축들로만 잰다.
+ * `nationalPensionTiming`은 개시 나이에서 파생되므로 세면 같은 차이를 두 번 세게 된다.
+ */
+const ADJUSTABLE_AXES = [
+  'retirementAge',
+  'nationalPensionStartAge',
+  'withdrawalPolicy',
+  'spendingPattern',
+] as const satisfies ReadonlyArray<keyof StrategyDimensions>;
+
+/** 중복 판정에 쓸 「현재 계획」. 후보 목록에서 그것을 짚는 id와, 축 비교용 좌표다. */
+export interface CurrentPlanReference {
+  candidateId: string;
+  dimensions: StrategyDimensions;
+}
+
+/**
+ * 접힌 후보들 중 누구를 남길지 정하는 거리. 작을수록 현재 계획에 가깝다.
+ *
+ * 현상 유지 후보 자신은 언제나 0이고 나머지는 최소 1이다 — 축 라벨이 우연히 모두 같아도
+ * (baselineDimensions는 미지정 정책을 'GENERAL_FIRST'로 «적어 두는» 라벨용 기본값을 쓴다)
+ * 실제 전략을 들고 있는 쪽이 이겨야 한다.
+ */
+function distanceFromCurrentPlan(
+  candidate: StrategyCandidate,
+  currentPlan: CurrentPlanReference | undefined,
+): number {
+  // 현재 계획을 짚을 수 없으면 아무도 우대하지 않는다. 그 경우의 대표는 예전과 같이
+  // 결정론 정렬(점수 → 기말자산 → id)의 첫 번째다.
+  if (!currentPlan) return 0;
+  if (candidate.id === currentPlan.candidateId) return 0;
+  return 1 + ADJUSTABLE_AXES
+    .filter((axis) => candidate.dimensions[axis] !== currentPlan.dimensions[axis]).length;
+}
+
+/**
+ * 결과가 같은 후보끼리는 이 키가 같다. 반대는 성립하지 않으므로 «후보군»으로만 쓴다.
+ *
+ * 전체 원장을 직렬화하는 것은 후보 수백 개에 대해 공짜가 아니다. 대부분의 후보는 기말자산
+ * 하나로 이미 갈리므로, 이 싼 키가 겹치는 무리에 대해서만 전체 비교를 한다.
+ */
+function outcomeBucketKey(item: Omit<RankedStrategyCandidate, 'rank'>): string {
+  return `${item.simulation.endingAssets}|${item.simulation.depletionAge}|${item.evaluation.weightedScore}`;
+}
+
+/**
+ * 「같은 계획인가」의 판정. **결정론 원장 전체와 목표 판정 전체**를 본다.
+ *
+ * 기말자산만 보면 고갈하는 계획들이 전부 0으로 수렴해 서로 다른 계획까지 접힌다. 반대로
+ * 요약 지표 몇 개만 고르면 새 원장 필드가 생겼을 때 조용히 판정이 약해진다. 원장을 통째로
+ * 넣으면 필드가 늘어도 판정이 따라온다.
+ *
+ * 목표 판정(evaluation)까지 넣는 이유는, 원장이 같아도 목표 달성 여부가 다르면 사용자에게
+ * 다른 답이기 때문이다. 카드가 파는 것은 숫자가 아니라 「목표를 지키는가」다.
+ *
+ * **오차 허용치를 두지 않는다.** 실측된 중복은 17자리까지 비트 단위로 같았으므로 허용치가
+ * 벌어 주는 것이 없고, 「몇 원까지 같은 것으로 볼까」는 우리가 새로 만들어서는 안 되는
+ * 금융적 판단이다(AGENTS.md). 게다가 허용치 비교는 추이적이지 않아 무리 짓기가 순서에
+ * 따라 달라진다 — 결정론 파이프라인이 잃어서는 안 되는 성질이다.
+ *
+ * **남는 오차를 밝혀 둔다.** 결정론 원장이 같아도 몬테카를로가 갈릴 수 있다 — 충격 경로에서는
+ * 잔액이 달라 ISA_FIRST의 재정렬이 실제로 작동하는 해가 생긴다. 54 페르소나 실측에서 그런
+ * 무리는 360개 중 16개였고, 차이는 목표 확률 0.001(1,000회 중 1회)과 기말 중앙값 0.37%
+ * 이내였다. 이 잔차를 없애려면 후보마다 몬테카를로를 한 번 더 돌려야 하는데(전체 비용의
+ * 98%가 그것이다), 「1,000회 중 1회」를 위해 지불할 값이 아니다. 사용자가 카드에서 비교하는
+ * 계획 자체는 원장이 같은 순간 이미 같은 계획이다.
+ */
+function outcomeSignature(item: Omit<RankedStrategyCandidate, 'rank'>): string {
+  return JSON.stringify([item.simulation, item.evaluation]);
+}
+
+/**
+ * 결정론 결과가 같은 후보를 하나로 접는다. **Monte Carlo 전에** 한다.
+ *
+ * 세 장의 카드는 서로 다른 후보 id를 갖도록 배정되지만(RecommendationEngine), id가 다르다고
+ * 계획이 다른 것은 아니다. 격자 축의 어떤 값이 이 사용자의 계획에서 아무 일도 하지 않으면
+ * (인출기 내내 잔액이 0인 ISA에 대한 ISA_FIRST가 그렇다) 서로 다른 두 후보가 «한 해도
+ * 빠짐없이» 같은 원장을 낸다. 그대로 두면 카드 세 장이 실은 두 개를 뜻하고, 접힌 쪽 카드에는
+ * 아무것도 바꾸지 않는 「달라지는 점」이 붙는다.
+ *
+ * 카드마다 시뮬레이션을 한 번 더 돌려 「이 변경이 효과가 있는가」를 묻는 대신 여기서 접는다.
+ * 결정론 결과는 이미 손에 있으므로 추가 계산이 없다.
+ *
+ * 대표는 **현재 계획에 가장 가까운 후보**로 남긴다. 그러면 존재하지 않는 변경점이 문구에서
+ * 저절로 사라진다 — 살아남은 후보가 바로 「그 축을 바꾸지 않는」 후보이기 때문이다.
+ * 예전에는 마지막 결정자가 `id.localeCompare`였고, 그래서 남는 대표를 알파벳이 정했다.
+ *
+ * 순서는 입력 순서를 지킨다. 무리의 첫 자리에 대표를 놓으므로, 결정론 정렬이 매겨 둔
+ * 순위가 접기 때문에 흔들리지 않는다.
+ */
+export function dedupeByDeterministicOutcome(
+  accepted: readonly Omit<RankedStrategyCandidate, 'rank'>[],
+  currentPlan?: CurrentPlanReference,
+): { kept: Omit<RankedStrategyCandidate, 'rank'>[]; collapsedCount: number } {
+  const bucketCounts = new Map<string, number>();
+  for (const item of accepted) {
+    const key = outcomeBucketKey(item);
+    bucketCounts.set(key, (bucketCounts.get(key) ?? 0) + 1);
+  }
+
+  const kept: Omit<RankedStrategyCandidate, 'rank'>[] = [];
+  const positionBySignature = new Map<string, number>();
+  let collapsedCount = 0;
+
+  for (const item of accepted) {
+    const bucket = outcomeBucketKey(item);
+    // 싼 키가 유일하면 전체 비교를 할 이유가 없다. 같은 결과라면 이 키도 같았을 것이다.
+    if ((bucketCounts.get(bucket) ?? 0) < 2) {
+      kept.push(item);
+      continue;
+    }
+    const signature = `${bucket}|${outcomeSignature(item)}`;
+    const position = positionBySignature.get(signature);
+    if (position === undefined) {
+      positionBySignature.set(signature, kept.length);
+      kept.push(item);
+      continue;
+    }
+    collapsedCount += 1;
+    const incumbent = kept[position];
+    if (
+      distanceFromCurrentPlan(item.candidate, currentPlan)
+      < distanceFromCurrentPlan(incumbent.candidate, currentPlan)
+    ) {
+      kept[position] = item;
+    }
+  }
+
+  return { kept, collapsedCount };
+}
+
 function byProbabilityDescending(
   left: Omit<ValidatedStrategyCandidate, 'rank'>,
   right: Omit<ValidatedStrategyCandidate, 'rank'>,
@@ -373,6 +513,7 @@ export class StrategyOptimizer {
       || left.candidate.id.localeCompare(right.candidate.id)
     );
     const monteCarloFailures: StrategyOptimizerDebug['monteCarloFailures'] = [];
+    let duplicateOutcomeCount = 0;
     let deterministicShortlistCount = 0;
     let monteCarloValidatedCount = 0;
     let monteCarloConfirmedCount = 0;
@@ -388,8 +529,20 @@ export class StrategyOptimizer {
         200,
         'screeningTrials',
       );
+      // 같은 계획을 두 번 검증하지 않는다. 결정론 결과가 같은 후보를 먼저 접어야
+      // shortlistLimit 자리가 «서로 다른» 계획으로 채워지고, 세 카드가 서로 다른 계획이라는
+      // RecommendationEngine의 약속이 id 수준이 아니라 결과 수준에서 지켜진다.
+      const currentPlanCandidate = generated.candidates
+        .find((item) => item.id === generated.debug.baselineCandidateId);
+      const deduped = dedupeByDeterministicOutcome(
+        accepted,
+        currentPlanCandidate
+          ? { candidateId: currentPlanCandidate.id, dimensions: currentPlanCandidate.dimensions }
+          : undefined,
+      );
+      duplicateOutcomeCount = deduped.collapsedCount;
       const shortlist = personaAwareShortlist(
-        accepted, shortlistLimit, generated.debug.baselineCandidateId,
+        deduped.kept, shortlistLimit, generated.debug.baselineCandidateId,
       );
       deterministicShortlistCount = shortlist.length;
 
@@ -506,6 +659,7 @@ export class StrategyOptimizer {
         rejectionReasons,
         unsupportedHardGoals: [...unsupportedHardGoals],
         simulationFailures,
+        duplicateOutcomeCount,
         deterministicShortlistCount,
         monteCarloValidatedCount,
         monteCarloConfirmedCount,

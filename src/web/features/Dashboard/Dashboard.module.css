@@ -245,9 +245,15 @@
   color: var(--foreground);
 }
 
+/* 카드는 한 장·두 장·세 장이 모두 정상 결과다 — 페르소나는 그 특성을 실제로 가진 후보가
+   있을 때만 나오고(RecommendationEngine), 결과가 같은 후보는 그 전에 접힌다
+   (StrategyOptimizer의 dedupeByDeterministicOutcome). 칸 수를 3으로 못 박아 두었더니
+   두 장짜리 결과가 3분의 2 너비로 왼쪽에 몰리고 오른쪽 한 칸이 빈 채로 남았다.
+   카드 «수»만큼 칸을 만들어 PDF 리포트(flex: 1)와 같은 배분을 쓴다. */
 .recommendationGrid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
   gap: 0.9rem;
 }
 
@@ -485,7 +491,9 @@
   .container { gap: 1.5rem; }
   .groupContent { padding: 0.5rem; border-radius: 20px; }
   .groupHeader { padding: 0 0.1rem; }
-  .diagnosisGrid, .recommendationGrid { grid-template-columns: 1fr; }
+  .diagnosisGrid { grid-template-columns: 1fr; }
+  /* 좁은 화면에서는 카드를 세로로 쌓는다 — 위의 열 배치를 되돌려야 한다. */
+  .recommendationGrid { grid-auto-flow: row; }
   .currentPlanFacts, .unreachableGoalGap { grid-template-columns: 1fr; gap: 0.65rem; }
 }
 

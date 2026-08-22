@@ -6,7 +6,7 @@ import type { SimulationEngine } from '@/core/simulation/SimulationEngine';
 import { LegacySimulationEngine } from '@/core/simulation/LegacySimulationEngine';
 import type { StrategyCandidate, StrategyGenerationResult } from '@/core/strategy/StrategyGenerator';
 import { StrategyGenerator } from '@/core/strategy/StrategyGenerator';
-import { personaAwareShortlist } from '@/core/strategy/StrategyOptimizer';
+import { dedupeByDeterministicOutcome, personaAwareShortlist } from '@/core/strategy/StrategyOptimizer';
 import { StrategyOptimizer } from '@/core/strategy/StrategyOptimizer';
 import type { StrategyMonteCarloEngine } from '@/core/usecases/montecarlo/MonteCarloEngine';
 import { initialParams } from '@/infrastructure/storage/localStore';
@@ -60,6 +60,18 @@ function candidate(
       ...dimensionOverrides,
     },
   };
+}
+
+/**
+ * 결정론 결과가 «완전히 같은» 후보는 하나로 접힌다(dedupeByDeterministicOutcome). 실제 격자
+ * 후보는 서로 다른 결과를 내므로, 후보를 여럿 두고 싶은 테스트도 결과를 갈라 주어야 한다.
+ * 목록 순서대로 기말자산을 내려 주므로 결정론 정렬 순서는 후보 배열 순서와 같다.
+ */
+function simulateByCandidateOrder(
+  candidates: readonly StrategyCandidate[],
+): SimulationEngine['simulate'] {
+  return (_profile, strategy) =>
+    simulation(100 - candidates.findIndex((item) => item.strategy === strategy));
 }
 
 function fakeGeneration(candidates: StrategyCandidate[]): StrategyGenerationResult {
@@ -407,7 +419,7 @@ describe('StrategyOptimizer', () => {
       candidate(input.strategy, 'balanced', 60),
     ];
     const generator = { generate: () => fakeGeneration(candidates) } as unknown as StrategyGenerator;
-    const engine: SimulationEngine = { simulate: () => simulation(100) };
+    const engine: SimulationEngine = { simulate: simulateByCandidateOrder(candidates) };
     const achievedEvaluation = (score: number): GoalEvaluationResult => ({
       ...evaluation(score),
       goalEvaluations: [{
@@ -618,7 +630,7 @@ describe('StrategyOptimizer', () => {
     } satisfies StrategyMonteCarloEngine;
 
     const result = new StrategyOptimizer(
-      { simulate: () => simulation(100) },
+      { simulate: simulateByCandidateOrder(candidates) },
       { evaluate: () => evaluation(80) },
       generator,
       monteCarloEngine,
@@ -655,7 +667,7 @@ describe('StrategyOptimizer', () => {
     } satisfies StrategyMonteCarloEngine;
 
     const result = new StrategyOptimizer(
-      { simulate: () => simulation(100) },
+      { simulate: simulateByCandidateOrder(candidates) },
       { evaluate: () => evaluation(80) },
       generator,
       monteCarloEngine,
@@ -763,7 +775,7 @@ describe('StrategyOptimizer', () => {
     }));
 
     new StrategyOptimizer(
-      { simulate: () => simulation(100) },
+      { simulate: simulateByCandidateOrder(candidates) },
       { evaluate: () => evaluation(80) },
       generator,
       { validate } satisfies StrategyMonteCarloEngine,
@@ -798,7 +810,7 @@ describe('StrategyOptimizer', () => {
     const generator = { generate: () => fakeGeneration(candidates) } as unknown as StrategyGenerator;
 
     const result = new StrategyOptimizer(
-      { simulate: () => simulation(100) },
+      { simulate: simulateByCandidateOrder(candidates) },
       { evaluate: () => evaluation(80) },
       generator,
       { validate: () => { throw new Error('monte carlo exploded'); } },
@@ -1045,5 +1057,135 @@ describe('personaAwareShortlist — 현상 유지 보호', () => {
 
     expect(personaAwareShortlist(withoutBaseline, 12, 'baseline'))
       .toEqual(personaAwareShortlist(withoutBaseline, 12, undefined));
+  });
+});
+
+// **세 장의 카드가 실은 두 개를 뜻하면 안 된다.**
+//
+// RecommendationEngine은 후보 id로 페르소나를 배타 배정하므로 「서로 다른 카드」를 보장한다.
+// 그러나 id가 다르다고 계획이 다른 것은 아니다 — 격자 축의 어떤 값이 이 사용자의 계획에서
+// 아무 일도 하지 않으면(인출기 내내 잔액이 0인 ISA에 대한 ISA_FIRST가 그랬다) 두 후보가
+// 한 해도 빠짐없이 같은 원장을 낸다. 그러면 카드 두 장의 숫자가 17자리까지 같고, 접힌 쪽에는
+// 아무것도 바꾸지 않는 「달라지는 점」이 붙는다.
+describe('dedupeByDeterministicOutcome — 결과가 같은 계획 접기', () => {
+  const input = LegacySimulationAdapter.fromLegacy(structuredClone(initialParams));
+
+  const ledgerYear = (spending: number) =>
+    ({ age: 60, year: 2026, spending } as unknown as StrategySimulationResult['yearlyResults'][number]);
+
+  const accepted = (
+    id: string,
+    result: StrategySimulationResult,
+    withdrawalPolicy: StrategyCandidate['dimensions']['withdrawalPolicy'] = 'GENERAL_FIRST',
+  ) => ({
+    candidate: candidate(input.strategy, id, 60, { withdrawalPolicy }),
+    simulation: result,
+    evaluation: evaluation(80),
+  });
+
+  const GENERAL = 'retire-60|np-65|GENERAL_FIRST|FIXED';
+  const ISA = 'retire-60|np-65|ISA_FIRST|FIXED';
+
+  const currentPlanUsing = (
+    withdrawalPolicy: StrategyCandidate['dimensions']['withdrawalPolicy'],
+  ) => ({
+    candidateId: 'baseline',
+    dimensions: {
+      retirementAge: 60,
+      nationalPensionTiming: 'NORMAL' as const,
+      nationalPensionStartAge: 65,
+      withdrawalPolicy,
+      spendingPattern: 'FIXED' as const,
+    },
+  });
+
+  test('원장과 목표 판정이 모두 같은 두 후보는 한 계획으로 접힌다', () => {
+    const items = [
+      accepted(GENERAL, simulation(100), 'GENERAL_FIRST'),
+      accepted(ISA, simulation(100), 'ISA_FIRST'),
+    ];
+
+    const { kept, collapsedCount } = dedupeByDeterministicOutcome(items);
+
+    expect(kept.map((item) => item.candidate.id)).toEqual([GENERAL]);
+    expect(collapsedCount).toBe(1);
+  });
+
+  // 요약 지표만 비교하면 고갈하는 계획들이 전부 기말자산 0으로 수렴해 서로 다른 계획까지
+  // 접힌다. 판정은 원장 전체를 본다.
+  test('기말자산이 같아도 연도별 원장이 다르면 접지 않는다', () => {
+    const items = [
+      accepted(GENERAL, { ...simulation(0), yearlyResults: [ledgerYear(36_000_000)] }, 'GENERAL_FIRST'),
+      accepted(ISA, { ...simulation(0), yearlyResults: [ledgerYear(24_000_000)] }, 'ISA_FIRST'),
+    ];
+
+    const { kept, collapsedCount } = dedupeByDeterministicOutcome(items);
+
+    expect(kept.map((item) => item.candidate.id)).toEqual([GENERAL, ISA]);
+    expect(collapsedCount).toBe(0);
+  });
+
+  // 예전에는 동점의 마지막 결정자가 `id.localeCompare`였다. 그래서 남는 대표를 알파벳이
+  // 정했고, 사용자의 현재 설정과 같은 후보가 밀리면 카드에 효과 없는 변경점이 붙었다.
+  test('접을 때는 알파벳이 아니라 현재 계획과 같은 설정을 남긴다', () => {
+    const items = [
+      accepted(GENERAL, simulation(100), 'GENERAL_FIRST'),
+      accepted(ISA, simulation(100), 'ISA_FIRST'),
+    ];
+
+    expect(dedupeByDeterministicOutcome(items, currentPlanUsing('ISA_FIRST'))
+      .kept.map((item) => item.candidate.id)).toEqual([ISA]);
+    // 반대쪽도 함께 고정한다 — 한쪽만 두면 알파벳 순서와 구별되지 않는다.
+    expect(dedupeByDeterministicOutcome(items, currentPlanUsing('GENERAL_FIRST'))
+      .kept.map((item) => item.candidate.id)).toEqual([GENERAL]);
+  });
+
+  test('현상 유지 후보 자신이 무리에 있으면 그것이 대표가 된다', () => {
+    const baseline = accepted('baseline', simulation(100), 'GENERAL_FIRST');
+    const items = [accepted(GENERAL, simulation(100), 'GENERAL_FIRST'), baseline];
+
+    // 축 라벨은 GENERAL과 완전히 같지만, 실제 전략을 들고 있는 쪽이 이겨야 한다.
+    expect(dedupeByDeterministicOutcome(items, currentPlanUsing('GENERAL_FIRST'))
+      .kept.map((item) => item.candidate.id)).toEqual(['baseline']);
+  });
+
+  test('같은 계획을 Monte Carlo로 두 번 검증하지 않고 카드로도 두 번 내지 않는다', () => {
+    const different = 'retire-61|np-65|GENERAL_FIRST|FIXED';
+    const candidates = [
+      candidate(input.strategy, GENERAL, 60, { withdrawalPolicy: 'GENERAL_FIRST' }),
+      candidate(input.strategy, ISA, 60, { withdrawalPolicy: 'ISA_FIRST' }),
+      candidate(input.strategy, different, 61, { withdrawalPolicy: 'GENERAL_FIRST' }),
+    ];
+    const base = fakeGeneration(candidates);
+    const generator = {
+      // 사용자의 현재 계획이 ISA_FIRST인 상황. 접힌 뒤에도 그쪽이 살아남아야 한다.
+      generate: () => ({ ...base, debug: { ...base.debug, baselineCandidateId: ISA } }),
+    } as unknown as StrategyGenerator;
+    const engine: SimulationEngine = {
+      simulate: (_profile, strategy) =>
+        simulation(strategy.retirementAge === 61 ? 90 : 100),
+    };
+    const evaluator: GoalEvaluationEngine = {
+      evaluate: (_profile, _goals, strategy) => evaluation(strategy.retirementAge === 61 ? 70 : 80),
+    };
+    const validate = vi.fn((_profile, _goals, _strategy, config) => ({
+      trials: config.trials, seed: config.seed,
+      goalSuccessProbability: 0.5, spendingSuccessProbability: 0.5,
+      assetSurvivalProbability: 0.5, terminalAssetMedian: 100,
+      terminalAssetP10: 50, terminalAssetP90: 150, shortfallProbability: 0.5,
+    }));
+
+    const result = new StrategyOptimizer(engine, evaluator, generator, { validate }).optimize(
+      input.profile,
+      input.goals,
+      input.strategy,
+      { monteCarlo: { config: { trials: 10, seed: 1, annualStdDev: 15 } } },
+    );
+
+    expect(result.debug.duplicateOutcomeCount).toBe(1);
+    expect(result.debug.deterministicShortlistCount).toBe(2);
+    expect(validate).toHaveBeenCalledTimes(2);
+    expect(result.recommendations.recommendations.map((item) => item.candidate.candidate.id))
+      .toEqual([ISA, different]);
   });
 });

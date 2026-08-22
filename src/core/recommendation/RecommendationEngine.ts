@@ -236,6 +236,11 @@ export const RECOMMENDATION_PERSONAS: ReadonlyArray<PersonaDefinition> = [
  * Personas are exclusive and filled in array order: 안정형이 먼저 자기 비교자의 1등을 가져가고,
  * 균형형은 남은 것 중에서, 여유형은 다시 남은 것 중에서 고른다. 그래서 세 카드는 언제나
  * 서로 다른 계획이다.
+ *
+ * **다만 이 배타성은 후보 id로만 잰다.** id가 다른데 결정론 결과는 한 해도 빠짐없이 같은
+ * 후보들이 실제로 있었고(빈 ISA에 대한 ISA_FIRST), 그때 세 카드는 실은 두 개를 뜻했다.
+ * 그래서 결과 수준의 중복은 여기 오기 «전에» 접힌다 — StrategyOptimizer의
+ * dedupeByDeterministicOutcome. 두 곳이 함께 있어야 위 문장이 참이 된다.
  */
 export class RecommendationEngine {
   recommend(

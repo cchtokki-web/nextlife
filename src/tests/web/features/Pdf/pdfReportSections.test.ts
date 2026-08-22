@@ -648,6 +648,7 @@ describe('renderMonteCarloSection', () => {
       // 「자산 고갈 방지」를 고르지 않아 판정값은 0이지만 실제로는 420회 고갈된 계획.
       goalFailure: {
         spendingShortfall: 420, assetDepletion: 0, observedAssetDepletionCount: 420,
+        observedEarliestDepletionAge: 62,
         terminalShortfall: 0, medianFirstShortfallAge: 73, terminalAssetGoal: 0,
       },
     }, sequenceRisk, mcParams);
@@ -657,10 +658,33 @@ describe('renderMonteCarloSection', () => {
     expect(html).not.toContain('목표 생활비를 채우지 못합니다');
   });
 
-  test('목표 실패 시행이 없으면 원인 문장을 싣지 않는다', () => {
+  // 확률이 100%인데도 할 말이 남는 유일한 경우다. 원인 블록을 cause !== 'none'으로 잘라
+  // 두면 이 문장이 리포트에 한 번도 실리지 않는다 — 바로 위 「자산이 먼저 바닥난 경우가
+  // N회…」만 남아, 그 고갈이 왜 확률에 없는지는 끝내 설명되지 않는다.
+  test('목표를 다 달성했어도 자산이 실제로 고갈됐으면 그 사실을 싣는다', () => {
+    const html = renderMonteCarloSection({
+      ...monteCarlo,
+      goalFailure: {
+        spendingShortfall: 0, assetDepletion: 0, observedAssetDepletionCount: 420,
+        observedEarliestDepletionAge: 62,
+        terminalShortfall: 0, medianFirstShortfallAge: null, terminalAssetGoal: 0,
+      },
+    }, sequenceRisk, mcParams);
+
+    expect(html).toContain('확률에 반영되지 않은 사실');
+    expect(html).toContain('고른 목표는 1,000회 모두 달성했습니다.');
+    expect(html).toContain('420회(가장 이른 62세)');
+    // 목표를 놓친 시행이 한 번도 없으므로 실패 원인 제목을 붙이면 바로 아래 문장을 부정한다.
+    expect(html).not.toContain('목표를 달성하지 못한 시행의 원인');
+  });
+
+  // 게이트를 넓히면서 «아무 일도 없는» 계획에까지 문장이 새로 생기면 소음을 더한 것이다.
+  test('목표 실패 시행도 관측 고갈도 없으면 원인 문장을 싣지 않는다', () => {
     const html = renderMonteCarloSection(monteCarlo, sequenceRisk, mcParams);
 
     expect(html).not.toContain('목표를 달성하지 못한 시행의 원인');
+    expect(html).not.toContain('확률에 반영되지 않은 사실');
+    expect(html).not.toContain('모든 시행에서 목표 조건을 만족했습니다');
   });
 
   test('순서 리스크가 있으면 경우별 비교를 싣는다', () => {

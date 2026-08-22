@@ -639,9 +639,13 @@ export function renderMonteCarloSection(
     params,
     formatValue: formatManwon,
   });
-  const shortfallHtml = shortfall.cause === 'none'
+  // **cause로 가르지 않는다.** 목표를 다 달성했는데도 자산은 실제로 고갈된 계획은 cause가
+  // 'none'이면서(확률이 정말 100%다) 할 말이 있다. 예전에 여기서 cause를 보고 잘랐더니 그
+  // 문장이 한 번도 화면에 닿지 못했다. 「보여줄지」와 「어떤 제목으로」는 문장을 만든 곳이
+  // 함께 정한다(explainGoalShortfall의 label).
+  const shortfallHtml = shortfall.label === undefined
     ? ''
-    : `<p style="margin: 6px 0 0; font-size: 11px; color: #0f172a;"><strong>목표를 달성하지 못한 시행의 원인</strong> — ${shortfall.headline}</p>`
+    : `<p style="margin: 6px 0 0; font-size: 11px; color: #0f172a;"><strong>${shortfall.label}</strong> — ${shortfall.headline}</p>`
       + (shortfall.hint
         ? `<p style="margin: 2px 0 0; font-size: 10px; color: #64748b;">${shortfall.hint}</p>`
         : '');
