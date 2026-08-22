@@ -3,7 +3,7 @@ import {
   RetirementStrategy, RiskProfile, SimulationParams, SpendingStrategy, SpendingStrategyChoice, UtilityConfig,
   WithdrawalPlan,
 } from '../../entities/types';
-import type { RetirementGoalType } from '../../entities/retirementGoal';
+import { hardSpendingFloorTarget } from '../../entities/retirementGoal';
 import {
   NATIONAL_PENSION_EARLY_MIN_AGE, NATIONAL_PENSION_NORMAL_START_AGE,
 } from '../pension/nationalPensionRules';
@@ -385,16 +385,12 @@ export function compileStrategy(params: SimulationParams): CompiledStrategy {
   // constraintType은 사용자가 모든 목표에 대해 자유롭게 고르는 값이고, goalCatalog의
   // defaultConstraintType은 처음 고를 때의 씨앗일 뿐이다.
   //
-  // targetValue > 0 가드는 normalizeGoalDrivenParams.firstGoalWithTarget의 것과 같다:
-  // 0은 「입력창을 비웠다」이지 「생활비 0원이 목표」가 아니다.
-  const SPENDING_GOAL_TYPES: readonly RetirementGoalType[] =
-    ['LIVING_EXPENSE_STABILITY', 'COMFORTABLE_SPENDING'];
+  // 「어느 목표가 바닥을 세우는가」는 도메인의 hardSpendingFloorTarget 하나에 있다(가드의
+  // 근거도 그 주석에). 평가 계층이 «같은» 규칙으로 미달을 판정해야 하기 때문이다.
+  // 여기서 하는 일은 그 값들을 하나의 바닥으로 합치는 것뿐이다.
   const hardSpendingTargets = (params.retirementGoals ?? [])
-    .filter((goal) => SPENDING_GOAL_TYPES.includes(goal.type)
-      && goal.constraintType === 'HARD'
-      && goal.targetValue !== undefined
-      && goal.targetValue > 0)
-    .map((goal) => goal.targetValue as number);
+    .map(hardSpendingFloorTarget)
+    .filter((target): target is number => target !== undefined);
   const hardSpendingFloor = hardSpendingTargets.length > 0
     ? Math.max(...hardSpendingTargets)
     : undefined;
