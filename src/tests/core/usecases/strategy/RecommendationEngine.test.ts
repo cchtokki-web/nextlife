@@ -244,11 +244,12 @@ describe('recommendStrategy', () => {
 // 게이트를 통과하면서 **동시에** 증액이 실제로 효용을 올리는 구간은 좁다. 잔여자산이
 // 적정선(월 목표 × 24)의 수십 배가 되면 bequestAdequacy의 exp 감쇠가 완전히 0이라 증액해도
 // 점수가 움직이지 않기 때문이다 — 단순히 자산을 불리면 게이트는 통과하지만 증액 인센티브가
-// 사라진다. 이 조합(8억 / 성장 3% / 배당 4%)이 그 두 조건을 함께 만족한다.
+// 사라진다. 이 조합(11억 / 성장 1% / 배당 4%)이 그 두 조건을 함께 만족한다.
 //
-// yieldPreset이 'conservative'인 것은 **몬테카를로 변동성만** 낮추기 위해서다(σ 15 → 10).
-// recommendStrategy는 applyYieldPreset을 거치지 않으므로 자산의 totalReturn/dividendYield는
-// 위에 적은 값 그대로 쓰인다 — resolveMonteCarloConfig만 이 필드를 본다.
+// **2026-08-22 수익률 가정 축 분리 이후**: resolveMonteCarloConfig는 더 이상 yieldPreset을
+// 읽지 않는다(늘 실제 보유 자산의 totalReturn에서 σ를 유도한다). 그래서 여기 남은
+// yieldPreset 필드는 계산에 아무 영향이 없는 장식일 뿐이고, σ를 낮추려면 totalReturn
+// 자체를 안정형 앵커(5%) 이하로 둬야 한다 — 그래서 총수익률이 5%(σ=10)다.
 const paramsWithSurplusAssetOnly: SimulationParams = {
   userProfile: { currentAge: 60, retirementAge: 60, expectancy: 90, targetMonthlySpending: 3000000 },
   assets: [
@@ -257,9 +258,9 @@ const paramsWithSurplusAssetOnly: SimulationParams = {
       type: 'etf',
       ticker: 'AAA',
       name: '고배당 자산',
-      quantity: 16000,
+      quantity: 22000,
       averagePrice: 50000,
-      totalReturn: 7,
+      totalReturn: 5,
       dividendYield: 4,
       monthlyContribution: 0,
       reinvestDividend: false,
@@ -289,28 +290,47 @@ const paramsWithDepletionRisk: SimulationParams = {
 // 결정론 판정만으로 증액을 허용하던 시절 AI가 정확히 이런 계획에 "생활비를 20% 늘리라"고
 // 권했다. 51인 페르소나 실측에서 증액 추천을 받은 24명 전원의 성공률이 떨어졌고, 그 하락폭이
 // 최대 35%p였다.
-// yieldPreset을 'base'로 올리면 몬테카를로 변동성이 σ=15가 된다. 자산은 같은 8억이지만
-// 성공률이 80%로 떨어져 게이트 문턱(90%) 아래가 된다 — 결정론 결과는 여전히 'sustained'다.
 //
-// **예전에는 이 자리가 `yieldPreset: undefined`였다.** 미지정이면 무조건 base(σ=15)로
-// 떨어지던 시절의 표현이다. 지금은 미지정이 「보유 자산의 수익률에서 유도」를 뜻하고, 이
-// 픽스처의 자산은 성장률 3%라 유도하면 안정형(σ=10)으로 잘려 paramsWithSurplusAssetOnly와
-// 구분이 사라진다. 두 픽스처의 차이는 «변동성뿐»이어야 하므로 그 값을 명시한다.
+// **2026-08-22 수익률 가정 축 분리 이후**: resolveMonteCarloConfig가 더 이상 yieldPreset을
+// 읽지 않으므로, σ를 paramsWithSurplusAssetOnly보다 높이려면 총수익률 자체를 높여야 한다.
+// paramsWithSurplusAssetOnly와 독립적인 픽스처로 둔다(그쪽의 quantity/totalReturn을
+// 바꿔도 이 픽스처가 조용히 따라 움직이지 않도록). 총수익률 7%(σ=15, base 앵커)에
+// quantity 16,000(잔액 8억)이면 baseline 성공률이 80%로 게이트 문턱(90%) 아래다 —
+// 결정론 결과는 여전히 'sustained'다.
 const paramsWithSurplusButFragile: SimulationParams = {
-  ...paramsWithSurplusAssetOnly,
-  yieldPreset: 'base',
+  userProfile: { currentAge: 60, retirementAge: 60, expectancy: 90, targetMonthlySpending: 3000000 },
+  assets: [
+    {
+      id: 'a1',
+      type: 'etf',
+      ticker: 'AAA',
+      name: '고배당 자산',
+      quantity: 16000,
+      averagePrice: 50000,
+      totalReturn: 7,
+      dividendYield: 4,
+      monthlyContribution: 0,
+      reinvestDividend: false,
+      currency: 'KRW',
+    },
+  ],
+  nationalPension: { expectedMonthlyAmount: 0 },
+  privatePensions: [],
+  otherIncomes: [],
+  inflationRate: 0,
+  inflationMode: 'real',
+  baseExchangeRate: 1350,
+  exchangeScenario: 'base',
+  displayCurrency: 'KRW',
 };
 
-// baseline 게이트는 통과하지만(93%) 증액 후보 중 큰 쪽만 후보 게이트(80%)에 걸리는 계획.
-// 실측(trials=300, 고정 시드): baseline 93.0% / 배수 1.1 → 84.3% / 배수 1.2 → 75.0%.
-//
-// **두 문턱을 따로 재려면 이런 입력이 반드시 필요하다.** paramsWithSurplusAssetOnly는
-// 최대 배수(1.2)도 82.7%라 후보 게이트가 아무것도 거르지 않고, paramsWithSurplusButFragile은
-// baseline에서 먼저 탈락해 증액 후보 자체가 만들어지지 않는다. 둘 중 어느 쪽으로도
-// candidateMinSuccessRate를 잠글 수 없다(문턱을 0으로 내려도 결과가 같다).
+// baseline 게이트는 통과하지만, 증액 후보 중 큰 쪽(배수 1.2)은 paramsWithSurplusAssetOnly
+// 만큼 여유롭게 통과하지 못해 실제 추천이 작은 쪽(배수 1.1)에서 멈추는 계획.
+// quantity를 paramsWithSurplusAssetOnly보다 1,000단위(5천만원) 줄인 것만으로 이 차이가
+// 난다 — 두 픽스처의 잔액 차이가 σ 자체가 아니라 «증액이 감당할 수 있는 여유»를 줄인다.
 const paramsWithSurplusButCappedIncrease: SimulationParams = {
   ...paramsWithSurplusAssetOnly,
-  assets: [{ ...paramsWithSurplusAssetOnly.assets[0], quantity: 15000 }],
+  assets: [{ ...paramsWithSurplusAssetOnly.assets[0], quantity: 21000 }],
 };
 
 describe('recommendStrategy - 생활비 증액(Phase 2) 후보', () => {

@@ -83,24 +83,14 @@ export function volatilityForStockReturn(stockReturnPercent: number): number {
 
 // 결정론 params에서 MC 설정을 유도한다. 저장되는 값이 아니다(MonteCarloConfig 주석).
 export function resolveMonteCarloConfig(params: SimulationParams): MonteCarloConfig {
-  const preset = params.yieldPreset;
-  const presetVolatility = preset === 'conservative' || preset === 'base' || preset === 'aggressive'
-    ? VOLATILITY_BY_YIELD_PRESET[preset]
-    : null;
-
-  // 프리셋을 고른 경우는 엔진이 수익률 자체를 프리셋 값으로 덮어쓰므로 유도해도 같은 값이
-  // 나온다. 그래도 프리셋 경로를 먼저 두는 이유는 «순서»다 — 이 함수는 덮어쓰기 전의
-  // params로도 불릴 수 있고, 그때 사용자가 남겨 둔 옛 수익률에서 유도하면 안 된다.
-  //
-  // 'custom'·미지정이면 사용자가 넣은 수익률에서 유도한다. 유도할 잔액이 하나도 없으면
-  // 종전처럼 base다 — 사적연금이 가중평균에 들어온 뒤로 "연금만 보유"는 더 이상 이
-  // 갈래를 타지 않는다(weightedAverageTotalReturn 주석).
-  const derived = presetVolatility ?? derivedVolatility(params);
-
+  // **언제나 실제 수익률에서 유도한다.** 예전에는 params.yieldPreset을 먼저 읽었는데,
+  // 프리셋이 수익률을 지배하던 시절에는 "유도해도 같은 값이 나온다"가 성립했다.
+  // 그 지배가 사라진 뒤로 이 분기는 옛 프리셋 값에 변동성을 묶어 두는 일만 한다 —
+  // 화면은 strategy.riskProfile만 바꾸고 yieldPreset은 그대로 두기 때문이다.
   return {
     trials: DEFAULT_MONTE_CARLO_TRIALS,
     seed: DEFAULT_MONTE_CARLO_SEED,
-    annualStdDev: derived,
+    annualStdDev: derivedVolatility(params),
   };
 }
 

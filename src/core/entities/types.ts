@@ -289,6 +289,9 @@ export interface SimulationParams {
   exchangeScenario: 'base' | 'usd_up' | 'usd_down'; // +10%, -10% 보정
   displayCurrency: AssetCurrency; // 최종 결과 표기용 통화 ('KRW' | 'USD')
   useLatestExchangeRate?: boolean; // 실시간 환율 자동 조회 여부 (미지정 시 true = 기존 동작)
+  // **계산에 쓰이지 않는다.** 자산 폼의 「수익률 일괄 채우기」가 마지막으로 채운 프리셋의
+  // 표식이며, customYieldSnapshot 되돌리기의 기준이다. 수익률도 변동성도 이 값에서
+  // 유도하지 않는다(2026-08-22 수익률 가정 축 분리).
   yieldPreset?: 'conservative' | 'base' | 'aggressive' | 'custom';
   customYieldSnapshot?: CustomYieldSnapshot; // "사용자 프리셋" 복원용 저장값
   spendingStrategy?: SpendingStrategy; // 목표 생활비 달성 전략
