@@ -896,6 +896,22 @@ export class LegacySimulationEngine implements SimulationEngineContract {
       // 의료비는 목표 생활비와 같은 재원(자산 인출)에서 나가므로 월 단위로 환산해 더한다.
       monthlyTargetSpending += monthlyHealthcareCost;
 
+      // HARD 생활비 목표에서 유도된 이 해의 월 바닥(SimulationParams.hardSpendingFloor 주석).
+      // 목표 생활비와 **같은** 물가 처리를 한다 — 명목 모드에서 바닥만 물가를 안 타면 해가
+      // 갈수록 바닥이 조용히 낮아져 「반드시 지키기」가 이름만 남는다.
+      //
+      // 연령대별 배수(spendingCurve)는 곱하지 않는다. 그 곡선은 「이만큼 쓰겠다」는 선호이지
+      // 「이만큼은 반드시 쓴다」가 아니다. 곡선이 목표를 바닥 아래로 내린 해에는 아래
+      // hardFloorNetNeed 계산이 그 해의 부족분(funding.fundingGap)으로 자동으로 잘라 준다 —
+      // 계획이 겨냥하지 않은 금액을 엔진이 새로 만들어 쓰지는 않는다.
+      //
+      // 은퇴 전에는 목표 생활비가 0이라 부족분도 0이므로 바닥도 서지 않는다.
+      const monthlyHardSpendingFloorDisplay = (params.hardSpendingFloor !== undefined && isRetired)
+        ? (inflationMode === 'nominal'
+          ? params.hardSpendingFloor * Math.pow(1 + infRateAnnual, y)
+          : params.hardSpendingFloor)
+        : 0;
+
       let monthlyNationalPensionDisplay = 0;
       let monthlyNatTaxDisplay = 0;
       let monthlyNatPreTaxTotalDisplay = 0;
@@ -1368,8 +1384,12 @@ export class LegacySimulationEngine implements SimulationEngineContract {
           cashBucketDisplay += funding.surplus;
         }
 
-        const withdrawalAccounts: WithdrawalAssetAccount[] = [];
-        if (funding.fundingGap > 0) {
+        // 인출 계좌 구성은 「지금 채우는 것이 HARD 생활비 바닥인가」 하나로 갈린다.
+        // 인출 루프를 두 벌로 복제하지 않는다 — 세금 누적·양도차익 이연·원장 항등식이 모두
+        // 그 위에 서 있어 두 벌이 되면 반드시 갈라진다. 대신 이 함수 하나에 단계를 넘겨
+        // «클램프 적용 여부»만 가른다.
+        const buildWithdrawalAccounts = (fundingHardFloor: boolean): WithdrawalAssetAccount[] => {
+          const withdrawalAccounts: WithdrawalAssetAccount[] = [];
           // 이미 손에 있는 현금은 법정 인출 나이와 무관하며 세금도 없다.
           withdrawalAccounts.push(taxFreeAccount({
             id: 'simulation-cash',
@@ -1382,8 +1402,11 @@ export class LegacySimulationEngine implements SimulationEngineContract {
             },
           }));
 
-          const generalAssetWithdrawalStartAge = withdrawalPlan?.generalAssetWithdrawalStartAge
-            ?? userProfile.retirementAge;
+          // 일반자산 인출 개시 나이는 전략 «선호»(계층 4)다. HARD 생활비 바닥(계층 1)을
+          // 채우는 1단계에서는 깬다 — 법이 막는 것이 아니라 계획이 미뤄 둔 것뿐이다.
+          const generalAssetWithdrawalStartAge = fundingHardFloor
+            ? 0
+            : (withdrawalPlan?.generalAssetWithdrawalStartAge ?? userProfile.retirementAge);
           for (const asset of withdrawalOrderedAssets) {
               withdrawalAccounts.push({
                 id: asset.id,
@@ -1521,13 +1544,19 @@ export class LegacySimulationEngine implements SimulationEngineContract {
                   let available = this.convertValue(
                     pension.currentBalance, pension.currency, displayCurrency, exchangeRate
                   );
-                  if (currentTaxSettings.limitPrivatePensionToTaxLimit) {
+                  // 저율과세 한도(계층 5)와 월 인출 목표(계층 4)는 1단계에서 깬다.
+                  // 「인출 가능 여부 ≠ 저율과세 여부」 — 한도를 넘으면 세율이 오를 뿐이고,
+                  // 초과분 정산(연말 16.5% 분리과세 vs 종합과세 비교)은 이미 아래에 있다.
+                  // 세금을 아끼려고 굶는 계획을 만들지 않는다.
+                  //
+                  // 55세 게이트(위 if)와 ISA 납입원금 한도는 계층 밖(법정)이라 그대로 지킨다.
+                  if (!fundingHardFloor && currentTaxSettings.limitPrivatePensionToTaxLimit) {
                     available = Math.min(available, this.convertValue(
                       Math.max(0, monthlyPensionPreTaxLimitRemainingKRW),
                       'KRW', displayCurrency, exchangeRate
                     ));
                   }
-                  if (remainingMonthlyPensionTargetKRW !== undefined) {
+                  if (!fundingHardFloor && remainingMonthlyPensionTargetKRW !== undefined) {
                     available = Math.min(available, this.convertValue(
                       Math.max(0, remainingMonthlyPensionTargetKRW),
                       'KRW', displayCurrency, exchangeRate
@@ -1545,6 +1574,10 @@ export class LegacySimulationEngine implements SimulationEngineContract {
                   );
                   pension.currentBalance -= grossPensionCurrency;
                   const grossKRW = this.convertValue(grossDisplay, displayCurrency, 'KRW', exchangeRate);
+                  // 한도 잔량은 **단계와 무관하게** 계속 차감한다. 1단계가 한도를 넘겨 꺼낸
+                  // 만큼도 여기서 빠져야 (1) 2단계가 남지 않은 한도를 다시 쓰지 않고
+                  // (2) 연말 정산이 총 인출액을 봐야 초과분에 세금이 제대로 붙는다.
+                  // «클램프»만 끄고 «부기»는 끄지 않는다.
                   if (currentTaxSettings.limitPrivatePensionToTaxLimit) {
                     monthlyPensionPreTaxLimitRemainingKRW -= grossKRW;
                   }
@@ -1564,38 +1597,70 @@ export class LegacySimulationEngine implements SimulationEngineContract {
               });
             }
           }
-        }
+          return withdrawalAccounts;
+        };
 
-        const protectedHeadroom = assetFloorDisplay > 0
-          ? Math.max(0, currentTotalAssetsDisplay(
-            deferredWithdrawalCapitalGainsTaxReserveDisplay
-              + annualWithdrawalCapitalGainsTaxReserveDisplay
-          ) - assetFloorDisplay)
-          : Infinity;
-        const withdrawal = withdrawalEngine.withdraw({
-          age: currentAge,
-          year: currentYear,
-          netCashRequired: funding.fundingGap,
-          accounts: withdrawalAccounts,
-          strategy: {
-            policy: withdrawalPlan?.accountWithdrawalPolicy ?? 'GENERAL_FIRST',
-            customOrder: withdrawalPlan?.customWithdrawalOrder,
-          },
-          liquidatableHeadroom: protectedHeadroom,
-        });
-        annualWithdrawal += withdrawal.grossWithdrawal;
-        for (const item of withdrawal.withdrawalsByAccount) {
-          if (item.accountType === 'GENERAL') annualGeneralAssetWithdrawal += item.gross;
-          else if (item.accountType === 'ISA') annualIsaWithdrawal += item.gross;
-          else if (
-            item.accountType === 'PENSION_SAVINGS'
-            || item.accountType === 'IRP'
-            || item.accountType === 'PRIVATE_PENSION'
-          ) {
-            annualPrivatePensionWithdrawal += item.gross;
+        // 한 단계의 인출. 계좌 «구성»만 단계로 갈리고 세금·원장 누적은 이 한 경로를 지난다.
+        const withdrawForPhase = (fundingHardFloor: boolean, netCashRequired: number): number => {
+          // 필요액이 없으면 계좌를 만들지도 않는다. 예전에도 부족분이 0인 달은 빈 계좌 목록으로
+          // 호출해 전부 0을 돌려받았으므로 결과는 같다.
+          if (netCashRequired <= 0) return 0;
+          // 보호자산(assetFloor) 여유는 단계마다 다시 잰다 — 1단계가 이미 자산을 줄였기
+          // 때문이다. 한 번만 재면 2단계가 이미 쓴 여유를 다시 쓴다.
+          // **이 하한선은 이 태스크에서 손대지 않는다**(계층 2, 후속 태스크의 몫).
+          const protectedHeadroom = assetFloorDisplay > 0
+            ? Math.max(0, currentTotalAssetsDisplay(
+              deferredWithdrawalCapitalGainsTaxReserveDisplay
+                + annualWithdrawalCapitalGainsTaxReserveDisplay
+            ) - assetFloorDisplay)
+            : Infinity;
+          const withdrawal = withdrawalEngine.withdraw({
+            age: currentAge,
+            year: currentYear,
+            netCashRequired,
+            accounts: buildWithdrawalAccounts(fundingHardFloor),
+            strategy: {
+              policy: withdrawalPlan?.accountWithdrawalPolicy ?? 'GENERAL_FIRST',
+              customOrder: withdrawalPlan?.customWithdrawalOrder,
+            },
+            liquidatableHeadroom: protectedHeadroom,
+          });
+          annualWithdrawal += withdrawal.grossWithdrawal;
+          for (const item of withdrawal.withdrawalsByAccount) {
+            if (item.accountType === 'GENERAL') annualGeneralAssetWithdrawal += item.gross;
+            else if (item.accountType === 'ISA') annualIsaWithdrawal += item.gross;
+            else if (
+              item.accountType === 'PENSION_SAVINGS'
+              || item.accountType === 'IRP'
+              || item.accountType === 'PRIVATE_PENSION'
+            ) {
+              annualPrivatePensionWithdrawal += item.gross;
+            }
           }
-        }
-        const completedCashFlow = completeCashFlow(funding, withdrawal.netWithdrawal);
+          return withdrawal.netWithdrawal;
+        };
+
+        // 1단계 — HARD 생활비 바닥 충당(계층 1). 소득은 바닥에도 그대로 쓰이므로,
+        // «인출»로 메워야 하는 몫은 바닥에서 이미 들어온 소득을 뺀 만큼이다.
+        //   바닥 부족분 = max(0, 바닥 - 소득)
+        //             = max(0, (목표 - 소득) - (목표 - 바닥))
+        //             = max(0, fundingGap - max(0, 목표 - 바닥))
+        // 소득이 이미 바닥을 넘긴 달에는 0이 되어 1단계가 아예 돌지 않는다 — 필요도 없는데
+        // 선호를 깨지 않기 위해서다. 바닥이 목표를 넘는 해에는 fundingGap 전체가 되어,
+        // 계획이 겨냥한 금액 이상을 새로 만들어 쓰지는 않는다.
+        const hardFloorNetNeed = monthlyHardSpendingFloorDisplay > 0
+          ? Math.max(0, funding.fundingGap
+            - Math.max(0, targetMonthlyCashNeed - monthlyHardSpendingFloorDisplay))
+          : 0;
+        const hardFloorNetWithdrawn = withdrawForPhase(true, hardFloorNetNeed);
+        // 2단계 — 목표 생활비까지 추가 충당(계층 3). 전략 선호와 세제 최적화를 지킨다.
+        // 여기서 못 채운 몫은 미충족으로 기록될 뿐 추가 인출을 강제하지 않는다.
+        const targetNetWithdrawn = withdrawForPhase(
+          false, funding.fundingGap - hardFloorNetWithdrawn
+        );
+        const completedCashFlow = completeCashFlow(
+          funding, hardFloorNetWithdrawn + targetNetWithdrawn
+        );
         annualSpending += completedCashFlow.actualSpending;
         annualUnmetSpending += completedCashFlow.shortfall;
       }
