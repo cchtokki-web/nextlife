@@ -167,7 +167,16 @@ export type AccountWithdrawalType =
 
 export interface WithdrawalPlan {
   // StrategyOptimizer가 선택해 전달하는 계좌군 인출 정책. 엔진은 추천하지 않고 그대로 평가한다.
-  // 미지정이면 기존 현금 → 일반자산 → 사적연금 흐름과 호환되는 GENERAL_FIRST다.
+  //
+  // **미지정은 GENERAL_FIRST의 동의어가 아니다.** 예전 주석은 그렇게 적혀 있었지만 엔진은
+  // 그렇게 동작한 적이 없다. 미지정 계획은 사적연금을 «부족분과 무관하게» 정기 지급하고
+  // (잔여 개월 균등분할, 또는 privatePensionMonthlyTarget), 남은 부족분만 GENERAL_FIRST
+  // 순서로 채운다. 정책을 명시하면 그 정기 지급이 사라지고 인출기 한 경로가 순서를 정한다.
+  // 즉 미지정은 「순서를 안 정했다」가 아니라 «다른 계획»이다 — 54 페르소나 중 50명의 원장이
+  // GENERAL_FIRST를 써넣는 것만으로 움직인다(사적연금이 없는 4명만 같다).
+  //
+  // 그래서 어느 계층도 이 필드를 기본값으로 메우면 안 된다. 메우는 순간 사용자가 시뮬레이션한
+  // 것과 «다른 계획»이 저장된다. 미지정을 그대로 두는 것이 「지금 계획을 유지한다」의 뜻이다.
   accountWithdrawalPolicy?: AccountWithdrawalPolicy;
   // CUSTOM일 때만 사용한다. 계좌 유형 또는 구체 계좌 id를 앞에서부터 우선한다.
   customWithdrawalOrder?: readonly (AccountWithdrawalType | string)[];

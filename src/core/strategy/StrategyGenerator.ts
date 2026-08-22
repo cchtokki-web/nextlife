@@ -38,8 +38,15 @@ export interface StrategyDimensions {
   retirementAge: number;
   nationalPensionTiming: NationalPensionTiming;
   nationalPensionStartAge: number;
-  /** 격자 후보는 언제나 `GridWithdrawalPolicy`지만, 현상 유지 후보는 사용자의 현재 설정 그대로다. */
-  withdrawalPolicy: AccountWithdrawalPolicy;
+  /**
+   * 사용자의 현재 설정 그대로이거나 격자가 훑는 `GridWithdrawalPolicy` 중 하나다.
+   *
+   * **`undefined`는 「미지정」이라는 값이지 「모른다」가 아니다.** 엔진에게 미지정은
+   * GENERAL_FIRST의 동의어가 아니라 «다른 계획»이다(`WithdrawalPlan.accountWithdrawalPolicy`
+   * 주석 참고). 그래서 여기서 기본값으로 메우면 안 된다 — 메우는 순간 축 라벨이 계획을
+   * 잘못 말하고, 「달라지는 점」이 그 라벨을 그대로 읽는다.
+   */
+  withdrawalPolicy?: AccountWithdrawalPolicy;
   spendingPattern: SpendingPattern;
 }
 
@@ -126,6 +133,10 @@ function strategyFor(
     accountWithdrawalPolicy: dimensions.withdrawalPolicy,
   };
   delete withdrawalPolicy.customWithdrawalOrder;
+  // 「미지정」 후보는 «키를 지운다». undefined 값을 가진 키를 남기면 엔진의 `=== undefined`
+  // 검사는 통과하지만 sameStrategy의 키 개수 비교가 seed와 어긋나, 사용자의 현재 계획과
+  // 같은 격자 칸이 현상 유지 후보로 인식되지 않는다.
+  if (dimensions.withdrawalPolicy === undefined) delete withdrawalPolicy.accountWithdrawalPolicy;
 
   // 모든 후보를 'target' 모드로 고정한다. 후보끼리 비교하려면 같은 기준의 목표 생활비를
   // 써야 하는데, 'max_sustainable'은 목표액 대신 엔진이 역산한 지속가능액을 쓰기 때문이다
@@ -184,7 +195,11 @@ function baselineDimensions(seed: RetirementStrategy): StrategyDimensions {
     retirementAge: seed.retirementAge,
     nationalPensionTiming: timingFor(startAge),
     nationalPensionStartAge: startAge,
-    withdrawalPolicy: seed.withdrawalPolicy.accountWithdrawalPolicy ?? 'GENERAL_FIRST',
+    // 미지정을 GENERAL_FIRST로 «적어 두지» 않는다. 그 기본값이 라벨용이라는 것은 여기서만
+    // 참이고, 카드는 이 값을 「현재 계획」으로 읽어 「현재 설정 → 일반계좌 우선 인출」이라는
+    // 변경점을 만들었다. 사적연금도 ISA도 없는 사용자에게 그 변경은 원장을 1원도 움직이지
+    // 않는다(54 페르소나 중 5·13·21·39, 카드 11장 실측).
+    withdrawalPolicy: seed.withdrawalPolicy.accountWithdrawalPolicy,
     spendingPattern,
   };
 }
@@ -213,6 +228,13 @@ function sameStrategy(left: unknown, right: unknown): boolean {
 
 /** 현상 유지 후보의 id. 격자 id는 모두 `retire-`로 시작하므로 부딪히지 않는다. */
 const BASELINE_CANDIDATE_ID = 'baseline';
+
+/**
+ * 「인출 정책 미지정」 축 값의 id 조각. 정책 enum 어느 값과도 겹치지 않는 이름이어야 하고,
+ * 알파벳으로 모든 enum 값보다 앞선다 — 결과가 같아 동률로 내려온 후보들 사이에서 현재
+ * 계획을 그대로 두는 쪽이 이긴다.
+ */
+const WITHDRAWAL_POLICY_AS_IS_TOKEN = 'AS_IS';
 
 /**
  * Explainable rule + bounded grid candidate generation.
@@ -263,8 +285,30 @@ export class StrategyGenerator {
     const hasPrivatePension = profile.pensions.some((pension) => pension.kind === 'private');
     const accountClassCount = Number(profile.assets.some((asset) => asset.kind === 'investment'))
       + Number(hasIsa) + Number(hasPrivatePension);
-    const withdrawalPolicies: GridWithdrawalPolicy[] = [
-      'GENERAL_FIRST',
+    // GENERAL_FIRST 자리에 «사용자의 현재 값»이 올 때가 있다.
+    //
+    // 이 축은 이미 「그 값이 이 사용자에게 무언가를 하는가」로 크기를 정한다 — ISA가 없으면
+    // ISA_FIRST를 만들지 않고, 사적연금이 없으면 PENSION_FIRST를 만들지 않는다. 같은 잣대를
+    // 미지정에도 대면 GENERAL_FIRST 슬롯의 답이 갈린다.
+    //
+    // 「인출 정책 미지정」은 GENERAL_FIRST의 «동의어가 아니다». 미지정 계획은 사적연금을
+    // 부족분과 무관하게 정기 지급하고(잔여 개월 균등분할 또는 privatePensionMonthlyTarget),
+    // 정책을 명시하면 그 지급이 사라진다. 엔진에서 미지정을 읽는 곳은 두 군데뿐이고
+    // (SimulationEngine의 사적연금 정기 지급 게이트와 WithdrawalEngine 호출의 `?? GENERAL_FIRST`),
+    // 앞의 것은 사적연금 계좌를 도는 루프 «안»에 있다. 그래서 **사적연금이 하나도 없으면
+    // 미지정과 GENERAL_FIRST는 같은 계획이다** — 54 페르소나 실측에서 사적연금 없는 4명
+    // (5·13·21·39)만 원장이 1원도 움직이지 않았고 나머지 50명은 움직였다.
+    //
+    // 같은 계획이라면 사용자가 이미 가진 값으로 만든다. GENERAL_FIRST를 박아 넣으면 카드가
+    // 「현재 설정 → 일반계좌 우선 인출」이라는 «아무 일도 하지 않는» 변경점을 내걸고
+    // (그 4명의 카드 11장이 그랬다), 「적용」이 그 값을 계획에 실제로 기록한다.
+    // 후보 하나도 늘지 않는다 — 슬롯의 값만 바뀐다.
+    //
+    // 사적연금이 있으면 GENERAL_FIRST는 진짜 대안이므로 그대로 둔다. 그 사용자에게 카드가
+    // 내거는 인출 변경점은 정직하다.
+    const withdrawalPolicyUnset = seed.withdrawalPolicy.accountWithdrawalPolicy === undefined;
+    const withdrawalPolicies: (GridWithdrawalPolicy | undefined)[] = [
+      withdrawalPolicyUnset && !hasPrivatePension ? undefined : 'GENERAL_FIRST',
       ...(hasIsa ? ['ISA_FIRST' as const] : []),
       ...(hasPrivatePension ? ['PENSION_FIRST' as const] : []),
       ...(accountClassCount >= 2 ? ['TAX_OPTIMIZED' as const] : []),
@@ -313,7 +357,7 @@ export class StrategyGenerator {
             const id = [
               `retire-${retirementAge}`,
               `np-${nationalPensionStartAge}`,
-              withdrawalPolicy,
+              withdrawalPolicy ?? WITHDRAWAL_POLICY_AS_IS_TOKEN,
               spending.label,
             ].join('|');
             const strategy = strategyFor(seed, dimensions, spending);

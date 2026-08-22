@@ -89,8 +89,12 @@ describe('StrategyGenerator', () => {
     });
 
     expect(result.debug.axisSizes.withdrawalPolicy).toBe(1);
+    // 남는 한 값은 «사용자의 현재 값»이다. 이 계획에는 사적연금이 없어 미지정과
+    // GENERAL_FIRST가 같은 계획이고(엔진에서 미지정을 읽는 두 곳 중 하나가 사적연금 루프
+    // 안에 있다), 같은 계획이라면 사용자가 이미 가진 값으로 만든다 — GENERAL_FIRST를 박아
+    // 넣으면 카드가 아무 일도 하지 않는 「현재 설정 → 일반계좌 우선 인출」을 내건다.
     expect(new Set(result.candidates.map((candidate) => candidate.dimensions.withdrawalPolicy)))
-      .toEqual(new Set(['GENERAL_FIRST']));
+      .toEqual(new Set([undefined]));
   });
 
   test('이미 은퇴한 사용자는 과거의 seed 은퇴 나이를 유일한 후보로 보존한다', () => {
