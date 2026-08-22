@@ -6,6 +6,7 @@ import {
 import { compileStrategy, DEFAULT_RETIREMENT_STRATEGY } from '@/core/usecases/strategy/compileStrategy';
 import { resolveAssumptionVariants } from '@/core/usecases/strategy/robustness';
 import { SENTINEL_AXES, canFillSentinelAxis } from '@/core/usecases/strategy/verifiedSentinelPlan';
+import { ECONOMIC_SCENARIO_PROFILES, GoverningEconomicScenario } from '@/core/usecases/scenario/economicScenarios';
 import { BequestStrategy, RetirementStrategy, SimulationParams } from '@/core/entities/types';
 
 // **문구는 엔진이 실제로 하는 일과 일치해야 한다.**
@@ -100,6 +101,24 @@ describe('AI 센티널 선택지 문구', () => {
 
     expect(optionFor(RISK_PROFILE_OPTIONS, 'ai_recommended').description).toMatch(/모두|견디/);
     expect(optionFor(ECONOMIC_SCENARIO_OPTIONS, 'ai_recommended').description).toMatch(/모두|견디/);
+  });
+
+  // 경제 시나리오 선택지의 설명문은 ECONOMIC_SCENARIO_PROFILES가 실제로 지배하는 값(물가·
+  // 환율)을 그대로 인용해야 한다. 이 브랜치가 고친 것이 바로 "설명문이 엔진의 값과 다른
+  // 숫자를 말하던" 문제이므로, 숫자를 테스트에 다시 손으로 박으면 같은 방식으로 썩는다 —
+  // 반드시 ECONOMIC_SCENARIO_PROFILES에서 기대값을 끌어온다.
+  test('경제 시나리오 설명문은 ECONOMIC_SCENARIO_PROFILES의 물가·환율과 일치한다', () => {
+    for (const scenario of Object.keys(ECONOMIC_SCENARIO_PROFILES) as GoverningEconomicScenario[]) {
+      const profile = ECONOMIC_SCENARIO_PROFILES[scenario];
+      const description = optionFor(ECONOMIC_SCENARIO_OPTIONS, scenario).description;
+
+      expect(description, description).toContain(`물가 ${profile.inflationRate}%`);
+      if (profile.exchangeScenario === 'usd_up') {
+        expect(description, description).toContain('원화 약세');
+      } else {
+        expect(description, description).not.toContain('원화 약세');
+      }
+    }
   });
 
   // 화면에서 고를 수는 없어졌지만(생활비 전략은 목표 카드가 정한다), 저장된 시나리오에는

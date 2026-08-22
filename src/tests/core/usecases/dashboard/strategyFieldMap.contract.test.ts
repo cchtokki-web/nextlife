@@ -30,13 +30,13 @@ const CURRENT_PLANS: SimulationParams[] = ([
     userProfile: { currentAge: 50, retirementAge: 60, expectancy: 90, targetMonthlySpending: 3_000_000 },
     yieldPreset: 'conservative',
     withdrawalPlan: { nationalPensionStartAge: 60, accountWithdrawalPolicy: 'GENERAL_FIRST' },
-    strategy: { ...resolveStrategy(makeParams()), nationalPensionStrategy: 'early', riskProfile: 'conservative' },
+    strategy: { ...resolveStrategy(makeParams()), nationalPensionStrategy: 'early', riskProfile: 'ai_recommended' },
   }),
   makeParams({
     userProfile: { currentAge: 45, retirementAge: 65, expectancy: 95, targetMonthlySpending: 5_000_000 },
     yieldPreset: 'aggressive',
     withdrawalPlan: { nationalPensionStartAge: 70, accountWithdrawalPolicy: 'TAX_OPTIMIZED' },
-    strategy: { ...resolveStrategy(makeParams()), nationalPensionStrategy: 'defer_max', riskProfile: 'aggressive' },
+    strategy: { ...resolveStrategy(makeParams()), nationalPensionStrategy: 'defer_max', riskProfile: 'ai_recommended' },
   }),
   // 저수준 필드를 하나도 정하지 않은 시나리오.
   makeParams({ yieldPreset: undefined, withdrawalPlan: undefined }),
@@ -60,17 +60,14 @@ const CANDIDATE_AXES: RankedOverrides[] = [];
 for (const retirementAge of [60, 62]) {
   for (const nationalPensionStartAge of [60, 65, 70]) {
     for (const withdrawalPolicy of ['GENERAL_FIRST', 'ISA_FIRST'] as StrategyDimensions['withdrawalPolicy'][]) {
-      for (const assetAllocation of ['CONSERVATIVE', 'BALANCED', 'GROWTH'] as const) {
-        for (const spendingPattern of ['FIXED', 'FRONT_LOADED'] as const) {
-          CANDIDATE_AXES.push({
-            retirementAge,
-            nationalPensionStartAge,
-            withdrawalPolicy,
-            assetAllocation,
-            spendingPattern,
-            targetMonthlySpending: 3_500_000,
-          });
-        }
+      for (const spendingPattern of ['FIXED', 'FRONT_LOADED'] as const) {
+        CANDIDATE_AXES.push({
+          retirementAge,
+          nationalPensionStartAge,
+          withdrawalPolicy,
+          spendingPattern,
+          targetMonthlySpending: 3_500_000,
+        });
       }
     }
   }

@@ -90,8 +90,10 @@ describe('전략 축이 현금흐름을 바꾼다', () => {
   // 각 축이 만들어야 할 "서로 다른 곡선"의 최소 개수.
   //
   // 원칙적으로 선택지 수와 같을 필요는 없다 — 일부 값이 같은 계획으로 수렴하는 것은 정상일
-  // 수 있다(예: 리스크 성향의 'custom'과 'ai_recommended'는 둘 다 "수익률을 덮어쓰지 않는다").
-  // 다만 **현재 이 다섯 축은 실측상 선택지 수만큼 전부 갈린다.** 그래서 임계값을 선택지 수와
+  // 수 있다. **리스크 성향이 정확히 그 예다.** 2026-08-22부터 'custom'과 'ai_recommended'
+  // 둘 다 "수익률을 덮어쓰지 않는다"는 같은 동작이라, 이 축은 여기(현금흐름이 갈리는 축)가
+  // 아니라 아래 '전략 축의 방향성' 근처의 회귀 테스트(같은 곡선을 만드는지)로 옮겼다.
+  // 다만 **나머지 네 축은 실측상 선택지 수만큼 전부 갈린다.** 그래서 임계값을 선택지 수와
   // 같게 두었다. 즉 여유(margin)가 0이고, 어떤 선택지든 하나라도 다른 선택지와 같은 곡선으로
   // 붙으면 실패한다 — 의도된 민감도다.
   //
@@ -121,11 +123,6 @@ describe('전략 축이 현금흐름을 바꾼다', () => {
       values: ['tax_first', 'spending_first', 'growth_first', 'minimum'],
       // 인출 비율 100%/50%/25%가 서로 다른 결과를 내야 한다.
       minDistinct: 4,
-    },
-    {
-      axis: 'riskProfile' as const,
-      values: ['conservative', 'neutral', 'aggressive'],
-      minDistinct: 3,
     },
     {
       axis: 'economicScenario' as const,
@@ -267,11 +264,14 @@ describe('전략 축의 방향성', () => {
     expect(deferMax.endingAssets).toBeGreaterThan(normal.endingAssets);
   });
 
-  test('공격적 수익률 가정이 보수적 가정보다 기말자산이 많다', () => {
-    const conservative = run({ riskProfile: 'conservative' });
-    const aggressive = run({ riskProfile: 'aggressive' });
+  // 2026-08-22 회귀 테스트: 리스크 성향은 더 이상 수익률을 지배하지 않는다. 'custom'과
+  // 'ai_recommended' 둘 다 자산·연금에 입력한 수익률을 그대로 통과시키는 같은 동작이므로,
+  // 두 값으로 계산한 계획은 완전히 같은 현금흐름을 내야 한다.
+  test('리스크 성향은 더 이상 기말자산을 바꾸지 않는다', () => {
+    const custom = run({ riskProfile: 'custom' });
+    const aiRecommended = run({ riskProfile: 'ai_recommended' });
 
-    expect(aggressive.endingAssets).toBeGreaterThan(conservative.endingAssets);
+    expect(aiRecommended.endingAssets).toBe(custom.endingAssets);
   });
 });
 

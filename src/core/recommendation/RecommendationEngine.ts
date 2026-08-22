@@ -59,11 +59,12 @@ export function noRecommendationReachesGoal(
 /**
  * 이 추천이 «지금 계획보다» 나은가.
  *
- * 세 카드는 「더 나은가」가 아니라 「특성을 가졌는가」로 뽑힌다(RECOMMENDATION_PERSONAS의
- * qualifies). 안정형에는 보수적 배분만, 여유형에는 은퇴초기 집중형만 오를 수 있으므로,
- * 균형·평탄 계획을 쓰는 사용자에게 그 두 카드는 정의상 «변경»을 제안한다 — 그 변경이
- * 이득인지는 자격 조건이 아니다. 현상 유지 후보가 생성 단계에 있지만 균형형 슬롯
- * 하나에서만 겨룰 수 있어, 세 카드가 모두 지금보다 나쁠 수 있다.
+ * 세 카드는 「더 나은가」가 아니라 「무엇을 가장 잘 하는가」로 뽑힌다
+ * (RECOMMENDATION_PERSONAS). 안정형·균형형은 자격 조건 없이 각자의 비교자 1등을 가져가고,
+ * 여유형만 은퇴초기 집중형(FRONT_LOADED)이라는 특성을 요구한다. 페르소나는 배타적이며 배열
+ * 순서대로 채워지므로 한 후보가 두 자리를 차지할 수 없다 — 현상 유지 후보가 생성 단계에
+ * 있어도 많아야 한 자리다. 나머지 자리는 정의상 «변경»을 제안하고, 그 변경이 이득인지는
+ * 선정 기준에 들어 있지 않다. 그래서 세 카드가 모두 지금보다 나쁠 수 있다.
  *
  * 그 사실을 화면이 밝히려면 판정이 필요하고, 판정은 한 곳에만 있어야 한다 — ☆배지와
  * 「유지하는 편이 낫다」 안내와 카드의 증감 표시가 서로 다른 답을 말하면 안 된다.
@@ -186,7 +187,13 @@ export interface PersonaDefinition {
   reason: string;
   /**
    * The trait the persona's copy actually claims. It is a filter, not a sort preference: a card
-   * labelled 안정형 must hold a CONSERVATIVE strategy or it must not be shown at all.
+   * labelled 여유형 must hold a FRONT_LOADED plan or it must not be shown at all.
+   *
+   * 안정형·균형형은 이제 «축»이 아니라 «비교자»가 정의한다. 예전에는 자산배분 축
+   * (CONSERVATIVE/BALANCED)을 자격 조건으로 썼지만, 그 축은 사용자가 입력한 수익률을
+   * 5/7/9%로 갈아끼우는 가정 변경일 뿐이어서 없앴다(2026-08-22 수익률 가정 축 분리).
+   * 남은 후보들은 모두 같은 수익률 가정을 쓰므로 걸러 낼 자산배분 자체가 없고, 두
+   * 페르소나가 무엇을 우선했는지는 compare가 온전히 말한다.
    */
   qualifies(candidate: RankedStrategyCandidate): boolean;
   compare: CandidateComparator;
@@ -200,15 +207,16 @@ export const RECOMMENDATION_PERSONAS: ReadonlyArray<PersonaDefinition> = [
   {
     persona: 'STABLE',
     label: '안정형',
-    reason: '보수적 자산배분과 하방 자산·생활비 방어력을 우선했습니다.',
-    qualifies: (candidate) => candidate.candidate.dimensions.assetAllocation === 'CONSERVATIVE',
+    reason: '하방 자산·생활비 방어력을 우선했습니다.',
+    // 자격 조건이 아니라 비교자가 이 페르소나를 정의한다(PersonaDefinition.qualifies 주석).
+    qualifies: () => true,
     compare: stableComparator,
   },
   {
     persona: 'BALANCED',
     label: '균형형',
-    reason: '목표 성공확률과 목표 적합도, 자산배분의 균형을 우선했습니다.',
-    qualifies: (candidate) => candidate.candidate.dimensions.assetAllocation === 'BALANCED',
+    reason: '목표 성공확률과 목표 적합도의 균형을 우선했습니다.',
+    qualifies: () => true,
     compare: balancedComparator,
   },
   {
@@ -224,9 +232,10 @@ export const RECOMMENDATION_PERSONAS: ReadonlyArray<PersonaDefinition> = [
  * Converts Monte Carlo-validated candidates into the user-facing recommendation personas.
  *
  * A persona is emitted only when a candidate genuinely carries its defining trait, so fewer than
- * three cards is a normal outcome. Each persona previously took the best of *all* candidates with
- * the trait as a mere tiebreak, which labelled growth strategies 안정형 and printed
- * "보수적 자산배분을 우선했습니다" beside them. Personas are exclusive and filled in array order.
+ * three cards is a normal outcome — 여유형은 FRONT_LOADED 후보가 없으면 나오지 않는다.
+ * Personas are exclusive and filled in array order: 안정형이 먼저 자기 비교자의 1등을 가져가고,
+ * 균형형은 남은 것 중에서, 여유형은 다시 남은 것 중에서 고른다. 그래서 세 카드는 언제나
+ * 서로 다른 계획이다.
  */
 export class RecommendationEngine {
   recommend(

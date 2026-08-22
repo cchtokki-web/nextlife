@@ -1,6 +1,5 @@
 import type { AccountWithdrawalPolicy, SpendingCurve, SpendingShapePreset } from '../entities/types';
 import type {
-  AccountProjection,
   RetirementGoals,
   RetirementProfile,
   RetirementStrategy,
@@ -12,7 +11,6 @@ import {
   NATIONAL_PENSION_NORMAL_START_AGE,
 } from '../usecases/pension/nationalPensionRules';
 import { resolveSpendingCurve } from '../usecases/spending/spendingCurve';
-import { YIELD_PRESET_RATES } from '../usecases/scenario/applyYieldPreset';
 
 export type NationalPensionTiming = 'EARLY' | 'NORMAL' | 'DEFERRED';
 export type SpendingPattern = 'FIXED' | 'FRONT_LOADED' | 'CARE_HEAVY';
@@ -29,7 +27,6 @@ export const SPENDING_SHAPE_BY_PATTERN: Record<SpendingPattern, SpendingShapePre
   FRONT_LOADED: 'front_loaded',
   CARE_HEAVY: 'care_heavy',
 };
-export type AssetAllocationPreset = 'CONSERVATIVE' | 'BALANCED' | 'GROWTH';
 
 /**
  * 격자 축이 실제로 훑는 인출정책. PROPORTIONAL/CUSTOM은 엔진이 후보로 만들지 않는다.
@@ -44,7 +41,6 @@ export interface StrategyDimensions {
   /** 격자 후보는 언제나 `GridWithdrawalPolicy`지만, 현상 유지 후보는 사용자의 현재 설정 그대로다. */
   withdrawalPolicy: AccountWithdrawalPolicy;
   spendingPattern: SpendingPattern;
-  assetAllocation: AssetAllocationPreset;
 }
 
 export interface StrategyCandidate {
@@ -55,7 +51,7 @@ export interface StrategyCandidate {
 
 export interface StrategyGenerationOptions {
   /**
-   * 최종 안전장치. 기본 격자는 은퇴나이 × 국민연금개시 × 인출정책 × 소비패턴 × 자산배분이며,
+   * 최종 안전장치. 기본 격자는 은퇴나이 × 국민연금개시 × 인출정책 × 소비패턴이며,
    * 은퇴나이 축이 seed·목표 나이로 늘어나면 기본값 1,000을 넘어 잘릴 수 있다. 잘린 수는
    * `debug.cappedCandidateCount`로 드러나고, 탈락은 점수가 아니라 순회 순서로 정해진다.
    */
@@ -116,34 +112,14 @@ interface SpendingCandidate {
   curve?: SpendingCurve;
 }
 
-interface AllocationCandidate {
-  label: AssetAllocationPreset;
-  preset: keyof typeof YIELD_PRESET_RATES | null;
-}
-
 function uniqueSorted(values: readonly number[]): number[] {
   return [...new Set(values)].sort((a, b) => a - b);
-}
-
-function cloneProjection(
-  projection: AccountProjection,
-  preset: keyof typeof YIELD_PRESET_RATES | null,
-): AccountProjection {
-  if (!preset) return { ...projection };
-  const rates = YIELD_PRESET_RATES[preset];
-  return {
-    ...projection,
-    totalReturn: projection.accountKind === 'private_pension'
-      ? rates.pensionReturn
-      : rates.stockGrowth,
-  };
 }
 
 function strategyFor(
   seed: RetirementStrategy,
   dimensions: StrategyDimensions,
   spending: SpendingCandidate,
-  allocation: AllocationCandidate,
 ): RetirementStrategy {
   const withdrawalPolicy = {
     ...seed.withdrawalPolicy,
@@ -162,23 +138,16 @@ function strategyFor(
   };
   if (!spending.curve) delete spendingPolicy.curve;
 
-  const projections = seed.assetAllocation?.accountProjections.map((projection) =>
-    cloneProjection(projection, allocation.preset)
-  );
-
+  // **수익률은 후보마다 바뀌지 않는다.** 계좌 projection(seed.assetAllocation)을 손대지 않고
+  // 그대로 물려준다 — 후보가 다르게 만드는 것은 인출 계획이지 시장 가정이 아니다. 예전에는
+  // 후보마다 yieldPreset을 갈아끼워 자산별 totalReturn을 5/7/9%로 덮어썼는데, 그것은 조언이
+  // 아니라 사용자가 입력한 가정을 바꿔 점수를 올리는 일이었다.
   return {
     ...seed,
     retirementAge: dimensions.retirementAge,
     nationalPensionStartAge: dimensions.nationalPensionStartAge,
     withdrawalPolicy,
     spendingPolicy,
-    ...(projections
-      ? { assetAllocation: { accountProjections: projections } }
-      : {}),
-    legacySettings: {
-      ...seed.legacySettings,
-      ...(allocation.preset ? { yieldPreset: allocation.preset } : {}),
-    },
   };
 }
 
@@ -211,18 +180,12 @@ function baselineDimensions(seed: RetirementStrategy): StrategyDimensions {
     // 곡선이 없거나 프리셋 어느 쪽도 아니면 FIXED로 둔다. 변경점 표시가 이 값을 "바꿀 것이
     // 없다"의 뜻으로 읽으므로(strategyFieldMap의 spendingPattern 축), 현상 유지에 맞는 기본이다.
     : 'FIXED';
-  const preset = seed.legacySettings.yieldPreset;
   return {
     retirementAge: seed.retirementAge,
     nationalPensionTiming: timingFor(startAge),
     nationalPensionStartAge: startAge,
     withdrawalPolicy: seed.withdrawalPolicy.accountWithdrawalPolicy ?? 'GENERAL_FIRST',
     spendingPattern,
-    // 'custom'(자산별 직접 입력)과 미지정은 프리셋이 아니다. 라벨만 BALANCED로 두고,
-    // 실제 반영 판정은 프리셋을 직접 읽는 strategyFieldMap의 candidatePreset이 맡는다.
-    assetAllocation: preset === 'conservative' ? 'CONSERVATIVE'
-      : preset === 'aggressive' ? 'GROWTH'
-      : 'BALANCED',
   };
 }
 
@@ -310,14 +273,6 @@ export class StrategyGenerator {
     const spendingCandidates: SpendingCandidate[] = (
       Object.keys(SPENDING_SHAPE_BY_PATTERN) as SpendingPattern[]
     ).map((label) => ({ label, curve: resolveSpendingCurve(SPENDING_SHAPE_BY_PATTERN[label]) }));
-    const hasMarketAccount = profile.assets.length > 0 || hasPrivatePension;
-    const allocations: AllocationCandidate[] = hasMarketAccount
-      ? [
-          { label: 'CONSERVATIVE', preset: 'conservative' },
-          { label: 'BALANCED', preset: 'base' },
-          { label: 'GROWTH', preset: 'aggressive' },
-        ]
-      : [{ label: 'BALANCED', preset: null }];
 
     // 현상 유지(무조정) 후보를 «격자보다 먼저» 넣는다.
     //
@@ -344,37 +299,33 @@ export class StrategyGenerator {
         const nationalPensionTiming = timingFor(nationalPensionStartAge);
         for (const withdrawalPolicy of withdrawalPolicies) {
           for (const spending of spendingCandidates) {
-            for (const allocation of allocations) {
-              if (candidates.length >= maxCandidates) {
-                cappedCandidateCount += 1;
-                continue;
-              }
-              const dimensions: StrategyDimensions = {
-                retirementAge,
-                nationalPensionTiming,
-                nationalPensionStartAge,
-                withdrawalPolicy,
-                spendingPattern: spending.label,
-                assetAllocation: allocation.label,
-              };
-              const id = [
-                `retire-${retirementAge}`,
-                `np-${nationalPensionStartAge}`,
-                withdrawalPolicy,
-                spending.label,
-                allocation.label,
-              ].join('|');
-              const strategy = strategyFor(seed, dimensions, spending, allocation);
-              // 사용자의 현재 설정이 이미 격자 위에 있는 흔한 경우. 같은 계획을 두 장 만들면
-              // 숫자가 완전히 같은 카드가 두 개 뜬다. 격자 쪽을 남기고 현상 유지를 걷어,
-              // 후보의 라벨과 id가 나머지 격자 후보와 같은 규칙을 따르게 한다.
-              if (baselineDuplicateCount === 0 && sameStrategy(strategy, baseline.strategy)) {
-                baselineDuplicateCount += 1;
-                baselineCandidateId = id;
-                candidates.splice(candidates.indexOf(baseline), 1);
-              }
-              candidates.push({ id, dimensions, strategy });
+            if (candidates.length >= maxCandidates) {
+              cappedCandidateCount += 1;
+              continue;
             }
+            const dimensions: StrategyDimensions = {
+              retirementAge,
+              nationalPensionTiming,
+              nationalPensionStartAge,
+              withdrawalPolicy,
+              spendingPattern: spending.label,
+            };
+            const id = [
+              `retire-${retirementAge}`,
+              `np-${nationalPensionStartAge}`,
+              withdrawalPolicy,
+              spending.label,
+            ].join('|');
+            const strategy = strategyFor(seed, dimensions, spending);
+            // 사용자의 현재 설정이 이미 격자 위에 있는 흔한 경우. 같은 계획을 두 장 만들면
+            // 숫자가 완전히 같은 카드가 두 개 뜬다. 격자 쪽을 남기고 현상 유지를 걷어,
+            // 후보의 라벨과 id가 나머지 격자 후보와 같은 규칙을 따르게 한다.
+            if (baselineDuplicateCount === 0 && sameStrategy(strategy, baseline.strategy)) {
+              baselineDuplicateCount += 1;
+              baselineCandidateId = id;
+              candidates.splice(candidates.indexOf(baseline), 1);
+            }
+            candidates.push({ id, dimensions, strategy });
           }
         }
       }
@@ -388,10 +339,9 @@ export class StrategyGenerator {
       nationalPensionStartAge: nationalPensionAges.length,
       withdrawalPolicy: withdrawalPolicies.length,
       spendingPattern: spendingCandidates.length,
-      assetAllocation: allocations.length,
     };
     const theoreticalCombinationCount = retirementAges.length * nationalPensionAges.length
-      * withdrawalPolicies.length * spendingCandidates.length * allocations.length;
+      * withdrawalPolicies.length * spendingCandidates.length;
 
     return {
       candidates,

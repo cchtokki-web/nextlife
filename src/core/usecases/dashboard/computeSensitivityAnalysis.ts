@@ -2,18 +2,20 @@ import { SimulationEngine } from '../SimulationEngine';
 import { SimulationParams } from '../../entities/types';
 import { freezeSpendingPlan, mapFrozenPlan, runFrozenPlan } from '../spending/freezeSpendingPlan';
 import { hasSpendingShortfall } from '../spending/spendingShortfall';
+import { applyYieldPreset } from '../scenario/applyYieldPreset';
 import { PlanAssetStatus, resolvePlanAssetStatus } from './resolvePlanAssetStatus';
 
 export interface SensitivityScenario {
-  key: 'returnDown' | 'returnUp' | 'inflationUp' | 'inflationDown' | 'retirementEarlier' | 'retirementLater';
+  key: 'yieldConservative' | 'yieldBase' | 'yieldAggressive'
+    | 'inflationUp' | 'inflationDown' | 'retirementEarlier' | 'retirementLater';
   label: string;
   depletionAge: number | null;
   deltaYears: number | null;
   // 기대수명 시점의 잔여자산과 baseline 대비 증감.
   //
-  // depletionAge만으로는 여유 있는 계획에서 6개 시나리오가 전부 null이 되어 화면이
-  // "고갈 위험 없습니다" 한 줄로 접힌다. 실제로는 수익률 ±2%p가 기말자산을 수억 원
-  // 갈라놓는데도 사용자는 아무 차이도 보지 못했다. 재계산은 이미 하고 있었으므로
+  // depletionAge만으로는 여유 있는 계획에서 7개 시나리오가 전부 null이 되어 화면이
+  // "고갈 위험 없습니다" 한 줄로 접힌다. 실제로는 수익률 가정(안정형/공격형)이 기말자산을
+  // 수억 원 갈라놓는데도 사용자는 아무 차이도 보지 못했다. 재계산은 이미 하고 있었으므로
   // 추가 비용 없이 결과에서 이 값을 함께 싣는다.
   endingAssets: number;
   endingAssetsDelta: number;
@@ -26,18 +28,6 @@ interface ScenarioDefinition {
   key: SensitivityScenario['key'];
   label: string;
   buildParams: (params: SimulationParams) => SimulationParams;
-}
-
-// 투자수익률 시나리오는 "시장 전체가 함께 움직인다"는 가정 하에 주식/ETF 자산, 사적연금, ISA
-// 수익률을 전부 동일 폭(delta)만큼 가산한다. applyYieldPreset이 프리셋 적용 시 자산/연금에
-// 동일 수익률을 일괄 적용하는 것과 같은 관례를 따르되, 값을 고정하는 대신 기존 값에 가산한다.
-function shiftReturn(params: SimulationParams, delta: number): SimulationParams {
-  return {
-    ...params,
-    assets: params.assets.map((a) => ({ ...a, totalReturn: a.totalReturn + delta })),
-    privatePensions: params.privatePensions.map((p) => ({ ...p, totalReturn: p.totalReturn + delta })),
-    isaAccounts: params.isaAccounts?.map((i) => ({ ...i, totalReturn: i.totalReturn + delta })),
-  };
 }
 
 function shiftInflation(params: SimulationParams, delta: number): SimulationParams {
@@ -76,9 +66,15 @@ function shiftRetirementAge(params: SimulationParams, delta: number): Simulation
   };
 }
 
+// 수익률 축은 «절대 앵커»로 잰다. ±%p 상대 이동은 사용자 가정이 이미 높으면 프리셋과
+// 같은 자리를 재게 되고, 「내 가정이 시장 통념 대비 어디쯤인가」에도 답하지 못한다.
+//
+// 몬테카를로의 σ와 겹치지 않는다 — σ는 「기대는 맞지만 해마다 흔들린다면」이고,
+// 이 세 행은 「기대 자체가 다르다면」이다.
 const SCENARIO_DEFINITIONS: ScenarioDefinition[] = [
-  { key: 'returnDown', label: '투자수익률 -2%p', buildParams: (p) => shiftReturn(p, -2) },
-  { key: 'returnUp', label: '투자수익률 +2%p', buildParams: (p) => shiftReturn(p, 2) },
+  { key: 'yieldConservative', label: '안정형 가정 (주식 5%)', buildParams: (p) => applyYieldPreset(p, 'conservative') },
+  { key: 'yieldBase', label: '중립형 가정 (주식 7%)', buildParams: (p) => applyYieldPreset(p, 'base') },
+  { key: 'yieldAggressive', label: '공격형 가정 (주식 9%)', buildParams: (p) => applyYieldPreset(p, 'aggressive') },
   { key: 'inflationUp', label: '물가상승률 +1%p', buildParams: (p) => shiftInflation(p, 1) },
   { key: 'inflationDown', label: '물가상승률 -1%p', buildParams: (p) => shiftInflation(p, -1) },
   { key: 'retirementEarlier', label: '은퇴시점 -3년', buildParams: (p) => shiftRetirementAge(p, -3) },
@@ -104,7 +100,7 @@ function computeDeltaYears(
 export interface SensitivityAnalysis {
   // 가장 위험한(고갈이 빠른) 시나리오가 먼저이며, 평생 유지(null)는 항상 뒤로 간다.
   scenarios: SensitivityScenario[];
-  // 6개 시나리오가 **공통으로 고정한** 월 생활비. 화면과 PDF는 이 값을 반드시 밝혀야 한다 —
+  // 7개 시나리오가 **공통으로 고정한** 월 생활비. 화면과 PDF는 이 값을 반드시 밝혀야 한다 —
   // 밝히지 않으면 사용자는 자기가 입력한 목표 생활비 기준으로 표를 읽는다.
   frozenMonthlySpending: number;
   // 기준선도 같은 고정 계획에서 나온다(아래 주석 참조). 호출부가 따로 계산해 넘기지 않는다.
@@ -119,8 +115,8 @@ export interface SensitivityAnalysis {
   baselinePlanAssetStatus: PlanAssetStatus;
 }
 
-// 6개 시나리오(투자수익률/물가상승률/은퇴시점 각 ±)를 재실행해 자산 고갈 나이가 얼마나
-// 민감하게 변하는지 반환한다. 개별 시나리오가 예외를 던지면 해당 시나리오만 제외한다.
+// 7개 시나리오(수익률 프리셋 3종/물가상승률 ±/은퇴시점 ±)를 재실행해 자산 고갈 나이가
+// 얼마나 민감하게 변하는지 반환한다. 개별 시나리오가 예외를 던지면 해당 시나리오만 제외한다.
 //
 // **생활비는 고정한다.** 민감도 분석은 "이 계획을 그대로 유지했을 때 가정 하나가 바뀌면
 // 어떻게 되는가"를 묻는 것이다. 예전에는 「평생 소비 최적화」 계획에서 시나리오마다

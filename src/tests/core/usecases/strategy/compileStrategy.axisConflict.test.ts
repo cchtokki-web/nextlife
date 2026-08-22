@@ -11,10 +11,12 @@ import { RetirementStrategy, SimulationParams } from '@/core/entities/types';
 // 다룬다 — 축 하나짜리 번역 규칙은 compileStrategy.{test,pension,investment,legacy}.ts에 있다.
 //
 // 이미 다른 파일이 덮고 있어 여기서 반복하지 않는 조합:
-//   - riskProfile × economicScenario (수익률의 최종 승자)
-//     → compileStrategy.investment.test.ts의 '리스크 성향이 시나리오보다 나중에 적용되어…'
 //   - privatePensionStrategy × taxSettings.limitPrivatePensionToTaxLimit
 //     → compileStrategy.pension.test.ts의 '명시적 전략은 고급 설정의 한도 내 인출 값을 덮어쓴다'
+//
+// 2026-08-22: riskProfile × economicScenario(수익률의 최종 승자) 조합은 더 이상 존재하지
+// 않는다 — 어느 축도 수익률을 지배하지 않으므로 "승자"가 없다. 아래 '네 축이 동시에…'가
+// 그 사실(사용자 입력이 항상 남는다)을 대신 고정한다.
 
 const baseParams: SimulationParams = {
   userProfile: { currentAge: 50, retirementAge: 60, expectancy: 85, targetMonthlySpending: 3000000 },
@@ -119,8 +121,8 @@ describe('네 축이 동시에 저수준 필드를 정하는 경우', () => {
   // 간섭을 막는다. 레거시 씨앗과 고급 설정도 함께 켜 최대 충돌 상태로 만든다.
   const params = withStrategy(
     {
-      economicScenario: 'high_inflation', // 물가 5%, 주식 6%, 연금 3%, 환율 usd_up
-      riskProfile: 'conservative', // 주식 5%, 연금 3%
+      economicScenario: 'high_inflation', // 물가 5%, 환율 usd_up (수익률은 지배하지 않는다)
+      riskProfile: 'ai_recommended', // 2026-08-22: 어떤 값이어도 수익률을 지배하지 않는다
       privatePensionStrategy: 'tax_first', // 한도 내 인출 강제 + 한도 전액 인출
       bequestStrategy: 'spend_all',
       spendingChoice: 'max_sustainable',
@@ -140,11 +142,13 @@ describe('네 축이 동시에 저수준 필드를 정하는 경우', () => {
     expect(compiled.params.exchangeScenario).toBe(ECONOMIC_SCENARIO_PROFILES.high_inflation.exchangeScenario);
   });
 
-  test('수익률은 나중에 적용되는 리스크 성향이 정한 값이 남는다', () => {
-    // 시나리오의 주식 6% / 연금 3%가 아니라 안정형 프리셋의 5% / 3%다.
-    expect(compiled.params.assets[0].totalReturn).toBe(5);
-    expect(compiled.params.privatePensions[0].totalReturn).toBe(3);
-    expect(compiled.params.yieldPreset).toBe('conservative');
+  // 2026-08-22: 경제 시나리오도 리스크 성향도 수익률을 지배하지 않는다. 두 축이 동시에
+  // 「고물가」·「지배값」으로 켜져 있어도 사용자가 baseParams에 입력한 값이 그대로 남아야
+  // 한다 — 최대 충돌 상태에서도 수익률만은 침범당하지 않는다는 것이 이 축 분리의 핵심이다.
+  test('수익률은 어느 축의 개입도 없이 사용자 입력이 그대로 남는다', () => {
+    expect(compiled.params.assets[0].totalReturn).toBe(baseParams.assets[0].totalReturn);
+    expect(compiled.params.privatePensions[0].totalReturn).toBe(baseParams.privatePensions[0].totalReturn);
+    expect(compiled.params.yieldPreset).toBeUndefined();
   });
 
   test('연금 축은 고급 설정과 다른 축의 적용에도 지워지지 않는다', () => {

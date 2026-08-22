@@ -231,7 +231,10 @@ describe('useAppliedStrategy', () => {
     const { result } = setup({ activeParams });
 
     const preview = result.current.previewApply(
-      recommendation({ retirementAge: 60, nationalPensionStartAge: 66, assetAllocation: 'GROWTH' }),
+      // 「생활비 배분」이 카드가 말한 축이다 — 이것이 버튼을 연다.
+      recommendation({
+        retirementAge: 60, nationalPensionStartAge: 66, spendingPattern: 'FRONT_LOADED',
+      }),
       simulatedParams,
     );
 

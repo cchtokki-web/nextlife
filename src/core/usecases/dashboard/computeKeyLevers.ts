@@ -131,22 +131,23 @@ function buildTargetSpendingLever({ shortfall, formatValue }: KeyLeversInput): K
 }
 
 function buildInvestmentReturnLever({ sensitivity, formatValue }: KeyLeversInput): KeyLever | null {
-  const up = findScenario(sensitivity, 'returnUp');
-  const down = findScenario(sensitivity, 'returnDown');
+  const up = findScenario(sensitivity, 'yieldAggressive');
+  const down = findScenario(sensitivity, 'yieldConservative');
   if (!up && !down) return null;
 
   const parts: string[] = [];
-  if (up) parts.push(`+2%p면 ${describeScenario(up, formatValue)}`);
-  if (down) parts.push(`−2%p면 ${describeScenario(down, formatValue)}`);
+  if (up) parts.push(`공격형 가정(주식 9%)이면 ${describeScenario(up, formatValue)}`);
+  if (down) parts.push(`안정형 가정(주식 5%)이면 ${describeScenario(down, formatValue)}`);
 
   return {
     key: 'investmentReturn',
     title: '투자 포트폴리오 조정',
     // 수익률은 «정하는» 것이 아니라 «기대하는» 것이다. 그 구분을 밝히지 않으면 이 항목이
-    // "수익률을 2%p 올리세요"라는 실행 불가능한 조언으로 읽힌다.
+    // "수익률을 정하세요"라는 실행 지시로 읽힌다. 두 방향(안정형 5% / 공격형 9%)은 사용자의
+    // 현재 가정이 무엇이든 고정된 앵커다 — 폭이 사용자 가정 주변 ±2%p로 함께 움직이지 않는다.
     detail:
-      `연 수익률 ${parts.join(' / ')}. 다만 수익률은 정할 수 있는 값이 아니라 자산 배분의 결과이며, ` +
-      '기대수익을 높이면 위 두 방향의 폭도 함께 커집니다.',
+      `${parts.join(' / ')}. 다만 수익률은 정할 수 있는 값이 아니라 자산 배분의 결과이며, ` +
+      '위 두 방향(안정형 5% / 공격형 9%)은 현재 가정과 무관하게 고정된 비교 기준입니다.',
   };
 }
 

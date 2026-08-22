@@ -168,15 +168,42 @@ describe('resolveMonteCarloConfig - 직접 입력 수익률에서 변동성 유�
     expect(resolveMonteCarloConfig(empty).annualStdDev).toBe(VOLATILITY_BY_YIELD_PRESET.base);
   });
 
-  // 성향을 명시적으로 고르면 엔진이 수익률 자체를 프리셋으로 «덮어쓰므로», 유도해도 같은
-  // 값이 나온다. 그래도 프리셋 경로를 유지하는 이유는 순서다 — resolveMonteCarloConfig는
-  // 덮어쓰기 전의 params로도 불릴 수 있다.
-  test('명시적 프리셋은 자산 수익률과 무관하게 프리셋 값을 쓴다', () => {
+  // **더 이상 프리셋을 읽지 않는다.** 화면은 strategy.riskProfile만 바꾸고
+  // params.yieldPreset은 그대로 두므로, 프리셋이 자산 수익률과 어긋나 있어도(사용자가
+  // 「입력 수익률 유지」를 고른 뒤 프리셋 라벨만 남은 상태) 실제 수익률에서 유도해야
+  // 한다. 아래의 '변동성은 옛 프리셋이 아니라 실제 수익률에서 나온다' 스위트가 이
+  // 회귀를 구체적인 수치로 고정한다.
+  test('yieldPreset이 남아 있어도 자산 수익률에서 유도한다', () => {
     const conflicting = params({
       yieldPreset: 'conservative',
       assets: [asset({ id: 'a', totalReturn: 9 })],
     });
 
-    expect(resolveMonteCarloConfig(conflicting).annualStdDev).toBe(VOLATILITY_BY_YIELD_PRESET.conservative);
+    expect(resolveMonteCarloConfig(conflicting).annualStdDev).toBe(VOLATILITY_BY_YIELD_PRESET.aggressive);
+  });
+});
+
+describe('변동성은 옛 프리셋이 아니라 실제 수익률에서 나온다', () => {
+  // 화면이 리스크 성향만 바꾸고 params.yieldPreset은 그대로 두므로, 프리셋 분기를
+  // 남겨 두면 수익률은 사용자 값인데 변동성만 안정형 10%p로 굳는다. 실측 시나리오가
+  // 정확히 그 상태였다 — 가중평균 총수익률 7.6%에 σ 10%p.
+  test('yieldPreset이 남아 있어도 가중평균 총수익률에서 유도한다', () => {
+    const params = {
+      userProfile: { currentAge: 50, retirementAge: 60, expectancy: 90, targetMonthlySpending: 3_000_000 },
+      assets: [{
+        id: 'a', type: 'etf', ticker: 'X', name: 'X', quantity: 1, averagePrice: 100_000_000,
+        totalReturn: 9, dividendYield: 0, monthlyContribution: 0,
+        reinvestDividend: true, currency: 'KRW', assetMarket: 'US_ETF',
+      }],
+      privatePensions: [], isaAccounts: [], otherIncomes: [],
+      nationalPension: { expectedMonthlyAmount: 0 },
+      inflationRate: 2.5, inflationMode: 'real', baseExchangeRate: 1400,
+      exchangeScenario: 'base', displayCurrency: 'KRW',
+      yieldPreset: 'conservative',
+    } as unknown as SimulationParams;
+
+    // 총수익률 9%는 volatilityForStockReturn의 상단 앵커라 20%p가 나와야 한다.
+    // 프리셋을 읽으면 10%p가 된다.
+    expect(resolveMonteCarloConfig(params).annualStdDev).toBe(20);
   });
 });

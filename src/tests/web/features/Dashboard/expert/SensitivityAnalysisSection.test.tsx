@@ -15,12 +15,12 @@ function scenario(overrides: Partial<SensitivityScenario> & Pick<SensitivityScen
 }
 
 const scenarios: SensitivityScenario[] = [
-  scenario({ key: 'returnDown', label: '투자수익률 -2%p', depletionAge: 82, deltaYears: -6, endingAssets: 0, endingAssetsDelta: -2500000000, unmetSpendingYears: 8 }),
+  scenario({ key: 'yieldConservative', label: '안정형 가정 (주식 5%)', depletionAge: 82, deltaYears: -6, endingAssets: 0, endingAssetsDelta: -2500000000, unmetSpendingYears: 8 }),
   scenario({ key: 'retirementEarlier', label: '은퇴시점 -3년', depletionAge: 84, deltaYears: -4, endingAssets: 0, endingAssetsDelta: -2500000000 }),
   scenario({ key: 'inflationUp', label: '물가상승률 +1%p', depletionAge: 86, deltaYears: -2, endingAssets: 0, endingAssetsDelta: -2500000000 }),
   scenario({ key: 'inflationDown', label: '물가상승률 -1%p', depletionAge: 90, deltaYears: 2, endingAssets: 3000000000, endingAssetsDelta: 500000000 }),
   scenario({ key: 'retirementLater', label: '은퇴시점 +3년', endingAssets: 3200000000, endingAssetsDelta: 700000000 }),
-  scenario({ key: 'returnUp', label: '투자수익률 +2%p', endingAssets: 5000000000, endingAssetsDelta: 2500000000 }),
+  scenario({ key: 'yieldAggressive', label: '공격형 가정 (주식 9%)', endingAssets: 5000000000, endingAssetsDelta: 2500000000 }),
 ];
 
 describe('SensitivityAnalysisSection', () => {
@@ -33,7 +33,7 @@ describe('SensitivityAnalysisSection', () => {
 
   test('각 시나리오의 기말자산을 표시한다', () => {
     render(<SensitivityAnalysisSection baselineDepletionAge={88} baselineEndingAssets={2500000000} scenarios={scenarios} />);
-    expect(screen.getByText('50억원')).toBeInTheDocument(); // returnUp의 기말자산
+    expect(screen.getByText('50억원')).toBeInTheDocument(); // yieldAggressive의 기말자산
   });
 
   test('고갈이 발생하는 시나리오는 고갈 나이도 함께 표시한다', () => {
@@ -53,10 +53,10 @@ describe('SensitivityAnalysisSection', () => {
     const bars = container.querySelectorAll('[data-testid="sensitivity-bar"]');
     expect(bars).toHaveLength(6);
 
-    const worse = Array.from(bars).find((b) => b.getAttribute('data-key') === 'returnDown')!;
+    const worse = Array.from(bars).find((b) => b.getAttribute('data-key') === 'yieldConservative')!;
     expect(worse.className).toContain('bg-danger');
 
-    const better = Array.from(bars).find((b) => b.getAttribute('data-key') === 'returnUp')!;
+    const better = Array.from(bars).find((b) => b.getAttribute('data-key') === 'yieldAggressive')!;
     expect(better.className).toContain('bg-success');
   });
 
@@ -70,8 +70,8 @@ describe('SensitivityAnalysisSection', () => {
 // **예전 동작을 되돌린 것이 이 스위트의 핵심이다.**
 //
 // 6개 시나리오가 전부 "평생 유지"이면 상세 막대를 접고 "고갈 위험 없습니다" 한 줄만
-// 보여줬다. 그 결과 실제 리포트에서 수익률 ±2%p가 기말자산을 수십억 갈라놓는데도
-// 사용자는 아무 차이도 보지 못했다 — 정보량이 0인 화면이었다.
+// 보여줬다. 그 결과 실제 리포트에서 수익률 가정(안정형/공격형)이 기말자산을 수십억
+// 갈라놓는데도 사용자는 아무 차이도 보지 못했다 — 정보량이 0인 화면이었다.
 // 고정한 생활비를 밝히지 않으면 사용자는 자기가 입력한 목표 생활비 기준으로 표를 읽는다.
 // 「평생 소비 최적화」에서는 그 두 금액이 다르다.
 describe('SensitivityAnalysisSection - 고정된 생활비 표기', () => {
@@ -96,8 +96,8 @@ describe('SensitivityAnalysisSection - 고정된 생활비 표기', () => {
 
 describe('SensitivityAnalysisSection - 고갈이 전혀 없는 계획', () => {
   const allLifetime: SensitivityScenario[] = [
-    scenario({ key: 'returnDown', label: '투자수익률 -2%p', endingAssets: 820000000, endingAssetsDelta: -1680000000 }),
-    scenario({ key: 'returnUp', label: '투자수익률 +2%p', endingAssets: 5100000000, endingAssetsDelta: 2600000000 }),
+    scenario({ key: 'yieldConservative', label: '안정형 가정 (주식 5%)', endingAssets: 820000000, endingAssetsDelta: -1680000000 }),
+    scenario({ key: 'yieldAggressive', label: '공격형 가정 (주식 9%)', endingAssets: 5100000000, endingAssetsDelta: 2600000000 }),
     scenario({ key: 'inflationUp', label: '물가상승률 +1%p', endingAssets: 1900000000, endingAssetsDelta: -600000000 }),
     scenario({ key: 'inflationDown', label: '물가상승률 -1%p', endingAssets: 3300000000, endingAssetsDelta: 800000000 }),
     scenario({ key: 'retirementEarlier', label: '은퇴시점 -3년', endingAssets: 2100000000, endingAssetsDelta: -400000000 }),
@@ -110,7 +110,7 @@ describe('SensitivityAnalysisSection - 고갈이 전혀 없는 계획', () => {
     );
 
     expect(container.querySelectorAll('[data-testid="sensitivity-bar"]')).toHaveLength(6);
-    expect(screen.getByText('투자수익률 -2%p')).toBeInTheDocument();
+    expect(screen.getByText('안정형 가정 (주식 5%)')).toBeInTheDocument();
   });
 
   test('고갈이 없다는 사실 자체는 여전히 알린다', () => {
@@ -135,8 +135,8 @@ describe('SensitivityAnalysisSection - 고갈이 전혀 없는 계획', () => {
 // 아무것도 구분하지 못하는 화면이 됐다. 실제로 갈리는 것은 은퇴시점뿐이다.
 describe('SensitivityAnalysisSection - 투자자산 미보유 계획', () => {
   const noAssetScenarios: SensitivityScenario[] = [
-    scenario({ key: 'returnDown', label: '투자수익률 -2%p', depletionAge: 51, unmetSpendingYears: 31 }),
-    scenario({ key: 'returnUp', label: '투자수익률 +2%p', depletionAge: 51, unmetSpendingYears: 31 }),
+    scenario({ key: 'yieldConservative', label: '안정형 가정 (주식 5%)', depletionAge: 51, unmetSpendingYears: 31 }),
+    scenario({ key: 'yieldAggressive', label: '공격형 가정 (주식 9%)', depletionAge: 51, unmetSpendingYears: 31 }),
     scenario({ key: 'inflationUp', label: '물가상승률 +1%p', depletionAge: 51, unmetSpendingYears: 31 }),
     scenario({ key: 'inflationDown', label: '물가상승률 -1%p', depletionAge: 51, unmetSpendingYears: 31 }),
     scenario({ key: 'retirementEarlier', label: '은퇴시점 -3년', depletionAge: 51, unmetSpendingYears: 34 }),
@@ -158,7 +158,7 @@ describe('SensitivityAnalysisSection - 투자자산 미보유 계획', () => {
   test('수익률·물가처럼 결과가 baseline과 완전히 같은 행은 숨긴다', () => {
     renderNoAsset();
 
-    expect(screen.queryByText('투자수익률 -2%p')).not.toBeInTheDocument();
+    expect(screen.queryByText('안정형 가정 (주식 5%)')).not.toBeInTheDocument();
     expect(screen.queryByText('물가상승률 +1%p')).not.toBeInTheDocument();
     expect(screen.getByText('은퇴시점 -3년')).toBeInTheDocument();
     expect(screen.getByText('은퇴시점 +3년')).toBeInTheDocument();

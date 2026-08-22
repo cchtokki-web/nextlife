@@ -1,6 +1,8 @@
 import { describe, test, expect } from 'vitest';
 import { applyYieldPreset, restoreCustomYieldPreset } from '@/core/usecases/scenario/applyYieldPreset';
 import { SimulationParams } from '@/core/entities/types';
+import { compileStrategy } from '@/core/usecases/strategy/compileStrategy';
+import { normalizeSimulationParams } from '@/infrastructure/storage/normalizeSimulationParams';
 
 const baseParams: SimulationParams = {
   userProfile: { currentAge: 55, retirementAge: 60, expectancy: 90, targetMonthlySpending: 3000000 },
@@ -185,5 +187,40 @@ describe('restoreCustomYieldPreset', () => {
     const result = restoreCustomYieldPreset(params);
     expect(result.assets[0].totalReturn).toBe(baseParams.assets[0].totalReturn);
     expect(result.yieldPreset).toBe('custom');
+  });
+});
+
+describe('저장된 프리셋이 계획을 지배하지 않는다', () => {
+  // 2026-08-22 실측: 저장된 riskProfile 'conservative' 하나가 8개 계좌의 총수익률을
+  // 5%/3%로 갈아치우고 있었다. QQQ 9.5%도 SCHD 7%도 무시되어, 종목을 무엇으로 담아도
+  // 결과가 같았다. 이 테스트가 그 상태로 되돌아가는 것을 막는다.
+  test('conservative가 저장돼 있어도 자산별 입력값으로 계산한다', () => {
+    const raw = {
+      userProfile: { currentAge: 51, retirementAge: 60, expectancy: 90, targetMonthlySpending: 3_000_000 },
+      assets: [
+        { id: 'q', type: 'etf', ticker: 'QQQ', name: 'QQQ', quantity: 1, averagePrice: 10_000_000,
+          totalReturn: 9.5, dividendYield: 0.4, monthlyContribution: 0,
+          reinvestDividend: true, currency: 'KRW', assetMarket: 'US_ETF' },
+      ],
+      privatePensions: [
+        { id: 'p', type: 'irp', investmentType: 'etf', name: 'IRP', balance: 30_000_000,
+          monthlyContribution: 0, totalReturn: 6.4, dividendYield: 2.9, currency: 'KRW' },
+      ],
+      isaAccounts: [
+        { id: 'i', type: 'general', investmentType: 'etf', name: 'ISA', balance: 5_000_000,
+          monthlyContribution: 0, totalReturn: 7, dividendYield: 3, currency: 'KRW', maturityYears: 3 },
+      ],
+      otherIncomes: [],
+      nationalPension: { expectedMonthlyAmount: 2_000_000 },
+      inflationRate: 2.5, inflationMode: 'real', baseExchangeRate: 1400,
+      exchangeScenario: 'base', displayCurrency: 'KRW',
+      strategy: { riskProfile: 'conservative', economicScenario: 'ai_recommended' },
+    };
+
+    const compiled = compileStrategy(normalizeSimulationParams(raw));
+
+    expect(compiled.params.assets[0].totalReturn).toBe(9.5);
+    expect(compiled.params.privatePensions[0].totalReturn).toBe(6.4);
+    expect(compiled.params.isaAccounts![0].totalReturn).toBe(7);
   });
 });

@@ -14,8 +14,11 @@ import { CustomYieldSnapshot, SimulationParams } from '../../entities/types';
 // **명목/실질**: 명목 수익률이다. inflationMode가 'real'이면 엔진이 inflationRate를 별도로
 // 차감하므로, 이 값 자체를 실질로 바꾸면 물가가 두 번 반영된다.
 //
-// 이 상수는 이제 applyYieldPreset뿐 아니라 StrategyGenerator의 assetAllocation 축
-// (CONSERVATIVE/BALANCED/GROWTH)도 소비한다. 값을 바꾸면 후보 생성 결과가 함께 바뀐다.
+// 이 상수는 applyYieldPreset 외에 volatilityPresets의 volatilityForStockReturn도 소비한다 —
+// 프리셋 수익률과 프리셋 변동성을 잇는 직선의 양 끝 앵커다. 값을 바꾸면 몬테카를로 σ도 함께
+// 움직인다. (2026-08-22부터 StrategyGenerator는 이 표를 쓰지 않는다 — 추천 후보는 사용자가
+// 입력한 수익률 가정을 그대로 물려받는다.) computeSensitivityAnalysis의 수익률 축(안정형/
+// 중립형/공격형 3행)도 이 표를 소비한다 — 계획을 바꾸지 않고 결과만 비교하는 렌즈다.
 export const YIELD_PRESET_RATES = {
   conservative: { stockGrowth: 5, pensionReturn: 3 },
   base: { stockGrowth: 7, pensionReturn: 4 },
@@ -23,11 +26,18 @@ export const YIELD_PRESET_RATES = {
 } as const;
 
 // 구 설정 UI(시뮬레이션 설정/핵심 설정 카드)에 있던 "시장 수익률 프리셋 적용" 로직을 순수
-// 함수로 추출한 것. 그 UI들은 제거되었고, 지금은 compileStrategy가 「투자 전략」의 리스크 성향을
-// 프리셋으로 번역할 때 이 함수를 호출한다.
+// 함수로 추출한 것. 그 UI들은 제거되었다. compileStrategy가 계산 시점에 이 함수를 부르던
+// 경로도 이후 제거되었다 — 프리셋이 계산을 지배하지 않도록 하기 위해서다. 지금 이 함수를
+// 부르는 곳은 셋이다.
+//   - YieldPresetHelper.tsx: 입력 도우미. 사용자가 프리셋 버튼을 누르면 이 함수가 반환한
+//     값을 그대로 저장값(SimulationParams)에 써서, 입력칸에 값이 찍히고 보이고 고칠 수 있다.
+//   - computeSensitivityAnalysis의 수익률 축 3행(안정형/중립형/공격형): 계획은 그대로 두고
+//     결과만 비교하는 렌즈이므로 계산용 사본에만 적용한다.
+//   - robustness.ts의 가정 변형(assumption variants): 몬테카를로 강건성 점검에 쓰는 사본.
 //
-// restoreCustomYieldPreset은 프리셋 버튼과 함께 사라진 "사용자 프리셋 복원" 동작을 위한 것이라
-// 현재 호출부가 없다. customYieldSnapshot을 되돌릴 UI가 다시 생기면 그대로 쓸 수 있도록 남겨 둔다.
+// restoreCustomYieldPreset은 프리셋 버튼과 함께 사라졌던 "사용자 프리셋 복원" 동작을 위한
+// 것이다. YieldPresetHelper의 「직접 입력값으로 되돌리기」 버튼이 그 되돌릴 UI다 — 스냅샷이
+// 있을 때만 나타나 이 함수를 부른다.
 //
 // assets/privatePensions를 ?? []로 방어하는 이유: 이 함수를 호출하는 쪽(page.tsx가 넘기는
 // activeParams)이 과거 시나리오 데이터라서 최신 필드를 다 갖추지 못했을 가능성이 있다 —
@@ -35,15 +45,21 @@ export const YIELD_PRESET_RATES = {
 //
 // yieldPreset이 'custom'인 상태(자산별 직접입력)에서 다른 프리셋을 적용하면 직접입력 값이
 // 사라지므로, 덮어쓰기 직전의 값을 customYieldSnapshot에 보관해 둔다 — restoreCustomYieldPreset이
-// 이 스냅샷으로 되돌린다. 이미 프리셋 상태에서 다른 프리셋으로 바꾸는 경우는 되돌릴 직접입력 값이
-// 없으므로 기존 스냅샷(있다면 더 이전의 직접입력 값)을 그대로 유지한다.
+// 이 스냅샷으로 되돌린다. customYieldSnapshot이 아직 없는 경우(저장된 기본값 'base' 등 프리셋
+// 상태로 시작해 한 번도 직접입력을 거치지 않은 params 포함)에도 지금 값이 사용자가 마지막으로
+// 본 값이므로 최초 1회는 반드시 캡처한다 — 그래야 되돌리기 버튼이 나타난다. 이미 스냅샷이 있는
+// 상태에서 다른 프리셋으로 바꾸는 경우(프리셋→프리셋)는 되돌릴 직접입력 값이 새로 생기지 않으므로
+// 기존 스냅샷(더 이전의 직접입력 값)을 덮어쓰지 않고 그대로 유지한다. 즉 "첫 캡처가 이긴다."
 export function applyYieldPreset(
   params: SimulationParams,
   preset: 'conservative' | 'base' | 'aggressive'
 ): SimulationParams {
   const { stockGrowth, pensionReturn } = YIELD_PRESET_RATES[preset];
 
-  const customYieldSnapshot = params.yieldPreset === 'custom' ? captureCustomYieldSnapshot(params) : params.customYieldSnapshot;
+  const customYieldSnapshot =
+    params.yieldPreset === 'custom' || params.customYieldSnapshot === undefined
+      ? captureCustomYieldSnapshot(params)
+      : params.customYieldSnapshot;
 
   // ISA도 totalReturn을 가진 시장 연동 계좌이므로 주식과 같은 값으로 맞춘다 —
   // 여기서만 빼두면 "보수적"을 골라도 ISA 홀로 높은 수익률을 유지해 계좌 간 서열이

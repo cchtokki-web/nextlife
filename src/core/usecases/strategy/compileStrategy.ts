@@ -6,7 +6,6 @@ import {
 import {
   NATIONAL_PENSION_EARLY_MIN_AGE, NATIONAL_PENSION_NORMAL_START_AGE,
 } from '../pension/nationalPensionRules';
-import { applyYieldPreset } from '../scenario/applyYieldPreset';
 import { applyEconomicScenario } from '../scenario/economicScenarios';
 import { resolveSpendingCurve } from '../spending/spendingCurve';
 import { resolveTaxSettings } from '../tax/taxRates';
@@ -209,57 +208,11 @@ export function resolvePrivatePensionTaxLimitOverride(
   return (PRIVATE_PENSION_RULES[strategy] ?? PRIVATE_PENSION_RULES.ai_optimized).limitToTaxLimit;
 }
 
-// 수익률 프리셋을 지배하는 리스크 성향. 'ai_recommended'(미정)와 'custom'(덮어쓰지 말 것)은
-// 키 도메인에서 아예 제거한다.
-//
-// Partial<Record<RiskProfile, ...>>가 아니라 Record<Exclude<...>>인 이유:
-// Partial은 'ai_recommended'/'custom' 항목을 채워 넣어도 컴파일이 통과한다. 이 브랜치에서
-// 같은 실수('ai_*' 센티널에 값을 채워 사용자 입력을 조용히 덮어씀)가 세 번 반복됐으므로,
-// 네 번째는 리터럴 객체의 초과 프로퍼티 검사로 컴파일 타임에 막는다.
-type GoverningRiskProfile = Exclude<RiskProfile, 'custom' | 'ai_recommended'>;
-
-// 리스크 성향 → 기존 수익률 프리셋. 매핑이 없는 성향은 applyYieldPreset을 부르지 않아
-// 자산·연금에 직접 입력한 수익률(또는 경제 시나리오가 정한 값)이 그대로 남는다 —
-// 'ai_recommended'는 "미정"이지 "중립형"이 아니고, 'custom'은 "내가 넣은 값을 덮어쓰지
-// 말라"는 뜻이다.
-const RISK_PROFILE_PRESETS: Record<
-  GoverningRiskProfile,
-  'conservative' | 'base' | 'aggressive'
-> = {
-  conservative: 'conservative',
-  neutral: 'base',
-  aggressive: 'aggressive',
-};
-
 // 리스크 성향의 표시 이름. **여기가 유일한 출처다**(ECONOMIC_SCENARIO_LABELS와 같은 이유).
 export const RISK_PROFILE_LABELS: Record<RiskProfile, string> = {
-  conservative: '안정형',
-  neutral: '중립형',
-  aggressive: '공격형',
   custom: '사용자 직접입력',
   ai_recommended: '입력 수익률 유지',
 };
-
-// 리스크 성향이 수익률을 지배할 수 있는 값인지. "미정"과 "직접입력"을 여기서 한 번만
-// 걸러내고, 그 분기가 "여기가 센티널을 처리하는 자리"임을 코드 흐름으로 드러낸다.
-function isGoverningRiskProfile(profile: RiskProfile): profile is GoverningRiskProfile {
-  return profile !== 'custom' && profile !== 'ai_recommended';
-}
-
-// 「투자 전략」의 리스크 성향이 자산·연금·ISA 수익률을 지배하는지, 지배한다면 어떤 프리셋으로
-// 고정하는지. null이면 지배하지 않으므로 사용자가 직접 입력한 수익률이 그대로 쓰인다.
-// 자산 입력 폼이 수익률 입력을 비활성화할지 판정하는 데 쓴다 —
-// resolvePrivatePensionTaxLimitOverride와 같은 이유로, 규칙표를 UI에 복제하면 두 곳이
-// 조용히 어긋난다(그 어긋남이 정확히 이 결함이었다: 폼은 사용자 입력값을 보여주는데
-// 엔진은 프리셋 값으로 계산했다).
-export function resolveRiskProfileYieldPreset(
-  riskProfile: RiskProfile
-): 'conservative' | 'base' | 'aggressive' | null {
-  if (!isGoverningRiskProfile(riskProfile)) return null;
-  // 알 수 없는 값(저장된 옛 시나리오에 남은 없어진 enum 등)은 타입 가드를 통과하지만
-  // 테이블에는 없다. 런타임 폴백을 지운 순간 undefined가 그대로 새어 나간다.
-  return RISK_PROFILE_PRESETS[riskProfile] ?? null;
-}
 
 // bequestStrategy → userProfile.targetBequest.
 // 'maximize'는 undefined를 돌려주며, 이는 "미지정 → UtilityEngine이 월생활비 *
@@ -439,13 +392,9 @@ export function compileStrategy(params: SimulationParams): CompiledStrategy {
   // 있다. 노출을 걷어내면 그 위험이 그대로 돌아오므로 두 변경은 함께 움직여야 한다.
   const spendingCurve = resolveSpendingCurve(strategy.spendingShape);
 
-  // 경제 시나리오 → 리스크 성향 순으로 적용한다. 둘 다 수익률을 건드리므로
-  // 순서가 결과를 결정한다: 시나리오는 물가·환율을, 리스크 성향은 수익률을 지배한다.
-  let economyApplied = applyEconomicScenario(params, strategy.economicScenario);
-  const riskPreset = resolveRiskProfileYieldPreset(strategy.riskProfile);
-  if (riskPreset) {
-    economyApplied = applyYieldPreset(economyApplied, riskPreset);
-  }
+  // 경제 시나리오는 물가·환율만 지배한다. 수익률은 사용자 입력이 유일한 출처이므로
+  // 어떤 축도 덮어쓰지 않는다(2026-08-22 수익률 가정 축 분리).
+  const economyApplied = applyEconomicScenario(params, strategy.economicScenario);
 
   const taxSettings = resolveTaxSettings(economyApplied.taxSettings);
   const pensionRule = PRIVATE_PENSION_RULES[strategy.privatePensionStrategy]

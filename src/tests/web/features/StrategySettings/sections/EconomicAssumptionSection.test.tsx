@@ -67,10 +67,9 @@ describe('EconomicAssumptionSection', () => {
     );
 
     expect(screen.getByLabelText('물가상승률')).toBeDisabled();
-    // applyEconomicScenario는 물가·환율뿐 아니라 자산·사적연금의 수익률까지 일괄 대체한다.
-    // 배너가 그 사실을 빠뜨리면 "수익률은 내가 정한 값이 쓰인다"는 오해를 남긴다.
-    expect(screen.getByText(/경제 시나리오가 아래 물가상승률과 환율은 물론/)).toBeInTheDocument();
-    expect(screen.getByText(/수익률까지 일괄 대체합니다/)).toBeInTheDocument();
+    // applyEconomicScenario는 물가·환율만 대체하고 자산·사적연금의 수익률은 건드리지 않는다.
+    // 배너가 그 사실을 정확히 전달해야 한다.
+    expect(screen.getByText(/경제 시나리오가 아래 물가상승률과 환율을 대체합니다/)).toBeInTheDocument();
   });
 
   test('경제 시나리오가 AI 추천(미정)이면 물가상승률 입력이 가능하고 안내문이 없다', () => {
@@ -82,7 +81,7 @@ describe('EconomicAssumptionSection', () => {
     );
 
     expect(screen.getByLabelText('물가상승률')).not.toBeDisabled();
-    expect(screen.queryByText(/경제 시나리오가 아래 물가상승률과 환율은 물론/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/경제 시나리오가 아래 물가상승률과 환율을 대체합니다/)).not.toBeInTheDocument();
   });
 
   test('간편 모드에서는 물가·환율 필드가 숨겨지므로 시나리오 안내 배너도 렌더되지 않는다', () => {
@@ -104,7 +103,7 @@ describe('EconomicAssumptionSection', () => {
 
     expect(screen.queryByLabelText('물가상승률')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('적용 환율')).not.toBeInTheDocument();
-    expect(screen.queryByText(/경제 시나리오가 아래 물가상승률과 환율은 물론/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/경제 시나리오가 아래 물가상승률과 환율을 대체합니다/)).not.toBeInTheDocument();
   });
 });
 

@@ -8,7 +8,7 @@ interface SensitivityAnalysisSectionProps {
   // 결과가 baseline과 완전히 같은 시나리오를 가려내는 데 쓴다. 자산이 없는 계획에서는
   // 기말자산·고갈 나이가 전부 같아, 이 축까지 봐야 "정말 아무것도 달라지지 않았는가"를 판정할 수 있다.
   baselineUnmetSpendingYears?: number;
-  // 6개 시나리오가 공통으로 고정한 월 생활비. **반드시 밝혀야 한다** — 밝히지 않으면
+  // scenarios가 공통으로 고정한 월 생활비. **반드시 밝혀야 한다** — 밝히지 않으면
   // 사용자는 자기가 입력한 목표 생활비 기준으로 표를 읽는다. 「평생 소비 최적화」 계획에서는
   // 이 값이 입력한 목표와 다르다.
   frozenMonthlySpending?: number;
@@ -20,11 +20,12 @@ function formatDepletionAge(depletionAge: number | null): string {
   return depletionAge === null ? '평생 유지' : `${depletionAge}세`;
 }
 
-// 6개 시나리오가 핵심 가정 변화에 따라 어떻게 갈리는지 가로 막대로 보여준다.
+// scenarios(현재 7개: 수익률 프리셋 3종 + 물가상승률 ±1%p + 은퇴시점 ±3년)가 핵심 가정
+// 변화에 따라 어떻게 갈리는지 가로 막대로 보여준다.
 //
 // **막대의 기준을 고갈 나이에서 기말자산으로 바꾼 이유.**
 //
-// 예전에는 depletionAge의 델타만 막대로 그렸고, 6개가 전부 "평생 유지"(null)이면 상세를
+// 예전에는 depletionAge의 델타만 막대로 그렸고, 전부 "평생 유지"(null)이면 상세를
 // 접고 "고갈 위험이 없습니다" 한 줄만 남겼다. 그런데 여유 있는 계획에서는 그것이 늘
 // 참이라, 실제 리포트에서 수익률 ±2%p가 기말자산을 수십억 갈라놓는데도 화면에는 아무
 // 차이가 없었다 — 정보량이 0인 요약이었다.
@@ -69,7 +70,7 @@ export function SensitivityAnalysisSection({
       <h4 className="mb-1 text-sm font-semibold">민감도 분석 (핵심 가정 변화에 따른 영향)</h4>
       {frozenMonthlySpending !== undefined && (
         <p className="mb-1 text-xs text-foreground-muted">
-          6개 시나리오 모두 <strong>월 생활비 {formatManwon(frozenMonthlySpending)}을 고정</strong>한 채
+          {scenarios.length}개 시나리오 모두 <strong>월 생활비 {formatManwon(frozenMonthlySpending)}을 고정</strong>한 채
           가정 하나만 바꾼 결과입니다.
         </p>
       )}

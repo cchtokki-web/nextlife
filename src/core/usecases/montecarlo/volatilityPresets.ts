@@ -5,10 +5,11 @@ import { weightedAverageTotalReturn } from '../returns/portfolioReturn';
 
 // 수익률 프리셋별 연 변동성(%p).
 //
-// **새 입력 UI를 만들지 않고 기존 리스크 성향 축에 얹는 이유**: 사용자는 이미 「투자 전략」
-// 에서 성향을 고르는데, 그 선택이 기대수익률(applyYieldPreset)만 바꾸고 변동성은 그대로
-// 두는 것이 오히려 비일관이었다. 노브를 하나 더 주면 두 값이 모순되는 조합(보수적 성향에
-// 높은 변동성)을 사용자가 만들 수 있게 된다.
+// **새 입력 UI를 만들지 않는 이유**: 변동성은 사용자가 직접 입력하는 값이 아니다. 대신
+// 아래 volatilityForStockReturn이 이 표의 세 점을 양 끝 앵커 삼아, 사용자가 실제로 입력한
+// (자산 가중평균) 수익률에서 변동성을 선형으로 유도한다. 즉 이 표 자체는 화면에 노출되는
+// 축이 아니라 그 유도선의 좌표일 뿐이다 — base 값은 자산이 없어 유도할 수 없을 때의
+// 폴백으로도 쓰인다(derivedVolatility 참조).
 //
 // 값의 근거: 글로벌 주식 연 변동성은 대체로 15~18%p, 채권 혼합은 10%p 안팎, 고베타
 // 포트폴리오는 20%p 이상이다.
@@ -32,16 +33,6 @@ export const DEFAULT_MONTE_CARLO_SEED = 20260101;
 // 1000회에서 성공률의 표준오차는 √(0.9 × 0.1 / 1000) ≈ 0.95%p로, 1%p 단위 표시에서
 // 안정적이다. 그 이상은 표시 정밀도에 기여하지 않으면서 계산 시간만 늘린다.
 export const DEFAULT_MONTE_CARLO_TRIALS = 1000;
-
-/** Single source of truth for translating the existing return preset into market volatility. */
-export function annualStdDevForYieldPreset(
-  preset: SimulationParams['yieldPreset'],
-  fallback: number = VOLATILITY_BY_YIELD_PRESET.base,
-): number {
-  return preset === 'conservative' || preset === 'base' || preset === 'aggressive'
-    ? VOLATILITY_BY_YIELD_PRESET[preset]
-    : fallback;
-}
 
 // **직접 입력한 수익률 → 연 변동성.**
 //
@@ -83,24 +74,14 @@ export function volatilityForStockReturn(stockReturnPercent: number): number {
 
 // 결정론 params에서 MC 설정을 유도한다. 저장되는 값이 아니다(MonteCarloConfig 주석).
 export function resolveMonteCarloConfig(params: SimulationParams): MonteCarloConfig {
-  const preset = params.yieldPreset;
-  const presetVolatility = preset === 'conservative' || preset === 'base' || preset === 'aggressive'
-    ? VOLATILITY_BY_YIELD_PRESET[preset]
-    : null;
-
-  // 프리셋을 고른 경우는 엔진이 수익률 자체를 프리셋 값으로 덮어쓰므로 유도해도 같은 값이
-  // 나온다. 그래도 프리셋 경로를 먼저 두는 이유는 «순서»다 — 이 함수는 덮어쓰기 전의
-  // params로도 불릴 수 있고, 그때 사용자가 남겨 둔 옛 수익률에서 유도하면 안 된다.
-  //
-  // 'custom'·미지정이면 사용자가 넣은 수익률에서 유도한다. 유도할 잔액이 하나도 없으면
-  // 종전처럼 base다 — 사적연금이 가중평균에 들어온 뒤로 "연금만 보유"는 더 이상 이
-  // 갈래를 타지 않는다(weightedAverageTotalReturn 주석).
-  const derived = presetVolatility ?? derivedVolatility(params);
-
+  // **언제나 실제 수익률에서 유도한다.** 예전에는 params.yieldPreset을 먼저 읽었는데,
+  // 프리셋이 수익률을 지배하던 시절에는 "유도해도 같은 값이 나온다"가 성립했다.
+  // 그 지배가 사라진 뒤로 이 분기는 옛 프리셋 값에 변동성을 묶어 두는 일만 한다 —
+  // 화면은 strategy.riskProfile만 바꾸고 yieldPreset은 그대로 두기 때문이다.
   return {
     trials: DEFAULT_MONTE_CARLO_TRIALS,
     seed: DEFAULT_MONTE_CARLO_SEED,
-    annualStdDev: derived,
+    annualStdDev: derivedVolatility(params),
   };
 }
 

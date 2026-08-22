@@ -1,6 +1,6 @@
 import {
   Activity, CalendarClock, CalendarMinus, CalendarPlus, CloudRain, Equal, Flame,
-  HeartPulse, Leaf, PiggyBank, Plane, Rocket, Shield, ShieldCheck, SlidersHorizontal,
+  HeartPulse, Leaf, PiggyBank, Plane, Rocket, Shield, SlidersHorizontal,
   Sparkles, TrendingDown, Wallet,
 } from 'lucide-react';
 import {
@@ -185,31 +185,19 @@ export const SPENDING_SHAPE_OPTIONS: ReadonlyArray<RadioCardOption<SpendingShape
 
 export const RISK_PROFILE_OPTIONS: ReadonlyArray<RadioCardOption<RiskProfile>> = [
   {
-    value: 'conservative', label: RISK_PROFILE_LABELS.conservative,
-    description: '수익은 낮아도 흔들림이 적은 쪽으로 계산합니다. (주식 5%)',
-    icon: <ShieldCheck size={16} />,
-  },
-  {
-    value: 'neutral', label: RISK_PROFILE_LABELS.neutral,
-    description: '장기 평균 수준의 수익을 가정합니다. (주식 7%)',
-    icon: <Activity size={16} />,
-  },
-  {
-    value: 'aggressive', label: RISK_PROFILE_LABELS.aggressive,
-    description: '높은 수익을 가정하되 그만큼 변동도 크다고 봅니다. (주식 9%)',
-    icon: <Flame size={16} />,
-  },
-  {
     value: 'custom', label: RISK_PROFILE_LABELS.custom,
-    description: '자산마다 직접 입력한 수익률을 그대로 씁니다. 프리셋으로 덮어쓰지 않습니다.',
+    description: '자산마다 직접 입력한 수익률을 그대로 씁니다. 그 값 하나로만 평가하며, 여러 가정에서의 검증은 건너뜁니다.',
     icon: <SlidersHorizontal size={16} />,
   },
   {
     value: 'ai_recommended', label: RISK_PROFILE_LABELS.ai_recommended,
-    // 나이·은퇴 시점을 보고 프리셋을 고르는 로직은 코드베이스에 없다. compileStrategy의
-    // RISK_PROFILE_PRESETS에 'ai_recommended' 항목이 없어 applyYieldPreset이 호출되지
-    // 않는 것이 전부다 — 즉 "미정"이며, 아무것도 덮어쓰지 않는다.
-    description: '수익률을 강제하지 않고 입력값을 그대로 둡니다. 대신 높고 낮은 수익률 가정 모두에서 견디는 인출 계획을 고릅니다.',
+    // compileStrategy는 어느 RiskProfile 값에도 수익률 프리셋을 적용하지 않는다 —
+    // 그 경로는 삭제됐다(RISK_PROFILE_PRESETS는 더 이상 존재하지 않고, applyYieldPreset도
+    // compileStrategy에서 호출되지 않는다). 두 선택지의 차이는 오직 검증 방식이다:
+    // 'ai_recommended'는 입력 수익률을 그대로 둔 채 robustness.ts가 conservative/base/
+    // aggressive 세 가정의 사본을 만들어 최악의 경우에도 버티는 인출 계획을 고르고,
+    // 'custom'은 그 검증을 건너뛰고 입력값 하나로만 평가한다.
+    description: '입력한 수익률을 그대로 씁니다. 대신 높고 낮은 수익률 가정 모두에서 견디는 인출 계획을 고릅니다.',
     icon: <Sparkles size={16} />, recommended: true,
   },
 ];
@@ -217,32 +205,32 @@ export const RISK_PROFILE_OPTIONS: ReadonlyArray<RadioCardOption<RiskProfile>> =
 export const ECONOMIC_SCENARIO_OPTIONS: ReadonlyArray<RadioCardOption<EconomicScenario>> = [
   {
     value: 'long_term_average', label: ECONOMIC_SCENARIO_LABELS.long_term_average,
-    description: '지난 수십 년의 평균적인 물가와 성장을 가정합니다.',
+    description: '물가 2.5%, 환율 기준선을 가정합니다.',
     icon: <Activity size={16} />,
   },
   {
     value: 'recession', label: ECONOMIC_SCENARIO_LABELS.recession,
-    description: '성장이 오래 정체되고 원화가 약해지는 국면입니다.',
+    description: '물가 1.5%, 원화 약세를 가정합니다.',
     icon: <CloudRain size={16} />,
   },
   {
     value: 'high_inflation', label: ECONOMIC_SCENARIO_LABELS.high_inflation,
-    description: '물가가 연 5% 오르는 국면입니다. 실질 구매력이 빠르게 줄어듭니다.',
+    description: '물가 5%, 원화 약세를 가정합니다. 실질 구매력이 빠르게 줄어듭니다.',
     icon: <Flame size={16} />,
   },
   {
     value: 'low_growth', label: ECONOMIC_SCENARIO_LABELS.low_growth,
-    description: '물가는 안정적이지만 자산이 잘 늘지 않는 국면입니다.',
+    description: '물가 2%, 환율 기준선을 가정합니다.',
     icon: <TrendingDown size={16} />,
   },
   {
     value: 'ai_recommended', label: ECONOMIC_SCENARIO_LABELS.ai_recommended,
-    // 이 선택지는 '장기 평균'과 의미가 다르다. '장기 평균'은 프로필이 있어 물가·환율·수익률을
+    // 이 선택지는 '장기 평균'과 의미가 다르다. '장기 평균'은 프로필이 있어 물가·환율을
     // 일괄 대체하지만, 'ai_recommended'는 ECONOMIC_SCENARIO_PROFILES에 항목이 없어(=미정)
     // 아무것도 대체하지 않는다. 둘을 "같은 뜻"으로 적어 두면 언젠가 프로필을 채우게 되고,
     // 그 순간 사용자가 경제 가정에 직접 입력한 물가상승률이 조용히 덮어써진다
     // (economicScenarios.ts의 경고 참조).
-    description: '특정 국면을 강제하지 않고 입력한 값을 그대로 사용합니다. 대신 네 가지 경기 국면 모두에서 견디는 인출 계획을 고릅니다.',
+    description: '입력한 물가·환율을 그대로 씁니다. 대신 네 가지 경기 국면 모두에서 견디는 인출 계획을 고릅니다.',
     icon: <Sparkles size={16} />, recommended: true,
   },
 ];

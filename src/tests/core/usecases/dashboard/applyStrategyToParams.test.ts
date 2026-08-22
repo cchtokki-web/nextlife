@@ -151,12 +151,12 @@ describe('applyStrategyToParams — 서술 기준이 사용자 설정과 어긋�
    */
   test('카드가 말하지 않았어도 사용자 설정과 다르면 반영해 계획을 재현한다', () => {
     const ranked = makeRanked({
-      retirementAge: 60, nationalPensionStartAge: 66, assetAllocation: 'GROWTH',
+      retirementAge: 60, nationalPensionStartAge: 66, spendingPattern: 'FRONT_LOADED',
     });
 
     const result = applyStrategyToParams(target, ranked, simulated);
 
-    expect(labelsOf(result.applied)).toEqual(['국민연금', '투자 성향']);
+    expect(labelsOf(result.applied)).toEqual(['국민연금', '생활비 배분']);
     expect(compileStrategy(result.params).params.withdrawalPlan?.nationalPensionStartAge).toBe(66);
   });
 
@@ -181,7 +181,7 @@ describe('applyStrategyToParams — 서술 기준이 사용자 설정과 어긋�
 });
 
 describe('applyStrategyToParams', () => {
-  test('여섯 축을 모두 적용한다', () => {
+  test('다섯 축을 모두 적용한다', () => {
     const params = makeParams({
       userProfile: { currentAge: 50, retirementAge: 60, expectancy: 90, targetMonthlySpending: 3_000_000 },
       yieldPreset: 'conservative',
@@ -192,39 +192,39 @@ describe('applyStrategyToParams', () => {
       nationalPensionStartAge: 70,
       targetMonthlySpending: 3_500_000,
       withdrawalPolicy: 'ISA_FIRST',
-      assetAllocation: 'GROWTH',
       spendingPattern: 'FRONT_LOADED',
     });
 
     const result = applyStrategyToParams(params, ranked);
 
     expect(labelsOf(result.applied)).toEqual([
-      '은퇴 시점', '국민연금', '월 생활비', '자산 인출', '투자 성향', '생활비 배분',
+      '은퇴 시점', '국민연금', '월 생활비', '자산 인출', '생활비 배분',
     ]);
     expect(result.skipped).toEqual([]);
     expect(result.params.userProfile.retirementAge).toBe(62);
     expect(result.params.userProfile.targetMonthlySpending).toBe(3_500_000);
     expect(result.params.withdrawalPlan?.nationalPensionStartAge).toBe(70);
     expect(result.params.withdrawalPlan?.accountWithdrawalPolicy).toBe('ISA_FIRST');
-    expect(result.params.yieldPreset).toBe('aggressive');
+    // 수익률 가정은 어느 축도 건드리지 않는다 — 사용자가 고른 그대로 남는다.
+    expect(result.params.yieldPreset).toBe('conservative');
   });
 
   // 이 테스트가 이 기능의 핵심이다. compileStrategy는 분석할 때마다 params.strategy에서
-  // 국민연금 개시 나이와 수익률 프리셋을 다시 계산해 저수준 필드를 덮어쓴다. 저수준 필드만
-  // 써 넣으면 적용 버튼을 눌러도 재분석 결과가 그대로다 — 사용자에게는 버튼이 고장 난 것으로 보인다.
+  // 국민연금 개시 나이를 다시 계산해 저수준 필드를 덮어쓴다. 저수준 필드만 써 넣으면
+  // 적용 버튼을 눌러도 재분석 결과가 그대로다 — 사용자에게는 버튼이 고장 난 것으로 보인다.
+  // (수익률 가정은 이제 반영 축이 아니다 — 추천은 인출 계획만 바꾼다.)
   test('compileStrategy를 통과한 뒤에도 추천값이 살아남는다', () => {
     const params = makeParams({
       userProfile: { currentAge: 50, retirementAge: 60, expectancy: 90, targetMonthlySpending: 3_000_000 },
       yieldPreset: 'conservative',
       withdrawalPlan: { nationalPensionStartAge: 60, accountWithdrawalPolicy: 'GENERAL_FIRST' },
-      strategy: { ...resolveStrategy(makeParams()), nationalPensionStrategy: 'early', riskProfile: 'conservative' },
+      strategy: { ...resolveStrategy(makeParams()), nationalPensionStrategy: 'early', riskProfile: 'ai_recommended' },
     });
     const ranked = makeRanked({
       retirementAge: 62,
       nationalPensionStartAge: 70,
       targetMonthlySpending: 3_500_000,
       withdrawalPolicy: 'TAX_OPTIMIZED',
-      assetAllocation: 'GROWTH',
     });
 
     const compiled = compileStrategy(applyStrategyToParams(params, ranked).params).params;
@@ -233,7 +233,7 @@ describe('applyStrategyToParams', () => {
     expect(compiled.userProfile.targetMonthlySpending).toBe(3_500_000);
     expect(compiled.withdrawalPlan?.nationalPensionStartAge).toBe(70);
     expect(compiled.withdrawalPlan?.accountWithdrawalPolicy).toBe('TAX_OPTIMIZED');
-    expect(compiled.yieldPreset).toBe('aggressive');
+    expect(compiled.yieldPreset).toBe('conservative');
   });
 
   test('국민연금 개시 나이를 수령 전략 enum으로 정확히 옮긴다', () => {
@@ -248,13 +248,19 @@ describe('applyStrategyToParams', () => {
     }
   });
 
-  test('수익률 프리셋과 리스크 성향을 함께 기록한다', () => {
+  // **추천 반영은 사용자가 입력한 수익률 가정을 건드리지 않는다.** 예전에는 「투자 성향」
+  // 축이 yieldPreset을 갈아끼웠고, 그것이 「성장형으로 바꾸세요」라는 조언의 실체였다 —
+  // 조언이 아니라 가정 변경이었다. 그 축을 없앤 뒤로 반영은 인출 계획만 바꾼다.
+  // (strategy 자체는 다른 축 때문에 여전히 실체화될 수 있다 — nationalPensionStrategy를
+  // 「현재 값」에 고정하는 부수효과다. 그래서 원본이 아니라 resolveStrategy와 비교한다.)
+  test('추천을 반영해도 수익률 가정과 리스크 성향은 그대로 둔다', () => {
     const params = makeParams({ yieldPreset: 'base' });
-    const result = applyStrategyToParams(params, makeRanked({ assetAllocation: 'CONSERVATIVE' }));
+    const ranked = makeRanked({ retirementAge: 60, spendingPattern: 'FRONT_LOADED' });
+    const result = applyStrategyToParams(params, ranked);
 
-    expect(result.params.yieldPreset).toBe('conservative');
-    // 리스크 성향을 함께 쓰지 않으면 compileStrategy가 프리셋을 옛 성향으로 되돌린다.
-    expect(result.params.strategy?.riskProfile).toBe('conservative');
+    expect(labelsOf(result.applied)).toEqual(['생활비 배분']);
+    expect(result.params.yieldPreset).toBe('base');
+    expect(result.params.strategy?.riskProfile).toBe(resolveStrategy(params).riskProfile);
   });
 
   test('최대 지속가능 생활비 시나리오는 목표액 모드로 내린다', () => {
@@ -383,29 +389,30 @@ describe('applyStrategyToParams', () => {
       yieldPreset: 'base',
       withdrawalPlan: { nationalPensionStartAge: 60, accountWithdrawalPolicy: 'ISA_FIRST' },
     });
-    // 국민연금 축은 현재 값과 같아 반영 대상이 아니고, 투자 성향만 달라진 후보다.
+    // 국민연금 축은 현재 값과 같아 반영 대상이 아니고, 생활비 배분만 달라진 후보다.
     const ranked = makeRanked({
-      retirementAge: 60, nationalPensionStartAge: 60, assetAllocation: 'GROWTH',
+      retirementAge: 60, nationalPensionStartAge: 60, spendingPattern: 'FRONT_LOADED',
     });
 
     const result = applyStrategyToParams(params, ranked);
 
-    expect(labelsOf(result.applied)).toEqual(['투자 성향']);
+    expect(labelsOf(result.applied)).toEqual(['생활비 배분']);
     expect(compileStrategy(result.params).params.withdrawalPlan?.nationalPensionStartAge).toBe(60);
   });
 
   test('반영할 수 없는 축은 조용히 넘기지 않는다', () => {
-    const ranked = makeRanked({ assetAllocation: 'GROWTH' });
-    // 시장성 자산이 없는 시나리오에서는 후보가 프리셋 없이 만들어진다.
-    delete ranked.candidate.strategy.legacySettings.yieldPreset;
+    const ranked = makeRanked({ withdrawalPolicy: 'ISA_FIRST' });
+    // 「현상 유지」 후보는 인출 정책을 지정하지 않는다. 여기서 기본값을 채워 넣으면 카드가
+    // 보여 준 것과 다른 계획이 저장되므로, 반영하지 못했다고 밝힌다.
+    delete ranked.candidate.strategy.withdrawalPolicy.accountWithdrawalPolicy;
 
-    const result = applyStrategyToParams(makeParams({ yieldPreset: 'base' }), ranked);
+    const result = applyStrategyToParams(makeParams(), ranked);
 
-    expect(labelsOf(result.applied)).not.toContain('투자 성향');
+    expect(labelsOf(result.applied)).not.toContain('자산 인출');
     expect(result.skipped).toContainEqual({
-      key: 'assetAllocation',
-      label: '투자 성향',
-      reason: '후보가 수익률 프리셋을 지정하지 않았습니다',
+      key: 'withdrawalPolicy',
+      label: '자산 인출',
+      reason: '현재 인출 정책을 그대로 두는 후보입니다',
     });
   });
 });

@@ -68,12 +68,12 @@ describe('runMonteCarlo - 가정 공시', () => {
 
   test('사용자가 고른 축을 그대로 싣는다', () => {
     const chosen = params({
-      strategy: { ...DEFAULT_RETIREMENT_STRATEGY, economicScenario: 'high_inflation', riskProfile: 'conservative' },
+      strategy: { ...DEFAULT_RETIREMENT_STRATEGY, economicScenario: 'high_inflation', riskProfile: 'custom' },
     });
     const mc = runMonteCarlo(chosen, engine, config({ trials: 5 }));
 
     expect(mc.assumptions!.economicScenario).toBe('high_inflation');
-    expect(mc.assumptions!.riskProfile).toBe('conservative');
+    expect(mc.assumptions!.riskProfile).toBe('custom');
   });
 });
 
@@ -397,14 +397,17 @@ describe('MonteCarloEngine strategy validation', () => {
 });
 
 describe('resolveMonteCarloConfig', () => {
-  // 변동성을 새 입력 UI로 받지 않고 기존 리스크 성향(yieldPreset) 축에 얹는다.
-  // 사용자는 이미 「투자 전략」에서 성향을 고르는데, 그 선택이 기대수익률만 바꾸고
-  // 변동성은 안 바꾸는 것이 오히려 비일관이었다.
-  test('수익률 프리셋에 따라 변동성이 정해진다', () => {
+  // **더 이상 yieldPreset 분기가 없다.** 화면은 strategy.riskProfile만 바꾸고
+  // params.yieldPreset은 그대로 남기므로, 프리셋을 먼저 읽으면 수익률은 사용자 값인데
+  // 변동성만 옛 프리셋에 묶인다. 그래서 yieldPreset이 무엇이든 같은 자산 구성이면
+  // 같은(실제 수익률에서 유도한) 값이 나와야 한다.
+  test('yieldPreset을 무엇으로 바꿔도 실제 수익률에서 유도한 값은 그대로다', () => {
+    const derived = resolveMonteCarloConfig(params({ yieldPreset: 'custom' })).annualStdDev;
+
     expect(resolveMonteCarloConfig(params({ yieldPreset: 'conservative' })).annualStdDev)
-      .toBe(VOLATILITY_BY_YIELD_PRESET.conservative);
+      .toBe(derived);
     expect(resolveMonteCarloConfig(params({ yieldPreset: 'aggressive' })).annualStdDev)
-      .toBe(VOLATILITY_BY_YIELD_PRESET.aggressive);
+      .toBe(derived);
   });
 
   // **예전 이름은 「프리셋이 없거나 custom이면 base 변동성을 쓴다」였다.** 지금은 그 경우

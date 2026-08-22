@@ -24,12 +24,9 @@ const params: SimulationParams = {
 
 function candidate(
   rank: number,
-  allocation: 'CONSERVATIVE' | 'BALANCED' | 'GROWTH',
   spending: 'FIXED' | 'FRONT_LOADED' | 'CARE_HEAVY',
   probability: number,
 ): ValidatedStrategyCandidate {
-  const preset = allocation === 'CONSERVATIVE' ? 'conservative'
-    : allocation === 'GROWTH' ? 'aggressive' : 'base';
   return {
     rank,
     candidate: {
@@ -40,7 +37,6 @@ function candidate(
         nationalPensionStartAge: 65,
         withdrawalPolicy: 'ISA_FIRST',
         spendingPattern: spending,
-        assetAllocation: allocation,
       },
       strategy: {
         targetMonthlySpending: 3_500_000,
@@ -56,7 +52,8 @@ function candidate(
           baseExchangeRate: 1350,
           exchangeScenario: 'base',
           displayCurrency: 'KRW',
-          yieldPreset: preset,
+          // 후보는 seed의 수익률 가정을 그대로 물려받는다(StrategyGenerator.strategyFor).
+          yieldPreset: 'base',
         },
         legacyPresence: {
           withdrawalPlan: true,
@@ -178,7 +175,7 @@ describe('StrategyRecommendationCards', () => {
   });
 
   test('검증하지 못한 HARD 목표를 추천과 함께 고지한다', () => {
-    const candidates = [candidate(1, 'CONSERVATIVE', 'FIXED', 0.97)];
+    const candidates = [candidate(1, 'FIXED', 0.97)];
 
     render(
       <StrategyRecommendationCards
@@ -222,10 +219,10 @@ describe('StrategyRecommendationCards', () => {
   });
 
   test('현재 값과 다른 항목만 변경점으로 만든다', () => {
-    const changes = describeStrategyChanges(params, candidate(1, 'CONSERVATIVE', 'FIXED', 0.97), formatValue);
+    const changes = describeStrategyChanges(params, candidate(1, 'FIXED', 0.97), formatValue);
 
     expect(changes.map((change) => change.label)).toEqual([
-      '은퇴 시점', '국민연금', '자산 인출', '투자 성향',
+      '은퇴 시점', '국민연금', '자산 인출',
     ]);
     expect(changes).not.toContainEqual(expect.objectContaining({ label: '월 생활비' }));
     expect(changes).not.toContainEqual(expect.objectContaining({ label: '생활비 배분' }));
@@ -233,9 +230,9 @@ describe('StrategyRecommendationCards', () => {
 
   test('최종 추천 엔진의 세 페르소나를 안정형·균형형·여유형으로 표시한다', () => {
     const candidates = [
-      candidate(1, 'CONSERVATIVE', 'FIXED', 0.97),
-      candidate(2, 'BALANCED', 'FIXED', 0.95),
-      candidate(3, 'GROWTH', 'FRONT_LOADED', 0.9),
+      candidate(1, 'FIXED', 0.97),
+      candidate(2, 'FIXED', 0.95),
+      candidate(3, 'FRONT_LOADED', 0.9),
     ];
 
     const recommendations = [
@@ -263,8 +260,8 @@ describe('StrategyRecommendationCards', () => {
   // 엔진이 고르지 않은 카드를 「NextLife가 고른 안」으로 보여주지 않는다.
   test('primary가 없으면 어느 카드에도 추천을 붙이지 않는다', () => {
     const candidates = [
-      candidate(1, 'CONSERVATIVE', 'FIXED', 0.7),
-      candidate(2, 'BALANCED', 'FIXED', 0.47),
+      candidate(1, 'FIXED', 0.7),
+      candidate(2, 'FIXED', 0.47),
     ];
 
     render(
@@ -288,8 +285,8 @@ describe('StrategyRecommendationCards', () => {
   // 원소와 «다른 객체»이므로, 붙는 자리는 후보 id로 짚어야 한다.
   test('☆추천은 코어가 고른 primary 카드에 붙는다', () => {
     const candidates = [
-      candidate(1, 'CONSERVATIVE', 'FIXED', 0.7),
-      candidate(2, 'BALANCED', 'FIXED', 0.47),
+      candidate(1, 'FIXED', 0.7),
+      candidate(2, 'FIXED', 0.47),
     ];
     const recommendations = [
       { persona: 'STABLE' as const, label: '안정형' as const, candidate: candidates[0], reason: '하방 방어' },
@@ -316,8 +313,8 @@ describe('StrategyRecommendationCards', () => {
 // 고를 이유가 없는 선택지를 고르라는 화면이었다.
 describe('StrategyRecommendationCards 목표 도달 불가', () => {
   const unreachable = [
-    { persona: 'BALANCED' as const, label: '균형형' as const, candidate: candidate(1, 'BALANCED', 'FIXED', 0), reason: '목표 균형' },
-    { persona: 'COMFORTABLE' as const, label: '여유형' as const, candidate: candidate(2, 'BALANCED', 'FRONT_LOADED', 0), reason: '소비 여력' },
+    { persona: 'BALANCED' as const, label: '균형형' as const, candidate: candidate(1, 'FIXED', 0), reason: '목표 균형' },
+    { persona: 'COMFORTABLE' as const, label: '여유형' as const, candidate: candidate(2, 'FRONT_LOADED', 0), reason: '소비 여력' },
   ];
   const outcome = { kind: 'no_candidate_reaches_goal', validatedCount: 12, personaCount: 2 } as const;
 
@@ -388,7 +385,7 @@ describe('StrategyRecommendationCards 적용 버튼', () => {
   const balanced = {
     persona: 'BALANCED' as const,
     label: '균형형' as const,
-    candidate: candidate(1, 'BALANCED', 'FIXED', 0.95),
+    candidate: candidate(1, 'FIXED', 0.95),
     reason: '목표 균형',
   };
 
@@ -545,9 +542,9 @@ describe('StrategyRecommendationCards 적용 버튼', () => {
     render(
       <StrategyRecommendationCards
         recommendations={[
-          { persona: 'STABLE', label: '안정형', candidate: candidate(1, 'CONSERVATIVE', 'FIXED', 0.97), reason: '하방 방어' },
-          { persona: 'BALANCED', label: '균형형', candidate: candidate(2, 'BALANCED', 'FIXED', 0.95), reason: '목표 균형' },
-          { persona: 'COMFORTABLE', label: '여유형', candidate: candidate(3, 'GROWTH', 'FRONT_LOADED', 0.9), reason: '소비 여력' },
+          { persona: 'STABLE', label: '안정형', candidate: candidate(1, 'FIXED', 0.97), reason: '하방 방어' },
+          { persona: 'BALANCED', label: '균형형', candidate: candidate(2, 'FIXED', 0.95), reason: '목표 균형' },
+          { persona: 'COMFORTABLE', label: '여유형', candidate: candidate(3, 'FRONT_LOADED', 0.9), reason: '소비 여력' },
         ]}
         status="done"
         params={params}
@@ -570,9 +567,9 @@ describe('StrategyRecommendationCards 적용 버튼', () => {
   // 적용하지 않은 화면이 "이미 하나 골라져 있다"로 읽힌다.
   function threeCards(props: CardProps = {}) {
     const recommendations = [
-      { persona: 'STABLE' as const, label: '안정형' as const, candidate: candidate(1, 'CONSERVATIVE', 'FIXED', 0.97), reason: '하방 방어' },
-      { persona: 'BALANCED' as const, label: '균형형' as const, candidate: candidate(2, 'BALANCED', 'FIXED', 0.95), reason: '목표 균형' },
-      { persona: 'COMFORTABLE' as const, label: '여유형' as const, candidate: candidate(3, 'GROWTH', 'FRONT_LOADED', 0.9), reason: '소비 여력' },
+      { persona: 'STABLE' as const, label: '안정형' as const, candidate: candidate(1, 'FIXED', 0.97), reason: '하방 방어' },
+      { persona: 'BALANCED' as const, label: '균형형' as const, candidate: candidate(2, 'FIXED', 0.95), reason: '목표 균형' },
+      { persona: 'COMFORTABLE' as const, label: '여유형' as const, candidate: candidate(3, 'FRONT_LOADED', 0.9), reason: '소비 여력' },
     ];
     return render(
       <StrategyRecommendationCards
@@ -719,13 +716,13 @@ describe('StrategyRecommendationCards - 현재 계획과의 비교', () => {
   const worse = {
     persona: 'BALANCED' as const,
     label: '균형형' as const,
-    candidate: candidate(1, 'BALANCED', 'FIXED', 0.47),
+    candidate: candidate(1, 'FIXED', 0.47),
     reason: '목표 균형',
   };
   const better = {
     persona: 'STABLE' as const,
     label: '안정형' as const,
-    candidate: candidate(2, 'CONSERVATIVE', 'FIXED', 0.82),
+    candidate: candidate(2, 'FIXED', 0.82),
     reason: '보수적',
   };
 

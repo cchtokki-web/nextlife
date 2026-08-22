@@ -241,9 +241,7 @@ const PRIVATE_PENSION_STRATEGIES = coversUnion<PrivatePensionStrategy>()([
   'tax_first', 'spending_first', 'growth_first', 'minimum', 'ai_optimized',
 ]);
 const ISA_FIRST_CHOICES = coversUnion<IsaFirstChoice>()(['isa_first', 'pension_first', 'ai_optimized']);
-const RISK_PROFILES = coversUnion<RiskProfile>()([
-  'conservative', 'neutral', 'aggressive', 'custom', 'ai_recommended',
-]);
+const RISK_PROFILES = coversUnion<RiskProfile>()(['custom', 'ai_recommended']);
 const ECONOMIC_SCENARIOS = coversUnion<EconomicScenario>()([
   'long_term_average', 'recession', 'high_inflation', 'low_growth', 'ai_recommended',
 ]);

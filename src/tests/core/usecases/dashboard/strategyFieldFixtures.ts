@@ -8,12 +8,6 @@ import { DEFAULT_UTILITY_CONFIG } from '@/core/usecases/utility/utilityWeights';
 // 세 파일이 각자 후보를 만들면 "describe는 A를 보고 apply는 B를 본다"는 상황이 생겨,
 // 두 함수의 정합을 검증한다는 계약 테스트의 목적 자체가 무너진다.
 
-const ALLOCATION_PRESETS = {
-  CONSERVATIVE: 'conservative',
-  BALANCED: 'base',
-  GROWTH: 'aggressive',
-} as const;
-
 /**
  * 은퇴 나이·목표 생활비는 「은퇴 목표」 카드가 유일한 편집 경로다(normalizeGoalDrivenParams).
  * 그래서 추천 적용도 그 목표를 고쳐야 반영되며, 목표가 없으면 반영하지 않고 사유를 남긴다.
@@ -80,7 +74,6 @@ export function makeRanked(overrides: RankedOverrides = {}): RankedStrategyCandi
         : (overrides.nationalPensionStartAge ?? 65) > 65 ? 'DEFERRED' : 'NORMAL'),
     withdrawalPolicy: overrides.withdrawalPolicy ?? 'ISA_FIRST',
     spendingPattern: overrides.spendingPattern ?? 'FIXED',
-    assetAllocation: overrides.assetAllocation ?? 'BALANCED',
   };
   const targetMonthlySpending = overrides.targetMonthlySpending ?? 3_500_000;
 
@@ -104,7 +97,8 @@ export function makeRanked(overrides: RankedOverrides = {}): RankedStrategyCandi
           baseExchangeRate: 1350,
           exchangeScenario: 'base',
           displayCurrency: 'KRW',
-          yieldPreset: ALLOCATION_PRESETS[dimensions.assetAllocation],
+          // 후보는 seed의 수익률 가정을 그대로 물려받는다(StrategyGenerator.strategyFor).
+          yieldPreset: 'base',
         },
         legacyPresence: {
           withdrawalPlan: true,

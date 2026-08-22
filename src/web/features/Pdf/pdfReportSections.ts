@@ -529,12 +529,12 @@ export function renderExecutionRoadmapSection(roadmap: ExecutionRoadmap): string
 
 // 민감도 분석 표.
 //
-// 예전에는 "자산 고갈 나이" 한 열뿐이었다. 여유 있는 계획에서는 6행이 전부 "평생 유지"로
+// 예전에는 "자산 고갈 나이" 한 열뿐이었다. 여유 있는 계획에서는 모든 행이 전부 "평생 유지"로
 // 찍혀 표 전체가 아무 정보도 주지 않았다(실제 리포트가 그랬다). 기말자산 열을 함께 실어
 // 고갈 여부와 무관하게 시나리오가 구분되게 한다 — 화면의 SensitivityAnalysisSection과
 // 같은 판단이다.
 //
-// 투자자산이 없는 계획에서는 그 기말자산마저 전부 0원이라 6행이 글자 하나까지 같아진다.
+// 투자자산이 없는 계획에서는 그 기말자산마저 전부 0원이라 모든 행이 글자 하나까지 같아진다.
 // 화면(SensitivityAnalysisSection)과 같은 규칙으로, baseline과 결과가 완전히 동일한 행은
 // 접고 몇 개를 접었는지 밝힌다 — 두 문서가 서로 다른 표를 보여주면 안 된다.
 export function renderSensitivityTableSection(
@@ -543,7 +543,7 @@ export function renderSensitivityTableSection(
     depletionAge: number | null;
     unmetSpendingYears: number;
     planAssetStatus: PlanAssetStatus;
-    // 6개 시나리오가 공통으로 고정한 월 생활비. 화면(SensitivityAnalysisSection)과 같은 이유로
+    // scenarios가 공통으로 고정한 월 생활비. 화면(SensitivityAnalysisSection)과 같은 이유로
     // 반드시 밝힌다 — 「평생 소비 최적화」 계획에서는 이 값이 사용자가 입력한 목표와 다르다.
     frozenMonthlySpending?: number;
   }
@@ -553,7 +553,7 @@ export function renderSensitivityTableSection(
   const noInvestableAsset = baseline?.planAssetStatus === 'no_investable_asset';
   const frozenNoteHtml = baseline?.frozenMonthlySpending === undefined
     ? ''
-    : `<p style="margin: 0 0 6px; font-size: 10.5px; color: #64748b;">6개 시나리오 모두 <strong>월 생활비 ${formatManwon(baseline.frozenMonthlySpending)}을 고정</strong>한 채 가정 하나만 바꾼 결과입니다.</p>`;
+    : `<p style="margin: 0 0 6px; font-size: 10.5px; color: #64748b;">${scenarios.length}개 시나리오 모두 <strong>월 생활비 ${formatManwon(baseline.frozenMonthlySpending)}을 고정</strong>한 채 가정 하나만 바꾼 결과입니다.</p>`;
   const visibleScenarios = noInvestableAsset
     ? scenarios.filter(
         (s) => !(s.endingAssetsDelta === 0

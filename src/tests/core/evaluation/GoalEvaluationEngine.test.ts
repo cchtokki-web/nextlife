@@ -260,7 +260,6 @@ describe('DefaultGoalEvaluationEngine 회귀', () => {
         nationalPensionStartAge: 65,
         withdrawalPolicy: 'GENERAL_FIRST' as const,
         spendingPattern: 'FIXED' as const,
-        assetAllocation: 'BALANCED' as const,
       },
     };
 

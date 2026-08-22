@@ -54,8 +54,8 @@ export function InvestmentStrategySection({ params, onChangeParams, mode, change
       {(isFieldVisible(mode, 'strategy.riskProfile')
         || isFieldVisible(mode, 'strategy.economicScenario')) && (
         <p className="text-xs leading-relaxed text-foreground-muted/90 pt-1">
-          경제 시나리오는 물가·환율뿐 아니라 보유 자산과 사적연금의 수익률까지 함께 바꿉니다.
-          리스크 성향을 &ldquo;입력 수익률 유지&rdquo;가 아닌 값으로 고른 경우에만, 그 수익률을 리스크 성향이 다시 덮어씁니다.
+          경제 시나리오는 물가·환율만 바꿉니다.
+          리스크 성향은 수익률을 바꾸지 않습니다 — 자산·연금·ISA에 입력한 수익률이 그대로 계산에 쓰입니다.
         </p>
       )}
     </>

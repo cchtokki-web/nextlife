@@ -9,9 +9,9 @@ import compStyles from '../../styles/components.module.css';
 import { Plus, Trash2, Wallet, Landmark, PiggyBank, DollarSign, ExternalLink, ChevronDown, ChevronUp, RefreshCw } from 'lucide-react';
 import { predefinedAssets } from './predefinedAssets';
 import { ReturnBreakdownHint } from './ReturnBreakdownHint';
+import { YieldPresetHelper } from './YieldPresetHelper';
 import { initialParams } from '../../../infrastructure/storage/localStore';
-import { resolveRiskProfileYieldPreset, resolveStrategy } from '../../../core/usecases/strategy/compileStrategy';
-import { isEconomicScenarioGoverning } from '../../../core/usecases/scenario/economicScenarios';
+import { resolveStrategy } from '../../../core/usecases/strategy/compileStrategy';
 import {
   convertContributionAmount,
   roundContributionForCurrency,
@@ -73,37 +73,8 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
     displayCurrency: rawParams?.displayCurrency || 'KRW',
     spendingStrategy: rawParams?.spendingStrategy || 'target',
   };
-  // 전략(「투자 전략」)이 수익률을 지배하는 동안에는 이 폼의 수익률 입력을 잠근다.
-  //
-  // 이 폼은 compileStrategy를 거친 params가 아니라 원본 params를 받는다. 그래서 입력을
-  // 열어두면 사용자는 자기가 넣은 값을 보면서 엔진은 프리셋 값(리스크 성향 5/7/9% ·
-  // 3/4/6%, 경제 시나리오 프로필)으로 계산하는 상태가 조용히 만들어진다. 고급 설정의
-  // 저율과세 한도, 「경제 가정」의 물가상승률에 이미 쓰고 있는 "지배 중이면 비활성화 +
-  // 이유 표시" 패턴을 그대로 재사용한다.
-  //
-  // 반대 방향(수익률을 편집하면 riskProfile을 'custom'으로 되돌리기)은 택하지 않았다:
-  // 다른 섹션에서 사용자가 명시적으로 고른 전략이 화면 반대편의 입력 때문에 소리 없이
-  // 뒤집히는 것이야말로 이 브랜치가 반복해서 고쳐 온 결함 형태이고, 게다가 경제 시나리오는
-  // riskProfile이 아니므로 그 방식으로는 절반만 해결된다.
   const strategy = resolveStrategy(params);
-  const yieldGovernedBy = resolveRiskProfileYieldPreset(strategy.riskProfile) !== null
-    ? '리스크 성향'
-    : isEconomicScenarioGoverning(strategy.economicScenario)
-      ? '경제 시나리오'
-      : null;
 
-  // 실시간 조회 버튼도 같은 이유로 잠근다.
-  //
-  // fetchAssetInfo/fetchPensionInfo/fetchIsaInfo는 totalReturn을 덮어쓰면서
-  // yieldPreset을 'custom'으로까지 찍는다. 입력만 비활성화하고 이 버튼을 열어두면, 지배 중에도
-  // 버튼 하나로 화면상 수익률과 '직접입력' 표식이 동시에 바뀌는데 엔진은 여전히 프리셋으로
-  // 계산한다 — 입력을 잠가서 없애려던 바로 그 불일치가 다른 문으로 되돌아온다.
-  // 배당률 조회가 같은 함수에 묶여 있어 함께 잠기지만, 조회 결과가 수익률을 덮어쓰는 이상
-  // 부분 적용은 "눌렀는데 일부만 반영된다"는 더 나쁜 상태가 된다.
-  // 이유는 원래 제목 뒤에 덧붙인다 — 제목을 통째로 갈아치우면 툴팁만 보고는 이 버튼이
-  // 무슨 버튼이었는지 알 수 없다. 화면 상단 배너가 같은 이유를 이미 문장으로 설명한다.
-  // 배당 재투자를 «자산별로» 정하는 화면은 전문가 모드에만 둔다.
-  //
   // 목표 기반 흐름에서 이 화면은 「내 자산이 이렇다」는 사실을 받는 자리다. 재투자 여부는
   // 사실이 아니라 인출 전략의 결정이며(배당을 그해 생활비로 쓸 것인가, 남겨서 나중에 팔
   // 것인가), 그 결정은 「연금 전략」의 배당금 재투자 축이 담당한다 — 기본값은 AI가 자산마다
@@ -112,14 +83,8 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
   const dividendStrategy = strategy.dividendStrategy ?? 'ai_optimized';
   const showPerAssetDividend = strategy.mode === 'expert';
   // 「전부 재투자」·「전부 현금 수령」을 고르면 compileStrategy가 전 자산을 그 값으로 덮어쓴다.
-  // 수익률 입력을 리스크 성향이 지배할 때와 같은 처리를 한다 — 잠그지 않으면 여기서 고친
-  // 값이 화면에만 남고 엔진은 전략이 정한 값으로 돈다.
+  // 잠그지 않으면 여기서 고친 값이 화면에만 남고 엔진은 전략이 정한 값으로 돈다.
   const dividendGoverned = dividendStrategy !== 'ai_optimized';
-
-  const yieldFetchTitle = (base: string): string =>
-    yieldGovernedBy
-      ? `${base} (「투자 전략」의 ${yieldGovernedBy}이(가) 수익률을 결정하는 동안에는 쓸 수 없습니다)`
-      : base;
 
   const [activeTab, setActiveTab] = useState<TabType>('stocks');
   const [expandedAssets, setExpandedAssets] = useState<Record<string, boolean>>({});
@@ -650,12 +615,8 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
 
       {isSectionExpanded && (
         <>
-          {yieldGovernedBy && (
-            <p style={{ fontSize: '0.75rem', color: 'var(--warning, #f59e0b)', margin: '0 0 0.75rem' }}>
-              「투자 전략」의 {yieldGovernedBy}이(가) 아래 수익률 값을 결정합니다. 직접 입력하려면
-              투자 전략에서 리스크 성향은 &ldquo;입력 수익률 유지&rdquo;, 경제 시나리오는 &ldquo;직접 입력값 유지&rdquo;로 두세요.
-            </p>
-          )}
+          <YieldPresetHelper params={params} onChangeParams={onChangeParams} />
+
           {/* Tab Menu */}
           <div className={styles.tabList}>
         <button
@@ -905,7 +866,6 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                               label="연 총수익률"
                               step="0.1"
                               value={asset.totalReturn}
-                              disabled={yieldGovernedBy !== null}
                               onChangeValue={(rate) => handleUpdateAsset(asset.id, 'totalReturn', rate)}
                               suffixText="%"
                             />
@@ -914,8 +874,8 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                             type="button"
                             className={`${compStyles.button} ${compStyles.buttonSecondary} ${styles.priceFetchButton}`}
                             onClick={() => fetchAssetInfo(asset.id, asset.ticker)}
-                            disabled={fetchingInfoMap[asset.id] || asset.ticker === 'NEW' || yieldGovernedBy !== null}
-                            title={yieldFetchTitle('실시간 성장률/배당률 조회')}
+                            disabled={fetchingInfoMap[asset.id] || asset.ticker === 'NEW'}
+                            title="실시간 성장률/배당률 조회"
                           >
                             <RefreshCw
                               size={22}
@@ -937,8 +897,8 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                             type="button"
                             className={`${compStyles.button} ${compStyles.buttonSecondary} ${styles.priceFetchButton}`}
                             onClick={() => fetchAssetInfo(asset.id, asset.ticker)}
-                            disabled={fetchingInfoMap[asset.id] || asset.ticker === 'NEW' || yieldGovernedBy !== null}
-                            title={yieldFetchTitle('실시간 성장률/배당률 조회')}
+                            disabled={fetchingInfoMap[asset.id] || asset.ticker === 'NEW'}
+                            title="실시간 성장률/배당률 조회"
                           >
                             <RefreshCw
                               size={22}
@@ -1277,7 +1237,6 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                               label="연 총수익률"
                               step="0.1"
                               value={pension.totalReturn}
-                              disabled={yieldGovernedBy !== null}
                               onChangeValue={(rate) => handleUpdatePrivatePension(pension.id, 'totalReturn', rate)}
                               suffixText="%"
                             />
@@ -1286,8 +1245,8 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                             type="button"
                             className={`${compStyles.button} ${compStyles.buttonSecondary} ${styles.priceFetchButton}`}
                             onClick={() => fetchPensionInfo(pension.id, pension.ticker!)}
-                            disabled={fetchingInfoMap[pension.id] || !pension.ticker || yieldGovernedBy !== null}
-                            title={yieldFetchTitle('실시간 수익률 조회')}
+                            disabled={fetchingInfoMap[pension.id] || !pension.ticker}
+                            title="실시간 수익률 조회"
                           >
                             <RefreshCw
                               size={22}
@@ -1309,8 +1268,8 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                             type="button"
                             className={`${compStyles.button} ${compStyles.buttonSecondary} ${styles.priceFetchButton}`}
                             onClick={() => fetchPensionInfo(pension.id, pension.ticker!)}
-                            disabled={fetchingInfoMap[pension.id] || !pension.ticker || yieldGovernedBy !== null}
-                            title={yieldFetchTitle('실시간 수익률/배당률 조회')}
+                            disabled={fetchingInfoMap[pension.id] || !pension.ticker}
+                            title="실시간 수익률/배당률 조회"
                           >
                             <RefreshCw
                               size={22}
@@ -1326,7 +1285,6 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                       label={pension.investmentType === 'deposit' ? '연 이자율 (금리)' : '연 총수익률'}
                       step="0.1"
                       value={pension.totalReturn}
-                      disabled={yieldGovernedBy !== null}
                       onChangeValue={(rate) => handleUpdatePrivatePension(pension.id, 'totalReturn', rate)}
                       suffixText="%"
                     />
@@ -1491,7 +1449,6 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                                   label="연 총수익률"
                                   step="0.1"
                                   value={isa.totalReturn}
-                                  disabled={yieldGovernedBy !== null}
                                   onChangeValue={(rate) => handleUpdateIsaAccount(isa.id, 'totalReturn', rate)}
                                   suffixText="%"
                                 />
@@ -1500,8 +1457,8 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                                 type="button"
                                 className={`${compStyles.button} ${compStyles.buttonSecondary} ${styles.priceFetchButton}`}
                                 onClick={() => fetchIsaInfo(isa.id, isa.ticker!)}
-                                disabled={fetchingInfoMap[isa.id] || !isa.ticker || yieldGovernedBy !== null}
-                                title={yieldFetchTitle('실시간 수익률 조회')}
+                                disabled={fetchingInfoMap[isa.id] || !isa.ticker}
+                                title="실시간 수익률 조회"
                               >
                                 <RefreshCw
                                   size={22}
@@ -1523,8 +1480,8 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                                 type="button"
                                 className={`${compStyles.button} ${compStyles.buttonSecondary} ${styles.priceFetchButton}`}
                                 onClick={() => fetchIsaInfo(isa.id, isa.ticker!)}
-                                disabled={fetchingInfoMap[isa.id] || !isa.ticker || yieldGovernedBy !== null}
-                                title={yieldFetchTitle('실시간 수익률/배당률 조회')}
+                                disabled={fetchingInfoMap[isa.id] || !isa.ticker}
+                                title="실시간 수익률/배당률 조회"
                               >
                                 <RefreshCw
                                   size={22}
@@ -1540,7 +1497,6 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                           label="연 이자율 (금리)"
                           step="0.1"
                           value={isa.totalReturn}
-                          disabled={yieldGovernedBy !== null}
                           onChangeValue={(rate) => handleUpdateIsaAccount(isa.id, 'totalReturn', rate)}
                           suffixText="%"
                         />
@@ -1551,7 +1507,6 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                               label="연 총수익률"
                               step="0.1"
                               value={isa.totalReturn}
-                              disabled={yieldGovernedBy !== null}
                               onChangeValue={(rate) => handleUpdateIsaAccount(isa.id, 'totalReturn', rate)}
                               suffixText="%"
                             />

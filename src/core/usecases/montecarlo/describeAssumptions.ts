@@ -1,6 +1,5 @@
 import { MonteCarloResult } from '../../entities/montecarlo';
 import { ECONOMIC_SCENARIO_LABELS, isEconomicScenarioGoverning } from '../scenario/economicScenarios';
-import { RISK_PROFILE_LABELS, resolveRiskProfileYieldPreset } from '../strategy/compileStrategy';
 
 // **몬테카를로 결과의 가정 공시 문구를 만드는 단일 출처.**
 //
@@ -12,7 +11,8 @@ import { RISK_PROFILE_LABELS, resolveRiskProfileYieldPreset } from '../strategy/
 // 문구를 core에 두는 것이 UI/계산 분리 원칙과 어긋나 보일 수 있지만, 여기서 만드는 것은
 // 레이아웃이 아니라 **결과가 무엇을 전제했는가에 대한 서술**이다. 그 서술의 근거(지배
 // 여부 판정, 배율)는 전부 core에 있고, 표시 계층으로 옮기면 그 판정 규칙이 화면마다
-// 복제된다 — resolveRiskProfileYieldPreset 주석이 경고하는 바로 그 복제다.
+// 복제된다 — 바로 위에 적은 「사적연금 충격 배율」 사례처럼, 계산 로직과 그 로직을
+// 설명하는 문구가 서로 다른 곳에 있으면 한쪽만 고쳐지고 다른 쪽은 거짓말로 남는다.
 
 // 화면에 이 필드들이 없던 시절의 직렬화된 결과가 남아 있다. 그때 화면이 인쇄하던 값이
 // 15%p였으므로 같은 값으로 되돌린다(숫자를 새로 만들지 않는다).
@@ -62,10 +62,7 @@ function describeWorld(assumptions: NonNullable<MonteCarloResult['assumptions']>
   const governing: string[] = [];
 
   if (isEconomicScenarioGoverning(assumptions.economicScenario)) {
-    governing.push(`「${ECONOMIC_SCENARIO_LABELS[assumptions.economicScenario]}」 국면의 물가·환율·수익률`);
-  }
-  if (resolveRiskProfileYieldPreset(assumptions.riskProfile) !== null) {
-    governing.push(`「${RISK_PROFILE_LABELS[assumptions.riskProfile]}」 수익률`);
+    governing.push(`「${ECONOMIC_SCENARIO_LABELS[assumptions.economicScenario]}」 국면의 물가·환율`);
   }
 
   // 덮은 축이 하나도 없으면 사용자가 넣은 값 그대로 계산한 것이다. 'custom'(자산별 직접
