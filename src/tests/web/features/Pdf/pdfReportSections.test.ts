@@ -554,6 +554,19 @@ describe('renderPlanVerdictSection', () => {
 });
 
 describe('renderMonteCarloSection', () => {
+  // 실패 원인 문장이 지목할 «설정»의 출처. 여기서는 인출을 막는 설정이 없는 계획이다.
+  const mcParams: SimulationParams = {
+    userProfile: { currentAge: 55, retirementAge: 60, expectancy: 90, targetMonthlySpending: 3_000_000 },
+    assets: [],
+    nationalPension: { expectedMonthlyAmount: 1_000_000 },
+    privatePensions: [],
+    otherIncomes: [],
+    inflationRate: 2,
+    inflationMode: 'real',
+    baseExchangeRate: 1350,
+    exchangeScenario: 'base',
+    displayCurrency: 'KRW',
+  };
   const monteCarlo: MonteCarloResult = {
     trials: 1000, seed: 1, annualStdDev: 18, successAge: 90, successRate: 0.87, spendingSuccessRate: 0.81,
     goalSuccessProbability: 0.81,
@@ -582,11 +595,11 @@ describe('renderMonteCarloSection', () => {
   // 데이터가 없으면 빈 문자열을 준다 — 워커가 아직 끝나지 않았거나 실패한 경우다.
   // 개별 실패를 무시하고 나머지 리포트는 계속 만든다(computeSensitivityAnalysis와 같은 관례).
   test('몬테카를로 결과가 없으면 빈 문자열을 반환한다', () => {
-    expect(renderMonteCarloSection(undefined, sequenceRisk)).toBe('');
+    expect(renderMonteCarloSection(undefined, sequenceRisk, mcParams)).toBe('');
   });
 
   test('성공률과 시행 횟수를 표기한다', () => {
-    const html = renderMonteCarloSection(monteCarlo, sequenceRisk);
+    const html = renderMonteCarloSection(monteCarlo, sequenceRisk, mcParams);
 
     expect(html).toContain('87%');
     expect(html).toContain('1,000');
@@ -594,7 +607,7 @@ describe('renderMonteCarloSection', () => {
   });
 
   test('변동성·분포·상관·시드 가정을 표기한다', () => {
-    const html = renderMonteCarloSection(monteCarlo, sequenceRisk);
+    const html = renderMonteCarloSection(monteCarlo, sequenceRisk, mcParams);
 
     expect(html).toContain('연 변동성 18%p');
     expect(html).toContain('정규분포');
@@ -603,7 +616,7 @@ describe('renderMonteCarloSection', () => {
   });
 
   test('잔여자산 분위수를 표로 싣는다', () => {
-    const html = renderMonteCarloSection(monteCarlo, sequenceRisk);
+    const html = renderMonteCarloSection(monteCarlo, sequenceRisk, mcParams);
 
     expect(html).toContain('하위 10%');
     expect(html).toContain('중앙값');
@@ -616,7 +629,7 @@ describe('renderMonteCarloSection', () => {
   // 이어 붙여야 격차가 보였다. 같은 표의 중앙값 열에 나란히 놓으면 위아래로 바로 읽힌다.
   // 화면(MonteCarloSection의 volatility-drag)이 두 값을 붙여 놓는 것과 같은 기준이다.
   test('변동 없음 가정을 분포와 같은 표에 실어 변동성 손실을 드러낸다', () => {
-    const html = renderMonteCarloSection(monteCarlo, sequenceRisk);
+    const html = renderMonteCarloSection(monteCarlo, sequenceRisk, mcParams);
 
     expect(html).toContain('변동 없음 가정');
     // 결정론 25억이 표의 «행»으로 들어가야 한다 — 표 밖 각주가 아니라.
@@ -626,15 +639,39 @@ describe('renderMonteCarloSection', () => {
     expect(html.slice(0, tableEnd)).toContain(formatManwon(1_800_000_000));
   });
 
+  // 화면과 리포트가 같은 시행을 다르게 설명하면 사용자는 어느 조치를 해야 할지 알 수 없다.
+  // 예전에는 PDF에 원인 문장이 아예 없어, 화면은 「목표 생활비를 채우지 못합니다」, 리포트는
+  // 「자산이 먼저 바닥났다」만 적었다.
+  test('목표를 달성하지 못한 원인을 화면과 같은 문장으로 싣는다', () => {
+    const html = renderMonteCarloSection({
+      ...monteCarlo,
+      // 「자산 고갈 방지」를 고르지 않아 판정값은 0이지만 실제로는 420회 고갈된 계획.
+      goalFailure: {
+        spendingShortfall: 420, assetDepletion: 0, observedAssetDepletionCount: 420,
+        terminalShortfall: 0, medianFirstShortfallAge: 73, terminalAssetGoal: 0,
+      },
+    }, sequenceRisk, mcParams);
+
+    expect(html).toContain('목표를 달성하지 못한 시행의 원인');
+    expect(html).toContain('1000회 중 420회에서 기대수명 전에 자산이 고갈됩니다.');
+    expect(html).not.toContain('목표 생활비를 채우지 못합니다');
+  });
+
+  test('목표 실패 시행이 없으면 원인 문장을 싣지 않는다', () => {
+    const html = renderMonteCarloSection(monteCarlo, sequenceRisk, mcParams);
+
+    expect(html).not.toContain('목표를 달성하지 못한 시행의 원인');
+  });
+
   test('순서 리스크가 있으면 경우별 비교를 싣는다', () => {
-    const html = renderMonteCarloSection(monteCarlo, sequenceRisk);
+    const html = renderMonteCarloSection(monteCarlo, sequenceRisk, mcParams);
 
     expect(html).toContain('나쁜 해가 먼저');
     expect(html).toContain('연평균');
   });
 
   test('순서 리스크가 없어도 몬테카를로 부분은 렌더한다', () => {
-    const html = renderMonteCarloSection(monteCarlo, undefined);
+    const html = renderMonteCarloSection(monteCarlo, undefined, mcParams);
 
     expect(html).toContain('87%');
     expect(html).not.toContain('나쁜 해가 먼저');

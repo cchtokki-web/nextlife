@@ -308,7 +308,7 @@ export default function Home() {
           executionRoadmap: executionRoadmapSectionHtml,
           sensitivityTable: sensitivityTableSectionHtml,
           keyLevers: keyLeversSectionHtml,
-          monteCarlo: renderMonteCarloSection(monteCarlo, sequenceRisk),
+          monteCarlo: renderMonteCarloSection(monteCarlo, sequenceRisk, reportParams),
         },
       });
 

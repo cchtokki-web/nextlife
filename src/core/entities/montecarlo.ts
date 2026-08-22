@@ -36,8 +36,23 @@ export interface MonteCarloAssetBandYear {
 export interface GoalFailureBreakdown {
   // 은퇴 후 어느 해든 목표 생활비를 1만원 이상 채우지 못한 시행 수.
   spendingShortfall: number;
-  // 기대수명 전에 자산이 고갈된 시행 수.
+  // 기대수명 전에 자산이 고갈된 시행 수 — **목표 판정값이다.** 사용자가 「자산 고갈 방지」를
+  // 고르지 않았으면(requireAssetSurvival=false) 실제로 몇 번 고갈됐든 0이다. 판정하지 않은
+  // 조건을 실패 사유로 세면 확률과 화면이 어긋나기 때문이다.
   assetDepletion: number;
+  // 같은 술어에서 **목표 게이트만 뺀 관측값**: 기대수명 전에 실제로 자산이 고갈된 시행 수.
+  // 어떤 목표를 골랐든 언제나 실제 개수다.
+  //
+  // 두 값을 함께 두는 이유는 한 값이 두 질문에 답할 수 없기 때문이다. assetDepletion은
+  // 「이 확률을 깎은 조건이 무엇인가」(목표 판정)에, 이 값은 「실제로 무슨 일이 일어났는가」
+  // (관측)에 답한다. **원인 진단은 반드시 이 값을 써야 한다**(explainGoalShortfall) — 게이트가
+  // 닫힌 계획에서 assetDepletion을 원인 입력으로 쓰면 420회 고갈이 「목표 생활비 미달」로
+  // 설명되고 「인출 설정 때문」이라는 사실과 다른 조치를 유도한다.
+  //
+  // MonteCarloResult.depletion.count와는 **술어가 다르다**: 그쪽은 depletionAge !== null만
+  // 보고 successAge를 묻지 않는다. 시뮬레이션 루프가 기대수명에서 끝나 오늘은 두 값이
+  // 일치하지만(successAge 주석의 경계 불일치 참조) 정의가 다르므로 합치지 않는다.
+  observedAssetDepletionCount: number;
   // 기말자산이 목표(targetBequest 또는 assetFloor)에 못 미친 시행 수.
   terminalShortfall: number;
   // 생활비 미달이 **처음 발생한 나이**의 중앙값. 미달 시행이 없으면 null.

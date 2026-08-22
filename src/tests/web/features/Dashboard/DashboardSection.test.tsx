@@ -732,8 +732,8 @@ describe('DashboardSection - 현재 계획 진단', () => {
         monteCarlo={{
           ...monteCarloWith(0.02, 0.02),
           goalFailure: {
-            spendingShortfall: 980, assetDepletion: 0, terminalShortfall: 5,
-            medianFirstShortfallAge: 72, terminalAssetGoal: 0,
+            spendingShortfall: 980, assetDepletion: 0, observedAssetDepletionCount: 0,
+            terminalShortfall: 5, medianFirstShortfallAge: 72, terminalAssetGoal: 0,
           },
         }}
       />
