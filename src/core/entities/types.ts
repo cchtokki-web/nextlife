@@ -371,6 +371,32 @@ export interface SimulationParams {
  * 이 원장이 없던 동안 "60~64세 부족자금은 982만원인데 자산은 1.7억 줄었다"처럼 서로
  * 모순되어 보이는 두 숫자를 대조할 방법이 없었다. residual이 0이면 두 숫자는 모순이 아니다.
  */
+/**
+ * 그 해 인출이 «무엇을 깼고 무엇에 막혔는가»의 기록. 회계 항등식과는 분리된 서브객체다 —
+ * 항등식(기말 = 기초 + 투자총수익 + 외부유입 − 생활비 − 세금 − 건보료)에는 들어가지 않는다.
+ *
+ * **엔진은 목표를 모른다.** 여기에는 엔진이 «아는 말»만 들어온다 — 「일반자산 개시 나이를
+ * 깼다」, 「연금 개시 나이에 막혔다」. 그것을 목표 유형(HARD 생활비 ↔ HARD 상속 충돌 등)으로
+ * 번역하는 것은 평가 계층(GoalEvaluationEngine)의 일이며, 이 파일에도 엔진에도 목표 이름을
+ * 들이지 않는다. 그 분리를 깨면 목표 화면이 바뀔 때마다 계산 엔진이 따라 바뀐다.
+ */
+export interface YearLedgerDiagnostics {
+  /**
+   * HARD 생활비 바닥을 채우려고 «실제로 넘겨 인출한» 선호. 1단계가 돌았다는 사실만으로는
+   * 기록하지 않는다 — 한도 안에서 끝난 달은 아무것도 깨지 않았다.
+   */
+  brokenPreferences: ReadonlyArray<
+    'pensionTaxLimit' | 'pensionMonthlyTarget' | 'generalAssetStartAge' | 'assetFloor'>;
+  /** 왜 깼는가. 지금 선호를 깰 수 있는 사유는 HARD 생활비 바닥 하나뿐이다. */
+  overrideReason?: 'hardSpendingFloor';
+  /** HARD 바닥 미달액(계층 1 실패). 바닥이 없는 계획에서는 항상 0이다. */
+  unmetHardSpending: number;
+  /** 목표 생활비 미달액(계층 3 실패). SimulationYearlyResult.unmetSpending과 같은 금액이다. */
+  unmetTargetSpending: number;
+  /** 잔액은 남았는데 꺼내지 못한 이유. 없으면 「꺼낼 것이 없었다」는 뜻이다. */
+  blockedWithdrawalReason?: 'legalAge' | 'isaPrincipalExhausted' | 'assetFloor';
+}
+
 export interface YearlyLedger {
   age: number;
   beginningAssets: number;
@@ -427,6 +453,11 @@ export interface YearlyLedger {
    * 이 값이 커진다는 것은 어떤 현금흐름이 두 번 세어졌거나 어디론가 증발했다는 뜻이다.
    */
   residual: number;
+  /**
+   * 그 해 인출의 진단(YearLedgerDiagnostics 주석 참고). **항등식에는 들어가지 않는다** —
+   * 그래서 회계 행에 필드를 섞지 않고 서브객체로 둔다.
+   */
+  diagnostics: YearLedgerDiagnostics;
 }
 
 export interface SimulationYearlyResult {
