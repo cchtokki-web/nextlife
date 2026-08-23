@@ -17,7 +17,7 @@ const pensionOnlyRow: SpendingChartRow = {
   목표생활비: 3500000,
   사적연금: 0,
   국민연금: 1910000,
-  배당소득: 0,
+  '현금 배당': 0,
   기타소득: 0,
   자산인출: 0,
   자산부족: 1590000,
@@ -46,7 +46,7 @@ describe('SpendingCompositionTooltip', () => {
     expect(screen.getByText('국민연금')).toBeInTheDocument();
     expect(screen.getByText('자산부족')).toBeInTheDocument();
     expect(screen.queryByText('사적연금')).not.toBeInTheDocument();
-    expect(screen.queryByText('배당소득')).not.toBeInTheDocument();
+    expect(screen.queryByText('현금 배당')).not.toBeInTheDocument();
     expect(screen.queryByText('자산인출')).not.toBeInTheDocument();
   });
 

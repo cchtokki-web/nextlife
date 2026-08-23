@@ -2,6 +2,7 @@ import { describe, test, expect } from 'vitest';
 import { buildReportHtml, type ReportHtmlInput } from '@/web/features/Pdf/buildReportHtml';
 import capture from '@/tests/fixtures/pdfReport/reportCapture.json';
 import captureNoAccounts from '@/tests/fixtures/pdfReport/reportCaptureNoAccounts.json';
+import type { YearlyLedger } from '@/core/entities/types';
 
 // **골든 스냅샷.** 이 테스트가 리팩터링의 안전장치다.
 //
@@ -77,6 +78,38 @@ describe('buildReportHtml', () => {
   // 순수 함수라는 주장을 직접 고정한다. 시계·로케일·DOM에 닿으면 두 번 부른 결과가 갈린다.
   test('같은 입력이면 항상 같은 문자열을 준다', () => {
     expect(buildReportHtml(input())).toBe(buildReportHtml(input()));
+  });
+
+  test('현금 배당과 계좌 안에 남은 재투자 배당을 다른 열로 표시한다', () => {
+    const base = input();
+    const first = base.result.yearlyResults[0];
+    const retainedDividend = 12_340_000;
+    const withRetainedDividend: ReportHtmlInput = {
+      ...base,
+      result: {
+        ...base.result,
+        yearlyResults: [
+          {
+            ...first,
+            dividendIncome: 5_670_000,
+            ledger: {
+              investmentReturn: { dividendRetainedNet: retainedDividend },
+            } as YearlyLedger,
+          },
+          ...base.result.yearlyResults.slice(1),
+        ],
+      },
+    };
+
+    const html = buildReportHtml(withRetainedDividend);
+    const firstRowStart = html.indexOf(`>${first.age}세</td>`);
+    const firstRow = html.slice(firstRowStart, html.indexOf('</tr>', firstRowStart));
+
+    expect(html).toContain('현금<br/>배당');
+    expect(html).toContain('재투자<br/>배당');
+    expect(firstRow).toContain(formatKrw(5_670_000));
+    expect(firstRow).toContain(formatKrw(retainedDividend));
+    expect(html).toContain('현금 배당만 생활비 재원에 포함');
   });
 
   test('Monte Carlo 전 연령 밴드가 있으면 화면처럼 연령별 총 자산에 중앙값을 쓴다', () => {

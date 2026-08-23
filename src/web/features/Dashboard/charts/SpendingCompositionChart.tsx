@@ -32,13 +32,13 @@ interface SpendingCompositionChartProps {
 }
 
 // 스택 순서와 같은 순서로 나열해야 툴팁과 그래프가 같은 이야기를 한다.
-const SOURCE_KEYS = ['사적연금', '국민연금', '배당소득', '기타소득', '자산인출', '자산부족'] as const;
+const SOURCE_KEYS = ['사적연금', '국민연금', '현금 배당', '기타소득', '자산인출', '자산부족'] as const;
 
 // 범례 표기. 아래 <Area> 선언의 name/fill과 짝을 이룬다 — 어긋나면 범례가 다른 색을 말한다.
 export const SPENDING_SOURCE_LEGEND: ChartLegendItem[] = [
   { dataKey: '사적연금', label: '사적연금', color: '#A855F7' },
   { dataKey: '국민연금', label: '국민연금', color: '#10B981' },
-  { dataKey: '배당소득', label: '배당소득', color: '#3B82F6' },
+  { dataKey: '현금 배당', label: '현금 배당', color: '#3B82F6' },
   { dataKey: '기타소득', label: '기타소득', color: '#F59E0B' },
   { dataKey: '자산인출', label: '자산인출', color: '#EC4899' },
   { dataKey: '자산부족', label: '자산부족', color: '#EF4444' },
@@ -49,7 +49,7 @@ export interface SpendingChartRow {
   목표생활비: number;
   사적연금: number;
   국민연금: number;
-  배당소득: number;
+  '현금 배당': number;
   기타소득: number;
   자산인출: number;
   자산부족: number;
@@ -114,7 +114,7 @@ export function SpendingCompositionChart({ params, result, hiddenKeys, onLegendC
     목표생활비: d.targetMonthly,
     사적연금: d.privatePenUsed,
     국민연금: d.nationalUsed,
-    배당소득: d.dividendUsed,
+    '현금 배당': d.dividendUsed,
     기타소득: d.otherUsed,
     자산인출: d.assetWithdrawal,
     자산부족: d.shortfall,
@@ -188,13 +188,13 @@ export function SpendingCompositionChart({ params, result, hiddenKeys, onLegendC
               />
               <Area
                 type="monotone"
-                name="배당소득"
-                dataKey="배당소득"
+                name="현금 배당"
+                dataKey="현금 배당"
                 stackId="a"
                 stroke="#3B82F6"
                 fill="#3B82F6"
                 fillOpacity={0.7}
-                hide={!!hiddenKeys['배당소득']}
+                hide={!!hiddenKeys['현금 배당']}
               />
               <Area
                 type="monotone"
