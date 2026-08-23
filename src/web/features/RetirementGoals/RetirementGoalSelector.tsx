@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect } from 'react';
 import { ArrowDown, ArrowUp, Check, Target } from 'lucide-react';
 import {
   MAX_RETIREMENT_GOALS,
@@ -15,17 +16,35 @@ import {
 import { isQuantitativelyJudgedGoal } from '../../../core/usecases/goals/goalSuccessConditions';
 import { RETIREMENT_GOAL_CATALOG, retirementGoalDefinition } from './goalCatalog';
 
+/**
+ * 「확인이 필요한 목표」를 가리키는 신호. 관문은 다른 단계의 버튼 옆에 있으므로, 막기만
+ * 하고 «어디를» 고쳐야 하는지 가리키지 않으면 사용자는 목표 카드와 사유를 함께 볼 일이
+ * 없다(known-issues 14번).
+ *
+ * nonce가 있는 이유: 같은 목표를 다시 가리키는 일이 흔하고, 유형만 보면 두 번째 클릭이
+ * 아무 일도 하지 않는다.
+ */
+export interface GoalFocusRequest {
+  type: RetirementGoalType;
+  nonce: number;
+}
+
+const goalCardId = (type: RetirementGoalType) => `goal-card-${type}`;
+const targetInputId = (type: RetirementGoalType) => `goal-target-${type}`;
+const targetConfirmId = (type: RetirementGoalType) => `goal-target-confirm-${type}`;
+
 interface RetirementGoalSelectorProps {
   goals: readonly RetirementGoal[];
   displayCurrency: 'KRW' | 'USD';
   retirementAge: number;
   targetMonthlySpending: number;
   targetBequest?: number;
+  focusGoal?: GoalFocusRequest;
   onChange: (goals: RetirementGoal[]) => void;
 }
 
 export function RetirementGoalSelector({
-  goals, displayCurrency, retirementAge, targetMonthlySpending, targetBequest, onChange,
+  goals, displayCurrency, retirementAge, targetMonthlySpending, targetBequest, focusGoal, onChange,
 }: RetirementGoalSelectorProps) {
   const selected = normalizeRetirementGoals(goals);
   const selectedTypes = new Set(selected.map((goal) => goal.type));
@@ -61,15 +80,51 @@ export function RetirementGoalSelector({
     ]));
   };
 
-  /**
-   * 사용자가 «직접» 고친 값만 반영하는 경로. 목표금액을 여기로 넣으면 출처 표시가 함께
-   * 붙어 확정값이 된다 — 이 함수 말고는 표시를 붙이는 곳이 없어야 한다.
-   */
+  /** 사용자가 «직접» 고친 값만 반영하는 경로. */
   const updateGoal = (type: RetirementGoalType, patch: Partial<RetirementGoal>) => {
     onChange(normalizeRetirementGoals(
       selected.map((goal) => goal.type === type ? { ...goal, ...patch } : goal),
     ));
   };
+
+  /**
+   * 금액을 «고치는» 경로. 타이핑은 「변경」이지 「확인」이 아니므로 출처 표시를 붙이지 않고,
+   * 이미 붙어 있던 표시는 «떼어 낸다» — 확정한 뒤 고친 금액을 여전히 확정으로 읽으면
+   * 사용자가 확인한 적 없는 숫자가 다시 판정 기준이 된다.
+   */
+  const changeTargetValue = (type: RetirementGoalType, targetValue: number | undefined) => {
+    onChange(normalizeRetirementGoals(selected.map((goal) => {
+      if (goal.type !== type) return goal;
+      const next: RetirementGoal = { ...goal, targetValue };
+      delete next.targetValueSource;
+      return next;
+    })));
+  };
+
+  /**
+   * 금액을 «확정하는» 행위. 출처 표시를 붙이는 곳은 여기 하나뿐이다 — 제안된 금액을 그대로
+   * 받아들이는 것도, 고쳐 넣은 뒤 누르는 것도 모두 사용자의 «행위»다.
+   */
+  const confirmTargetValue = (type: RetirementGoalType) => {
+    updateGoal(type, { targetValueSource: 'user' });
+  };
+
+  const focusTargetInput = (type: RetirementGoalType) => {
+    const input = document.getElementById(targetInputId(type));
+    if (input instanceof HTMLInputElement) {
+      input.focus();
+      input.select();
+    }
+  };
+
+  // 가리킨 목표로 «데려간다». 사유 문구만으로는 어느 카드인지 알 수 없고, 목록이 길면
+  // 화면 밖에 있을 수도 있다. 포커스를 확정 버튼에 두면 키보드·스크린리더 사용자도 같은
+  // 자리에 도착한다. jsdom에는 scrollIntoView가 없어 선택 호출로 둔다.
+  useEffect(() => {
+    if (!focusGoal) return;
+    document.getElementById(goalCardId(focusGoal.type))?.scrollIntoView?.({ block: 'center' });
+    document.getElementById(targetConfirmId(focusGoal.type))?.focus();
+  }, [focusGoal]);
 
   return (
     <div className="flex flex-col gap-5">
@@ -141,8 +196,17 @@ export function RetirementGoalSelector({
             const storedHard = goal.constraintType === 'HARD';
             const constraintOptions: RetirementGoalConstraintType[] =
               judged || storedHard ? ['HARD', 'SOFT'] : ['SOFT'];
+            // 아직 확정되지 않은 «제안» 금액. undefined면 확인할 것이 없다는 뜻이다 —
+            // 금액이 아닌 목표(은퇴 나이)와 금액을 묻지 않는 목표가 모두 여기서 빠진다.
+            const suggestedValue = isSuggestedTargetValue(goal) ? goal.targetValue : undefined;
+            const unitLabel = definition.target?.unit === 'age'
+              ? '세' : displayCurrency === 'KRW' ? '원' : 'USD';
             return (
-              <div key={goal.type} className="rounded-xl border border-card-border bg-black/10 p-3">
+              <div
+                key={goal.type}
+                id={goalCardId(goal.type)}
+                className="rounded-xl border border-card-border bg-black/10 p-3"
+              >
                 <div className="flex items-center gap-2">
                   <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-bold text-white">
                     {goal.priority}
@@ -174,6 +238,7 @@ export function RetirementGoalSelector({
                       {definition.target.label}
                       <span className="relative">
                         <input
+                          id={targetInputId(goal.type)}
                           aria-label={definition.target.label}
                           type="text"
                           inputMode="numeric"
@@ -181,31 +246,73 @@ export function RetirementGoalSelector({
                           onChange={(event) => {
                             const raw = event.target.value.replace(/,/g, '');
                             if (raw === '' || /^\d+$/.test(raw)) {
-                              // 사용자가 이 칸에 써넣은 숫자만 확정값이다. 빈 칸으로 지우면
-                              // 표시도 함께 사라진다(normalizeRetirementGoals).
-                              updateGoal(goal.type, {
-                                targetValue: raw === '' ? undefined : Number(raw),
-                                targetValueSource: 'user',
-                              });
+                              // 여기서 확정하지 «않는다». 빈 칸으로 지우면 표시도 함께
+                              // 사라진다(normalizeRetirementGoals).
+                              changeTargetValue(goal.type, raw === '' ? undefined : Number(raw));
                             }
                           }}
                           className="h-10 w-full rounded-lg border border-card-border bg-black/20 px-3 pr-12 text-sm text-foreground outline-none focus:border-primary"
                         />
                         <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs text-foreground-muted">
-                          {definition.target.unit === 'age' ? '세' : displayCurrency === 'KRW' ? '원' : 'USD'}
+                          {unitLabel}
                         </span>
                       </span>
                     </label>
                   )}
                   {/* 확정되지 않은 금액은 판정에 참가하지 않는다. 그 사실을 숨기면 「반드시
                       지키기」를 골라 둔 사용자가 자기 금액이 강제되지 않는다는 것을 알 수 없다.
-                      제안값 자체는 지금 쓰는 것을 그대로 둔다 — 새 숫자를 만들지 않는다. */}
-                  {isSuggestedTargetValue(goal) && (
-                    <p className="text-xs leading-relaxed text-foreground-muted">
-                      <strong className="text-foreground">아직 제안 금액입니다</strong>
-                      {' '}— 지금 값은 입력하신 계획에서 가져온 것이라 달성·미달 판정에 쓰지
-                      않습니다. 위 칸에 원하는 금액을 직접 입력하면 목표 금액으로 확정됩니다.
-                    </p>
+                      제안값 자체는 지금 쓰는 것을 그대로 둔다 — 새 숫자를 만들지 않는다.
+
+                      확정은 «명시적 행위»다. 두 갈래 모두 확정으로 끝난다 — 제안된 금액을
+                      그대로 받아들이는 것도 사용자의 행위이고, 고쳐 넣는 것도 그렇다. 다만
+                      고치기만 하고 확정하지 «않은» 상태는 미확정이다(changeTargetValue).
+
+                      별도 단계를 만들지 않고 목표 카드 안에서 처리한다 — 확인해야 할 금액과
+                      그 금액이 속한 목표는 같은 자리에 있어야 한다. */}
+                  {suggestedValue !== undefined && (
+                    <div className="flex flex-col gap-2 rounded-lg border border-card-border bg-black/20 p-2.5">
+                      {goal.constraintType === 'HARD' && (
+                        <p className="text-xs font-bold leading-relaxed text-foreground">
+                          {isSpendingGoalType(goal.type)
+                            ? '반드시 지킬 최소 생활비를 확인해 주세요.'
+                            : '반드시 남길 최소 자산을 확인해 주세요.'}
+                        </p>
+                      )}
+                      <p className="text-xs leading-relaxed text-foreground-muted">
+                        <strong className="text-foreground">아직 제안 금액입니다</strong>
+                        {' '}— 지금 값은 입력하신 계획에서 가져온 것이라 달성·미달 판정에 쓰지
+                        않습니다. 아래에서 확정해야 목표 금액이 됩니다.
+                      </p>
+                      {/* 확인할 금액을 «다시» 적는다. 입력창의 숫자와 같은 값이지만, 확정
+                          버튼 옆에 무엇을 확정하는지가 없으면 사용자는 금액을 보지 않고
+                          누르게 된다. 단위 변환은 하지 않는다 — 저장된 값과 다르게 보이는
+                          숫자를 확정시키는 것이 이 화면이 막으려는 일이다. */}
+                      <p className="text-sm font-bold text-foreground">
+                        {isSpendingGoalType(goal.type) && '월 '}
+                        {suggestedValue.toLocaleString()}{unitLabel}
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {definition.target && (
+                          <button
+                            type="button"
+                            aria-label={`${definition.label} 목표 금액 수정`}
+                            onClick={() => focusTargetInput(goal.type)}
+                            className="rounded-lg border border-card-border px-3 py-1.5 text-xs font-semibold text-foreground-muted transition hover:border-primary/50"
+                          >
+                            금액 수정
+                          </button>
+                        )}
+                        <button
+                          id={targetConfirmId(goal.type)}
+                          type="button"
+                          aria-label={`${definition.label} 목표를 이 금액으로 확정`}
+                          onClick={() => confirmTargetValue(goal.type)}
+                          className="rounded-lg bg-primary px-3 py-1.5 text-xs font-bold text-white transition hover:opacity-90"
+                        >
+                          이 금액으로 확정
+                        </button>
+                      </div>
+                    </div>
                   )}
                   <label className="flex flex-col gap-1 text-xs font-semibold text-foreground-muted">
                     조건 강도

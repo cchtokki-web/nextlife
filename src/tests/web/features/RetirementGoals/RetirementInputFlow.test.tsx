@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
 import { initialParams } from '@/infrastructure/storage/localStore';
@@ -114,6 +115,108 @@ describe('RetirementInputFlow', () => {
     const startButton = screen.getByRole('button', { name: '분석 시작' });
     expect(startButton).toBeDisabled();
     expect(screen.getByText(/목표값을 입력/)).toBeInTheDocument();
+  });
+
+  // HARD는 강도와 «기준»을 모두 확정해야 성립한다(known-issues 14번).
+  //
+  // 예전의 관문은 `targetValue > 0`만 봤다. 씨앗은 언제나 그것을 만족하므로, 사용자는
+  // 금액을 한 번도 보지 않고 강도만 「반드시 지키기」로 바꾼 뒤 «강제되지 않는» 계획을
+  // 「준비 완료」로 확인받을 수 있었다. 말없이 구속하지 않는 HARD는 시끄럽게 탈락시키는
+  // 것보다 나쁜 실패 방식이다.
+  describe('「반드시 지키기」로 고른 목표의 금액 확정', () => {
+    const withGoals = (goals: unknown[]) =>
+      ({ ...initialParams, retirementGoals: goals }) as typeof initialParams;
+
+    // 저장된 시나리오가 그대로 도착하는 모양이다 — 금액은 있고 출처 표시는 없다.
+    // 마이그레이션으로 확정 승격을 «하지 않는» 것이 원칙이므로, 이 계획은 그대로 열리되
+    // 다음 단계로 넘어갈 때 확인을 요구받는다.
+    const storedHardSeed = [{
+      type: 'LIVING_EXPENSE_STABILITY' as const, priority: 1,
+      constraintType: 'HARD' as const, targetValue: 3_500_000,
+    }];
+
+    function ConfirmationHarness({ initial }: { initial: unknown[] }) {
+      const [params, setParams] = useState(withGoals(initial));
+      return (
+        <RetirementInputFlow
+          params={params}
+          onChangeParams={(next) => setParams(
+            (typeof next === 'function' ? next(params) : next) as typeof initialParams,
+          )}
+          onStartAnalysis={vi.fn()}
+        />
+      );
+    }
+
+    test('금액이 씨앗 그대로면 분석을 시작할 수 없다', () => {
+      render(<ConfirmationHarness initial={storedHardSeed} />);
+
+      expect(screen.getByRole('button', { name: '분석 시작' })).toBeDisabled();
+      expect(screen.getByRole('status')).toHaveTextContent(
+        '「반드시 지키기」로 고른 「생활비 안정」의 금액이 아직 제안 상태입니다. '
+        + '금액을 확인하고 확정해 주세요.',
+      );
+    });
+
+    // 막는 것만으로는 부족하다. 사유는 버튼 옆에 뜨고 목표 카드는 «다른 단계»에 있어,
+    // 사용자가 둘을 함께 볼 보장이 없다 — 고칠 곳을 가리켜야 한다.
+    test('사유가 그 목표의 확정 버튼으로 데려간다', () => {
+      render(<ConfirmationHarness initial={storedHardSeed} />);
+      expect(screen.getByRole('button', { name: '1. 개인정보' })).toHaveAttribute('aria-current', 'step');
+
+      fireEvent.click(screen.getByRole('button', { name: '생활비 안정 금액 확인하러 가기' }));
+
+      expect(screen.getByRole('button', { name: '3. 은퇴 목표' })).toHaveAttribute('aria-current', 'step');
+      expect(document.activeElement)
+        .toBe(screen.getByRole('button', { name: '생활비 안정 목표를 이 금액으로 확정' }));
+    });
+
+    test('제안 금액을 그대로 확정하면 분석을 시작할 수 있다', () => {
+      render(<ConfirmationHarness initial={storedHardSeed} />);
+      fireEvent.click(screen.getByRole('button', { name: '생활비 안정 금액 확인하러 가기' }));
+
+      fireEvent.click(screen.getByRole('button', { name: '생활비 안정 목표를 이 금액으로 확정' }));
+
+      expect(screen.getByRole('button', { name: '분석 시작' })).toBeEnabled();
+    });
+
+    test('금액을 고쳐서 확정해도 분석을 시작할 수 있다', () => {
+      render(<ConfirmationHarness initial={storedHardSeed} />);
+      fireEvent.click(screen.getByRole('button', { name: '생활비 안정 금액 확인하러 가기' }));
+
+      fireEvent.change(screen.getByLabelText('목표 월 생활비'), { target: { value: '4,000,000' } });
+      fireEvent.click(screen.getByRole('button', { name: '생활비 안정 목표를 이 금액으로 확정' }));
+
+      expect(screen.getByRole('button', { name: '분석 시작' })).toBeEnabled();
+    });
+
+    // 여기가 요점이다. 타이핑은 「변경」이지 「확인」이 아니다.
+    test('금액을 고치기만 하고 확정하지 않으면 여전히 막힌다', () => {
+      render(<ConfirmationHarness initial={storedHardSeed} />);
+      fireEvent.click(screen.getByRole('button', { name: '생활비 안정 금액 확인하러 가기' }));
+
+      fireEvent.change(screen.getByLabelText('목표 월 생활비'), { target: { value: '4,000,000' } });
+
+      expect(screen.getByRole('button', { name: '분석 시작' })).toBeDisabled();
+      expect(screen.getByRole('status')).toHaveTextContent('금액을 확인하고 확정해 주세요.');
+    });
+
+    test('SOFT 목표는 씨앗 그대로도 막지 않는다', () => {
+      render(<ConfirmationHarness initial={[{ ...storedHardSeed[0], constraintType: 'SOFT' }]} />);
+
+      expect(screen.getByRole('button', { name: '분석 시작' })).toBeEnabled();
+    });
+
+    // 이 둘의 기준은 씨앗이 아니라 사용자가 1단계에서 «직접 입력한» 값이다(은퇴 나이·
+    // 기대수명). 확인이 해결할 문제가 애초에 없으므로 관문을 세우지 않는다.
+    test.each([
+      [{ type: 'EARLY_RETIREMENT', priority: 1, constraintType: 'HARD', targetValue: 60 }],
+      [{ type: 'ASSET_SURVIVAL', priority: 1, constraintType: 'HARD' }],
+    ])('%o는 HARD여도 막지 않는다', (goal) => {
+      render(<ConfirmationHarness initial={[goal]} />);
+
+      expect(screen.getByRole('button', { name: '분석 시작' })).toBeEnabled();
+    });
   });
 
   // 카드 시드가 «정규화된» 프로필에서 와야 한다. 저장된 옛 은퇴 나이를 그대로 시드하면

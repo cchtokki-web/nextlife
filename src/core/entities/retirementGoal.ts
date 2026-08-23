@@ -42,7 +42,9 @@ export interface RetirementGoal {
    * 같은 이유로 기존 데이터를 마이그레이션하지 «않는다» — 표시가 없는 것이 곧 「모른다」이고,
    * 모르는 것은 확정이 아니다.
    *
-   * **씨앗에는 붙이지 않는다.** 붙일 수 있는 곳은 사용자가 값을 «입력하는» 경로 하나뿐이다.
+   * **씨앗에는 붙이지 않는다.** 붙일 수 있는 곳은 사용자가 금액을 «확정하는» 행위 하나뿐이다
+   * (목표 카드의 「이 금액으로 확정」). 타이핑은 「변경」이지 「확인」이 아니므로 입력만으로는
+   * 붙지 않는다 — 고치다 만 금액을 확정으로 읽으면 표시가 다시 뜻을 잃는다(known-issues 14번).
    * 정규화·어댑터·저장 복원처럼 목표 객체를 다시 만드는 경로가 이 표시를 «지어내면» 수정이
    * 조용히 무효가 되므로, 그 경로들은 있는 그대로 옮기기만 한다.
    */
@@ -91,6 +93,24 @@ export function isSuggestedTargetValue(goal: RetirementGoal): boolean {
   return goal.targetValue !== undefined
     && hasMoneyTarget(goal.type)
     && goal.targetValueSource !== 'user';
+}
+
+/**
+ * 이 목표가 「반드시 지키기」로 «성립하기 위해» 사용자의 확정을 기다리고 있는가.
+ *
+ * **HARD는 강도와 기준을 모두 확정해야 성립한다.** 강도만 고르고 기준이 씨앗이면 두 가지
+ * 중 하나가 일어난다 — 그 금액을 그대로 강제하면 사용자가 말한 적 없는 숫자로 계획을
+ * 묶는 것이고(2번), 그냥 통과시키면 아무것도 구속하지 않는 HARD가 「준비됨」으로 확인받는다
+ * (14번). 리뷰어의 말대로 «조용히» 받아들이는 쪽이 더 나쁜 실패다. 그래서 어느 쪽도 하지
+ * 않고 사용자에게 그 금액을 확인하거나 고치도록 요구한다.
+ *
+ * **판정은 목표«자신의» 기준으로 한다.** 이 술어가 참이 되는 것은 기준이 씨앗인 목표뿐이다
+ * (생활비 둘·상속). 「빠른 은퇴」의 은퇴 나이와 「자산 고갈 방지」의 기대수명은 사용자가
+ * 1단계에서 «직접 입력한» 값이라 확인이 해결할 문제가 애초에 없다 — 그 둘은 금액 목표가
+ * 아니므로 isSuggestedTargetValue에서 걸러진다.
+ */
+export function hardGoalAwaitsTargetConfirmation(goal: RetirementGoal): boolean {
+  return goal.constraintType === 'HARD' && isSuggestedTargetValue(goal);
 }
 
 export const MAX_RETIREMENT_GOALS = 5;

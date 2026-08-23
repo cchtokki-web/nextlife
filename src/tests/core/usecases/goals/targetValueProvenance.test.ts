@@ -3,6 +3,7 @@ import { LegacySimulationAdapter } from '@/core/domain/input/LegacySimulationAda
 import { DefaultGoalEvaluationEngine } from '@/core/evaluation/GoalEvaluationEngine';
 import {
   confirmedTargetValue,
+  hardGoalAwaitsTargetConfirmation,
   hardSpendingFloorTarget,
   isSuggestedTargetValue,
   moveRetirementGoal,
@@ -238,5 +239,44 @@ describe('목표금액의 출처 — 어떤 경로도 표시를 지어내지 않
 
     expect(emptied[0].targetValueSource).toBeUndefined();
     expect('targetValueSource' in emptied[0]).toBe(false);
+  });
+});
+
+// HARD = 강도 확정 + «기준» 확정. 저장된 금액이 0보다 크다는 것은 확정의 증거가 아니다 —
+// 씨앗도 언제나 그것을 만족한다(known-issues 14번).
+describe('목표금액의 출처 — HARD가 성립하려면 기준도 확정되어야 한다', () => {
+  test('표시 없는 HARD 금액 목표는 확정을 기다린다', () => {
+    expect(hardGoalAwaitsTargetConfirmation(spendingGoal())).toBe(true);
+    expect(hardGoalAwaitsTargetConfirmation(bequestGoal())).toBe(true);
+  });
+
+  // 저장 데이터를 다시 쓰지 않는다. 금액이 있다는 이유로 확정으로 승격시키면 이 관문이
+  // 막으려는 상태가 «저장된 채로» 통과한다.
+  test('저장된 targetValue > 0은 확정으로 읽히지 않는다', () => {
+    const loaded = normalizeSimulationParams(JSON.parse(JSON.stringify(plan([spendingGoal()]))));
+
+    expect(loaded.retirementGoals![0].targetValue).toBe(5_000_000);
+    expect(hardGoalAwaitsTargetConfirmation(loaded.retirementGoals![0])).toBe(true);
+  });
+
+  test('사용자가 확정한 금액은 더 기다리지 않는다', () => {
+    expect(hardGoalAwaitsTargetConfirmation(spendingGoal({ targetValueSource: 'user' }))).toBe(false);
+  });
+
+  // SOFT에는 마찰을 더하지 않는다. 확정을 요구하는 이유는 「반드시 지키기」가 지키지 않는
+  // 조건이 되는 것을 막기 위해서이고, SOFT에는 그 문제가 없다.
+  test('SOFT 목표는 씨앗이어도 확정을 기다리지 않는다', () => {
+    expect(hardGoalAwaitsTargetConfirmation(spendingGoal({ constraintType: 'SOFT' }))).toBe(false);
+  });
+
+  // 이 둘의 기준은 사용자가 1단계에서 «직접 입력한» 값이다(은퇴 나이·기대수명).
+  // 확인이 해결할 문제가 애초에 없다.
+  test('빠른 은퇴와 자산 고갈 방지는 HARD여도 확정을 기다리지 않는다', () => {
+    expect(hardGoalAwaitsTargetConfirmation(
+      { type: 'EARLY_RETIREMENT', priority: 1, constraintType: 'HARD', targetValue: 60 },
+    )).toBe(false);
+    expect(hardGoalAwaitsTargetConfirmation(
+      { type: 'ASSET_SURVIVAL', priority: 1, constraintType: 'HARD' },
+    )).toBe(false);
   });
 });
