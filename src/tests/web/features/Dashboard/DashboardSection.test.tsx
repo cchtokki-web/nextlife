@@ -963,8 +963,8 @@ describe('동시에 달성하기 어려운 목표', () => {
     assetFloor: 80_000_000,
     hardSpendingFloor: 5_000_000,
     retirementGoals: [
-      { type: 'LIVING_EXPENSE_STABILITY', priority: 1, constraintType: 'HARD', targetValue: 5_000_000 },
-      { type: 'INHERITANCE', priority: 2, constraintType: 'HARD', targetValue: 80_000_000 },
+      { type: 'LIVING_EXPENSE_STABILITY', priority: 1, constraintType: 'HARD', targetValue: 5_000_000, targetValueSource: 'user' },
+      { type: 'INHERITANCE', priority: 2, constraintType: 'HARD', targetValue: 80_000_000, targetValueSource: 'user' },
     ],
   } as unknown as SimulationParams;
 

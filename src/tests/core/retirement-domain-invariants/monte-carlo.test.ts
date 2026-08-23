@@ -40,6 +40,7 @@ describe('retirement-domain-invariants / Monte Carlo', () => {
       constraintType: 'SOFT',
       // 이 fixture가 절대 도달할 수 없는 금액.
       targetValue: 100_000_000_000_000,
+      targetValueSource: 'user',
     }]);
 
     expect(withGoal.userProfile.targetBequest).toBe(100_000_000_000_000);

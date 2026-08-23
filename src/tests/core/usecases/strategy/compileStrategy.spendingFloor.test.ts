@@ -22,10 +22,13 @@ function paramsWithGoals(goals: RetirementGoal[]): SimulationParams {
   return migrateRetirementGoals(raw);
 }
 
+// 사용자가 «입력창에 직접 써넣은» 목표금액이다(targetValueSource: 'user'). 표시가 없으면
+// 화면이 깔아 준 제안으로 취급되어 바닥을 세우지 않는다 — 그 규칙은 이 파일이 아니라
+// retirementGoal.provenance 테스트가 고정한다.
 const stability = (v: number, c: 'HARD' | 'SOFT'): RetirementGoal =>
-  ({ type: 'LIVING_EXPENSE_STABILITY', priority: 1, targetValue: v, constraintType: c });
+  ({ type: 'LIVING_EXPENSE_STABILITY', priority: 1, targetValue: v, targetValueSource: 'user', constraintType: c });
 const comfortable = (v: number, c: 'HARD' | 'SOFT'): RetirementGoal =>
-  ({ type: 'COMFORTABLE_SPENDING', priority: 2, targetValue: v, constraintType: c });
+  ({ type: 'COMFORTABLE_SPENDING', priority: 2, targetValue: v, targetValueSource: 'user', constraintType: c });
 
 describe('hardSpendingFloor는 강도에서 나온다', () => {
   // 유형으로 강도를 추론하지 않는다. constraintType은 사용자가 모든 목표에 대해 자유롭게

@@ -641,10 +641,17 @@ function normalizeGoals(value: unknown): RetirementGoal[] | undefined {
     .filter((raw): boolean =>
       typeof raw.type === 'string'
       && (RETIREMENT_GOAL_TYPES as readonly string[]).includes(raw.type))
-    .map((raw) => ({
-      type: raw.type as RetirementGoalType,
-      priority: finite(raw.priority, Number.MAX_SAFE_INTEGER),
-      targetValue: optionalFinite(raw.targetValue),
-      constraintType: oneOf(raw.constraintType, ['HARD', 'SOFT'], 'SOFT'),
-    }));
+    .map((raw) => {
+      const goal: RetirementGoal = {
+        type: raw.type as RetirementGoalType,
+        priority: finite(raw.priority, Number.MAX_SAFE_INTEGER),
+        targetValue: optionalFinite(raw.targetValue),
+        constraintType: oneOf(raw.constraintType, ['HARD', 'SOFT'], 'SOFT'),
+      };
+      // 출처 표시는 «있는 그대로만» 살린다. 정확히 'user'일 때만 통과시키고, 그 밖의 값은
+      // 조용히 버려 미확정으로 되돌린다 — 여기서 기본값을 채우거나 값을 넓게 받아 주면
+      // 저장 데이터를 손대는 것만으로 씨앗이 확정으로 승격된다(RetirementGoal 주석).
+      if (raw.targetValueSource === 'user') goal.targetValueSource = 'user';
+      return goal;
+    });
 }

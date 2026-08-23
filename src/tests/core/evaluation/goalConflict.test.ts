@@ -44,7 +44,10 @@ function evaluatePlan(params: SimulationParams) {
 }
 
 const hardSpendingGoal = (targetValue: number, priority = 1): RetirementGoal =>
-  ({ type: 'LIVING_EXPENSE_STABILITY', priority, constraintType: 'HARD', targetValue });
+  ({ type: 'LIVING_EXPENSE_STABILITY', priority, constraintType: 'HARD', targetValue,
+    // 사용자가 입력창에 직접 써넣은 금액이다. 표시가 없으면 화면이 깔아 준 제안이라
+    // 바닥을 세우지 않고, 그러면 이 파일이 재려는 충돌 자체가 생기지 않는다.
+    targetValueSource: 'user' });
 
 describe('교차 계층 충돌 — HARD 생활비 바닥이 HARD 상속 하한선을 이긴다', () => {
   const conflicted = plan({
@@ -52,7 +55,7 @@ describe('교차 계층 충돌 — HARD 생활비 바닥이 HARD 상속 하한�
     hardSpendingFloor: 5_000_000,
     retirementGoals: [
       hardSpendingGoal(5_000_000),
-      { type: 'INHERITANCE', priority: 2, constraintType: 'HARD', targetValue: 280_000_000 },
+      { type: 'INHERITANCE', priority: 2, constraintType: 'HARD', targetValue: 280_000_000, targetValueSource: 'user' },
     ],
   });
 
@@ -99,7 +102,7 @@ describe('교차 계층 충돌 — HARD 생활비 바닥이 HARD 상속 하한�
       hardSpendingFloor: 5_000_000,
       retirementGoals: [
         hardSpendingGoal(5_000_000),
-        { type: 'INHERITANCE', priority: 2, constraintType: 'HARD', targetValue: 10_000_000 },
+        { type: 'INHERITANCE', priority: 2, constraintType: 'HARD', targetValue: 10_000_000, targetValueSource: 'user' },
       ],
     }));
 
@@ -122,10 +125,10 @@ describe('동일 계층은 충돌하지 않는다 — 계층 2의 두 제약은 
 
   test('상속 하한선과 자산 고갈 방지는 Math.max로 «합쳐져» 하나의 스칼라가 된다', () => {
     const inheritanceOnly = compileStrategy(withGoals([
-      { type: 'INHERITANCE', priority: 1, constraintType: 'HARD', targetValue: 200_000_000 },
+      { type: 'INHERITANCE', priority: 1, constraintType: 'HARD', targetValue: 200_000_000, targetValueSource: 'user' },
     ])).params.assetFloor;
     const both = compileStrategy(withGoals([
-      { type: 'INHERITANCE', priority: 1, constraintType: 'HARD', targetValue: 200_000_000 },
+      { type: 'INHERITANCE', priority: 1, constraintType: 'HARD', targetValue: 200_000_000, targetValueSource: 'user' },
       { type: 'ASSET_SURVIVAL', priority: 2, constraintType: 'HARD' },
     ])).params.assetFloor;
 
@@ -137,7 +140,7 @@ describe('동일 계층은 충돌하지 않는다 — 계층 2의 두 제약은 
 
   test('계층 2의 두 HARD 목표가 함께 미달해도 충돌로 보고하지 않는다', () => {
     const { evaluated } = evaluatePlan(withGoals([
-      { type: 'INHERITANCE', priority: 1, constraintType: 'HARD', targetValue: 200_000_000 },
+      { type: 'INHERITANCE', priority: 1, constraintType: 'HARD', targetValue: 200_000_000, targetValueSource: 'user' },
       { type: 'ASSET_SURVIVAL', priority: 2, constraintType: 'HARD' },
     ]));
 
@@ -202,7 +205,7 @@ describe('납세로 하한선이 침범당한 것은 충돌이 아니다', () =>
     hardSpendingFloor: 4_000_000,
     retirementGoals: [
       hardSpendingGoal(4_000_000),
-      { type: 'INHERITANCE', priority: 2, constraintType: 'HARD', targetValue: 448_000_000 },
+      { type: 'INHERITANCE', priority: 2, constraintType: 'HARD', targetValue: 448_000_000, targetValueSource: 'user' },
     ],
   });
 
@@ -230,7 +233,7 @@ describe('충돌이 없으면 조용하다', () => {
       hardSpendingFloor: 5_000_000,
       retirementGoals: [
         hardSpendingGoal(5_000_000),
-        { type: 'INHERITANCE', priority: 2, constraintType: 'HARD', targetValue: 100_000_000 },
+        { type: 'INHERITANCE', priority: 2, constraintType: 'HARD', targetValue: 100_000_000, targetValueSource: 'user' },
       ],
     }));
 
@@ -246,8 +249,8 @@ describe('충돌이 없으면 조용하다', () => {
     const { result, evaluated } = evaluatePlan(plan({
       assetFloor: 280_000_000,
       retirementGoals: [
-        { type: 'LIVING_EXPENSE_STABILITY', priority: 1, constraintType: 'SOFT', targetValue: 5_000_000 },
-        { type: 'INHERITANCE', priority: 2, constraintType: 'HARD', targetValue: 280_000_000 },
+        { type: 'LIVING_EXPENSE_STABILITY', priority: 1, constraintType: 'SOFT', targetValue: 5_000_000, targetValueSource: 'user' },
+        { type: 'INHERITANCE', priority: 2, constraintType: 'HARD', targetValue: 280_000_000, targetValueSource: 'user' },
       ],
     }));
 

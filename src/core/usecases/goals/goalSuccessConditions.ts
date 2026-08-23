@@ -1,4 +1,5 @@
 import {
+  confirmedTargetValue,
   normalizeRetirementGoals,
   type RetirementGoal,
   type RetirementGoalType,
@@ -121,9 +122,12 @@ export function resolveGoalSuccessConditions(params: SimulationParams): GoalSucc
   };
 }
 
-// 기말자산 조건은 상속·자산 성장 목표에서만 나온다. 목표에 금액이 없으면 계획이 실체화한
-// targetBequest로 대신한다 — 그 값은 사용자가 목표를 고른 결과로 만들어진 것이라
+// 기말자산 조건은 상속·자산 성장 목표에서만 나온다. 목표에 «확정된» 금액이 없으면 계획이
+// 실체화한 targetBequest로 대신한다 — 그 값은 사용자가 목표를 고른 결과로 만들어진 것이라
 // (applyRetirementGoals → compileStrategy) 고르지 않은 조건을 새로 만드는 것이 아니다.
+//
+// 확정 여부를 여기서 다시 묻는 이유: 이 값은 시행마다 「성공인가」를 가르는 판정 조건이다.
+// 미확정 씨앗을 그대로 쓰면 사용자가 말한 적 없는 금액이 목표 달성 확률을 깎는다.
 function terminalAssetGoalOf(
   measurable: readonly RetirementGoal[],
   params: SimulationParams,
@@ -133,7 +137,7 @@ function terminalAssetGoalOf(
   if (assetGoals.length === 0) return 0;
 
   const explicit = assetGoals
-    .map((goal) => goal.targetValue)
+    .map(confirmedTargetValue)
     .filter((value): value is number => value !== undefined && Number.isFinite(value));
   if (explicit.length > 0) return Math.max(0, Math.max(...explicit));
 

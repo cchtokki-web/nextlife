@@ -12,7 +12,7 @@ describe('DefaultGoalEvaluationEngine', () => {
     const input = LegacySimulationAdapter.fromLegacy(structuredClone(initialParams));
     input.goals.selectedGoals = [
       { type: 'ASSET_SURVIVAL', priority: 1, constraintType: 'HARD' },
-      { type: 'INHERITANCE', priority: 2, constraintType: 'HARD', targetValue: 1_000_000_000 },
+      { type: 'INHERITANCE', priority: 2, constraintType: 'HARD', targetValue: 1_000_000_000, targetValueSource: 'user' },
       { type: 'LIVING_EXPENSE_STABILITY', priority: 3, constraintType: 'HARD' },
     ];
     const simulated = new LegacySimulationEngine().simulate(input.profile, input.strategy);
@@ -139,12 +139,14 @@ describe('DefaultGoalEvaluationEngine', () => {
         priority: 1,
         constraintType: 'SOFT',
         targetValue: 3_000_000,
+        targetValueSource: 'user',
       },
       {
         type: 'COMFORTABLE_SPENDING',
         priority: 2,
         constraintType: 'HARD',
         targetValue: 5_000_000,
+        targetValueSource: 'user',
       },
     ];
     const result = new LegacySimulationEngine().simulate(input.profile, input.strategy);
@@ -182,6 +184,7 @@ describe('DefaultGoalEvaluationEngine', () => {
       priority: 1,
       constraintType: 'HARD',
       targetValue: 3_000_000,
+      targetValueSource: 'user',
     }];
     const simulated = new LegacySimulationEngine().simulate(input.profile, input.strategy);
     const firstRetirementYear = simulated.yearlyResults.findIndex(
@@ -334,7 +337,7 @@ describe('점수 가드', () => {
   test('시뮬레이션 결과가 비유한 값이면 점수를 만들지 않고 예외를 던진다', () => {
     const input = LegacySimulationAdapter.fromLegacy(structuredClone(initialParams));
     input.goals.selectedGoals = [{
-      type: 'INHERITANCE', priority: 1, constraintType: 'SOFT', targetValue: 100_000_000,
+      type: 'INHERITANCE', priority: 1, constraintType: 'SOFT', targetValue: 100_000_000, targetValueSource: 'user',
     }];
     const simulated = new LegacySimulationEngine().simulate(input.profile, input.strategy);
 
@@ -417,7 +420,7 @@ describe('부동소수점 잔여와 HARD 생활비 목표', () => {
       ...allAxesLiveParams,
       userProfile: { ...allAxesLiveParams.userProfile, expectancy: 68, targetMonthlySpending: target },
       retirementGoals: [
-        { type: 'LIVING_EXPENSE_STABILITY', priority: 1, targetValue: target, constraintType: 'HARD' },
+        { type: 'LIVING_EXPENSE_STABILITY', priority: 1, targetValue: target, targetValueSource: 'user', constraintType: 'HARD' },
       ],
       strategy: { ...DEFAULT_RETIREMENT_STRATEGY, privatePensionStrategy: 'tax_first' },
     });

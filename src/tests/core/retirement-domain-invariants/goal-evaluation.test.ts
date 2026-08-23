@@ -18,6 +18,7 @@ describe('retirement-domain-invariants / goal evaluation', () => {
         priority: 2,
         constraintType: 'SOFT',
         targetValue: 500_000_000,
+        targetValueSource: 'user',
       },
     ];
     const simulated = new LegacySimulationEngine().simulate(input.profile, input.strategy);

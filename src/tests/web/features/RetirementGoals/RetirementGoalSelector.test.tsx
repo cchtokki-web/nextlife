@@ -4,7 +4,9 @@ import { describe, expect, test } from 'vitest';
 import type { RetirementGoal } from '@/core/entities/retirementGoal';
 import { RetirementGoalSelector } from '@/web/features/RetirementGoals/RetirementGoalSelector';
 
-function SelectorHarness({ initial = [] }: { initial?: RetirementGoal[] }) {
+function SelectorHarness({
+  initial = [], onGoals,
+}: { initial?: RetirementGoal[]; onGoals?: (goals: RetirementGoal[]) => void }) {
   const [goals, setGoals] = useState(initial);
   return (
     <RetirementGoalSelector
@@ -12,7 +14,7 @@ function SelectorHarness({ initial = [] }: { initial?: RetirementGoal[] }) {
       displayCurrency="KRW"
       retirementAge={60}
       targetMonthlySpending={3500000}
-      onChange={setGoals}
+      onChange={(next) => { onGoals?.(next); setGoals(next); }}
     />
   );
 }
@@ -118,6 +120,81 @@ describe('RetirementGoalSelector', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /빠른 은퇴/ }));
     expect(screen.getAllByText(/생활비 충당을 우선합니다/)).toHaveLength(2);
+  });
+
+  // 씨앗과 사용자 확정값을 «화면에서» 가른다.
+  //
+  // 미확정 금액은 부족분·HARD/SOFT 판정에 참가하지 않는다(confirmedTargetValue). 그 사실을
+  // 숨기면 「반드시 지키기」를 골라 둔 사용자가 자기 금액이 강제되지 않는다는 것을 알 수 없고,
+  // 이 수정이 목표를 조용히 약화시킨 것으로 나타난다.
+  describe('목표금액의 출처', () => {
+    test('목표를 고를 때 깔리는 금액에는 출처 표시가 붙지 않는다', () => {
+      const seen: RetirementGoal[][] = [];
+      render(<SelectorHarness onGoals={(goals) => seen.push(goals)} />);
+
+      fireEvent.click(screen.getByRole('button', { name: /생활비 안정/ }));
+
+      expect(seen.at(-1)).toEqual([{
+        type: 'LIVING_EXPENSE_STABILITY', priority: 1,
+        targetValue: 3500000, constraintType: 'SOFT',
+      }]);
+      expect(seen.at(-1)![0].targetValueSource).toBeUndefined();
+    });
+
+    test('사용자가 입력창에 써넣은 금액에만 출처 표시가 붙는다', () => {
+      const seen: RetirementGoal[][] = [];
+      render(<SelectorHarness onGoals={(goals) => seen.push(goals)} />);
+      fireEvent.click(screen.getByRole('button', { name: /생활비 안정/ }));
+
+      fireEvent.change(screen.getByLabelText('목표 월 생활비'), { target: { value: '4,000,000' } });
+
+      expect(seen.at(-1)).toEqual([{
+        type: 'LIVING_EXPENSE_STABILITY', priority: 1,
+        targetValue: 4_000_000, targetValueSource: 'user', constraintType: 'SOFT',
+      }]);
+    });
+
+    test('강도만 바꾸는 것으로는 제안이 확정되지 않는다', () => {
+      const seen: RetirementGoal[][] = [];
+      render(<SelectorHarness onGoals={(goals) => seen.push(goals)} />);
+      fireEvent.click(screen.getByRole('button', { name: /생활비 안정/ }));
+
+      fireEvent.change(screen.getByLabelText('생활비 안정 조건 강도'), { target: { value: 'HARD' } });
+
+      expect(seen.at(-1)![0].constraintType).toBe('HARD');
+      expect(seen.at(-1)![0].targetValueSource).toBeUndefined();
+      expect(screen.getByText(/아직 제안 금액입니다/)).toBeInTheDocument();
+    });
+
+    test('제안 상태에는 「아직 제안 금액입니다」와 확정 방법이 함께 뜬다', () => {
+      render(<SelectorHarness />);
+
+      fireEvent.click(screen.getByRole('button', { name: /생활비 안정/ }));
+      expect(screen.getByText(/아직 제안 금액입니다/)).toBeInTheDocument();
+      expect(screen.getByText(/위 칸에 원하는 금액을 직접 입력하면 목표 금액으로 확정됩니다/))
+        .toBeInTheDocument();
+
+      fireEvent.change(screen.getByLabelText('목표 월 생활비'), { target: { value: '4,000,000' } });
+      expect(screen.queryByText(/아직 제안 금액입니다/)).not.toBeInTheDocument();
+    });
+
+    test('상속 목표의 씨앗도 제안으로 표시된다', () => {
+      render(<SelectorHarness />);
+
+      fireEvent.click(screen.getByRole('button', { name: /상속 자산 확보/ }));
+
+      expect(screen.getByText(/아직 제안 금액입니다/)).toBeInTheDocument();
+    });
+
+    // 나이는 금액이 아니고, 그 씨앗은 사용자가 1단계에서 «직접 입력한» 은퇴 나이다.
+    // 제안이라 부르면 사용자가 이미 말한 것을 말한 적 없다고 하는 셈이 된다.
+    test('희망 은퇴 나이에는 제안 문구를 붙이지 않는다', () => {
+      render(<SelectorHarness />);
+
+      fireEvent.click(screen.getByRole('button', { name: /빠른 은퇴/ }));
+
+      expect(screen.queryByText(/아직 제안 금액입니다/)).not.toBeInTheDocument();
+    });
   });
 
   test('우선순위 이동 버튼으로 선택 순서를 바꾼다', () => {

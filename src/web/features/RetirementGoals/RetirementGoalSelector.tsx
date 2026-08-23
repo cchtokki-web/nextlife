@@ -7,6 +7,7 @@ import {
   normalizeRetirementGoals,
   RETIREMENT_GOAL_CONSTRAINT_LABELS,
   isSpendingGoalType,
+  isSuggestedTargetValue,
   type RetirementGoal,
   type RetirementGoalConstraintType,
   type RetirementGoalType,
@@ -38,6 +39,9 @@ export function RetirementGoalSelector({
     return undefined;
   };
 
+  // 목표를 고르는 순간 깔아 주는 값은 «제안»이다. 출처 표시(targetValueSource)를 붙이지
+  // 않으므로 계산은 이 값을 사용자가 확정한 목표금액으로 취급하지 않는다. 씨앗 자체는
+  // 그대로 둔다 — 빈 칸으로 두면 사용자가 매번 숫자를 지어내야 한다.
   const toggleGoal = (type: RetirementGoalType) => {
     if (selectedTypes.has(type)) {
       onChange(normalizeRetirementGoals(selected.filter((goal) => goal.type !== type)));
@@ -56,6 +60,10 @@ export function RetirementGoalSelector({
     ]));
   };
 
+  /**
+   * 사용자가 «직접» 고친 값만 반영하는 경로. 목표금액을 여기로 넣으면 출처 표시가 함께
+   * 붙어 확정값이 된다 — 이 함수 말고는 표시를 붙이는 곳이 없어야 한다.
+   */
   const updateGoal = (type: RetirementGoalType, patch: Partial<RetirementGoal>) => {
     onChange(normalizeRetirementGoals(
       selected.map((goal) => goal.type === type ? { ...goal, ...patch } : goal),
@@ -161,8 +169,11 @@ export function RetirementGoalSelector({
                           onChange={(event) => {
                             const raw = event.target.value.replace(/,/g, '');
                             if (raw === '' || /^\d+$/.test(raw)) {
+                              // 사용자가 이 칸에 써넣은 숫자만 확정값이다. 빈 칸으로 지우면
+                              // 표시도 함께 사라진다(normalizeRetirementGoals).
                               updateGoal(goal.type, {
                                 targetValue: raw === '' ? undefined : Number(raw),
+                                targetValueSource: 'user',
                               });
                             }
                           }}
@@ -173,6 +184,16 @@ export function RetirementGoalSelector({
                         </span>
                       </span>
                     </label>
+                  )}
+                  {/* 확정되지 않은 금액은 판정에 참가하지 않는다. 그 사실을 숨기면 「반드시
+                      지키기」를 골라 둔 사용자가 자기 금액이 강제되지 않는다는 것을 알 수 없다.
+                      제안값 자체는 지금 쓰는 것을 그대로 둔다 — 새 숫자를 만들지 않는다. */}
+                  {isSuggestedTargetValue(goal) && (
+                    <p className="text-xs leading-relaxed text-foreground-muted">
+                      <strong className="text-foreground">아직 제안 금액입니다</strong>
+                      {' '}— 지금 값은 입력하신 계획에서 가져온 것이라 달성·미달 판정에 쓰지
+                      않습니다. 위 칸에 원하는 금액을 직접 입력하면 목표 금액으로 확정됩니다.
+                    </p>
                   )}
                   <label className="flex flex-col gap-1 text-xs font-semibold text-foreground-muted">
                     조건 강도

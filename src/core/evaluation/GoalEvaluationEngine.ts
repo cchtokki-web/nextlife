@@ -1,6 +1,11 @@
 import type { RetirementGoal, RetirementGoalType } from '../entities/retirementGoal';
 import type { SpendingGoalType } from '../entities/retirementGoal';
-import { hardSpendingFloorTarget, isSpendingGoalType, normalizeRetirementGoals } from '../entities/retirementGoal';
+import {
+  confirmedTargetValue,
+  hardSpendingFloorTarget,
+  isSpendingGoalType,
+  normalizeRetirementGoals,
+} from '../entities/retirementGoal';
 import type {
   SimulationResult,
   SimulationParams,
@@ -276,6 +281,7 @@ function spendingEvaluation(
   params: SimulationParams,
 ): GoalEvaluation {
   const retirementYears = result.yearlyResults.filter((year) => year.age >= strategy.retirementAge);
+  const confirmedTarget = confirmedTargetValue(goal);
   const goalParams = spendingGoalParams(goal, strategy, params);
   const shortfallYears = retirementYears.filter(
     (year) => isGoalSpendingShortfall(goal, strategy, goalParams, year),
@@ -285,9 +291,11 @@ function spendingEvaluation(
     goalType: goal.type,
     score,
     achieved: retirementYears.length > 0 && shortfallYears === 0,
-    measurement: goal.targetValue === undefined
+    // 확정된 금액만 목표로 적는다. 미확정 씨앗을 여기 적으면 화면이 「목표 350만원」이라
+    // 말하는데 판정은 계획의 금액으로 이뤄져, 사용자가 보는 자와 재는 자가 갈라진다.
+    measurement: confirmedTarget === undefined
       ? { unit: 'MONTHLY_MONEY' }
-      : { unit: 'MONTHLY_MONEY', target: goal.targetValue },
+      : { unit: 'MONTHLY_MONEY', target: confirmedTarget },
     reason: retirementYears.length === 0
       ? '은퇴 기간 결과가 없어 소비 목표를 평가할 수 없습니다.'
       : shortfallYears === 0
@@ -301,7 +309,9 @@ function spendingGoalParams(
   strategy: RetirementStrategy,
   params: SimulationParams,
 ): SimulationParams {
-  const targetMonthlySpending = goal.targetValue ?? strategy.targetMonthlySpending;
+  // 확정된 목표금액이 없으면 «계획의» 목표 생활비로 잰다. 계획의 축은 그대로 쓴다 —
+  // 없애는 것은 사용자가 진술한 적 없는 숫자를 근거로 미달을 선언하는 일뿐이다.
+  const targetMonthlySpending = confirmedTargetValue(goal) ?? strategy.targetMonthlySpending;
   if (targetMonthlySpending === params.userProfile.targetMonthlySpending) {
     return params;
   }
@@ -323,8 +333,9 @@ function isGoalSpendingShortfall(
   // The shortfall ledger belongs to the concrete strategy target. For a different selected goal,
   // compare actual spending with that goal directly so a higher shared target cannot incorrectly
   // fail a lower goal (or a lower shared target pass a higher one).
-  const usesStrategyTarget = goal.targetValue === undefined
-    || goal.targetValue === strategy.targetMonthlySpending;
+  const confirmedTarget = confirmedTargetValue(goal);
+  const usesStrategyTarget = confirmedTarget === undefined
+    || confirmedTarget === strategy.targetMonthlySpending;
   return (usesStrategyTarget && hasSpendingShortfall(year))
     || year.spending < targetAnnualSpendingForYear(goalParams, year);
 }
@@ -415,7 +426,7 @@ function endingAssetEvaluation(
   result: StrategySimulationResult,
   raws: UtilityRaws,
 ): GoalEvaluation {
-  const targetValue = goal.targetValue;
+  const targetValue = confirmedTargetValue(goal);
   if (targetValue !== undefined) {
     return minimumEndingAssetEvaluation(goal, result, targetValue);
   }
@@ -435,8 +446,9 @@ function assetGrowthEvaluation(
   strategy: RetirementStrategy,
   result: StrategySimulationResult,
 ): GoalEvaluation {
-  if (goal.targetValue !== undefined) {
-    return minimumEndingAssetEvaluation(goal, result, goal.targetValue);
+  const confirmedTarget = confirmedTargetValue(goal);
+  if (confirmedTarget !== undefined) {
+    return minimumEndingAssetEvaluation(goal, result, confirmedTarget);
   }
 
   const retirementYear = result.yearlyResults.find((year) => year.age >= strategy.retirementAge);
@@ -594,12 +606,14 @@ function yieldedLayerTwoGoals(
   for (const goal of goals) {
     if (goal.constraintType !== 'HARD' || !failedTypes.has(goal.type)) continue;
 
-    // 상속 하한선. assetFloor의 «크기»를 정하는 목표다.
-    if (goal.type === 'INHERITANCE' && goal.targetValue !== undefined) {
+    // 상속 하한선. assetFloor의 «크기»를 정하는 목표다. 확정된 금액만 미달을 말할 수 있다 —
+    // 미확정 씨앗으로 「얼마가 모자랐다」를 적으면 충돌 보고가 근거를 잃는다.
+    const confirmedTarget = confirmedTargetValue(goal);
+    if (goal.type === 'INHERITANCE' && confirmedTarget !== undefined) {
       conflicting.push({
         goalType: goal.type,
         constraintLayer: 2,
-        shortfall: { unit: 'MONEY', amount: Math.max(0, goal.targetValue - result.endingAssets) },
+        shortfall: { unit: 'MONEY', amount: Math.max(0, confirmedTarget - result.endingAssets) },
       });
       continue;
     }
@@ -741,13 +755,18 @@ export class DefaultGoalEvaluationEngine implements GoalEvaluationEngine {
         continue;
       }
 
+      // 확정된 목표금액만 HARD 미달을 만든다. 상속 목표는 고르는 «순간» 화면이 금액을
+      // 깔아 주므로(targetBequest ?? 월 생활비 × 24), 그 씨앗을 그대로 판정하면 사용자가
+      // 금액을 말하기도 전에 기말자산 하한이 서 버린다. 확정되지 않은 HARD 목표는 아래
+      // unsupportedHardGoals로 «드러난 채» 남는다 — 조용히 통과시키지 않는다.
+      const confirmedTarget = confirmedTargetValue(goal);
       if ((goal.type === 'INHERITANCE' || goal.type === 'ASSET_GROWTH')
-        && goal.targetValue !== undefined) {
-        if (result.endingAssets < goal.targetValue) {
+        && confirmedTarget !== undefined) {
+        if (result.endingAssets < confirmedTarget) {
           hardConstraintFailures.push({
             code: 'HARD_MINIMUM_ENDING_ASSETS',
             goalType: goal.type,
-            reason: `기말 자산이 HARD 목표 ${krw(goal.targetValue)}에 미달합니다.`,
+            reason: `기말 자산이 HARD 목표 ${krw(confirmedTarget)}에 미달합니다.`,
           });
         }
         continue;

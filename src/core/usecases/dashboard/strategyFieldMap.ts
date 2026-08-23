@@ -132,13 +132,22 @@ function withGoalTarget(
   types: readonly RetirementGoalType[],
   value: number,
   reason: string,
+  planAxis?: (params: SimulationParams, value: number) => SimulationParams,
 ): StrategyFieldApplication {
   const goals = normalizeRetirementGoals(params.retirementGoals ?? []);
   const index = goals.findIndex((goal) => types.includes(goal.type));
   if (index === -1) return { applied: false, reason };
 
+  // 출처 표시(targetValueSource)는 «있으면 그대로 두고, 없으면 만들지 않는다». 추천이 고른
+  // 금액은 시스템의 숫자이고, 확정은 사용자가 목표 카드의 입력창에 써넣을 때만 생긴다.
+  // 이미 확정된 목표를 고쳐 쓰는 것은 사용자가 카드의 금액을 보고 「반영」을 누른 결과이므로
+  // 표시를 지우지도 않는다 — 지우면 사용자가 정한 목표가 반영 한 번으로 제안으로 강등된다.
   const next = goals.map((goal, i) => (i === index ? { ...goal, targetValue: value } : goal));
-  return { applied: true, params: applyRetirementGoals(params, next) };
+  // 미확정 목표금액은 계획의 축이 되지 못하므로(normalizeGoalDrivenParams), 금액 축은 계획
+  // 쪽에도 직접 세워야 반영이 살아남는다. 확정된 목표가 있는 계획에서는 정규화가 그 값으로
+  // 다시 덮으므로, 두 자리가 어긋난 채 저장되는 일은 없다.
+  const seeded = planAxis ? planAxis(params, value) : params;
+  return { applied: true, params: applyRetirementGoals(seeded, next) };
 }
 
 export const STRATEGY_FIELD_MAP: readonly StrategyFieldSpec[] = [
@@ -198,6 +207,10 @@ export const STRATEGY_FIELD_MAP: readonly StrategyFieldSpec[] = [
       ['LIVING_EXPENSE_STABILITY', 'COMFORTABLE_SPENDING'],
       ranked.candidate.strategy.targetMonthlySpending,
       '「생활비 안정」 또는 「여유 있는 소비」 목표를 선택해야 월 생활비를 바꿀 수 있습니다',
+      (current, value) => ({
+        ...current,
+        userProfile: { ...current.userProfile, targetMonthlySpending: value },
+      }),
     ),
   },
   {

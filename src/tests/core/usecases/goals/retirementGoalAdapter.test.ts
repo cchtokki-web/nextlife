@@ -26,8 +26,8 @@ describe('retirementGoalAdapter', () => {
   test('목표 target 값을 기존 엔진 입력의 단일 값에 동기화한다', () => {
     const applied = applyRetirementGoals(initialParams, [
       { type: 'EARLY_RETIREMENT', priority: 1, targetValue: 58, constraintType: 'HARD' },
-      { type: 'LIVING_EXPENSE_STABILITY', priority: 2, targetValue: 4200000, constraintType: 'SOFT' },
-      { type: 'INHERITANCE', priority: 3, targetValue: 200000000, constraintType: 'HARD' },
+      { type: 'LIVING_EXPENSE_STABILITY', priority: 2, targetValue: 4200000, targetValueSource: 'user', constraintType: 'SOFT' },
+      { type: 'INHERITANCE', priority: 3, targetValue: 200000000, targetValueSource: 'user', constraintType: 'HARD' },
     ]);
 
     expect(applied.userProfile).toMatchObject({
@@ -51,7 +51,7 @@ describe('retirementGoalAdapter', () => {
 
   test('상속 목표를 해제하면 목표 카드가 만든 레거시 상속 제약도 제거한다', () => {
     const withInheritance = applyRetirementGoals(initialParams, [
-      { type: 'INHERITANCE', priority: 1, targetValue: 100000000, constraintType: 'HARD' },
+      { type: 'INHERITANCE', priority: 1, targetValue: 100000000, targetValueSource: 'user', constraintType: 'HARD' },
     ]);
 
     const removed = applyRetirementGoals(withInheritance, [
@@ -64,10 +64,10 @@ describe('retirementGoalAdapter', () => {
 
   test('HARD 상속 목표만 엔진의 자산 하한선으로 컴파일한다', () => {
     const hard = applyRetirementGoals(initialParams, [
-      { type: 'INHERITANCE', priority: 1, targetValue: 100000000, constraintType: 'HARD' },
+      { type: 'INHERITANCE', priority: 1, targetValue: 100000000, targetValueSource: 'user', constraintType: 'HARD' },
     ]);
     const soft = applyRetirementGoals(initialParams, [
-      { type: 'INHERITANCE', priority: 1, targetValue: 100000000, constraintType: 'SOFT' },
+      { type: 'INHERITANCE', priority: 1, targetValue: 100000000, targetValueSource: 'user', constraintType: 'SOFT' },
     ]);
 
     expect(compileStrategy(hard).params.assetFloor).toBe(100000000);

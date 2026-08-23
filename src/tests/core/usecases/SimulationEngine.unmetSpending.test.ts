@@ -95,7 +95,7 @@ describe('SimulationEngine - unmetSpending', () => {
       ...allAxesLiveParams,
       userProfile: { ...allAxesLiveParams.userProfile, expectancy: 68, targetMonthlySpending: target },
       retirementGoals: [
-        { type: 'LIVING_EXPENSE_STABILITY', priority: 1, targetValue: target, constraintType: 'HARD' },
+        { type: 'LIVING_EXPENSE_STABILITY', priority: 1, targetValue: target, targetValueSource: 'user', constraintType: 'HARD' },
       ],
       strategy: { ...DEFAULT_RETIREMENT_STRATEGY, privatePensionStrategy: 'tax_first' },
     });
