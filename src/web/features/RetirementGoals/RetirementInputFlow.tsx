@@ -85,7 +85,21 @@ export function RetirementInputFlow({
   // 사용자가 둘을 함께 볼 보장이 없다. 그래서 그 목표로 데려간다.
   const pointAtGoal = (type: RetirementGoalType) => {
     setStep(GOAL_STEP);
+    // 사유는 «모든» 단계에 떠 있어 이미 목표 단계에 있는 사용자가 같은 버튼을 다시 누를 수
+    // 있다. 그때도 데려가야 하므로 요청은 «매번 새 값»이어야 한다. 새 객체를 만드는 것만으로
+    // 이미 충분하지만(React는 Object.is로 판정한다), nonce를 함께 올려 「같은 목표를 다시
+    // 부른 것」이 의도임을 값 자체에 남긴다 — 나중에 이 자리를 메모이즈하면 조용히 죽는다.
     setFocusGoal((previous) => ({ type, nonce: (previous?.nonce ?? 0) + 1 }));
+  };
+
+  /**
+   * 가리키기 요청은 «한 번» 소비된다. 목표 단계를 떠날 때 지우지 않으면, 나중에 사용자가
+   * 스스로 이 단계로 돌아올 때 목표 카드가 다시 마운트되며 옛 요청이 되살아나 — 부르지도
+   * 않은 카드로 화면이 스크롤된다.
+   */
+  const goToStep = (next: number) => {
+    setStep(next);
+    if (next !== GOAL_STEP) setFocusGoal(undefined);
   };
 
   const setProfileAge = (key: 'currentAge' | 'expectancy', age: number) => {
@@ -104,7 +118,7 @@ export function RetirementInputFlow({
               key={label}
               type="button"
               aria-current={step === index ? 'step' : undefined}
-              onClick={() => setStep(index)}
+              onClick={() => goToStep(index)}
               className={`flex min-w-0 flex-col items-center gap-1 rounded-xl border px-1 py-2.5 text-[11px] font-semibold transition sm:text-xs ${
                 step === index
                   ? 'border-primary bg-primary/10 text-primary'

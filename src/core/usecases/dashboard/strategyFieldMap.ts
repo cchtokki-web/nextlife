@@ -138,10 +138,15 @@ function withGoalTarget(
   const index = goals.findIndex((goal) => types.includes(goal.type));
   if (index === -1) return { applied: false, reason };
 
-  // 출처 표시(targetValueSource)는 «있으면 그대로 두고, 없으면 만들지 않는다». 추천이 고른
-  // 금액은 시스템의 숫자이고, 확정은 사용자가 목표 카드의 입력창에 써넣을 때만 생긴다.
-  // 이미 확정된 목표를 고쳐 쓰는 것은 사용자가 카드의 금액을 보고 「반영」을 누른 결과이므로
-  // 표시를 지우지도 않는다 — 지우면 사용자가 정한 목표가 반영 한 번으로 제안으로 강등된다.
+  // 출처 표시(targetValueSource)는 «있으면 그대로 두고, 없으면 만들지 않는다».
+  //
+  // 「반영」은 전후 금액(before/after)을 나란히 놓고 누르는 «명시적 행위»라, 이미 확정된
+  // 목표의 금액을 바꿔도 확정 상태를 잃지 않는다 — 사용자는 바뀔 숫자를 보고 눌렀다.
+  // 반대로 미확정 목표에 표시를 새로 «만들지는» 않는다. 그 금액을 고른 것은 추천이지
+  // 사용자가 아니고, 확정은 목표 카드의 확정 버튼에서만 생긴다(known-issues 14번).
+  //
+  // 타이핑이 표시를 «떼어 내는» 것(changeTargetValue)과 어긋나 보이지만, 가르는 기준은
+  // 같다 — 사용자가 그 숫자를 보고 확인했는가. 타이핑에는 그 순간이 없고 반영에는 있다.
   const next = goals.map((goal, i) => (i === index ? { ...goal, targetValue: value } : goal));
   // 미확정 목표금액은 계획의 축이 되지 못하므로(normalizeGoalDrivenParams), 금액 축은 계획
   // 쪽에도 직접 세워야 반영이 살아남는다. 확정된 목표가 있는 계획에서는 정규화가 그 값으로
