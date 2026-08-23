@@ -3,6 +3,7 @@ import type { LegacySimulationConfig, RetirementGoals, RetirementProfile, Retire
 import { LegacySimulationAdapter } from '../domain/input/LegacySimulationAdapter';
 import type { EvaluationContext, EvaluationEngine, RetirementEvaluation } from './EvaluationEngine';
 import { DefaultGoalEvaluationEngine, type GoalEvaluationEngine } from './GoalEvaluationEngine';
+import { evaluateGoalConflict } from './evaluateGoalConflict';
 import { LegacySimulationEngine } from '../simulation/LegacySimulationEngine';
 import { generateChartCaptions } from '../usecases/dashboard/generateChartCaptions';
 import { computeRiskAlerts } from '../usecases/dashboard/computeRiskAlerts';
@@ -48,9 +49,12 @@ export class LegacyEvaluationEngine implements EvaluationEngine {
     // `StrategySimulationResult`가 요구하는 것(yearlyResults·depletionAge·endingAssets)은
     // `SimulationResult`가 이미 전부 가지고 있어 그대로 넘어간다. 변환도, 두 번째 시뮬레이션도
     // 필요 없다 — 화면은 입력이 바뀔 때마다 재평가되므로 그 한 번이 곧 체감된다.
-    const {
-      goalConflict, conflictingGoals, yieldedGoal,
-    } = this.goalEvaluationEngine.evaluate(profile, goals, strategy, result);
+    //
+    // 「어느 세 필드를 떼어 오는가」는 evaluateGoalConflict가 소유한다. 충돌만 필요한 호출부와
+    // 이 전체 평가가 각자 골라 담으면, 판정에 필드가 하나 늘어나는 날 한쪽에만 실린다.
+    const goalConflict = evaluateGoalConflict(
+      profile, goals, strategy, result, this.goalEvaluationEngine,
+    );
 
     return {
       metrics: this.metricsCalculator.calculate(
@@ -82,7 +86,7 @@ export class LegacyEvaluationEngine implements EvaluationEngine {
       bequestAdequacyExplanation: result.utility
         ? explainBequestAdequacy(params, result)
         : undefined,
-      goalConflict: { goalConflict, conflictingGoals, yieldedGoal },
+      goalConflict,
     };
   }
 

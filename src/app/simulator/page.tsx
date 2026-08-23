@@ -20,7 +20,7 @@ import { computeSustainableSpendingAdvice } from '../../core/usecases/dashboard/
 import { explainNationalPension } from '../../core/usecases/pension/explainNationalPension';
 import { resolveTaxSettings } from '../../core/usecases/tax/taxRates';
 import { LegacySimulationAdapter } from '../../core/domain/input/LegacySimulationAdapter';
-import { LegacyEvaluationEngine } from '../../core/evaluation/LegacyEvaluationEngine';
+import { evaluateGoalConflict } from '../../core/evaluation/evaluateGoalConflict';
 import { useMediaQuery } from '../../web/hooks/useBrowserEnvironment';
 import { initialParams } from '../../infrastructure/storage/localStore';
 import { ScenarioManager } from '../../web/features/Scenario/ScenarioManager';
@@ -252,14 +252,17 @@ export default function Home() {
           goalSuccessProbability: monteCarlo.goalSuccessProbability,
         }
       );
-      // 목표 충돌 판정. 화면(DashboardSection)과 «같은 엔진의 같은 필드»를 읽는다 —
-      // 판정을 여기서 다시 세우면 같은 계획의 두 문서가 다른 충돌을 말할 수 있다.
-      // 이 평가는 시뮬레이션을 다시 돌리지 않는다. 이미 나온 result를 읽기만 한다.
+      // 목표 충돌 판정. 화면(DashboardSection)과 «같은 규칙»에 묻는다 — 판정을 여기서 다시
+      // 세우면 같은 계획의 두 문서가 다른 충돌을 말할 수 있다.
+      //
+      // 묻는 창구는 충돌만 답하는 진입점이다. 예전에는 이 «한 필드»를 읽으려고
+      // LegacyEvaluationEngine을 새로 만들어 evaluate()를 통째로 돌렸고, 그 한 번에 리스크
+      // 알림·차트 캡션·부족 요약·지속가능액 조언이 함께 계산됐다 — 리포트는 그중 어느 것도
+      // 그 호출에서 읽지 않고 아래위에서 제 손으로 다시 계산한다. 이 평가는 예나 지금이나
+      // 시뮬레이션을 다시 돌리지 않는다. 이미 나온 result를 읽기만 한다.
       const domainInput = LegacySimulationAdapter.fromLegacy(reportParams, effective.utilityConfig);
       const goalConflictSectionHtml = renderGoalConflictSection(
-        new LegacyEvaluationEngine().evaluate(
-          domainInput.profile, domainInput.goals, domainInput.strategy, result,
-        ).goalConflict,
+        evaluateGoalConflict(domainInput.profile, domainInput.goals, domainInput.strategy, result),
       );
       const planVerdictSectionHtml = renderPlanVerdictSection({
         expectancy: userProfile.expectancy,

@@ -360,7 +360,38 @@ PDF에서는 그 문장이 「자산이 먼저 바닥난 경우가 N회 있었�
 
 ---
 
-## 11. PDF 내보낼 때마다 평가 엔진이 통째로 한 번 더 돈다
+## 11. PDF 내보낼 때마다 평가 엔진이 통째로 한 번 더 돈다  ✅ 해결
+
+> **해결됨.** 「좁은 진입점」쪽을 택했다(`evaluateGoalConflict`). 배선 쪽은 실측해 보고
+> 접었다 — 판정을 계산하는 `DashboardSection`은 내보내기 버튼의 «자식»이라, 값을 PDF 경로로
+> 보내려면 부모가 자식에게서 값을 받아 올리거나 평가 전체를 `AnalysisRuntime`으로 끌어올려
+> `evaluation`을 필수 prop으로 내려야 한다. 후자는 `DashboardSection.test.tsx`의 렌더 호출
+> **55곳**을 함께 고쳐야 하고, 더 나쁘게는 화면의 평가 입력이 바뀐다 — 화면은
+> `compileStrategy(effective.params).utilityConfig`로, 리포트는 `effective.utilityConfig`로
+> 평가하는데(`applyAiSentinels`는 params만 갈아끼우고 utilityConfig는 그대로 둔다) 둘을
+> 합치면 리포트가 «오늘과 다른 입력»으로 판정하게 된다. 배선이 곧 계산 변경이 되는 셈이라
+> 「리포트는 한 글자도 움직이지 않는다」와 양립하지 않는다.
+>
+> 실측(내보내기 «한 번» 동안, 실제 페이지를 렌더해 버튼을 눌러 셈):
+>
+> | | 전 | 후 |
+> |---|---|---|
+> | `LegacyEvaluationEngine.evaluate` | 1 | **0** |
+> | `DefaultGoalEvaluationEngine.evaluate`(판정) | 1 | 1 |
+> | `computeRiskAlerts` | 2 | 1 |
+> | `computeShortfallSummary` | 3 | 2 |
+> | `resolvePlanAssetStatus` | 6 | 2 |
+> | `computePlanConfidence` | 2 | 1 |
+> | `computeSustainableSpendingAdvice` | 2 | 1 |
+> | `computePensionGapRisk` | 4 | 2 |
+> | `generateChartCaptions` | 1 | **0** |
+>
+> 판정 «자체»는 여전히 내보내기마다 한 번 선다(리포트가 물어야 답이 있다). 사라진 것은
+> 리포트가 읽지도 않는 «나머지 열한 가지»다 — 그것들은 리포트가 제 손으로 다시 계산하고
+> 있었고, 그래서 표의 중복이 대부분 2배였다.
+>
+> 조립된 리포트 HTML을 전후로 붙잡아 비교했다: 출력 일시(시계)를 빼면 34,031자가 한 글자도
+> 다르지 않다.
 
 `src/app/simulator/page.tsx:260`이 목표 충돌 판정 «한 필드»를 읽으려고
 `LegacyEvaluationEngine`을 새로 만들어 `evaluate()`를 통째로 돌린다. 리스크 알림·차트 캡션·
