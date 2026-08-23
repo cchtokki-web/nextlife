@@ -151,3 +151,63 @@ describe('buildEarlyCrashPath', () => {
     expect(buildEarlyCrashPath(0, 0, 5, -30)).toEqual([]);
   });
 });
+
+// 이 패널이 «기준 시나리오와 같은 계획»을 돌린다는 것.
+//
+// 예전에는 engine.runSingle(params)를 직접 불렀다. runSingle은 max_sustainable의 이진탐색을
+// 돌지 않으므로 사용자가 «입력한» 목표 생활비가 쓰였고, 헤드라인이 「월 344만원까지 쓸 수
+// 있습니다」라고 말하는 계획의 「변동 없음 (기준)」 막대가 월 300만원 계획을 그렸다
+// (실측: 기말자산 1억 4,505만원 대 5원). 「순서만 바꿨다」는 이 패널의 주장은 «다른 것은
+// 전부 같다»를 전제하는데, 계획 자체가 다르면 그 전제가 깨진다.
+describe('computeSequenceRisk — 고정된 계획으로 돈다', () => {
+  function maxSustainable(over: Partial<SimulationParams> = {}): SimulationParams {
+    return {
+      userProfile: { currentAge: 60, retirementAge: 60, expectancy: 70, targetMonthlySpending: 3_000_000 },
+      assets: [], isaAccounts: [], otherIncomes: [],
+      privatePensions: [{
+        id: 'p', type: 'irp', investmentType: 'etf', name: 'IRP',
+        balance: 500_000_000, monthlyContribution: 0,
+        totalReturn: 0, dividendYield: 0, currency: 'KRW',
+      }],
+      nationalPension: { expectedMonthlyAmount: 0 },
+      inflationRate: 0, inflationMode: 'nominal', baseExchangeRate: 1400,
+      exchangeScenario: 'base', displayCurrency: 'KRW',
+      taxSettings: { limitPrivatePensionToTaxLimit: true },
+      spendingStrategy: 'max_sustainable',
+      ...over,
+    } as unknown as SimulationParams;
+  }
+
+  test('HARD 바닥이 있는 max_sustainable 계획의 기준 막대가 헤드라인과 일치한다', () => {
+    const p = maxSustainable({ hardSpendingFloor: 2_500_000 } as Partial<SimulationParams>);
+    const headline = engine.run(p);
+    const deterministic = computeSequenceRisk(p, engine, config).cases
+      .find((c) => c.key === 'deterministic')!;
+
+    // 헤드라인은 월 344만원 계획이고 기말자산은 사실상 0이다.
+    expect(Math.round(headline.calculatedTargetSpending!)).toBe(3_446_597);
+    expect(deterministic.endingAssets).toBeCloseTo(headline.endingAssets, 6);
+    expect(deterministic.depletionAge).toBe(headline.depletionAge);
+    // 예전 값(사용자 입력 월 300만원으로 돈 결과)으로는 절대 돌아가지 않는다.
+    expect(Math.round(deterministic.endingAssets)).not.toBe(145_059_101);
+  });
+
+  test('바닥이 없는 max_sustainable 계획도 탐색값 계획으로 돈다', () => {
+    const p = maxSustainable();
+    const headline = engine.run(p);
+    const deterministic = computeSequenceRisk(p, engine, config).cases
+      .find((c) => c.key === 'deterministic')!;
+
+    expect(deterministic.endingAssets).toBeCloseTo(headline.endingAssets, 6);
+  });
+
+  // 'target' 계획에서는 freezeSpendingPlan이 params를 그대로 돌려주므로 이 변경이 닿지 않는다.
+  // 위 스위트의 모든 픽스처가 그쪽이고, 값이 한 발도 움직이지 않았다는 근거다.
+  test('고정 생활비 계획은 이 변경이 건드리지 않는다', () => {
+    const p = params();
+    const deterministic = computeSequenceRisk(p, engine, config).cases
+      .find((c) => c.key === 'deterministic')!;
+
+    expect(deterministic.endingAssets).toBeCloseTo(engine.runSingle(p).endingAssets, 6);
+  });
+});

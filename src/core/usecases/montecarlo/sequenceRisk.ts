@@ -1,5 +1,6 @@
 import { ReturnShockPath, SimulationParams } from '../../entities/types';
 import { SimulationEngine } from '../SimulationEngine';
+import { freezeSpendingPlan, runFrozenPlan, type FrozenSpendingPlan } from '../spending/freezeSpendingPlan';
 import { mulberry32 } from './rng';
 import { buildReturnShockPath } from './returnPath';
 import { simulationYearCount } from './horizon';
@@ -81,11 +82,11 @@ export function buildEarlyCrashPath(
 
 function runCase(
   key: SequenceRiskCase['key'],
-  params: SimulationParams,
+  plan: FrozenSpendingPlan,
   engine: SimulationEngine,
   path: ReturnShockPath | undefined
 ): SequenceRiskCase {
-  const result = engine.runSingle(params, path);
+  const result = runFrozenPlan(engine, plan, path);
   return {
     key,
     label: CASE_LABELS[key],
@@ -103,6 +104,18 @@ export function computeSequenceRisk(
   const years = simulationYearCount(params);
   const startAge = params.userProfile.currentAge;
 
+  // **기준 시나리오와 «같은 계획»을 돌린다.** 예전에는 engine.runSingle(params)를 직접 불렀는데,
+  // runSingle은 max_sustainable의 이진탐색을 돌지 않으므로 사용자가 입력한 목표 생활비를
+  // 그대로 썼다. 그 결과 헤드라인이 「월 344만원까지 쓸 수 있습니다」라고 말하는 계획의
+  // 시퀀스 리스크 패널이 월 300만원 계획을 그렸다(실측: 결정론 기말자산 1.45억 대 5원).
+  // 「순서만 바꿨다」는 이 패널의 주장은 «다른 것은 전부 같다»를 전제하는데, 계획 자체가
+  // 다르면 그 전제가 깨진다.
+  //
+  // 몬테카를로(MonteCarloEngine)와 민감도(computeSensitivityAnalysis)가 이미 같은 이유로
+  // 같은 통로를 쓴다. 'target' 계획에서는 freezeSpendingPlan이 params를 그대로 돌려주므로
+  // 이 변경이 닿지 않는다.
+  const plan = freezeSpendingPlan(params, engine);
+
   // 경로 하나를 뽑아 그것의 순열들을 만든다. 세 경우가 완전히 같은 원소를 갖는 것이 핵심이다.
   const shuffled = buildReturnShockPath(years, config.annualStdDev, mulberry32(config.seed));
   const worstFirst = [...shuffled].sort((a, b) => a - b);
@@ -117,11 +130,11 @@ export function computeSequenceRisk(
   const earlyCrash = buildEarlyCrashPath(years, yearsUntilRetirement, EARLY_CRASH_YEARS, EARLY_CRASH_PERCENT_POINTS);
 
   const cases: SequenceRiskCase[] = [
-    runCase('deterministic', params, engine, undefined),
-    runCase('bestFirst', params, engine, bestFirst),
-    runCase('shuffled', params, engine, shuffled),
-    runCase('worstFirst', params, engine, worstFirst),
-    runCase('earlyCrash', params, engine, earlyCrash),
+    runCase('deterministic', plan, engine, undefined),
+    runCase('bestFirst', plan, engine, bestFirst),
+    runCase('shuffled', plan, engine, shuffled),
+    runCase('worstFirst', plan, engine, worstFirst),
+    runCase('earlyCrash', plan, engine, earlyCrash),
   ];
 
   const endingOf = (key: SequenceRiskCase['key']) => cases.find((c) => c.key === key)!.endingAssets;
