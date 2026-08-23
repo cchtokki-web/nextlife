@@ -1,5 +1,6 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+import ts from 'typescript';
 import { describe, expect, test } from 'vitest';
 import { LegacySimulationAdapter } from '@/core/domain/input/LegacySimulationAdapter';
 import { RETIREMENT_GOAL_TYPES, type RetirementGoal } from '@/core/entities/retirementGoal';
@@ -174,13 +175,45 @@ describe('잠금 3 — 추천 후보는 max_sustainable일 수 없다', () => {
   });
 });
 
-describe('잠금 1 — 화면에 고르는 자리가 없다', () => {
+describe('잠금 1 — 제품 코드가 이 전략을 만들지도 권하지도 않는다', () => {
   // vitest의 루트는 저장소 루트다(vitest.config의 alias '@' → src와 같은 기준).
-  const WEB_ROOT = resolve(process.cwd(), 'src/web');
+  //
+  // src/app도 함께 본다. 예전에는 src/web만 훑었는데, 라우트 핸들러(app/api)도 제품 코드이고
+  // 실제로 이 값을 언급한다 — 훑는 범위가 좁으면 「어디에도 없다」는 말이 그 범위 밖에서
+  // 거짓이 된다.
+  const PRODUCT_ROOTS = ['src/web', 'src/app'] as const;
 
-  // 표시 문구는 남아도 된다. 잠기는 것은 «고르는 자리»이므로 파일 단위로만 본다 —
-  // 라벨 문구를 다듬는 일로 이 테스트가 깨지면 안 된다.
-  const DISPLAY_ONLY_FILES = ['features/Pdf/buildReportHtml.ts'];
+  // **문자열의 유무가 아니라 «쓰임»을 본다.** 예전 판은 파일 목록으로 예외를 뒀는데, 그러면
+  // 표시 문구가 하나 늘 때마다 목록이 자라고, 자란 목록 안에 «고르는 자리»가 섞여 들어와도
+  // 알아볼 수 없다. 그래서 파일이 아니라 «구문 위치»로 나눈다:
+  //
+  //   읽기  `x === 'max_sustainable'` · `case 'max_sustainable':` · 타입 자리
+  //         → 이미 그 값인 계획을 «알아보는» 코드다. 표시 문구가 여기서 나온다.
+  //   생성  그 밖의 모든 자리(대입, 객체·배열 리터럴, 인자, JSX 속성 …)
+  //         → 값을 «만들거나 건네는» 코드다. 고르는 자리는 반드시 여기에 나타난다.
+  //
+  // 한계를 분명히 적어 둔다. 이것은 구문 검사라 «간접» 생성은 보지 못한다 — 변수에 담아
+  // 옮기거나, 문자열을 조립하거나, 유니온 타입에서 선택지를 파생하면 걸리지 않는다.
+  // 그래서 이 잠금은 「고르는 자리가 새로 생기면 눈에 띄게 한다」까지만 보장하고,
+  // 실제 도달 불가를 «행동으로» 보장하는 것은 잠금 2·3이다(저장 시나리오와 추천 격자).
+  function classifyMention(literal: ts.StringLiteral): 'read' | 'create' {
+    const parent = literal.parent;
+    if (ts.isBinaryExpression(parent)) {
+      const op = parent.operatorToken.kind;
+      if (
+        op === ts.SyntaxKind.EqualsEqualsEqualsToken
+        || op === ts.SyntaxKind.ExclamationEqualsEqualsToken
+        || op === ts.SyntaxKind.EqualsEqualsToken
+        || op === ts.SyntaxKind.ExclamationEqualsToken
+      ) return 'read';
+    }
+    // `switch (spendingStrategy) { case 'max_sustainable': … }`도 알아보는 코드다.
+    if (ts.isCaseClause(parent)) return 'read';
+    // 타입 자리(`'target' | 'max_sustainable'`)는 값을 만들지 않는다. 선택지를 «선언»할 뿐이라
+    // 그 자체로는 아무에게도 닿지 않는다.
+    if (ts.isLiteralTypeNode(parent)) return 'read';
+    return 'create';
+  }
 
   function sourceFiles(dir: string, prefix = ''): string[] {
     return readdirSync(dir).flatMap((name) => {
@@ -190,13 +223,52 @@ describe('잠금 1 — 화면에 고르는 자리가 없다', () => {
     });
   }
 
-  test('src/web에서 max_sustainable을 언급하는 파일은 표시 코드뿐이다', () => {
-    const mentioning = sourceFiles(WEB_ROOT)
-      .filter((rel) => readFileSync(join(WEB_ROOT, rel), 'utf-8').includes('max_sustainable'));
+  function scanProductLayer() {
+    const reads: string[] = [];
+    const creations: string[] = [];
+    let scannedFiles = 0;
 
-    // 새 파일이 이 값을 언급하기 시작했다면 둘 중 하나다 — 고르는 화면이 생겼거나(제품
-    // 의사결정이 필요하다), 표시 문구가 늘었거나(이 목록에 더하면 된다).
-    expect(mentioning.sort()).toEqual(DISPLAY_ONLY_FILES);
+    for (const root of PRODUCT_ROOTS) {
+      const abs = resolve(process.cwd(), root);
+      for (const rel of sourceFiles(abs)) {
+        scannedFiles += 1;
+        const text = readFileSync(join(abs, rel), 'utf-8');
+        if (!text.includes('max_sustainable')) continue;
+
+        const sourceFile = ts.createSourceFile(
+          rel, text, ts.ScriptTarget.Latest, true,
+          rel.endsWith('.tsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
+        );
+        const visit = (node: ts.Node): void => {
+          if (ts.isStringLiteral(node) && node.text === 'max_sustainable') {
+            const { line } = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
+            const where = `${root}/${rel}:${line + 1}`;
+            (classifyMention(node) === 'read' ? reads : creations).push(where);
+          }
+          ts.forEachChild(node, visit);
+        };
+        ts.forEachChild(sourceFile, visit);
+      }
+    }
+
+    return { reads, creations, scannedFiles };
+  }
+
+  test('제품 계층(src/web·src/app)에서 이 전략을 만들거나 건네는 코드가 없다', () => {
+    const { creations } = scanProductLayer();
+
+    // 여기 무언가 뜬다면 「고르는 자리가 생겼다」는 뜻이고, 그것은 제품 의사결정이다.
+    // 목록에 더해 덮지 말 것 — known-issues 13번의 결정 (b)를 먼저 다시 열어야 한다.
+    expect(creations).toEqual([]);
+  });
+
+  test('훑기가 살아 있다 — 알아보는 코드는 실제로 존재하고 파일도 충분히 읽었다', () => {
+    // 경로 오타나 확장자 필터 실수로 «아무것도 읽지 않으면» 위 테스트는 조용히 통과한다.
+    // 그 침묵을 막는 검사다. 표시 문구가 늘거나 줄어도 깨지지 않도록 개수만 본다.
+    const { reads, scannedFiles } = scanProductLayer();
+
+    expect(reads.length).toBeGreaterThanOrEqual(2);
+    expect(scannedFiles).toBeGreaterThan(50);
   });
 });
 

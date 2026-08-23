@@ -109,8 +109,10 @@ export interface OtherIncome {
 // **`'max_sustainable'`은 오늘 «내부 전용»이다.** 엔진에는 온전히 살아 있지만 현재 제품
 // 경로에서는 «생성·저장·선택 중 어느 것도 되지 않는다». 잠그는 것이 셋이고, 셋 다 조건이 없다.
 //
-//  1. **고르는 화면이 없다.** `src/web` 전체에서 이 값은 PDF 라벨 한 줄
-//     (`features/Pdf/buildReportHtml.ts`)에만 나온다 — 고르는 자리가 아니라 표시 문구다.
+//  1. **고르는 화면이 없다.** 제품 계층(`src/web`·`src/app`) 전체에서 이 값이 나오는 자리는
+//     둘뿐이고 «둘 다 비교»다 — PDF 라벨(`features/Pdf/buildReportHtml.ts`)과 AI 어드바이저
+//     프롬프트의 전략 라벨(`app/api/ai-advisor/route.ts`). 이미 그 값인 계획을 알아보고 문구를
+//     짓는 코드이지, 그 값을 만들거나 건네는 자리가 아니다.
 //  2. **저장 시나리오가 가질 수 없다.** 로드 경로가 전부 지나는 `migrateRetirementGoals`
 //     (`useScenarios.ts`의 migrateParams)가 `normalizeGoalDrivenParams`를 «조건 없이» 태워
 //     `spendingChoice: 'target'`으로 고정한다. `retirementGoals` 키가 아예 없는 옛 시나리오도

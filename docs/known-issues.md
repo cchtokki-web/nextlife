@@ -450,7 +450,46 @@ PDF에서는 그 문장이 「자산이 먼저 바닥난 경우가 N회 있었�
 
 ---
 
-## 12. 화면과 리포트가 서로 다른 `utilityConfig`로 평가한다
+## 12. 화면과 리포트가 서로 다른 `utilityConfig`로 평가한다  ✅ 종결 — 오진 (둘은 언제나 같다)
+
+> **재보니 「어긋날 수 있다」가 틀렸다. 오늘 어떤 계획에서도 두 값은 같다.**
+>
+> 등록 당시의 관찰 — `applyAiSentinels`가 `{ ...compiled, params: dividend.params }`로 **params만**
+> 갈아끼운다 — 자체는 맞다. 틀린 것은 그 뒤에 깔린 전제, 「params가 바뀌면 utilityConfig도
+> 달라진다」였다. `utilityConfig`는 params 전체가 아니라 **두 입력**만으로 결정된다:
+> `createGoalUtilityConfig(params.retirementGoals, objectiveUtilityConfig)`
+> (`compileStrategy.ts:322`) — 즉 `retirementGoals`와 `strategy.objective`뿐이다.
+> 그리고 자동 채움은 그 둘 중 어느 것에도 닿지 못한다.
+>
+> - `SentinelAxisField = Exclude<keyof BaselineWithdrawalPlan, 'monthlySpendingMultiplier'>` —
+>   축이 «타입 수준에서» 인출계획 필드로 한정된다.
+> - `paramsWithSentinelOverlay`는 `withdrawalPlan`만 다시 만들고,
+>   `fillDividendAxis`는 `assets[].reinvestDividend`만 바꾼다.
+> - `applyAiSentinels.ts` 전체에 `retirementGoals`·`objective` 참조가 **0회**다.
+> - 「그대로 통과」 분기(`compileStrategy.ts:304`)를 뒤집지도 못한다 — 그 판정과 레거시 씨앗이
+>   읽는 것은 `strategy`·`spendingStrategy`·`userProfile.targetBequest`·`retirementGoals`인데
+>   자동 채움은 그중 어느 것도 쓰지 않는다.
+>
+> 그래서 **「어느 쪽이 옳은가」라는 질문 자체가 성립하지 않는다.** 두 쪽은 이미 같은 답을 낸다.
+> 남는 것은 결함이 아니라 «드리프트 위험»이다: 목적함수의 입력에 닿는 축이 새로 생기면 그날부터
+> 실제로 갈라지고, 두 소비자가 서로 «다른 방법»으로 같은 값을 얻는 한 아무도 알아채지 못한다.
+> 그래서 값은 하나도 바꾸지 않고 등가를 테스트로 못박았다 —
+> `src/tests/core/usecases/strategy/sentinelUtilityConfigParity.test.ts`.
+>
+> 그 테스트가 고정하는 것은 결과가 아니라 «근거»다. (1) `SENTINEL_AXES`의 모든 축 × 목적함수가
+> 실제로 갈리는 목표 조합 5종에서 `compileStrategy(effective.params).utilityConfig`와
+> `effective.utilityConfig`가 같다(축 표를 `satisfies Record<SentinelAxisField, …>`로 받으므로
+> 축을 늘리면 픽스처를 만들기 전까지 컴파일되지 않는다 — 새 축이 조용히 빠지지 않는다).
+> (2) 자동 채움이 바꾸는 최상위 키가 `withdrawalPlan`·`assets`뿐이다. 실측(고의 변형):
+> 자동 채움이 `retirementGoals`에 목표를 하나 더하게 하면 38개 중 **22개**,
+> `strategy.objective`를 덮어쓰게 하면 **29개**가 깨진다.
+>
+> **지금 보장되는 것**: 자동 채움 뒤에도 화면과 리포트는 «같은» 목적함수로 채점한다.
+> 보장의 근거는 두 소비자의 배선이 아니라 위 (2)의 사실이고, 그것이 깨지는 순간 (1)보다 먼저
+> 깨지도록 두 검사를 함께 두었다. 그때는 이 항목을 다시 열고 「그 축이 목적함수를 움직여도
+> 되는가」부터 정해야 한다.
+>
+> **아래 원인 분석은 등록 당시의 추정이므로 위 내용이 우선한다.**
 
 11번을 고치며 배선 방향을 검토하다 드러난 잠재 결함이다. 두 경로가 같은 계획을 «다른 입력»으로
 평가한다:
@@ -499,9 +538,16 @@ AI가 미정 설정을 채운 계획에서 화면과 PDF의 효용 기반 값이
 >   그것은 전략 선택이 아니라 그 함수 밖으로 나가지 않는 합성 입력이다.
 > - **잠금 테스트**: `src/tests/core/usecases/goals/maxSustainableReachability.test.ts`.
 >   결과가 아니라 «장치»를 고정한다 — 목표 조합 5 × 생활비 선택 4 × 저장 모양 2 = 40가지를 훑어
->   예외가 하나도 없음을 확인하고, 격자 후보 전부와 「현상 유지」 후보의 이음매, 그리고 `src/web`이
->   이 값을 언급하는 파일이 PDF 표시 코드뿐이라는 사실까지 본다. 잠금을 하나씩 되돌려 확인한
->   실패 수: 로드 정규화 29건, 후보 고정 2건, 화면 노출 1건.
+>   예외가 하나도 없음을 확인하고, 격자 후보 전부와 「현상 유지」 후보의 이음매, 그리고 제품 계층
+>   (`src/web`·`src/app`)의 어느 코드도 이 값을 «만들거나 건네지» 않는다는 사실까지 본다.
+>   마지막 검사는 문자열의 유무가 아니라 «쓰임»을 본다 — 비교(`=== 'max_sustainable'`)·`case`·타입
+>   자리는 이미 그 값인 계획을 알아보는 코드이므로 통과시키고, 대입·인자·리터럴처럼 값을 만드는
+>   자리만 잡는다. 예전 판은 `src/web`만 훑고 파일 예외 목록을 뒀는데, 그러면 (1) 제품 코드인
+>   `src/app/api/ai-advisor/route.ts`의 같은 종류의 라벨이 범위 밖이었고 (2) 표시 문구가 늘 때마다
+>   목록이 자라 그 안에 «고르는 자리»가 섞여도 알아볼 수 없었다. 다만 이것은 구문 검사라 «간접»
+>   생성(변수에 담아 옮기기, 문자열 조립, 유니온 타입에서 선택지 파생)은 보지 못한다 —
+>   도달 불가를 «행동으로» 보장하는 것은 잠금 2·3이다. 잠금을 하나씩 되돌려 확인한 실패 수:
+>   로드 정규화 29건, 후보 고정 2건, 제품 계층 생성 1건.
 >
 > **배포 노트 의무는 해소됐다.** 3번 스펙이 「조용히 내보내지 않는다」며 배포 노트를 요구했지만,
 > 그 요구의 전제가 「저장 시나리오의 결과가 크게 바뀐다」였고 그런 시나리오가 존재할 수 없다.
