@@ -589,6 +589,38 @@ export interface SimulationYearlyResult {
   ledger?: YearlyLedger;
 }
 
+/**
+ * `max_sustainable` 계획에서 **탐색값과 실제 전달된 계획이 갈라진 기록.**
+ *
+ * 둘이 갈라지는 것은 사고가 아니라 설계다. 탐색은 HARD 생활비 바닥을 떼고 돌아야 정직하고
+ * (바닥을 남기면 이진탐색이 정확히 바닥으로 수렴해 사용자 입력을 측정값이라며 되돌려준다),
+ * 전달되는 계획은 그 바닥을 존중해야 한다(계층 1 > 계층 5). 갈라진 폭이 곧 **「HARD 바닥이
+ * 세제 선호를 얼마나 눌렀는가」**이므로, 남기지 않으면 다음에 이 숫자를 의심하는 사람이
+ * 처음부터 다시 재야 한다.
+ *
+ * **연도별 원장(YearLedgerDiagnostics)이 아니라 결과 최상위에 둔다.** 이 사실은 한 해의
+ * 인출이 아니라 «계획 하나»에 대한 것이고(탐색 한 번, 전달 계획 한 번), 40개 원장에 같은
+ * 스칼라를 복사하면 서로 어긋날 수 있는 사본이 40벌 생긴다. 그 해에 «무엇을 깼는가»라는
+ * 연도별 절반은 이미 원장이 적고 있다(brokenPreferences·overrideReason). 이 값은 자기가
+ * 설명하는 숫자(calculatedTargetSpending) 바로 옆에 있어야 찾을 수 있다.
+ *
+ * 바닥이 구속하지 «않은» 계획에는 이 필드가 없다 — 갈라진 적이 없으므로 없는 것이 정직하다.
+ */
+export interface SustainableSpendingFloorOverride {
+  /** 탐색값. 선호(세제 최적화·계좌 순서·월 인출 목표)를 지킬 때의 지속가능 생활비. */
+  preferenceRespectingMonthly: number;
+  /** 바닥을 존중한 실행에서의 지속가능 생활비. 이 값도 바닥의 «크기»에는 의존하지 않는다. */
+  floorHonoringMonthly: number;
+  /**
+   * 실제로 전달된 계획의 월 생활비 = max(hardSpendingFloor, floorHonoringMonthly).
+   * calculatedTargetSpending과 같은 값이며, 원장이 그 금액을 지급한다.
+   * 바닥이 floorHonoringMonthly를 넘으면 이 계획은 지속 가능하지 «않다» — depletionAge를 볼 것.
+   */
+  deliveredMonthly: number;
+  /** 그 계획의 HARD 생활비 바닥(SimulationParams.hardSpendingFloor). */
+  hardSpendingFloor: number;
+}
+
 export interface SimulationResult {
   yearlyResults: SimulationYearlyResult[];
   fireAge: number | null; // FIRE 달성(소득 >= 생활비) 가능 나이
@@ -615,6 +647,9 @@ export interface SimulationResult {
   // goalAchievementRate의 분모: 은퇴 후 연평균 월 목표 생활비(연령대 배수·물가·의료비 반영).
   avgTargetMonthlySpending?: number;
   calculatedTargetSpending?: number; // 역산된 목표 생활비 (max_sustainable 모드 등에서 사용)
+  // 탐색값과 전달 계획이 갈라졌을 때만 채워진다(SustainableSpendingFloorOverride 주석).
+  // 화면·리포트는 이 값으로 「왜 인출이 늘었는지」와 「이것은 권장액이 아니라 한계값」을 말한다.
+  sustainableSpendingOverride?: SustainableSpendingFloorOverride;
   retirementAssetsAtRetirement: number; // 은퇴 시작 시점 총자산 (해석/배너 표시용)
   utility?: UtilityBreakdown; // Lifetime Utility Score
   recommendation?: StrategyRecommendation; // AI 추천 전략 (별도 계산 시에만 채워짐)

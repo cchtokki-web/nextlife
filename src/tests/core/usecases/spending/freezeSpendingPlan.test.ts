@@ -108,6 +108,26 @@ describe('freezeSpendingPlan', () => {
       expect(frozen.depletionAge).toBe(baseline.depletionAge);
       expect(frozen.endingAssets).toBe(baseline.endingAssets);
     });
+
+    // HARD 생활비 바닥이 구속하는 계획에서는 기준 시나리오의 원장이 «바닥을 존중한 실행»이다
+    // (SimulationEngine.findMaxSustainable). 사용자의 바닥을 그대로 둔 채 고정하면 1단계가
+    // 거기까지만 선호를 깨서 재실행이 더 적게 쓴다 — 고정한 의미가 사라진다.
+    test('HARD 생활비 바닥이 구속해도 일치한다', () => {
+      const engine = new SimulationEngine();
+      const params = maxSustainableParams({ hardSpendingFloor: 10000000 } as Partial<SimulationParams>);
+
+      const baseline = engine.run(params);
+      const frozen = runFrozenPlan(engine, freezeSpendingPlan(params, engine));
+
+      // 전제 확인: 이 계획은 실제로 바닥을 존중한 실행으로 넘어갔다.
+      expect(baseline.sustainableSpendingOverride).toBeDefined();
+      expect(frozen.yearlyResults.map((y) => y.spending))
+        .toEqual(baseline.yearlyResults.map((y) => y.spending));
+      expect(frozen.yearlyResults.map((y) => y.totalAssets))
+        .toEqual(baseline.yearlyResults.map((y) => y.totalAssets));
+      expect(frozen.depletionAge).toBe(baseline.depletionAge);
+      expect(frozen.endingAssets).toBe(baseline.endingAssets);
+    });
   });
 
   test('runFrozenPlan은 수익률 경로를 그대로 넘긴다', () => {

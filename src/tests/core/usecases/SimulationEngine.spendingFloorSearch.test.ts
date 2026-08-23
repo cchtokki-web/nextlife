@@ -61,40 +61,52 @@ describe('생활비 자체를 탐색하는 계산에서는 바닥을 뗀다', ()
     // 바닥(250만원)은 두 실제 용량 사이에 있다. 예전에는 탐색이 정확히 바닥으로 수렴해
     // 「월 250만원까지 쓸 수 있습니다」라고 답했지만, 그 값은 측정된 적이 없는 입력값이다.
     expect(withFloor.calculatedTargetSpending).not.toBeCloseTo(2_500_000, -3);
-    // 바닥은 탐색에 아무 영향도 주지 않는다.
-    expect(withFloor.calculatedTargetSpending).toBe(withoutFloor.calculatedTargetSpending);
+    // **탐색 자체는** 바닥의 영향을 받지 않는다. 바닥이 있는 계획에서도 탐색값은 그대로
+    // 기록되고(sustainableSpendingOverride), 바닥이 없는 계획의 답과 같다. 달라지는 것은
+    // 그 뒤에 «전달되는 계획»이다 — 아래 describe.
+    expect(withFloor.sustainableSpendingOverride!.preferenceRespectingMonthly)
+      .toBe(withoutFloor.calculatedTargetSpending);
   });
 
   test('바닥의 크기가 탐색 결과를 흔들지 않는다', () => {
     const engine = new SimulationEngine();
-    const values = [undefined, 1_000_000, 2_500_000, 10_000_000].map(
+    const results = [undefined, 1_000_000, 2_500_000, 10_000_000].map(
       (floor) => engine.run(pensionCapped(
         (floor === undefined ? {} : { hardSpendingFloor: floor }) as Partial<SimulationParams>
-      )).calculatedTargetSpending
+      ))
+    );
+    const searched = results.map(
+      (r) => r.sustainableSpendingOverride?.preferenceRespectingMonthly
+        ?? r.calculatedTargetSpending
     );
 
     // 예전에는 바닥마다 다른 값이 나왔다(1,181,250 / 1,181,250 / 2,499,999 / 3,446,596).
-    expect(new Set(values).size).toBe(1);
+    expect(new Set(searched).size).toBe(1);
+    // 바닥을 존중한 실행에서의 용량도 바닥의 «크기»에는 의존하지 않는다. 250만과 1,000만이
+    // 같은 3,446,596을 낸다 — 이 값이 입력의 메아리가 아니라는 근거다.
+    expect(results[2].sustainableSpendingOverride!.floorHonoringMonthly)
+      .toBe(results[3].sustainableSpendingOverride!.floorHonoringMonthly);
   });
 
-  test('선호가 막지 않는 계획에서는 바닥이 애초에 아무 일도 하지 않는다', () => {
+  test('선호가 막지 않는 계획에서는 바닥을 존중해도 용량이 늘지 않는다', () => {
     const result = new SimulationEngine().run(floorAboveSustainable());
+    const override = result.sustainableSpendingOverride!;
 
     // 이 계획에는 1단계가 깰 선호가 없다(일반자산 한 개, 개시 나이·한도 없음). 그래서 두
-    // 용량이 하나로 겹치고, 바닥이 있든 없든 탐색은 109,000,000 ÷ 48개월 = 2,270,833을 낸다.
-    // 되돌리기 판별력이 없는 대조군이며, 아래 「사후 비교」의 227/250 예시를 만드는 계획이다.
-    expect(result.calculatedTargetSpending).toBeGreaterThan(0);
-    expect(result.calculatedTargetSpending!).toBeLessThan(2_500_000);
-    expect(result.calculatedTargetSpending!).toBeCloseTo(2_270_833.31, 1);
+    // 용량이 하나로 겹친다 — 109,000,000 ÷ 48개월 = 2,270,833. 바닥을 존중한 실행에서도
+    // 늘어날 여지가 없다는 뜻이고, 그래서 이 계획은 바닥(250만)을 지급하면 고갈한다.
+    expect(override.preferenceRespectingMonthly).toBeCloseTo(2_270_833.31, 1);
+    expect(override.floorHonoringMonthly).toBeCloseTo(override.preferenceRespectingMonthly, 1);
+    expect(override.deliveredMonthly).toBe(2_500_000);
   });
 
-  test('바닥이 없을 때와 같은 값을 낸다 — 바닥은 탐색에 아무 영향도 주지 않는다', () => {
-    const withFloor = new SimulationEngine().run(floorAboveSustainable());
+  test('바닥이 없으면 탐색값이 그대로 전달된다', () => {
     const withoutFloor = new SimulationEngine().run(
       floorAboveSustainable({ hardSpendingFloor: undefined } as Partial<SimulationParams>)
     );
 
-    expect(withFloor.calculatedTargetSpending).toBe(withoutFloor.calculatedTargetSpending);
+    expect(withoutFloor.sustainableSpendingOverride).toBeUndefined();
+    expect(withoutFloor.calculatedTargetSpending).toBeCloseTo(2_270_833.31, 1);
   });
 
   test("'target' 전략의 부수 탐색도 같은 값을 낸다", () => {
@@ -124,7 +136,10 @@ describe('바닥 미달은 탐색 실패가 아니라 사후 비교로 보고된
     });
   });
 
-  test('탐색이 실제로 낸 값으로도 미달이 보고된다', () => {
+  // 이 사후 비교는 «탐색값»에 대한 규칙이다. 엔진이 내놓는 max_sustainable 결과에서는 이제
+  // 전달값이 언제나 바닥 이상이므로(전달값 = max(바닥, 바닥 존중 용량)) 여기서 미달이 서지
+  // 않는다 — 미달의 자리를 「지급은 하지만 지속되지 않는다」가 대신한다.
+  test('엔진 결과에서는 미달 대신 「바닥을 지급하고 고갈한다」가 남는다', () => {
     const params = floorAboveSustainable();
     const result = new SimulationEngine().run(params);
     const advice = computeSustainableSpendingAdvice(
@@ -134,10 +149,12 @@ describe('바닥 미달은 탐색 실패가 아니라 사후 비교로 보고된
       params.hardSpendingFloor
     );
 
-    expect(advice?.kind).toBe('below_hard_floor');
-    expect(advice!.difference).toBeGreaterThan(0);
-    expect(advice!.difference)
-      .toBeCloseTo(2_500_000 - result.calculatedTargetSpending!, 6);
+    // 원장이 바닥을 실제로 지급하므로 「월 23만원 부족」은 같은 실행이 반증하는 말이 된다.
+    expect(result.calculatedTargetSpending).toBe(2_500_000);
+    expect(advice).toBeNull();
+    // 대신 그 대가가 원장에 남는다. 미달을 대신 말하는 사실은 이 둘이다.
+    expect(result.sustainableSpendingOverride!.floorHonoringMonthly).toBeLessThan(2_500_000);
+    expect(result.depletionAge).not.toBeNull();
   });
 
   test('바닥이 없으면 종전 판정 그대로다', () => {

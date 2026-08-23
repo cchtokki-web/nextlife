@@ -246,7 +246,14 @@ export class LegacySimulationEngine implements SimulationEngineContract {
   // 자산은 늘 하한선 위에 남으므로 어떤 생활비를 넣어도 "성공"으로 읽혀 탐색이 상한(5천만원)까지
   // 올라간다. 여기서는 생활비 자체가 자유변수이므로, 하한선은 인출 제약이 아니라
   // **탐색의 성공 조건**(meetsSustainabilityGoal)으로 표현하는 것이 옳다.
-  private sustainabilityTrialParams(params: SimulationParams, targetMonthlySpending: number): SimulationParams {
+  private sustainabilityTrialParams(
+    params: SimulationParams,
+    targetMonthlySpending: number,
+    // 이 시행을 «바닥을 존중한 실행»으로 돌리고 싶을 때의 바닥. 미지정이면 종전대로 바닥을
+    // 뗀 채 돈다(아래 delete). 지정하면 사용자의 바닥이 아니라 «호출부가 정한» 바닥이
+    // 걸리므로, 탐색이 사용자 입력으로 수렴하는 일(아래 주석의 2,499,999)은 여전히 없다.
+    honoredSpendingFloor?: number
+  ): SimulationParams {
     const trial: SimulationParams = {
       ...params,
       userProfile: { ...params.userProfile, targetMonthlySpending },
@@ -267,9 +274,10 @@ export class LegacySimulationEngine implements SimulationEngineContract {
     // 바닥이 두 용량 사이에 있으면 답이 둘 중 어느 것도 아닌 바닥 자신이 된다.
     //
     // 바닥은 탐색의 **성공 조건이 아니라 탐색 결과와 비교할 기준**이다. 탐색이 끝난 뒤
-    // 지속가능액과 바닥을 견주어 미달을 보고하는 일은 computeSustainableSpendingAdvice가 맡는다
-    // (탐색값이 곧 생활비인 max_sustainable 계획에 한해서다).
+    // 그 둘을 견주어 «전달되는 계획»을 정하는 것은 findMaxSustainable의 몫이다 — 바닥이
+    // 탐색값을 넘으면 계층 1이 개입해 바닥을 존중한 실행으로 다시 잰다.
     delete trial.hardSpendingFloor;
+    if (honoredSpendingFloor !== undefined) trial.hardSpendingFloor = honoredSpendingFloor;
     return trial;
   }
 
@@ -310,28 +318,21 @@ export class LegacySimulationEngine implements SimulationEngineContract {
     return result.depletionAge === null || result.endingAssets > 0;
   }
 
-  private findMaxSustainableValue(params: SimulationParams): number {
-    const assetFloor = Math.max(0, params.assetFloor ?? 0);
-    let low = 0;
-    let high = 50000000; // 5천만원/월
-    let bestTarget = 0;
-
-    for (let i = 0; i < 30; i++) {
-      const mid = (low + high) / 2;
-      const trialParams = this.sustainabilityTrialParams(params, mid);
-      const result = this.runSingle(trialParams);
-
-      if (this.meetsSustainabilityGoal(result, assetFloor, trialParams)) {
-        bestTarget = mid;
-        low = mid;
-      } else {
-        high = mid;
-      }
-    }
-    return bestTarget;
-  }
-
-  private findMaxSustainable(params: SimulationParams): SimulationResult {
+  // 이진탐색 본체. 두 호출부(findMaxSustainableValue·findMaxSustainable)가 같은 루프를
+  // 두 벌로 갖고 있으면 「탐색이 무엇을 재는가」가 조용히 갈라진다 — 한 곳에만 둔다.
+  //
+  // floorTracksTrial이면 시행마다 **그 시행값 자체**를 HARD 바닥으로 걸고 돈다. 그때 재는
+  // 것은 「바닥을 존중한 실행에서 이 계획이 감당하는 최대 생활비」다. 사용자의 바닥값은
+  // 여기에 들어오지 않으므로(sustainabilityTrialParams가 먼저 지운다) 탐색이 입력을
+  // 되돌려 주는 일은 이 모드에서도 없다 — 바닥을 얼마로 넣든 같은 값이 나온다.
+  private searchSustainable(
+    params: SimulationParams,
+    floorTracksTrial: boolean
+  ): {
+    bestTarget: number;
+    bestResult: StrategySimulationResult | null;
+    bestTrialParams: SimulationParams | null;
+  } {
     const assetFloor = Math.max(0, params.assetFloor ?? 0);
     let low = 0;
     let high = 50000000; // 5천만원/월
@@ -341,7 +342,9 @@ export class LegacySimulationEngine implements SimulationEngineContract {
 
     for (let i = 0; i < 30; i++) {
       const mid = (low + high) / 2;
-      const trialParams = this.sustainabilityTrialParams(params, mid);
+      const trialParams = this.sustainabilityTrialParams(
+        params, mid, floorTracksTrial ? mid : undefined
+      );
       const result = this.runSingle(trialParams);
 
       if (this.meetsSustainabilityGoal(result, assetFloor, trialParams)) {
@@ -353,15 +356,78 @@ export class LegacySimulationEngine implements SimulationEngineContract {
         high = mid;
       }
     }
+    return { bestTarget, bestResult, bestTrialParams };
+  }
 
-    if (!bestResult) {
-      bestTrialParams = this.sustainabilityTrialParams(params, 0);
-      bestResult = this.runSingle(bestTrialParams);
+  // 'target' 전략이 참고치로 쓰는 값. **바닥을 뗀 채로** 잰다.
+  //
+  // 고정 생활비 계획에서 이 값은 계획이 쓰는 금액이 아니라 참고치이고, 그 계획의 바닥 미달은
+  // 탐색값이 아니라 원장으로 재야 한다(computeSustainableSpendingAdvice 주석). 그래서 아래
+  // findMaxSustainable과 달리 여기서는 바닥이 답을 움직이지 않는다.
+  private findMaxSustainableValue(params: SimulationParams): number {
+    return this.searchSustainable(params, false).bestTarget;
+  }
+
+  // max_sustainable 계획의 «전달되는 계획»을 만든다.
+  //
+  // 탐색은 선호(세제 최적화·계좌 순서·월 인출 목표)를 지킬 때의 용량을 재고, 그 값이 바닥
+  // 이상이면 종전과 완전히 같은 결과를 돌려준다. 바닥이 그 값을 **넘을 때만** 계층이 개입한다:
+  // HARD 생활비 바닥은 계층 1, 세제 최적화는 계층 5다. 상위 제약을 지키지 못하는 계획을
+  // 「이것이 한계입니다」라며 내보내면서 계좌에 돈을 남기는 것이 결함이었다(known-issues 3번).
+  //
+  // 실측(사적연금 5억·저율과세 한도 ON·60→70세, 바닥 250만):
+  //   종전  월 1,181,250 · 기말자산 3.35억 · 세금 890만
+  //   지금  월 3,446,597 · 기말자산 0      · 세금 4,505만
+  private findMaxSustainable(params: SimulationParams): SimulationResult {
+    const searched = this.searchSustainable(params, false);
+    const hardSpendingFloor = params.hardSpendingFloor ?? 0;
+
+    // 바닥이 없거나 탐색값이 이미 바닥 이상이면 바닥은 **구속하지 않는다.** 계층은 「필요할
+    // 때만」 아래를 깨므로(원장 진단의 brokenPreferences와 같은 규칙) 여기서는 아무것도
+    // 깨지 않고 종전 원장을 그대로 돌려준다 — 목표가 없는 계획, 바닥이 낮은 계획, 그리고
+    // 바닥이 탐색값과 «정확히 같은» 계획이 여기 해당한다.
+    if (!(hardSpendingFloor > searched.bestTarget)) {
+      let bestResult = searched.bestResult;
+      let bestTrialParams = searched.bestTrialParams;
+      if (!bestResult) {
+        bestTrialParams = this.sustainabilityTrialParams(params, 0);
+        bestResult = this.runSingle(bestTrialParams);
+      }
+      return {
+        ...this.evaluateProjection(bestTrialParams ?? params, bestResult),
+        calculatedTargetSpending: searched.bestTarget,
+      };
     }
 
+    // 바닥이 구속한다. 이 계획이 실제로 지급하려면 인출이 바닥을 존중해야 하고(2단계 인출),
+    // 그 실행에서의 용량은 선호를 지킬 때와 «다른 값»이다. 그래서 같은 실행으로 다시 잰다.
+    const honored = this.searchSustainable(params, true);
+
+    // 전달되는 생활비. 바닥을 존중한 용량이 바닥에 못 미치면 그래도 바닥을 지급한다 —
+    // 「반드시 지키기」의 뜻이 그것이고, 그 대가인 조기 고갈은 원장의 depletionAge에 남는다.
+    const deliveredMonthly = Math.max(hardSpendingFloor, honored.bestTarget);
+
+    // **전달 계획의 바닥은 전달 생활비 자신이다.** 사용자의 바닥(예: 250만)을 그대로 걸면
+    // 1단계는 거기까지만 선호를 깨고 그 위(예: 344만까지의 94만)는 세제 한도에 막혀
+    // 지급되지 않는다 — 「월 344만원까지 쓸 수 있습니다」라고 답하면서 원장에는 250만원을
+    // 찍는, 고치려던 것과 같은 종류의 어긋남이 된다. max_sustainable에서 탐색값은 곧 그
+    // 계획의 생활비이므로, 사용자가 생활비를 「반드시 지키기」로 못박은 이상 그 생활비
+    // 전체가 계층 1이다. 이것이 스펙의 「런타임 동등」이다.
+    const deliveredParams = this.sustainabilityTrialParams(params, deliveredMonthly, deliveredMonthly);
+    const deliveredResult = honored.bestResult !== null && deliveredMonthly === honored.bestTarget
+      ? honored.bestResult
+      : this.runSingle(deliveredParams);
+
     return {
-      ...this.evaluateProjection(bestTrialParams ?? params, bestResult),
-      calculatedTargetSpending: bestTarget,
+      ...this.evaluateProjection(deliveredParams, deliveredResult),
+      calculatedTargetSpending: deliveredMonthly,
+      // 탐색값과 전달 계획이 갈라진 폭을 남긴다(SustainableSpendingFloorOverride 주석).
+      sustainableSpendingOverride: {
+        preferenceRespectingMonthly: searched.bestTarget,
+        floorHonoringMonthly: honored.bestTarget,
+        deliveredMonthly,
+        hardSpendingFloor,
+      },
     };
   }
 

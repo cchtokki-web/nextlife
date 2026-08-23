@@ -30,7 +30,8 @@ export function freezeSpendingPlan(params: SimulationParams, engine: SimulationE
     return { params, monthlyTargetSpending: params.userProfile.targetMonthlySpending };
   }
 
-  const monthlyTargetSpending = engine.run(params).calculatedTargetSpending ?? 0;
+  const baseline = engine.run(params);
+  const monthlyTargetSpending = baseline.calculatedTargetSpending ?? 0;
 
   // **전략 문자열은 바꾸지 않는다.** 엔진은 사적연금 정상 인출액을 전략에 따라 다르게
   // 정한다(SimulationEngine.ts:882): max_sustainable/dividend_only는 그 달의 운용수익만큼
@@ -46,6 +47,16 @@ export function freezeSpendingPlan(params: SimulationParams, engine: SimulationE
   // 하한선을 남기면 인출 경로가 막혀 재실행 결과가 기준 시나리오와 어긋난다.
   // (하한선은 탐색의 성공 조건으로 이미 반영되어 있다 — meetsSustainabilityGoal.)
   delete frozen.assetFloor;
+
+  // **HARD 생활비 바닥도 기준 시나리오와 같게 맞춘다.** findMaxSustainable이 바닥을 존중한
+  // 실행으로 넘어간 계획에서는(sustainableSpendingOverride) 그 원장의 바닥이 사용자의 바닥이
+  // 아니라 «전달된 생활비 자신»이다. 사용자의 바닥을 그대로 둔 채 재실행하면 1단계가 거기까지만
+  // 세제 한도를 깨고 그 위는 막혀, 고정한 계획이 기준 시나리오와 다른 금액을 쓴다.
+  // (실측: 픽스처에서 연 4,136만원이 3,000만원으로 떨어지고 기말자산이 0 → 1.45억이 됐다.)
+  // 몬테카를로·민감도가 «다른 계획»을 돌리게 되므로 assetFloor와 같은 이유로 맞춰 준다.
+  if (baseline.sustainableSpendingOverride !== undefined) {
+    frozen.hardSpendingFloor = baseline.sustainableSpendingOverride.deliveredMonthly;
+  }
 
   return { params: frozen, monthlyTargetSpending };
 }
