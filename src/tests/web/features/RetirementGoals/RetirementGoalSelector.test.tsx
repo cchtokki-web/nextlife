@@ -1,7 +1,12 @@
 import { useState } from 'react';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, expect, test } from 'vitest';
-import type { RetirementGoal } from '@/core/entities/retirementGoal';
+import {
+  RETIREMENT_GOAL_LABELS,
+  RETIREMENT_GOAL_TYPES,
+  type RetirementGoal,
+} from '@/core/entities/retirementGoal';
+import { isQuantitativelyJudgedGoal } from '@/core/usecases/goals/goalSuccessConditions';
 import { RetirementGoalSelector } from '@/web/features/RetirementGoals/RetirementGoalSelector';
 
 function SelectorHarness({
@@ -194,6 +199,113 @@ describe('RetirementGoalSelector', () => {
       fireEvent.click(screen.getByRole('button', { name: /빠른 은퇴/ }));
 
       expect(screen.queryByText(/아직 제안 금액입니다/)).not.toBeInTheDocument();
+    });
+  });
+
+  // 달성·미달을 잴 정량 기준이 «없는» 목표들이 있다. 그런 목표에 「반드시 지키기」를
+  // 고르게 두면 사용자는 계산이 지키지 않는 조건을 못박은 것으로 믿는다(known-issues 1번).
+  //
+  // 유형을 «여기서» 나열하지 않는다. 목록을 테스트가 따로 들면 화면이 옛 목록을 그대로
+  // 들고 있어도 통과하게 되고, 이 테스트가 막으려는 것이 정확히 그 어긋남이다.
+  describe('정량 판정 대상이 아닌 목표', () => {
+    const hardOption = (label: string) =>
+      within(screen.getByLabelText(`${label} 조건 강도`)).getByRole('option', { name: '반드시 지키기' });
+
+    test('엔진이 판정하지 않는 목표에만 「정량 판정 대상 아님」이 붙는다', () => {
+      for (const type of RETIREMENT_GOAL_TYPES) {
+        const { unmount } = render(
+          <SelectorHarness initial={[{ type, priority: 1, constraintType: 'SOFT' }]} />,
+        );
+
+        const note = screen.queryByText(/정량 판정 대상 아님/);
+        if (isQuantitativelyJudgedGoal(type)) {
+          expect(note, `${RETIREMENT_GOAL_LABELS[type]}은 판정 대상이다`).toBeNull();
+        } else {
+          expect(note, `${RETIREMENT_GOAL_LABELS[type]}은 판정 대상이 아니다`).toBeInTheDocument();
+        }
+        unmount();
+      }
+    });
+
+    test('엔진이 판정하지 않는 목표는 「반드시 지키기」를 고를 수 없다', () => {
+      for (const type of RETIREMENT_GOAL_TYPES) {
+        const label = RETIREMENT_GOAL_LABELS[type];
+        const { unmount } = render(
+          <SelectorHarness initial={[{ type, priority: 1, constraintType: 'SOFT' }]} />,
+        );
+
+        if (isQuantitativelyJudgedGoal(type)) {
+          expect(hardOption(label), label).not.toBeDisabled();
+        } else {
+          // 고를 수 없다 = 선택지가 아예 없다. SOFT 하나만 남는다.
+          expect(
+            within(screen.getByLabelText(`${label} 조건 강도`)).getAllByRole('option').map((o) => o.textContent),
+            label,
+          ).toEqual(['가능하면 달성']);
+        }
+        unmount();
+      }
+    });
+
+    // 기본값이 HARD로 남아 있으면 «고를 수 없는» 값이 자동으로 박힌다 — 잠그는 것보다
+    // 나쁜 상태다. 판정 대상 목표의 기본값은 건드리지 않는다.
+    test('판정 대상이 아닌 목표를 새로 고르면 언제나 SOFT로 시작한다', () => {
+      for (const type of RETIREMENT_GOAL_TYPES) {
+        if (isQuantitativelyJudgedGoal(type)) continue;
+        const seen: RetirementGoal[][] = [];
+        const { unmount } = render(<SelectorHarness onGoals={(goals) => seen.push(goals)} />);
+
+        fireEvent.click(screen.getByRole('button', { name: new RegExp(RETIREMENT_GOAL_LABELS[type]) }));
+
+        expect(seen.at(-1)![0].constraintType, type).toBe('SOFT');
+        unmount();
+      }
+    });
+
+    test('판정 대상 목표의 기본 강도는 그대로다', () => {
+      const seen: RetirementGoal[][] = [];
+      render(<SelectorHarness onGoals={(goals) => seen.push(goals)} />);
+
+      fireEvent.click(screen.getByRole('button', { name: /자산 고갈 방지/ }));
+      expect(seen.at(-1)![0].constraintType).toBe('HARD');
+      fireEvent.click(screen.getByRole('button', { name: /생활비 안정/ }));
+      expect(seen.at(-1)![1].constraintType).toBe('SOFT');
+    });
+
+    // 이미 HARD로 저장된 시나리오를 조용히 SOFT로 고쳐 쓰지 않는다 — 사용자가 저장한
+    // 데이터를 말없이 바꾸는 것은 별개의 결정이다. 보여 주되 다시 고를 수는 없다.
+    test('이미 저장된 HARD는 그대로 보여 주되 다시 고를 수 없게 잠근다', () => {
+      const seen: RetirementGoal[][] = [];
+      render(
+        <SelectorHarness
+          initial={[{ type: 'HOUSING_STABILITY', priority: 1, constraintType: 'HARD' }]}
+          onGoals={(goals) => seen.push(goals)}
+        />,
+      );
+
+      const constraint = screen.getByLabelText('주거 안정 조건 강도');
+      expect(constraint).toHaveValue('HARD');
+      expect(hardOption('주거 안정')).toBeDisabled();
+      expect(screen.getByText(/이전에 저장된 「반드시 지키기」는 그대로 두었지만/))
+        .toBeInTheDocument();
+      // 화면을 여는 것만으로 저장값이 바뀌지 않는다.
+      expect(seen).toEqual([]);
+
+      // SOFT로 내려가면 잠긴 선택지는 사라진다 — 되돌아갈 길은 없다.
+      fireEvent.change(constraint, { target: { value: 'SOFT' } });
+      expect(seen.at(-1)![0].constraintType).toBe('SOFT');
+      expect(within(constraint).queryByRole('option', { name: '반드시 지키기' })).toBeNull();
+    });
+
+    test('문구가 잠근 이유와 그래도 반영되는 것을 함께 말한다', () => {
+      render(<SelectorHarness />);
+
+      fireEvent.click(screen.getByRole('button', { name: /주거 안정/ }));
+
+      expect(screen.getByText(/정량 기준이 아직 없어 「반드시 지키기」로 지정할 수 없습니다/))
+        .toBeInTheDocument();
+      expect(screen.getByText(/선택과 우선순위는 추천 전략을 고르는 기준에 그대로 반영됩니다/))
+        .toBeInTheDocument();
     });
   });
 

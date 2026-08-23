@@ -12,6 +12,7 @@ import {
   type RetirementGoalConstraintType,
   type RetirementGoalType,
 } from '../../../core/entities/retirementGoal';
+import { isQuantitativelyJudgedGoal } from '../../../core/usecases/goals/goalSuccessConditions';
 import { RETIREMENT_GOAL_CATALOG, retirementGoalDefinition } from './goalCatalog';
 
 interface RetirementGoalSelectorProps {
@@ -129,6 +130,17 @@ export function RetirementGoalSelector({
           </h3>
           {selected.map((goal, index) => {
             const definition = retirementGoalDefinition(goal.type);
+            // 「이 목표를 계산이 판정하는가」의 출처는 엔진이다(goalSuccessConditions).
+            const judged = isQuantitativelyJudgedGoal(goal.type);
+            // 정량 기준이 없는 목표는 HARD를 «고를 수 없다». 기준이 없는데 「반드시 지키기」를
+            // 고르게 두면, 계산이 지키지 않는 조건을 사용자가 못박은 것으로 믿게 된다.
+            //
+            // 이미 HARD로 저장된 시나리오는 그 값을 «그대로 보여 준다». 조용히 SOFT로 고쳐
+            // 쓰면 사용자가 저장한 데이터를 말없이 바꾸는 것이 되고, 그것은 별개의 결정이다.
+            // 대신 그 선택지는 잠가 둔다 — 보이되 다시 고를 수는 없다.
+            const storedHard = goal.constraintType === 'HARD';
+            const constraintOptions: RetirementGoalConstraintType[] =
+              judged || storedHard ? ['HARD', 'SOFT'] : ['SOFT'];
             return (
               <div key={goal.type} className="rounded-xl border border-card-border bg-black/10 p-3">
                 <div className="flex items-center gap-2">
@@ -199,16 +211,42 @@ export function RetirementGoalSelector({
                     조건 강도
                     <select
                       aria-label={`${definition.label} 조건 강도`}
+                      aria-describedby={judged ? undefined : `${goal.type}-not-judged`}
                       value={goal.constraintType}
                       onChange={(event) => updateGoal(goal.type, {
                         constraintType: event.target.value as RetirementGoalConstraintType,
                       })}
                       className="h-10 w-full rounded-lg border border-card-border bg-black/20 px-3 text-sm text-foreground outline-none focus:border-primary"
                     >
-                      <option value="HARD">{RETIREMENT_GOAL_CONSTRAINT_LABELS.HARD}</option>
-                      <option value="SOFT">{RETIREMENT_GOAL_CONSTRAINT_LABELS.SOFT}</option>
+                      {constraintOptions.map((option) => (
+                        <option key={option} value={option} disabled={!judged && option === 'HARD'}>
+                          {RETIREMENT_GOAL_CONSTRAINT_LABELS[option]}
+                        </option>
+                      ))}
                     </select>
                   </label>
+                  {/* 잠근 이유를 «강도 바로 밑에» 적는다. 고를 수 없게만 하고 말이 없으면
+                      사용자는 목표가 통째로 무시된다고 읽는다 — 그렇지 않다. 이 목표들은
+                      정성 목표로 남아, 선택과 우선순위가 추천 전략을 고르는 기준에
+                      그대로 반영된다(createGoalUtilityConfig).
+
+                      목록은 엔진의 분류에서 읽는다. 여기서 유형을 나열하면 목표가 분류를
+                      옮기는 날 화면만 옛말을 하게 된다. */}
+                  {!judged && (
+                    <p id={`${goal.type}-not-judged`} className="text-xs leading-relaxed text-foreground-muted">
+                      <strong className="text-foreground">정량 판정 대상 아님</strong>
+                      {' '}— 이 목표는 달성·미달을 잴 정량 기준이 아직 없어
+                      「{RETIREMENT_GOAL_CONSTRAINT_LABELS.HARD}」로 지정할 수 없습니다. 무시되는
+                      목표는 아닙니다: 선택과 우선순위는 추천 전략을 고르는 기준에 그대로
+                      반영됩니다.
+                      {storedHard && (
+                        <>
+                          {' '}이전에 저장된 「{RETIREMENT_GOAL_CONSTRAINT_LABELS.HARD}」는 그대로
+                          두었지만 판정에는 쓰이지 않으며, 다시 고를 수는 없습니다.
+                        </>
+                      )}
+                    </p>
+                  )}
                   {/* 생활비 목표에만 붙인다. 다른 유형에서는 강도의 «뜻»이 달라서다 —
                       은퇴 나이나 기말자산의 HARD는 후보를 거르는 조건이지, 인출 중에
                       계좌 순서를 깨는 규칙이 아니다. 같은 문구를 붙이면 거짓이 된다. */}

@@ -46,6 +46,22 @@ const MEASURABLE_GOALS: ReadonlySet<RetirementGoalType> = new Set([
 
 const PLAN_EMBEDDED_GOALS: ReadonlySet<RetirementGoalType> = new Set(['EARLY_RETIREMENT']);
 
+/**
+ * 이 목표가 «정량 판정»의 대상인가. 시행 하나로 성공/실패를 물을 수 있거나
+ * (MEASURABLE_GOALS), 계획에 박혀 모든 시행이 이미 만족하거나(PLAN_EMBEDDED_GOALS) 둘 중
+ * 하나면 참이다. 나머지 — 주거 안정·연금 최대 활용·세금 최소화·투자 위험 최소화 — 는
+ * 오늘 판정 대상이 아니다. 그 목표들을 HARD로 골라도 GoalEvaluationEngine은 미달을
+ * 만들지 않고 unsupportedHardGoals로 «드러난 채» 남긴다.
+ *
+ * **화면이 이 술어를 쓰라고 내보낸다.** 목표 카드가 조건 강도를 판정에 쓰이는 것처럼
+ * 내보이면, 사용자는 자기가 못박은 조건을 계산이 지킬 것이라 믿는다(known-issues 1번).
+ * 그 목록을 화면이 «따로» 들고 있으면 목표 하나가 분류를 옮기는 날 둘이 갈라지고, 그
+ * 순간부터 화면이 조용히 거짓말을 시작한다. 분류의 출처는 위 두 집합 하나뿐이다.
+ */
+export function isQuantitativelyJudgedGoal(type: RetirementGoalType): boolean {
+  return MEASURABLE_GOALS.has(type) || PLAN_EMBEDDED_GOALS.has(type);
+}
+
 // 목표 달성 확률이 판정할 조건을 정한다.
 //
 // **이 함수가 필요한 이유.** 예전에는 조건이 세 개로 고정되어 있었다 — 목표 생활비, 자산

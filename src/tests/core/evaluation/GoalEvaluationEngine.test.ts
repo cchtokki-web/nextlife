@@ -6,6 +6,8 @@ import { initialParams } from '@/infrastructure/storage/localStore';
 import { SimulationEngine } from '@/core/usecases/SimulationEngine';
 import { compileStrategy, DEFAULT_RETIREMENT_STRATEGY } from '@/core/usecases/strategy/compileStrategy';
 import { allAxesLiveParams } from '@/tests/fixtures/allAxesLiveParams';
+import { RETIREMENT_GOAL_TYPES } from '@/core/entities/retirementGoal';
+import { isQuantitativelyJudgedGoal } from '@/core/usecases/goals/goalSuccessConditions';
 
 describe('DefaultGoalEvaluationEngine', () => {
   test('목표별 달성도를 반환하고 정량 HARD 목표 위반을 점수와 분리한다', () => {
@@ -51,6 +53,27 @@ describe('DefaultGoalEvaluationEngine', () => {
       'HARD_MINIMUM_ENDING_ASSETS',
       'HARD_SPENDING_SHORTFALL',
     ]);
+  });
+
+  // 목표 화면이 「정량 판정 대상 아님」이라 적는 근거가 여기 있다. 술어가 판정 대상이
+  // 아니라고 한 유형은 HARD로 골라도 미달을 «만들 수 없어야» 한다 — 하나라도 미달을
+  // 만들면 화면의 문구가 그 순간 거짓이 된다.
+  test('판정 대상이 아닌 유형은 HARD로 골라도 미달 대신 미검증으로 남는다', () => {
+    for (const type of RETIREMENT_GOAL_TYPES) {
+      if (isQuantitativelyJudgedGoal(type)) continue;
+
+      const input = LegacySimulationAdapter.fromLegacy(structuredClone(initialParams));
+      input.goals.selectedGoals = [{ type, priority: 1, constraintType: 'HARD' }];
+      const result = new LegacySimulationEngine().simulate(input.profile, input.strategy);
+
+      const evaluated = new DefaultGoalEvaluationEngine().evaluate(
+        input.profile, input.goals, input.strategy, result,
+      );
+
+      expect(evaluated.hardConstraintFailures, type).toEqual([]);
+      expect(evaluated.unsupportedHardGoals, type).toEqual([type]);
+      expect(evaluated.hardConstraintsSatisfied, type).toBe(true);
+    }
   });
 
   test('현재 모델로 정량 판정할 수 없는 HARD 목표는 통과로 꾸미지 않고 노출한다', () => {

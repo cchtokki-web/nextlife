@@ -1,6 +1,9 @@
 import { describe, test, expect } from 'vitest';
-import { resolveGoalSuccessConditions } from '@/core/usecases/goals/goalSuccessConditions';
-import type { RetirementGoal } from '@/core/entities/retirementGoal';
+import {
+  isQuantitativelyJudgedGoal,
+  resolveGoalSuccessConditions,
+} from '@/core/usecases/goals/goalSuccessConditions';
+import { RETIREMENT_GOAL_TYPES, type RetirementGoal } from '@/core/entities/retirementGoal';
 import type { SimulationParams } from '@/core/entities/types';
 
 const baseParams: SimulationParams = {
@@ -162,5 +165,19 @@ describe('resolveGoalSuccessConditions', () => {
       expect(conditions.basis).toBe('plan_defaults');
       expect(conditions.terminalAssetGoal).toBe(0);
     });
+  });
+});
+
+// 화면이 「정량 판정 대상 아님」을 어디에 붙일지 이 술어 하나로 정한다. 술어가 위 함수와
+// 다른 답을 하기 시작하면 화면은 «엔진이 판정하는» 목표에 판정하지 않는다고 적게 된다.
+describe('isQuantitativelyJudgedGoal', () => {
+  test('모든 목표 유형에서 미반영 판정과 정확히 반대다', () => {
+    for (const type of RETIREMENT_GOAL_TYPES) {
+      const conditions = resolveGoalSuccessConditions(withGoals(
+        [{ type, priority: 1, constraintType: 'SOFT' }],
+      ));
+
+      expect(conditions.unmeasuredGoals.includes(type), type).toBe(!isQuantitativelyJudgedGoal(type));
+    }
   });
 });

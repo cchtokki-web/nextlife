@@ -37,8 +37,12 @@ export const RETIREMENT_GOAL_CATALOG: readonly RetirementGoalDefinition[] = [
     target: { label: '희망 월 생활비', unit: 'currency' },
   },
   {
+    // 씨앗 강도가 SOFT인 이유: 이 목표에는 달성·미달을 잴 정량 기준이 없어 화면이 HARD를
+    // 고르지 못하게 막는다(RetirementGoalSelector). 기본값만 HARD로 남겨 두면 사용자가
+    // 고를 수 없는 값이 «자동으로» 박혀, 계산이 지키지 않는 조건을 못박은 것으로 읽힌다 —
+    // known-issues 1번이 정확히 그 상태였다. 나머지 판정 밖 목표 셋은 이미 SOFT다.
     type: 'HOUSING_STABILITY', label: RETIREMENT_GOAL_LABELS.HOUSING_STABILITY,
-    description: '노후의 안정적인 주거를 우선해요.', defaultConstraintType: 'HARD',
+    description: '노후의 안정적인 주거를 우선해요.', defaultConstraintType: 'SOFT',
   },
   {
     type: 'PENSION_OPTIMIZATION', label: RETIREMENT_GOAL_LABELS.PENSION_OPTIMIZATION,
