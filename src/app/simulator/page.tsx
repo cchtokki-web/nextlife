@@ -321,6 +321,7 @@ export default function Home() {
         formatValue: formatValuePrint,
         generatedAtText,
         copyrightYear,
+        monteCarlo,
         sections: {
           planVerdict: planVerdictSectionHtml,
           sustainableSpendingLimit: sustainableSpendingLimitSectionHtml,

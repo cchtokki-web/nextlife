@@ -79,6 +79,29 @@ describe('buildReportHtml', () => {
     expect(buildReportHtml(input())).toBe(buildReportHtml(input()));
   });
 
+  test('Monte Carlo 전 연령 밴드가 있으면 화면처럼 연령별 총 자산에 중앙값을 쓴다', () => {
+    const base = input();
+    const medianAtLastAge = 314_110_000;
+    const lastResult = base.result.yearlyResults.at(-1)!;
+    const html = buildReportHtml({
+      ...base,
+      monteCarlo: {
+        assetBands: base.result.yearlyResults.map((row) => ({
+          age: row.age,
+          p10: 0,
+          p50: row.age === lastResult.age ? medianAtLastAge : row.totalAssets / 2,
+        })),
+      },
+    });
+
+    expect(html).toContain('총 자산<br/>(중앙값)');
+    expect(html).toContain('화면 차트와 같은 시장 변동 시행의 연도별 중앙값');
+    const lastAgeRowStart = html.indexOf(`>${lastResult.age}세</td>`);
+    const lastAgeRow = html.slice(lastAgeRowStart, html.indexOf('</tr>', lastAgeRowStart));
+    expect(lastAgeRow).toContain(formatKrw(medianAtLastAge));
+    expect(lastAgeRow).not.toContain(formatKrw(lastResult.totalAssets));
+  });
+
   // 워커가 아직 끝나지 않은 상태. 시장 변동 검증 페이지가 통째로 빠지고, 그만큼
   // 페이지 카운터가 줄어 문서 전체의 번호가 하나씩 당겨진다.
   test('몬테카를로 결과가 없으면 그 페이지를 만들지 않는다', () => {

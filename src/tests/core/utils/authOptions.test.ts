@@ -162,7 +162,7 @@ describe('authOptions — 프로덕션 모드', () => {
     expect(prisma.$transaction).toHaveBeenCalled();
   });
 
-  test('세션 전략은 jwt다(middleware의 getToken이 이 전제 위에서 동작한다)', async () => {
+  test('세션 전략은 jwt다(proxy의 getToken이 이 전제 위에서 동작한다)', async () => {
     const authOptions = await loadAuthOptions(false);
 
     expect(authOptions.session?.strategy).toBe('jwt');
