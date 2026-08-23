@@ -10,7 +10,7 @@ import { computeSensitivityAnalysis } from '../../core/usecases/dashboard/comput
 import { resolvePlanAssetStatus } from '../../core/usecases/dashboard/resolvePlanAssetStatus';
 import { computeShortfallSummary } from '../../core/usecases/dashboard/computeShortfallSummary';
 import { describeDepletionAge } from '../../core/usecases/dashboard/describeDepletionAge';
-import { formatCurrencyUnit, renderRiskAlertsSection, renderStrategyRecommendationSection, renderExecutionRoadmapSection, renderSensitivityTableSection, renderMonteCarloSection, renderShortfallSummarySection, renderPlanVerdictSection, renderGoalConflictSection, renderNationalPensionSection, renderKeyLeversSection } from '../../web/features/Pdf/pdfReportSections';
+import { formatCurrencyUnit, renderRiskAlertsSection, renderStrategyRecommendationSection, renderExecutionRoadmapSection, renderSensitivityTableSection, renderMonteCarloSection, renderShortfallSummarySection, renderPlanVerdictSection, renderGoalConflictSection, renderNationalPensionSection, renderKeyLeversSection, renderSustainableSpendingLimitSection } from '../../web/features/Pdf/pdfReportSections';
 import { buildReportHtml } from '../../web/features/Pdf/buildReportHtml';
 import { generateReportPdf, ReportPageOverflowError } from '../../web/features/Pdf/generateReportPdf';
 import { computePlanConfidence } from '../../core/usecases/dashboard/computePlanConfidence';
@@ -219,7 +219,6 @@ export default function Home() {
           reportParams.spendingStrategy,
           reportParams.userProfile.targetMonthlySpending,
           result.calculatedTargetSpending,
-          reportParams.hardSpendingFloor,
         ),
         params: reportParams,
         formatValue: formatValuePrint,
@@ -264,6 +263,15 @@ export default function Home() {
       const goalConflictSectionHtml = renderGoalConflictSection(
         evaluateGoalConflict(domainInput.profile, domainInput.goals, domainInput.strategy, result),
       );
+      // 「이 금액은 권장액이 아니라 한계값」 고지. 화면(DashboardSection)과 «같은 함수»를
+      // 부른다 — 리포트가 제 문구를 지으면 화면보다 오래 남는 쪽이 갈라진다.
+      const sustainableSpendingLimitSectionHtml = renderSustainableSpendingLimitSection({
+        override: result.sustainableSpendingOverride,
+        endingAssets,
+        depletionAge,
+        expectancy: userProfile.expectancy,
+        formatValue: formatValuePrint,
+      });
       const planVerdictSectionHtml = renderPlanVerdictSection({
         expectancy: userProfile.expectancy,
         deterministicDepletionText: describeDepletionAge(depletionAge, userProfile.expectancy, planAssetStatus),
@@ -315,6 +323,7 @@ export default function Home() {
         copyrightYear,
         sections: {
           planVerdict: planVerdictSectionHtml,
+          sustainableSpendingLimit: sustainableSpendingLimitSectionHtml,
           goalConflict: goalConflictSectionHtml,
           strategyRecommendation: strategyRecommendationHtml,
           riskAlerts: riskAlertsSectionHtml,

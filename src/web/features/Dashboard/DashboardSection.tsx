@@ -31,8 +31,8 @@ import { explainGoalShortfall } from '../../../core/usecases/dashboard/explainGo
 import { resolveTerminalAssetDisplay } from '../../../core/usecases/dashboard/resolveTerminalAssetDisplay';
 import type { GoalSuccessConditions } from '../../../core/usecases/goals/goalSuccessConditions';
 import { describeGoalConflict } from '../../../core/usecases/goals/describeGoalConflict';
+import { describeSustainableSpendingLimit } from '../../../core/usecases/dashboard/describeSustainableSpendingLimit';
 import GlassCard from '../../components/GlassCard';
-import { RETIREMENT_GOAL_CONSTRAINT_LABELS } from '../../../core/entities/retirementGoal';
 import { retirementGoalDefinition } from '../RetirementGoals/goalCatalog';
 import { KeyLeversCard } from './recommendation/KeyLeversCard';
 import { NATIONAL_PENSION_NORMAL_START_AGE } from '../../../core/usecases/pension/nationalPensionRules';
@@ -272,6 +272,17 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
   // 조용해지는 날 아무도 알아채지 못한다. 문장도 여기서 짓지 않는다(describeGoalConflict).
   const goalConflict = describeGoalConflict(evaluation.goalConflict);
 
+  // 「지속가능 생활비」가 HARD 바닥을 존중해 다시 계산된 계획의 고지. 충돌 고지와 같은
+  // 규칙이다 — 판정도 문장도 여기서 짓지 않고, 그릴 것이 없으면 undefined 하나로 말한다.
+  // 이 고지가 없으면 3.35억을 남기던 계획과 0원 계획이 «같은 얼굴»로 보인다.
+  const sustainableLimit = describeSustainableSpendingLimit({
+    override: result.sustainableSpendingOverride,
+    endingAssets: result.endingAssets,
+    depletionAge: result.depletionAge,
+    expectancy: params.userProfile.expectancy,
+    formatValue,
+  });
+
   return (
     <div className={styles.container}>
       <DashboardGroup title="현재 계획 진단" description="나는 지금 괜찮은지, 무엇이 가장 취약한지부터 확인하세요.">
@@ -508,22 +519,24 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
                   목표 상속자산을 줄이거나 은퇴 시점을 늦추는 방향을 검토해 보세요.
                 </StatusNotice>
               )}
-              {/* 탐색은 바닥을 떼고 돈다(SimulationEngine.sustainabilityTrialParams). 그래서
-                  「어떤 생활비로도 바닥에 닿지 못한다」는 사실은 시뮬레이션 결과가 아니라
-                  탐색값과 바닥을 견준 이 자리에서만 드러난다. 침묵하면 사용자가 못박은
-                  조건이 조용히 사라진다.
-                  max_sustainable 계획에서만 뜬다 — 고정 생활비 계획은 엔진이 1단계에서
-                  해마다 바닥을 실제로 채우므로, 탐색값으로 미달을 말하면 같은 실행의 원장이
-                  반증한다(computeSustainableSpendingAdvice 주석). */}
-              {sustainableSpendingAdvice?.kind === 'below_hard_floor' && (
+              {/* 「지속가능 생활비」가 HARD 바닥을 존중해 다시 계산된 계획.
+                  바로 위 「평생 소비 최적화 결과」가 말한 금액의 «성격»을 밝히는 자리라
+                  그 배너 바로 아래에 둔다 — 금액과 그 금액이 무엇인지가 떨어져 있으면
+                  사용자는 앞의 숫자만 읽고 권장액으로 가져간다.
+                  예전 이 자리에는 「바닥에 닿지 못한다」 배너가 있었다. 엔진이 이제 바닥을
+                  지급하므로 그 상태는 생기지 않는다(computeSustainableSpendingAdvice 주석). */}
+              {sustainableLimit && (
                 <StatusNotice
                   tone="danger" icon={<AlertTriangle size={19} aria-hidden="true" />}
-                  title={`${RETIREMENT_GOAL_CONSTRAINT_LABELS.HARD}로 정한 생활비를 지속할 수 없습니다`}
+                  title={sustainableLimit.title}
                 >
-                  지속 가능한 한도는 월 <strong>{formatValue(sustainableSpendingAdvice.sustainableMonthly)}</strong>으로,
-                  {RETIREMENT_GOAL_CONSTRAINT_LABELS.HARD}로 정한 월 {formatValue(sustainableSpendingAdvice.hardFloorMonthly)}보다
-                  월 {formatValue(sustainableSpendingAdvice.difference)} 모자랍니다.
-                  생활비 목표를 낮추거나 조건 강도를 「{RETIREMENT_GOAL_CONSTRAINT_LABELS.SOFT}」으로 바꾸는 방향을 검토해 보세요.
+                  {/* 문장마다 span으로 감싼다. StatusNotice가 children을 <p> 하나로 감싸므로
+                      <p>를 겹치면 잘못된 HTML이 되고, 한 덩어리로 이으면 어느 문장이 떴는지
+                      테스트가 «문장 단위»로 고정하지 못한다. */}
+                  <span>{sustainableLimit.reason}</span>{' '}
+                  <span>{sustainableLimit.limit}</span>
+                  {sustainableLimit.terminalAssets && <>{' '}<span>{sustainableLimit.terminalAssets}</span></>}
+                  {sustainableLimit.depletionRisk && <>{' '}<span>{sustainableLimit.depletionRisk}</span></>}
                 </StatusNotice>
               )}
               {sustainableSpendingAdvice?.kind === 'can_spend_more' && (

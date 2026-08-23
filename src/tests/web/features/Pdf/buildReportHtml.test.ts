@@ -119,6 +119,37 @@ describe('buildReportHtml', () => {
     });
   });
 
+  // 「이 금액은 권장액이 아니라 한계값」 고지가 «어디에» 놓이는가. 문장은
+  // renderSustainableSpendingLimitSection이 소유하므로 여기서 시험하는 것은 자리뿐이다.
+  //
+  // 판정 블록이 기말자산과 고갈 나이를 말한 «직후»여야 한다. 그 뒤로 밀리면 사용자는
+  // 「85세 잔여자산 0원」을 먼저 읽고, 그것이 계획이 고장난 것인지 「반드시 지키기」를
+  // 지킨 결과인지 모른 채 다음 장으로 넘어간다.
+  describe('한계 계획 고지', () => {
+    const limitHtml = '<div id="sustainable-limit-probe">이 금액은 권장 생활비가 아니라 자산을 거의 소진하는 한계 수준입니다.</div>';
+
+    test('「현재 계획 진단」 안, 판정 블록 바로 뒤에 놓인다', () => {
+      const html = buildReportHtml({
+        ...input(),
+        sections: { ...fixture.sections, sustainableSpendingLimit: limitHtml },
+      });
+
+      expect(html).toContain(limitHtml);
+      expect(html.indexOf('현재 계획 진단')).toBeLessThan(html.indexOf(limitHtml));
+      // 부족 요약보다 앞이다 — 부족 요약은 「얼마가 모자랐나」이고, 이 고지는 그 계획이
+      // 애초에 무엇인가를 말한다.
+      expect(html.indexOf(limitHtml)).toBeLessThan(html.indexOf('. 시뮬레이션 설정 상태'));
+    });
+
+    test('바닥이 구속하지 않으면 빈 줄 하나도 만들지 않는다', () => {
+      // 「없는 것은 자리도 만들지 않는다」. 골든 출력이 한 글자도 변하지 않아야 한다.
+      expect(buildReportHtml({
+        ...input(),
+        sections: { ...fixture.sections, sustainableSpendingLimit: '' },
+      })).toBe(fixture.html);
+    });
+  });
+
   // 세 계좌 목록이 «연 총수익률»을 같은 형식으로 말하는지 고정한다.
   //
   // 이 문서가 오래 거짓말을 했던 자리다. 예전에는 "예상 연 수익률 7%"라고 적힌 자산이

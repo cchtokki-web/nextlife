@@ -1005,3 +1005,83 @@ describe('동시에 달성하기 어려운 목표', () => {
     expect(screen.queryByText('동시에 달성하기 어려운 목표가 있습니다')).not.toBeInTheDocument();
   });
 });
+
+// 「지속가능 생활비」가 HARD 바닥을 존중해 다시 계산된 계획의 고지.
+//
+// 숫자만 바꾸고 이 고지를 두지 않으면 **3.35억이 남던 계획과 0원 계획이 같은 얼굴로 보인다.**
+// 「월 345만원」을 권장액으로 읽은 사용자는 자산을 소진하는 계획을 세우게 된다.
+describe('DashboardSection - HARD 바닥을 우선한 한계 계획 고지', () => {
+  const LIMIT_TITLE = '「반드시 지키기」로 정한 생활비를 우선한 한계 계획입니다';
+
+  // 실측 픽스처(사적연금 5억·저율과세 한도 ON)의 값을 그대로 얹는다.
+  const overrideResult: SimulationResult = {
+    ...result,
+    endingAssets: 5,
+    calculatedTargetSpending: 3_446_597,
+    sustainableSpendingOverride: {
+      preferenceRespectingMonthly: 1_181_250,
+      floorHonoringMonthly: 3_446_597,
+      deliveredMonthly: 3_446_597,
+      hardSpendingFloor: 2_500_000,
+    },
+  };
+
+  test('네 가지 중 뜰 것이 문장 그대로 뜬다', () => {
+    render(<DashboardSection params={params} result={overrideResult} />);
+
+    expect(screen.getByText(LIMIT_TITLE)).toBeInTheDocument();
+    // 1. 왜 인출이 늘었는지
+    expect(screen.getByText(
+      '설정한 생활비를 반드시 충족하도록 인출한 결과, 지속 가능한 생활비가 '
+      + '월 118만원에서 월 345만원으로 올랐습니다. '
+      + '「반드시 지키기」로 정한 월 250만원이 세제 최적화·계좌 인출 순서·월 인출 목표보다 '
+      + '우선하기 때문입니다.'
+    )).toBeInTheDocument();
+    // 3. 권장액이 아니라 한계값
+    expect(screen.getByText('이 금액은 권장 생활비가 아니라 자산을 거의 소진하는 한계 수준입니다.'))
+      .toBeInTheDocument();
+    // 2. 기말 잔여자산
+    expect(screen.getByText(
+      '기대수명 90세 시점 잔여자산은 0원입니다. 예상치 못한 지출이나 상속에 쓸 여유가 남지 않습니다.'
+    )).toBeInTheDocument();
+    // 4. 이 계획의 바닥(250만)은 한계(345만)의 72.5%라 여유가 있다 — 뜨지 «않는다».
+    expect(screen.queryByText(/거의 닿아 있습니다/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/버티지 못합니다/)).not.toBeInTheDocument();
+  });
+
+  test('바닥이 한계를 넘어 고갈하면 4번 위험 경고가 함께 뜬다', () => {
+    const depleting: SimulationResult = {
+      ...overrideResult,
+      depletionAge: 67,
+      sustainableSpendingOverride: {
+        preferenceRespectingMonthly: 1_181_250,
+        floorHonoringMonthly: 3_446_597,
+        deliveredMonthly: 5_000_000,
+        hardSpendingFloor: 5_000_000,
+      },
+    };
+    render(<DashboardSection params={params} result={depleting} />);
+
+    expect(screen.getByText(
+      '자산이 67세에 바닥나 기대수명 90세까지 버티지 못합니다. '
+      + '「반드시 지키기」로 정한 월 500만원이 이 계획이 감당하는 한계(월 345만원)를 '
+      + '넘기 때문입니다.'
+    )).toBeInTheDocument();
+  });
+
+  test('잔여자산이 남으면 2번 경고는 뜨지 않는다', () => {
+    render(<DashboardSection params={params} result={{ ...overrideResult, endingAssets: 500_000_000 }} />);
+
+    expect(screen.getByText(LIMIT_TITLE)).toBeInTheDocument();
+    expect(screen.queryByText(/시점 잔여자산은/)).not.toBeInTheDocument();
+  });
+
+  test('바닥이 구속하지 않은 계획에는 블록 자체가 없다', () => {
+    // 종전과 한 발도 다르지 않은 계획에 고지를 띄우면 소음만 는다.
+    render(<DashboardSection params={params} result={result} />);
+
+    expect(screen.queryByText(LIMIT_TITLE)).not.toBeInTheDocument();
+    expect(screen.queryByText('이 금액은 권장 생활비가 아니라 자산을 거의 소진하는 한계 수준입니다.'))
+      .not.toBeInTheDocument();
+  });
+});

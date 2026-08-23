@@ -75,7 +75,6 @@ export class LegacyEvaluationEngine implements EvaluationEngine {
         params.spendingStrategy,
         params.userProfile.targetMonthlySpending,
         result.calculatedTargetSpending,
-        params.hardSpendingFloor
       ),
       utilityExplanations: explainUtilityComponents(
         params,

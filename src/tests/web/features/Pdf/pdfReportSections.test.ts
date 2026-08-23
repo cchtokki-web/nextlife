@@ -9,6 +9,7 @@ import {
   renderShortfallSummarySection,
   renderPlanVerdictSection,
   renderGoalConflictSection,
+  renderSustainableSpendingLimitSection,
 } from '@/web/features/Pdf/pdfReportSections';
 import { formatManwon } from '@/core/usecases/utility/utilityAnalysis';
 import { ShortfallReport } from '@/core/usecases/dashboard/computeShortfallSummary';
@@ -740,5 +741,67 @@ describe('renderGoalConflictSection', () => {
   test('충돌이 없으면 빈 문자열이다', () => {
     // 빈 껍데기도, 「충돌 없음」 문구도 두지 않는다 — 없는 것은 말하지 않는다.
     expect(renderGoalConflictSection({ goalConflict: false, conflictingGoals: [] })).toBe('');
+  });
+});
+
+// 리포트는 화면보다 오래 남아 그대로 인용된다. 「이 금액은 권장액이 아니다」가 화면에만 있고
+// 리포트에 없으면, 인용되는 쪽이 3.35억을 남기던 계획과 같은 얼굴로 0원 계획을 인쇄한다.
+describe('renderSustainableSpendingLimitSection', () => {
+  const won = (v: number) => `${Math.round(v).toLocaleString('ko-KR')}원`;
+  const override = {
+    preferenceRespectingMonthly: 1_181_250,
+    floorHonoringMonthly: 3_446_597,
+    deliveredMonthly: 3_446_597,
+    hardSpendingFloor: 2_500_000,
+  };
+
+  test('화면과 «같은 문장»을 찍는다', () => {
+    const html = renderSustainableSpendingLimitSection({
+      override, endingAssets: 5, depletionAge: null, expectancy: 70, formatValue: won,
+    });
+
+    expect(html).toContain('「반드시 지키기」로 정한 생활비를 우선한 한계 계획입니다');
+    expect(html).toContain(
+      '설정한 생활비를 반드시 충족하도록 인출한 결과, 지속 가능한 생활비가 '
+      + '월 1,181,250원에서 월 3,446,597원으로 올랐습니다. '
+      + '「반드시 지키기」로 정한 월 2,500,000원이 세제 최적화·계좌 인출 순서·월 인출 목표보다 '
+      + '우선하기 때문입니다.'
+    );
+    expect(html).toContain('이 금액은 권장 생활비가 아니라 자산을 거의 소진하는 한계 수준입니다.');
+    expect(html).toContain(
+      '기대수명 70세 시점 잔여자산은 5원입니다. 예상치 못한 지출이나 상속에 쓸 여유가 남지 않습니다.'
+    );
+    // 이 계획의 바닥은 한계의 72.5%라 위험 경고는 «없다».
+    expect(html).not.toContain('거의 닿아 있습니다');
+    expect(html).not.toContain('버티지 못합니다');
+  });
+
+  test('바닥이 한계를 넘으면 고갈 위험 경고가 함께 인쇄된다', () => {
+    const html = renderSustainableSpendingLimitSection({
+      override: { ...override, hardSpendingFloor: 5_000_000, deliveredMonthly: 5_000_000 },
+      endingAssets: 0, depletionAge: 67, expectancy: 70, formatValue: won,
+    });
+
+    expect(html).toContain(
+      '자산이 67세에 바닥나 기대수명 70세까지 버티지 못합니다. '
+      + '「반드시 지키기」로 정한 월 5,000,000원이 이 계획이 감당하는 한계(월 3,446,597원)를 '
+      + '넘기 때문입니다.'
+    );
+  });
+
+  test('잔여자산이 남으면 그 경고만 빠진다', () => {
+    const html = renderSustainableSpendingLimitSection({
+      override, endingAssets: 500_000_000, depletionAge: null, expectancy: 70, formatValue: won,
+    });
+
+    expect(html).toContain('이 금액은 권장 생활비가 아니라 자산을 거의 소진하는 한계 수준입니다.');
+    expect(html).not.toContain('시점 잔여자산은');
+  });
+
+  test('바닥이 구속하지 않은 계획에는 빈 문자열이다', () => {
+    // 빈 <div>를 남기면 리포트에 이유 없는 테두리가 하나 생긴다.
+    expect(renderSustainableSpendingLimitSection({
+      override: undefined, endingAssets: 5, depletionAge: null, expectancy: 70, formatValue: won,
+    })).toBe('');
   });
 });

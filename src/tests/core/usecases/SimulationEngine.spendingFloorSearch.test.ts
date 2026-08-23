@@ -122,50 +122,34 @@ describe('생활비 자체를 탐색하는 계산에서는 바닥을 뗀다', ()
   });
 });
 
-describe('바닥 미달은 탐색 실패가 아니라 사후 비교로 보고된다', () => {
-  test('지속가능 227만원 / 바닥 250만원 → 월 23만원 부족', () => {
-    const advice = computeSustainableSpendingAdvice(
-      'max_sustainable', 2_500_000, 2_270_000, 2_500_000
-    );
-
-    expect(advice).toEqual({
-      kind: 'below_hard_floor',
-      sustainableMonthly: 2_270_000,
-      hardFloorMonthly: 2_500_000,
-      difference: 230_000,
-    });
-  });
-
-  // 이 사후 비교는 «탐색값»에 대한 규칙이다. 엔진이 내놓는 max_sustainable 결과에서는 이제
-  // 전달값이 언제나 바닥 이상이므로(전달값 = max(바닥, 바닥 존중 용량)) 여기서 미달이 서지
-  // 않는다 — 미달의 자리를 「지급은 하지만 지속되지 않는다」가 대신한다.
-  test('엔진 결과에서는 미달 대신 「바닥을 지급하고 고갈한다」가 남는다', () => {
+describe('바닥이 탐색값을 넘으면 전달 계획이 바닥을 채운다', () => {
+  // 스펙의 「탐색 분리」 예시(지속가능 227 / 바닥 250)가 이제 어떻게 끝나는지.
+  //
+  // 예전에는 여기서 「월 23만원 부족」이라는 사후 비교가 나왔다. 지금은 그 상태가 생기지
+  // 않는다 — findMaxSustainable이 전달하는 생활비는 max(바닥, 바닥 존중 용량)이라 언제나
+  // 바닥 이상이다. 부족을 말하던 자리를 「지급은 하지만 그 대가가 있다」가 대신한다.
+  test('탐색값이 바닥에 못 미쳐도 전달 계획은 바닥을 지급한다', () => {
     const params = floorAboveSustainable();
     const result = new SimulationEngine().run(params);
-    const advice = computeSustainableSpendingAdvice(
+
+    expect(result.sustainableSpendingOverride!.preferenceRespectingMonthly)
+      .toBeLessThan(2_500_000);
+    expect(result.calculatedTargetSpending).toBe(2_500_000);
+    // 조언 함수는 max_sustainable 계획에 아무 말도 하지 않는다. 「더 쓰세요/덜 쓰세요」의
+    // 대상이 아니기 때문이다 — 그 계획의 금액이 무엇인지는 describeSustainableSpendingLimit이
+    // 말한다(describeSustainableSpendingLimit.test.ts).
+    expect(computeSustainableSpendingAdvice(
       params.spendingStrategy,
       params.userProfile.targetMonthlySpending,
       result.calculatedTargetSpending,
-      params.hardSpendingFloor
-    );
-
-    // 원장이 바닥을 실제로 지급하므로 「월 23만원 부족」은 같은 실행이 반증하는 말이 된다.
-    expect(result.calculatedTargetSpending).toBe(2_500_000);
-    expect(advice).toBeNull();
-    // 대신 그 대가가 원장에 남는다. 미달을 대신 말하는 사실은 이 둘이다.
+    )).toBeNull();
+    // 대가는 원장에 남는다. 미달을 대신 말하는 사실은 이 둘이다.
     expect(result.sustainableSpendingOverride!.floorHonoringMonthly).toBeLessThan(2_500_000);
     expect(result.depletionAge).not.toBeNull();
   });
 
-  test('바닥이 없으면 종전 판정 그대로다', () => {
-    expect(computeSustainableSpendingAdvice('max_sustainable', 2_500_000, 2_270_000)).toBeNull();
-    expect(computeSustainableSpendingAdvice('target', 2_500_000, 2_270_000, undefined)?.kind)
-      .toBe('overspending');
-  });
-
   // 고정 생활비 계획에서 탐색값으로 바닥 미달을 말하면 «같은 실행의 원장»이 그것을 반증한다.
-  // 엔진은 1단계에서 선호를 깨면서 해마다 바닥을 실제로 채우기 때문이다. 그래서 이 판정은
-  // 탐색값이 곧 생활비인 max_sustainable에만 선다.
+  // 엔진은 1단계에서 선호를 깨면서 해마다 바닥을 실제로 채우기 때문이다.
   test('원장이 바닥을 채우는 target 계획에서는 미달을 말하지 않는다', () => {
     const params = pensionCapped({
       spendingStrategy: 'target',
@@ -180,31 +164,21 @@ describe('바닥 미달은 탐색 실패가 아니라 사후 비교로 보고된
     // 그런데 바닥을 뗀 탐색값은 그보다 한참 낮다. 이 둘을 견주면 거짓말이 된다.
     expect(result.calculatedTargetSpending!).toBeLessThan(2_500_000);
 
+    // 그래서 이 계획의 판정은 «목표 생활비» 대비 종전 판정 그대로다. 바닥은 끼어들지 않는다.
     const advice = computeSustainableSpendingAdvice(
       params.spendingStrategy,
       params.userProfile.targetMonthlySpending,
       result.calculatedTargetSpending,
-      params.hardSpendingFloor
     );
-    expect(advice?.kind).not.toBe('below_hard_floor');
+    expect(advice?.kind).toBe('overspending');
+    // 바닥은 이 함수의 입력이 «아니다». 그 사실 자체를 고정한다 — 되살아나면 위 원장이
+    // 반증하는 문장이 다시 화면에 뜬다.
+    expect(computeSustainableSpendingAdvice.length).toBe(3);
   });
 
-  test('지속가능액이 바닥 이상이면 바닥 판정은 서지 않는다', () => {
-    expect(computeSustainableSpendingAdvice('max_sustainable', 2_500_000, 2_500_000, 2_500_000))
-      .toBeNull();
-    expect(computeSustainableSpendingAdvice('target', 2_500_000, 3_000_000, 2_500_000)?.kind)
-      .toBe('can_spend_more');
-    // 바닥보다 낮아도 target 전략에서는 종전 판정 그대로다.
-    expect(computeSustainableSpendingAdvice('target', 2_500_000, 1_181_250, 2_500_000)?.kind)
-      .toBe('overspending');
-  });
-
-  test('탐색이 0으로 수렴해도 바닥 미달은 침묵하지 않는다', () => {
-    expect(computeSustainableSpendingAdvice('max_sustainable', 2_500_000, 0, 2_500_000)).toEqual({
-      kind: 'below_hard_floor',
-      sustainableMonthly: 0,
-      hardFloorMonthly: 2_500_000,
-      difference: 2_500_000,
-    });
+  test('max_sustainable 계획에는 어떤 조언도 하지 않는다', () => {
+    expect(computeSustainableSpendingAdvice('max_sustainable', 2_500_000, 2_270_000)).toBeNull();
+    expect(computeSustainableSpendingAdvice('max_sustainable', 2_500_000, 3_000_000)).toBeNull();
+    expect(computeSustainableSpendingAdvice('max_sustainable', 2_500_000, 0)).toBeNull();
   });
 });

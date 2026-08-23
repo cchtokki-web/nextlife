@@ -15,6 +15,14 @@ import {
 export interface ReportSectionHtml {
   planVerdict: string;
   /**
+   * 「지속가능 생활비」가 HARD 생활비 바닥을 존중해 다시 계산된 계획의 고지. 바닥이
+   * 구속하지 않은 계획에서는 빈 문자열이고, 그때는 자리 자체가 생기지 않는다.
+   *
+   * goalConflict와 같은 이유로 «선택 필드가 아니다». 빠뜨려도 컴파일이 통과하면, 3.35억을
+   * 남기던 계획과 0원 계획이 리포트에서 같은 얼굴로 인쇄된다.
+   */
+  sustainableSpendingLimit: string;
+  /**
    * 「내가 고른 목표들이 서로 맞지 않는다」. 충돌이 없으면 빈 문자열이고, 그때는 자리 자체가
    * 생기지 않는다 — 빈 껍데기도 「충돌 없음」 문구도 두지 않는다.
    *
@@ -338,6 +346,9 @@ export function buildReportHtml(input: ReportHtmlInput): string {
 
   const {
     planVerdict: planVerdictSectionHtml,
+    // 「이 금액은 권장액이 아니라 한계값」 고지. 판정 블록 바로 아래에 붙는다 — 그 블록이
+    // 기말자산과 고갈 나이를 말한 직후여야 「왜 그 숫자인가」가 이어진다.
+    sustainableSpendingLimit: sustainableSpendingLimitSectionHtml,
     // 목표 충돌 고지. 「현재 계획 진단」 아래, 「NextLife 추천」 «위»에 놓는다 — 무엇이
     // 부딪히는지를 먼저 알아야 추천이 왜 그런 모양인지 이해된다(스펙). 추천 절 «안»이
     // 아닌 이유도 같다: 충돌은 추천의 근거가 아니라 목표들 사이의 사실이다.
@@ -433,7 +444,7 @@ export function buildReportHtml(input: ReportHtmlInput): string {
             <p style="font-size: 11px; color: #64748b; margin-bottom: 25px;">출력 일시: ${generatedAtText}</p>
             
             <h2 style="margin-top: 0; font-size: 17px; color: #0f172a; border-bottom: none; padding-bottom: 0; margin-bottom: 12px;">${nextSection()}. 현재 계획 진단</h2>
-            ${planVerdictSectionHtml}
+            ${planVerdictSectionHtml}${sustainableSpendingLimitSectionHtml}
             ${shortfallSummarySectionHtml}
             ${riskAlertsSectionHtml}
 
