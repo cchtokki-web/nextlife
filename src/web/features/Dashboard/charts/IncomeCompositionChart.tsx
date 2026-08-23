@@ -1,10 +1,10 @@
 'use client';
 
 import React from 'react';
-import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, ReferenceLine, type LegendPayload, type YAxisTickContentProps } from 'recharts';
+import { ResponsiveContainer, ComposedChart, Bar, Line, XAxis, YAxis, Tooltip, CartesianGrid, ReferenceLine, type LegendPayload, type YAxisTickContentProps } from 'recharts';
 import GlassCard from '../../../components/GlassCard';
 import styles from '../Dashboard.module.css';
-import { SimulationParams, SimulationResult } from '../../../../core/entities/types';
+import { SimulationParams, SimulationResult, SimulationYearlyResult } from '../../../../core/entities/types';
 import { computeMonthlySpendingComposition } from '../../../../core/usecases/MonthlySpendingComposition';
 import {
   formatValue, MultilineYAxisTick, RECHARTS_TOOLTIP_STYLE, REFERENCE_LABEL_FONT_SIZE, Y_AXIS_WIDTH,
@@ -32,14 +32,17 @@ interface IncomeCompositionChartProps {
   nationalPensionStartAge?: number;
 }
 
-const INCOME_KEYS = ['국민연금', '사적연금', '배당소득', '기타소득'] as const;
+// 생활비에 바로 쓸 수 있는 현금소득만 합산한다. 재투자 배당은 같은 금액 축에 그리되
+// 별도 점선으로 표시하고 이 목록에는 넣지 않는다 — 총소득·생활비 충당률에 더하면 안 된다.
+const CASH_INCOME_KEYS = ['국민연금', '사적연금', '현금 배당', '기타소득'] as const;
 
 // 범례 표기. 아래 <Bar> 선언의 name/fill과 짝을 이룬다.
 export const INCOME_LEGEND: ChartLegendItem[] = [
   { dataKey: '국민연금', label: '국민연금', color: '#10B981' },
   { dataKey: '사적연금', label: '사적연금', color: '#A855F7' },
-  { dataKey: '배당소득', label: '배당소득', color: '#3B82F6' },
+  { dataKey: '현금 배당', label: '현금 배당', color: '#3B82F6' },
   { dataKey: '기타소득', label: '기타소득', color: '#F59E0B' },
+  { dataKey: '재투자 배당', label: '재투자 배당 (소득 제외)', color: '#22D3EE', shape: 'dashed' },
 ];
 
 // 막대 위 ⚠️ 표시(Bar label의 `y - 8`)가 첫 눈금선에 닿지 않도록 비우는 여백(px).
@@ -54,13 +57,33 @@ export interface IncomeChartRow {
   age: number;
   국민연금: number;
   사적연금: number;
-  배당소득: number;
+  '현금 배당': number;
   기타소득: number;
+  /** 계좌 안에 남은 세후 배당. 생활비 재원·총소득에는 포함하지 않는다. */
+  '재투자 배당': number;
   hasTaxWarning: boolean;
   // 그해 목표 월 생활비(은퇴 후에만 존재). 소득이 목표의 몇 %인지 말하기 위한 것이고,
   // 물가·의료비 규칙은 computeMonthlySpendingComposition이 이미 반영해 둔다.
   targetMonthly?: number;
   fixedIncomeCoverageRate?: number;
+}
+
+/** 엔진 원장을 차트 표시값으로 옮기는 유일한 경로. */
+export function toIncomeChartRow(
+  result: SimulationYearlyResult,
+  target?: { targetMonthly: number; fixedIncomeCoverageRate: number },
+): IncomeChartRow {
+  return {
+    age: result.age,
+    국민연금: Math.round(result.nationalPensionIncome),
+    사적연금: Math.round(result.privatePensionIncome),
+    '현금 배당': Math.round(result.dividendIncome),
+    기타소득: Math.round(result.otherIncome),
+    '재투자 배당': Math.round(result.ledger?.investmentReturn.dividendRetainedNet ?? 0),
+    hasTaxWarning: result.hasTaxWarning,
+    targetMonthly: target?.targetMonthly,
+    fixedIncomeCoverageRate: target?.fixedIncomeCoverageRate,
+  };
 }
 
 // recharts 기본 툴팁은 시리즈를 그대로 나열할 뿐이라, 0원인 소득원까지 함께 찍혀
@@ -78,7 +101,7 @@ export function IncomeCompositionTooltip({
   const row = rows.find((r) => r.age === Number(label));
   if (!row) return null;
 
-  const total = INCOME_KEYS.reduce((sum, key) => sum + row[key], 0);
+  const cashIncomeTotal = CASH_INCOME_KEYS.reduce((sum, key) => sum + row[key], 0);
   const coverageRate = row.fixedIncomeCoverageRate === undefined
     ? null
     : Math.round(row.fixedIncomeCoverageRate * 100);
@@ -88,13 +111,27 @@ export function IncomeCompositionTooltip({
       <div style={{ fontWeight: 700, marginBottom: 6 }}>{row.age}세</div>
       {/* 막대와 같은 색으로 말한다. 색이 없으면 사용자가 「어느 줄이 어느 띠인가」를
           눈으로 이어야 한다 — 소득원이 넷이고 스택이라 그 잇기가 특히 어렵다. */}
-      {INCOME_KEYS.filter((key) => row[key] > 0).map((key) => (
+      {CASH_INCOME_KEYS.filter((key) => row[key] > 0).map((key) => (
         <div key={key} style={{ display: 'flex', justifyContent: 'space-between', gap: 16 }}>
           <span style={{ color: legendColorOf(INCOME_LEGEND, key) }}>{key}</span>
           <span style={{ color: legendColorOf(INCOME_LEGEND, key) }}>{formatValue(row[key], currency)}</span>
         </div>
       ))}
-      {total === 0 && <div style={{ opacity: 0.7 }}>이 해에는 연금·배당·기타소득이 없습니다.</div>}
+      {cashIncomeTotal === 0 && (
+        <div style={{ opacity: 0.7 }}>이 해에는 현금으로 받은 연금·배당·기타소득이 없습니다.</div>
+      )}
+      {row['재투자 배당'] > 0 && (
+        <div
+          style={{
+            display: 'flex', justifyContent: 'space-between', gap: 16,
+            marginTop: 6, paddingTop: 6, borderTop: '1px solid rgba(148, 163, 184, 0.25)',
+            color: legendColorOf(INCOME_LEGEND, '재투자 배당'),
+          }}
+        >
+          <span>재투자 배당 (소득 제외)</span>
+          <span>{formatValue(row['재투자 배당'], currency)}</span>
+        </div>
+      )}
       {coverageRate !== null && (
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, marginTop: 6 }}>
           <span>목표 생활비 충당률</span>
@@ -115,22 +152,13 @@ export function IncomeCompositionChart({
     computeMonthlySpendingComposition(result.yearlyResults, params, result)
       .map((d) => [d.age, d] as const)
   );
-  const pensionChartData: IncomeChartRow[] = result.yearlyResults.map((r) => ({
-    age: r.age,
-    국민연금: Math.round(r.nationalPensionIncome),
-    사적연금: Math.round(r.privatePensionIncome),
-    배당소득: Math.round(r.dividendIncome),
-    기타소득: Math.round(r.otherIncome),
-    hasTaxWarning: r.hasTaxWarning,
-    targetMonthly: targetByAge.get(r.age)?.targetMonthly,
-    fixedIncomeCoverageRate: targetByAge.get(r.age)?.fixedIncomeCoverageRate,
-  }));
+  const pensionChartData = result.yearlyResults.map((r) => toIncomeChartRow(r, targetByAge.get(r.age)));
 
   return (
     <GlassCard className={styles.chartCard}>
       <div className={styles.chartHeader}>
         <span className={styles.chartTitle}>
-          연령별 소득원 구성 (현재 ~ {params.userProfile.expectancy}세)
+          연령별 소득원 구성 및 재투자 배당 (현재 ~ {params.userProfile.expectancy}세)
           <span style={{ fontSize: '0.85em', color: 'var(--foreground-muted)', marginLeft: '8px', fontWeight: 'normal' }}>
             ({params.inflationMode === 'nominal' ? '명목가치' : '실질가치'} 기준)
           </span>
@@ -142,11 +170,14 @@ export function IncomeCompositionChart({
         )}
       </div>
       <ChartCaption>{caption}</ChartCaption>
+      <p className="mb-2 text-xs text-foreground-muted">
+        막대는 생활비에 바로 쓰는 현금소득이며, 청록색 점선은 계좌 안에 남아 총소득과 생활비 충당률에서 제외된 세후 배당입니다.
+      </p>
       <ChartLegend items={INCOME_LEGEND} hiddenKeys={hiddenKeys} onToggle={onLegendClick} />
       <div className={styles.chartScrollWrapper}>
         <div className={styles.chartContainer}>
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={pensionChartData} margin={{ top: CHART_TOP_MARGIN, right: 43, left: 0, bottom: 0 }}>
+            <ComposedChart data={pensionChartData} margin={{ top: CHART_TOP_MARGIN, right: 43, left: 0, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(255, 255, 255, 0.05)" />
               <XAxis
                 dataKey="age"
@@ -191,7 +222,7 @@ export function IncomeCompositionChart({
               )}
               <Bar name="국민연금" dataKey="국민연금" stackId="a" fill="#10B981" hide={!!hiddenKeys['국민연금']} />
               <Bar name="사적연금" dataKey="사적연금" stackId="a" fill="#A855F7" hide={!!hiddenKeys['사적연금']} />
-              <Bar name="배당소득" dataKey="배당소득" stackId="a" fill="#3B82F6" hide={!!hiddenKeys['배당소득']} />
+              <Bar name="현금 배당" dataKey="현금 배당" stackId="a" fill="#3B82F6" hide={!!hiddenKeys['현금 배당']} />
               <Bar
                 name="기타소득"
                 dataKey="기타소득"
@@ -211,7 +242,17 @@ export function IncomeCompositionChart({
                   );
                 }}
               />
-            </BarChart>
+              <Line
+                name="재투자 배당 (소득 제외)"
+                dataKey="재투자 배당"
+                type="monotone"
+                stroke="#22D3EE"
+                strokeWidth={2}
+                strokeDasharray="5 3"
+                dot={false}
+                hide={!!hiddenKeys['재투자 배당']}
+              />
+            </ComposedChart>
           </ResponsiveContainer>
         </div>
       </div>

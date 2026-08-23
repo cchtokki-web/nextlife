@@ -4,7 +4,10 @@ import {
   IncomeCompositionTooltip,
   IncomeChartRow,
   INCOME_LEGEND,
+  toIncomeChartRow,
 } from '@/web/features/Dashboard/charts/IncomeCompositionChart';
+import { makeYearlyResult } from '@/tests/fixtures/yearlyResult';
+import type { YearlyLedger } from '@/core/entities/types';
 
 const legendColor = (dataKey: string) =>
   INCOME_LEGEND.find((item) => item.dataKey === dataKey)!.color;
@@ -15,8 +18,9 @@ const pensionOnlyRow: IncomeChartRow = {
   age: 67,
   국민연금: 22880000,
   사적연금: 0,
-  배당소득: 0,
+  '현금 배당': 0,
   기타소득: 0,
+  '재투자 배당': 0,
   hasTaxWarning: false,
   targetMonthly: 3500000,
   fixedIncomeCoverageRate: 22880000 / 12 / 3500000,
@@ -30,7 +34,7 @@ describe('IncomeCompositionTooltip', () => {
     expect(screen.getByText('국민연금')).toBeInTheDocument();
     expect(screen.getByText('2,288만원')).toBeInTheDocument();
     expect(screen.queryByText('사적연금')).not.toBeInTheDocument();
-    expect(screen.queryByText('배당소득')).not.toBeInTheDocument();
+    expect(screen.queryByText('현금 배당')).not.toBeInTheDocument();
   });
 
   test('은퇴 후에는 목표 생활비 대비 충당률을 덧붙인다', () => {
@@ -60,7 +64,34 @@ describe('IncomeCompositionTooltip', () => {
     );
 
     expect(screen.queryByText('목표 생활비 충당률')).not.toBeInTheDocument();
-    expect(screen.getByText(/연금·배당·기타소득이 없습니다/)).toBeInTheDocument();
+    expect(screen.getByText(/현금으로 받은 연금·배당·기타소득이 없습니다/)).toBeInTheDocument();
+  });
+
+  test('현금 배당이 0이어도 계좌 안에 남은 재투자 배당을 별도로 보여준다', () => {
+    render(
+      <IncomeCompositionTooltip
+        active
+        label={67}
+        rows={[{ ...pensionOnlyRow, 국민연금: 0, '재투자 배당': 12_340_000 }]}
+        currency="KRW"
+      />
+    );
+
+    expect(screen.getByText(/현금으로 받은 연금·배당·기타소득이 없습니다/)).toBeInTheDocument();
+    expect(screen.getByText('재투자 배당 (소득 제외)')).toBeInTheDocument();
+    expect(screen.getByText('1,234만원')).toBeInTheDocument();
+    expect(INCOME_LEGEND).toContainEqual(expect.objectContaining({
+      dataKey: '재투자 배당', label: '재투자 배당 (소득 제외)', shape: 'dashed',
+    }));
+  });
+
+  test('엔진 원장의 재투자 배당을 차트 행으로 옮기고 구형 결과에는 0원으로 호환한다', () => {
+    const ledger = {
+      investmentReturn: { dividendRetainedNet: 9_876_543 },
+    } as YearlyLedger;
+
+    expect(toIncomeChartRow(makeYearlyResult({ ledger }))['재투자 배당']).toBe(9_876_543);
+    expect(toIncomeChartRow(makeYearlyResult())['재투자 배당']).toBe(0);
   });
 
   // 막대는 색으로 소득원을 구분하는데 툴팁은 흰 글자로만 나열해서, 어느 줄이 어느 띠인지

@@ -2,7 +2,7 @@ import { describe, test, expect, beforeAll } from 'vitest';
 import { render } from '@testing-library/react';
 import { IncomeCompositionChart } from '@/web/features/Dashboard/charts/IncomeCompositionChart';
 import { REFERENCE_LABEL_FONT_SIZE } from '@/web/features/Dashboard/charts/chartFormatters';
-import { SimulationParams, SimulationResult } from '@/core/entities/types';
+import { SimulationParams, SimulationResult, YearlyLedger } from '@/core/entities/types';
 import { makeYearlyResult } from '@/tests/fixtures/yearlyResult';
 
 // recharts의 ResponsiveContainer는 ResizeObserver로 크기를 잰다. jsdom에는 그 API가
@@ -61,11 +61,11 @@ const result: SimulationResult = {
   retirementAssetsAtRetirement: 0,
 };
 
-function renderChart() {
+function renderChart(chartResult = result) {
   return render(
     <IncomeCompositionChart
       params={params}
-      result={result}
+      result={chartResult}
       hiddenKeys={{}}
       onLegendClick={() => {}}
       caption=""
@@ -103,5 +103,30 @@ describe('IncomeCompositionChart - 국민연금 개시 기준선 라벨', () => 
       label.getAttribute('font-size') ?? window.getComputedStyle(label).fontSize.replace('px', '')
     );
     expect(fontSize).toBeGreaterThanOrEqual(12);
+  });
+});
+
+describe('IncomeCompositionChart - 재투자 배당', () => {
+  test('현금소득 막대와 다른 청록색 점선으로 그린다', () => {
+    const chartResult: SimulationResult = {
+      ...result,
+      yearlyResults: result.yearlyResults.map((row, index) => index === 0
+        ? {
+            ...row,
+            ledger: {
+              investmentReturn: { dividendRetainedNet: 12_340_000 },
+            } as YearlyLedger,
+          }
+        : row),
+    };
+
+    const { container, getByRole } = renderChart(chartResult);
+    const retainedLine = container.querySelector('.recharts-line-curve');
+    const legendButton = getByRole('button', { name: '재투자 배당 (소득 제외) 숨기기' });
+
+    expect(retainedLine).toHaveAttribute('stroke', '#22D3EE');
+    expect(legendButton.querySelector('[aria-hidden="true"]')).toHaveStyle({
+      borderTop: '2px dashed #22D3EE',
+    });
   });
 });

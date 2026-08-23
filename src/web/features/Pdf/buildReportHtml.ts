@@ -109,15 +109,17 @@ function renderYearlyTablePages(args: {
                 ? '\n              <p style="font-size: 9.5px; color: #64748b; margin: 0 0 8px;">* 「총 자산」은 화면 차트와 같은 시장 변동 시행의 연도별 중앙값입니다. 각 연도의 중앙값은 서로 다른 시행에서 올 수 있으며, 소득·생활비 항목은 현재 계획의 기준 경로입니다.</p>'
                 : ''}
               ${healthcareNoteHtml}
-              <table class="pdf-data-table" style="width: 100%; border-collapse: collapse; font-size: 9px;">
+              <p style="font-size: 9.5px; color: #64748b; margin: 0 0 8px;">* 「현금 배당」만 총소득과 생활비 재원에 포함됩니다. 「재투자 배당」은 일반 투자자산·ISA 계좌 안에 남은 세후 금액으로, 총소득에는 포함되지 않지만 총자산에는 반영됩니다.</p>
+              <table class="pdf-data-table" style="width: 100%; border-collapse: collapse; font-size: 8.5px;">
                 <thead>
                   <tr>
                     <th style="border: 1px solid #cbd5e1; padding: 7px 8px; text-align: center; background-color: #f1f5f9; font-weight: 700; color: #334155;">나이</th>
                     <th style="border: 1px solid #cbd5e1; padding: 7px 8px; text-align: center; background-color: #f1f5f9; font-weight: 700; color: #334155;">연도</th>
                     <th style="border: 1px solid #cbd5e1; padding: 7px 8px; text-align: right; background-color: #f1f5f9; font-weight: 700; color: #334155;">총 자산${assetProjection.basis === 'monte_carlo_median' ? '<br/>(중앙값)' : ''}</th>
-                    <th style="border: 1px solid #cbd5e1; padding: 7px 8px; text-align: right; background-color: #f1f5f9; font-weight: 700; color: #334155;">총 소득</th>
+                    <th style="border: 1px solid #cbd5e1; padding: 7px 8px; text-align: right; background-color: #f1f5f9; font-weight: 700; color: #334155;">현금<br/>총소득</th>
                     <th style="border: 1px solid #cbd5e1; padding: 7px 8px; text-align: right; background-color: #f1f5f9; font-weight: 700; color: #334155;">생활비${hasHealthcareCost ? '<br/>(의료비 포함)' : ''}</th>
-                    <th style="border: 1px solid #cbd5e1; padding: 7px 8px; text-align: right; background-color: #f1f5f9; font-weight: 700; color: #334155;">배당/투자</th>
+                    <th style="border: 1px solid #cbd5e1; padding: 7px 8px; text-align: right; background-color: #f1f5f9; font-weight: 700; color: #334155;">현금<br/>배당</th>
+                    <th style="border: 1px solid #cbd5e1; padding: 7px 8px; text-align: right; background-color: #f1f5f9; font-weight: 700; color: #334155;">재투자<br/>배당</th>
                     <th style="border: 1px solid #cbd5e1; padding: 7px 8px; text-align: right; background-color: #f1f5f9; font-weight: 700; color: #334155;">연금</th>
                     <th style="border: 1px solid #cbd5e1; padding: 7px 8px; text-align: right; background-color: #f1f5f9; font-weight: 700; color: #334155;">기타</th>
                     <th style="border: 1px solid #cbd5e1; padding: 7px 8px; text-align: right; background-color: #f1f5f9; font-weight: 700; color: #334155;">금융소득과세</th>
@@ -136,6 +138,7 @@ function renderYearlyTablePages(args: {
               <td style="border: 1px solid #cbd5e1; padding: 7px 8px; text-align: right;">${formatValuePrint(yr.totalIncome)}</td>
               <td style="border: 1px solid #cbd5e1; padding: 7px 8px; text-align: right;">${formatValuePrint(yr.spending)}</td>
               <td style="border: 1px solid #cbd5e1; padding: 7px 8px; text-align: right;">${formatValuePrint(yr.dividendIncome)}</td>
+              <td style="border: 1px solid #cbd5e1; padding: 7px 8px; text-align: right;">${formatValuePrint(yr.ledger?.investmentReturn.dividendRetainedNet ?? 0)}</td>
               <td style="border: 1px solid #cbd5e1; padding: 7px 8px; text-align: right;">${formatValuePrint(yr.pensionIncome)}</td>
               <td style="border: 1px solid #cbd5e1; padding: 7px 8px; text-align: right;">${formatValuePrint(yr.otherIncome)}</td>
               <td style="border: 1px solid #cbd5e1; padding: 7px 8px; text-align: right; ${yr.hasTaxWarning ? 'color: #ef4444; font-weight: bold;' : ''}">${formatValuePrint(yr.comprehensiveTaxPaid)}${yr.hasTaxWarning ? ' ⚠️' : ''}</td>
@@ -202,7 +205,7 @@ function renderSpendingTablePages(args: {
                     <th style="border: 1px solid #cbd5e1; padding: 7px 8px; text-align: center; background-color: #f1f5f9; font-weight: 700; color: #334155;">나이</th>
                     <th style="border: 1px solid #cbd5e1; padding: 7px 8px; text-align: right; background-color: #f1f5f9; font-weight: 700; color: #334155;">국민연금</th>
                     <th style="border: 1px solid #cbd5e1; padding: 7px 8px; text-align: right; background-color: #f1f5f9; font-weight: 700; color: #334155;">사적연금</th>
-                    <th style="border: 1px solid #cbd5e1; padding: 7px 8px; text-align: right; background-color: #f1f5f9; font-weight: 700; color: #334155;">배당소득</th>
+                    <th style="border: 1px solid #cbd5e1; padding: 7px 8px; text-align: right; background-color: #f1f5f9; font-weight: 700; color: #334155;">현금 배당</th>
                     <th style="border: 1px solid #cbd5e1; padding: 7px 8px; text-align: right; background-color: #f1f5f9; font-weight: 700; color: #334155;">기타소득</th>
                     <th style="border: 1px solid #cbd5e1; padding: 7px 8px; text-align: right; background-color: #f1f5f9; font-weight: 700; color: #334155;">자산인출</th>
                     <th style="border: 1px solid #cbd5e1; padding: 7px 8px; text-align: right; background-color: #f1f5f9; font-weight: 700; color: #334155;">자산부족</th>
@@ -229,7 +232,7 @@ function renderSpendingTablePages(args: {
         out += `
                 </tbody>
               </table>
-              <p style="margin-top: 10px; font-size: 10px; color: #64748b;">* 월 생활비 재원 구성은 연간 금액을 월 단위로 환산한 값이며, 사적연금 열은 저율과세 한도와 무관하게 실제 시뮬레이션 인출액을 그대로 반영합니다. 한도 초과 시 발생하는 세금은 <span data-page-ref="tax">{tax_page}</span>페이지 세금 설정과 <span data-page-ref="yearly">{yearly_page}</span>페이지 금융소득과세 열을 참고하세요.</p>
+              <p style="margin-top: 10px; font-size: 10px; color: #64748b;">* 월 생활비 재원 구성은 연간 금액을 월 단위로 환산한 값입니다. 현금 배당만 생활비 재원에 포함되며, 계좌 안에 남은 재투자 배당은 <span data-page-ref="yearly">{yearly_page}</span>페이지 재투자 배당 열에서 확인할 수 있습니다. 사적연금 열은 저율과세 한도와 무관하게 실제 시뮬레이션 인출액을 그대로 반영합니다. 한도 초과 시 발생하는 세금은 <span data-page-ref="tax">{tax_page}</span>페이지 세금 설정과 <span data-page-ref="yearly">{yearly_page}</span>페이지 금융소득과세 열을 참고하세요.</p>
         `;
 
         if (isLastChunk) {
