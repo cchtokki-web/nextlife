@@ -97,7 +97,7 @@ describe('[AUDIT-002] 사적연금 저율과세 한도가 실제 인출 한도�
   // 계획이 엔진에 도달하는 모습 그대로다.
   const HARD_SPENDING_GOAL: RetirementGoal = {
     type: 'LIVING_EXPENSE_STABILITY', priority: 1,
-    constraintType: 'HARD', targetValue: 5_000_000,
+    constraintType: 'HARD', targetValue: 5_000_000, targetValueSource: 'user',
   };
 
   const pensionOnly = (limit: boolean) => baseParams({

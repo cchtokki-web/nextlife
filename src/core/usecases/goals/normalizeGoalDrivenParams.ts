@@ -1,5 +1,5 @@
 import type { RetirementGoal, RetirementGoalType } from '../../entities/retirementGoal';
-import { normalizeRetirementGoals } from '../../entities/retirementGoal';
+import { confirmedTargetValue, normalizeRetirementGoals } from '../../entities/retirementGoal';
 import type { RetirementStrategy, SimulationParams } from '../../entities/types';
 import { NATIONAL_PENSION_NORMAL_START_AGE } from '../pension/nationalPensionRules';
 
@@ -15,7 +15,8 @@ import { NATIONAL_PENSION_NORMAL_START_AGE } from '../pension/nationalPensionRul
  * 축은 두 갈래다.
  *
  *  - **목표에서 파생되는 셋**: 은퇴 나이, 목표 월 생활비, 목표 상속자산(+상속 전략).
- *    대응 목표를 고르면 그 targetValue가 값이 된다.
+ *    대응 목표를 고르면 그 targetValue가 값이 된다. 금액 축 둘은 «사용자가 확정한» 값만
+ *    받는다 — 화면이 깔아 준 씨앗은 계획의 축이 되지 못한다(confirmedTargetValue).
  *  - **baseline으로 고정되는 둘**: 생활비 전략, 목표 우선순위. 목표가 정하지 않고 화면에도
  *    편집 경로가 없다 — 값을 고르는 일 자체를 없앤 축이다.
  *
@@ -60,6 +61,9 @@ export function normalizeGoalDrivenParams(
 /**
  * 목표값이 «쓸 수 있는 값»인 목표를 우선순위 순으로 찾는다.
  *
+ * 금액 목표는 «확정된» 값만 쓸 수 있는 값이다(confirmedTargetValue). 나이 목표(빠른 은퇴)는
+ * 씨앗 자체가 사용자가 1단계에서 입력한 은퇴 나이라 종전과 같이 그대로 쓴다.
+ *
  * `0`을 값으로 인정하지 않는다. 0은 사용자가 입력창을 비웠거나 아직 채우지 않은 상태이고
  * (셀렉터는 빈 칸을 undefined로 저장하지만 "0"은 숫자로 통과시킨다), 그 0이 파생되면
  * 목표 월 생활비가 0이 되어 소비 만족도의 분모가 사라진다 — UtilityEngine은 분모가 0이면
@@ -70,8 +74,29 @@ function firstGoalWithTarget(
   goals: readonly RetirementGoal[],
   ...types: RetirementGoalType[]
 ): RetirementGoal | undefined {
-  return goals.find((goal) =>
-    types.includes(goal.type) && goal.targetValue !== undefined && goal.targetValue > 0);
+  return goals.find((goal) => {
+    const targetValue = confirmedTargetValue(goal);
+    return types.includes(goal.type) && targetValue !== undefined && targetValue > 0;
+  });
+}
+
+/**
+ * 그 목표가 계획에 넘기는 «확정된» 값.
+ *
+ * 값을 꺼내는 일도 confirmedTargetValue를 지나게 한다. 위 finder가 이미 같은 술어로 걸렀으니
+ * `goal.targetValue`를 그대로 읽어도 오늘은 같은 숫자지만, 그때 안전은 «멀리» 놓인다 —
+ * 찾기 조건이 한 번만 느슨해지거나(예: 다른 폴백을 덧붙이는 순간) 호출부가 finder를 거치지
+ * 않으면, 그 자리에서만 씨앗이 조용히 계획의 축으로 승격된다. 미확정 씨앗을 판정에서
+ * 빼는 규칙은 한 문(confirmedTargetValue)으로만 드나들어야 한 가지 뜻을 갖는다.
+ *
+ * 금액이 아닌 목표(「빠른 은퇴」의 나이)는 그 문이 값을 그대로 돌려주므로 종전과 같다.
+ */
+function confirmedGoalTarget(
+  goals: readonly RetirementGoal[],
+  ...types: RetirementGoalType[]
+): number | undefined {
+  const goal = firstGoalWithTarget(goals, ...types);
+  return goal === undefined ? undefined : confirmedTargetValue(goal);
 }
 
 function normalizeUserProfile(
@@ -89,7 +114,7 @@ function normalizeUserProfile(
   // (normalizeTargetValue의 clamp).
   const retirementAge = Math.max(
     current.currentAge,
-    firstGoalWithTarget(goals, 'EARLY_RETIREMENT')?.targetValue ?? NATIONAL_PENSION_NORMAL_START_AGE,
+    confirmedGoalTarget(goals, 'EARLY_RETIREMENT') ?? NATIONAL_PENSION_NORMAL_START_AGE,
   );
 
   // 생활비 목표가 여럿이면 «가장 큰» 값이 목표다. 예전에는 우선순위가 높은 쪽이 이겨
@@ -98,16 +123,27 @@ function normalizeUserProfile(
   //
   // 목표가 하나도 없으면 저장값을 그대로 둔다 — 목표 금액은 모든 생활비 전략에서 소비
   // 만족도의 «분모»라 계산에 계속 필요하고, 이 축에는 「권장」 상수가 없다.
+  //
+  // **확정된 금액만 본다.** 이 축은 체감 커브(spendingCurve)가 곱해지는 «기준»이기도 하다.
+  // 미확정 씨앗을 기준으로 삼으면, 사용자가 진술한 적 없는 금액에서 커브가 파생되고 그
+  // 파생값이 다시 HARD 바닥과 비교되어 구조적 미달을 만든다(known-issues 2번). 확정된
+  // 금액이 없으면 종전대로 계획의 값을 쓴다 — 씨앗은 원래 그 값에서 떠 온 것이므로 목표를
+  // 고른 직후에는 같은 숫자이고, 갈라지는 것은 계획의 생활비를 «나중에 고친» 경우뿐이다.
   const spendingTargets = goals
     .filter((goal) =>
-      (goal.type === 'LIVING_EXPENSE_STABILITY' || goal.type === 'COMFORTABLE_SPENDING')
-      && goal.targetValue !== undefined && goal.targetValue > 0)
-    .map((goal) => goal.targetValue as number);
+      goal.type === 'LIVING_EXPENSE_STABILITY' || goal.type === 'COMFORTABLE_SPENDING')
+    .map(confirmedTargetValue)
+    .filter((value): value is number => value !== undefined && value > 0);
   const targetMonthlySpending = spendingTargets.length > 0
     ? Math.max(...spendingTargets)
     : current.targetMonthlySpending;
 
-  const targetBequest = firstGoalWithTarget(goals, 'INHERITANCE')?.targetValue;
+  // 확정된 금액만 계획의 축이 된다. 상속 목표는 «고르는 순간» 화면이 금액을 깔아 주는데
+  // (targetBequest ?? 월 생활비 × 24), 그 씨앗이 여기를 지나면 사용자가 말한 적 없는 금액이
+  // 엔진의 상속 하한선(compileStrategy의 assetFloor)과 목표 달성 확률의 기말자산 조건이 된다.
+  // 확정 전까지는 종전 baseline인 「일부 남기기」로 남는다 — 하한선을 걸지 않고 적정선으로
+  // 채점만 하는, 목표를 고르기 «전»과 같은 상태다.
+  const targetBequest = confirmedGoalTarget(goals, 'INHERITANCE');
 
   const same = current.retirementAge === retirementAge
     && current.targetMonthlySpending === targetMonthlySpending

@@ -1,6 +1,9 @@
 import { describe, test, expect } from 'vitest';
-import { resolveGoalSuccessConditions } from '@/core/usecases/goals/goalSuccessConditions';
-import type { RetirementGoal } from '@/core/entities/retirementGoal';
+import {
+  isQuantitativelyJudgedGoal,
+  resolveGoalSuccessConditions,
+} from '@/core/usecases/goals/goalSuccessConditions';
+import { RETIREMENT_GOAL_TYPES, type RetirementGoal } from '@/core/entities/retirementGoal';
 import type { SimulationParams } from '@/core/entities/types';
 
 const baseParams: SimulationParams = {
@@ -48,7 +51,7 @@ describe('resolveGoalSuccessConditions', () => {
       // 구 UI에서 넣어 둔 상속 목표액(또는 기본 전략이 실체화한 24개월치)이 남아 있어도,
       // 목표 화면에서 상속을 고르지 않았으면 확률을 깎아서는 안 된다.
       const conditions = resolveGoalSuccessConditions(withGoals(
-        [{ type: 'LIVING_EXPENSE_STABILITY', priority: 1, constraintType: 'SOFT', targetValue: 3_500_000 }],
+        [{ type: 'LIVING_EXPENSE_STABILITY', priority: 1, constraintType: 'SOFT', targetValue: 3_500_000, targetValueSource: 'user' }],
         { userProfile: { ...baseParams.userProfile, targetBequest: 3_000_000_000 } },
       ));
 
@@ -77,7 +80,7 @@ describe('resolveGoalSuccessConditions', () => {
 
     test('상속 목표를 고르면 그 목표액이 기말자산 조건이 된다', () => {
       const conditions = resolveGoalSuccessConditions(withGoals(
-        [{ type: 'INHERITANCE', priority: 1, constraintType: 'SOFT', targetValue: 500_000_000 }],
+        [{ type: 'INHERITANCE', priority: 1, constraintType: 'SOFT', targetValue: 500_000_000, targetValueSource: 'user' }],
       ));
 
       expect(conditions.terminalAssetGoal).toBe(500_000_000);
@@ -137,7 +140,7 @@ describe('resolveGoalSuccessConditions', () => {
     test('자산 성장이라도 목표액이 살아 있으면 고른 목표 기준을 유지한다', () => {
       // 구멍만 막는다. 조건이 «하나라도» 나오는 정상 경로는 건드리지 않는다.
       const conditions = resolveGoalSuccessConditions(withGoals(
-        [{ type: 'ASSET_GROWTH', priority: 1, constraintType: 'SOFT', targetValue: 500_000_000 }],
+        [{ type: 'ASSET_GROWTH', priority: 1, constraintType: 'SOFT', targetValue: 500_000_000, targetValueSource: 'user' }],
       ));
 
       expect(conditions.basis).toBe('selected_goals');
@@ -162,5 +165,19 @@ describe('resolveGoalSuccessConditions', () => {
       expect(conditions.basis).toBe('plan_defaults');
       expect(conditions.terminalAssetGoal).toBe(0);
     });
+  });
+});
+
+// 화면이 「정량 판정 대상 아님」을 어디에 붙일지 이 술어 하나로 정한다. 술어가 위 함수와
+// 다른 답을 하기 시작하면 화면은 «엔진이 판정하는» 목표에 판정하지 않는다고 적게 된다.
+describe('isQuantitativelyJudgedGoal', () => {
+  test('모든 목표 유형에서 미반영 판정과 정확히 반대다', () => {
+    for (const type of RETIREMENT_GOAL_TYPES) {
+      const conditions = resolveGoalSuccessConditions(withGoals(
+        [{ type, priority: 1, constraintType: 'SOFT' }],
+      ));
+
+      expect(conditions.unmeasuredGoals.includes(type), type).toBe(!isQuantitativelyJudgedGoal(type));
+    }
   });
 });

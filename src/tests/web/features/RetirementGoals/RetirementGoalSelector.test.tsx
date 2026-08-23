@@ -1,10 +1,17 @@
 import { useState } from 'react';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, expect, test } from 'vitest';
-import type { RetirementGoal } from '@/core/entities/retirementGoal';
+import {
+  RETIREMENT_GOAL_LABELS,
+  RETIREMENT_GOAL_TYPES,
+  type RetirementGoal,
+} from '@/core/entities/retirementGoal';
+import { isQuantitativelyJudgedGoal } from '@/core/usecases/goals/goalSuccessConditions';
 import { RetirementGoalSelector } from '@/web/features/RetirementGoals/RetirementGoalSelector';
 
-function SelectorHarness({ initial = [] }: { initial?: RetirementGoal[] }) {
+function SelectorHarness({
+  initial = [], onGoals,
+}: { initial?: RetirementGoal[]; onGoals?: (goals: RetirementGoal[]) => void }) {
   const [goals, setGoals] = useState(initial);
   return (
     <RetirementGoalSelector
@@ -12,7 +19,7 @@ function SelectorHarness({ initial = [] }: { initial?: RetirementGoal[] }) {
       displayCurrency="KRW"
       retirementAge={60}
       targetMonthlySpending={3500000}
-      onChange={setGoals}
+      onChange={(next) => { onGoals?.(next); setGoals(next); }}
     />
   );
 }
@@ -118,6 +125,311 @@ describe('RetirementGoalSelector', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /빠른 은퇴/ }));
     expect(screen.getAllByText(/생활비 충당을 우선합니다/)).toHaveLength(2);
+  });
+
+  // 씨앗과 사용자 확정값을 «화면에서» 가른다.
+  //
+  // 미확정 금액은 부족분·HARD/SOFT 판정에 참가하지 않는다(confirmedTargetValue). 그 사실을
+  // 숨기면 「반드시 지키기」를 골라 둔 사용자가 자기 금액이 강제되지 않는다는 것을 알 수 없고,
+  // 이 수정이 목표를 조용히 약화시킨 것으로 나타난다.
+  describe('목표금액의 출처', () => {
+    test('목표를 고를 때 깔리는 금액에는 출처 표시가 붙지 않는다', () => {
+      const seen: RetirementGoal[][] = [];
+      render(<SelectorHarness onGoals={(goals) => seen.push(goals)} />);
+
+      fireEvent.click(screen.getByRole('button', { name: /생활비 안정/ }));
+
+      expect(seen.at(-1)).toEqual([{
+        type: 'LIVING_EXPENSE_STABILITY', priority: 1,
+        targetValue: 3500000, constraintType: 'SOFT',
+      }]);
+      expect(seen.at(-1)![0].targetValueSource).toBeUndefined();
+    });
+
+    // 타이핑은 「변경」이지 「확인」이 아니다. 고치다 만 금액을 확정으로 읽으면 표시가
+    // 다시 뜻을 잃는다 — 사용자가 확인한 적 없는 숫자가 판정 기준이 된다.
+    test('입력창에 써넣기만 해서는 확정되지 않는다', () => {
+      const seen: RetirementGoal[][] = [];
+      render(<SelectorHarness onGoals={(goals) => seen.push(goals)} />);
+      fireEvent.click(screen.getByRole('button', { name: /생활비 안정/ }));
+
+      fireEvent.change(screen.getByLabelText('목표 월 생활비'), { target: { value: '4,000,000' } });
+
+      expect(seen.at(-1)).toEqual([{
+        type: 'LIVING_EXPENSE_STABILITY', priority: 1,
+        targetValue: 4_000_000, constraintType: 'SOFT',
+      }]);
+      expect(seen.at(-1)![0].targetValueSource).toBeUndefined();
+    });
+
+    test('사용자가 확정 버튼을 누른 금액에만 출처 표시가 붙는다', () => {
+      const seen: RetirementGoal[][] = [];
+      render(<SelectorHarness onGoals={(goals) => seen.push(goals)} />);
+      fireEvent.click(screen.getByRole('button', { name: /생활비 안정/ }));
+
+      fireEvent.change(screen.getByLabelText('목표 월 생활비'), { target: { value: '4,000,000' } });
+      fireEvent.click(screen.getByRole('button', { name: '생활비 안정 목표를 이 금액으로 확정' }));
+
+      expect(seen.at(-1)).toEqual([{
+        type: 'LIVING_EXPENSE_STABILITY', priority: 1,
+        targetValue: 4_000_000, targetValueSource: 'user', constraintType: 'SOFT',
+      }]);
+    });
+
+    test('강도만 바꾸는 것으로는 제안이 확정되지 않는다', () => {
+      const seen: RetirementGoal[][] = [];
+      render(<SelectorHarness onGoals={(goals) => seen.push(goals)} />);
+      fireEvent.click(screen.getByRole('button', { name: /생활비 안정/ }));
+
+      fireEvent.change(screen.getByLabelText('생활비 안정 조건 강도'), { target: { value: 'HARD' } });
+
+      expect(seen.at(-1)![0].constraintType).toBe('HARD');
+      expect(seen.at(-1)![0].targetValueSource).toBeUndefined();
+      expect(screen.getByText(/아직 제안 금액입니다/)).toBeInTheDocument();
+    });
+
+    test('제안 상태에는 「아직 제안 금액입니다」와 확정 방법이 함께 뜬다', () => {
+      render(<SelectorHarness />);
+
+      fireEvent.click(screen.getByRole('button', { name: /생활비 안정/ }));
+      // 문구를 «문장 그대로» 고정한다. 부분 일치로 두면 다른 뜻으로 바뀌어도 통과한다.
+      expect(screen.getByText(/아직 제안 금액입니다/).parentElement).toHaveTextContent(
+        '아직 제안 금액입니다 — 지금 값은 입력하신 계획에서 가져온 것이라 달성·미달 판정에 '
+        + '쓰지 않습니다. 아래에서 확정해야 목표 금액이 됩니다.',
+      );
+
+      fireEvent.change(screen.getByLabelText('목표 월 생활비'), { target: { value: '4,000,000' } });
+      // 고치기만 한 금액은 여전히 미확정이다 — 안내는 남고, 확정 버튼이 새 금액을 가리킨다.
+      expect(screen.getByText(/아직 제안 금액입니다/)).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('button', { name: '생활비 안정 목표를 이 금액으로 확정' }));
+      expect(screen.queryByText(/아직 제안 금액입니다/)).not.toBeInTheDocument();
+    });
+
+    test('상속 목표의 씨앗도 제안으로 표시된다', () => {
+      render(<SelectorHarness />);
+
+      fireEvent.click(screen.getByRole('button', { name: /상속 자산 확보/ }));
+
+      expect(screen.getByText(/아직 제안 금액입니다/)).toBeInTheDocument();
+    });
+
+    // 나이는 금액이 아니고, 그 씨앗은 사용자가 1단계에서 «직접 입력한» 은퇴 나이다.
+    // 제안이라 부르면 사용자가 이미 말한 것을 말한 적 없다고 하는 셈이 된다.
+    test('희망 은퇴 나이에는 제안 문구를 붙이지 않는다', () => {
+      render(<SelectorHarness />);
+
+      fireEvent.click(screen.getByRole('button', { name: /빠른 은퇴/ }));
+
+      expect(screen.queryByText(/아직 제안 금액입니다/)).not.toBeInTheDocument();
+    });
+  });
+
+  // HARD는 강도와 «기준»을 모두 확정해야 성립한다(known-issues 14번). 강도만 「반드시
+  // 지키기」로 고르고 금액은 씨앗 그대로면 두 가지 중 어느 쪽도 하지 않는다 — 그 금액을
+  // 강제하지도 않고, 아무것도 구속하지 않는 HARD를 통과시키지도 않는다. 사용자에게 그
+  // 금액을 확인하거나 고치도록 «요구»한다.
+  describe('HARD 목표의 기준 확정', () => {
+    const seeded = (type: RetirementGoal['type'], constraintType: RetirementGoal['constraintType']) =>
+      [{ type, priority: 1, constraintType, targetValue: 3_500_000 }] as RetirementGoal[];
+
+    test('「반드시 지키기」로 고른 생활비 목표는 금액 확인을 요구한다', () => {
+      render(<SelectorHarness initial={seeded('LIVING_EXPENSE_STABILITY', 'HARD')} />);
+
+      expect(screen.getByText('반드시 지킬 최소 생활비를 확인해 주세요.')).toBeInTheDocument();
+      // 무엇을 확정하는지가 버튼 옆에 있어야 한다. 단위 변환도 반올림도 하지 않는다 —
+      // 저장된 값과 다르게 보이는 숫자를 확정시키는 것이 이 화면이 막으려는 일이다.
+      expect(screen.getByText('월 3,500,000원')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: '생활비 안정 목표 금액 수정' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: '생활비 안정 목표를 이 금액으로 확정' }))
+        .toHaveTextContent('이 금액으로 확정');
+    });
+
+    test('「반드시 지키기」로 고른 상속 목표는 남길 자산의 확인을 요구한다', () => {
+      render(<SelectorHarness initial={seeded('INHERITANCE', 'HARD')} />);
+
+      expect(screen.getByText('반드시 남길 최소 자산을 확인해 주세요.')).toBeInTheDocument();
+      expect(screen.getByText('3,500,000원')).toBeInTheDocument();
+    });
+
+    // SOFT에는 마찰을 더하지 않는다. 확정 문구는 「반드시 지키기」의 뜻이고, SOFT 목표에
+    // 붙이면 하지 않아도 되는 일을 요구하는 것으로 읽힌다.
+    test('SOFT 목표에는 「반드시 지킬」 확인 요구를 붙이지 않는다', () => {
+      render(<SelectorHarness initial={seeded('LIVING_EXPENSE_STABILITY', 'SOFT')} />);
+
+      expect(screen.queryByText(/반드시 지킬 최소 생활비를 확인해 주세요./)).toBeNull();
+      // 다만 확정할 «길»은 남는다 — 타이핑이 더 이상 확정이 아니므로, 이것마저 없으면
+      // SOFT 사용자는 자기 금액을 판정에 넣을 방법을 잃는다.
+      expect(screen.getByRole('button', { name: '생활비 안정 목표를 이 금액으로 확정' }))
+        .toBeInTheDocument();
+    });
+
+    test('「금액 수정」은 목표금액 입력창으로 데려간다', () => {
+      render(<SelectorHarness initial={seeded('LIVING_EXPENSE_STABILITY', 'HARD')} />);
+
+      fireEvent.click(screen.getByRole('button', { name: '생활비 안정 목표 금액 수정' }));
+
+      expect(document.activeElement).toBe(screen.getByLabelText('목표 월 생활비'));
+    });
+
+    // 두 갈래 모두 확정으로 끝난다 — 제안된 금액을 그대로 받는 것도 사용자의 행위다.
+    test('제안 금액을 그대로 확정하면 확인 요구가 사라진다', () => {
+      const seen: RetirementGoal[][] = [];
+      render(
+        <SelectorHarness
+          initial={seeded('LIVING_EXPENSE_STABILITY', 'HARD')}
+          onGoals={(goals) => seen.push(goals)}
+        />,
+      );
+
+      fireEvent.click(screen.getByRole('button', { name: '생활비 안정 목표를 이 금액으로 확정' }));
+
+      expect(seen.at(-1)![0]).toMatchObject({ targetValue: 3_500_000, targetValueSource: 'user' });
+      expect(screen.queryByText('반드시 지킬 최소 생활비를 확인해 주세요.')).toBeNull();
+    });
+
+    // 확정한 뒤 고친 금액을 여전히 확정으로 읽으면, 사용자가 확인한 적 없는 숫자가 다시
+    // 판정 기준이 된다.
+    test('확정한 금액을 다시 고치면 미확정으로 돌아간다', () => {
+      const seen: RetirementGoal[][] = [];
+      render(
+        <SelectorHarness
+          initial={seeded('LIVING_EXPENSE_STABILITY', 'HARD')}
+          onGoals={(goals) => seen.push(goals)}
+        />,
+      );
+      fireEvent.click(screen.getByRole('button', { name: '생활비 안정 목표를 이 금액으로 확정' }));
+
+      fireEvent.change(screen.getByLabelText('목표 월 생활비'), { target: { value: '4,000,000' } });
+
+      expect(seen.at(-1)![0].targetValueSource).toBeUndefined();
+      expect('targetValueSource' in seen.at(-1)![0]).toBe(false);
+      expect(screen.getByText('반드시 지킬 최소 생활비를 확인해 주세요.')).toBeInTheDocument();
+    });
+
+    // 이 두 목표의 기준은 씨앗이 아니라 사용자가 1단계에서 «직접 입력한» 값이다(은퇴
+    // 나이·기대수명). 확인 요구의 목적은 「사용자가 말한 적 없는 숫자로 실패를 선언하지
+    // 않는다」이고, 이미 사용자가 말한 숫자에는 그 문제가 없다.
+    test.each([
+      ['EARLY_RETIREMENT', '빠른 은퇴'],
+      ['ASSET_SURVIVAL', '자산 고갈 방지'],
+    ] as const)('%s는 HARD여도 확인을 요구하지 않는다', (type, label) => {
+      render(
+        <SelectorHarness
+          initial={[{ type, priority: 1, constraintType: 'HARD', targetValue: 60 }]}
+        />,
+      );
+
+      expect(screen.queryByText(/확인해 주세요./)).toBeNull();
+      expect(screen.queryByRole('button', { name: `${label} 목표를 이 금액으로 확정` })).toBeNull();
+    });
+  });
+
+  // 달성·미달을 잴 정량 기준이 «없는» 목표들이 있다. 그런 목표에 「반드시 지키기」를
+  // 고르게 두면 사용자는 계산이 지키지 않는 조건을 못박은 것으로 믿는다(known-issues 1번).
+  //
+  // 유형을 «여기서» 나열하지 않는다. 목록을 테스트가 따로 들면 화면이 옛 목록을 그대로
+  // 들고 있어도 통과하게 되고, 이 테스트가 막으려는 것이 정확히 그 어긋남이다.
+  describe('정량 판정 대상이 아닌 목표', () => {
+    const hardOption = (label: string) =>
+      within(screen.getByLabelText(`${label} 조건 강도`)).getByRole('option', { name: '반드시 지키기' });
+
+    test('엔진이 판정하지 않는 목표에만 「정량 판정 대상 아님」이 붙는다', () => {
+      for (const type of RETIREMENT_GOAL_TYPES) {
+        const { unmount } = render(
+          <SelectorHarness initial={[{ type, priority: 1, constraintType: 'SOFT' }]} />,
+        );
+
+        const note = screen.queryByText(/정량 판정 대상 아님/);
+        if (isQuantitativelyJudgedGoal(type)) {
+          expect(note, `${RETIREMENT_GOAL_LABELS[type]}은 판정 대상이다`).toBeNull();
+        } else {
+          expect(note, `${RETIREMENT_GOAL_LABELS[type]}은 판정 대상이 아니다`).toBeInTheDocument();
+        }
+        unmount();
+      }
+    });
+
+    test('엔진이 판정하지 않는 목표는 「반드시 지키기」를 고를 수 없다', () => {
+      for (const type of RETIREMENT_GOAL_TYPES) {
+        const label = RETIREMENT_GOAL_LABELS[type];
+        const { unmount } = render(
+          <SelectorHarness initial={[{ type, priority: 1, constraintType: 'SOFT' }]} />,
+        );
+
+        if (isQuantitativelyJudgedGoal(type)) {
+          expect(hardOption(label), label).not.toBeDisabled();
+        } else {
+          // 고를 수 없다 = 선택지가 아예 없다. SOFT 하나만 남는다.
+          expect(
+            within(screen.getByLabelText(`${label} 조건 강도`)).getAllByRole('option').map((o) => o.textContent),
+            label,
+          ).toEqual(['가능하면 달성']);
+        }
+        unmount();
+      }
+    });
+
+    // 기본값이 HARD로 남아 있으면 «고를 수 없는» 값이 자동으로 박힌다 — 잠그는 것보다
+    // 나쁜 상태다. 판정 대상 목표의 기본값은 건드리지 않는다.
+    test('판정 대상이 아닌 목표를 새로 고르면 언제나 SOFT로 시작한다', () => {
+      for (const type of RETIREMENT_GOAL_TYPES) {
+        if (isQuantitativelyJudgedGoal(type)) continue;
+        const seen: RetirementGoal[][] = [];
+        const { unmount } = render(<SelectorHarness onGoals={(goals) => seen.push(goals)} />);
+
+        fireEvent.click(screen.getByRole('button', { name: new RegExp(RETIREMENT_GOAL_LABELS[type]) }));
+
+        expect(seen.at(-1)![0].constraintType, type).toBe('SOFT');
+        unmount();
+      }
+    });
+
+    test('판정 대상 목표의 기본 강도는 그대로다', () => {
+      const seen: RetirementGoal[][] = [];
+      render(<SelectorHarness onGoals={(goals) => seen.push(goals)} />);
+
+      fireEvent.click(screen.getByRole('button', { name: /자산 고갈 방지/ }));
+      expect(seen.at(-1)![0].constraintType).toBe('HARD');
+      fireEvent.click(screen.getByRole('button', { name: /생활비 안정/ }));
+      expect(seen.at(-1)![1].constraintType).toBe('SOFT');
+    });
+
+    // 이미 HARD로 저장된 시나리오를 조용히 SOFT로 고쳐 쓰지 않는다 — 사용자가 저장한
+    // 데이터를 말없이 바꾸는 것은 별개의 결정이다. 보여 주되 다시 고를 수는 없다.
+    test('이미 저장된 HARD는 그대로 보여 주되 다시 고를 수 없게 잠근다', () => {
+      const seen: RetirementGoal[][] = [];
+      render(
+        <SelectorHarness
+          initial={[{ type: 'HOUSING_STABILITY', priority: 1, constraintType: 'HARD' }]}
+          onGoals={(goals) => seen.push(goals)}
+        />,
+      );
+
+      const constraint = screen.getByLabelText('주거 안정 조건 강도');
+      expect(constraint).toHaveValue('HARD');
+      expect(hardOption('주거 안정')).toBeDisabled();
+      expect(screen.getByText(/이전에 저장된 「반드시 지키기」는 그대로 두었지만/))
+        .toBeInTheDocument();
+      // 화면을 여는 것만으로 저장값이 바뀌지 않는다.
+      expect(seen).toEqual([]);
+
+      // SOFT로 내려가면 잠긴 선택지는 사라진다 — 되돌아갈 길은 없다.
+      fireEvent.change(constraint, { target: { value: 'SOFT' } });
+      expect(seen.at(-1)![0].constraintType).toBe('SOFT');
+      expect(within(constraint).queryByRole('option', { name: '반드시 지키기' })).toBeNull();
+    });
+
+    test('문구가 잠근 이유와 그래도 반영되는 것을 함께 말한다', () => {
+      render(<SelectorHarness />);
+
+      fireEvent.click(screen.getByRole('button', { name: /주거 안정/ }));
+
+      expect(screen.getByText(/정량 기준이 아직 없어 「반드시 지키기」로 지정할 수 없습니다/))
+        .toBeInTheDocument();
+      expect(screen.getByText(/선택과 우선순위는 추천 전략을 고르는 기준에 그대로 반영됩니다/))
+        .toBeInTheDocument();
+    });
   });
 
   test('우선순위 이동 버튼으로 선택 순서를 바꾼다', () => {

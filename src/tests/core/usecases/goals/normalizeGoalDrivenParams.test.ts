@@ -65,8 +65,8 @@ describe('normalizeGoalDrivenParams — 목표가 정하는 축', () => {
     const withOrder = (livingPriority: number, comfortPriority: number) => normalize({
       ...initialParams,
       retirementGoals: [
-        { type: 'LIVING_EXPENSE_STABILITY', priority: livingPriority, targetValue: 3_000_000, constraintType: 'SOFT' },
-        { type: 'COMFORTABLE_SPENDING', priority: comfortPriority, targetValue: 5_000_000, constraintType: 'SOFT' },
+        { type: 'LIVING_EXPENSE_STABILITY', priority: livingPriority, targetValue: 3_000_000, targetValueSource: 'user', constraintType: 'SOFT' },
+        { type: 'COMFORTABLE_SPENDING', priority: comfortPriority, targetValue: 5_000_000, targetValueSource: 'user', constraintType: 'SOFT' },
       ],
     });
 
@@ -78,7 +78,7 @@ describe('normalizeGoalDrivenParams — 목표가 정하는 축', () => {
     const normalized = normalize({
       ...initialParams,
       retirementGoals: [
-        { type: 'COMFORTABLE_SPENDING', priority: 1, targetValue: 4_200_000, constraintType: 'SOFT' },
+        { type: 'COMFORTABLE_SPENDING', priority: 1, targetValue: 4_200_000, targetValueSource: 'user', constraintType: 'SOFT' },
       ],
     });
 
@@ -92,7 +92,7 @@ describe('normalizeGoalDrivenParams — 목표가 정하는 축', () => {
     const normalized = normalize({
       ...initialParams,
       retirementGoals: [
-        { type: 'LIVING_EXPENSE_STABILITY', priority: 1, targetValue: 0, constraintType: 'SOFT' },
+        { type: 'LIVING_EXPENSE_STABILITY', priority: 1, targetValue: 0, targetValueSource: 'user', constraintType: 'SOFT' },
       ],
     });
 
@@ -104,7 +104,7 @@ describe('normalizeGoalDrivenParams — 목표가 정하는 축', () => {
     const normalized = normalize({
       ...initialParams,
       retirementGoals: [
-        { type: 'INHERITANCE', priority: 1, targetValue: 0, constraintType: 'HARD' },
+        { type: 'INHERITANCE', priority: 1, targetValue: 0, targetValueSource: 'user', constraintType: 'HARD' },
       ],
     });
 
@@ -152,7 +152,7 @@ describe('normalizeGoalDrivenParams — 목표가 정하는 축', () => {
     const normalized = normalize({
       ...initialParams,
       retirementGoals: [
-        { type: 'INHERITANCE', priority: 1, targetValue: 100_000_000, constraintType: 'HARD' },
+        { type: 'INHERITANCE', priority: 1, targetValue: 100_000_000, targetValueSource: 'user', constraintType: 'HARD' },
       ],
     });
 
@@ -170,7 +170,7 @@ describe('normalizeGoalDrivenParams — 고급 설정에서 사라진 축', () =
       ...initialParams,
       spendingStrategy: 'dividend_only',
       retirementGoals: [
-        { type: 'LIVING_EXPENSE_STABILITY', priority: 1, targetValue: 3_000_000, constraintType: 'SOFT' },
+        { type: 'LIVING_EXPENSE_STABILITY', priority: 1, targetValue: 3_000_000, targetValueSource: 'user', constraintType: 'SOFT' },
       ],
     };
 

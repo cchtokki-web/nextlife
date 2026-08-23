@@ -686,7 +686,7 @@ describe('goalSuccessProbability — 선택한 목표가 판정 조건을 정한
   test('상속을 고르면 그 목표액이 다시 조건이 된다', () => {
     const withInheritance = runMonteCarlo(params({
       retirementGoals: [{
-        type: 'INHERITANCE', priority: 1, constraintType: 'SOFT', targetValue: unreachableBequest,
+        type: 'INHERITANCE', priority: 1, constraintType: 'SOFT', targetValue: unreachableBequest, targetValueSource: 'user',
       }],
     }), engine, config);
 

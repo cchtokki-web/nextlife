@@ -1,5 +1,12 @@
 import { describe, expect, test } from 'vitest';
+import type { RetirementGoal, SpendingGoalType } from '@/core/entities/retirementGoal';
+import {
+  SPENDING_GOAL_TYPES,
+  confirmedTargetValue,
+  isSuggestedTargetValue,
+} from '@/core/entities/retirementGoal';
 import { applyStrategyToParams, previewStrategyApply } from '@/core/usecases/dashboard/applyStrategyToParams';
+import { STRATEGY_FIELD_MAP } from '@/core/usecases/dashboard/strategyFieldMap';
 import { describeStrategyChanges } from '@/core/usecases/dashboard/describeStrategyChanges';
 import { compileStrategy, resolveStrategy } from '@/core/usecases/strategy/compileStrategy';
 import { makeParams, makeRanked } from './strategyFieldFixtures';
@@ -414,5 +421,111 @@ describe('applyStrategyToParams', () => {
       label: '자산 인출',
       reason: '현재 인출 정책을 그대로 두는 후보입니다',
     });
+  });
+});
+
+// 목표금액의 «출처»(RetirementGoal.targetValueSource)는 사용자가 목표 카드의 입력창에
+// 직접 써넣을 때만 생긴다. 없으면 「화면이 깔아 준 씨앗」이고, 씨앗은 부족분·HARD/SOFT
+// 판정에서 빠진다(confirmedTargetValue).
+//
+// 추천 반영은 «시스템이 고른» 숫자를 목표의 targetValue에 써 넣는 제품의 유일한 경로다
+// (withGoalTarget). 그래서 그 한 자리가 출처를 지어내면 수정 전체가 조용히 풀린다 —
+// 씨앗이 「사용자가 확정한 금액」으로 승격되어 다시 HARD 바닥이 되고, 사용자가 말한 적
+// 없는 금액 때문에 후보가 전멸하던 상태로 돌아간다(known-issues 2번).
+describe('applyStrategyToParams — 목표금액의 출처', () => {
+  // 「생활비 안정」과 「여유 있는 소비」 중 withGoalTarget이 고치는 것은 «먼저 찾은 하나»뿐이라,
+  // 한 픽스처로는 한쪽 유형만 밟게 된다. 두 유형을 각각 세운다.
+  const goalsFor = (spendingType: SpendingGoalType): RetirementGoal[] => [
+    { type: 'EARLY_RETIREMENT', priority: 1, targetValue: 60, constraintType: 'HARD' },
+    { type: spendingType, priority: 2, targetValue: 3_000_000, constraintType: 'HARD' },
+    { type: 'INHERITANCE', priority: 3, targetValue: 100_000_000, constraintType: 'SOFT' },
+  ];
+
+  const paramsFor = (spendingType: SpendingGoalType) => makeParams({
+    userProfile: { currentAge: 50, retirementAge: 60, expectancy: 90, targetMonthlySpending: 3_000_000 },
+    withdrawalPlan: { nationalPensionStartAge: 65, accountWithdrawalPolicy: 'ISA_FIRST' },
+    retirementGoals: goalsFor(spendingType),
+  });
+
+  // 다섯 축이 모두 현재 계획과 다른 후보. 반영 경로를 전부 밟게 한다.
+  const ranked = makeRanked({
+    retirementAge: 62,
+    nationalPensionStartAge: 70,
+    targetMonthlySpending: 4_000_000,
+    withdrawalPolicy: 'TAX_OPTIMIZED',
+    spendingPattern: 'FRONT_LOADED',
+  });
+
+  test.each([...SPENDING_GOAL_TYPES])(
+    '미확정 목표에 추천을 반영해도 미확정으로 남는다 — %s',
+    (spendingType) => {
+      const result = applyStrategyToParams(paramsFor(spendingType), ranked);
+      const goals = result.params.retirementGoals ?? [];
+
+      // 반영이 실제로 «시스템의 숫자»를 목표에 써 넣었다는 것부터 고정한다. 아무것도 쓰지
+      // 않으면 아래 불변식은 저절로 참이 되어 아무것도 지키지 못한다.
+      expect(goals.find((goal) => goal.type === 'EARLY_RETIREMENT')?.targetValue).toBe(62);
+      expect(goals.find((goal) => goal.type === spendingType)?.targetValue).toBe(4_000_000);
+
+      for (const goal of goals) expect(goal.targetValueSource).toBeUndefined();
+      // 금액 목표는 여전히 판정에 쓸 값이 «없어야» 한다. 이것이 씨앗을 HARD 바닥에서 빼는
+      // 근거이고, 화면이 「아직 제안입니다」라고 말할 수 있는 근거이기도 하다.
+      for (const goal of goals.filter((goal) => goal.type !== 'EARLY_RETIREMENT')) {
+        expect(confirmedTargetValue(goal)).toBeUndefined();
+        expect(isSuggestedTargetValue(goal)).toBe(true);
+      }
+    },
+  );
+
+  // 위 테스트가 «오늘의» 축들을 덮는다면, 이것은 테이블 자체를 덮는다. 목표를 고쳐 쓰는 축이
+  // 나중에 하나 더 늘어도 여기가 그 축을 자동으로 잡는다 — 축을 이름으로 열거해 두면 새 축이
+  // 출처를 지어내도 조용히 지나간다.
+  test('추천 반영의 어느 축도 출처 표시를 만들어 내지 않는다', () => {
+    for (const spendingType of SPENDING_GOAL_TYPES) {
+      const params = paramsFor(spendingType);
+      for (const field of STRATEGY_FIELD_MAP) {
+        const outcome = field.apply(params, ranked);
+        if (!outcome.applied) continue;
+        for (const goal of outcome.params.retirementGoals ?? []) {
+          expect(goal.targetValueSource).toBeUndefined();
+        }
+      }
+    }
+  });
+
+  /**
+   * **의도된 동작이다.** 다음에 읽는 사람이 이것을 빠뜨린 처리로 오해하고 「고치지」 않도록
+   * 못박아 둔다.
+   *
+   * 이미 확정된 목표에 추천을 반영하면 금액은 시스템이 고른 값으로 덮이지만 확정 표시는
+   * 남는다 — 즉 시스템의 숫자가 사용자의 출처를 물려받는다. 그래도 되는 이유는 사용자가
+   * 카드에 적힌 그 금액을 보고 「반영」을 «직접» 눌렀기 때문이다. 몰래 깔린 씨앗과 달리
+   * 사용자가 그 숫자를 본 뒤 고른 값이다.
+   *
+   * 반대쪽(표시를 지운다)이 더 나쁘다. 사용자가 못박아 둔 목표가 반영 한 번으로 제안으로
+   * «강등»되어 HARD 바닥이 소리 없이 사라지고, 화면에는 그 사실이 「아직 제안입니다」라는
+   * 배지로만 나타난다. 둘 중 조용한 쪽은 강등이다.
+   */
+  test('이미 확정된 목표는 금액만 바뀌고 확정 표시는 그대로 남는다', () => {
+    const params = makeParams({
+      userProfile: { currentAge: 50, retirementAge: 60, expectancy: 90, targetMonthlySpending: 3_000_000 },
+      retirementGoals: [{
+        type: 'LIVING_EXPENSE_STABILITY',
+        priority: 1,
+        targetValue: 3_000_000,
+        targetValueSource: 'user',
+        constraintType: 'HARD',
+      }],
+    });
+
+    const result = applyStrategyToParams(params, makeRanked({
+      retirementAge: 60,
+      targetMonthlySpending: 4_000_000,
+    }));
+    const goal = (result.params.retirementGoals ?? [])[0];
+
+    expect(goal.targetValue).toBe(4_000_000);
+    expect(goal.targetValueSource).toBe('user');
+    expect(confirmedTargetValue(goal)).toBe(4_000_000);
   });
 });

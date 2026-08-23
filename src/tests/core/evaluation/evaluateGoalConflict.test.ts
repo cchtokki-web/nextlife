@@ -36,14 +36,17 @@ function plan(over: Record<string, unknown>): SimulationParams {
 }
 
 const hardSpendingGoal = (targetValue: number): RetirementGoal =>
-  ({ type: 'LIVING_EXPENSE_STABILITY', priority: 1, constraintType: 'HARD', targetValue });
+  // 사용자가 입력창에 직접 써넣은 금액이다. 표시가 없으면 화면이 깔아 준 제안이라
+  // 바닥을 세우지 않고, 그러면 이 파일이 재려는 충돌 자체가 생기지 않는다.
+  ({ type: 'LIVING_EXPENSE_STABILITY', priority: 1, constraintType: 'HARD', targetValue,
+    targetValueSource: 'user' });
 
 const conflictingPlan = plan({
   assetFloor: 280_000_000,
   hardSpendingFloor: 5_000_000,
   retirementGoals: [
     hardSpendingGoal(5_000_000),
-    { type: 'INHERITANCE', priority: 2, constraintType: 'HARD', targetValue: 280_000_000 },
+    { type: 'INHERITANCE', priority: 2, constraintType: 'HARD', targetValue: 280_000_000, targetValueSource: 'user' },
   ],
 });
 
@@ -52,7 +55,7 @@ const quietPlan = plan({
   hardSpendingFloor: 5_000_000,
   retirementGoals: [
     hardSpendingGoal(5_000_000),
-    { type: 'INHERITANCE', priority: 2, constraintType: 'HARD', targetValue: 100_000_000 },
+    { type: 'INHERITANCE', priority: 2, constraintType: 'HARD', targetValue: 100_000_000, targetValueSource: 'user' },
   ],
 });
 

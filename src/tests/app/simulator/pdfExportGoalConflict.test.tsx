@@ -54,8 +54,8 @@ const conflictingPlan = {
   nationalPension: { expectedMonthlyAmount: 0 },
   inflationRate: 0, inflationMode: 'nominal',
   retirementGoals: [
-    { type: 'LIVING_EXPENSE_STABILITY', priority: 1, constraintType: 'HARD', targetValue: 5_000_000 },
-    { type: 'INHERITANCE', priority: 2, constraintType: 'HARD', targetValue: 280_000_000 },
+    { type: 'LIVING_EXPENSE_STABILITY', priority: 1, constraintType: 'HARD', targetValue: 5_000_000, targetValueSource: 'user' },
+    { type: 'INHERITANCE', priority: 2, constraintType: 'HARD', targetValue: 280_000_000, targetValueSource: 'user' },
   ],
 } as unknown as SimulationParams;
 

@@ -132,13 +132,27 @@ function withGoalTarget(
   types: readonly RetirementGoalType[],
   value: number,
   reason: string,
+  planAxis?: (params: SimulationParams, value: number) => SimulationParams,
 ): StrategyFieldApplication {
   const goals = normalizeRetirementGoals(params.retirementGoals ?? []);
   const index = goals.findIndex((goal) => types.includes(goal.type));
   if (index === -1) return { applied: false, reason };
 
+  // 출처 표시(targetValueSource)는 «있으면 그대로 두고, 없으면 만들지 않는다».
+  //
+  // 「반영」은 전후 금액(before/after)을 나란히 놓고 누르는 «명시적 행위»라, 이미 확정된
+  // 목표의 금액을 바꿔도 확정 상태를 잃지 않는다 — 사용자는 바뀔 숫자를 보고 눌렀다.
+  // 반대로 미확정 목표에 표시를 새로 «만들지는» 않는다. 그 금액을 고른 것은 추천이지
+  // 사용자가 아니고, 확정은 목표 카드의 확정 버튼에서만 생긴다(known-issues 14번).
+  //
+  // 타이핑이 표시를 «떼어 내는» 것(changeTargetValue)과 어긋나 보이지만, 가르는 기준은
+  // 같다 — 사용자가 그 숫자를 보고 확인했는가. 타이핑에는 그 순간이 없고 반영에는 있다.
   const next = goals.map((goal, i) => (i === index ? { ...goal, targetValue: value } : goal));
-  return { applied: true, params: applyRetirementGoals(params, next) };
+  // 미확정 목표금액은 계획의 축이 되지 못하므로(normalizeGoalDrivenParams), 금액 축은 계획
+  // 쪽에도 직접 세워야 반영이 살아남는다. 확정된 목표가 있는 계획에서는 정규화가 그 값으로
+  // 다시 덮으므로, 두 자리가 어긋난 채 저장되는 일은 없다.
+  const seeded = planAxis ? planAxis(params, value) : params;
+  return { applied: true, params: applyRetirementGoals(seeded, next) };
 }
 
 export const STRATEGY_FIELD_MAP: readonly StrategyFieldSpec[] = [
@@ -198,6 +212,10 @@ export const STRATEGY_FIELD_MAP: readonly StrategyFieldSpec[] = [
       ['LIVING_EXPENSE_STABILITY', 'COMFORTABLE_SPENDING'],
       ranked.candidate.strategy.targetMonthlySpending,
       '「생활비 안정」 또는 「여유 있는 소비」 목표를 선택해야 월 생활비를 바꿀 수 있습니다',
+      (current, value) => ({
+        ...current,
+        userProfile: { ...current.userProfile, targetMonthlySpending: value },
+      }),
     ),
   },
   {

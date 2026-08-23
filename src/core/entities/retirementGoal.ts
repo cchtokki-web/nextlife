@@ -15,11 +15,102 @@ export type RetirementGoalType = (typeof RETIREMENT_GOAL_TYPES)[number];
 
 export type RetirementGoalConstraintType = 'HARD' | 'SOFT';
 
+/**
+ * 목표금액의 «출처». 오늘 값은 하나뿐이다 — 사용자가 목표 카드의 입력창에 «직접 써넣은» 값.
+ *
+ * 유니온으로 두는 이유는 boolean이 「모른다」를 표현하지 못하기 때문이다. 시스템 씨앗과
+ * 출처를 알 수 없는 저장 데이터는 서로 다른 사연이지만 «확정이 아니다»라는 점에서 같고,
+ * 그 상태는 필드의 «부재»로 표현한다(아래 targetValueSource 주석).
+ */
+export type RetirementGoalTargetSource = 'user';
+
 export interface RetirementGoal {
   type: RetirementGoalType;
   priority: number;
   targetValue?: number;
+  /**
+   * `targetValue`가 «사용자가 확정한 목표금액»인가. **없으면 미확정이다.**
+   *
+   * 목표를 고르는 순간 화면이 계획의 값에서 목표금액을 «깔아 준다»(RetirementGoalSelector의
+   * defaultTarget). 그 씨앗은 사용자가 한 번도 진술한 적 없는 숫자인데, 예전에는 사용자가
+   * 타이핑한 값과 «같은 자리에 같은 형태로» 저장되어 둘을 구별할 방법이 없었다. 그래서
+   * 시스템이 깔아 준 350만원이 HARD 바닥이 되어 후보를 전부 떨어뜨리는 일이 생겼다
+   * (known-issues 2번).
+   *
+   * **선택 필드이고, 기본값은 「미확정」쪽이다.** 필수로 만들거나 기본을 「확정」으로 두면
+   * 이미 저장된 씨앗이 «전부» 확정으로 승격되는데, 그것이 정확히 이 수정이 막으려는 일이다.
+   * 같은 이유로 기존 데이터를 마이그레이션하지 «않는다» — 표시가 없는 것이 곧 「모른다」이고,
+   * 모르는 것은 확정이 아니다.
+   *
+   * **씨앗에는 붙이지 않는다.** 붙일 수 있는 곳은 사용자가 금액을 «확정하는» 행위 하나뿐이다
+   * (목표 카드의 「이 금액으로 확정」). 타이핑은 「변경」이지 「확인」이 아니므로 입력만으로는
+   * 붙지 않는다 — 고치다 만 금액을 확정으로 읽으면 표시가 다시 뜻을 잃는다(known-issues 14번).
+   * 정규화·어댑터·저장 복원처럼 목표 객체를 다시 만드는 경로가 이 표시를 «지어내면» 수정이
+   * 조용히 무효가 되므로, 그 경로들은 있는 그대로 옮기기만 한다.
+   */
+  targetValueSource?: RetirementGoalTargetSource;
   constraintType: RetirementGoalConstraintType;
+}
+
+/**
+ * 「목표금액」을 갖는 목표 유형 — 즉 `targetValue`가 «돈»을 뜻하는 유형.
+ *
+ * 「빠른 은퇴」는 여기 없다. 그 목표의 `targetValue`는 나이이고, 씨앗도 사용자가 1단계에서
+ * «직접 입력한» 은퇴 나이를 그대로 옮긴 것이라 「사용자가 말한 적 없는 숫자」가 아니다.
+ * 승인된 설계가 씨앗으로 지목한 것도 금액 셋뿐이다(생활비 둘, 상속).
+ */
+const MONEY_TARGET_GOAL_TYPES = [
+  'LIVING_EXPENSE_STABILITY',
+  'COMFORTABLE_SPENDING',
+  'INHERITANCE',
+  'ASSET_GROWTH',
+] as const satisfies readonly RetirementGoalType[];
+
+function hasMoneyTarget(type: RetirementGoalType): boolean {
+  return (MONEY_TARGET_GOAL_TYPES as readonly RetirementGoalType[]).includes(type);
+}
+
+/**
+ * 판정에 쓸 수 있는 목표금액. **사용자가 확정하지 않았으면 undefined다.**
+ *
+ * 여기가 「확정인가」를 묻는 «유일한» 자리다. 부족분·HARD/SOFT 판정·체감 커브의 기준이
+ * 모두 이 함수를 지나야 한 가지 뜻을 갖는다 — 한 곳이라도 `goal.targetValue`를 직접 읽으면
+ * 그 자리에서만 씨앗이 다시 확정값으로 취급되고, 그것이 사용자가 보는 결과를 가른다.
+ *
+ * 금액이 아닌 목표(「빠른 은퇴」의 나이)는 이 함수의 대상이 아니므로 값을 그대로 돌려준다.
+ */
+export function confirmedTargetValue(goal: RetirementGoal): number | undefined {
+  if (!hasMoneyTarget(goal.type)) return goal.targetValue;
+  return goal.targetValueSource === 'user' ? goal.targetValue : undefined;
+}
+
+/**
+ * 화면이 「아직 제안입니다」를 말해야 하는 상태인가. 판정에서 빠진 값을 아무 표시 없이
+ * 보여 주면, 「반드시 지키기」를 골라 둔 사용자가 그 금액이 강제되지 않는다는 사실을 알 수
+ * 없다 — 이 수정이 목표를 조용히 약화시키는 쪽으로 읽히는 지점이 정확히 거기다.
+ */
+export function isSuggestedTargetValue(goal: RetirementGoal): boolean {
+  return goal.targetValue !== undefined
+    && hasMoneyTarget(goal.type)
+    && goal.targetValueSource !== 'user';
+}
+
+/**
+ * 이 목표가 「반드시 지키기」로 «성립하기 위해» 사용자의 확정을 기다리고 있는가.
+ *
+ * **HARD는 강도와 기준을 모두 확정해야 성립한다.** 강도만 고르고 기준이 씨앗이면 두 가지
+ * 중 하나가 일어난다 — 그 금액을 그대로 강제하면 사용자가 말한 적 없는 숫자로 계획을
+ * 묶는 것이고(2번), 그냥 통과시키면 아무것도 구속하지 않는 HARD가 「준비됨」으로 확인받는다
+ * (14번). 리뷰어의 말대로 «조용히» 받아들이는 쪽이 더 나쁜 실패다. 그래서 어느 쪽도 하지
+ * 않고 사용자에게 그 금액을 확인하거나 고치도록 요구한다.
+ *
+ * **판정은 목표«자신의» 기준으로 한다.** 이 술어가 참이 되는 것은 기준이 씨앗인 목표뿐이다
+ * (생활비 둘·상속). 「빠른 은퇴」의 은퇴 나이와 「자산 고갈 방지」의 기대수명은 사용자가
+ * 1단계에서 «직접 입력한» 값이라 확인이 해결할 문제가 애초에 없다 — 그 둘은 금액 목표가
+ * 아니므로 isSuggestedTargetValue에서 걸러진다.
+ */
+export function hardGoalAwaitsTargetConfirmation(goal: RetirementGoal): boolean {
+  return goal.constraintType === 'HARD' && isSuggestedTargetValue(goal);
 }
 
 export const MAX_RETIREMENT_GOALS = 5;
@@ -96,12 +187,19 @@ export function isSpendingGoalType(type: RetirementGoalType): type is SpendingGo
  *
  * `targetValue > 0` 가드는 normalizeGoalDrivenParams.firstGoalWithTarget의 것과 같다:
  * 0은 「입력창을 비웠다」이지 「생활비 0원이 목표」가 아니다.
+ *
+ * **미확정 씨앗은 바닥을 세우지 않는다.** 세우면 두 가지가 동시에 일어난다 — 사용자가 말한
+ * 적 없는 금액이 인출 순서·세제 최적화를 깨고, 그 금액에 못 미쳤다는 이유로 HARD 미달이
+ * 보고된다. 체감 커브가 목표를 내리는 계획에서는 그 미달이 «구조적으로» 영구적이라
+ * 후보가 전멸했다(known-issues 2번). 바닥과 판정이 같은 함수에서 나오므로 둘은 갈라지지
+ * 않는다 — 판정만 끄면 엔진은 여전히 씨앗을 향해 인출하면서 그 결과를 검사하지 않게 된다.
  */
 export function hardSpendingFloorTarget(goal: RetirementGoal): number | undefined {
   if (goal.constraintType !== 'HARD') return undefined;
   if (!isSpendingGoalType(goal.type)) return undefined;
-  if (goal.targetValue === undefined || !(goal.targetValue > 0)) return undefined;
-  return goal.targetValue;
+  const targetValue = confirmedTargetValue(goal);
+  if (targetValue === undefined || !(targetValue > 0)) return undefined;
+  return targetValue;
 }
 
 function normalizeTargetValue(goal: RetirementGoal): number | undefined {
@@ -125,11 +223,15 @@ export function normalizeRetirementGoals(
       return true;
     })
     .slice(0, MAX_RETIREMENT_GOALS)
-    .map((goal, index) => ({
-      ...goal,
-      priority: index + 1,
-      targetValue: normalizeTargetValue(goal),
-    }));
+    .map((goal, index) => {
+      const targetValue = normalizeTargetValue(goal);
+      const normalized: RetirementGoal = { ...goal, priority: index + 1, targetValue };
+      // 출처 표시는 «옮기기만» 한다 — 여기서 붙이면 정규화를 지나는 것만으로 씨앗이
+      // 확정으로 승격되어 표시 자체가 뜻을 잃는다. 값이 사라진 목표(입력창을 비웠다)에서는
+      // 표시도 함께 지운다: 가리킬 금액이 없는 출처는 다음 씨앗에 잘못 들러붙는다.
+      if (targetValue === undefined) delete normalized.targetValueSource;
+      return normalized;
+    });
 }
 
 export function moveRetirementGoal(
