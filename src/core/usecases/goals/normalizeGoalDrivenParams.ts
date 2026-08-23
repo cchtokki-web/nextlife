@@ -80,6 +80,25 @@ function firstGoalWithTarget(
   });
 }
 
+/**
+ * 그 목표가 계획에 넘기는 «확정된» 값.
+ *
+ * 값을 꺼내는 일도 confirmedTargetValue를 지나게 한다. 위 finder가 이미 같은 술어로 걸렀으니
+ * `goal.targetValue`를 그대로 읽어도 오늘은 같은 숫자지만, 그때 안전은 «멀리» 놓인다 —
+ * 찾기 조건이 한 번만 느슨해지거나(예: 다른 폴백을 덧붙이는 순간) 호출부가 finder를 거치지
+ * 않으면, 그 자리에서만 씨앗이 조용히 계획의 축으로 승격된다. 미확정 씨앗을 판정에서
+ * 빼는 규칙은 한 문(confirmedTargetValue)으로만 드나들어야 한 가지 뜻을 갖는다.
+ *
+ * 금액이 아닌 목표(「빠른 은퇴」의 나이)는 그 문이 값을 그대로 돌려주므로 종전과 같다.
+ */
+function confirmedGoalTarget(
+  goals: readonly RetirementGoal[],
+  ...types: RetirementGoalType[]
+): number | undefined {
+  const goal = firstGoalWithTarget(goals, ...types);
+  return goal === undefined ? undefined : confirmedTargetValue(goal);
+}
+
 function normalizeUserProfile(
   params: SimulationParams,
   goals: readonly RetirementGoal[],
@@ -95,7 +114,7 @@ function normalizeUserProfile(
   // (normalizeTargetValue의 clamp).
   const retirementAge = Math.max(
     current.currentAge,
-    firstGoalWithTarget(goals, 'EARLY_RETIREMENT')?.targetValue ?? NATIONAL_PENSION_NORMAL_START_AGE,
+    confirmedGoalTarget(goals, 'EARLY_RETIREMENT') ?? NATIONAL_PENSION_NORMAL_START_AGE,
   );
 
   // 생활비 목표가 여럿이면 «가장 큰» 값이 목표다. 예전에는 우선순위가 높은 쪽이 이겨
@@ -124,7 +143,7 @@ function normalizeUserProfile(
   // 엔진의 상속 하한선(compileStrategy의 assetFloor)과 목표 달성 확률의 기말자산 조건이 된다.
   // 확정 전까지는 종전 baseline인 「일부 남기기」로 남는다 — 하한선을 걸지 않고 적정선으로
   // 채점만 하는, 목표를 고르기 «전»과 같은 상태다.
-  const targetBequest = firstGoalWithTarget(goals, 'INHERITANCE')?.targetValue;
+  const targetBequest = confirmedGoalTarget(goals, 'INHERITANCE');
 
   const same = current.retirementAge === retirementAge
     && current.targetMonthlySpending === targetMonthlySpending
