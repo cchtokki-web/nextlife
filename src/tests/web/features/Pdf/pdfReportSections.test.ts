@@ -510,15 +510,15 @@ describe('renderPlanVerdictSection', () => {
     expect(html).toContain('목표 달성 확률 37%');
   });
 
-  // **판정 블록은 목표 달성 확률 하나만 말한다.** 성분 확률(생활 유지·자산 보존)과 잔여자산
-  // 분위수는 「시장 변동 검증」 섹션이 소유한다 — 예전에는 여기서 먼저 인쇄하고 뒤 페이지에서
-  // 같은 숫자를 다시 인쇄했다.
-  test('성분 확률과 잔여자산 분위수를 여기서 다시 인쇄하지 않는다', () => {
+  // 화면과 PDF가 같은 대표값을 말해야 한다. 전체 분위수 표는 뒤 섹션이 소유하지만, 화면
+  // 진단 카드의 대표값인 p50은 첫 페이지에도 같은 라벨로 싣는다.
+  test('화면과 같은 잔여자산 중앙값을 대표값으로 먼저 싣는다', () => {
     const html = render(0.37, mc(0.37, 100000000, 5000000));
 
     expect(html).not.toContain('생활 유지 37%');
     expect(html).not.toContain('자산 보존 37%');
-    expect(html).not.toContain('중앙값');
+    expect(html).toContain('90세 예상자산(중앙값) 100,000,000원');
+    expect(html.indexOf('90세 예상자산(중앙값)')).toBeLessThan(html.indexOf('90세 예상자산(기준 수익률)'));
     expect(html).not.toContain('하위 10%');
   });
 

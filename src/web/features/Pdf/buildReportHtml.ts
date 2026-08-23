@@ -10,6 +10,8 @@ import {
   NATIONAL_PENSION_EARLY_MIN_AGE,
   NATIONAL_PENSION_NORMAL_START_AGE,
 } from '../../../core/usecases/pension/nationalPensionRules';
+import type { MonteCarloResult } from '../../../core/entities/montecarlo';
+import { resolveAssetProjection, type AssetProjection } from '../../../core/usecases/dashboard/resolveAssetProjection';
 
 /** 이미 렌더된 섹션 조각들. 각 값은 pdfReportSections의 render*Section 결과다. */
 export interface ReportSectionHtml {
@@ -56,6 +58,8 @@ export interface ReportHtmlInput {
    */
   generatedAtText: string;
   copyrightYear: number;
+  /** 화면 자산 차트와 같은 연도별 중앙값 경로. 일부 나이가 비면 기준 수익률로 되돌아간다. */
+  monteCarlo?: Pick<MonteCarloResult, 'assetBands'>;
   sections: ReportSectionHtml;
 }
 
@@ -82,10 +86,11 @@ function renderYearlyTablePages(args: {
   healthcareNoteHtml: string;
   realValueNoteHtml: string;
   copyrightYear: number;
+  assetProjection: AssetProjection;
 }): { html: string; firstPageNo: number } {
   const {
     chunks, hasSpendingSection, nextSection, nextPage, formatValuePrint,
-    hasHealthcareCost, healthcareNoteHtml, realValueNoteHtml, copyrightYear,
+    hasHealthcareCost, healthcareNoteHtml, realValueNoteHtml, copyrightYear, assetProjection,
   } = args;
   let out = '';
   let firstPageNo = 0;
@@ -100,14 +105,16 @@ function renderYearlyTablePages(args: {
               <h2 style="font-size: 15px; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; color: #0f172a; margin-top: 0; margin-bottom: 12px;">
                 ${yearlyTableSectionNo}. 연령별 소득원 및 자산 추이 (${chunkIdx + 1}/${chunks.length})
               </h2>
-              ${realValueNoteHtml}
+              ${realValueNoteHtml}${assetProjection.basis === 'monte_carlo_median'
+                ? '\n              <p style="font-size: 9.5px; color: #64748b; margin: 0 0 8px;">* 「총 자산」은 화면 차트와 같은 시장 변동 시행의 연도별 중앙값입니다. 각 연도의 중앙값은 서로 다른 시행에서 올 수 있으며, 소득·생활비 항목은 현재 계획의 기준 경로입니다.</p>'
+                : ''}
               ${healthcareNoteHtml}
               <table class="pdf-data-table" style="width: 100%; border-collapse: collapse; font-size: 9px;">
                 <thead>
                   <tr>
                     <th style="border: 1px solid #cbd5e1; padding: 7px 8px; text-align: center; background-color: #f1f5f9; font-weight: 700; color: #334155;">나이</th>
                     <th style="border: 1px solid #cbd5e1; padding: 7px 8px; text-align: center; background-color: #f1f5f9; font-weight: 700; color: #334155;">연도</th>
-                    <th style="border: 1px solid #cbd5e1; padding: 7px 8px; text-align: right; background-color: #f1f5f9; font-weight: 700; color: #334155;">총 자산</th>
+                    <th style="border: 1px solid #cbd5e1; padding: 7px 8px; text-align: right; background-color: #f1f5f9; font-weight: 700; color: #334155;">총 자산${assetProjection.basis === 'monte_carlo_median' ? '<br/>(중앙값)' : ''}</th>
                     <th style="border: 1px solid #cbd5e1; padding: 7px 8px; text-align: right; background-color: #f1f5f9; font-weight: 700; color: #334155;">총 소득</th>
                     <th style="border: 1px solid #cbd5e1; padding: 7px 8px; text-align: right; background-color: #f1f5f9; font-weight: 700; color: #334155;">생활비${hasHealthcareCost ? '<br/>(의료비 포함)' : ''}</th>
                     <th style="border: 1px solid #cbd5e1; padding: 7px 8px; text-align: right; background-color: #f1f5f9; font-weight: 700; color: #334155;">배당/투자</th>
@@ -125,7 +132,7 @@ function renderYearlyTablePages(args: {
             <tr style="${bg}">
               <td style="border: 1px solid #cbd5e1; padding: 7px 8px; text-align: center;">${yr.age}세</td>
               <td style="border: 1px solid #cbd5e1; padding: 7px 8px; text-align: center;">${yr.year}</td>
-              <td style="border: 1px solid #cbd5e1; padding: 7px 8px; text-align: right;">${formatValuePrint(yr.totalAssets)}</td>
+              <td style="border: 1px solid #cbd5e1; padding: 7px 8px; text-align: right;">${formatValuePrint(assetProjection.totalAssetsByAge.get(yr.age) ?? yr.totalAssets)}</td>
               <td style="border: 1px solid #cbd5e1; padding: 7px 8px; text-align: right;">${formatValuePrint(yr.totalIncome)}</td>
               <td style="border: 1px solid #cbd5e1; padding: 7px 8px; text-align: right;">${formatValuePrint(yr.spending)}</td>
               <td style="border: 1px solid #cbd5e1; padding: 7px 8px; text-align: right;">${formatValuePrint(yr.dividendIncome)}</td>
@@ -315,6 +322,7 @@ export function buildReportHtml(input: ReportHtmlInput): string {
     formatValue: formatValuePrint,
     generatedAtText,
     copyrightYear,
+    monteCarlo,
     sections,
   } = input;
 
@@ -534,6 +542,12 @@ ${accountListsHtml}
 
       // Tables (이후 페이지 수는 데이터 양에 따라 달라진다)
       const chunks = chunkRows(yearlyResults);
+      const assetProjection = resolveAssetProjection(
+        yearlyResults,
+        monteCarlo?.assetBands.length
+          ? new Map(monteCarlo.assetBands.map((band) => [band.age, band]))
+          : undefined,
+      );
       const spendingComposition = computeMonthlySpendingComposition(yearlyResults, reportParams, result);
       const spendingChunks = chunkRows(spendingComposition);
       const hasSpendingSection = spendingChunks.length > 0;
@@ -557,7 +571,7 @@ ${accountListsHtml}
       // 섹션 번호는 여러 페이지로 나뉘어도 하나다 — 첫 청크에서만 소비한다.
       const yearlyTables = renderYearlyTablePages({
         chunks, hasSpendingSection, nextSection, nextPage, formatValuePrint,
-        hasHealthcareCost, healthcareNoteHtml, realValueNoteHtml, copyrightYear,
+        hasHealthcareCost, healthcareNoteHtml, realValueNoteHtml, copyrightYear, assetProjection,
       });
       pagesHtml += yearlyTables.html;
       firstYearlyTablePageNo = yearlyTables.firstPageNo;

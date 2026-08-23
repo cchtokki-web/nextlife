@@ -32,6 +32,7 @@ import { hardConstraintLabel, RETIREMENT_GOAL_CATALOG } from '../RetirementGoals
 import { describeStrategyChanges } from '../../../core/usecases/dashboard/describeStrategyChanges';
 import { explainGoalShortfall } from '../../../core/usecases/dashboard/explainGoalShortfall';
 import type { StrategyOptimizationStatus } from '../../hooks/useStrategyOptimization';
+import { resolveTerminalAssetDisplay } from '../../../core/usecases/dashboard/resolveTerminalAssetDisplay';
 
 export function formatCurrencyUnit(currency: 'KRW' | 'USD'): '원' | '$' {
   return currency === 'KRW' ? '원' : '$';
@@ -157,6 +158,7 @@ export function renderPlanVerdictSection(input: {
   formatValue: (val: number) => string;
 }): string {
   const { expectancy, deterministicDepletionText, endingAssets, confidence, monteCarlo, formatValue } = input;
+  const terminalAssetDisplay = resolveTerminalAssetDisplay(endingAssets, monteCarlo);
 
   const block = (title: string, body: string, accent: string) => `
     <div style="border-left: 4px solid ${accent}; padding: 8px 0 8px 12px; margin-bottom: 12px;">
@@ -168,7 +170,7 @@ export function renderPlanVerdictSection(input: {
   const deterministicHtml = block(
     '기준 시나리오 · 수익률이 가정대로 실현될 때',
     `<p style="margin: 0; font-size: 14px; font-weight: 700; color: #0f172a;">${deterministicDepletionText}
-       <span style="font-size: 12px; font-weight: 500; color: #475569;">· ${expectancy}세 잔여자산 ${formatValue(endingAssets)}</span></p>`,
+       <span style="font-size: 12px; font-weight: 500; color: #475569;">· ${expectancy}세 예상자산(기준 수익률) ${formatValue(terminalAssetDisplay.deterministicAmount)}</span></p>`,
     '#3b82f6'
   );
 
@@ -182,12 +184,12 @@ export function renderPlanVerdictSection(input: {
       )
     : block(
         `시장 변동성 반영 · ${monteCarlo.trials.toLocaleString()}회 시뮬레이션`,
-        // **목표 달성 확률 하나만 싣는다.** 화면의 진단 카드와 같은 분업이다 — 이 블록은
-        // 판정을 내리고, 그 확률을 이루는 두 성분(생활 유지·자산 보존)과 잔여자산 분포는
-        // 「시장 변동 검증」 섹션이 소유한다. 예전에는 세 확률과 분위수 두 개를 여기서 먼저
-        // 인쇄하고 뒤 페이지에서 같은 숫자를 다시 인쇄했다.
+        // 화면 진단 카드와 같은 대표값(p50)과 목표 달성 확률만 싣는다. 확률을 이루는 두 성분
+        // (생활 유지·자산 보존)과 전체 잔여자산 분포는 「시장 변동 검증」 섹션이 소유한다.
         `<p style="margin: 0; font-size: 14px; font-weight: 700; color: ${verdictAccent(confidence)};">
            목표 달성 확률 ${Math.round((confidence.rates?.goalSuccessProbability ?? confidence.rates?.spendingSuccessRate ?? 0) * 100)}%
+         </p><p style="margin: 4px 0 0; font-size: 12px; font-weight: 700; color: #0f172a;">
+           ${expectancy}세 예상자산(중앙값) ${formatValue(terminalAssetDisplay.amount)}
          </p>
          ${goalCoverageNote(monteCarlo.goalConditions)}`,
         verdictAccent(confidence)
@@ -210,8 +212,7 @@ export function renderPlanVerdictSection(input: {
 
   return `
     <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 18px 20px 8px; margin-bottom: 18px;">
-      ${deterministicHtml}
-      ${probabilisticHtml}
+      ${terminalAssetDisplay.basis === 'monte_carlo_median' ? `${probabilisticHtml}${deterministicHtml}` : `${deterministicHtml}${probabilisticHtml}`}
       ${verdictHtml}
     </div>
   `;

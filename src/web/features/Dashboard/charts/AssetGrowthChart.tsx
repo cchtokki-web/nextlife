@@ -20,6 +20,7 @@ import { MonteCarloAssetBandYear, MonteCarloResult } from '../../../../core/enti
 import { formatValue, MultilineYAxisTick, RECHARTS_TOOLTIP_STYLE, Y_AXIS_WIDTH } from './chartFormatters';
 import { ChartLegend, type ChartLegendItem } from './ChartLegend';
 import { ChartCaption } from './ChartCaption';
+import { resolveAssetProjection } from '../../../../core/usecases/dashboard/resolveAssetProjection';
 
 interface CompareResultEntry {
   id: string;
@@ -118,12 +119,11 @@ export function buildAssetChartData(
   compareResults: CompareResultEntry[],
   bandByAge: Map<number, MonteCarloAssetBandYear> | undefined,
 ): AssetChartData {
-  const usesMedian = bandByAge !== undefined
-    && bandByAge.size > 0
-    && yearlyResults.every((r) => bandByAge.has(r.age));
+  const projection = resolveAssetProjection(yearlyResults, bandByAge);
+  const usesMedian = projection.basis === 'monte_carlo_median';
 
   const rows = yearlyResults.map((r) => {
-    const total = usesMedian ? bandByAge!.get(r.age)!.p50 : r.totalAssets;
+    const total = projection.totalAssetsByAge.get(r.age) ?? r.totalAssets;
     // 기준 수익률 총액이 0인 해에는 나눌 구성비가 없다. 0으로 나누면 Infinity·NaN이
     // 그대로 차트에 흘러 들어가 축이 깨진다.
     const share = !usesMedian ? 1 : r.totalAssets > 0 ? total / r.totalAssets : 0;
