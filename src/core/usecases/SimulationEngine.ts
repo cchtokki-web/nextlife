@@ -212,6 +212,14 @@ export class LegacySimulationEngine implements SimulationEngineContract {
   run(params: SimulationParams, cfg: UtilityConfig = DEFAULT_UTILITY_CONFIG): SimulationResult {
     const strategy = params.spendingStrategy || 'target';
 
+    // **두 갈래는 성격이 다르다 — 「전략」과 「지표」다.**
+    //
+    // 위 갈래('max_sustainable')는 오늘 제품에서 «도달 불가»한 내부 전용 전략이다
+    // (SpendingStrategy 주석에 세 잠금이 적혀 있다). 아래 갈래는 오늘 제품의 «모든» 계획이
+    // 지나며, 거기서도 findMaxSustainableValue로 「지속가능 생활비」를 항상 구해
+    // calculatedTargetSpending에 담는다 — 그 지표는 화면·리포트가 계속 쓴다.
+    //
+    // 그러므로 전략을 걷어내는 논의가 아래 갈래의 탐색까지 지우면 안 된다.
     let result: SimulationResult;
     if (strategy === 'max_sustainable') {
       result = this.findMaxSustainable(params);

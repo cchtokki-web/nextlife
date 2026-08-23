@@ -104,6 +104,40 @@ export interface OtherIncome {
   currency: AssetCurrency;
 }
 
+// 엔진이 아는 생활비 전략 3종.
+//
+// **`'max_sustainable'`은 오늘 «내부 전용»이다.** 엔진에는 온전히 살아 있지만 현재 제품
+// 경로에서는 «생성·저장·선택 중 어느 것도 되지 않는다». 잠그는 것이 셋이고, 셋 다 조건이 없다.
+//
+//  1. **고르는 화면이 없다.** `src/web` 전체에서 이 값은 PDF 라벨 한 줄
+//     (`features/Pdf/buildReportHtml.ts`)에만 나온다 — 고르는 자리가 아니라 표시 문구다.
+//  2. **저장 시나리오가 가질 수 없다.** 로드 경로가 전부 지나는 `migrateRetirementGoals`
+//     (`useScenarios.ts`의 migrateParams)가 `normalizeGoalDrivenParams`를 «조건 없이» 태워
+//     `spendingChoice: 'target'`으로 고정한다. `retirementGoals` 키가 아예 없는 옛 시나리오도
+//     예외가 아니다.
+//  3. **추천 후보가 될 수 없다.** `StrategyGenerator`가 «모든» 격자 후보의
+//     `spendingPolicy.mode`를 'target'으로 고정한다 — 후보끼리 비교하려면 생활비 기준이
+//     같아야 하기 때문이다. 격자 밖의 「현상 유지」 후보 한 장은 씨앗을 그대로 복사하므로
+//     예외처럼 보이지만, 그 씨앗이 곧 사용자의 현재 계획이라 2번이 이미 잠갔다.
+//     `generateSpendingAdjustmentCandidates`도 'target'이 아닌 계획에는 아무 후보도 만들지
+//     않는다(StrategyCandidateGenerator.ts).
+//
+// 2·3의 잠금은 'target'이 아닌 «모든» 선택지에 걸린다('dividend_only'도 같다). 1은
+// max_sustainable에 대한 사실이다.
+//
+// 그래서 이 값에 도달하는 것은 엔진 단위 테스트와 정규화를 거치지 않은 입력(내부 최적화
+// 엔진이 직접 만든 params)뿐이다. **제품에서 이 전략을 쓰는 사용자는 오늘 존재할 수 없다.**
+// 계산을 바꾸면서 「저장 시나리오의 결과가 바뀐다」고 적으려는 사람은 여기서 멈춰야 한다 —
+// 그것이 known-issues 13번이 잡아낸 틀린 전제다.
+//
+// 그래도 엔진에 두는 이유는 다시 노출될 때를 위한 «안전장치»이기 때문이다(13번 결정 (b)).
+// 계산·경고·회귀 테스트는 그대로 유지한다. 세 잠금 중 하나라도 풀면
+// `src/tests/core/usecases/goals/maxSustainableReachability.test.ts`가 먼저 깨진다.
+//
+// **「지속가능 생활비」라는 «지표»와 혼동하지 말 것.** 그 지표(`findMaxSustainableValue` →
+// `SimulationResult.calculatedTargetSpending`)는 'target' 계획에서도 «항상» 계산되어 화면에
+// 표시된다. 전략과 지표는 다른 것이고, 내부 전용인 것은 전략 쪽뿐이다
+// (calculatedTargetSpending 주석에 그 경계를 적어 두었다).
 export type SpendingStrategy = 'target' | 'dividend_only' | 'max_sustainable';
 
 // 은퇴 후 목표 생활비의 연령대별 배분 모양. "얼마를 쓸지"가 아니라 "어떻게 나눠 쓸지"다.
@@ -646,7 +680,20 @@ export interface SimulationResult {
   avgRetirementMonthlyIncome?: number;
   // goalAchievementRate의 분모: 은퇴 후 연평균 월 목표 생활비(연령대 배수·물가·의료비 반영).
   avgTargetMonthlySpending?: number;
-  calculatedTargetSpending?: number; // 역산된 목표 생활비 (max_sustainable 모드 등에서 사용)
+  // 「지속가능 생활비」 — 이 계획의 제약 아래에서 «월 얼마까지 쓸 수 있는가».
+  //
+  // **전략이 아니라 지표다.** `max_sustainable` 전략이 내부 전용이 된 뒤에도 이 값은 그대로
+  // 남는다(SpendingStrategy 주석). 두 값의 성격이 다르기 때문이다.
+  //
+  //  - `'target'`(오늘 제품의 모든 계획): `findMaxSustainableValue`가 «바닥을 뗀 채» 재는
+  //    참고치다. 계획이 실제로 쓰는 금액이 아니라 「여기까지 가능하다」는 안내이고,
+  //    KPI 카드·조언 배너·PDF가 이 값을 보여준다.
+  //  - `'max_sustainable'`(내부 전용): 탐색값이 «곧» 그 계획의 생활비다
+  //    (`findMaxSustainable`). 그래서 그 계획에는 「더 쓰세요/덜 쓰세요」 조언을 하지 않는다.
+  //
+  // 즉 전략을 걷어내는 논의가 이 필드까지 오면 안 된다. 지우면 'target' 계획의 표시가 함께
+  // 사라진다.
+  calculatedTargetSpending?: number;
   // 탐색값과 전달 계획이 갈라졌을 때만 채워진다(SustainableSpendingFloorOverride 주석).
   // 화면·리포트는 이 값으로 「왜 인출이 늘었는지」와 「이것은 권장액이 아니라 한계값」을 말한다.
   sustainableSpendingOverride?: SustainableSpendingFloorOverride;

@@ -130,6 +130,16 @@ function normalizeStrategy(
     ...strategy,
     // 인출 규칙은 언제나 「원하는 생활비 직접 입력」이다. 배당금만 소비·평생 소비 최적화는
     // 목표 금액을 인출에 쓰지 않아, 생활비 목표를 고른 계획과 정면으로 어긋난다.
+    //
+    // **이 한 줄이 「저장 시나리오는 max_sustainable을 가질 수 없다」의 근거다.** 조건이
+    // 없다는 것이 핵심이다 — 목표를 고른 적 없는 옛 시나리오(retirementGoals 키 자체가 없는
+    // 것 포함)도 로드 경로에서 여기를 지나 'target'이 된다. 그래서 그 전략은 오늘 제품에서
+    // «도달 불가»이며(SpendingStrategy 주석의 세 잠금 중 둘째), 그 전략의 계산을 고치는
+    // 작업은 사용자가 보는 결과를 바꾸지 않는다(known-issues 13번).
+    //
+    // 여기에 조건을 붙이면 — 예컨대 「사용자가 골랐으면 존중한다」 — 그 전략이 제품에
+    // 되살아난다. 그것은 제품 의사결정이므로 코드에서 조용히 하지 말 것.
+    // maxSustainableReachability 테스트가 이 무조건성을 고정한다.
     spendingChoice: 'target',
     // 목표 우선순위는 목표 카드가 정한다(createGoalUtilityConfig). 'ai_recommended'는
     // "특정 축으로 기울이지 않음"이라 목표 가중치를 그대로 통과시키는 baseline이다.

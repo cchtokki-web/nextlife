@@ -142,6 +142,12 @@ function strategyFor(
   // 써야 하는데, 'max_sustainable'은 목표액 대신 엔진이 역산한 지속가능액을 쓰기 때문이다
   // (freezeSpendingPlan.ts). 즉 사용자가 max_sustainable을 쓰고 있었다면 추천 후보는 그
   // 설정과 다른 전략이며, 이 사실은 debug.omittedAxes의 spendingPolicyMode 항목에 남는다.
+  //
+  // **씨앗이 무엇이든 고정한다 — 조건이 없다.** 이것이 「추천 후보는 max_sustainable일 수
+  // 없다」의 근거이고, 그 전략을 제품에서 «도달 불가»로 만드는 세 잠금 중 셋째다
+  // (SpendingStrategy 주석). 여기에 「씨앗이 그 모드면 따라간다」 같은 예외를 넣으면 사용자가
+  // 추천을 적용하는 순간 그 전략이 제품에 되살아난다 — 제품 의사결정 없이 하지 말 것.
+  // maxSustainableReachability 테스트가 이 무조건성을 고정한다.
   const spendingPolicy = {
     ...seed.spendingPolicy,
     mode: 'target' as const,

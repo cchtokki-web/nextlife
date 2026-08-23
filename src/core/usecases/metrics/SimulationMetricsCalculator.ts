@@ -132,6 +132,14 @@ export class SimulationMetricsCalculator {
       ...result,
       calculatedTargetSpending: base,
     };
+    // **이 'max_sustainable'은 «전략 선택»이 아니다.** computeMonthlySpendingComposition이
+    // 「목표선의 밑값으로 calculatedTargetSpending을 써라」를 이 플래그로 읽기 때문에
+    // (MonthlySpendingComposition.ts의 planBase) 지표 계산 안에서만 세우는 합성 입력이며,
+    // 이 함수 밖으로 나가지 않는다 — 시뮬레이션도 저장도 하지 않는다.
+    //
+    // 그 전략 자체는 오늘 제품에서 도달 불가한 내부 전용이지만(SpendingStrategy 주석),
+    // 여기서 재는 「지속가능 생활비」는 'target' 계획의 지표다. 둘을 같은 것으로 읽고 이
+    // 줄을 지우면 모든 계획의 지표가 목표 금액으로 되돌아간다.
     const syntheticParams: SimulationParams = {
       ...params,
       spendingStrategy: 'max_sustainable',
