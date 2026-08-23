@@ -24,6 +24,10 @@ import { RetirementGoalType } from '../../../core/entities/retirementGoal';
 import { RETIREMENT_GOAL_CONSTRAINT_LABELS } from '../../../core/entities/retirementGoal';
 import type { GoalConflictVerdict } from '../../../core/evaluation/EvaluationEngine';
 import { describeGoalConflict } from '../../../core/usecases/goals/describeGoalConflict';
+import {
+  describeSustainableSpendingLimit,
+  type SustainableSpendingLimitInput,
+} from '../../../core/usecases/dashboard/describeSustainableSpendingLimit';
 import { hardConstraintLabel, RETIREMENT_GOAL_CATALOG } from '../RetirementGoals/goalCatalog';
 import { describeStrategyChanges } from '../../../core/usecases/dashboard/describeStrategyChanges';
 import { explainGoalShortfall } from '../../../core/usecases/dashboard/explainGoalShortfall';
@@ -338,6 +342,40 @@ export function renderGoalConflictSection(verdict: GoalConflictVerdict): string 
       <p style="margin: 0; font-size: 12px; font-weight: 700; color: #b45309;">⚠ ${described.title}</p>
       <p style="margin: 4px 0 0; font-size: 11px; color: #b45309;">${described.lead}</p>
       <ul style="margin: 6px 0 0; padding-left: 18px; font-size: 11px; color: #b45309;">${itemsHtml}</ul>
+    </div>
+  `;
+}
+
+/**
+ * 「지속가능 생활비」가 HARD 생활비 바닥을 존중해 다시 계산된 계획의 고지.
+ *
+ * 「현재 계획 진단」 안, 판정 블록 «바로 아래»에 놓인다(buildReportHtml) — 그 블록이 기말자산과
+ * 고갈 나이를 말한 직후에 「그 숫자가 왜 이런가」가 와야 한다.
+ *
+ * **문장을 여기서 짓지 않는다.** describeSustainableSpendingLimit이 화면과 이 리포트에 같은
+ * 말을 준다. 리포트는 화면보다 오래 남아 그대로 인용되므로, 문구가 두 벌이면 갈라진 쪽이
+ * 오래 남는다(renderGoalConflictSection과 같은 이유).
+ *
+ * 바닥이 구속하지 않은 계획에서는 빈 문자열이다 — 달라진 것이 없으므로 자리도 만들지 않는다.
+ */
+export function renderSustainableSpendingLimitSection(input: SustainableSpendingLimitInput): string {
+  const notice = describeSustainableSpendingLimit(input);
+  if (notice === undefined) return '';
+
+  // 조건부 문장은 있을 때만 문단이 된다. 빈 <p>를 남기면 리포트에 이유 없는 여백이 생긴다.
+  const optional = [notice.terminalAssets, notice.depletionRisk]
+    .filter((text): text is string => text !== undefined)
+    .map((text) => `<p style="margin: 4px 0 0; font-size: 11px; color: #7f1d1d;">${text}</p>`)
+    .join('');
+
+  // 「리스크 알림」과 같은 경고 색을 쓴다. 같은 무게의 고지가 서로 다른 색으로 말하면 읽는
+  // 사람은 둘을 다른 종류의 사건으로 받아들인다.
+  return `
+    <div style="border: 1px solid #fecaca; background-color: #fef2f2; border-radius: 8px; padding: 12px 14px; margin-bottom: 14px;">
+      <p style="margin: 0; font-size: 12px; font-weight: 700; color: #ef4444;">⚠ ${notice.title}</p>
+      <p style="margin: 4px 0 0; font-size: 11px; color: #7f1d1d;">${notice.reason}</p>
+      <p style="margin: 4px 0 0; font-size: 11px; font-weight: 700; color: #7f1d1d;">${notice.limit}</p>
+      ${optional}
     </div>
   `;
 }

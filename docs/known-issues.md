@@ -48,7 +48,49 @@
 
 ---
 
-## 3. HARD 바닥이 있는 계획에서 「지속가능 생활비」의 정의가 열려 있다
+## 3. HARD 바닥이 있는 계획에서 「지속가능 생활비」의 정의가 열려 있다  ✅ 해결 (아래 커밋)
+
+> **해결됨. 스펙이 승인한 「런타임 동등(3행)」을 그대로 구현했다.**
+>
+> 탐색은 여전히 바닥을 뗀 채 돈다 — 남기면 이진탐색이 정확히 바닥으로 수렴해 사용자 입력을
+> 측정값이라며 되돌려준다. 바뀐 것은 **반환하는 원장**이다. 바닥이 탐색값을 «넘을 때만»
+> 계층이 개입해(HARD 생활비 = 계층 1 > 세제 최적화 = 계층 5), 바닥을 존중한 실행에서 용량을
+> 다시 재고 그 계획을 전달한다. 전달 계획의 바닥은 «전달 생활비 자신»이다 — 사용자의 바닥을
+> 그대로 걸면 1단계가 거기까지만 한도를 깨서, 「월 344만원까지 쓸 수 있습니다」라고 답하면서
+> 원장에는 250만원을 찍는 같은 종류의 어긋남이 된다.
+>
+> 실측(픽스처 그대로: 사적연금 5억·세제 한도 ON·60→70세, 바닥 250만):
+>
+> | 지표 | 이전 | 이후 |
+> |---|---|---|
+> | 지속가능 생활비 | 1,181,250 | **3,446,597** |
+> | 기말자산 | 335,172,593 | 5원 |
+> | 평생 세금 | 8,902,406 | 45,049,252 |
+> | 평가 계층의 HARD 미달 | 보고함 | 없음 |
+>
+> **바닥이 «구속하지 않는» 계획은 한 발도 움직이지 않는다.** 바닥이 없거나(바닥 ≤ 탐색값)인
+> 계획은 종전 원장을 비트 단위로 그대로 돌려준다. `engineRegression.json`은 바이트 단위로
+> 동일하고 페르소나 CSV도 움직이지 않았다(둘 다 `retirementGoals`가 없어 바닥이 서지 않는다).
+>
+> **바닥이 바닥 존중 용량마저 넘으면 그래도 지급하고 고갈한다**(픽스처에서 400만 → 69세,
+> 500만 → 67세, 1,000만 → 63세). 「반드시 지키기」의 뜻이 그것이고, 그 대가는 depletionAge에
+> 남는다. 그 계획에서 `computeSustainableSpendingAdvice`의 `below_hard_floor`는 더 이상 서지
+> 않는다 — 원장이 바닥을 실제로 지급하므로 「월 23만원 부족」은 같은 실행이 반증하는 말이 된다.
+> 그 자리를 대신할 표시(왜 인출이 늘었는지·기말 0 경고·한계값 설명·고갈 여유 경고)도
+> **함께 들어갔다** — 스펙의 「표시 요구」 네 가지를 `describeSustainableSpendingLimit`
+> 한 함수가 문장으로 내고 화면과 PDF가 그것을 그대로 찍는다. `below_hard_floor` 분기와
+> 그것을 지키던 테스트는 도달할 수 없게 되었으므로 걷어냈다.
+>
+> 같은 작업에서 시퀀스 리스크 패널도 `freezeSpendingPlan`을 타게 했다. 그 패널만
+> `engine.runSingle(params)`를 직접 불러 `max_sustainable` 계획에서 사용자가 «입력한»
+> 목표 생활비로 돌고 있었다(픽스처: 헤드라인 월 344만원 대 패널 월 300만원, 기준 막대의
+> 기말자산 1.45억 대 5원). 몬테카를로·민감도가 이미 쓰던 통로로 옮겼다.
+>
+> 탐색값과 전달값의 차이는 `SimulationResult.sustainableSpendingOverride`에 남는다 —
+> 갈라진 폭이 곧 「HARD 바닥이 세제 선호를 얼마나 눌렀는가」다.
+>
+> **아래는 등록 당시의 기록이다.**
+
 
 `findMaxSustainable`은 이제 탐색 중 `hardSpendingFloor`를 걷어낸다. 걷어내지 않으면
 탐색이 **정확히 바닥으로 수렴해** 사용자 입력을 측정값이라며 되돌려줬다.
@@ -360,7 +402,38 @@ PDF에서는 그 문장이 「자산이 먼저 바닥난 경우가 N회 있었�
 
 ---
 
-## 11. PDF 내보낼 때마다 평가 엔진이 통째로 한 번 더 돈다
+## 11. PDF 내보낼 때마다 평가 엔진이 통째로 한 번 더 돈다  ✅ 해결
+
+> **해결됨.** 「좁은 진입점」쪽을 택했다(`evaluateGoalConflict`). 배선 쪽은 실측해 보고
+> 접었다 — 판정을 계산하는 `DashboardSection`은 내보내기 버튼의 «자식»이라, 값을 PDF 경로로
+> 보내려면 부모가 자식에게서 값을 받아 올리거나 평가 전체를 `AnalysisRuntime`으로 끌어올려
+> `evaluation`을 필수 prop으로 내려야 한다. 후자는 `DashboardSection.test.tsx`의 렌더 호출
+> **55곳**을 함께 고쳐야 하고, 더 나쁘게는 화면의 평가 입력이 바뀐다 — 화면은
+> `compileStrategy(effective.params).utilityConfig`로, 리포트는 `effective.utilityConfig`로
+> 평가하는데(`applyAiSentinels`는 params만 갈아끼우고 utilityConfig는 그대로 둔다) 둘을
+> 합치면 리포트가 «오늘과 다른 입력»으로 판정하게 된다. 배선이 곧 계산 변경이 되는 셈이라
+> 「리포트는 한 글자도 움직이지 않는다」와 양립하지 않는다.
+>
+> 실측(내보내기 «한 번» 동안, 실제 페이지를 렌더해 버튼을 눌러 셈):
+>
+> | | 전 | 후 |
+> |---|---|---|
+> | `LegacyEvaluationEngine.evaluate` | 1 | **0** |
+> | `DefaultGoalEvaluationEngine.evaluate`(판정) | 1 | 1 |
+> | `computeRiskAlerts` | 2 | 1 |
+> | `computeShortfallSummary` | 3 | 2 |
+> | `resolvePlanAssetStatus` | 6 | 2 |
+> | `computePlanConfidence` | 2 | 1 |
+> | `computeSustainableSpendingAdvice` | 2 | 1 |
+> | `computePensionGapRisk` | 4 | 2 |
+> | `generateChartCaptions` | 1 | **0** |
+>
+> 판정 «자체»는 여전히 내보내기마다 한 번 선다(리포트가 물어야 답이 있다). 사라진 것은
+> 리포트가 읽지도 않는 «나머지 열한 가지»다 — 그것들은 리포트가 제 손으로 다시 계산하고
+> 있었고, 그래서 표의 중복이 대부분 2배였다.
+>
+> 조립된 리포트 HTML을 전후로 붙잡아 비교했다: 출력 일시(시계)를 빼면 34,031자가 한 글자도
+> 다르지 않다.
 
 `src/app/simulator/page.tsx:260`이 목표 충돌 판정 «한 필드»를 읽으려고
 `LegacyEvaluationEngine`을 새로 만들어 `evaluate()`를 통째로 돌린다. 리스크 알림·차트 캡션·
@@ -374,3 +447,140 @@ PDF에서는 그 문장이 「자산이 먼저 바닥난 경우가 N회 있었�
 **조심할 것** 좁은 진입점을 새로 만드는 쪽이 배선보다 나을 수 있다 —
 「충돌만 판정하는 함수」는 `DefaultGoalEvaluationEngine.evaluate`를 부르는 얇은 껍데기면 된다.
 단 «판정 규칙을 복제하지 말 것». 규칙은 `GoalEvaluationEngine.ts`에만 있어야 한다.
+
+---
+
+## 12. 화면과 리포트가 서로 다른 `utilityConfig`로 평가한다  ✅ 종결 — 오진 (둘은 언제나 같다)
+
+> **재보니 「어긋날 수 있다」가 틀렸다. 오늘 어떤 계획에서도 두 값은 같다.**
+>
+> 등록 당시의 관찰 — `applyAiSentinels`가 `{ ...compiled, params: dividend.params }`로 **params만**
+> 갈아끼운다 — 자체는 맞다. 틀린 것은 그 뒤에 깔린 전제, 「params가 바뀌면 utilityConfig도
+> 달라진다」였다. `utilityConfig`는 params 전체가 아니라 **두 입력**만으로 결정된다:
+> `createGoalUtilityConfig(params.retirementGoals, objectiveUtilityConfig)`
+> (`compileStrategy.ts:322`) — 즉 `retirementGoals`와 `strategy.objective`뿐이다.
+> 그리고 자동 채움은 그 둘 중 어느 것에도 닿지 못한다.
+>
+> - `SentinelAxisField = Exclude<keyof BaselineWithdrawalPlan, 'monthlySpendingMultiplier'>` —
+>   축이 «타입 수준에서» 인출계획 필드로 한정된다.
+> - `paramsWithSentinelOverlay`는 `withdrawalPlan`만 다시 만들고,
+>   `fillDividendAxis`는 `assets[].reinvestDividend`만 바꾼다.
+> - `applyAiSentinels.ts` 전체에 `retirementGoals`·`objective` 참조가 **0회**다.
+> - 「그대로 통과」 분기(`compileStrategy.ts:304`)를 뒤집지도 못한다 — 그 판정과 레거시 씨앗이
+>   읽는 것은 `strategy`·`spendingStrategy`·`userProfile.targetBequest`·`retirementGoals`인데
+>   자동 채움은 그중 어느 것도 쓰지 않는다.
+>
+> 그래서 **「어느 쪽이 옳은가」라는 질문 자체가 성립하지 않는다.** 두 쪽은 이미 같은 답을 낸다.
+> 남는 것은 결함이 아니라 «드리프트 위험»이다: 목적함수의 입력에 닿는 축이 새로 생기면 그날부터
+> 실제로 갈라지고, 두 소비자가 서로 «다른 방법»으로 같은 값을 얻는 한 아무도 알아채지 못한다.
+> 그래서 값은 하나도 바꾸지 않고 등가를 테스트로 못박았다 —
+> `src/tests/core/usecases/strategy/sentinelUtilityConfigParity.test.ts`.
+>
+> 그 테스트가 고정하는 것은 결과가 아니라 «근거»다. (1) `SENTINEL_AXES`의 모든 축 × 목적함수가
+> 실제로 갈리는 목표 조합 5종에서 `compileStrategy(effective.params).utilityConfig`와
+> `effective.utilityConfig`가 같다(축 표를 `satisfies Record<SentinelAxisField, …>`로 받으므로
+> 축을 늘리면 픽스처를 만들기 전까지 컴파일되지 않는다 — 새 축이 조용히 빠지지 않는다).
+> (2) 자동 채움이 바꾸는 최상위 키가 `withdrawalPlan`·`assets`뿐이다. 실측(고의 변형):
+> 자동 채움이 `retirementGoals`에 목표를 하나 더하게 하면 38개 중 **22개**,
+> `strategy.objective`를 덮어쓰게 하면 **29개**가 깨진다.
+>
+> **지금 보장되는 것**: 자동 채움 뒤에도 화면과 리포트는 «같은» 목적함수로 채점한다.
+> 보장의 근거는 두 소비자의 배선이 아니라 위 (2)의 사실이고, 그것이 깨지는 순간 (1)보다 먼저
+> 깨지도록 두 검사를 함께 두었다. 그때는 이 항목을 다시 열고 「그 축이 목적함수를 움직여도
+> 되는가」부터 정해야 한다.
+>
+> **아래 원인 분석은 등록 당시의 추정이므로 위 내용이 우선한다.**
+
+11번을 고치며 배선 방향을 검토하다 드러난 잠재 결함이다. 두 경로가 같은 계획을 «다른 입력»으로
+평가한다:
+
+| 경로 | `utilityConfig` |
+|---|---|
+| 화면 | `compileStrategy(effective.params).utilityConfig` |
+| 리포트 | `effective.utilityConfig` |
+
+`applyAiSentinels`가 params를 바꾸면서 `utilityConfig`는 그대로 두기 때문에 둘이 갈라진다.
+AI가 미정 설정을 채운 계획에서 화면과 PDF의 효용 기반 값이 어긋날 수 있다.
+
+**등록 시점** 2026-08-23 (11번 작업 중 발견)
+**왜 미뤴나** 11번의 범위는 「중복 평가를 없앤다」였다. 어느 쪽이 옳은지는 별도 판단이고,
+고치면 둘 중 한쪽의 «결과»가 바뀐다.
+**조심할 것** 어느 쪽을 맞출지부터 정해야 한다. `compileStrategy`가 실체화한 것이 옳다면
+리포트가 바뀌고, 저장된 것이 옳다면 화면이 바뀐다. 그리고 이 불일치가 «실제로» 값을
+움직이는지부터 재라 — 두 `utilityConfig`가 대부분의 계획에서 같을 수도 있다.
+그렇다면 심각도는 낮고 정합성 문제로만 남는다.
+
+---
+
+## 13. `max_sustainable`이 엔진에는 있는데 제품에서는 «닿을 수 없다»  ✅ 결정 (b) — 내부 전용으로 명시
+
+> **결정 (2026-08-23, 소유자). 아래 세 갈래 중 (b)를 쓴다.**
+>
+> `max_sustainable` 전략은 **엔진에 유지하되 현재 제품에서는 「내부 전용 capability」로 명시**한다.
+> 이번 탐색 결과에 따라 **「기존 저장 시나리오 결과가 변경될 수 있다」는 승인 전제는 폐기한다** —
+> 현재 제품 경로에서는 생성·저장·선택할 수 없으므로 **사용자 결과 변경은 없다**. 이미 구현한
+> 계산 수정·원장 항등식 검증·회귀 테스트·경고 로직은 **그대로 유지한다**. 향후 그 전략이 다시
+> 노출되거나 내부 분석에서 쓰일 경우 올바르게 동작하는 **안전장치**로 취급한다.
+> (a) 재노출은 별도 제품 의사결정으로 남기고, (c) 엔진 제거는 하지 않는다.
+>
+> **코드에 남긴 것.** 다음에 이 값을 만나는 사람이 호출 그래프를 다시 훑지 않아도 되게 했다
+> (AGENTS.md 「영향 범위 주장 전 확인 (도달 가능성 5단계)」의 다른 한쪽이다).
+>
+> - **사실의 단일 출처**: `core/entities/types.ts`의 `SpendingStrategy` 선언 주석. 내부 전용이라는
+>   사실과 세 잠금(화면 없음 / 로드 정규화 / 후보 생성)을 한곳에 적었다. 다른 자리들
+>   (`compileStrategy`의 lifetimeOptimization 갈래, `normalizeGoalDrivenParams`의 고정 한 줄,
+>   `StrategyGenerator`의 모드 고정)은 그 주석을 가리키고 «자기 자리의 잠금»만 설명한다.
+> - **전략과 지표의 경계**: 「지속가능 생활비」(`findMaxSustainableValue` →
+>   `calculatedTargetSpending`)는 'target' 계획에서도 항상 계산되어 화면·PDF에 나온다. 전략이
+>   내부 전용이 된 것과 무관하게 **그대로 둔다.** 경계를 `SimulationResult.calculatedTargetSpending`
+>   주석·`SimulationEngine.run`의 두 갈래·`SimulationMetricsCalculator`의 합성 params 자리에 적었다.
+>   마지막 자리가 특히 함정이다 — 지표 계산이 «플래그로만» `max_sustainable`을 세워 쓰는데,
+>   그것은 전략 선택이 아니라 그 함수 밖으로 나가지 않는 합성 입력이다.
+> - **잠금 테스트**: `src/tests/core/usecases/goals/maxSustainableReachability.test.ts`.
+>   결과가 아니라 «장치»를 고정한다 — 목표 조합 5 × 생활비 선택 4 × 저장 모양 2 = 40가지를 훑어
+>   예외가 하나도 없음을 확인하고, 격자 후보 전부와 「현상 유지」 후보의 이음매, 그리고 제품 계층
+>   (`src/web`·`src/app`)의 어느 코드도 이 값을 «만들거나 건네지» 않는다는 사실까지 본다.
+>   마지막 검사는 문자열의 유무가 아니라 «쓰임»을 본다 — 비교(`=== 'max_sustainable'`)·`case`·타입
+>   자리는 이미 그 값인 계획을 알아보는 코드이므로 통과시키고, 대입·인자·리터럴처럼 값을 만드는
+>   자리만 잡는다. 예전 판은 `src/web`만 훑고 파일 예외 목록을 뒀는데, 그러면 (1) 제품 코드인
+>   `src/app/api/ai-advisor/route.ts`의 같은 종류의 라벨이 범위 밖이었고 (2) 표시 문구가 늘 때마다
+>   목록이 자라 그 안에 «고르는 자리»가 섞여도 알아볼 수 없었다. 다만 이것은 구문 검사라 «간접»
+>   생성(변수에 담아 옮기기, 문자열 조립, 유니온 타입에서 선택지 파생)은 보지 못한다 —
+>   도달 불가를 «행동으로» 보장하는 것은 잠금 2·3이다. 잠금을 하나씩 되돌려 확인한 실패 수:
+>   로드 정규화 29건, 후보 고정 2건, 제품 계층 생성 1건.
+>
+> **배포 노트 의무는 해소됐다.** 3번 스펙이 「조용히 내보내지 않는다」며 배포 노트를 요구했지만,
+> 그 요구의 전제가 「저장 시나리오의 결과가 크게 바뀐다」였고 그런 시나리오가 존재할 수 없다.
+> **적을 노트가 없다** — 사용자가 보는 숫자는 하나도 바뀌지 않는다. 그 전략이 다시 노출되는
+> 날에는 (a)의 제품 의사결정과 함께 그때의 변화를 적으면 된다.
+>
+> 아래는 등록 당시의 기록이며, 진단은 그대로 유효하다.
+
+3번을 구현하고 나서야 드러났다. `spendingChoice: 'max_sustainable'`은 **어떤 살아 있는 경로로도
+도달하지 않는다.**
+
+- 고르는 «화면이 없다». `src/web` 전체에서 `max_sustainable`은 PDF 라벨 한 줄에만 나온다.
+- 저장 시나리오도 못 가진다. `useScenarios.ts:118`이 로드마다 `migrateRetirementGoals`를 부르고,
+  그것이 «조건 없이» `normalizeGoalDrivenParams`를 태워 `spendingChoice: 'target'`으로 고정한다
+  (`normalizeGoalDrivenParams.ts:133`). `retirementGoals`가 없는 옛 시나리오도 마찬가지다.
+- 추천 후보도 아니다. `StrategyGenerator.ts:110`이 「후보 비교 기준을 맞추기 위해」 모든 후보를
+  target으로 고정한다.
+
+남는 것은 엔진 단위 테스트와 정규화를 거치지 않은 입력뿐이다.
+`compileStrategy.ts:341-345`가 이 사실을 이미 «적어 두고» 있었다 — 다만 3번을 등록할 때
+아무도 그 주석과 3번을 연결하지 못했다.
+
+**그래서 3번의 수정(613e65a, ff9a707, 292dce5)은 «현재 제품에서 아무에게도 닿지 않는다».**
+계산은 옳아졌고 그 모드가 다시 노출되면 바로 동작하지만, 오늘 사용자가 보는 화면은
+하나도 바뀌지 않는다. 3번을 승인할 때 근거로 삼았던 「저장 시나리오의 결과가 크게 바뀐다」는
+**틀린 전제였다** — 그런 저장 시나리오가 존재할 수 없다.
+
+**등록 시점** 2026-08-23 (3번 표시부 작업 중 구현자가 발견)
+**결정이 필요한 것** 세 갈래다.
+ (a) `max_sustainable`을 다시 노출한다 — 그러면 3번 작업이 살아나고, 왜 화면에서 뺐는지부터
+     다시 봐야 한다.
+ (b) 엔진에 둔 채로 「내부 전용」임을 명시하고 화면 문구·경고는 그대로 둔다(지금 상태).
+ (c) 엔진에서도 걷어낸다 — 그러면 3번 작업과 6번 배너, sequenceRisk 분기가 함께 사라진다.
+**조심할 것** (c)를 고르기 전에 `findMaxSustainable` 자체가 «다른 용도»로도 쓰이는지 보라.
+「지속가능 생활비」는 `max_sustainable` 전략이 아닌 계획에서도 «표시»되고 있다.
+전략과 표시는 다른 것이고, 걷어낼 수 있는 것은 전략 쪽뿐일 수 있다.
