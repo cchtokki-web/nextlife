@@ -13,6 +13,7 @@ import {
   YearLedgerDiagnostics,
 } from '../entities/types';
 import { getRetirementGrade, RetirementGrade } from '../entities/retirementGrade';
+import { roundToWon } from '../entities/money';
 import { computeLifetimeUtility, inflationFactorForYear } from './utility/UtilityEngine';
 import { computeAnnualHealthcareCostBreakdown } from './healthcare/healthcareCosts';
 import { spendingMultiplierForAge } from './spending/spendingCurve';
@@ -1848,11 +1849,14 @@ export class LegacySimulationEngine implements SimulationEngineContract {
         // 새로 만들어 쓰지 않으므로(hardFloorNetNeed 주석), 그보다 위쪽의 미달은 인출이
         // 실패한 것이 아니라 계획이 바닥보다 낮게 겨냥한 것이다. 그 «계획» 실패는 목표
         // 생활비와 바닥을 직접 비교해야 보이고, 그것은 평가 계층의 일이다.
-        annualUnmetHardSpending += Math.max(
+        // 미달액은 목표 생활비 쪽(completedCashFlow.shortfall)과 «같은 자»로 잰다 — 원 단위다.
+        // 같은 뺄셈에서 같은 1e-9원 잔돈이 나오고, 여기서는 그것이 진단(unmetHardSpending)과
+        // 「사유 없는 부족」 불변식으로 흘러간다.
+        annualUnmetHardSpending += roundToWon(Math.max(
           0,
           Math.min(monthlyHardSpendingFloorDisplay, targetMonthlyCashNeed)
             - completedCashFlow.actualSpending
-        );
+        ));
       }
 
       // 연말 세금 징수 «직전»의 총자산. 아래 collectTax들은 인출 엔진을 거치지 않고 자산을

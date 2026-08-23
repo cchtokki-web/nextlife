@@ -140,11 +140,14 @@ describe('describeStrategyChanges', () => {
 
 // **「현상 유지」 후보는 아무 변경도 말하지 않아야 한다.**
 //
-// baselineDimensions는 미지정 인출정책을 'GENERAL_FIRST'로 «적어 둔다» — 격자와 같은 어휘로
-// 라벨을 붙이기 위한 기본값이다. 인출 축이 그 dimensions를 읽으면, 아무것도 바꾸지 않는
-// 카드가 "자산 인출: 현재 설정 → 일반계좌 우선 인출"을 내걸고 반영 버튼이 그 값을 실제로
-// 저장한다. SimulationEngine은 accountWithdrawalPolicy가 «미지정일 때만» 기존 정기
-// 균등분할 지급 경로를 타므로, 그 저장은 카드가 보여 준 것과 다른 계획을 만든다.
+// 예전에는 baselineDimensions가 미지정 인출정책을 'GENERAL_FIRST'로 «적어 뒀다» — 격자와
+// 같은 어휘로 라벨을 붙이기 위한 기본값이었다. 인출 축이 그 dimensions를 읽으면, 아무것도
+// 바꾸지 않는 카드가 "자산 인출: 현재 설정 → 일반계좌 우선 인출"을 내걸고 반영 버튼이 그
+// 값을 실제로 저장한다. SimulationEngine은 accountWithdrawalPolicy가 «미지정일 때만» 기존
+// 정기 균등분할 지급 경로를 타므로, 그 저장은 카드가 보여 준 것과 다른 계획을 만든다.
+//
+// 그 기본값은 이제 없다. dimensions와 strategy가 «같은 것»을 말하므로, 인출 축이 어느
+// 쪽을 읽어도 현상 유지 후보는 인출 변경을 내걸지 않는다.
 //
 // 픽스처가 아니라 실제 StrategyGenerator 출력을 쓴다 — 손으로 만든 후보는 dimensions와
 // strategy를 늘 일치시켜서, 정확히 이 어긋남을 재현하지 못한다.
@@ -159,8 +162,9 @@ describe('현상 유지 후보', () => {
     const result = new StrategyGenerator().generate(input.profile, input.goals, input.strategy);
     const baseline = result.candidates.find((item) => item.id === result.debug.baselineCandidateId)!;
 
-    // 전제 확인: dimensions에는 라벨용 기본값이 적혀 있고, 시뮬레이션된 전략에는 없다.
-    expect(baseline.dimensions.withdrawalPolicy).toBe('GENERAL_FIRST');
+    // 전제 확인: dimensions와 시뮬레이션된 전략이 «같은 것»을 말한다. 라벨용 기본값이
+    // 남아 있으면 여기서 'GENERAL_FIRST'가 나오고, 그것이 유령 변경점의 출처였다.
+    expect(baseline.dimensions.withdrawalPolicy).toBeUndefined();
     expect(baseline.strategy.withdrawalPolicy.accountWithdrawalPolicy).toBeUndefined();
 
     const changes = describeStrategyChanges(makeParams({ withdrawalPlan: undefined }), rankedFrom(baseline), formatValue);

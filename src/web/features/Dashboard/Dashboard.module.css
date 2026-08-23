@@ -170,13 +170,40 @@
   word-break: break-word;
 }
 
-/* 검증하지 못한 HARD 목표 고지. 추천 카드보다 먼저 읽혀야 하므로 경고 색을 쓴다. */
-.unsupportedHardGoalNotice {
+/* 검증하지 못한 HARD 목표 고지, 그리고 목표 충돌 고지. 둘 다 추천 카드보다 먼저 읽혀야
+   하므로 경고 색을 쓴다.
+
+   한 규칙에 함께 두는 이유: 같은 무게의 두 고지가 서로 다른 시각 언어로 말하면 사용자는
+   둘을 다른 종류의 사건으로 읽는다. 새 색·새 테두리를 만들지 않고 이미 있는 경고 계열을
+   그대로 쓴다. */
+.unsupportedHardGoalNotice,
+.goalConflictNotice {
   margin-bottom: 0.75rem;
   font-size: 0.78rem;
   line-height: 1.5;
   color: var(--foreground);
   border-left: 3px solid var(--warning, #d97706);
+}
+
+.goalConflictNotice > strong {
+  display: block;
+  margin-bottom: 0.35rem;
+  font-size: 0.9rem;
+}
+
+.goalConflictNotice > p {
+  margin: 0;
+}
+
+/* 미달 항목은 «세로로 쌓는다». 칸 수를 가정하는 그리드를 두지 않는다 — 항목은 하나일 수도
+   셋일 수도 있고, 고정 열 수를 전제한 규칙이 정확히 .recommendationGrid를 깨뜨렸다. */
+.goalConflictNotice > ul {
+  margin: 0.5rem 0 0;
+  padding-left: 1.1rem;
+}
+
+.goalConflictNotice > ul > li {
+  margin-top: 0.2rem;
 }
 
 /* 어떤 전략도 목표에 도달하지 못할 때 추천 카드 자리를 대신한다. 진단 카드의 danger 표현을

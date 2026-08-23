@@ -3,6 +3,9 @@ import { LegacySimulationAdapter } from '@/core/domain/input/LegacySimulationAda
 import { DefaultGoalEvaluationEngine } from '@/core/evaluation/GoalEvaluationEngine';
 import { LegacySimulationEngine } from '@/core/simulation/LegacySimulationEngine';
 import { initialParams } from '@/infrastructure/storage/localStore';
+import { SimulationEngine } from '@/core/usecases/SimulationEngine';
+import { compileStrategy, DEFAULT_RETIREMENT_STRATEGY } from '@/core/usecases/strategy/compileStrategy';
+import { allAxesLiveParams } from '@/tests/fixtures/allAxesLiveParams';
 
 describe('DefaultGoalEvaluationEngine', () => {
   test('목표별 달성도를 반환하고 정량 HARD 목표 위반을 점수와 분리한다', () => {
@@ -400,5 +403,37 @@ describe('자산 성장 경계', () => {
     const growth = evaluated.goalEvaluations[0];
     expect(growth.achieved).toBe(true);
     expect(growth.score).toBe(100);
+  });
+});
+
+// 회귀: known-issues 4번. 인출 경로가 남긴 10억분의 1원짜리 잔돈이 HARD 생활비 목표를
+// 「위반」으로 만들어 후보가 통째로 탈락했다. 판정을 느슨하게 해서 고칠 문제가 아니었다 —
+// 미달액을 «발생원에서 원 단위로» 닫는 것이 답이다(CashFlowPipeline.completeCashFlow).
+// 이 시험은 그 증상 쪽 끝을 고정한다: 미달이 원 단위로 0인 계획은 HARD 위반이 아니다.
+describe('부동소수점 잔여와 HARD 생활비 목표', () => {
+  test('평생 미충족이 0원인 계획은 HARD 생활비 목표를 위반하지 않는다', () => {
+    const target = 6_000_000;
+    const compiled = compileStrategy({
+      ...allAxesLiveParams,
+      userProfile: { ...allAxesLiveParams.userProfile, expectancy: 68, targetMonthlySpending: target },
+      retirementGoals: [
+        { type: 'LIVING_EXPENSE_STABILITY', priority: 1, targetValue: target, constraintType: 'HARD' },
+      ],
+      strategy: { ...DEFAULT_RETIREMENT_STRATEGY, privatePensionStrategy: 'tax_first' },
+    });
+    const input = LegacySimulationAdapter.fromLegacy(compiled.params, compiled.utilityConfig);
+    const simulated = new SimulationEngine().simulate(input.profile, input.strategy);
+
+    expect(simulated.yearlyResults.reduce((sum, y) => sum + y.unmetSpending, 0)).toBe(0);
+
+    const evaluated = new DefaultGoalEvaluationEngine().evaluate(
+      input.profile,
+      input.goals,
+      input.strategy,
+      simulated,
+    );
+
+    expect(evaluated.hardConstraintFailures.map((failure) => failure.code)).toEqual([]);
+    expect(evaluated.hardConstraintsSatisfied).toBe(true);
   });
 });

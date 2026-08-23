@@ -1,6 +1,8 @@
 import { describe, test, expect } from 'vitest';
 import { SimulationEngine } from '@/core/usecases/SimulationEngine';
 import { SimulationParams } from '@/core/entities/types';
+import { compileStrategy, DEFAULT_RETIREMENT_STRATEGY } from '@/core/usecases/strategy/compileStrategy';
+import { allAxesLiveParams } from '@/tests/fixtures/allAxesLiveParams';
 
 // **목표 생활비를 채우지 못한 금액.**
 //
@@ -53,13 +55,19 @@ describe('SimulationEngine - unmetSpending', () => {
   });
 
   // 이 항등식이 성립해야 unmetSpending을 "쓰려 했던 금액 − 실제로 쓴 금액"으로 읽을 수 있다.
-  test('실제 지출과 미충족의 합은 목표 생활비와 같다', () => {
+  //
+  // **원 단위로 성립한다.** unmetSpending은 달마다 원 단위로 반올림되고(roundToWon) spending은
+  // 반올림하지 않으므로, 합은 목표에서 월 0.5원 = 연 6원까지 벗어날 수 있다. 그 반올림이
+  // 1e-9원짜리 잡음을 HARD 미달로 읽던 것을 끊는다(money.ts).
+  // 여기에 그보다 촘촘한 허용오차를 쓰면 이 픽스처의 미달이 «정수라서» 통과할 뿐이고,
+  // 소수 미달이 나오는 계획에서 깨진다.
+  test('실제 지출과 미충족의 합은 목표 생활비와 원 단위로 같다', () => {
     const result = engine.run(params({
       otherIncomes: [{ id: 'rent', label: '임대소득', monthlyAmount: 400000, currency: 'KRW' }],
     }));
 
     for (const year of result.yearlyResults) {
-      expect(year.spending + year.unmetSpending).toBeCloseTo(12000000, 6);
+      expect(Math.abs(year.spending + year.unmetSpending - 12_000_000)).toBeLessThanOrEqual(6);
     }
   });
 
@@ -71,6 +79,37 @@ describe('SimulationEngine - unmetSpending', () => {
     for (const year of result.yearlyResults) {
       expect(year.spending).toBeCloseTo(4800000, 6);   // 월 40만원 × 12
       expect(year.unmetSpending).toBeCloseTo(7200000, 6); // 월 60만원 × 12
+    }
+  });
+
+  // 회귀: known-issues 4번. 인출 엔진은 계좌별 몫을 요청액에서 «빼서» 정하고 세후 현금은
+  // 영수증을 «더해서» 만든다. 두 순서의 반올림이 어긋나면 요청을 전부 채운 달에도 세후
+  // 현금이 1 ulp 모자라게 돌아오고, 그 잔돈이 unmetSpending에 남아 엡실론 없는
+  // hasSpendingShortfall을 거쳐 HARD 생활비 목표의 «위반»이 됐다.
+  //
+  // 아래는 known-issues에 실린 실측 사례 그대로다(기대수명 68 / 목표 월 600만 / tax_first).
+  // 이 계획은 61세에 평생 미충족 합계 9.3e-10원을 남겼다 — 10억분의 1원은 부족이 아니다.
+  test('세후 인출의 1 ulp 잔돈이 미충족으로 남지 않는다', () => {
+    const target = 6_000_000;
+    const compiled = compileStrategy({
+      ...allAxesLiveParams,
+      userProfile: { ...allAxesLiveParams.userProfile, expectancy: 68, targetMonthlySpending: target },
+      retirementGoals: [
+        { type: 'LIVING_EXPENSE_STABILITY', priority: 1, targetValue: target, constraintType: 'HARD' },
+      ],
+      strategy: { ...DEFAULT_RETIREMENT_STRATEGY, privatePensionStrategy: 'tax_first' },
+    });
+    const result = engine.run(compiled.params, compiled.utilityConfig);
+
+    const unmetTotal = result.yearlyResults.reduce((sum, y) => sum + y.unmetSpending, 0);
+    expect(unmetTotal).toBe(0);
+    // 잔돈이 사라졌을 뿐 인출이 줄지 않았음을 함께 고정한다 — 61세는 목표를 «전부» 쓴 해다.
+    const age61 = result.yearlyResults.find((y) => y.age === 61)!;
+    expect(age61.spending).toBeCloseTo(target * 12, 6);
+    // 같은 뺄셈에서 나오는 HARD 바닥 진단에도 같은 잔돈이 남는다. 이쪽은 「사유 없는 부족」
+    // 불변식으로 흘러가므로 같은 자(원 단위)로 닫는다.
+    for (const year of result.yearlyResults) {
+      expect(year.ledger!.diagnostics.unmetHardSpending).toBe(0);
     }
   });
 

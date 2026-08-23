@@ -248,8 +248,10 @@ export interface CurrentPlanReference {
  * 접힌 후보들 중 누구를 남길지 정하는 거리. 작을수록 현재 계획에 가깝다.
  *
  * 현상 유지 후보 자신은 언제나 0이고 나머지는 최소 1이다 — 축 라벨이 우연히 모두 같아도
- * (baselineDimensions는 미지정 정책을 'GENERAL_FIRST'로 «적어 두는» 라벨용 기본값을 쓴다)
  * 실제 전략을 들고 있는 쪽이 이겨야 한다.
+ *
+ * 인출 정책 축은 «미지정»도 값으로 센다. 미지정을 GENERAL_FIRST로 읽어 두면 이 거리가
+ * 「현재 계획과 같다」고 답하면서 실제로는 다른 계획인 후보를 대표로 남긴다.
  */
 function distanceFromCurrentPlan(
   candidate: StrategyCandidate,

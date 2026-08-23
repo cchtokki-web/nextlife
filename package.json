@@ -10,7 +10,8 @@
     "test": "vitest run",
     "test:retirement-domain-invariants": "vitest run src/tests/core/retirement-domain-invariants",
     "test:watch": "vitest",
-    "harness:personas": "vitest run --config vitest.harness.config.ts"
+    "harness:personas": "vitest run --config vitest.harness.config.ts scripts/harness/personas.harness.ts",
+    "harness:ledger": "vitest run --config vitest.harness.config.ts scripts/harness/ledger.harness.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",

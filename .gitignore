@@ -55,3 +55,6 @@ next-env.d.ts
 
 # 하니스 출력 (npm run harness:personas)
 /scripts/harness/out/
+# 하니스 입력. 실제 사용자의 자산·소득이 담긴 시나리오 JSON을 놓는 자리라
+# 저장소에 들어가면 안 된다. 기본 경로가 여기를 가리키므로 규칙도 여기 둔다.
+/scripts/harness/input/

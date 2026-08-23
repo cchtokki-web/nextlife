@@ -206,12 +206,16 @@ export const STRATEGY_FIELD_MAP: readonly StrategyFieldSpec[] = [
     // 이 축은 dimensions가 아니라 «시뮬레이션된 전략»을 읽는다. 다른 축과 다른 예외가 아니라
     // 오히려 규칙 쪽이다.
     //
-    // dimensions를 읽으면 「현상 유지」 후보에서 깨진다. baselineDimensions는 미지정 정책을
-    // 'GENERAL_FIRST'로 적어 두는데(라벨용 기본값), 그러면 (1) 아무것도 바꾸지 않는 카드가
-    // "현재 설정 → 일반계좌 우선 인출"이라는 변경점을 표시하고, (2) 반영 버튼이 그 값을 실제로
-    // 저장한다. (2)는 표시 문제가 아니다: SimulationEngine은 accountWithdrawalPolicy가
-    // 미지정일 때만 기존 정기 균등분할 지급 경로를 타므로, 값을 박아 넣는 순간 카드가 보여 준
-    // 숫자와 «다른 계획»이 저장된다.
+    // dimensions를 읽으면 「현상 유지」 후보에서 깨진다. 예전에는 baselineDimensions가 미지정
+    // 정책을 'GENERAL_FIRST'로 적어 뒀고(라벨용 기본값), 그러면 (1) 아무것도 바꾸지 않는
+    // 카드가 "현재 설정 → 일반계좌 우선 인출"이라는 변경점을 표시하고, (2) 반영 버튼이 그
+    // 값을 실제로 저장한다. (2)는 표시 문제가 아니다: SimulationEngine은
+    // accountWithdrawalPolicy가 미지정일 때만 기존 정기 균등분할 지급 경로를 타므로, 값을
+    // 박아 넣는 순간 카드가 보여 준 숫자와 «다른 계획»이 저장된다. 그 기본값은 이제 없다.
+    //
+    // 비교는 값 하나로 충분하다 — 「이 변경이 효과가 있는가」를 여기서 다시 시뮬레이션해
+    // 묻지 않는다. 효과 없는 후보는 여기 오기 «전에» 접힌다
+    // (StrategyOptimizer.dedupeByDeterministicOutcome).
     differs: (params, ranked) =>
       params.withdrawalPlan?.accountWithdrawalPolicy
         !== ranked.candidate.strategy.withdrawalPolicy.accountWithdrawalPolicy,

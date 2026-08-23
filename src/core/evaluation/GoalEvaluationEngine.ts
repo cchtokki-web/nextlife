@@ -1,5 +1,6 @@
 import type { RetirementGoal, RetirementGoalType } from '../entities/retirementGoal';
-import { hardSpendingFloorTarget, normalizeRetirementGoals } from '../entities/retirementGoal';
+import type { SpendingGoalType } from '../entities/retirementGoal';
+import { hardSpendingFloorTarget, isSpendingGoalType, normalizeRetirementGoals } from '../entities/retirementGoal';
 import type {
   SimulationResult,
   SimulationParams,
@@ -99,9 +100,23 @@ export type GoalShortfall =
   | { unit: 'MONEY' | 'MONTHLY_MONEY'; amount: number }
   | { unit: 'YEARS'; amount: number };
 
+/**
+ * 충돌에 «참가할 수 있는» 목표 유형. 전체 유형이 아니라 이 넷뿐이다 — 계층 1의 생활비 바닥
+ * (SPENDING_GOAL_TYPES에서 유도한다)과 계층 2의 두 런타임 제약.
+ *
+ * **좁혀 두는 것이 요점이다.** 이 자리가 `RetirementGoalType`이면 describeGoalConflict의
+ * 문구 switch가 타입으로 망라적이지 않게 되고, 생산자가 다섯째 유형을 담기 시작해도 tsc가
+ * 아무 말을 하지 않는다. 그때 사용자가 보는 것은 문구 없는 충돌이거나 오류 경계다.
+ * 좁혀 두면 그 변경이 «컴파일 오류»로 먼저 드러나고, 문구를 쓰기 전에는 통과하지 못한다.
+ */
+export type ConflictingGoalType = Extract<
+  RetirementGoalType,
+  SpendingGoalType | 'INHERITANCE' | 'ASSET_SURVIVAL'
+>;
+
 /** 충돌에 «참가한» 목표 하나. 이긴 쪽과 진 쪽을 계층 번호로 가른다. */
 export interface ConflictingGoal {
-  goalType: RetirementGoalType;
+  goalType: ConflictingGoalType;
   /**
    * 스펙 「제약 계층」의 번호. 1 = HARD 생활비 바닥, 2 = 그 밖의 HARD 목표(상속 하한선·자산
    * 고갈 방지). 낮은 계층이 이기고 높은 계층이 양보한다.
@@ -634,16 +649,23 @@ function detectGoalConflict(
 
   // 이긴 쪽 — 바닥의 «근거»가 된 목표들. 엔진이 받은 바닥은 이들의 max 하나뿐이므로
   // (compileStrategy) 하한선을 깬 것은 이들 전부의 몫이다.
-  const winners: ConflictingGoal[] = goals
-    .filter((goal) => hardSpendingFloorTarget(goal) !== undefined)
-    .map((goal) => ({
+  //
+  // 유형 술어를 «한 번 더» 통과시키는 이유: hardSpendingFloorTarget이 거르는 것은 바닥을
+  // 세우는 목표뿐이지만 그 사실은 반환값(number | undefined)에 실리지 않아, 그것만으로는
+  // goalType이 ConflictingGoalType이라는 보장이 서지 않는다. 두 검사 모두 같은
+  // SPENDING_GOAL_TYPES를 보므로 실행 시 결과는 달라지지 않고, 대신 tsc가 이 자리를 검사한다.
+  const winners: ConflictingGoal[] = [];
+  for (const goal of goals) {
+    if (hardSpendingFloorTarget(goal) === undefined || !isSpendingGoalType(goal.type)) continue;
+    winners.push({
       goalType: goal.type,
-      constraintLayer: 1 as const,
+      constraintLayer: 1,
       shortfall: {
-        unit: 'MONTHLY_MONEY' as const,
+        unit: 'MONTHLY_MONEY',
         amount: worstMonthlyHardSpendingShortfall(goal, strategy, result, params),
       },
-    }));
+    });
+  }
   const yielded = yieldedLayerTwoGoals(goals, strategy, result, failures);
   if (winners.length === 0 || yielded.length === 0) return quiet;
 

@@ -14,6 +14,7 @@ import { makeYearlyResult as sharedYearlyResult } from '@/tests/fixtures/yearlyR
 import { DEFAULT_RETIREMENT_STRATEGY } from '@/core/usecases/strategy/compileStrategy';
 import { NO_GOAL_FAILURE, LEGACY_GOAL_CONDITIONS } from '@/tests/fixtures/goalFailure';
 import { resolveSpendingCurve } from '@/core/usecases/spending/spendingCurve';
+import { LegacySimulationEngine } from '@/core/simulation/LegacySimulationEngine';
 
 vi.mock('next-auth/react', () => ({
   useSession: () => ({ data: null }),
@@ -936,5 +937,71 @@ describe('DashboardSection - 현재 계획 진단', () => {
     expect(within(facts()).getByText('90세 예상자산(기준 수익률)')).toBeInTheDocument();
     expect(facts().textContent).toContain('5억원');
     expect(screen.queryByTestId('terminal-asset-basis-note')).not.toBeInTheDocument();
+  });
+});
+
+// 목표 충돌 블록. 문장은 describeGoalConflict 한 곳에서만 나온다 — 여기서 시험하는 것은
+// 「그 문장이 화면에 닿는가」와 「닿지 않아야 할 때 자리를 비우는가」다.
+describe('동시에 달성하기 어려운 목표', () => {
+  /** 세금이 한 푼도 붙지 않는 단순 계좌 하나. 자산 곡선이 곧 인출 곡선이 되어 읽기 쉽다. */
+  const taxFreeAssets = (valueKRW: number) => ([{
+    id: 'a', type: 'etf', ticker: 'X', name: 'X', quantity: 1, averagePrice: valueKRW,
+    totalReturn: 0, dividendYield: 0, monthlyContribution: 0,
+    reinvestDividend: true, currency: 'KRW', assetMarket: 'OTHER',
+  }]);
+
+  // 「반드시 지키기」 생활비가 「반드시 지키기」 상속 하한선을 이기고도 둘 다 못 채우는 계획.
+  // 결과는 실제 엔진에서 받는다 — 원장의 진단(assetFloor를 깼다)이 없으면 판정 자체가 서지
+  // 않으므로, 손으로 만든 결과는 이 배선을 시험하지 못한다.
+  const conflictParams = {
+    userProfile: { currentAge: 60, retirementAge: 60, expectancy: 63, targetMonthlySpending: 5_000_000 },
+    assets: taxFreeAssets(100_000_000),
+    isaAccounts: [], otherIncomes: [], privatePensions: [],
+    nationalPension: { expectedMonthlyAmount: 0 },
+    inflationRate: 0, inflationMode: 'nominal', baseExchangeRate: 1400,
+    exchangeScenario: 'base', displayCurrency: 'KRW',
+    assetFloor: 80_000_000,
+    hardSpendingFloor: 5_000_000,
+    retirementGoals: [
+      { type: 'LIVING_EXPENSE_STABILITY', priority: 1, constraintType: 'HARD', targetValue: 5_000_000 },
+      { type: 'INHERITANCE', priority: 2, constraintType: 'HARD', targetValue: 80_000_000 },
+    ],
+  } as unknown as SimulationParams;
+
+  test('충돌한 목표와 «양쪽» 미달을 그대로 옮긴다', () => {
+    const conflictResult = new LegacySimulationEngine().run(conflictParams);
+    render(<DashboardSection params={conflictParams} result={conflictResult} />);
+
+    const notice = screen.getByRole('note', { name: '동시에 달성하기 어려운 목표가 있습니다' });
+    // 「지켰다」가 아니라 「우선했다」다 — 이긴 쪽도 미달이라 「지켰다」는 여기서 거짓이 된다.
+    expect(notice.textContent).toContain(
+      '「반드시 지키기」로 설정한 생활비를 상속 자산 확보 목표보다 우선했습니다.'
+      + ' 그래도 두 목표를 모두 충족하기에는 자산이 부족합니다.'
+    );
+    // 이긴 쪽 미달을 빼면 「양보해서 지켜냈다」로 읽힌다. 두 항목이 함께 있어야 한다.
+    expect(within(notice).getByText('생활비 안정 월 500만원 부족')).toBeInTheDocument();
+    expect(within(notice).getByText('상속 자산 확보 8,000만원 부족')).toBeInTheDocument();
+  });
+
+  test('추천을 읽기 «전»에 놓인다 — 진단 카드 안이 아니다', () => {
+    const conflictResult = new LegacySimulationEngine().run(conflictParams);
+    const { container } = render(<DashboardSection params={conflictParams} result={conflictResult} />);
+
+    const notice = screen.getByRole('note', { name: '동시에 달성하기 어려운 목표가 있습니다' });
+    // 진단 카드는 「내 계획이 어떤가」를 말하고, 충돌은 「내가 고른 목표들이 서로 맞지 않는다」는
+    // 다른 층위다(스펙). 그리고 추천보다 «앞»에 있어야 추천이 왜 그런 모양인지 이해된다.
+    expect(container.querySelector('[aria-label="현재 계획 분석"]')?.contains(notice)).toBe(false);
+    const recommendationHeading = screen.getByRole('heading', { name: 'NextLife 추천' });
+    expect(notice.compareDocumentPosition(recommendationHeading) & Node.DOCUMENT_POSITION_FOLLOWING)
+      .toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  });
+
+  test('충돌이 없으면 블록 자체가 없다', () => {
+    // 빈 껍데기도, 「충돌 없음」 문구도 두지 않는다 — 없는 것은 말하지 않는다.
+    render(<DashboardSection params={params} result={result} />);
+
+    expect(screen.queryByRole('note', { name: '동시에 달성하기 어려운 목표가 있습니다' }))
+      .not.toBeInTheDocument();
+    expect(screen.queryByText('동시에 달성하기 어려운 목표가 있습니다')).not.toBeInTheDocument();
   });
 });

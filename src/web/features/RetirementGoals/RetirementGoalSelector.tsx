@@ -6,7 +6,7 @@ import {
   moveRetirementGoal,
   normalizeRetirementGoals,
   RETIREMENT_GOAL_CONSTRAINT_LABELS,
-  SPENDING_GOAL_TYPES,
+  isSpendingGoalType,
   type RetirementGoal,
   type RetirementGoalConstraintType,
   type RetirementGoalType,
@@ -191,7 +191,7 @@ export function RetirementGoalSelector({
                   {/* 생활비 목표에만 붙인다. 다른 유형에서는 강도의 «뜻»이 달라서다 —
                       은퇴 나이나 기말자산의 HARD는 후보를 거르는 조건이지, 인출 중에
                       계좌 순서를 깨는 규칙이 아니다. 같은 문구를 붙이면 거짓이 된다. */}
-                  {SPENDING_GOAL_TYPES.includes(definition.type) && (
+                  {isSpendingGoalType(definition.type) && (
                     <p className="text-xs leading-relaxed text-foreground-muted">
                       <strong className="text-foreground">
                         {RETIREMENT_GOAL_CONSTRAINT_LABELS.SOFT}
