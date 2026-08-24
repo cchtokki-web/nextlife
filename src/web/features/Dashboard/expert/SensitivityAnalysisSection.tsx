@@ -1,4 +1,5 @@
-import { SensitivityScenario } from '../../../../core/usecases/dashboard/computeSensitivityAnalysis';
+import React from 'react';
+import { describeYieldAxisAnchors, SensitivityScenario } from '../../../../core/usecases/dashboard/computeSensitivityAnalysis';
 import { PlanAssetStatus } from '../../../../core/usecases/dashboard/resolvePlanAssetStatus';
 import { formatManwon } from '../../../../core/usecases/utility/utilityAnalysis';
 
@@ -12,12 +13,25 @@ interface SensitivityAnalysisSectionProps {
   // 사용자는 자기가 입력한 목표 생활비 기준으로 표를 읽는다. 「평생 소비 최적화」 계획에서는
   // 이 값이 입력한 목표와 다르다.
   frozenMonthlySpending?: number;
+  // 사용자 «자신의» 수익률 가정(잔액가중 평균 총수익률, %). 굴릴 잔액이 없으면 null/미지정.
+  //
+  // **이 값이 없으면 수익률 3행을 읽을 수 없다.** 세 행은 사용자 가정 대비 ±가 아니라
+  // 5/7/9%라는 절대 앵커다(computeSensitivityAnalysis의 SCENARIO_DEFINITIONS 주석).
+  // 사용자 가정이 그보다 높으면 세 행이 전부 기준선 아래로 내려가고, 그 사실을 모르는
+  // 사용자는 「공격형으로 바꿨는데 왜 돈이 줄지」라고 읽는다.
+  baselineWeightedTotalReturn?: number | null;
   scenarios: SensitivityScenario[];
   planAssetStatus?: PlanAssetStatus;
 }
 
 function formatDepletionAge(depletionAge: number | null): string {
   return depletionAge === null ? '평생 유지' : `${depletionAge}세`;
+}
+
+// 12.345 → '12.3'. 유도값이라 자릿수를 늘려도 사용자가 쓸 수 있는 정보가 늘지 않는다
+// (describeAssumptions의 배율 표기와 같은 판단).
+function formatPercent(value: number): string {
+  return `${Math.round(value * 10) / 10}%`;
 }
 
 // scenarios(현재 7개: 수익률 프리셋 3종 + 물가상승률 ±1%p + 은퇴시점 ±3년)가 핵심 가정
@@ -43,6 +57,7 @@ export function SensitivityAnalysisSection({
   baselineEndingAssets,
   baselineUnmetSpendingYears,
   frozenMonthlySpending,
+  baselineWeightedTotalReturn,
   scenarios,
   planAssetStatus,
 }: SensitivityAnalysisSectionProps) {
@@ -65,6 +80,39 @@ export function SensitivityAnalysisSection({
   const maxAbsDelta = Math.max(1, ...visibleScenarios.map((s) => Math.abs(deltaOf(s))));
   const allLifetime = baselineDepletionAge === null && scenarios.every((s) => s.depletionAge === null);
 
+  // **기준선을 목록 «안»에 한 줄로 끼워 넣는다.** 위 문단에도 금액이 있지만, 산문 속 숫자와
+  // 목록 속 숫자를 눈으로 이어 붙여야 비교가 되면 대부분 이어 붙이지 않는다. 같은 줄 형식으로
+  // 나란히 두면 7개 행이 어느 값을 기준으로 갈렸는지가 보인다.
+  //
+  // 자리는 목록의 정렬 규칙(고갈이 빠른 순, 평생 유지는 뒤)을 그대로 따르되 동률 그룹의
+  // 맨 앞에 둔다 — 기준선은 비교 «대상»이 아니라 비교의 «기준»이라 그 그룹을 여는 줄이다.
+  // sortAge는 computeSensitivityAnalysis가 쓰는 것과 같은 식으로 되살린다(depletionAge ?? ∞).
+  //
+  // 투자자산이 없는 계획에서는 그리지 않는다. 그 계획은 모든 값이 0원이라 기준선 한 줄이
+  // 더해 봐야 「0원」이 한 번 더 반복될 뿐이고, 그 사실은 위 안내문이 이미 말한다.
+  const baselineSortAge = baselineDepletionAge ?? Infinity;
+  const baselineRowIndex = noInvestableAsset
+    ? -1
+    : (() => {
+      const found = visibleScenarios.findIndex((s) => (s.depletionAge ?? Infinity) >= baselineSortAge);
+      return found === -1 ? visibleScenarios.length : found;
+    })();
+
+  const baselineRow = (
+    <div className="flex items-center gap-3 text-xs" data-testid="sensitivity-baseline-row">
+      <span className="w-28 shrink-0 font-semibold">현재 가정 (기준)</span>
+      {/* 막대를 그리지 않는다. 기준선의 증감은 정의상 0이고, 길이 0인 막대를 그리면
+          「가장 나쁜 경우」로 읽힌다. */}
+      <div className="h-2 flex-1 rounded-full bg-foreground/5" />
+      <span className="w-44 shrink-0 text-right">
+        <span className="font-semibold">{formatManwon(baselineEndingAssets)}</span>
+        {baselineDepletionAge !== null && (
+          <span className="block text-[11px] font-normal text-danger">{baselineDepletionAge}세 고갈</span>
+        )}
+      </span>
+    </div>
+  );
+
   return (
     <section>
       <h4 className="mb-1 text-sm font-semibold">민감도 분석 (핵심 가정 변화에 따른 영향)</h4>
@@ -81,13 +129,26 @@ export function SensitivityAnalysisSection({
           {hiddenCount > 0 && ` — 나머지 ${hiddenCount}개 가정은 결과가 동일해 생략했습니다`}.
         </p>
       ) : (
-        <p className="mb-3 text-xs text-foreground-muted">
-          현재 설정 기준: 기말자산 {formatManwon(baselineEndingAssets)} · 자산 고갈 {formatDepletionAge(baselineDepletionAge)}
-          {allLifetime && ' — 아래 가정이 나빠지는 경우를 포함해도 고갈 위험이 없습니다. 다만 남는 자산의 규모는 크게 달라집니다.'}
-        </p>
+        <>
+          <p className="mb-1 text-xs text-foreground-muted">
+            현재 설정 기준: 기말자산 {formatManwon(baselineEndingAssets)} · 자산 고갈 {formatDepletionAge(baselineDepletionAge)}
+            {allLifetime && ' — 아래 가정이 나빠지는 경우를 포함해도 고갈 위험이 없습니다. 다만 남는 자산의 규모는 크게 달라집니다.'}
+          </p>
+          {/* **사용자 자신의 수익률을 함께 말한다.** 아래 세 행(안정형 5%·중립형 7%·공격형 9%)은
+              현재 가정 대비 ±가 아니라 고정된 절대 기준이라, 사용자 가정이 그보다 높으면 셋 다
+              기준선 아래로 내려간다. 그 숫자를 보여주지 않으면 「수익률을 높였는데 왜 돈이
+              줄지」라는 읽기를 막을 방법이 없다. */}
+          {baselineWeightedTotalReturn !== null && baselineWeightedTotalReturn !== undefined && (
+            <p className="mb-3 text-xs text-foreground-muted" data-testid="sensitivity-baseline-return">
+              현재 가정: 포트폴리오 <strong>가중평균 총수익률 {formatPercent(baselineWeightedTotalReturn)}</strong>
+              {' '}(사적연금 포함). {describeYieldAxisAnchors()}
+            </p>
+          )}
+        </>
       )}
       <div className="flex flex-col gap-2">
-        {visibleScenarios.map((scenario) => {
+        {baselineRowIndex === 0 && baselineRow}
+        {visibleScenarios.map((scenario, index) => {
           const delta = deltaOf(scenario);
           // 생활비 부족 연수는 늘어나는 쪽이 나쁘다 — 금액과 부호의 의미가 반대다.
           const isWorse = noInvestableAsset ? delta > 0 : delta < 0;
@@ -96,7 +157,9 @@ export function SensitivityAnalysisSection({
           const deltaSign = scenario.endingAssetsDelta > 0 ? '+' : '';
 
           return (
-            <div key={scenario.key} className="flex items-center gap-3 text-xs">
+            <React.Fragment key={scenario.key}>
+            {index > 0 && index === baselineRowIndex && baselineRow}
+            <div className="flex items-center gap-3 text-xs">
               <span className="w-28 shrink-0 text-foreground-muted">{scenario.label}</span>
               <div className="h-2 flex-1 rounded-full bg-foreground/5">
                 <div
@@ -133,8 +196,10 @@ export function SensitivityAnalysisSection({
                 )}
               </span>
             </div>
+            </React.Fragment>
           );
         })}
+        {baselineRowIndex === visibleScenarios.length && visibleScenarios.length > 0 && baselineRow}
       </div>
     </section>
   );

@@ -32,6 +32,8 @@ import { resolveTerminalAssetDisplay } from '../../../core/usecases/dashboard/re
 import type { GoalSuccessConditions } from '../../../core/usecases/goals/goalSuccessConditions';
 import { describeGoalConflict } from '../../../core/usecases/goals/describeGoalConflict';
 import { describeSustainableSpendingLimit } from '../../../core/usecases/dashboard/describeSustainableSpendingLimit';
+import { describeSuccessRates } from '../../../core/usecases/montecarlo/describeSuccessRates';
+import { describeSustainableSpendingBasis } from '../../../core/usecases/dashboard/describeSustainableSpendingBasis';
 import GlassCard from '../../components/GlassCard';
 import { retirementGoalDefinition } from '../RetirementGoals/goalCatalog';
 import { KeyLeversCard } from './recommendation/KeyLeversCard';
@@ -87,12 +89,19 @@ interface DashboardSectionProps {
 
 // 결과 화면 오케스트레이터.
 //
-// **IA는 3단이다: 진단 → 추천 → 근거.**
+// **IA는 4단이다: 진단 → 추천 → 실행 → 근거.**
 //   ① 현재 계획 진단  — 지금 괜찮은가, 왜 그런가
 //   ② NextLife 추천   — 목표에 가장 가까운 전략과 바뀌는 점
-//   ③ 계획의 근거     — 위 두 판정을 뒷받침하는 자료(접힘)
+//   ③ 실행 시점       — 그래서 지금 무엇을 하면 되는가
+//   ④ 계획의 근거     — 위 판정들을 뒷받침하는 자료(접힘)
 //
-// 예전에는 ③이 "상세 분석"이라는 이름의 <details>였고 그 안에 결과 요약·위험·실행·차트·상세
+// **③이 접힘 «밖»으로 나온 이유.** 「무엇부터 바꿔야 하나」와 「실행 로드맵」은 사용자가
+// 결과 화면을 떠나기 전 마지막으로 묻는 것 —「그래서 나는 지금 무엇을 하면 되지?」— 에
+// 답하는 유일한 자리인데, ④ 안에 있어서 접기를 펴야 닿았다. 「근거」는 판정을 뒷받침하는
+// 자료이지 «할 일»이 아니다. 두 카드 모두 새 시뮬레이션을 돌리지 않고 이미 계산된 값을
+// 문장으로 옮길 뿐이라(computeKeyLevers·computeExecutionRoadmap) 자리를 올려도 비용이 없다.
+//
+// 예전에는 ④가 "상세 분석"이라는 이름의 <details>였고 그 안에 결과 요약·위험·실행·차트·상세
 // 다섯 그룹이 들어 있었다. 그중 「결과 요약」(AiSummaryHero + CoreKpiGrid)은 ①이 이미 말한
 // 판정·확률·목표 생활비·기말자산을 다른 이름으로 다시 말했고, 「AI 추천 전략」 체크리스트는
 // ②와 다른 축(평생 효용 점수)으로 두 번째 추천을 냈다. 같은 사실은 한 곳에서만 말한다.
@@ -275,6 +284,19 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
   // 「지속가능 생활비」가 HARD 바닥을 존중해 다시 계산된 계획의 고지. 충돌 고지와 같은
   // 규칙이다 — 판정도 문장도 여기서 짓지 않고, 그릴 것이 없으면 undefined 하나로 말한다.
   // 이 고지가 없으면 3.35억을 남기던 계획과 0원 계획이 «같은 얼굴»로 보인다.
+  // 두 성공률의 캡션과 종합 확률 관계 문장. **한 번만 계산해 두 카드에 내려보낸다** —
+  // 시장 변동 검증의 두 비율과 부족 요약 카드의 성공률이 같은 판정 기준을 말해야 하는데,
+  // 각자 만들면 한쪽만 바뀌는 날 두 카드가 다른 기준을 말한다(민감도를 끌어올린 것과 같은 이유).
+  // 문장 자체는 core가 만든다 — PDF가 «같은 문장»을 인쇄해야 하기 때문이다.
+  const successRateCopy = React.useMemo(
+    () => (monteCarloForDisplay
+      ? describeSuccessRates({ monteCarlo: monteCarloForDisplay, params, formatValue })
+      : undefined),
+    // formatValue는 매 렌더 새 참조지만 통화에만 의존한다(위 keyLevers와 같은 규칙).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [monteCarloForDisplay, params, currency],
+  );
+
   const sustainableLimit = describeSustainableSpendingLimit({
     override: result.sustainableSpendingOverride,
     endingAssets: result.endingAssets,
@@ -303,12 +325,25 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
           </div>
           <dl className={styles.currentPlanFacts} aria-label="현재 계획">
             <div><dt>은퇴</dt><dd>{params.userProfile.retirementAge}세</dd></div>
-            {/* 「생활비 배분」을 고르면 목표가 나이대별로 달라지고, 이 칸은 그 평균을 보여준다
-                (SimulationMetricsCalculator의 average(goalMonthly)). 평균이라는 말을 빼면
-                사용자가 은퇴 목표 단계에서 입력한 금액과 다른 숫자가 이유 없이 서 있게 된다. */}
+            {/* 「생활비 배분」을 고르면 목표가 나이대별로 달라진다. 이 칸은 **은퇴 직후 구간의
+                금액**을 보여준다 — 사용자가 은퇴 목표 단계에서 입력한 바로 그 금액이다.
+
+                예전에는 여기에 전 구간 평균(SimulationMetricsCalculator의 average(goalMonthly))이
+                「월 생활비 목표(평균)」이라는 이름으로 서 있었다. 평균이라고 밝혀 두어도, 300만원을
+                입력한 사용자가 진단 카드 첫 화면에서 261만원을 보면 「내가 설정한 값이 왜 다르지」로
+                읽는다. 평균은 이 카드가 답하는 질문(내 계획이 어떤가)에 필요한 숫자가 아니다.
+
+                평균값 자체는 계산에서 사라지지 않는다 — metrics.targetSpending은 채점·평가가
+                계속 쓴다. 여기 KPI 자리에서만 내린다.
+
+                구간 전체는 바로 아래 spending-band-note가 그대로 편다. */}
             <div>
-              <dt>{spendingBands.length > 0 ? '월 생활비 목표(평균)' : '월 생활비 목표'}</dt>
-              <dd>{formatValue(metrics.targetSpending)}</dd>
+              <dt>{spendingBands.length > 0 ? '은퇴 초기 생활비' : '월 생활비 목표'}</dt>
+              <dd>
+                {formatValue(spendingBands.length > 0
+                  ? spendingBands[0].monthlyAmount
+                  : metrics.targetSpending)}
+              </dd>
             </div>
             {/* 기준을 라벨에 적는다. 이 카드의 확률과 실패 시행 수는 몬테카를로인데 이 칸만
                 결정론 1회 실행이던 때, 같은 계획의 두 숫자가 4배 넘게 벌어졌다(실측 11.44억
@@ -402,7 +437,28 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
         />
       </DashboardGroup>
 
-      {/* ③ 근거. 위 두 판정을 뒷받침하는 자료만 담는다 — 판정을 다시 내리지 않는다.
+        <DashboardGroup title="실행 시점" description="무엇부터 손대야 하는지와, 나이별로 무슨 일이 일어나는지 확인하세요.">
+          {/* 인출 전략보다 위에 둔다. 이유는 computeKeyLevers 주석 참고 — 매도 순서·인출
+              개시 나이는 이 계획에서 다섯 번째로 중요한 레버인데, 예전에는 그것이 실행
+              계획의 첫 카드였다. */}
+          <KeyLeversCard levers={keyLevers} />
+
+          {/* 실행 로드맵은 **현재 계획 기준**이다. computeExecutionRoadmap에 추천안을
+              넘기지 않으므로 getIdentityPlan(현재 설정)으로 폴백한다 — 이 화면의 다른
+              모든 숫자와 같은 계획을 그려야 마일스톤과 고갈 시점이 어긋나지 않는다
+              (selectDepletionAge 주석 참고). */}
+          <ExecutionRoadmap
+            roadmap={computeExecutionRoadmap(
+              params,
+              undefined,
+              selectDepletionAge(undefined, result),
+              planAssetStatus
+            )}
+            isRecommendedPlan={false}
+          />
+        </DashboardGroup>
+
+      {/* ④ 근거. 위 판정들을 뒷받침하는 자료만 담는다 — 판정을 다시 내리지 않는다.
           한 번 열면 끝까지 보이도록 안쪽에 접힘을 두지 않는다(예전에는 여기서 두 번 더
           열어야 세금 표에 닿았다). */}
       <details className={styles.detailedAnalysis}>
@@ -464,6 +520,7 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
             <MonteCarloSection
               status={monteCarloStatus}
               monteCarlo={monteCarlo}
+              successRateCopy={successRateCopy}
               sequenceRisk={sequenceRisk}
               formatValue={formatValue}
               isPro={isPro}
@@ -542,7 +599,13 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
               {sustainableSpendingAdvice?.kind === 'can_spend_more' && (
                 <StatusNotice tone="success" icon={<TrendingUp size={19} aria-hidden="true" />} title="지금보다 더 쓸 수 있습니다">
                   현재 목표보다 월 <strong>{formatValue(sustainableSpendingAdvice.difference)}</strong> 여유가 있습니다.
-                  지속 가능한 한도는 월 {formatValue(sustainableSpendingAdvice.sustainableMonthly)}입니다.
+                  지속 가능한 한도는 월 {formatValue(sustainableSpendingAdvice.sustainableMonthly)}입니다.{' '}
+                  {/* **기준을 반드시 붙인다.** 같은 화면이 「목표 달성 확률 71%」를 말하고 있어,
+                      기준 없이 금액만 놓으면 사용자는 그 확률을 이 금액에도 적용해 읽는다.
+                      문장은 core가 만든다 — PDF가 같은 문장을 인쇄해야 한다. */}
+                  <span className={styles.statusBasisNote} data-testid="sustainable-basis-note">
+                    {describeSustainableSpendingBasis(params.userProfile.expectancy)}
+                  </span>
                 </StatusNotice>
               )}
               {sustainableSpendingAdvice?.kind === 'overspending' && (
@@ -551,7 +614,10 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
                   현재 목표보다 월 {formatValue(sustainableSpendingAdvice.difference)} 낮습니다.
                   {planAssetStatus === 'no_investable_asset'
                     ? ' 생활비를 줄이거나, 은퇴 시점을 늦추거나, 추가 저축·투자로 자산을 마련해야 합니다.'
-                    : ' 생활비·은퇴 시점·인출 전략을 조정해 보세요.'}
+                    : ' 생활비·은퇴 시점·인출 전략을 조정해 보세요.'}{' '}
+                  <span className={styles.statusBasisNote} data-testid="sustainable-basis-note">
+                    {describeSustainableSpendingBasis(params.userProfile.expectancy)}
+                  </span>
                 </StatusNotice>
               )}
               {params.spendingStrategy === 'dividend_only' && (
@@ -566,6 +632,7 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
               formatValue={formatValue}
               expectancy={params.userProfile.expectancy}
               spendingSuccessRate={monteCarloForDisplay?.spendingSuccessRate}
+              spendingSuccessCaption={successRateCopy?.spendingCaption}
             />
 
             <ExpertDetailsPanel
@@ -577,26 +644,6 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
             />
           </DashboardGroup>
 
-          <DashboardGroup title="실행 시점" description="무엇부터 손대야 하는지와, 나이별로 무슨 일이 일어나는지 확인하세요.">
-            {/* 인출 전략보다 위에 둔다. 이유는 computeKeyLevers 주석 참고 — 매도 순서·인출
-                개시 나이는 이 계획에서 다섯 번째로 중요한 레버인데, 예전에는 그것이 실행
-                계획의 첫 카드였다. */}
-            <KeyLeversCard levers={keyLevers} />
-
-            {/* 실행 로드맵은 **현재 계획 기준**이다. computeExecutionRoadmap에 추천안을
-                넘기지 않으므로 getIdentityPlan(현재 설정)으로 폴백한다 — 이 화면의 다른
-                모든 숫자와 같은 계획을 그려야 마일스톤과 고갈 시점이 어긋나지 않는다
-                (selectDepletionAge 주석 참고). */}
-            <ExecutionRoadmap
-              roadmap={computeExecutionRoadmap(
-                params,
-                undefined,
-                selectDepletionAge(undefined, result),
-                planAssetStatus
-              )}
-              isRecommendedPlan={false}
-            />
-          </DashboardGroup>
         </div>
       </details>
     </div>

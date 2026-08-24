@@ -442,13 +442,33 @@ function RecommendationBody({
       {/* 「현재 계획 N% → 추천 전략 적용 M%」 비교 바는 제거했다. 왼쪽 숫자는 바로 위 진단
           카드의 「목표 달성 확률」과 같은 값이고, 오른쪽 숫자는 아래 ☆추천 카드의 「목표 달성
           확률」과 같은 값이라 화면에 같은 두 숫자가 세 번 나왔다. */}
+      {/* **추천할 것이 없으면 「아무것도 바꾸지 않는 것」 자체를 추천한다.**
+
+          예전에는 이 자리가 작은 안내 문장 하나였고 그 아래에 세 카드가 평소와 똑같은 비중으로
+          섰다. 그러면 화면은 여전히 「셋 중 하나를 고르라」는 뜻으로 읽히고, 사용자는 「그럼
+          추천은 왜 보여주지?」에서 멈춘다. 판정(improvesOnCurrentPlan)은 이미 core가 내리고
+          있었는데 화면이 그 결론을 카드로 «세우지» 않았을 뿐이다.
+
+          세 카드를 지우지는 않는다. 축을 바꿔 보고 싶은 사용자의 유일한 경로이고, 무엇을
+          검토했는지가 곧 이 판정의 근거이기도 하다. 비중만 낮춘다. */}
       {noneImproves && (
-        <GlassCard className={styles.noImprovementNotice} role="note">
-          현재 계획을 유지하는 편이 낫습니다. 아래 추천은 모두 지금보다 목표 달성 확률이 낮습니다.
+        <GlassCard className={styles.keepCurrentPlanCard} role="note" aria-labelledby="keep-current-plan-title">
+          <p className={styles.keepCurrentPlanTitle} id="keep-current-plan-title">추천: 현재 계획 유지</p>
+          {currentGoalProbability !== undefined && (
+            <p className={styles.keepCurrentPlanProbability}>{Math.round(currentGoalProbability * 100)}%</p>
+          )}
+          <p className={styles.keepCurrentPlanBody}>
+            현재 설정이 분석된 대안 {finalRecommendations.length}개 중 가장 높은 목표 달성 확률을 보입니다.
+            아래 추천은 모두 지금보다 목표 달성 확률이 낮습니다.
+          </p>
         </GlassCard>
       )}
 
-      <div className={styles.recommendationGrid}>
+      {noneImproves && (
+        <p className={styles.alternativesHeading}>다른 선택을 검토하고 싶다면</p>
+      )}
+
+      <div className={`${styles.recommendationGrid} ${noneImproves ? styles.deemphasizedGrid : ''}`}>
         {finalRecommendations.map((recommendation) => {
           const candidate = recommendation.candidate;
           const probability = candidate.monteCarlo.goalSuccessProbability;

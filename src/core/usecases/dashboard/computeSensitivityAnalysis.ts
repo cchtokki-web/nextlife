@@ -2,7 +2,8 @@ import { SimulationEngine } from '../SimulationEngine';
 import { SimulationParams } from '../../entities/types';
 import { freezeSpendingPlan, mapFrozenPlan, runFrozenPlan } from '../spending/freezeSpendingPlan';
 import { hasSpendingShortfall } from '../spending/spendingShortfall';
-import { applyYieldPreset } from '../scenario/applyYieldPreset';
+import { applyYieldPreset, YIELD_PRESET_RATES } from '../scenario/applyYieldPreset';
+import { weightedAverageTotalReturn } from '../returns/portfolioReturn';
 import { PlanAssetStatus, resolvePlanAssetStatus } from './resolvePlanAssetStatus';
 
 export interface SensitivityScenario {
@@ -113,6 +114,17 @@ export interface SensitivityAnalysis {
   // 계획에서 나와야 하므로 여기서 함께 낸다 — 호출부가 다른 실행 결과로 판정하면
   // "표는 갈리는데 안내문은 동일하다고 말하는" 상태가 된다.
   baselinePlanAssetStatus: PlanAssetStatus;
+  // **사용자 «자신의» 수익률 가정**(잔액가중 평균 총수익률, % 단위). 굴릴 잔액이 없으면 null.
+  //
+  // 수익률 3행이 절대 앵커라는 사실(위 SCENARIO_DEFINITIONS 주석)은 이 값을 함께 보여주지
+  // 않으면 화면에서 «보이지 않는다». 실제 리포트에서 기준선이 14.58억인데 안정형·중립형·
+  // 공격형이 전부 그 아래로 나왔고, 사용자는 「수익률을 높였는데 왜 돈이 줄지」라고 읽었다.
+  // 답은 「당신의 가정이 9%보다 높기 때문」인데 화면 어디에도 그 숫자가 없었다.
+  //
+  // 새로 계산하지 않는다 — 몬테카를로 변동성 유도가 이미 쓰는 함수를 그대로 부른다
+  // (volatilityPresets → weightedAverageTotalReturn). 같은 「내 포트폴리오의 수익률」을
+  // 두 곳이 각자 재면 화면과 σ가 다른 값을 말하게 된다.
+  baselineWeightedTotalReturn: number | null;
 }
 
 // 7개 시나리오(수익률 프리셋 3종/물가상승률 ±/은퇴시점 ±)를 재실행해 자산 고갈 나이가
@@ -167,5 +179,26 @@ export function computeSensitivityAnalysis(
     baselineEndingAssets: baseline.endingAssets,
     baselineUnmetSpendingYears: baseline.yearlyResults.filter(hasSpendingShortfall).length,
     baselinePlanAssetStatus: resolvePlanAssetStatus(baseline, params),
+    // 고정 계획이 아니라 «원본» params로 잰다. freezeSpendingPlan은 생활비만 고정하고
+    // 수익률은 건드리지 않으므로 두 값은 같지만, 이 값이 답하는 질문은 「사용자가 입력한
+    // 가정이 무엇인가」이므로 사용자가 준 것에서 직접 읽는다.
+    baselineWeightedTotalReturn: weightedAverageTotalReturn(params),
   };
+}
+
+/**
+ * 수익률 축 3행이 «무엇을 어떻게» 바꾼 것인지 밝히는 한 문장. 화면과 PDF가 같은 문장을 쓴다.
+ *
+ * **가중평균과 나란히 놓을 때 정확해야 한다.** 화면은 이 문장 앞에 사용자의 잔액가중 평균
+ * 총수익률(사적연금 포함)을 인쇄한다. 그 값과 행 이름의 「주식 5%」를 곧바로 견주면 어긋난다 —
+ * 프리셋은 주식·ISA만이 아니라 사적연금까지 함께 갈아끼우고, 두 축의 값이 다르기 때문이다.
+ * 그래서 두 축을 «모두» 적고, 숫자는 YIELD_PRESET_RATES에서 직접 읽는다(표를 두 벌로 두면
+ * 프리셋 값을 바꾸는 날 문구만 옛 숫자로 남는다).
+ */
+export function describeYieldAxisAnchors(): string {
+  const { conservative, base, aggressive } = YIELD_PRESET_RATES;
+  return '아래 수익률 3행은 주식·ISA를 '
+    + `${conservative.stockGrowth}/${base.stockGrowth}/${aggressive.stockGrowth}%, 사적연금을 `
+    + `${conservative.pensionReturn}/${base.pensionReturn}/${aggressive.pensionReturn}%로 통째로 바꾼 결과이며, `
+    + '현재 가정과 무관하게 고정된 비교 기준입니다.';
 }

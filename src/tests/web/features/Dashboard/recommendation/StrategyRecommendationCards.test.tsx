@@ -762,16 +762,35 @@ describe('StrategyRecommendationCards - 현재 계획과의 비교', () => {
     expect(screen.getByText('추천')).toBeInTheDocument();
   });
 
-  test('세 추천이 모두 지금보다 나쁘면 유지를 권한다', () => {
+  // **추천할 것이 없으면 「아무것도 바꾸지 않는 것」 자체를 추천으로 세운다.**
+  //
+  // 예전에는 작은 안내 문장 하나였고 아래 카드들이 평소와 같은 비중으로 섰다. 그러면 화면은
+  // 여전히 「셋 중 하나를 고르라」는 뜻으로 읽히고 사용자는 「그럼 추천은 왜 보여주지?」에서
+  // 멈춘다. 판정은 이미 core가 내리고 있었고(improvesOnCurrentPlan) 화면이 그 결론을
+  // 카드로 세우지 않았을 뿐이다.
+  test('세 추천이 모두 지금보다 나쁘면 현재 계획 유지를 추천 카드로 세운다', () => {
     renderWith([worse], 0.67);
 
-    expect(screen.getByText(/현재 계획을 유지하는 편이 낫습니다/)).toBeInTheDocument();
+    expect(screen.getByText('추천: 현재 계획 유지')).toBeInTheDocument();
+    // 진단 카드와 «같은» 확률을 그대로 인용한다 — 여기서 다시 계산하면 위아래가 갈린다.
+    expect(screen.getByText('67%')).toBeInTheDocument();
+    expect(screen.getByText(/아래 추천은 모두 지금보다 목표 달성 확률이 낮습니다/)).toBeInTheDocument();
+  });
+
+  // 카드를 «지우지는» 않는다. 축을 바꿔 보고 싶은 사용자의 유일한 경로이고, 무엇을 검토했는지가
+  // 곧 이 판정의 근거이기도 하다. 비중만 낮추고 「추천」이 아니라 「검토해 볼 것」이라고 부른다.
+  test('그때도 대안 카드는 남기되 추천이 아니라 검토 대상으로 부른다', () => {
+    renderWith([worse], 0.67);
+
+    expect(screen.getByText('다른 선택을 검토하고 싶다면')).toBeInTheDocument();
+    expect(screen.getByText(worse.label)).toBeInTheDocument();
   });
 
   test('하나라도 나으면 유지를 권하지 않는다', () => {
     renderWith([worse, better], 0.67);
 
-    expect(screen.queryByText(/현재 계획을 유지하는 편이 낫습니다/)).not.toBeInTheDocument();
+    expect(screen.queryByText('추천: 현재 계획 유지')).not.toBeInTheDocument();
+    expect(screen.queryByText('다른 선택을 검토하고 싶다면')).not.toBeInTheDocument();
   });
 
   // 몬테카를로가 아직 끝나지 않은 상태에서 「나쁘다」고 말하면 측정되지 않은 것이 나쁜 것으로

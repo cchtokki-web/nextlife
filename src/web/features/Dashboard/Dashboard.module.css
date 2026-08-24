@@ -487,6 +487,9 @@
 .statusIcon { flex-shrink: 0; margin-top: 0.1rem; }
 .statusTitle { font-size: 0.875rem; font-weight: 700; }
 .statusText { margin-top: 0.15rem; font-size: 0.85rem; line-height: 1.5; color: var(--foreground-muted); }
+/* 금액이 «무엇인가»를 밝히는 한 줄. 금액 문장보다 한 단 낮춰 두되 숨기지는 않는다 —
+   기준을 못 보면 한계값이 권장액으로 읽힌다. */
+.statusBasisNote { display: block; margin-top: 0.3rem; font-size: 0.78rem; line-height: 1.5; opacity: 0.85; }
 
 .chartTabs {
   display: inline-flex;
@@ -726,10 +729,43 @@
   color: var(--foreground-muted);
 }
 
-/* 세 추천이 모두 현재 계획보다 나쁠 때의 안내. */
-.noImprovementNotice {
+/* 세 추천이 모두 현재 계획보다 나쁠 때 «그 사실 자체»를 추천으로 세우는 카드.
+   아래 대안 카드보다 눈에 먼저 들어와야 한다 — 그렇지 않으면 화면이 여전히
+   「셋 중 하나를 고르라」는 뜻으로 읽힌다. */
+.keepCurrentPlanCard {
   margin-bottom: 0.85rem;
-  font-size: 0.85rem;
-  line-height: 1.55;
+  border-color: color-mix(in srgb, var(--primary) 45%, transparent);
+}
+
+.keepCurrentPlanTitle {
+  font-size: 1rem;
+  font-weight: 700;
   color: var(--foreground);
 }
+
+.keepCurrentPlanProbability {
+  margin-top: 0.15rem;
+  font-family: var(--font-display), inherit;
+  font-size: 2rem;
+  font-weight: 600;
+  line-height: 1.1;
+  color: var(--primary);
+}
+
+.keepCurrentPlanBody {
+  margin-top: 0.35rem;
+  font-size: 0.85rem;
+  line-height: 1.55;
+  color: var(--foreground-muted);
+}
+
+/* 대안 카드 묶음의 소제목. 「추천」이 아니라 「검토해 볼 것」이라고 말한다. */
+.alternativesHeading {
+  margin-bottom: 0.45rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--foreground-muted);
+}
+
+/* 비중만 낮춘다 — 카드를 지우지 않는다. 축을 바꿔 보고 싶은 사용자의 유일한 경로다. */
+.deemphasizedGrid { opacity: 0.78; }

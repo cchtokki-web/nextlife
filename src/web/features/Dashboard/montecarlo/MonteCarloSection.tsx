@@ -6,10 +6,16 @@ import { MonteCarloResult } from '../../../../core/entities/montecarlo';
 import { SequenceRiskResult } from '../../../../core/usecases/montecarlo/sequenceRisk';
 import { MonteCarloStatus } from '../../../hooks/useMonteCarlo';
 import { describeMonteCarloAssumptions } from '../../../../core/usecases/montecarlo/describeAssumptions';
+import { SuccessRateCopy } from '../../../../core/usecases/montecarlo/describeSuccessRates';
 
 interface MonteCarloSectionProps {
   status: MonteCarloStatus;
   monteCarlo?: MonteCarloResult;
+  // 두 비율의 캡션. **core가 만든 문장을 그대로 받는다** — 이 컴포넌트는 판정 기준을
+  // 서술하지 않는다(describeSuccessRates 주석). 위에서 한 번만 계산해 내려보내는 이유는
+  // 민감도 결과를 끌어올린 것과 같다: 같은 사실을 두 카드가 각자 만들면 갈라질 수 있다.
+  // monteCarlo가 없는 상태(계산 중·실패)에서는 그릴 것이 없으므로 optional이다.
+  successRateCopy?: SuccessRateCopy;
   sequenceRisk?: SequenceRiskResult;
   formatValue: (value: number) => string;
   isPro: boolean;
@@ -25,6 +31,7 @@ interface MonteCarloSectionProps {
 export function MonteCarloSection({
   status,
   monteCarlo,
+  successRateCopy,
   sequenceRisk,
   formatValue,
   isPro,
@@ -70,11 +77,9 @@ export function MonteCarloSection({
 
   const assetPercent = Math.round(monteCarlo.successRate * 100);
   const spendingPercent = Math.round(monteCarlo.spendingSuccessRate * 100);
-  // 「평생 소비 최적화」에서 판정 기준은 사용자가 입력한 목표가 아니라 엔진이 역산한
-  // 지속가능액이다. 밝히지 않으면 사용자는 자기 목표(예: 월 350만원) 기준으로 읽는다.
-  const plannedMonthly = formatValue(monteCarlo.plannedMonthlySpending);
   // 문구는 core가 만든다. PDF와 «같은 문장»이어야 하고, 그 판정 규칙(어느 축이 사용자 입력을
-  // 덮었는지)은 엔진의 것이기 때문이다(describeMonteCarloAssumptions 주석).
+  // 덮었는지, 어느 금액이 판정 기준인지)은 엔진의 것이기 때문이다
+  // (describeMonteCarloAssumptions·describeSuccessRates 주석).
   const assumptionCopy = describeMonteCarloAssumptions(monteCarlo);
 
   return (
@@ -103,20 +108,26 @@ export function MonteCarloSection({
               쪽이 작은 글씨 부연이었는데, 사용자가 실제로 두려워하는 것은 "죽을 때 잔액이
               0원인가"가 아니라 "살아 있는 동안 쓸 돈이 모자라는가"다. 그리고 옛 정의는 생활비
               확률을 자산 생존 시행 안에서만 세어, 연금이 생활비를 메우는 경로를 실패로 셌다. */}
+          {/* 상단 진단 카드의 「목표 달성 확률」과 아래 두 비율의 관계. 세 숫자가 우연히 같은
+              계획에서 이 문장이 없으면 사용자는 「그러면 둘이 같은 지표 아닌가」로 읽는다. */}
+          {successRateCopy?.compositeNote && (
+            <p className="mt-3 text-xs leading-relaxed text-foreground-muted" data-testid="composite-probability-note">
+              {successRateCopy.compositeNote}
+            </p>
+          )}
           <dl className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
               <dt className="text-sm font-semibold">생활 유지 성공률</dt>
               <dd className="font-display text-2xl font-semibold">{spendingPercent}%</dd>
-              <p className="mt-0.5 text-xs text-foreground-muted">
-                계획 생활비(월 {plannedMonthly})를 한 해도 줄이지 않은 경우입니다.
+              <p className="mt-0.5 text-xs text-foreground-muted" data-testid="spending-success-caption">
+                {successRateCopy?.spendingCaption}
               </p>
             </div>
             <div>
               <dt className="text-sm font-semibold text-foreground-muted">자산 보존 성공률</dt>
               <dd className="font-display text-2xl font-semibold text-foreground-muted">{assetPercent}%</dd>
-              <p className="mt-0.5 text-xs text-foreground-muted">
-                {monteCarlo.successAge}세까지 자산이 남은 경우입니다. 두 확률은 서로 다른 실패를 셉니다 —
-                연금이 생활비를 덮으면 자산이 바닥나도 생활은 유지됩니다.
+              <p className="mt-0.5 text-xs text-foreground-muted" data-testid="asset-success-caption">
+                {successRateCopy?.assetCaption}
               </p>
             </div>
           </dl>

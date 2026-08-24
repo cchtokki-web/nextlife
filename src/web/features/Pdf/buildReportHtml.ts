@@ -12,6 +12,7 @@ import {
 } from '../../../core/usecases/pension/nationalPensionRules';
 import type { MonteCarloResult } from '../../../core/entities/montecarlo';
 import { resolveAssetProjection, type AssetProjection } from '../../../core/usecases/dashboard/resolveAssetProjection';
+import { describeSpendingCurve } from '../../../core/usecases/spending/spendingCurve';
 
 /** 이미 렌더된 섹션 조각들. 각 값은 pdfReportSections의 render*Section 결과다. */
 export interface ReportSectionHtml {
@@ -448,6 +449,21 @@ export function buildReportHtml(input: ReportHtmlInput): string {
           '등록된 기타 소득 없음'),
       ].join('\n');
 
+      // 「생활비 배분」을 고른 계획에서는 위 목표 금액이 은퇴 직후 구간의 값이고 이후 구간은
+      // 배수만큼 낮아진다. 밝히지 않으면 리포트가 한 금액만 말하고, 뒤쪽 표의 생활비 열과
+      // 어긋난 채로 남는다. 화면의 진단 카드(spending-band-note)와 «같은 셀렉터»를 쓴다.
+      const spendingBands = describeSpendingCurve(
+        reportParams.spendingCurve,
+        userProfile.targetMonthlySpending,
+        userProfile.retirementAge,
+        userProfile.expectancy,
+      );
+      const spendingBandsText = spendingBands.length === 0
+        ? ''
+        : ` (연령대별 배분 적용: ${spendingBands
+          .map((band) => `${band.fromAge}~${band.toAge ?? userProfile.expectancy}세 ${band.monthlyAmount.toLocaleString()} ${displayCurrencyUnit}`)
+          .join(' · ')})`;
+
       let pagesHtml = `
         <div class="pdf-page">
           <div class="pdf-content">
@@ -462,7 +478,7 @@ export function buildReportHtml(input: ReportHtmlInput): string {
             <h2 style="font-size: 16px; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; color: #0f172a; margin-top: 25px; margin-bottom: 10px;">${nextSection()}. 시뮬레이션 설정 상태</h2>
             <ul style="padding-left: 20px; margin-top: 5px; margin-bottom: 25px; font-size: 13px; line-height: 1.6;">
               <li style="margin-bottom: 6px;"><strong>현재 나이:</strong> ${userProfile.currentAge}세 / <strong>은퇴 목표 나이:</strong> ${userProfile.retirementAge}세 / <strong>기대 수명:</strong> ${userProfile.expectancy}세</li>
-              <li style="margin-bottom: 6px;"><strong>목표 월 생활비:</strong> ${userProfile.targetMonthlySpending.toLocaleString()} ${displayCurrencyUnit}</li>
+              <li style="margin-bottom: 6px;"><strong>목표 월 생활비:</strong> ${userProfile.targetMonthlySpending.toLocaleString()} ${displayCurrencyUnit}${spendingBandsText}</li>
               <li style="margin-bottom: 6px;"><strong>인출 전략:</strong> ${reportParams.spendingStrategy === 'dividend_only' ? '배당금(이자) 100% 소비' : reportParams.spendingStrategy === 'max_sustainable' ? '최대 가능 생활비 자동계산' : '고정 목표 생활비'}</li>
               <li style="margin-bottom: 6px;"><strong>물가 상승률:</strong> ${inflationRate}% (${inflationMode === 'real' ? '실질 가치 기준 — 아래 모든 표의 생활비·연금 금액은 오늘 화폐가치로 고정 표시되며, 인플레이션은 자산 성장률에 사전 차감 반영되었습니다' : '명목 가치 기준 — 아래 모든 표의 생활비·연금 금액에 물가상승률이 매년 누적 반영되어 있습니다'})</li>
               <li style="margin-bottom: 6px;"><strong>표시 통화 / 기준 환율:</strong> ${displayCurrencyUnit} / 1 $ = ${baseExchangeRate.toLocaleString()}원</li>
