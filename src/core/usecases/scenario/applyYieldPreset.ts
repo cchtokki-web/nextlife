@@ -14,6 +14,10 @@ import { CustomYieldSnapshot, SimulationParams } from '../../entities/types';
 // **명목/실질**: 명목 수익률이다. inflationMode가 'real'이면 엔진이 inflationRate를 별도로
 // 차감하므로, 이 값 자체를 실질로 바꾸면 물가가 두 번 반영된다.
 //
+// 프리셋을 적용하면 배당률도 «같은 비율로» 함께 옮겨진다(applyToMarketAccount 주석).
+// 총수익률만 덮으면 배당률이 총수익률을 넘겨 가격상승률이 음수가 되는 조합을 프리셋이
+// 지어내게 되고, 그것은 이 표의 세 값이 약속하는 세계가 아니다.
+//
 // 이 상수는 applyYieldPreset 외에 volatilityPresets의 volatilityForStockReturn도 소비한다 —
 // 프리셋 수익률과 프리셋 변동성을 잇는 직선의 양 끝 앵커다. 값을 바꾸면 몬테카를로 σ도 함께
 // 움직인다. (2026-08-22부터 StrategyGenerator는 이 표를 쓰지 않는다 — 추천 후보는 사용자가
@@ -65,15 +69,55 @@ export function applyYieldPreset(
   // 여기서만 빼두면 "보수적"을 골라도 ISA 홀로 높은 수익률을 유지해 계좌 간 서열이
   // 프리셋이 아니라 사용자 입력값으로 결정된다(economicScenarios.ts의 같은 판단 참조).
   // 키가 없는 옛 시나리오 데이터에 빈 배열을 새로 심지 않도록 있을 때만 교체한다.
-  const isaAccounts = params.isaAccounts?.map((i) => ({ ...i, totalReturn: stockGrowth }));
+  const isaAccounts = params.isaAccounts?.map((i) => applyToMarketAccount(i, stockGrowth));
 
   return {
     ...params,
-    assets: (params.assets ?? []).map((a) => ({ ...a, totalReturn: stockGrowth })),
+    assets: (params.assets ?? []).map((a) => applyToMarketAccount(a, stockGrowth)),
+    // **사적연금은 분해하지 않는다.** 연금 계좌 안에서는 배당세도 재투자 선택지도 없어
+    // 총수익률만이 결과를 결정한다(decomposeReturn.ts의 명시적 규약). 그래서 배당률을
+    // 함께 옮길 대상이 아니다.
     privatePensions: (params.privatePensions ?? []).map((p) => ({ ...p, totalReturn: pensionReturn })),
     ...(isaAccounts ? { isaAccounts } : {}),
     yieldPreset: preset,
     customYieldSnapshot,
+  };
+}
+
+/**
+ * 시장 연동 계좌(일반자산·ISA) 하나에 프리셋 수익률을 적용한다.
+ *
+ * **배당률을 «같은 비율로» 함께 옮긴다.** 예전에는 totalReturn만 덮고 dividendYield는 그대로
+ * 두었는데, 그러면 프리셋이 «존재하지 않는 상품»을 만들어 낸다. 총수익률 13% / 배당률 10%인
+ * 커버드콜에 중립형(7%)을 얹으면 가격상승률이 `7 − 10 = −3%`가 되어(decomposeReturn.ts)
+ * 원금이 해마다 녹는다. 그것은 「시장이 7% 수익률이라면」이 아니라 「이 상품이 평생 버는 것보다
+ * 많이 분배한다면」이고, 프리셋 라벨이 약속한 것과 다른 세계다.
+ *
+ * 실제로 민감도 분석에서 이 절벽이 드러났다 — 기준 기말자산이 14.58억인 계획에서 중립형(7%)이
+ * 851만원으로 무너졌다. 수익률을 낮췄으니 결과가 나빠지는 것은 맞지만, 그 폭은 배분 변화가
+ * 아니라 배당률이 총수익률을 넘긴 데서 나온 비선형 붕괴였다.
+ *
+ * **decomposeReturn.priceGrowthRate는 바꾸지 않는다.** 그 함수가 음수를 그대로 돌려주는 것은
+ * 의도된 동작이다 — 분배금이 총수익을 넘어 NAV가 줄어드는 상품이 실제로 존재하고, 사용자가
+ * 그렇게 «입력했다면» 그대로 계산해야 한다. 고치는 것은 그런 조합을 «프리셋이 지어내는» 것뿐이다.
+ *
+ * 비례 배분이라 배당 비중(dividendYield / totalReturn)이 보존되고, 따라서 가격상승률의 부호도
+ * 보존된다. 원래 음수였던 계좌는 프리셋 적용 후에도 음수로 남는다 — 사용자가 입력한 상품의
+ * 성격을 프리셋이 바꾸지 않는다는 뜻이다.
+ *
+ * totalReturn이 0 이하이면 비율을 낼 수 없다(0으로 나누거나 부호가 뒤집힌다). 그때는 배당률을
+ * 새 총수익률로 잘라 «최소한» 가격상승률이 음수가 되지 않게만 한다.
+ */
+function applyToMarketAccount<T extends { totalReturn: number; dividendYield: number }>(
+  account: T,
+  totalReturn: number
+): T {
+  return {
+    ...account,
+    totalReturn,
+    dividendYield: account.totalReturn > 0
+      ? account.dividendYield * (totalReturn / account.totalReturn)
+      : Math.min(account.dividendYield, totalReturn),
   };
 }
 

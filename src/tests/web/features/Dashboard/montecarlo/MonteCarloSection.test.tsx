@@ -4,6 +4,29 @@ import { MonteCarloSection } from '@/web/features/Dashboard/montecarlo/MonteCarl
 import { MonteCarloResult } from '@/core/entities/montecarlo';
 import { SequenceRiskResult } from '@/core/usecases/montecarlo/sequenceRisk';
 import { NO_GOAL_FAILURE, LEGACY_GOAL_CONDITIONS } from '@/tests/fixtures/goalFailure';
+import { SimulationParams } from '@/core/entities/types';
+import { resolveSpendingCurve } from '@/core/usecases/spending/spendingCurve';
+import { describeSuccessRates } from '@/core/usecases/montecarlo/describeSuccessRates';
+
+// 캡션이 서술하는 판정 기준은 params의 생활비 곡선에서 나온다. 기본 픽스처는 곡선을 «켠»
+// 계획이다 — 이 컴포넌트에서 회귀가 났던 자리가 정확히 「곡선이 있는데 기준액 하나만
+// 인쇄한다」였기 때문이다.
+function makeParams(overrides: Partial<SimulationParams> = {}): SimulationParams {
+  return {
+    userProfile: { currentAge: 50, retirementAge: 60, expectancy: 90, targetMonthlySpending: 3000000 },
+    assets: [],
+    nationalPension: { expectedMonthlyAmount: 0 },
+    privatePensions: [],
+    otherIncomes: [],
+    inflationRate: 2,
+    inflationMode: 'real',
+    baseExchangeRate: 1350,
+    exchangeScenario: 'base',
+    displayCurrency: 'KRW',
+    spendingCurve: resolveSpendingCurve('front_loaded'),
+    ...overrides,
+  };
+}
 
 function makeMonteCarlo(overrides: Partial<MonteCarloResult> = {}): MonteCarloResult {
   return {
@@ -44,15 +67,22 @@ function makeSequenceRisk(overrides: Partial<SequenceRiskResult> = {}): Sequence
 
 const formatValue = (v: number) => `${Math.round(v / 100000000)}억원`;
 
+// 화면은 이 문장을 만들지 않고 core가 만든 것을 그대로 받는다(DashboardSection이 한 번
+// 계산해 내려보낸다). 테스트도 같은 경로를 그대로 태워야 두 곳이 갈라지는 날 여기서 걸린다.
+function copyFor(overrides: Partial<SimulationParams> = {}) {
+  return describeSuccessRates({ monteCarlo: makeMonteCarlo(), params: makeParams(overrides), formatValue });
+}
+const successRateCopy = copyFor();
+
 describe('MonteCarloSection', () => {
   test('계산 중에는 스켈레톤을 보여준다', () => {
-    render(<MonteCarloSection status="running" formatValue={formatValue} isPro={false} />);
+    render(<MonteCarloSection successRateCopy={successRateCopy} status="running" formatValue={formatValue} isPro={false} />);
 
     expect(screen.getByText(/계산 중/)).toBeInTheDocument();
   });
 
   test('실패하면 그 사실을 알린다', () => {
-    render(<MonteCarloSection status="error" formatValue={formatValue} isPro={false} />);
+    render(<MonteCarloSection successRateCopy={successRateCopy} status="error" formatValue={formatValue} isPro={false} />);
 
     expect(screen.getByText(/계산하지 못했습니다/)).toBeInTheDocument();
   });
@@ -60,29 +90,74 @@ describe('MonteCarloSection', () => {
   // 브라우저가 Worker를 지원하지 않아도 나머지 화면은 정상이어야 한다. 조용히 사라지는
   // 대신 왜 없는지 밝힌다.
   test('Worker를 지원하지 않으면 그 사실을 알린다', () => {
-    render(<MonteCarloSection status="unsupported" formatValue={formatValue} isPro={false} />);
+    render(<MonteCarloSection successRateCopy={successRateCopy} status="unsupported" formatValue={formatValue} isPro={false} />);
 
     expect(screen.getByText(/지원하지 않아/)).toBeInTheDocument();
   });
 
   test('아직 시작하지 않았으면 아무것도 렌더하지 않는다', () => {
-    const { container } = render(<MonteCarloSection status="idle" formatValue={formatValue} isPro={false} />);
+    const { container } = render(<MonteCarloSection successRateCopy={successRateCopy} status="idle" formatValue={formatValue} isPro={false} />);
 
     expect(container.firstChild).toBeNull();
   });
 
   test('성공률을 백분율로 보여준다', () => {
     render(
-      <MonteCarloSection status="done" monteCarlo={makeMonteCarlo()} formatValue={formatValue} isPro={false} />
+      <MonteCarloSection successRateCopy={successRateCopy} status="done" monteCarlo={makeMonteCarlo()} formatValue={formatValue} isPro={false} />
     );
 
     expect(screen.getByText(/87%/)).toBeInTheDocument();
-    expect(screen.getByText(/90세까지/)).toBeInTheDocument();
+    expect(screen.getByTestId('asset-success-caption')).toHaveTextContent(/90세 이전에 금융자산이 0원이 되지 않은/);
+  });
+
+  // **캡션은 엔진이 실제로 판정하는 기준을 말해야 한다.**
+  //
+  // 회귀 방지 대상: 예전에는 「계획 생활비(월 300만원)를 한 해도 줄이지 않은 경우입니다」였다.
+  // 그런데 엔진은 연령대별 배수를 곱한 값으로 판정한다 — 70대에 258만원을 썼어도 그것이
+  // 그 해의 «목표»였으면 성공이다. 문구가 300만원 하나만 말해 사용자가 71%를 「300만원을
+  // 30년 내내 유지한 비율」로 읽게 만들었다.
+  test('생활 유지 성공률의 기준을 연령대별 목표 생활비로 밝힌다', () => {
+    render(
+      <MonteCarloSection successRateCopy={successRateCopy} status="done" monteCarlo={makeMonteCarlo()} formatValue={formatValue} isPro={false} />
+    );
+
+    const caption = screen.getByTestId('spending-success-caption');
+    expect(caption).toHaveTextContent('연령별 목표 생활비');
+    // front_loaded 곡선(1 / 0.86 / 0.76) × 기준액 223만원.
+    expect(caption).toHaveTextContent('60~69세');
+    expect(caption).toHaveTextContent('70~79세');
+    expect(caption).toHaveTextContent('80~90세');
+  });
+
+  // 곡선이 없는 계획에서는 나열할 구간이 없다. 그 계획에서는 종전 문장이 참이므로 그대로 쓴다.
+  test('생활비 곡선이 없으면 기준액 한 줄로 말한다', () => {
+    render(
+      <MonteCarloSection
+        successRateCopy={copyFor({ spendingCurve: undefined })}
+        status="done" monteCarlo={makeMonteCarlo()} formatValue={formatValue} isPro={false}
+      />
+    );
+
+    const caption = screen.getByTestId('spending-success-caption');
+    expect(caption).toHaveTextContent('계획 생활비');
+    expect(caption).not.toHaveTextContent('연령별');
+  });
+
+  // 두 비율이 같은 값으로 나란히 뜨면 사용자는 「그러면 둘이 같은 지표 아닌가」로 읽는다.
+  // 상단 「목표 달성 확률」이 둘을 «같은 시행에서» 함께 판정한 값이라는 관계를 밝힌다.
+  test('상단 목표 달성 확률과 두 비율의 관계를 밝힌다', () => {
+    render(
+      <MonteCarloSection successRateCopy={successRateCopy} status="done" monteCarlo={makeMonteCarlo()} formatValue={formatValue} isPro={false} />
+    );
+
+    const note = screen.getByTestId('composite-probability-note');
+    expect(note).toHaveTextContent('같은 시행에서');
+    expect(note).toHaveTextContent('곱하거나 더한 값이 아닙니다');
   });
 
   test('시행 횟수를 밝힌다', () => {
     render(
-      <MonteCarloSection status="done" monteCarlo={makeMonteCarlo()} formatValue={formatValue} isPro={false} />
+      <MonteCarloSection successRateCopy={successRateCopy} status="done" monteCarlo={makeMonteCarlo()} formatValue={formatValue} isPro={false} />
     );
 
     expect(screen.getByText(/1,000회/)).toBeInTheDocument();
@@ -90,7 +165,7 @@ describe('MonteCarloSection', () => {
 
   test('변동성·분포·상관·시드 가정을 밝힌다', () => {
     render(
-      <MonteCarloSection status="done" monteCarlo={makeMonteCarlo()} formatValue={formatValue} isPro={false} />
+      <MonteCarloSection successRateCopy={successRateCopy} status="done" monteCarlo={makeMonteCarlo()} formatValue={formatValue} isPro={false} />
     );
 
     expect(screen.getByText(/연 변동성 18%p/)).toBeInTheDocument();
@@ -109,7 +184,7 @@ describe('MonteCarloSection', () => {
   // 없다. 그래서 두 값을 «수치로» 나란히 놓는다.
   test('변동성 손실을 무료 사용자에게도 두 수치로 보여준다', () => {
     render(
-      <MonteCarloSection status="done" monteCarlo={makeMonteCarlo()} formatValue={formatValue} isPro={false} />
+      <MonteCarloSection successRateCopy={successRateCopy} status="done" monteCarlo={makeMonteCarlo()} formatValue={formatValue} isPro={false} />
     );
 
     const drag = screen.getByTestId('volatility-drag');
@@ -121,7 +196,7 @@ describe('MonteCarloSection', () => {
 
   test('Pro 사용자에게도 같은 설명을 보여준다', () => {
     render(
-      <MonteCarloSection status="done" monteCarlo={makeMonteCarlo()} formatValue={formatValue} isPro={true} />
+      <MonteCarloSection successRateCopy={successRateCopy} status="done" monteCarlo={makeMonteCarlo()} formatValue={formatValue} isPro={true} />
     );
 
     expect(screen.getByTestId('volatility-drag')).toBeInTheDocument();
@@ -129,7 +204,7 @@ describe('MonteCarloSection', () => {
 
   test('무료 사용자에게도 성공률은 보여준다', () => {
     render(
-      <MonteCarloSection status="done" monteCarlo={makeMonteCarlo()} formatValue={formatValue} isPro={false} />
+      <MonteCarloSection successRateCopy={successRateCopy} status="done" monteCarlo={makeMonteCarlo()} formatValue={formatValue} isPro={false} />
     );
 
     expect(screen.getByText(/87%/)).toBeInTheDocument();
@@ -137,29 +212,30 @@ describe('MonteCarloSection', () => {
 
   test('상세 분포는 Pro 사용자에게만 보여준다', () => {
     const { rerender } = render(
-      <MonteCarloSection status="done" monteCarlo={makeMonteCarlo()} formatValue={formatValue} isPro={false} />
+      <MonteCarloSection successRateCopy={successRateCopy} status="done" monteCarlo={makeMonteCarlo()} formatValue={formatValue} isPro={false} />
     );
     expect(screen.queryByTestId('monte-carlo-distribution')).not.toBeInTheDocument();
 
     rerender(
-      <MonteCarloSection status="done" monteCarlo={makeMonteCarlo()} formatValue={formatValue} isPro={true} />
+      <MonteCarloSection successRateCopy={successRateCopy} status="done" monteCarlo={makeMonteCarlo()} formatValue={formatValue} isPro={true} />
     );
     expect(screen.getByTestId('monte-carlo-distribution')).toBeInTheDocument();
   });
 
   test('고갈이 예상되는 시행이 있으면 가장 이른 나이를 알린다', () => {
     render(
-      <MonteCarloSection status="done" monteCarlo={makeMonteCarlo()} formatValue={formatValue} isPro={true} />
+      <MonteCarloSection successRateCopy={successRateCopy} status="done" monteCarlo={makeMonteCarlo()} formatValue={formatValue} isPro={true} />
     );
 
-    expect(screen.getByText(/79세/)).toBeInTheDocument();
+    // 「70~79세」 구간 캡션과 겹치므로 분포 섹션 안에서 찾는다.
+    expect(screen.getByTestId('monte-carlo-distribution')).toHaveTextContent(/가장 이른 시점은 79세/);
   });
 });
 
 describe('MonteCarloSection - 순서 리스크', () => {
   test('순서만으로 갈린 격차를 헤드라인으로 보여준다', () => {
     render(
-      <MonteCarloSection
+      <MonteCarloSection successRateCopy={successRateCopy}
         status="done" monteCarlo={makeMonteCarlo()} sequenceRisk={makeSequenceRisk()}
         formatValue={formatValue} isPro={false}
       />
@@ -172,7 +248,7 @@ describe('MonteCarloSection - 순서 리스크', () => {
   // 사용자는 "그냥 운이 나쁜 경우"로 읽는다.
   test('평균이 같다는 사실을 명시한다', () => {
     render(
-      <MonteCarloSection
+      <MonteCarloSection successRateCopy={successRateCopy}
         status="done" monteCarlo={makeMonteCarlo()} sequenceRisk={makeSequenceRisk()}
         formatValue={formatValue} isPro={false}
       />
@@ -184,7 +260,7 @@ describe('MonteCarloSection - 순서 리스크', () => {
 
   test('Pro 사용자에게는 경우별 비교를 모두 보여준다', () => {
     render(
-      <MonteCarloSection
+      <MonteCarloSection successRateCopy={successRateCopy}
         status="done" monteCarlo={makeMonteCarlo()} sequenceRisk={makeSequenceRisk()}
         formatValue={formatValue} isPro={true}
       />
@@ -196,7 +272,7 @@ describe('MonteCarloSection - 순서 리스크', () => {
 
   test('순서 리스크 데이터가 없으면 그 부분만 생략한다', () => {
     render(
-      <MonteCarloSection status="done" monteCarlo={makeMonteCarlo()} formatValue={formatValue} isPro={true} />
+      <MonteCarloSection successRateCopy={successRateCopy} status="done" monteCarlo={makeMonteCarlo()} formatValue={formatValue} isPro={true} />
     );
 
     expect(screen.getByText(/87%/)).toBeInTheDocument();

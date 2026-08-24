@@ -11,6 +11,10 @@ interface ShortfallSummaryCardProps {
   expectancy: number;
   // 시장 변동을 반영한 생활 유지 성공률. 없으면(MC 미계산) 확률 문장을 생략한다.
   spendingSuccessRate?: number;
+  // 그 성공률이 «무엇을 기준으로» 센 값인지. core가 만든 문장을 그대로 받는다
+  // (describeSuccessRates). 밝히지 않으면 이 카드의 성공률만 홀로 기준 없이 서고,
+  // 곡선을 켠 계획에서 사용자는 위에 적힌 목표 금액 하나로 그 비율을 읽는다.
+  spendingSuccessCaption?: string;
 }
 
 // "그래서 내가 얼마를 더 준비해야 하는가"에 답하는 카드.
@@ -25,7 +29,7 @@ interface ShortfallSummaryCardProps {
 // 보면 부족이 0이라 "문제 없음"으로 읽히지만, 사용자가 세운 목표에는 월 118만원이 모자란다.
 // 실제 리포트에 "목표 월 350만원"과 "부족 생활비 월 평균 0원"이 나란히 찍힌 것이 그 결과였다.
 export function ShortfallSummaryCard({
-  report, formatValue, expectancy, spendingSuccessRate,
+  report, formatValue, expectancy, spendingSuccessRate, spendingSuccessCaption,
 }: ShortfallSummaryCardProps) {
   const { goal, plan, goalMonthlySpending, sustainableMonthlySpending } = report;
   if (!goal && !plan) return null;
@@ -96,6 +100,11 @@ export function ShortfallSummaryCard({
               <p className="mt-1 text-sm text-foreground-muted">
                 시장 변동성을 고려한 생활 유지 성공률:{' '}
                 <strong className="text-foreground">{Math.round(spendingSuccessRate * 100)}%</strong>
+                {spendingSuccessCaption && (
+                  <span className="mt-0.5 block text-xs" data-testid="shortfall-success-caption">
+                    {spendingSuccessCaption}
+                  </span>
+                )}
               </p>
             )}
           </>

@@ -295,6 +295,8 @@ export default function Home() {
         unmetSpendingYears: sensitivity.baselineUnmetSpendingYears,
         planAssetStatus: sensitivity.baselinePlanAssetStatus,
         frozenMonthlySpending: sensitivity.frozenMonthlySpending,
+        weightedTotalReturn: sensitivity.baselineWeightedTotalReturn,
+        endingAssets: sensitivity.baselineEndingAssets,
       });
       // 화면(KeyLeversCard)과 같은 함수·같은 순서를 쓴다. 같은 계획의 두 문서가 서로 다른
       // 우선순위를 제시하면 안 된다.

@@ -1,7 +1,9 @@
 import { RiskAlert } from '../../../core/usecases/dashboard/computeRiskAlerts';
 import { describeMonteCarloAssumptions } from '../../../core/usecases/montecarlo/describeAssumptions';
+import { describeSuccessRates } from '../../../core/usecases/montecarlo/describeSuccessRates';
+import { describeSustainableSpendingBasis } from '../../../core/usecases/dashboard/describeSustainableSpendingBasis';
 import { ExecutionRoadmap } from '../../../core/usecases/dashboard/computeExecutionRoadmap';
-import { SensitivityScenario } from '../../../core/usecases/dashboard/computeSensitivityAnalysis';
+import { describeYieldAxisAnchors, SensitivityScenario } from '../../../core/usecases/dashboard/computeSensitivityAnalysis';
 import { PlanAssetStatus } from '../../../core/usecases/dashboard/resolvePlanAssetStatus';
 import { ShortfallReport } from '../../../core/usecases/dashboard/computeShortfallSummary';
 import { KeyLever } from '../../../core/usecases/dashboard/computeKeyLevers';
@@ -442,7 +444,9 @@ export function renderStrategyRecommendationSection(input: {
              <tr><td style="padding: 4px 0; font-size: 11px; color: #64748b;">부족</td>
                  <td style="padding: 4px 0; font-size: 12px; font-weight: 700; color: #b91c1c; text-align: right;">${formatValue(sustainableSpendingAdvice.difference)}</td></tr>
            </tbody>
-         </table>`
+         </table>
+         <p style="margin: 6px 0 0; font-size: 10.5px; color: #64748b;">${
+           describeSustainableSpendingBasis(params.userProfile.expectancy)}</p>`
       : '';
     return `<div style="border: 1px solid #fecaca; background-color: #fef2f2; border-radius: 8px; padding: 12px 14px;">
         <p style="margin: 0; font-size: 13px; font-weight: 700; color: #b91c1c;">어떤 전략으로도 목표에 도달하지 못합니다</p>
@@ -612,6 +616,13 @@ export function renderSensitivityTableSection(
     // scenarios가 공통으로 고정한 월 생활비. 화면(SensitivityAnalysisSection)과 같은 이유로
     // 반드시 밝힌다 — 「평생 소비 최적화」 계획에서는 이 값이 사용자가 입력한 목표와 다르다.
     frozenMonthlySpending?: number;
+    // 사용자 «자신의» 수익률 가정(잔액가중 평균 총수익률, %). 굴릴 잔액이 없으면 null.
+    // 화면과 같은 이유로 반드시 밝힌다 — 수익률 3행은 사용자 가정 대비 ±가 아니라 5/7/9%라는
+    // 절대 앵커라서, 사용자 가정이 그보다 높으면 세 행이 전부 기준선 아래로 내려간다.
+    weightedTotalReturn?: number | null;
+    // 기준선의 기말자산. 표 안에 「현재 가정 (기준)」 행으로 한 줄 세운다 — 산문 속 금액과
+    // 표 속 금액을 눈으로 이어 붙여야 비교가 되면 대부분 이어 붙이지 않는다.
+    endingAssets?: number;
   }
 ): string {
   if (scenarios.length === 0) return '';
@@ -628,6 +639,22 @@ export function renderSensitivityTableSection(
       )
     : scenarios;
   const hiddenCount = scenarios.length - visibleScenarios.length;
+  // 화면(SensitivityAnalysisSection)과 같은 문장·같은 자리.
+  const returnNoteHtml = baseline?.weightedTotalReturn === undefined || baseline.weightedTotalReturn === null
+    ? ''
+    : `<p style="margin: 0 0 6px; font-size: 10.5px; color: #64748b;">현재 가정: 포트폴리오 <strong>가중평균 총수익률 ${
+      Math.round(baseline.weightedTotalReturn * 10) / 10}%</strong> (사적연금 포함). ${describeYieldAxisAnchors()}</p>`;
+
+  // 기준선 행. 투자자산이 없는 계획에서는 모든 값이 0원이라 「0원」을 한 번 더 반복할 뿐이므로
+  // 그리지 않는다(화면과 같은 판단). 자리는 표의 맨 위 — 비교 «대상»이 아니라 비교의 «기준»이다.
+  const baselineRowHtml = noInvestableAsset || baseline?.endingAssets === undefined
+    ? ''
+    : `<tr style="background-color: #f8fafc;">
+         <td style="border: 1px solid #cbd5e1; padding: 8px 9px; font-size: 11px; line-height: 1.4; vertical-align: middle; font-weight: 700; color: #0f172a;">현재 가정 (기준)</td>
+         <td style="border: 1px solid #cbd5e1; padding: 8px 9px; font-size: 11px; line-height: 1.4; text-align: right; vertical-align: middle; font-weight: 700;">${formatManwon(baseline.endingAssets)}</td>
+         <td style="border: 1px solid #cbd5e1; padding: 8px 9px; font-size: 11px; line-height: 1.4; text-align: right; vertical-align: middle; white-space: nowrap;">${formatDepletionAgeText(baseline.depletionAge)}</td>
+       </tr>`;
+
   const noteHtml = noInvestableAsset
     ? `<p style="margin: 6px 0 0; font-size: 10.5px; color: #64748b;">투자자산이 없어 수익률·물가 가정을 바꿔도 기말자산은 0원으로 동일합니다.${
         hiddenCount > 0 ? ` 결과가 동일한 ${hiddenCount}개 가정은 생략했습니다.` : ''
@@ -636,7 +663,7 @@ export function renderSensitivityTableSection(
 
   const rowsHtml = visibleScenarios
     .map((s) => {
-      const depletionText = s.depletionAge === null ? '평생 유지' : `${s.depletionAge}세`;
+      const depletionText = formatDepletionAgeText(s.depletionAge);
       const deltaColor = s.endingAssetsDelta < 0 ? '#dc2626' : '#059669';
       const deltaText = s.endingAssetsDelta === 0
         ? ''
@@ -655,6 +682,7 @@ export function renderSensitivityTableSection(
     .join('');
   return `
     ${frozenNoteHtml}
+    ${returnNoteHtml}
     <table style="width: 100%; table-layout: fixed; border-collapse: collapse; margin-top: 8px;">
       <colgroup>
         <col style="width: 28%;" />
@@ -668,10 +696,15 @@ export function renderSensitivityTableSection(
           <th style="border: 1px solid #cbd5e1; padding: 7px 9px; line-height: 1.4; text-align: right; vertical-align: middle; background-color: #f1f5f9; font-size: 11px; font-weight: 700; color: #334155; white-space: nowrap;">자산 고갈 나이</th>
         </tr>
       </thead>
-      <tbody>${rowsHtml}</tbody>
+      <tbody>${baselineRowHtml}${rowsHtml}</tbody>
     </table>
     ${noteHtml}
   `;
+}
+
+// 화면(SensitivityAnalysisSection의 formatDepletionAge)과 같은 표기.
+function formatDepletionAgeText(depletionAge: number | null): string {
+  return depletionAge === null ? '평생 유지' : `${depletionAge}세`;
 }
 
 // 몬테카를로 + 시퀀스 리스크 섹션.
@@ -695,6 +728,9 @@ export function renderMonteCarloSection(
   // 화면(MonteCarloSection)과 «같은 문장»이어야 한다. 두 벌로 두었던 대가는
   // describeMonteCarloAssumptions 주석에 있다.
   const assumptionCopy = describeMonteCarloAssumptions(monteCarlo);
+  // 화면(MonteCarloSection)과 «같은 문장»이어야 한다. 두 캡션이 서술하는 판정 기준
+  // (연령대별 목표 생활비 곡선)은 엔진의 것이므로 core가 만든다(describeSuccessRates 주석).
+  const successRateCopy = describeSuccessRates({ monteCarlo, params, formatValue: formatManwon });
 
   const depletionText = monteCarlo.depletion.count > 0
     ? `<p style="margin: 6px 0 0; font-size: 11px; color: #dc2626;">자산이 먼저 바닥난 경우가 ${monteCarlo.depletion.count.toLocaleString()}회 있었고, 가장 이른 시점은 ${monteCarlo.depletion.earliestAge}세였습니다.</p>`
@@ -759,14 +795,21 @@ export function renderMonteCarloSection(
 
   // **1페이지의 목표 달성 확률을 다시 인쇄하지 않는다.** 여기서 말하는 두 확률은 그 판정을
   // 이루는 성분이고 정의가 서로 다르다(화면의 MonteCarloSection과 같은 분업).
+  // **관계 문장을 두 비율보다 «앞»에 둔다.** 화면(MonteCarloSection)도 같은 순서이고,
+  // 문장 자체가 「아래 두 비율」이라고 가리킨다. 예전에는 이 자리에 「그 확률을 이루는 두
+  // 성분은 다음과 같습니다」가 있었는데, 그 말은 두 비율이 목표 달성 확률의 판정 술어와
+  // 같다는 뜻으로 읽힌다 — 생활비 조건은 엡실론 유무가 달라 포함관계조차 없다
+  // (spendingShortfall.ts의 AUDIT-003). describeSuccessRates가 그 선을 지킨 문장을 만든다.
   return `
     <p style="margin: 0; font-size: 11.5px; color: #475569;">
       1페이지 판정의 목표 달성 확률은 아래 가정으로 계산했습니다. 수익률이 해마다 오르내리는 상황을
-      ${monteCarlo.trials.toLocaleString()}회 시뮬레이션한 결과이며, 그 확률을 이루는 두 성분은 다음과 같습니다.
+      ${monteCarlo.trials.toLocaleString()}회 시뮬레이션한 결과입니다.${
+        successRateCopy.compositeNote ? ` ${successRateCopy.compositeNote}` : ''}
+    </p>
+    <p style="margin: 4px 0 0; font-size: 11.5px; color: #475569;">
       <strong style="font-size: 14px; color: #0f172a;">생활 유지 성공률 ${spendingPercent}%</strong>
-      — 계획 생활비(월 ${formatManwon(monteCarlo.plannedMonthlySpending)})를 한 해도 줄이지 않은 경우입니다.
-      <strong>자산 보존 성공률 ${assetPercent}%</strong> — ${monteCarlo.successAge}세까지 자산이 남은 경우입니다.
-      두 확률은 서로 다른 실패를 셉니다: 연금이 생활비를 덮으면 자산이 바닥나도 생활은 유지됩니다.
+      — ${successRateCopy.spendingCaption}
+      <strong>자산 보존 성공률 ${assetPercent}%</strong> — ${successRateCopy.assetCaption}
     </p>
     <p style="margin: 4px 0 0; font-size: 10px; color: #64748b;">
       계산 가정: ${assumptionCopy.calculation}

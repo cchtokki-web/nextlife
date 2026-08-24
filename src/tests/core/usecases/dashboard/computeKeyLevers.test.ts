@@ -27,6 +27,7 @@ const sensitivity = (scenarios: SensitivityScenario[]): SensitivityAnalysis => (
   baselineEndingAssets: 13960000,
   baselineUnmetSpendingYears: 0,
   baselinePlanAssetStatus: 'sustained',
+  baselineWeightedTotalReturn: 12,
 });
 
 const shortfall = (overrides: Partial<ShortfallReport> = {}): ShortfallReport => ({

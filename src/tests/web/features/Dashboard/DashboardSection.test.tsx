@@ -128,7 +128,7 @@ describe('DashboardSection - IA 순서', () => {
     expect(evidenceIdx).toBeGreaterThan(recommendIdx);
   });
 
-  test('「계획의 근거」 안은 자산 흐름 → 시장 변동 검증 → 계획 상세 수치 → 실행 시점 순이다', () => {
+  test('「계획의 근거」 안은 자산 흐름 → 시장 변동 검증 → 계획 상세 수치 순이다', () => {
     const { container } = render(
       <DashboardSection params={params} result={result} recommendation={recommendation} />
     );
@@ -137,12 +137,32 @@ describe('DashboardSection - IA 순서', () => {
     const chartIdx = text.indexOf('자산 흐름');
     const riskIdx = text.indexOf('시장 변동 검증');
     const detailIdx = text.indexOf('계획 상세 수치');
-    const actionIdx = text.indexOf('실행 시점');
 
     expect(chartIdx).toBeGreaterThanOrEqual(0);
     expect(riskIdx).toBeGreaterThan(chartIdx);
     expect(detailIdx).toBeGreaterThan(riskIdx);
-    expect(actionIdx).toBeGreaterThan(detailIdx);
+  });
+
+  // **「그래서 지금 무엇을 하면 되지?」는 접기 뒤에 두지 않는다.**
+  //
+  // 「무엇부터 바꿔야 하나」와 「실행 로드맵」은 그 질문에 답하는 유일한 자리인데, 예전에는
+  // 「계획의 근거」 <details> 안 마지막 그룹이라 접기를 펴야 닿았다. 근거는 판정을 뒷받침하는
+  // «자료»이지 «할 일»이 아니다.
+  test('실행 시점은 접기 밖, 추천과 근거 사이에 있다', () => {
+    const { container } = render(
+      <DashboardSection params={params} result={result} recommendation={recommendation} />
+    );
+
+    const text = container.textContent ?? '';
+    const recommendIdx = text.indexOf('NextLife 추천');
+    const actionIdx = text.indexOf('실행 시점');
+    const evidenceIdx = text.indexOf('계획의 근거');
+
+    expect(actionIdx).toBeGreaterThan(recommendIdx);
+    expect(evidenceIdx).toBeGreaterThan(actionIdx);
+
+    // 자리만이 아니라 «접힘 밖»인지도 본다. 순서만 보면 <details> 안 첫 줄로 옮겨도 통과한다.
+    expect(container.querySelector('details')!.textContent).not.toContain('실행 로드맵');
   });
 
   // 「결과 요약」은 진단 카드가 이미 말한 판정·확률·목표 생활비·기말자산을 다른 이름으로 다시
@@ -196,17 +216,17 @@ describe('DashboardSection - IA 순서', () => {
     expect(within(diagnosis).getByText(/기준 시나리오에서는/)).toBeInTheDocument();
   });
 
-  test('실행 로드맵은 「무엇부터 바꿔야 하나」 다음, 차트 이후에 위치한다', () => {
+  // 레버가 로드맵보다 앞이다. 매도 순서·인출 개시 나이는 이 계획에서 다섯 번째로 중요한
+  // 레버인데 예전에는 그것이 실행 계획의 첫 카드였다(computeKeyLevers 주석).
+  test('실행 로드맵은 「무엇부터 바꿔야 하나」 다음에 온다', () => {
     const { container } = render(
       <DashboardSection params={params} result={result} recommendation={recommendation} />
     );
     const text = container.textContent ?? '';
-    const chartIdx = text.indexOf('자산 추이 시뮬레이션');
     const leversIdx = text.indexOf('무엇부터 바꿔야 하나');
     const roadmapIdx = text.indexOf('실행 로드맵');
 
-    expect(chartIdx).toBeGreaterThanOrEqual(0);
-    expect(leversIdx).toBeGreaterThan(chartIdx);
+    expect(leversIdx).toBeGreaterThanOrEqual(0);
     expect(roadmapIdx).toBeGreaterThan(leversIdx);
   });
 
@@ -322,17 +342,28 @@ describe('DashboardSection - 자동 반영된 설정 표기', () => {
 // 있는가"를 계산해 calculatedTargetSpending에 담는다. 그런데 배너 조건이
 // spendingStrategy === 'max_sustainable'로 묶여 있어, 고정 생활비로 계획한 사용자는
 // 상속 목표가 0원인데 수억을 남기거나 반대로 자산이 고갈되는데도 아무 말을 듣지 못했다.
-// 「생활비 배분」을 고르면 목표 생활비가 나이대별로 달라지는데, 진단 카드는 그 평균을
-// 보여준다(SimulationMetricsCalculator의 average(goalMonthly)). 밝히지 않으면 사용자가
-// 목표 단계에서 입력한 300만원과 다른 숫자가 이유 없이 서 있게 된다.
+// 「생활비 배분」을 고르면 목표 생활비가 나이대별로 달라진다. 진단 카드는 **은퇴 직후
+// 구간의 금액**을 보여주고, 구간 전체는 바로 아래에서 편다.
+//
+// 예전에는 이 칸이 전 구간 평균(SimulationMetricsCalculator의 average(goalMonthly))을
+// 「월 생활비 목표(평균)」이라는 이름으로 보여줬다. 평균이라고 밝혀 두어도 300만원을 입력한
+// 사용자가 첫 화면에서 261만원을 보면 「내가 설정한 값이 왜 다르지」로 읽는다.
 describe('DashboardSection - 연령대별 생활비 배분 공개', () => {
   const curved: SimulationParams = { ...params, spendingCurve: resolveSpendingCurve('care_heavy') };
 
-  test('곡선이 있으면 월 생활비 목표가 평균임을 밝힌다', () => {
+  test('곡선이 있으면 은퇴 직후 구간의 금액을 보여준다', () => {
     render(<DashboardSection params={curved} result={result} />);
 
-    expect(within(screen.getByLabelText('현재 계획')).getByText('월 생활비 목표(평균)'))
-      .toBeInTheDocument();
+    // 완만한 감소형(1 / 0.93 / 0.88), 기준 300만원, 은퇴 60세 → 첫 구간은 배수 1.0.
+    expect(planFact('은퇴 초기 생활비')).toBe('300만원');
+  });
+
+  // 평균을 KPI 자리에서 내린 것이지 계산에서 지운 것이 아니다. 그러나 이 카드가 그 숫자를
+  // 다시 말하기 시작하면 같은 회귀가 되돌아온다.
+  test('평균값을 KPI 자리에 다시 세우지 않는다', () => {
+    render(<DashboardSection params={curved} result={result} />);
+
+    expect(within(screen.getByLabelText('현재 계획')).queryByText(/평균/)).not.toBeInTheDocument();
   });
 
   test('연령대별 금액을 구간으로 나열한다', () => {
@@ -346,7 +377,7 @@ describe('DashboardSection - 연령대별 생활비 배분 공개', () => {
     expect(note).toHaveTextContent('264만원');
   });
 
-  test('곡선이 없으면 평균이라고 하지도, 구간을 나열하지도 않는다', () => {
+  test('곡선이 없으면 구간을 나열하지 않고 목표 금액 하나만 보여준다', () => {
     render(<DashboardSection params={params} result={result} />);
 
     expect(planFact('월 생활비 목표')).toBeTruthy();
@@ -383,6 +414,23 @@ describe('DashboardSection - 지속가능 생활비 제안 배너', () => {
 
     expect(screen.getAllByText(/240만원/).length).toBeGreaterThan(0);
     expect(screen.getByText(/지속하기 어렵습니다/)).toBeInTheDocument();
+  });
+
+  // **같은 화면이 「목표 달성 확률 71%」를 말하고 있다.** 기준 없이 금액만 놓으면 사용자는
+  // 그 확률을 이 금액에도 적용해 「442만원을 써도 71%는 된다」로 읽는다. 그 값은 결정론
+  // 이진탐색의 한계값이라 확률과 아무 관계가 없다.
+  test('두 배너 모두 그 금액이 어느 세계의 값인지 밝힌다', () => {
+    for (const calculatedTargetSpending of [4420000, 2400000]) {
+      const { unmount } = render(
+        <DashboardSection params={params} result={{ ...result, calculatedTargetSpending }} />
+      );
+
+      const note = screen.getByTestId('sustainable-basis-note');
+      expect(note).toHaveTextContent('시장이 흔들리지 않는다고 볼 때');
+      expect(note).toHaveTextContent('90세까지');
+      expect(note).toHaveTextContent('권장액이 아니며');
+      unmount();
+    }
   });
 
   test('차이가 미미하면 배너를 띄우지 않는다', () => {

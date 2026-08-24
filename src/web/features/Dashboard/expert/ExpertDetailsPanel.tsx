@@ -110,6 +110,7 @@ export function ExpertDetailsPanel({
             baselineEndingAssets={sensitivity.baselineEndingAssets}
             baselineUnmetSpendingYears={sensitivity.baselineUnmetSpendingYears}
             frozenMonthlySpending={sensitivity.frozenMonthlySpending}
+            baselineWeightedTotalReturn={sensitivity.baselineWeightedTotalReturn}
             scenarios={sensitivity.scenarios}
             planAssetStatus={sensitivity.baselinePlanAssetStatus}
           />

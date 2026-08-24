@@ -2,6 +2,7 @@ import { describe, test, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { SensitivityAnalysisSection } from '@/web/features/Dashboard/expert/SensitivityAnalysisSection';
 import { SensitivityScenario } from '@/core/usecases/dashboard/computeSensitivityAnalysis';
+import { formatManwon } from '@/core/usecases/utility/utilityAnalysis';
 
 function scenario(overrides: Partial<SensitivityScenario> & Pick<SensitivityScenario, 'key' | 'label'>): SensitivityScenario {
   return {
@@ -63,7 +64,83 @@ describe('SensitivityAnalysisSection', () => {
   test('기준선을 함께 표시한다', () => {
     render(<SensitivityAnalysisSection baselineDepletionAge={88} baselineEndingAssets={2500000000} scenarios={scenarios} />);
     expect(screen.getByText(/현재 설정 기준/)).toBeInTheDocument();
-    expect(screen.getByText(/88세/)).toBeInTheDocument();
+    // 「88세」는 이제 산문 줄과 기준선 행 두 곳에 나온다 — 둘 다 기준선을 말하는 자리다.
+    expect(screen.getAllByText(/88세/).length).toBeGreaterThan(0);
+  });
+});
+
+// **수익률 3행은 사용자 가정 대비 ±가 아니라 5/7/9%라는 절대 앵커다**
+// (computeSensitivityAnalysis의 SCENARIO_DEFINITIONS 주석). 사용자 가정이 그보다 높으면
+// 세 행이 전부 기준선 «아래»로 내려가는 것이 정상인데, 화면이 사용자 자신의 수익률을
+// 말하지 않아 실제 리포트에서 「공격형으로 바꿨는데 왜 돈이 줄지」라는 읽기가 나왔다.
+describe('SensitivityAnalysisSection - 현재 수익률 가정 공개', () => {
+  test('사용자 자신의 가중평균 총수익률과 세 행이 고정 기준이라는 사실을 밝힌다', () => {
+    render(
+      <SensitivityAnalysisSection
+        baselineDepletionAge={null} baselineEndingAssets={1458410000}
+        baselineWeightedTotalReturn={12.34} scenarios={scenarios}
+      />
+    );
+
+    const note = screen.getByTestId('sensitivity-baseline-return');
+    expect(note).toHaveTextContent('가중평균 총수익률 12.3%');
+    // 가중평균은 사적연금을 포함한 값이라, 행 이름의 「주식 5%」와 곧바로 견주면 어긋난다.
+    // 두 축을 모두 적어야 세 행이 무엇을 바꾼 결과인지가 정확해진다.
+    expect(note).toHaveTextContent('사적연금 포함');
+    expect(note).toHaveTextContent('주식·ISA를 5/7/9%, 사적연금을 3/4/6%로 통째로 바꾼 결과');
+    expect(note).toHaveTextContent('현재 가정과 무관하게 고정된 비교 기준');
+  });
+
+  // 굴릴 잔액이 없으면 가중평균을 낼 수 없다. 없는 값을 0%라고 말하지 않는다.
+  test('유도할 잔액이 없으면 수익률 줄을 만들지 않는다', () => {
+    render(
+      <SensitivityAnalysisSection
+        baselineDepletionAge={null} baselineEndingAssets={1458410000}
+        baselineWeightedTotalReturn={null} scenarios={scenarios}
+      />
+    );
+
+    expect(screen.queryByTestId('sensitivity-baseline-return')).not.toBeInTheDocument();
+  });
+
+  // 산문 속 금액과 목록 속 금액을 눈으로 이어 붙여야 비교가 되면 대부분 이어 붙이지 않는다.
+  test('기준선을 막대 목록 안에도 한 줄로 넣는다', () => {
+    render(
+      <SensitivityAnalysisSection
+        baselineDepletionAge={null} baselineEndingAssets={1458410000} scenarios={scenarios}
+      />
+    );
+
+    const row = screen.getByTestId('sensitivity-baseline-row');
+    expect(row).toHaveTextContent('현재 가정 (기준)');
+    expect(row).toHaveTextContent(formatManwon(1458410000));
+  });
+
+  // 기준선은 비교 «대상»이 아니라 비교의 «기준»이다. 증감 0짜리 막대를 그리면 목록에서
+  // 「가장 나쁜 경우」로 읽힌다.
+  test('기준선 행에는 막대를 그리지 않는다', () => {
+    const { container } = render(
+      <SensitivityAnalysisSection
+        baselineDepletionAge={null} baselineEndingAssets={1458410000} scenarios={scenarios}
+      />
+    );
+
+    const row = screen.getByTestId('sensitivity-baseline-row');
+    expect(row.querySelector('[data-testid="sensitivity-bar"]')).toBeNull();
+    // 시나리오 막대 수는 그대로다 — 기준선이 행 하나를 «더할» 뿐 막대를 늘리지 않는다.
+    expect(container.querySelectorAll('[data-testid="sensitivity-bar"]').length).toBe(scenarios.length);
+  });
+
+  // 투자자산이 없는 계획은 모든 값이 0원이라 기준선 한 줄이 「0원」을 한 번 더 반복할 뿐이다.
+  test('투자자산이 없는 계획에서는 기준선 행을 그리지 않는다', () => {
+    render(
+      <SensitivityAnalysisSection
+        baselineDepletionAge={51} baselineEndingAssets={0} baselineUnmetSpendingYears={31}
+        planAssetStatus="no_investable_asset" scenarios={scenarios}
+      />
+    );
+
+    expect(screen.queryByTestId('sensitivity-baseline-row')).not.toBeInTheDocument();
   });
 });
 

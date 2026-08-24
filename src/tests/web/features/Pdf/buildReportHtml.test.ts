@@ -1,5 +1,6 @@
 import { describe, test, expect } from 'vitest';
 import { buildReportHtml, type ReportHtmlInput } from '@/web/features/Pdf/buildReportHtml';
+import { resolveSpendingCurve } from '@/core/usecases/spending/spendingCurve';
 import capture from '@/tests/fixtures/pdfReport/reportCapture.json';
 import captureNoAccounts from '@/tests/fixtures/pdfReport/reportCaptureNoAccounts.json';
 import type { YearlyLedger } from '@/core/entities/types';
@@ -78,6 +79,28 @@ describe('buildReportHtml', () => {
   // 순수 함수라는 주장을 직접 고정한다. 시계·로케일·DOM에 닿으면 두 번 부른 결과가 갈린다.
   test('같은 입력이면 항상 같은 문자열을 준다', () => {
     expect(buildReportHtml(input())).toBe(buildReportHtml(input()));
+  });
+
+  // 「생활비 배분」을 고른 계획에서 목표 금액 하나만 인쇄하면, 그 금액이 은퇴 직후 구간의
+  // 값이라는 사실이 리포트에서 사라진다. 뒤쪽 생활비 표는 이미 낮아진 금액을 싣고 있어
+  // 두 자리가 이유 없이 어긋난 채로 남는다. 화면의 진단 카드와 같은 셀렉터를 쓴다.
+  test('생활비 곡선이 있으면 설정 요약에 연령대별 금액을 함께 적는다', () => {
+    const base = input();
+    const html = buildReportHtml({
+      ...base,
+      params: { ...base.params, spendingCurve: resolveSpendingCurve('front_loaded') },
+    });
+
+    // 기준 350만원, 은퇴 65세·기대수명 85세 → 65~69 / 70~79 / 80~85세 세 구간.
+    expect(html).toContain('연령대별 배분 적용');
+    expect(html).toContain('65~69세 3,500,000');
+    expect(html).toContain('70~79세 3,010,000');
+    expect(html).toContain('80~85세 2,660,000');
+  });
+
+  // 곡선이 없으면 나열할 구간이 없다 — 그 계획에서는 금액 하나가 전부다.
+  test('생활비 곡선이 없으면 설정 요약에 구간을 만들지 않는다', () => {
+    expect(buildReportHtml(input())).not.toContain('연령대별 배분 적용');
   });
 
   test('현금 배당과 계좌 안에 남은 재투자 배당을 다른 열로 표시한다', () => {

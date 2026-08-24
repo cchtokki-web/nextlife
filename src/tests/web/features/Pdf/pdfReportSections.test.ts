@@ -90,6 +90,7 @@ import { MonteCarloResult } from '@/core/entities/montecarlo';
 import { SequenceRiskResult } from '@/core/usecases/montecarlo/sequenceRisk';
 import { SensitivityScenario } from '@/core/usecases/dashboard/computeSensitivityAnalysis';
 import { SimulationParams } from '@/core/entities/types';
+import { resolveSpendingCurve } from '@/core/usecases/spending/spendingCurve';
 import { CandidateRecommendation, ValidatedStrategyCandidate } from '@/core/recommendation/RecommendationEngine';
 import { DEFAULT_UTILITY_CONFIG } from '@/core/usecases/utility/utilityWeights';
 import { NO_GOAL_FAILURE, LEGACY_GOAL_CONDITIONS } from '@/tests/fixtures/goalFailure';
@@ -310,6 +311,10 @@ describe('renderStrategyRecommendationSection', () => {
     expect(html).toContain('어떤 전략으로도 목표에 도달하지 못합니다');
     expect(html).toContain('전략 12개를 검증했지만');
     expect(html).toContain('지속 가능한 월 생활비');
+    // **그 금액이 어느 세계의 값인지 밝힌다.** 결정론 이진탐색의 한계값이라 리포트 앞장의
+    // 목표 달성 확률과 아무 관계가 없다. 화면과 «같은 문장»이어야 한다.
+    expect(html).toContain('시장이 흔들리지 않는다고 볼 때');
+    expect(html).toContain('권장액이 아니며');
     expect(html).not.toContain('균형형');
     expect(html).not.toContain('추천 전략 적용');
     expect(html).not.toContain('현재 계획에서 달라지는 점');
@@ -324,6 +329,8 @@ describe('renderStrategyRecommendationSection', () => {
 
     expect(html).toContain('어떤 전략으로도 목표에 도달하지 못합니다');
     expect(html).not.toContain('지속 가능한 월 생활비');
+    // 금액이 없으면 그 금액을 설명하는 문장도 서지 않는다.
+    expect(html).not.toContain('권장액이 아니며');
   });
 
   // 검증하지 못한 필수 목표를 밝히지 않으면 "확인하지 않음"이 "확인해서 통과함"으로 읽힌다.
@@ -409,6 +416,42 @@ describe('renderSensitivityTableSection', () => {
     expect(html).toContain('51억원');
     expect(html).toContain('-16억 8,000만원');
     expect(html).toContain('+26억원');
+  });
+
+  // **수익률 3행은 사용자 가정 대비 ±가 아니라 5/7/9%라는 절대 앵커다.** 사용자 가정이
+  // 그보다 높으면 세 행이 전부 기준선 아래로 내려가는 것이 정상인데, 그 사실은 사용자
+  // 자신의 수익률을 함께 보여주지 않으면 표에서 «보이지 않는다». 화면과 같은 문장이다.
+  test('사용자 자신의 가중평균 총수익률과 기준선 행을 함께 싣는다', () => {
+    const scenarios: SensitivityScenario[] = [
+      { key: 'yieldAggressive', label: '공격형 가정 (주식 9%)', depletionAge: null, deltaYears: null,
+        endingAssets: 286400000, endingAssetsDelta: -1172010000, unmetSpendingYears: 0 },
+    ];
+    const html = renderSensitivityTableSection(scenarios, {
+      depletionAge: null, unmetSpendingYears: 0, planAssetStatus: 'sustained',
+      weightedTotalReturn: 12.34, endingAssets: 1458410000,
+    });
+
+    expect(html).toContain('가중평균 총수익률 12.3%');
+    expect(html).toContain('사적연금 포함');
+    expect(html).toContain('주식·ISA를 5/7/9%, 사적연금을 3/4/6%로 통째로 바꾼 결과');
+    expect(html).toContain('현재 가정과 무관하게 고정된 비교 기준');
+    expect(html).toContain('현재 가정 (기준)');
+    expect(html).toContain('14억 5,841만원');
+    // 기준선 행은 표의 «맨 위»다 — 비교 대상이 아니라 비교의 기준이다.
+    expect(html.indexOf('현재 가정 (기준)')).toBeLessThan(html.indexOf('공격형 가정'));
+  });
+
+  // 굴릴 잔액이 없으면 가중평균을 낼 수 없다. 없는 값을 0%라고 말하지 않는다.
+  test('유도할 잔액이 없으면 수익률 문장을 만들지 않는다', () => {
+    const scenarios: SensitivityScenario[] = [
+      { key: 'yieldAggressive', label: '공격형 가정 (주식 9%)', depletionAge: null, deltaYears: null,
+        endingAssets: 0, endingAssetsDelta: 0, unmetSpendingYears: 0 },
+    ];
+    const html = renderSensitivityTableSection(scenarios, {
+      depletionAge: null, unmetSpendingYears: 0, planAssetStatus: 'sustained', weightedTotalReturn: null,
+    });
+
+    expect(html).not.toContain('가중평균 총수익률');
   });
 
   // 화면(SensitivityAnalysisSection)과 같은 규칙이어야 한다 — 두 문서가 서로 다른 표를
@@ -606,6 +649,35 @@ describe('renderMonteCarloSection', () => {
     expect(html).toContain('87%');
     expect(html).toContain('1,000');
     expect(html).toContain('90세');
+  });
+
+  // **화면과 같은 문장이어야 한다.** 판정 기준(연령대별 목표 생활비)은 엔진의 것이므로
+  // describeSuccessRates가 만들고 두 문서가 그것을 그대로 인쇄한다. 예전에는 두 곳이 각자
+  // 「계획 생활비(월 300만원)를 한 해도 줄이지 않은 경우입니다」를 적고 있었고, 곡선을 켠
+  // 계획에서 두 곳이 «동시에» 판정 기준과 다른 금액을 말했다.
+  test('생활 유지 성공률의 기준을 연령대별 목표 생활비로 밝힌다', () => {
+    const html = renderMonteCarloSection(
+      monteCarlo,
+      sequenceRisk,
+      { ...mcParams, spendingCurve: resolveSpendingCurve('front_loaded') },
+    );
+
+    expect(html).toContain('연령별 목표 생활비');
+    expect(html).toContain('60~69세 300만원');
+    expect(html).toContain('70~79세 258만원');
+    expect(html).toContain('80~90세 228만원');
+    expect(html).not.toContain('계획 생활비(월 300만원)를 한 해도 줄이지 않은');
+  });
+
+  // 관계 문장은 두 비율보다 «앞»에 온다 — 문장 자체가 「아래 두 비율」이라고 가리킨다.
+  test('목표 달성 확률과 두 비율의 관계를 두 비율보다 먼저 밝힌다', () => {
+    const html = renderMonteCarloSection(monteCarlo, sequenceRisk, mcParams);
+
+    expect(html).toContain('같은 시행에서');
+    expect(html).toContain('곱하거나 더한 값이 아닙니다');
+    expect(html.indexOf('곱하거나 더한 값이 아닙니다')).toBeLessThan(html.indexOf('생활 유지 성공률'));
+    // 두 비율이 판정 술어와 «같다»고 주장하던 옛 문구는 남기지 않는다(AUDIT-003).
+    expect(html).not.toContain('그 확률을 이루는 두 성분');
   });
 
   test('변동성·분포·상관·시드 가정을 표기한다', () => {
