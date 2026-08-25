@@ -232,7 +232,7 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
   // 언제나 목표 성공확률보다 관대하고(montecarlo.ts 주석), 대체하면 목표를 못 지키는 계획이
   // 🟢으로 표시될 수 있다. 측정되지 않았으면 아래에서 '확인 불가'로 내려간다.
   const currentGoalProbability = monteCarloStatus === 'done' && monteCarlo
-    ? monteCarlo.goalSuccessProbability
+    ? monteCarlo.simulationSuccessRate ?? monteCarlo.goalSuccessProbability
     : undefined;
   // 임계값은 computePlanConfidence가 소유한다. 같은 화면에 이미 그 밴드로 그린 지표가 있어
   // 별도 임계값을 두면 0.85에서 한쪽은 '안정', 한쪽은 🟡으로 갈린다.
@@ -315,14 +315,25 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
           </div>
           <div className={styles.diagnosisGrid}>
             <div>
-              <span>목표 달성 확률</span>
+              <span>시뮬레이션 성공률</span>
               <strong>{probabilityLabel}</strong>
+              {currentGoalProbability !== undefined && monteCarlo && (
+                <small>
+                  {monteCarlo.trials.toLocaleString()}회 중{' '}
+                  {Math.round(currentGoalProbability * monteCarlo.trials).toLocaleString()}회 성공
+                </small>
+              )}
             </div>
             <div>
               <span>가장 큰 위험</span>
               <strong>{biggestRisk}</strong>
             </div>
           </div>
+          {currentGoalProbability !== undefined && (
+            <p className={styles.simulationDisclaimer}>
+              입력한 수익률, 물가, 연금, 수명 및 시장 변동 가정 범위 내의 시뮬레이션 결과이며 실제 미래 결과를 보장하지 않습니다.
+            </p>
+          )}
           <dl className={styles.currentPlanFacts} aria-label="현재 계획">
             <div><dt>은퇴</dt><dd>{params.userProfile.retirementAge}세</dd></div>
             {/* 「생활비 배분」을 고르면 목표가 나이대별로 달라진다. 이 칸은 **은퇴 직후 구간의
@@ -597,9 +608,8 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
                 </StatusNotice>
               )}
               {sustainableSpendingAdvice?.kind === 'can_spend_more' && (
-                <StatusNotice tone="success" icon={<TrendingUp size={19} aria-hidden="true" />} title="지금보다 더 쓸 수 있습니다">
-                  현재 목표보다 월 <strong>{formatValue(sustainableSpendingAdvice.difference)}</strong> 여유가 있습니다.
-                  지속 가능한 한도는 월 {formatValue(sustainableSpendingAdvice.sustainableMonthly)}입니다.{' '}
+                <StatusNotice tone="info" icon={<TrendingUp size={19} aria-hidden="true" />} title="계산상 최대 지속 가능 생활비">
+                  월 <strong>{formatValue(sustainableSpendingAdvice.sustainableMonthly)}</strong>.{' '}
                   {/* **기준을 반드시 붙인다.** 같은 화면이 「목표 달성 확률 71%」를 말하고 있어,
                       기준 없이 금액만 놓으면 사용자는 그 확률을 이 금액에도 적용해 읽는다.
                       문장은 core가 만든다 — PDF가 같은 문장을 인쇄해야 한다. */}

@@ -236,6 +236,7 @@ export function runMonteCarlo(
     successRate: trials.length > 0 ? succeeded.length / trials.length : 0,
     spendingSuccessRate: trials.length > 0 ? spendingSucceeded.length / trials.length : 0,
     goalSuccessProbability: trials.length > 0 ? goalSucceeded.length / trials.length : 0,
+    simulationSuccessRate: trials.length > 0 ? goalSucceeded.length / trials.length : 0,
     goalFailure,
     goalConditions: conditions,
     plannedMonthlySpending: planned.monthlyTargetSpending,

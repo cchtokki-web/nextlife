@@ -161,6 +161,11 @@ export function renderPlanVerdictSection(input: {
 }): string {
   const { expectancy, deterministicDepletionText, endingAssets, confidence, monteCarlo, formatValue } = input;
   const terminalAssetDisplay = resolveTerminalAssetDisplay(endingAssets, monteCarlo);
+  const simulationSuccessRate = monteCarlo?.simulationSuccessRate
+    ?? monteCarlo?.goalSuccessProbability
+    ?? confidence.rates?.goalSuccessProbability
+    ?? confidence.rates?.spendingSuccessRate
+    ?? 0;
 
   const block = (title: string, body: string, accent: string) => `
     <div style="border-left: 4px solid ${accent}; padding: 8px 0 8px 12px; margin-bottom: 12px;">
@@ -189,10 +194,12 @@ export function renderPlanVerdictSection(input: {
         // 화면 진단 카드와 같은 대표값(p50)과 목표 달성 확률만 싣는다. 확률을 이루는 두 성분
         // (생활 유지·자산 보존)과 전체 잔여자산 분포는 「시장 변동 검증」 섹션이 소유한다.
         `<p style="margin: 0; font-size: 14px; font-weight: 700; color: ${verdictAccent(confidence)};">
-           목표 달성 확률 ${Math.round((confidence.rates?.goalSuccessProbability ?? confidence.rates?.spendingSuccessRate ?? 0) * 100)}%
+           시뮬레이션 성공률 ${Math.round(simulationSuccessRate * 100)}%
          </p><p style="margin: 4px 0 0; font-size: 12px; font-weight: 700; color: #0f172a;">
+           ${monteCarlo.trials.toLocaleString()}회 중 ${Math.round(simulationSuccessRate * monteCarlo.trials).toLocaleString()}회 성공<br>
            ${expectancy}세 예상자산(중앙값) ${formatValue(terminalAssetDisplay.amount)}
          </p>
+         <p style="margin: 4px 0 0; font-size: 10px; color: #64748b;">입력한 수익률, 물가, 연금, 수명 및 시장 변동 가정 범위 내의 시뮬레이션 결과이며 실제 미래 결과를 보장하지 않습니다.</p>
          ${goalCoverageNote(monteCarlo.goalConditions)}`,
         verdictAccent(confidence)
       );
@@ -777,7 +784,7 @@ export function renderMonteCarloSection(
       <p style="margin: 0; font-size: 11.5px; color: #475569;">
         좋은 해가 먼저 오느냐 나쁜 해가 먼저 오느냐만으로 기대수명 시점 자산이
         <strong>${formatManwon(sequenceRisk.orderingSpread)}</strong> 갈립니다.
-        아래 경우들은 <strong>연평균 수익률이 완전히 같습니다</strong> — 다른 것은 순서뿐입니다.
+        변동 없음 기준을 제외한 네 경로는 <strong>같은 수익률 집합을 사용합니다</strong> — 다른 것은 은퇴 후 순서뿐입니다.
         <strong>은퇴 직후 5~10년의 수익률이 특히 중요합니다.</strong> 평균이 같더라도 은퇴 초기에 큰 하락이 오면
         생활비를 마련하려고 자산을 싼값에 팔게 되고, 그렇게 줄어든 원금은 이후 시장이 회복해도 함께 회복되지 않습니다.
       </p>

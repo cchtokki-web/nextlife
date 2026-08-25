@@ -104,6 +104,20 @@
   color: var(--foreground);
 }
 
+.diagnosisGrid small {
+  display: block;
+  margin-top: 0.25rem;
+  color: var(--foreground-muted);
+  font-size: 0.72rem;
+}
+
+.simulationDisclaimer {
+  margin: 0.75rem 0 0;
+  color: var(--foreground-muted);
+  font-size: 0.75rem;
+  line-height: 1.55;
+}
+
 .diagnosisGrid > div:first-child strong {
   font-family: var(--font-display);
   font-size: 2rem;

@@ -57,7 +57,7 @@ function makeSequenceRisk(overrides: Partial<SequenceRiskResult> = {}): Sequence
       { key: 'bestFirst', label: '좋은 해가 먼저', endingAssets: 4100000000, depletionAge: null, yearlyTotalAssets: [] },
       { key: 'shuffled', label: '무작위 순서', endingAssets: 2200000000, depletionAge: null, yearlyTotalAssets: [] },
       { key: 'worstFirst', label: '나쁜 해가 먼저', endingAssets: 600000000, depletionAge: null, yearlyTotalAssets: [] },
-      { key: 'earlyCrash', label: '은퇴 직후 5년 급락', endingAssets: 900000000, depletionAge: null, yearlyTotalAssets: [] },
+      { key: 'earlyCrash', label: '은퇴 직후 최악 5년', endingAssets: 900000000, depletionAge: null, yearlyTotalAssets: [] },
     ],
     orderingSpread: 3500000000,
     sharedMeanShock: 0.02,
@@ -255,7 +255,7 @@ describe('MonteCarloSection - 순서 리스크', () => {
     );
 
     // 이 문장은 <strong>으로 강조되어 별도 노드에 있다.
-    expect(screen.getByText(/연평균 수익률이 완전히 같습니다/)).toBeInTheDocument();
+    expect(screen.getByText(/같은 수익률 집합을 사용합니다/)).toBeInTheDocument();
   });
 
   test('Pro 사용자에게는 경우별 비교를 모두 보여준다', () => {
@@ -267,7 +267,7 @@ describe('MonteCarloSection - 순서 리스크', () => {
     );
 
     expect(screen.getByText('나쁜 해가 먼저')).toBeInTheDocument();
-    expect(screen.getByText('은퇴 직후 5년 급락')).toBeInTheDocument();
+    expect(screen.getByText('은퇴 직후 최악 5년')).toBeInTheDocument();
   });
 
   test('순서 리스크 데이터가 없으면 그 부분만 생략한다', () => {

@@ -259,7 +259,10 @@ describe('computeRiskAlerts', () => {
       const cliff = alerts.find((a) => a.key === 'healthInsuranceCliff');
 
       expect(cliff).toBeDefined();
+      expect(cliff!.title).toBe('피부양자 자격 위험');
       expect(cliff!.message).toContain('66~67세');
+      expect(cliff!.message).toContain('세후 실수령액과 다릅니다');
+      expect(cliff!.message).toContain('예상 건강보험료가 0원이더라도');
     });
 
     test('문턱에서 충분히 떨어져 있으면 경고하지 않는다', () => {

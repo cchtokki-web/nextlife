@@ -9,7 +9,7 @@ describe('describeSustainableSpendingBasis', () => {
   test('어느 세계의 값인지와 판정 나이를 밝힌다', () => {
     const note = describeSustainableSpendingBasis(90);
 
-    expect(note).toContain('기준 수익률이 그대로 실현되고 시장이 흔들리지 않는다고 볼 때');
+    expect(note).toContain('현재 수익률과 연금, 물가, 기대수명 가정이 그대로 유지될 경우');
     expect(note).toContain('90세까지');
   });
 
@@ -17,8 +17,8 @@ describe('describeSustainableSpendingBasis', () => {
   test('권장액이 아니라 한계값이라고 못박는다', () => {
     const note = describeSustainableSpendingBasis(90);
 
-    expect(note).toContain('한계값');
-    expect(note).toContain('권장액이 아니며');
+    expect(note).toContain('계산상 상한');
+    expect(note).toContain('권장 생활비를 의미하지 않습니다');
   });
 
   // 확률을 «지어내지» 않는다. 확률 기준으로 역산한 한도는 새 계산이고 지금 그 값은 없다.
@@ -27,7 +27,7 @@ describe('describeSustainableSpendingBasis', () => {
     const note = describeSustainableSpendingBasis(90);
 
     expect(note).not.toMatch(/\d+\s*%/);
-    expect(note).toContain('「목표 달성 확률」이 따로 답합니다');
+    expect(note).not.toContain('목표 달성 확률');
   });
 
   test('판정 나이는 인자를 따른다', () => {

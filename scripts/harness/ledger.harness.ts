@@ -283,7 +283,6 @@ test('진단 원장', { timeout: 3_600_000 }, () => {
   writeOut('summary.json', JSON.stringify(summary, null, 2));
 
   // 콘솔에도 핵심만 찍는다 — 파일을 열기 전에 판정이 되는 것들.
-  /* eslint-disable no-console */
   console.log('\n===== 진단 요약 =====');
   console.log('spendingStrategy      :', params.spendingStrategy);
   console.log('targetMonthlySpending :', params.userProfile.targetMonthlySpending);
@@ -308,5 +307,4 @@ test('진단 원장', { timeout: 3_600_000 }, () => {
   console.log('--- 원장 항등식 위반 ---');
   console.log(summary.ledgerViolations.length, '개년');
   console.log('\n출력:', OUT_DIR);
-  /* eslint-enable no-console */
 });

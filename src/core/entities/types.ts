@@ -560,6 +560,8 @@ export interface SimulationYearlyResult {
   isaWithdrawal: number;
   /** 사적연금 계좌에서 인출한 세전 총액. */
   privatePensionWithdrawal: number;
+  /** 계좌별 사적연금 잔액 원장. 옛 결과와의 호환을 위해 optional이다. */
+  privatePensionAccountLedgers?: PrivatePensionAccountLedger[];
   /** 모든 계좌 유형에서 인출한 세전 총액(현금 포함). */
   withdrawal: number;
   /** 엔진이 기록한 모든 세금과 추가 건강보험료의 합계. */
@@ -584,6 +586,32 @@ export interface SimulationYearlyResult {
   // 가까운지"를 알 수 없기 때문이다. 피부양자 자격 상실 절벽 근접 경고
   // (computeRiskAlerts)가 바로 그 구간을 봐야 해서 결과에 실어 보낸다.
   healthInsuranceIncomeBasis: number;
+  /**
+   * 실제 현금흐름용 소득·세금 값. 피부양자 판정 기준과 섞지 않는다.
+   * optional은 이 구조가 없던 저장 결과·테스트 픽스처의 역호환을 위한 것이다.
+   */
+  cashFlowIncome?: {
+    grossIncome: number;
+    incomeTax: number;
+    /** 현행 세율표에 포함되어 별도 분해할 수 없으므로 임의로 0을 만들지 않는다. */
+    localIncomeTax: number | null;
+    healthInsurancePremium: number;
+    netCashIncome: number;
+  };
+  /** 건강보험 피부양자 위험 판정용 값. 세후 실수령액과 독립적이다. */
+  healthInsuranceDependentAssessment?: {
+    income: number;
+    /** 현행 production 입력에는 재산 판정값이 없어 알 수 없다. */
+    property: number | null;
+    /** 소득으로 탈락이면 false, 그 외에는 재산 정보가 없어 null이다. */
+    eligible: boolean | null;
+    riskLevel: 'low' | 'boundary' | 'high' | 'unknown';
+    incomeThreshold: number;
+    /** production 입력 범위상 항상 소득 기준까지만 평가한다. */
+    assessmentScope: 'income_only' | 'unavailable';
+    /** 최종 자격 판정을 위해 아직 필요한 입력. */
+    missingInputs: Array<'property'>;
+  };
   comprehensiveTaxPaid: number; // 금융소득종합과세(추가분) 납부액
   // 해외주식·ETF 양도소득세 납부액. **전년도에 실현된** 차익에 대한 것이다
   // (실제 확정신고가 다음 해 5월이고, 같은 해 부과 시 '세금 내려고 판 자산이 또 차익을
@@ -623,6 +651,35 @@ export interface SimulationYearlyResult {
    * 없는 것이 정직하기 때문이다 — utility·calculatedTargetSpending과 같은 관례다.
    */
   ledger?: YearlyLedger;
+}
+
+export interface PrivatePensionAccountLedger {
+  accountId: string;
+  accountName?: string;
+  beginningBalance: number;
+  /** 신규 납입. ISA 만기 이전은 transferIn으로 분리한다. */
+  contribution: number;
+  transferIn: number;
+  investmentReturn: number;
+  /** 사용자가 받은 순액 또는 다른 계좌로 이동한 순액. */
+  withdrawal: number;
+  /** 원천징수와 이 계좌에서 직접 납부한 세금의 합. */
+  tax: number;
+  endingBalance: number;
+  /** 정상이라면 부동소수점 오차만 남는다. */
+  residual: number;
+  /**
+   * 소득세법 시행령 제40조의2의 연금수령한도 판정.
+   *
+   * 현행 production 입력에는 연금수령 기산연도·과세기간 개시일 평가액·2013년 이전 가입
+   * 예외 정보가 없으므로 한도를 지어내지 않고 미판정으로 남긴다. optional은 옛 결과 호환용이다.
+   */
+  statutoryLimitAssessment?: {
+    status: 'not_assessable' | 'limited' | 'not_limited';
+    annualLimit: number | null;
+    withinLimit: boolean | null;
+    missingInputs: Array<'pensionCommencementYear' | 'taxPeriodOpeningBalance' | 'pre2013Exception'>;
+  };
 }
 
 /**

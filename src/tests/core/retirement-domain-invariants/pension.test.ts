@@ -6,6 +6,7 @@ import {
   NATIONAL_PENSION_EARLY_MIN_AGE,
   NATIONAL_PENSION_NORMAL_START_AGE,
 } from '@/core/usecases/pension/nationalPensionRules';
+import { calculateStatutoryPensionWithdrawalLimit } from '@/core/usecases/pension/privatePensionRules';
 import { retirementParams } from './fixtures';
 
 describe('retirement-domain-invariants / national pension', () => {
@@ -97,5 +98,33 @@ describe('retirement-domain-invariants / national pension', () => {
     const afterTaxRatio = at(early, 66) / at(normal, 66);
     expect(afterTaxRatio).toBeGreaterThan(1 - 0.005 * 60);
     expect(afterTaxRatio).toBeCloseTo(0.7085, 3);
+  });
+});
+
+describe('retirement-domain-invariants / statutory private-pension limit', () => {
+  test('연금수령 1년차 한도는 과세기간 개시일 평가액의 12%다', () => {
+    const result = calculateStatutoryPensionWithdrawalLimit(100_000_000, 1);
+
+    expect(result.status).toBe('limited');
+    expect(result.annualLimit).toBeCloseTo(12_000_000, 6);
+  });
+
+  test('연금수령 10년차까지 법정 공식을 적용한다', () => {
+    const result = calculateStatutoryPensionWithdrawalLimit(100_000_000, 10);
+
+    expect(result.status).toBe('limited');
+    expect(result.annualLimit).toBeCloseTo(120_000_000, 6);
+  });
+
+  test('연금수령연차가 11년 이상이면 공식상 한도를 적용하지 않는다', () => {
+    expect(calculateStatutoryPensionWithdrawalLimit(100_000_000, 11)).toEqual({
+      status: 'not_limited',
+      annualLimit: null,
+    });
+  });
+
+  test('평가액과 연금수령연차를 임의 보정하지 않는다', () => {
+    expect(() => calculateStatutoryPensionWithdrawalLimit(-1, 1)).toThrow(RangeError);
+    expect(() => calculateStatutoryPensionWithdrawalLimit(100_000_000, 0)).toThrow(RangeError);
   });
 });

@@ -158,7 +158,11 @@ function buildHealthInsuranceCliffAlert(
 ): RiskAlertCandidate | null {
   const thresholdKRW = ctx.profile.financialIncomeThresholdKRW;
   const range = findFirstContiguousRange(yearlyResults, (y) => {
-    const ratio = y.healthInsuranceIncomeBasis / thresholdKRW;
+    // 피부양자 위험은 세후 실수령액·실제 보험료가 아니라 별도 판정용 소득을 쓴다.
+    // 옛 결과에는 assessment가 없으므로 기존 필드로만 폴백한다.
+    const dependentIncome = y.healthInsuranceDependentAssessment?.income
+      ?? y.healthInsuranceIncomeBasis;
+    const ratio = dependentIncome / thresholdKRW;
     return ratio >= HEALTH_INSURANCE_CLIFF_LOWER_RATIO && ratio <= HEALTH_INSURANCE_CLIFF_UPPER_RATIO;
   });
   if (!range) return null;
@@ -175,13 +179,17 @@ function buildHealthInsuranceCliffAlert(
     : ` ${estimate.peakAge}세 기준으로 보면 현재 계산상 월 ${formatManwon(estimate.currentMonthly)}이지만, `
       + `자격을 잃으면 월 ${formatManwon(estimate.ifDependentLostMonthly)}(연 ${formatManwon(estimate.ifDependentLostAnnual)})까지 오릅니다 `
       + `— 연 ${formatManwon(estimate.annualIncrease)}의 추가 부담입니다. 이 금액은 소득분만 계산한 것이라 재산·자동차분이 더 붙습니다.`;
+  const rangeYears = yearlyResults.filter((year) => year.age >= range.startAge && year.age <= range.endAge);
+  const premiumSentence = rangeYears.every((year) => year.healthInsurancePaid === 0)
+    ? ' 이 기간의 예상 건강보험료가 0원이더라도, 피부양자 위험 판정은 별도 소득 기준을 사용하므로 모순이 아닙니다.'
+    : '';
 
   return {
     sortAge: range.startAge,
     alert: {
       key: 'healthInsuranceCliff',
-      title: '건강보험 피부양자 자격 경계 구간',
-      message: `${formatAgeRange(range.startAge, range.endAge)} 구간, 건강보험료 부과 기준 소득이 연 ${formatManwon(thresholdKRW)} 근처입니다. 이 기준을 넘어 피부양자 자격을 잃으면 실제 보험료는 초과분이 아니라 소득 전체와 재산에 부과되어 계단식으로 뜁니다.${amountSentence}`,
+      title: '피부양자 자격 위험',
+      message: `${formatAgeRange(range.startAge, range.endAge)} 구간, 피부양자 판정용 소득이 연 ${formatManwon(thresholdKRW)} 근처입니다. 이 값은 세후 실수령액과 다릅니다. 현재 입력에는 재산 정보가 없어 최종 자격은 미판정이며 소득 기준 위험만 표시합니다. 이 기준을 넘어 피부양자 자격을 잃으면 실제 보험료는 초과분이 아니라 소득 전체와 재산에 부과되어 계단식으로 뜁니다.${premiumSentence}${amountSentence}`,
     },
   };
 }

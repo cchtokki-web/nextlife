@@ -145,6 +145,11 @@ export interface MonteCarloResult {
   // 않는다. 그 값들은 이미 successRate/spendingSuccessRate/endingAssets에 있고, 같은 수를 두
   // 필드에 저장하면 둘이 어긋날 수 있다. 이름 변환은 MonteCarloEngine.validate가 담당한다.
   goalSuccessProbability: number;
+  /**
+   * goalSuccessProbability의 의미가 드러나는 호환 별칭. 기존 Worker/API 소비처를 깨지 않기 위해
+   * 원래 필드도 같은 값으로 유지한다.
+   */
+  simulationSuccessRate?: number;
   // goalSuccessProbability가 낮을 때 **무엇이 그 값을 떨어뜨렸는지**. 확률 하나만 보여주면
   // 사용자는 언제나 "자산이 모자란다"로 읽지만, 실제로는 자산이 남아도는데 인출이 막혀
   // 목표 생활비를 못 채우는 계획이 같은 2%를 받는다(사적연금 「최소 인출」이 그렇다:
