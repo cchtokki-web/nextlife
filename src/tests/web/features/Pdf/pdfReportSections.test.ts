@@ -313,8 +313,8 @@ describe('renderStrategyRecommendationSection', () => {
     expect(html).toContain('지속 가능한 월 생활비');
     // **그 금액이 어느 세계의 값인지 밝힌다.** 결정론 이진탐색의 한계값이라 리포트 앞장의
     // 목표 달성 확률과 아무 관계가 없다. 화면과 «같은 문장»이어야 한다.
-    expect(html).toContain('시장이 흔들리지 않는다고 볼 때');
-    expect(html).toContain('권장액이 아니며');
+    expect(html).toContain('현재 수익률과 연금, 물가, 기대수명 가정이 그대로 유지될 경우');
+    expect(html).toContain('권장 생활비를 의미하지 않습니다');
     expect(html).not.toContain('균형형');
     expect(html).not.toContain('추천 전략 적용');
     expect(html).not.toContain('현재 계획에서 달라지는 점');
@@ -330,7 +330,7 @@ describe('renderStrategyRecommendationSection', () => {
     expect(html).toContain('어떤 전략으로도 목표에 도달하지 못합니다');
     expect(html).not.toContain('지속 가능한 월 생활비');
     // 금액이 없으면 그 금액을 설명하는 문장도 서지 않는다.
-    expect(html).not.toContain('권장액이 아니며');
+    expect(html).not.toContain('권장 생활비를 의미하지 않습니다');
   });
 
   // 검증하지 못한 필수 목표를 밝히지 않으면 "확인하지 않음"이 "확인해서 통과함"으로 읽힌다.
@@ -550,7 +550,9 @@ describe('renderPlanVerdictSection', () => {
     expect(html).toContain('가정대로 실현될 때');
     expect(html).toContain('시장 변동성 반영');
     expect(html).toContain('1,000회 시뮬레이션');
-    expect(html).toContain('목표 달성 확률 37%');
+    expect(html).toContain('시뮬레이션 성공률 37%');
+    expect(html).toContain('1,000회 중 370회 성공');
+    expect(html).toContain('실제 미래 결과를 보장하지 않습니다');
   });
 
   // 화면과 PDF가 같은 대표값을 말해야 한다. 전체 분위수 표는 뒤 섹션이 소유하지만, 화면
@@ -765,7 +767,7 @@ describe('renderMonteCarloSection', () => {
     const html = renderMonteCarloSection(monteCarlo, sequenceRisk, mcParams);
 
     expect(html).toContain('나쁜 해가 먼저');
-    expect(html).toContain('연평균');
+    expect(html).toContain('같은 수익률 집합');
   });
 
   test('순서 리스크가 없어도 몬테카를로 부분은 렌더한다', () => {

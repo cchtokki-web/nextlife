@@ -454,6 +454,18 @@ describe('실제 SimulationEngine 출력과의 계약', () => {
     }
   });
 
+  test('생활비 목표 = 국민연금 + 사적연금 + 배당 + 기타소득 + 자산인출 + 부족액이다', () => {
+    for (const c of composition) {
+      const financed = c.nationalUsed
+        + c.privatePenUsed
+        + c.dividendUsed
+        + c.otherUsed
+        + c.assetWithdrawal
+        + c.shortfall;
+      expect(financed, `${c.age}세의 생활비 재원 보존식`).toBeCloseTo(c.targetMonthly, 0);
+    }
+  });
+
   test('국민연금 구성분이 엔진의 nationalPensionIncome 필드에서 그대로 온다', () => {
     // 필드 이름/단위(연간 세후 KRW) 계약을 건다. 월 단위로 바뀌거나 세전으로 바뀌면 깨진다.
     for (const c of composition) {

@@ -16,6 +16,7 @@ import { getRetirementGrade, RetirementGrade } from '../entities/retirementGrade
 import { roundToWon } from '../entities/money';
 import { computeLifetimeUtility, inflationFactorForYear } from './utility/UtilityEngine';
 import { computeAnnualHealthcareCostBreakdown } from './healthcare/healthcareCosts';
+import { assessHealthInsuranceDependent } from './healthcare/healthInsuranceDependentAssessment';
 import { spendingMultiplierForAge } from './spending/spendingCurve';
 import { hasSpendingShortfall } from './spending/spendingShortfall';
 import { DEFAULT_UTILITY_CONFIG } from './utility/utilityWeights';
@@ -30,7 +31,7 @@ import {
   calculateCapitalGainsTaxKRW,
 } from './tax/TaxEngine';
 import { TaxContext, resolveTaxContext } from './tax/taxContext';
-import { InvalidSimulationInputError } from '../entities/errors';
+import { InvalidSimulationInputError, SimulationConsistencyError } from '../entities/errors';
 import {
   getNationalPensionAdjustmentFactor,
   NATIONAL_PENSION_NORMAL_START_AGE,
@@ -509,7 +510,8 @@ export class LegacySimulationEngine implements SimulationEngineContract {
     displayCurrency: AssetCurrency,
     exchangeRate: number,
     // 세금을 내려고 판 자산에서도 양도차익이 실현된다. 호출부가 그 해 누적기에 더한다.
-    onRealizedGainKRW: (gainKRW: number) => void
+    onRealizedGainKRW: (gainKRW: number) => void,
+    onPensionTaxPayment?: (pensionId: string, amountDisplay: number) => void,
   ): number {
     let remaining = amountDisplay;
     if (remaining <= 0) return 0;
@@ -529,6 +531,7 @@ export class LegacySimulationEngine implements SimulationEngineContract {
       const availableDisplay = this.convertValue(pension.currentBalance, pension.currency, displayCurrency, exchangeRate);
       const deduct = Math.min(remaining, Math.max(0, availableDisplay));
       pension.currentBalance -= this.convertValue(deduct, displayCurrency, pension.currency, exchangeRate);
+      if (deduct > 0) onPensionTaxPayment?.(pension.id, deduct);
       remaining -= deduct;
       if (remaining <= 0) return amountDisplay;
     }
@@ -965,6 +968,23 @@ export class LegacySimulationEngine implements SimulationEngineContract {
       const openingAssets = currentTotalAssetsDisplay(
         deferredWithdrawalCapitalGainsTaxReserveDisplay
       );
+      const pensionAccountFlows = new Map(activePensions.map((pension) => [pension.id, {
+        accountId: pension.id,
+        accountName: pension.name,
+        beginningBalance: this.convertValue(
+          pension.currentBalance, pension.currency, displayCurrency, exchangeRate
+        ),
+        contribution: 0,
+        transferIn: 0,
+        investmentReturn: 0,
+        withdrawal: 0,
+        tax: 0,
+      }]));
+      const pensionAccountFlow = (pensionId: string) => {
+        const flow = pensionAccountFlows.get(pensionId);
+        if (!flow) throw new SimulationConsistencyError(`사적연금 계좌 원장을 찾을 수 없습니다: ${pensionId}`);
+        return flow;
+      };
       // 경로가 없으면 아예 호출하지 않는다(applyReturnShock 주석 참고). 경로가 짧으면
       // 남은 해는 충격 0으로 본다 — 던지지 않는다.
       if (returnPath !== undefined) {
@@ -1199,14 +1219,22 @@ export class LegacySimulationEngine implements SimulationEngineContract {
             const preferPension = (withdrawalPlan?.isaMaturityDestination ?? 'pension') === 'pension';
 
             if (preferPension && activePensions.length > 0) {
-              activePensions[0].currentBalance += this.convertValue(netBalance, isa.currency, activePensions[0].currency, exchangeRate);
+              const destination = activePensions[0];
+              destination.currentBalance += this.convertValue(netBalance, isa.currency, destination.currency, exchangeRate);
+              pensionAccountFlow(destination.id).transferIn += this.convertValue(
+                netBalance, isa.currency, displayCurrency, exchangeRate
+              );
             } else if (!preferPension && activeAssets.length > 0) {
               const transferred = this.convertValue(netBalance, isa.currency, activeAssets[0].currency, exchangeRate);
               activeAssets[0].currentValue += transferred;
               // ISA 만기 정산을 마친 세후 자금으로 새로 사들이는 것이므로 전액이 취득원가다.
               activeAssets[0].costBasis += transferred;
             } else if (activePensions.length > 0) {
-              activePensions[0].currentBalance += this.convertValue(netBalance, isa.currency, activePensions[0].currency, exchangeRate);
+              const destination = activePensions[0];
+              destination.currentBalance += this.convertValue(netBalance, isa.currency, destination.currency, exchangeRate);
+              pensionAccountFlow(destination.id).transferIn += this.convertValue(
+                netBalance, isa.currency, displayCurrency, exchangeRate
+              );
             } else if (activeAssets.length > 0) {
               const transferred = this.convertValue(netBalance, isa.currency, activeAssets[0].currency, exchangeRate);
               activeAssets[0].currentValue += transferred;
@@ -1346,7 +1374,13 @@ export class LegacySimulationEngine implements SimulationEngineContract {
           annualInvestmentReturn += this.convertValue(
             growth, pension.currency, displayCurrency, exchangeRate
           );
-          annualContributionsDisplay += this.convertValue(contribution, pension.currency, displayCurrency, exchangeRate);
+          const growthDisplay = this.convertValue(growth, pension.currency, displayCurrency, exchangeRate);
+          const contributionDisplay = this.convertValue(
+            contribution, pension.currency, displayCurrency, exchangeRate
+          );
+          pensionAccountFlow(pension.id).investmentReturn += growthDisplay;
+          pensionAccountFlow(pension.id).contribution += contributionDisplay;
+          annualContributionsDisplay += contributionDisplay;
 
           // 계좌군 정책을 명시한 새 경로에서는 사적연금을 여기서 선지급하지 않는다. Funding Gap
           // 아래의 단일 WithdrawalEngine 호출이 GENERAL/ISA/PENSION 우선순위를 실제로 결정한다.
@@ -1442,6 +1476,10 @@ export class LegacySimulationEngine implements SimulationEngineContract {
             const drawAmountNet = plannedWithdrawal.netWithdrawal;
 
             const drawAmountNetDisplay = this.convertValue(drawAmountNet, pension.currency, displayCurrency, exchangeRate);
+            pensionAccountFlow(pension.id).withdrawal += drawAmountNetDisplay;
+            pensionAccountFlow(pension.id).tax += this.convertValue(
+              drawAmountTax, pension.currency, displayCurrency, exchangeRate
+            );
             // 다음 계좌는 이미 채워진 만큼을 빼고 본다.
             remainingMonthlyNeedDisplay = Math.max(0, remainingMonthlyNeedDisplay - drawAmountNetDisplay);
             monthlyPensionIncomeNetDisplay += drawAmountNetDisplay;
@@ -1507,6 +1545,12 @@ export class LegacySimulationEngine implements SimulationEngineContract {
               const drawAmountActual = bridgeWithdrawal.grossWithdrawal;
               const drawAmountTax = bridgeWithdrawal.tax;
               const drawAmountNet = bridgeWithdrawal.netWithdrawal;
+              pensionAccountFlow(pension.id).withdrawal += this.convertValue(
+                drawAmountNet, pension.currency, displayCurrency, exchangeRate
+              );
+              pensionAccountFlow(pension.id).tax += this.convertValue(
+                drawAmountTax, pension.currency, displayCurrency, exchangeRate
+              );
               remainingBridgeLimitKRW -= this.convertValue(drawAmountActual, pension.currency, 'KRW', exchangeRate);
 
               // 인출액이 이미 ISA 룸으로 캡되어 있으므로 순액은 전액 적립된다(소실 없음).
@@ -1800,6 +1844,8 @@ export class LegacySimulationEngine implements SimulationEngineContract {
 
                   const taxDisplay = grossDisplay * taxRate;
                   const netDisplay = grossDisplay - taxDisplay;
+                  pensionAccountFlow(pension.id).withdrawal += netDisplay;
+                  pensionAccountFlow(pension.id).tax += taxDisplay;
                   monthlyPensionIncomeNetDisplay += netDisplay;
                   annualPrivatePensionIncome += netDisplay;
                   annualPensionTaxPaid += taxDisplay;
@@ -1962,7 +2008,8 @@ export class LegacySimulationEngine implements SimulationEngineContract {
         const chargedDisplay = annualComprehensiveTaxPaidDisplay + annualHealthInsurancePaidDisplay;
         const collectedDisplay = this.collectTax(
           chargedDisplay, withdrawalOrderedAssets, activePensions, displayCurrency, exchangeRate,
-          (gainKRW) => { annualRealizedCapitalGainKRW += gainKRW; }
+          (gainKRW) => { annualRealizedCapitalGainKRW += gainKRW; },
+          (pensionId, amountDisplay) => { pensionAccountFlow(pensionId).tax += amountDisplay; },
         );
         if (collectedDisplay < chargedDisplay) {
           const collectedRatio = chargedDisplay > 0 ? collectedDisplay / chargedDisplay : 0;
@@ -1988,7 +2035,8 @@ export class LegacySimulationEngine implements SimulationEngineContract {
 
         const collectedAdjustmentDisplay = this.collectTax(
           pensionTaxAdjustmentDisplay, withdrawalOrderedAssets, activePensions, displayCurrency, exchangeRate,
-          (gainKRW) => { annualRealizedCapitalGainKRW += gainKRW; }
+          (gainKRW) => { annualRealizedCapitalGainKRW += gainKRW; },
+          (pensionId, amountDisplay) => { pensionAccountFlow(pensionId).tax += amountDisplay; },
         );
         annualPensionTaxPaid += collectedAdjustmentDisplay;
         // 초과세도 실질적으로 사적연금 소득에서 빠져나가는 비용이므로 표시되는 소득에도 반영한다.
@@ -2011,7 +2059,8 @@ export class LegacySimulationEngine implements SimulationEngineContract {
             activePensions,
             displayCurrency,
             exchangeRate,
-            (gainKRW) => { annualRealizedCapitalGainKRW += gainKRW; }
+            (gainKRW) => { annualRealizedCapitalGainKRW += gainKRW; },
+            (pensionId, amountDisplay) => { pensionAccountFlow(pensionId).tax += amountDisplay; },
           );
           deferredUnreservedCapitalGainsTaxDisplay = 0;
         }
@@ -2045,7 +2094,8 @@ export class LegacySimulationEngine implements SimulationEngineContract {
               activePensions,
               displayCurrency,
               exchangeRate,
-              (gainKRW) => { annualRealizedCapitalGainKRW += gainKRW; }
+              (gainKRW) => { annualRealizedCapitalGainKRW += gainKRW; },
+              (pensionId, amountDisplay) => { pensionAccountFlow(pensionId).tax += amountDisplay; },
             );
             currentYearAdditionalTaxPaidDisplay += collectedDisplay;
             if (collectedDisplay + 0.01 < additionalTaxDueDisplay) break;
@@ -2068,6 +2118,49 @@ export class LegacySimulationEngine implements SimulationEngineContract {
       const reservedTaxCashDisplay = deferredWithdrawalCapitalGainsTaxReserveDisplay;
       const cashAssetsDisplay = cashBucketDisplay + reservedTaxCashDisplay;
       const totalAssetsDisplay = stockAssetsDisplay + pensionAssetsDisplay + isaAssetsDisplay + cashAssetsDisplay;
+      const privatePensionAccountLedgers = activePensions.map((pension) => {
+        const flow = pensionAccountFlow(pension.id);
+        const endingBalance = this.convertValue(
+          pension.currentBalance, pension.currency, displayCurrency, exchangeRate
+        );
+        const expectedEnding = flow.beginningBalance
+          + flow.contribution
+          + flow.transferIn
+          + flow.investmentReturn
+          - flow.withdrawal
+          - flow.tax;
+        const residual = endingBalance - expectedEnding;
+        const tolerance = Math.max(1, Math.max(Math.abs(flow.beginningBalance), Math.abs(endingBalance)) * 1e-9);
+        if (Math.abs(residual) > tolerance) {
+          throw new SimulationConsistencyError(
+            `${currentAge}세 사적연금 ${pension.id} 원장이 맞지 않습니다. `
+            + `설명되지 않는 차이 ${Math.round(residual).toLocaleString()}원.`
+          );
+        }
+        return {
+          ...flow,
+          endingBalance,
+          residual,
+          // 현행 입력만으로는 법정 연금수령한도를 계산할 수 없다. 기대수명까지의 균등분할액이나
+          // 저율과세 1,500만원을 이 값으로 가장하지 않고, 필요한 입력을 결과에 명시한다.
+          statutoryLimitAssessment: {
+            status: 'not_assessable' as const,
+            annualLimit: null,
+            withinLimit: null,
+            missingInputs: [
+              'pensionCommencementYear' as const,
+              'taxPeriodOpeningBalance' as const,
+              'pre2013Exception' as const,
+            ],
+          },
+        };
+      });
+      const pensionLedgerTotal = privatePensionAccountLedgers.reduce(
+        (sum, account) => sum + account.endingBalance, 0
+      );
+      if (Math.abs(pensionLedgerTotal - pensionAssetsDisplay) > Math.max(1, pensionAssetsDisplay * 1e-9)) {
+        throw new SimulationConsistencyError(`${currentAge}세 사적연금 계좌 합계가 자산군 총액과 맞지 않습니다.`);
+      }
 
       // 납세로 하한선이 깨졌다면 «기록»한다. 고치지 않는다 — 세금을 하한선 앞에서 멈추게
       // 만들면 국가가 돈을 안 받는 세계를 시뮬레이션하게 된다. 조건은 「세금이 실제로 자산을
@@ -2091,6 +2184,12 @@ export class LegacySimulationEngine implements SimulationEngineContract {
         + annualComprehensiveTaxPaidDisplay
         + annualHealthInsurancePaidDisplay
         + annualCapitalGainsTaxPaidDisplay;
+      const healthInsuranceIncomeBasisDisplay = this.convertValue(
+        healthInsuranceIncomeBasisKRW, 'KRW', displayCurrency, exchangeRate
+      );
+      const healthInsuranceThresholdDisplay = this.convertValue(
+        taxCtx.profile.financialIncomeThresholdKRW, 'KRW', displayCurrency, exchangeRate
+      );
 
       // 남은 잔액 중 인출 엔진이 «닿을 수 있는» 금액. 연말 세금 징수까지 끝난 뒤에 재므로
       // 그 해 어느 시점보다도 작다 — 불변식이 과하게 울지 않는 쪽으로 안전하다.
@@ -2154,6 +2253,7 @@ export class LegacySimulationEngine implements SimulationEngineContract {
         generalAssetWithdrawal: annualGeneralAssetWithdrawal,
         isaWithdrawal: annualIsaWithdrawal,
         privatePensionWithdrawal: annualPrivatePensionWithdrawal,
+        privatePensionAccountLedgers,
         withdrawal: annualWithdrawal,
         taxes,
         openingAssets,
@@ -2167,7 +2267,18 @@ export class LegacySimulationEngine implements SimulationEngineContract {
         dividendTaxPaid: annualDividendTaxPaid, pensionTaxPaid: annualPensionTaxPaid,
         nationalPensionTaxPaid: annualNationalPensionTaxPaid, comprehensiveTaxPaid: annualComprehensiveTaxPaidDisplay,
         healthInsurancePaid: annualHealthInsurancePaidDisplay,
-        healthInsuranceIncomeBasis: this.convertValue(healthInsuranceIncomeBasisKRW, 'KRW', displayCurrency, exchangeRate),
+        healthInsuranceIncomeBasis: healthInsuranceIncomeBasisDisplay,
+        cashFlowIncome: {
+          grossIncome: annualPreTaxTotalIncome,
+          incomeTax: taxes - annualHealthInsurancePaidDisplay,
+          localIncomeTax: null,
+          healthInsurancePremium: annualHealthInsurancePaidDisplay,
+          netCashIncome: totalIncome,
+        },
+        healthInsuranceDependentAssessment: assessHealthInsuranceDependent(
+          healthInsuranceIncomeBasisDisplay,
+          healthInsuranceThresholdDisplay,
+        ),
         capitalGainsTaxPaid: annualCapitalGainsTaxPaidDisplay,
         privatePensionTaxMethod,
       });

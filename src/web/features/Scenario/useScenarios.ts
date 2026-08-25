@@ -604,6 +604,7 @@ export function useScenarios() {
     const loaded = loadParams();
     const migrated = migrateParams(loaded || initialParams, etfTickers);
     lastSavedParamsRef.current['local-default'] = JSON.stringify(migrated);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Local storage hydration is an external-system synchronization.
     setScenarios([{
       id: 'local-default',
       name: '기본 시나리오',
@@ -617,6 +618,9 @@ export function useScenarios() {
     }]);
     setActiveScenarioId('local-default');
     setLoadedRequestKey(loadRequestKey);
+    // etfTickers/loadRequestKey are intentionally captured for this one-shot hydration;
+    // later ticker normalization has its own guarded migration path above.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status, isLoaded]);
 
   // Fetch scenarios when logged in
@@ -862,6 +866,9 @@ export function useScenarios() {
           setLoadedRequestKey(loadRequestKey);
         });
     }
+    // The request lifecycle is keyed by the explicit state values below. Adding callback
+    // identities would restart decryption while a request is in flight.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status, localKey, retryCount, isLoaded]);
 
   // Get current active params
@@ -897,6 +904,7 @@ export function useScenarios() {
           // 계정의 E2EE를 영구히 꺼 버린다(그 뒤로는 어느 브라우저에서든 키 없이 열린다).
           if (!localKey || !userId) {
             console.error('[E2EE] Refusing to auto-save without a key');
+            // eslint-disable-next-line react-hooks/set-state-in-effect -- This branch reports an external key-store invariant failure.
             setSaveStatus('error');
             return;
           }
@@ -938,7 +946,7 @@ export function useScenarios() {
         }
       }
     }
-  }, [activeParams, isLoaded, status, activeScenarioId, scenarios, localKey, needsKeyRestore]);
+  }, [activeParams, isLoaded, status, activeScenarioId, scenarios, localKey, needsKeyRestore, session?.user?.id]);
 
   // Alert user when they try to leave the page with unsaved changes
   useEffect(() => {

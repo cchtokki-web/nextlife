@@ -1,7 +1,12 @@
 import { describe, test, expect } from 'vitest';
-import { computeSequenceRisk, buildEarlyCrashPath } from '@/core/usecases/montecarlo/sequenceRisk';
+import {
+  computeSequenceRisk,
+  buildEarlyCrashPath,
+  orderRetirementReturnPaths,
+} from '@/core/usecases/montecarlo/sequenceRisk';
 import { SimulationEngine } from '@/core/usecases/SimulationEngine';
 import { SimulationParams } from '@/core/entities/types';
+import { ledgerTolerance } from '@/core/usecases/ledger/YearLedger';
 
 // **수익률 시퀀스 리스크(Sequence of Returns Risk).**
 //
@@ -114,10 +119,103 @@ describe('computeSequenceRisk', () => {
     }
   });
 
+  test('각 경우가 수익률 인덱스와 현금흐름을 연도별 debug result로 함께 준다', () => {
+    const result = computeSequenceRisk(params(), engine, config);
+    const worst = result.cases.find((c) => c.key === 'worstFirst')!;
+
+    expect(worst.yearlyDebug).toHaveLength(85 - 55 + 1);
+    expect(worst.yearlyDebug?.[0]).toEqual(expect.objectContaining({
+      age: 55,
+      beginningAssets: expect.any(Number),
+      appliedReturnShock: expect.any(Number),
+      investmentReturn: expect.any(Number),
+      nationalPensionIncome: expect.any(Number),
+      privatePensionIncome: expect.any(Number),
+      livingExpense: expect.any(Number),
+      tax: expect.any(Number),
+      assetWithdrawal: expect.any(Number),
+      endingAssets: expect.any(Number),
+    }));
+  });
+
   test('변동성이 0이면 순서 격차가 사라진다', () => {
     const result = computeSequenceRisk(params(), engine, { seed: 2026, annualStdDev: 0 });
 
     expect(result.orderingSpread).toBeCloseTo(0, 6);
+  });
+});
+
+describe('명시적 5년 수익률 순서 회귀', () => {
+  const withdrawalParams: SimulationParams = {
+    userProfile: { currentAge: 65, retirementAge: 65, expectancy: 69, targetMonthlySpending: 1_000_000 },
+    assets: [{
+      id: 'a', type: 'etf', ticker: 'A', name: 'A', quantity: 1, averagePrice: 100_000_000,
+      totalReturn: 0, dividendYield: 0, monthlyContribution: 0,
+      reinvestDividend: true, currency: 'KRW',
+    }],
+    isaAccounts: [], privatePensions: [], otherIncomes: [],
+    nationalPension: { expectedMonthlyAmount: 0 },
+    inflationRate: 0, inflationMode: 'nominal', baseExchangeRate: 1,
+    exchangeScenario: 'base', displayCurrency: 'KRW',
+  };
+  const caseA = [20, 10, 0, -10, -20];
+  const caseB = [-20, -10, 0, 10, 20];
+
+  test('Case B(나쁜 해 먼저)는 지속 인출 조건에서 Case A보다 불리하다', () => {
+    const a = engine.runSingle(withdrawalParams, caseA);
+    const b = engine.runSingle(withdrawalParams, caseB);
+
+    expect(b.endingAssets).toBeLessThan(a.endingAssets);
+  });
+
+  test('두 Case는 산술평균과 CAGR이 완전히 같다', () => {
+    const arithmetic = (path: number[]) => path.reduce((sum, value) => sum + value, 0) / path.length;
+    const cagr = (path: number[]) => (
+      Math.pow(path.reduce((product, value) => product * (1 + value / 100), 1), 1 / path.length) - 1
+    );
+
+    expect(arithmetic(caseA)).toBe(arithmetic(caseB));
+    expect(cagr(caseA)).toBeCloseTo(cagr(caseB), 14);
+  });
+
+  test('연도별 원장에서 시작자산·수익·생활비·인출·기말자산을 추적할 수 있다', () => {
+    const result = engine.runSingle(withdrawalParams, caseB);
+
+    expect(result.yearlyResults.map((year, index) => ({
+      beginningAssets: year.openingAssets,
+      appliedReturn: caseB[index],
+      investmentReturn: year.ledger?.investmentReturn.total,
+      pensionIncome: year.pensionIncome,
+      livingExpense: year.spending,
+      tax: year.taxes,
+      assetWithdrawal: year.generalAssetWithdrawal + year.isaWithdrawal,
+      endingAssets: year.totalAssets,
+    }))).toHaveLength(5);
+    for (const year of result.yearlyResults) {
+      expect(Math.abs(year.ledger!.residual)).toBeLessThanOrEqual(ledgerTolerance(year.ledger!));
+    }
+  });
+});
+
+describe('은퇴 경계 기준 순열', () => {
+  test('적립기 경로는 고정하고 은퇴 이후만 정렬한다', () => {
+    const paths = orderRetirementReturnPaths([30, -30, 20, 10, 0, -10, -20], 2);
+
+    expect(paths.bestFirst.slice(0, 2)).toEqual([30, -30]);
+    expect(paths.worstFirst.slice(0, 2)).toEqual([30, -30]);
+    expect(paths.bestFirst.slice(2)).toEqual([20, 10, 0, -10, -20]);
+    expect(paths.worstFirst.slice(2)).toEqual([-20, -10, 0, 10, 20]);
+  });
+
+  test('모든 비교 경로가 동일한 수익률 multiset을 보존한다', () => {
+    const source = [30, -30, 20, 10, 0, -10, -20];
+    const paths = orderRetirementReturnPaths(source, 2);
+    const sorted = [...source].sort((a, b) => a - b);
+
+    expect([...paths.bestFirst].sort((a, b) => a - b)).toEqual(sorted);
+    expect([...paths.shuffled].sort((a, b) => a - b)).toEqual(sorted);
+    expect([...paths.worstFirst].sort((a, b) => a - b)).toEqual(sorted);
+    expect([...paths.earlyCrash].sort((a, b) => a - b)).toEqual(sorted);
   });
 });
 

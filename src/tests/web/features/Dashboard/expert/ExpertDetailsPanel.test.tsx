@@ -143,11 +143,45 @@ describe('ExpertDetailsPanel - 피부양자 자격 상실 시 건강보험료', 
     render(<ExpertDetailsPanel result={overThresholdResult} params={params} formatValue={formatValue} sensitivity={sensitivity} isPro={false} />);
 
     expect(screen.getAllByText(/재산·자동차분/).length).toBeGreaterThan(0);
+    expect(screen.getByText(/최종 피부양자 자격은 확정하지 않고/)).toBeInTheDocument();
   });
 
   test('문턱을 넘는 해가 없으면 아무것도 보여주지 않는다', () => {
     render(<ExpertDetailsPanel result={result} params={params} formatValue={formatValue} sensitivity={sensitivity} isPro={false} />);
 
     expect(screen.queryByText(/피부양자 자격 상실 시/)).not.toBeInTheDocument();
+  });
+});
+
+describe('ExpertDetailsPanel - 법정 연금수령한도 미판정', () => {
+  test('저율과세 기준과 법정 연금수령한도를 구분한다', () => {
+    const pensionResult: SimulationResult = {
+      ...result,
+      yearlyResults: [makeYearlyResult({
+        age: 65,
+        privatePensionAccountLedgers: [{
+          accountId: 'irp',
+          beginningBalance: 100_000_000,
+          contribution: 0,
+          transferIn: 0,
+          investmentReturn: 4_000_000,
+          withdrawal: 10_000_000,
+          tax: 500_000,
+          endingBalance: 93_500_000,
+          residual: 0,
+          statutoryLimitAssessment: {
+            status: 'not_assessable',
+            annualLimit: null,
+            withinLimit: null,
+            missingInputs: ['pensionCommencementYear', 'taxPeriodOpeningBalance', 'pre2013Exception'],
+          },
+        }],
+      })],
+    };
+
+    render(<ExpertDetailsPanel result={pensionResult} params={params} formatValue={formatValue} sensitivity={sensitivity} isPro={false} />);
+
+    expect(screen.getByText(/법정 연금수령한도는 연금수령 기산연도/)).toBeInTheDocument();
+    expect(screen.getByText(/연 1,500만원은 저율과세 기준/)).toBeInTheDocument();
   });
 });

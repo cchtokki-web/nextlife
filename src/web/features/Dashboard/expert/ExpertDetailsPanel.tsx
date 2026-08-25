@@ -43,6 +43,12 @@ export function ExpertDetailsPanel({
     ),
     [result.yearlyResults, params.taxSettings, params.taxLawVersion]
   );
+  const hasUnassessedStatutoryPensionLimit = useMemo(
+    () => result.yearlyResults.some((year) => year.privatePensionAccountLedgers?.some(
+      (account) => account.statutoryLimitAssessment?.status === 'not_assessable'
+    )),
+    [result.yearlyResults]
+  );
 
   return (
     <GlassCard>
@@ -59,7 +65,7 @@ export function ExpertDetailsPanel({
                 <dd className="font-semibold">{formatValue(analytics.avgTotalTax)}</dd>
               </div>
               <div>
-                <dt className="text-foreground-muted">건강보험료</dt>
+                <dt className="text-foreground-muted">예상 건강보험료</dt>
                 <dd className="font-semibold">{formatValue(analytics.avgHealthInsurance)}</dd>
               </div>
               <div>
@@ -70,6 +76,11 @@ export function ExpertDetailsPanel({
             <p className="mt-2 text-xs leading-relaxed text-foreground-muted">
               세금은 <strong className="text-foreground">2024년 기준 단순화 모델</strong>입니다. 부양가족·추가공제,
               재산·자동차분 건강보험료, 일부 국내상장 해외·채권형 ETF의 과세 차이는 반영하지 않습니다.
+            </p>
+            <p className="mt-1 text-xs leading-relaxed text-foreground-muted">
+              예상 건강보험료는 현금흐름 계산값이고, 피부양자 자격 위험은 세전 판정용 소득으로 별도 평가합니다.
+              따라서 보험료가 0원이어도 자격 위험이 표시될 수 있습니다. 재산 입력이 없어 최종 피부양자
+              자격은 확정하지 않고 <strong>소득 기준 위험만</strong> 표시합니다.
             </p>
             {/* 위 건강보험료는 이 시뮬레이터의 모델(문턱 초과분 × 요율)이 부과한 값이다.
                 실제 제도는 피부양자 자격을 잃는 순간 소득 전체에 부과되므로 훨씬 크다.
@@ -101,6 +112,13 @@ export function ExpertDetailsPanel({
               </li>
               {analytics.hasSignificantDividends && (
                 <li>배당소득 비중이 상당해 금융소득종합과세 여부를 주기적으로 점검하는 것이 좋습니다.</li>
+              )}
+              {hasUnassessedStatutoryPensionLimit && (
+                <li>
+                  계좌 잔액·운용수익·인출·세금 원장은 검증되지만, 법정 연금수령한도는 연금수령 기산연도와
+                  과세기간 개시일 평가액 입력이 없어 미판정입니다. 화면의 연 1,500만원은 저율과세 기준으로,
+                  법정 연금수령한도와 다른 값입니다.
+                </li>
               )}
             </ul>
           </section>

@@ -19,3 +19,31 @@ export function clampPrivatePensionStartAge(age: number): number {
 export function canWithdrawPrivatePension(age: number): boolean {
   return age >= PRIVATE_PENSION_MIN_START_AGE;
 }
+
+export type StatutoryPensionWithdrawalLimit =
+  | { status: 'limited'; annualLimit: number }
+  | { status: 'not_limited'; annualLimit: null };
+
+/**
+ * 소득세법 시행령 제40조의2의 연금수령한도.
+ *
+ * `과세기간 개시일 평가액 ÷ (11 - 연금수령연차) × 120%`이며, 연금수령연차가 11년
+ * 이상이면 이 공식이 적용되지 않는다. 이 함수는 공식을 한 곳에 고정할 뿐, 현행 입력에 없는
+ * 기산연도나 2013년 이전 가입 예외를 추정하지 않는다.
+ */
+export function calculateStatutoryPensionWithdrawalLimit(
+  taxPeriodOpeningBalance: number,
+  pensionReceivingYear: number,
+): StatutoryPensionWithdrawalLimit {
+  if (!Number.isFinite(taxPeriodOpeningBalance) || taxPeriodOpeningBalance < 0) {
+    throw new RangeError('과세기간 개시일 연금계좌 평가액은 0 이상의 유한한 값이어야 합니다.');
+  }
+  if (!Number.isInteger(pensionReceivingYear) || pensionReceivingYear < 1) {
+    throw new RangeError('연금수령연차는 1 이상의 정수여야 합니다.');
+  }
+  if (pensionReceivingYear >= 11) return { status: 'not_limited', annualLimit: null };
+  return {
+    status: 'limited',
+    annualLimit: taxPeriodOpeningBalance / (11 - pensionReceivingYear) * 1.2,
+  };
+}

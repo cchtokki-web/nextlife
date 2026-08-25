@@ -178,11 +178,12 @@ describe('DashboardSection - IA 순서', () => {
     expect(screen.queryByRole('button', { name: '추천안 결과 보기' })).not.toBeInTheDocument();
   });
 
-  // 같은 값에 이름을 여러 개 붙이면 사용자는 서로 다른 지표로 읽는다. 정본은 「목표 달성 확률」.
-  test('목표 달성 확률은 한 이름으로만 불린다', () => {
+  // 100%도 미래 보장으로 읽히지 않게 표시는 「시뮬레이션 성공률」로 한정한다.
+  test('진단 확률은 시뮬레이션 성공률로 부른다', () => {
     render(<DashboardSection params={params} result={result} recommendation={recommendation} />);
 
-    expect(screen.getByText('목표 달성 확률')).toBeInTheDocument();
+    expect(screen.getByText('시뮬레이션 성공률')).toBeInTheDocument();
+    expect(screen.queryByText('목표 달성 확률')).not.toBeInTheDocument();
     expect(screen.queryByText('현재 목표 달성률')).not.toBeInTheDocument();
     expect(screen.queryByText('목표 성공확률')).not.toBeInTheDocument();
   });
@@ -398,13 +399,14 @@ describe('DashboardSection - 지속가능 생활비 제안 배너', () => {
     expect(planFact('월 생활비 목표')).toBe('300만원');
   });
 
-  test('더 쓸 수 있으면 그 금액을 제안한다', () => {
+  test('여유가 있어도 행동을 권하지 않고 계산상 상한으로 표시한다', () => {
     const richResult: SimulationResult = { ...result, calculatedTargetSpending: 4420000 };
 
     render(<DashboardSection params={params} result={richResult} />);
 
     expect(screen.getAllByText(/442만원/).length).toBeGreaterThan(0);
-    expect(screen.getByText(/더 쓸 수 있습니다/)).toBeInTheDocument();
+    expect(screen.getByText('계산상 최대 지속 가능 생활비')).toBeInTheDocument();
+    expect(screen.queryByText(/더 쓸 수 있습니다/)).not.toBeInTheDocument();
   });
 
   test('목표가 지속 불가능하면 줄여야 할 금액을 경고한다', () => {
@@ -426,9 +428,9 @@ describe('DashboardSection - 지속가능 생활비 제안 배너', () => {
       );
 
       const note = screen.getByTestId('sustainable-basis-note');
-      expect(note).toHaveTextContent('시장이 흔들리지 않는다고 볼 때');
+      expect(note).toHaveTextContent('현재 수익률과 연금, 물가, 기대수명 가정이 그대로 유지될 경우');
       expect(note).toHaveTextContent('90세까지');
-      expect(note).toHaveTextContent('권장액이 아니며');
+      expect(note).toHaveTextContent('권장 생활비를 의미하지 않습니다');
       unmount();
     }
   });
@@ -769,6 +771,20 @@ describe('DashboardSection - 현재 계획 진단', () => {
     // 두 지표는 정의가 다르다. 대체하면 목표를 못 지키는 계획이 안정적으로 보일 수 있다.
     expect(diagnosis().textContent).toMatch(/85%/);
     expect(diagnosis().textContent).not.toMatch(/30%/);
+  });
+
+  test('100%일 때 성공 횟수와 비보장 안내를 함께 표시한다', () => {
+    render(
+      <DashboardSection
+        params={params} result={result}
+        monteCarloStatus="done"
+        monteCarlo={monteCarloWith(1, 1)}
+      />
+    );
+
+    expect(diagnosis()).toHaveTextContent('시뮬레이션 성공률');
+    expect(diagnosis()).toHaveTextContent('1,000회 중 1,000회 성공');
+    expect(diagnosis()).toHaveTextContent('실제 미래 결과를 보장하지 않습니다');
   });
 
   test('0.85는 computePlanConfidence 밴드에 따라 안정(🟢)으로 판정한다', () => {

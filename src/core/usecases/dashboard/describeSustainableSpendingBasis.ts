@@ -26,6 +26,6 @@
  * 이미 있는 값이 무엇인지만 정확히 말한다.
  */
 export function describeSustainableSpendingBasis(expectancy: number): string {
-  return `이 금액은 기준 수익률이 그대로 실현되고 시장이 흔들리지 않는다고 볼 때 ${expectancy}세까지 `
-    + '버티는 한계값입니다 — 권장액이 아니며, 시장 변동을 반영한 확률은 「목표 달성 확률」이 따로 답합니다.';
+  return `현재 수익률과 연금, 물가, 기대수명 가정이 그대로 유지될 경우 ${expectancy}세까지 `
+    + '계획이 유지되는 계산상 상한입니다. 권장 생활비를 의미하지 않습니다.';
 }

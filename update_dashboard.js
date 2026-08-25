@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-require-imports -- Legacy CommonJS migration helper. */
 const fs = require('fs');
 const path = require('path');
 

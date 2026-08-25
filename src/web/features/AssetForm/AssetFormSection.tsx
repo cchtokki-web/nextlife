@@ -528,7 +528,7 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
   // 위쪽에 두면 const 선언보다 앞서 참조하게 되어(런타임에는 호출 시점이 늦어 동작하지만)
   // React Compiler가 "선언 전 접근"으로 막는다 — 그 값이 나중에 바뀌어도 앞선 참조가
   // 따라가지 못하는 형태이기 때문이다.
-  const handleAutocompleteKeyDown = useCallback((e: React.KeyboardEvent, id: string, name: string | undefined, type: 'asset' | 'pension' | 'isa') => {
+  const handleAutocompleteKeyDown = (e: React.KeyboardEvent, id: string, name: string | undefined, type: 'asset' | 'pension' | 'isa') => {
     if (!focusedAssetId || focusedAssetId !== id || !name) return;
     const combined = getCombinedOptions(id, name);
     if (combined.length === 0) return;
@@ -583,7 +583,7 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
       setFocusedAssetId(null);
       setAutocompleteIndex(-1);
     }
-  }, [focusedAssetId, autocompleteIndex, getCombinedOptions]);
+  };
 
   const handleDeleteOtherIncome = (id: string) => {
     onChangeParams({

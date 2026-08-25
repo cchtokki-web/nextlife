@@ -10,7 +10,8 @@ vi.mock('next-auth/react', () => ({
 }));
 
 vi.mock('next/image', () => ({
-  default: (props: React.ImgHTMLAttributes<HTMLImageElement>) => <img {...props} />,
+  // eslint-disable-next-line @next/next/no-img-element -- The test replaces Next Image with a plain DOM element.
+  default: (props: React.ImgHTMLAttributes<HTMLImageElement>) => <img alt={props.alt ?? ''} {...props} />,
 }));
 
 function fetchMock() {
