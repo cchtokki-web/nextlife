@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
 import type { SimulationParams } from '@/core/entities/types';
+import { PRIMARY_SELECTION_NOTE } from '@/core/recommendation/RecommendationEngine';
 import type { CandidateRecommendation, ValidatedStrategyCandidate } from '@/core/recommendation/RecommendationEngine';
 import { DEFAULT_UTILITY_CONFIG } from '@/core/usecases/utility/utilityWeights';
 import { describeStrategyChanges } from '@/core/usecases/dashboard/describeStrategyChanges';
@@ -123,6 +124,86 @@ describe('StrategyRecommendationCards', () => {
     expect(card).toHaveTextContent('평균 목표생활비 충족도49%');
     expect(card).toHaveTextContent('90세까지 자산 유지 확률39%');
     expect(card).toHaveTextContent('목표 달성 확률 판정 조건: 목표생활비 완전 충족 · 90세까지 자산 유지');
+  });
+
+  // P2-2. 카드는 «축»만이 아니라 그 축이 만든 «금액»을 말해야 한다. 「국민연금 65세 → 60세」만
+  // 보고 적용하면 수령액이 깎이는 것을 누른 뒤에 알게 된다.
+  test('현상 유지 요약이 있으면 국민연금 실수령액·인출액·세부담의 전후를 함께 보여준다', () => {
+    const item: CandidateRecommendation = {
+      persona: 'BALANCED', label: '균형형', reason: '균형 검증', candidate: candidate(1, 'FIXED', 0.39),
+    };
+    item.candidate.outcome = {
+      averageAnnualWithdrawal: 20_000_000,
+      averageAnnualTaxAndLevy: 4_000_000,
+      nationalPensionFirstAge: 60,
+      nationalPensionMonthlyNet: 1_350_000,
+    };
+
+    render(
+      <StrategyRecommendationCards
+        status="done"
+        recommendations={[item]}
+        primary={item}
+        baselineOutcome={{
+          averageAnnualWithdrawal: 30_000_000,
+          averageAnnualTaxAndLevy: 2_000_000,
+          nationalPensionFirstAge: 65,
+          nationalPensionMonthlyNet: 1_900_000,
+        }}
+        params={params}
+        formatValue={formatValue}
+      />
+    );
+
+    const card = cardTitled('균형형');
+    expect(card).toHaveTextContent('적용하면 달라지는 수치');
+    expect(card).toHaveTextContent('국민연금 실수령액(세후)65세부터 월 190만원→60세부터 월 135만원');
+    expect(card).toHaveTextContent('은퇴 후 연평균 자산 인출액3000만원→2000만원');
+    expect(card).toHaveTextContent('은퇴 후 연평균 세금·건강보험료200만원→400만원');
+  });
+
+  test('현상 유지 요약이 없으면 「달라지는 수치」를 지어내지 않는다', () => {
+    // 현상 유지 후보가 HARD 제약에 걸려 시뮬레이션까지 가지 못한 경우다.
+    const item: CandidateRecommendation = {
+      persona: 'BALANCED', label: '균형형', reason: '균형 검증', candidate: candidate(1, 'FIXED', 0.39),
+    };
+    item.candidate.outcome = {
+      averageAnnualWithdrawal: 20_000_000,
+      averageAnnualTaxAndLevy: 4_000_000,
+      nationalPensionFirstAge: 60,
+      nationalPensionMonthlyNet: 1_350_000,
+    };
+
+    render(
+      <StrategyRecommendationCards
+        status="done"
+        recommendations={[item]}
+        primary={item}
+        params={params}
+        formatValue={formatValue}
+      />
+    );
+
+    expect(cardTitled('균형형')).not.toHaveTextContent('적용하면 달라지는 수치');
+  });
+
+  // ☆이 「확률 최고」가 아니게 된 뒤로는 근거를 밝히지 않으면 확률이 더 높은 카드가 옆에
+  // 있을 때 배지가 오류로 읽힌다(PRIMARY_SELECTION_NOTE).
+  test('☆추천이 붙으면 그 선정 근거를 한 줄로 밝힌다', () => {
+    const item: CandidateRecommendation = {
+      persona: 'BALANCED', label: '균형형', reason: '균형 검증', candidate: candidate(1, 'FIXED', 0.39),
+    };
+    render(
+      <StrategyRecommendationCards
+        status="done"
+        recommendations={[item]}
+        primary={item}
+        params={params}
+        formatValue={formatValue}
+      />
+    );
+
+    expect(screen.getByText(PRIMARY_SELECTION_NOTE)).toBeInTheDocument();
   });
 
   test('추천 결과가 없으면 후보만으로 페르소나를 지어내지 않는다', () => {

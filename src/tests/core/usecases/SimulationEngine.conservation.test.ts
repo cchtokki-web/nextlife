@@ -39,6 +39,11 @@ import { SimulationParams } from '@/core/entities/types';
 //
 // 초과세 A 자체는 자산에서 직접 빠져나가는 진짜 유출이며, pensionTaxPaid에 포함된 채로
 // 유출 항에서 정확히 한 번 세어진다.
+//
+// A는 결과에도 그대로 실려 나간다(privatePensionYearEndTaxAdjustment). 위 항등식이 성립하는
+// 이유가 곧 화면의 사적연금 소득이 그해 생활비를 채운 금액보다 A만큼 작은 이유이며, 그
+// 사실은 describePrivatePensionTaxSettlement가 문장으로 옮긴다. 이 상쇄를 없애려고
+// privatePensionIncome에서 A를 빼지 않도록 바꾸면 위 항등식이 깨져 이 파일이 먼저 무너진다.
 
 interface Flows {
   externalInflow: number;

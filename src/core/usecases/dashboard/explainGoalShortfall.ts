@@ -29,6 +29,18 @@ export interface GoalShortfallExplanation {
   // 원인을 만든 **설정**을 지목하는 문장. 지목할 설정을 찾지 못하면 undefined다 —
   // 근거 없는 추측을 문장으로 만들지 않는다.
   hint?: string;
+  /**
+   * 판정에 반영된 실패 원인을 «원인별로» 나열한 한 줄. 원인이 둘 이상일 때만 만들어진다.
+   *
+   * headline은 «지배적인» 원인 하나만 말한다. 그것이 옳은 요약이지만, 요약만 남으면 나머지
+   * 원인은 화면 어디에도 나타나지 않는다 — 생활비 부족이 지배적인 계획에서 자산 고갈이
+   * 300회 일어나도 사용자는 그 사실을 알 방법이 없었다. 「무엇을 고쳐야 하는가」는 원인의
+   * 순위가 아니라 «구성»에서 나온다.
+   *
+   * 원인이 하나뿐이면 undefined다. headline이 이미 그 원인과 횟수를 말했으므로, 같은 숫자를
+   * 다른 문장으로 한 번 더 적는 것은 정보가 아니라 소음이다.
+   */
+  breakdown?: string;
 }
 
 export interface ExplainGoalShortfallInput {
@@ -115,6 +127,21 @@ export function explainGoalShortfall({
     };
   }
 
+  // 판정에 «반영된» 원인만 센다. 고르지 않은 조건 때문에 일어난 관측 사실(예: 자산 고갈
+  // 방지를 고르지 않은 계획의 실제 고갈)은 확률을 깎지 않았으므로 이 줄에 넣으면 합이
+  // 맞지 않는 것처럼 보인다 — 그 사실은 위 'none' 분기가 따로 말한다.
+  const reflected: Array<[string, number]> = ([
+    ['생활비 부족', spendingShortfall],
+    ['자산 고갈', assetDepletion],
+    ['기말자산 미달', terminalShortfall],
+  ] as Array<[string, number]>).filter(([, value]) => value > 0);
+  // 한 시행이 두 원인에 함께 해당할 수 있다(고갈된 해에는 생활비도 못 채운다). 합이 시행
+  // 수를 넘을 수 있다는 사실을 문장이 스스로 밝히지 않으면 사용자는 계산 오류로 읽는다.
+  const breakdown = reflected.length < 2
+    ? undefined
+    : `원인별로는 ${reflected.map(([name, value]) => `${name} ${count(value)}회`).join(' · ')}입니다`
+      + ' (한 시행이 두 원인에 함께 해당할 수 있어 합계가 시행 수를 넘을 수 있습니다).';
+
   const spendingOnly = spendingShortfall - depletion;
   const terminalOnly = terminalShortfall - depletion;
   const cause: GoalFailureCause = depletion >= spendingOnly && depletion >= terminalOnly
@@ -128,6 +155,7 @@ export function explainGoalShortfall({
       cause,
       label: FAILURE_CAUSE_LABEL,
       headline: `${count(trials)}회 중 ${count(depletion)}회에서 기대수명 전에 자산이 고갈됩니다.`,
+      ...(breakdown ? { breakdown } : {}),
     };
   }
 
@@ -137,6 +165,7 @@ export function explainGoalShortfall({
       label: FAILURE_CAUSE_LABEL,
       headline: `${count(trials)}회 중 ${count(terminalShortfall)}회에서 기말자산이 목표(${formatValue(goalFailure.terminalAssetGoal)})에 못 미칩니다.`,
       hint: '상속 목표액을 낮추면 달성 확률이 올라갑니다.',
+      ...(breakdown ? { breakdown } : {}),
     };
   }
 
@@ -156,6 +185,7 @@ export function explainGoalShortfall({
     // 이 줄만 조용히 틀리지 않게 하기 위해서다(그래서 이 줄만 되돌리는 변이는 테스트로
     // 잡히지 않는다).
     ...(spendingShortfall > depletion ? withdrawalBlockHint(params, formatValue) : {}),
+    ...(breakdown ? { breakdown } : {}),
   };
 }
 

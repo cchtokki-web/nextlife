@@ -91,7 +91,7 @@ import { SequenceRiskResult } from '@/core/usecases/montecarlo/sequenceRisk';
 import { SensitivityScenario } from '@/core/usecases/dashboard/computeSensitivityAnalysis';
 import { SimulationParams } from '@/core/entities/types';
 import { resolveSpendingCurve } from '@/core/usecases/spending/spendingCurve';
-import { CandidateRecommendation, ValidatedStrategyCandidate } from '@/core/recommendation/RecommendationEngine';
+import { CandidateRecommendation, PRIMARY_SELECTION_NOTE, ValidatedStrategyCandidate } from '@/core/recommendation/RecommendationEngine';
 import { DEFAULT_UTILITY_CONFIG } from '@/core/usecases/utility/utilityWeights';
 import { NO_GOAL_FAILURE, LEGACY_GOAL_CONDITIONS } from '@/tests/fixtures/goalFailure';
 
@@ -201,6 +201,47 @@ describe('renderStrategyRecommendationSection', () => {
     expect(html).toContain('현재 계획에서 달라지는 점');
   });
 
+  // 화면 카드와 같은 함수(describeStrategyOutcomeChanges)를 써야 한다. 리포트가 따로
+  // 계산하면 같은 계획의 두 문서가 다른 금액을 말한다.
+  test('현상 유지 요약이 있으면 「적용하면 달라지는 수치」를 함께 싣는다', () => {
+    const withOutcome: CandidateRecommendation = {
+      ...balanced,
+      candidate: {
+        ...balanced.candidate,
+        outcome: {
+          averageAnnualWithdrawal: 20_000_000,
+          averageAnnualTaxAndLevy: 4_000_000,
+          nationalPensionFirstAge: 60,
+          nationalPensionMonthlyNet: 1_350_000,
+        },
+      },
+    };
+
+    const html = renderStrategyRecommendationSection({
+      recommendations: [withOutcome], status: 'done', params, formatValue,
+      baselineOutcome: {
+        averageAnnualWithdrawal: 30_000_000,
+        averageAnnualTaxAndLevy: 2_000_000,
+        nationalPensionFirstAge: 65,
+        nationalPensionMonthlyNet: 1_900_000,
+      },
+    });
+
+    expect(html).toContain('적용하면 달라지는 수치');
+    expect(html).toContain('국민연금 실수령액(세후)');
+    expect(html).toContain('65세부터 월 190만원');
+    expect(html).toContain('60세부터 월 135만원');
+    expect(html).toContain('은퇴 후 연평균 세금·건강보험료');
+  });
+
+  test('현상 유지 요약이 없으면 그 표를 만들지 않는다', () => {
+    const html = renderStrategyRecommendationSection({
+      recommendations: [balanced], status: 'done', params, formatValue,
+    });
+
+    expect(html).not.toContain('적용하면 달라지는 수치');
+  });
+
   // ☆추천 선정 규칙은 selectPrimary 한 곳에만 있어야 한다. 예전에 이 파일이
   // `find(persona === 'BALANCED')`로 직접 골랐는데, 그 규칙은 「목표를 지킨 최고 확률 카드」로
   // 바뀌면서 화면에서 삭제됐다. 규칙이 두 벌이면 같은 계획을 두고 화면은 안정형에,
@@ -221,6 +262,9 @@ describe('renderStrategyRecommendationSection', () => {
       expect(balancedIndex).toBeLessThan(stableIndex);
       // 별은 하나뿐이고, 그것이 안정형 쪽이다.
       expect(html.split(star)).toHaveLength(2);
+      // 근거도 함께 인쇄한다. 규칙이 「확률 최고」가 아니므로, 밝히지 않으면 확률이 더 높은
+      // 카드가 옆에 있을 때 배지가 오류로 읽힌다.
+      expect(html).toContain(PRIMARY_SELECTION_NOTE);
     });
 
     // 첫 카드로 폴백하면 엔진이 고르지 않은 카드가 「추천」으로 인쇄된다.
@@ -231,6 +275,7 @@ describe('renderStrategyRecommendationSection', () => {
       });
 
       expect(html).not.toContain(star);
+      expect(html).not.toContain(PRIMARY_SELECTION_NOTE);
     });
   });
 

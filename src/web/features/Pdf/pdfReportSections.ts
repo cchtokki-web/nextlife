@@ -15,6 +15,8 @@ import {
   PlanConfidenceBandKey,
 } from '../../../core/usecases/dashboard/computePlanConfidence';
 import { NationalPensionExplanation } from '../../../core/usecases/pension/explainNationalPension';
+import { describeStrategyOutcomeChanges } from '../../../core/usecases/dashboard/describeStrategyOutcomeChanges';
+import type { StrategyPlanOutcome } from '../../../core/usecases/dashboard/summarizePlanOutcome';
 import { SimulationParams } from '../../../core/entities/types';
 import { formatManwon } from '../../../core/usecases/utility/utilityAnalysis';
 import { MonteCarloResult } from '../../../core/entities/montecarlo';
@@ -24,7 +26,7 @@ import {
 } from '../../../core/usecases/goals/goalSuccessConditions';
 import { SequenceRiskResult } from '../../../core/usecases/montecarlo/sequenceRisk';
 import { OptimizationOutcome } from '../../../core/strategy/StrategyOptimizer';
-import { CandidateRecommendation } from '../../../core/recommendation/RecommendationEngine';
+import { CandidateRecommendation, PRIMARY_SELECTION_NOTE } from '../../../core/recommendation/RecommendationEngine';
 import { RetirementGoalType } from '../../../core/entities/retirementGoal';
 import { RETIREMENT_GOAL_CONSTRAINT_LABELS } from '../../../core/entities/retirementGoal';
 import type { GoalConflictVerdict } from '../../../core/evaluation/EvaluationEngine';
@@ -418,6 +420,11 @@ export function renderStrategyRecommendationSection(input: {
   status: StrategyOptimizationStatus;
   unsupportedHardGoals?: readonly RetirementGoalType[];
   outcome?: OptimizationOutcome;
+  /**
+   * 현상 유지(= 현재 계획) 후보의 결정론 요약. 「적용하면 달라지는 수치」의 «전» 쪽이며,
+   * 화면(StrategyRecommendationCards)이 받는 것과 같은 값이다. 없으면 그 표를 그리지 않는다.
+   */
+  baselineOutcome?: StrategyPlanOutcome;
   /** 화면과 같은 출처의 격차 숫자. 도달 불가 문단에서만 쓰고, null이면 숫자 없이 사실만 적는다. */
   sustainableSpendingAdvice?: SustainableSpendingAdvice | null;
   params: SimulationParams;
@@ -425,7 +432,7 @@ export function renderStrategyRecommendationSection(input: {
 }): string {
   const {
     recommendations, primary, status, unsupportedHardGoals, outcome,
-    sustainableSpendingAdvice, params, formatValue,
+    baselineOutcome, sustainableSpendingAdvice, params, formatValue,
   } = input;
 
   const notice = (text: string) =>
@@ -514,6 +521,27 @@ export function renderStrategyRecommendationSection(input: {
            </table>`
         : '<p style="margin: 4px 0 0; font-size: 10.5px; color: #64748b;">핵심 설정은 유지하고 시장 변동 안정성만 재검증한 전략입니다.</p>';
 
+      // 설정이 아니라 «결과»의 전후. 화면 카드와 같은 함수를 쓴다.
+      const outcomeChanges = describeStrategyOutcomeChanges(
+        baselineOutcome, candidate.outcome, formatValue,
+      );
+      const outcomeHtml = outcomeChanges.length === 0 ? '' : `
+        <p style="margin: 10px 0 0; font-size: 11px; font-weight: 700; color: #334155; border-top: 1px dashed #e2e8f0; padding-top: 8px;">적용하면 달라지는 수치</p>
+        <table style="width: 100%; border-collapse: collapse; margin-top: 4px;">
+          <tbody>${outcomeChanges
+            .map((change) => `
+              <tr>
+                <td style="padding: 3px 0; font-size: 10.5px; color: #64748b; white-space: nowrap;">${change.label}</td>
+                <td style="padding: 3px 0 3px 8px; font-size: 10.5px; color: #0f172a; text-align: right;">
+                  <span style="color: #94a3b8;">${change.before}</span>
+                  &rarr; <strong>${change.after}</strong>
+                </td>
+              </tr>
+            `)
+            .join('')}</tbody>
+        </table>
+        <p style="margin: 6px 0 0; font-size: 9.5px; color: #64748b; line-height: 1.4;">현재 계획과 이 전략을 같은 기준 수익률 경로로 각각 다시 계산한 값입니다. 위 확률과 달리 시장 변동은 반영하지 않습니다.</p>`;
+
       return `
         <div style="flex: 1; border: ${isRecommended ? '2px solid #3b82f6' : '1px solid #e2e8f0'}; border-radius: 10px; padding: 12px 14px; box-sizing: border-box;">
           <p style="margin: 0; font-size: 13px; font-weight: 700; color: #0f172a;">
@@ -547,14 +575,21 @@ export function renderStrategyRecommendationSection(input: {
           ${criteria ? `<p style="margin: 6px 0 0; font-size: 9.5px; color: #64748b; line-height: 1.4;">목표 달성 확률 판정 조건: ${criteria}</p>` : ''}
           <p style="margin: 10px 0 0; font-size: 11px; font-weight: 700; color: #334155; border-top: 1px solid #e2e8f0; padding-top: 8px;">현재 계획에서 달라지는 점</p>
           ${changesHtml}
+          ${outcomeHtml}
         </div>
       `;
     })
     .join('');
 
+  // ☆의 근거. 화면과 같은 문장을 쓴다 — 규칙은 core가 소유한다(PRIMARY_SELECTION_NOTE).
+  const primaryNoteHtml = recommendedId === undefined
+    ? ''
+    : `<p style="margin: 8px 0 0; font-size: 10px; color: #64748b; line-height: 1.5;">${PRIMARY_SELECTION_NOTE}</p>`;
+
   return `
     ${unsupportedHtml}
     <div style="display: flex; gap: 10px; align-items: stretch;">${cardsHtml}</div>
+    ${primaryNoteHtml}
     <p style="margin: 10px 0 0; font-size: 10px; color: #94a3b8;">
       ※ 위 추천은 시뮬레이션 결과이며 실제 설정에 자동 반영되지 않습니다. 적용하려면 설정을 직접 변경하세요.
     </p>
@@ -784,6 +819,9 @@ export function renderMonteCarloSection(
   const shortfallHtml = shortfall.label === undefined
     ? ''
     : `<p style="margin: 6px 0 0; font-size: 11px; color: #0f172a;"><strong>${shortfall.label}</strong> — ${shortfall.headline}</p>`
+      + (shortfall.breakdown
+        ? `<p style="margin: 2px 0 0; font-size: 10px; color: #64748b;">${shortfall.breakdown}</p>`
+        : '')
       + (shortfall.hint
         ? `<p style="margin: 2px 0 0; font-size: 10px; color: #64748b;">${shortfall.hint}</p>`
         : '');

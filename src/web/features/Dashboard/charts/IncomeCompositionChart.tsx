@@ -5,6 +5,7 @@ import { ResponsiveContainer, ComposedChart, Bar, Line, XAxis, YAxis, Tooltip, C
 import GlassCard from '../../../components/GlassCard';
 import styles from '../Dashboard.module.css';
 import { SimulationParams, SimulationResult, SimulationYearlyResult } from '../../../../core/entities/types';
+import { describePrivatePensionTaxSettlement } from '../../../../core/usecases/dashboard/describePrivatePensionTaxSettlement';
 import { computeMonthlySpendingComposition } from '../../../../core/usecases/MonthlySpendingComposition';
 import {
   formatValue, MultilineYAxisTick, RECHARTS_TOOLTIP_STYLE, REFERENCE_LABEL_FONT_SIZE, Y_AXIS_WIDTH,
@@ -153,6 +154,12 @@ export function IncomeCompositionChart({
       .map((d) => [d.age, d] as const)
   );
   const pensionChartData = result.yearlyResults.map((r) => toIncomeChartRow(r, targetByAge.get(r.age)));
+  // 사적연금 막대가 그해 생활비를 채운 금액보다 작아지는 해가 있으면 그 이유를 밝힌다.
+  // 문장은 core가 소유한다 — PDF가 같은 함수를 쓴다.
+  const taxSettlement = describePrivatePensionTaxSettlement(
+    result.yearlyResults,
+    (value) => formatValue(value, currency),
+  );
 
   return (
     <GlassCard className={styles.chartCard}>
@@ -173,6 +180,11 @@ export function IncomeCompositionChart({
       <p className="mb-2 text-xs text-foreground-muted">
         막대는 생활비에 바로 쓰는 현금소득이며, 청록색 점선은 계좌 안에 남아 총소득과 생활비 충당률에서 제외된 세후 배당입니다.
       </p>
+      {taxSettlement && (
+        <p className="mb-2 text-xs text-foreground-muted" data-testid="private-pension-tax-settlement-note">
+          {taxSettlement.sentence}
+        </p>
+      )}
       <ChartLegend items={INCOME_LEGEND} hiddenKeys={hiddenKeys} onToggle={onLegendClick} />
       <div className={styles.chartScrollWrapper}>
         <div className={styles.chartContainer}>

@@ -106,6 +106,32 @@ describe('IncomeCompositionChart - 국민연금 개시 기준선 라벨', () => 
   });
 });
 
+// 리포트에서 「사적연금 연 2,697만원」과 「월 73만원 부족」이 서로 빼면 맞지 않았다.
+// 차액은 연말에 자산에서 걷힌 사적연금 초과세이며, 그 사실을 말하는 곳이 없었다.
+describe('IncomeCompositionChart - 사적연금 연말 정산 각주', () => {
+  const withSettlement = (adjustment: number): SimulationResult => ({
+    ...result,
+    yearlyResults: result.yearlyResults.map((row) => ({
+      ...row,
+      privatePensionYearEndTaxAdjustment: adjustment,
+    })),
+  });
+
+  test('연말 정산이 있으면 막대가 왜 더 작은지 밝힌다', () => {
+    const { getByTestId } = renderChart(withSettlement(250_800));
+    const note = getByTestId('private-pension-tax-settlement-note');
+
+    expect(note.textContent).toContain('연말에 자산에서 따로 냅니다');
+    expect(note.textContent).toContain('그해 생활비를 실제로 채운 금액보다 그만큼 작습니다');
+  });
+
+  test('정산이 없는 계획에는 각주를 붙이지 않는다', () => {
+    const { queryByTestId } = renderChart(withSettlement(0));
+
+    expect(queryByTestId('private-pension-tax-settlement-note')).toBeNull();
+  });
+});
+
 describe('IncomeCompositionChart - 재투자 배당', () => {
   test('현금소득 막대와 다른 청록색 점선으로 그린다', () => {
     const chartResult: SimulationResult = {

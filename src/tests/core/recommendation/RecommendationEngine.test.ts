@@ -37,6 +37,8 @@ function candidate(input: {
   goalProbability: number;
   spendingProbability?: number;
   survivalProbability?: number;
+  averageFulfillment?: number;
+  terminalMedian?: number;
   p10?: number;
   goals?: RetirementGoals;
   missed?: readonly RetirementGoalType[];
@@ -81,7 +83,10 @@ function candidate(input: {
       goalSuccessProbability: input.goalProbability,
       spendingSuccessProbability: input.spendingProbability ?? input.goalProbability,
       assetSurvivalProbability: input.survivalProbability ?? input.goalProbability,
-      terminalAssetMedian: 100,
+      ...(input.averageFulfillment === undefined
+        ? {}
+        : { averageSpendingFulfillmentRate: input.averageFulfillment }),
+      terminalAssetMedian: input.terminalMedian ?? 100,
       terminalAssetP10: input.p10 ?? 50,
       terminalAssetP90: 150,
       shortfallProbability: 1 - (input.spendingProbability ?? input.goalProbability),
@@ -266,6 +271,64 @@ describe('primary 선정', () => {
     const result = engine.recommend(candidates, goalsOf());
 
     expect(result.primary?.persona).toBe('BALANCED');
+  });
+
+  // P2-4. 「단순히 성공률 최고」를 그만두었다는 것을 «구별 가능하게» 고정한다.
+  //
+  // 목표 달성 확률만 보면 sharp-drop(0.62)이 이기지만, 그 계획은 실패할 때 크게 무너지고
+  // (평균 충족도 0.55) 자산도 자주 바닥나며(0.40) 잔여자산도 적다. steady는 확률이 4%p 낮은
+  // 대신 세 축 모두에서 앞선다. 종합 점수(PRIMARY_SELECTION_WEIGHTS)는 steady를 고른다.
+  //
+  // 두 카드 모두 목표를 하나도 놓치지 않아 첫 키(missed)는 동률이다 — 그래야 이 단언이
+  // 종합 점수만을 재는 것이 된다.
+  test('확률이 조금 낮아도 충족도·자산 유지·잔여자산이 앞서면 그쪽을 추천한다', () => {
+    const goals = goalsOf('EARLY_RETIREMENT', 'ASSET_SURVIVAL');
+    const candidates = [
+      candidate({
+        id: 'sharp-drop', spending: 'FIXED',
+        goalProbability: 0.62, spendingProbability: 0.62, survivalProbability: 0.40,
+        averageFulfillment: 0.55, terminalMedian: 20, p10: 0,
+        goals, missed: [],
+      }),
+      candidate({
+        id: 'steady', spending: 'FIXED',
+        goalProbability: 0.58, spendingProbability: 0.58, survivalProbability: 0.95,
+        averageFulfillment: 0.97, terminalMedian: 100, p10: 60,
+        goals, missed: [],
+      }),
+    ];
+
+    const result = engine.recommend(candidates, goals);
+
+    expect(result.primary?.candidate.candidate.id).toBe('steady');
+    // 전제 확인: 확률«만» 보면 반대 답이 나온다. 이것이 무너지면 위 단언은 옛 규칙과
+    // 구별되지 않은 채 통과한다.
+    const byProbability = [...candidates]
+      .sort((a, b) => b.monteCarlo!.goalSuccessProbability - a.monteCarlo!.goalSuccessProbability)[0];
+    expect(byProbability.candidate.id).toBe('sharp-drop');
+  });
+
+  // 반대 방향. 확률 격차가 충분히 크면 나머지 축이 조금 앞서도 뒤집히지 않는다 —
+  // 목표 달성 확률은 사용자가 «고른 목표 전체»를 판정한 유일한 값이라 가장 무겁다.
+  test('확률 격차가 크면 나머지 지표가 조금 앞서도 뒤집지 않는다', () => {
+    const goals = goalsOf('EARLY_RETIREMENT');
+    const candidates = [
+      candidate({
+        id: 'high-probability', spending: 'FIXED',
+        goalProbability: 0.90, spendingProbability: 0.90, survivalProbability: 0.90,
+        averageFulfillment: 0.98, terminalMedian: 90, p10: 60,
+        goals, missed: [],
+      }),
+      candidate({
+        id: 'slightly-safer', spending: 'FIXED',
+        goalProbability: 0.40, spendingProbability: 0.40, survivalProbability: 0.95,
+        averageFulfillment: 0.99, terminalMedian: 100, p10: 70,
+        goals, missed: [],
+      }),
+    ];
+
+    expect(engine.recommend(candidates, goals).primary?.candidate.candidate.id)
+      .toBe('high-probability');
   });
 
   // goals를 넘기지 않는 경로는 「선택한 목표가 없다」와 같게 다룬다. 목표를 모르는데

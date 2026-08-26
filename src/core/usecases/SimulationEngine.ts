@@ -2023,6 +2023,9 @@ export class LegacySimulationEngine implements SimulationEngineContract {
 
       // Private pension high tax threshold adjustment
       let privatePensionTaxMethod: PrivatePensionTaxationMethod = 'none';
+      // 연말에 «자산에서» 마저 걷힌 사적연금 세액. 결과에 실어 보내는 이유는
+      // SimulationYearlyResult.privatePensionYearEndTaxAdjustment 주석에 있다.
+      let privatePensionYearEndTaxAdjustmentDisplay = 0;
       {
         // 국민연금 수령액을 함께 넘긴다 — 종합과세를 고를 때 두 연금은 합산되어 하나의
         // 과세표준을 이루므로, 연금소득공제·기본공제가 두 연금에 걸쳐 한 번만 적용되어야 한다.
@@ -2039,6 +2042,10 @@ export class LegacySimulationEngine implements SimulationEngineContract {
           (pensionId, amountDisplay) => { pensionAccountFlow(pensionId).tax += amountDisplay; },
         );
         annualPensionTaxPaid += collectedAdjustmentDisplay;
+        // 부과액(pensionTaxAdjustmentDisplay)이 아니라 «실제 징수액»을 기록한다. 자산이
+        // 모자라 다 걷지 못한 해에는 그만큼만 소득에서 빠졌으므로, 부과액을 실으면
+        // 화면이 설명하려는 격차와 다른 숫자를 말하게 된다(collectTax 주석과 같은 규칙).
+        privatePensionYearEndTaxAdjustmentDisplay = collectedAdjustmentDisplay;
         // 초과세도 실질적으로 사적연금 소득에서 빠져나가는 비용이므로 표시되는 소득에도 반영한다.
         annualPrivatePensionIncome = Math.max(0, annualPrivatePensionIncome - collectedAdjustmentDisplay);
       }
@@ -2265,6 +2272,7 @@ export class LegacySimulationEngine implements SimulationEngineContract {
         ledger,
         preTaxTotalIncome: annualPreTaxTotalIncome,
         dividendTaxPaid: annualDividendTaxPaid, pensionTaxPaid: annualPensionTaxPaid,
+        privatePensionYearEndTaxAdjustment: privatePensionYearEndTaxAdjustmentDisplay,
         nationalPensionTaxPaid: annualNationalPensionTaxPaid, comprehensiveTaxPaid: annualComprehensiveTaxPaidDisplay,
         healthInsurancePaid: annualHealthInsurancePaidDisplay,
         healthInsuranceIncomeBasis: healthInsuranceIncomeBasisDisplay,

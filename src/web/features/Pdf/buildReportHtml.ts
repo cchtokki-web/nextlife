@@ -12,6 +12,7 @@ import {
 } from '../../../core/usecases/pension/nationalPensionRules';
 import type { MonteCarloResult } from '../../../core/entities/montecarlo';
 import { resolveAssetProjection, type AssetProjection } from '../../../core/usecases/dashboard/resolveAssetProjection';
+import { describePrivatePensionTaxSettlement } from '../../../core/usecases/dashboard/describePrivatePensionTaxSettlement';
 import { describeSpendingCurve } from '../../../core/usecases/spending/spendingCurve';
 
 /** 이미 렌더된 섹션 조각들. 각 값은 pdfReportSections의 render*Section 결과다. */
@@ -86,12 +87,15 @@ function renderYearlyTablePages(args: {
   hasHealthcareCost: boolean;
   healthcareNoteHtml: string;
   realValueNoteHtml: string;
+  /** 사적연금 연말 정산 각주. 정산이 없는 계획에서는 빈 문자열이다. */
+  pensionSettlementNoteHtml: string;
   copyrightYear: number;
   assetProjection: AssetProjection;
 }): { html: string; firstPageNo: number } {
   const {
     chunks, hasSpendingSection, nextSection, nextPage, formatValuePrint,
-    hasHealthcareCost, healthcareNoteHtml, realValueNoteHtml, copyrightYear, assetProjection,
+    hasHealthcareCost, healthcareNoteHtml, realValueNoteHtml, pensionSettlementNoteHtml,
+    copyrightYear, assetProjection,
   } = args;
   let out = '';
   let firstPageNo = 0;
@@ -110,7 +114,7 @@ function renderYearlyTablePages(args: {
                 ? '\n              <p style="font-size: 9.5px; color: #64748b; margin: 0 0 8px;">* 「총 자산」은 화면 차트와 같은 시장 변동 시행의 연도별 중앙값입니다. 각 연도의 중앙값은 서로 다른 시행에서 올 수 있으며, 소득·생활비 항목은 현재 계획의 기준 경로입니다.</p>'
                 : ''}
               ${healthcareNoteHtml}
-              <p style="font-size: 9.5px; color: #64748b; margin: 0 0 8px;">* 「현금 배당」만 총소득과 생활비 재원에 포함됩니다. 「재투자 배당」은 일반 투자자산·ISA 계좌 안에 남은 세후 금액으로, 총소득에는 포함되지 않지만 총자산에는 반영됩니다.</p>
+              <p style="font-size: 9.5px; color: #64748b; margin: 0 0 8px;">* 「현금 배당」만 총소득과 생활비 재원에 포함됩니다. 「재투자 배당」은 일반 투자자산·ISA 계좌 안에 남은 세후 금액으로, 총소득에는 포함되지 않지만 총자산에는 반영됩니다.</p>${pensionSettlementNoteHtml}
               <table class="pdf-data-table" style="width: 100%; border-collapse: collapse; font-size: 8.5px;">
                 <thead>
                   <tr>
@@ -543,6 +547,9 @@ ${accountListsHtml}
 
             <h3 style="font-size: 13px; color: #0f172a; margin-top: 18px; margin-bottom: 6px;">세금 설정 (2024년 기준 단순화 모델)</h3>
             <p style="font-size: 9.5px; color: #94a3b8; margin: 0 0 6px;">실제 과세는 계좌·상품·소득 구간과 최신 세법에 따라 달라질 수 있으며, 세액공제·지방소득세 등 일부 항목은 포함하지 않습니다.</p>
+            ${nationalPension.expectedMonthlyAmount > 0
+              ? '<p style="font-size: 9.5px; color: #94a3b8; margin: 0 0 6px;">국민연금은 실제로 2002년 이후 납입분에 대응하는 부분만 과세되지만, 납입 이력 입력이 없어 전액을 과세 대상으로 계산합니다. 국민연금 세액이 실제보다 높게 나오며, 이것이 이 세금 모델의 가장 큰 오차원입니다.</p>'
+              : ''}
             <ul style="padding-left: 20px; margin-top: 5px; margin-bottom: 0; font-size: 11px; line-height: 1.45;">
               <li style="margin-bottom: 6px;"><strong>금융소득종합과세 반영:</strong> ${currentTaxSettings.enableComprehensiveTax ? `반영 (2천만원 초과분 ${currentTaxSettings.comprehensiveTaxRate}% 추가 과세)` : '미반영'}</li>
               <li style="margin-bottom: 6px;"><strong>추가 건강보험료 반영:</strong> ${currentTaxSettings.enableHealthInsurance ? `반영 (초과분 ${currentTaxSettings.healthInsuranceRate}%)` : '미반영'}</li>
@@ -583,6 +590,17 @@ ${accountListsHtml}
         ? '<p style="font-size: 9.5px; color: #94a3b8; margin: 0 0 8px;">* 「생활비」 열에는 의료비·장기요양비가 합산되어 있습니다(별도 지출이 아니라 같은 금액의 내역입니다). 다만 자산이 고갈된 해에는 인출 가능한 금액까지만 표시되므로 의료비 전액이 반영되지 않을 수 있습니다.</p>'
         : '';
 
+      // 사적연금 소득이 그해 생활비를 채운 금액보다 작아지는 해가 있으면 그 이유를 밝힌다.
+      // 화면(IncomeCompositionChart)과 같은 함수·같은 문장을 쓴다.
+      const privatePensionTaxSettlement = describePrivatePensionTaxSettlement(
+        yearlyResults, formatValuePrint,
+      );
+      // 줄바꿈·들여쓰기를 값 안에 넣는다. 빈 값일 때 공백만 있는 줄을 남기지 않기 위해서다
+      // (바로 위 assetProjection 각주와 같은 방식).
+      const pensionSettlementNoteHtml = privatePensionTaxSettlement
+        ? `\n              <p style="font-size: 9.5px; color: #64748b; margin: 0 0 8px;">* ${privatePensionTaxSettlement.sentence}</p>`
+        : '';
+
       const realValueNoteHtml = inflationMode === 'real'
         ? '<p style="font-size: 9.5px; color: #94a3b8; margin: 0 0 8px;">* 아래 금액은 모두 오늘 시점 기준 실질 가치입니다(물가상승률은 자산 성장률에 사전 차감 반영되었습니다). 명목(미래 실제 지급) 금액이 아닙니다.</p>'
         : '<p style="font-size: 9.5px; color: #94a3b8; margin: 0 0 8px;">* 아래 금액은 물가상승률이 매년 누적 반영된 명목 가치입니다.</p>';
@@ -590,7 +608,8 @@ ${accountListsHtml}
       // 섹션 번호는 여러 페이지로 나뉘어도 하나다 — 첫 청크에서만 소비한다.
       const yearlyTables = renderYearlyTablePages({
         chunks, hasSpendingSection, nextSection, nextPage, formatValuePrint,
-        hasHealthcareCost, healthcareNoteHtml, realValueNoteHtml, copyrightYear, assetProjection,
+        hasHealthcareCost, healthcareNoteHtml, realValueNoteHtml, pensionSettlementNoteHtml,
+        copyrightYear, assetProjection,
       });
       pagesHtml += yearlyTables.html;
       firstYearlyTablePageNo = yearlyTables.firstPageNo;
