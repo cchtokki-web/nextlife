@@ -6,6 +6,7 @@ import { DEFAULT_UTILITY_CONFIG } from '@/core/usecases/utility/utilityWeights';
 import { describeStrategyChanges } from '@/core/usecases/dashboard/describeStrategyChanges';
 import { previewStrategyApply } from '@/core/usecases/dashboard/applyStrategyToParams';
 import { StrategyRecommendationCards } from '@/web/features/Dashboard/recommendation/StrategyRecommendationCards';
+import { LEGACY_GOAL_CONDITIONS } from '@/tests/fixtures/goalFailure';
 
 const params: SimulationParams = {
   userProfile: { currentAge: 50, retirementAge: 60, expectancy: 90, targetMonthlySpending: 3_500_000 },
@@ -79,11 +80,13 @@ function candidate(
       seed: 20260101,
       goalSuccessProbability: probability,
       spendingSuccessProbability: probability,
+      averageSpendingFulfillmentRate: Math.min(1, probability + 0.1),
       assetSurvivalProbability: probability,
       terminalAssetMedian: 300_000_000 - rank,
       terminalAssetP10: 100_000_000,
       terminalAssetP90: 500_000_000,
       shortfallProbability: 1 - probability,
+      goalConditions: LEGACY_GOAL_CONDITIONS,
     },
   };
 }
@@ -100,6 +103,28 @@ function cardTitled(label: string): HTMLElement {
 }
 
 describe('StrategyRecommendationCards', () => {
+  test('추천마다 생활비 완전 충족·비이진 충족도·자산 유지·판정 조건을 함께 보여준다', () => {
+    const item: CandidateRecommendation = {
+      persona: 'BALANCED', label: '균형형', reason: '균형 검증', candidate: candidate(1, 'FIXED', 0.39),
+    };
+    render(
+      <StrategyRecommendationCards
+        status="done"
+        recommendations={[item]}
+        primary={item}
+        params={params}
+        formatValue={formatValue}
+      />
+    );
+
+    const card = cardTitled('균형형');
+    expect(card).toHaveTextContent('목표 달성 확률39%');
+    expect(card).toHaveTextContent('목표생활비 완전 충족률39%');
+    expect(card).toHaveTextContent('평균 목표생활비 충족도49%');
+    expect(card).toHaveTextContent('90세까지 자산 유지 확률39%');
+    expect(card).toHaveTextContent('목표 달성 확률 판정 조건: 목표생활비 완전 충족 · 90세까지 자산 유지');
+  });
+
   test('추천 결과가 없으면 후보만으로 페르소나를 지어내지 않는다', () => {
     render(
       <StrategyRecommendationCards

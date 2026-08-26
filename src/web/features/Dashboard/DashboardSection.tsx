@@ -315,12 +315,12 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
           </div>
           <div className={styles.diagnosisGrid}>
             <div>
-              <span>시뮬레이션 성공률</span>
+              <span>목표 달성 확률</span>
               <strong>{probabilityLabel}</strong>
               {currentGoalProbability !== undefined && monteCarlo && (
                 <small>
                   {monteCarlo.trials.toLocaleString()}회 중{' '}
-                  {Math.round(currentGoalProbability * monteCarlo.trials).toLocaleString()}회 성공
+                  {Math.round(currentGoalProbability * monteCarlo.trials).toLocaleString()}회가 판정 조건 충족
                 </small>
               )}
             </div>

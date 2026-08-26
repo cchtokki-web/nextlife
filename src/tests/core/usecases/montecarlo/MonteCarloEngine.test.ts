@@ -265,6 +265,21 @@ describe('runMonteCarlo', () => {
     expect(mc.goalSuccessProbability).toBeLessThanOrEqual(mc.successRate);
   });
 
+  test('한 번의 부족을 전체 실패로만 접지 않고 평균 목표생활비 충족도를 함께 보고한다', () => {
+    const poor = params({
+      assets: [],
+      privatePensions: [],
+      nationalPension: { expectedMonthlyAmount: 1_500_000 },
+      userProfile: { currentAge: 59, retirementAge: 60, expectancy: 65, targetMonthlySpending: 2_000_000 },
+    });
+
+    const mc = runMonteCarlo(poor, engine, config({ trials: 10, annualStdDev: 0 }));
+
+    expect(mc.spendingSuccessRate).toBe(0);
+    expect(mc.averageSpendingFulfillmentRate).toBeGreaterThan(0);
+    expect(mc.averageSpendingFulfillmentRate).toBeLessThan(1);
+  });
+
   test('validate는 optimizer용 이름으로 옮기기만 하고 값을 새로 만들지 않는다', () => {
     // **세 확률이 서로 달라야 의미가 있는 테스트다.**
     // 기본 fixture는 successRate = spendingSuccessRate = goalSuccessProbability = 0.62라,
@@ -302,6 +317,7 @@ describe('runMonteCarlo', () => {
 
     // 같은 seed·trials이므로 두 실행은 동일해야 한다. 이름만 달라진다.
     expect(validated.spendingSuccessProbability).toBe(direct.spendingSuccessRate);
+    expect(validated.averageSpendingFulfillmentRate).toBe(direct.averageSpendingFulfillmentRate);
     expect(validated.assetSurvivalProbability).toBe(direct.successRate);
     expect(validated.goalSuccessProbability).toBe(direct.goalSuccessProbability);
     expect(validated.terminalAssetMedian).toBe(direct.endingAssets.p50);
@@ -397,6 +413,7 @@ describe('MonteCarloEngine strategy validation', () => {
     expect(first).toMatchObject({ trials: 30, seed: 77 });
     expect(first.goalSuccessProbability).toBeGreaterThanOrEqual(0);
     expect(first.spendingSuccessProbability).toBeGreaterThanOrEqual(0);
+    expect(first.averageSpendingFulfillmentRate).toBeGreaterThanOrEqual(0);
     expect(first.assetSurvivalProbability).toBeGreaterThanOrEqual(0);
     expect(first.terminalAssetP10).toBeLessThanOrEqual(first.terminalAssetMedian);
     expect(first.terminalAssetMedian).toBeLessThanOrEqual(first.terminalAssetP90);

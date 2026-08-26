@@ -77,6 +77,9 @@ export function MonteCarloSection({
 
   const assetPercent = Math.round(monteCarlo.successRate * 100);
   const spendingPercent = Math.round(monteCarlo.spendingSuccessRate * 100);
+  const averageFulfillmentPercent = monteCarlo.averageSpendingFulfillmentRate === undefined
+    ? undefined
+    : Math.round(monteCarlo.averageSpendingFulfillmentRate * 1000) / 10;
   // 문구는 core가 만든다. PDF와 «같은 문장»이어야 하고, 그 판정 규칙(어느 축이 사용자 입력을
   // 덮었는지, 어느 금액이 판정 기준인지)은 엔진의 것이기 때문이다
   // (describeMonteCarloAssumptions·describeSuccessRates 주석).
@@ -115,16 +118,27 @@ export function MonteCarloSection({
               {successRateCopy.compositeNote}
             </p>
           )}
-          <dl className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <dl className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
             <div>
-              <dt className="text-sm font-semibold">생활 유지 성공률</dt>
+              <dt className="text-sm font-semibold">목표생활비 완전 충족률</dt>
               <dd className="font-display text-2xl font-semibold">{spendingPercent}%</dd>
               <p className="mt-0.5 text-xs text-foreground-muted" data-testid="spending-success-caption">
                 {successRateCopy?.spendingCaption}
               </p>
             </div>
+            {averageFulfillmentPercent !== undefined && (
+              <div>
+                <dt className="text-sm font-semibold">평균 목표생활비 충족도</dt>
+                <dd className="font-display text-2xl font-semibold">{averageFulfillmentPercent}%</dd>
+                <p className="mt-0.5 text-xs text-foreground-muted">
+                  일부 부족한 시행도 실제로 충당한 금액만큼 반영한 비이진 지표입니다.
+                </p>
+              </div>
+            )}
             <div>
-              <dt className="text-sm font-semibold text-foreground-muted">자산 보존 성공률</dt>
+              <dt className="text-sm font-semibold text-foreground-muted">
+                {monteCarlo.successAge}세까지 자산 유지 확률
+              </dt>
               <dd className="font-display text-2xl font-semibold text-foreground-muted">{assetPercent}%</dd>
               <p className="mt-0.5 text-xs text-foreground-muted" data-testid="asset-success-caption">
                 {successRateCopy?.assetCaption}

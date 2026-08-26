@@ -65,7 +65,7 @@ export function generateRuleBasedAdvice(
   } else if (band !== undefined && typeof monteCarloSpendingSuccessRate === 'number') {
     const spendingPercent = Math.round(monteCarloSpendingSuccessRate * 100);
     const assetClause = typeof monteCarloSuccessRate === 'number'
-      ? `, 자산 보존 성공률은 **${Math.round(monteCarloSuccessRate * 100)}%**`
+      ? `, 기대수명까지 자산 유지 확률은 **${Math.round(monteCarloSuccessRate * 100)}%**`
       : '';
     statusText =
       `시장 변동을 반영하면 계획한 생활비를 한 해도 줄이지 않을 확률은 **${spendingPercent}%**${assetClause}로, ` +

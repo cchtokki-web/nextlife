@@ -355,6 +355,7 @@
 .strategyMetrics dt { font-size: 0.75rem; color: var(--foreground-muted); }
 .strategyMetrics dd { text-align: right; font-size: 0.9rem; font-weight: 700; color: var(--foreground); }
 .strategyMetrics > div:first-child dd { font-size: 1.15rem; color: var(--success); }
+.strategyProbabilityCriteria { margin: 0.65rem 0 0; color: var(--foreground-muted); font-size: 0.75rem; line-height: 1.45; }
 
 .strategyChanges { margin-top: 1rem; padding-top: 0.9rem; border-top: 1px solid var(--card-border); }
 .strategyChanges h4 { font-size: 0.78rem; font-weight: 700; color: var(--foreground); }

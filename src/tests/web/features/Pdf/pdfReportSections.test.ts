@@ -65,7 +65,7 @@ describe('renderShortfallSummarySection', () => {
     expect(html).not.toContain('계획한 생활비조차 채우지 못하는 구간');
     expect(html).toContain('기준 수익률이 실현된다는 가정에서는');
     expect(html).toContain('90세까지 계획이 유지됩니다');
-    expect(html).toContain('생활 유지 성공률');
+    expect(html).toContain('목표생활비 완전 충족률');
     expect(html).toContain('39%');
     // 확정형 표현이 되살아나면 여기서 잡힌다.
     expect(html).not.toContain('자산이 계획대로 유지됩니다');
@@ -550,8 +550,8 @@ describe('renderPlanVerdictSection', () => {
     expect(html).toContain('가정대로 실현될 때');
     expect(html).toContain('시장 변동성 반영');
     expect(html).toContain('1,000회 시뮬레이션');
-    expect(html).toContain('시뮬레이션 성공률 37%');
-    expect(html).toContain('1,000회 중 370회 성공');
+    expect(html).toContain('목표 달성 확률 37%');
+    expect(html).toContain('1,000회 중 370회가 판정 조건 충족');
     expect(html).toContain('실제 미래 결과를 보장하지 않습니다');
   });
 
@@ -677,7 +677,7 @@ describe('renderMonteCarloSection', () => {
 
     expect(html).toContain('같은 시행에서');
     expect(html).toContain('곱하거나 더한 값이 아닙니다');
-    expect(html.indexOf('곱하거나 더한 값이 아닙니다')).toBeLessThan(html.indexOf('생활 유지 성공률'));
+    expect(html.indexOf('곱하거나 더한 값이 아닙니다')).toBeLessThan(html.indexOf('목표생활비 완전 충족률'));
     // 두 비율이 판정 술어와 «같다»고 주장하던 옛 문구는 남기지 않는다(AUDIT-003).
     expect(html).not.toContain('그 확률을 이루는 두 성분');
   });

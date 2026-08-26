@@ -79,11 +79,11 @@ export function buildSimulationContextText(body: AiAdvisorRequestBody): string {
     const parts: string[] = [];
     if (typeof monteCarloSpendingSuccessRate === 'number') {
       parts.push(
-        `생활 유지 성공률(계획한 생활비를 한 해도 줄이지 않을 확률) ${Math.round(monteCarloSpendingSuccessRate * 100)}%`
+        `목표생활비 완전 충족률(계획한 생활비를 한 해도 줄이지 않을 확률) ${Math.round(monteCarloSpendingSuccessRate * 100)}%`
       );
     }
     if (typeof monteCarloSuccessRate === 'number') {
-      parts.push(`자산 보존 성공률(기대수명까지 자산이 남을 확률) ${Math.round(monteCarloSuccessRate * 100)}%`);
+      parts.push(`기대수명까지 자산 유지 확률 ${Math.round(monteCarloSuccessRate * 100)}%`);
     }
     lines.push(
       `- 시장 변동성 분석: ${parts.join(' / ')}. ` +

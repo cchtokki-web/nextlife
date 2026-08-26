@@ -10,6 +10,7 @@ import type { SustainableSpendingAdvice } from '../../../../core/usecases/dashbo
 import type { StrategyOptimizationStatus } from '../../../hooks/useStrategyOptimization';
 import type { AppliedStrategySnapshot } from '../../../hooks/useAppliedStrategy';
 import { RETIREMENT_GOAL_CONSTRAINT_LABELS } from '../../../../core/entities/retirementGoal';
+import { describeGoalSuccessCriteria } from '../../../../core/usecases/goals/goalSuccessConditions';
 import { hardConstraintLabel, RETIREMENT_GOAL_CATALOG } from '../../RetirementGoals/goalCatalog';
 import GlassCard from '../../../components/GlassCard';
 import styles from '../Dashboard.module.css';
@@ -472,6 +473,14 @@ function RecommendationBody({
         {finalRecommendations.map((recommendation) => {
           const candidate = recommendation.candidate;
           const probability = candidate.monteCarlo.goalSuccessProbability;
+          const averageFulfillment = candidate.monteCarlo.averageSpendingFulfillmentRate;
+          const criteria = candidate.monteCarlo.goalConditions
+            ? describeGoalSuccessCriteria(
+              candidate.monteCarlo.goalConditions,
+              params.userProfile.expectancy,
+              formatValue,
+            )
+            : null;
           const changes = describeStrategyChanges(params, candidate, formatValue);
           // 테두리 강조는 «지금 적용된» 카드에만 준다. 엔진이 고른 ☆추천은 배지가 말하고,
           // 적용 상태는 그 카드가 다른 카드와 다르게 보인다는 것으로 말한다. 아무것도
@@ -521,11 +530,29 @@ function RecommendationBody({
                     )}
                   </dd>
                 </div>
-                <div><dt>생활비</dt><dd>월 {formatValue(candidate.candidate.strategy.targetMonthlySpending)}</dd></div>
+                <div>
+                  <dt>목표생활비 완전 충족률</dt>
+                  <dd>{Math.round(candidate.monteCarlo.spendingSuccessProbability * 100)}%</dd>
+                </div>
+                {averageFulfillment !== undefined && (
+                  <div>
+                    <dt>평균 목표생활비 충족도</dt>
+                    <dd>{Math.round(averageFulfillment * 1000) / 10}%</dd>
+                  </div>
+                )}
+                <div>
+                  <dt>{params.userProfile.expectancy}세까지 자산 유지 확률</dt>
+                  <dd>{Math.round(candidate.monteCarlo.assetSurvivalProbability * 100)}%</dd>
+                </div>
                 {/* 결정론 경로의 endingAssets로 대체하지 않는다. 같은 라벨 아래에서 1,000회
                     시행의 중앙값과 단일 경로 값이 섞이면 사용자는 둘을 구분할 수 없다. */}
                 <div><dt>예상 잔여자산(중앙값)</dt><dd>{formatValue(candidate.monteCarlo.terminalAssetMedian)}</dd></div>
               </dl>
+              {criteria && (
+                <p className={styles.strategyProbabilityCriteria}>
+                  목표 달성 확률 판정 조건: {criteria}
+                </p>
+              )}
 
               <div className={styles.strategyChanges}>
                 <h4>현재 계획에서 달라지는 점</h4>

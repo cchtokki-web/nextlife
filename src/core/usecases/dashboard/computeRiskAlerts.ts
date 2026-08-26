@@ -67,10 +67,11 @@ function buildPensionGapAlert(
     ? gap.monthlyAssetWithdrawal > 0
       ? `이 기간에는 자산에서 월 평균 ${money(gap.monthlyAssetWithdrawal)}을 인출하고, ` +
         `${gap.shortfallYears}년은 계획 생활비를 월 평균 ${money(gap.averageMonthlyShortfall)} 채우지 못합니다. ` +
-        `인출액과 부족분을 합쳐 필요한 자금은 약 ${money(gap.bridgeAmount)}입니다.`
+        `공백기 실제 자산 인출액은 약 ${money(gap.assetWithdrawalAmount)}, 미충족 생활비를 추가로 ` +
+        `채우는 금액은 약 ${money(gap.shortfallAmount)}이며, 둘을 합친 총 필요자금은 약 ${money(gap.bridgeAmount)}입니다.`
       : `${gap.shortfallYears}년은 일반자산 인출 시작 조건 때문에 계획 생활비를 월 평균 ` +
         `${money(gap.averageMonthlyShortfall)} 채우지 못합니다. 이 부족분을 메우는 데 필요한 ` +
-        `자금은 약 ${money(gap.bridgeAmount)}입니다.`
+        `자금은 약 ${money(gap.shortfallAmount)}입니다.`
     : `생활비를 위해 자산에서 월 평균 ${money(gap.monthlyAssetWithdrawal)}을 인출합니다. ` +
       `이 기간의 시장 하락은 회복할 원금을 줄일 수 있으므로, 약 ${money(gap.bridgeAmount)}을 ` +
       `변동성이 낮은 자금으로 확보하는 것이 좋습니다.`;

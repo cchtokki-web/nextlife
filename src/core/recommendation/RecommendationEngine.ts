@@ -163,19 +163,35 @@ function compareNumberDescending(left: number, right: number): number {
 function stableComparator(left: ValidatedStrategyCandidate, right: ValidatedStrategyCandidate): number {
   return compareNumberDescending(left.monteCarlo.assetSurvivalProbability, right.monteCarlo.assetSurvivalProbability)
     || compareNumberDescending(left.monteCarlo.terminalAssetP10, right.monteCarlo.terminalAssetP10)
+    || compareNumberDescending(
+      left.monteCarlo.averageSpendingFulfillmentRate ?? left.monteCarlo.spendingSuccessProbability,
+      right.monteCarlo.averageSpendingFulfillmentRate ?? right.monteCarlo.spendingSuccessProbability,
+    )
     || compareNumberDescending(left.monteCarlo.spendingSuccessProbability, right.monteCarlo.spendingSuccessProbability)
     || left.candidate.id.localeCompare(right.candidate.id);
 }
 
 function balancedComparator(left: ValidatedStrategyCandidate, right: ValidatedStrategyCandidate): number {
   return compareNumberDescending(left.monteCarlo.goalSuccessProbability, right.monteCarlo.goalSuccessProbability)
+    || compareNumberDescending(
+      left.monteCarlo.averageSpendingFulfillmentRate ?? left.monteCarlo.spendingSuccessProbability,
+      right.monteCarlo.averageSpendingFulfillmentRate ?? right.monteCarlo.spendingSuccessProbability,
+    )
+    || compareNumberDescending(left.monteCarlo.assetSurvivalProbability, right.monteCarlo.assetSurvivalProbability)
+    || compareNumberDescending(left.monteCarlo.terminalAssetMedian, right.monteCarlo.terminalAssetMedian)
     || compareNumberDescending(left.evaluation.weightedScore, right.evaluation.weightedScore)
     || compareNumberDescending(left.monteCarlo.spendingSuccessProbability, right.monteCarlo.spendingSuccessProbability)
     || left.candidate.id.localeCompare(right.candidate.id);
 }
 
 function comfortableComparator(left: ValidatedStrategyCandidate, right: ValidatedStrategyCandidate): number {
-  return compareNumberDescending(left.monteCarlo.spendingSuccessProbability, right.monteCarlo.spendingSuccessProbability)
+  return compareNumberDescending(
+    left.monteCarlo.averageSpendingFulfillmentRate ?? left.monteCarlo.spendingSuccessProbability,
+    right.monteCarlo.averageSpendingFulfillmentRate ?? right.monteCarlo.spendingSuccessProbability,
+  )
+    || compareNumberDescending(left.monteCarlo.spendingSuccessProbability, right.monteCarlo.spendingSuccessProbability)
+    || compareNumberDescending(left.monteCarlo.assetSurvivalProbability, right.monteCarlo.assetSurvivalProbability)
+    || compareNumberDescending(left.monteCarlo.terminalAssetMedian, right.monteCarlo.terminalAssetMedian)
     || compareNumberDescending(left.monteCarlo.goalSuccessProbability, right.monteCarlo.goalSuccessProbability)
     || compareNumberDescending(left.evaluation.weightedScore, right.evaluation.weightedScore)
     || left.candidate.id.localeCompare(right.candidate.id);

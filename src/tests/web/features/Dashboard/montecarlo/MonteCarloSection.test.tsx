@@ -36,6 +36,7 @@ function makeMonteCarlo(overrides: Partial<MonteCarloResult> = {}): MonteCarloRe
     successAge: 90,
     successRate: 0.87,
     spendingSuccessRate: 0.81,
+    averageSpendingFulfillmentRate: 0.973,
     goalSuccessProbability: 0.81,
     goalFailure: NO_GOAL_FAILURE, goalConditions: LEGACY_GOAL_CONDITIONS,
     plannedMonthlySpending: 2230000,
@@ -107,6 +108,10 @@ describe('MonteCarloSection', () => {
     );
 
     expect(screen.getByText(/87%/)).toBeInTheDocument();
+    expect(screen.getByText('목표생활비 완전 충족률')).toBeInTheDocument();
+    expect(screen.getByText('평균 목표생활비 충족도')).toBeInTheDocument();
+    expect(screen.getByText('97.3%')).toBeInTheDocument();
+    expect(screen.getByText('90세까지 자산 유지 확률')).toBeInTheDocument();
     expect(screen.getByTestId('asset-success-caption')).toHaveTextContent(/90세 이전에 금융자산이 0원이 되지 않은/);
   });
 
