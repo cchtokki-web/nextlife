@@ -310,6 +310,40 @@
   background: var(--panel-bg);
 }
 
+/* 헤더 아래의 본문. 카드 안에서 세로 flex를 이어받아 .strategyCardActions의
+   `margin-top: auto`가 계속 버튼을 바닥에 붙인다. */
+.strategyCardBody {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+/* **세 카드의 첫 지표를 같은 높이에서 시작시킨다.** 카드 설명(reason)은 한 줄짜리와 두
+   줄짜리가 섞여 있어 헤더 높이가 카드마다 달랐고, 그만큼 「목표 달성 확률」부터 아래 모든
+   행이 서로 어긋나 보였다. 카드마다 min-height를 박아 두 줄을 예약하는 방식은 폭이 좁아져
+   세 줄로 접히는 순간 다시 어긋나므로 쓰지 않는다.
+   부모 그리드가 [헤더][본문] 두 행을 갖고 각 카드가 subgrid로 그 행을 물려받으면, 헤더 행
+   높이는 «가장 높은 헤더»에 맞춰 세 카드 공통으로 결정된다.
+   좁은 화면(카드를 세로로 쌓는 구간)에서는 맞출 상대가 없으므로 적용하지 않는다.
+   subgrid를 모르는 브라우저는 기존 flex 배치 그대로 남는다. */
+@media (min-width: 769px) {
+  @supports (grid-template-rows: subgrid) {
+    .recommendationGrid {
+      grid-template-rows: auto 1fr;
+      /* 행 간격은 0으로 둔다 — 헤더와 지표 사이 여백은 .strategyMetrics의 margin-top이
+         이미 갖고 있고, 여기에 gap까지 더하면 카드 안 간격만 넓어진다. */
+      row-gap: 0;
+    }
+
+    .strategyCard {
+      display: grid;
+      grid-row: 1 / -1;
+      grid-template-rows: subgrid;
+    }
+  }
+}
+
 /* 적용 상태 알림. 카드 그리드 «밖»에 있어 검증 상태(idle/running)나 결과 종류와 무관하게
    남는다 — 그리드가 사라지는 동안에도 되돌리기가 화면에서 사라지면 안 된다. */
 .appliedStrategyStatus {

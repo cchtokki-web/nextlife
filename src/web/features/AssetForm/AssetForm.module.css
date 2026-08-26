@@ -413,3 +413,18 @@
 .yieldPresetButton:hover {
   background: var(--summary-bg-hover);
 }
+
+/* 지금 입력칸의 수익률이 어디서 왔는지 — 선택된 프리셋(또는 「직접 입력값」). 테두리·배경·
+   글자 굵기를 함께 바꾼다. 색 하나만으로 구분하면 대비가 낮은 화면에서 사라진다. */
+.yieldPresetButton[aria-pressed='true'],
+.yieldPresetButtonActive {
+  border-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 16%, transparent);
+  color: var(--primary);
+  font-weight: 700;
+}
+
+.yieldPresetButton[aria-pressed='true']:hover,
+.yieldPresetButtonActive:hover {
+  background: color-mix(in srgb, var(--primary) 24%, transparent);
+}
