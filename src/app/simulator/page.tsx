@@ -213,6 +213,9 @@ export default function Home() {
         status: strategyOptimizationStatus,
         unsupportedHardGoals: strategyOptimization?.debug?.unsupportedHardGoals,
         outcome: strategyOptimization?.outcome,
+        // 화면의 카드와 같은 출처. 리포트가 현재 계획 실행 결과로 따로 계산하면 두 문서가
+        // 다른 「전」을 기준으로 개선폭을 말한다.
+        baselineOutcome: strategyOptimization?.baselineOutcome,
         // 화면이 쓰는 것과 같은 헬퍼·같은 입력이다. 리포트가 따로 역산하면 두 문서가 다른
         // 「지속 가능한 생활비」를 말할 수 있다.
         sustainableSpendingAdvice: computeSustainableSpendingAdvice(

@@ -103,8 +103,10 @@ function buildPensionBridgeLever({ pensionGap, formatValue }: KeyLeversInput): K
   if (pensionGap === null) return null;
   const detail = pensionGap.shortfallYears > 0
     ? `${pensionGap.years}년의 공백 중 ${pensionGap.shortfallYears}년은 계획 생활비가 월 평균 ` +
-      `${formatValue(pensionGap.averageMonthlyShortfall)} 부족합니다. 실제 자산인출과 부족분을 합친 ` +
-      `필요자금 약 ${formatValue(pensionGap.bridgeAmount)}을 65세 이전에 사용할 수 있게 준비하세요.`
+      `${formatValue(pensionGap.averageMonthlyShortfall)} 부족합니다. 공백기 실제 자산인출 ` +
+      `${formatValue(pensionGap.assetWithdrawalAmount)}과 미충족 생활비 추가 필요액 ` +
+      `${formatValue(pensionGap.shortfallAmount)}을 구분해 보세요. 둘을 합친 총 필요자금 ` +
+      `약 ${formatValue(pensionGap.bridgeAmount)}을 65세 이전에 사용할 수 있게 준비하세요.`
     : `국민연금 개시 전 ${pensionGap.years}년간 월 평균 ${formatValue(pensionGap.monthlyAssetWithdrawal)}을 ` +
       `자산에서 인출합니다. 이 구간용 자금 약 ${formatValue(pensionGap.bridgeAmount)}을 변동성이 낮은 ` +
       '자산으로 따로 확보해 두면, 하필 이 시기에 하락장이 와도 싼 값에 팔지 않아도 됩니다.';

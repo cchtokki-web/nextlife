@@ -137,6 +137,11 @@ export interface MonteCarloResult {
   // 만큼 쓰며 살았는가"에 "그리고 돈이 남았는가"를 덧붙일 근거가 없고, 기대수명에 정확히
   // 고갈되는 경계 시행에서는 실제로 갈린다(successAge 주석의 경계 불일치 참조).
   spendingSuccessRate: number;
+  // **비이진 생활비 충족도.** 각 시행에서 은퇴 후 목표 생활비 총액 중 실제로 충당한 비율을
+  // 구한 뒤 시행 전체를 평균한다(0~1). 한 달이라도 부족하면 실패가 되는 위의 엄격한 확률을
+  // 대체하지 않고 보완한다. 99.9%를 충당한 시행과 전혀 충당하지 못한 시행을 같은 실패 1건으로
+  // 접지 않기 위한 지표다.
+  averageSpendingFulfillmentRate?: number;
   // 사용자가 입력한 목표 생활비, 기대수명까지 자산 생존, 명시된 기말자산 목표를 같은
   // 시행에서 모두 만족한 비율. 두 주변확률의 최솟값으로 추정하지 않고 시행별 교집합을
   // 직접 센다. 정량 판정 기준이 아직 없는 정성 목표는 이 확률에 포함하지 않는다.
@@ -204,9 +209,13 @@ export interface StrategyMonteCarloValidationResult {
   seed: number;
   goalSuccessProbability: number;
   spendingSuccessProbability: number;
+  /** MonteCarloResult.averageSpendingFulfillmentRate의 추천 엔진용 이름. */
+  averageSpendingFulfillmentRate?: number;
   assetSurvivalProbability: number;
   terminalAssetMedian: number;
   terminalAssetP10: number;
   terminalAssetP90: number;
   shortfallProbability: number;
+  /** 39% 같은 추천 확률이 실제로 판정한 조건. 구 결과와 테스트 픽스처 호환을 위해 optional. */
+  goalConditions?: GoalSuccessConditions;
 }

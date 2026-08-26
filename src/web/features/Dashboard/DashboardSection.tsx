@@ -315,12 +315,12 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
           </div>
           <div className={styles.diagnosisGrid}>
             <div>
-              <span>시뮬레이션 성공률</span>
+              <span>목표 달성 확률</span>
               <strong>{probabilityLabel}</strong>
               {currentGoalProbability !== undefined && monteCarlo && (
                 <small>
                   {monteCarlo.trials.toLocaleString()}회 중{' '}
-                  {Math.round(currentGoalProbability * monteCarlo.trials).toLocaleString()}회 성공
+                  {Math.round(currentGoalProbability * monteCarlo.trials).toLocaleString()}회가 판정 조건 충족
                 </small>
               )}
             </div>
@@ -395,6 +395,11 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
             <div className={styles.goalShortfallReason}>
               <span>{goalShortfallExplanation.label}</span>
               <p>{goalShortfallExplanation.headline}</p>
+              {/* headline은 지배적인 원인 하나만 말한다. 나머지 원인이 화면 어디에도 남지
+                  않으면 사용자는 무엇을 고쳐야 하는지 구성으로 볼 수 없다. */}
+              {goalShortfallExplanation.breakdown && (
+                <p className={styles.goalShortfallHint}>{goalShortfallExplanation.breakdown}</p>
+              )}
               {goalShortfallExplanation.hint && (
                 <p className={styles.goalShortfallHint}>{goalShortfallExplanation.hint}</p>
               )}
@@ -438,6 +443,9 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
           errorMessage={strategyOptimizationError}
           unsupportedHardGoals={strategyOptimization?.debug?.unsupportedHardGoals}
           outcome={strategyOptimization?.outcome}
+          // 「적용하면 달라지는 수치」의 «전». 화면이 들고 있는 result가 아니라 옵티마이저가
+          // 같은 경로에서 낸 현상 유지 후보의 요약이다(baselineOutcome 주석).
+          baselineOutcome={strategyOptimization?.baselineOutcome}
           sustainableSpendingAdvice={sustainableSpendingAdvice}
           params={params}
           formatValue={formatValue}

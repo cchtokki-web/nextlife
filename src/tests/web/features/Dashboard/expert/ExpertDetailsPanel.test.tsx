@@ -153,6 +153,32 @@ describe('ExpertDetailsPanel - 피부양자 자격 상실 시 건강보험료', 
   });
 });
 
+// 이 모델의 가장 큰 오차원(TaxEngine.calculatePensionIncomeTaxKRW의 「알려진 과대 계상」)이
+// 코드 주석에만 있고 화면 어디에도 없었다. 세금이 실제보다 높게 나오는 방향이라, 밝히지
+// 않으면 사용자는 계산값을 그대로 실제 세부담으로 읽는다.
+describe('ExpertDetailsPanel - 국민연금 과세 범위 고지', () => {
+  test('국민연금이 있으면 전액 과세로 계산한다는 사실과 그 방향을 밝힌다', () => {
+    render(<ExpertDetailsPanel result={result} params={params} formatValue={formatValue} sensitivity={sensitivity} isPro={false} />);
+
+    expect(screen.getByText(/2002년 이후 납입분에 대응하는 부분만/)).toBeInTheDocument();
+    expect(screen.getByText(/실제보다\s*높게 나오며/)).toBeInTheDocument();
+  });
+
+  test('국민연금이 없으면 해당 없는 고지를 띄우지 않는다', () => {
+    render(
+      <ExpertDetailsPanel
+        result={result}
+        params={{ ...params, nationalPension: { expectedMonthlyAmount: 0 } }}
+        formatValue={formatValue}
+        sensitivity={sensitivity}
+        isPro={false}
+      />
+    );
+
+    expect(screen.queryByText(/2002년 이후 납입분에 대응하는 부분만/)).not.toBeInTheDocument();
+  });
+});
+
 describe('ExpertDetailsPanel - 법정 연금수령한도 미판정', () => {
   test('저율과세 기준과 법정 연금수령한도를 구분한다', () => {
     const pensionResult: SimulationResult = {

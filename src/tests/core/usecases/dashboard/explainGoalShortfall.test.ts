@@ -45,6 +45,50 @@ function breakdown(overrides: Partial<GoalFailureBreakdown> = {}): GoalFailureBr
   };
 }
 
+// P1-3. headline은 지배적인 원인 하나만 말한다. 나머지 원인이 어디에도 남지 않으면
+// 사용자는 「무엇을 고쳐야 하는가」를 구성으로 볼 수 없다.
+describe('실패 원인 분해', () => {
+  test('판정에 반영된 원인이 둘 이상이면 원인별 횟수를 함께 낸다', () => {
+    const result = explainGoalShortfall({
+      goalFailure: breakdown({
+        spendingShortfall: 800, assetDepletion: 300, medianFirstShortfallAge: 62,
+      }),
+      trials: 1000, params: params(), formatValue,
+    });
+
+    expect(result.cause).toBe('spending');
+    expect(result.breakdown).toContain('생활비 부족 800회');
+    expect(result.breakdown).toContain('자산 고갈 300회');
+    // 한 시행이 두 원인에 함께 해당할 수 있다는 사실을 밝히지 않으면 합계(1,100 > 1,000)가
+    // 계산 오류로 읽힌다.
+    expect(result.breakdown).toContain('합계가 시행 수를 넘을 수 있습니다');
+  });
+
+  test('원인이 하나뿐이면 같은 숫자를 두 번 적지 않는다', () => {
+    const result = explainGoalShortfall({
+      goalFailure: breakdown({ spendingShortfall: 1000, medianFirstShortfallAge: 60 }),
+      trials: 1000, params: params(), formatValue,
+    });
+
+    expect(result.headline).toContain('1,000회');
+    expect(result.breakdown).toBeUndefined();
+  });
+
+  test('판정에 반영되지 않은 관측 고갈은 원인 분해에 넣지 않는다', () => {
+    // 「자산 고갈 방지」를 고르지 않은 계획. 실제 고갈은 400회지만 확률을 깎지 않았으므로
+    // 원인 목록에 넣으면 합이 맞지 않는 것처럼 보인다.
+    const result = explainGoalShortfall({
+      goalFailure: breakdown({
+        spendingShortfall: 600, assetDepletion: 0, observedAssetDepletionCount: 400,
+        medianFirstShortfallAge: 63,
+      }),
+      trials: 1000, params: params(), formatValue,
+    });
+
+    expect(result.breakdown).toBeUndefined();
+  });
+});
+
 describe('explainGoalShortfall', () => {
   test('실패 시행이 없고 고갈도 없으면 모두 만족했다고만 말한다', () => {
     const result = explainGoalShortfall({ goalFailure: breakdown(), trials: 1000, params: params(), formatValue });

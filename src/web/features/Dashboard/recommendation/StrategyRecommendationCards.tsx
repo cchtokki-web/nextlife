@@ -4,12 +4,16 @@ import type { RetirementGoalType } from '../../../../core/entities/retirementGoa
 import type { OptimizationOutcome } from '../../../../core/strategy/StrategyOptimizer';
 // 「달라지는 점」 문구는 core가 소유한다 — PDF 리포트가 같은 함수를 쓴다.
 import { describeStrategyChanges } from '../../../../core/usecases/dashboard/describeStrategyChanges';
-import { improvesOnCurrentPlan, type CandidateRecommendation } from '../../../../core/recommendation/RecommendationEngine';
+// 「달라지는 수치」도 core가 소유한다 — 같은 이유로 PDF 리포트가 같은 함수를 쓴다.
+import { describeStrategyOutcomeChanges } from '../../../../core/usecases/dashboard/describeStrategyOutcomeChanges';
+import type { StrategyPlanOutcome } from '../../../../core/usecases/dashboard/summarizePlanOutcome';
+import { improvesOnCurrentPlan, PRIMARY_SELECTION_NOTE, type CandidateRecommendation } from '../../../../core/recommendation/RecommendationEngine';
 import type { StrategyApplyPreview } from '../../../../core/usecases/dashboard/applyStrategyToParams';
 import type { SustainableSpendingAdvice } from '../../../../core/usecases/dashboard/computeSustainableSpendingAdvice';
 import type { StrategyOptimizationStatus } from '../../../hooks/useStrategyOptimization';
 import type { AppliedStrategySnapshot } from '../../../hooks/useAppliedStrategy';
 import { RETIREMENT_GOAL_CONSTRAINT_LABELS } from '../../../../core/entities/retirementGoal';
+import { describeGoalSuccessCriteria } from '../../../../core/usecases/goals/goalSuccessConditions';
 import { hardConstraintLabel, RETIREMENT_GOAL_CATALOG } from '../../RetirementGoals/goalCatalog';
 import GlassCard from '../../../components/GlassCard';
 import styles from '../Dashboard.module.css';
@@ -41,6 +45,14 @@ interface StrategyRecommendationCardsProps {
   unsupportedHardGoals?: readonly RetirementGoalType[];
   /** Why the run produced no recommendation. Absent means the caller has no result to explain. */
   outcome?: OptimizationOutcome;
+  /**
+   * 현상 유지(= 현재 계획) 후보의 결정론 요약. 「적용하면 달라지는 수치」의 «전» 쪽이다.
+   *
+   * 화면이 들고 있는 현재 계획 실행 결과가 아니라 옵티마이저가 낸 값을 쓴다 — 이유는
+   * StrategyOptimizationResult.baselineOutcome 주석에 있다(전·후가 같은 경로에서 나와야
+   * 차이가 곧 변경의 효과가 된다). 없으면 이 블록을 그리지 않는다.
+   */
+  baselineOutcome?: StrategyPlanOutcome;
   /**
    * 현재 계획에서 「월 얼마까지 쓸 수 있는가」와 목표의 차이. 어떤 전략도 목표에 도달하지
    * 못할 때 그 격차를 숫자로 말하는 데만 쓴다.
@@ -341,6 +353,7 @@ function RecommendationBody({
   errorMessage,
   unsupportedHardGoals,
   outcome,
+  baselineOutcome,
   sustainableSpendingAdvice,
   params,
   formatValue,
@@ -472,7 +485,20 @@ function RecommendationBody({
         {finalRecommendations.map((recommendation) => {
           const candidate = recommendation.candidate;
           const probability = candidate.monteCarlo.goalSuccessProbability;
+          const averageFulfillment = candidate.monteCarlo.averageSpendingFulfillmentRate;
+          const criteria = candidate.monteCarlo.goalConditions
+            ? describeGoalSuccessCriteria(
+              candidate.monteCarlo.goalConditions,
+              params.userProfile.expectancy,
+              formatValue,
+            )
+            : null;
           const changes = describeStrategyChanges(params, candidate, formatValue);
+          // 축이 아니라 «결과»의 전후. 현상 유지 후보가 시뮬레이션까지 가지 못했으면
+          // (HARD 제약 탈락) 비교할 「전」이 없어 빈 배열이고, 아래 블록이 통째로 빠진다.
+          const outcomeChanges = describeStrategyOutcomeChanges(
+            baselineOutcome, candidate.outcome, formatValue,
+          );
           // 테두리 강조는 «지금 적용된» 카드에만 준다. 엔진이 고른 ☆추천은 배지가 말하고,
           // 적용 상태는 그 카드가 다른 카드와 다르게 보인다는 것으로 말한다. 아무것도
           // 적용하지 않았으면 어떤 카드도 강조하지 않는다 — 강조된 카드가 늘 하나 있으면
@@ -521,11 +547,29 @@ function RecommendationBody({
                     )}
                   </dd>
                 </div>
-                <div><dt>생활비</dt><dd>월 {formatValue(candidate.candidate.strategy.targetMonthlySpending)}</dd></div>
+                <div>
+                  <dt>목표생활비 완전 충족률</dt>
+                  <dd>{Math.round(candidate.monteCarlo.spendingSuccessProbability * 100)}%</dd>
+                </div>
+                {averageFulfillment !== undefined && (
+                  <div>
+                    <dt>평균 목표생활비 충족도</dt>
+                    <dd>{Math.round(averageFulfillment * 1000) / 10}%</dd>
+                  </div>
+                )}
+                <div>
+                  <dt>{params.userProfile.expectancy}세까지 자산 유지 확률</dt>
+                  <dd>{Math.round(candidate.monteCarlo.assetSurvivalProbability * 100)}%</dd>
+                </div>
                 {/* 결정론 경로의 endingAssets로 대체하지 않는다. 같은 라벨 아래에서 1,000회
                     시행의 중앙값과 단일 경로 값이 섞이면 사용자는 둘을 구분할 수 없다. */}
                 <div><dt>예상 잔여자산(중앙값)</dt><dd>{formatValue(candidate.monteCarlo.terminalAssetMedian)}</dd></div>
               </dl>
+              {criteria && (
+                <p className={styles.strategyProbabilityCriteria}>
+                  목표 달성 확률 판정 조건: {criteria}
+                </p>
+              )}
 
               <div className={styles.strategyChanges}>
                 <h4>현재 계획에서 달라지는 점</h4>
@@ -553,6 +597,39 @@ function RecommendationBody({
                 )}
               </div>
 
+              {/* **설정이 아니라 결과를 말하는 자리.** 「국민연금 65세 → 60세」만 보고
+                  적용하면 수령액이 30% 깎이는 것을 누른 뒤에 알게 된다. 그 대가를 누르기
+                  전에 같은 카드에서 보여준다(describeStrategyOutcomeChanges). */}
+              {outcomeChanges.length > 0 && (
+                <div className={styles.strategyOutcomeChanges}>
+                  <h4>적용하면 달라지는 수치</h4>
+                  <dl>
+                    {outcomeChanges.map((change) => (
+                      <div key={change.key}>
+                        <dt>{change.label}</dt>
+                        <dd>
+                          <span>{change.before}</span>
+                          <b aria-hidden="true">→</b>
+                          <strong
+                            className={change.direction === 'neutral'
+                              ? undefined
+                              : (change.difference > 0) === (change.direction === 'higher_is_better')
+                                ? styles.outcomeBetter
+                                : styles.outcomeWorse}
+                          >
+                            {change.after}
+                          </strong>
+                        </dd>
+                      </div>
+                    ))}
+                  </dl>
+                  <p className={styles.strategyOutcomeNote}>
+                    현재 계획과 이 전략을 같은 기준 수익률 경로로 각각 다시 계산한 값입니다.
+                    위 확률과 달리 시장 변동은 반영하지 않습니다.
+                  </p>
+                </div>
+              )}
+
               {onApplyStrategy && (
                 <StrategyApplyAction
                   recommendation={recommendation}
@@ -567,6 +644,11 @@ function RecommendationBody({
           );
         })}
       </div>
+      {/* ☆이 왜 저 카드에 붙었는지 밝힌다. 규칙이 「확률 최고」가 아니게 된 뒤로는 밝히지
+          않으면 확률이 더 높은 카드가 옆에 있을 때 배지가 오류로 읽힌다. */}
+      {recommended !== undefined && (
+        <p className={styles.primarySelectionNote}>{PRIMARY_SELECTION_NOTE}</p>
+      )}
     </>
   );
 }

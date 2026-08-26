@@ -29,6 +29,21 @@ export interface GoalSuccessConditions {
   unmeasuredGoals: RetirementGoalType[];
 }
 
+/** 화면과 PDF의 추천 카드가 목표 달성 확률의 판정 조건을 같은 문장으로 설명한다. */
+export function describeGoalSuccessCriteria(
+  conditions: GoalSuccessConditions,
+  successAge: number,
+  formatValue: (value: number) => string,
+): string {
+  const criteria: string[] = [];
+  if (conditions.requireSpendingTarget) criteria.push('목표생활비 완전 충족');
+  if (conditions.requireAssetSurvival) criteria.push(`${successAge}세까지 자산 유지`);
+  if (conditions.terminalAssetGoal > 0) {
+    criteria.push(`기말자산 ${formatValue(conditions.terminalAssetGoal)} 이상`);
+  }
+  return criteria.join(' · ');
+}
+
 // 시행 하나로 판정할 수 있는 목표. 나머지는 세금·연금 활용도처럼 수익률 경로가 아니라
 // 제도·전략 선택으로 갈리는 것이라, 시행별 성공/실패를 물을 대상이 아니다.
 //

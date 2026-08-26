@@ -29,6 +29,8 @@ interface TrialSummary {
   // boolean이 아니라 나이를 드는 이유: "몇 %가 실패했는가"만으로는 원인을 지목할 수 없고,
   // 실패가 **언제부터** 시작되는지가 곧 원인의 종류를 가른다(GoalFailureBreakdown 주석).
   firstGoalShortfallAge: number | null;
+  // 전 은퇴기간 목표 생활비 총액 중 실제 충당 비율. 엄격한 성공/실패 판정을 보완한다.
+  spendingFulfillmentRate: number;
   totalAssetsByYear: number[];
 }
 
@@ -36,17 +38,25 @@ function summarize(
   result: StrategySimulationResult,
   goalParams: SimulationParams,
 ): TrialSummary {
-  const firstShortfallRow = computeMonthlySpendingComposition(
+  const composition = computeMonthlySpendingComposition(
     result.yearlyResults,
     goalParams,
     result,
-  ).find((row) => row.goalShortfall >= SHORTFALL_EPSILON_MONTHLY);
+  );
+  const firstShortfallRow = composition
+    .find((row) => row.goalShortfall >= SHORTFALL_EPSILON_MONTHLY);
+  const totalGoal = composition.reduce((sum, row) => sum + row.goalMonthly, 0);
+  const totalShortfall = composition.reduce((sum, row) => sum + row.goalShortfall, 0);
+  const spendingFulfillmentRate = totalGoal > 0
+    ? Math.max(0, Math.min(1, 1 - totalShortfall / totalGoal))
+    : 1;
 
   return {
     endingAssets: result.endingAssets,
     depletionAge: result.depletionAge,
     hasUnmetSpending: result.yearlyResults.some(hasSpendingShortfall),
     firstGoalShortfallAge: firstShortfallRow?.age ?? null,
+    spendingFulfillmentRate,
     totalAssetsByYear: result.yearlyResults.map((y) => y.totalAssets),
   };
 }
@@ -235,6 +245,9 @@ export function runMonteCarlo(
     successAge,
     successRate: trials.length > 0 ? succeeded.length / trials.length : 0,
     spendingSuccessRate: trials.length > 0 ? spendingSucceeded.length / trials.length : 0,
+    averageSpendingFulfillmentRate: trials.length > 0
+      ? trials.reduce((sum, trial) => sum + trial.spendingFulfillmentRate, 0) / trials.length
+      : 0,
     goalSuccessProbability: trials.length > 0 ? goalSucceeded.length / trials.length : 0,
     simulationSuccessRate: trials.length > 0 ? goalSucceeded.length / trials.length : 0,
     goalFailure,
@@ -298,11 +311,13 @@ export class MonteCarloEngine implements StrategyMonteCarloEngine {
       seed: result.seed,
       goalSuccessProbability: result.goalSuccessProbability,
       spendingSuccessProbability: result.spendingSuccessRate,
+      averageSpendingFulfillmentRate: result.averageSpendingFulfillmentRate,
       assetSurvivalProbability: result.successRate,
       terminalAssetMedian: result.endingAssets.p50,
       terminalAssetP10: result.endingAssets.p10,
       terminalAssetP90: result.endingAssets.p90,
       shortfallProbability: 1 - result.spendingSuccessRate,
+      goalConditions: result.goalConditions,
     };
   }
 }

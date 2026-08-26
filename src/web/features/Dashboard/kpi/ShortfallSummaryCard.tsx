@@ -98,7 +98,7 @@ export function ShortfallSummaryCard({
             </p>
             {spendingSuccessRate !== undefined && (
               <p className="mt-1 text-sm text-foreground-muted">
-                시장 변동성을 고려한 생활 유지 성공률:{' '}
+                시장 변동성을 고려한 목표생활비 완전 충족률:{' '}
                 <strong className="text-foreground">{Math.round(spendingSuccessRate * 100)}%</strong>
                 {spendingSuccessCaption && (
                   <span className="mt-0.5 block text-xs" data-testid="shortfall-success-caption">

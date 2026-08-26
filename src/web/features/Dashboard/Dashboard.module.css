@@ -355,6 +355,7 @@
 .strategyMetrics dt { font-size: 0.75rem; color: var(--foreground-muted); }
 .strategyMetrics dd { text-align: right; font-size: 0.9rem; font-weight: 700; color: var(--foreground); }
 .strategyMetrics > div:first-child dd { font-size: 1.15rem; color: var(--success); }
+.strategyProbabilityCriteria { margin: 0.65rem 0 0; color: var(--foreground-muted); font-size: 0.75rem; line-height: 1.45; }
 
 .strategyChanges { margin-top: 1rem; padding-top: 0.9rem; border-top: 1px solid var(--card-border); }
 .strategyChanges h4 { font-size: 0.78rem; font-weight: 700; color: var(--foreground); }
@@ -370,6 +371,35 @@
    변경점"으로 읽히므로 한 단계 낮춘다 — 계획은 달라지지 않고 설정만 고정된다는 뜻이다.
    적용 후 알림의 「반영하지 못했습니다」(.appliedStrategySkippedNote)와 같은 크기를 쓴다. */
 .strategyChanges .strategyPinNote {
+  margin-top: 0.6rem;
+  font-size: 0.68rem;
+  line-height: 1.5;
+  color: var(--foreground-muted);
+  opacity: 0.85;
+}
+
+/* ☆추천의 선정 근거 한 줄. 카드 그리드 아래에 한 번만 선다. */
+.primarySelectionNote {
+  margin-top: 0.8rem;
+  font-size: 0.7rem;
+  line-height: 1.6;
+  color: var(--foreground-muted);
+}
+
+/* 「적용하면 달라지는 수치」. 바로 위 「달라지는 점」과 같은 표 모양을 쓰되 취소선은 쓰지
+   않는다 — 그쪽의 «전»은 사라질 설정이지만 이쪽의 «전»은 지금 실제로 일어나고 있는 일이라,
+   지워진 것처럼 보이면 안 된다. */
+.strategyOutcomeChanges { margin-top: 0.9rem; padding-top: 0.9rem; border-top: 1px dashed var(--card-border); }
+.strategyOutcomeChanges h4 { font-size: 0.78rem; font-weight: 700; color: var(--foreground); }
+.strategyOutcomeChanges dl { display: grid; gap: 0.6rem; margin-top: 0.65rem; }
+.strategyOutcomeChanges dl > div { display: grid; gap: 0.2rem; }
+.strategyOutcomeChanges dt { font-size: 0.7rem; color: var(--foreground-muted); }
+.strategyOutcomeChanges dd { display: flex; align-items: center; flex-wrap: wrap; gap: 0.3rem; font-size: 0.74rem; }
+.strategyOutcomeChanges dd span, .strategyOutcomeChanges dd b { color: var(--foreground-muted); }
+.strategyOutcomeChanges dd strong { color: var(--foreground); }
+.strategyOutcomeChanges dd strong.outcomeBetter { color: var(--success, #10b981); }
+.strategyOutcomeChanges dd strong.outcomeWorse { color: var(--danger, #ef4444); }
+.strategyOutcomeNote {
   margin-top: 0.6rem;
   font-size: 0.68rem;
   line-height: 1.5;

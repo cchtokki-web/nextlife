@@ -77,6 +77,16 @@ export function ExpertDetailsPanel({
               세금은 <strong className="text-foreground">2024년 기준 단순화 모델</strong>입니다. 부양가족·추가공제,
               재산·자동차분 건강보험료, 일부 국내상장 해외·채권형 ETF의 과세 차이는 반영하지 않습니다.
             </p>
+            {/* 이 모델의 가장 큰 오차원인데 화면 어디에도 적혀 있지 않았다. 부양가족·추가공제와
+                같은 방향(세금이 실제보다 높게 나온다)이라 위 문장과 나란히 둔다.
+                근거는 TaxEngine.calculatePensionIncomeTaxKRW의 「알려진 과대 계상」 주석. */}
+            {(params.nationalPension?.expectedMonthlyAmount ?? 0) > 0 && (
+              <p className="mt-1 text-xs leading-relaxed text-foreground-muted">
+                국민연금은 실제로 <strong className="text-foreground">2002년 이후 납입분에 대응하는 부분만</strong> 과세되지만,
+                납입 이력 입력이 없어 전액을 과세 대상으로 계산합니다. 그래서 국민연금 세액은 실제보다
+                높게 나오며, 이것이 이 세금 모델의 가장 큰 오차원입니다.
+              </p>
+            )}
             <p className="mt-1 text-xs leading-relaxed text-foreground-muted">
               예상 건강보험료는 현금흐름 계산값이고, 피부양자 자격 위험은 세전 판정용 소득으로 별도 평가합니다.
               따라서 보험료가 0원이어도 자격 위험이 표시될 수 있습니다. 재산 입력이 없어 최종 피부양자

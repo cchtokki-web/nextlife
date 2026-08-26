@@ -179,11 +179,11 @@ describe('DashboardSection - IA 순서', () => {
   });
 
   // 100%도 미래 보장으로 읽히지 않게 표시는 「시뮬레이션 성공률」로 한정한다.
-  test('진단 확률은 시뮬레이션 성공률로 부른다', () => {
+  test('진단 확률은 판정 의미가 드러나는 목표 달성 확률로 부른다', () => {
     render(<DashboardSection params={params} result={result} recommendation={recommendation} />);
 
-    expect(screen.getByText('시뮬레이션 성공률')).toBeInTheDocument();
-    expect(screen.queryByText('목표 달성 확률')).not.toBeInTheDocument();
+    expect(screen.getByText('목표 달성 확률')).toBeInTheDocument();
+    expect(screen.queryByText('시뮬레이션 성공률')).not.toBeInTheDocument();
     expect(screen.queryByText('현재 목표 달성률')).not.toBeInTheDocument();
     expect(screen.queryByText('목표 성공확률')).not.toBeInTheDocument();
   });
@@ -782,8 +782,8 @@ describe('DashboardSection - 현재 계획 진단', () => {
       />
     );
 
-    expect(diagnosis()).toHaveTextContent('시뮬레이션 성공률');
-    expect(diagnosis()).toHaveTextContent('1,000회 중 1,000회 성공');
+    expect(diagnosis()).toHaveTextContent('목표 달성 확률');
+    expect(diagnosis()).toHaveTextContent('1,000회 중 1,000회가 판정 조건 충족');
     expect(diagnosis()).toHaveTextContent('실제 미래 결과를 보장하지 않습니다');
   });
 

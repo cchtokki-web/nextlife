@@ -37,6 +37,7 @@ import {
   type HardConstraintRejectionCode,
   type PreSimulationRejectionCode,
 } from './HardConstraintFilter';
+import { summarizePlanOutcome, type StrategyPlanOutcome } from '../usecases/dashboard/summarizePlanOutcome';
 
 export type { PreSimulationRejectionCode } from './HardConstraintFilter';
 
@@ -48,6 +49,14 @@ export interface RankedStrategyCandidate {
   evaluation: GoalEvaluationResult;
   /** Present only when this candidate reached final Monte Carlo validation. */
   monteCarlo?: StrategyMonteCarloValidationResult;
+  /**
+   * 이 후보의 결정론 원장을 접은 요약(국민연금 실수령액·인출액·세부담).
+   *
+   * 「국민연금 65세 → 60세」 같은 축 변경이 실제 금액을 얼마나 바꾸는지 카드가 말하려면
+   * 필요하다. 옵티마이저 경로에서만 채워지므로 optional이다 — 후보를 손으로 만드는
+   * 테스트·픽스처가 이 필드 없이도 유효해야 한다(monteCarlo와 같은 이유).
+   */
+  outcome?: StrategyPlanOutcome;
 }
 
 export interface StrategyOptimizerDebug {
@@ -118,6 +127,19 @@ export interface StrategyOptimizationResult {
    * 페르소나는 빠지므로 3개 미만일 수 있다.
    */
   recommendations: FinalStrategyRecommendations;
+  /**
+   * 현상 유지(= 현재 계획) 후보의 결정론 요약. 카드의 「적용 후 달라지는 수치」에서 «전» 쪽이다.
+   *
+   * 화면이 들고 있는 현재 계획 실행 결과를 쓰지 않고 여기서 함께 내는 이유: 그쪽은
+   * 화면 파이프라인(compileStrategy → applyAiSentinels → engine.run)이 만든 것이고
+   * 후보 쪽은 StrategyGenerator가 만든 전략을 SimulationEngine.simulate로 돌린 것이라,
+   * 두 경로가 미세하게 달라지면 «아무것도 바꾸지 않는» 후보에도 0이 아닌 차이가 찍힌다.
+   * 전·후를 같은 경로에서 뽑아야 차이가 곧 «변경의 효과»가 된다.
+   *
+   * 현상 유지 후보가 HARD 제약에 걸려 시뮬레이션까지 가지 못하면 undefined다. 그때는
+   * 비교할 「전」이 없으므로 화면이 이 블록을 통째로 그리지 않는다.
+   */
+  baselineOutcome?: StrategyPlanOutcome;
   debug: StrategyOptimizerDebug;
 }
 
@@ -474,6 +496,7 @@ export class StrategyOptimizer {
     let hardConstraintRejectedCount = 0;
     let simulatedCandidateCount = 0;
     let postSimulationRejectedCount = 0;
+    let baselineOutcome: StrategyPlanOutcome | undefined;
 
     for (const candidate of generated.candidates) {
       const hardFailures = this.hardConstraintFilter.beforeSimulation(candidate, goals);
@@ -486,6 +509,11 @@ export class StrategyOptimizer {
       try {
         const simulation = this.simulationEngine.simulate(profile, candidate.strategy);
         simulatedCandidateCount += 1;
+        const outcome = summarizePlanOutcome(simulation.yearlyResults, candidate.strategy.retirementAge);
+        // 현상 유지 후보의 요약은 «평가 이전»에 잡는다. 목표 평가에서 탈락하는 계획이라도
+        // 그 계획의 원장은 사실이고, 사용자가 지금 살고 있는 것이 바로 그 계획이다 —
+        // 「목표를 못 지켜서」 비교 기준이 사라지면 카드는 개선폭을 말할 수 없게 된다.
+        if (candidate.id === generated.debug.baselineCandidateId) baselineOutcome = outcome;
         const evaluation = this.goalEvaluationEngine.evaluate(
           profile,
           goals,
@@ -503,7 +531,7 @@ export class StrategyOptimizer {
           );
           continue;
         }
-        accepted.push({ candidate, simulation, evaluation });
+        accepted.push({ candidate, simulation, evaluation, outcome });
       } catch (error) {
         simulationFailures.push({ candidateId: candidate.id, reason: errorMessage(error) });
       }
@@ -650,6 +678,7 @@ export class StrategyOptimizer {
       rankedCandidates,
       outcome,
       recommendations,
+      ...(baselineOutcome ? { baselineOutcome } : {}),
       debug: {
         generation: generated.debug,
         generatedCandidateCount: generated.candidates.length,

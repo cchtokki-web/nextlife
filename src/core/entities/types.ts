@@ -578,6 +578,24 @@ export interface SimulationYearlyResult {
   dividendTaxPaid: number; // 배당소득세 납부액
   pensionTaxPaid: number; // 연금소득세 납부액
   nationalPensionTaxPaid: number; // 국민연금 세금 납부액
+  /**
+   * 사적연금 세금(pensionTaxPaid) 중 **연말에 자산에서 따로 걷힌** 몫.
+   *
+   * 사적연금은 인출할 때마다 연령별 저율(3.3~5.5%)로 원천징수하고, 연말에 그해 총 인출액을
+   * 기준으로 실제 세액(분리과세 16.5% vs 종합과세 중 작은 쪽)을 다시 계산해 차액을 마저
+   * 걷는다. 그 차액이 이 값이다.
+   *
+   * **왜 결과에 실어 보내는가.** 이 정산은 그해 생활비가 이미 지출된 «뒤에» 일어나고
+   * 자산 매도로 납부된다. 그래서 화면의 사적연금 소득(privatePensionIncome)은 이 금액까지
+   * 뺀 값인 반면, 그해 생활비를 실제로 채운 돈은 그보다 이만큼 크다. 두 숫자를 나란히 놓고
+   * 빼면 맞지 않는데, 그 차이를 설명할 근거가 결과 어디에도 없었다 — 사용자에게는 계산
+   * 오류로 보인다(describePrivatePensionTaxSettlement).
+   *
+   * pensionTaxPaid에 **이미 포함되어 있다.** 세금 합계에 다시 더하면 이중 계상이다.
+   *
+   * optional은 이 필드가 없던 저장 결과·테스트 픽스처의 역호환을 위한 것이다.
+   */
+  privatePensionYearEndTaxAdjustment?: number;
   healthInsurancePaid: number; // 건강보험료(추가분) 납부액
   // 그 해 건강보험료 부과 기준이 된 소득 = 금융소득(세전) + 공적연금 × 반영비율(50%).
   // 사적연금은 부과 대상이 아니라 포함되지 않는다.
