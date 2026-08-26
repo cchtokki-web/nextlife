@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { ArrowDown, ArrowUp, Check, Target } from 'lucide-react';
 import {
   MAX_RETIREMENT_GOALS,
@@ -88,9 +88,10 @@ export function RetirementGoalSelector({
   };
 
   /**
-   * 금액을 «고치는» 경로. 타이핑은 「변경」이지 「확인」이 아니므로 출처 표시를 붙이지 않고,
-   * 이미 붙어 있던 표시는 «떼어 낸다» — 확정한 뒤 고친 금액을 여전히 확정으로 읽으면
-   * 사용자가 확인한 적 없는 숫자가 다시 판정 기준이 된다.
+   * 금액을 «고치는» 경로. 키 입력 하나하나는 「변경」이지 「확인」이 아니므로 출처 표시를
+   * 붙이지 않고, 이미 붙어 있던 표시는 «떼어 낸다» — 확정한 뒤 고친 금액을 여전히 확정으로
+   * 읽으면 사용자가 확인한 적 없는 숫자가 다시 판정 기준이 된다. 다 친 뒤의 확정은
+   * commitTargetEdit이 맡는다.
    */
   const changeTargetValue = (type: RetirementGoalType, targetValue: number | undefined) => {
     onChange(normalizeRetirementGoals(selected.map((goal) => {
@@ -107,6 +108,32 @@ export function RetirementGoalSelector({
    */
   const confirmTargetValue = (type: RetirementGoalType) => {
     updateGoal(type, { targetValueSource: 'user' });
+  };
+
+  /**
+   * 「이번 포커스 동안 사용자가 금액을 실제로 고쳤는가」.
+   *
+   * 확정 판단을 «커밋 시점»(blur·Enter)으로 미루기 위한 표식이다. 키 입력마다 확정하면
+   * 350만원을 치는 도중의 3·35·350이 차례로 확정값이 된다 — 「고치다 만 금액을 확정으로
+   * 읽지 않는다」는 규칙(known-issues 14번)은 그대로 두고, «다 친 뒤»만 확정으로 본다.
+   *
+   * 렌더 결과에 쓰이지 않으므로 state가 아니라 ref다. 이 값이 바뀐다고 다시 그릴 것은 없다.
+   */
+  const editedTargets = useRef(new Set<RetirementGoalType>());
+
+  /**
+   * 금액 입력을 «다 친» 시점. 사용자가 스스로 적어 넣은 숫자는 그 자체가 진술이므로 확정
+   * 버튼을 한 번 더 누르게 하지 않는다 — 확인이 필요한 것은 사용자가 «건드린 적 없는»
+   * 씨앗뿐이다(그 경우 이 함수는 아무 일도 하지 않고 확정 패널이 그대로 남는다).
+   *
+   * 판정은 isSuggestedTargetValue에 맡긴다. 그 술어가 참인 목표가 정확히 「확정이 필요한
+   * 금액 목표」이고, 금액이 아닌 목표(빠른 은퇴의 나이)와 빈 칸은 거기서 함께 걸러진다 —
+   * 확정할 값이 없는데 출처 표시만 붙는 일을 막는다.
+   */
+  const commitTargetEdit = (type: RetirementGoalType) => {
+    if (!editedTargets.current.delete(type)) return;
+    const goal = selected.find((item) => item.type === type);
+    if (goal && isSuggestedTargetValue(goal)) confirmTargetValue(type);
   };
 
   const focusTargetInput = (type: RetirementGoalType) => {
@@ -243,13 +270,25 @@ export function RetirementGoalSelector({
                           type="text"
                           inputMode="numeric"
                           value={goal.targetValue?.toLocaleString() ?? ''}
+                          onFocus={() => editedTargets.current.delete(goal.type)}
                           onChange={(event) => {
                             const raw = event.target.value.replace(/,/g, '');
                             if (raw === '' || /^\d+$/.test(raw)) {
-                              // 여기서 확정하지 «않는다». 빈 칸으로 지우면 표시도 함께
+                              // 여기서 확정하지 «않는다» — 확정은 커밋 시점에 한 번만
+                              // 판단한다(commitTargetEdit). 빈 칸으로 지우면 표시도 함께
                               // 사라진다(normalizeRetirementGoals).
+                              editedTargets.current.add(goal.type);
                               changeTargetValue(goal.type, raw === '' ? undefined : Number(raw));
                             }
+                          }}
+                          // 입력을 끝내는 두 가지 방법 모두가 커밋이다. Enter만 처리하면
+                          // 다른 칸을 눌러 넘어간 사용자가 확정되지 않은 채로 남는다.
+                          onBlur={() => commitTargetEdit(goal.type)}
+                          onKeyDown={(event) => {
+                            if (event.key !== 'Enter') return;
+                            // 목표 카드가 form 안에 있을 때 Enter가 제출로 새 나가지 않게 막는다.
+                            event.preventDefault();
+                            commitTargetEdit(goal.type);
                           }}
                           className="h-10 w-full rounded-lg border border-card-border bg-black/20 px-3 pr-12 text-sm text-foreground outline-none focus:border-primary"
                         />
@@ -264,8 +303,10 @@ export function RetirementGoalSelector({
                       제안값 자체는 지금 쓰는 것을 그대로 둔다 — 새 숫자를 만들지 않는다.
 
                       확정은 «명시적 행위»다. 두 갈래 모두 확정으로 끝난다 — 제안된 금액을
-                      그대로 받아들이는 것도 사용자의 행위이고, 고쳐 넣는 것도 그렇다. 다만
-                      고치기만 하고 확정하지 «않은» 상태는 미확정이다(changeTargetValue).
+                      그대로 받아들이는 것(이 버튼)도 사용자의 행위이고, 직접 고쳐 넣는 것
+                      (commitTargetEdit)도 그렇다. 그래서 이 패널은 사용자가 «건드린 적 없는»
+                      씨앗에만 남는다 — 자기 숫자를 적어 넣은 사용자는 같은 말을 두 번 하지
+                      않는다. 고치는 «도중»(키 입력 중간값)은 여전히 미확정이다.
 
                       별도 단계를 만들지 않고 목표 카드 안에서 처리한다 — 확인해야 할 금액과
                       그 금액이 속한 목표는 같은 자리에 있어야 한다. */}
@@ -281,7 +322,7 @@ export function RetirementGoalSelector({
                       <p className="text-xs leading-relaxed text-foreground-muted">
                         <strong className="text-foreground">아직 제안 금액입니다</strong>
                         {' '}— 지금 값은 입력하신 계획에서 가져온 것이라 달성·미달 판정에 쓰지
-                        않습니다. 아래에서 확정해야 목표 금액이 됩니다.
+                        않습니다. 금액을 직접 고치거나 아래에서 확정하면 목표 금액이 됩니다.
                       </p>
                       {/* 확인할 금액을 «다시» 적는다. 입력창의 숫자와 같은 값이지만, 확정
                           버튼 옆에 무엇을 확정하는지가 없으면 사용자는 금액을 보지 않고

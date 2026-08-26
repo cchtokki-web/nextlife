@@ -96,6 +96,46 @@ describe('YieldPresetHelper', () => {
     expect(restored.privatePensions[0].totalReturn).toBe(6.4);
   });
 
+  test('현재 값의 출처가 어느 버튼인지 aria-pressed로 드러난다', () => {
+    const { rerender } = render(
+      <YieldPresetHelper
+        params={params({
+          yieldPreset: 'conservative',
+          customYieldSnapshot: { assets: { a: 9.5 }, privatePensions: { p: 6.4 }, isaAccounts: {} },
+        } as Partial<SimulationParams>)}
+        onChangeParams={vi.fn()}
+      />
+    );
+
+    expect(screen.getByRole('button', { name: /보수적 5%/ }).getAttribute('aria-pressed')).toBe('true');
+    expect(screen.getByRole('button', { name: /중립 7%/ }).getAttribute('aria-pressed')).toBe('false');
+    expect(screen.getByRole('button', { name: /공격 9%/ }).getAttribute('aria-pressed')).toBe('false');
+    expect(screen.getByRole('button', { name: /되돌리기/ }).getAttribute('aria-pressed')).toBe('false');
+
+    // 사용자가 수익률을 직접 고치면 AssetFormSection이 'custom'으로 돌린다. 그때는 어떤
+    // 프리셋도 켜져 있으면 안 된다 — 입력칸의 값은 더 이상 그 프리셋의 값이 아니다.
+    rerender(
+      <YieldPresetHelper
+        params={params({
+          yieldPreset: 'custom',
+          customYieldSnapshot: { assets: { a: 9.5 }, privatePensions: { p: 6.4 }, isaAccounts: {} },
+        } as Partial<SimulationParams>)}
+        onChangeParams={vi.fn()}
+      />
+    );
+
+    expect(screen.getByRole('button', { name: /보수적 5%/ }).getAttribute('aria-pressed')).toBe('false');
+    expect(screen.getByRole('button', { name: /되돌리기/ }).getAttribute('aria-pressed')).toBe('true');
+  });
+
+  test('한 번도 프리셋을 누르지 않은 시나리오에서는 아무 버튼도 선택 표시되지 않는다', () => {
+    render(<YieldPresetHelper params={params()} onChangeParams={vi.fn()} />);
+
+    for (const label of [/보수적 5%/, /중립 7%/, /공격 9%/]) {
+      expect(screen.getByRole('button', { name: label }).getAttribute('aria-pressed')).toBe('false');
+    }
+  });
+
   test('되돌리기는 직전 입력값을 복원한다', async () => {
     const onChange = vi.fn();
     render(

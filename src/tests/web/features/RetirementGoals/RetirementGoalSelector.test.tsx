@@ -195,15 +195,126 @@ describe('RetirementGoalSelector', () => {
       // 문구를 «문장 그대로» 고정한다. 부분 일치로 두면 다른 뜻으로 바뀌어도 통과한다.
       expect(screen.getByText(/아직 제안 금액입니다/).parentElement).toHaveTextContent(
         '아직 제안 금액입니다 — 지금 값은 입력하신 계획에서 가져온 것이라 달성·미달 판정에 '
-        + '쓰지 않습니다. 아래에서 확정해야 목표 금액이 됩니다.',
+        + '쓰지 않습니다. 금액을 직접 고치거나 아래에서 확정하면 목표 금액이 됩니다.',
       );
 
       fireEvent.change(screen.getByLabelText('목표 월 생활비'), { target: { value: '4,000,000' } });
-      // 고치기만 한 금액은 여전히 미확정이다 — 안내는 남고, 확정 버튼이 새 금액을 가리킨다.
+      // «고치는 도중»은 여전히 미확정이다 — 안내는 남고, 확정 버튼이 새 금액을 가리킨다.
       expect(screen.getByText(/아직 제안 금액입니다/)).toBeInTheDocument();
 
       fireEvent.click(screen.getByRole('button', { name: '생활비 안정 목표를 이 금액으로 확정' }));
       expect(screen.queryByText(/아직 제안 금액입니다/)).not.toBeInTheDocument();
+    });
+
+    // 사용자가 «스스로 적어 넣은» 숫자는 그 자체가 진술이다. 같은 말을 버튼으로 한 번 더
+    // 시키지 않는다. 확인이 필요한 것은 사용자가 건드린 적 없는 씨앗뿐이다.
+    test('금액을 직접 고치고 입력을 끝내면 그대로 확정된다', () => {
+      const seen: RetirementGoal[][] = [];
+      render(<SelectorHarness onGoals={(goals) => seen.push(goals)} />);
+      fireEvent.click(screen.getByRole('button', { name: /생활비 안정/ }));
+
+      const input = screen.getByLabelText('목표 월 생활비');
+      fireEvent.focus(input);
+      fireEvent.change(input, { target: { value: '4,000,000' } });
+      fireEvent.blur(input);
+
+      expect(seen.at(-1)![0]).toMatchObject({ targetValue: 4_000_000, targetValueSource: 'user' });
+      expect(screen.queryByText(/아직 제안 금액입니다/)).not.toBeInTheDocument();
+    });
+
+    test('Enter로 입력을 끝내도 확정된다', () => {
+      const seen: RetirementGoal[][] = [];
+      render(<SelectorHarness onGoals={(goals) => seen.push(goals)} />);
+      fireEvent.click(screen.getByRole('button', { name: /생활비 안정/ }));
+
+      const input = screen.getByLabelText('목표 월 생활비');
+      fireEvent.focus(input);
+      fireEvent.change(input, { target: { value: '4,000,000' } });
+      fireEvent.keyDown(input, { key: 'Enter' });
+
+      expect(seen.at(-1)![0]).toMatchObject({ targetValue: 4_000_000, targetValueSource: 'user' });
+    });
+
+    // 확정을 «커밋 시점»으로 미루는 이유. 350만원을 치는 도중의 3·35·350이 차례로
+    // 확정값이 되면 「고치다 만 금액」이 판정 기준이 된다.
+    test('고치는 도중(키 입력 중간값)은 확정되지 않는다', () => {
+      const seen: RetirementGoal[][] = [];
+      render(<SelectorHarness onGoals={(goals) => seen.push(goals)} />);
+      fireEvent.click(screen.getByRole('button', { name: /생활비 안정/ }));
+
+      const input = screen.getByLabelText('목표 월 생활비');
+      fireEvent.focus(input);
+      for (const value of ['3', '35', '350']) {
+        fireEvent.change(input, { target: { value } });
+        expect(seen.at(-1)![0].targetValueSource).toBeUndefined();
+      }
+
+      fireEvent.blur(input);
+      expect(seen.at(-1)![0]).toMatchObject({ targetValue: 350, targetValueSource: 'user' });
+    });
+
+    // 「금액 수정」으로 칸에 들어갔다가 아무것도 고치지 않고 나오는 것은 진술이 아니다.
+    // 이 경우까지 확정으로 읽으면 씨앗이 클릭 한 번으로 승격되는 예전 문제로 돌아간다.
+    test('입력칸을 스쳐 지나기만 하면 확정되지 않는다', () => {
+      const seen: RetirementGoal[][] = [];
+      render(<SelectorHarness onGoals={(goals) => seen.push(goals)} />);
+      fireEvent.click(screen.getByRole('button', { name: /생활비 안정/ }));
+      const countAfterSelect = seen.length;
+
+      const input = screen.getByLabelText('목표 월 생활비');
+      fireEvent.focus(input);
+      fireEvent.blur(input);
+
+      expect(seen.length).toBe(countAfterSelect);
+      expect(screen.getByText(/아직 제안 금액입니다/)).toBeInTheDocument();
+    });
+
+    // 빈 칸에는 확정할 값이 없다. 출처 표시만 붙으면 「사용자가 확정한 undefined」라는
+    // 상태가 생긴다.
+    test('금액을 지우고 나가면 확정되지 않는다', () => {
+      const seen: RetirementGoal[][] = [];
+      render(<SelectorHarness onGoals={(goals) => seen.push(goals)} />);
+      fireEvent.click(screen.getByRole('button', { name: /생활비 안정/ }));
+
+      const input = screen.getByLabelText('목표 월 생활비');
+      fireEvent.focus(input);
+      fireEvent.change(input, { target: { value: '' } });
+      fireEvent.blur(input);
+
+      expect(seen.at(-1)![0].targetValue).toBeUndefined();
+      expect(seen.at(-1)![0].targetValueSource).toBeUndefined();
+    });
+
+    // 확정한 뒤 다시 고치면 미확정으로 돌아가고, 다 친 시점에 새 금액으로 다시 확정된다.
+    test('확정된 금액을 다시 고치면 새 금액으로 다시 확정된다', () => {
+      const seen: RetirementGoal[][] = [];
+      render(<SelectorHarness onGoals={(goals) => seen.push(goals)} />);
+      fireEvent.click(screen.getByRole('button', { name: /생활비 안정/ }));
+      fireEvent.click(screen.getByRole('button', { name: '생활비 안정 목표를 이 금액으로 확정' }));
+
+      const input = screen.getByLabelText('목표 월 생활비');
+      fireEvent.focus(input);
+      fireEvent.change(input, { target: { value: '5,000,000' } });
+      expect(seen.at(-1)![0].targetValueSource).toBeUndefined();
+
+      fireEvent.blur(input);
+      expect(seen.at(-1)![0]).toMatchObject({ targetValue: 5_000_000, targetValueSource: 'user' });
+    });
+
+    // 나이 목표는 애초에 확정을 묻지 않는다(isSuggestedTargetValue에서 걸러진다).
+    // 고쳤다고 해서 없던 출처 표시가 생기면 저장 데이터의 모양이 조용히 바뀐다.
+    test('희망 은퇴 나이를 고쳐도 출처 표시는 붙지 않는다', () => {
+      const seen: RetirementGoal[][] = [];
+      render(<SelectorHarness onGoals={(goals) => seen.push(goals)} />);
+      fireEvent.click(screen.getByRole('button', { name: /빠른 은퇴/ }));
+
+      const input = screen.getByLabelText('희망 은퇴 나이');
+      fireEvent.focus(input);
+      fireEvent.change(input, { target: { value: '55' } });
+      fireEvent.blur(input);
+
+      expect(seen.at(-1)![0]).toMatchObject({ targetValue: 55 });
+      expect(seen.at(-1)![0].targetValueSource).toBeUndefined();
     });
 
     test('상속 목표의 씨앗도 제안으로 표시된다', () => {

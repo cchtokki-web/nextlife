@@ -530,116 +530,121 @@ function RecommendationBody({
                   <span className={styles.recommendedBadge}><Star size={13} aria-hidden="true" /> 추천</span>
                 )}
               </header>
-
-              <dl className={styles.strategyMetrics}>
-                <div>
-                  <dt>목표 달성 확률</dt>
-                  <dd>
-                    {Math.round(probability * 100)}%
-                    {/* 증감을 백분율«점»으로 말한다. 확률의 차이는 비율이 아니다 —
-                        67%에서 47%로 내려간 것을 "30% 감소"로 적으면 다른 뜻이 된다. */}
-                    {currentGoalProbability !== undefined && (
-                      <span className={styles.strategyDelta}>
-                        현재 계획 {Math.round(currentGoalProbability * 100)}%보다{' '}
-                        {Math.abs(Math.round(probability * 100) - Math.round(currentGoalProbability * 100))}%p{' '}
-                        {improvesOnCurrentPlan(candidate, currentGoalProbability) ? '높음' : '낮음'}
-                      </span>
-                    )}
-                  </dd>
-                </div>
-                <div>
-                  <dt>목표생활비 완전 충족률</dt>
-                  <dd>{Math.round(candidate.monteCarlo.spendingSuccessProbability * 100)}%</dd>
-                </div>
-                {averageFulfillment !== undefined && (
+              {/* 헤더 아래의 모든 것을 한 덩어리로 묶는다. 카드 설명이 한 줄인 카드와
+                  두 줄인 카드가 섞여도 세 카드의 첫 지표(「목표 달성 확률」)가 같은
+                  높이에서 시작하도록, 그리드가 [헤더][본문] 두 행을 카드에 물려준다
+                  (Dashboard.module.css의 .strategyCardBody subgrid 규칙). */}
+              <div className={styles.strategyCardBody}>
+                <dl className={styles.strategyMetrics}>
                   <div>
-                    <dt>평균 목표생활비 충족도</dt>
-                    <dd>{Math.round(averageFulfillment * 1000) / 10}%</dd>
+                    <dt>목표 달성 확률</dt>
+                    <dd>
+                      {Math.round(probability * 100)}%
+                      {/* 증감을 백분율«점»으로 말한다. 확률의 차이는 비율이 아니다 —
+                          67%에서 47%로 내려간 것을 "30% 감소"로 적으면 다른 뜻이 된다. */}
+                      {currentGoalProbability !== undefined && (
+                        <span className={styles.strategyDelta}>
+                          현재 계획 {Math.round(currentGoalProbability * 100)}%보다{' '}
+                          {Math.abs(Math.round(probability * 100) - Math.round(currentGoalProbability * 100))}%p{' '}
+                          {improvesOnCurrentPlan(candidate, currentGoalProbability) ? '높음' : '낮음'}
+                        </span>
+                      )}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>목표생활비 완전 충족률</dt>
+                    <dd>{Math.round(candidate.monteCarlo.spendingSuccessProbability * 100)}%</dd>
+                  </div>
+                  {averageFulfillment !== undefined && (
+                    <div>
+                      <dt>평균 목표생활비 충족도</dt>
+                      <dd>{Math.round(averageFulfillment * 1000) / 10}%</dd>
+                    </div>
+                  )}
+                  <div>
+                    <dt>{params.userProfile.expectancy}세까지 자산 유지 확률</dt>
+                    <dd>{Math.round(candidate.monteCarlo.assetSurvivalProbability * 100)}%</dd>
+                  </div>
+                  {/* 결정론 경로의 endingAssets로 대체하지 않는다. 같은 라벨 아래에서 1,000회
+                      시행의 중앙값과 단일 경로 값이 섞이면 사용자는 둘을 구분할 수 없다. */}
+                  <div><dt>예상 잔여자산(중앙값)</dt><dd>{formatValue(candidate.monteCarlo.terminalAssetMedian)}</dd></div>
+                </dl>
+                {criteria && (
+                  <p className={styles.strategyProbabilityCriteria}>
+                    목표 달성 확률 판정 조건: {criteria}
+                  </p>
+                )}
+
+                <div className={styles.strategyChanges}>
+                  <h4>현재 계획에서 달라지는 점</h4>
+                  {changes.length > 0 ? (
+                    <dl>
+                      {changes.map((change) => (
+                        <div key={change.label}>
+                          <dt>{change.label}</dt>
+                          <dd><span>{change.before}</span><b aria-hidden="true">→</b><strong>{change.after}</strong></dd>
+                        </div>
+                      ))}
+                    </dl>
+                  ) : (
+                    <p>핵심 설정은 유지하고 시장 변동 안정성만 재검증한 전략입니다.</p>
+                  )}
+                  {/* 위 목록이 "이것만 바뀐다"는 약속으로 읽히지 않게, 함께 확정될 축을 누르기
+                      «전»에 말한다. 적용 후의 알림에만 있으면 사용자는 되돌리기로만 알게 된다.
+                      버튼이 잠긴 카드에서는 일어날 일 자체가 없으므로 내지 않는다. */}
+                  {preview.canApply && preview.pinned.length > 0 && (
+                    <p className={styles.strategyPinNote}>
+                      적용하면 NextLife가 자동으로 고른{' '}
+                      {preview.pinned.map((field) => field.label).join(', ')}이(가) 지금 값 그대로
+                      설정에 함께 확정됩니다.
+                    </p>
+                  )}
+                </div>
+
+                {/* **설정이 아니라 결과를 말하는 자리.** 「국민연금 65세 → 60세」만 보고
+                    적용하면 수령액이 30% 깎이는 것을 누른 뒤에 알게 된다. 그 대가를 누르기
+                    전에 같은 카드에서 보여준다(describeStrategyOutcomeChanges). */}
+                {outcomeChanges.length > 0 && (
+                  <div className={styles.strategyOutcomeChanges}>
+                    <h4>적용하면 달라지는 수치</h4>
+                    <dl>
+                      {outcomeChanges.map((change) => (
+                        <div key={change.key}>
+                          <dt>{change.label}</dt>
+                          <dd>
+                            <span>{change.before}</span>
+                            <b aria-hidden="true">→</b>
+                            <strong
+                              className={change.direction === 'neutral'
+                                ? undefined
+                                : (change.difference > 0) === (change.direction === 'higher_is_better')
+                                  ? styles.outcomeBetter
+                                  : styles.outcomeWorse}
+                            >
+                              {change.after}
+                            </strong>
+                          </dd>
+                        </div>
+                      ))}
+                    </dl>
+                    <p className={styles.strategyOutcomeNote}>
+                      현재 계획과 이 전략을 같은 기준 수익률 경로로 각각 다시 계산한 값입니다.
+                      위 확률과 달리 시장 변동은 반영하지 않습니다.
+                    </p>
                   </div>
                 )}
-                <div>
-                  <dt>{params.userProfile.expectancy}세까지 자산 유지 확률</dt>
-                  <dd>{Math.round(candidate.monteCarlo.assetSurvivalProbability * 100)}%</dd>
-                </div>
-                {/* 결정론 경로의 endingAssets로 대체하지 않는다. 같은 라벨 아래에서 1,000회
-                    시행의 중앙값과 단일 경로 값이 섞이면 사용자는 둘을 구분할 수 없다. */}
-                <div><dt>예상 잔여자산(중앙값)</dt><dd>{formatValue(candidate.monteCarlo.terminalAssetMedian)}</dd></div>
-              </dl>
-              {criteria && (
-                <p className={styles.strategyProbabilityCriteria}>
-                  목표 달성 확률 판정 조건: {criteria}
-                </p>
-              )}
 
-              <div className={styles.strategyChanges}>
-                <h4>현재 계획에서 달라지는 점</h4>
-                {changes.length > 0 ? (
-                  <dl>
-                    {changes.map((change) => (
-                      <div key={change.label}>
-                        <dt>{change.label}</dt>
-                        <dd><span>{change.before}</span><b aria-hidden="true">→</b><strong>{change.after}</strong></dd>
-                      </div>
-                    ))}
-                  </dl>
-                ) : (
-                  <p>핵심 설정은 유지하고 시장 변동 안정성만 재검증한 전략입니다.</p>
-                )}
-                {/* 위 목록이 "이것만 바뀐다"는 약속으로 읽히지 않게, 함께 확정될 축을 누르기
-                    «전»에 말한다. 적용 후의 알림에만 있으면 사용자는 되돌리기로만 알게 된다.
-                    버튼이 잠긴 카드에서는 일어날 일 자체가 없으므로 내지 않는다. */}
-                {preview.canApply && preview.pinned.length > 0 && (
-                  <p className={styles.strategyPinNote}>
-                    적용하면 NextLife가 자동으로 고른{' '}
-                    {preview.pinned.map((field) => field.label).join(', ')}이(가) 지금 값 그대로
-                    설정에 함께 확정됩니다.
-                  </p>
+                {onApplyStrategy && (
+                  <StrategyApplyAction
+                    recommendation={recommendation}
+                    onApply={(item) => onApplyStrategy(item, params)}
+                    canApply={preview.canApply}
+                    hasDescribedChanges={changes.length > 0}
+                    applied={applied}
+                    onUndo={onUndoStrategy}
+                  />
                 )}
               </div>
-
-              {/* **설정이 아니라 결과를 말하는 자리.** 「국민연금 65세 → 60세」만 보고
-                  적용하면 수령액이 30% 깎이는 것을 누른 뒤에 알게 된다. 그 대가를 누르기
-                  전에 같은 카드에서 보여준다(describeStrategyOutcomeChanges). */}
-              {outcomeChanges.length > 0 && (
-                <div className={styles.strategyOutcomeChanges}>
-                  <h4>적용하면 달라지는 수치</h4>
-                  <dl>
-                    {outcomeChanges.map((change) => (
-                      <div key={change.key}>
-                        <dt>{change.label}</dt>
-                        <dd>
-                          <span>{change.before}</span>
-                          <b aria-hidden="true">→</b>
-                          <strong
-                            className={change.direction === 'neutral'
-                              ? undefined
-                              : (change.difference > 0) === (change.direction === 'higher_is_better')
-                                ? styles.outcomeBetter
-                                : styles.outcomeWorse}
-                          >
-                            {change.after}
-                          </strong>
-                        </dd>
-                      </div>
-                    ))}
-                  </dl>
-                  <p className={styles.strategyOutcomeNote}>
-                    현재 계획과 이 전략을 같은 기준 수익률 경로로 각각 다시 계산한 값입니다.
-                    위 확률과 달리 시장 변동은 반영하지 않습니다.
-                  </p>
-                </div>
-              )}
-
-              {onApplyStrategy && (
-                <StrategyApplyAction
-                  recommendation={recommendation}
-                  onApply={(item) => onApplyStrategy(item, params)}
-                  canApply={preview.canApply}
-                  hasDescribedChanges={changes.length > 0}
-                  applied={applied}
-                  onUndo={onUndoStrategy}
-                />
-              )}
             </article>
           );
         })}
