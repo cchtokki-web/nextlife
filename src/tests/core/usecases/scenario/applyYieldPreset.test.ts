@@ -2,6 +2,7 @@ import { describe, test, expect } from 'vitest';
 import {
   applyYieldPreset,
   matchedYieldPreset,
+  matchesCustomYieldSnapshot,
   restoreCustomYieldPreset,
   YIELD_PRESET_RATES,
 } from '@/core/usecases/scenario/applyYieldPreset';
@@ -398,5 +399,47 @@ describe('matchedYieldPreset', () => {
   test('사적연금만 있는 계획은 연금 수익률로 되짚는다', () => {
     const applied = applyYieldPreset({ ...baseParams, assets: [] }, 'aggressive');
     expect(matchedYieldPreset(applied)).toBe('aggressive');
+  });
+});
+
+describe('matchesCustomYieldSnapshot', () => {
+  test('스냅샷이 없으면 false다 — 되돌릴 값 자체가 없다', () => {
+    expect(matchesCustomYieldSnapshot(baseParams)).toBe(false);
+  });
+
+  test('applyYieldPreset → restoreCustomYieldPreset 왕복 뒤에는 true다', () => {
+    const applied = applyYieldPreset(baseParams, 'aggressive');
+    expect(matchesCustomYieldSnapshot(applied)).toBe(false);
+    expect(matchesCustomYieldSnapshot(restoreCustomYieldPreset(applied))).toBe(true);
+  });
+
+  test('한 계좌만 어긋나도 false다', () => {
+    const restored = restoreCustomYieldPreset(applyYieldPreset(baseParams, 'aggressive'));
+    const edited = {
+      ...restored,
+      assets: restored.assets.map((a) => ({ ...a, totalReturn: a.totalReturn + 0.5 })),
+    };
+    expect(matchesCustomYieldSnapshot(edited)).toBe(false);
+  });
+
+  test('스냅샷에 없는 id뿐이면 false다 — 눌러도 아무것도 바뀌지 않는다', () => {
+    // 스냅샷을 만든 뒤 계좌를 모두 갈아치운 상태. restoreCustomYieldPreset이 손댈 대상이
+    // 하나도 없으므로 「이 값이 지금 적용돼 있다」고 말할 근거도 없다.
+    const applied = applyYieldPreset(baseParams, 'aggressive');
+    const replaced = {
+      ...applied,
+      assets: applied.assets.map((a) => ({ ...a, id: 'new-a' })),
+      privatePensions: applied.privatePensions.map((p) => ({ ...p, id: 'new-p' })),
+    };
+    expect(matchesCustomYieldSnapshot(replaced)).toBe(false);
+  });
+
+  test('배당률은 보지 않는다 — 되돌리기가 복원하지 않는 값이다', () => {
+    const restored = restoreCustomYieldPreset(applyYieldPreset(baseParams, 'aggressive'));
+    const dividendChanged = {
+      ...restored,
+      assets: restored.assets.map((a) => ({ ...a, dividendYield: a.dividendYield + 1 })),
+    };
+    expect(matchesCustomYieldSnapshot(dividendChanged)).toBe(true);
   });
 });

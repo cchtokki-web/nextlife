@@ -40,7 +40,7 @@ export const YIELD_PRESET_RATES = {
 //   - robustness.ts의 가정 변형(assumption variants): 몬테카를로 강건성 점검에 쓰는 사본.
 //
 // restoreCustomYieldPreset은 프리셋 버튼과 함께 사라졌던 "사용자 프리셋 복원" 동작을 위한
-// 것이다. YieldPresetHelper의 「직접 입력값으로 되돌리기」 버튼이 그 되돌릴 UI다 — 스냅샷이
+// 것이다. YieldPresetHelper의 「사용자 입력값」 버튼이 그 되돌릴 UI다 — 스냅샷이
 // 있을 때만 나타나 이 함수를 부른다.
 //
 // assets/privatePensions를 ?? []로 방어하는 이유: 이 함수를 호출하는 쪽(page.tsx가 넘기는
@@ -192,4 +192,42 @@ export function restoreCustomYieldPreset(params: SimulationParams): SimulationPa
     ...(isaAccounts ? { isaAccounts } : {}),
     yieldPreset: 'custom',
   };
+}
+
+/**
+ * 지금 저장된 수익률이 «마지막으로 직접 입력한 값»(customYieldSnapshot)과 같은가.
+ *
+ * 프리셋 셋과 «같은 규칙»이다(matchedYieldPreset) — params.yieldPreset 필드가 아니라 실제
+ * 값에서 유도한다. 「사용자 입력값」 버튼이 켜져 있으면 입력칸의 총수익률이 정말 스냅샷의
+ * 값이고, 사용자가 하나라도 고치면 그 순간 꺼진다.
+ *
+ * 비교 대상은 restoreCustomYieldPreset이 «되돌리는» 것과 정확히 같다 — 스냅샷에 id가 있는
+ * 계좌의 totalReturn뿐이다. 스냅샷이 만들어진 뒤에 «추가된» 계좌는 되돌리기가 건드리지
+ * 않으므로 여기서도 보지 않는다. 배당률도 보지 않는다(되돌리기가 복원하지 않는다).
+ *
+ * 되돌릴 수 있는 계좌가 하나도 없으면 false다 — 눌러도 아무것도 바뀌지 않는 상태에서
+ * 「이 값이 지금 적용돼 있다」고 말하면 공허하게 참이 되어 답이 되지 못한다(matchedYieldPreset의
+ * 빈 목록 판단과 같다).
+ */
+export function matchesCustomYieldSnapshot(params: SimulationParams): boolean {
+  const snapshot = params.customYieldSnapshot;
+  if (!snapshot) return false;
+
+  const pairs: [Record<string, number>, { id: string; totalReturn: number }[]][] = [
+    [snapshot.assets ?? {}, params.assets ?? []],
+    [snapshot.privatePensions ?? {}, params.privatePensions ?? []],
+    // isaAccounts는 이 필드가 추가되기 전 스냅샷에는 없다(restoreCustomYieldPreset과 같은 방어).
+    [snapshot.isaAccounts ?? {}, params.isaAccounts ?? []],
+  ];
+
+  let compared = 0;
+  for (const [saved, accounts] of pairs) {
+    for (const account of accounts) {
+      if (!(account.id in saved)) continue;
+      if (account.totalReturn !== saved[account.id]) return false;
+      compared += 1;
+    }
+  }
+
+  return compared > 0;
 }
