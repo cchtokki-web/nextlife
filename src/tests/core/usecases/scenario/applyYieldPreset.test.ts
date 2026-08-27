@@ -1,5 +1,10 @@
 import { describe, test, expect } from 'vitest';
-import { applyYieldPreset, restoreCustomYieldPreset, YIELD_PRESET_RATES } from '@/core/usecases/scenario/applyYieldPreset';
+import {
+  applyYieldPreset,
+  matchedYieldPreset,
+  restoreCustomYieldPreset,
+  YIELD_PRESET_RATES,
+} from '@/core/usecases/scenario/applyYieldPreset';
 import { priceGrowthRate } from '@/core/usecases/returns/decomposeReturn';
 import { SimulationParams } from '@/core/entities/types';
 import { compileStrategy } from '@/core/usecases/strategy/compileStrategy';
@@ -338,5 +343,60 @@ describe('applyYieldPreset - 총수익률/배당률/가격상승률 불변식', 
       expect(applied[i].totalReturn).toBeGreaterThan(applied[i - 1].totalReturn);
       expect(applied[i].dividendYield).toBeGreaterThan(applied[i - 1].dividendYield);
     }
+  });
+});
+
+describe('matchedYieldPreset', () => {
+  const PRESETS = ['conservative', 'base', 'aggressive'] as const;
+
+  // 「지금 값이 무엇인가」를 값에서 «유도»한다. params.yieldPreset을 읽지 않는다는 것이
+  // 이 함수의 존재 이유이므로, 그 필드가 거짓말을 하는 상황을 골라 확인한다.
+
+  test.each(PRESETS)('%s를 적용한 결과는 같은 프리셋으로 되짚어진다', (preset) => {
+    expect(matchedYieldPreset(applyYieldPreset(baseParams, preset))).toBe(preset);
+  });
+
+  test('yieldPreset 필드가 base라고 주장해도 값이 다르면 아무것도 되짚지 않는다', () => {
+    // normalizeSimulationParams가 키 없는 시나리오에 심어 넣는 바로 그 상태다.
+    expect(matchedYieldPreset({ ...baseParams, yieldPreset: 'base' })).toBeUndefined();
+  });
+
+  test('yieldPreset 필드가 custom이어도 값이 프리셋과 같으면 그 프리셋을 되짚는다', () => {
+    // 자산 삭제·티커 자동조회는 남은 수익률을 건드리지 않고 'custom'만 찍는다.
+    const applied = { ...applyYieldPreset(baseParams, 'conservative'), yieldPreset: 'custom' as const };
+    expect(matchedYieldPreset(applied)).toBe('conservative');
+  });
+
+  test('계좌 하나만 어긋나도 되짚지 않는다', () => {
+    const applied = applyYieldPreset(baseParams, 'base');
+    const drifted = {
+      ...applied,
+      assets: applied.assets.map((asset, index) => (index === 0 ? { ...asset, totalReturn: 6 } : asset)),
+    };
+    expect(matchedYieldPreset(drifted)).toBeUndefined();
+  });
+
+  test('배당률만 고친 것은 되짚기를 깨지 않는다', () => {
+    // 프리셋이 버튼 title로 약속하는 것은 총수익률뿐이다. 배당률은 계좌마다 «비율»로
+    // 옮겨져 원래 값에 의존하므로 되짚을 수 있는 값이 아니다.
+    const applied = applyYieldPreset(baseParams, 'base');
+    const drifted = {
+      ...applied,
+      assets: applied.assets.map((asset) => ({ ...asset, dividendYield: asset.dividendYield + 1 })),
+    };
+    expect(matchedYieldPreset(drifted)).toBe('base');
+  });
+
+  test('비교할 계좌가 하나도 없으면 되짚지 않는다', () => {
+    // 계좌가 없으면 세 프리셋이 모두 «공허하게» 참이 된다. 「어느 것이든 맞다」는
+    // 「무엇이 선택됐는지」에 대한 답이 아니므로 아무것도 켜지 않는다.
+    expect(matchedYieldPreset({
+      ...baseParams, assets: [], privatePensions: [], isaAccounts: [],
+    })).toBeUndefined();
+  });
+
+  test('사적연금만 있는 계획은 연금 수익률로 되짚는다', () => {
+    const applied = applyYieldPreset({ ...baseParams, assets: [] }, 'aggressive');
+    expect(matchedYieldPreset(applied)).toBe('aggressive');
   });
 });

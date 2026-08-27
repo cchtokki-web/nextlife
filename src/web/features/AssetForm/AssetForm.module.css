@@ -414,17 +414,20 @@
   background: var(--summary-bg-hover);
 }
 
-/* 지금 입력칸의 수익률이 어디서 왔는지 — 선택된 프리셋(또는 「직접 입력값」). 테두리·배경·
-   글자 굵기를 함께 바꾼다. 색 하나만으로 구분하면 대비가 낮은 화면에서 사라진다. */
-.yieldPresetButton[aria-pressed='true'],
-.yieldPresetButtonActive {
+/* 지금 입력칸의 총수익률이 이 프리셋이 채우는 값과 «같다»(matchedYieldPreset). 테두리·배경·
+   글자 굵기를 함께 바꾼다. 색 하나만으로 구분하면 대비가 낮은 화면에서 사라진다.
+
+   **선택 상태의 출처는 aria-pressed 하나다.** 예전에는 같은 상태를 .yieldPresetButtonActive
+   클래스로도 함께 켰는데, 두 벌이 «항상 같이» 붙어 있어 한쪽만 지워도 아무 증상이 없었다 —
+   다음 사람이 나머지 한쪽마저 지울 때까지. 눈에 보이는 표시와 화면을 보지 않는 사용자가 듣는
+   말이 어긋날 수 없도록, 스타일은 접근성 속성에만 건다. */
+.yieldPresetButton[aria-pressed='true'] {
   border-color: var(--primary);
   background: color-mix(in srgb, var(--primary) 16%, transparent);
   color: var(--primary);
   font-weight: 700;
 }
 
-.yieldPresetButton[aria-pressed='true']:hover,
-.yieldPresetButtonActive:hover {
+.yieldPresetButton[aria-pressed='true']:hover {
   background: color-mix(in srgb, var(--primary) 24%, transparent);
 }

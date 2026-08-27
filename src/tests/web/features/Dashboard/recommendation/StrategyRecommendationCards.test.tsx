@@ -899,6 +899,25 @@ describe('StrategyRecommendationCards - 현재 계획과의 비교', () => {
     expect(screen.queryByText('다른 선택을 검토하고 싶다면')).not.toBeInTheDocument();
   });
 
+  // **정렬 구조의 유일한 방어선.** 세 카드의 지표 행을 같은 높이에 세우는 일은
+  // Dashboard.module.css의 subgrid가 하고, jsdom은 레이아웃을 계산하지 않으므로 그 정렬이
+  // 깨져도 여기서 실패하는 테스트가 없다. 다만 subgrid가 물려주는 행은 «두 개»이므로,
+  // 카드의 직계 자식이 [header][본문] 둘이라는 것만은 코드로 지킬 수 있다. 셋이 되면
+  // 남는 자식이 암묵 행으로 밀려 정렬이 조용히 사라진다 — 예전에 min-height로 두 줄을
+  // 예약했다가 같은 방식으로 되돌아왔던 버그다.
+  test('카드의 직계 자식은 헤더와 본문 둘뿐이다(subgrid가 물려주는 행 수와 같다)', () => {
+    renderWith([worse, better], 0.67);
+
+    const cards = document.querySelectorAll('article');
+    expect(cards.length).toBeGreaterThan(0);
+    for (const card of cards) {
+      expect(card.children).toHaveLength(2);
+      expect(card.children[0].tagName).toBe('HEADER');
+      // 첫 지표는 본문 쪽에 있어야 한다. 헤더에 있으면 헤더 높이에 딸려 다시 어긋난다.
+      expect(within(card.children[1] as HTMLElement).getByText('목표 달성 확률')).toBeInTheDocument();
+    }
+  });
+
   // 몬테카를로가 아직 끝나지 않은 상태에서 「나쁘다」고 말하면 측정되지 않은 것이 나쁜 것으로
   // 둔갑한다. 비교할 수 없으면 아무 말도 하지 않고 종전 화면 그대로 둔다.
   test('현재 확률을 모르면 비교를 말하지 않는다', () => {
