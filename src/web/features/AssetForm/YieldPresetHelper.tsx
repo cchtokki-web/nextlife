@@ -4,6 +4,7 @@ import {
   YIELD_PRESET_RATES,
   applyYieldPreset,
   matchedYieldPreset,
+  matchesCustomYieldSnapshot,
   restoreCustomYieldPreset,
 } from '../../../core/usecases/scenario/applyYieldPreset';
 import styles from './AssetForm.module.css';
@@ -59,15 +60,19 @@ export function YieldPresetHelper({ params, onChangeParams }: YieldPresetHelperP
         </button>
       ))}
       {canRestore && (
-        // **토글이 아니라 «행위»다.** 누르면 customYieldSnapshot의 값으로 수익률을 덮어쓴다.
-        // aria-pressed를 붙이면 화면을 보지 않는 사용자에게 「이미 되돌아가 있음」으로 읽히는데,
-        // 그 상태에서도 누르면 숫자가 바뀐다. 프리셋 셋과 달리 여기서는 선택 표시를 쓰지 않는다.
+        // **표시의 출처는 프리셋 셋과 같다 — 값이다.** 예전에는 「토글이 아니라 행위」라는
+        // 이유로 여기만 선택 표시를 뺐는데, 그러면 눌러도 아무 반응이 없어 사용자는 자기가
+        // 무엇을 고른 상태인지 알 수 없다. 이제 aria-pressed는 「지금 입력칸의 수익률이
+        // 마지막으로 직접 입력한 값과 «같다»」를 뜻한다(matchesCustomYieldSnapshot).
+        // 켜져 있을 때 누르면 값이 바뀌지 않으므로 「이미 적용돼 있음」이라는 말과 어긋나지 않는다.
         <button
           type="button"
+          aria-pressed={matchesCustomYieldSnapshot(params)}
           className={styles.yieldPresetButton}
           onClick={() => onChangeParams(restoreCustomYieldPreset(params))}
+          title="마지막으로 직접 입력한 수익률로 되돌립니다"
         >
-          직접 입력값으로 되돌리기
+          사용자 입력값
         </button>
       )}
     </div>

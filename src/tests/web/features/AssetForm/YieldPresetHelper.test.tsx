@@ -37,9 +37,9 @@ describe('YieldPresetHelper', () => {
     expect(next.privatePensions[0].totalReturn).toBe(3);
   });
 
-  test('되돌리기 버튼은 스냅샷이 있을 때만 보인다', () => {
+  test('사용자 입력값 버튼은 스냅샷이 있을 때만 보인다', () => {
     const { rerender } = render(<YieldPresetHelper params={params()} onChangeParams={vi.fn()} />);
-    expect(screen.queryByRole('button', { name: /되돌리기/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /사용자 입력값/ })).toBeNull();
 
     rerender(
       <YieldPresetHelper
@@ -50,7 +50,7 @@ describe('YieldPresetHelper', () => {
         onChangeParams={vi.fn()}
       />
     );
-    expect(screen.getByRole('button', { name: /되돌리기/ })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /사용자 입력값/ })).toBeTruthy();
   });
 
   test('실제 왕복: base 프리셋 상태에서 시작해도 프리셋을 누르면 스냅샷이 잡히고 되돌리기가 원래 직접입력값을 복원한다', async () => {
@@ -87,8 +87,8 @@ describe('YieldPresetHelper', () => {
     const onChangeStep2 = vi.fn();
     rerender(<YieldPresetHelper params={afterPreset} onChangeParams={onChangeStep2} />);
 
-    expect(screen.getByRole('button', { name: /되돌리기/ })).toBeTruthy();
-    await userEvent.click(screen.getByRole('button', { name: /되돌리기/ }));
+    expect(screen.getByRole('button', { name: /사용자 입력값/ })).toBeTruthy();
+    await userEvent.click(screen.getByRole('button', { name: /사용자 입력값/ }));
 
     const restored = onChangeStep2.mock.calls[0][0] as SimulationParams;
     // 원래 손으로 입력했던 9.5 / 7 / 6.4가 그대로 돌아와야 한다.
@@ -165,20 +165,70 @@ describe('YieldPresetHelper', () => {
     expect(screen.getByRole('button', { name: /보수적 5%/ }).getAttribute('aria-pressed')).toBe('true');
   });
 
-  test('되돌리기 버튼은 토글이 아니므로 aria-pressed를 갖지 않는다', () => {
-    render(
+  test('사용자 입력값 버튼도 프리셋과 같은 규칙으로 선택 표시된다', () => {
+    // **회귀 방지.** 예전에는 이 버튼만 aria-pressed가 없어 눌러도 선택 상태가 보이지 않았다.
+    // 표시의 출처는 프리셋 셋과 같다 — 지금 입력칸의 총수익률이 스냅샷의 값과 같은가.
+    const snapshot = { assets: { a: 9.5 }, privatePensions: { p: 6.4 }, isaAccounts: {} };
+
+    // 입력칸 값 = 스냅샷 값 → 켜진다.
+    const { rerender } = render(
+      <YieldPresetHelper
+        params={params({ yieldPreset: 'custom', customYieldSnapshot: snapshot } as Partial<SimulationParams>)}
+        onChangeParams={vi.fn()}
+      />
+    );
+    expect(screen.getByRole('button', { name: /사용자 입력값/ }).getAttribute('aria-pressed')).toBe('true');
+
+    // 프리셋을 얹어 값이 덮이면 꺼지고, 그 프리셋이 대신 켜진다.
+    rerender(
       <YieldPresetHelper
         params={params({
-          customYieldSnapshot: { assets: { a: 9.5 }, privatePensions: { p: 6.4 }, isaAccounts: {} },
+          yieldPreset: 'conservative',
+          customYieldSnapshot: snapshot,
+          assets: [{ ...params().assets[0], totalReturn: 5 }],
+          privatePensions: [{ ...params().privatePensions[0], totalReturn: 3 }],
         } as Partial<SimulationParams>)}
         onChangeParams={vi.fn()}
       />
     );
+    expect(screen.getByRole('button', { name: /사용자 입력값/ }).getAttribute('aria-pressed')).toBe('false');
+    expect(screen.getByRole('button', { name: /보수적 5%/ }).getAttribute('aria-pressed')).toBe('true');
 
-    expect(screen.getByRole('button', { name: /되돌리기/ }).hasAttribute('aria-pressed')).toBe(false);
+    // 사용자가 자산 하나만 도로 고쳐도(스냅샷과 부분만 일치) 켜지지 않는다.
+    rerender(
+      <YieldPresetHelper
+        params={params({
+          yieldPreset: 'custom',
+          customYieldSnapshot: snapshot,
+          assets: [{ ...params().assets[0], totalReturn: 9.5 }],
+          privatePensions: [{ ...params().privatePensions[0], totalReturn: 3 }],
+        } as Partial<SimulationParams>)}
+        onChangeParams={vi.fn()}
+      />
+    );
+    expect(screen.getByRole('button', { name: /사용자 입력값/ }).getAttribute('aria-pressed')).toBe('false');
   });
 
-  test('되돌리기는 직전 입력값을 복원한다', async () => {
+  test('되돌리기를 누른 결과를 다시 먹이면 사용자 입력값 버튼이 켜진다', async () => {
+    // 진짜 왕복 — 표시가 restoreCustomYieldPreset의 «실제 결과»와 일치하는지 확인한다.
+    const onChange = vi.fn();
+    const applied = params({
+      yieldPreset: 'conservative',
+      customYieldSnapshot: { assets: { a: 9.5 }, privatePensions: { p: 6.4 }, isaAccounts: {} },
+      assets: [{ ...params().assets[0], totalReturn: 5 }],
+      privatePensions: [{ ...params().privatePensions[0], totalReturn: 3 }],
+    } as Partial<SimulationParams>);
+
+    const { rerender } = render(<YieldPresetHelper params={applied} onChangeParams={onChange} />);
+    await userEvent.click(screen.getByRole('button', { name: /사용자 입력값/ }));
+
+    const restored = onChange.mock.calls[0][0] as SimulationParams;
+    rerender(<YieldPresetHelper params={restored} onChangeParams={vi.fn()} />);
+
+    expect(screen.getByRole('button', { name: /사용자 입력값/ }).getAttribute('aria-pressed')).toBe('true');
+  });
+
+  test('사용자 입력값 버튼은 직전 입력값을 복원한다', async () => {
     const onChange = vi.fn();
     render(
       <YieldPresetHelper
@@ -192,7 +242,7 @@ describe('YieldPresetHelper', () => {
       />
     );
 
-    await userEvent.click(screen.getByRole('button', { name: /되돌리기/ }));
+    await userEvent.click(screen.getByRole('button', { name: /사용자 입력값/ }));
 
     const next = onChange.mock.calls[0][0] as SimulationParams;
     expect(next.assets[0].totalReturn).toBe(9.5);
