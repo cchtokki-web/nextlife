@@ -530,10 +530,14 @@ function RecommendationBody({
                   <span className={styles.recommendedBadge}><Star size={13} aria-hidden="true" /> 추천</span>
                 )}
               </header>
-              {/* 헤더 아래의 모든 것을 한 덩어리로 묶는다. 카드 설명이 한 줄인 카드와
+              {/* 헤더 아래의 «모든 것»을 한 덩어리로 묶는다. 카드 설명이 한 줄인 카드와
                   두 줄인 카드가 섞여도 세 카드의 첫 지표(「목표 달성 확률」)가 같은
-                  높이에서 시작하도록, 그리드가 [헤더][본문] 두 행을 카드에 물려준다
-                  (Dashboard.module.css의 .strategyCardBody subgrid 규칙). */}
+                  높이에서 시작하도록, 그리드가 [헤더][본문] 두 행을 카드에 물려준다.
+                  정렬을 «만드는» 것은 이 div가 아니라 Dashboard.module.css의
+                  .recommendationGrid(grid-template-rows: auto 1fr)와 .strategyCard
+                  (grid-template-rows: subgrid)다 — 이 div는 그 두 번째 행에 들어가는 쪽이다.
+                  그래서 카드의 직계 자식은 header와 이 div «둘»이어야 한다. 셋이 되면
+                  물려받은 행이 모자라 암묵 행이 생기고 정렬이 깨진다. */}
               <div className={styles.strategyCardBody}>
                 <dl className={styles.strategyMetrics}>
                   <div>

@@ -85,6 +85,44 @@ export function applyYieldPreset(
 }
 
 /**
+ * 지금 저장된 수익률이 «어느 프리셋의 값과 같은가». 어느 것과도 같지 않으면 undefined다.
+ *
+ * **params.yieldPreset을 읽지 «않는다».** 그 필드는 「마지막으로 프리셋을 적용한 뒤 수익률
+ * 관련 입력이 건드려지지 않았는가」에 가깝지, 「지금 값이 무엇인가」가 아니다. 둘은 양쪽으로
+ * 어긋난다 — 자산·연금을 «삭제»하거나 티커 자동조회가 값을 채우기만 해도 'custom'으로
+ * 떨어지고(AssetFormSection), 반대로 배당률만 고치면 프리셋 키가 그대로 남는다. 무엇보다
+ * 저장 계층이 키 없는 시나리오에 'base'를 채워 넣으므로(normalizeSimulationParams →
+ * optionalOneOf(initialParams.yieldPreset)), 그 필드를 그대로 믿으면 «누른 적 없는» 프리셋이
+ * 선택된 것처럼 보인다. resolveMonteCarloConfig가 같은 이유로 이미 실제 수익률에서 유도하는
+ * 쪽을 택했다(volatilityPresets.ts) — 여기서도 같은 판단을 따른다.
+ *
+ * 비교 대상은 applyYieldPreset이 «쓰는» 것과 정확히 같다 — 일반자산·ISA의 totalReturn은
+ * stockGrowth, 사적연금의 totalReturn은 pensionReturn. 배당률은 보지 않는다. 프리셋이
+ * 약속하는 것(버튼 title)은 총수익률뿐이고, 배당률은 계좌마다 «비율»로 옮겨져 원래 값에
+ * 의존하므로 되짚을 수 있는 값이 아니다.
+ *
+ * 비교할 계좌가 하나도 없으면 undefined다. 그 경우 모든 프리셋이 공허하게 참이 되어
+ * 「어느 것이든 맞다」가 되는데, 그것은 「무엇이 선택됐는지」에 대한 답이 아니다.
+ */
+export function matchedYieldPreset(
+  params: SimulationParams
+): 'conservative' | 'base' | 'aggressive' | undefined {
+  const marketReturns = [
+    ...(params.assets ?? []),
+    ...(params.isaAccounts ?? []),
+  ].map((account) => account.totalReturn);
+  const pensionReturns = (params.privatePensions ?? []).map((pension) => pension.totalReturn);
+
+  if (marketReturns.length === 0 && pensionReturns.length === 0) return undefined;
+
+  return (Object.keys(YIELD_PRESET_RATES) as (keyof typeof YIELD_PRESET_RATES)[]).find((preset) => {
+    const { stockGrowth, pensionReturn } = YIELD_PRESET_RATES[preset];
+    return marketReturns.every((rate) => rate === stockGrowth)
+      && pensionReturns.every((rate) => rate === pensionReturn);
+  });
+}
+
+/**
  * 시장 연동 계좌(일반자산·ISA) 하나에 프리셋 수익률을 적용한다.
  *
  * **배당률을 «같은 비율로» 함께 옮긴다.** 예전에는 totalReturn만 덮고 dividendYield는 그대로

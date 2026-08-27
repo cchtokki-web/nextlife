@@ -47,6 +47,11 @@ export interface RetirementGoal {
    * 고쳐 입력을 끝내는 것(RetirementGoalSelector의 commitTargetEdit). 뒤엣것은 blur·Enter로
    * 입력을 «다 친» 시점에만 붙는다. 키 입력 하나하나로는 붙지 않는다 — 고치다 만 금액을
    * 확정으로 읽으면 표시가 다시 뜻을 잃는다(known-issues 14번).
+   *
+   * blur·Enter «자체»가 조건인 것은 아니다. commitTargetEdit은 두 관문을 더 지난다 —
+   * 이번 포커스에서 실제로 값을 쳤고 그 값이 커밋 시점까지 그대로 남아 있어야 하며
+   * (editedTargets), isSuggestedTargetValue가 참이어야 한다. 그래서 입력칸을 스쳐 지나기만
+   * 한 경우, 금액이 아닌 목표(빠른 은퇴의 나이), 빈 칸은 모두 확정되지 않는다.
    * 정규화·어댑터·저장 복원처럼 목표 객체를 다시 만드는 경로가 이 표시를 «지어내면» 수정이
    * 조용히 무효가 되므로, 그 경로들은 있는 그대로 옮기기만 한다.
    */

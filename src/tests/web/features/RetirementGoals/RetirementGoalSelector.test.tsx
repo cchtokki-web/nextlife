@@ -301,6 +301,102 @@ describe('RetirementGoalSelector', () => {
       expect(seen.at(-1)![0]).toMatchObject({ targetValue: 5_000_000, targetValueSource: 'user' });
     });
 
+    // 커밋 시점에 목표를 다시 «찾기» 때문에, 그 사이 goals prop이 통째로 갈리면 내가
+    // 친 적 없는 새 씨앗이 blur 한 번으로 확정될 수 있었다(포커스를 쥔 채 다른 시나리오가
+    // 늦게 도착하는 경우). editedTargets가 «값»을 함께 들고 대조해 그것을 막는다.
+    test('입력 중에 목표 금액이 밖에서 갈리면 blur는 아무것도 확정하지 않는다', () => {
+      const seen: RetirementGoal[][] = [];
+      function RaceHarness() {
+        const [goals, setGoals] = useState<RetirementGoal[]>([]);
+        return (
+          <>
+            <RetirementGoalSelector
+              goals={goals}
+              displayCurrency="KRW"
+              retirementAge={60}
+              targetMonthlySpending={3500000}
+              onChange={(next) => { seen.push(next); setGoals(next); }}
+            />
+            <button
+              type="button"
+              onClick={() => setGoals((prev) =>
+                prev.map((goal) => ({ ...goal, targetValue: 9_999_999 })))}
+            >
+              밖에서 시나리오 교체
+            </button>
+          </>
+        );
+      }
+      render(<RaceHarness />);
+      fireEvent.click(screen.getByRole('button', { name: /생활비 안정/ }));
+
+      const input = screen.getByLabelText('목표 월 생활비');
+      fireEvent.focus(input);
+      fireEvent.change(input, { target: { value: '4,000,000' } });
+      // 아직 blur 전에 바깥에서 목표 금액이 다른 값으로 갈린다(선택기를 거치지 않으므로
+      // seen에는 남지 않는다 — 실제 시나리오 교체 경로와 같다).
+      fireEvent.click(screen.getByRole('button', { name: '밖에서 시나리오 교체' }));
+      expect(input).toHaveValue('9,999,999');
+      const countBeforeBlur = seen.length;
+
+      fireEvent.blur(input);
+
+      // 사용자가 친 적 없는 9,999,999가 확정되어서는 «안 된다» — 확정은 emit이므로
+      // 아무 일도 일어나지 않았다는 것이 곧 「승격하지 않았다」다.
+      expect(seen.length).toBe(countBeforeBlur);
+      expect(screen.getByText(/아직 제안 금액입니다/)).toBeInTheDocument();
+    });
+
+    // 표식은 목표 «유형별»로 따로 선다. 하나로 합치면 한 번의 blur가 씨앗을 가진 모든
+    // 금액 목표를 한꺼번에 확정한다.
+    test('한 목표를 고치고 나가도 다른 목표는 미확정으로 남는다', () => {
+      const seen: RetirementGoal[][] = [];
+      render(<SelectorHarness onGoals={(goals) => seen.push(goals)} />);
+      fireEvent.click(screen.getByRole('button', { name: /생활비 안정/ }));
+      fireEvent.click(screen.getByRole('button', { name: /여유 있는 소비/ }));
+
+      const input = screen.getByLabelText('목표 월 생활비');
+      fireEvent.focus(input);
+      fireEvent.change(input, { target: { value: '4,000,000' } });
+      fireEvent.blur(input);
+
+      const goals = seen.at(-1)!;
+      expect(goals.find((goal) => goal.type === 'LIVING_EXPENSE_STABILITY')!.targetValueSource).toBe('user');
+      expect(goals.find((goal) => goal.type === 'COMFORTABLE_SPENDING')!.targetValueSource).toBeUndefined();
+    });
+
+    // 고친 적 없이 Enter만 누르는 것도 진술이 아니다. blur 쪽만 막고 Enter를 열어 두면
+    // 같은 승격이 다른 문으로 들어온다.
+    test('고치지 않고 Enter만 눌러도 확정되지 않는다', () => {
+      const seen: RetirementGoal[][] = [];
+      render(<SelectorHarness onGoals={(goals) => seen.push(goals)} />);
+      fireEvent.click(screen.getByRole('button', { name: /생활비 안정/ }));
+      const countAfterSelect = seen.length;
+
+      const input = screen.getByLabelText('목표 월 생활비');
+      fireEvent.focus(input);
+      fireEvent.keyDown(input, { key: 'Enter' });
+
+      expect(seen.length).toBe(countAfterSelect);
+      expect(screen.getByText(/아직 제안 금액입니다/)).toBeInTheDocument();
+    });
+
+    // 제품 결과를 가진 표시는 확정 패널이 아니라 HARD 관문 문구다 — 이것이 남아 있으면
+    // 흐름이 「준비 완료」로 읽지 않는다. 버튼 경로에만 걸려 있던 확인을 커밋 경로에도 건다.
+    test('직접 고쳐 확정하면 HARD 확인 요구 문구도 사라진다', () => {
+      render(<SelectorHarness onGoals={() => {}} />);
+      fireEvent.click(screen.getByRole('button', { name: /생활비 안정/ }));
+      fireEvent.change(screen.getByLabelText('조건 강도'), { target: { value: 'HARD' } });
+      expect(screen.getByText('반드시 지킬 최소 생활비를 확인해 주세요.')).toBeInTheDocument();
+
+      const input = screen.getByLabelText('목표 월 생활비');
+      fireEvent.focus(input);
+      fireEvent.change(input, { target: { value: '4,000,000' } });
+      fireEvent.blur(input);
+
+      expect(screen.queryByText('반드시 지킬 최소 생활비를 확인해 주세요.')).not.toBeInTheDocument();
+    });
+
     // 나이 목표는 애초에 확정을 묻지 않는다(isSuggestedTargetValue에서 걸러진다).
     // 고쳤다고 해서 없던 출처 표시가 생기면 저장 데이터의 모양이 조용히 바뀐다.
     test('희망 은퇴 나이를 고쳐도 출처 표시는 붙지 않는다', () => {
