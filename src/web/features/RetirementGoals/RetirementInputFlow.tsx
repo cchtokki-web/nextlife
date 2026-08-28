@@ -17,6 +17,7 @@ import { AgeField } from '../StrategySettings/AgeField';
 import { AGE_MAX, EXPECTANCY_MAX } from '../StrategySettings/ageInput';
 import { retirementGoalDefinition } from './goalCatalog';
 import { RetirementGoalSelector, type GoalFocusRequest } from './RetirementGoalSelector';
+import { GoalSimulationImpact } from './GoalSimulationImpact';
 
 interface RetirementInputFlowProps {
   params: SimulationParams;
@@ -208,6 +209,7 @@ export function RetirementInputFlow({
             focusGoal={focusGoal}
             onChange={(nextGoals) => onChangeParams(applyRetirementGoals(params, nextGoals))}
           />
+          <GoalSimulationImpact goals={goals} params={params} />
         </section>
       )}
     </div>
