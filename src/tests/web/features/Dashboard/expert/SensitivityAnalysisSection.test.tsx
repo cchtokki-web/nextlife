@@ -67,6 +67,29 @@ describe('SensitivityAnalysisSection', () => {
     // 「88세」는 이제 산문 줄과 기준선 행 두 곳에 나온다 — 둘 다 기준선을 말하는 자리다.
     expect(screen.getAllByText(/88세/).length).toBeGreaterThan(0);
   });
+
+  // 회귀: 이름 w-28 + 값 w-44가 둘 다 shrink-0인 flex 행은 최소 폭이 312px로 굳는다.
+  // 모바일 카드 안쪽 폭이 그보다 좁아 행이 상자 밖으로 밀렸고 금액이 테두리를 넘어 잘렸다.
+  // 좁은 폭에서는 막대가 아래 줄로 내려가고 두 글자 칸 중 어느 쪽도 고정 폭을 갖지 않아야 한다.
+  test('행은 고정 폭 대신 컨테이너 폭에 맞춰 접힌다', () => {
+    const { container } = render(
+      <SensitivityAnalysisSection baselineDepletionAge={88} baselineEndingAssets={2500000000} scenarios={scenarios} />
+    );
+
+    expect(container.querySelector('section')?.className).toContain('@container');
+
+    const rows = container.querySelectorAll('[class*="grid-cols-"]');
+    expect(rows.length).toBe(scenarios.length + 1); // 시나리오 6행 + 기준선 1행
+    rows.forEach((row) => {
+      expect(row.className).toContain('grid-cols-[minmax(0,1fr)_auto]');
+      expect(row.className).toContain('@min-[26rem]:grid-cols-[7rem_minmax(0,1fr)_11rem]');
+    });
+
+    // 어떤 자식도 「줄어들지 않는 고정 폭」을 갖지 않는다.
+    container.querySelectorAll('*').forEach((el) => {
+      expect(el.className).not.toContain('shrink-0');
+    });
+  });
 });
 
 // **수익률 3행은 사용자 가정 대비 ±가 아니라 5/7/9%라는 절대 앵커다**

@@ -24,6 +24,36 @@ interface SensitivityAnalysisSectionProps {
   planAssetStatus?: PlanAssetStatus;
 }
 
+// 한 줄의 뼈대. **좁은 폭에서는 이름과 값이 한 줄, 막대가 그 아래 줄을 통째로 쓴다.**
+//
+// 예전에는 이름(w-28)과 값(w-44)이 둘 다 shrink-0인 flex 행이라 최소 폭이 312px로 굳어
+// 있었다. 모바일 카드 안쪽 폭은 그보다 좁아서(≈290px) 행 전체가 상자 밖으로 밀려 나갔고,
+// 오른쪽 끝의 금액이 테두리를 넘어 잘렸다. 폭 기준은 뷰포트가 아니라 «이 표가 실제로 쥔
+// 폭»이어야 하므로(같은 카드가 데스크톱에서는 좁은 패널 안에도 들어간다) 컨테이너 질의를 쓴다.
+function SensitivityRow({ label, labelClassName, bar, value, testId }: {
+  label: React.ReactNode;
+  labelClassName: string;
+  // 막대 트랙 «안»에 들어갈 실제 막대. 기준선 행은 그리지 않으므로 없을 수 있다.
+  bar?: React.ReactNode;
+  value: React.ReactNode;
+  testId?: string;
+}) {
+  return (
+    <div
+      data-testid={testId}
+      className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1.5 text-xs @min-[26rem]:grid-cols-[7rem_minmax(0,1fr)_11rem]"
+    >
+      <span className={`col-start-1 row-start-1 min-w-0 break-keep ${labelClassName}`}>{label}</span>
+      <span className="col-start-2 row-start-1 min-w-0 text-right break-keep @min-[26rem]:col-start-3">
+        {value}
+      </span>
+      <div className="col-span-2 col-start-1 row-start-2 h-2 rounded-full bg-foreground/5 @min-[26rem]:col-span-1 @min-[26rem]:col-start-2 @min-[26rem]:row-start-1">
+        {bar}
+      </div>
+    </div>
+  );
+}
+
 function formatDepletionAge(depletionAge: number | null): string {
   return depletionAge === null ? '평생 유지' : `${depletionAge}세`;
 }
@@ -98,39 +128,42 @@ export function SensitivityAnalysisSection({
       return found === -1 ? visibleScenarios.length : found;
     })();
 
+  // 막대를 그리지 않는다. 기준선의 증감은 정의상 0이고, 길이 0인 막대를 그리면
+  // 「가장 나쁜 경우」로 읽힌다.
   const baselineRow = (
-    <div className="flex items-center gap-3 text-xs" data-testid="sensitivity-baseline-row">
-      <span className="w-28 shrink-0 font-semibold">현재 가정 (기준)</span>
-      {/* 막대를 그리지 않는다. 기준선의 증감은 정의상 0이고, 길이 0인 막대를 그리면
-          「가장 나쁜 경우」로 읽힌다. */}
-      <div className="h-2 flex-1 rounded-full bg-foreground/5" />
-      <span className="w-44 shrink-0 text-right">
-        <span className="font-semibold">{formatManwon(baselineEndingAssets)}</span>
-        {baselineDepletionAge !== null && (
-          <span className="block text-[11px] font-normal text-danger">{baselineDepletionAge}세 고갈</span>
-        )}
-      </span>
-    </div>
+    <SensitivityRow
+      testId="sensitivity-baseline-row"
+      label="현재 가정 (기준)"
+      labelClassName="font-semibold"
+      value={(
+        <>
+          <span className="font-semibold">{formatManwon(baselineEndingAssets)}</span>
+          {baselineDepletionAge !== null && (
+            <span className="block text-[11px] font-normal text-danger">{baselineDepletionAge}세 고갈</span>
+          )}
+        </>
+      )}
+    />
   );
 
   return (
-    <section>
-      <h4 className="mb-1 text-sm font-semibold">민감도 분석 (핵심 가정 변화에 따른 영향)</h4>
+    <section className="@container">
+      <h4 className="mb-1 text-sm font-semibold break-keep">민감도 분석 (핵심 가정 변화에 따른 영향)</h4>
       {frozenMonthlySpending !== undefined && (
-        <p className="mb-1 text-xs text-foreground-muted">
+        <p className="mb-1 text-xs break-keep text-foreground-muted">
           {scenarios.length}개 시나리오 모두 <strong>월 생활비 {formatManwon(frozenMonthlySpending)}을 고정</strong>한 채
           가정 하나만 바꾼 결과입니다.
         </p>
       )}
       {noInvestableAsset ? (
-        <p className="mb-3 text-xs text-foreground-muted">
+        <p className="mb-3 text-xs break-keep text-foreground-muted">
           투자자산이 없어 수익률·물가 가정을 바꿔도 기말자산은 0원으로 동일합니다. 아래는 실제로
           결과가 달라지는 가정만 남긴 것입니다
           {hiddenCount > 0 && ` — 나머지 ${hiddenCount}개 가정은 결과가 동일해 생략했습니다`}.
         </p>
       ) : (
         <>
-          <p className="mb-1 text-xs text-foreground-muted">
+          <p className="mb-1 text-xs break-keep text-foreground-muted">
             현재 설정 기준: 기말자산 {formatManwon(baselineEndingAssets)} · 자산 고갈 {formatDepletionAge(baselineDepletionAge)}
             {allLifetime && ' — 아래 가정이 나빠지는 경우를 포함해도 고갈 위험이 없습니다. 다만 남는 자산의 규모는 크게 달라집니다.'}
           </p>
@@ -139,7 +172,7 @@ export function SensitivityAnalysisSection({
               기준선 아래로 내려간다. 그 숫자를 보여주지 않으면 「수익률을 높였는데 왜 돈이
               줄지」라는 읽기를 막을 방법이 없다. */}
           {baselineWeightedTotalReturn !== null && baselineWeightedTotalReturn !== undefined && (
-            <p className="mb-3 text-xs text-foreground-muted" data-testid="sensitivity-baseline-return">
+            <p className="mb-3 text-xs break-keep text-foreground-muted" data-testid="sensitivity-baseline-return">
               현재 가정: 포트폴리오 <strong>가중평균 총수익률 {formatPercent(baselineWeightedTotalReturn)}</strong>
               {' '}(사적연금 포함). {describeYieldAxisAnchors()}
             </p>
@@ -159,43 +192,44 @@ export function SensitivityAnalysisSection({
           return (
             <React.Fragment key={scenario.key}>
             {index > 0 && index === baselineRowIndex && baselineRow}
-            <div className="flex items-center gap-3 text-xs">
-              <span className="w-28 shrink-0 text-foreground-muted">{scenario.label}</span>
-              <div className="h-2 flex-1 rounded-full bg-foreground/5">
+            <SensitivityRow
+              label={scenario.label}
+              labelClassName="text-foreground-muted"
+              bar={(
                 <div
                   data-testid="sensitivity-bar"
                   data-key={scenario.key}
                   className={`h-2 rounded-full ${isWorse ? 'bg-danger' : isBetter ? 'bg-success' : 'bg-foreground/20'}`}
                   style={{ width: `${widthPercent}%` }}
                 />
-              </div>
-              <span className="w-44 shrink-0 text-right">
-                {noInvestableAsset ? (
-                  // 금액(0원)과 고갈 나이(전 시나리오 동일)는 정보가 없으므로 빼고, 갈리는 값만 남긴다.
-                  <span className="font-semibold">생활비 부족 {scenario.unmetSpendingYears}년</span>
-                ) : (
-                  <>
-                    <span className="font-semibold">{formatManwon(scenario.endingAssets)}</span>
-                    {scenario.endingAssetsDelta !== 0 && (
-                      <span className={`ml-1 font-normal ${isWorse ? 'text-danger' : 'text-success'}`}>
-                        ({deltaSign}
-                        {formatManwon(scenario.endingAssetsDelta)})
-                      </span>
-                    )}
-                    {/* 고갈과 생활비 미충족은 "얼마 남았나"와는 다른 층위의 실패 신호라 별도 줄에 둔다.
-                        특히 미충족은 자산이 남아 있어도 발생하므로(인출 경로가 잔액을 넘겨 인출하지
-                        않는다) 기말자산만 보면 놓친다. */}
-                    {(scenario.depletionAge !== null || scenario.unmetSpendingYears > 0) && (
-                      <span className="block text-[11px] font-normal text-danger">
-                        {scenario.depletionAge !== null && `${scenario.depletionAge}세 고갈`}
-                        {scenario.depletionAge !== null && scenario.unmetSpendingYears > 0 && ' · '}
-                        {scenario.unmetSpendingYears > 0 && `생활비 부족 ${scenario.unmetSpendingYears}년`}
-                      </span>
-                    )}
-                  </>
-                )}
-              </span>
-            </div>
+              )}
+              value={noInvestableAsset ? (
+                // 금액(0원)과 고갈 나이(전 시나리오 동일)는 정보가 없으므로 빼고, 갈리는 값만 남긴다.
+                <span className="font-semibold">생활비 부족 {scenario.unmetSpendingYears}년</span>
+              ) : (
+                <>
+                  {/* 금액과 증감은 «한 덩어리»로 읽힌다. 좁은 폭에서 줄이 갈리더라도 괄호 안이
+                      쪼개지지 않도록 증감만 통째로 붙여 둔다. */}
+                  <span className="font-semibold">{formatManwon(scenario.endingAssets)}</span>
+                  {scenario.endingAssetsDelta !== 0 && (
+                    <span className={`ml-1 whitespace-nowrap font-normal ${isWorse ? 'text-danger' : 'text-success'}`}>
+                      ({deltaSign}
+                      {formatManwon(scenario.endingAssetsDelta)})
+                    </span>
+                  )}
+                  {/* 고갈과 생활비 미충족은 "얼마 남았나"와는 다른 층위의 실패 신호라 별도 줄에 둔다.
+                      특히 미충족은 자산이 남아 있어도 발생하므로(인출 경로가 잔액을 넘겨 인출하지
+                      않는다) 기말자산만 보면 놓친다. */}
+                  {(scenario.depletionAge !== null || scenario.unmetSpendingYears > 0) && (
+                    <span className="block text-[11px] font-normal text-danger">
+                      {scenario.depletionAge !== null && `${scenario.depletionAge}세 고갈`}
+                      {scenario.depletionAge !== null && scenario.unmetSpendingYears > 0 && ' · '}
+                      {scenario.unmetSpendingYears > 0 && `생활비 부족 ${scenario.unmetSpendingYears}년`}
+                    </span>
+                  )}
+                </>
+              )}
+            />
             </React.Fragment>
           );
         })}
