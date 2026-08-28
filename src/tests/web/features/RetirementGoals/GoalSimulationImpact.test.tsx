@@ -42,4 +42,24 @@ describe('GoalSimulationImpact', () => {
 
     expect(screen.getByText('목표 금액을 확정하면 최소 상속자산 조건으로 계산합니다.')).toBeInTheDocument();
   });
+
+  // 회귀: 이 카드는 데스크톱에서 360px 고정 사이드바 안에 들어간다. 2단 분기를 뷰포트
+  // 기준(sm:)으로 걸면 화면이 넓을수록 오히려 150px짜리 칸이 생겨 문장이 토막 난다.
+  // 분기 기준은 반드시 «이 카드가 실제로 쥔 폭»(컨테이너 질의)이어야 한다.
+  test('2단 분기는 뷰포트가 아니라 컨테이너 폭을 기준으로 한다', () => {
+    const { container } = render(
+      <GoalSimulationImpact
+        params={params}
+        goals={[{ type: 'ASSET_SURVIVAL', priority: 1, constraintType: 'SOFT' }]}
+      />,
+    );
+
+    const section = container.querySelector('section');
+    expect(section?.className).toContain('@container');
+
+    const twoColumn = container.querySelector('[class*="grid-cols-2"]');
+    expect(twoColumn).not.toBeNull();
+    expect(twoColumn?.className).toContain('@min-[26rem]:grid-cols-2');
+    expect(twoColumn?.className).not.toContain('sm:grid-cols-2');
+  });
 });

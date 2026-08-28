@@ -167,12 +167,14 @@ export function RetirementGoalSelector({
   }, [focusGoal]);
 
   return (
-    <div className="flex flex-col gap-5">
+    // @container: 컨테이너 질의는 «자기 자신»이 아니라 조상 컨테이너를 본다. 폭 기준을
+    // 여기 한 번만 걸고, 아래 카드 그리드가 그 폭을 참조한다.
+    <div className="@container/goals flex flex-col gap-5">
       <div>
         <div className="flex items-center justify-between gap-3">
-          <div>
-            <h2 className="text-base font-bold text-foreground">원하는 노후를 선택하세요</h2>
-            <p className="mt-1 text-xs leading-relaxed text-foreground-muted">
+          <div className="min-w-0">
+            <h2 className="text-base font-bold break-keep text-foreground">원하는 노후를 선택하세요</h2>
+            <p className="mt-1 text-xs leading-relaxed break-keep text-foreground-muted">
               최대 5개까지 선택한 뒤, 나에게 중요한 순서대로 정렬해 주세요.
             </p>
           </div>
@@ -185,7 +187,9 @@ export function RetirementGoalSelector({
         </p>
       </div>
 
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+      {/* 목표 카드도 같은 360px 사이드바 안에서 그려진다. 뷰포트가 아니라 이 카드가
+          실제로 쥔 폭을 기준으로 2단을 편다. */}
+      <div className="grid grid-cols-1 gap-2 @min-[26rem]/goals:grid-cols-2">
         {RETIREMENT_GOAL_CATALOG.map((definition) => {
           const isSelected = selectedTypes.has(definition.type);
           const disabled = !isSelected && atLimit;
@@ -203,14 +207,14 @@ export function RetirementGoalSelector({
               } disabled:cursor-not-allowed disabled:opacity-40`}
             >
               <span className="flex items-start justify-between gap-2">
-                <span className="text-sm font-bold text-foreground">{definition.label}</span>
+                <span className="text-sm font-bold break-keep text-foreground">{definition.label}</span>
                 <span className={`flex size-5 shrink-0 items-center justify-center rounded-full border ${
                   isSelected ? 'border-primary bg-primary text-white' : 'border-card-border'
                 }`} aria-hidden="true">
                   {isSelected && <Check size={13} />}
                 </span>
               </span>
-              <span className="mt-1.5 block text-xs leading-relaxed text-foreground-muted">
+              <span className="mt-1.5 block text-xs leading-relaxed break-keep text-foreground-muted">
                 {definition.description}
               </span>
             </button>
@@ -251,7 +255,7 @@ export function RetirementGoalSelector({
                   <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-bold text-white">
                     {goal.priority}
                   </span>
-                  <span className="min-w-0 flex-1 text-sm font-semibold text-foreground">
+                  <span className="min-w-0 flex-1 text-sm font-semibold break-keep text-foreground">
                     {definition.label}
                   </span>
                   <button
