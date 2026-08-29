@@ -44,53 +44,21 @@ import {
   type AnalysisRuntimeValue,
 } from '../../web/features/RetirementAnalysis/AnalysisRuntime';
 import { useAnalysisRequest } from '../../web/features/RetirementAnalysis/useAnalysisRequest';
+import {
+  STEP_STATE_LABEL,
+  analysisHasFailed,
+  analysisIsRunning,
+  analysisSteps,
+  type AnalysisStepState,
+} from '../../web/features/RetirementAnalysis/analysisProgress';
 
-// 진행 표시 패널의 단계 상태.
-//
-// 'pending'과 'error'를 'done'과 «반드시» 구분한다. 예전에는 'running'이 아닌 모든 상태가
-// 완료(초록 ✓/·)로 렌더돼서, 몬테카를로가 실패해도 「시장 변동 검증」 줄이 초록으로 남았다.
-// 바로 아래 대시보드는 같은 실패를 오류로 표시하므로 한 화면이 서로 다른 말을 했다.
-type AnalysisStepState = 'pending' | 'running' | 'done' | 'error';
-
-const STEP_STATE_LABEL: Record<AnalysisStepState, string> = {
-  pending: '대기 중',
-  running: '진행 중',
-  done: '완료',
-  error: '실패',
-};
-
+// 단계 상태 -> 글리프. 상태 판정은 core 쪽 순수 모듈(analysisProgress)이 하고, 여기서는
+// 그 결과를 어떻게 그릴지만 정한다.
 function stepGlyph(state: AnalysisStepState): { className: string; text: string } {
   if (state === 'running') return { className: styles.analysisStepRunning, text: '…' };
   if (state === 'done') return { className: styles.analysisStepDone, text: '✓' };
   if (state === 'error') return { className: styles.analysisStepError, text: '!' };
   return { className: styles.analysisStepPending, text: '·' };
-}
-
-function workerStepState(status: 'idle' | 'running' | 'done' | 'error' | 'unsupported'): AnalysisStepState {
-  if (status === 'running') return 'running';
-  if (status === 'done') return 'done';
-  // 'unsupported'는 이 브라우저에서 그 단계를 «할 수 없다»는 뜻이므로 완료가 아니다.
-  if (status === 'error' || status === 'unsupported') return 'error';
-  return 'pending';
-}
-
-function analysisSteps(analysis: AnalysisRuntimeValue): Array<{ label: string; state: AnalysisStepState }> {
-  return [
-    // 결정론 시뮬레이션은 동기 계산이라 이 패널이 그려질 시점엔 이미 결과가 있다. 그래도
-    // 상태와 무관하게 ✓를 박아 두지 않고 실제 결과 유무를 본다 — 하드코딩된 체크는
-    // 검사한 적 없는 단계를 검사했다고 말하는 것이다.
-    { label: '기본 시뮬레이션', state: analysis.result ? 'done' : 'pending' },
-    {
-      label: '추천 전략 탐색',
-      // isComputingRecommendation은 «진행» 플래그이고 recommendationFailed가 «결과» 플래그다.
-      // 진행 플래그는 성공이든 예외든 똑같이 내려가므로, 그것만 보면 실패가 완료로 읽힌다.
-      state: analysis.recommendationFailed
-        ? 'error'
-        : analysis.isComputingRecommendation ? 'running' : 'done',
-    },
-    { label: '시장 변동 검증', state: workerStepState(analysis.monteCarloStatus) },
-    { label: '전략 후보 최적화', state: workerStepState(analysis.strategyOptimizationStatus) },
-  ];
 }
 
 export default function Home() {
@@ -478,25 +446,17 @@ export default function Home() {
 
   const renderPage = (analysis: AnalysisRuntimeValue | null) => {
     const analysisIsCurrent = analysis?.sourceParams === activeParams;
-    const analysisInProgress = !!analysis && (
-      analysis.isComputingRecommendation
-      || analysis.monteCarloStatus === 'running'
-      || analysis.strategyOptimizationStatus === 'running'
-    );
-    // 「분석 시작」만은 추천 검증이 실패했을 때 다시 열어 둔다. 워커 오류는 일시적일 수 있는데,
+    const analysisInProgress = analysisIsRunning(analysis);
+    const analysisFailed = analysisHasFailed(analysis);
+    // 「분석 시작」은 분석이 실패했을 때 다시 열어 둔다. 워커 오류는 일시적일 수 있는데,
     // 결과가 「최신」이라는 이유로 버튼을 잠그면 설정을 억지로 건드리거나 새로고침하는 것 외에
-    // 재시도할 방법이 없다. 대시보드와 PDF는 analysisIsCurrent 그대로 둔다 — 결정론 결과와
-    // Monte Carlo는 멀쩡하므로 화면을 내릴 이유가 없다.
-    const canReanalyze = !analysisIsCurrent || analysis?.strategyOptimizationStatus === 'error';
-    // 시나리오 배지가 「분석 완료」라고 말해도 되는지 판정한다. analyzedAt은 버튼을 누른
-    // 순간 기록되므로 결과가 실패해도 남는다 — 실패를 아는 것은 이쪽뿐이다.
-    // 'unsupported'는 이 브라우저가 그 단계를 못 한다는 뜻이라 «이번 분석의 실패»가 아니므로
-    // 제외한다. 포함하면 워커를 못 쓰는 브라우저는 영원히 「분석 실패」만 보게 된다.
-    const analysisFailed = !!analysis && (
-      analysis.recommendationFailed
-      || analysis.monteCarloStatus === 'error'
-      || analysis.strategyOptimizationStatus === 'error'
-    );
+    // 재시도할 방법이 없다. 대시보드와 PDF는 analysisIsCurrent 그대로 둔다 — 결정론 결과는
+    // 멀쩡하므로 화면을 내릴 이유가 없다.
+    //
+    // 예전에는 전략 최적화 실패만 이 문을 열었다. 그래서 몬테카를로가 실패하면 진행 패널은
+    // 「다시 눌러 주세요」라고 말하는데 그 버튼은 잠겨 있었다 — 안내가 가리키는 곳에 길이
+    // 없었다. 실패를 세는 곳이 하나뿐이어야 그런 어긋남이 생기지 않는다.
+    const canReanalyze = !analysisIsCurrent || analysisFailed;
     return (
     <main className={styles.main}>
       <Header saveStatus={saveStatus} isSaving={isSaving} lastSaved={lastSaved}>
@@ -608,16 +568,25 @@ export default function Home() {
         restoreUnverifiable={restoreUnverifiable}
       />
 
-      {analysisInProgress && (
+      {/* 실패했는데 더 도는 것이 없으면 이 패널은 사라진다 — 사용자는 아무 설명도 없이
+          결과만 이상한 화면을 보게 된다. 그래서 진행 중이 «아니어도» 실패가 있으면 남긴다. */}
+      {analysis && (analysisInProgress || analysisFailed) && (
         <div role="status" className={styles.analysisProgress}>
-          <span className={styles.analysisProgressDot} aria-hidden="true" />
+          <span
+            className={analysisInProgress ? styles.analysisProgressDot : styles.analysisProgressFailedDot}
+            aria-hidden="true"
+          />
           <div className={styles.analysisProgressBody}>
-            <strong>은퇴 계획을 분석하고 있습니다.</strong>
+            <strong>
+              {analysisInProgress
+                ? '은퇴 계획을 분석하고 있습니다.'
+                : '분석을 끝내지 못한 단계가 있습니다.'}
+            </strong>
             <span className={styles.analysisProgressHint}>
-              {analysisSteps(analysis).some((step) => step.state === 'error')
+              {analysisFailed
                 // 실패한 단계를 두고 "완료된 단계를 표시합니다"라고만 말하면, 사용자는
                 // 초록이 아닌 줄을 아직 안 끝난 것으로 읽고 계속 기다린다.
-                ? '일부 단계가 실패했습니다. 「분석 시작」을 다시 눌러 주세요.'
+                ? '아래에서 실패한 단계를 확인하고 「분석 시작」을 다시 눌러 주세요.'
                 : '완료된 단계와 진행 중인 작업을 표시합니다.'}
             </span>
             <ul className={styles.analysisProgressSteps}>
