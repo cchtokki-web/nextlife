@@ -94,6 +94,7 @@ import { resolveSpendingCurve } from '@/core/usecases/spending/spendingCurve';
 import { CandidateRecommendation, PRIMARY_SELECTION_NOTE, ValidatedStrategyCandidate } from '@/core/recommendation/RecommendationEngine';
 import { DEFAULT_UTILITY_CONFIG } from '@/core/usecases/utility/utilityWeights';
 import { NO_GOAL_FAILURE, LEGACY_GOAL_CONDITIONS } from '@/tests/fixtures/goalFailure';
+import { describeUnscoredGoals } from '@/core/usecases/goals/goalScoreSupport';
 
 describe('renderRiskAlertsSection', () => {
   test('빈 배열이면 빈 문자열을 반환한다', () => {
@@ -580,6 +581,41 @@ describe('renderPlanVerdictSection', () => {
       monteCarlo,
       formatValue: won,
     });
+
+  // 리포트는 화면보다 오래 남고 그대로 인용된다. 「점수 산정 대상이 아니다」를 화면만 말하면
+  // 인쇄본을 든 사용자는 그 목표의 0점을 여전히 실패로 읽는다. 문장의 출처는 core 한 곳이며
+  // (describeUnscoredGoals) 화면과 «같은 문장»이어야 한다(PRD 9.3).
+  test('점수 산정 대상이 아닌 목표를 화면과 같은 문장으로 인쇄한다', () => {
+    const html = render(0.9, {
+      ...mc(0.9),
+      goalConditions: {
+        basis: 'selected_goals',
+        requireSpendingTarget: true,
+        requireAssetSurvival: false,
+        terminalAssetGoal: 0,
+        unmeasuredGoals: ['TAX_OPTIMIZATION', 'HOUSING_STABILITY'],
+      },
+    });
+
+    expect(html).toContain('반영되지 않은 목표: 세금 최소화, 주거 안정');
+    expect(html).toContain(describeUnscoredGoals(['HOUSING_STABILITY']));
+    expect(html).toContain('0점은 목표 실패가 아니라');
+  });
+
+  test('점수 산식이 있는 목표만 미반영이면 점수 안내를 붙이지 않는다', () => {
+    const html = render(0.9, {
+      ...mc(0.9),
+      goalConditions: {
+        basis: 'selected_goals',
+        requireSpendingTarget: true,
+        requireAssetSurvival: false,
+        terminalAssetGoal: 0,
+        unmeasuredGoals: ['TAX_OPTIMIZATION'],
+      },
+    });
+
+    expect(html).not.toContain('점수 산정 대상이 아닙니다');
+  });
 
   test('기준 시나리오 결과에 "가정대로 실현될 때"라는 조건을 붙인다', () => {
     const html = render(0.37, mc(0.37));

@@ -627,15 +627,36 @@ describe('RetirementGoalSelector', () => {
       expect(within(constraint).queryByRole('option', { name: '반드시 지키기' })).toBeNull();
     });
 
+    // 점수 «산식»이 있는 정성 목표. 잠근 이유와 「그래도 반영된다」를 함께 말하는 종전 문구가
+    // 그대로 참이다 — 세금 최소화는 taxEfficiency에서 점수를 유도해 후보를 실제로 변별한다.
     test('문구가 잠근 이유와 그래도 반영되는 것을 함께 말한다', () => {
+      render(<SelectorHarness />);
+
+      fireEvent.click(screen.getByRole('button', { name: /세금 최소화/ }));
+
+      expect(screen.getByText(/정량 기준이 아직 없어 「반드시 지키기」로 지정할 수 없습니다/))
+        .toBeInTheDocument();
+      expect(screen.getByText(/선택과 우선순위는 추천 전략을 고르는 기준에 그대로 반영됩니다/))
+        .toBeInTheDocument();
+    });
+
+    // 「주거 안정」만 점수 산식이 없어 평가가 상수 0을 돌려준다. 위 문장을 그대로 쓰면
+    // 「반영된다」가 「0으로 반영된다」를 감추고, 사용자는 그 0을 목표 실패로 읽는다
+    // (known-issues 15번). 계산은 그대로 두고 화면이 그 사실을 말하게 한다.
+    test('점수 산식이 없는 목표에는 0점이 실패가 아님을 밝힌다', () => {
       render(<SelectorHarness />);
 
       fireEvent.click(screen.getByRole('button', { name: /주거 안정/ }));
 
       expect(screen.getByText(/정량 기준이 아직 없어 「반드시 지키기」로 지정할 수 없습니다/))
         .toBeInTheDocument();
-      expect(screen.getByText(/선택과 우선순위는 추천 전략을 고르는 기준에 그대로 반영됩니다/))
+      expect(screen.getByText(/점수 산정 대상도 아닙니다/)).toBeInTheDocument();
+      expect(screen.getByText(/0점은 목표 실패가 아니라 «판정하지 않음»을 뜻합니다/))
         .toBeInTheDocument();
+      // 종전 문장을 «대신» 쓰는 것이지 덧붙이는 것이 아니다. 둘이 함께 뜨면 화면이
+      // 「그대로 반영된다」와 「점수를 계산하지 않는다」를 동시에 말하게 된다.
+      expect(screen.queryByText(/선택과 우선순위는 추천 전략을 고르는 기준에 그대로 반영됩니다/))
+        .toBeNull();
     });
   });
 

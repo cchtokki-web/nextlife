@@ -24,6 +24,7 @@ import {
   GoalSuccessConditions,
   describeGoalSuccessCriteria,
 } from '../../../core/usecases/goals/goalSuccessConditions';
+import { describeUnscoredGoals } from '../../../core/usecases/goals/goalScoreSupport';
 import { SequenceRiskResult } from '../../../core/usecases/montecarlo/sequenceRisk';
 import { OptimizationOutcome } from '../../../core/strategy/StrategyOptimizer';
 import { CandidateRecommendation, PRIMARY_SELECTION_NOTE } from '../../../core/recommendation/RecommendationEngine';
@@ -244,9 +245,14 @@ function goalCoverageNote(conditions: GoalSuccessConditions): string {
     ? '선택한 목표는 시장 변동 시행으로 판정할 수 없어, 계획의 기본 조건(목표 생활비 유지·자산 고갈 없음)으로 계산한 확률입니다.'
     : '선택한 목표 중 시행으로 판정할 수 있는 조건만 반영한 확률입니다.';
 
+  // 화면(GoalCoverageNote)과 «같은 문장»을 인쇄한다. 문구의 출처는 core 한 곳이다(PRD 9.3).
+  // 「확률에 반영되지 않았다」와 「점수 산정 대상이 아니다」는 다른 사실이며, 뒤엣것을
+  // 밝히지 않으면 그 목표의 0점이 「판정했는데 실패했다」로 읽힌다.
+  const unscored = describeUnscoredGoals(conditions.unmeasuredGoals);
+
   return `<p style="margin: 3px 0 0; font-size: 11px; color: #475569;">${base}${
     unmeasured ? ` 이 확률에 반영되지 않은 목표: ${unmeasured}.` : ''
-  }</p>`;
+  }${unscored ? ` ${unscored}` : ''}</p>`;
 }
 
 // 색은 밴드→티어 매핑 한 곳에서만 나온다(화면의 진단 카드와 같은 표). 여기서 다시

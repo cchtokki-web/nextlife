@@ -14,6 +14,7 @@ import {
   type RetirementGoalType,
 } from '../../../core/entities/retirementGoal';
 import { isQuantitativelyJudgedGoal } from '../../../core/usecases/goals/goalSuccessConditions';
+import { hasGoalScoreFormula } from '../../../core/usecases/goals/goalScoreSupport';
 import { RETIREMENT_GOAL_CATALOG, retirementGoalDefinition } from './goalCatalog';
 
 /**
@@ -407,12 +408,29 @@ export function RetirementGoalSelector({
                       목록은 엔진의 분류에서 읽는다. 여기서 유형을 나열하면 목표가 분류를
                       옮기는 날 화면만 옛말을 하게 된다. */}
                   {!judged && (
-                    <p id={`${goal.type}-not-judged`} className="text-xs leading-relaxed text-foreground-muted">
+                    <p id={`${goal.type}-not-judged`} className="text-xs leading-relaxed break-keep text-foreground-muted">
                       <strong className="text-foreground">정량 판정 대상 아님</strong>
                       {' '}— 이 목표는 달성·미달을 잴 정량 기준이 아직 없어
-                      「{RETIREMENT_GOAL_CONSTRAINT_LABELS.HARD}」로 지정할 수 없습니다. 무시되는
-                      목표는 아닙니다: 선택과 우선순위는 추천 전략을 고르는 기준에 그대로
-                      반영됩니다.
+                      「{RETIREMENT_GOAL_CONSTRAINT_LABELS.HARD}」로 지정할 수 없습니다.{' '}
+                      {/* **여기서 두 갈래가 갈린다.** 판정 대상이 아닌 목표 넷 중 셋(연금·세금·
+                          위험)은 점수 «산식»이 있어 실제로 후보를 변별한다 — 그 셋에는 아래
+                          앞 문장이 참이다. 「주거 안정」만 산식이 없어 평가가 상수 0을
+                          돌려주므로, 같은 문장을 쓰면 화면이 사실과 다른 말을 한다.
+                          분류는 엔진에서 읽는다(hasGoalScoreFormula) — 여기서 유형을 나열하면
+                          목표가 분류를 옮기는 날 화면만 옛말을 하게 된다. */}
+                      {hasGoalScoreFormula(goal.type) ? (
+                        <>
+                          무시되는 목표는 아닙니다: 선택과 우선순위는 추천 전략을 고르는 기준에
+                          그대로 반영됩니다.
+                        </>
+                      ) : (
+                        <>
+                          <strong className="text-foreground">점수 산정 대상도 아닙니다</strong>
+                          {' '}— 이 목표에는 평가 점수를 계산하지 않으며, 계산에 들어가는 0점은
+                          목표 실패가 아니라 «판정하지 않음»을 뜻합니다. 선택과 우선순위는
+                          그대로 남습니다.
+                        </>
+                      )}
                       {storedHard && (
                         <>
                           {' '}이전에 저장된 「{RETIREMENT_GOAL_CONSTRAINT_LABELS.HARD}」는 그대로
