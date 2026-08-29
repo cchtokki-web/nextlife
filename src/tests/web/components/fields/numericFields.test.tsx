@@ -76,6 +76,22 @@ describe('NumberField', () => {
 
     expect(input).toHaveValue(5);
   });
+
+  test('표시 소수 자릿수를 제한해도 저장값은 바꾸지 않는다', () => {
+    const onChange = vi.fn();
+    render(
+      <NumberField
+        label="연 배당률"
+        value={0.2947368421052}
+        maximumFractionDigits={1}
+        onChangeValue={onChange}
+      />
+    );
+
+    const input = screen.getByLabelText('연 배당률');
+    expect(input).toHaveValue(0.3);
+    expect(onChange).not.toHaveBeenCalled();
+  });
 });
 
 describe('AmountField', () => {
