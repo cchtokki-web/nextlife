@@ -200,4 +200,58 @@ describe('E2eeKeyManager — 보안키 발급 안내', () => {
     );
     expect(container).toBeEmptyDOMElement();
   });
+
+  // 첫 칸 포커스는 모달이 그려진 뒤라야 하므로 100ms 지연을 둔다. 그 사이에 화면이 닫히면
+  // 타이머도 함께 사라져야 한다 — 남으면 이미 없는 화면을 대신해 «다시 그려진» 다른 입력으로
+  // 포커스가 튀고, 테스트 환경에서는 jsdom 정리 뒤 document에 닿아 unhandled error가 된다.
+  test('포커스 타이머는 언마운트와 함께 정리된다', () => {
+    vi.useFakeTimers();
+    try {
+      const { unmount } = render(
+        <E2eeKeyManager needsKeyRestore handleRestoreKey={vi.fn(async () => true)} />
+      );
+      // 이 화면에는 잠금 카운트다운이 없으므로 걸려 있는 타이머는 포커스 지연 하나뿐이다.
+      expect(vi.getTimerCount()).toBe(1);
+
+      unmount();
+
+      // 콜백이 무엇을 하는지가 아니라 «타이머가 남았는지»를 본다. 언마운트 뒤에는
+      // getElementById가 어차피 null을 주므로 focus 호출 여부로는 정리 누락을 잡지 못한다.
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  // 복구 실패 뒤 입력칸을 비우고 첫 칸으로 돌려보내는 타이머도 같은 ref를 쓴다. 예전에는
+  // 이쪽이 정리 대상 밖에 있어, 실패 직후 화면이 닫히면 그대로 남았다.
+  test('복구 실패가 건 포커스 타이머도 언마운트와 함께 정리된다', async () => {
+    // 실패가 «가짜 타이머 위에서» 일어나야 한다. 실제 타이머로 걸린 뒤에 useFakeTimers를
+    // 켜면 getTimerCount가 그것을 세지 못해 단언이 공허해진다.
+    vi.useFakeTimers();
+    try {
+      const { unmount } = render(
+        <E2eeKeyManager needsKeyRestore handleRestoreKey={vi.fn(async () => false)} />
+      );
+      // 모달이 뜰 때 건 100ms 타이머를 먼저 흘려보낸다.
+      await act(async () => { vi.advanceTimersByTime(200); });
+      await enterKey('WRONG1');
+      unmount();
+
+      // 증상을 그대로 재현한다: 화면이 다시 그려져 같은 id의 «다른» 입력이 생긴 상황.
+      // 타이머가 남아 있으면 이 입력을 붙잡는다. 개수(getTimerCount)로는 판정할 수 없다 —
+      // React 스케줄러의 내부 타이머가 함께 세어져 우리 것과 구분되지 않는다.
+      const stray = document.createElement('input');
+      stray.id = 'pin-input-0';
+      document.body.appendChild(stray);
+      const focus = vi.spyOn(stray, 'focus');
+
+      act(() => { vi.advanceTimersByTime(500); });
+
+      expect(focus).not.toHaveBeenCalled();
+      stray.remove();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
