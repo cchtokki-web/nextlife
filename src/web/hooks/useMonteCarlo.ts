@@ -80,8 +80,11 @@ export function useMonteCarlo(
       let worker: Worker;
       try {
         worker = createWorkerRef.current();
-      } catch {
+      } catch (err) {
         // Worker가 없는 환경(구형 브라우저, 일부 테스트 환경)에서 화면이 죽으면 안 된다.
+        // 다만 이유는 남긴다 — CSP 차단과 「Worker가 없는 브라우저」는 대처가 전혀 다른데
+        // 둘 다 조용히 'unsupported'로 떨어지면 무엇을 고쳐야 할지 알 수 없다.
+        console.error('[monteCarlo] worker could not be created', err);
         setStatus('unsupported');
         return;
       }
@@ -100,6 +103,22 @@ export function useMonteCarlo(
         } else {
           setStatus('error');
         }
+      };
+
+      // onerror가 없으면 워커 로드 실패·CSP 차단·생성자 예외가 아무 상태 변화도 만들지 못해
+      // UI가 영구히 'running'에 머문다. 금융 계산에서 조용한 무한 대기는 오류보다 나쁘다.
+      // (useStrategyOptimization이 같은 이유로 먼저 이 짝을 갖췄다. 여기만 빠져 있었고,
+      //  진행 표시 패널이 monteCarloStatus === 'running'에 걸려 있어 그대로 무한 스피너가 된다.)
+      worker.onerror = (event: ErrorEvent) => {
+        if (requestId !== requestIdRef.current) return;
+        console.error('[monteCarlo] worker crashed', event.message, event.filename, event.lineno);
+        setStatus('error');
+      };
+
+      worker.onmessageerror = () => {
+        if (requestId !== requestIdRef.current) return;
+        console.error('[monteCarlo] worker response could not be deserialized');
+        setStatus('error');
       };
 
       const request: MonteCarloRequest = {

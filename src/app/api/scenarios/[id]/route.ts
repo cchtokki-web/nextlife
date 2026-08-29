@@ -64,8 +64,29 @@ export async function PUT(
     // data를 건드리지 않으므로 위 잠금 판정(encrypted)에도 관여하지 않는다 — 관여하게 두면
     // E2EE를 정상적으로 쓰는 모든 계정에서 이 표시가 409로 막힌다.
     if (analyzed !== undefined) updateData.analyzedAt = analyzed ? new Date() : null;
-    if (analyzed === false) updateData.analyzedParamsHash = null;
-    else if (analyzedParamsHash !== undefined) updateData.analyzedParamsHash = analyzedParamsHash;
+
+    // 아래 세 갈래는 셋 다 의도적이다.
+    //
+    // 1. analyzed:false는 「분석하지 않은 상태」로 되돌리는 요청이므로 해시도 «함께» 지운다.
+    //    시각만 지우고 해시를 남기면 다음 분석에서 옛 해시와 비교해 영원히 「재분석 필요」다.
+    // 2. 그래서 else가 load-bearing이다. 같은 요청에 해시가 실려 와도 analyzed:false가 이긴다.
+    //    두 개의 독립된 if로 펴면 동작이 바뀐다.
+    // 3. 키가 «아예 없는» 요청은 기존 값을 유지한다. 자동저장처럼 해시를 모르는 호출이
+    //    남의 값을 지우면 안 되기 때문이다. 값을 모른다고 말하려면 null을 명시해야 한다.
+    //
+    // 형식 검사는 여기서 한다. 검사 없이 Prisma로 넘기면 문자열이 아닌 값이 그 안에서 던져
+    // 일반 500이 되는데, 클라이언트는 그것을 "서버가 죽었다"와 구분할 수 없다.
+    if (analyzed === false) {
+      updateData.analyzedParamsHash = null;
+    } else if (analyzedParamsHash !== undefined) {
+      const hashIsWellFormed = analyzedParamsHash === null
+        || (typeof analyzedParamsHash === 'string' && /^v\d+:[0-9a-f]{8,64}$/.test(analyzedParamsHash));
+      if (!hashIsWellFormed) {
+        console.error('Rejected malformed analyzedParamsHash for scenario', id, typeof analyzedParamsHash);
+        return NextResponse.json({ error: '분석 기록 형식이 올바르지 않습니다.' }, { status: 400 });
+      }
+      updateData.analyzedParamsHash = analyzedParamsHash;
+    }
 
     const updatedScenario = await prisma.scenario.update({
       where: { id },

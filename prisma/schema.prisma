@@ -62,7 +62,13 @@ model Scenario {
   // data와 달리 E2EE 대상이 아니다. 금액도 나이도 아닌 "이 사용자가 버튼을 눌렀다"는 사실이라
   // 암호화해서 얻을 것이 없고, 암호화하면 서버가 이 값만 갱신하는 요청을 검증할 수 없다.
   analyzedAt DateTime?
-  // 분석 당시 E2EE 입력의 변경 여부만 판정하기 위한 해시. 평문을 저장하지 않는다.
+  // 분석 당시 입력을 식별하는 단방향 해시. 클라이언트가 현재 입력과 비교해 「재분석 필요」를
+  // 판정하며, 서버는 저장하고 되돌려줄 뿐 이 값으로 아무것도 판정하지 않는다.
+  //
+  // analyzedAt과 달리 이 값은 «평문에서 유도된다». 그래서 계약이 하나 더 붙는다: 출력에서
+  // 입력을 복원할 수 없어야 한다(scenarioAnalysisHash 참조 — 고정폭 단방향 해시이며 가역
+  // 인코딩으로 대체해서는 안 된다). 앞의 v1은 직렬화 규칙의 버전이라, 규칙이 바뀌면 옛 값이
+  // 「알 수 없음」으로 떨어져 analyzedAt만 보던 동작으로 안전하게 되돌아간다.
   analyzedParamsHash String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

@@ -1083,7 +1083,11 @@ export interface ScenarioModel {
    * (Scenario.analyzedAt의 스키마 주석 참조), 이 값이 없으면 화면은 안내 문구로 시작한다.
    */
   analyzedAt: string | null;
-  /** 분석 당시 입력의 표시용 해시. 기존 데이터에는 없을 수 있다. */
+  /**
+   * 분석 시점의 입력을 식별하는 해시. 현재 입력과 비교해 「재분석 필요」 배지를 결정한다
+   * (값 자체는 화면에 나오지 않는다). 이 필드가 생기기 전에 저장된 시나리오에는 없으며,
+   * 없거나 버전이 다르면 «틀렸다»가 아니라 «알 수 없다»로 다룬다.
+   */
   analyzedParamsHash?: string | null;
   createdAt: string;
   updatedAt: string;

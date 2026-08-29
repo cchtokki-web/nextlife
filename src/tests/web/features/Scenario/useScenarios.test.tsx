@@ -1,6 +1,7 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
 import type { SimulationParams } from '@/core/entities/types';
+import { scenarioAnalysisHash } from '@/core/utils/scenarioAnalysisHash';
 
 // useSession은 훅 전체 분기의 입구다. 테스트마다 값을 갈아 끼운다.
 const sessionState = { data: null as unknown, status: 'loading' as string };
@@ -89,7 +90,10 @@ const comparePuts = () =>
 const analyzedPuts = () =>
   fetchCalls()
     .filter(([url, init]) => String(url).startsWith('/api/scenarios/') && init?.method === 'PUT')
-    .map(([url, init]) => [String(url), JSON.parse(String(init?.body)) as { analyzed?: boolean }] as const)
+    .map(([url, init]) => [
+      String(url),
+      JSON.parse(String(init?.body)) as { analyzed?: boolean; analyzedParamsHash?: string | null },
+    ] as const)
     .filter(([, body]) => body.analyzed !== undefined);
 
 let consoleError: ReturnType<typeof vi.spyOn>;
@@ -831,13 +835,30 @@ describe('useScenarios — 분석 표시', () => {
     expect(result.current.scenarios[0].analyzedAt).toBeNull();
   });
 
+  // 해시를 «모른다»는 것도 명시적으로 보낸다. 예전에는 값이 falsy면 키를 통째로 빼고 보냈는데,
+  // 서버는 키가 없으면 기존 값을 유지하므로 analyzedAt만 새로 찍히고 옛 해시가 남았다.
+  // 그 시나리오는 다음 접속부터 영원히 「재분석 필요」다.
   test('분석했다고 표시하면 화면과 서버 양쪽에 남는다', async () => {
     const { result } = await loadedHook();
 
     act(() => result.current.setScenarioAnalyzed('s1', true));
 
     expect(result.current.scenarios[0].analyzedAt).not.toBeNull();
-    await waitFor(() => expect(analyzedPuts()).toEqual([['/api/scenarios/s1', { analyzed: true }]]));
+    await waitFor(() => expect(analyzedPuts()).toEqual([
+      ['/api/scenarios/s1', { analyzed: true, analyzedParamsHash: null }],
+    ]));
+  });
+
+  test('params와 함께 표시하면 그 params의 해시를 서버에 남긴다', async () => {
+    const { result } = await loadedHook();
+    const params = result.current.activeParams;
+
+    act(() => result.current.setScenarioAnalyzed('s1', true, params));
+
+    expect(result.current.scenarios[0].analyzedParamsHash).toBe(scenarioAnalysisHash(params));
+    await waitFor(() => expect(analyzedPuts()).toEqual([
+      ['/api/scenarios/s1', { analyzed: true, analyzedParamsHash: scenarioAnalysisHash(params) }],
+    ]));
   });
 
   test('표시를 지우면 화면과 서버 양쪽에서 사라진다', async () => {
@@ -846,12 +867,60 @@ describe('useScenarios — 분석 표시', () => {
     act(() => result.current.setScenarioAnalyzed('s2', false));
 
     expect(result.current.scenarios[1].analyzedAt).toBeNull();
-    await waitFor(() => expect(analyzedPuts()).toEqual([['/api/scenarios/s2', { analyzed: false }]]));
+    expect(result.current.scenarios[1].analyzedParamsHash).toBeNull();
+    await waitFor(() => expect(analyzedPuts()).toEqual([
+      ['/api/scenarios/s2', { analyzed: false, analyzedParamsHash: null }],
+    ]));
   });
 
   // 화면의 대시보드가 살아 있으려면 activeParams의 «참조»가 그대로여야 한다(page.tsx의
   // analysisIsCurrent가 참조 비교다). 분석 표시를 세우면서 data까지 새 객체로 만들면,
   // 「분석 시작」을 누른 바로 그 순간 결과가 stale로 판정되어 대시보드가 사라진다.
+  // 비교안 생성은 이 3인자 형태를 쓰는 유일한 경로다. 화면 테스트는 이 함수를 모킹하므로
+  // 여기서 실제 구현을 한 번은 지나야 한다.
+  test('복제는 만들어진 시나리오를 돌려주고, 원본과 상태를 공유하지 않는다', async () => {
+    signedOut();
+    const { result } = renderHook(() => useScenarios());
+    await waitFor(() => expect(result.current.isLoaded).toBe(true));
+
+    const source = result.current.scenarios[0];
+    const preset: SimulationParams = {
+      ...source.data,
+      userProfile: { ...source.data.userProfile, currentAge: source.data.userProfile.currentAge + 1 },
+    };
+
+    let created: Awaited<ReturnType<typeof result.current.handleDuplicateScenario>> = null;
+    await act(async () => {
+      created = await result.current.handleDuplicateScenario(source.id, '빠른 은퇴 비교', preset);
+    });
+
+    expect(created).not.toBeNull();
+    // 이름으로 되찾으면 같은 이름의 옛 시나리오를 붙잡는다. 돌려받은 id가 신원이다.
+    expect(created!.id).not.toBe(source.id);
+    expect(created!.name).toBe('빠른 은퇴 비교');
+    expect(created!.data.userProfile.currentAge).toBe(preset.userProfile.currentAge);
+    // 깊은 복사가 아니면 비교안을 고칠 때 원본의 상태 객체까지 함께 바뀐다.
+    expect(created!.data).not.toBe(preset);
+    expect(created!.data.userProfile).not.toBe(preset.userProfile);
+    // 복제본은 아직 분석한 적이 없다.
+    expect(created!.analyzedAt).toBeNull();
+    expect(created!.analyzedParamsHash).toBeNull();
+  });
+
+  test('사라진 시나리오를 복제하려 하면 조용히 끝내지 않고 null을 돌려준다', async () => {
+    signedOut();
+    const { result } = renderHook(() => useScenarios());
+    await waitFor(() => expect(result.current.isLoaded).toBe(true));
+
+    let created: Awaited<ReturnType<typeof result.current.handleDuplicateScenario>> = null;
+    await act(async () => {
+      created = await result.current.handleDuplicateScenario('does-not-exist');
+    });
+
+    expect(created).toBeNull();
+    expect(consoleError).toHaveBeenCalled();
+  });
+
   test('분석 표시는 params 참조를 바꾸지 않는다', async () => {
     const { result } = await loadedHook();
     const before = result.current.activeParams;
