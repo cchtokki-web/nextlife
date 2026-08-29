@@ -42,6 +42,13 @@ describe('describeMonteCarloAssumptions', () => {
     expect(calculation).toContain('연 변동성 15%p');
   });
 
+  test('연 변동성은 소수 첫째 자리까지만 표시한다', () => {
+    expect(describeMonteCarloAssumptions({
+      ...base,
+      annualStdDev: 11.218986518108778,
+    }).calculation).toContain('연 변동성 11.2%p');
+  });
+
   test('경제 시나리오가 지배하면 그 국면의 이름을 밝힌다', () => {
     const { calculation } = copy('high_inflation', 'ai_recommended');
 
