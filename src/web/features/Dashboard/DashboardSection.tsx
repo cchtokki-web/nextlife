@@ -36,6 +36,7 @@ import { describeSuccessRates } from '../../../core/usecases/montecarlo/describe
 import { describeSustainableSpendingBasis } from '../../../core/usecases/dashboard/describeSustainableSpendingBasis';
 import GlassCard from '../../components/GlassCard';
 import { retirementGoalDefinition } from '../RetirementGoals/goalCatalog';
+import { describeUnscoredGoals } from '../../../core/usecases/goals/goalScoreSupport';
 import { KeyLeversCard } from './recommendation/KeyLeversCard';
 import { NATIONAL_PENSION_NORMAL_START_AGE } from '../../../core/usecases/pension/nationalPensionRules';
 import { compileStrategy } from '../../../core/usecases/strategy/compileStrategy';
@@ -675,6 +676,11 @@ function GoalCoverageNote({ conditions }: { conditions: GoalSuccessConditions })
   const unmeasured = conditions.unmeasuredGoals
     .map((type) => retirementGoalDefinition(type).label)
     .join(', ');
+  // 「확률에 반영되지 않았다」와 「점수 산정 대상이 아니다」는 다른 사실이다. 앞의 것은 이
+  // 몬테카를로가 판정하지 못한 목표이고(연금·세금 목표가 그렇다), 뒤의 것은 결과에서 점수를
+  // 유도하는 «산식 자체»가 없어 평가가 상수 0을 돌려주는 목표다. 앞의 문장만 두면 그 0이
+  // 「판정했는데 실패했다」로 읽힌다. 문장은 core가 소유한다 — PDF가 같은 문장을 인쇄한다.
+  const unscored = describeUnscoredGoals(conditions.unmeasuredGoals);
 
   return (
     <p className={styles.goalCoverageNote}>
@@ -682,6 +688,7 @@ function GoalCoverageNote({ conditions }: { conditions: GoalSuccessConditions })
         ? '선택한 목표는 시장 변동 시행으로 판정할 수 없어, 계획의 기본 조건(목표 생활비 유지·자산 고갈 없음)으로 계산한 확률입니다.'
         : '선택한 목표 중 시행으로 판정할 수 있는 조건만 반영한 확률입니다.'}
       {unmeasured && ` 이 확률에 반영되지 않은 목표: ${unmeasured}.`}
+      {unscored && ` ${unscored}`}
     </p>
   );
 }

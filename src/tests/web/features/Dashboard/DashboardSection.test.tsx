@@ -891,6 +891,57 @@ describe('DashboardSection - 현재 계획 진단', () => {
     expect(diagnosis().textContent).toContain('반영되지 않은 목표: 세금 최소화, 연금 최대 활용');
   });
 
+  // 「확률에 반영되지 않았다」와 「점수 산정 대상이 아니다」는 다른 사실이다. 연금·세금 목표는
+  // 앞의 것만 참이고(점수 산식은 있다), 주거 안정은 둘 다 참이다. 뒤엣것을 밝히지 않으면
+  // 그 목표의 0점이 「판정했는데 실패했다」로 읽힌다(known-issues 15번).
+  test('점수 산정 대상이 아닌 목표는 0점이 실패가 아님을 함께 밝힌다', () => {
+    render(
+      <DashboardSection
+        params={params} result={result}
+        monteCarloStatus="done"
+        monteCarlo={{
+          ...monteCarloWith(0.9, 0.9),
+          goalConditions: {
+            basis: 'selected_goals',
+            requireSpendingTarget: true,
+            requireAssetSurvival: false,
+            terminalAssetGoal: 0,
+            unmeasuredGoals: ['TAX_OPTIMIZATION', 'HOUSING_STABILITY'],
+          },
+        }}
+      />
+    );
+
+    const text = diagnosis().textContent ?? '';
+    expect(text).toContain('반영되지 않은 목표: 세금 최소화, 주거 안정');
+    // 점수 산정 대상이 아닌 것은 주거 안정«뿐»이다 — 세금 최소화까지 싸잡으면
+    // 실제로 후보를 변별하고 있는 점수를 없는 것이라고 말하게 된다.
+    expect(text).toContain('「주거 안정」은 점수 산정 대상이 아닙니다');
+    expect(text).toContain('0점은 목표 실패가 아니라');
+    expect(text).not.toContain('「세금 최소화」은 점수 산정 대상');
+  });
+
+  test('점수 산식이 있는 목표만 미반영이면 점수 안내를 붙이지 않는다', () => {
+    render(
+      <DashboardSection
+        params={params} result={result}
+        monteCarloStatus="done"
+        monteCarlo={{
+          ...monteCarloWith(0.9, 0.9),
+          goalConditions: {
+            basis: 'selected_goals',
+            requireSpendingTarget: true,
+            requireAssetSurvival: false,
+            terminalAssetGoal: 0,
+            unmeasuredGoals: ['TAX_OPTIMIZATION', 'PENSION_OPTIMIZATION'],
+          },
+        }}
+      />
+    );
+
+    expect(diagnosis().textContent).not.toContain('점수 산정 대상이 아닙니다');
+  });
+
   test('판정 가능한 목표가 없으면 기본 조건으로 계산했다고 밝힌다', () => {
     render(
       <DashboardSection
