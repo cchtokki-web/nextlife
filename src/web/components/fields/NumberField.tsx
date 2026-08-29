@@ -9,6 +9,8 @@ interface NumberFieldProps extends Omit<
   'value' | 'onChange' | 'type'
 > {
   value: number;
+  /** 저장값은 유지하되, 입력창에 표시할 최대 소수 자릿수. */
+  maximumFractionDigits?: number;
   /** 저장해도 되는 숫자가 만들어졌을 때만 호출된다(빈 칸·미완성 소수는 호출하지 않는다). */
   onChangeValue: (value: number) => void;
 }
@@ -19,10 +21,21 @@ interface NumberFieldProps extends Omit<
  * `Number(e.target.value)`를 직접 쓰면 소수점을 찍는 순간 값이 0으로 덮인다 —
  * 자세한 사정은 numericDraft.ts 주석 참고.
  */
-export function NumberField({ value, onChangeValue, onBlur, ...rest }: NumberFieldProps) {
+export function NumberField({
+  value,
+  maximumFractionDigits,
+  onChangeValue,
+  onBlur,
+  ...rest
+}: NumberFieldProps) {
   const draft = useNumericDraft({
     value,
-    format: (current) => String(current),
+    format: (current) => maximumFractionDigits === undefined
+      ? String(current)
+      : current.toLocaleString('en-US', {
+        useGrouping: false,
+        maximumFractionDigits,
+      }),
     parse: parseNumericInput,
     onCommit: onChangeValue,
   });

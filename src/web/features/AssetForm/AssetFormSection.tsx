@@ -889,6 +889,7 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                             <NumberField
                               label="연 배당률"
                               step="0.1"
+                              maximumFractionDigits={1}
                               value={asset.dividendYield}
                               onChangeValue={(rate) => handleUpdateAsset(asset.id, 'dividendYield', rate)}
                               suffixText="%"
@@ -1260,6 +1261,7 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                             <NumberField
                               label="연 배당률"
                               step="0.1"
+                              maximumFractionDigits={1}
                               value={pension.dividendYield || 0}
                               onChangeValue={(rate) => handleUpdatePrivatePension(pension.id, 'dividendYield', rate)}
                               suffixText="%"
@@ -1472,6 +1474,7 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                                 <NumberField
                                   label="연 배당률"
                                   step="0.1"
+                                  maximumFractionDigits={1}
                                   value={isa.dividendYield || 0}
                                   onChangeValue={(rate) => handleUpdateIsaAccount(isa.id, 'dividendYield', rate)}
                                   suffixText="%"
@@ -1514,6 +1517,7 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                             <NumberField
                               label="연 배당률"
                               step="0.1"
+                              maximumFractionDigits={1}
                               value={isa.dividendYield}
                               onChangeValue={(rate) => handleUpdateIsaAccount(isa.id, 'dividendYield', rate)}
                               suffixText="%"
