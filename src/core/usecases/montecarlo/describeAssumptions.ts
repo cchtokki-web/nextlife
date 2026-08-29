@@ -31,7 +31,7 @@ export function describeMonteCarloAssumptions(
   const stdDev = monteCarlo.annualStdDev ?? LEGACY_DISPLAY_STD_DEV;
   const { assumptions } = monteCarlo;
 
-  const parts = [`연 변동성 ${stdDev}%p`];
+  const parts = [`연 변동성 ${formatStdDev(stdDev)}%p`];
 
   parts.push('정규분포');
   // 「모든 위험자산이 같은 시장 충격을 공유」→「주식·ISA는 같은 시장 충격을 공유」였던
@@ -50,6 +50,11 @@ export function describeMonteCarloAssumptions(
     calculation: parts.join(' · '),
     robustness: describeRobustness(assumptions),
   };
+}
+
+/** 계산값의 긴 부동소수점 꼬리를 숨기고, 화면·PDF에는 소수 첫째 자리까지만 표시한다. */
+function formatStdDev(value: number): string {
+  return String(Math.round(value * 10) / 10);
 }
 
 // 0.5714285714… → '0.57'. 배율은 유도값이라 자릿수를 늘려도 사용자가 쓸 수 있는 정보가
