@@ -840,6 +840,7 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                         // 숫자를 지어내는 대신 사용자가 알려주지 않은 부분에 세금을 물리지 않는다.
                         labelSecondary="비우면 지금까지의 평가차익에 세금을 매기지 않습니다"
                         type="text"
+                        inputMode="decimal"
                         value={
                           asset.acquisitionCostBasis === undefined
                             ? ''

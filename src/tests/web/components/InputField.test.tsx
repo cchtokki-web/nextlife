@@ -50,6 +50,41 @@ describe('InputField', () => {
   });
 });
 
+// 모바일 사파리는 글자 자판이 올라온 입력에 자동수정·예측 입력·첫 글자 대문자화를 붙인다.
+// 타이핑 도중 스크립트가 값을 다시 쓰는 숫자 칸(금액의 콤마)에서는 그 도우미가 화면의 값과
+// 어긋나, 지운 글자가 되살아나거나 지워지지 않는 것처럼 보인다.
+describe('InputField - 숫자 칸의 모바일 키보드', () => {
+  test.each(['number', 'text'])('type=%s에 숫자 inputMode를 주면 글자 도우미를 끈다', (type) => {
+    render(
+      <InputField
+        label="현재 잔액" type={type} inputMode={type === 'number' ? undefined : 'decimal'}
+        value="1,000" onChange={vi.fn()}
+      />
+    );
+
+    const input = screen.getByLabelText('현재 잔액');
+    expect(input).toHaveAttribute('autocorrect', 'off');
+    expect(input).toHaveAttribute('autocapitalize', 'off');
+    expect(input).toHaveAttribute('spellcheck', 'false');
+  });
+
+  test('숫자 칸이 아니면 글자 도우미를 건드리지 않는다', () => {
+    render(<InputField label="자산 이름" type="text" value="삼성전자" onChange={vi.fn()} />);
+
+    const input = screen.getByLabelText('자산 이름');
+    expect(input).not.toHaveAttribute('autocorrect');
+    expect(input).not.toHaveAttribute('autocapitalize');
+  });
+
+  test('호출부가 직접 준 값이 우선한다', () => {
+    render(
+      <InputField label="현재 잔액" type="number" autoCapitalize="characters" value={1} onChange={vi.fn()} />
+    );
+
+    expect(screen.getByLabelText('현재 잔액')).toHaveAttribute('autocapitalize', 'characters');
+  });
+});
+
 // A2(1): disabled 입력이라도 스크립트로 값을 바꾸는 것은 브라우저가 막지 않는다.
 // 스테퍼 버튼은 input.stepUp() 후 'input' 이벤트를 직접 dispatch하므로, 버튼이 살아 있으면
 // 잠긴 필드가 그대로 편집된다(전략이 수익률을 지배하는 동안 화면과 엔진이 어긋난다).

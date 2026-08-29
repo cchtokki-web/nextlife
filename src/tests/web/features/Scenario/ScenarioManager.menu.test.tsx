@@ -205,6 +205,59 @@ describe('ScenarioManager 설정 메뉴', () => {
       ]);
     });
 
+    // 모바일 사파리에서 「마지막 한 자리가 지워지지 않는다」로 보고된 자리다. 빈 칸을
+    // Number('')의 0으로 읽고 다시 1로 끌어올려 저장하면, 상태가 그대로라 React가 방금
+    // 지운 DOM 값을 옛 숫자로 되돌려 놓는다 — 한 자리만 남은 순간부터 아무리 지워도
+    // 숫자가 되살아난다.
+    test('직접 입력 칸을 비우면 빈 칸으로 남는다', () => {
+      const state = makeScenarioState();
+      state.scenarios[0].data = withGoals([goal('EARLY_RETIREMENT', 1, 65)]);
+      render(<ScenarioManager scenarioState={state} />);
+
+      openPresetMenu();
+      fireEvent.click(screen.getByRole('button', { name: '빠른 은퇴 비교' }));
+
+      const input = screen.getByRole('spinbutton');
+      fireEvent.change(input, { target: { value: '5' } });
+      fireEvent.change(input, { target: { value: '' } });
+
+      expect(input).toHaveValue(null);
+    });
+
+    // 비운 자리를 저장까지 하지는 않는다. 「몇 년 앞당길지」가 없는 비교안은 만들 수 없으므로
+    // 마지막으로 유효했던 연차가 그대로 남아 있어야 한다.
+    test('직접 입력 칸을 비워도 마지막으로 유효했던 연차는 유지한다', () => {
+      const state = makeScenarioState();
+      state.scenarios[0].data = withGoals([goal('EARLY_RETIREMENT', 1, 65)]);
+      render(<ScenarioManager scenarioState={state} />);
+
+      openPresetMenu();
+      fireEvent.click(screen.getByRole('button', { name: '빠른 은퇴 비교' }));
+
+      const input = screen.getByRole('spinbutton');
+      fireEvent.change(input, { target: { value: '5' } });
+      fireEvent.change(input, { target: { value: '' } });
+
+      expect(screen.getByRole('dialog')).toHaveTextContent('희망 은퇴 나이: 65세 → 60세');
+    });
+
+    // 포커스를 잃으면 초안을 버리고 저장된 연차를 다시 보여 준다(다른 숫자 입력과 같은 규약).
+    test('비운 채로 포커스를 잃으면 저장된 연차로 되돌아간다', () => {
+      const state = makeScenarioState();
+      state.scenarios[0].data = withGoals([goal('EARLY_RETIREMENT', 1, 65)]);
+      render(<ScenarioManager scenarioState={state} />);
+
+      openPresetMenu();
+      fireEvent.click(screen.getByRole('button', { name: '빠른 은퇴 비교' }));
+
+      const input = screen.getByRole('spinbutton');
+      fireEvent.change(input, { target: { value: '5' } });
+      fireEvent.change(input, { target: { value: '' } });
+      fireEvent.blur(input);
+
+      expect(input).toHaveValue(5);
+    });
+
     test('빠른 은퇴 목표가 없으면 확인 후 목표를 새로 추가한다', async () => {
       const state = makeScenarioState();
       render(<ScenarioManager scenarioState={state} />);

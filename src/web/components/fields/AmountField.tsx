@@ -54,6 +54,9 @@ export function AmountField({
     <InputField
       {...rest}
       type="text"
+      // 콤마를 직접 그려야 해서 type="text"를 쓰지만, 사용자가 치는 것은 숫자다. inputMode가
+      // 없으면 모바일에서 글자 자판이 올라와 숫자를 치기도 어렵고, 자동수정이 값을 건드린다.
+      inputMode="decimal"
       value={draft.value}
       onChange={draft.onChange}
       onBlur={(event) => {

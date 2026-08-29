@@ -11,6 +11,7 @@ import { MAX_RETIREMENT_GOALS } from '../../../core/entities/retirementGoal';
 import { retirementGoalDefinition } from '../RetirementGoals/goalCatalog';
 import type { useScenarios } from './useScenarios';
 import { MAX_SCENARIO_COUNT } from '../../../core/utils/scenarioLimits';
+import { parseNumericInput, useNumericDraft } from '../../components/fields/numericDraft';
 
 // 비교안의 «신원». 예전에는 화면에 찍히는 한글 라벨을 그대로 비교했는데(preset.label ===
 // '빠른 은퇴 비교'), 문구를 다듬는 순간 연차 선택 UI가 컴파일 오류 하나 없이 사라진다.
@@ -344,6 +345,41 @@ export const ScenarioManager: React.FC<{
     };
   };
 
+  /**
+   * 「직접 입력」 칸의 타이핑 중간 상태.
+   *
+   * 예전에는 키 입력마다 Number('')의 0을 다시 1로 끌어올려 저장했다. 한 자리만 남은
+   * 순간부터는 저장값이 그대로라 다음 렌더가 방금 지운 DOM 값을 옛 숫자로 되돌려 놓아,
+   * 아무리 지워도 마지막 한 자리가 되살아났다(모바일 사파리에서 보고된 증상).
+   * 화면에 보일 텍스트는 초안이 쥐고, 저장은 연차로 읽을 수 있을 때만 한다 —
+   * 규약은 numericDraft.ts 주석과 같다.
+   */
+  const yearsDraft = useNumericDraft({
+    value: earlyRetirementYears,
+    format: (years) => String(years),
+    // 저장하는 값은 예전과 같이 «허용 범위 안의 정수»다. 달라진 것은 빈 칸·미완성 입력을
+    // 숫자로 지어내지 않는다는 것뿐이다.
+    parse: (raw) => {
+      const parsed = parseNumericInput(raw);
+      if (parsed === null) return null;
+      return Math.min(Math.max(1, Math.trunc(parsed)), maxEarlyRetirementYears);
+    },
+    onCommit: (years) => {
+      setEarlyRetirementYears(years);
+      const next = createEarlyRetirementPreset(years);
+      if (next) setPendingPreset(next);
+    },
+  });
+
+  // 1·3·5년 버튼은 입력을 거치지 않고 연차를 바꾼다. 초안을 남겨 두면 방금 친 텍스트가
+  // 계속 보여서 버튼이 «먹지 않는» 것처럼 읽힌다.
+  const chooseEarlyRetirementYears = (years: number) => {
+    yearsDraft.reset();
+    setEarlyRetirementYears(years);
+    const next = createEarlyRetirementPreset(years);
+    if (next) setPendingPreset(next);
+  };
+
   // 「빠른 은퇴」 목표가 없는데 목표가 이미 상한이면 새 목표를 넣을 자리가 없다. 그냥 넣으면
   // normalizeRetirementGoals의 slice(0, MAX_RETIREMENT_GOALS)가 방금 넣은 목표를 조용히
   // 잘라내고, 원본과 «완전히 똑같은» 시나리오가 「빠른 은퇴 비교」라는 이름으로 만들어진다.
@@ -568,11 +604,7 @@ export const ScenarioManager: React.FC<{
                       aria-pressed={earlyRetirementYears === years}
                       disabled={years > maxEarlyRetirementYears}
                       className={`${styles.yearBtn} ${earlyRetirementYears === years ? styles.yearBtnActive : ''}`}
-                      onClick={() => {
-                        setEarlyRetirementYears(years);
-                        const next = createEarlyRetirementPreset(years);
-                        if (next) setPendingPreset(next);
-                      }}
+                      onClick={() => chooseEarlyRetirementYears(years)}
                     >
                       {years}년
                     </button>
@@ -584,17 +616,16 @@ export const ScenarioManager: React.FC<{
                 <input
                   id="early-retirement-years"
                   type="number"
+                  inputMode="numeric"
+                  autoComplete="off"
+                  autoCorrect="off"
+                  autoCapitalize="off"
+                  spellCheck={false}
                   min={1}
                   max={maxEarlyRetirementYears}
-                  value={earlyRetirementYears}
-                  onChange={(event) => {
-                    const value = Number(event.target.value);
-                    if (!Number.isFinite(value)) return;
-                    const years = Math.min(Math.max(1, Math.trunc(value)), maxEarlyRetirementYears);
-                    setEarlyRetirementYears(years);
-                    const next = createEarlyRetirementPreset(years);
-                    if (next) setPendingPreset(next);
-                  }}
+                  value={yearsDraft.value}
+                  onChange={yearsDraft.onChange}
+                  onBlur={yearsDraft.onBlur}
                   className={styles.customYearsInput}
                 />
               </fieldset>
