@@ -26,7 +26,7 @@ NextLife는 raw에 해당하는 원자료가 이미 존재하므로 그 부분�
 - 계산 계약과 도메인 규칙을 개념 노트로 분해하고, 각 노트가 근거 원자료·코드·테스트를 가리킨다.
 - 과거 설계 결정을 ADR로 남겨 "왜 그렇게 결정했는가"를 코드 옆에서 찾을 수 있게 한다.
 - 노트가 가리키는 경로와 링크가 깨지면 테스트가 실패하여, 위키가 조용히 낡는 것을 막는다.
-- 작업 시작 시 읽을 진입점을 `docs/wiki/index.md` 하나로 만든다.
+- 작업 시작 시 읽을 진입점을 `docs/wiki/색인.md` 하나로 만든다.
 
 ## 비목표
 
@@ -51,6 +51,29 @@ Obsidian 보관함 루트는 **repo 루트**다. `docs/wiki/`가 아니라 repo 
 
 `.obsidian/`은 개인 설정이므로 `.gitignore`에 추가한다.
 
+### 보관함 오염과 파일명 충돌
+
+보관함이 repo 루트이므로 `node_modules`가 보관함 «안»에 들어온다. 2026-08-29 실측:
+
+| | 개수 |
+| --- | --- |
+| `node_modules` 안 마크다운 | 1,367 |
+| repo의 실제 문서 | 48 |
+| `node_modules` 안 `README.md` | 532 |
+| `node_modules` 안 `index.md` | 39 |
+
+두 가지 대응이 필요하다.
+
+1. **Obsidian 설정 → 파일 및 링크 → 제외된 파일에 `node_modules`를 추가한다.** 검색·퀵
+   스위처·그래프 뷰·링크 제안에서 빠진다. 0단계의 필수 절차이며, 빠뜨리면 그래프에서 실제
+   문서가 28:1로 묻힌다.
+2. **위키의 고정 문서를 `위키 사용법.md`·`스키마.md`·`색인.md`로 둔다.** 제외 설정은 «숨길»
+   뿐 보관함에서 빼지 않으므로, `README.md`라는 이름을 쓰면 `[[README]]`가 532개 후보와
+   계속 충돌한다. 이름 자체를 겹치지 않게 하는 것이 유일한 해결이다.
+
+`.gitignore`로는 이 문제를 풀 수 없다. git이 무시하는 것과 Obsidian이 보관함에 넣는 것은
+별개다.
+
 ### 폴더 매핑
 
 | 원문(블로그) | NextLife | 비고 |
@@ -59,7 +82,7 @@ Obsidian 보관함 루트는 **repo 루트**다. `docs/wiki/`가 아니라 repo 
 | `wiki/papers/` | `docs/wiki/decisions/` | 원자료 1건 = ADR 1건 |
 | `wiki/concepts/` | `docs/wiki/concepts/` | 핵심. 백링크가 모이는 곳 |
 | `wiki/comparisons/` | (없음) | 이번 범위 아님 |
-| `schema.md` | `docs/wiki/schema.md` | 생성 규칙 |
+| `schema.md` | `docs/wiki/스키마.md` | 생성 규칙 |
 
 ```text
 <repo 루트>                ← Obsidian 보관함 루트
@@ -67,9 +90,9 @@ Obsidian 보관함 루트는 **repo 루트**다. `docs/wiki/`가 아니라 repo 
 ├─ docs/PRD.md             ├ raw 자료 (이동 없음)
 ├─ docs/superpowers/       ┘
 └─ docs/wiki/              ← 신규
-   ├─ README.md            사용법
-   ├─ schema.md            생성 규칙
-   ├─ index.md             MOC (진입점)
+   ├─ 위키 사용법.md        사용법
+   ├─ 스키마.md             생성 규칙
+   ├─ 색인.md               MOC (진입점)
    ├─ concepts/
    └─ decisions/
 ```
@@ -134,6 +157,8 @@ affects: ["[[총수익률과 배당수익률]]", "[[현금 배당과 재투자 �
 - 개념 노트: 개념 이름 그대로. 띄어쓰기 허용. 예 `docs/wiki/concepts/총수익률과 배당수익률.md`
 - ADR: 원자료 spec의 날짜 접두사 + 한글 제목. 예
   `docs/wiki/decisions/2026-08-19-수익률 입력을 총수익률로 통일.md`
+- 고정 문서: `위키 사용법.md`, `스키마.md`, `색인.md`. `README.md`·`index.md`·`schema.md`를
+  쓰지 않는다 — 아래 §보관함 오염 참조.
 
 날짜 접두사를 ADR에만 두는 이유는, 결정은 시점이 의미를 가지지만 개념은 시점과 무관하게
 현재 계약을 서술하기 때문이다.
@@ -191,13 +216,13 @@ affects: ["[[총수익률과 배당수익률]]", "[[현금 배당과 재투자 �
 
 이 테스트는 경로 실존과 링크 무결성만 본다. 노트 본문이 코드와 **의미적으로** 어긋나는 것은
 잡지 못한다. 배당 규칙이 바뀌었는데 노트 문장이 옛날 그대로여도 테스트는 통과한다. 그 격차는
-아래 AGENTS.md 연동 규칙과 사람 검수로만 좁힌다. 이 한계를 `docs/wiki/README.md`에도 명시한다.
+아래 AGENTS.md 연동 규칙과 사람 검수로만 좁힌다. 이 한계를 `docs/wiki/위키 사용법.md`에도 명시한다.
 
 ## AGENTS.md 연동
 
 위키를 만들어도 작업 시작 시 읽지 않으면 값이 0이다. `AGENTS.md`에 다음을 추가한다.
 
-- 작업 시작 전 `docs/wiki/index.md`에서 관련 개념 노트를 읽는다.
+- 작업 시작 전 `docs/wiki/색인.md`에서 관련 개념 노트를 읽는다.
 - 계산 계약·도메인 규칙을 바꾸면 해당 개념 노트를 같은 커밋에서 갱신한다.
 - 새 설계 결정을 확정하면 `docs/wiki/decisions/`에 ADR을 남긴다.
 - 작업 완료 보고 양식에 `10. 위키 갱신 여부`를 추가한다.
@@ -209,8 +234,8 @@ affects: ["[[총수익률과 배당수익률]]", "[[현금 배당과 재투자 �
 
 | 단계 | 내용 | 산출물 |
 | --- | --- | --- |
-| 0 | Obsidian 설치, repo 루트를 보관함으로 열기 | `.gitignore`에 `.obsidian/` |
-| 1 | 규칙 확정 | `docs/wiki/schema.md`, `README.md`, `index.md` |
+| 0 | Obsidian 설치, repo 루트를 보관함으로 열기, `node_modules` 제외 설정 | `.gitignore`에 `.obsidian/` |
+| 1 | 규칙 확정 | `docs/wiki/스키마.md`, `위키 사용법.md`, `색인.md` |
 | 2 | 파일럿 앞부분 — 가장 얽힌 개념 3개 | 개념 노트 3개. **검수 지점** |
 | 3 | 파일럿 완성 — 개념 3개 + ADR 3개 | 노트 6개. Obsidian 그래프 확인 |
 | 4 | 검증 장치 | `wikiIntegrity.test.ts`, `AGENTS.md` 수정 |
@@ -223,7 +248,7 @@ affects: ["[[총수익률과 배당수익률]]", "[[현금 배당과 재투자 �
 6단계 상시 루프:
 
 ```text
-작업 시작 → index.md에서 관련 개념 노트를 읽는다
+작업 시작 → 색인.md에서 관련 개념 노트를 읽는다
      ↓
 작업 → 개념 노트의 「계약」과 「흔한 위반」으로 자가 점검
      ↓
@@ -249,8 +274,8 @@ affects: ["[[총수익률과 배당수익률]]", "[[현금 배당과 재투자 �
 
 ## 완료 기준
 
-- `docs/wiki/`에 `schema.md`, `README.md`, `index.md`, 개념 노트 6개, ADR 3개가 존재한다.
-- 모든 노트가 `schema.md`의 frontmatter와 섹션 규칙을 만족한다.
+- `docs/wiki/`에 `스키마.md`, `위키 사용법.md`, `색인.md`, 개념 노트 6개, ADR 3개가 존재한다.
+- 모든 노트가 `스키마.md`의 frontmatter와 섹션 규칙을 만족한다.
 - `npm test`가 통과하며 `wikiIntegrity.test.ts`가 위 검사 항목을 실제로 검증한다.
 - 의도적으로 경로 하나를 깨뜨리면 `wikiIntegrity.test.ts`가 실패한다(검증 장치가 동작함을 확인).
 - `AGENTS.md`에 4개 항목이 반영되고 보고 양식이 10개 항목이 된다.
