@@ -430,6 +430,11 @@ export default function Home() {
 
   const renderPage = (analysis: AnalysisRuntimeValue | null) => {
     const analysisIsCurrent = analysis?.sourceParams === activeParams;
+    const analysisInProgress = !!analysis && (
+      analysis.isComputingRecommendation
+      || analysis.monteCarloStatus === 'running'
+      || analysis.strategyOptimizationStatus === 'running'
+    );
     // 「분석 시작」만은 추천 검증이 실패했을 때 다시 열어 둔다. 워커 오류는 일시적일 수 있는데,
     // 결과가 「최신」이라는 이유로 버튼을 잠그면 설정을 억지로 건드리거나 새로고침하는 것 외에
     // 재시도할 방법이 없다. 대시보드와 PDF는 analysisIsCurrent 그대로 둔다 — 결정론 결과와
@@ -546,6 +551,37 @@ export default function Home() {
         restoreUnverifiable={restoreUnverifiable}
       />
 
+      {analysisInProgress && (
+        <div role="status" className={styles.analysisProgress}>
+          <span className={styles.analysisProgressDot} aria-hidden="true" />
+          <div className={styles.analysisProgressBody}>
+            <strong>은퇴 계획을 분석하고 있습니다.</strong>
+            <span className={styles.analysisProgressHint}>완료된 단계와 진행 중인 작업을 표시합니다.</span>
+            <ul className={styles.analysisProgressSteps}>
+              <li><span className={styles.analysisStepDone}>✓</span> 기본 시뮬레이션</li>
+              <li>
+                <span className={analysis.isComputingRecommendation ? styles.analysisStepRunning : styles.analysisStepDone}>
+                  {analysis.isComputingRecommendation ? '…' : '✓'}
+                </span>
+                추천 전략 탐색
+              </li>
+              <li>
+                <span className={analysis.monteCarloStatus === 'running' ? styles.analysisStepRunning : styles.analysisStepDone}>
+                  {analysis.monteCarloStatus === 'running' ? '…' : analysis.monteCarloStatus === 'done' ? '✓' : '·'}
+                </span>
+                시장 변동 검증
+              </li>
+              <li>
+                <span className={analysis.strategyOptimizationStatus === 'running' ? styles.analysisStepRunning : styles.analysisStepDone}>
+                  {analysis.strategyOptimizationStatus === 'running' ? '…' : analysis.strategyOptimizationStatus === 'done' ? '✓' : '·'}
+                </span>
+                전략 후보 최적화
+              </li>
+            </ul>
+          </div>
+        </div>
+      )}
+
       {/* 2. Content Layout */}
       <div style={{ position: 'relative' }}>
         <div className={styles.layoutGrid}>
@@ -578,7 +614,17 @@ export default function Home() {
             
             {/* 시나리오가 상위 컨텍스트이고, 아래 설정은 선택한 시나리오에 종속된다. */}
             <GlassCard>
-              <ScenarioManager scenarioState={scenarioState} />
+              <ScenarioManager
+                scenarioState={scenarioState}
+                analysisIsCurrent={analysisIsCurrent}
+                onScenarioCreated={(createdScenario) => {
+                  // 생성 API가 성공해 실제 활성 시나리오가 된 뒤에만 분석한다.
+                  // 생성 전 activeParams를 사용하면 원본 시나리오를 다시 분석할 수 있다.
+                  setAnalysisRequest(buildAnalysisRequest(createdScenario.data));
+                  setScenarioAnalyzed(createdScenario.id, true, createdScenario.data);
+                  if (isNarrowScreen) setIsSidebarOpen(false);
+                }}
+              />
 
               <div className="pt-5">
                 <RetirementInputFlow
@@ -591,7 +637,7 @@ export default function Home() {
                     setAnalysisRequest(buildAnalysisRequest(activeParams));
                     // 이 시나리오를 분석했다는 사실만 남긴다. 결과는 저장하지 않는다 —
                     // 다음 접속에서 같은 params로 다시 계산해 이 화면을 세운다.
-                    if (activeScenarioId) setScenarioAnalyzed(activeScenarioId, true);
+                    if (activeScenarioId) setScenarioAnalyzed(activeScenarioId, true, activeParams);
                     if (isNarrowScreen) setIsSidebarOpen(false);
                   }}
                 />

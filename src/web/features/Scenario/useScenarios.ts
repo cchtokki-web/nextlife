@@ -9,7 +9,8 @@ import {
   reportNormalizationIssues,
 } from '../../../infrastructure/storage/normalizeSimulationParams';
 import { describeIssue, financialIssues } from '../../../infrastructure/storage/normalizationIssues';
-import { activeScenarioKeyName, e2eeKeyName, e2eeBackedUpKeyName, LOCAL_ANALYZED_AT_KEY } from '../../../infrastructure/storage/storageKeys';
+import { activeScenarioKeyName, e2eeKeyName, e2eeBackedUpKeyName, LOCAL_ANALYZED_AT_KEY, LOCAL_ANALYZED_PARAMS_HASH_KEY } from '../../../infrastructure/storage/storageKeys';
+import { scenarioAnalysisHash } from '../../../core/utils/scenarioAnalysisHash';
 import { encryptData, decryptData, isEncryptedPayload, generateBackupKey } from '../../../core/utils/crypto';
 import { MAX_SCENARIO_COUNT } from '../../../core/utils/scenarioLimits';
 import { MAX_COMPARE_SCENARIO_COUNT } from '../../../core/utils/compareScenarios';
@@ -247,13 +248,16 @@ const persistCompareScenarioIds = (compareScenarioIds: string[]): void => {
 
 // 「분석 시작」을 눌렀다는 사실을 서버에 기록한다.
 //
-// 시나리오 데이터는 보내지 않는다 — 이 요청은 analyzedAt만 건드리므로 E2EE 경로와 무관하고,
+// 시나리오 데이터는 보내지 않는다 — 이 요청은 분석 메타데이터만 건드리므로 E2EE 경로와 무관하고,
 // 키가 없는 세션에서도 안전하다(자동저장이 키 없이는 아무것도 보내지 않는 것과 대조된다).
-const persistScenarioAnalyzed = (scenarioId: string, analyzed: boolean): void => {
+const persistScenarioAnalyzed = (scenarioId: string, analyzed: boolean, analyzedParamsHash: string | null): void => {
   fetch(`/api/scenarios/${scenarioId}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ analyzed }),
+    body: JSON.stringify({
+      analyzed,
+      ...(analyzedParamsHash ? { analyzedParamsHash } : {}),
+    }),
   })
     // 조용히 계속 실패하면 증상은 "다시 로그인하면 결과 화면이 비어 있다"뿐이다.
     .then(res => {
@@ -613,6 +617,7 @@ export function useScenarios() {
       // 로그인 계정의 Scenario.analyzedAt에 해당한다. 이게 없으면 비로그인 사용자는
       // 새로고침 한 번에 결과 화면을 잃는다.
       analyzedAt: localStorage.getItem(LOCAL_ANALYZED_AT_KEY),
+      analyzedParamsHash: localStorage.getItem(LOCAL_ANALYZED_PARAMS_HASH_KEY),
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     }]);
@@ -700,6 +705,7 @@ export function useScenarios() {
                   name: s.isDefault ? '기본 시나리오' : s.name,
                   data: initialParams,
                   analyzedAt: s.analyzedAt ?? null,
+                  analyzedParamsHash: s.analyzedParamsHash ?? null,
                 };
               }));
               restoreActiveScenarioId(list, userId, lastActiveScenarioId);
@@ -782,7 +788,7 @@ export function useScenarios() {
                 try {
                   const decryptedData = await decryptData<SimulationParams>(s.data, activeKey, userId);
                   const migrated = convertToRepresentativeAssets(migrateParams(decryptedData, etfTickers));
-                  decryptedList.push({ ...s, name: displayName, data: migrated, analyzedAt: s.analyzedAt ?? null });
+                  decryptedList.push({ ...s, name: displayName, data: migrated, analyzedAt: s.analyzedAt ?? null, analyzedParamsHash: s.analyzedParamsHash ?? null });
                   lastSavedParamsRef.current[s.id] = JSON.stringify(migrated);
                 } catch (err) {
                   console.error('Decryption failed for scenario', s.id, err);
@@ -791,7 +797,7 @@ export function useScenarios() {
                   if (!corruptedScenarioIdsRef.current.has(s.id)) {
                     hasDecryptionFailure = true;
                   }
-                  decryptedList.push({ ...s, name: displayName, data: initialParams, analyzedAt: s.analyzedAt ?? null });
+                  decryptedList.push({ ...s, name: displayName, data: initialParams, analyzedAt: s.analyzedAt ?? null, analyzedParamsHash: s.analyzedParamsHash ?? null });
                   lastSavedParamsRef.current[s.id] = JSON.stringify(initialParams);
                 }
               } else {
@@ -800,7 +806,7 @@ export function useScenarios() {
                 // 평문 쓰기를 거부한다.
                 // 캐스팅하지 않는다 — migrateParams가 unknown을 받아 정제까지 맡는다.
                 const migrated = convertToRepresentativeAssets(migrateParams(s.data, etfTickers));
-                decryptedList.push({ ...s, name: displayName, data: migrated, analyzedAt: s.analyzedAt ?? null });
+                decryptedList.push({ ...s, name: displayName, data: migrated, analyzedAt: s.analyzedAt ?? null, analyzedParamsHash: s.analyzedParamsHash ?? null });
                 lastSavedParamsRef.current[s.id] = JSON.stringify(migrated);
                 plaintextIds.push(s.id);
               }
@@ -985,14 +991,16 @@ export function useScenarios() {
   }, [activeScenarioId]);
 
 
-  const handleDuplicateScenario = (id: string) => {
+  const handleDuplicateScenario = (id: string, copyName?: string, copyData?: SimulationParams) => {
     console.log('[E2EE] handleDuplicateScenario called with ID:', id);
     const source = scenarios.find(s => s.id === id);
     console.log('[E2EE] Source scenario found:', source ? source.name : 'null');
     if (source) {
       // Deep copy to prevent reference sharing in state
-      const clonedData = JSON.parse(JSON.stringify(source.data));
-      handleCreateScenario(`${source.name} (복사본)`, clonedData);
+      const clonedData = copyData
+        ? JSON.parse(JSON.stringify(copyData))
+        : JSON.parse(JSON.stringify(source.data));
+      handleCreateScenario(copyName?.trim() || `${source.name} (복사본)`, clonedData);
     }
   };
 
@@ -1074,17 +1082,20 @@ export function useScenarios() {
    * 최신인지 판정하므로(page.tsx의 analysisIsCurrent), 여기서 새 params 객체를 만들면
    * 「분석 시작」을 누른 바로 그 순간 결과가 stale로 판정되어 대시보드가 사라진다.
    */
-  const setScenarioAnalyzed = useCallback((id: string, analyzed: boolean) => {
+  const setScenarioAnalyzed = useCallback((id: string, analyzed: boolean, params?: SimulationParams) => {
     const analyzedAt = analyzed ? new Date().toISOString() : null;
-    setScenarios(prev => prev.map(s => (s.id === id ? { ...s, analyzedAt } : s)));
+    const analyzedParamsHash = analyzed && params ? scenarioAnalysisHash(params) : null;
+    setScenarios(prev => prev.map(s => (s.id === id ? { ...s, analyzedAt, analyzedParamsHash } : s)));
 
     if (id.startsWith('local-')) {
       // 비로그인 세션에는 서버에 대응하는 행이 없다. 브라우저 저장소가 그 자리를 대신한다.
       if (analyzedAt) localStorage.setItem(LOCAL_ANALYZED_AT_KEY, analyzedAt);
       else localStorage.removeItem(LOCAL_ANALYZED_AT_KEY);
+      if (analyzedParamsHash) localStorage.setItem(LOCAL_ANALYZED_PARAMS_HASH_KEY, analyzedParamsHash);
+      else localStorage.removeItem(LOCAL_ANALYZED_PARAMS_HASH_KEY);
       return;
     }
-    if (status === 'authenticated') persistScenarioAnalyzed(id, analyzed);
+    if (status === 'authenticated') persistScenarioAnalyzed(id, analyzed, analyzedParamsHash);
   }, [status]);
 
   const handleUpdateScenarioData = useCallback(async (id: string, newData: SimulationParams) => {

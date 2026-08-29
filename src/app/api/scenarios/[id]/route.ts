@@ -37,7 +37,7 @@ export async function PUT(
     }
 
     const body = await req.json();
-    const { name, data, isDefault, analyzed } = body;
+    const { name, data, isDefault, analyzed, analyzedParamsHash } = body;
 
     // 잠긴 계정에 평문을 쓰려는 요청은 거부한다. 클라이언트도 막지만, 클라이언트만 막으면
     // 배포 전 번들이 열려 있는 탭·아직 새로고침하지 않은 다른 기기·세션 쿠키를 가진 요청이
@@ -64,6 +64,8 @@ export async function PUT(
     // data를 건드리지 않으므로 위 잠금 판정(encrypted)에도 관여하지 않는다 — 관여하게 두면
     // E2EE를 정상적으로 쓰는 모든 계정에서 이 표시가 409로 막힌다.
     if (analyzed !== undefined) updateData.analyzedAt = analyzed ? new Date() : null;
+    if (analyzed === false) updateData.analyzedParamsHash = null;
+    else if (analyzedParamsHash !== undefined) updateData.analyzedParamsHash = analyzedParamsHash;
 
     const updatedScenario = await prisma.scenario.update({
       where: { id },

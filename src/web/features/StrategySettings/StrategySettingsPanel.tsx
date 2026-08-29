@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Coins, LineChart, Settings2, TrendingUp, Wallet } from 'lucide-react';
+import { Coins, LineChart, Settings2, Sparkles, TrendingUp, Wallet } from 'lucide-react';
 import {
   IsaFirstChoice, NationalPensionStrategy, SimulationParams, StrategyMode, StrategyRecommendation,
 } from '../../../core/entities/types';
@@ -9,6 +9,8 @@ import {
   NATIONAL_PENSION_STRATEGY_AGES, resolveStrategy,
 } from '../../../core/usecases/strategy/compileStrategy';
 import { SentinelApplication } from '../../../core/usecases/strategy/applyAiSentinels';
+import { normalizeGoalDrivenParams } from '../../../core/usecases/goals/normalizeGoalDrivenParams';
+import { formatValue } from '../Dashboard/charts/chartFormatters';
 import { SettingSection } from '../../components/form';
 import { AdvancedSection } from './sections/AdvancedSection';
 import { EconomicAssumptionSection } from './sections/EconomicAssumptionSection';
@@ -18,7 +20,10 @@ import { SpendingStrategySection } from './sections/SpendingStrategySection';
 import { StrategyModeSelector } from './StrategyModeSelector';
 import { collectChangedPaths, countSectionChanges } from './diffDefaults';
 import { SectionId, isSectionVisible } from './fieldVisibility';
-import { AiRecommendationState, SectionProps } from './strategyOptions';
+import {
+  AiRecommendationState, NATIONAL_PENSION_OPTIONS, PRIVATE_PENSION_OPTIONS,
+  SectionProps, SPENDING_SHAPE_OPTIONS,
+} from './strategyOptions';
 
 export interface StrategySettingsPanelProps {
   params: SimulationParams;
@@ -53,6 +58,72 @@ const SECTIONS: ReadonlyArray<{ id: SectionId; title: string; icon: React.ReactN
 // 저장된 시나리오의 전략 읽기는 core의 resolveStrategy 하나로 모았다(레거시 저수준 필드에서
 // 씨앗을 유도하는 규칙까지 그 안에 있다). 기존 import 경로를 쓰던 코드를 위해 재수출한다.
 export { resolveStrategy };
+
+function optionLabel<T extends string>(
+  options: ReadonlyArray<{ value: T; label: string }>,
+  value: T,
+): string {
+  return options.find((option) => option.value === value)?.label ?? '기본값';
+}
+
+/**
+ * 전략 섹션을 열기 전에 사용자가 현재 계산 상태를 이해할 수 있게 하는 요약.
+ * 이 컴포넌트는 값을 새로 계산하거나 저장하지 않고, 화면과 엔진이 공유하는
+ * resolveStrategy/normalizeGoalDrivenParams 결과만 표시한다.
+ */
+function StrategyOverview({
+  params, onOpenDirectSettings,
+}: { params: SimulationParams; onOpenDirectSettings: () => void }) {
+  const strategy = resolveStrategy(params);
+  const profile = normalizeGoalDrivenParams(params, strategy).userProfile;
+  const nationalPension = strategy.nationalPensionStrategy === 'ai_optimized'
+    ? '자동으로 비교'
+    : optionLabel(NATIONAL_PENSION_OPTIONS, strategy.nationalPensionStrategy);
+  const privatePension = strategy.privatePensionStrategy === 'ai_optimized'
+    ? '자동으로 비교'
+    : optionLabel(PRIVATE_PENSION_OPTIONS, strategy.privatePensionStrategy);
+  const spendingShape = optionLabel(SPENDING_SHAPE_OPTIONS, strategy.spendingShape ?? 'flat');
+
+  const rows = [
+    ['은퇴 시점', `${profile.retirementAge}세`],
+    ['은퇴 초기 생활비', formatValue(profile.targetMonthlySpending, params.displayCurrency)],
+    ['국민연금', nationalPension],
+    ['사적연금', privatePension],
+    ['생활비 변화', spendingShape],
+  ];
+
+  return (
+    <div
+      data-testid="strategy-overview"
+      className="rounded-2xl border border-primary/30 bg-primary/10 px-4 py-4 sm:px-5"
+    >
+      <div className="flex items-start gap-3">
+        <Sparkles size={18} className="mt-0.5 shrink-0 text-primary" aria-hidden="true" />
+        <div className="min-w-0">
+          <h3 className="text-sm font-bold text-foreground">현재 계산에 적용되는 전략</h3>
+          <p className="mt-1 text-xs leading-relaxed text-foreground-muted">
+            복잡한 설정을 모두 직접 정하지 않아도 됩니다. 자동으로 비교 중인 항목은 조건이 바뀌면 다시 계산합니다.
+          </p>
+        </div>
+      </div>
+      <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 text-xs sm:grid-cols-3">
+        {rows.map(([label, value]) => (
+          <div key={label} className="min-w-0">
+            <dt className="text-foreground-muted">{label}</dt>
+            <dd className="mt-0.5 truncate font-semibold text-foreground" title={value}>{value}</dd>
+          </div>
+        ))}
+      </dl>
+      <a
+        href="#strategy-settings-sections"
+        onClick={onOpenDirectSettings}
+        className="mt-4 inline-flex text-xs font-semibold text-primary underline-offset-2 hover:underline"
+      >
+        직접 설정을 바꾸고 싶어요
+      </a>
+    </div>
+  );
+}
 
 interface AiSectionPatch {
   params: SimulationParams;
@@ -142,6 +213,7 @@ export function StrategySettingsPanel({
   // 방금 바뀐 섹션을 잠깐 강조한다. 어떤 필드가 바뀌었는지는 changed 집합의 변화로
   // 알 수 있지만, "언제" 바뀌었는지는 상태가 없으면 알 수 없어 로컬 state로 둔다.
   const [recentSection, setRecentSection] = useState<SectionId | null>(null);
+  const [showDirectControls, setShowDirectControls] = useState(false);
   const [pendingAiPatch, setPendingAiPatch] = useState<AiSectionPatch | null>(null);
   const clearTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -346,7 +418,20 @@ export function StrategySettingsPanel({
             위에서 선택한 시나리오에만 적용됩니다.
           </p>
         </div>
-        <StrategyModeSelector mode={mode} onChange={handleModeChange} />
+        {showDirectControls ? (
+          <StrategyModeSelector mode={mode} onChange={handleModeChange} />
+        ) : (
+          <button
+            type="button"
+            onClick={() => setShowDirectControls(true)}
+            className="flex w-full items-center justify-between rounded-xl border border-card-border px-3.5 py-3 text-left text-xs font-semibold text-foreground transition hover:border-primary/50 hover:bg-foreground/5"
+          >
+            <span>전략을 직접 조정하고 싶어요</span>
+            <span className="text-primary">열기</span>
+          </button>
+        )}
+
+        <StrategyOverview params={params} onOpenDirectSettings={() => setShowDirectControls(true)} />
 
         {(automaticallyAppliedCount > 0 || availableRecommendationCount > 0) && (
           <div className="rounded-xl border border-primary/30 bg-primary/10 px-3.5 py-3 text-xs leading-relaxed">
@@ -376,7 +461,10 @@ export function StrategySettingsPanel({
         )}
       </div>
 
-      <div className="flex flex-col gap-3.5 sm:gap-4">
+      <div id="strategy-settings-sections" className="flex scroll-mt-4 flex-col gap-3.5 sm:gap-4">
+        <p className="px-1 text-xs text-foreground-muted">
+          아래 항목을 직접 조정하면 해당 항목은 선택한 값으로 계산하고, 나머지 항목은 자동 추천을 계속 사용합니다.
+        </p>
         {/* react-hooks/refs 오탐: sectionPropsFor가 만드는 onChangeParams 클로저는 highlightSection을
             통해 ref(clearTimer)를 참조하지만, 실제 실행은 하위 섹션이 자기 이벤트 핸들러 안에서 이
             함수를 호출할 때뿐이다(렌더 중에는 호출되지 않는다). 컴파일러는 renderSectionBody라는

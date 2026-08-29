@@ -1,8 +1,14 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import styles from './Scenario.module.css';
 import { FolderGit2, ChevronDown, ChevronUp, Copy, Trash2, Edit2, CheckSquare, Square, Upload, Download } from 'lucide-react';
 import compStyles from '../../styles/components.module.css';
-import type { ScenarioModel } from '../../../core/entities/types';
+import type { ScenarioModel, SimulationParams } from '../../../core/entities/types';
+import { scenarioAnalysisHash } from '../../../core/utils/scenarioAnalysisHash';
+import { resolveStrategy } from '../../../core/usecases/strategy/compileStrategy';
+import { applyRetirementGoals, resolveRetirementGoals } from '../../../core/usecases/goals/retirementGoalAdapter';
+import { normalizeGoalDrivenParams } from '../../../core/usecases/goals/normalizeGoalDrivenParams';
+import { retirementGoalDefinition } from '../RetirementGoals/goalCatalog';
+import { AGE_MIN } from '../StrategySettings/ageInput';
 import type { useScenarios } from './useScenarios';
 import { MAX_SCENARIO_COUNT } from '../../../core/utils/scenarioLimits';
 
@@ -14,6 +20,7 @@ interface ScenarioItemProps {
   scenario: ScenarioModel;
   isActive: boolean;
   isCompared: boolean;
+  analysisIsCurrent: boolean;
   isDuplicateDisabled: boolean;
   onSelect: () => void;
   onToggleCompare: () => void;
@@ -25,7 +32,7 @@ interface ScenarioItemProps {
 }
 
 const ScenarioItem: React.FC<ScenarioItemProps> = ({
-  scenario, isActive, isCompared, isDuplicateDisabled, onSelect, onToggleCompare,
+  scenario, isActive, isCompared, analysisIsCurrent, isDuplicateDisabled, onSelect, onToggleCompare,
   onRename, onDuplicate, onDelete, onExport, onImport
 }) => {
   const [isRenaming, setIsRenaming] = useState(false);
@@ -63,6 +70,14 @@ const ScenarioItem: React.FC<ScenarioItemProps> = ({
                 {scenario.name}
               </span>
               {scenario.isDefault && <span className={styles.defaultBadge}>기본</span>}
+              <span className={(() => {
+                if (!scenario.analyzedAt) return styles.analysisNeededBadge;
+                const hashIsStale = Boolean(scenario.analyzedParamsHash && scenario.analyzedParamsHash !== scenarioAnalysisHash(scenario.data));
+                const needsReanalysis = hashIsStale || (isActive && !analysisIsCurrent);
+                return needsReanalysis ? styles.analysisNeededBadge : styles.analyzedBadge;
+              })()}>
+                {!scenario.analyzedAt ? '분석 필요' : (scenario.analyzedParamsHash && scenario.analyzedParamsHash !== scenarioAnalysisHash(scenario.data)) || (isActive && !analysisIsCurrent) ? '재분석 필요' : '분석 완료'}
+              </span>
             </>
           )}
         </div>
@@ -112,8 +127,24 @@ const ScenarioItem: React.FC<ScenarioItemProps> = ({
   );
 };
 
-export const ScenarioManager: React.FC<{ scenarioState: ScenarioState }> = ({ scenarioState }) => {
+export const ScenarioManager: React.FC<{
+  scenarioState: ScenarioState;
+  onScenarioCreated?: (scenario: ScenarioModel) => void;
+  analysisIsCurrent?: boolean;
+}> = ({ scenarioState, onScenarioCreated, analysisIsCurrent = false }) => {
   const [isExpanded, setIsExpanded] = useState(false);
+  const [isCopyMenuOpen, setIsCopyMenuOpen] = useState(false);
+  const [earlyRetirementYears, setEarlyRetirementYears] = useState(3);
+  const [pendingPreset, setPendingPreset] = useState<{
+    label: string;
+    name: string;
+    data: SimulationParams;
+    changes: string[];
+    impacts: string[];
+  } | null>(null);
+  const [createdPresetName, setCreatedPresetName] = useState<string | null>(null);
+  const [dismissedNoticeName, setDismissedNoticeName] = useState<string | null>(null);
+  const notifiedPresetRef = useRef<string | null>(null);
   const [importTargetId, setImportTargetId] = useState<string | null>(null);
 
   const handleImportClick = (id: string, e: React.MouseEvent) => {
@@ -176,6 +207,72 @@ export const ScenarioManager: React.FC<{ scenarioState: ScenarioState }> = ({ sc
   } = scenarioState;
 
   const activeScenario = scenarios.find((scenario) => scenario.id === activeScenarioId);
+  const creationNotice = createdPresetName
+    && activeScenario?.name === createdPresetName
+    && dismissedNoticeName !== createdPresetName
+    ? `${createdPresetName}이 활성화되었습니다. 분석을 시작합니다.`
+    : null;
+
+  useEffect(() => {
+    if (!onScenarioCreated || !createdPresetName || !activeScenario
+      || activeScenario.name !== createdPresetName
+      || notifiedPresetRef.current === createdPresetName) return;
+    notifiedPresetRef.current = createdPresetName;
+    onScenarioCreated(activeScenario);
+  }, [activeScenario, createdPresetName, onScenarioCreated]);
+  const earlyRetirementGoal = activeScenario
+    ? resolveRetirementGoals(activeScenario.data).find((goal) => goal.type === 'EARLY_RETIREMENT')
+    : undefined;
+  const activeRetirementAge = activeScenario
+    ? normalizeGoalDrivenParams(activeScenario.data, resolveStrategy(activeScenario.data)).userProfile.retirementAge
+    : 65;
+  const currentAge = activeScenario?.data.userProfile.currentAge ?? 1;
+  const earlyRetirementBaseAge = earlyRetirementGoal?.targetValue ?? activeRetirementAge;
+  const maxEarlyRetirementYears = Math.max(1, (earlyRetirementBaseAge ?? 65) - currentAge - 1);
+  const createEarlyRetirementPreset = (years: number) => {
+    if (!activeScenario) return null;
+    const safeYears = Math.min(Math.max(1, years), maxEarlyRetirementYears);
+    const targetAge = Math.max(AGE_MIN, (earlyRetirementBaseAge ?? 65) - safeYears);
+    const goals = resolveRetirementGoals(activeScenario.data);
+    return {
+      label: '빠른 은퇴 비교', name: '빠른 은퇴 비교',
+      data: applyRetirementGoals(activeScenario.data, [
+        ...goals.filter((goal) => goal.type !== 'EARLY_RETIREMENT'),
+        {
+          type: 'EARLY_RETIREMENT' as const,
+          priority: goals.length + 1,
+          targetValue: targetAge,
+          constraintType: earlyRetirementGoal?.constraintType ?? retirementGoalDefinition('EARLY_RETIREMENT').defaultConstraintType,
+        },
+      ]),
+      changes: earlyRetirementGoal
+        ? [`희망 은퇴 나이: ${earlyRetirementBaseAge}세 → ${targetAge}세`, `${safeYears}년 앞당긴 은퇴 비교`]
+        : [`빠른 은퇴 목표 추가: 희망 은퇴 나이 ${targetAge}세`, '기존 목표는 그대로 유지'],
+      impacts: ['은퇴 전 준비 기간이 짧아져 은퇴 초기 자산 인출 부담이 커질 수 있습니다.'],
+    };
+  };
+  const earlyRetirementPreset = createEarlyRetirementPreset(earlyRetirementYears);
+  const copyPresets = activeScenario ? [
+    ...(earlyRetirementPreset ? [earlyRetirementPreset] : []),
+    {
+      label: '생활비 감소 가정', name: '생활비 감소 가정',
+      data: { ...activeScenario.data, strategy: { ...resolveStrategy(activeScenario.data), spendingShape: 'front_loaded' as const } },
+      changes: ['생활비 배분: 나이가 들수록 감소'],
+      impacts: ['70대 이후 목표 생활비가 줄어 기대수명까지 자산을 유지하는 데 유리할 수 있습니다.'],
+    },
+    {
+      label: '장기 침체 가정', name: '장기 침체 가정',
+      data: { ...activeScenario.data, strategy: { ...resolveStrategy(activeScenario.data), economicScenario: 'recession' as const } },
+      changes: ['경제 시나리오: 장기 침체'],
+      impacts: ['물가·환율을 장기 침체 가정으로 계산해 경제 환경이 불리할 때의 계획을 비교합니다.'],
+    },
+    {
+      label: '국민연금 늦게 받기', name: '국민연금 늦게 받기',
+      data: { ...activeScenario.data, strategy: { ...resolveStrategy(activeScenario.data), nationalPensionStrategy: 'defer_max' as const } },
+      changes: ['국민연금 수령 시작: 최대 연기(70세)'],
+      impacts: ['월 연금액은 늘 수 있지만, 연금 수령 전 자산으로 생활비를 충당하는 기간이 길어집니다.'],
+    },
+  ] : [];
 
   return (
     <section className={styles.container} aria-labelledby="scenario-context-title">
@@ -219,6 +316,12 @@ export const ScenarioManager: React.FC<{ scenarioState: ScenarioState }> = ({ sc
           </button>
         </div>
         {activeScenario?.isDefault && <span className={styles.activeHint}>기본 시나리오</span>}
+        {creationNotice && (
+          <p role="status" className={styles.creationNotice}>
+            {creationNotice}
+            <button type="button" onClick={() => setDismissedNoticeName(createdPresetName)} aria-label="안내 닫기">닫기</button>
+          </p>
+        )}
       </div>
 
       {isExpanded && (
@@ -233,6 +336,39 @@ export const ScenarioManager: React.FC<{ scenarioState: ScenarioState }> = ({ sc
               style={{ display: 'none' }} onChange={handleFileChange} 
             />
           </div>
+          <div className={styles.presetSection}>
+            <button
+              type="button"
+              className={styles.presetBtn}
+              aria-expanded={isCopyMenuOpen}
+              onClick={() => setIsCopyMenuOpen((open) => !open)}
+              disabled={!activeScenario || scenarios.length >= MAX_SCENARIO_COUNT}
+            >
+              목적별 비교안 만들기
+            </button>
+            {isCopyMenuOpen && activeScenario && scenarios.length < MAX_SCENARIO_COUNT && (
+              <div className={styles.presetButtons} role="group" aria-label="목적별 비교안">
+                <p className={styles.helpText}>
+                  선택한 전략을 반영한 비교안을 만들고, 생성 전에 변경 내용을 확인합니다.
+                </p>
+                {copyPresets.map((preset) => (
+                  <button
+                    key={preset.label}
+                    type="button"
+                    className={styles.presetBtn}
+                    onClick={() => {
+                      if (preset.label === '빠른 은퇴 비교') {
+                        setEarlyRetirementYears(Math.min(3, maxEarlyRetirementYears));
+                      }
+                      setPendingPreset(preset);
+                    }}
+                  >
+                    {preset.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
           <div className={styles.scenarioList}>
             {scenarios.map((s: ScenarioModel) => (
               <ScenarioItem
@@ -240,6 +376,7 @@ export const ScenarioManager: React.FC<{ scenarioState: ScenarioState }> = ({ sc
                 scenario={s}
                 isActive={s.id === activeScenarioId}
                 isCompared={compareScenarioIds.includes(s.id)}
+                analysisIsCurrent={analysisIsCurrent}
                 isDuplicateDisabled={scenarios.length >= MAX_SCENARIO_COUNT}
                 onSelect={() => setActiveScenarioId(s.id)}
                 onToggleCompare={() => toggleCompareScenario(s.id)}
@@ -250,6 +387,84 @@ export const ScenarioManager: React.FC<{ scenarioState: ScenarioState }> = ({ sc
                 onImport={(e) => handleImportClick(s.id, e)}
               />
             ))}
+          </div>
+        </div>
+      )}
+
+      {pendingPreset && activeScenario && (
+        <div className={styles.modalBackdrop} role="presentation">
+          <div className={styles.confirmModal} role="dialog" aria-modal="true" aria-labelledby="preset-title">
+            <h3 id="preset-title" className={styles.modalTitle}>{pendingPreset.label}을 만들까요?</h3>
+            <p className={styles.managementDescription}>
+              현재 시나리오를 복제하고 다음 설정만 변경합니다.
+            </p>
+            {pendingPreset.label === '빠른 은퇴 비교' && (
+              <fieldset className={styles.yearChoice}>
+                <legend className={styles.choiceLegend}>몇 년 앞당길까요?</legend>
+                <div className={styles.yearButtons}>
+                  {[1, 3, 5].map((years) => (
+                    <button
+                      key={years}
+                      type="button"
+                      aria-pressed={earlyRetirementYears === Math.min(years, maxEarlyRetirementYears)}
+                      disabled={years > maxEarlyRetirementYears}
+                      className={`${styles.yearBtn} ${earlyRetirementYears === years ? styles.yearBtnActive : ''}`}
+                      onClick={() => {
+                        setEarlyRetirementYears(Math.min(years, maxEarlyRetirementYears));
+                        const next = createEarlyRetirementPreset(years);
+                        if (next) setPendingPreset(next);
+                      }}
+                    >
+                      {years}년
+                    </button>
+                  ))}
+                </div>
+                <label className={styles.customYearsLabel} htmlFor="early-retirement-years">
+                  직접 입력 (최대 {maxEarlyRetirementYears}년)
+                </label>
+                <input
+                  id="early-retirement-years"
+                  type="number"
+                  min={1}
+                  max={maxEarlyRetirementYears}
+                  value={earlyRetirementYears}
+                  onChange={(event) => {
+                    const value = Number(event.target.value);
+                    if (!Number.isFinite(value)) return;
+                    const years = Math.min(Math.max(1, Math.trunc(value)), maxEarlyRetirementYears);
+                    setEarlyRetirementYears(years);
+                    const next = createEarlyRetirementPreset(years);
+                    if (next) setPendingPreset(next);
+                  }}
+                  className={styles.customYearsInput}
+                />
+              </fieldset>
+            )}
+            <ul className={styles.changeList}>
+              {pendingPreset.changes.map((change) => <li key={change}>{change}</li>)}
+            </ul>
+            <div className={styles.impactNotice}>
+              <strong>예상되는 영향</strong>
+              <ul>
+                {pendingPreset.impacts.map((impact) => <li key={impact}>{impact}</li>)}
+              </ul>
+            </div>
+            <div className={styles.modalActions}>
+              <button type="button" className={styles.secondaryBtn} onClick={() => setPendingPreset(null)}>취소</button>
+              <button
+                type="button"
+                className={styles.primaryBtn}
+                onClick={() => {
+                  scenarioState.handleDuplicateScenario(activeScenario.id, pendingPreset.name, pendingPreset.data);
+                  setCreatedPresetName(pendingPreset.name);
+                  setDismissedNoticeName(null);
+                  setPendingPreset(null);
+                  setIsCopyMenuOpen(false);
+                }}
+              >
+                비교안 만들기
+              </button>
+            </div>
           </div>
         </div>
       )}
