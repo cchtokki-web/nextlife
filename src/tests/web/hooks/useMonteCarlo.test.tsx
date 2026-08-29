@@ -13,6 +13,8 @@ class FakeWorker {
   posted: MonteCarloRequest[] = [];
   terminated = false;
   onmessage: ((event: MessageEvent<MonteCarloResponse>) => void) | null = null;
+  onerror: ((event: ErrorEvent) => void) | null = null;
+  onmessageerror: ((event: MessageEvent) => void) | null = null;
 
   constructor() {
     FakeWorker.instances.push(this);
@@ -110,6 +112,29 @@ describe('useMonteCarlo', () => {
 
   // 계산 중에 입력이 바뀌면 이전 워커는 쓸모없는 일을 계속하고 있다. 협조적 취소 대신
   // terminate()를 쓰는 이유는 훅 주석에 있다.
+  // 워커 스크립트 로드 실패·CSP 차단·모듈 최상단 예외는 onmessage를 부르지 않는다. onerror가
+  // 없으면 상태가 영원히 'running'에 머물고, 시뮬레이터의 진행 표시 패널이 그 상태에 걸려
+  // 있어 사용자는 끝나지 않는 「분석하고 있습니다」를 본다.
+  test('워커 로드가 실패하면 error 상태가 된다', async () => {
+    const { result } = renderHook(() => useMonteCarlo(params, { createWorker, debounceMs: 400 }));
+
+    await act(async () => { vi.advanceTimersByTime(400); });
+    expect(result.current.status).toBe('running');
+
+    act(() => FakeWorker.instances[0].onerror?.({ message: 'failed to load worker' } as ErrorEvent));
+
+    expect(result.current.status).toBe('error');
+  });
+
+  test('워커 응답을 역직렬화하지 못하면 error 상태가 된다', async () => {
+    const { result } = renderHook(() => useMonteCarlo(params, { createWorker, debounceMs: 400 }));
+
+    await act(async () => { vi.advanceTimersByTime(400); });
+    act(() => FakeWorker.instances[0].onmessageerror?.({} as MessageEvent));
+
+    expect(result.current.status).toBe('error');
+  });
+
   test('계산 중 params가 바뀌면 이전 워커를 종료하고 새로 띄운다', async () => {
     const { rerender } = renderHook(
       ({ p }) => useMonteCarlo(p, { createWorker, debounceMs: 400 }),

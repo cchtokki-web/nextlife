@@ -248,15 +248,21 @@ const persistCompareScenarioIds = (compareScenarioIds: string[]): void => {
 
 // 「분석 시작」을 눌렀다는 사실을 서버에 기록한다.
 //
-// 시나리오 데이터는 보내지 않는다 — 이 요청은 분석 메타데이터만 건드리므로 E2EE 경로와 무관하고,
-// 키가 없는 세션에서도 안전하다(자동저장이 키 없이는 아무것도 보내지 않는 것과 대조된다).
+// 시나리오 «데이터»는 보내지 않는다. 다만 analyzedParamsHash는 그 데이터에서 유도된 값이라
+// 이 요청이 E2EE와 완전히 무관하지는 않다 — 서버는 복원 불가능한 고정폭 해시만 보관한다는
+// 것이 그 안전성의 근거다(scenarioAnalysisHash의 계약). 키가 없는 세션에서 안전한 이유는
+// 여전히 같다: 보낼 평문이 없으므로 잠긴 계정을 덮어쓸 수 없다.
 const persistScenarioAnalyzed = (scenarioId: string, analyzed: boolean, analyzedParamsHash: string | null): void => {
   fetch(`/api/scenarios/${scenarioId}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       analyzed,
-      ...(analyzedParamsHash ? { analyzedParamsHash } : {}),
+      // truthiness가 아니라 «값을 아느냐»로 보낸다. 예전에는 해시가 null이면 키를 통째로
+      // 빼서 보냈는데, 서버는 키가 없으면 기존 값을 유지하므로(route.ts) analyzedAt만
+      // 새로 찍히고 해시는 옛 것이 남았다. 그 시나리오는 다음 접속부터 영원히
+      // 「재분석 필요」다. 모르면 모른다고(null) 명시적으로 말한다.
+      ...(analyzedParamsHash !== undefined ? { analyzedParamsHash } : {}),
     }),
   })
     // 조용히 계속 실패하면 증상은 "다시 로그인하면 결과 화면이 비어 있다"뿐이다.
@@ -474,11 +480,15 @@ export function useScenarios() {
   // 아래 로딩 이펙트가 이 함수를 부르므로 그보다 앞에 둔다. 뒤에 두면 const 선언 전에
   // 참조하게 되어(런타임에는 호출 시점이 늦어 동작했지만) React Compiler가 막는다.
   // 이 함수가 읽는 값은 모두 위쪽 상태 선언부에 있어 위치를 옮겨도 안전하다.
-  const handleCreateScenario = async (name: string, data: SimulationParams, isDefault = false, overrideKey?: string) => {
-    console.log('[E2EE] handleCreateScenario called:', name, 'isDefault:', isDefault, 'status:', status);
+  // 만들어진 시나리오를 «돌려준다». 호출부가 이름으로 새 시나리오를 되찾으려 하면(프리셋은
+  // 이름이 고정 리터럴이라 중복된다) 같은 이름의 옛 시나리오를 붙잡는다. id만이 신원이다.
+  // 실패는 null이다 — 호출부가 성공과 구분해 사용자에게 말할 수 있어야 한다.
+  const handleCreateScenario = async (
+    name: string, data: SimulationParams, isDefault = false, overrideKey?: string,
+  ): Promise<ScenarioModel | null> => {
     if (!isDefault && scenarios.length >= MAX_SCENARIO_COUNT) {
       alert(`시나리오는 최대 ${MAX_SCENARIO_COUNT}개까지만 생성할 수 있습니다.`);
-      return;
+      return null;
     }
 
     if (status === 'authenticated') {
@@ -494,7 +504,7 @@ export function useScenarios() {
         console.error('[E2EE] Refusing to create scenario without a key');
         setSaveStatus('error');
         alert('보안키가 준비되지 않아 시나리오를 만들 수 없습니다. 페이지를 새로고침해 주세요.');
-        return;
+        return null;
       }
       try {
         const payloadToSave: EncryptedData = await encryptData(data, keyToUse, userId);
@@ -526,17 +536,26 @@ export function useScenarios() {
             }
           }
           lastSavedParamsRef.current[newScenario.id] = JSON.stringify(decryptedData);
+          const created: ScenarioModel = {
+            ...newScenario,
+            data: decryptedData,
+            analyzedAt: newScenario.analyzedAt ?? null,
+            analyzedParamsHash: newScenario.analyzedParamsHash ?? null,
+          };
           setScenarios(prev => {
             const filtered = prev.filter(s => s.id !== newScenario.id && !(isDefault && s.isDefault));
-            return [...filtered, { ...newScenario, data: decryptedData, analyzedAt: newScenario.analyzedAt ?? null }];
+            return [...filtered, created];
           });
           setActiveScenarioId(newScenario.id);
+          return created;
         }
+        return null;
       } catch (err) {
         console.error('Failed to create scenario:', err);
         // 조용히 넘어가면 사용자는 저장되고 있다고 믿은 채 계속 입력한다.
         setSaveStatus('error');
         alert('시나리오를 만들지 못했습니다. 잠시 후 다시 시도해 주세요.');
+        return null;
       }
     } else {
       const newId = 'local-' + generateId();
@@ -548,11 +567,13 @@ export function useScenarios() {
         // 새로 만든 시나리오는 아직 분석한 적이 없다. 복제본도 마찬가지다 — 설정이 같아도
         // 「분석 시작」은 사용자가 그 시나리오에서 직접 누른 적이 있어야 한다.
         analyzedAt: null,
+        analyzedParamsHash: null,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
       setScenarios(prev => [...prev, newScenario]);
       setActiveScenarioId(newId);
+      return newScenario;
     }
   };
 
@@ -991,17 +1012,22 @@ export function useScenarios() {
   }, [activeScenarioId]);
 
 
-  const handleDuplicateScenario = (id: string, copyName?: string, copyData?: SimulationParams) => {
-    console.log('[E2EE] handleDuplicateScenario called with ID:', id);
+  const handleDuplicateScenario = async (
+    id: string, copyName?: string, copyData?: SimulationParams,
+  ): Promise<ScenarioModel | null> => {
     const source = scenarios.find(s => s.id === id);
-    console.log('[E2EE] Source scenario found:', source ? source.name : 'null');
-    if (source) {
-      // Deep copy to prevent reference sharing in state
-      const clonedData = copyData
-        ? JSON.parse(JSON.stringify(copyData))
-        : JSON.parse(JSON.stringify(source.data));
-      handleCreateScenario(copyName?.trim() || `${source.name} (복사본)`, clonedData);
+    if (!source) {
+      // 조용히 끝내면 「비교안 만들기」를 누른 사용자에게는 아무 일도 일어나지 않은 것처럼
+      // 보인다. 다른 기기에서 지웠거나 목록을 다시 불러오는 사이 사라진 경우가 실제로 있다.
+      console.error('Cannot duplicate a scenario that no longer exists:', id);
+      alert('복제할 시나리오를 찾을 수 없습니다. 목록을 새로고침한 뒤 다시 시도해 주세요.');
+      return null;
     }
+    // Deep copy to prevent reference sharing in state
+    const clonedData = copyData
+      ? JSON.parse(JSON.stringify(copyData))
+      : JSON.parse(JSON.stringify(source.data));
+    return handleCreateScenario(copyName?.trim() || `${source.name} (복사본)`, clonedData);
   };
 
   const handleDeleteScenario = async (id: string) => {

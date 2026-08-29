@@ -23,6 +23,12 @@ export const SIMPLE_SIMULATOR_HAS_RUN_KEY = 'nextlife_simple_simulator_has_run';
  * 네임스페이스가 아니다.
  */
 export const LOCAL_ANALYZED_AT_KEY = 'nextlife_local_analyzed_at';
+
+/**
+ * 위 시각과 «짝»인 값. 분석 당시 입력의 해시이며, 로그인 계정의
+ * Scenario.analyzedParamsHash가 하는 일을 비로그인 세션에서 대신한다.
+ * 둘은 항상 함께 쓰이고 함께 지워진다(setScenarioAnalyzed, clearLocalAccountData).
+ */
 export const LOCAL_ANALYZED_PARAMS_HASH_KEY = 'nextlife_local_analyzed_params_hash';
 
 /** E2EE 보안키. 사용자별로 다르므로 반드시 userId로 조립한다. */

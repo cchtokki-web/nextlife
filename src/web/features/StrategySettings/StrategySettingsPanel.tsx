@@ -59,11 +59,19 @@ const SECTIONS: ReadonlyArray<{ id: SectionId; title: string; icon: React.ReactN
 // 씨앗을 유도하는 규칙까지 그 안에 있다). 기존 import 경로를 쓰던 코드를 위해 재수출한다.
 export { resolveStrategy };
 
+// 이 패널의 제목은 「현재 계산에 적용되는 전략」이다. 매핑이 빠진 값을 '기본값'이라고 적으면
+// 엔진은 새 전략으로 돌고 있는데 화면은 기본값이 걸려 있다고 «단언»한다 — 이 파일이 없애려던
+// 종류의 결함 그 자체다. 모르면 모른다고 적고, 콘솔로 원인을 남긴다.
 function optionLabel<T extends string>(
   options: ReadonlyArray<{ value: T; label: string }>,
   value: T,
 ): string {
-  return options.find((option) => option.value === value)?.label ?? '기본값';
+  const option = options.find((candidate) => candidate.value === value);
+  if (!option) {
+    console.error('No label for strategy option; the options list is out of sync with the type', value);
+    return `알 수 없는 설정 (${value})`;
+  }
+  return option.label;
 }
 
 /**

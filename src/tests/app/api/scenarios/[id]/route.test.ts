@@ -191,6 +191,86 @@ describe('PUT /api/scenarios/[id] — 분석 표시', () => {
     });
   });
 
+  // 이 기능이 실제로 저장되는 «유일한» 경로다. if/else if의 순서가 뒤바뀌어 analyzed:true가
+  // 먼저 걸리면 해시가 조용히 저장되지 않고, 모든 시나리오가 영원히 「분석 완료」로 읽힌다.
+  test('analyzed: true와 해시가 함께 오면 둘 다 기록한다', async () => {
+    stubUser(null);
+
+    const res = await putBody({ analyzed: true, analyzedParamsHash: 'v1:0123456789abcdef' });
+
+    expect(res.status).toBe(200);
+    expect(mockedScenarioUpdate).toHaveBeenCalledWith({
+      where: { id: SCENARIO_ID },
+      data: { analyzedAt: expect.any(Date), analyzedParamsHash: 'v1:0123456789abcdef' },
+    });
+  });
+
+  // 해시를 «모른다»고 명시적으로 말하는 요청. 키를 빼고 보내면 서버가 옛 해시를 유지해
+  // 방금 분석한 시나리오가 다음 접속부터 영원히 「재분석 필요」가 된다.
+  test('해시가 null이면 모른다는 뜻으로 받아 지운다', async () => {
+    stubUser(null);
+
+    const res = await putBody({ analyzed: true, analyzedParamsHash: null });
+
+    expect(res.status).toBe(200);
+    expect(mockedScenarioUpdate).toHaveBeenCalledWith({
+      where: { id: SCENARIO_ID },
+      data: { analyzedAt: expect.any(Date), analyzedParamsHash: null },
+    });
+  });
+
+  // else가 load-bearing이다. 두 개의 독립된 if로 펴면 이 동작이 바뀐다.
+  test('analyzed: false는 같은 요청에 실려 온 해시를 이긴다', async () => {
+    stubUser(null);
+
+    const res = await putBody({ analyzed: false, analyzedParamsHash: 'v1:0123456789abcdef' });
+
+    expect(res.status).toBe(200);
+    expect(mockedScenarioUpdate).toHaveBeenCalledWith({
+      where: { id: SCENARIO_ID },
+      data: { analyzedAt: null, analyzedParamsHash: null },
+    });
+  });
+
+  // 키가 아예 없는 요청은 기존 값을 유지한다 — 해시를 모르는 호출(자동저장 등)이 남의 값을
+  // 지우면 안 된다.
+  test('해시 키가 없는 요청은 저장된 해시를 건드리지 않는다', async () => {
+    stubUser(null);
+
+    const res = await putBody({ analyzed: true });
+
+    expect(res.status).toBe(200);
+    expect(mockedScenarioUpdate).toHaveBeenCalledWith({
+      where: { id: SCENARIO_ID },
+      data: { analyzedAt: expect.any(Date) },
+    });
+  });
+
+  // 검사 없이 Prisma로 넘기면 그 안에서 던져 일반 500이 되고, 클라이언트는 그것을
+  // "서버가 죽었다"와 구분할 수 없다.
+  test('형식이 맞지 않는 해시는 400으로 거절하고 아무것도 쓰지 않는다', async () => {
+    for (const malformed of [123, {}, [], 'plain-string', 'v1:ZZZZ']) {
+      mockedScenarioUpdate.mockClear();
+      stubUser(null);
+
+      const res = await putBody({ analyzed: true, analyzedParamsHash: malformed });
+
+      expect(res.status).toBe(400);
+      expect(mockedScenarioUpdate).not.toHaveBeenCalled();
+    }
+  });
+
+  // 새 필드도 analyzedAt과 같은 길을 탄다. 잠금 판정에 끌려 들어가면 정상적으로 E2EE를
+  // 쓰는 모든 계정에서 409가 난다.
+  test('잠긴 계정에서도 해시를 포함한 분석 표시는 통과한다', async () => {
+    stubUser(new Date('2026-01-01'));
+
+    const res = await putBody({ analyzed: true, analyzedParamsHash: 'v1:0123456789abcdef' });
+
+    expect(res.status).toBe(200);
+    expect(mockedUpdateMany).not.toHaveBeenCalled();
+  });
+
   // 데이터를 건드리지 않는 요청이므로 잠금 판정에 관여하지 않는다. 여기서 막히면 잠긴 계정
   // (=정상적으로 E2EE를 쓰는 모든 계정)에서 분석 표시가 영영 저장되지 않는다.
   test('잠긴 계정에서도 분석 표시만 바꾸는 요청은 통과한다', async () => {

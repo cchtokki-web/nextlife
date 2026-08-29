@@ -45,6 +45,54 @@ import {
 } from '../../web/features/RetirementAnalysis/AnalysisRuntime';
 import { useAnalysisRequest } from '../../web/features/RetirementAnalysis/useAnalysisRequest';
 
+// 진행 표시 패널의 단계 상태.
+//
+// 'pending'과 'error'를 'done'과 «반드시» 구분한다. 예전에는 'running'이 아닌 모든 상태가
+// 완료(초록 ✓/·)로 렌더돼서, 몬테카를로가 실패해도 「시장 변동 검증」 줄이 초록으로 남았다.
+// 바로 아래 대시보드는 같은 실패를 오류로 표시하므로 한 화면이 서로 다른 말을 했다.
+type AnalysisStepState = 'pending' | 'running' | 'done' | 'error';
+
+const STEP_STATE_LABEL: Record<AnalysisStepState, string> = {
+  pending: '대기 중',
+  running: '진행 중',
+  done: '완료',
+  error: '실패',
+};
+
+function stepGlyph(state: AnalysisStepState): { className: string; text: string } {
+  if (state === 'running') return { className: styles.analysisStepRunning, text: '…' };
+  if (state === 'done') return { className: styles.analysisStepDone, text: '✓' };
+  if (state === 'error') return { className: styles.analysisStepError, text: '!' };
+  return { className: styles.analysisStepPending, text: '·' };
+}
+
+function workerStepState(status: 'idle' | 'running' | 'done' | 'error' | 'unsupported'): AnalysisStepState {
+  if (status === 'running') return 'running';
+  if (status === 'done') return 'done';
+  // 'unsupported'는 이 브라우저에서 그 단계를 «할 수 없다»는 뜻이므로 완료가 아니다.
+  if (status === 'error' || status === 'unsupported') return 'error';
+  return 'pending';
+}
+
+function analysisSteps(analysis: AnalysisRuntimeValue): Array<{ label: string; state: AnalysisStepState }> {
+  return [
+    // 결정론 시뮬레이션은 동기 계산이라 이 패널이 그려질 시점엔 이미 결과가 있다. 그래도
+    // 상태와 무관하게 ✓를 박아 두지 않고 실제 결과 유무를 본다 — 하드코딩된 체크는
+    // 검사한 적 없는 단계를 검사했다고 말하는 것이다.
+    { label: '기본 시뮬레이션', state: analysis.result ? 'done' : 'pending' },
+    {
+      label: '추천 전략 탐색',
+      // isComputingRecommendation은 «진행» 플래그이고 recommendationFailed가 «결과» 플래그다.
+      // 진행 플래그는 성공이든 예외든 똑같이 내려가므로, 그것만 보면 실패가 완료로 읽힌다.
+      state: analysis.recommendationFailed
+        ? 'error'
+        : analysis.isComputingRecommendation ? 'running' : 'done',
+    },
+    { label: '시장 변동 검증', state: workerStepState(analysis.monteCarloStatus) },
+    { label: '전략 후보 최적화', state: workerStepState(analysis.strategyOptimizationStatus) },
+  ];
+}
+
 export default function Home() {
   const { data: session } = useSession();
   const scenarioState = useScenarios();
@@ -440,6 +488,15 @@ export default function Home() {
     // 재시도할 방법이 없다. 대시보드와 PDF는 analysisIsCurrent 그대로 둔다 — 결정론 결과와
     // Monte Carlo는 멀쩡하므로 화면을 내릴 이유가 없다.
     const canReanalyze = !analysisIsCurrent || analysis?.strategyOptimizationStatus === 'error';
+    // 시나리오 배지가 「분석 완료」라고 말해도 되는지 판정한다. analyzedAt은 버튼을 누른
+    // 순간 기록되므로 결과가 실패해도 남는다 — 실패를 아는 것은 이쪽뿐이다.
+    // 'unsupported'는 이 브라우저가 그 단계를 못 한다는 뜻이라 «이번 분석의 실패»가 아니므로
+    // 제외한다. 포함하면 워커를 못 쓰는 브라우저는 영원히 「분석 실패」만 보게 된다.
+    const analysisFailed = !!analysis && (
+      analysis.recommendationFailed
+      || analysis.monteCarloStatus === 'error'
+      || analysis.strategyOptimizationStatus === 'error'
+    );
     return (
     <main className={styles.main}>
       <Header saveStatus={saveStatus} isSaving={isSaving} lastSaved={lastSaved}>
@@ -556,27 +613,23 @@ export default function Home() {
           <span className={styles.analysisProgressDot} aria-hidden="true" />
           <div className={styles.analysisProgressBody}>
             <strong>은퇴 계획을 분석하고 있습니다.</strong>
-            <span className={styles.analysisProgressHint}>완료된 단계와 진행 중인 작업을 표시합니다.</span>
+            <span className={styles.analysisProgressHint}>
+              {analysisSteps(analysis).some((step) => step.state === 'error')
+                // 실패한 단계를 두고 "완료된 단계를 표시합니다"라고만 말하면, 사용자는
+                // 초록이 아닌 줄을 아직 안 끝난 것으로 읽고 계속 기다린다.
+                ? '일부 단계가 실패했습니다. 「분석 시작」을 다시 눌러 주세요.'
+                : '완료된 단계와 진행 중인 작업을 표시합니다.'}
+            </span>
             <ul className={styles.analysisProgressSteps}>
-              <li><span className={styles.analysisStepDone}>✓</span> 기본 시뮬레이션</li>
-              <li>
-                <span className={analysis.isComputingRecommendation ? styles.analysisStepRunning : styles.analysisStepDone}>
-                  {analysis.isComputingRecommendation ? '…' : '✓'}
-                </span>
-                추천 전략 탐색
-              </li>
-              <li>
-                <span className={analysis.monteCarloStatus === 'running' ? styles.analysisStepRunning : styles.analysisStepDone}>
-                  {analysis.monteCarloStatus === 'running' ? '…' : analysis.monteCarloStatus === 'done' ? '✓' : '·'}
-                </span>
-                시장 변동 검증
-              </li>
-              <li>
-                <span className={analysis.strategyOptimizationStatus === 'running' ? styles.analysisStepRunning : styles.analysisStepDone}>
-                  {analysis.strategyOptimizationStatus === 'running' ? '…' : analysis.strategyOptimizationStatus === 'done' ? '✓' : '·'}
-                </span>
-                전략 후보 최적화
-              </li>
+              {analysisSteps(analysis).map((step) => (
+                <li key={step.label}>
+                  <span className={stepGlyph(step.state).className} aria-hidden="true">
+                    {stepGlyph(step.state).text}
+                  </span>
+                  {step.label}
+                  <span className={styles.srOnly}>{STEP_STATE_LABEL[step.state]}</span>
+                </li>
+              ))}
             </ul>
           </div>
         </div>
@@ -617,6 +670,7 @@ export default function Home() {
               <ScenarioManager
                 scenarioState={scenarioState}
                 analysisIsCurrent={analysisIsCurrent}
+                analysisFailed={analysisFailed}
                 onScenarioCreated={(createdScenario) => {
                   // 생성 API가 성공해 실제 활성 시나리오가 된 뒤에만 분석한다.
                   // 생성 전 activeParams를 사용하면 원본 시나리오를 다시 분석할 수 있다.

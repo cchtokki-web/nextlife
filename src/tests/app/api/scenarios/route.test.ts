@@ -46,7 +46,10 @@ const mockedUpdateMany = vi.mocked(prisma.user.updateMany);
 const mockedIsDevMode = vi.mocked(isDevMode);
 const mockedUserCreate = vi.mocked(prisma.user.create);
 
-type ScenarioRow = { id: string; name: string; isDefault: boolean; data: string };
+type ScenarioRow = {
+  id: string; name: string; isDefault: boolean; data: string;
+  analyzedAt?: Date | null; analyzedParamsHash?: string | null;
+};
 
 function stubUser(scenarios: ScenarioRow[], e2eeEnabledAt: Date | null, lastActiveScenarioId: string | null = null) {
   mockedFindUnique.mockResolvedValue({
@@ -89,6 +92,22 @@ describe('GET /api/scenarios — 마지막 선택', () => {
     const body = await res.json();
 
     expect(body.lastActiveScenarioId).toBeNull();
+  });
+
+  // 이 두 필드가 투영에서 빠지면 「재분석 필요」 배지가 어디에서도 뜨지 않는데, 화면 테스트는
+  // 상태를 직접 주입하므로 전부 통과한다.
+  test('분석 메타데이터를 목록과 함께 돌려준다', async () => {
+    stubUser([{
+      ...row('s1', plain),
+      analyzedAt: new Date('2026-08-29T00:00:00.000Z'),
+      analyzedParamsHash: 'v1:0123456789abcdef',
+    }], null);
+
+    const res = await GET(new Request('http://localhost/api/scenarios'));
+    const body = await res.json();
+
+    expect(body.data[0].analyzedParamsHash).toBe('v1:0123456789abcdef');
+    expect(body.data[0].analyzedAt).toBe('2026-08-29T00:00:00.000Z');
   });
 });
 
