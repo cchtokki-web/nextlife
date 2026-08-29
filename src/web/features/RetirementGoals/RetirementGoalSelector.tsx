@@ -287,6 +287,10 @@ export function RetirementGoalSelector({
                           aria-label={definition.target.label}
                           type="text"
                           inputMode="numeric"
+                          autoComplete="off"
+                          autoCorrect="off"
+                          autoCapitalize="off"
+                          spellCheck={false}
                           value={goal.targetValue?.toLocaleString() ?? ''}
                           onFocus={() => editedTargets.current.delete(goal.type)}
                           onChange={(event) => {

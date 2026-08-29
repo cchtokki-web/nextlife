@@ -107,6 +107,14 @@ describe('AmountField', () => {
     expect(input).toHaveValue('500');
   });
 
+  // 콤마를 직접 그리느라 type="text"를 쓰지만 사용자가 치는 것은 숫자다. inputMode가 없으면
+  // 모바일에서 글자 자판이 올라오고, 그 자판이 붙이는 자동수정이 타이핑 중인 값을 건드린다.
+  test('모바일에서 숫자 자판이 올라오도록 inputMode를 준다', () => {
+    render(<StatefulAmountField />);
+
+    expect(screen.getByLabelText('현재 잔액')).toHaveAttribute('inputmode', 'decimal');
+  });
+
   test('숫자가 아닌 값은 저장하지 않는다', () => {
     render(<StatefulAmountField />);
 

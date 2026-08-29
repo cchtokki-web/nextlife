@@ -55,6 +55,11 @@ function ManWonInput({
     <input
       name={name}
       type="text"
+      inputMode="numeric"
+      autoComplete="off"
+      autoCorrect="off"
+      autoCapitalize="off"
+      spellCheck={false}
       value={draft.value}
       onChange={draft.onChange}
       onBlur={draft.onBlur}
@@ -213,7 +218,12 @@ export function SimpleSimulator() {
                 <div className={styles.inputWrapper}>
                   <input 
                     name="currentAge"
-                    type="text" 
+                    type="text"
+                    inputMode="numeric"
+                    autoComplete="off"
+                    autoCorrect="off"
+                    autoCapitalize="off"
+                    spellCheck={false}
                     value={input.currentAge || ''}
                     onChange={handleChange}
                     className={styles.input}
@@ -227,7 +237,12 @@ export function SimpleSimulator() {
                 <div className={styles.inputWrapper}>
                   <input 
                     name="retirementAge"
-                    type="text" 
+                    type="text"
+                    inputMode="numeric"
+                    autoComplete="off"
+                    autoCorrect="off"
+                    autoCapitalize="off"
+                    spellCheck={false}
                     value={input.retirementAge || ''}
                     onChange={handleChange}
                     className={styles.input}

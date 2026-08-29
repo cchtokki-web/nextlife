@@ -56,6 +56,20 @@ export const InputField = React.forwardRef<HTMLInputElement, InputFieldProps>(({
     }
   }, [ref]);
 
+  // 숫자 칸에는 모바일 키보드의 «글자 도우미»를 모두 끈다.
+  //
+  // iOS 사파리는 type="text" 입력에 QWERTY 자판과 함께 자동수정·예측 입력·첫 글자 대문자화를
+  // 붙인다. 금액 칸처럼 타이핑 도중 스크립트가 값을 다시 쓰는(콤마를 넣는) 입력에서는 그
+  // 도우미가 들고 있는 「지금 치는 중인 낱말」이 화면의 실제 값과 어긋나, 지운 글자가
+  // 되살아나거나 지워지지 않는 것처럼 보인다. 숫자 칸에는 이 도우미들이 할 일이 없다.
+  //
+  // inputMode를 보고 판단하는 이유: 금액 칸은 콤마를 직접 그려야 해서 type="text"를 쓰므로
+  // type만으로는 숫자 칸인지 알 수 없다. 호출부가 다른 값을 주면 그쪽을 존중한다({...props}가
+  // 뒤에 온다).
+  const isNumericEntry = type === 'number'
+    || props.inputMode === 'numeric'
+    || props.inputMode === 'decimal';
+
   // 잠긴 입력에는 스테퍼를 아예 렌더하지 않는다.
   //
   // 브라우저는 disabled 입력에 대한 사용자 조작만 막을 뿐, 스크립트의 값 변경은 막지 않는다.
@@ -163,6 +177,9 @@ export const InputField = React.forwardRef<HTMLInputElement, InputFieldProps>(({
             suffixText ? styles.inputWithSuffix : ''
           } ${hasSteppers ? styles.inputWithSteppers : ''} ${className}`}
           autoComplete="off"
+          {...(isNumericEntry
+            ? { autoCorrect: 'off' as const, autoCapitalize: 'off' as const, spellCheck: false }
+            : {})}
           {...props}
         />
         {suffixText && (
