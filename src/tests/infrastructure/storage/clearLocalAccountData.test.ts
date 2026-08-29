@@ -9,6 +9,7 @@ import {
   e2eeBackedUpKeyName,
   activeScenarioKeyName,
   LOCAL_ANALYZED_AT_KEY,
+  LOCAL_ANALYZED_PARAMS_HASH_KEY,
 } from '@/infrastructure/storage/storageKeys';
 import { loadParams, saveParams, initialParams } from '@/infrastructure/storage/localStore';
 
@@ -89,10 +90,12 @@ describe('clearLocalAccountData', () => {
   // "분석했던 계획"을 복원한 것처럼 보인다.
   test('비로그인 세션의 분석 표시도 지운다', () => {
     localStorage.setItem(LOCAL_ANALYZED_AT_KEY, '2026-08-01T00:00:00.000Z');
+    localStorage.setItem(LOCAL_ANALYZED_PARAMS_HASH_KEY, 'deadbeef');
 
     clearLocalAccountData(USER);
 
     expect(localStorage.getItem(LOCAL_ANALYZED_AT_KEY)).toBeNull();
+    expect(localStorage.getItem(LOCAL_ANALYZED_PARAMS_HASH_KEY)).toBeNull();
   });
 
   // 나머지 키가 전부 localStorage라 가장 빠뜨리기 쉬운 항목이다.

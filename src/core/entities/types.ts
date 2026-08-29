@@ -1083,6 +1083,8 @@ export interface ScenarioModel {
    * (Scenario.analyzedAt의 스키마 주석 참조), 이 값이 없으면 화면은 안내 문구로 시작한다.
    */
   analyzedAt: string | null;
+  /** 분석 당시 입력의 표시용 해시. 기존 데이터에는 없을 수 있다. */
+  analyzedParamsHash?: string | null;
   createdAt: string;
   updatedAt: string;
 }

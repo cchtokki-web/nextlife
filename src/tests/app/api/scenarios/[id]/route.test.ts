@@ -187,7 +187,7 @@ describe('PUT /api/scenarios/[id] — 분석 표시', () => {
     expect(res.status).toBe(200);
     expect(mockedScenarioUpdate).toHaveBeenCalledWith({
       where: { id: SCENARIO_ID },
-      data: { analyzedAt: null },
+      data: { analyzedAt: null, analyzedParamsHash: null },
     });
   });
 

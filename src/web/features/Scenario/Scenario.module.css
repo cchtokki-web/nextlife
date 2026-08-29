@@ -122,6 +122,49 @@
   font-weight: 600;
 }
 
+.analyzedBadge,
+.analysisNeededBadge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0.15rem 0.45rem;
+  font-size: 0.68rem;
+  font-weight: 600;
+}
+
+.analyzedBadge {
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  background: rgba(16, 185, 129, 0.1);
+  color: #10b981;
+}
+
+.analysisNeededBadge {
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  background: rgba(245, 158, 11, 0.1);
+  color: #f59e0b;
+}
+
+.creationNotice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  border-radius: 0.65rem;
+  background: rgba(16, 185, 129, 0.1);
+  color: var(--foreground);
+  font-size: 0.75rem;
+  line-height: 1.45;
+}
+
+.creationNotice button {
+  flex-shrink: 0;
+  color: var(--foreground-muted);
+  font-size: 0.7rem;
+  text-decoration: underline;
+}
+
 .managementPanel {
   display: flex;
   flex-direction: column;
@@ -186,6 +229,131 @@
   color: var(--foreground-muted);
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   text-align: center;
+}
+
+.modalBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgba(0, 0, 0, 0.7);
+}
+
+.confirmModal {
+  width: min(100%, 28rem);
+  padding: 1.25rem;
+  border: 1px solid var(--card-border);
+  border-radius: 1rem;
+  background: var(--card-bg);
+  box-shadow: 0 1.5rem 4rem rgba(0, 0, 0, 0.35);
+}
+
+.modalTitle {
+  margin: 0;
+  color: var(--foreground);
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+.changeList {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin: 1rem 0 0;
+  padding: 0;
+  list-style: none;
+  color: var(--foreground);
+  font-size: 0.8rem;
+}
+
+.changeList li {
+  padding: 0.6rem 0.75rem;
+  border-radius: 0.6rem;
+  background: color-mix(in srgb, var(--foreground) 7%, transparent);
+}
+
+.impactNotice {
+  margin-top: 0.75rem;
+  padding: 0.7rem 0.75rem;
+  border: 1px solid rgba(245, 158, 11, 0.25);
+  border-radius: 0.6rem;
+  background: rgba(245, 158, 11, 0.08);
+  color: var(--foreground-muted);
+  font-size: 0.75rem;
+  line-height: 1.5;
+}
+
+.impactNotice strong {
+  color: var(--foreground);
+}
+
+.impactNotice ul {
+  margin: 0.25rem 0 0;
+  padding-left: 1rem;
+}
+
+.yearChoice {
+  margin: 1rem 0 0;
+  padding: 0;
+  border: 0;
+}
+
+.choiceLegend {
+  margin-bottom: 0.5rem;
+  color: var(--foreground);
+  font-size: 0.8rem;
+  font-weight: 650;
+}
+
+.yearButtons {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.yearBtn {
+  flex: 1;
+  padding: 0.55rem 0.5rem;
+  border: 1px solid var(--card-border);
+  border-radius: 0.6rem;
+  background: var(--input-bg);
+  color: var(--foreground-muted);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.yearBtnActive {
+  border-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 15%, var(--input-bg));
+  color: var(--primary-light);
+}
+
+.customYearsLabel {
+  display: block;
+  margin-top: 0.75rem;
+  color: var(--foreground-muted);
+  font-size: 0.75rem;
+}
+
+.customYearsInput {
+  width: 100%;
+  margin-top: 0.35rem;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid var(--card-border);
+  border-radius: 0.6rem;
+  background: var(--input-bg);
+  color: var(--foreground);
+  font-size: 0.8rem;
+}
+
+.modalActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 1.25rem;
 }
 
 .presetBtn:hover {

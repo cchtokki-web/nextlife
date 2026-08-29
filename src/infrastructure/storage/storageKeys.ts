@@ -23,6 +23,7 @@ export const SIMPLE_SIMULATOR_HAS_RUN_KEY = 'nextlife_simple_simulator_has_run';
  * 네임스페이스가 아니다.
  */
 export const LOCAL_ANALYZED_AT_KEY = 'nextlife_local_analyzed_at';
+export const LOCAL_ANALYZED_PARAMS_HASH_KEY = 'nextlife_local_analyzed_params_hash';
 
 /** E2EE 보안키. 사용자별로 다르므로 반드시 userId로 조립한다. */
 export const e2eeKeyName = (userId: string) => `nextlife_e2ee_key_${userId}`;

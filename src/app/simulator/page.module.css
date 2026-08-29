@@ -9,6 +9,80 @@
   flex: 1;
 }
 
+.analysisProgress {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.7rem 0.9rem;
+  border: 1px solid color-mix(in srgb, var(--primary) 35%, var(--card-border));
+  border-radius: 0.75rem;
+  background: color-mix(in srgb, var(--primary) 10%, var(--card-bg));
+  color: var(--foreground-muted);
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+
+.analysisProgressBody {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.analysisProgressBody strong {
+  color: var(--foreground);
+}
+
+.analysisProgressHint {
+  font-size: 0.72rem;
+}
+
+.analysisProgressSteps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.9rem;
+  margin: 0.35rem 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.72rem;
+}
+
+.analysisProgressSteps li {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.analysisStepDone,
+.analysisStepRunning {
+  display: inline-flex;
+  width: 1rem;
+  justify-content: center;
+  color: var(--success, #10b981);
+  font-weight: 700;
+}
+
+.analysisStepRunning {
+  color: var(--primary);
+  animation: analysisPulse 1.2s ease-in-out infinite;
+}
+
+.analysisProgressDot {
+  width: 0.55rem;
+  height: 0.55rem;
+  flex-shrink: 0;
+  border-radius: 999px;
+  background: var(--primary);
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--primary) 45%, transparent);
+  animation: analysisPulse 1.5s ease-in-out infinite;
+}
+
+@keyframes analysisPulse {
+  50% {
+    box-shadow: 0 0 0 0.35rem color-mix(in srgb, var(--primary) 0%, transparent);
+    opacity: 0.55;
+  }
+}
+
 @media (max-width: 768px) {
   .main {
     padding: 1rem 0.5rem;

@@ -81,6 +81,8 @@ export async function GET(_req: Request) {
       // 결과 화면을 다시 세울지 판단하는 값. 결과 자체는 오지 않는다 — 클라이언트가 위 data로
       // 같은 계산을 다시 돌린다(Scenario.analyzedAt의 스키마 주석 참조).
       analyzedAt: s.analyzedAt,
+      // 분석 당시 설정과 현재 설정의 변경 여부만 판정한다. 평문 입력 자체는 반환하지 않는다.
+      analyzedParamsHash: s.analyzedParamsHash,
       createdAt: s.createdAt,
       updatedAt: s.updatedAt,
     }));

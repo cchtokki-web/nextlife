@@ -3,6 +3,7 @@ import {
   SIMPLE_SIMULATOR_INPUT_KEY,
   SIMPLE_SIMULATOR_HAS_RUN_KEY,
   LOCAL_ANALYZED_AT_KEY,
+  LOCAL_ANALYZED_PARAMS_HASH_KEY,
   e2eeKeyName,
   e2eeBackedUpKeyName,
   activeScenarioKeyName,
@@ -46,6 +47,7 @@ export function clearLocalAccountData(userId: string): void {
     // SIMULATOR_PARAMS_KEY와 한 쌍이다. 입력값만 지우고 이 표시를 남기면, 탈퇴 후 비로그인
     // 상태로 돌아온 브라우저가 기본값 위에 "분석했던 계획"을 복원한 것처럼 보인다.
     LOCAL_ANALYZED_AT_KEY,
+    LOCAL_ANALYZED_PARAMS_HASH_KEY,
   ]) {
     remove(localStorage, key);
   }

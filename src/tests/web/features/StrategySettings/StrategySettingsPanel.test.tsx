@@ -30,6 +30,8 @@ describe('StrategySettingsPanel', () => {
   test('전략 모드 3개를 렌더링한다', () => {
     render(<StrategySettingsPanel params={initialParams} onChangeParams={vi.fn()} {...noRecommendation} />);
 
+    fireEvent.click(screen.getByRole('button', { name: /전략을 직접 조정하고 싶어요/ }));
+
     expect(screen.getByRole('radio', { name: /간편/ })).toBeInTheDocument();
     expect(screen.getByRole('radio', { name: /표준/ })).toBeInTheDocument();
     expect(screen.getByRole('radio', { name: /전문가/ })).toBeInTheDocument();
@@ -82,19 +84,58 @@ describe('StrategySettingsPanel', () => {
   test('strategy가 없으면 간편 모드가 선택된다', () => {
     render(<StrategySettingsPanel params={initialParams} onChangeParams={vi.fn()} {...noRecommendation} />);
 
+    fireEvent.click(screen.getByRole('button', { name: /전략을 직접 조정하고 싶어요/ }));
     expect(screen.getByRole('radio', { name: /간편/ })).toBeChecked();
+  });
+
+  test('설정 섹션을 열기 전에 현재 계산 전략을 요약한다', () => {
+    render(<StrategySettingsPanel params={initialParams} onChangeParams={vi.fn()} {...noRecommendation} />);
+
+    const overview = screen.getByTestId('strategy-overview');
+    expect(overview).toHaveTextContent('현재 계산에 적용되는 전략');
+    expect(overview).toHaveTextContent('은퇴 초기 생활비');
+    expect(overview).toHaveTextContent('자동으로 비교');
+    expect(screen.getByRole('link', { name: '직접 설정을 바꾸고 싶어요' })).toHaveAttribute(
+      'href', '#strategy-settings-sections'
+    );
+  });
+
+  test('명시적으로 선택한 전략은 요약에 실제 선택값으로 표시한다', () => {
+    const params = {
+      ...initialParams,
+      strategy: {
+        ...DEFAULT_RETIREMENT_STRATEGY,
+        nationalPensionStrategy: 'defer_max' as const,
+        privatePensionStrategy: 'tax_first' as const,
+      },
+    };
+
+    render(<StrategySettingsPanel params={params} onChangeParams={vi.fn()} {...noRecommendation} />);
+
+    const overview = screen.getByTestId('strategy-overview');
+    expect(overview).toHaveTextContent('최대 연기 (70세)');
+    expect(overview).toHaveTextContent('절세 우선');
   });
 
   test('모드를 바꾸면 strategy.mode가 반영된 params로 onChangeParams가 호출된다', () => {
     const onChangeParams = vi.fn();
     render(<StrategySettingsPanel params={initialParams} onChangeParams={onChangeParams} {...noRecommendation} />);
 
+    fireEvent.click(screen.getByRole('button', { name: /전략을 직접 조정하고 싶어요/ }));
     fireEvent.click(screen.getByRole('radio', { name: /전문가/ }));
 
     expect(onChangeParams).toHaveBeenCalledWith({
       ...initialParams,
       strategy: { ...DEFAULT_RETIREMENT_STRATEGY, mode: 'expert' },
     });
+  });
+
+  test('직접 조정 수준은 사용자가 열기 전까지 숨긴다', () => {
+    render(<StrategySettingsPanel params={initialParams} onChangeParams={vi.fn()} {...noRecommendation} />);
+
+    expect(screen.queryByRole('radio', { name: /간편/ })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('link', { name: '직접 설정을 바꾸고 싶어요' }));
+    expect(screen.getByRole('radio', { name: /간편/ })).toBeInTheDocument();
   });
 
   test('기본값과 다른 값이 있으면 해당 섹션에 변경 개수 배지가 표시된다', () => {
