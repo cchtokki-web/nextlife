@@ -91,13 +91,43 @@ export const E2eeKeyManager: React.FC<E2eeKeyManagerProps> = ({
   // "틀렸다"는 거짓말을 세 번 듣고서야 탈출구가 열리는 것을 막는다.
   const canReset = restoreUnverifiable || failedRestoreAttempts >= RESET_UNLOCK_ATTEMPTS;
 
-  React.useEffect(() => {
-    if (needsKeyRestore) {
-      setTimeout(() => {
-        const firstInput = document.getElementById('pin-input-0');
-        if (firstInput) firstInput.focus();
-      }, 100);
+  // 첫 칸으로 포커스를 옮긴다. 지연을 두는 이유는 모달이나 비워진 입력이 실제로 그려진
+  // 뒤라야 getElementById가 그것을 찾기 때문이다.
+  //
+  // **타이머를 한 곳에서 들고 반드시 정리한다.** 예전에는 두 곳(모달이 뜰 때 100ms, 복구
+  // 실패 뒤 50ms)이 각자 setTimeout을 걸고 아무도 치우지 않았다. 그 사이에 화면이 닫히거나
+  // 컴포넌트가 사라져도 콜백이 그대로 돌아, 이미 없는 화면을 대신해 «다시 그려진» 다른
+  // 입력으로 포커스가 튄다. 테스트 환경에서는 jsdom이 정리된 뒤 document에 닿아
+  // "document is not defined"가 unhandled error로 남았다 — vitest가 그것을 두고 다른
+  // 테스트를 거짓 통과시킬 수 있다고 경고하는 그 오류다. 위의 카운트다운 이펙트는 같은
+  // 이유로 처음부터 clearInterval을 돌려주고 있었다.
+  const focusTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearFocusTimer = () => {
+    if (focusTimerRef.current !== null) {
+      clearTimeout(focusTimerRef.current);
+      focusTimerRef.current = null;
     }
+  };
+
+  const focusFirstPinInput = (delayMs: number) => {
+    // 앞선 예약이 남아 있으면 버린다. 겹쳐 두면 마지막 것만 의미가 있는데 앞의 것도 함께
+    // 돌아 포커스가 두 번 움직인다.
+    clearFocusTimer();
+    focusTimerRef.current = setTimeout(() => {
+      focusTimerRef.current = null;
+      const firstInput = document.getElementById('pin-input-0');
+      if (firstInput) firstInput.focus();
+    }, delayMs);
+  };
+
+  React.useEffect(() => {
+    if (!needsKeyRestore) return;
+    focusFirstPinInput(100);
+    // 언마운트와 모달이 닫히는 순간 둘 다 여기를 지난다. 복구 실패가 건 타이머도 같은
+    // ref에 있으므로 함께 치워진다.
+    return clearFocusTimer;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [needsKeyRestore]);
 
   const performRestore = async (enteredKey: string) => {
@@ -125,10 +155,7 @@ export const E2eeKeyManager: React.FC<E2eeKeyManagerProps> = ({
         ? `보안키가 올바르지 않습니다. (${nextAttempts}/${RESET_UNLOCK_ATTEMPTS}) ${RESET_UNLOCK_ATTEMPTS}회 실패하면 데이터를 초기화하고 새 보안키를 받을 수 있습니다.`
         : '보안키가 올바르지 않습니다. 아래에서 데이터를 초기화하고 새 보안키를 받을 수 있습니다.'
     );
-    setTimeout(() => {
-      const firstInput = document.getElementById('pin-input-0');
-      if (firstInput) firstInput.focus();
-    }, 50);
+    focusFirstPinInput(50);
   };
 
   const handlePinChange = (index: number, value: string) => {
