@@ -61,3 +61,8 @@ next-env.d.ts
 
 # Obsidian 개인 설정. 보관함 루트는 repo 루트이고 노트만 docs/wiki/에 추적한다.
 .obsidian/
+
+# Obsidian이 보관함 루트(= repo 루트)에 만드는 파일. 보관함이 저장소라서 계속 쌓인다.
+# 루트에만 걸어 docs/ 아래 날짜형 문서(releases·specs·plans)와 의도적인 캔버스는 남긴다.
+/[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9].md
+/*.canvas
