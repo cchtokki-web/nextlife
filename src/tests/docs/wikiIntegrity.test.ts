@@ -119,6 +119,18 @@ describe('위키 무결성', () => {
     expect(concepts.length).toBeGreaterThan(0);
   });
 
+  /**
+   * 파일럿 9건이 실제로 있는지 잠근다. 위 «노트를 실제로 찾았다»는 한 건만 있어도 통과하므로,
+   * 노트가 통째로 사라지는 것을 막지 못한다.
+   *
+   * 노트를 «추가»할 때는 이 숫자를 올린다. 노트를 «지울» 때는 그 결정이 의도적인지 확인하는
+   * 자리가 여기다 — 숫자를 낮추는 diff가 리뷰에 보이게 하려는 것이다.
+   */
+  test('파일럿 노트 9건이 있다', () => {
+    expect(concepts).toHaveLength(6);
+    expect(decisions).toHaveLength(3);
+  });
+
   test('type이 폴더와 일치한다', () => {
     const violations = collect(notes, (note, fail) => {
       const type = note.frontmatter.type?.[0];
