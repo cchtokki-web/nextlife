@@ -30,6 +30,7 @@ const SKIP_DIRS = new Set([
   '.claude',
   '.worktrees',
   '.obsidian',
+  '.superpowers',
   'coverage',
   'out',
   'build',
