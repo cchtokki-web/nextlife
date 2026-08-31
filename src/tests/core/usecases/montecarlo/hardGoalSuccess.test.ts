@@ -45,9 +45,12 @@ describe('runMonteCarlo — HARD 목표 성공률', () => {
   test('HARD 조건만 요구하므로 전체 성공률보다 높다', () => {
     const result = runMonteCarlo(params(), engine, config());
 
-    expect(result.hardGoalSuccessProbability).toBeDefined();
-    // 두 값이 같으면 픽스처가 판별력을 잃은 것이다 — 그 자체가 실패다.
-    expect(result.hardGoalSuccessProbability!).toBeGreaterThan(result.goalSuccessProbability);
+    // 값을 정확히 고정한다. toBeGreaterThan(...)·toBe(1)만으로는 언제나 1을 내는 가짜
+    // 구현도 통과한다 — 이 픽스처는 사적연금 인출 상한 때문에 전체 성공률이 0으로
+    // 붕괴하면서도 자산 고갈 방지 HARD 성공률은 0.65로 남는, 두 값이 실제로 갈라지는
+    // 시나리오다. 값이 바뀌면 이 주석 위 시드·설정으로 재확인한 뒤 갱신한다.
+    expect(result.goalSuccessProbability).toBe(0);
+    expect(result.hardGoalSuccessProbability).toBe(0.65);
   });
 
   test('확정 HARD 목표가 없으면 모든 시행이 통과해 1이다', () => {

@@ -606,6 +606,7 @@ describe('renderPlanVerdictSection', () => {
         unmeasuredGoals: ['TAX_OPTIMIZATION', 'HOUSING_STABILITY'],
         // 이 테스트는 점수 산정 대상 안내 문구만 검증한다. HARD 강도는 무관하므로 전부 false.
         hardRequirements: { spendingTarget: false, assetSurvival: false, terminalAsset: false },
+        hardRequirementGoals: { spendingTarget: [], assetSurvival: [], terminalAsset: [] },
       },
     });
 
@@ -625,6 +626,7 @@ describe('renderPlanVerdictSection', () => {
         unmeasuredGoals: ['TAX_OPTIMIZATION'],
         // 점수 안내 문구가 붙지 않음을 확인하는 테스트라 HARD 강도는 무관하다. 전부 false.
         hardRequirements: { spendingTarget: false, assetSurvival: false, terminalAsset: false },
+        hardRequirementGoals: { spendingTarget: [], assetSurvival: [], terminalAsset: [] },
       },
     });
 
@@ -718,6 +720,9 @@ describe('renderPlanVerdictSection', () => {
       goalConditions: {
         ...LEGACY_GOAL_CONDITIONS,
         hardRequirements: { spendingTarget: false, assetSurvival: true, terminalAsset: false },
+        // assetSurvival 축을 켠 목표가 ASSET_SURVIVAL이라는 뜻 — 짝을 맞추지 않으면
+        // judged가 빈 채로 남는다.
+        hardRequirementGoals: { spendingTarget: [], assetSurvival: ['ASSET_SURVIVAL'], terminalAsset: [] },
       },
     }, params);
 
@@ -733,6 +738,51 @@ describe('renderPlanVerdictSection', () => {
     const html = render(0.9, mc(0.9));
 
     expect(html).not.toContain('HARD 목표 판정 확률');
+  });
+
+  // 「모두 포함됩니다」 갈래는 unjudged와 planEmbedded가 «둘 다» 비었을 때만 인쇄해야 한다.
+  // 화면(DashboardSection)의 같은 이름 테스트와 짝이다 — 리포트는 화면보다 오래 남고 그대로
+  // 인용되므로 이 갈래에 테스트가 없었다는 사실이 더 위험했다.
+  test('확정 HARD 목표가 모두 이 비율에 반영되면 "모두 포함됩니다"라고 밝힌다', () => {
+    const goalsParams = goalParams([{ type: 'ASSET_SURVIVAL', constraintType: 'HARD', priority: 1 }]);
+    const html = render(0.9, {
+      ...mc(0.9),
+      hardGoalSuccessProbability: 0.8,
+      goalConditions: {
+        ...LEGACY_GOAL_CONDITIONS,
+        hardRequirements: { spendingTarget: false, assetSurvival: true, terminalAsset: false },
+        hardRequirementGoals: { spendingTarget: [], assetSurvival: ['ASSET_SURVIVAL'], terminalAsset: [] },
+      },
+    }, goalsParams);
+
+    expect(html).toContain('HARD 목표 판정 확률 80%');
+    expect(html).toContain('HARD 목표 1개 모두 이 확률의 판정 기준에 포함됩니다');
+    // Fix 2: HARD 비율이 항상 목표 달성 확률 이상이라는 관계를 화면과 같은 문장으로 밝힌다.
+    expect(html).toContain('항상 같거나 높습니다');
+  });
+
+  // EARLY_RETIREMENT는 계획에 이미 반영되어 모든 시행이 지키므로 조건으로 세지 않는다.
+  // unjudged와 같은 말로 적으면 지켜진 목표를 안 지켜진 것처럼 보고하게 된다.
+  test('계획에 이미 반영된 HARD 목표(빠른 은퇴)는 반영되지 않았다고 말하지 않는다', () => {
+    const goalsParams = goalParams([
+      { type: 'ASSET_SURVIVAL', constraintType: 'HARD', priority: 1 },
+      { type: 'EARLY_RETIREMENT', constraintType: 'HARD', priority: 2, targetValue: 60 },
+    ]);
+    const html = render(0.9, {
+      ...mc(0.9),
+      hardGoalSuccessProbability: 0.8,
+      goalConditions: {
+        ...LEGACY_GOAL_CONDITIONS,
+        hardRequirements: { spendingTarget: false, assetSurvival: true, terminalAsset: false },
+        hardRequirementGoals: { spendingTarget: [], assetSurvival: ['ASSET_SURVIVAL'], terminalAsset: [] },
+      },
+    }, goalsParams);
+
+    expect(html).not.toContain('HARD 목표 2개 모두 이 확률의 판정 기준에 포함됩니다');
+    expect(html).toContain('HARD 목표 2개 중 1개만 이 판정 기준에 포함됩니다');
+    expect(html).toContain('계획에 이미 반영되어 모든 시행이 지키는 HARD 목표');
+    expect(html).toContain('빠른 은퇴');
+    expect(html).not.toContain('시행으로 판정할 수 없어 반영되지 않은 HARD 목표: 빠른 은퇴');
   });
 
   // **골든의 사각지대를 메운다.** buildReportHtml.test.ts는 앱에서 미리 캡처해 둔 완성

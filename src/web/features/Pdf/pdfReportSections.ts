@@ -1,6 +1,6 @@
 import { RiskAlert } from '../../../core/usecases/dashboard/computeRiskAlerts';
 import { describeMonteCarloAssumptions } from '../../../core/usecases/montecarlo/describeAssumptions';
-import { describeSuccessRates } from '../../../core/usecases/montecarlo/describeSuccessRates';
+import { describeSuccessRates, describeHardGoalRelationship } from '../../../core/usecases/montecarlo/describeSuccessRates';
 import { describeSustainableSpendingBasis } from '../../../core/usecases/dashboard/describeSustainableSpendingBasis';
 import { ExecutionRoadmap } from '../../../core/usecases/dashboard/computeExecutionRoadmap';
 import { describeYieldAxisAnchors, SensitivityScenario } from '../../../core/usecases/dashboard/computeSensitivityAnalysis';
@@ -276,18 +276,29 @@ function goalCoverageNote(conditions: GoalSuccessConditions): string {
 // 목표(주거 안정 등)가 섞여 있는데 그 사실을 밝히지 않으면 같은 결함을 지표 하나로 반복한다 —
 // 그래서 이 함수는 unjudged가 있을 때 비율 «옆»에 그 사실을 항상 함께 적는다(goalCoverageNote와
 // 같은 자리, 같은 어투).
+//
+// **세 갈래를 모두 본다.** judged(실제로 조건에 기여) · unjudged(HARD로 골랐지만 이 비율이
+// 반영하지 못함) · planEmbedded(EARLY_RETIREMENT — 계획에 이미 반영되어 모든 시행이 지키므로
+// 조건으로 세지 않음). 화면(HardGoalSuccessNote)과 같은 세 갈래·같은 문장이어야 한다.
 function hardGoalSuccessNote(hardGoalSuccess: SimulationVerdict['hardGoalSuccess']): string {
   if (hardGoalSuccess === null) return '';
 
-  const total = hardGoalSuccess.judged.length + hardGoalSuccess.unjudged.length;
-  const rateText = `HARD 목표 판정 확률 ${Math.round(hardGoalSuccess.rate * 100)}%`;
+  const { judged, unjudged, planEmbedded, rate } = hardGoalSuccess;
+  const total = judged.length + unjudged.length + planEmbedded.length;
+  const rateText = `HARD 목표 판정 확률 ${Math.round(rate * 100)}%`;
+  const relationshipNote = describeHardGoalRelationship();
 
-  if (hardGoalSuccess.unjudged.length === 0) {
-    return `<p style="margin: 3px 0 0; font-size: 11px; color: #475569;">${rateText} (HARD 목표 ${total}개 모두 이 확률의 판정 기준에 포함됩니다).</p>`;
+  if (unjudged.length === 0 && planEmbedded.length === 0) {
+    return `<p style="margin: 3px 0 0; font-size: 11px; color: #475569;">${rateText} (HARD 목표 ${total}개 모두 이 확률의 판정 기준에 포함됩니다). ${relationshipNote}</p>`;
   }
 
-  const unjudged = hardGoalSuccess.unjudged.map(goalLabel).join(', ');
-  return `<p style="margin: 3px 0 0; font-size: 11px; color: #475569;">${rateText} — HARD 목표 ${total}개 중 ${hardGoalSuccess.judged.length}개만 이 판정 기준에 포함됩니다. 시행으로 판정할 수 없어 반영되지 않은 HARD 목표: ${unjudged}.</p>`;
+  const unjudgedClause = unjudged.length > 0
+    ? ` 시행으로 판정할 수 없어 반영되지 않은 HARD 목표: ${unjudged.map(goalLabel).join(', ')}.`
+    : '';
+  const planEmbeddedClause = planEmbedded.length > 0
+    ? ` 계획에 이미 반영되어 모든 시행이 지키는 HARD 목표(별도 조건으로 세지 않음): ${planEmbedded.map(goalLabel).join(', ')}.`
+    : '';
+  return `<p style="margin: 3px 0 0; font-size: 11px; color: #475569;">${rateText} — HARD 목표 ${total}개 중 ${judged.length}개만 이 판정 기준에 포함됩니다.${unjudgedClause}${planEmbeddedClause} ${relationshipNote}</p>`;
 }
 
 // 색은 밴드→티어 매핑 한 곳에서만 나온다(화면의 진단 카드와 같은 표). 여기서 다시

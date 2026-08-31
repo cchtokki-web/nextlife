@@ -1,5 +1,5 @@
-import { isQuantitativelyJudgedGoal } from '../goals/goalSuccessConditions';
-import { hardGoalAwaitsTargetConfirmation, normalizeRetirementGoals } from '../../entities/retirementGoal';
+import { isConfirmedHardGoal, isPlanEmbeddedGoal } from '../goals/goalSuccessConditions';
+import { normalizeRetirementGoals } from '../../entities/retirementGoal';
 import type { RetirementGoalType } from '../../entities/retirementGoal';
 import type { MonteCarloResult } from '../../entities/montecarlo';
 import type { SimulationParams } from '../../entities/types';
@@ -30,6 +30,13 @@ export interface SimulationVerdict {
     failed: number;
     judged: RetirementGoalType[];
     unjudged: RetirementGoalType[];
+    /**
+     * 확정 HARD이지만 계획에 이미 반영되어 «조건으로 세지 않는» 목표(EARLY_RETIREMENT).
+     * unjudged와 다른 말이다 — unjudged는 「이 비율이 반영하지 못했다」이고, planEmbedded는
+     * 「반영할 필요 자체가 없다, 모든 시행이 이미 지킨다」다. 같은 자리에 넣으면 지켜진
+     * 목표를 안 지켜진 것처럼 보고하게 된다.
+     */
+    planEmbedded: RetirementGoalType[];
   } | null;
 }
 
@@ -61,17 +68,36 @@ export function resolveSimulationVerdict(input: {
   const hard = monteCarlo.goalConditions.hardRequirements;
   const anyHardRequirement = hard.spendingTarget || hard.assetSurvival || hard.terminalAsset;
 
-  // 사용자가 확정 HARD로 고른 목표를 판정 여부로 가른다. 엔진에 필드를 더 만들지 않고
-  // 여기서 계산하는 이유는, 이 분류의 출처가 isQuantitativelyJudgedGoal 하나뿐이어야 하기
-  // 때문이다(goalSuccessConditions.ts의 해당 주석 참조).
+  // 사용자가 확정 HARD로 고른 목표를 세 갈래로 가른다. 「확정」의 술어는
+  // isConfirmedHardGoal 하나뿐이다(goalSuccessConditions.ts) — 여기서 다시 쓰면 두 파일이
+  // 같은 뜻을 각자 들고 있게 된다.
   const confirmedHardGoals = Array.isArray(params.retirementGoals)
-    ? normalizeRetirementGoals(params.retirementGoals)
-        .filter((goal) => goal.constraintType === 'HARD' && !hardGoalAwaitsTargetConfirmation(goal))
+    ? normalizeRetirementGoals(params.retirementGoals).filter(isConfirmedHardGoal)
     : [];
+
+  // **judged는 유형 멤버십이 아니라 「실제로 축을 켰는가」로 가른다.** goalConditions가
+  // 이미 그 판단을 끝내 두었다 — hardRequirementGoals에 실제로 조건에 기여한 목표만 있다.
+  // isQuantitativelyJudgedGoal(유형)로 가르면 목표액 UI가 없는 ASSET_GROWTH가 아무 축도
+  // 켜지 못했는데도 「판정됨」으로 나온다(goalSuccessConditions.ts의 hardRequirementGoals
+  // 주석 참조).
+  const { hardRequirementGoals } = monteCarlo.goalConditions;
+  const judgedTypes = new Set<RetirementGoalType>([
+    ...hardRequirementGoals.spendingTarget,
+    ...hardRequirementGoals.assetSurvival,
+    ...hardRequirementGoals.terminalAsset,
+  ]);
+
   const judged = confirmedHardGoals
-    .filter((goal) => isQuantitativelyJudgedGoal(goal.type)).map((goal) => goal.type);
+    .filter((goal) => judgedTypes.has(goal.type)).map((goal) => goal.type);
+  // EARLY_RETIREMENT는 조건으로 세지 않지만 계획에 이미 반영되어 있다 — unjudged(「반영되지
+  // 않았다」)에 넣으면 지켜진 목표를 안 지켜진 것처럼 말하게 된다(goalSuccessConditions.ts의
+  // isPlanEmbeddedGoal 주석 참조).
+  const planEmbedded = confirmedHardGoals
+    .filter((goal) => !judgedTypes.has(goal.type) && isPlanEmbeddedGoal(goal.type))
+    .map((goal) => goal.type);
   const unjudged = confirmedHardGoals
-    .filter((goal) => !isQuantitativelyJudgedGoal(goal.type)).map((goal) => goal.type);
+    .filter((goal) => !judgedTypes.has(goal.type) && !isPlanEmbeddedGoal(goal.type))
+    .map((goal) => goal.type);
 
   return {
     available: true,
@@ -86,7 +112,7 @@ export function resolveSimulationVerdict(input: {
     // 요구하는 HARD 조건이 하나도 없으면 모든 시행이 통과해 1이 된다. 그 숫자는 참이지만
     // 「HARD 목표를 다 지켰다」로 읽혀 오해를 부른다. 숫자가 아니라 부재로 표현한다.
     hardGoalSuccess: anyHardRequirement && monteCarlo.hardGoalSuccessProbability !== undefined
-      ? { ...counts(monteCarlo.hardGoalSuccessProbability, trials), judged, unjudged }
+      ? { ...counts(monteCarlo.hardGoalSuccessProbability, trials), judged, unjudged, planEmbedded }
       : null,
   };
 }

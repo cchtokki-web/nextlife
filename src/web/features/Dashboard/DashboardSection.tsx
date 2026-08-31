@@ -32,7 +32,7 @@ import { resolveTerminalAssetDisplay } from '../../../core/usecases/dashboard/re
 import type { GoalSuccessConditions } from '../../../core/usecases/goals/goalSuccessConditions';
 import { describeGoalConflict } from '../../../core/usecases/goals/describeGoalConflict';
 import { describeSustainableSpendingLimit } from '../../../core/usecases/dashboard/describeSustainableSpendingLimit';
-import { describeSuccessRates } from '../../../core/usecases/montecarlo/describeSuccessRates';
+import { describeSuccessRates, describeHardGoalRelationship } from '../../../core/usecases/montecarlo/describeSuccessRates';
 import { resolveSimulationVerdict, type SimulationVerdict } from '../../../core/usecases/montecarlo/resolveSimulationVerdict';
 import { describeSustainableSpendingBasis } from '../../../core/usecases/dashboard/describeSustainableSpendingBasis';
 import GlassCard from '../../components/GlassCard';
@@ -329,8 +329,11 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
               <strong>{probabilityLabel}</strong>
               {currentGoalProbability !== undefined && monteCarlo && (
                 <small>
-                  {monteCarlo.trials.toLocaleString()}회 중{' '}
-                  {Math.round(currentGoalProbability * monteCarlo.trials).toLocaleString()}회가 판정 조건 충족
+                  {/* verdict.goalSuccess.succeeded는 이 확률을 낸 시행 수 그대로다. 여기서
+                      rate*trials를 다시 반올림하면 같은 화면 안에서 카운트를 두 벌로 만드는
+                      셈이고, 반올림 결과가 어긋나는 날 아무도 알아채지 못한다. */}
+                  {verdict.trials.toLocaleString()}회 중{' '}
+                  {verdict.goalSuccess.succeeded.toLocaleString()}회가 판정 조건 충족
                 </small>
               )}
             </div>
@@ -712,25 +715,39 @@ function GoalCoverageNote({ conditions }: { conditions: GoalSuccessConditions })
 // **unjudged를 비율과 떼어 놓지 않는다.** known-issues #1은 주거 안정을 HARD로 고정해도
 // 계산은 정확했지만 화면이 그 조건이 지켜진 것처럼 보여준 결함이었다. HARD 성공률에 판정하지
 // 못한 목표가 섞여 있는데 그 사실을 밝히지 않으면 같은 결함을 지표 하나로 반복한다.
+//
+// **세 갈래를 모두 본다.** judged(실제로 조건에 기여) · unjudged(HARD로 골랐지만 이 비율이
+// 반영하지 못함) · planEmbedded(EARLY_RETIREMENT — 계획에 이미 반영되어 모든 시행이 지키므로
+// 조건으로 세지 않음). 「모두 포함됩니다」는 unjudged와 planEmbedded가 «둘 다» 비었을 때만
+// 말할 수 있다 — 하나라도 있으면 그만큼은 이 비율이 재는 것이 아니다.
 function HardGoalSuccessNote({ hardGoalSuccess }: { hardGoalSuccess: NonNullable<SimulationVerdict['hardGoalSuccess']> }) {
-  const total = hardGoalSuccess.judged.length + hardGoalSuccess.unjudged.length;
-  const rateText = `HARD 목표 판정 확률 ${Math.round(hardGoalSuccess.rate * 100)}%`;
+  const { judged, unjudged, planEmbedded, rate } = hardGoalSuccess;
+  const total = judged.length + unjudged.length + planEmbedded.length;
+  const rateText = `HARD 목표 판정 확률 ${Math.round(rate * 100)}%`;
+  const relationshipNote = describeHardGoalRelationship();
 
-  if (hardGoalSuccess.unjudged.length === 0) {
+  if (unjudged.length === 0 && planEmbedded.length === 0) {
     return (
       <p className={styles.goalCoverageNote}>
-        {rateText} (HARD 목표 {total}개 모두 이 확률의 판정 기준에 포함됩니다).
+        {rateText} (HARD 목표 {total}개 모두 이 확률의 판정 기준에 포함됩니다). {relationshipNote}
       </p>
     );
   }
 
-  const unjudged = hardGoalSuccess.unjudged
-    .map((type) => retirementGoalDefinition(type).label)
-    .join(', ');
   return (
     <p className={styles.goalCoverageNote}>
-      {rateText} — HARD 목표 {total}개 중 {hardGoalSuccess.judged.length}개만 이 판정 기준에 포함됩니다.
-      시행으로 판정할 수 없어 반영되지 않은 HARD 목표: {unjudged}.
+      {rateText} — HARD 목표 {total}개 중 {judged.length}개만 이 판정 기준에 포함됩니다.
+      {unjudged.length > 0 && (
+        <> 시행으로 판정할 수 없어 반영되지 않은 HARD 목표: {unjudged
+          .map((type) => retirementGoalDefinition(type).label)
+          .join(', ')}.</>
+      )}
+      {planEmbedded.length > 0 && (
+        <> 계획에 이미 반영되어 모든 시행이 지키는 HARD 목표(별도 조건으로 세지 않음): {planEmbedded
+          .map((type) => retirementGoalDefinition(type).label)
+          .join(', ')}.</>
+      )}
+      {' '}{relationshipNote}
     </p>
   );
 }

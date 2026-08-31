@@ -45,11 +45,30 @@ export interface GoalSuccessConditions {
     assetSurvival: boolean;
     terminalAsset: boolean;
   };
+
+  /**
+   * 위 hardRequirements 각 축을 «켠» 확정 HARD 목표. 축이 꺼져 있으면 빈 배열이다.
+   *
+   * **판별 기준은 유형 멤버십이 아니라 이 목록이다.** resolveSimulationVerdict의 `judged`는
+   * `isQuantitativelyJudgedGoal()`(유형)이 아니라 여기서 나온다 — 「자산 성장」은 판정
+   * 가능한 «유형»이지만 목표액을 묻는 UI가 없어 terminalAsset 축에 기여하지 못하는 한
+   * 이 목록에 들어가지 않는다(위 hardRequirements.terminalAsset 주석과 같은 이유). 유형만
+   * 보면 구멍이 생긴다 — 그 구멍이 실제로 화면에 닿았던 사고가 known-issues 1번이다.
+   */
+  hardRequirementGoals: {
+    spendingTarget: RetirementGoalType[];
+    assetSurvival: RetirementGoalType[];
+    terminalAsset: RetirementGoalType[];
+  };
 }
 
 const NO_HARD_REQUIREMENTS = {
   spendingTarget: false, assetSurvival: false, terminalAsset: false,
 } as const;
+
+const noHardRequirementGoals = (): GoalSuccessConditions['hardRequirementGoals'] => ({
+  spendingTarget: [], assetSurvival: [], terminalAsset: [],
+});
 
 /** 화면과 PDF의 추천 카드가 목표 달성 확률의 판정 조건을 같은 문장으로 설명한다. */
 export function describeGoalSuccessCriteria(
@@ -99,6 +118,28 @@ export function isQuantitativelyJudgedGoal(type: RetirementGoalType): boolean {
   return MEASURABLE_GOALS.has(type) || PLAN_EMBEDDED_GOALS.has(type);
 }
 
+/**
+ * 이 목표가 «계획에 이미 반영되어» 모든 시행이 통과하는 유형인가(오늘은 EARLY_RETIREMENT
+ * 하나뿐이다). MEASURABLE_GOALS와 뜻이 다르다 — 이쪽은 조건으로 세면 안 되는 쪽이고,
+ * MEASURABLE_GOALS는 조건으로 세워야 하는 쪽이다. `isQuantitativelyJudgedGoal`은 이 둘의
+ * 합집합이라 소비처가 「판정됐다」와 「반영은 됐지만 조건이 아니다」를 구별해야 하는 자리
+ * (resolveSimulationVerdict의 judged/planEmbedded)에서는 이 술어를 따로 써야 한다.
+ */
+export function isPlanEmbeddedGoal(type: RetirementGoalType): boolean {
+  return PLAN_EMBEDDED_GOALS.has(type);
+}
+
+/**
+ * 이 목표가 «확정된 HARD»인가 — 강도가 HARD이고 기준이 씨앗이 아닌 경우.
+ *
+ * 이 술어의 출처는 여기 하나뿐이어야 한다. resolveSimulationVerdict가 같은 뜻을 다시 쓰면
+ * (hardGoalAwaitsTargetConfirmation을 직접 불러 같은 식을 반복하면) 두 파일이 «확정»의
+ * 정의를 각자 들고 있는 셈이 되고, 그 정의가 바뀌는 날 한쪽만 따라간다.
+ */
+export function isConfirmedHardGoal(goal: RetirementGoal): boolean {
+  return goal.constraintType === 'HARD' && !hardGoalAwaitsTargetConfirmation(goal);
+}
+
 // 목표 달성 확률이 판정할 조건을 정한다.
 //
 // **이 함수가 필요한 이유.** 예전에는 조건이 세 개로 고정되어 있었다 — 목표 생활비, 자산
@@ -127,6 +168,7 @@ export function resolveGoalSuccessConditions(params: SimulationParams): GoalSucc
       terminalAssetGoal: legacyTerminalGoal,
       unmeasuredGoals: [],
       hardRequirements: { ...NO_HARD_REQUIREMENTS },
+      hardRequirementGoals: noHardRequirementGoals(),
     };
   }
 
@@ -165,26 +207,38 @@ export function resolveGoalSuccessConditions(params: SimulationParams): GoalSucc
       terminalAssetGoal: 0,
       unmeasuredGoals,
       hardRequirements: { ...NO_HARD_REQUIREMENTS },
+      hardRequirementGoals: noHardRequirementGoals(),
     };
   }
 
-  const isConfirmedHard = (goal: RetirementGoal): boolean =>
-    goal.constraintType === 'HARD' && !hardGoalAwaitsTargetConfirmation(goal);
-
-  const hardRequirements = {
-    spendingTarget: measurable.some((goal) =>
+  // 「어떤 판정 가능한 자산 목표가 HARD인가」가 아니라 「기말자산 금액을 «실제로 준»
+  // 목표가 HARD인가」를 묻는다. ASSET_GROWTH는 목표액 입력 UI가 없어 targetValue가 항상
+  // undefined이고, 그러면 isSuggestedTargetValue·hardGoalAwaitsTargetConfirmation이 모두
+  // 거짓이라 「확정을 기다리는 씨앗이 없다」가 「이미 확정했다」로 잘못 읽힌다. 유형만 보면
+  // SOFT 상속이 확정한 금액을 나란히 고른 HARD 자산성장 목표(또는 targetBequest 폴백)가
+  // 가로채 HARD 요구로 둔갑한다. terminalAssetSource가 null이면(폴백값) 그 값을 «준» 목표가
+  // 아예 없으므로도 항상 false다.
+  const spendingTargetGoals = measurable
+    .filter((goal) =>
       (goal.type === 'LIVING_EXPENSE_STABILITY' || goal.type === 'COMFORTABLE_SPENDING')
-      && isConfirmedHard(goal)),
-    assetSurvival: measurable.some((goal) =>
-      goal.type === 'ASSET_SURVIVAL' && isConfirmedHard(goal)),
-    // 「어떤 판정 가능한 자산 목표가 HARD인가」가 아니라 「기말자산 금액을 «실제로 준»
-    // 목표가 HARD인가」를 묻는다. ASSET_GROWTH는 목표액 입력 UI가 없어 targetValue가 항상
-    // undefined이고, 그러면 isSuggestedTargetValue·hardGoalAwaitsTargetConfirmation이 모두
-    // 거짓이라 「확정을 기다리는 씨앗이 없다」가 「이미 확정했다」로 잘못 읽힌다. 유형만 보면
-    // SOFT 상속이 확정한 금액을 나란히 고른 HARD 자산성장 목표(또는 targetBequest 폴백)가
-    // 가로채 HARD 요구로 둔갑한다. terminalAssetSource가 null이면(폴백값) 그 값을 «준» 목표가
-    // 아예 없으므로도 항상 false다.
-    terminalAsset: terminalAssetSource !== null && isConfirmedHard(terminalAssetSource),
+      && isConfirmedHardGoal(goal))
+    .map((goal) => goal.type);
+  const assetSurvivalGoals = measurable
+    .filter((goal) => goal.type === 'ASSET_SURVIVAL' && isConfirmedHardGoal(goal))
+    .map((goal) => goal.type);
+  const terminalAssetGoals = terminalAssetSource !== null && isConfirmedHardGoal(terminalAssetSource)
+    ? [terminalAssetSource.type]
+    : [];
+
+  const hardRequirementGoals = {
+    spendingTarget: spendingTargetGoals,
+    assetSurvival: assetSurvivalGoals,
+    terminalAsset: terminalAssetGoals,
+  };
+  const hardRequirements = {
+    spendingTarget: spendingTargetGoals.length > 0,
+    assetSurvival: assetSurvivalGoals.length > 0,
+    terminalAsset: terminalAssetGoals.length > 0,
   };
 
   return {
@@ -194,6 +248,7 @@ export function resolveGoalSuccessConditions(params: SimulationParams): GoalSucc
     terminalAssetGoal,
     unmeasuredGoals,
     hardRequirements,
+    hardRequirementGoals,
   };
 }
 
