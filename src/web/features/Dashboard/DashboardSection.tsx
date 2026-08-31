@@ -33,6 +33,7 @@ import type { GoalSuccessConditions } from '../../../core/usecases/goals/goalSuc
 import { describeGoalConflict } from '../../../core/usecases/goals/describeGoalConflict';
 import { describeSustainableSpendingLimit } from '../../../core/usecases/dashboard/describeSustainableSpendingLimit';
 import { describeSuccessRates } from '../../../core/usecases/montecarlo/describeSuccessRates';
+import { resolveSimulationVerdict, type SimulationVerdict } from '../../../core/usecases/montecarlo/resolveSimulationVerdict';
 import { describeSustainableSpendingBasis } from '../../../core/usecases/dashboard/describeSustainableSpendingBasis';
 import GlassCard from '../../components/GlassCard';
 import { retirementGoalDefinition } from '../RetirementGoals/goalCatalog';
@@ -229,12 +230,20 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [sensitivity, pensionGap, shortfallReport, recommendation, currency]
   );
-  // spendingSuccessRate로 대체하지 않는다. 그것은 "고갈 여부를 묻지 않는" 다른 지표라
-  // 언제나 목표 성공확률보다 관대하고(montecarlo.ts 주석), 대체하면 목표를 못 지키는 계획이
-  // 🟢으로 표시될 수 있다. 측정되지 않았으면 아래에서 '확인 불가'로 내려간다.
-  const currentGoalProbability = monteCarloStatus === 'done' && monteCarlo
-    ? monteCarlo.simulationSuccessRate ?? monteCarlo.goalSuccessProbability
-    : undefined;
+  // 판정의 단일 출처. 폴백을 다시 쌓지 않는다 — 예전에는 simulationSuccessRate ??
+  // goalSuccessProbability 두 단계였고, 이 화면 스스로 spendingSuccessRate로 대체하지 말라고
+  // 경고했었다(그 지표는 "고갈 여부를 묻지 않는" 다른 값이라 언제나 목표 성공확률보다 관대해서,
+  // 대체하면 목표를 못 지키는 계획이 🟢으로 표시될 수 있다).
+  //
+  // available이 false면 rate는 NaN이다. **아래에서 rate를 쓰는 모든 자리는 이 verdict.available
+  // 분기를 통과한 뒤에만 읽는다** — NaN을 그대로 비교식에 넣으면(getPlanConfidenceBand의 임계
+  // 사다리 등) 모든 비교가 false로 떨어져 "판정 못 함"이 조용히 가장 관대한 가지로 빠진다.
+  // 측정되지 않았으면 아래에서 '확인 불가'로 내려간다.
+  const verdict = React.useMemo(
+    () => resolveSimulationVerdict({ monteCarlo: monteCarloForDisplay, params }),
+    [monteCarloForDisplay, params]
+  );
+  const currentGoalProbability = verdict.available ? verdict.goalSuccess.rate : undefined;
   // 임계값은 computePlanConfidence가 소유한다. 같은 화면에 이미 그 밴드로 그린 지표가 있어
   // 별도 임계값을 두면 0.85에서 한쪽은 '안정', 한쪽은 🟡으로 갈린다.
   const diagnosisTier = currentGoalProbability !== undefined
@@ -386,6 +395,9 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
           )}
           {monteCarlo && monteCarlo.goalConditions.basis !== 'legacy_plan' && (
             <GoalCoverageNote conditions={monteCarlo.goalConditions} />
+          )}
+          {verdict.hardGoalSuccess !== null && (
+            <HardGoalSuccessNote hardGoalSuccess={verdict.hardGoalSuccess} />
           )}
           {/* **cause로 가르지 않는다.** 목표를 다 달성했는데도 자산은 실제로 고갈된 계획은
               cause가 'none'이면서(확률이 정말 100%다) 할 말이 있다. 예전에 여기서 cause를
@@ -689,6 +701,36 @@ function GoalCoverageNote({ conditions }: { conditions: GoalSuccessConditions })
         : '선택한 목표 중 시행으로 판정할 수 있는 조건만 반영한 확률입니다.'}
       {unmeasured && ` 이 확률에 반영되지 않은 목표: ${unmeasured}.`}
       {unscored && ` ${unscored}`}
+    </p>
+  );
+}
+
+// 확정 HARD 목표 중 «시행 하나로 판정할 수 있는» 것만 센 성공률. GoalCoverageNote와 같은
+// 자리·같은 어투를 쓴다 — 「반영되지 않았다」를 밝히는 방식을 화면 안에서 두 벌로 만들지
+// 않기 위해서다.
+//
+// **unjudged를 비율과 떼어 놓지 않는다.** known-issues #1은 주거 안정을 HARD로 고정해도
+// 계산은 정확했지만 화면이 그 조건이 지켜진 것처럼 보여준 결함이었다. HARD 성공률에 판정하지
+// 못한 목표가 섞여 있는데 그 사실을 밝히지 않으면 같은 결함을 지표 하나로 반복한다.
+function HardGoalSuccessNote({ hardGoalSuccess }: { hardGoalSuccess: NonNullable<SimulationVerdict['hardGoalSuccess']> }) {
+  const total = hardGoalSuccess.judged.length + hardGoalSuccess.unjudged.length;
+  const rateText = `HARD 목표 판정 확률 ${Math.round(hardGoalSuccess.rate * 100)}%`;
+
+  if (hardGoalSuccess.unjudged.length === 0) {
+    return (
+      <p className={styles.goalCoverageNote}>
+        {rateText} (HARD 목표 {total}개 모두 이 확률의 판정 기준에 포함됩니다).
+      </p>
+    );
+  }
+
+  const unjudged = hardGoalSuccess.unjudged
+    .map((type) => retirementGoalDefinition(type).label)
+    .join(', ');
+  return (
+    <p className={styles.goalCoverageNote}>
+      {rateText} — HARD 목표 {total}개 중 {hardGoalSuccess.judged.length}개만 이 판정 기준에 포함됩니다.
+      시행으로 판정할 수 없어 반영되지 않은 HARD 목표: {unjudged}.
     </p>
   );
 }

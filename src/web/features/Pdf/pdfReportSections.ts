@@ -41,6 +41,7 @@ import { describeStrategyChanges } from '../../../core/usecases/dashboard/descri
 import { explainGoalShortfall } from '../../../core/usecases/dashboard/explainGoalShortfall';
 import type { StrategyOptimizationStatus } from '../../hooks/useStrategyOptimization';
 import { resolveTerminalAssetDisplay } from '../../../core/usecases/dashboard/resolveTerminalAssetDisplay';
+import { resolveSimulationVerdict, type SimulationVerdict } from '../../../core/usecases/montecarlo/resolveSimulationVerdict';
 
 export function formatCurrencyUnit(currency: 'KRW' | 'USD'): '원' | '$' {
   return currency === 'KRW' ? '원' : '$';
@@ -163,15 +164,20 @@ export function renderPlanVerdictSection(input: {
   endingAssets: number;
   confidence: PlanConfidence;
   monteCarlo?: MonteCarloResult;
+  // resolveSimulationVerdict가 확정 HARD 목표 중 판정 가능한 것을 가리려면 목표 선택
+  // 결과가 필요하다(hardGoalSuccessNote). 화면(DashboardSection)이 같은 값을 넘기는 것과
+  // 같은 이유다.
+  params: SimulationParams;
   formatValue: (val: number) => string;
 }): string {
-  const { expectancy, deterministicDepletionText, endingAssets, confidence, monteCarlo, formatValue } = input;
+  const { expectancy, deterministicDepletionText, endingAssets, confidence, monteCarlo, params, formatValue } = input;
   const terminalAssetDisplay = resolveTerminalAssetDisplay(endingAssets, monteCarlo);
-  const simulationSuccessRate = monteCarlo?.simulationSuccessRate
-    ?? monteCarlo?.goalSuccessProbability
-    ?? confidence.rates?.goalSuccessProbability
-    ?? confidence.rates?.spendingSuccessRate
-    ?? 0;
+  // 판정의 단일 출처. **폴백을 다시 쌓지 않는다** — 예전에는 여기서 네 단계
+  // (simulationSuccessRate ?? goalSuccessProbability ?? confidence.rates?.goalSuccessProbability
+  // ?? confidence.rates?.spendingSuccessRate ?? 0)를 탔고, 세 번째 단계는 "고갈 여부를 묻지
+  // 않는" 다른 지표(spendingSuccessRate)로 조용히 넘어갈 수 있었으며 마지막은 "판정 못 함"과
+  // "전멸"을 같은 0%로 찍었다(resolveSimulationVerdict.ts 주석 참고).
+  const verdict = resolveSimulationVerdict({ monteCarlo, params });
 
   const block = (title: string, body: string, accent: string) => `
     <div style="border-left: 4px solid ${accent}; padding: 8px 0 8px 12px; margin-bottom: 12px;">
@@ -199,14 +205,20 @@ export function renderPlanVerdictSection(input: {
         `시장 변동성 반영 · ${monteCarlo.trials.toLocaleString()}회 시뮬레이션`,
         // 화면 진단 카드와 같은 대표값(p50)과 목표 달성 확률만 싣는다. 확률을 이루는 두 성분
         // (생활 유지·자산 보존)과 전체 잔여자산 분포는 「시장 변동 검증」 섹션이 소유한다.
+        //
+        // monteCarlo가 정의된 이 분기에서는 verdict.available이 항상 true다
+        // (resolveSimulationVerdict는 monteCarlo가 있을 때만 available:false를 반환하지
+        // 않는다). 그래도 판정 없이 숫자를 찍는 경로를 남기지 않도록 available을 먼저 본다 —
+        // NaN이 그대로 "NaN%"로 찍히는 것을 막는 마지막 방어선이다.
         `<p style="margin: 0; font-size: 14px; font-weight: 700; color: ${verdictAccent(confidence)};">
-           목표 달성 확률 ${Math.round(simulationSuccessRate * 100)}%
+           목표 달성 확률 ${verdict.available ? Math.round(verdict.goalSuccess.rate * 100) : '판정 없음'}${verdict.available ? '%' : ''}
          </p><p style="margin: 4px 0 0; font-size: 12px; font-weight: 700; color: #0f172a;">
-           ${monteCarlo.trials.toLocaleString()}회 중 ${Math.round(simulationSuccessRate * monteCarlo.trials).toLocaleString()}회가 판정 조건 충족<br>
+           ${monteCarlo.trials.toLocaleString()}회 중 ${verdict.available ? verdict.goalSuccess.succeeded.toLocaleString() : '판정 없음'}회가 판정 조건 충족<br>
            ${expectancy}세 예상자산(중앙값) ${formatValue(terminalAssetDisplay.amount)}
          </p>
          <p style="margin: 4px 0 0; font-size: 10px; color: #64748b;">입력한 수익률, 물가, 연금, 수명 및 시장 변동 가정 범위 내의 시뮬레이션 결과이며 실제 미래 결과를 보장하지 않습니다.</p>
-         ${goalCoverageNote(monteCarlo.goalConditions)}`,
+         ${goalCoverageNote(monteCarlo.goalConditions)}
+         ${hardGoalSuccessNote(verdict.hardGoalSuccess)}`,
         verdictAccent(confidence)
       );
 
@@ -253,6 +265,29 @@ function goalCoverageNote(conditions: GoalSuccessConditions): string {
   return `<p style="margin: 3px 0 0; font-size: 11px; color: #475569;">${base}${
     unmeasured ? ` 이 확률에 반영되지 않은 목표: ${unmeasured}.` : ''
   }${unscored ? ` ${unscored}` : ''}</p>`;
+}
+
+// 확정 HARD 목표 중 «시행 하나로 판정할 수 있는» 것만 센 성공률. 요구하는 HARD 조건이 하나도
+// 없으면(verdict.hardGoalSuccess === null) 아무것도 인쇄하지 않는다 — resolveSimulationVerdict의
+// 주석대로, 그 숫자는 참이어도 「HARD 목표를 다 지켰다」로 읽혀 오해를 부른다.
+//
+// **unjudged를 비율과 떼어 놓지 않는다.** known-issues #1은 주거 안정을 HARD로 고정해도 계산은
+// 정확했지만 화면이 그 조건이 지켜진 것처럼 보여준 결함이었다. HARD 성공률에 판정하지 못한
+// 목표(주거 안정 등)가 섞여 있는데 그 사실을 밝히지 않으면 같은 결함을 지표 하나로 반복한다 —
+// 그래서 이 함수는 unjudged가 있을 때 비율 «옆»에 그 사실을 항상 함께 적는다(goalCoverageNote와
+// 같은 자리, 같은 어투).
+function hardGoalSuccessNote(hardGoalSuccess: SimulationVerdict['hardGoalSuccess']): string {
+  if (hardGoalSuccess === null) return '';
+
+  const total = hardGoalSuccess.judged.length + hardGoalSuccess.unjudged.length;
+  const rateText = `HARD 목표 판정 확률 ${Math.round(hardGoalSuccess.rate * 100)}%`;
+
+  if (hardGoalSuccess.unjudged.length === 0) {
+    return `<p style="margin: 3px 0 0; font-size: 11px; color: #475569;">${rateText} (HARD 목표 ${total}개 모두 이 확률의 판정 기준에 포함됩니다).</p>`;
+  }
+
+  const unjudged = hardGoalSuccess.unjudged.map(goalLabel).join(', ');
+  return `<p style="margin: 3px 0 0; font-size: 11px; color: #475569;">${rateText} — HARD 목표 ${total}개 중 ${hardGoalSuccess.judged.length}개만 이 판정 기준에 포함됩니다. 시행으로 판정할 수 없어 반영되지 않은 HARD 목표: ${unjudged}.</p>`;
 }
 
 // 색은 밴드→티어 매핑 한 곳에서만 나온다(화면의 진단 카드와 같은 표). 여기서 다시

@@ -95,6 +95,7 @@ import { CandidateRecommendation, PRIMARY_SELECTION_NOTE, ValidatedStrategyCandi
 import { DEFAULT_UTILITY_CONFIG } from '@/core/usecases/utility/utilityWeights';
 import { NO_GOAL_FAILURE, LEGACY_GOAL_CONDITIONS } from '@/tests/fixtures/goalFailure';
 import { describeUnscoredGoals } from '@/core/usecases/goals/goalScoreSupport';
+import { initialParams } from '@/infrastructure/storage/localStore';
 
 describe('renderRiskAlertsSection', () => {
   test('빈 배열이면 빈 문자열을 반환한다', () => {
@@ -567,7 +568,7 @@ describe('renderPlanVerdictSection', () => {
     assetBands: [], depletion: { count: 630, earliestAge: 72, medianAge: 84 },
     deterministicEndingAssets: 0,
   });
-  const render = (successRate?: number, monteCarlo?: MonteCarloResult) =>
+  const render = (successRate?: number, monteCarlo?: MonteCarloResult, params: SimulationParams = initialParams) =>
     renderPlanVerdictSection({
       expectancy: 90,
       deterministicDepletionText: '기대수명까지 고갈 없음',
@@ -579,8 +580,15 @@ describe('renderPlanVerdictSection', () => {
           : { spendingSuccessRate: successRate, assetSuccessRate: successRate }
       ),
       monteCarlo,
+      params,
       formatValue: won,
     });
+  // resolveSimulationVerdict.test.ts와 같은 픽스처 형태. RetirementGoal에는 id 필드가 없다
+  // (retirementGoal.ts 확인 — type·priority·targetValue?·targetValueSource?·constraintType뿐).
+  const goalParams = (goals: unknown[]): SimulationParams => ({
+    ...initialParams,
+    retirementGoals: goals as SimulationParams['retirementGoals'],
+  });
 
   // 리포트는 화면보다 오래 남고 그대로 인용된다. 「점수 산정 대상이 아니다」를 화면만 말하면
   // 인쇄본을 든 사용자는 그 목표의 0점을 여전히 실패로 읽는다. 문장의 출처는 core 한 곳이며
@@ -674,6 +682,13 @@ describe('renderPlanVerdictSection', () => {
 
   // 예전에는 워커가 늦으면 시장 변동성 페이지 자체가 사라져, 리포트가 결정론 결과만 담은
   // 채로 완결된 문서처럼 보였다. 조용히 생략하지 않는다.
+  //
+  // **폴백이 되살아나면 여기서 잡힌다.** 옛 네 단계 폴백(simulationSuccessRate ??
+  // goalSuccessProbability ?? confidence.rates?.goalSuccessProbability ??
+  // confidence.rates?.spendingSuccessRate ?? 0)의 마지막 단계는 monteCarlo가 없어도
+  // "목표 달성 확률 0%"를 찍었다 — "판정 못 함"과 "전멸"이 같은 숫자였다.
+  // resolveSimulationVerdict는 이 경로에서 goalSuccess.rate에 NaN을 채우므로, 가드 없이
+  // 그대로 포맷했다면 "NaN%"가 찍혔을 것이다. 이 테스트는 둘 다 잡는다.
   test('MC가 없으면 생략하지 않고 계산되지 않았다고 밝힌다', () => {
     const html = render(undefined, undefined);
 
@@ -682,6 +697,40 @@ describe('renderPlanVerdictSection', () => {
     expect(html).toContain('확률 판정 보류');
     expect(html).toContain('시장 변동성 미반영');
     expect(html).not.toContain('유지 확률');
+    expect(html).not.toContain('목표 달성 확률 0%');
+    expect(html).not.toContain('NaN');
+  });
+
+  // known-issues #1: 주거 안정을 HARD로 고정해도 계산은 정확했지만, 화면이 그 조건이
+  // 지켜진 것처럼 보여준 결함이었다. HARD 성공률이 판정하지 못한 목표(주거 안정)를 섞은 채
+  // 비율만 인쇄하면 같은 결함을 지표 하나로 반복한다 — 그래서 비율 옆에 반드시 그 사실이
+  // 함께 인쇄돼야 한다.
+  test('판정하지 못한 HARD 목표가 있으면 비율 옆에 그 사실을 밝힌다', () => {
+    const params = goalParams([
+      { type: 'ASSET_SURVIVAL', constraintType: 'HARD', priority: 1 },
+      { type: 'HOUSING_STABILITY', constraintType: 'HARD', priority: 2 },
+    ]);
+    const html = render(0.9, {
+      ...mc(0.9),
+      hardGoalSuccessProbability: 0.5,
+      goalConditions: {
+        ...LEGACY_GOAL_CONDITIONS,
+        hardRequirements: { spendingTarget: false, assetSurvival: true, terminalAsset: false },
+      },
+    }, params);
+
+    expect(html).toMatch(/HARD 목표 .*중 .*기준|판정하지 않/);
+    expect(html).toContain('HARD 목표 판정 확률 50%');
+    expect(html).toContain('주거 안정');
+  });
+
+  // 확정 HARD 목표가 없으면(요구 조건 자체가 없으면) 이 절이 전혀 인쇄되지 않는다 — 요구가
+  // 없는데 100%로 찍히면 "HARD 목표를 다 지켰다"로 오해를 부른다
+  // (resolveSimulationVerdict.ts 주석 참고).
+  test('확정 HARD 목표가 없으면 HARD 판정 절을 인쇄하지 않는다', () => {
+    const html = render(0.9, mc(0.9));
+
+    expect(html).not.toContain('HARD 목표 판정 확률');
   });
 });
 

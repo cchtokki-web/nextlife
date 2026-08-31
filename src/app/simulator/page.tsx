@@ -297,6 +297,7 @@ export default function Home() {
         endingAssets,
         confidence: planConfidence,
         monteCarlo,
+        params: reportParams,
         formatValue: formatValuePrint,
       });
       // **로드맵은 현재 계획 기준이다(화면과 같다).** 추천안을 넘기면 리포트의 다른 모든
