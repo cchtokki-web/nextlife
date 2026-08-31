@@ -594,6 +594,8 @@ describe('renderPlanVerdictSection', () => {
         requireAssetSurvival: false,
         terminalAssetGoal: 0,
         unmeasuredGoals: ['TAX_OPTIMIZATION', 'HOUSING_STABILITY'],
+        // 이 테스트는 점수 산정 대상 안내 문구만 검증한다. HARD 강도는 무관하므로 전부 false.
+        hardRequirements: { spendingTarget: false, assetSurvival: false, terminalAsset: false },
       },
     });
 
@@ -611,6 +613,8 @@ describe('renderPlanVerdictSection', () => {
         requireAssetSurvival: false,
         terminalAssetGoal: 0,
         unmeasuredGoals: ['TAX_OPTIMIZATION'],
+        // 점수 안내 문구가 붙지 않음을 확인하는 테스트라 HARD 강도는 무관하다. 전부 false.
+        hardRequirements: { spendingTarget: false, assetSurvival: false, terminalAsset: false },
       },
     });
 
