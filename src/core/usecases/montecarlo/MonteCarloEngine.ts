@@ -182,6 +182,14 @@ export function runMonteCarlo(
 
   const goalSucceeded = trials.filter((t) => !failsSpending(t) && !failsSurvival(t) && !failsTerminal(t));
 
+  // 같은 술어를 재사용한다. 여기서 조건을 다시 쓰면 판정하지 않은 조건이 사유로만 보고되어
+  // 확률과 화면이 어긋난다(위 goalSucceeded 주석과 같은 이유).
+  const hard = conditions.hardRequirements;
+  const hardSucceeded = trials.filter((t) =>
+    (!hard.spendingTarget || !failsSpending(t))
+    && (!hard.assetSurvival || !failsSurvival(t))
+    && (!hard.terminalAsset || !failsTerminal(t)));
+
   // 실패 원인별 집계. 위 판정식의 세 술어를 그대로 재사용한다 — 조건을 여기서 다시 쓰면
   // 판정하지 않은 조건이 사유로만 보고되어 확률과 화면이 어긋난다.
   const shortfallAges = trials
@@ -265,6 +273,7 @@ export function runMonteCarlo(
       medianAge: depletedAges.length > 0 ? percentileOfSorted(depletedAges, 0.5) : null,
     },
     deterministicEndingAssets: deterministic.endingAssets,
+    hardGoalSuccessProbability: trials.length > 0 ? hardSucceeded.length / trials.length : 0,
   };
 }
 
