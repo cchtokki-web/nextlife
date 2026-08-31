@@ -139,7 +139,7 @@ export function resolveGoalSuccessConditions(params: SimulationParams): GoalSucc
   const requireSpendingTarget = measurable.some((goal) =>
     goal.type === 'LIVING_EXPENSE_STABILITY' || goal.type === 'COMFORTABLE_SPENDING');
   const requireAssetSurvival = measurable.some((goal) => goal.type === 'ASSET_SURVIVAL');
-  const terminalAssetGoal = terminalAssetGoalOf(measurable, params);
+  const { value: terminalAssetGoal, source: terminalAssetSource } = terminalAssetGoalOf(measurable, params);
 
   // **판별 기준은 「판정 가능한 «유형»을 골랐는가」가 아니라 「활성 «조건»이 남았는가」다.**
   // 유형만 보면 구멍이 생긴다: 「자산 성장」은 판정 가능한 유형이지만 목표액을 묻는 UI가
@@ -177,10 +177,14 @@ export function resolveGoalSuccessConditions(params: SimulationParams): GoalSucc
       && isConfirmedHard(goal)),
     assetSurvival: measurable.some((goal) =>
       goal.type === 'ASSET_SURVIVAL' && isConfirmedHard(goal)),
-    // 기말자산 축은 조건이 실제로 살아 있을 때만 의미가 있다. terminalAssetGoalOf가 0을
-    // 돌려주면(확정 목표액이 없음) HARD로 골랐어도 판정할 것이 없다.
-    terminalAsset: terminalAssetGoal > 0 && measurable.some((goal) =>
-      (goal.type === 'INHERITANCE' || goal.type === 'ASSET_GROWTH') && isConfirmedHard(goal)),
+    // 「어떤 판정 가능한 자산 목표가 HARD인가」가 아니라 「기말자산 금액을 «실제로 준»
+    // 목표가 HARD인가」를 묻는다. ASSET_GROWTH는 목표액 입력 UI가 없어 targetValue가 항상
+    // undefined이고, 그러면 isSuggestedTargetValue·hardGoalAwaitsTargetConfirmation이 모두
+    // 거짓이라 「확정을 기다리는 씨앗이 없다」가 「이미 확정했다」로 잘못 읽힌다. 유형만 보면
+    // SOFT 상속이 확정한 금액을 나란히 고른 HARD 자산성장 목표(또는 targetBequest 폴백)가
+    // 가로채 HARD 요구로 둔갑한다. terminalAssetSource가 null이면(폴백값) 그 값을 «준» 목표가
+    // 아예 없으므로도 항상 false다.
+    terminalAsset: terminalAssetSource !== null && isConfirmedHard(terminalAssetSource),
   };
 
   return {
@@ -199,18 +203,29 @@ export function resolveGoalSuccessConditions(params: SimulationParams): GoalSucc
 //
 // 확정 여부를 여기서 다시 묻는 이유: 이 값은 시행마다 「성공인가」를 가르는 판정 조건이다.
 // 미확정 씨앗을 그대로 쓰면 사용자가 말한 적 없는 금액이 목표 달성 확률을 깎는다.
+//
+// **source를 함께 돌려주는 이유.** hardRequirements.terminalAsset은 「판정 가능한 자산 목표
+// 중 HARD가 있는가」가 아니라 「이 금액을 «실제로 준» 목표가 HARD인가」를 물어야 한다. 유형만
+// 보면 목표액 입력 UI가 없는 ASSET_GROWTH(targetValue가 늘 undefined라
+// hardGoalAwaitsTargetConfirmation이 늘 거짓)가 나란히 고른 다른 목표의 확정 금액을 가로채
+// HARD 요구로 둔갑시킨다. source가 그 값을 만든 «단 하나의» 목표(또는 폴백이면 null)를
+// 가리키면, 값을 준 적 없는 목표는 그 값에 대해 HARD임을 주장할 수 없다.
 function terminalAssetGoalOf(
   measurable: readonly RetirementGoal[],
   params: SimulationParams,
-): number {
+): { value: number; source: RetirementGoal | null } {
   const assetGoals = measurable.filter((goal) =>
     goal.type === 'INHERITANCE' || goal.type === 'ASSET_GROWTH');
-  if (assetGoals.length === 0) return 0;
+  if (assetGoals.length === 0) return { value: 0, source: null };
 
   const explicit = assetGoals
-    .map(confirmedTargetValue)
-    .filter((value): value is number => value !== undefined && Number.isFinite(value));
-  if (explicit.length > 0) return Math.max(0, Math.max(...explicit));
+    .map((goal) => ({ goal, value: confirmedTargetValue(goal) }))
+    .filter((entry): entry is { goal: RetirementGoal; value: number } =>
+      entry.value !== undefined && Number.isFinite(entry.value));
+  if (explicit.length > 0) {
+    const winner = explicit.reduce((max, entry) => (entry.value > max.value ? entry : max));
+    return { value: Math.max(0, winner.value), source: winner.goal };
+  }
 
-  return Math.max(0, params.userProfile.targetBequest ?? 0);
+  return { value: Math.max(0, params.userProfile.targetBequest ?? 0), source: null };
 }

@@ -246,6 +246,43 @@ describe('resolveGoalSuccessConditions — hardRequirements', () => {
     expect(conditions.terminalAssetGoal).toBe(84_000_000);
     expect(conditions.hardRequirements.terminalAsset).toBe(false);
   });
+
+  test('SOFT 상속이 확정한 금액을, 목표액 없는 HARD 자산성장 목표가 가로채지 않는다', () => {
+    // ASSET_GROWTH는 목표액 입력 UI가 없어 targetValue가 항상 undefined다.
+    // isSuggestedTargetValue는 targetValue!==undefined를 요구하므로 이 목표에서는 언제나
+    // false이고, hardGoalAwaitsTargetConfirmation도 언제나 false다 — 「확정을 기다리는 씨앗이
+    // 없다」가 「이미 확정했다」로 잘못 읽히면, 목표액을 실제로 확정한 것은 SOFT 상속인데도
+    // terminalAsset이 true가 된다. 그 금액을 «가져온» 목표가 HARD인지를 봐야 한다.
+    const conditions = resolveGoalSuccessConditions(withGoals([
+      { type: 'INHERITANCE', priority: 1, constraintType: 'SOFT', targetValue: 500_000_000, targetValueSource: 'user' },
+      { type: 'ASSET_GROWTH', priority: 2, constraintType: 'HARD' },
+    ]));
+
+    expect(conditions.basis).toBe('selected_goals');
+    // 조건 자체는 살아 있다 — SOFT 상속이 여전히 기말자산 조건을 만든다.
+    expect(conditions.terminalAssetGoal).toBe(500_000_000);
+    // 그러나 그 금액을 확정한 목표는 SOFT다. HARD 요구로 세면 사용자가 못박은 적 없는
+    // 것을 못박았다고 말하는 셈이다.
+    expect(conditions.hardRequirements.terminalAsset).toBe(false);
+  });
+
+  test('기말자산 조건이 목표가 아니라 targetBequest 폴백에서 나오면 HARD 요구가 아니다', () => {
+    // 목표금액을 아예 입력하지 않은(씨앗도 없는) 상속 목표라 confirmedTargetValue가
+    // undefined를 돌려주고, terminalAssetGoal은 계획이 실체화한 targetBequest로 채워진다.
+    // isSuggestedTargetValue는 targetValue가 있을 때만 참이므로, targetValue가 아예 없는 이
+    // 목표는 hardGoalAwaitsTargetConfirmation도 거짓이다 — 「확정을 기다리는 씨앗이 없다」가
+    // 「이 목표가 값을 확정했다」로 잘못 읽히면, targetBequest 폴백값을 이 HARD 목표가
+    // 확정한 것처럼 보고하게 된다. 값을 만든 것은 어떤 목표도 아니므로 terminalAsset은
+    // false여야 한다.
+    const conditions = resolveGoalSuccessConditions(withGoals(
+      [{ type: 'INHERITANCE', priority: 1, constraintType: 'HARD' }],
+      { userProfile: { ...baseParams.userProfile, targetBequest: 84_000_000 } },
+    ));
+
+    expect(conditions.basis).toBe('selected_goals');
+    expect(conditions.terminalAssetGoal).toBe(84_000_000);
+    expect(conditions.hardRequirements.terminalAsset).toBe(false);
+  });
 });
 
 // 화면이 「정량 판정 대상 아님」을 어디에 붙일지 이 술어 하나로 정한다. 술어가 위 함수와
