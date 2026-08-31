@@ -264,6 +264,30 @@ describe('buildReportHtml', () => {
     });
   });
 
+  // 국민연금 과세 오차 고지(551행)의 전용 가드. 이 문구는 지금까지 골든 픽스처에 우연히
+  // 박혀 있을 뿐이었다 — buildReportHtml.test.ts 상단 주석이 설명하는 「픽스처를 다시
+  // 캡처하면 통과한다」는 관례 때문에, 리팩터링 중 픽스처를 재캡처하는 순간 이 문구가
+  // 조용히 사라져도 어떤 테스트도 실패하지 않았다. 화면 쪽은
+  // ExpertDetailsPanel.test.tsx의 "국민연금 과세 범위 고지" 테스트 묶음이 양방향(있음/
+  // 없음)으로 이미 지키므로, 여기서도 같은 두 방향을 지킨다.
+  describe('국민연금 과세 범위 고지', () => {
+    test('국민연금이 있으면 전액 과세 방향을 밝힌다', () => {
+      const html = buildReportHtml(input());
+
+      expect(html).toContain('2002년 이후 납입분에 대응하는 부분만');
+    });
+
+    test('국민연금이 없으면 해당 없는 고지를 싣지 않는다', () => {
+      const base = input();
+      const html = buildReportHtml({
+        ...base,
+        params: { ...base.params, nationalPension: { expectedMonthlyAmount: 0 } },
+      });
+
+      expect(html).not.toContain('2002년 이후 납입분에 대응하는 부분만');
+    });
+  });
+
   describe('계좌가 하나도 없고 기타소득만 있는 계획', () => {
     test('고정한 출력과 한 글자도 다르지 않다', () => {
       expect(buildReportHtml(inputOf(noAccounts))).toBe(noAccounts.html);
