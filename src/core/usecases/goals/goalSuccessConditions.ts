@@ -1,5 +1,6 @@
 import {
   confirmedTargetValue,
+  hardGoalAwaitsTargetConfirmation,
   normalizeRetirementGoals,
   type RetirementGoal,
   type RetirementGoalType,
@@ -27,7 +28,28 @@ export interface GoalSuccessConditions {
   // 고르긴 했지만 이 확률로는 판정할 수 없는 목표. 화면이 "반영되지 않았다"고 밝히는 데 쓴다.
   // 숨기면 "판정하지 않음"이 "판정해서 통과함"으로 읽힌다.
   unmeasuredGoals: RetirementGoalType[];
+
+  /**
+   * 위 세 조건 중 어느 것이 «확정된 HARD 목표»에서 왔는가.
+   *
+   * legacy_plan과 plan_defaults 갈래에서는 전부 false다 — 그 갈래의 조건은 계획 기본값이지
+   * 사용자가 못박은 것이 아니다. 여기서 true를 주면 HARD 성공률이 「사용자가 요구한 적 없는
+   * 조건」을 요구로 보고하게 된다.
+   *
+   * 「확정된」의 뜻은 retirementGoal.ts와 같다 — 강도만 고르고 기준이 씨앗이면 HARD가
+   * 성립하지 않는다(hardGoalAwaitsTargetConfirmation). terminalAssetGoalOf가 이미
+   * confirmedTargetValue로 같은 게이트를 걸고 있어, 여기서만 다른 술어를 쓰면 갈라진다.
+   */
+  hardRequirements: {
+    spendingTarget: boolean;
+    assetSurvival: boolean;
+    terminalAsset: boolean;
+  };
 }
+
+const NO_HARD_REQUIREMENTS = {
+  spendingTarget: false, assetSurvival: false, terminalAsset: false,
+} as const;
 
 /** 화면과 PDF의 추천 카드가 목표 달성 확률의 판정 조건을 같은 문장으로 설명한다. */
 export function describeGoalSuccessCriteria(
@@ -104,6 +126,7 @@ export function resolveGoalSuccessConditions(params: SimulationParams): GoalSucc
       requireAssetSurvival: true,
       terminalAssetGoal: legacyTerminalGoal,
       unmeasuredGoals: [],
+      hardRequirements: { ...NO_HARD_REQUIREMENTS },
     };
   }
 
@@ -141,8 +164,24 @@ export function resolveGoalSuccessConditions(params: SimulationParams): GoalSucc
       requireAssetSurvival: true,
       terminalAssetGoal: 0,
       unmeasuredGoals,
+      hardRequirements: { ...NO_HARD_REQUIREMENTS },
     };
   }
+
+  const isConfirmedHard = (goal: RetirementGoal): boolean =>
+    goal.constraintType === 'HARD' && !hardGoalAwaitsTargetConfirmation(goal);
+
+  const hardRequirements = {
+    spendingTarget: measurable.some((goal) =>
+      (goal.type === 'LIVING_EXPENSE_STABILITY' || goal.type === 'COMFORTABLE_SPENDING')
+      && isConfirmedHard(goal)),
+    assetSurvival: measurable.some((goal) =>
+      goal.type === 'ASSET_SURVIVAL' && isConfirmedHard(goal)),
+    // 기말자산 축은 조건이 실제로 살아 있을 때만 의미가 있다. terminalAssetGoalOf가 0을
+    // 돌려주면(확정 목표액이 없음) HARD로 골랐어도 판정할 것이 없다.
+    terminalAsset: terminalAssetGoal > 0 && measurable.some((goal) =>
+      (goal.type === 'INHERITANCE' || goal.type === 'ASSET_GROWTH') && isConfirmedHard(goal)),
+  };
 
   return {
     basis: 'selected_goals',
@@ -150,6 +189,7 @@ export function resolveGoalSuccessConditions(params: SimulationParams): GoalSucc
     requireAssetSurvival,
     terminalAssetGoal,
     unmeasuredGoals,
+    hardRequirements,
   };
 }
 
