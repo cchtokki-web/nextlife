@@ -4,9 +4,16 @@ import { describe, expect, test } from 'vitest';
 import {
   RETIREMENT_GOAL_LABELS,
   RETIREMENT_GOAL_TYPES,
+  hasMoneyTarget,
   type RetirementGoal,
+  type RetirementGoalType,
 } from '@/core/entities/retirementGoal';
-import { isQuantitativelyJudgedGoal } from '@/core/usecases/goals/goalSuccessConditions';
+import {
+  isQuantitativelyJudgedGoal,
+  resolveGoalSuccessConditions,
+} from '@/core/usecases/goals/goalSuccessConditions';
+import { initialParams } from '@/infrastructure/storage/localStore';
+import { retirementGoalDefinition } from '@/web/features/RetirementGoals/goalCatalog';
 import { RetirementGoalSelector } from '@/web/features/RetirementGoals/RetirementGoalSelector';
 
 function SelectorHarness({
@@ -541,6 +548,15 @@ describe('RetirementGoalSelector', () => {
     const hardOption = (label: string) =>
       within(screen.getByLabelText(`${label} 조건 강도`)).getByRole('option', { name: '반드시 지키기' });
 
+    // 「이 목표를 HARD로 고를 수 있는가」는 «유형»만으로 정해지지 않는다. 목표 금액이 필요한
+    // 유형인데 그 금액을 넣을 칸이 없으면(goalCatalog에 target 정의 없음) 사용자는 영원히
+    // 확정할 수 없고, 확정되지 않은 금액은 어떤 HARD 축도 켜지 못한다. 그 조합이 실제로
+    // 존재한다 — 「자산 성장」이다. 아래 「엔진이 켜지 못하는 축」 테스트가 그 사실 자체를
+    // 엔진에서 «독립적으로» 확인한다.
+    const canSelectHard = (type: RetirementGoalType) =>
+      isQuantitativelyJudgedGoal(type)
+      && !(hasMoneyTarget(type) && retirementGoalDefinition(type).target === undefined);
+
     test('엔진이 판정하지 않는 목표에만 「정량 판정 대상 아님」이 붙는다', () => {
       for (const type of RETIREMENT_GOAL_TYPES) {
         const { unmount } = render(
@@ -548,7 +564,7 @@ describe('RetirementGoalSelector', () => {
         );
 
         const note = screen.queryByText(/정량 판정 대상 아님/);
-        if (isQuantitativelyJudgedGoal(type)) {
+        if (canSelectHard(type)) {
           expect(note, `${RETIREMENT_GOAL_LABELS[type]}은 판정 대상이다`).toBeNull();
         } else {
           expect(note, `${RETIREMENT_GOAL_LABELS[type]}은 판정 대상이 아니다`).toBeInTheDocument();
@@ -564,7 +580,7 @@ describe('RetirementGoalSelector', () => {
           <SelectorHarness initial={[{ type, priority: 1, constraintType: 'SOFT' }]} />,
         );
 
-        if (isQuantitativelyJudgedGoal(type)) {
+        if (canSelectHard(type)) {
           expect(hardOption(label), label).not.toBeDisabled();
         } else {
           // 고를 수 없다 = 선택지가 아예 없다. SOFT 하나만 남는다.
@@ -577,11 +593,42 @@ describe('RetirementGoalSelector', () => {
       }
     });
 
+    // **오라클이 구현을 되풀이하지 않도록 붙드는 자리.** 위 canSelectHard는 화면 규칙을
+    // 옮겨 적은 것이라, 그것만으로는 「자산 성장에 HARD를 열어 주면 안 된다」를 증명하지
+    // 못한다 — 화면과 테스트가 함께 틀려도 통과한다. 그 사실의 근거는 엔진에 있다.
+    test('자산 성장은 HARD로 저장해도 엔진이 어떤 HARD 축도 켜지 못한다', () => {
+      // 화면이 «실제로 만들 수 있는» 상태다. 목표 금액을 넣을 칸이 없으므로 targetValue를
+      // 사용자 확정으로 올릴 방법이 없다.
+      const params = {
+        ...structuredClone(initialParams),
+        retirementGoals: [{ type: 'ASSET_GROWTH' as const, priority: 1, constraintType: 'HARD' as const }],
+      };
+
+      expect(resolveGoalSuccessConditions(params).hardRequirements).toEqual({
+        spendingTarget: false, assetSurvival: false, terminalAsset: false,
+      });
+    });
+
+    test('그래서 화면은 자산 성장에 「반드시 지키기」를 열어 주지 않는다', () => {
+      render(
+        <SelectorHarness initial={[{ type: 'ASSET_GROWTH', priority: 1, constraintType: 'SOFT' }]} />,
+      );
+
+      expect(
+        within(screen.getByLabelText('자산 성장 조건 강도')).getAllByRole('option').map((o) => o.textContent),
+      ).toEqual(['가능하면 달성']);
+      // 「기준이 없다」가 아니라 「넣을 칸이 없다」가 사유다. 문구가 fragment로 쪼개져
+      // 텍스트 노드가 «자기 요소»를 갖지 않으므로 문단 전체에서 확인한다.
+      const note = screen.getByText(/정량 판정 대상 아님/).closest('p');
+      expect(note?.textContent).toContain('그 금액을 입력할 칸이 아직 없어');
+      expect(note?.textContent).not.toContain('정량 기준이 아직 없어');
+    });
+
     // 기본값이 HARD로 남아 있으면 «고를 수 없는» 값이 자동으로 박힌다 — 잠그는 것보다
     // 나쁜 상태다. 판정 대상 목표의 기본값은 건드리지 않는다.
     test('판정 대상이 아닌 목표를 새로 고르면 언제나 SOFT로 시작한다', () => {
       for (const type of RETIREMENT_GOAL_TYPES) {
-        if (isQuantitativelyJudgedGoal(type)) continue;
+        if (canSelectHard(type)) continue;
         const seen: RetirementGoal[][] = [];
         const { unmount } = render(<SelectorHarness onGoals={(goals) => seen.push(goals)} />);
 
