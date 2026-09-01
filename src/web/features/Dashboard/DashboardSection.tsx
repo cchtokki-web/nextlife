@@ -33,7 +33,7 @@ import type { GoalSuccessConditions } from '../../../core/usecases/goals/goalSuc
 import { describeGoalConflict } from '../../../core/usecases/goals/describeGoalConflict';
 import { describeSustainableSpendingLimit } from '../../../core/usecases/dashboard/describeSustainableSpendingLimit';
 import { describeSuccessRates, describeHardGoalRelationship } from '../../../core/usecases/montecarlo/describeSuccessRates';
-import { resolveSimulationVerdict, type SimulationVerdict } from '../../../core/usecases/montecarlo/resolveSimulationVerdict';
+import { resolveSimulationVerdict, type HardGoalSuccess } from '../../../core/usecases/montecarlo/resolveSimulationVerdict';
 import { formatConfidenceInterval } from '../../../core/usecases/montecarlo/confidenceInterval';
 import { describeSustainableSpendingBasis } from '../../../core/usecases/dashboard/describeSustainableSpendingBasis';
 import GlassCard from '../../components/GlassCard';
@@ -244,13 +244,16 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
     () => resolveSimulationVerdict({ monteCarlo: monteCarloForDisplay, params }),
     [monteCarloForDisplay, params]
   );
-  const currentGoalProbability = verdict.available ? verdict.goalSuccess.rate : undefined;
-  // 시행 수와 신뢰구간을 «함께» 보여 준다. 10000회라는 숫자만으로는 그 정밀도가 얼마인지
-  // 알 수 없고, 구간만으로는 무엇으로 얻은 정밀도인지 알 수 없다.
-  const goalConfidenceLabel = formatConfidenceInterval(
-    verdict.goalSuccess.interval,
-    verdict.confidenceLevel,
-  );
+  // **유니온을 여기서 한 번 좁힌다.** 아래 모든 자리가 이 지역 변수를 거치므로, 판정 없는
+  // verdict에서 비율을 읽는 코드는 아예 컴파일되지 않는다. 예전에는 값이 NaN이었고 NaN은
+  // 비교에서 조용히 한쪽 가지를 골랐다.
+  const judged = verdict.available ? verdict : null;
+  const currentGoalProbability = judged?.goalSuccess.rate;
+  // 시행 수와 신뢰구간을 «함께» 보여 준다. 시행 수만으로는 그 정밀도가 얼마인지 알 수 없고,
+  // 구간만으로는 무엇으로 얻은 정밀도인지 알 수 없다.
+  const goalConfidenceLabel = judged === null
+    ? null
+    : formatConfidenceInterval(judged.goalSuccess.interval, judged.confidenceLevel);
   // 임계값은 computePlanConfidence가 소유한다. 같은 화면에 이미 그 밴드로 그린 지표가 있어
   // 별도 임계값을 두면 0.85에서 한쪽은 '안정', 한쪽은 🟡으로 갈린다.
   const diagnosisTier = currentGoalProbability !== undefined
@@ -334,13 +337,13 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
             <div>
               <span>목표 달성 확률</span>
               <strong>{probabilityLabel}</strong>
-              {currentGoalProbability !== undefined && monteCarlo && (
+              {judged !== null && monteCarlo && (
                 <small>
                   {/* verdict.goalSuccess.succeeded는 이 확률을 낸 시행 수 그대로다. 여기서
                       rate*trials를 다시 반올림하면 같은 화면 안에서 카운트를 두 벌로 만드는
                       셈이고, 반올림 결과가 어긋나는 날 아무도 알아채지 못한다. */}
-                  {verdict.trials.toLocaleString()}회 중{' '}
-                  {verdict.goalSuccess.succeeded.toLocaleString()}회가 판정 조건 충족
+                  {judged.trials.toLocaleString()}회 중{' '}
+                  {judged.goalSuccess.succeeded.toLocaleString()}회가 판정 조건 충족
                   {goalConfidenceLabel !== null && ` · ${goalConfidenceLabel}`}
                 </small>
               )}
@@ -407,8 +410,8 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
           {monteCarlo && monteCarlo.goalConditions.basis !== 'legacy_plan' && (
             <GoalCoverageNote conditions={monteCarlo.goalConditions} />
           )}
-          {verdict.hardGoalSuccess !== null && (
-            <HardGoalSuccessNote hardGoalSuccess={verdict.hardGoalSuccess} />
+          {judged !== null && judged.hardGoalSuccess !== null && (
+            <HardGoalSuccessNote hardGoalSuccess={judged.hardGoalSuccess} />
           )}
           {/* **cause로 가르지 않는다.** 목표를 다 달성했는데도 자산은 실제로 고갈된 계획은
               cause가 'none'이면서(확률이 정말 100%다) 할 말이 있다. 예전에 여기서 cause를
@@ -728,7 +731,7 @@ function GoalCoverageNote({ conditions }: { conditions: GoalSuccessConditions })
 // 반영하지 못함) · planEmbedded(EARLY_RETIREMENT — 계획에 이미 반영되어 모든 시행이 지키므로
 // 조건으로 세지 않음). 「모두 포함됩니다」는 unjudged와 planEmbedded가 «둘 다» 비었을 때만
 // 말할 수 있다 — 하나라도 있으면 그만큼은 이 비율이 재는 것이 아니다.
-function HardGoalSuccessNote({ hardGoalSuccess }: { hardGoalSuccess: NonNullable<SimulationVerdict['hardGoalSuccess']> }) {
+function HardGoalSuccessNote({ hardGoalSuccess }: { hardGoalSuccess: HardGoalSuccess }) {
   const { judged, unjudged, planEmbedded, rate } = hardGoalSuccess;
   const total = judged.length + unjudged.length + planEmbedded.length;
   const rateText = `HARD 목표 판정 확률 ${Math.round(rate * 100)}%`;

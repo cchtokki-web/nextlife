@@ -1,5 +1,9 @@
 import { describe, expect, test } from 'vitest';
-import { resolveSimulationVerdict } from '@/core/usecases/montecarlo/resolveSimulationVerdict';
+import {
+  resolveSimulationVerdict,
+  type SimulationVerdict,
+  type SimulationVerdictValues,
+} from '@/core/usecases/montecarlo/resolveSimulationVerdict';
 import { resolveGoalSuccessConditions } from '@/core/usecases/goals/goalSuccessConditions';
 import { initialParams } from '@/infrastructure/storage/localStore';
 import type { MonteCarloResult } from '@/core/entities/montecarlo';
@@ -29,6 +33,13 @@ const mc = (over: Partial<MonteCarloResult> = {}): MonteCarloResult => ({
   ...over,
 } as MonteCarloResult);
 
+// 판정이 있다고 «단언»하고 값을 꺼낸다. SimulationVerdict가 available로 갈라지는 판별
+// 유니온이라, 값을 읽으려면 반드시 이 문을 지나야 한다 — 테스트도 예외가 아니다.
+function judged(verdict: SimulationVerdict): SimulationVerdictValues {
+  if (!verdict.available) throw new Error('판정이 있어야 하는데 available=false다');
+  return verdict;
+}
+
 const goalParams = (goals: unknown[]): SimulationParams => {
   const base = structuredClone(initialParams);
   base.retirementGoals = goals as SimulationParams['retirementGoals'];
@@ -36,16 +47,17 @@ const goalParams = (goals: unknown[]): SimulationParams => {
 };
 
 describe('resolveSimulationVerdict', () => {
-  test('Monte Carlo 결과가 없으면 available=false이고 어떤 비율도 0으로 짜내지 않는다', () => {
+  // 예전에는 비율이 NaN이었다. NaN은 «형식»으로만 위험을 알린다 — `rate < 0.5` 같은 비교는
+  // 조용히 false를 골라 아무 경고 없이 한쪽 가지를 탄다. 이제 값 자체가 «없다».
+  test('Monte Carlo 결과가 없으면 읽을 값이 하나도 없다', () => {
     const verdict = resolveSimulationVerdict({ monteCarlo: undefined, params: initialParams });
 
-    expect(verdict.available).toBe(false);
-    expect(verdict.goalSuccess.rate).toBeNaN();
+    expect(verdict).toEqual({ available: false });
   });
 
   test('세 지표는 서로 대체하지 않는다', () => {
     // spendingSuccessRate가 goalSuccess를 메우던 옛 폴백이 되살아나면 이 단언이 깨진다.
-    const verdict = resolveSimulationVerdict({ monteCarlo: mc(), params: initialParams });
+    const verdict = judged(resolveSimulationVerdict({ monteCarlo: mc(), params: initialParams }));
 
     expect(verdict.goalSuccess.rate).toBe(0.78);
     expect(verdict.spendingFulfillment.fullRate).toBe(0.82);
@@ -53,14 +65,14 @@ describe('resolveSimulationVerdict', () => {
   });
 
   test('success/failure 개수가 trials와 맞는다', () => {
-    const verdict = resolveSimulationVerdict({ monteCarlo: mc(), params: initialParams });
+    const verdict = judged(resolveSimulationVerdict({ monteCarlo: mc(), params: initialParams }));
 
     expect(verdict.goalSuccess.succeeded + verdict.goalSuccess.failed).toBe(1000);
     expect(verdict.goalSuccess.succeeded).toBe(780);
   });
 
   test('확정 HARD 목표가 없으면 hardGoalSuccess는 null이다', () => {
-    const verdict = resolveSimulationVerdict({
+    const verdict = judged(resolveSimulationVerdict({
       monteCarlo: mc({
         goalConditions: {
           ...mc().goalConditions,
@@ -71,7 +83,7 @@ describe('resolveSimulationVerdict', () => {
         },
       }),
       params: goalParams([{ type: 'ASSET_SURVIVAL', constraintType: 'SOFT', priority: 1 }]),
-    });
+    }));
 
     expect(verdict.hardGoalSuccess).toBeNull();
   });
@@ -79,13 +91,10 @@ describe('resolveSimulationVerdict', () => {
   test('판정하지 못한 HARD 목표를 unjudged로 드러낸다', () => {
     // 주거 안정은 MEASURABLE_GOALS에 없어 HARD로 골라도 이 비율이 판정하지 않는다.
     // 이것을 숨기면 known-issues 1번을 지표 하나 더 만들어 되풀이한다.
-    const verdict = resolveSimulationVerdict({
-      monteCarlo: mc(),
-      params: goalParams([
+    const verdict = judged(resolveSimulationVerdict({ monteCarlo: mc(), params: goalParams([
         { type: 'ASSET_SURVIVAL', constraintType: 'HARD', priority: 1 },
         { type: 'HOUSING_STABILITY', constraintType: 'HARD', priority: 2 },
-      ]),
-    });
+      ]) }));
 
     expect(verdict.hardGoalSuccess).not.toBeNull();
     expect(verdict.hardGoalSuccess!.judged).toContain('ASSET_SURVIVAL');
@@ -108,10 +117,7 @@ describe('resolveSimulationVerdict', () => {
       spendingTarget: false, assetSurvival: true, terminalAsset: false,
     });
 
-    const verdict = resolveSimulationVerdict({
-      monteCarlo: mc({ goalConditions: conditions }),
-      params: goalsParams,
-    });
+    const verdict = judged(resolveSimulationVerdict({ monteCarlo: mc({ goalConditions: conditions }), params: goalsParams }));
 
     expect(verdict.hardGoalSuccess).not.toBeNull();
     expect(verdict.hardGoalSuccess!.judged).toEqual(['ASSET_SURVIVAL']);
@@ -135,10 +141,7 @@ describe('resolveSimulationVerdict', () => {
     expect(conditions.terminalAssetGoal).toBe(500_000_000);
     expect(conditions.hardRequirements.terminalAsset).toBe(false);
 
-    const verdict = resolveSimulationVerdict({
-      monteCarlo: mc({ goalConditions: conditions }),
-      params: goalsParams,
-    });
+    const verdict = judged(resolveSimulationVerdict({ monteCarlo: mc({ goalConditions: conditions }), params: goalsParams }));
 
     expect(verdict.hardGoalSuccess).not.toBeNull();
     expect(verdict.hardGoalSuccess!.judged).toEqual(['ASSET_SURVIVAL']);
@@ -156,10 +159,7 @@ describe('resolveSimulationVerdict', () => {
     ]);
     const conditions = resolveGoalSuccessConditions(goalsParams);
 
-    const verdict = resolveSimulationVerdict({
-      monteCarlo: mc({ goalConditions: conditions }),
-      params: goalsParams,
-    });
+    const verdict = judged(resolveSimulationVerdict({ monteCarlo: mc({ goalConditions: conditions }), params: goalsParams }));
 
     expect(verdict.hardGoalSuccess).not.toBeNull();
     expect(verdict.hardGoalSuccess!.judged).toEqual(['ASSET_SURVIVAL']);
@@ -171,7 +171,7 @@ describe('resolveSimulationVerdict', () => {
 describe('신뢰구간 (요구 ④)', () => {
   // 기대값은 Wilson 공식에서 독립적으로 계산했다(trials=1000 픽스처 기준).
   test('네 KPI가 «각자의» 구간을 갖는다', () => {
-    const verdict = resolveSimulationVerdict({ monteCarlo: mc(), params: initialParams });
+    const verdict = judged(resolveSimulationVerdict({ monteCarlo: mc(), params: initialParams }));
 
     expect(verdict.goalSuccess.interval.lower).toBeCloseTo(0.753281, 5);
     expect(verdict.goalSuccess.interval.upper).toBeCloseTo(0.804577, 5);
@@ -183,7 +183,7 @@ describe('신뢰구간 (요구 ④)', () => {
   // 요구 ②가 세 지표를 갈라 놓은 뒤로, 구간 하나를 넷에 돌려쓰면 서로 다른 비율에 같은
   // 정밀도를 붙이게 된다. 넷이 실제로 다른 값인지 본다.
   test('구간을 서로 돌려쓰지 않는다', () => {
-    const v = resolveSimulationVerdict({ monteCarlo: mc(), params: initialParams });
+    const v = judged(resolveSimulationVerdict({ monteCarlo: mc(), params: initialParams }));
     const lowers = [
       v.goalSuccess.interval.lower,
       v.spendingFulfillment.interval.lower,
@@ -194,7 +194,7 @@ describe('신뢰구간 (요구 ④)', () => {
   });
 
   test('구간은 언제나 자기 비율을 감싼다', () => {
-    const v = resolveSimulationVerdict({ monteCarlo: mc(), params: initialParams });
+    const v = judged(resolveSimulationVerdict({ monteCarlo: mc(), params: initialParams }));
     for (const [rate, interval] of [
       [v.goalSuccess.rate, v.goalSuccess.interval],
       [v.spendingFulfillment.fullRate, v.spendingFulfillment.interval],
@@ -206,21 +206,23 @@ describe('신뢰구간 (요구 ④)', () => {
   });
 
   test('시행 수가 많을수록 구간이 좁아진다 — 시행 수를 실제로 반영한다는 뜻이다', () => {
-    const few = resolveSimulationVerdict({ monteCarlo: mc({ trials: 1000 }), params: initialParams });
-    const many = resolveSimulationVerdict({ monteCarlo: mc({ trials: 10000 }), params: initialParams });
+    const few = judged(resolveSimulationVerdict({ monteCarlo: mc({ trials: 1000 }), params: initialParams }));
+    const many = judged(resolveSimulationVerdict({ monteCarlo: mc({ trials: 10000 }), params: initialParams }));
     const width = (v: typeof few) => v.goalSuccess.interval.upper - v.goalSuccess.interval.lower;
 
     expect(width(many)).toBeLessThan(width(few));
   });
 
-  test('판정이 없으면 구간도 0이 아니라 NaN이다', () => {
-    const v = resolveSimulationVerdict({ monteCarlo: undefined, params: initialParams });
+  // 예전에는 이 자리에서 「구간이 NaN인가」를 물었다. 이제는 물을 값 자체가 없다 —
+  // 판별 유니온이 available을 보지 않고 읽는 길을 컴파일 시점에 끊는다.
+  test('판정이 없으면 구간을 «읽을 수» 없다', () => {
+    const verdict = resolveSimulationVerdict({ monteCarlo: undefined, params: initialParams });
 
-    expect(v.goalSuccess.interval.lower).toBeNaN();
-    expect(v.spendingFulfillment.interval.upper).toBeNaN();
-    expect(v.assetSurvival.interval.lower).toBeNaN();
-    // 신뢰수준은 판정 유무와 무관한 «설정»이라 판정이 없어도 그대로 실린다.
-    expect(v.confidenceLevel).toBe(0.95);
+    expect(verdict.available).toBe(false);
+    expect(verdict).not.toHaveProperty('goalSuccess');
+    expect(verdict).not.toHaveProperty('confidenceLevel');
+    // 좁히지 않고 값을 꺼내려 하면 이 문에서 걸린다.
+    expect(() => judged(verdict)).toThrow();
   });
 });
 

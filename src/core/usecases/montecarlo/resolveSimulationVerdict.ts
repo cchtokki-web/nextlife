@@ -24,8 +24,25 @@ import type { SimulationParams } from '../../entities/types';
  * describeSuccessRates와 같은 자리에, 같은 이유로 둔다 — 판정 규칙은 전부 core의 것이고
  * 화면과 PDF는 같은 답을 인쇄해야 한다.
  */
-export interface SimulationVerdict {
-  available: boolean;
+/** 확정 HARD 목표의 성공률. 요구하는 HARD 조건이 하나도 없으면 이 객체 자체가 없다(null). */
+export interface HardGoalSuccess {
+  rate: number;
+  succeeded: number;
+  failed: number;
+  interval: ProportionInterval;
+  judged: RetirementGoalType[];
+  unjudged: RetirementGoalType[];
+  /**
+   * 확정 HARD이지만 계획에 이미 반영되어 «조건으로 세지 않는» 목표(EARLY_RETIREMENT).
+   * unjudged와 다른 말이다 — unjudged는 「이 비율이 반영하지 못했다」이고, planEmbedded는
+   * 「반영할 필요 자체가 없다, 모든 시행이 이미 지킨다」다. 같은 자리에 넣으면 지켜진
+   * 목표를 안 지켜진 것처럼 보고하게 된다.
+   */
+  planEmbedded: RetirementGoalType[];
+}
+
+/** 판정이 «있을 때»만 존재하는 값들. */
+export interface SimulationVerdictValues {
   trials: number;
   seed: number;
   /**
@@ -44,22 +61,23 @@ export interface SimulationVerdict {
     interval: ProportionInterval;
   };
   assetSurvival: { rate: number; throughAge: number; interval: ProportionInterval };
-  hardGoalSuccess: {
-    rate: number;
-    succeeded: number;
-    failed: number;
-    interval: ProportionInterval;
-    judged: RetirementGoalType[];
-    unjudged: RetirementGoalType[];
-    /**
-     * 확정 HARD이지만 계획에 이미 반영되어 «조건으로 세지 않는» 목표(EARLY_RETIREMENT).
-     * unjudged와 다른 말이다 — unjudged는 「이 비율이 반영하지 못했다」이고, planEmbedded는
-     * 「반영할 필요 자체가 없다, 모든 시행이 이미 지킨다」다. 같은 자리에 넣으면 지켜진
-     * 목표를 안 지켜진 것처럼 보고하게 된다.
-     */
-    planEmbedded: RetirementGoalType[];
-  } | null;
+  hardGoalSuccess: HardGoalSuccess | null;
 }
+
+/**
+ * **`available`로 갈라지는 판별 유니온이다.**
+ *
+ * 예전에는 한 객체였고 판정이 없으면 비율이 NaN이었다. NaN은 «형식»으로만 위험을 알린다 —
+ * `NaN%`로 찍히는 것은 눈에 띄지만, `rate < 0.5` 같은 «비교»는 조용히 false를 골라 아무
+ * 경고 없이 한쪽 가지를 탄다. 실제로 computePlanConfidence의 다섯 단계 `>=` 사다리는
+ * NaN을 끝까지 흘려보내 「판정 못 함」을 「매우 위험」으로 인쇄한다.
+ *
+ * 유니온으로 두면 그 실수가 컴파일 시점에 막힌다 — `available`을 보지 않고는 어떤 비율도
+ * 읽을 수 없다. 「판정 없음」과 「전멸」을 섞지 않겠다는 이 파일의 목적을 타입이 강제한다.
+ */
+export type SimulationVerdict =
+  | ({ available: true } & SimulationVerdictValues)
+  | { available: false };
 
 const counts = (rate: number, trials: number) => {
   const succeeded = Math.round(rate * trials);
@@ -78,18 +96,9 @@ export function resolveSimulationVerdict(input: {
 }): SimulationVerdict {
   const { monteCarlo, params } = input;
 
-  if (!monteCarlo) {
-    // 0을 내지 않는다. 0은 「전멸」이라는 다른 사실이다.
-    const none = { rate: Number.NaN, succeeded: 0, failed: 0, interval: NO_INTERVAL };
-    return {
-      available: false, trials: 0, seed: 0,
-      confidenceLevel: CONFIDENCE_LEVEL,
-      goalSuccess: none,
-      spendingFulfillment: { fullRate: Number.NaN, averageRate: null, interval: NO_INTERVAL },
-      assetSurvival: { rate: Number.NaN, throughAge: 0, interval: NO_INTERVAL },
-      hardGoalSuccess: null,
-    };
-  }
+  // **0도 NaN도 내지 않는다.** 0은 「전멸」이라는 다른 사실이고, NaN은 비교에서 조용히
+  // 한쪽 가지를 고른다. 값을 아예 «두지 않는» 것만이 두 오해를 함께 막는다.
+  if (!monteCarlo) return { available: false };
 
   const { trials } = monteCarlo;
   const hard = monteCarlo.goalConditions.hardRequirements;
