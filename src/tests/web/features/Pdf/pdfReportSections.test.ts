@@ -802,6 +802,31 @@ describe('renderPlanVerdictSection', () => {
   // 리포트는 화면보다 오래 남고 그대로 인용된다. 「점수 산정 대상이 아니다」를 화면만 말하면
   // 인쇄본을 든 사용자는 그 목표의 0점을 여전히 실패로 읽는다. 문장의 출처는 core 한 곳이며
   // (describeUnscoredGoals) 화면과 «같은 문장»이어야 한다(PRD 9.3).
+  // 요구 ④: 시행 수만으로는 그 정밀도를 알 수 없다. 리포트는 오래 남고 그대로 인용되므로
+  // 「목표 달성 확률 90%」 옆에 그 90%가 얼마나 정확한지가 함께 있어야 한다.
+  test('목표 달성 확률 옆에 시행 수와 신뢰구간을 함께 인쇄한다', () => {
+    const html = render(0.9, mc(0.9));
+
+    expect(html).toContain('1,000회 중');
+    expect(html).toContain('95% 신뢰구간');
+  });
+
+  // 구간이 시행 수를 «실제로» 반영하는지 본다. 고정 문자열을 붙였다면 두 렌더가 같아진다.
+  test('시행 수가 늘면 인쇄되는 구간이 좁아진다', () => {
+    const widths = [1000, 10000].map((trials) => {
+      const html = render(0.9, { ...mc(0.9), trials });
+      const match = html.match(/95% 신뢰구간 ([\d.]+)~([\d.]+)%/);
+      expect(match).not.toBeNull();
+      return Number(match![2]) - Number(match![1]);
+    });
+
+    expect(widths[1]).toBeLessThan(widths[0]);
+  });
+
+  test('판정이 없으면 신뢰구간도 인쇄하지 않는다 — 빈 구간을 찍지 않는다', () => {
+    expect(render(undefined, undefined)).not.toContain('신뢰구간');
+  });
+
   test('점수 산정 대상이 아닌 목표를 화면과 같은 문장으로 인쇄한다', () => {
     const html = render(0.9, {
       ...mc(0.9),
@@ -1098,6 +1123,23 @@ describe('renderMonteCarloSection', () => {
   // 개별 실패를 무시하고 나머지 리포트는 계속 만든다(computeSensitivityAnalysis와 같은 관례).
   test('몬테카를로 결과가 없으면 빈 문자열을 반환한다', () => {
     expect(renderMonteCarloSection(undefined, sequenceRisk, mcParams)).toBe('');
+  });
+
+  // 요구 ④: 리포트도 화면과 같은 구간을 인쇄해야 한다. 1000회 기준 독립 계산.
+  test('두 비율에 각자의 신뢰구간을 인쇄한다', () => {
+    const html = renderMonteCarloSection(monteCarlo, sequenceRisk, mcParams);
+
+    expect(html).toContain('95% 신뢰구간 78~83%');
+    expect(html).toContain('95% 신뢰구간 85~89%');
+  });
+
+  // 화면(MonteCarloSection)과 같은 판단 — 비율의 평균에는 이항 구간이 적용되지 않는다.
+  test('평균 목표생활비 충족도에는 신뢰구간을 인쇄하지 않는다', () => {
+    const html = renderMonteCarloSection(
+      { ...monteCarlo, averageSpendingFulfillmentRate: 0.973 }, sequenceRisk, mcParams);
+    const after = html.slice(html.indexOf('평균 목표생활비 충족도'));
+
+    expect(after.slice(0, after.indexOf('자산 유지 확률'))).not.toContain('신뢰구간');
   });
 
   test('성공률과 시행 횟수를 표기한다', () => {

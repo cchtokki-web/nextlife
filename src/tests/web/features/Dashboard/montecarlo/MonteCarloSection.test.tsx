@@ -148,6 +148,28 @@ describe('MonteCarloSection', () => {
     expect(caption).not.toHaveTextContent('연령별');
   });
 
+  // 요구 ④: 두 비율은 서로 다른 시행 집합에서 나온 «다른» 지표다(요구 ②). 정밀도도 각자
+  // 다르므로 구간 하나를 돌려쓸 수 없다. 1000회 기준 독립 계산: 0.81 → 78~83%, 0.87 → 85~89%.
+  test('두 비율에 각자의 신뢰구간을 붙인다', () => {
+    render(
+      <MonteCarloSection successRateCopy={successRateCopy} status="done" monteCarlo={makeMonteCarlo()} formatValue={formatValue} isPro={false} />
+    );
+
+    expect(screen.getByTestId('spending-success-caption')).toHaveTextContent('95% 신뢰구간 78~83%');
+    expect(screen.getByTestId('asset-success-caption')).toHaveTextContent('95% 신뢰구간 85~89%');
+  });
+
+  // **평균 목표생활비 충족도에는 붙이지 않는다.** 이항 비율이 아니라 비율의 «평균»이라
+  // 이항 신뢰구간이 설명하는 대상이 아니다. 붙이면 없는 정밀도를 주장하게 된다.
+  test('평균 목표생활비 충족도에는 신뢰구간을 붙이지 않는다', () => {
+    render(
+      <MonteCarloSection successRateCopy={successRateCopy} status="done" monteCarlo={makeMonteCarlo()} formatValue={formatValue} isPro={false} />
+    );
+
+    const block = screen.getByText('평균 목표생활비 충족도').closest('div');
+    expect(block?.textContent).not.toContain('신뢰구간');
+  });
+
   // 두 비율이 같은 값으로 나란히 뜨면 사용자는 「그러면 둘이 같은 지표 아닌가」로 읽는다.
   // 상단 「목표 달성 확률」이 둘을 «같은 시행에서» 함께 판정한 값이라는 관계를 밝힌다.
   test('상단 목표 달성 확률과 두 비율의 관계를 밝힌다', () => {

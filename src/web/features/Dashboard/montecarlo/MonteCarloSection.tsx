@@ -7,6 +7,7 @@ import { SequenceRiskResult } from '../../../../core/usecases/montecarlo/sequenc
 import { MonteCarloStatus } from '../../../hooks/useMonteCarlo';
 import { describeMonteCarloAssumptions } from '../../../../core/usecases/montecarlo/describeAssumptions';
 import { SuccessRateCopy } from '../../../../core/usecases/montecarlo/describeSuccessRates';
+import { formatConfidenceInterval, wilsonIntervalFromRate } from '../../../../core/usecases/montecarlo/confidenceInterval';
 
 interface MonteCarloSectionProps {
   status: MonteCarloStatus;
@@ -76,6 +77,13 @@ export function MonteCarloSection({
   if (!monteCarlo) return null;
 
   const assetPercent = Math.round(monteCarlo.successRate * 100);
+  // 두 비율에 각자의 신뢰구간을 붙인다. 평균 목표생활비 충족도에는 «붙이지 않는다» —
+  // 그것은 이항 비율이 아니라 비율의 평균이라 이 구간이 설명하는 대상이 아니다
+  // (resolveSimulationVerdict의 spendingFulfillment.interval 주석과 같은 이유).
+  const spendingInterval = formatConfidenceInterval(
+    wilsonIntervalFromRate(monteCarlo.spendingSuccessRate, monteCarlo.trials));
+  const assetInterval = formatConfidenceInterval(
+    wilsonIntervalFromRate(monteCarlo.successRate, monteCarlo.trials));
   const spendingPercent = Math.round(monteCarlo.spendingSuccessRate * 100);
   const averageFulfillmentPercent = monteCarlo.averageSpendingFulfillmentRate === undefined
     ? undefined
@@ -124,6 +132,7 @@ export function MonteCarloSection({
               <dd className="font-display text-2xl font-semibold">{spendingPercent}%</dd>
               <p className="mt-0.5 text-xs text-foreground-muted" data-testid="spending-success-caption">
                 {successRateCopy?.spendingCaption}
+                {spendingInterval !== null && ` · ${spendingInterval}`}
               </p>
             </div>
             {averageFulfillmentPercent !== undefined && (
@@ -142,6 +151,7 @@ export function MonteCarloSection({
               <dd className="font-display text-2xl font-semibold text-foreground-muted">{assetPercent}%</dd>
               <p className="mt-0.5 text-xs text-foreground-muted" data-testid="asset-success-caption">
                 {successRateCopy?.assetCaption}
+                {assetInterval !== null && ` · ${assetInterval}`}
               </p>
             </div>
           </dl>

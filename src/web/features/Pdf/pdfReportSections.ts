@@ -45,6 +45,7 @@ import { explainGoalShortfall } from '../../../core/usecases/dashboard/explainGo
 import type { StrategyOptimizationStatus } from '../../hooks/useStrategyOptimization';
 import { resolveTerminalAssetDisplay } from '../../../core/usecases/dashboard/resolveTerminalAssetDisplay';
 import { resolveSimulationVerdict, type SimulationVerdict } from '../../../core/usecases/montecarlo/resolveSimulationVerdict';
+import { formatConfidenceInterval, wilsonIntervalFromRate } from '../../../core/usecases/montecarlo/confidenceInterval';
 
 export function formatCurrencyUnit(currency: 'KRW' | 'USD'): '원' | '$' {
   return currency === 'KRW' ? '원' : '$';
@@ -224,7 +225,7 @@ export function renderPlanVerdictSection(input: {
         `<p style="margin: 0; font-size: 14px; font-weight: 700; color: ${verdictAccent(confidence)};">
            목표 달성 확률 ${verdict.available ? Math.round(verdict.goalSuccess.rate * 100) : '판정 없음'}${verdict.available ? '%' : ''}
          </p><p style="margin: 4px 0 0; font-size: 12px; font-weight: 700; color: #0f172a;">
-           ${monteCarlo.trials.toLocaleString()}회 중 ${verdict.available ? verdict.goalSuccess.succeeded.toLocaleString() : '판정 없음'}회가 판정 조건 충족<br>
+           ${verdict.trials.toLocaleString()}회 중 ${verdict.available ? verdict.goalSuccess.succeeded.toLocaleString() : '판정 없음'}회가 판정 조건 충족${goalConfidenceSuffix(verdict)}<br>
            ${expectancy}세 예상자산(중앙값) ${formatValue(terminalAssetDisplay.amount)}
          </p>
          <p style="margin: 4px 0 0; font-size: 10px; color: #64748b;">입력한 수익률, 물가, 연금, 수명 및 시장 변동 가정 범위 내의 시뮬레이션 결과이며 실제 미래 결과를 보장하지 않습니다.</p>
@@ -315,6 +316,21 @@ function hardGoalSuccessNote(hardGoalSuccess: SimulationVerdict['hardGoalSuccess
 // 색은 밴드→티어 매핑 한 곳에서만 나온다(화면의 진단 카드와 같은 표). 여기서 다시
 // switch로 색을 정하면 임계를 바꿀 때 PDF만 옛 색으로 남는다.
 const TIER_COLOR = { green: '#059669', orange: '#d97706', red: '#dc2626' } as const;
+
+// 시행 수 옆에 신뢰구간을 붙인다. 화면(DashboardSection)과 같은 문구를 써야 하므로
+// 포맷은 core가 소유한다(formatConfidenceInterval).
+// 비율에서 바로 구간 문구를 만든다. 평균 목표생활비 충족도에는 쓰지 않는다 — 이항 비율이
+// 아니라 비율의 평균이라 이 구간의 대상이 아니다(MonteCarloSection과 같은 판단).
+function intervalSuffix(rate: number, trials: number): string {
+  const label = formatConfidenceInterval(wilsonIntervalFromRate(rate, trials));
+  return label === null ? '' : ` · ${label}`;
+}
+
+function goalConfidenceSuffix(verdict: SimulationVerdict): string {
+  if (!verdict.available) return '';
+  const label = formatConfidenceInterval(verdict.goalSuccess.interval, verdict.confidenceLevel);
+  return label === null ? '' : ` · ${label}`;
+}
 
 function verdictAccent(confidence: PlanConfidence): string {
   if (confidence.basis !== 'probabilistic' || confidence.band === undefined) return '#64748b';
@@ -981,10 +997,10 @@ export function renderMonteCarloSection(
     </p>
     <p style="margin: 4px 0 0; font-size: 11.5px; color: #475569;">
       <strong style="font-size: 14px; color: #0f172a;">목표생활비 완전 충족률 ${spendingPercent}%</strong>
-      — ${successRateCopy.spendingCaption}
+      — ${successRateCopy.spendingCaption}${intervalSuffix(monteCarlo.spendingSuccessRate, monteCarlo.trials)}
       ${averageFulfillmentPercent === undefined ? '' : `<strong>평균 목표생활비 충족도 ${averageFulfillmentPercent}%</strong>
       — 일부 부족한 시행도 실제 충당액만큼 반영한 비이진 지표입니다.`}
-      <strong>${monteCarlo.successAge}세까지 자산 유지 확률 ${assetPercent}%</strong> — ${successRateCopy.assetCaption}
+      <strong>${monteCarlo.successAge}세까지 자산 유지 확률 ${assetPercent}%</strong> — ${successRateCopy.assetCaption}${intervalSuffix(monteCarlo.successRate, monteCarlo.trials)}
     </p>
     <p style="margin: 4px 0 0; font-size: 10px; color: #64748b;">
       계산 가정: ${assumptionCopy.calculation}

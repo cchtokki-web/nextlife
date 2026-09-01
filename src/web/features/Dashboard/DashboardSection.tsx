@@ -34,6 +34,7 @@ import { describeGoalConflict } from '../../../core/usecases/goals/describeGoalC
 import { describeSustainableSpendingLimit } from '../../../core/usecases/dashboard/describeSustainableSpendingLimit';
 import { describeSuccessRates, describeHardGoalRelationship } from '../../../core/usecases/montecarlo/describeSuccessRates';
 import { resolveSimulationVerdict, type SimulationVerdict } from '../../../core/usecases/montecarlo/resolveSimulationVerdict';
+import { formatConfidenceInterval } from '../../../core/usecases/montecarlo/confidenceInterval';
 import { describeSustainableSpendingBasis } from '../../../core/usecases/dashboard/describeSustainableSpendingBasis';
 import GlassCard from '../../components/GlassCard';
 import { retirementGoalDefinition } from '../RetirementGoals/goalCatalog';
@@ -244,6 +245,12 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
     [monteCarloForDisplay, params]
   );
   const currentGoalProbability = verdict.available ? verdict.goalSuccess.rate : undefined;
+  // 시행 수와 신뢰구간을 «함께» 보여 준다. 10000회라는 숫자만으로는 그 정밀도가 얼마인지
+  // 알 수 없고, 구간만으로는 무엇으로 얻은 정밀도인지 알 수 없다.
+  const goalConfidenceLabel = formatConfidenceInterval(
+    verdict.goalSuccess.interval,
+    verdict.confidenceLevel,
+  );
   // 임계값은 computePlanConfidence가 소유한다. 같은 화면에 이미 그 밴드로 그린 지표가 있어
   // 별도 임계값을 두면 0.85에서 한쪽은 '안정', 한쪽은 🟡으로 갈린다.
   const diagnosisTier = currentGoalProbability !== undefined
@@ -334,6 +341,7 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
                       셈이고, 반올림 결과가 어긋나는 날 아무도 알아채지 못한다. */}
                   {verdict.trials.toLocaleString()}회 중{' '}
                   {verdict.goalSuccess.succeeded.toLocaleString()}회가 판정 조건 충족
+                  {goalConfidenceLabel !== null && ` · ${goalConfidenceLabel}`}
                 </small>
               )}
             </div>
