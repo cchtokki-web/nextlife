@@ -62,16 +62,30 @@ describe('wilsonInterval', () => {
 });
 
 describe('DEFAULT_MONTE_CARLO_TRIALS와 표시 정밀도', () => {
-  // 상수를 「10000이다」로 다시 적는 대신, 그 상수를 «고른 이유»를 검사한다. 상수를 되돌리면
-  // 이 테스트가 깨지고, 깨진 이유가 곧 되돌리면 안 되는 이유다.
-  test('기본 시행 수에서 95% 구간의 반폭이 표시 단위 1%p보다 작다', () => {
-    const { lower, upper } = wilsonIntervalFromRate(0.9, DEFAULT_MONTE_CARLO_TRIALS);
-    expect(((upper - lower) / 2) * 100).toBeLessThan(1);
+  const halfWidthAt = (rate: number, trials: number) => {
+    const { lower, upper } = wilsonIntervalFromRate(rate, trials);
+    return ((upper - lower) / 2) * 100;
+  };
+
+  // **문턱이 아니라 「되돌아가지 않음」을 잠근다.**
+  //
+  // 한때 이 자리에는 「반폭이 표시 단위 1%p보다 작다」가 있었다. 그 기준은 확률이 «홀로»
+  // 찍히던 시절의 것이다 — 지금은 신뢰구간을 함께 인쇄하므로 정밀도가 얼마든 사용자가 그것을
+  // 보고 판단한다. 그래서 절대 문턱은 의미가 없고, 남은 것은 정밀도와 실행 시간의 맞바꿈이다
+  // (DEFAULT_MONTE_CARLO_TRIALS 주석의 실측표).
+  //
+  // 대신 예전 기본값 1000회로 조용히 되돌아가는 것을 막는다. 0.7배는 n으로 치면 약 2,200회다.
+  test('기본 시행 수의 구간이 예전 1000회보다 뚜렷하게 좁다', () => {
+    const now = halfWidthAt(0.9, DEFAULT_MONTE_CARLO_TRIALS);
+    const before = halfWidthAt(0.9, 1000);
+
+    expect(now).toBeLessThan(before * 0.7);
   });
 
-  test('예전 기본값 1000회에서는 반폭이 1%p를 넘었다', () => {
-    const { lower, upper } = wilsonIntervalFromRate(0.9, 1000);
-    expect(((upper - lower) / 2) * 100).toBeGreaterThan(1);
+  // 반대 방향의 가드. 시행 수를 올리면 옵티마이저가 그만큼 느려지고, 10000회에서는 13.3초라
+  // 「멈춘 것 아닌가」로 읽힌다. 정밀도만 보고 무심코 올리는 것을 여기서 멈춰 세운다.
+  test('기본 시행 수가 실행 시간 예산 안에 있다', () => {
+    expect(DEFAULT_MONTE_CARLO_TRIALS).toBeLessThanOrEqual(5000);
   });
 });
 

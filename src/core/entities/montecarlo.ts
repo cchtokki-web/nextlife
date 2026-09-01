@@ -16,8 +16,8 @@ export interface MonteCarloConfig {
   // 값을 낸다 — 오차가 사라져서가 아니라 매번 같은 방향으로 틀리기 때문이다. 그래서
   // 화면에 함께 싣는 신뢰구간(resolveSimulationVerdict.confidence)은 「새로고침하면 이만큼
   // 흔들린다」는 뜻이 아니라 「무한히 많이 돌렸다면 참값이 이 구간에 있었을 것」이라는
-  // 뜻이다. 기본 시행 수를 10000회로 올린 이유가 여기에 있다(DEFAULT_MONTE_CARLO_TRIALS):
-  // 흔들림을 줄이려는 게 아니라 그 고정 편향 자체를 표시 단위 아래로 내리려는 것이다.
+  // 뜻이다. 기본 시행 수를 1000회에서 올린 이유가 여기에 있다(DEFAULT_MONTE_CARLO_TRIALS):
+  // 흔들림을 줄이려는 게 아니라 그 고정 편향 «자체»를 줄이려는 것이다.
   seed: number;
   // 연 수익률의 표준편차(%p). 시장 요인 하나를 모든 위험자산이 공유한다(ReturnShockPath 주석).
   annualStdDev: number;
