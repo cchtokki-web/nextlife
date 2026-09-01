@@ -137,9 +137,11 @@ export function ExpertDetailsPanel({
             baselineDepletionAge={sensitivity.baselineDepletionAge}
             baselineEndingAssets={sensitivity.baselineEndingAssets}
             baselineUnmetSpendingYears={sensitivity.baselineUnmetSpendingYears}
+            baselineHardViolations={sensitivity.baselineHardViolations}
             frozenMonthlySpending={sensitivity.frozenMonthlySpending}
             baselineWeightedTotalReturn={sensitivity.baselineWeightedTotalReturn}
             scenarios={sensitivity.scenarios}
+            hardRequirementGoals={sensitivity.hardRequirementGoals}
             planAssetStatus={sensitivity.baselinePlanAssetStatus}
           />
 

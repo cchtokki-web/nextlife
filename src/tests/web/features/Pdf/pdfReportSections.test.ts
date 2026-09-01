@@ -97,6 +97,7 @@ import { NO_GOAL_FAILURE, LEGACY_GOAL_CONDITIONS } from '@/tests/fixtures/goalFa
 import { describeUnscoredGoals } from '@/core/usecases/goals/goalScoreSupport';
 import { initialParams } from '@/infrastructure/storage/localStore';
 import { resolveGoalSuccessConditions } from '@/core/usecases/goals/goalSuccessConditions';
+import { RetirementGoalType, RETIREMENT_GOAL_CONSTRAINT_LABELS } from '@/core/entities/retirementGoal';
 import reportCapture from '@/tests/fixtures/pdfReport/reportCapture.json';
 
 describe('renderRiskAlertsSection', () => {
@@ -439,9 +440,9 @@ describe('renderSensitivityTableSection', () => {
   test('시나리오를 표 행으로 렌더링하며, depletionAge가 null이면 "평생 유지"를 표시한다', () => {
     const scenarios: SensitivityScenario[] = [
       { key: 'yieldConservative', label: '안정형 가정 (주식 5%)', depletionAge: 82, deltaYears: -6,
-        endingAssets: 0, endingAssetsDelta: -2500000000, unmetSpendingYears: 8 },
+        endingAssets: 0, endingAssetsDelta: -2500000000, unmetSpendingYears: 8, hardViolations: [] },
       { key: 'yieldAggressive', label: '공격형 가정 (주식 9%)', depletionAge: null, deltaYears: 4,
-        endingAssets: 5000000000, endingAssetsDelta: 2500000000, unmetSpendingYears: 0 },
+        endingAssets: 5000000000, endingAssetsDelta: 2500000000, unmetSpendingYears: 0, hardViolations: [] },
     ];
     const html = renderSensitivityTableSection(scenarios);
     expect(html).toContain('안정형 가정 (주식 5%)');
@@ -455,9 +456,9 @@ describe('renderSensitivityTableSection', () => {
   test('고갈이 없어도 기말자산과 증감으로 시나리오가 구분된다', () => {
     const scenarios: SensitivityScenario[] = [
       { key: 'yieldConservative', label: '안정형 가정 (주식 5%)', depletionAge: null, deltaYears: null,
-        endingAssets: 820000000, endingAssetsDelta: -1680000000, unmetSpendingYears: 0 },
+        endingAssets: 820000000, endingAssetsDelta: -1680000000, unmetSpendingYears: 0, hardViolations: [] },
       { key: 'yieldAggressive', label: '공격형 가정 (주식 9%)', depletionAge: null, deltaYears: null,
-        endingAssets: 5100000000, endingAssetsDelta: 2600000000, unmetSpendingYears: 0 },
+        endingAssets: 5100000000, endingAssetsDelta: 2600000000, unmetSpendingYears: 0, hardViolations: [] },
     ];
     const html = renderSensitivityTableSection(scenarios);
 
@@ -473,7 +474,7 @@ describe('renderSensitivityTableSection', () => {
   test('사용자 자신의 가중평균 총수익률과 기준선 행을 함께 싣는다', () => {
     const scenarios: SensitivityScenario[] = [
       { key: 'yieldAggressive', label: '공격형 가정 (주식 9%)', depletionAge: null, deltaYears: null,
-        endingAssets: 286400000, endingAssetsDelta: -1172010000, unmetSpendingYears: 0 },
+        endingAssets: 286400000, endingAssetsDelta: -1172010000, unmetSpendingYears: 0, hardViolations: [] },
     ];
     const html = renderSensitivityTableSection(scenarios, {
       depletionAge: null, unmetSpendingYears: 0, planAssetStatus: 'sustained',
@@ -494,7 +495,7 @@ describe('renderSensitivityTableSection', () => {
   test('유도할 잔액이 없으면 수익률 문장을 만들지 않는다', () => {
     const scenarios: SensitivityScenario[] = [
       { key: 'yieldAggressive', label: '공격형 가정 (주식 9%)', depletionAge: null, deltaYears: null,
-        endingAssets: 0, endingAssetsDelta: 0, unmetSpendingYears: 0 },
+        endingAssets: 0, endingAssetsDelta: 0, unmetSpendingYears: 0, hardViolations: [] },
     ];
     const html = renderSensitivityTableSection(scenarios, {
       depletionAge: null, unmetSpendingYears: 0, planAssetStatus: 'sustained', weightedTotalReturn: null,
@@ -508,11 +509,11 @@ describe('renderSensitivityTableSection', () => {
   test('투자자산이 없으면 결과가 baseline과 동일한 행을 접고 몇 개를 접었는지 밝힌다', () => {
     const scenarios: SensitivityScenario[] = [
       { key: 'yieldConservative', label: '안정형 가정 (주식 5%)', depletionAge: 51, deltaYears: 0,
-        endingAssets: 0, endingAssetsDelta: 0, unmetSpendingYears: 31 },
+        endingAssets: 0, endingAssetsDelta: 0, unmetSpendingYears: 31, hardViolations: [] },
       { key: 'yieldAggressive', label: '공격형 가정 (주식 9%)', depletionAge: 51, deltaYears: 0,
-        endingAssets: 0, endingAssetsDelta: 0, unmetSpendingYears: 31 },
+        endingAssets: 0, endingAssetsDelta: 0, unmetSpendingYears: 31, hardViolations: [] },
       { key: 'retirementLater', label: '은퇴시점 +3년', depletionAge: 51, deltaYears: 0,
-        endingAssets: 0, endingAssetsDelta: 0, unmetSpendingYears: 28 },
+        endingAssets: 0, endingAssetsDelta: 0, unmetSpendingYears: 28, hardViolations: [] },
     ];
 
     const html = renderSensitivityTableSection(scenarios, {
@@ -531,7 +532,7 @@ describe('renderSensitivityTableSection', () => {
   test('투자자산이 있으면 baseline 정보를 넘겨도 행을 접지 않는다', () => {
     const scenarios: SensitivityScenario[] = [
       { key: 'yieldConservative', label: '안정형 가정 (주식 5%)', depletionAge: null, deltaYears: null,
-        endingAssets: 820000000, endingAssetsDelta: -1680000000, unmetSpendingYears: 0 },
+        endingAssets: 820000000, endingAssetsDelta: -1680000000, unmetSpendingYears: 0, hardViolations: [] },
     ];
 
     const html = renderSensitivityTableSection(scenarios, {
@@ -547,10 +548,70 @@ describe('renderSensitivityTableSection', () => {
   test('생활비를 채우지 못한 해가 있으면 표에 함께 적는다', () => {
     const scenarios: SensitivityScenario[] = [
       { key: 'yieldConservative', label: '안정형 가정 (주식 5%)', depletionAge: null, deltaYears: null,
-        endingAssets: 100000000, endingAssetsDelta: -500000000, unmetSpendingYears: 5 },
+        endingAssets: 100000000, endingAssetsDelta: -500000000, unmetSpendingYears: 5, hardViolations: [] },
     ];
 
     expect(renderSensitivityTableSection(scenarios)).toContain('생활비 부족 5년');
+  });
+
+  // **이 스위트가 요구사항의 요점이다.** 화면(SensitivityAnalysisSection)과 같은 문제 —
+  // 표는 endingAssetsDelta로 초록/빨강을 정하므로, HARD 위반 시나리오가 기말자산이 늘었다는
+  // 이유만으로 초록(개선)으로 읽히면 안 된다.
+  describe('HARD 목표 위반 경고', () => {
+    const hardRequirementGoals = { spendingTarget: [], assetSurvival: ['ASSET_SURVIVAL'] as RetirementGoalType[], terminalAsset: [] };
+
+    // 핵심 픽스처: yieldAggressive는 endingAssetsDelta가 +25억(재무적으로 명백히 유리)인데도
+    // 확정 HARD 「자산 고갈 방지」를 어긴다 — computeSensitivityAnalysis 테스트와 같은 값이다.
+    const violatingScenarios: SensitivityScenario[] = [
+      { key: 'yieldConservative', label: '안정형 가정 (주식 5%)', depletionAge: null, deltaYears: null,
+        endingAssets: 1000000000, endingAssetsDelta: -500000000, unmetSpendingYears: 0, hardViolations: [] },
+      { key: 'yieldAggressive', label: '공격형 가정 (주식 9%)', depletionAge: 85, deltaYears: -5,
+        endingAssets: 4000000000, endingAssetsDelta: 2500000000, unmetSpendingYears: 0, hardViolations: ['assetSurvival'] },
+    ];
+
+    test('재무적으로 유리해도(양의 증감) 위반 시나리오의 증감은 초록(#059669)이 아니라 danger(#dc2626)이다', () => {
+      const html = renderSensitivityTableSection(violatingScenarios, undefined, hardRequirementGoals);
+
+      // yieldAggressive 행만 골라낸다 — 표 전체에 #059669가 없다고 주장하면 위반 없는
+      // 다른 개선 시나리오가 있을 때도 우연히 통과할 수 있다.
+      const row = html.split('공격형 가정 (주식 9%)')[1].split('</tr>')[0];
+      // endingAssetsDelta는 +25억(2,500,000,000 → formatManwon)이라, 위반 판정이 없다면
+      // '#059669'(초록)이 됐을 것이다.
+      expect(row).toContain('(+25억원)');
+      expect(row).toContain('#dc2626');
+      expect(row).not.toContain('#059669');
+    });
+
+    test('어긴 HARD 목표의 이름을 밝힌다', () => {
+      const html = renderSensitivityTableSection(violatingScenarios, undefined, hardRequirementGoals);
+
+      expect(html).toContain('자산 고갈 방지');
+      expect(html).toContain(RETIREMENT_GOAL_CONSTRAINT_LABELS.HARD);
+    });
+
+    test('위반이 없는 시나리오에는 위반 문구를 붙이지 않는다', () => {
+      const html = renderSensitivityTableSection(violatingScenarios, undefined, hardRequirementGoals);
+
+      // yieldConservative 행에는 위반이 없다 — 「자산 고갈 방지」 언급이 정확히 한 번(위반
+      // 시나리오 한 개분)만 나와야 한다.
+      const occurrences = html.split('자산 고갈 방지').length - 1;
+      expect(occurrences).toBe(1);
+    });
+
+    // baseline 자신의 위반도 화면과 같은 방식으로 표의 기준선 행에 밝힌다.
+    test('baseline 자신이 위반 중이면 기준선 행에도 밝힌다', () => {
+      const html = renderSensitivityTableSection(
+        [violatingScenarios[0]],
+        {
+          depletionAge: 70, unmetSpendingYears: 0, planAssetStatus: 'sustained',
+          endingAssets: 1500000000, hardViolations: ['assetSurvival'],
+        },
+        hardRequirementGoals,
+      );
+
+      expect(html).toContain('현재 가정 (기준)');
+      expect(html).toContain('자산 고갈 방지');
+    });
   });
 });
 

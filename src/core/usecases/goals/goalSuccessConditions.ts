@@ -284,3 +284,103 @@ function terminalAssetGoalOf(
 
   return { value: Math.max(0, params.userProfile.targetBequest ?? 0), source: null };
 }
+
+// successAge까지 자산이 고갈되지 않았는가.
+//
+// runMonteCarlo·estimateSuccessRate·computeSensitivityAnalysis(민감도 시나리오·기준선)가
+// **반드시** 같은 식을 써야 하므로 여기 하나에만 둔다 — 복사해 두면 한쪽만 바뀐 채로
+// 조용히 갈라진다. (예전에는 MonteCarloEngine.ts에만 있었다. 민감도 분석의 HARD 위반
+// 판정이 같은 「고갈 여부」를 물어야 하면서 그쪽으로 옮겼다 — MonteCarloEngine이 이 파일을
+// 이미 import하고 있어 방향을 뒤집으면 순환 참조가 생긴다.)
+//
+// depletionAge > successAge 조건은 지금은 도달할 수 없다: 시뮬레이션 루프가 expectancy에서
+// 끝나므로 depletionAge는 successAge를 넘을 수 없다. 루프 종료 나이와 successAge가 다시
+// 갈라지는 날을 대비한 방어선으로만 남겨 둔다.
+export function isSuccessfulTrial(depletionAge: number | null, successAge: number): boolean {
+  return depletionAge === null || depletionAge > successAge;
+}
+
+/**
+ * 확정 HARD 요구 판정에 필요한 최소 입력.
+ *
+ * 몬테카를로 시행(MonteCarloEngine.TrialSummary)과 민감도 분석 시나리오
+ * (computeSensitivityAnalysis가 runFrozenPlan으로 이미 얻은 결과) 둘 다 이 세 필드로
+ * 표현할 수 있다 — 어느 쪽도 상대를 위해 자기 자료구조를 다시 빚지 않는다. 시행은
+ * TrialSummary에서, 시나리오는 StrategySimulationResult에서 값을 그대로 옮겨 채운다.
+ */
+export interface HardGoalOutcome {
+  depletionAge: number | null;
+  endingAssets: number;
+  /**
+   * 생활비 목표를 채우지 못한 순간이 있었는가. **그 기준은 호출자가 정한다.**
+   *
+   * 몬테카를로는 목표 재구성(computeMonthlySpendingComposition) 기준의 firstGoalShortfallAge
+   * (엡실론 있음, 사용자의 targetMonthlySpending 대비)를 쓰고, 민감도 분석은 원장 기준의
+   * unmetSpendingYears(엡실론 없음, spendingShortfall.hasSpendingShortfall)를 쓴다. 두
+   * 정의가 서로 다른 질문에 답한다는 것은 spendingShortfall.ts가 이미 문서화했다 —
+   * 여기서 하나로 합치면 둘 중 하나가 답하던 질문이 바뀐다.
+   */
+  hasSpendingShortfall: boolean;
+}
+
+export function failsSpendingTarget(outcome: HardGoalOutcome, conditions: GoalSuccessConditions): boolean {
+  return conditions.requireSpendingTarget && outcome.hasSpendingShortfall;
+}
+
+export function failsAssetSurvival(
+  outcome: HardGoalOutcome,
+  conditions: GoalSuccessConditions,
+  successAge: number,
+): boolean {
+  return conditions.requireAssetSurvival && !isSuccessfulTrial(outcome.depletionAge, successAge);
+}
+
+export function failsTerminalAsset(outcome: HardGoalOutcome, conditions: GoalSuccessConditions): boolean {
+  return conditions.terminalAssetGoal > 0 && outcome.endingAssets < conditions.terminalAssetGoal;
+}
+
+/** hardRequirements의 세 축과 같은 키. */
+export type HardRequirementAxis = 'spendingTarget' | 'assetSurvival' | 'terminalAsset';
+
+/**
+ * outcome이 «확정 HARD 요구» 중 실제로 어긴 축의 목록. 비어 있으면 위반이 없다.
+ *
+ * **HARD로 걸리지 않은 축은 실패해도 여기 담기지 않는다.** failsX 술어는
+ * requireX(«판정할 것인가»)로만 걸리지만, 이 함수는 그 위에 hardRequirements(«확정 HARD가
+ * 요구했는가»)를 한 번 더 건다 — SOFT로 고르거나 아예 고르지 않은 조건까지 위반으로 세면,
+ * 사용자가 요구한 적 없는 조건이 「경고」로 표시된다.
+ */
+export function resolveHardViolations(
+  outcome: HardGoalOutcome,
+  conditions: GoalSuccessConditions,
+  successAge: number,
+): HardRequirementAxis[] {
+  const { hardRequirements } = conditions;
+  const violations: HardRequirementAxis[] = [];
+  if (hardRequirements.spendingTarget && failsSpendingTarget(outcome, conditions)) {
+    violations.push('spendingTarget');
+  }
+  if (hardRequirements.assetSurvival && failsAssetSurvival(outcome, conditions, successAge)) {
+    violations.push('assetSurvival');
+  }
+  if (hardRequirements.terminalAsset && failsTerminalAsset(outcome, conditions)) {
+    violations.push('terminalAsset');
+  }
+  return violations;
+}
+
+/**
+ * 위반한 HARD 축들을 «그 축을 켠» 목표 유형 목록으로 바꾼다. 화면·PDF가 "무엇을 어겼는가"를
+ * 사람이 읽는 이름으로 보여줄 때 쓴다 — 축 이름('assetSurvival')을 그대로 보여주면 사용자가
+ * 목표 화면에서 고른 이름(「자산 고갈 방지」)과 어긋난다.
+ *
+ * 여러 축이 같은 목표에서 왔거나(오늘은 일어나지 않지만 hardRequirementGoals의 계약이
+ * 그 가능성을 막지 않는다) 한 목표가 여러 축에 걸치는 경우를 대비해 중복은 제거한다.
+ */
+export function hardViolationGoalTypes(
+  axes: readonly HardRequirementAxis[],
+  hardRequirementGoals: GoalSuccessConditions['hardRequirementGoals'],
+): RetirementGoalType[] {
+  const types = axes.flatMap((axis) => hardRequirementGoals[axis]);
+  return Array.from(new Set(types));
+}

@@ -17,6 +17,7 @@ const scenario = (
   endingAssets: 0,
   endingAssetsDelta: 0,
   unmetSpendingYears: 0,
+  hardViolations: [],
   ...overrides,
 });
 
@@ -26,6 +27,8 @@ const sensitivity = (scenarios: SensitivityScenario[]): SensitivityAnalysis => (
   baselineDepletionAge: null,
   baselineEndingAssets: 13960000,
   baselineUnmetSpendingYears: 0,
+  baselineHardViolations: [],
+  hardRequirementGoals: { spendingTarget: [], assetSurvival: [], terminalAsset: [] },
   baselinePlanAssetStatus: 'sustained',
   baselineWeightedTotalReturn: 12,
 });
