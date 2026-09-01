@@ -1,4 +1,5 @@
 import type { SimulationParams, SimulationResult, SimulationYearlyResult, TaxSettings } from '../../../core/entities/types';
+import { describeReturnOrigin, resolveReturnProvenance } from '../../../core/usecases/returns/returnProvenance';
 import { describePrivatePensionLabel } from './describePrivatePension';
 import { describeInvestmentAssetLabel } from './describeInvestmentAsset';
 import { describeIsaAccountLabel } from './describeIsaAccount';
@@ -438,15 +439,28 @@ export function buildReportHtml(input: ReportHtmlInput): string {
       // 한 페이지의 HTML이 다섯 조각으로 끊긴다.
       // 네 목록만이 이 문서에서 «사용자가 자유롭게 적은 문자열»을 싣는 자리다. 나머지는 전부
       // 숫자이거나 우리가 고른 라벨이라, escapeHtml이 필요한 곳은 정확히 여기뿐이다.
-      const accountListsHtml = [
+      // 「연 총수익률 7%」가 사용자가 넣은 값인지 프리셋이 덮은 값인지, 리포트만 보고는 알 수
+  // 없었다. 리포트는 화면보다 오래 남고 그대로 인용되므로 그 출처를 함께 인쇄한다.
+  // 판정은 core 한 곳의 것이다(resolveReturnProvenance) — 저장된 params.yieldPreset은
+  // 저장 계층이 채워 넣은 값이라 출처의 근거가 되지 못한다.
+  const returnProvenance = resolveReturnProvenance(reportParams);
+  const originById = new Map(
+    returnProvenance.accounts.map((a) => [a.id, describeReturnOrigin(a, returnProvenance)]),
+  );
+  const originNote = (id: string) => {
+    const note = originById.get(id);
+    return note === undefined || note === null ? '' : ` — ${note}`;
+  };
+
+  const accountListsHtml = [
         renderAccountList('사적연금', privatePensions, (p) =>
-          `<li style="margin-bottom: 4px;"><strong>${escapeHtml(describePrivatePensionLabel(p))}</strong>: 현재 잔액 ${p.balance.toLocaleString()} ${formatCurrencyUnit(p.currency)}, 매월 ${p.monthlyContribution.toLocaleString()} ${formatCurrencyUnit(p.currency)} 납입, 연 총수익률 ${p.totalReturn}%${p.dividendYield ? ` (배당 ${p.dividendYield}% 포함)` : ''}</li>`,
+          `<li style="margin-bottom: 4px;"><strong>${escapeHtml(describePrivatePensionLabel(p))}</strong>: 현재 잔액 ${p.balance.toLocaleString()} ${formatCurrencyUnit(p.currency)}, 매월 ${p.monthlyContribution.toLocaleString()} ${formatCurrencyUnit(p.currency)} 납입, 연 총수익률 ${p.totalReturn}%${p.dividendYield ? ` (배당 ${p.dividendYield}% 포함)` : ''}${originNote(p.id)}</li>`,
           '등록된 사적연금 없음'),
         renderAccountList('투자 자산', assets, (a) =>
-          `<li style="margin-bottom: 4px;"><strong>${escapeHtml(describeInvestmentAssetLabel(a))}</strong>: ${a.quantity}주(개) x 평균단가 ${a.averagePrice.toLocaleString()} ${formatCurrencyUnit(a.currency)}, 매월 ${a.monthlyContribution.toLocaleString()} ${formatCurrencyUnit(a.currency)} 납입, 연 총수익률 ${a.totalReturn}% (배당 ${a.dividendYield}% 포함), 배당 재투자 ${a.reinvestDividend ? 'O' : 'X'}</li>`,
+          `<li style="margin-bottom: 4px;"><strong>${escapeHtml(describeInvestmentAssetLabel(a))}</strong>: ${a.quantity}주(개) x 평균단가 ${a.averagePrice.toLocaleString()} ${formatCurrencyUnit(a.currency)}, 매월 ${a.monthlyContribution.toLocaleString()} ${formatCurrencyUnit(a.currency)} 납입, 연 총수익률 ${a.totalReturn}% (배당 ${a.dividendYield}% 포함), 배당 재투자 ${a.reinvestDividend ? 'O' : 'X'}${originNote(a.id)}</li>`,
           '등록된 투자 자산 없음'),
         renderAccountList('ISA 계좌', isaAccounts, (isa) =>
-          `<li style="margin-bottom: 4px;"><strong>${escapeHtml(describeIsaAccountLabel(isa))}</strong>: 현재 잔액 ${isa.balance.toLocaleString()} ${formatCurrencyUnit(isa.currency)}, 매월 ${isa.monthlyContribution.toLocaleString()} ${formatCurrencyUnit(isa.currency)} 납입, 연 총수익률 ${isa.totalReturn}% (배당 ${isa.dividendYield}% 포함), 만기 ${isa.maturityYears}년</li>`,
+          `<li style="margin-bottom: 4px;"><strong>${escapeHtml(describeIsaAccountLabel(isa))}</strong>: 현재 잔액 ${isa.balance.toLocaleString()} ${formatCurrencyUnit(isa.currency)}, 매월 ${isa.monthlyContribution.toLocaleString()} ${formatCurrencyUnit(isa.currency)} 납입, 연 총수익률 ${isa.totalReturn}% (배당 ${isa.dividendYield}% 포함), 만기 ${isa.maturityYears}년${originNote(isa.id)}</li>`,
           '등록된 ISA 계좌 없음'),
         renderAccountList('기타 소득', otherIncomes, (i) =>
           `<li style="margin-bottom: 4px;"><strong>${escapeHtml(i.label)}</strong>: 매월 ${i.monthlyAmount.toLocaleString()} ${formatCurrencyUnit(i.currency)}</li>`,
