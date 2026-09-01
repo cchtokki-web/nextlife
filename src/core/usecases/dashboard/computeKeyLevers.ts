@@ -1,7 +1,9 @@
 import { StrategyRecommendation } from '../../entities/types';
+import { RETIREMENT_GOAL_LABELS } from '../../entities/retirementGoal';
 import { SensitivityAnalysis, SensitivityScenario } from './computeSensitivityAnalysis';
 import { PensionGapRisk } from './computePensionGapRisk';
 import { ShortfallReport } from './computeShortfallSummary';
+import { describeHardViolation } from '../goals/goalSuccessConditions';
 
 // 「이 계획을 바꾸려면 무엇부터 손대야 하는가」를 영향이 큰 순서로 세운다.
 //
@@ -34,6 +36,14 @@ export interface KeyLever {
   title: string;
   // 근거가 되는 수치를 반드시 포함한 한 문장. 수치 없는 조언은 이 저장소가 이미 거부한 형태다.
   detail: string;
+  // 이 레버의 근거 시나리오 중 확정 HARD 요구를 위반하는 것이 있는가.
+  //
+  // **판정 근거 문장(결정론 1회 실행)을 레버마다 반복하지 않기 위한 신호다.** detail에는
+  // describeHardViolation의 «라벨»만 들어간다(goalSuccessConditions.ts 주석 참고) — 근거
+  // 문장까지 레버마다 넣으면 위반이 넓게 퍼진 계획에서 카드 하나에 같은 문장이 여러 번
+  // 반복된다. KeyLeversCard·renderKeyLeversSection은 이 필드를 모아(some) 카드 전체에
+  // describeHardViolationBasis()를 «한 번만» 붙인다.
+  hardViolation?: boolean;
 }
 
 export interface KeyLeversInput {
@@ -73,11 +83,43 @@ function findScenario(
 
 // 시나리오 하나를 "무슨 일이 일어나는가" 한 조각으로 옮긴다. 고갈이 있으면 금액보다 그쪽이
 // 훨씬 강한 신호이므로 먼저 말한다.
-function describeScenario(scenario: SensitivityScenario, formatValue: (v: number) => string): string {
-  if (scenario.depletionAge !== null) return `${scenario.depletionAge}세 자산 고갈`;
-  if (scenario.unmetSpendingYears > 0) return `생활비 부족 ${scenario.unmetSpendingYears}년`;
-  const sign = scenario.endingAssetsDelta >= 0 ? '+' : '−';
-  return `기대수명 시점 자산 ${sign}${formatValue(Math.abs(scenario.endingAssetsDelta))}`;
+//
+// **HARD 위반은 이 세 갈래 중 하나가 아니라, 세 갈래 «위에» 얹는다.** 이 카드는 민감도
+// 분석과 같은 scenarios 배열을 소비하는 세 번째 소비처다(computeSensitivityAnalysis의
+// SensitivityScenario.hardViolations 주석 참고). 처음 이 필드를 추가했을 때는 화면·PDF
+// 둘만 고쳤는데, depletionAge·unmetSpendingYears가 둘 다 없는 terminalAsset(기말자산 하한)
+// 단독 위반이 세 번째 갈래(기대수명 시점 자산 +N원, 순수 개선 문구)로 떨어져 이 카드에서만
+// 빠져나갔다. 위반이 있으면 그 사실을 반드시 덧붙인다 — 값(+N원 등)까지 지우지 않는 이유는
+// KeyLever.detail이 "근거가 되는 수치를 반드시 포함해야" 하기 때문이다(위 KeyLever 주석).
+// 숫자만 보여주면 좋은 소식으로 읽히고, 위반 문구만 보여주면 근거 수치가 사라진다 — 이
+// 함수는 둘 다 남긴다.
+function describeScenario(
+  scenario: SensitivityScenario,
+  formatValue: (v: number) => string,
+  hardRequirementGoals: SensitivityAnalysis['hardRequirementGoals'],
+): { text: string; violated: boolean } {
+  const fact = scenario.depletionAge !== null
+    ? `${scenario.depletionAge}세 자산 고갈`
+    : scenario.unmetSpendingYears > 0
+      ? `생활비 부족 ${scenario.unmetSpendingYears}년`
+      : (() => {
+        const sign = scenario.endingAssetsDelta >= 0 ? '+' : '−';
+        return `기대수명 시점 자산 ${sign}${formatValue(Math.abs(scenario.endingAssetsDelta))}`;
+      })();
+
+  // 목표 이름 조회는 core의 RETIREMENT_GOAL_LABELS를 직접 쓴다 — 이 파일은 core라 web의
+  // goalCatalog을 참조할 수 없다(AGENTS.md의 계층 분리 원칙). 라벨 자체는 화면·PDF와 같은
+  // 단일 출처(goalSuccessConditions.describeHardViolation)에서 나온다. 근거 문장(결정론
+  // 1회 실행)은 여기 붙이지 않는다 — 그 문장은 카드 전체에 한 번만 낸다(KeyLever.hardViolation
+  // 주석 참고).
+  const violation = describeHardViolation(
+    scenario.hardViolations,
+    hardRequirementGoals,
+    (type) => RETIREMENT_GOAL_LABELS[type],
+  );
+  return violation === null
+    ? { text: fact, violated: false }
+    : { text: `${fact} — ${violation}`, violated: true };
 }
 
 function buildRetirementAgeLever({ sensitivity, formatValue }: KeyLeversInput): KeyLever | null {
@@ -86,8 +128,17 @@ function buildRetirementAgeLever({ sensitivity, formatValue }: KeyLeversInput): 
   if (!later && !earlier) return null;
 
   const parts: string[] = [];
-  if (later) parts.push(`3년 늦추면 ${describeScenario(later, formatValue)}`);
-  if (earlier) parts.push(`3년 앞당기면 ${describeScenario(earlier, formatValue)}`);
+  let hardViolation = false;
+  if (later) {
+    const d = describeScenario(later, formatValue, sensitivity.hardRequirementGoals);
+    parts.push(`3년 늦추면 ${d.text}`);
+    hardViolation = hardViolation || d.violated;
+  }
+  if (earlier) {
+    const d = describeScenario(earlier, formatValue, sensitivity.hardRequirementGoals);
+    parts.push(`3년 앞당기면 ${d.text}`);
+    hardViolation = hardViolation || d.violated;
+  }
 
   return {
     key: 'retirementAge',
@@ -96,6 +147,7 @@ function buildRetirementAgeLever({ sensitivity, formatValue }: KeyLeversInput): 
     detail:
       `${parts.join(' / ')}. 추가 적립·추가 운용기간·인출 지연·연금 공백 단축이 동시에 작용해 ` +
       '다른 어떤 변수보다 효과가 큽니다.',
+    hardViolation,
   };
 }
 
@@ -138,8 +190,17 @@ function buildInvestmentReturnLever({ sensitivity, formatValue }: KeyLeversInput
   if (!up && !down) return null;
 
   const parts: string[] = [];
-  if (up) parts.push(`공격형 가정(주식 9%)이면 ${describeScenario(up, formatValue)}`);
-  if (down) parts.push(`안정형 가정(주식 5%)이면 ${describeScenario(down, formatValue)}`);
+  let hardViolation = false;
+  if (up) {
+    const d = describeScenario(up, formatValue, sensitivity.hardRequirementGoals);
+    parts.push(`공격형 가정(주식 9%)이면 ${d.text}`);
+    hardViolation = hardViolation || d.violated;
+  }
+  if (down) {
+    const d = describeScenario(down, formatValue, sensitivity.hardRequirementGoals);
+    parts.push(`안정형 가정(주식 5%)이면 ${d.text}`);
+    hardViolation = hardViolation || d.violated;
+  }
 
   return {
     key: 'investmentReturn',
@@ -160,6 +221,7 @@ function buildInvestmentReturnLever({ sensitivity, formatValue }: KeyLeversInput
         // 견주면 어긋난다 — 프리셋은 연금 수익률도 함께 갈아끼운다.
         : ` (현재 가정은 사적연금을 포함한 가중평균 총수익률 ${
           Math.round(sensitivity.baselineWeightedTotalReturn * 10) / 10}%입니다).`),
+    hardViolation,
   };
 }
 

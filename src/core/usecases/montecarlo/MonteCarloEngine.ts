@@ -15,7 +15,15 @@ import { buildReturnShockPath } from './returnPath';
 import { percentileOfSorted } from './statistics';
 import { simulationYearCount } from './horizon';
 import { computeMonthlySpendingComposition } from '../MonthlySpendingComposition';
-import { resolveGoalSuccessConditions } from '../goals/goalSuccessConditions';
+import {
+  failsAssetSurvival,
+  failsSpendingTarget,
+  failsTerminalAsset,
+  isSuccessfulTrial,
+  resolveGoalSuccessConditions,
+  resolveHardViolations,
+  type HardGoalOutcome,
+} from '../goals/goalSuccessConditions';
 import { SHORTFALL_EPSILON_MONTHLY } from '../metrics/SimulationMetricsCalculator';
 import { resolveStrategy } from '../strategy/compileStrategy';
 
@@ -67,15 +75,11 @@ function pathForTrial(years: number, config: MonteCarloConfig, index: number) {
   return buildReturnShockPath(years, config.annualStdDev, mulberry32(deriveSeed(config.seed, index)));
 }
 
-// 한 시행의 성공 판정. runMonteCarlo와 estimateSuccessRate가 **반드시** 같은 식을 써야 하므로
-// 함수로 뽑는다 — 두 곳에 복사해 두면 한쪽만 바뀐 채로 조용히 갈라진다.
-//
-// depletionAge > successAge 조건은 지금은 도달할 수 없다: 시뮬레이션 루프가 expectancy에서
-// 끝나므로 depletionAge는 successAge를 넘을 수 없다. 루프 종료 나이와 successAge가 다시
-// 갈라지는 날을 대비한 방어선으로만 남겨 둔다.
-export function isSuccessfulTrial(depletionAge: number | null, successAge: number): boolean {
-  return depletionAge === null || depletionAge > successAge;
-}
+// 한 시행의 성공 판정. 정의는 goalSuccessConditions.ts로 옮겼다 — 민감도 분석의 HARD 위반
+// 판정도 같은 식을 써야 하는데, 이 파일이 이미 goalSuccessConditions를 import하고 있어
+// 반대 방향으로 옮기면 순환 참조가 생긴다. 이 모듈을 계속 import하는 자리(테스트 포함)가
+// 깨지지 않도록 다시 내보낸다.
+export { isSuccessfulTrial };
 
 // 고갈로 판정된 시행들 중 가장 이른 고갈 나이. 호출자가 이미 술어로 걸러 온 배열만 받는다 —
 // 여기서 다시 거르면 술어가 두 벌이 되어 개수와 나이가 갈라진다.
@@ -170,25 +174,28 @@ export function runMonteCarlo(
   // retirement-domain-invariants/monte-carlo.test.ts가 그 사슬 전체를 고정한다.
   const conditions = resolveGoalSuccessConditions(params);
   const { terminalAssetGoal } = conditions;
-  const failsSpending = (t: TrialSummary) =>
-    conditions.requireSpendingTarget && t.firstGoalShortfallAge !== null;
+  // 시행(TrialSummary) → 세 술어의 공용 입력(HardGoalOutcome)으로 옮긴다. 판정식 자체는
+  // goalSuccessConditions.ts 한 곳에만 있다 — 민감도 분석(computeSensitivityAnalysis)도
+  // 같은 함수를 부른다. 여기서 다시 적으면 「이 계획이 HARD를 어겼는가」에 대해 몬테카를로와
+  // 민감도 분석이 서로 다른 답을 하게 된다.
+  const toHardGoalOutcome = (t: TrialSummary): HardGoalOutcome => ({
+    depletionAge: t.depletionAge,
+    endingAssets: t.endingAssets,
+    hasSpendingShortfall: t.firstGoalShortfallAge !== null,
+  });
+  const failsSpending = (t: TrialSummary) => failsSpendingTarget(toHardGoalOutcome(t), conditions);
   // 고갈 **관측** 술어. 여기서 관측값과 목표 판정값을 함께 유도한다 — 두 곳에 같은 식을
   // 복사해 두면 한쪽만 바뀐 채 조용히 갈라진다.
   const depletedTrial = (t: TrialSummary) => !isSuccessfulTrial(t.depletionAge, successAge);
-  const failsSurvival = (t: TrialSummary) =>
-    conditions.requireAssetSurvival && depletedTrial(t);
-  const failsTerminal = (t: TrialSummary) =>
-    terminalAssetGoal > 0 && t.endingAssets < terminalAssetGoal;
+  const failsSurvival = (t: TrialSummary) => failsAssetSurvival(toHardGoalOutcome(t), conditions, successAge);
+  const failsTerminal = (t: TrialSummary) => failsTerminalAsset(toHardGoalOutcome(t), conditions);
 
   const goalSucceeded = trials.filter((t) => !failsSpending(t) && !failsSurvival(t) && !failsTerminal(t));
 
   // 같은 술어를 재사용한다. 여기서 조건을 다시 쓰면 판정하지 않은 조건이 사유로만 보고되어
   // 확률과 화면이 어긋난다(위 goalSucceeded 주석과 같은 이유).
-  const hard = conditions.hardRequirements;
   const hardSucceeded = trials.filter((t) =>
-    (!hard.spendingTarget || !failsSpending(t))
-    && (!hard.assetSurvival || !failsSurvival(t))
-    && (!hard.terminalAsset || !failsTerminal(t)));
+    resolveHardViolations(toHardGoalOutcome(t), conditions, successAge).length === 0);
 
   // 실패 원인별 집계. 위 판정식의 세 술어를 그대로 재사용한다 — 조건을 여기서 다시 쓰면
   // 판정하지 않은 조건이 사유로만 보고되어 확률과 화면이 어긋난다.

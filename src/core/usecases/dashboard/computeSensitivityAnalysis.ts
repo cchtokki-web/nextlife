@@ -5,6 +5,13 @@ import { hasSpendingShortfall } from '../spending/spendingShortfall';
 import { applyYieldPreset, YIELD_PRESET_RATES } from '../scenario/applyYieldPreset';
 import { weightedAverageTotalReturn } from '../returns/portfolioReturn';
 import { PlanAssetStatus, resolvePlanAssetStatus } from './resolvePlanAssetStatus';
+import {
+  type GoalSuccessConditions,
+  type HardGoalOutcome,
+  type HardRequirementAxis,
+  resolveGoalSuccessConditions,
+  resolveHardViolations,
+} from '../goals/goalSuccessConditions';
 
 export interface SensitivityScenario {
   key: 'yieldConservative' | 'yieldBase' | 'yieldAggressive'
@@ -23,6 +30,20 @@ export interface SensitivityScenario {
   // 목표 생활비를 채우지 못한 해의 수. 자산이 남아 있어도 계획이 실패한 해다.
   // depletionAge는 이 해를 잡지 못한다(SimulationYearlyResult.unmetSpending 주석 참조).
   unmetSpendingYears: number;
+  /**
+   * 이 시나리오가 어기는 확정 HARD 요구. 비어 있으면 위반 없음이다.
+   *
+   * **endingAssetsDelta와 독립이다.** 화면·PDF는 시나리오를 depletionAge(고갈이 빠른 순,
+   * 평생 유지는 뒤)로 정렬하고 endingAssetsDelta의 부호로 막대·글자색을 칠한다(초록=개선,
+   * 빨강=악화) — 기말자산이 baseline보다 늘면 그 색이 「개선」으로 읽힌다. 그런데 그 늘어난
+   * 자산으로도 사용자가
+   * 「반드시 지키기」로 못박은 조건(자산 고갈 방지·목표 생활비·기말자산 하한)을 지키지
+   * 못할 수 있다. 판정식은 resolveGoalSuccessConditions·resolveHardViolations 한 곳뿐이다
+   * — MonteCarloEngine의 hardGoalSuccessProbability와 같은 함수를 쓴다. 여기서 새 술어를
+   * 다시 적으면 몬테카를로와 민감도 분석이 "이 계획이 HARD를 어겼는가"에 대해 서로 다른
+   * 답을 하게 된다.
+   */
+  hardViolations: HardRequirementAxis[];
 }
 
 interface ScenarioDefinition {
@@ -110,6 +131,23 @@ export interface SensitivityAnalysis {
   // 시나리오의 unmetSpendingYears와 같은 식으로 센다 — 두 값을 나란히 비교해
   // "결과가 baseline과 정말 같은가"를 판정하는 화면이 있다(SensitivityAnalysisSection).
   baselineUnmetSpendingYears: number;
+  /**
+   * baseline(현재 가정) 자신이 어기는 확정 HARD 요구. SensitivityScenario.hardViolations와
+   * 같은 판정식이다.
+   *
+   * **시나리오와 나란히 봐야 하는 이유.** baseline이 이미 위반 중이면, 같은 위반을 반복하는
+   * 시나리오는 「이 시나리오 때문에 새로 생긴 문제」가 아니라 「오늘 계획도 이미 겪는 문제」다.
+   * 화면·PDF가 이 값을 따로 밝히지 않으면 둘을 구별할 방법이 없다.
+   */
+  baselineHardViolations: HardRequirementAxis[];
+  /**
+   * 확정 HARD 요구 세 축('spendingTarget' 등)을 «켠» 목표 유형. scenarios[].hardViolations와
+   * baselineHardViolations의 각 값이 실제로 어떤 목표를 가리키는지는 여기 없이는 알 수 없다
+   * — resolveGoalSuccessConditions(params).hardRequirementGoals를 그대로 옮긴 값이다.
+   * 화면·PDF가 위반 축을 사람이 읽는 목표 이름으로 바꿀 때 이 값과
+   * hardViolationGoalTypes(goalSuccessConditions.ts)를 함께 쓴다.
+   */
+  hardRequirementGoals: GoalSuccessConditions['hardRequirementGoals'];
   // 화면이 "투자자산이 없어 전부 동일" 분기를 타는 근거. 이 판정도 시나리오와 같은 고정
   // 계획에서 나와야 하므로 여기서 함께 낸다 — 호출부가 다른 실행 결과로 판정하면
   // "표는 갈리는데 안내문은 동일하다고 말하는" 상태가 된다.
@@ -146,7 +184,25 @@ export function computeSensitivityAnalysis(
   const frozen = freezeSpendingPlan(params, engine);
   const baseline = runFrozenPlan(engine, frozen);
   const baselineDepletionAge = baseline.depletionAge;
+  const baselineUnmetSpendingYears = baseline.yearlyResults.filter(hasSpendingShortfall).length;
   const { expectancy } = params.userProfile;
+
+  // **몬테카를로와 같은 함수로 HARD 위반을 묻는다.** runFrozenPlan이 이미 depletionAge·
+  // endingAssets·(원장 기준) 생활비 부족 해 수를 냈으므로 새 시뮬레이션은 필요 없다 —
+  // resolveGoalSuccessConditions·resolveHardViolations만 그 결과에 적용한다. successAge는
+  // MonteCarloEngine과 같은 값(expectancy)이어야 두 경로가 "고갈"을 같은 나이로 잰다.
+  const conditions = resolveGoalSuccessConditions(params);
+  const toHardGoalOutcome = (
+    depletionAge: number | null,
+    endingAssets: number,
+    unmetSpendingYears: number,
+  ): HardGoalOutcome => ({
+    depletionAge,
+    endingAssets,
+    hasSpendingShortfall: unmetSpendingYears > 0,
+  });
+  const hardViolationsOf = (depletionAge: number | null, endingAssets: number, unmetSpendingYears: number) =>
+    resolveHardViolations(toHardGoalOutcome(depletionAge, endingAssets, unmetSpendingYears), conditions, expectancy);
 
   const withSortKey: (SensitivityScenario & { sortAge: number })[] = [];
 
@@ -154,6 +210,7 @@ export function computeSensitivityAnalysis(
     try {
       const result = runFrozenPlan(engine, mapFrozenPlan(frozen, def.buildParams));
       const depletionAge = result.depletionAge;
+      const unmetSpendingYears = result.yearlyResults.filter(hasSpendingShortfall).length;
       withSortKey.push({
         key: def.key,
         label: def.label,
@@ -161,7 +218,8 @@ export function computeSensitivityAnalysis(
         deltaYears: computeDeltaYears(baselineDepletionAge, depletionAge, expectancy),
         endingAssets: result.endingAssets,
         endingAssetsDelta: result.endingAssets - baseline.endingAssets,
-        unmetSpendingYears: result.yearlyResults.filter(hasSpendingShortfall).length,
+        unmetSpendingYears,
+        hardViolations: hardViolationsOf(depletionAge, result.endingAssets, unmetSpendingYears),
         sortAge: depletionAge ?? Infinity,
       });
     } catch {
@@ -177,7 +235,9 @@ export function computeSensitivityAnalysis(
     frozenMonthlySpending: frozen.monthlyTargetSpending,
     baselineDepletionAge,
     baselineEndingAssets: baseline.endingAssets,
-    baselineUnmetSpendingYears: baseline.yearlyResults.filter(hasSpendingShortfall).length,
+    baselineUnmetSpendingYears,
+    baselineHardViolations: hardViolationsOf(baselineDepletionAge, baseline.endingAssets, baselineUnmetSpendingYears),
+    hardRequirementGoals: conditions.hardRequirementGoals,
     baselinePlanAssetStatus: resolvePlanAssetStatus(baseline, params),
     // 고정 계획이 아니라 «원본» params로 잰다. freezeSpendingPlan은 생활비만 고정하고
     // 수익률은 건드리지 않으므로 두 값은 같지만, 이 값이 답하는 질문은 「사용자가 입력한

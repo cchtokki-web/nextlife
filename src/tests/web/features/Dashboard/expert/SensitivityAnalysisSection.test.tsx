@@ -2,6 +2,7 @@ import { describe, test, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { SensitivityAnalysisSection } from '@/web/features/Dashboard/expert/SensitivityAnalysisSection';
 import { SensitivityScenario } from '@/core/usecases/dashboard/computeSensitivityAnalysis';
+import { GoalSuccessConditions } from '@/core/usecases/goals/goalSuccessConditions';
 import { formatManwon } from '@/core/usecases/utility/utilityAnalysis';
 
 function scenario(overrides: Partial<SensitivityScenario> & Pick<SensitivityScenario, 'key' | 'label'>): SensitivityScenario {
@@ -11,6 +12,7 @@ function scenario(overrides: Partial<SensitivityScenario> & Pick<SensitivityScen
     endingAssets: 0,
     endingAssetsDelta: 0,
     unmetSpendingYears: 0,
+    hardViolations: [],
     ...overrides,
   };
 }
@@ -302,5 +304,121 @@ describe('SensitivityAnalysisSection - 투자자산 미보유 계획', () => {
 
     expect(container.querySelectorAll('[data-testid="sensitivity-bar"]')).toHaveLength(6);
     expect(screen.queryByText(/생략/)).not.toBeInTheDocument();
+  });
+});
+
+// **이 스위트가 요구사항의 요점이다.** endingAssetsDelta로 정렬·채색하는 화면에서, HARD
+// 목표를 어긴 시나리오가 기말자산이 늘었다는 이유만으로 초록(개선) 막대로 읽히면 안 된다.
+describe('SensitivityAnalysisSection - HARD 목표 위반 경고', () => {
+  const hardRequirementGoals: GoalSuccessConditions['hardRequirementGoals'] = {
+    spendingTarget: [], assetSurvival: ['ASSET_SURVIVAL'], terminalAsset: [],
+  };
+
+  // 핵심 픽스처: yieldAggressive는 endingAssetsDelta가 +25억(재무적으로 명백히 유리)인데도
+  // 확정 HARD 「자산 고갈 방지」를 어긴다(computeSensitivityAnalysis 테스트의 픽스처와 같은 값).
+  const violatingScenarios: SensitivityScenario[] = [
+    scenario({ key: 'yieldConservative', label: '안정형 가정 (주식 5%)', endingAssets: 1000000000, endingAssetsDelta: -500000000 }),
+    scenario({
+      key: 'yieldAggressive', label: '공격형 가정 (주식 9%)', depletionAge: 85, endingAssets: 4000000000,
+      endingAssetsDelta: 2500000000, hardViolations: ['assetSurvival'],
+    }),
+  ];
+
+  test('재무적으로 유리해도(양의 증감) HARD 위반 시나리오의 막대는 danger 색상이다', () => {
+    const { container } = render(
+      <SensitivityAnalysisSection
+        baselineDepletionAge={90} baselineEndingAssets={1500000000}
+        scenarios={violatingScenarios} hardRequirementGoals={hardRequirementGoals}
+      />
+    );
+
+    const bars = container.querySelectorAll('[data-testid="sensitivity-bar"]');
+    const violating = Array.from(bars).find((b) => b.getAttribute('data-key') === 'yieldAggressive')!;
+
+    // endingAssetsDelta는 양수(+25억)라 위반 판정이 없다면 bg-success가 됐을 것이다.
+    expect(violating.className).toContain('bg-danger');
+    expect(violating.className).not.toContain('bg-success');
+  });
+
+  test('어긴 HARD 목표의 이름을 밝힌다', () => {
+    render(
+      <SensitivityAnalysisSection
+        baselineDepletionAge={90} baselineEndingAssets={1500000000}
+        scenarios={violatingScenarios} hardRequirementGoals={hardRequirementGoals}
+      />
+    );
+
+    // RETIREMENT_GOAL_LABELS.ASSET_SURVIVAL과 RETIREMENT_GOAL_CONSTRAINT_LABELS.HARD가
+    // 위반 행 자체(sensitivity-hard-violation)에 있는지를 본다 — 근거 문장도 같은
+    // 「반드시 지키기」 문구를 포함하므로 전역 getByText로 찾으면 두 곳이 걸린다.
+    const label = screen.getByTestId('sensitivity-hard-violation');
+    expect(label).toHaveTextContent('자산 고갈 방지');
+    expect(label).toHaveTextContent('반드시 지키기');
+  });
+
+  test('위반이 없는 시나리오에는 위반 문구를 붙이지 않는다', () => {
+    render(
+      <SensitivityAnalysisSection
+        baselineDepletionAge={90} baselineEndingAssets={1500000000}
+        scenarios={violatingScenarios} hardRequirementGoals={hardRequirementGoals}
+      />
+    );
+
+    // 픽스처 2개 중 위반은 yieldAggressive 하나뿐이다 — 위반 문구도 하나여야 한다.
+    expect(screen.getAllByTestId('sensitivity-hard-violation')).toHaveLength(1);
+  });
+
+  test('baseline 자신이 위반 중이면 기준선 행에도 같은 방식으로 밝힌다', () => {
+    render(
+      <SensitivityAnalysisSection
+        baselineDepletionAge={70} baselineEndingAssets={1500000000}
+        baselineHardViolations={['assetSurvival']}
+        scenarios={[scenario({ key: 'yieldConservative', label: '안정형 가정 (주식 5%)' })]}
+        hardRequirementGoals={hardRequirementGoals}
+      />
+    );
+
+    const baselineRow = screen.getByTestId('sensitivity-baseline-row');
+    expect(baselineRow).toHaveTextContent('자산 고갈 방지');
+  });
+
+  // **이 두 테스트가 리뷰 재지적의 요점이다.** 판정 근거("결정론으로 1회 실행한 판정")를
+  // 위반 라벨마다 붙이면, 표는 최대 8행(시나리오 7 + 기준선)이라 위반이 넓게 퍼진 계획에서
+  // 같은 문장이 페이지 하나에 여러 번 찍혀 두 번째부터는 읽히지 않는다. 근거는 표 전체에
+  // «한 번만» 나야 한다.
+  test('여러 행이 위반해도 판정 근거 문장은 표 전체에 한 번만 나온다', () => {
+    const twoViolations: SensitivityScenario[] = [
+      scenario({
+        key: 'yieldConservative', label: '안정형 가정 (주식 5%)', depletionAge: 82,
+        endingAssets: 500000000, endingAssetsDelta: -1000000000, hardViolations: ['assetSurvival'],
+      }),
+      scenario({
+        key: 'yieldAggressive', label: '공격형 가정 (주식 9%)', depletionAge: 85,
+        endingAssets: 4000000000, endingAssetsDelta: 2500000000, hardViolations: ['assetSurvival'],
+      }),
+    ];
+    render(
+      <SensitivityAnalysisSection
+        baselineDepletionAge={90} baselineEndingAssets={1500000000}
+        baselineHardViolations={['assetSurvival']}
+        scenarios={twoViolations} hardRequirementGoals={hardRequirementGoals}
+      />
+    );
+
+    // 위반 라벨 자체는 (시나리오 2 + 기준선 1 =) 3곳에 있어야 하지만
+    expect(screen.getAllByTestId('sensitivity-hard-violation')).toHaveLength(3);
+    // 근거 문장은 정확히 한 번이다.
+    expect(screen.getAllByTestId('sensitivity-hard-violation-basis')).toHaveLength(1);
+  });
+
+  test('위반이 하나도 없으면 판정 근거 문장을 렌더하지 않는다', () => {
+    render(
+      <SensitivityAnalysisSection
+        baselineDepletionAge={88} baselineEndingAssets={2500000000}
+        scenarios={scenarios} hardRequirementGoals={hardRequirementGoals}
+      />
+    );
+
+    expect(screen.queryByTestId('sensitivity-hard-violation-basis')).not.toBeInTheDocument();
   });
 });

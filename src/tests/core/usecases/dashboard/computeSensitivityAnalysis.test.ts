@@ -406,4 +406,152 @@ describe('computeSensitivityAnalysis', () => {
       expect(row.endingAssets).toBeCloseTo(expected.endingAssets, 6);
     });
   });
+
+  // **이 블록이 「은퇴 ±3년 같은 민감도 결과에서 HARD 목표를 위반하는 시나리오는 재무적으로
+  // 유리해도 별도의 경고 상태로 표시한다」는 요구의 근거다.**
+  //
+  // 화면과 PDF는 endingAssetsDelta로 정렬·채색한다. 그래서 시나리오가 재무적으로 유리하면
+  // (기말자산이 baseline보다 크면) 초록 막대로 「개선」처럼 읽힌다 — 그 시나리오가 사용자가
+  // 「반드시 지키기」로 못박은 HARD 조건(자산 고갈 방지·목표 생활비·기말자산 하한)을 어겨도
+  // 마찬가지다. hardViolations는 그 경우를 판정에서 «가려내는» 필드다.
+  describe('HARD 목표 위반 감지', () => {
+    // 판정식은 goalSuccessConditions.resolveHardViolations 하나뿐이어야 한다
+    // (MonteCarloEngine이 hardGoalSuccessProbability를 내는 데 쓰는 것과 같은 함수). 여기서
+    // 새 술어를 다시 적으면 몬테카를로와 민감도 분석이 「이 계획이 HARD를 어겼는가」에 대해
+    // 서로 다른 답을 하게 된다.
+    test('목표를 하나도 고르지 않은(legacy) 계획은 모든 시나리오·기준선의 hardViolations가 빈 배열이다', () => {
+      const engine = makeMockEngine({
+        yieldConservative: 40, yieldBase: 88, yieldAggressive: 88, inflationUp: 88, inflationDown: 88,
+        retirementEarlier: 88, retirementLater: 88,
+      }, makeResult(40));
+      // legacy 계획은 requireAssetSurvival=true지만 hardRequirements.assetSurvival은 항상
+      // false다(legacy_plan 갈래는 확정 HARD 목표가 없다) — 그래서 40세라는 이른 고갈도
+      // 위반으로 잡히면 안 된다. 이 값 자체가 회귀 대상이다.
+      const { scenarios, baselineHardViolations } = computeSensitivityAnalysis(baseParams, engine);
+
+      scenarios.forEach((s) => expect(s.hardViolations).toEqual([]));
+      expect(baselineHardViolations).toEqual([]);
+    });
+
+    // **핵심 픽스처.** yieldAggressive는 baseline보다 기말자산이 25억원 더 많다(재무적으로
+    // 명백히 유리) — 그런데도 고갈 나이(85세)가 확정 HARD 「자산 고갈 방지」가 요구하는
+    // 기대수명(90세) 이전이라 그 조건을 어긴다. endingAssetsDelta만 보는 화면은 이 행을
+    // 초록 막대로 그려 「개선」이라 말했을 것이다.
+    test('기말자산이 baseline보다 늘어난(재무적으로 유리한) 시나리오도 확정 HARD 자산 고갈 방지를 어기면 hardViolations에 담긴다', () => {
+      const params: SimulationParams = {
+        ...baseParams,
+        retirementGoals: [{ type: 'ASSET_SURVIVAL', priority: 1, constraintType: 'HARD' }],
+      };
+      const baselineEndingAssets = 1500000000;
+      const runSingle = vi.fn((p: SimulationParams) => {
+        if (p.yieldPreset === 'aggressive') return makeResult(85, { endingAssets: 4000000000 });
+        if (p.yieldPreset === 'conservative') return makeResult(null, { endingAssets: 1000000000 });
+        if (p.yieldPreset === 'base') return makeResult(null, { endingAssets: baselineEndingAssets });
+        if (p.inflationRate === 3) return makeResult(null, { endingAssets: baselineEndingAssets });
+        if (p.inflationRate === 1) return makeResult(null, { endingAssets: baselineEndingAssets });
+        if (p.userProfile.retirementAge === 57) return makeResult(null, { endingAssets: baselineEndingAssets });
+        if (p.userProfile.retirementAge === 63) return makeResult(null, { endingAssets: baselineEndingAssets });
+        return makeResult(null, { endingAssets: baselineEndingAssets }); // baseline
+      });
+      const engine = { runSingle } as unknown as SimulationEngine;
+
+      const { scenarios } = computeSensitivityAnalysis(params, engine);
+      const aggressive = scenarios.find((s) => s.key === 'yieldAggressive')!;
+
+      expect(aggressive.endingAssetsDelta).toBeGreaterThan(0); // 재무적으로 유리하다는 전제
+      expect(aggressive.depletionAge).toBe(85); // 90세(expectancy) 이전에 고갈된다는 전제
+      expect(aggressive.hardViolations).toEqual(['assetSurvival']);
+
+      // 대조군: 위반하지 않는 나머지 시나리오는 빈 배열이다 — 모든 시나리오가 무조건
+      // 'assetSurvival'을 받는 버그였다면 이 assertion이 잡는다.
+      const conservative = scenarios.find((s) => s.key === 'yieldConservative')!;
+      expect(conservative.hardViolations).toEqual([]);
+    });
+
+    // 위와 같은 depletionAge=85(<expectancy 90)이지만 이번에는 자산 고갈 방지를 SOFT로만
+    // 골랐다 — hardRequirements.assetSurvival이 꺼져 있으므로 위반으로 잡히면 안 된다.
+    // hardViolations가 「고갈했는가」라는 원 술어가 아니라 «확정 HARD 게이트»로 걸러진
+    // 결과라는 것을 이 테스트가 확인한다.
+    test('같은 조기 고갈이라도 SOFT로 고른 목표는 hardViolations에 담기지 않는다', () => {
+      const params: SimulationParams = {
+        ...baseParams,
+        retirementGoals: [{ type: 'ASSET_SURVIVAL', priority: 1, constraintType: 'SOFT' }],
+      };
+      const runSingle = vi.fn((p: SimulationParams) => {
+        if (p.yieldPreset === 'aggressive') return makeResult(85, { endingAssets: 4000000000 });
+        return makeResult(null, { endingAssets: 1500000000 });
+      });
+      const engine = { runSingle } as unknown as SimulationEngine;
+
+      const { scenarios } = computeSensitivityAnalysis(params, engine);
+      expect(scenarios.find((s) => s.key === 'yieldAggressive')!.hardViolations).toEqual([]);
+    });
+
+    // 목표 생활비 축: 기말자산은 baseline보다 늘었지만(재무적으로 유리) 생활비 부족 해가
+    // 발생해 확정 HARD 「생활비 안정」을 어긴다.
+    test('생활비 부족 해가 있으면 기말자산이 늘어도 확정 HARD 생활비 조건을 위반으로 담는다', () => {
+      const params: SimulationParams = {
+        ...baseParams,
+        retirementGoals: [{
+          type: 'LIVING_EXPENSE_STABILITY', priority: 1, constraintType: 'HARD',
+          targetValue: 3000000, targetValueSource: 'user',
+        }],
+      };
+      const shortfallYears = [makeYearlyResult({ age: 80, unmetSpending: 500000 })];
+      const runSingle = vi.fn((p: SimulationParams) => {
+        if (p.yieldPreset === 'aggressive') {
+          return makeResult(null, { endingAssets: 4000000000, yearlyResults: shortfallYears });
+        }
+        return makeResult(null, { endingAssets: 1500000000 });
+      });
+      const engine = { runSingle } as unknown as SimulationEngine;
+
+      const { scenarios } = computeSensitivityAnalysis(params, engine);
+      const aggressive = scenarios.find((s) => s.key === 'yieldAggressive')!;
+
+      expect(aggressive.endingAssetsDelta).toBeGreaterThan(0);
+      expect(aggressive.unmetSpendingYears).toBeGreaterThan(0);
+      expect(aggressive.hardViolations).toEqual(['spendingTarget']);
+    });
+
+    // 기말자산 하한 축: 상속 목표액을 확정 HARD로 골랐는데 시나리오의 기말자산이 그 금액에
+    // 못 미친다. baseline보다는 늘었지만(재무적으로 유리) 그 사실이 하한 미달을 가리면 안 된다.
+    test('확정 HARD 기말자산 하한에 못 미치면 baseline보다 늘어도 위반으로 담는다', () => {
+      const targetBequest = 2000000000;
+      const params: SimulationParams = {
+        ...baseParams,
+        retirementGoals: [{
+          type: 'INHERITANCE', priority: 1, constraintType: 'HARD',
+          targetValue: targetBequest, targetValueSource: 'user',
+        }],
+      };
+      const baselineEndingAssets = 500000000;
+      const runSingle = vi.fn((p: SimulationParams) => {
+        if (p.yieldPreset === 'aggressive') return makeResult(null, { endingAssets: 1200000000 });
+        return makeResult(null, { endingAssets: baselineEndingAssets });
+      });
+      const engine = { runSingle } as unknown as SimulationEngine;
+
+      const { scenarios } = computeSensitivityAnalysis(params, engine);
+      const aggressive = scenarios.find((s) => s.key === 'yieldAggressive')!;
+
+      expect(aggressive.endingAssetsDelta).toBeGreaterThan(0); // baseline(5억)보다 늘었다
+      expect(aggressive.endingAssets).toBeLessThan(targetBequest); // 그래도 하한(20억) 미달
+      expect(aggressive.hardViolations).toEqual(['terminalAsset']);
+    });
+
+    // baseline 자신이 이미 위반 중이면, 같은 위반을 반복하는 시나리오는 「새로운 나쁜 소식」이
+    // 아니다 — 그 구별을 위해 baselineHardViolations를 시나리오와 나란히 보고한다.
+    test('baseline 자신의 위반도 baselineHardViolations로 함께 보고한다', () => {
+      const params: SimulationParams = {
+        ...baseParams,
+        retirementGoals: [{ type: 'ASSET_SURVIVAL', priority: 1, constraintType: 'HARD' }],
+      };
+      const runSingle = vi.fn((_p: SimulationParams) => makeResult(70, { endingAssets: 100000000 }));
+      const engine = { runSingle } as unknown as SimulationEngine;
+
+      const { baselineHardViolations } = computeSensitivityAnalysis(params, engine);
+      expect(baselineHardViolations).toEqual(['assetSurvival']);
+    });
+  });
 });

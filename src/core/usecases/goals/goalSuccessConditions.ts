@@ -1,4 +1,5 @@
 import {
+  RETIREMENT_GOAL_CONSTRAINT_LABELS,
   confirmedTargetValue,
   hardGoalAwaitsTargetConfirmation,
   normalizeRetirementGoals,
@@ -283,4 +284,159 @@ function terminalAssetGoalOf(
   }
 
   return { value: Math.max(0, params.userProfile.targetBequest ?? 0), source: null };
+}
+
+// successAge까지 자산이 고갈되지 않았는가.
+//
+// runMonteCarlo·estimateSuccessRate·computeSensitivityAnalysis(민감도 시나리오·기준선)가
+// **반드시** 같은 식을 써야 하므로 여기 하나에만 둔다 — 복사해 두면 한쪽만 바뀐 채로
+// 조용히 갈라진다. (예전에는 MonteCarloEngine.ts에만 있었다. 민감도 분석의 HARD 위반
+// 판정이 같은 「고갈 여부」를 물어야 하면서 그쪽으로 옮겼다 — MonteCarloEngine이 이 파일을
+// 이미 import하고 있어 방향을 뒤집으면 순환 참조가 생긴다.)
+//
+// depletionAge > successAge 조건은 지금은 도달할 수 없다: 시뮬레이션 루프가 expectancy에서
+// 끝나므로 depletionAge는 successAge를 넘을 수 없다. 루프 종료 나이와 successAge가 다시
+// 갈라지는 날을 대비한 방어선으로만 남겨 둔다.
+export function isSuccessfulTrial(depletionAge: number | null, successAge: number): boolean {
+  return depletionAge === null || depletionAge > successAge;
+}
+
+/**
+ * 확정 HARD 요구 판정에 필요한 최소 입력.
+ *
+ * 몬테카를로 시행(MonteCarloEngine.TrialSummary)과 민감도 분석 시나리오
+ * (computeSensitivityAnalysis가 runFrozenPlan으로 이미 얻은 결과) 둘 다 이 세 필드로
+ * 표현할 수 있다 — 어느 쪽도 상대를 위해 자기 자료구조를 다시 빚지 않는다. 시행은
+ * TrialSummary에서, 시나리오는 StrategySimulationResult에서 값을 그대로 옮겨 채운다.
+ */
+export interface HardGoalOutcome {
+  depletionAge: number | null;
+  endingAssets: number;
+  /**
+   * 생활비 목표를 채우지 못한 순간이 있었는가. **그 기준은 호출자가 정한다.**
+   *
+   * 몬테카를로는 목표 재구성(computeMonthlySpendingComposition) 기준의 firstGoalShortfallAge
+   * (엡실론 있음, 사용자의 targetMonthlySpending 대비)를 쓰고, 민감도 분석은 원장 기준의
+   * unmetSpendingYears(엡실론 없음, spendingShortfall.hasSpendingShortfall)를 쓴다. 두
+   * 정의가 서로 다른 질문에 답한다는 것은 spendingShortfall.ts가 이미 문서화했다 —
+   * 여기서 하나로 합치면 둘 중 하나가 답하던 질문이 바뀐다.
+   */
+  hasSpendingShortfall: boolean;
+}
+
+export function failsSpendingTarget(outcome: HardGoalOutcome, conditions: GoalSuccessConditions): boolean {
+  return conditions.requireSpendingTarget && outcome.hasSpendingShortfall;
+}
+
+export function failsAssetSurvival(
+  outcome: HardGoalOutcome,
+  conditions: GoalSuccessConditions,
+  successAge: number,
+): boolean {
+  return conditions.requireAssetSurvival && !isSuccessfulTrial(outcome.depletionAge, successAge);
+}
+
+export function failsTerminalAsset(outcome: HardGoalOutcome, conditions: GoalSuccessConditions): boolean {
+  return conditions.terminalAssetGoal > 0 && outcome.endingAssets < conditions.terminalAssetGoal;
+}
+
+/** hardRequirements의 세 축과 같은 키. */
+export type HardRequirementAxis = 'spendingTarget' | 'assetSurvival' | 'terminalAsset';
+
+/**
+ * outcome이 «확정 HARD 요구» 중 실제로 어긴 축의 목록. 비어 있으면 위반이 없다.
+ *
+ * **HARD로 걸리지 않은 축은 실패해도 여기 담기지 않는다.** failsX 술어는
+ * requireX(«판정할 것인가»)로만 걸리지만, 이 함수는 그 위에 hardRequirements(«확정 HARD가
+ * 요구했는가»)를 한 번 더 건다 — SOFT로 고르거나 아예 고르지 않은 조건까지 위반으로 세면,
+ * 사용자가 요구한 적 없는 조건이 「경고」로 표시된다.
+ */
+export function resolveHardViolations(
+  outcome: HardGoalOutcome,
+  conditions: GoalSuccessConditions,
+  successAge: number,
+): HardRequirementAxis[] {
+  const { hardRequirements } = conditions;
+  const violations: HardRequirementAxis[] = [];
+  if (hardRequirements.spendingTarget && failsSpendingTarget(outcome, conditions)) {
+    violations.push('spendingTarget');
+  }
+  if (hardRequirements.assetSurvival && failsAssetSurvival(outcome, conditions, successAge)) {
+    violations.push('assetSurvival');
+  }
+  if (hardRequirements.terminalAsset && failsTerminalAsset(outcome, conditions)) {
+    violations.push('terminalAsset');
+  }
+  return violations;
+}
+
+/**
+ * 위반한 HARD 축들을 «그 축을 켠» 목표 유형 목록으로 바꾼다. 화면·PDF가 "무엇을 어겼는가"를
+ * 사람이 읽는 이름으로 보여줄 때 쓴다 — 축 이름('assetSurvival')을 그대로 보여주면 사용자가
+ * 목표 화면에서 고른 이름(「자산 고갈 방지」)과 어긋난다.
+ *
+ * 여러 축이 같은 목표에서 왔거나(오늘은 일어나지 않지만 hardRequirementGoals의 계약이
+ * 그 가능성을 막지 않는다) 한 목표가 여러 축에 걸치는 경우를 대비해 중복은 제거한다.
+ */
+export function hardViolationGoalTypes(
+  axes: readonly HardRequirementAxis[],
+  hardRequirementGoals: GoalSuccessConditions['hardRequirementGoals'],
+): RetirementGoalType[] {
+  const types = axes.flatMap((axis) => hardRequirementGoals[axis]);
+  return Array.from(new Set(types));
+}
+
+/**
+ * 위반한 HARD 축들을 사람이 읽는 «짧은 라벨»로 바꾼다. 판정 근거(결정론·1회 실행)는 여기
+ * 넣지 않는다 — describeHardViolationBasis()가 그 역할이다.
+ *
+ * **세 소비처가 모두 같은 라벨을 쓴다** — 화면(SensitivityAnalysisSection),
+ * PDF(renderSensitivityTableSection), 「무엇부터 바꿔야 하나」 카드(computeKeyLevers →
+ * KeyLeversCard·renderKeyLeversSection). 처음 이 기능을 만들 때는 소비처가 둘인 줄 알고
+ * 화면·PDF에 각자 문장을 심었는데, 세 번째 소비처(computeKeyLevers)가 나타나자 그 카드는
+ * endingAssetsDelta만 보고 위반 시나리오를 "기대수명 시점 자산 +N원"이라는 순수 개선 문구로
+ * 표시했다 — 바로 아래 민감도 표는 같은 시나리오를 위반으로 표시하는데도. 문장을 한 곳에
+ * 모아야 이런 부분적 반영이 다시 생기지 않는다.
+ *
+ * **판정 근거 문장을 라벨에서 떼어낸 이유.** 민감도 표는 시나리오·기준선까지 최대 8행을
+ * 그리고, 그 옆의 「무엇부터 바꿔야 하나」 카드도 레버마다 위반을 적을 수 있다 — 위반이
+ * 넓게 퍼진 계획은 같은 25어 안팎의 괄호가 한 페이지에 열 번 가까이 반복됐다. 두 번째부터는
+ * 읽히지 않으니, 문구를 추가한 목적(판정 근거를 밝힌다) 자체가 무효가 된다. 그래서 라벨은
+ * 항목마다, 근거 문장(describeHardViolationBasis)은 표·카드마다 «한 번만» 쓴다.
+ *
+ * **목표 이름 조회는 호출자가 넘긴다.** 이 파일은 core라 web의 goalCatalog을 참조할 수
+ * 없다(AGENTS.md의 계층 분리 원칙). computeKeyLevers.ts(core)는 RETIREMENT_GOAL_LABELS를
+ * 직접 쓰고, 화면·PDF는 각자의 표준 조회 창구(retirementGoalDefinition·goalLabel)를
+ * 넘긴다 — 셋 다 결국 RETIREMENT_GOAL_LABELS 하나로 귀결되는 값이라 이름이 갈리지 않는다.
+ */
+export function describeHardViolation(
+  axes: readonly HardRequirementAxis[],
+  hardRequirementGoals: GoalSuccessConditions['hardRequirementGoals'],
+  labelOf: (type: RetirementGoalType) => string,
+): string | null {
+  if (axes.length === 0) return null;
+  const labels = hardViolationGoalTypes(axes, hardRequirementGoals).map(labelOf);
+  if (labels.length === 0) return null;
+  return `「${RETIREMENT_GOAL_CONSTRAINT_LABELS.HARD}」 위반: ${labels.join(', ')}`;
+}
+
+/**
+ * describeHardViolation 라벨이 무엇을 근거로 하는지 밝히는 한 문장. **위반이 하나라도 있는
+ * 표·카드마다 정확히 한 번만** 인쇄한다 — 위반 행마다 반복하지 않는다(위 describeHardViolation
+ * 주석 참고). 화면·PDF·「무엇부터 바꿔야 하나」 카드가 모두 이 문장을 그대로 쓴다.
+ *
+ * **"결정론 1회 실행 판정"이라고 스스로 밝히는 이유.** 이 라벨은 몬테카를로의
+ * hardGoalSuccessProbability(1,000회 확률)와 같은 화면·같은 계획에 나란히 놓일 수 있다.
+ * 두 판정은 기준이 다르다 — hasSpendingShortfall(이 라벨의 근거)은 원장 기준(엡실론 없음),
+ * 몬테카를로의 firstGoalShortfallAge는 재구성 기준(월 1만원 엡실론)이다
+ * (spendingShortfall.ts의 AUDIT-003). 그래서 생활비가 엡실론 미만으로만 모자란 해가 있는
+ * 계획은 몬테카를로에서 "HARD 목표 판정 확률 100%"이면서 이 라벨에서는 "위반"으로 보일 수
+ * 있다. 그것을 "같은 질문에 다른 답"으로 읽지 않도록, 이 문장은 스스로 «그 시나리오 하나를
+ * 결정론으로 1회 실행한 판정»이라고 밝힌다 — 몬테카를로처럼 여러 시행을 모은 확률이 아니다.
+ * 두 술어를 하나로 합치는 것은 이 함수의 범위가 아니다(spendingShortfall.ts와 같은 이유로,
+ * 그러면 기존 지표 중 하나가 답하는 질문이 바뀐다).
+ */
+export function describeHardViolationBasis(): string {
+  return '위 「반드시 지키기」 위반 표시는 그 시나리오를 결정론으로 1회 실행한 판정입니다 '
+    + '— 몬테카를로처럼 여러 시행을 모은 확률이 아닙니다.';
 }

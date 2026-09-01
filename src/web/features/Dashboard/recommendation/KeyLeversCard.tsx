@@ -3,6 +3,7 @@
 import { ListOrdered } from 'lucide-react';
 import GlassCard from '../../../components/GlassCard';
 import { KeyLever } from '../../../../core/usecases/dashboard/computeKeyLevers';
+import { describeHardViolationBasis } from '../../../../core/usecases/goals/goalSuccessConditions';
 
 interface KeyLeversCardProps {
   levers: KeyLever[];
@@ -16,6 +17,12 @@ interface KeyLeversCardProps {
 export function KeyLeversCard({ levers }: KeyLeversCardProps) {
   if (levers.length === 0) return null;
 
+  // 판정 근거(결정론 1회 실행)는 레버마다 반복하지 않는다 — 레버는 최대 5개고 은퇴 시점·
+  // 투자수익률 둘 다 위반을 담을 수 있어, 위반이 넓게 퍼진 계획에서는 카드 하나에 같은
+  // 문장이 여러 번 찍힌다. 위반이 하나라도 있으면 카드 전체에 «한 번만» 낸다. 위반이 전혀
+  // 없으면 내지 않는다 — 표시된 적 없는 라벨의 근거를 설명하는 문장이 된다.
+  const anyHardViolation = levers.some((lever) => lever.hardViolation);
+
   return (
     <GlassCard>
       <h3 className="mb-1 flex items-center gap-2 text-base font-semibold">
@@ -25,6 +32,11 @@ export function KeyLeversCard({ levers }: KeyLeversCardProps) {
       <p className="mb-3 text-xs text-foreground-muted">
         이미 계산된 결과에서 영향이 큰 순서로 정리했습니다. 아래로 갈수록 효과가 작습니다.
       </p>
+      {anyHardViolation && (
+        <p className="mb-3 text-xs text-foreground-muted" data-testid="key-levers-hard-violation-basis">
+          {describeHardViolationBasis()}
+        </p>
+      )}
       <ol className="flex flex-col gap-3">
         {levers.map((lever, index) => (
           <li key={lever.key} className="flex gap-3 border-b border-card-border pb-3 last:border-none last:pb-0">

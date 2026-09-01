@@ -22,7 +22,10 @@ import { formatManwon } from '../../../core/usecases/utility/utilityAnalysis';
 import { MonteCarloResult } from '../../../core/entities/montecarlo';
 import {
   GoalSuccessConditions,
+  HardRequirementAxis,
   describeGoalSuccessCriteria,
+  describeHardViolation as describeHardViolationCore,
+  describeHardViolationBasis,
 } from '../../../core/usecases/goals/goalSuccessConditions';
 import { describeUnscoredGoals } from '../../../core/usecases/goals/goalScoreSupport';
 import { SequenceRiskResult } from '../../../core/usecases/montecarlo/sequenceRisk';
@@ -138,10 +141,18 @@ export function renderKeyLeversSection(levers: KeyLever[]): string {
     )
     .join('');
 
+  // 화면(KeyLeversCard)과 같은 판단 — 판정 근거(결정론 1회 실행)는 레버마다 반복하지 않고
+  // 섹션 전체에 한 번만 낸다. 위반이 전혀 없으면 내지 않는다.
+  const anyHardViolation = levers.some((lever) => lever.hardViolation);
+  const violationBasisHtml = anyHardViolation
+    ? `<p style="margin: 0 0 8px; font-size: 10.5px; color: #64748b;">${describeHardViolationBasis()}</p>`
+    : '';
+
   return `
     <div style="border: 1px solid #e2e8f0; background-color: #f8fafc; border-radius: 8px; padding: 12px 14px; margin-bottom: 12px;">
       <p style="margin: 0 0 2px; font-size: 12.5px; font-weight: 700; color: #0f172a;">무엇부터 바꿔야 하나</p>
       <p style="margin: 0 0 8px; font-size: 10.5px; color: #64748b;">이미 계산된 결과에서 영향이 큰 순서로 정리했습니다. 아래로 갈수록 효과가 작습니다.</p>
+      ${violationBasisHtml}
       <ol style="margin: 0; padding-left: 16px;">${rows}</ol>
     </div>
   `;
@@ -721,6 +732,18 @@ export function renderExecutionRoadmapSection(roadmap: ExecutionRoadmap): string
 // 투자자산이 없는 계획에서는 그 기말자산마저 전부 0원이라 모든 행이 글자 하나까지 같아진다.
 // 화면(SensitivityAnalysisSection)과 같은 규칙으로, baseline과 결과가 완전히 동일한 행은
 // 접고 몇 개를 접었는지 밝힌다 — 두 문서가 서로 다른 표를 보여주면 안 된다.
+// 위반한 HARD 축들을 사람이 읽는 문장으로 바꾼다. 판정식·문장은 core의 describeHardViolation
+// 한 곳뿐이다 — 화면·PDF·「무엇부터 바꿔야 하나」 카드(computeKeyLevers) 세 소비처가 모두
+// 그 함수를 부른다(goalSuccessConditions.ts의 describeHardViolation 주석 참고). 여기서는
+// 이 파일의 표준 목표 이름 조회 창구(goalLabel)만 넘긴다.
+function describeHardViolation(
+  axes: readonly HardRequirementAxis[],
+  hardRequirementGoals: GoalSuccessConditions['hardRequirementGoals'] | undefined,
+): string | null {
+  if (hardRequirementGoals === undefined) return null;
+  return describeHardViolationCore(axes, hardRequirementGoals, goalLabel);
+}
+
 export function renderSensitivityTableSection(
   scenarios: SensitivityScenario[],
   baseline?: {
@@ -737,7 +760,16 @@ export function renderSensitivityTableSection(
     // 기준선의 기말자산. 표 안에 「현재 가정 (기준)」 행으로 한 줄 세운다 — 산문 속 금액과
     // 표 속 금액을 눈으로 이어 붙여야 비교가 되면 대부분 이어 붙이지 않는다.
     endingAssets?: number;
-  }
+    // baseline(현재 가정) 자신이 어기는 확정 HARD 요구. 화면과 같은 이유로 시나리오와
+    // 나란히 밝힌다 — 밝히지 않으면 "이 시나리오 때문에 새로 생긴 문제"와 "오늘 계획도
+    // 이미 겪는 문제"를 구별할 수 없다.
+    hardViolations?: HardRequirementAxis[];
+  },
+  // scenarios[].hardViolations·baseline.hardViolations의 각 축을 사람이 읽는 목표 이름으로
+  // 바꾸는 데 쓴다. computeSensitivityAnalysis가 resolveGoalSuccessConditions 한 곳에서
+  // 얻은 값을 그대로 넘긴다 — 여기서 다시 계산하면 「반드시 지키기」 목표의 정의가 화면과
+  // 갈릴 수 있다.
+  hardRequirementGoals?: GoalSuccessConditions['hardRequirementGoals'],
 ): string {
   if (scenarios.length === 0) return '';
 
@@ -745,6 +777,15 @@ export function renderSensitivityTableSection(
   const frozenNoteHtml = baseline?.frozenMonthlySpending === undefined
     ? ''
     : `<p style="margin: 0 0 6px; font-size: 10.5px; color: #64748b;">${scenarios.length}개 시나리오 모두 <strong>월 생활비 ${formatManwon(baseline.frozenMonthlySpending)}을 고정</strong>한 채 가정 하나만 바꾼 결과입니다.</p>`;
+  // 근거 문장(결정론 1회 실행)은 위반 라벨마다 반복하지 않는다 — 표는 최대 8행(시나리오 7 +
+  // 기준선)이라 위반이 넓게 퍼진 계획에서는 같은 문장이 페이지 하나에 여러 번 찍혀 두 번째부터는
+  // 읽히지 않는다. 위반이 하나라도 있을 때 이 표를 위해 «한 번만» 낸다. 위반이 없으면 내지
+  // 않는다 — 표시된 적 없는 라벨의 근거를 설명하는 문장이 된다.
+  const anyHardViolation = (baseline?.hardViolations?.length ?? 0) > 0
+    || scenarios.some((s) => s.hardViolations.length > 0);
+  const violationBasisNoteHtml = anyHardViolation
+    ? `<p style="margin: 0 0 6px; font-size: 10.5px; color: #64748b;">${describeHardViolationBasis()}</p>`
+    : '';
   const visibleScenarios = noInvestableAsset
     ? scenarios.filter(
         (s) => !(s.endingAssetsDelta === 0
@@ -761,11 +802,15 @@ export function renderSensitivityTableSection(
 
   // 기준선 행. 투자자산이 없는 계획에서는 모든 값이 0원이라 「0원」을 한 번 더 반복할 뿐이므로
   // 그리지 않는다(화면과 같은 판단). 자리는 표의 맨 위 — 비교 «대상»이 아니라 비교의 «기준»이다.
+  const baselineViolationText = describeHardViolation(baseline?.hardViolations ?? [], hardRequirementGoals);
+  const baselineViolationHtml = baselineViolationText === null
+    ? ''
+    : `<div style="margin-top: 3px; color: #dc2626; font-size: 10px; font-weight: 700; line-height: 1.35;">${baselineViolationText}</div>`;
   const baselineRowHtml = noInvestableAsset || baseline?.endingAssets === undefined
     ? ''
     : `<tr style="background-color: #f8fafc;">
          <td style="border: 1px solid #cbd5e1; padding: 8px 9px; font-size: 11px; line-height: 1.4; vertical-align: middle; font-weight: 700; color: #0f172a;">현재 가정 (기준)</td>
-         <td style="border: 1px solid #cbd5e1; padding: 8px 9px; font-size: 11px; line-height: 1.4; text-align: right; vertical-align: middle; font-weight: 700;">${formatManwon(baseline.endingAssets)}</td>
+         <td style="border: 1px solid #cbd5e1; padding: 8px 9px; font-size: 11px; line-height: 1.4; text-align: right; vertical-align: middle; font-weight: 700;"><div style="white-space: nowrap;">${formatManwon(baseline.endingAssets)}</div>${baselineViolationHtml}</td>
          <td style="border: 1px solid #cbd5e1; padding: 8px 9px; font-size: 11px; line-height: 1.4; text-align: right; vertical-align: middle; white-space: nowrap;">${formatDepletionAgeText(baseline.depletionAge)}</td>
        </tr>`;
 
@@ -778,17 +823,24 @@ export function renderSensitivityTableSection(
   const rowsHtml = visibleScenarios
     .map((s) => {
       const depletionText = formatDepletionAgeText(s.depletionAge);
-      const deltaColor = s.endingAssetsDelta < 0 ? '#dc2626' : '#059669';
+      const violationText = describeHardViolation(s.hardViolations, hardRequirementGoals);
+      // **HARD 위반은 증감의 부호를 덮어쓴다.** endingAssetsDelta가 양수(재무적으로 유리)여도
+      // 사용자가 「반드시 지키기」로 못박은 조건을 어겼다면 그 사실이 우선이다 — 아니면 위반
+      // 시나리오가 초록(개선)으로 인쇄되어 정확히 이 기능이 막으려는 오독을 만든다.
+      const deltaColor = violationText !== null || s.endingAssetsDelta < 0 ? '#dc2626' : '#059669';
       const deltaText = s.endingAssetsDelta === 0
         ? ''
         : ` <span style="color: ${deltaColor};">(${s.endingAssetsDelta > 0 ? '+' : ''}${formatManwon(s.endingAssetsDelta)})</span>`;
       const unmetText = s.unmetSpendingYears > 0
         ? `<div style="margin-top: 3px; color: #dc2626; font-size: 10px; line-height: 1.35;">생활비 부족 ${s.unmetSpendingYears}년</div>`
         : '';
+      const violationHtml = violationText === null
+        ? ''
+        : `<div style="margin-top: 3px; color: #dc2626; font-size: 10px; font-weight: 700; line-height: 1.35;">${violationText}</div>`;
       return `
         <tr>
           <td style="border: 1px solid #cbd5e1; padding: 8px 9px; font-size: 11px; line-height: 1.4; vertical-align: middle;">${s.label}</td>
-          <td style="border: 1px solid #cbd5e1; padding: 8px 9px; font-size: 11px; line-height: 1.4; text-align: right; vertical-align: middle;"><div style="white-space: nowrap;">${formatManwon(s.endingAssets)}${deltaText}</div>${unmetText}</td>
+          <td style="border: 1px solid #cbd5e1; padding: 8px 9px; font-size: 11px; line-height: 1.4; text-align: right; vertical-align: middle;"><div style="white-space: nowrap;">${formatManwon(s.endingAssets)}${deltaText}</div>${unmetText}${violationHtml}</td>
           <td style="border: 1px solid #cbd5e1; padding: 8px 9px; font-size: 11px; line-height: 1.4; text-align: right; vertical-align: middle; white-space: nowrap;">${depletionText}</td>
         </tr>
       `;
@@ -797,6 +849,7 @@ export function renderSensitivityTableSection(
   return `
     ${frozenNoteHtml}
     ${returnNoteHtml}
+    ${violationBasisNoteHtml}
     <table style="width: 100%; table-layout: fixed; border-collapse: collapse; margin-top: 8px;">
       <colgroup>
         <col style="width: 28%;" />

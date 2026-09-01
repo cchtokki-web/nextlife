@@ -2,6 +2,17 @@ import React from 'react';
 import { describeYieldAxisAnchors, SensitivityScenario } from '../../../../core/usecases/dashboard/computeSensitivityAnalysis';
 import { PlanAssetStatus } from '../../../../core/usecases/dashboard/resolvePlanAssetStatus';
 import { formatManwon } from '../../../../core/usecases/utility/utilityAnalysis';
+import {
+  GoalSuccessConditions,
+  HardRequirementAxis,
+  describeHardViolation as describeHardViolationCore,
+  describeHardViolationBasis,
+} from '../../../../core/usecases/goals/goalSuccessConditions';
+import { retirementGoalDefinition } from '../../RetirementGoals/goalCatalog';
+
+const NO_HARD_REQUIREMENT_GOALS: GoalSuccessConditions['hardRequirementGoals'] = {
+  spendingTarget: [], assetSurvival: [], terminalAsset: [],
+};
 
 interface SensitivityAnalysisSectionProps {
   baselineDepletionAge: number | null;
@@ -9,6 +20,10 @@ interface SensitivityAnalysisSectionProps {
   // 결과가 baseline과 완전히 같은 시나리오를 가려내는 데 쓴다. 자산이 없는 계획에서는
   // 기말자산·고갈 나이가 전부 같아, 이 축까지 봐야 "정말 아무것도 달라지지 않았는가"를 판정할 수 있다.
   baselineUnmetSpendingYears?: number;
+  // baseline(현재 가정) 자신이 어기는 확정 HARD 요구. 비어 있으면 위반 없음이다. 시나리오와
+  // 나란히 보여줘야 "이 시나리오 때문에 새로 생긴 문제"와 "오늘 계획도 이미 겪는 문제"를
+  // 구별할 수 있다(computeSensitivityAnalysis의 baselineHardViolations 주석).
+  baselineHardViolations?: HardRequirementAxis[];
   // scenarios가 공통으로 고정한 월 생활비. **반드시 밝혀야 한다** — 밝히지 않으면
   // 사용자는 자기가 입력한 목표 생활비 기준으로 표를 읽는다. 「평생 소비 최적화」 계획에서는
   // 이 값이 입력한 목표와 다르다.
@@ -21,7 +36,24 @@ interface SensitivityAnalysisSectionProps {
   // 사용자는 「공격형으로 바꿨는데 왜 돈이 줄지」라고 읽는다.
   baselineWeightedTotalReturn?: number | null;
   scenarios: SensitivityScenario[];
+  // scenarios[].hardViolations·baselineHardViolations의 각 축('spendingTarget' 등)을
+  // «어떤 목표를 어겼는가»로 바꾸는 데 쓴다. computeSensitivityAnalysis가
+  // resolveGoalSuccessConditions 한 곳에서 얻은 값을 그대로 넘겨준다 — 화면이 직접 다시
+  // 계산하면 그 순간부터 「반드시 지키기」로 고른 목표의 정의가 두 곳으로 갈릴 수 있다.
+  hardRequirementGoals?: GoalSuccessConditions['hardRequirementGoals'];
   planAssetStatus?: PlanAssetStatus;
+}
+
+// 위반한 HARD 축들을 사람이 읽는 문장으로 바꾼다. 판정식·문장은 core의 describeHardViolation
+// 한 곳뿐이다 — 화면·PDF·「무엇부터 바꿔야 하나」 카드(computeKeyLevers) 세 소비처가 모두
+// 그 함수를 부른다(goalSuccessConditions.ts의 describeHardViolation 주석 참고). 여기서는
+// web의 표준 목표 이름 조회 창구(retirementGoalDefinition)만 넘긴다(DashboardSection의
+// GoalCoverageNote·HardGoalSuccessNote와 같은 관례).
+function describeHardViolation(
+  axes: readonly HardRequirementAxis[],
+  hardRequirementGoals: GoalSuccessConditions['hardRequirementGoals'],
+): string | null {
+  return describeHardViolationCore(axes, hardRequirementGoals, (type) => retirementGoalDefinition(type).label);
 }
 
 // 한 줄의 뼈대. **좁은 폭에서는 이름과 값이 한 줄, 막대가 그 아래 줄을 통째로 쓴다.**
@@ -86,12 +118,19 @@ export function SensitivityAnalysisSection({
   baselineDepletionAge,
   baselineEndingAssets,
   baselineUnmetSpendingYears,
+  baselineHardViolations = [],
   frozenMonthlySpending,
   baselineWeightedTotalReturn,
   scenarios,
+  hardRequirementGoals = NO_HARD_REQUIREMENT_GOALS,
   planAssetStatus,
 }: SensitivityAnalysisSectionProps) {
   const noInvestableAsset = planAssetStatus === 'no_investable_asset';
+  const baselineViolationText = describeHardViolation(baselineHardViolations, hardRequirementGoals);
+  // 근거 문장(결정론 1회 실행)은 위반 라벨마다 반복하지 않는다 — 표는 최대 8행(시나리오
+  // 7 + 기준선)이라 위반이 넓게 퍼진 계획에서는 같은 문장이 페이지 하나에 여러 번 찍혀
+  // 두 번째부터는 읽히지 않는다. 위반이 하나라도 있을 때 이 표를 위해 «한 번만» 낸다.
+  const anyHardViolation = baselineHardViolations.length > 0 || scenarios.some((s) => s.hardViolations.length > 0);
 
   // 접는 판정은 시나리오 key 하드코딩이 아니라 "결과가 정말 같은가"로 한다 — 자산이 없어도
   // 은퇴시점처럼 실제로 결과를 바꾸는 가정은 남아야 하고, 어떤 가정이 그런지는 데이터가 정한다.
@@ -141,6 +180,14 @@ export function SensitivityAnalysisSection({
           {baselineDepletionAge !== null && (
             <span className="block text-[11px] font-normal text-danger">{baselineDepletionAge}세 고갈</span>
           )}
+          {baselineViolationText && (
+            <span
+              className="block text-[11px] font-semibold text-danger"
+              data-testid="sensitivity-hard-violation"
+            >
+              {baselineViolationText}
+            </span>
+          )}
         </>
       )}
     />
@@ -153,6 +200,12 @@ export function SensitivityAnalysisSection({
         <p className="mb-1 text-xs break-keep text-foreground-muted">
           {scenarios.length}개 시나리오 모두 <strong>월 생활비 {formatManwon(frozenMonthlySpending)}을 고정</strong>한 채
           가정 하나만 바꾼 결과입니다.
+        </p>
+      )}
+      {/* 위반이 하나도 없으면 내지 않는다 — 표시된 적 없는 라벨의 근거를 설명하는 문장이 된다. */}
+      {anyHardViolation && (
+        <p className="mb-1 text-xs break-keep text-foreground-muted" data-testid="sensitivity-hard-violation-basis">
+          {describeHardViolationBasis()}
         </p>
       )}
       {noInvestableAsset ? (
@@ -183,9 +236,15 @@ export function SensitivityAnalysisSection({
         {baselineRowIndex === 0 && baselineRow}
         {visibleScenarios.map((scenario, index) => {
           const delta = deltaOf(scenario);
+          const violationText = describeHardViolation(scenario.hardViolations, hardRequirementGoals);
           // 생활비 부족 연수는 늘어나는 쪽이 나쁘다 — 금액과 부호의 의미가 반대다.
-          const isWorse = noInvestableAsset ? delta > 0 : delta < 0;
-          const isBetter = noInvestableAsset ? delta < 0 : delta > 0;
+          //
+          // **HARD 위반은 delta의 부호를 덮어쓴다.** endingAssetsDelta가 양수(재무적으로
+          // 유리)여도 사용자가 「반드시 지키기」로 못박은 조건을 어겼다면 그 사실이 우선이다
+          // — 아니면 위반 시나리오가 초록(개선) 막대로 그려져 정확히 이 기능이 막으려는
+          // 오독을 만든다(요구사항 원문).
+          const isWorse = scenario.hardViolations.length > 0 || (noInvestableAsset ? delta > 0 : delta < 0);
+          const isBetter = scenario.hardViolations.length === 0 && (noInvestableAsset ? delta < 0 : delta > 0);
           const widthPercent = Math.min(100, (Math.abs(delta) / maxAbsDelta) * 100);
           const deltaSign = scenario.endingAssetsDelta > 0 ? '+' : '';
 
@@ -204,8 +263,18 @@ export function SensitivityAnalysisSection({
                 />
               )}
               value={noInvestableAsset ? (
-                // 금액(0원)과 고갈 나이(전 시나리오 동일)는 정보가 없으므로 빼고, 갈리는 값만 남긴다.
-                <span className="font-semibold">생활비 부족 {scenario.unmetSpendingYears}년</span>
+                <>
+                  {/* 금액(0원)과 고갈 나이(전 시나리오 동일)는 정보가 없으므로 빼고, 갈리는 값만 남긴다. */}
+                  <span className="font-semibold">생활비 부족 {scenario.unmetSpendingYears}년</span>
+                  {violationText && (
+                    <span
+                      className="block text-[11px] font-semibold text-danger"
+                      data-testid="sensitivity-hard-violation"
+                    >
+                      {violationText}
+                    </span>
+                  )}
+                </>
               ) : (
                 <>
                   {/* 금액과 증감은 «한 덩어리»로 읽힌다. 좁은 폭에서 줄이 갈리더라도 괄호 안이
@@ -225,6 +294,17 @@ export function SensitivityAnalysisSection({
                       {scenario.depletionAge !== null && `${scenario.depletionAge}세 고갈`}
                       {scenario.depletionAge !== null && scenario.unmetSpendingYears > 0 && ' · '}
                       {scenario.unmetSpendingYears > 0 && `생활비 부족 ${scenario.unmetSpendingYears}년`}
+                    </span>
+                  )}
+                  {/* HARD 위반은 «얼마 남았나»의 부호와 무관하게 항상 보여준다 — 기말자산이
+                      늘어난(초록) 줄이라도 위반 문구가 있으면 그 초록이 「개선」을 뜻하지
+                      않는다는 것을 바로 옆에서 밝힌다. */}
+                  {violationText && (
+                    <span
+                      className="block text-[11px] font-semibold text-danger"
+                      data-testid="sensitivity-hard-violation"
+                    >
+                      {violationText}
                     </span>
                   )}
                 </>
