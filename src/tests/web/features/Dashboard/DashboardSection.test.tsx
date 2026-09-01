@@ -787,6 +787,42 @@ describe('DashboardSection - 현재 계획 진단', () => {
     expect(diagnosis()).toHaveTextContent('실제 미래 결과를 보장하지 않습니다');
   });
 
+  // 요구 ④: 시행 수와 신뢰수준을 «함께» 명시한다. 10000회라는 숫자만으로는 그 정밀도를
+  // 알 수 없고, 구간만으로는 무엇으로 얻은 정밀도인지 알 수 없다.
+  test('목표 달성 확률 옆에 신뢰구간을 함께 표시한다', () => {
+    render(
+      <DashboardSection
+        params={params} result={result}
+        monteCarloStatus="done"
+        monteCarlo={monteCarloWith(0.85, 0.85)}
+      />
+    );
+
+    // 1000회·85%의 Wilson 95% 구간은 82.65~87.08%다(독립 계산).
+    expect(diagnosis()).toHaveTextContent('95% 신뢰구간 83~87%');
+  });
+
+  // 전 시행 성공에서 「100~100%」로 찍히면 폭이 0이라는 거짓말이 된다.
+  test('전 시행 성공이어도 구간이 한 점으로 뭉개지지 않는다', () => {
+    render(
+      <DashboardSection
+        params={params} result={result}
+        monteCarloStatus="done"
+        monteCarlo={monteCarloWith(1, 1)}
+      />
+    );
+
+    expect(diagnosis()).toHaveTextContent('95% 신뢰구간 99.6~100.0%');
+  });
+
+  test('판정 전에는 신뢰구간을 표시하지 않는다', () => {
+    render(
+      <DashboardSection params={params} result={result} monteCarloStatus="running" />
+    );
+
+    expect(diagnosis()).not.toHaveTextContent('신뢰구간');
+  });
+
   test('0.85는 computePlanConfidence 밴드에 따라 안정(🟢)으로 판정한다', () => {
     render(
       <DashboardSection

@@ -157,10 +157,16 @@ export interface StrategyOptimizerOptions extends StrategyGenerationOptions {
     /**
      * Trials used to *screen* the shortlist. Default: 200.
      *
-     * Screening then confirming is what keeps this affordable. Measured cost is ~0.6ms per
-     * projection, so one flat pass of 20 candidates × 1,000 trials is 20,000 projections (~12s)
-     * — and 98% of the optimizer's total runtime. Screening at 200 and re-running only the
-     * persona winners at `config.trials` cuts that by roughly two thirds.
+     * Screening then confirming is what keeps this affordable, and it is what makes the
+     * 10,000-trial default survivable at all. Measured cost is ~0.44ms per projection, so one
+     * flat pass of 20 candidates at the default `config.trials` would be 200,000 projections
+     * (~88s). Screening at 200 and re-running only the three persona winners costs
+     * 20 × 200 + 3 × 10,000 = 34,000 projections — measured end to end at 12.6s, against 2.2s
+     * when the default was 1,000. The confirmation pass is ~95% of that; screening is noise.
+     *
+     * This is why raising `screeningTrials` alongside the default would be a mistake: it buys
+     * no displayed precision (see below) and is the one term that multiplies by candidate
+     * count rather than by three.
      *
      * Screening is sound because every candidate is scored on the *same* shock paths (common
      * random numbers, seeded by `config.seed`), so differences between candidates are estimated

@@ -19,3 +19,7 @@ export function percentileOfSorted(sortedAsc: readonly number[], q: number): num
   const weight = position - lowerIndex;
   return sortedAsc[lowerIndex] * (1 - weight) + sortedAsc[upperIndex] * weight;
 }
+
+// 비율의 신뢰구간은 여기가 아니라 confidenceInterval.ts에 있다. 이 파일은 표본에서
+// 분위수를 뽑는 일만 한다 — 같은 「통계」라는 이유로 두 파일에 나눠 담으면 다음 사람이
+// 여기서 못 찾고 하나 더 만든다.

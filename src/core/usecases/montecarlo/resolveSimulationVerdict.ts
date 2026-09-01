@@ -1,4 +1,11 @@
 import { isConfirmedHardGoal, isPlanEmbeddedGoal } from '../goals/goalSuccessConditions';
+import {
+  CONFIDENCE_LEVEL,
+  NO_INTERVAL,
+  wilsonInterval,
+  wilsonIntervalFromRate,
+  type ProportionInterval,
+} from './confidenceInterval';
 import { normalizeRetirementGoals } from '../../entities/retirementGoal';
 import type { RetirementGoalType } from '../../entities/retirementGoal';
 import type { MonteCarloResult } from '../../entities/montecarlo';
@@ -21,13 +28,27 @@ export interface SimulationVerdict {
   available: boolean;
   trials: number;
   seed: number;
-  goalSuccess: { rate: number; succeeded: number; failed: number };
-  spendingFulfillment: { fullRate: number; averageRate: number | null };
-  assetSurvival: { rate: number; throughAge: number };
+  /**
+   * 아래 모든 interval의 신뢰수준(0.95). 값이 아니라 «수준»이라 비율마다 다르지 않다.
+   *
+   * 구간을 비율 옆에 함께 두는 이유는 폴백을 없앤 이유와 같다 — 표시 계층이 각자
+   * √(p(1−p)/n)를 계산하기 시작하면 같은 화면의 두 숫자가 다른 공식에서 나올 수 있다.
+   * 여기서 한 번 계산해 내려보낸다.
+   */
+  confidenceLevel: number;
+  goalSuccess: { rate: number; succeeded: number; failed: number; interval: ProportionInterval };
+  spendingFulfillment: {
+    fullRate: number;
+    averageRate: number | null;
+    /** fullRate의 구간. averageRate는 비율의 평균이라 이 구간이 설명하지 못한다. */
+    interval: ProportionInterval;
+  };
+  assetSurvival: { rate: number; throughAge: number; interval: ProportionInterval };
   hardGoalSuccess: {
     rate: number;
     succeeded: number;
     failed: number;
+    interval: ProportionInterval;
     judged: RetirementGoalType[];
     unjudged: RetirementGoalType[];
     /**
@@ -40,11 +61,16 @@ export interface SimulationVerdict {
   } | null;
 }
 
-const counts = (rate: number, trials: number) => ({
-  rate,
-  succeeded: Math.round(rate * trials),
-  failed: trials - Math.round(rate * trials),
-});
+const counts = (rate: number, trials: number) => {
+  const succeeded = Math.round(rate * trials);
+  return {
+    rate,
+    succeeded,
+    failed: trials - succeeded,
+    // 비율이 아니라 «횟수»에서 구간을 낸다. 같은 값이지만 이쪽이 반올림을 한 번 덜 탄다.
+    interval: wilsonInterval(succeeded, trials),
+  };
+};
 
 export function resolveSimulationVerdict(input: {
   monteCarlo?: MonteCarloResult;
@@ -54,12 +80,13 @@ export function resolveSimulationVerdict(input: {
 
   if (!monteCarlo) {
     // 0을 내지 않는다. 0은 「전멸」이라는 다른 사실이다.
-    const none = { rate: Number.NaN, succeeded: 0, failed: 0 };
+    const none = { rate: Number.NaN, succeeded: 0, failed: 0, interval: NO_INTERVAL };
     return {
       available: false, trials: 0, seed: 0,
+      confidenceLevel: CONFIDENCE_LEVEL,
       goalSuccess: none,
-      spendingFulfillment: { fullRate: Number.NaN, averageRate: null },
-      assetSurvival: { rate: Number.NaN, throughAge: 0 },
+      spendingFulfillment: { fullRate: Number.NaN, averageRate: null, interval: NO_INTERVAL },
+      assetSurvival: { rate: Number.NaN, throughAge: 0, interval: NO_INTERVAL },
       hardGoalSuccess: null,
     };
   }
@@ -103,12 +130,18 @@ export function resolveSimulationVerdict(input: {
     available: true,
     trials,
     seed: monteCarlo.seed,
+    confidenceLevel: CONFIDENCE_LEVEL,
     goalSuccess: counts(monteCarlo.goalSuccessProbability, trials),
     spendingFulfillment: {
       fullRate: monteCarlo.spendingSuccessRate,
       averageRate: monteCarlo.averageSpendingFulfillmentRate ?? null,
+      interval: wilsonIntervalFromRate(monteCarlo.spendingSuccessRate, trials),
     },
-    assetSurvival: { rate: monteCarlo.successRate, throughAge: monteCarlo.successAge },
+    assetSurvival: {
+      rate: monteCarlo.successRate,
+      throughAge: monteCarlo.successAge,
+      interval: wilsonIntervalFromRate(monteCarlo.successRate, trials),
+    },
     // 요구하는 HARD 조건이 하나도 없으면 모든 시행이 통과해 1이 된다. 그 숫자는 참이지만
     // 「HARD 목표를 다 지켰다」로 읽혀 오해를 부른다. 숫자가 아니라 부재로 표현한다.
     hardGoalSuccess: anyHardRequirement && monteCarlo.hardGoalSuccessProbability !== undefined

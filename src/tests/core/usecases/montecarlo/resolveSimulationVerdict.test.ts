@@ -167,3 +167,60 @@ describe('resolveSimulationVerdict', () => {
     expect(verdict.hardGoalSuccess!.planEmbedded).toEqual(['EARLY_RETIREMENT']);
   });
 });
+
+describe('신뢰구간 (요구 ④)', () => {
+  // 기대값은 Wilson 공식에서 독립적으로 계산했다(trials=1000 픽스처 기준).
+  test('네 KPI가 «각자의» 구간을 갖는다', () => {
+    const verdict = resolveSimulationVerdict({ monteCarlo: mc(), params: initialParams });
+
+    expect(verdict.goalSuccess.interval.lower).toBeCloseTo(0.753281, 5);
+    expect(verdict.goalSuccess.interval.upper).toBeCloseTo(0.804577, 5);
+    expect(verdict.spendingFulfillment.interval.lower).toBeCloseTo(0.794978, 5);
+    expect(verdict.assetSurvival.interval.lower).toBeCloseTo(0.901534, 5);
+    expect(verdict.hardGoalSuccess?.interval.lower).toBeCloseTo(0.890658, 5);
+  });
+
+  // 요구 ②가 세 지표를 갈라 놓은 뒤로, 구간 하나를 넷에 돌려쓰면 서로 다른 비율에 같은
+  // 정밀도를 붙이게 된다. 넷이 실제로 다른 값인지 본다.
+  test('구간을 서로 돌려쓰지 않는다', () => {
+    const v = resolveSimulationVerdict({ monteCarlo: mc(), params: initialParams });
+    const lowers = [
+      v.goalSuccess.interval.lower,
+      v.spendingFulfillment.interval.lower,
+      v.assetSurvival.interval.lower,
+      v.hardGoalSuccess!.interval.lower,
+    ];
+    expect(new Set(lowers).size).toBe(4);
+  });
+
+  test('구간은 언제나 자기 비율을 감싼다', () => {
+    const v = resolveSimulationVerdict({ monteCarlo: mc(), params: initialParams });
+    for (const [rate, interval] of [
+      [v.goalSuccess.rate, v.goalSuccess.interval],
+      [v.spendingFulfillment.fullRate, v.spendingFulfillment.interval],
+      [v.assetSurvival.rate, v.assetSurvival.interval],
+    ] as const) {
+      expect(rate).toBeGreaterThanOrEqual(interval.lower);
+      expect(rate).toBeLessThanOrEqual(interval.upper);
+    }
+  });
+
+  test('시행 수가 많을수록 구간이 좁아진다 — 시행 수를 실제로 반영한다는 뜻이다', () => {
+    const few = resolveSimulationVerdict({ monteCarlo: mc({ trials: 1000 }), params: initialParams });
+    const many = resolveSimulationVerdict({ monteCarlo: mc({ trials: 10000 }), params: initialParams });
+    const width = (v: typeof few) => v.goalSuccess.interval.upper - v.goalSuccess.interval.lower;
+
+    expect(width(many)).toBeLessThan(width(few));
+  });
+
+  test('판정이 없으면 구간도 0이 아니라 NaN이다', () => {
+    const v = resolveSimulationVerdict({ monteCarlo: undefined, params: initialParams });
+
+    expect(v.goalSuccess.interval.lower).toBeNaN();
+    expect(v.spendingFulfillment.interval.upper).toBeNaN();
+    expect(v.assetSurvival.interval.lower).toBeNaN();
+    // 신뢰수준은 판정 유무와 무관한 «설정»이라 판정이 없어도 그대로 실린다.
+    expect(v.confidenceLevel).toBe(0.95);
+  });
+});
+
