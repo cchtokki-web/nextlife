@@ -264,6 +264,49 @@ describe('buildReportHtml', () => {
     });
   });
 
+  // **수익률의 출처.** 「연 총수익률 5%」가 사용자가 넣은 값인지 프리셋이 덮은 값인지
+  // 리포트만 보고는 알 수 없었다. 저장된 params.yieldPreset은 근거가 못 된다 — 이 캡처가
+  // 바로 그 예다: 'base'가 저장돼 있지만 실제 자산 수익률은 5%·8%로 base(7%)가 아니다.
+  describe('수익률 출처 표기', () => {
+    test('말할 것이 없으면 아무 줄에도 주석을 붙이지 않는다', () => {
+      // 프리셋 수익률은 손으로 넣어도 이상하지 않은 둥근 숫자다. 값이 같다는 사실만으로
+      // 계좌마다 주석을 달면 프리셋을 누른 적 없는 계획의 거의 모든 줄이 시끄러워진다.
+      expect(buildReportHtml(input())).not.toContain('프리셋');
+    });
+
+    test('프리셋이 사용자 값을 덮었으면 되돌릴 수 있는 값을 함께 밝힌다', () => {
+      const base = input();
+      const html = buildReportHtml({
+        ...base,
+        params: {
+          ...base.params,
+          // KODEX 200은 지금 5%(= 보수적 프리셋 값)인데 직접 입력했던 값은 9%로 보관돼 있다.
+          customYieldSnapshot: { assets: { 'asset-kodex200': 9 }, privatePensions: {} },
+        },
+      });
+
+      expect(html).toContain('보수적 프리셋으로 채워진 값이며, 직접 입력했던 9%는 되돌릴 수 있게 보관되어 있습니다.');
+      // 보관값이 없는 다른 계좌까지 덩달아 주장하지는 않는다.
+      expect(html).not.toContain('TIGER 미국S&amp;P500 (ETF)</strong>: 4000주(개) x 평균단가 15,000 원, 매월 300,000 원 납입, 연 총수익률 8% (배당 1.5% 포함), 배당 재투자 O —');
+    });
+
+    test('포트폴리오 전체가 한 프리셋과 일치하면 그 사실을 밝힌다', () => {
+      const base = input();
+      const html = buildReportHtml({
+        ...base,
+        params: {
+          ...base.params,
+          assets: base.params.assets.map((a) => ({ ...a, totalReturn: 7 })),
+          isaAccounts: (base.params.isaAccounts ?? []).map((i) => ({ ...i, totalReturn: 7 })),
+          privatePensions: base.params.privatePensions.map((p) => ({ ...p, totalReturn: 4 })),
+        },
+      });
+
+      // 한 계좌의 우연이 아니라 계획 전체에 대한 진술이므로 읽을 값어치가 있다.
+      expect(html).toContain('중립 프리셋과 같은 값입니다.');
+    });
+  });
+
   // 국민연금 과세 오차 고지(551행)의 전용 가드. 이 문구는 지금까지 골든 픽스처에 우연히
   // 박혀 있을 뿐이었다 — buildReportHtml.test.ts 상단 주석이 설명하는 「픽스처를 다시
   // 캡처하면 통과한다」는 관례 때문에, 리팩터링 중 픽스처를 재캡처하는 순간 이 문구가

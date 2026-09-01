@@ -3,6 +3,7 @@ import { SimulationParams } from '../../../core/entities/types';
 import {
   YIELD_PRESET_RATES,
   applyYieldPreset,
+  YIELD_PRESET_LABELS,
   matchedYieldPreset,
   matchesCustomYieldSnapshot,
   restoreCustomYieldPreset,
@@ -14,11 +15,13 @@ interface YieldPresetHelperProps {
   onChangeParams: (params: SimulationParams) => void;
 }
 
-const PRESETS = [
-  { key: 'conservative', label: '보수적 5%' },
-  { key: 'base', label: '중립 7%' },
-  { key: 'aggressive', label: '공격 9%' },
-] as const;
+// 라벨은 「이름 + 그 프리셋이 주식에 채우는 값」으로 조립한다. 이름과 값을 각각 도메인에서
+// 가져오므로, 프리셋 수익률을 바꾸면 버튼 글자도 함께 따라온다 — 예전에는 '중립 7%'가
+// 문자열로 박혀 있어 YIELD_PRESET_RATES만 바꾸면 버튼이 옛 숫자를 계속 말했다.
+const PRESETS = (['conservative', 'base', 'aggressive'] as const).map((key) => ({
+  key,
+  label: `${YIELD_PRESET_LABELS[key]} ${YIELD_PRESET_RATES[key].stockGrowth}%`,
+}));
 
 /**
  * 수익률 입력칸을 한 번에 채워 주는 도우미.

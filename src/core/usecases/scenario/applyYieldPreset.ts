@@ -23,6 +23,18 @@ import { CustomYieldSnapshot, SimulationParams } from '../../entities/types';
 // 움직인다. (2026-08-22부터 StrategyGenerator는 이 표를 쓰지 않는다 — 추천 후보는 사용자가
 // 입력한 수익률 가정을 그대로 물려받는다.) computeSensitivityAnalysis의 수익률 축(안정형/
 // 중립형/공격형 3행)도 이 표를 소비한다 — 계획을 바꾸지 않고 결과만 비교하는 렌즈다.
+// 프리셋의 표시 이름. **여기가 유일한 출처다**(ECONOMIC_SCENARIO_LABELS와 같은 판단).
+//
+// 예전에는 YieldPresetHelper의 버튼 라벨에만 있었다. 그러면 리포트가 「이 수익률은 어느
+// 프리셋에서 왔는가」를 문장으로 말할 때 이름을 하나 더 지어내게 되고, 버튼과 리포트가
+// 서로 다른 이름으로 같은 프리셋을 가리키게 된다. 버튼은 이 이름 뒤에 수익률을 붙여
+// 「보수적 5%」를 만든다 — 그쪽 표기는 그대로다.
+export const YIELD_PRESET_LABELS = {
+  conservative: '보수적',
+  base: '중립',
+  aggressive: '공격',
+} as const;
+
 export const YIELD_PRESET_RATES = {
   conservative: { stockGrowth: 5, pensionReturn: 3 },
   base: { stockGrowth: 7, pensionReturn: 4 },
