@@ -24,7 +24,7 @@ import {
   GoalSuccessConditions,
   HardRequirementAxis,
   describeGoalSuccessCriteria,
-  hardViolationGoalTypes,
+  describeHardViolation as describeHardViolationCore,
 } from '../../../core/usecases/goals/goalSuccessConditions';
 import { describeUnscoredGoals } from '../../../core/usecases/goals/goalScoreSupport';
 import { SequenceRiskResult } from '../../../core/usecases/montecarlo/sequenceRisk';
@@ -723,19 +723,16 @@ export function renderExecutionRoadmapSection(roadmap: ExecutionRoadmap): string
 // 투자자산이 없는 계획에서는 그 기말자산마저 전부 0원이라 모든 행이 글자 하나까지 같아진다.
 // 화면(SensitivityAnalysisSection)과 같은 규칙으로, baseline과 결과가 완전히 동일한 행은
 // 접고 몇 개를 접었는지 밝힌다 — 두 문서가 서로 다른 표를 보여주면 안 된다.
-// 위반한 HARD 축들을 사람이 읽는 문장으로 바꾼다. **화면(SensitivityAnalysisSection)과 같은
-// 문장을 쓴다** — 목표 이름 표기가 두 문서에서 갈리면 사용자가 어느 쪽을 믿어야 할지 알 수
-// 없다. 목표 이름은 이 파일의 표준 조회 창구(goalLabel)를 거쳐서만 읽는다 — 화면은
-// retirementGoalDefinition을, 여기는 goalLabel을 쓰지만 둘 다 결국 core의
-// RETIREMENT_GOAL_LABELS 하나로 귀결된다(goalCatalog.ts).
+// 위반한 HARD 축들을 사람이 읽는 문장으로 바꾼다. 판정식·문장은 core의 describeHardViolation
+// 한 곳뿐이다 — 화면·PDF·「무엇부터 바꿔야 하나」 카드(computeKeyLevers) 세 소비처가 모두
+// 그 함수를 부른다(goalSuccessConditions.ts의 describeHardViolation 주석 참고). 여기서는
+// 이 파일의 표준 목표 이름 조회 창구(goalLabel)만 넘긴다.
 function describeHardViolation(
   axes: readonly HardRequirementAxis[],
   hardRequirementGoals: GoalSuccessConditions['hardRequirementGoals'] | undefined,
 ): string | null {
-  if (axes.length === 0 || hardRequirementGoals === undefined) return null;
-  const labels = hardViolationGoalTypes(axes, hardRequirementGoals).map(goalLabel);
-  if (labels.length === 0) return null;
-  return `「${RETIREMENT_GOAL_CONSTRAINT_LABELS.HARD}」 위반: ${labels.join(', ')}`;
+  if (hardRequirementGoals === undefined) return null;
+  return describeHardViolationCore(axes, hardRequirementGoals, goalLabel);
 }
 
 export function renderSensitivityTableSection(

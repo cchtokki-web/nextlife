@@ -33,8 +33,10 @@ export interface SensitivityScenario {
   /**
    * 이 시나리오가 어기는 확정 HARD 요구. 비어 있으면 위반 없음이다.
    *
-   * **endingAssetsDelta와 독립이다.** 화면·PDF는 endingAssetsDelta로 정렬·채색한다 —
-   * 기말자산이 baseline보다 늘면 「개선」으로 읽힌다. 그런데 그 늘어난 자산으로도 사용자가
+   * **endingAssetsDelta와 독립이다.** 화면·PDF는 시나리오를 depletionAge(고갈이 빠른 순,
+   * 평생 유지는 뒤)로 정렬하고 endingAssetsDelta의 부호로 막대·글자색을 칠한다(초록=개선,
+   * 빨강=악화) — 기말자산이 baseline보다 늘면 그 색이 「개선」으로 읽힌다. 그런데 그 늘어난
+   * 자산으로도 사용자가
    * 「반드시 지키기」로 못박은 조건(자산 고갈 방지·목표 생활비·기말자산 하한)을 지키지
    * 못할 수 있다. 판정식은 resolveGoalSuccessConditions·resolveHardViolations 한 곳뿐이다
    * — MonteCarloEngine의 hardGoalSuccessProbability와 같은 함수를 쓴다. 여기서 새 술어를

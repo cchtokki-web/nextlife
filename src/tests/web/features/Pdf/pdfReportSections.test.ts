@@ -10,10 +10,13 @@ import {
   renderPlanVerdictSection,
   renderGoalConflictSection,
   renderSustainableSpendingLimitSection,
+  renderKeyLeversSection,
 } from '@/web/features/Pdf/pdfReportSections';
 import { formatManwon } from '@/core/usecases/utility/utilityAnalysis';
 import { ShortfallReport } from '@/core/usecases/dashboard/computeShortfallSummary';
 import { computePlanConfidence } from '@/core/usecases/dashboard/computePlanConfidence';
+import { computeKeyLevers, KeyLeversInput } from '@/core/usecases/dashboard/computeKeyLevers';
+import { SensitivityAnalysis } from '@/core/usecases/dashboard/computeSensitivityAnalysis';
 
 describe('formatCurrencyUnit', () => {
   test('replaces currency codes with report-facing symbols', () => {
@@ -612,6 +615,76 @@ describe('renderSensitivityTableSection', () => {
       expect(html).toContain('현재 가정 (기준)');
       expect(html).toContain('자산 고갈 방지');
     });
+  });
+});
+
+// renderKeyLeversSection 자체는 lever.title/lever.detail을 그대로 인쇄하는 얇은 렌더러다.
+// 여기서 확인하는 것은 그 사실이 아니라, computeKeyLevers가 만든 HARD 위반 문구가 이 렌더러를
+// 거치는 동안 잘리지 않고 살아남는가다 — 화면 쪽 KeyLeversCard.test.tsx와 나란히 "같은 core
+// 출력이 두 렌더 표면 모두에 도달하는가"를 검증한다.
+describe('renderKeyLeversSection', () => {
+  const won = (v: number) => `${Math.round(v / 10000).toLocaleString()}만원`;
+  const noSensitivityScenarios: KeyLeversInput['sensitivity'] = {
+    scenarios: [], frozenMonthlySpending: 2230000, baselineDepletionAge: null,
+    baselineEndingAssets: 13960000, baselineUnmetSpendingYears: 0, baselineHardViolations: [],
+    hardRequirementGoals: { spendingTarget: [], assetSurvival: [], terminalAsset: [] },
+    baselinePlanAssetStatus: 'sustained', baselineWeightedTotalReturn: 12,
+  };
+
+  test('레버가 없으면 빈 문자열을 반환한다', () => {
+    expect(renderKeyLeversSection([])).toBe('');
+  });
+
+  // **이 테스트가 리뷰가 지목한 결함의 PDF 쪽 재현이다.** depletionAge도
+  // unmetSpendingYears도 없는 terminalAsset 단독 위반이 위 renderSensitivityTableSection
+  // 표에서는 위반으로 인쇄되는데, 「무엇부터 바꿔야 하나」 카드가 반영하지 않으면 같은
+  // PDF 안에서 같은 시나리오가 서로 다르게 읽힌다.
+  test('HARD 위반 시나리오는 「무엇부터 바꿔야 하나」 표에서도 위반으로 인쇄된다', () => {
+    const sensitivity: SensitivityAnalysis = {
+      ...noSensitivityScenarios,
+      scenarios: [
+        { key: 'retirementLater', label: '은퇴시점 +3년', depletionAge: null, deltaYears: null,
+          endingAssets: 1500000000, endingAssetsDelta: 1083600000, unmetSpendingYears: 0,
+          hardViolations: ['terminalAsset'] },
+        { key: 'retirementEarlier', label: '은퇴시점 -3년', depletionAge: 61, deltaYears: -5,
+          endingAssets: 0, endingAssetsDelta: -400000000, unmetSpendingYears: 19, hardViolations: [] },
+      ],
+      hardRequirementGoals: { spendingTarget: [], assetSurvival: [], terminalAsset: ['INHERITANCE'] },
+    };
+    const input: KeyLeversInput = {
+      sensitivity,
+      pensionGap: null,
+      shortfall: { goal: null, plan: null, goalMonthlySpending: 3500000, sustainableMonthlySpending: 3500000 },
+      recommendation: undefined,
+      formatValue: won,
+    };
+
+    const html = renderKeyLeversSection(computeKeyLevers(input));
+
+    expect(html).toContain('은퇴 시점 조정');
+    expect(html).toContain('반드시 지키기');
+    expect(html).toContain('상속 자산 확보');
+  });
+
+  test('위반이 없으면 위반 문구를 인쇄하지 않는다', () => {
+    const sensitivity: SensitivityAnalysis = {
+      ...noSensitivityScenarios,
+      scenarios: [
+        { key: 'retirementLater', label: '은퇴시점 +3년', depletionAge: null, deltaYears: null,
+          endingAssets: 1500000000, endingAssetsDelta: 1083600000, unmetSpendingYears: 0, hardViolations: [] },
+      ],
+    };
+    const input: KeyLeversInput = {
+      sensitivity,
+      pensionGap: null,
+      shortfall: { goal: null, plan: null, goalMonthlySpending: 3500000, sustainableMonthlySpending: 3500000 },
+      recommendation: undefined,
+      formatValue: won,
+    };
+
+    const html = renderKeyLeversSection(computeKeyLevers(input));
+
+    expect(html).not.toContain('반드시 지키기');
   });
 });
 

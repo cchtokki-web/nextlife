@@ -5,9 +5,8 @@ import { formatManwon } from '../../../../core/usecases/utility/utilityAnalysis'
 import {
   GoalSuccessConditions,
   HardRequirementAxis,
-  hardViolationGoalTypes,
+  describeHardViolation as describeHardViolationCore,
 } from '../../../../core/usecases/goals/goalSuccessConditions';
-import { RETIREMENT_GOAL_CONSTRAINT_LABELS } from '../../../../core/entities/retirementGoal';
 import { retirementGoalDefinition } from '../../RetirementGoals/goalCatalog';
 
 const NO_HARD_REQUIREMENT_GOALS: GoalSuccessConditions['hardRequirementGoals'] = {
@@ -44,20 +43,16 @@ interface SensitivityAnalysisSectionProps {
   planAssetStatus?: PlanAssetStatus;
 }
 
-// 위반한 HARD 축들을 사람이 읽는 문장으로 바꾼다. **화면(여기)과 PDF가 같은 문장을 쓴다**
-// (pdfReportSections.renderSensitivityTableSection) — 목표 이름 표기가 두 곳에서 갈리면
-// 사용자가 어느 쪽을 믿어야 할지 알 수 없다. 목표 이름의 출처는 core의 RETIREMENT_GOAL_LABELS
-// 하나뿐이라(retirementGoal.ts), 여기서는 web의 표준 조회 창구(retirementGoalDefinition)를
-// 거쳐서만 읽는다(DashboardSection의 GoalCoverageNote·HardGoalSuccessNote와 같은 관례).
+// 위반한 HARD 축들을 사람이 읽는 문장으로 바꾼다. 판정식·문장은 core의 describeHardViolation
+// 한 곳뿐이다 — 화면·PDF·「무엇부터 바꿔야 하나」 카드(computeKeyLevers) 세 소비처가 모두
+// 그 함수를 부른다(goalSuccessConditions.ts의 describeHardViolation 주석 참고). 여기서는
+// web의 표준 목표 이름 조회 창구(retirementGoalDefinition)만 넘긴다(DashboardSection의
+// GoalCoverageNote·HardGoalSuccessNote와 같은 관례).
 function describeHardViolation(
   axes: readonly HardRequirementAxis[],
   hardRequirementGoals: GoalSuccessConditions['hardRequirementGoals'],
 ): string | null {
-  if (axes.length === 0) return null;
-  const labels = hardViolationGoalTypes(axes, hardRequirementGoals)
-    .map((type) => retirementGoalDefinition(type).label);
-  if (labels.length === 0) return null;
-  return `「${RETIREMENT_GOAL_CONSTRAINT_LABELS.HARD}」 위반: ${labels.join(', ')}`;
+  return describeHardViolationCore(axes, hardRequirementGoals, (type) => retirementGoalDefinition(type).label);
 }
 
 // 한 줄의 뼈대. **좁은 폭에서는 이름과 값이 한 줄, 막대가 그 아래 줄을 통째로 쓴다.**

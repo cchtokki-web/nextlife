@@ -21,14 +21,17 @@ const scenario = (
   ...overrides,
 });
 
-const sensitivity = (scenarios: SensitivityScenario[]): SensitivityAnalysis => ({
+const sensitivity = (
+  scenarios: SensitivityScenario[],
+  hardRequirementGoals: SensitivityAnalysis['hardRequirementGoals'] = { spendingTarget: [], assetSurvival: [], terminalAsset: [] },
+): SensitivityAnalysis => ({
   scenarios,
   frozenMonthlySpending: 2230000,
   baselineDepletionAge: null,
   baselineEndingAssets: 13960000,
   baselineUnmetSpendingYears: 0,
   baselineHardViolations: [],
-  hardRequirementGoals: { spendingTarget: [], assetSurvival: [], terminalAsset: [] },
+  hardRequirementGoals,
   baselinePlanAssetStatus: 'sustained',
   baselineWeightedTotalReturn: 12,
 });
@@ -164,5 +167,90 @@ describe('computeKeyLevers', () => {
 
     expect(lever.title).toContain('60~64세');
     expect(lever.detail).toContain(won(150000000));
+  });
+
+  // **이 스위트가 리뷰가 지목한 결함의 근거다.** describeScenario는 depletionAge·
+  // unmetSpendingYears가 있으면 그 값으로 위험을 알렸지만, terminalAsset(기말자산 하한)
+  // 단독 위반은 둘 다 없다 — 세 번째 branch(기대수명 시점 자산 +N원)로 떨어져 순수 개선
+  // 문구만 남았다. 그 시나리오가 「무엇부터 바꿔야 하나」 카드의 1순위(retirementAge, 순서
+  // 고정)에 오르면, 카드는 HARD 위반 시나리오를 최우선 개선안으로 제시하게 된다.
+  describe('HARD 목표 위반이 레버 문구에 반영된다', () => {
+    // hardRequirementGoals가 채워져 있어야 위반 축을 목표 이름으로 옮길 수 있다.
+    const terminalAssetGoals: SensitivityAnalysis['hardRequirementGoals'] = {
+      spendingTarget: [], assetSurvival: [], terminalAsset: ['INHERITANCE'],
+    };
+
+    test('depletionAge도 unmetSpendingYears도 없는 terminalAsset 단독 위반이 은퇴 시점 레버에 드러난다', () => {
+      const levers = computeKeyLevers(input({
+        sensitivity: sensitivity(
+          [
+            // depletionAge: null, unmetSpendingYears: 0(기본값) — 원래 코드의 첫 두 branch로는
+            // 절대 잡히지 않는, 「순수 개선처럼 보이는」 값 그대로다.
+            scenario('retirementLater', { endingAssetsDelta: 1083600000, hardViolations: ['terminalAsset'] }),
+            scenario('retirementEarlier', { depletionAge: 61, unmetSpendingYears: 19 }),
+          ],
+          terminalAssetGoals,
+        ),
+      }));
+
+      const retirement = levers.find((l) => l.key === 'retirementAge')!;
+      // 위반이 반영되지 않았다면 이 문구는 "3년 늦추면 기대수명 시점 자산 +108,360만원"처럼
+      // 순수 개선으로만 읽혔을 것이다 — 아래 두 assertion이 그 상태를 잡는다.
+      expect(retirement.detail).toContain('반드시 지키기');
+      expect(retirement.detail).toContain('상속 자산 확보');
+      // 몬테카를로 확률과 혼동되지 않도록, 단일 결정론 실행 판정이라는 사실도 함께 말한다.
+      expect(retirement.detail).toContain('결정론');
+      expect(retirement.detail).toContain('확률이 아닙니다');
+    });
+
+    // 위반이 없는 값(기존 픽스처)은 문구가 그대로여야 한다 — 위반 판정을 덧붙이는 변경이
+    // 위반 없는 시나리오의 기존 출력까지 건드리면 그 자체가 회귀다.
+    test('위반이 없으면 기존 문구 그대로다(회귀)', () => {
+      const [retirement] = computeKeyLevers(input());
+
+      expect(retirement.detail).not.toContain('반드시 지키기');
+      expect(retirement.detail).not.toContain('결정론');
+    });
+
+    // 순서는 여전히 고정이다 — 위반이 있다고 해서 그 레버가 뒤로 밀리거나 앞으로 당겨지지
+    // 않는다(computeKeyLevers의 LEVER_ORDER 주석: "영향 크기로 정렬하지 않는다"). 위반의
+    // 유무가 «순서»가 아니라 «문구»에서만 드러나야 한다는 것을 이 assertion이 고정한다.
+    test('위반이 있어도 레버 순서는 바뀌지 않는다', () => {
+      const levers = computeKeyLevers(input({
+        sensitivity: sensitivity(
+          [
+            scenario('retirementLater', { endingAssetsDelta: 1083600000, hardViolations: ['terminalAsset'] }),
+            scenario('retirementEarlier', { depletionAge: 61, unmetSpendingYears: 19 }),
+          ],
+          terminalAssetGoals,
+        ),
+      }));
+
+      // 이 픽스처는 은퇴시점 시나리오만 두므로 investmentReturn 레버는 애초에 만들어지지
+      // 않는다(buildInvestmentReturnLever가 yieldAggressive/yieldConservative를 못 찾음) —
+      // 이 테스트가 확인하는 것은 «만들어진 레버들의 순서»이지 레버 목록 자체가 아니다.
+      expect(levers.map((l) => l.key)).toEqual([
+        'retirementAge', 'pensionBridge', 'targetSpending',
+      ]);
+    });
+
+    // 투자수익률 레버(양방향 시나리오를 함께 말하는 두 번째 소비처)도 같은 함수를 쓴다는 것을
+    // 확인한다 — describeScenario를 한 곳에서만 고치고 investmentReturn 레버에서 다시 쓰는
+    // 것을 잊으면 이 테스트가 잡는다.
+    test('투자 포트폴리오 레버도 같은 위반 문구를 쓴다', () => {
+      const levers = computeKeyLevers(input({
+        sensitivity: sensitivity(
+          [
+            scenario('yieldAggressive', { endingAssetsDelta: 499010000, hardViolations: ['terminalAsset'] }),
+            scenario('yieldConservative', { depletionAge: 67, unmetSpendingYears: 13 }),
+          ],
+          terminalAssetGoals,
+        ),
+      }));
+
+      const investment = levers.find((l) => l.key === 'investmentReturn')!;
+      expect(investment.detail).toContain('반드시 지키기');
+      expect(investment.detail).toContain('상속 자산 확보');
+    });
   });
 });

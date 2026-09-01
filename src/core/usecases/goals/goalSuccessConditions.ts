@@ -1,4 +1,5 @@
 import {
+  RETIREMENT_GOAL_CONSTRAINT_LABELS,
   confirmedTargetValue,
   hardGoalAwaitsTargetConfirmation,
   normalizeRetirementGoals,
@@ -383,4 +384,43 @@ export function hardViolationGoalTypes(
 ): RetirementGoalType[] {
   const types = axes.flatMap((axis) => hardRequirementGoals[axis]);
   return Array.from(new Set(types));
+}
+
+/**
+ * 위반한 HARD 축들을 사람이 읽는 문장으로 바꾼다.
+ *
+ * **세 소비처가 모두 같은 문장을 쓴다** — 화면(SensitivityAnalysisSection),
+ * PDF(renderSensitivityTableSection), 「무엇부터 바꿔야 하나」 카드(computeKeyLevers →
+ * KeyLeversCard·renderKeyLeversSection). 처음 이 기능을 만들 때는 소비처가 둘인 줄 알고
+ * 화면·PDF에 각자 문장을 심었는데, 세 번째 소비처(computeKeyLevers)가 나타나자 그 카드는
+ * endingAssetsDelta만 보고 위반 시나리오를 "기대수명 시점 자산 +N원"이라는 순수 개선 문구로
+ * 표시했다 — 바로 아래 민감도 표는 같은 시나리오를 위반으로 표시하는데도. 문장을 한 곳에
+ * 모아야 이런 부분적 반영이 다시 생기지 않는다.
+ *
+ * **목표 이름 조회는 호출자가 넘긴다.** 이 파일은 core라 web의 goalCatalog을 참조할 수
+ * 없다(AGENTS.md의 계층 분리 원칙). computeKeyLevers.ts(core)는 RETIREMENT_GOAL_LABELS를
+ * 직접 쓰고, 화면·PDF는 각자의 표준 조회 창구(retirementGoalDefinition·goalLabel)를
+ * 넘긴다 — 셋 다 결국 RETIREMENT_GOAL_LABELS 하나로 귀결되는 값이라 이름이 갈리지 않는다.
+ *
+ * **"결정론 1회 실행 판정"이라고 스스로 밝히는 이유.** 이 문장은 몬테카를로의
+ * hardGoalSuccessProbability(1,000회 확률)와 같은 화면·같은 계획에 나란히 놓일 수 있다.
+ * 두 판정은 기준이 다르다 — hasSpendingShortfall(이 문장의 근거)은 원장 기준(엡실론 없음),
+ * 몬테카를로의 firstGoalShortfallAge는 재구성 기준(월 1만원 엡실론)이다
+ * (spendingShortfall.ts의 AUDIT-003). 그래서 생활비가 엡실론 미만으로만 모자란 해가 있는
+ * 계획은 몬테카를로에서 "HARD 목표 판정 확률 100%"이면서 이 문장에서는 "위반"으로 보일 수
+ * 있다. 그것을 "같은 질문에 다른 답"으로 읽지 않도록, 이 문장은 스스로 «그 시나리오 하나를
+ * 결정론으로 1회 실행한 판정»이라고 밝힌다 — 몬테카를로처럼 여러 시행을 모은 확률이 아니다.
+ * 두 술어를 하나로 합치는 것은 이 함수의 범위가 아니다(spendingShortfall.ts와 같은 이유로,
+ * 그러면 기존 지표 중 하나가 답하는 질문이 바뀐다).
+ */
+export function describeHardViolation(
+  axes: readonly HardRequirementAxis[],
+  hardRequirementGoals: GoalSuccessConditions['hardRequirementGoals'],
+  labelOf: (type: RetirementGoalType) => string,
+): string | null {
+  if (axes.length === 0) return null;
+  const labels = hardViolationGoalTypes(axes, hardRequirementGoals).map(labelOf);
+  if (labels.length === 0) return null;
+  return `「${RETIREMENT_GOAL_CONSTRAINT_LABELS.HARD}」 위반: ${labels.join(', ')} `
+    + '(이 시나리오를 결정론으로 1회 실행한 판정이며, 몬테카를로 확률이 아닙니다)';
 }
