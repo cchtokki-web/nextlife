@@ -73,7 +73,15 @@ const MONEY_TARGET_GOAL_TYPES = [
   'ASSET_GROWTH',
 ] as const satisfies readonly RetirementGoalType[];
 
-function hasMoneyTarget(type: RetirementGoalType): boolean {
+/**
+ * 이 유형의 판정이 «목표 금액»을 필요로 하는가.
+ *
+ * export하는 이유: 화면이 「이 목표를 「반드시 지키기」로 고를 수 있는가」를 물을 때 이 사실이
+ * 필요하다. 금액이 필요한 유형인데 그 금액을 «물어보는 칸»이 없으면 사용자는 영원히 확정할
+ * 수 없고, 그 HARD는 어떤 축도 켜지 못한다(goalSuccessConditions의 hardRequirementGoals).
+ * 화면이 유형 목록을 다시 적으면 분류가 옮겨지는 날 화면만 옛말을 하게 된다.
+ */
+export function hasMoneyTarget(type: RetirementGoalType): boolean {
   return (MONEY_TARGET_GOAL_TYPES as readonly RetirementGoalType[]).includes(type);
 }
 

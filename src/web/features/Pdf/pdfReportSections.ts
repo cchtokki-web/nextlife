@@ -44,7 +44,11 @@ import { describeStrategyChanges } from '../../../core/usecases/dashboard/descri
 import { explainGoalShortfall } from '../../../core/usecases/dashboard/explainGoalShortfall';
 import type { StrategyOptimizationStatus } from '../../hooks/useStrategyOptimization';
 import { resolveTerminalAssetDisplay } from '../../../core/usecases/dashboard/resolveTerminalAssetDisplay';
-import { resolveSimulationVerdict, type SimulationVerdict } from '../../../core/usecases/montecarlo/resolveSimulationVerdict';
+import {
+  resolveSimulationVerdict,
+  type HardGoalSuccess,
+  type SimulationVerdictValues,
+} from '../../../core/usecases/montecarlo/resolveSimulationVerdict';
 import { formatConfidenceInterval, wilsonIntervalFromRate } from '../../../core/usecases/montecarlo/confidenceInterval';
 
 export function formatCurrencyUnit(currency: 'KRW' | 'USD'): '원' | '$' {
@@ -190,6 +194,9 @@ export function renderPlanVerdictSection(input: {
   // 않는" 다른 지표(spendingSuccessRate)로 조용히 넘어갈 수 있었으며 마지막은 "판정 못 함"과
   // "전멸"을 같은 0%로 찍었다(resolveSimulationVerdict.ts 주석 참고).
   const verdict = resolveSimulationVerdict({ monteCarlo, params });
+  // 유니온을 한 번 좁혀 둔다. 아래 템플릿이 `verdict.trials`를 무심코 읽던 자리가 있었고,
+  // 판정이 없을 때 그 값은 0이라 「0회 중 판정 없음회」라는 문장이 나왔다.
+  const judged = verdict.available ? verdict : null;
 
   const block = (title: string, body: string, accent: string) => `
     <div style="border-left: 4px solid ${accent}; padding: 8px 0 8px 12px; margin-bottom: 12px;">
@@ -223,14 +230,14 @@ export function renderPlanVerdictSection(input: {
         // 않는다). 그래도 판정 없이 숫자를 찍는 경로를 남기지 않도록 available을 먼저 본다 —
         // NaN이 그대로 "NaN%"로 찍히는 것을 막는 마지막 방어선이다.
         `<p style="margin: 0; font-size: 14px; font-weight: 700; color: ${verdictAccent(confidence)};">
-           목표 달성 확률 ${verdict.available ? Math.round(verdict.goalSuccess.rate * 100) : '판정 없음'}${verdict.available ? '%' : ''}
+           목표 달성 확률 ${judged === null ? '판정 없음' : `${Math.round(judged.goalSuccess.rate * 100)}%`}
          </p><p style="margin: 4px 0 0; font-size: 12px; font-weight: 700; color: #0f172a;">
-           ${verdict.trials.toLocaleString()}회 중 ${verdict.available ? verdict.goalSuccess.succeeded.toLocaleString() : '판정 없음'}회가 판정 조건 충족${goalConfidenceSuffix(verdict)}<br>
+           ${judged === null ? '판정 없음' : `${judged.trials.toLocaleString()}회 중 ${judged.goalSuccess.succeeded.toLocaleString()}회가 판정 조건 충족${goalConfidenceSuffix(judged)}`}<br>
            ${expectancy}세 예상자산(중앙값) ${formatValue(terminalAssetDisplay.amount)}
          </p>
          <p style="margin: 4px 0 0; font-size: 10px; color: #64748b;">입력한 수익률, 물가, 연금, 수명 및 시장 변동 가정 범위 내의 시뮬레이션 결과이며 실제 미래 결과를 보장하지 않습니다.</p>
          ${goalCoverageNote(monteCarlo.goalConditions)}
-         ${hardGoalSuccessNote(verdict.hardGoalSuccess)}`,
+         ${hardGoalSuccessNote(judged?.hardGoalSuccess ?? null)}`,
         verdictAccent(confidence)
       );
 
@@ -292,7 +299,7 @@ function goalCoverageNote(conditions: GoalSuccessConditions): string {
 // **세 갈래를 모두 본다.** judged(실제로 조건에 기여) · unjudged(HARD로 골랐지만 이 비율이
 // 반영하지 못함) · planEmbedded(EARLY_RETIREMENT — 계획에 이미 반영되어 모든 시행이 지키므로
 // 조건으로 세지 않음). 화면(HardGoalSuccessNote)과 같은 세 갈래·같은 문장이어야 한다.
-function hardGoalSuccessNote(hardGoalSuccess: SimulationVerdict['hardGoalSuccess']): string {
+function hardGoalSuccessNote(hardGoalSuccess: HardGoalSuccess | null): string {
   if (hardGoalSuccess === null) return '';
 
   const { judged, unjudged, planEmbedded, rate } = hardGoalSuccess;
@@ -326,9 +333,8 @@ function intervalSuffix(rate: number, trials: number): string {
   return label === null ? '' : ` · ${label}`;
 }
 
-function goalConfidenceSuffix(verdict: SimulationVerdict): string {
-  if (!verdict.available) return '';
-  const label = formatConfidenceInterval(verdict.goalSuccess.interval, verdict.confidenceLevel);
+function goalConfidenceSuffix(judged: SimulationVerdictValues): string {
+  const label = formatConfidenceInterval(judged.goalSuccess.interval, judged.confidenceLevel);
   return label === null ? '' : ` · ${label}`;
 }
 
