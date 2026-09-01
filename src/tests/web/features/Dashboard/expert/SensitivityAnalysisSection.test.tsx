@@ -348,9 +348,12 @@ describe('SensitivityAnalysisSection - HARD 목표 위반 경고', () => {
       />
     );
 
-    // RETIREMENT_GOAL_LABELS.ASSET_SURVIVAL과 RETIREMENT_GOAL_CONSTRAINT_LABELS.HARD.
-    expect(screen.getByText(/자산 고갈 방지/)).toBeInTheDocument();
-    expect(screen.getByText(/반드시 지키기/)).toBeInTheDocument();
+    // RETIREMENT_GOAL_LABELS.ASSET_SURVIVAL과 RETIREMENT_GOAL_CONSTRAINT_LABELS.HARD가
+    // 위반 행 자체(sensitivity-hard-violation)에 있는지를 본다 — 근거 문장도 같은
+    // 「반드시 지키기」 문구를 포함하므로 전역 getByText로 찾으면 두 곳이 걸린다.
+    const label = screen.getByTestId('sensitivity-hard-violation');
+    expect(label).toHaveTextContent('자산 고갈 방지');
+    expect(label).toHaveTextContent('반드시 지키기');
   });
 
   test('위반이 없는 시나리오에는 위반 문구를 붙이지 않는다', () => {
@@ -377,5 +380,45 @@ describe('SensitivityAnalysisSection - HARD 목표 위반 경고', () => {
 
     const baselineRow = screen.getByTestId('sensitivity-baseline-row');
     expect(baselineRow).toHaveTextContent('자산 고갈 방지');
+  });
+
+  // **이 두 테스트가 리뷰 재지적의 요점이다.** 판정 근거("결정론으로 1회 실행한 판정")를
+  // 위반 라벨마다 붙이면, 표는 최대 8행(시나리오 7 + 기준선)이라 위반이 넓게 퍼진 계획에서
+  // 같은 문장이 페이지 하나에 여러 번 찍혀 두 번째부터는 읽히지 않는다. 근거는 표 전체에
+  // «한 번만» 나야 한다.
+  test('여러 행이 위반해도 판정 근거 문장은 표 전체에 한 번만 나온다', () => {
+    const twoViolations: SensitivityScenario[] = [
+      scenario({
+        key: 'yieldConservative', label: '안정형 가정 (주식 5%)', depletionAge: 82,
+        endingAssets: 500000000, endingAssetsDelta: -1000000000, hardViolations: ['assetSurvival'],
+      }),
+      scenario({
+        key: 'yieldAggressive', label: '공격형 가정 (주식 9%)', depletionAge: 85,
+        endingAssets: 4000000000, endingAssetsDelta: 2500000000, hardViolations: ['assetSurvival'],
+      }),
+    ];
+    render(
+      <SensitivityAnalysisSection
+        baselineDepletionAge={90} baselineEndingAssets={1500000000}
+        baselineHardViolations={['assetSurvival']}
+        scenarios={twoViolations} hardRequirementGoals={hardRequirementGoals}
+      />
+    );
+
+    // 위반 라벨 자체는 (시나리오 2 + 기준선 1 =) 3곳에 있어야 하지만
+    expect(screen.getAllByTestId('sensitivity-hard-violation')).toHaveLength(3);
+    // 근거 문장은 정확히 한 번이다.
+    expect(screen.getAllByTestId('sensitivity-hard-violation-basis')).toHaveLength(1);
+  });
+
+  test('위반이 하나도 없으면 판정 근거 문장을 렌더하지 않는다', () => {
+    render(
+      <SensitivityAnalysisSection
+        baselineDepletionAge={88} baselineEndingAssets={2500000000}
+        scenarios={scenarios} hardRequirementGoals={hardRequirementGoals}
+      />
+    );
+
+    expect(screen.queryByTestId('sensitivity-hard-violation-basis')).not.toBeInTheDocument();
   });
 });

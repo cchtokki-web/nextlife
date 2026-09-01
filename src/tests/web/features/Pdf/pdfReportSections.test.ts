@@ -615,6 +615,39 @@ describe('renderSensitivityTableSection', () => {
       expect(html).toContain('현재 가정 (기준)');
       expect(html).toContain('자산 고갈 방지');
     });
+
+    // **이 두 테스트가 리뷰 재지적의 요점이다.** 판정 근거("결정론으로 1회 실행한 판정")를
+    // 위반 라벨마다 붙이면, 표는 최대 8행(시나리오 7 + 기준선)이라 위반이 넓게 퍼진 계획에서
+    // 같은 문장이 페이지 하나에 여러 번 찍혀 두 번째부터는 읽히지 않는다. 근거는 표 전체에
+    // «한 번만» 나야 한다.
+    test('여러 행이 위반해도 판정 근거 문장은 표 전체에 한 번만 나온다', () => {
+      const twoViolations: SensitivityScenario[] = [
+        { ...violatingScenarios[0], hardViolations: ['assetSurvival'] },
+        violatingScenarios[1],
+      ];
+      const html = renderSensitivityTableSection(
+        twoViolations,
+        {
+          depletionAge: 90, unmetSpendingYears: 0, planAssetStatus: 'sustained',
+          endingAssets: 1500000000, hardViolations: ['assetSurvival'],
+        },
+        hardRequirementGoals,
+      );
+
+      // 위반 라벨 자체는 (시나리오 2 + 기준선 1 =) 3곳에 있어야 한다.
+      const labelOccurrences = html.split('자산 고갈 방지').length - 1;
+      expect(labelOccurrences).toBe(3);
+      // 근거 문장은 정확히 한 번이다.
+      const basisOccurrences = html.split('결정론으로 1회 실행한 판정').length - 1;
+      expect(basisOccurrences).toBe(1);
+    });
+
+    test('위반이 하나도 없으면 판정 근거 문장을 인쇄하지 않는다', () => {
+      const noViolations: SensitivityScenario[] = violatingScenarios.map((s) => ({ ...s, hardViolations: [] }));
+      const html = renderSensitivityTableSection(noViolations, undefined, hardRequirementGoals);
+
+      expect(html).not.toContain('결정론으로 1회 실행한 판정');
+    });
   });
 });
 
@@ -666,7 +699,7 @@ describe('renderKeyLeversSection', () => {
     expect(html).toContain('상속 자산 확보');
   });
 
-  test('위반이 없으면 위반 문구를 인쇄하지 않는다', () => {
+  test('위반이 없으면 위반 문구도 판정 근거 문장도 인쇄하지 않는다', () => {
     const sensitivity: SensitivityAnalysis = {
       ...noSensitivityScenarios,
       scenarios: [
@@ -685,6 +718,46 @@ describe('renderKeyLeversSection', () => {
     const html = renderKeyLeversSection(computeKeyLevers(input));
 
     expect(html).not.toContain('반드시 지키기');
+    expect(html).not.toContain('결정론으로 1회 실행한 판정');
+  });
+
+  // **이 테스트가 리뷰 재지적의 요점이다.** 판정 근거("결정론으로 1회 실행한 판정")를 레버
+  // 마다 붙이면, 은퇴 시점·투자수익률 레버가 둘 다 위반을 담을 때 섹션 하나에 같은 문장이
+  // 두 번 찍힌다. 근거는 섹션 전체에 «한 번만» 나야 한다.
+  test('두 레버가 모두 위반해도 판정 근거 문장은 섹션에 한 번만 나온다', () => {
+    const sensitivity: SensitivityAnalysis = {
+      ...noSensitivityScenarios,
+      scenarios: [
+        { key: 'retirementLater', label: '은퇴시점 +3년', depletionAge: null, deltaYears: null,
+          endingAssets: 1500000000, endingAssetsDelta: 1083600000, unmetSpendingYears: 0,
+          hardViolations: ['terminalAsset'] },
+        { key: 'retirementEarlier', label: '은퇴시점 -3년', depletionAge: 61, deltaYears: -5,
+          endingAssets: 0, endingAssetsDelta: -400000000, unmetSpendingYears: 19, hardViolations: [] },
+        { key: 'yieldAggressive', label: '공격형 가정 (주식 9%)', depletionAge: null, deltaYears: null,
+          endingAssets: 499010000, endingAssetsDelta: 499010000, unmetSpendingYears: 0,
+          hardViolations: ['terminalAsset'] },
+        { key: 'yieldConservative', label: '안정형 가정 (주식 5%)', depletionAge: 67, deltaYears: -8,
+          endingAssets: 0, endingAssetsDelta: -300000000, unmetSpendingYears: 13, hardViolations: [] },
+      ],
+      hardRequirementGoals: { spendingTarget: [], assetSurvival: [], terminalAsset: ['INHERITANCE'] },
+    };
+    const input: KeyLeversInput = {
+      sensitivity,
+      pensionGap: null,
+      shortfall: { goal: null, plan: null, goalMonthlySpending: 3500000, sustainableMonthlySpending: 3500000 },
+      recommendation: undefined,
+      formatValue: won,
+    };
+
+    const levers = computeKeyLevers(input);
+    expect(levers.filter((l) => l.hardViolation)).toHaveLength(2); // 전제: 두 레버 모두 위반
+
+    const html = renderKeyLeversSection(levers);
+
+    const labelOccurrences = html.split('상속 자산 확보').length - 1;
+    expect(labelOccurrences).toBe(2);
+    const basisOccurrences = html.split('결정론으로 1회 실행한 판정').length - 1;
+    expect(basisOccurrences).toBe(1);
   });
 });
 

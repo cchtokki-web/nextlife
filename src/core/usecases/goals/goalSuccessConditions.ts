@@ -387,9 +387,10 @@ export function hardViolationGoalTypes(
 }
 
 /**
- * 위반한 HARD 축들을 사람이 읽는 문장으로 바꾼다.
+ * 위반한 HARD 축들을 사람이 읽는 «짧은 라벨»로 바꾼다. 판정 근거(결정론·1회 실행)는 여기
+ * 넣지 않는다 — describeHardViolationBasis()가 그 역할이다.
  *
- * **세 소비처가 모두 같은 문장을 쓴다** — 화면(SensitivityAnalysisSection),
+ * **세 소비처가 모두 같은 라벨을 쓴다** — 화면(SensitivityAnalysisSection),
  * PDF(renderSensitivityTableSection), 「무엇부터 바꿔야 하나」 카드(computeKeyLevers →
  * KeyLeversCard·renderKeyLeversSection). 처음 이 기능을 만들 때는 소비처가 둘인 줄 알고
  * 화면·PDF에 각자 문장을 심었는데, 세 번째 소비처(computeKeyLevers)가 나타나자 그 카드는
@@ -397,21 +398,16 @@ export function hardViolationGoalTypes(
  * 표시했다 — 바로 아래 민감도 표는 같은 시나리오를 위반으로 표시하는데도. 문장을 한 곳에
  * 모아야 이런 부분적 반영이 다시 생기지 않는다.
  *
+ * **판정 근거 문장을 라벨에서 떼어낸 이유.** 민감도 표는 시나리오·기준선까지 최대 8행을
+ * 그리고, 그 옆의 「무엇부터 바꿔야 하나」 카드도 레버마다 위반을 적을 수 있다 — 위반이
+ * 넓게 퍼진 계획은 같은 25어 안팎의 괄호가 한 페이지에 열 번 가까이 반복됐다. 두 번째부터는
+ * 읽히지 않으니, 문구를 추가한 목적(판정 근거를 밝힌다) 자체가 무효가 된다. 그래서 라벨은
+ * 항목마다, 근거 문장(describeHardViolationBasis)은 표·카드마다 «한 번만» 쓴다.
+ *
  * **목표 이름 조회는 호출자가 넘긴다.** 이 파일은 core라 web의 goalCatalog을 참조할 수
  * 없다(AGENTS.md의 계층 분리 원칙). computeKeyLevers.ts(core)는 RETIREMENT_GOAL_LABELS를
  * 직접 쓰고, 화면·PDF는 각자의 표준 조회 창구(retirementGoalDefinition·goalLabel)를
  * 넘긴다 — 셋 다 결국 RETIREMENT_GOAL_LABELS 하나로 귀결되는 값이라 이름이 갈리지 않는다.
- *
- * **"결정론 1회 실행 판정"이라고 스스로 밝히는 이유.** 이 문장은 몬테카를로의
- * hardGoalSuccessProbability(1,000회 확률)와 같은 화면·같은 계획에 나란히 놓일 수 있다.
- * 두 판정은 기준이 다르다 — hasSpendingShortfall(이 문장의 근거)은 원장 기준(엡실론 없음),
- * 몬테카를로의 firstGoalShortfallAge는 재구성 기준(월 1만원 엡실론)이다
- * (spendingShortfall.ts의 AUDIT-003). 그래서 생활비가 엡실론 미만으로만 모자란 해가 있는
- * 계획은 몬테카를로에서 "HARD 목표 판정 확률 100%"이면서 이 문장에서는 "위반"으로 보일 수
- * 있다. 그것을 "같은 질문에 다른 답"으로 읽지 않도록, 이 문장은 스스로 «그 시나리오 하나를
- * 결정론으로 1회 실행한 판정»이라고 밝힌다 — 몬테카를로처럼 여러 시행을 모은 확률이 아니다.
- * 두 술어를 하나로 합치는 것은 이 함수의 범위가 아니다(spendingShortfall.ts와 같은 이유로,
- * 그러면 기존 지표 중 하나가 답하는 질문이 바뀐다).
  */
 export function describeHardViolation(
   axes: readonly HardRequirementAxis[],
@@ -421,6 +417,26 @@ export function describeHardViolation(
   if (axes.length === 0) return null;
   const labels = hardViolationGoalTypes(axes, hardRequirementGoals).map(labelOf);
   if (labels.length === 0) return null;
-  return `「${RETIREMENT_GOAL_CONSTRAINT_LABELS.HARD}」 위반: ${labels.join(', ')} `
-    + '(이 시나리오를 결정론으로 1회 실행한 판정이며, 몬테카를로 확률이 아닙니다)';
+  return `「${RETIREMENT_GOAL_CONSTRAINT_LABELS.HARD}」 위반: ${labels.join(', ')}`;
+}
+
+/**
+ * describeHardViolation 라벨이 무엇을 근거로 하는지 밝히는 한 문장. **위반이 하나라도 있는
+ * 표·카드마다 정확히 한 번만** 인쇄한다 — 위반 행마다 반복하지 않는다(위 describeHardViolation
+ * 주석 참고). 화면·PDF·「무엇부터 바꿔야 하나」 카드가 모두 이 문장을 그대로 쓴다.
+ *
+ * **"결정론 1회 실행 판정"이라고 스스로 밝히는 이유.** 이 라벨은 몬테카를로의
+ * hardGoalSuccessProbability(1,000회 확률)와 같은 화면·같은 계획에 나란히 놓일 수 있다.
+ * 두 판정은 기준이 다르다 — hasSpendingShortfall(이 라벨의 근거)은 원장 기준(엡실론 없음),
+ * 몬테카를로의 firstGoalShortfallAge는 재구성 기준(월 1만원 엡실론)이다
+ * (spendingShortfall.ts의 AUDIT-003). 그래서 생활비가 엡실론 미만으로만 모자란 해가 있는
+ * 계획은 몬테카를로에서 "HARD 목표 판정 확률 100%"이면서 이 라벨에서는 "위반"으로 보일 수
+ * 있다. 그것을 "같은 질문에 다른 답"으로 읽지 않도록, 이 문장은 스스로 «그 시나리오 하나를
+ * 결정론으로 1회 실행한 판정»이라고 밝힌다 — 몬테카를로처럼 여러 시행을 모은 확률이 아니다.
+ * 두 술어를 하나로 합치는 것은 이 함수의 범위가 아니다(spendingShortfall.ts와 같은 이유로,
+ * 그러면 기존 지표 중 하나가 답하는 질문이 바뀐다).
+ */
+export function describeHardViolationBasis(): string {
+  return '위 「반드시 지키기」 위반 표시는 그 시나리오를 결정론으로 1회 실행한 판정입니다 '
+    + '— 몬테카를로처럼 여러 시행을 모은 확률이 아닙니다.';
 }

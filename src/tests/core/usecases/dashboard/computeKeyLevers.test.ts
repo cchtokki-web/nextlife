@@ -195,21 +195,24 @@ describe('computeKeyLevers', () => {
 
       const retirement = levers.find((l) => l.key === 'retirementAge')!;
       // 위반이 반영되지 않았다면 이 문구는 "3년 늦추면 기대수명 시점 자산 +108,360만원"처럼
-      // 순수 개선으로만 읽혔을 것이다 — 아래 두 assertion이 그 상태를 잡는다.
+      // 순수 개선으로만 읽혔을 것이다.
       expect(retirement.detail).toContain('반드시 지키기');
       expect(retirement.detail).toContain('상속 자산 확보');
-      // 몬테카를로 확률과 혼동되지 않도록, 단일 결정론 실행 판정이라는 사실도 함께 말한다.
-      expect(retirement.detail).toContain('결정론');
-      expect(retirement.detail).toContain('확률이 아닙니다');
+      // 판정 근거(결정론 1회 실행)는 이 문구 안에 있지 않다 — 레버마다 반복하면 위반이 넓게
+      // 퍼진 계획에서 카드 하나에 같은 문장이 여러 번 찍힌다(리뷰 지적). 그 문장은 hardViolation
+      // 플래그를 본 렌더 표면(KeyLeversCard·renderKeyLeversSection)이 카드당 한 번만 낸다.
+      expect(retirement.detail).not.toContain('결정론');
+      expect(retirement.hardViolation).toBe(true);
     });
 
-    // 위반이 없는 값(기존 픽스처)은 문구가 그대로여야 한다 — 위반 판정을 덧붙이는 변경이
-    // 위반 없는 시나리오의 기존 출력까지 건드리면 그 자체가 회귀다.
-    test('위반이 없으면 기존 문구 그대로다(회귀)', () => {
+    // 위반이 없는 값(기존 픽스처)은 문구·플래그가 그대로여야 한다 — 위반 판정을 덧붙이는
+    // 변경이 위반 없는 시나리오의 기존 출력까지 건드리면 그 자체가 회귀다.
+    test('위반이 없으면 기존 문구 그대로고 hardViolation도 서지 않는다(회귀)', () => {
       const [retirement] = computeKeyLevers(input());
 
       expect(retirement.detail).not.toContain('반드시 지키기');
       expect(retirement.detail).not.toContain('결정론');
+      expect(retirement.hardViolation).toBeFalsy();
     });
 
     // 순서는 여전히 고정이다 — 위반이 있다고 해서 그 레버가 뒤로 밀리거나 앞으로 당겨지지
@@ -251,6 +254,7 @@ describe('computeKeyLevers', () => {
       const investment = levers.find((l) => l.key === 'investmentReturn')!;
       expect(investment.detail).toContain('반드시 지키기');
       expect(investment.detail).toContain('상속 자산 확보');
+      expect(investment.hardViolation).toBe(true);
     });
   });
 });

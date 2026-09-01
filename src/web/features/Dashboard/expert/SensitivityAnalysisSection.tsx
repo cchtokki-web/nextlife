@@ -6,6 +6,7 @@ import {
   GoalSuccessConditions,
   HardRequirementAxis,
   describeHardViolation as describeHardViolationCore,
+  describeHardViolationBasis,
 } from '../../../../core/usecases/goals/goalSuccessConditions';
 import { retirementGoalDefinition } from '../../RetirementGoals/goalCatalog';
 
@@ -126,6 +127,10 @@ export function SensitivityAnalysisSection({
 }: SensitivityAnalysisSectionProps) {
   const noInvestableAsset = planAssetStatus === 'no_investable_asset';
   const baselineViolationText = describeHardViolation(baselineHardViolations, hardRequirementGoals);
+  // 근거 문장(결정론 1회 실행)은 위반 라벨마다 반복하지 않는다 — 표는 최대 8행(시나리오
+  // 7 + 기준선)이라 위반이 넓게 퍼진 계획에서는 같은 문장이 페이지 하나에 여러 번 찍혀
+  // 두 번째부터는 읽히지 않는다. 위반이 하나라도 있을 때 이 표를 위해 «한 번만» 낸다.
+  const anyHardViolation = baselineHardViolations.length > 0 || scenarios.some((s) => s.hardViolations.length > 0);
 
   // 접는 판정은 시나리오 key 하드코딩이 아니라 "결과가 정말 같은가"로 한다 — 자산이 없어도
   // 은퇴시점처럼 실제로 결과를 바꾸는 가정은 남아야 하고, 어떤 가정이 그런지는 데이터가 정한다.
@@ -195,6 +200,12 @@ export function SensitivityAnalysisSection({
         <p className="mb-1 text-xs break-keep text-foreground-muted">
           {scenarios.length}개 시나리오 모두 <strong>월 생활비 {formatManwon(frozenMonthlySpending)}을 고정</strong>한 채
           가정 하나만 바꾼 결과입니다.
+        </p>
+      )}
+      {/* 위반이 하나도 없으면 내지 않는다 — 표시된 적 없는 라벨의 근거를 설명하는 문장이 된다. */}
+      {anyHardViolation && (
+        <p className="mb-1 text-xs break-keep text-foreground-muted" data-testid="sensitivity-hard-violation-basis">
+          {describeHardViolationBasis()}
         </p>
       )}
       {noInvestableAsset ? (

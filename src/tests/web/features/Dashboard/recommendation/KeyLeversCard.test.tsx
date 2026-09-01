@@ -69,12 +69,13 @@ describe('KeyLeversCard', () => {
 
     render(<KeyLeversCard levers={levers} />);
 
+    // 근거 문장도 같은 「반드시 지키기」 문구를 담으므로, 위반 라벨 자체는 특정
+    // 텍스트("상속 자산 확보")로만 확인한다 — 개수·근거 문장 자리는 아래 두 테스트가 본다.
     expect(screen.getByText('은퇴 시점 조정')).toBeInTheDocument();
-    expect(screen.getByText(/반드시 지키기/)).toBeInTheDocument();
     expect(screen.getByText(/상속 자산 확보/)).toBeInTheDocument();
   });
 
-  test('위반이 없으면 위반 문구를 렌더하지 않는다', () => {
+  test('위반이 없으면 위반 문구도 판정 근거 문장도 렌더하지 않는다', () => {
     const input: KeyLeversInput = {
       sensitivity: sensitivity(
         [
@@ -93,5 +94,39 @@ describe('KeyLeversCard', () => {
     render(<KeyLeversCard levers={levers} />);
 
     expect(screen.queryByText(/반드시 지키기/)).not.toBeInTheDocument();
+    expect(screen.queryByTestId('key-levers-hard-violation-basis')).not.toBeInTheDocument();
+  });
+
+  // **이 테스트가 리뷰 재지적의 요점이다.** 판정 근거("결정론으로 1회 실행한 판정")를 레버
+  // 마다 붙이면, 은퇴 시점·투자수익률 레버가 둘 다 위반을 담을 때 카드 하나에 같은 문장이
+  // 두 번 찍힌다. 근거는 카드 전체에 «한 번만» 나야 한다.
+  test('두 레버가 모두 위반해도 판정 근거 문장은 카드에 한 번만 나온다', () => {
+    const goals: SensitivityAnalysis['hardRequirementGoals'] = {
+      spendingTarget: [], assetSurvival: [], terminalAsset: ['INHERITANCE'],
+    };
+    const input: KeyLeversInput = {
+      sensitivity: sensitivity(
+        [
+          scenario('retirementLater', { endingAssetsDelta: 1083600000, hardViolations: ['terminalAsset'] }),
+          scenario('retirementEarlier', { depletionAge: 61, unmetSpendingYears: 19 }),
+          scenario('yieldAggressive', { endingAssetsDelta: 499010000, hardViolations: ['terminalAsset'] }),
+          scenario('yieldConservative', { depletionAge: 67, unmetSpendingYears: 13 }),
+        ],
+        goals,
+      ),
+      pensionGap: null,
+      shortfall: { goal: null, plan: null, goalMonthlySpending: 3500000, sustainableMonthlySpending: 3500000 },
+      recommendation: undefined,
+      formatValue: won,
+    };
+    const levers = computeKeyLevers(input);
+    expect(levers.filter((l) => l.hardViolation)).toHaveLength(2); // 전제: 두 레버 모두 위반
+
+    render(<KeyLeversCard levers={levers} />);
+
+    // 위반 라벨("상속 자산 확보")은 레버 두 곳에 있어야 한다.
+    expect(screen.getAllByText(/상속 자산 확보/)).toHaveLength(2);
+    // 근거 문장은 정확히 한 번이다.
+    expect(screen.getAllByTestId('key-levers-hard-violation-basis')).toHaveLength(1);
   });
 });

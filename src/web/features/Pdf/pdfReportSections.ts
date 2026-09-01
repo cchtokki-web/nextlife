@@ -25,6 +25,7 @@ import {
   HardRequirementAxis,
   describeGoalSuccessCriteria,
   describeHardViolation as describeHardViolationCore,
+  describeHardViolationBasis,
 } from '../../../core/usecases/goals/goalSuccessConditions';
 import { describeUnscoredGoals } from '../../../core/usecases/goals/goalScoreSupport';
 import { SequenceRiskResult } from '../../../core/usecases/montecarlo/sequenceRisk';
@@ -140,10 +141,18 @@ export function renderKeyLeversSection(levers: KeyLever[]): string {
     )
     .join('');
 
+  // 화면(KeyLeversCard)과 같은 판단 — 판정 근거(결정론 1회 실행)는 레버마다 반복하지 않고
+  // 섹션 전체에 한 번만 낸다. 위반이 전혀 없으면 내지 않는다.
+  const anyHardViolation = levers.some((lever) => lever.hardViolation);
+  const violationBasisHtml = anyHardViolation
+    ? `<p style="margin: 0 0 8px; font-size: 10.5px; color: #64748b;">${describeHardViolationBasis()}</p>`
+    : '';
+
   return `
     <div style="border: 1px solid #e2e8f0; background-color: #f8fafc; border-radius: 8px; padding: 12px 14px; margin-bottom: 12px;">
       <p style="margin: 0 0 2px; font-size: 12.5px; font-weight: 700; color: #0f172a;">무엇부터 바꿔야 하나</p>
       <p style="margin: 0 0 8px; font-size: 10.5px; color: #64748b;">이미 계산된 결과에서 영향이 큰 순서로 정리했습니다. 아래로 갈수록 효과가 작습니다.</p>
+      ${violationBasisHtml}
       <ol style="margin: 0; padding-left: 16px;">${rows}</ol>
     </div>
   `;
@@ -768,6 +777,15 @@ export function renderSensitivityTableSection(
   const frozenNoteHtml = baseline?.frozenMonthlySpending === undefined
     ? ''
     : `<p style="margin: 0 0 6px; font-size: 10.5px; color: #64748b;">${scenarios.length}개 시나리오 모두 <strong>월 생활비 ${formatManwon(baseline.frozenMonthlySpending)}을 고정</strong>한 채 가정 하나만 바꾼 결과입니다.</p>`;
+  // 근거 문장(결정론 1회 실행)은 위반 라벨마다 반복하지 않는다 — 표는 최대 8행(시나리오 7 +
+  // 기준선)이라 위반이 넓게 퍼진 계획에서는 같은 문장이 페이지 하나에 여러 번 찍혀 두 번째부터는
+  // 읽히지 않는다. 위반이 하나라도 있을 때 이 표를 위해 «한 번만» 낸다. 위반이 없으면 내지
+  // 않는다 — 표시된 적 없는 라벨의 근거를 설명하는 문장이 된다.
+  const anyHardViolation = (baseline?.hardViolations?.length ?? 0) > 0
+    || scenarios.some((s) => s.hardViolations.length > 0);
+  const violationBasisNoteHtml = anyHardViolation
+    ? `<p style="margin: 0 0 6px; font-size: 10.5px; color: #64748b;">${describeHardViolationBasis()}</p>`
+    : '';
   const visibleScenarios = noInvestableAsset
     ? scenarios.filter(
         (s) => !(s.endingAssetsDelta === 0
@@ -831,6 +849,7 @@ export function renderSensitivityTableSection(
   return `
     ${frozenNoteHtml}
     ${returnNoteHtml}
+    ${violationBasisNoteHtml}
     <table style="width: 100%; table-layout: fixed; border-collapse: collapse; margin-top: 8px;">
       <colgroup>
         <col style="width: 28%;" />
