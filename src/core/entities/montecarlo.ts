@@ -195,6 +195,15 @@ export interface MonteCarloResult {
   // 산술평균이라 p50이 이 값보다 낮게 나온다. MonteCarloSection이 두 값을 나란히 인쇄해
   // 그 차이를 설명한다(Pro 한정).
   deterministicEndingAssets: number;
+  /**
+   * 확정 HARD 목표가 요구하는 조건만 모두 충족한 시행 비율.
+   *
+   * goalSuccessProbability의 조건 부분집합이므로 언제나 그 값 이상이다. HARD 요구가 하나도
+   * 없으면 모든 시행이 통과해 1이 된다 — 그 숫자를 그대로 보여주면 안 되며,
+   * resolveSimulationVerdict가 conditions.hardRequirements를 보고 「판정 대상 없음」으로
+   * 바꾼다. 엔진이 undefined를 내면 「계산하지 않음」과 구분되지 않으므로 언제나 값을 낸다.
+   */
+  hardGoalSuccessProbability?: number;
 }
 
 /**

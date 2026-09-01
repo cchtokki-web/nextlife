@@ -2,8 +2,8 @@
 type: concept
 status: enforced
 sources: ["[[AGENTS]] 현행 제품 계약", "[[PRD]] §6", "[[PRD]] §7.2"]
-code: [src/core/entities/retirementGoal.ts, src/core/strategy/HardConstraintFilter.ts]
-tests: [src/tests/core/strategy/HardConstraintFilter.test.ts, src/tests/core/usecases/goals/targetValueProvenance.test.ts, src/tests/core/entities/retirementGoal.test.ts]
+code: [src/core/entities/retirementGoal.ts, src/core/strategy/HardConstraintFilter.ts, src/core/usecases/goals/goalSuccessConditions.ts, src/core/usecases/montecarlo/resolveSimulationVerdict.ts, src/core/usecases/montecarlo/describeSuccessRates.ts]
+tests: [src/tests/core/strategy/HardConstraintFilter.test.ts, src/tests/core/usecases/goals/targetValueProvenance.test.ts, src/tests/core/entities/retirementGoal.test.ts, src/tests/core/usecases/goals/goalSuccessConditions.test.ts, src/tests/core/usecases/montecarlo/hardGoalSuccess.test.ts, src/tests/core/usecases/montecarlo/resolveSimulationVerdict.test.ts, src/tests/web/features/Dashboard/DashboardSection.test.tsx, src/tests/web/features/Pdf/pdfReportSections.test.ts]
 tags: [계산계약, 목표, 제약]
 ---
 # HARD와 SOFT 목표
@@ -25,6 +25,57 @@ tags: [계산계약, 목표, 제약]
   `hardGoalAwaitsTargetConfirmation()`이 참이고, 그 목표는 아직 아무것도 구속하지 않는다.
 - 저장되는 값은 언제나 `'HARD' | 'SOFT'`이고, 사람이 읽는 자리에서만
   `RETIREMENT_GOAL_CONSTRAINT_LABELS`(`반드시 지키기` / `가능하면 달성`)로 바꾼다.
+- 확정된 HARD 목표는 Monte Carlo의 `hardGoalSuccessProbability`를 구동한다. 이 값은 확정
+  HARD 목표가 요구하는 조건을 «모두» 만족한 시행의 비율이다. 「확정」의 뜻은 위와 같다 —
+  `constraintType === 'HARD'`이고 `hardGoalAwaitsTargetConfirmation(goal)`이 거짓이어야
+  한다. `resolveSimulationVerdict`는 이 술어를 다시 구현하지 않고 그대로 재사용한다.
+- 이 비율에 들어가는 것은 «정량 판정 대상» 목표뿐이다. `isQuantitativelyJudgedGoal()`이
+  가르는 여섯 유형(생활비 안정·여유 있는 소비·자산 고갈 방지·상속·자산 성장·빠른 은퇴)은
+  «같은 뜻»이 아니다 — 앞의 다섯(`MEASURABLE_GOALS`)만 시행 하나로 성공·실패를 «물을 수»
+  있다. 빠른 은퇴는 다르다: 목표 은퇴 나이는 계획에 이미 반영되어 모든 시행이 이미 그
+  나이에 은퇴한 채로 시작하므로 물을 것이 없다 — 조건으로 세면 언제나 전 시행 통과라
+  확률이 부풀고, 미판정으로 세면 반영된 목표를 반영되지 않았다고 말하게 된다. 그래서 빠른
+  은퇴는 `hardGoalSuccess.judged`도 `unjudged`도 아닌 `planEmbedded`(`PLAN_EMBEDDED_GOALS`)
+  로 따로 드러난다 — 「이미 반영되어 모든 시행이 지킨다」는 뜻이지 「반영되지 않았다」는
+  뜻이 아니다.
+- HARD로 고른 목표가 이 비율의 조건이 되려면 유형만으로는 부족하다 — 그 목표가 «실제로
+  축을 켜야» 한다(`hardRequirementGoals`, `resolveSimulationVerdict`의 `judged` 산출 근거).
+  「자산 성장」은 `MEASURABLE_GOALS`에 속한 «판정 가능한 유형»이지만 목표액을 묻는 UI가
+  없어(위 「알려진 한계」의 ASSET_GROWTH), 다른 자산 목표(상속) 없이 혼자 골라서는 기말자산
+  조건을 전혀 만들지 못한다 — 그런 경우 확정 HARD로 골라도 `judged`가 아니라 `unjudged`로
+  떨어진다. **이 경로는 새 시나리오에서도 막혀 있지 않다** — 자산 성장은 정량 판정 대상
+  유형이라 `RetirementGoalSelector.tsx`의 HARD 잠금을 그대로 통과하므로, 오늘도 한 번의
+  선택만으로 재현된다.
+- 주거 안정처럼 유형 자체가 `MEASURABLE_GOALS`·`PLAN_EMBEDDED_GOALS` 어디에도 없는 목표를
+  HARD로 고르는 것도 같은 결과(`unjudged`)로 드러난다 — 화면·PDF는 「이 비율이 판정하지
+  않은 HARD 목표가 있다」는 사실을 반드시 함께 적는다(known-issues 1번 — 계산은 이미
+  옳았고 결함은 화면이 못박지 않은 조건을 지킨 것처럼 보인 데 있었다는 결론을 그대로
+  따른다). **다만 이쪽 경로는 새 시나리오에서는 막혀 있다** — known-issues 1번 해결 이후
+  `RetirementGoalSelector.tsx`가 정량 판정 대상이 아닌 목표의 HARD 선택지를 잠갔기
+  때문이다(`isQuantitativelyJudgedGoal`이 거짓인 유형). 이쪽 경로로 `unjudged`가 채워지는
+  것은 그 잠금 이전에 저장된 레거시 시나리오뿐이다 — 선택기는 그 값을 조용히 SOFT로 고쳐
+  쓰지 않고 있는 그대로 보여주므로, 화면·PDF의 안내 문구는 지금도 살아 있는 경로다.
+- 목표에서 «활성 조건»이 하나도 나오지 않으면 `resolveGoalSuccessConditions`는 계획
+  기본값(생활비 유지·자산 생존)으로 되돌아가고, 이때 `hardRequirements`는 세 축 모두
+  `false`다 — 사용자가 아무것도 못박지 않았기 때문이다.
+
+### 알려진 한계 — 기말자산 조건은 단일 문턱이다
+
+`terminalAssetGoalOf`는 상속·자산 성장 목표 중 «확정된 목표액이 가장 큰 것 하나»만
+기말자산 조건으로 채택하고(`terminalAssetGoal`), `hardRequirements.terminalAsset`은 그
+금액을 «준» 목표에만 귀속시킨다. 여러 자산 목표를 동시에 고르면 문턱은 언제나 하나다.
+
+그래서 사용자가 **HARD 상속 3억과 SOFT 상속 5억을 함께** 고르면 5억이 이긴다
+(`explicit.reduce`가 최댓값을 취한다). `source`는 SOFT 목표이므로 `terminalAsset`은
+`false`다 — 이것은 옳다. 5억을 HARD 요구로 보고하면 사용자가 못박은 적 없는 금액을
+못박았다고 말하는 것이고, 그것이 바로 위 「흔한 위반」이 기록한 실패 패턴이다.
+
+**그러나 그 대가로 사용자가 실제로 못박은 3억 HARD 요구가 이 비율에서 통째로 사라진다.**
+기말자산 4억으로 끝나는 시행은 3억 HARD 목표를 만족하고 5억 SOFT 목표는 놓치지만,
+단일 문턱 설계는 그 둘을 구별해 셀 수 없다 — `hardGoalSuccessProbability`는 3억 조건을
+전혀 판정하지 않은 채 5억 조건(놓쳤으므로 실패)만 본다. 이 비율의 신뢰 범위를 판단하는
+사람은 이 사실을 알아야 한다. 여러 문턱을 동시에 추적하려면 별도 설계가 필요하고,
+이 커밋의 범위가 아니다 — 여기서는 한계로만 기록한다.
 
 ## 흔한 위반
 
@@ -47,9 +98,46 @@ tags: [계산계약, 목표, 제약]
   `isSuggestedTargetValue()`, `hardGoalAwaitsTargetConfirmation()`,
   `hardSpendingFloorTarget()`, `RETIREMENT_GOAL_CONSTRAINT_LABELS`, `MAX_RETIREMENT_GOALS`;
   `src/core/strategy/HardConstraintFilter.ts`의 `beforeSimulation()`, `afterEvaluation()`
+- 코드: `src/core/usecases/goals/goalSuccessConditions.ts`의 `isQuantitativelyJudgedGoal()`
+  (정량 판정 대상 여섯 유형을 가른다), `isPlanEmbeddedGoal()`(그중 계획에 이미 반영되어
+  조건으로 세지 않는 쪽만 가른다), `isConfirmedHardGoal()`(「확정된 HARD」 술어의 유일한
+  출처), `resolveGoalSuccessConditions()`의 `hardRequirements`·`hardRequirementGoals`
+  산출부(확정 HARD만 요구 축을 켜고, «그 축을 켠 목표»를 함께 싣는다 — 유형 멤버십이 아니라
+  이 목록이 판정 여부의 근거다), `terminalAssetGoalOf()`(기말자산 문턱이 단일 값이고 그
+  값을 준 목표에만 HARD 귀속을 준다 — 위 「알려진 한계」의 근거)
+- 코드: `src/core/usecases/montecarlo/resolveSimulationVerdict.ts`의 `judged`/`unjudged`/
+  `planEmbedded` 세 갈래 분류부. `judged`는 `isQuantitativelyJudgedGoal`(유형)이 아니라
+  `goalConditions.hardRequirementGoals`(그 목표가 실제로 축을 켰는가)에서 나온다 —
+  유형만 보면 목표액 UI가 없는 ASSET_GROWTH가 아무 조건도 못 만들었는데 「판정됨」으로
+  잘못 분류된다. `planEmbedded`는 `isPlanEmbeddedGoal`로 가른다. `hardGoalSuccess`가 요구
+  축이 하나도 없으면 `null`이 되는 분기
+- 코드: `src/core/usecases/montecarlo/describeSuccessRates.ts`의
+  `describeHardGoalRelationship()` — HARD 목표 판정 확률이 목표 달성 확률의 «완화»라서
+  항상 그 값 이상이라는 관계를 밝히는 한 문장. 화면·PDF가 같은 문장을 인쇄해야 하므로
+  한 곳에 둔다(`describeCompositeNote`와 같은 이유)
 - 테스트: `src/tests/core/strategy/HardConstraintFilter.test.ts`,
   `src/tests/core/usecases/goals/targetValueProvenance.test.ts`,
   `src/tests/core/entities/retirementGoal.test.ts`
+- 테스트: `src/tests/core/usecases/goals/goalSuccessConditions.test.ts`의
+  `resolveGoalSuccessConditions — hardRequirements`(확정 HARD만 축을 켜는 것, 목표액을
+  준 목표가 아니면 `terminalAsset`이 `false`인 것) 및 `isQuantitativelyJudgedGoal`
+  describe 블록(모든 목표 유형에서 미반영 판정과 정확히 반대임을 순회로 검증)
+- 테스트: `src/tests/core/usecases/montecarlo/hardGoalSuccess.test.ts`의 「HARD 조건만
+  요구하므로 전체 성공률보다 높다」(HARD 비율이 전체 비율과 달라지는 픽스처) 및 「확정 HARD
+  목표가 없으면 모든 시행이 통과해 1이다」
+- 테스트: `src/tests/core/usecases/montecarlo/resolveSimulationVerdict.test.ts`의 「확정
+  HARD 목표가 없으면 hardGoalSuccess는 null이다」, 「판정하지 못한 HARD 목표를 unjudged로
+  드러낸다」(`HOUSING_STABILITY`가 `unjudged`에, `ASSET_SURVIVAL`이 `judged`에 각각
+  들어가는 것을 검증), 「재현 사례 1」(목표액 UI가 없는 `ASSET_GROWTH`는 유형상 판정
+  가능해도 축을 못 켜 `unjudged`), 「재현 사례 2」(SOFT 목표가 기말자산 문턱을 가로채면
+  확정 HARD 상속 목표가 `unjudged`), 「EARLY_RETIREMENT는 judged도 unjudged도 아닌
+  planEmbedded다」
+- 테스트: `src/tests/web/features/Dashboard/DashboardSection.test.tsx`와
+  `src/tests/web/features/Pdf/pdfReportSections.test.ts`의 「확정 HARD 목표가 모두 이
+  비율에 반영되면 "모두 포함됩니다"라고 밝힌다」·「계획에 이미 반영된 HARD 목표(빠른
+  은퇴)는 반영되지 않았다고 말하지 않는다」 — 화면·PDF가 세 갈래(judged/unjudged/
+  planEmbedded)를 같은 문장으로 인쇄하는지, HARD 비율과 목표 달성 확률의 관계 문구가
+  함께 찍히는지 검증한다
 
 ## 관련
 

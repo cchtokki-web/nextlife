@@ -883,6 +883,10 @@ describe('DashboardSection - 현재 계획 진단', () => {
             requireAssetSurvival: false,
             terminalAssetGoal: 0,
             unmeasuredGoals: ['TAX_OPTIMIZATION', 'PENSION_OPTIMIZATION'],
+            // 이 테스트는 미반영 목표 안내 문구만 검증한다. HARD 강도는 관여하지 않으므로
+            // 전부 false — 값을 지어내 컴파일러만 조용히 시키지 않는다.
+            hardRequirements: { spendingTarget: false, assetSurvival: false, terminalAsset: false },
+            hardRequirementGoals: { spendingTarget: [], assetSurvival: [], terminalAsset: [] },
           },
         }}
       />
@@ -907,6 +911,9 @@ describe('DashboardSection - 현재 계획 진단', () => {
             requireAssetSurvival: false,
             terminalAssetGoal: 0,
             unmeasuredGoals: ['TAX_OPTIMIZATION', 'HOUSING_STABILITY'],
+            // 점수 산정 대상 여부 안내를 검증하는 테스트라 HARD 강도는 무관하다. 전부 false.
+            hardRequirements: { spendingTarget: false, assetSurvival: false, terminalAsset: false },
+            hardRequirementGoals: { spendingTarget: [], assetSurvival: [], terminalAsset: [] },
           },
         }}
       />
@@ -934,6 +941,9 @@ describe('DashboardSection - 현재 계획 진단', () => {
             requireAssetSurvival: false,
             terminalAssetGoal: 0,
             unmeasuredGoals: ['TAX_OPTIMIZATION', 'PENSION_OPTIMIZATION'],
+            // 점수 안내 문구가 붙지 않음을 확인하는 테스트라 HARD 강도는 무관하다. 전부 false.
+            hardRequirements: { spendingTarget: false, assetSurvival: false, terminalAsset: false },
+            hardRequirementGoals: { spendingTarget: [], assetSurvival: [], terminalAsset: [] },
           },
         }}
       />
@@ -955,6 +965,10 @@ describe('DashboardSection - 현재 계획 진단', () => {
             requireAssetSurvival: true,
             terminalAssetGoal: 0,
             unmeasuredGoals: ['TAX_OPTIMIZATION'],
+            // plan_defaults는 활성 조건이 없어 계획 기본값으로 떨어진 갈래다 — 사용자가 못박은
+            // HARD 목표가 아니므로 전부 false다(Task 1의 규칙 그대로).
+            hardRequirements: { spendingTarget: false, assetSurvival: false, terminalAsset: false },
+            hardRequirementGoals: { spendingTarget: [], assetSurvival: [], terminalAsset: [] },
           },
         }}
       />
@@ -1052,6 +1066,143 @@ describe('DashboardSection - 현재 계획 진단', () => {
     expect(within(facts()).getByText('90세 예상자산(기준 수익률)')).toBeInTheDocument();
     expect(facts().textContent).toContain('5억원');
     expect(screen.queryByTestId('terminal-asset-basis-note')).not.toBeInTheDocument();
+  });
+
+  // 옛 폴백(monteCarlo.simulationSuccessRate ?? monteCarlo.goalSuccessProbability)이 사라진
+  // 자리는 resolveSimulationVerdict가 채운다. monteCarlo가 아예 없으면 verdict.available은
+  // false이고 goalSuccess.rate는 NaN이다 — 그 값을 가드 없이 그대로 포맷하거나
+  // getPlanConfidenceBand 같은 임계 사다리에 넘기면 "0%"나 엉뚱한 신호등으로 조용히
+  // 새어 나간다. 이 화면은 currentGoalProbability를 verdict.available로 먼저 가른 뒤에만
+  // 읽으므로, MC가 없을 때는 '계산 중'만 보이고 0%도 NaN도 찍히지 않아야 한다.
+  test('MC가 없으면 0%도 NaN도 찍지 않고 계산 중임을 알린다', () => {
+    render(<DashboardSection params={params} result={result} />);
+
+    const text = diagnosis().textContent ?? '';
+    expect(text).toContain('계산 중');
+    expect(text).not.toContain('0%');
+    expect(text).not.toContain('NaN');
+  });
+
+  // known-issues #1: 주거 안정을 HARD로 고정해도 계산은 정확했지만, 화면이 그 조건이
+  // 지켜진 것처럼 보여준 결함이었다. HARD 목표 중 시행으로 판정할 수 없는 것(주거 안정)이
+  // 섞여 있는데 비율만 찍으면 같은 결함을 새 지표에서 반복한다 — 비율 옆에 반드시 판정
+  // 대상의 크기가 함께 있어야 한다.
+  test('판정하지 못한 HARD 목표가 있으면 비율 옆에 그 사실을 밝힌다', () => {
+    const hardParams = {
+      ...params,
+      retirementGoals: [
+        { type: 'ASSET_SURVIVAL', priority: 1, constraintType: 'HARD' },
+        { type: 'HOUSING_STABILITY', priority: 2, constraintType: 'HARD' },
+      ],
+    } as unknown as SimulationParams;
+
+    render(
+      <DashboardSection
+        params={hardParams} result={result}
+        monteCarloStatus="done"
+        monteCarlo={{
+          ...monteCarloWith(0.9, 0.9),
+          hardGoalSuccessProbability: 0.5,
+          goalConditions: {
+            ...LEGACY_GOAL_CONDITIONS,
+            hardRequirements: { spendingTarget: false, assetSurvival: true, terminalAsset: false },
+            // assetSurvival 축을 켠 목표가 ASSET_SURVIVAL이라는 뜻 — hardRequirements와
+            // 짝을 맞추지 않으면 judged가 빈 채로 남아 이 테스트가 검증하려는 「판정됨/
+            // 판정 안 됨」 구분 자체가 성립하지 않는다.
+            hardRequirementGoals: { spendingTarget: [], assetSurvival: ['ASSET_SURVIVAL'], terminalAsset: [] },
+          },
+        }}
+      />
+    );
+
+    const text = diagnosis().textContent ?? '';
+    expect(text).toMatch(/HARD 목표 .*중 .*기준|판정하지 않/);
+    expect(text).toContain('HARD 목표 판정 확률 50%');
+    expect(text).toContain('주거 안정');
+  });
+
+  // 확정 HARD 목표가 없으면(요구 조건 자체가 없으면) 이 절을 아예 그리지 않는다 — 요구가
+  // 없는데 100%로 찍히면 "HARD 목표를 다 지켰다"로 오해를 부른다.
+  test('확정 HARD 목표가 없으면 HARD 판정 절을 그리지 않는다', () => {
+    render(
+      <DashboardSection
+        params={params} result={result}
+        monteCarloStatus="done"
+        monteCarlo={monteCarloWith(0.9, 0.9)}
+      />
+    );
+
+    expect(diagnosis().textContent).not.toContain('HARD 목표 판정 확률');
+  });
+
+  // 「모두 포함됩니다」 갈래는 unjudged와 planEmbedded가 «둘 다» 비었을 때만 말할 수 있다.
+  // 이 분기는 종전까지 테스트가 없어 여덟 번의 리뷰를 통과했다 — 실제로는 judged 유형
+  // 멤버십만으로 판정해도 이 문구가 그대로 찍혀, 화면이 판정되지 않은 목표까지 "포함된다"고
+  // 잘못 말해도 아무 테스트도 실패하지 않았다.
+  test('확정 HARD 목표가 모두 이 비율에 반영되면 "모두 포함됩니다"라고 밝힌다', () => {
+    const hardParams = {
+      ...params,
+      retirementGoals: [{ type: 'ASSET_SURVIVAL', priority: 1, constraintType: 'HARD' }],
+    } as unknown as SimulationParams;
+
+    render(
+      <DashboardSection
+        params={hardParams} result={result}
+        monteCarloStatus="done"
+        monteCarlo={{
+          ...monteCarloWith(0.9, 0.9),
+          hardGoalSuccessProbability: 0.8,
+          goalConditions: {
+            ...LEGACY_GOAL_CONDITIONS,
+            hardRequirements: { spendingTarget: false, assetSurvival: true, terminalAsset: false },
+            hardRequirementGoals: { spendingTarget: [], assetSurvival: ['ASSET_SURVIVAL'], terminalAsset: [] },
+          },
+        }}
+      />
+    );
+
+    const text = diagnosis().textContent ?? '';
+    expect(text).toContain('HARD 목표 판정 확률 80%');
+    expect(text).toContain('HARD 목표 1개 모두 이 확률의 판정 기준에 포함됩니다');
+    // Fix 2: HARD 비율이 항상 목표 달성 확률 이상이라는 관계를 밝힌다 — 그렇지 않으면
+    // 옆의 낮은 목표 달성 확률 위에 얹힌 안전 마진으로 잘못 읽힌다.
+    expect(text).toContain('항상 같거나 높습니다');
+  });
+
+  // EARLY_RETIREMENT는 계획에 이미 반영되어 모든 시행이 지키므로 조건으로 세지 않는다.
+  // unjudged(「반영되지 않았다」)와 같은 말로 적으면 지켜진 목표를 안 지켜진 것처럼
+  // 보고하게 된다 — 그래서 반드시 다른 문구를 쓴다.
+  test('계획에 이미 반영된 HARD 목표(빠른 은퇴)는 반영되지 않았다고 말하지 않는다', () => {
+    const hardParams = {
+      ...params,
+      retirementGoals: [
+        { type: 'ASSET_SURVIVAL', priority: 1, constraintType: 'HARD' },
+        { type: 'EARLY_RETIREMENT', priority: 2, constraintType: 'HARD', targetValue: 60 },
+      ],
+    } as unknown as SimulationParams;
+
+    render(
+      <DashboardSection
+        params={hardParams} result={result}
+        monteCarloStatus="done"
+        monteCarlo={{
+          ...monteCarloWith(0.9, 0.9),
+          hardGoalSuccessProbability: 0.8,
+          goalConditions: {
+            ...LEGACY_GOAL_CONDITIONS,
+            hardRequirements: { spendingTarget: false, assetSurvival: true, terminalAsset: false },
+            hardRequirementGoals: { spendingTarget: [], assetSurvival: ['ASSET_SURVIVAL'], terminalAsset: [] },
+          },
+        }}
+      />
+    );
+
+    const text = diagnosis().textContent ?? '';
+    expect(text).not.toContain('HARD 목표 2개 모두 이 확률의 판정 기준에 포함됩니다');
+    expect(text).toContain('HARD 목표 2개 중 1개만 이 판정 기준에 포함됩니다');
+    expect(text).toContain('계획에 이미 반영되어 모든 시행이 지키는 HARD 목표');
+    expect(text).toContain('빠른 은퇴');
+    expect(text).not.toContain('시행으로 판정할 수 없어 반영되지 않은 HARD 목표: 빠른 은퇴');
   });
 });
 

@@ -95,6 +95,9 @@ import { CandidateRecommendation, PRIMARY_SELECTION_NOTE, ValidatedStrategyCandi
 import { DEFAULT_UTILITY_CONFIG } from '@/core/usecases/utility/utilityWeights';
 import { NO_GOAL_FAILURE, LEGACY_GOAL_CONDITIONS } from '@/tests/fixtures/goalFailure';
 import { describeUnscoredGoals } from '@/core/usecases/goals/goalScoreSupport';
+import { initialParams } from '@/infrastructure/storage/localStore';
+import { resolveGoalSuccessConditions } from '@/core/usecases/goals/goalSuccessConditions';
+import reportCapture from '@/tests/fixtures/pdfReport/reportCapture.json';
 
 describe('renderRiskAlertsSection', () => {
   test('빈 배열이면 빈 문자열을 반환한다', () => {
@@ -567,7 +570,7 @@ describe('renderPlanVerdictSection', () => {
     assetBands: [], depletion: { count: 630, earliestAge: 72, medianAge: 84 },
     deterministicEndingAssets: 0,
   });
-  const render = (successRate?: number, monteCarlo?: MonteCarloResult) =>
+  const render = (successRate?: number, monteCarlo?: MonteCarloResult, params: SimulationParams = initialParams) =>
     renderPlanVerdictSection({
       expectancy: 90,
       deterministicDepletionText: '기대수명까지 고갈 없음',
@@ -579,8 +582,15 @@ describe('renderPlanVerdictSection', () => {
           : { spendingSuccessRate: successRate, assetSuccessRate: successRate }
       ),
       monteCarlo,
+      params,
       formatValue: won,
     });
+  // resolveSimulationVerdict.test.ts와 같은 픽스처 형태. RetirementGoal에는 id 필드가 없다
+  // (retirementGoal.ts 확인 — type·priority·targetValue?·targetValueSource?·constraintType뿐).
+  const goalParams = (goals: unknown[]): SimulationParams => ({
+    ...initialParams,
+    retirementGoals: goals as SimulationParams['retirementGoals'],
+  });
 
   // 리포트는 화면보다 오래 남고 그대로 인용된다. 「점수 산정 대상이 아니다」를 화면만 말하면
   // 인쇄본을 든 사용자는 그 목표의 0점을 여전히 실패로 읽는다. 문장의 출처는 core 한 곳이며
@@ -594,6 +604,9 @@ describe('renderPlanVerdictSection', () => {
         requireAssetSurvival: false,
         terminalAssetGoal: 0,
         unmeasuredGoals: ['TAX_OPTIMIZATION', 'HOUSING_STABILITY'],
+        // 이 테스트는 점수 산정 대상 안내 문구만 검증한다. HARD 강도는 무관하므로 전부 false.
+        hardRequirements: { spendingTarget: false, assetSurvival: false, terminalAsset: false },
+        hardRequirementGoals: { spendingTarget: [], assetSurvival: [], terminalAsset: [] },
       },
     });
 
@@ -611,6 +624,9 @@ describe('renderPlanVerdictSection', () => {
         requireAssetSurvival: false,
         terminalAssetGoal: 0,
         unmeasuredGoals: ['TAX_OPTIMIZATION'],
+        // 점수 안내 문구가 붙지 않음을 확인하는 테스트라 HARD 강도는 무관하다. 전부 false.
+        hardRequirements: { spendingTarget: false, assetSurvival: false, terminalAsset: false },
+        hardRequirementGoals: { spendingTarget: [], assetSurvival: [], terminalAsset: [] },
       },
     });
 
@@ -670,6 +686,13 @@ describe('renderPlanVerdictSection', () => {
 
   // 예전에는 워커가 늦으면 시장 변동성 페이지 자체가 사라져, 리포트가 결정론 결과만 담은
   // 채로 완결된 문서처럼 보였다. 조용히 생략하지 않는다.
+  //
+  // **폴백이 되살아나면 여기서 잡힌다.** 옛 네 단계 폴백(simulationSuccessRate ??
+  // goalSuccessProbability ?? confidence.rates?.goalSuccessProbability ??
+  // confidence.rates?.spendingSuccessRate ?? 0)의 마지막 단계는 monteCarlo가 없어도
+  // "목표 달성 확률 0%"를 찍었다 — "판정 못 함"과 "전멸"이 같은 숫자였다.
+  // resolveSimulationVerdict는 이 경로에서 goalSuccess.rate에 NaN을 채우므로, 가드 없이
+  // 그대로 포맷했다면 "NaN%"가 찍혔을 것이다. 이 테스트는 둘 다 잡는다.
   test('MC가 없으면 생략하지 않고 계산되지 않았다고 밝힌다', () => {
     const html = render(undefined, undefined);
 
@@ -678,6 +701,150 @@ describe('renderPlanVerdictSection', () => {
     expect(html).toContain('확률 판정 보류');
     expect(html).toContain('시장 변동성 미반영');
     expect(html).not.toContain('유지 확률');
+    expect(html).not.toContain('목표 달성 확률 0%');
+    expect(html).not.toContain('NaN');
+  });
+
+  // known-issues #1: 주거 안정을 HARD로 고정해도 계산은 정확했지만, 화면이 그 조건이
+  // 지켜진 것처럼 보여준 결함이었다. HARD 성공률이 판정하지 못한 목표(주거 안정)를 섞은 채
+  // 비율만 인쇄하면 같은 결함을 지표 하나로 반복한다 — 그래서 비율 옆에 반드시 그 사실이
+  // 함께 인쇄돼야 한다.
+  test('판정하지 못한 HARD 목표가 있으면 비율 옆에 그 사실을 밝힌다', () => {
+    const params = goalParams([
+      { type: 'ASSET_SURVIVAL', constraintType: 'HARD', priority: 1 },
+      { type: 'HOUSING_STABILITY', constraintType: 'HARD', priority: 2 },
+    ]);
+    const html = render(0.9, {
+      ...mc(0.9),
+      hardGoalSuccessProbability: 0.5,
+      goalConditions: {
+        ...LEGACY_GOAL_CONDITIONS,
+        hardRequirements: { spendingTarget: false, assetSurvival: true, terminalAsset: false },
+        // assetSurvival 축을 켠 목표가 ASSET_SURVIVAL이라는 뜻 — 짝을 맞추지 않으면
+        // judged가 빈 채로 남는다.
+        hardRequirementGoals: { spendingTarget: [], assetSurvival: ['ASSET_SURVIVAL'], terminalAsset: [] },
+      },
+    }, params);
+
+    expect(html).toMatch(/HARD 목표 .*중 .*기준|판정하지 않/);
+    expect(html).toContain('HARD 목표 판정 확률 50%');
+    expect(html).toContain('주거 안정');
+  });
+
+  // 확정 HARD 목표가 없으면(요구 조건 자체가 없으면) 이 절이 전혀 인쇄되지 않는다 — 요구가
+  // 없는데 100%로 찍히면 "HARD 목표를 다 지켰다"로 오해를 부른다
+  // (resolveSimulationVerdict.ts 주석 참고).
+  test('확정 HARD 목표가 없으면 HARD 판정 절을 인쇄하지 않는다', () => {
+    const html = render(0.9, mc(0.9));
+
+    expect(html).not.toContain('HARD 목표 판정 확률');
+  });
+
+  // 「모두 포함됩니다」 갈래는 unjudged와 planEmbedded가 «둘 다» 비었을 때만 인쇄해야 한다.
+  // 화면(DashboardSection)의 같은 이름 테스트와 짝이다 — 리포트는 화면보다 오래 남고 그대로
+  // 인용되므로 이 갈래에 테스트가 없었다는 사실이 더 위험했다.
+  test('확정 HARD 목표가 모두 이 비율에 반영되면 "모두 포함됩니다"라고 밝힌다', () => {
+    const goalsParams = goalParams([{ type: 'ASSET_SURVIVAL', constraintType: 'HARD', priority: 1 }]);
+    const html = render(0.9, {
+      ...mc(0.9),
+      hardGoalSuccessProbability: 0.8,
+      goalConditions: {
+        ...LEGACY_GOAL_CONDITIONS,
+        hardRequirements: { spendingTarget: false, assetSurvival: true, terminalAsset: false },
+        hardRequirementGoals: { spendingTarget: [], assetSurvival: ['ASSET_SURVIVAL'], terminalAsset: [] },
+      },
+    }, goalsParams);
+
+    expect(html).toContain('HARD 목표 판정 확률 80%');
+    expect(html).toContain('HARD 목표 1개 모두 이 확률의 판정 기준에 포함됩니다');
+    // Fix 2: HARD 비율이 항상 목표 달성 확률 이상이라는 관계를 화면과 같은 문장으로 밝힌다.
+    expect(html).toContain('항상 같거나 높습니다');
+  });
+
+  // EARLY_RETIREMENT는 계획에 이미 반영되어 모든 시행이 지키므로 조건으로 세지 않는다.
+  // unjudged와 같은 말로 적으면 지켜진 목표를 안 지켜진 것처럼 보고하게 된다.
+  test('계획에 이미 반영된 HARD 목표(빠른 은퇴)는 반영되지 않았다고 말하지 않는다', () => {
+    const goalsParams = goalParams([
+      { type: 'ASSET_SURVIVAL', constraintType: 'HARD', priority: 1 },
+      { type: 'EARLY_RETIREMENT', constraintType: 'HARD', priority: 2, targetValue: 60 },
+    ]);
+    const html = render(0.9, {
+      ...mc(0.9),
+      hardGoalSuccessProbability: 0.8,
+      goalConditions: {
+        ...LEGACY_GOAL_CONDITIONS,
+        hardRequirements: { spendingTarget: false, assetSurvival: true, terminalAsset: false },
+        hardRequirementGoals: { spendingTarget: [], assetSurvival: ['ASSET_SURVIVAL'], terminalAsset: [] },
+      },
+    }, goalsParams);
+
+    expect(html).not.toContain('HARD 목표 2개 모두 이 확률의 판정 기준에 포함됩니다');
+    expect(html).toContain('HARD 목표 2개 중 1개만 이 판정 기준에 포함됩니다');
+    expect(html).toContain('계획에 이미 반영되어 모든 시행이 지키는 HARD 목표');
+    expect(html).toContain('빠른 은퇴');
+    expect(html).not.toContain('시행으로 판정할 수 없어 반영되지 않은 HARD 목표: 빠른 은퇴');
+  });
+
+  // **골든의 사각지대를 메운다.** buildReportHtml.test.ts는 앱에서 미리 캡처해 둔 완성
+  // HTML 문자열(source.sections)을 그대로 조립만 하고, renderPlanVerdictSection을 실제로
+  // 호출한 적이 없다 — 그 골든의 "목표 달성 확률 82%"가 그대로 남아 있는 것은 이 함수가
+  // 옳은 값을 냈다는 증거가 아니라, 캡처된 문자열을 한 글자도 안 건드렸다는 증거일 뿐이다
+  // (리뷰 지적). 이 테스트는 같은 시나리오를 이 함수에 «직접» 통과시켜 같은 숫자가 나오는지
+  // 확인한다 — 실패하면 셀렉터 배선이 실제로 값을 바꿨다는 뜻이다.
+  //
+  // reportCapture.json은 params·result(SimulationResult)와 «완성된 HTML»만 담았고, 캡처
+  // 당시 값을 만든 원본 MonteCarloResult·PlanConfidence는 저장되지 않았다(임시 훅으로 한
+  // 번 뜬 값이라 저장 대상이 아니었다 — capture.params/result는 있고 capture.monteCarlo는
+  // 없다). 그래서 두 입력은 캡처된 «렌더 결과»에서 역산해 재구성한다:
+  //   - sections.monteCarlo의 "생활 유지 성공률 82%"·"자산 보존 성공률 92%"·"1,000회
+  //     시뮬레이션"·"고정 시드 20260101" → spendingSuccessRate 0.82, successRate 0.92,
+  //     trials 1000, seed 20260101.
+  //   - result.retirementScore(95)와 sections.planVerdict의 "은퇴 준비도 86점 (안정) ·
+  //     기준 시나리오만 보면 95점"·"대체로 안정적입니다" → computePlanConfidence(95, {...})가
+  //     이 세 문구를 모두 재현하는 rates 조합은 goalSuccessProbability 0.82뿐이다(대역폭
+  //     확인: round(95*(0.5+0.5*0.82))=86, getPlanConfidenceBand(0.82)='stable').
+  // goalConditions만은 손으로 짓지 않는다 — 실제 캡처된 params로 프로덕션이 쓰는 바로 그
+  // 함수(resolveGoalSuccessConditions, MonteCarloEngine.ts:171과 같은 호출)를 불러 만든다.
+  // 조건을 테스트가 따로 지어내면 셀렉터가 실제로 근거로 삼는 조건과 다른 것을 검증하게
+  // 된다. 캡처된 params의 목표는 LIVING_EXPENSE_STABILITY(SOFT)·ASSET_SURVIVAL(HARD)이고,
+  // hardGoalSuccessProbability는 캡처 당시(이 필드가 아직 없던 구버전) 존재하지 않았으므로
+  // 여기서도 넣지 않는다 — resolveSimulationVerdict가 undefined를 '계산 안 함'으로 읽어
+  // hardGoalSuccess를 null로 떨어뜨리고, 그래서 원본 캡처처럼 HARD 판정 절이 나오지 않는다.
+  test('캡처된 리포트 시나리오를 다시 넣으면 골든과 같은 82%를 낸다', () => {
+    const fixtureParams = reportCapture.params as unknown as SimulationParams;
+    const goalConditions = resolveGoalSuccessConditions(fixtureParams);
+
+    const monteCarlo: MonteCarloResult = {
+      trials: 1000, seed: 20260101, successAge: fixtureParams.userProfile.expectancy,
+      successRate: 0.92, spendingSuccessRate: 0.82, goalSuccessProbability: 0.82,
+      goalFailure: NO_GOAL_FAILURE,
+      goalConditions,
+      plannedMonthlySpending: fixtureParams.userProfile.targetMonthlySpending,
+      endingAssets: { p10: 0, p50: reportCapture.result.endingAssets, p90: 0 },
+      assetBands: [], depletion: { count: 0, earliestAge: null, medianAge: null },
+      deterministicEndingAssets: reportCapture.result.endingAssets,
+    };
+
+    const html = renderPlanVerdictSection({
+      expectancy: fixtureParams.userProfile.expectancy,
+      deterministicDepletionText: `기대수명(${fixtureParams.userProfile.expectancy}세)까지 고갈 없음`,
+      endingAssets: reportCapture.result.endingAssets,
+      confidence: computePlanConfidence(reportCapture.result.retirementScore, {
+        spendingSuccessRate: 0.82, assetSuccessRate: 0.92, goalSuccessProbability: 0.82,
+      }),
+      monteCarlo,
+      params: fixtureParams,
+      formatValue: won,
+    });
+
+    // 골든(reportCapture.json → sections.planVerdict)이 담고 있는 바로 그 문장들.
+    expect(html).toContain('목표 달성 확률 82%');
+    expect(html).toContain('대체로 안정적입니다');
+    expect(html).toContain('은퇴 준비도 86점');
+    expect(html).toContain('기준 시나리오만 보면 95점');
+    // 캡처 당시 존재하지 않던 필드라 이 절이 나오면 안 된다 — hardGoalSuccessProbability를
+    // undefined로 남긴 재구성이 실제로 hardGoalSuccess를 null로 떨어뜨렸는지 함께 확인한다.
+    expect(html).not.toContain('HARD 목표 판정 확률');
   });
 });
 

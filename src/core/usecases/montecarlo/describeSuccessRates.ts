@@ -92,3 +92,18 @@ function describeCompositeNote(
   return `위 「목표 달성 확률 ${percent}%」는 ${judged.join('·')}을 «같은 시행에서» 함께 판정한 값입니다 — `
     + '아래 두 비율을 곱하거나 더한 값이 아닙니다.';
 }
+
+// HARD 목표 판정 확률과 목표 달성 확률의 관계를 설명하는 한 줄. 화면(HardGoalSuccessNote)과
+// PDF(hardGoalSuccessNote)가 같은 문장을 인쇄해야 하므로 describeCompositeNote와 같은 자리에
+// 둔다 — 그 함수와 같은 이유로 이 파일이 존재한다.
+//
+// **왜 필요한가.** hardSucceeded의 술어는 goalSucceeded의 «완화»다 — HARD로 확정하지 않은
+// 축은 건너뛴다. 그래서 hardGoalSuccessProbability는 goalSuccessProbability보다 항상 같거나
+// 높다(spendingTarget·assetSurvival·terminalAsset이 전부 goalSuccessProbability가 보는
+// 조건의 부분집합이기 때문이다). 그 사실을 밝히지 않으면 「목표 달성 확률 45%」 옆에 놓인
+// 「HARD 목표 판정 확률 95%」가 안전 마진처럼 읽힌다 — 실제로는 SOFT로 둔 조건을 모두
+// 제외했을 때의 확률이다.
+export function describeHardGoalRelationship(): string {
+  return 'HARD 목표 판정 확률은 「반드시 지키기」로 확정한 조건만 채점하므로 위 목표 달성 확률보다 '
+    + '항상 같거나 높습니다 — 그 위에 얹히는 안전 마진이 아니라, SOFT로 둔 조건을 모두 제외했을 때의 확률입니다.';
+}
