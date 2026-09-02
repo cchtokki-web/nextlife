@@ -248,10 +248,10 @@ describe('resolveGoalSuccessConditions — hardRequirements', () => {
   });
 
   test('SOFT 상속이 확정한 금액을, 목표액 없는 HARD 자산성장 목표가 가로채지 않는다', () => {
-    // ASSET_GROWTH는 목표액 입력 UI가 없어 targetValue가 항상 undefined다.
-    // isSuggestedTargetValue는 targetValue!==undefined를 요구하므로 이 목표에서는 언제나
-    // false이고, hardGoalAwaitsTargetConfirmation도 언제나 false다 — 「확정을 기다리는 씨앗이
-    // 없다」가 「이미 확정했다」로 잘못 읽히면, 목표액을 실제로 확정한 것은 SOFT 상속인데도
+    // ASSET_GROWTH의 목표액은 선택 입력이라 비워 둘 수 있고, 비면 targetValue가 undefined다.
+    // isSuggestedTargetValue는 targetValue!==undefined를 요구하므로 그 상태에서는 false이고,
+    // hardGoalAwaitsTargetConfirmation도 false다 — 「확정을 기다리는 씨앗이 없다」가
+    // 「이미 확정했다」로 잘못 읽히면, 목표액을 실제로 확정한 것은 SOFT 상속인데도
     // terminalAsset이 true가 된다. 그 금액을 «가져온» 목표가 HARD인지를 봐야 한다.
     const conditions = resolveGoalSuccessConditions(withGoals([
       { type: 'INHERITANCE', priority: 1, constraintType: 'SOFT', targetValue: 500_000_000, targetValueSource: 'user' },

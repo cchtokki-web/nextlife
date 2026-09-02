@@ -103,9 +103,9 @@ describe('resolveSimulationVerdict', () => {
   });
 
   // 재현 사례 1(리뷰 표 1행). ASSET_GROWTH는 isQuantitativelyJudgedGoal이 참인 «유형»이라
-  // 유형 멤버십만으로 갈랐다면 judged로 들어갔을 것이다. 목표액 입력 UI가 없어 어떤 축도
+  // 유형 멤버십만으로 갈랐다면 judged로 들어갔을 것이다. 목표액을 비워 두면 어떤 축도
   // 켜지 못하므로(hardRequirementGoals의 세 축이 모두 비어 있으므로) 실제로는 unjudged다.
-  test('재현 사례 1 — 목표액 UI가 없는 ASSET_GROWTH는 유형상 판정 가능해도 unjudged다', () => {
+  test('재현 사례 1 — 목표액이 빈 ASSET_GROWTH는 유형상 판정 가능해도 unjudged다', () => {
     const goalsParams = goalParams([
       { type: 'ASSET_SURVIVAL', constraintType: 'HARD', priority: 1 },
       { type: 'ASSET_GROWTH', constraintType: 'HARD', priority: 2 },

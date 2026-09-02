@@ -210,6 +210,56 @@ describe('목표금액의 출처 — 저장과 복원', () => {
   });
 });
 
+// **도달 가능성 5단계**(AGENTS.md). 「자산 성장」에 목표액 입력칸을 더한 변경이 제품 기능이
+// 되려면, 화면이 만들 수 있고(RetirementGoalSelector.test.tsx) 저장·복원과 마이그레이션을
+// 견디고 실제 판정에 닿아야 한다. 여기서 뒤의 셋을 한 줄로 잇는다 — 엔진에 코드가 있어도
+// 중간의 한 계층이 값을 덮어쓰면 기능이라고 말할 수 없다.
+describe('자산 성장 목표액 — 저장한 값이 판정까지 닿는다', () => {
+  // plan()은 12억으로 30년간 월 300만원을 쓴다(수익률 0). 기말자산은 2억 안팎이므로,
+  // 5억은 확실히 미달이고 5천만원은 확실히 통과다 — 두 값을 벌려 두어야 이 테스트가
+  // 「목표액을 실제로 읽었는가」를 가른다.
+  const growthGoal = (over: Partial<RetirementGoal> = {}): RetirementGoal => ({
+    type: 'ASSET_GROWTH', priority: 1, constraintType: 'HARD',
+    targetValue: 500_000_000, ...over,
+  });
+
+  const roundTrip = (goal: RetirementGoal) =>
+    migrateRetirementGoals(normalizeSimulationParams(JSON.parse(JSON.stringify(plan([goal])))));
+
+  test('확정한 목표액은 왕복 후에도 남아 기말자산 미달을 만든다', () => {
+    const loaded = roundTrip(growthGoal({ targetValueSource: 'user' }));
+
+    expect(loaded.retirementGoals?.[0]).toMatchObject({
+      targetValue: 500_000_000, targetValueSource: 'user',
+    });
+    expect(failureCodes(loaded)).toContain('HARD_MINIMUM_ENDING_ASSETS');
+  });
+
+  // 짝. 미달만 확인하면 목표액을 «무엇이든» 미달로 읽어도 통과한다.
+  test('감당 가능한 목표액은 미달을 만들지 않는다', () => {
+    const loaded = roundTrip(growthGoal({ targetValue: 50_000_000, targetValueSource: 'user' }));
+
+    expect(failureCodes(loaded)).not.toContain('HARD_MINIMUM_ENDING_ASSETS');
+  });
+
+  // 비워 둔 상태가 종전 동작이다 — 입력칸이 생겼다는 이유만으로 계산이 달라지지 않는다.
+  test('금액을 비워 두면 기말자산 하한도 HARD 요구도 생기지 않는다', () => {
+    const loaded = roundTrip({ type: 'ASSET_GROWTH', priority: 1, constraintType: 'HARD' });
+
+    expect(loaded.retirementGoals?.[0].targetValue).toBeUndefined();
+    expect(failureCodes(loaded)).not.toContain('HARD_MINIMUM_ENDING_ASSETS');
+    expect(resolveGoalSuccessConditions(loaded).hardRequirements.terminalAsset).toBe(false);
+  });
+
+  // 확정 표시가 없으면 금액이 있어도 판정에 참가하지 않는다 — 상속과 같은 규칙이다.
+  test('확정하지 않은 목표액은 미달을 만들지 않는다', () => {
+    const loaded = roundTrip(growthGoal());
+
+    expect(loaded.retirementGoals?.[0].targetValue).toBe(500_000_000);
+    expect(failureCodes(loaded)).not.toContain('HARD_MINIMUM_ENDING_ASSETS');
+  });
+});
+
 describe('목표금액의 출처 — 어떤 경로도 표시를 지어내지 않는다', () => {
   const seeded = spendingGoal();
 

@@ -13,6 +13,23 @@ export interface RetirementGoalDefinition {
   target?: {
     label: string;
     unit: 'age' | 'currency';
+    /**
+     * 금액을 «비워 둔 채로도» 이 목표가 성립하는가.
+     *
+     * 기본은 필수다 — 금액을 묻는 목표는 대개 그 금액이 없으면 기준이 무너진다. 상속이
+     * 그렇다: 확정 금액이 없으면 `terminalAssetGoalOf`가 `targetBequest ?? 0`으로 떨어져
+     * 목표액이 0이 된다. 그래서 RetirementInputFlow가 「목표값을 입력해 주세요」로 막는다.
+     *
+     * 「자산 성장」만 다르다. 금액이 없어도 잴 기준이 «자기 안에» 있다 —
+     * `assetGrowthEvaluation`이 기말자산을 «은퇴 시점 자산»과 비교한다. 그러니 금액을
+     * 필수로 만들면, 지금까지 금액 없이 잘 굴러가던 계획(저장된 시나리오 포함)이
+     * 입력칸이 생겼다는 이유만으로 분석 자체를 거부당한다.
+     *
+     * **비운 상태가 곧 종전 동작이다.** 미확정 금액은 `confirmedTargetValue`에서 걸러지므로
+     * 화면이 입력칸을 더해도 계산은 달라지지 않는다. 달라지는 것은 사용자가 금액을
+     * «확정한» 경우뿐이다.
+     */
+    optional?: true;
   };
 }
 
@@ -62,8 +79,16 @@ export const RETIREMENT_GOAL_CATALOG: readonly RetirementGoalDefinition[] = [
     target: { label: '남기고 싶은 최소 자산', unit: 'currency' },
   },
   {
+    // 상속과 «같은 양»(기말자산)을 재지만 뜻이 다르다 — 남기는 것이 아니라 지키는 것이다.
+    // 라벨의 동사가 그 차이를 진다.
+    //
+    // 씨앗을 깔지 않는 이유: 이 목표의 자연스러운 기준선은 「은퇴 시점 자산」인데 그 값은
+    // 시뮬레이션을 돌려야 나오고, 화면은 갖고 있지 않다. 대신 현재 총자산 같은 값을 깔면
+    // 사용자가 «목표로 말한 적 없는» 숫자가 카드에 찍힌다 — known-issues 2번이 그것이다.
+    // 비워 두면 종전대로 은퇴 시점 자산 대비 성장 여부로 평가한다(optional 주석).
     type: 'ASSET_GROWTH', label: RETIREMENT_GOAL_LABELS.ASSET_GROWTH,
     description: '은퇴 후에도 자산의 성장 가능성을 추구해요.', defaultConstraintType: 'SOFT',
+    target: { label: '유지하고 싶은 최소 자산', unit: 'currency', optional: true },
   },
 ];
 
