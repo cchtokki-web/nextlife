@@ -52,9 +52,10 @@ export interface GoalSuccessConditions {
    *
    * **판별 기준은 유형 멤버십이 아니라 이 목록이다.** resolveSimulationVerdict의 `judged`는
    * `isQuantitativelyJudgedGoal()`(유형)이 아니라 여기서 나온다 — 「자산 성장」은 판정
-   * 가능한 «유형»이지만 목표액을 묻는 UI가 없어 terminalAsset 축에 기여하지 못하는 한
-   * 이 목록에 들어가지 않는다(위 hardRequirements.terminalAsset 주석과 같은 이유). 유형만
-   * 보면 구멍이 생긴다 — 그 구멍이 실제로 화면에 닿았던 사고가 known-issues 1번이다.
+   * 가능한 «유형»이지만 목표액을 비워 둘 수 있고, 비워 두면 terminalAsset 축에 기여하지
+   * 못하므로 이 목록에 들어가지 않는다(위 hardRequirements.terminalAsset 주석과 같은
+   * 이유). 유형만 보면 구멍이 생긴다 — 그 구멍이 실제로 화면에 닿았던 사고가
+   * known-issues 1번이다.
    */
   hardRequirementGoals: {
     spendingTarget: RetirementGoalType[];
@@ -185,10 +186,11 @@ export function resolveGoalSuccessConditions(params: SimulationParams): GoalSucc
   const { value: terminalAssetGoal, source: terminalAssetSource } = terminalAssetGoalOf(measurable, params);
 
   // **판별 기준은 「판정 가능한 «유형»을 골랐는가」가 아니라 「활성 «조건»이 남았는가」다.**
-  // 유형만 보면 구멍이 생긴다: 「자산 성장」은 판정 가능한 유형이지만 목표액을 묻는 UI가
-  // 없어(goalCatalog에 target 필드가 없다) 상속 목표를 함께 고르지 않으면 terminalAssetGoal이
-  // 0으로 풀린다. 그러면 세 조건이 모두 비어 있는데도 'selected_goals'로 빠져나가, 62세에
-  // 자산이 바닥나는 계획조차 «판정할 것이 없다»는 이유로 언제나 100%를 받는다.
+  // 유형만 보면 구멍이 생긴다: 「자산 성장」은 판정 가능한 유형이지만 목표액이 «선택»이라
+  // (goalCatalog의 optional) 비워 둘 수 있고, 그 상태로 상속 목표를 함께 고르지 않으면
+  // terminalAssetGoal이 0으로 풀린다. 그러면 세 조건이 모두 비어 있는데도 'selected_goals'로
+  // 빠져나가, 62세에 자산이 바닥나는 계획조차 «판정할 것이 없다»는 이유로 언제나 100%를
+  // 받는다. 입력칸이 생겨도 이 경로는 그대로 살아 있다 — 칸을 비워 두는 것이 정상 상태다.
   //
   // 판정할 조건이 없다고 해서 100%를 줄 수는 없다. "계획대로 굴러가는가"라는 최소한의
   // 질문(생활비를 계획대로 쓰며 기대수명까지 자산이 버티는가)으로 되돌아간다.
@@ -213,12 +215,17 @@ export function resolveGoalSuccessConditions(params: SimulationParams): GoalSucc
   }
 
   // 「어떤 판정 가능한 자산 목표가 HARD인가」가 아니라 「기말자산 금액을 «실제로 준»
-  // 목표가 HARD인가」를 묻는다. ASSET_GROWTH는 목표액 입력 UI가 없어 targetValue가 항상
-  // undefined이고, 그러면 isSuggestedTargetValue·hardGoalAwaitsTargetConfirmation이 모두
-  // 거짓이라 「확정을 기다리는 씨앗이 없다」가 「이미 확정했다」로 잘못 읽힌다. 유형만 보면
-  // SOFT 상속이 확정한 금액을 나란히 고른 HARD 자산성장 목표(또는 targetBequest 폴백)가
-  // 가로채 HARD 요구로 둔갑한다. terminalAssetSource가 null이면(폴백값) 그 값을 «준» 목표가
-  // 아예 없으므로도 항상 false다.
+  // 목표가 HARD인가」를 묻는다. ASSET_GROWTH는 목표액을 «비워 둘 수 있고»(goalCatalog의
+  // optional), 비면 targetValue가 undefined다. 그러면 isSuggestedTargetValue·
+  // hardGoalAwaitsTargetConfirmation이 모두 거짓이라 「확정을 기다리는 씨앗이 없다」가
+  // 「이미 확정했다」로 잘못 읽힌다. 유형만 보면 SOFT 상속이 확정한 금액을 나란히 고른
+  // HARD 자산성장 목표(또는 targetBequest 폴백)가 가로채 HARD 요구로 둔갑한다.
+  // terminalAssetSource가 null이면(폴백값) 그 값을 «준» 목표가 아예 없으므로도 항상
+  // false다.
+  //
+  // 화면이 금액 없는 자산 성장에 HARD를 열어 주지 «않는» 것도 이 규칙에서 나온다
+  // (RetirementGoalSelector의 awaitingOptionalTarget). 두 자리가 같은 사실을 말하되,
+  // 판단의 근거는 여기 하나다 — 화면이 값을 못 막아도 축은 켜지지 않는다.
   const spendingTargetGoals = measurable
     .filter((goal) =>
       (goal.type === 'LIVING_EXPENSE_STABILITY' || goal.type === 'COMFORTABLE_SPENDING')
@@ -262,10 +269,14 @@ export function resolveGoalSuccessConditions(params: SimulationParams): GoalSucc
 //
 // **source를 함께 돌려주는 이유.** hardRequirements.terminalAsset은 「판정 가능한 자산 목표
 // 중 HARD가 있는가」가 아니라 「이 금액을 «실제로 준» 목표가 HARD인가」를 물어야 한다. 유형만
-// 보면 목표액 입력 UI가 없는 ASSET_GROWTH(targetValue가 늘 undefined라
-// hardGoalAwaitsTargetConfirmation이 늘 거짓)가 나란히 고른 다른 목표의 확정 금액을 가로채
+// 보면 목표액을 비워 둔 ASSET_GROWTH(targetValue가 undefined라
+// hardGoalAwaitsTargetConfirmation이 거짓)가 나란히 고른 다른 목표의 확정 금액을 가로채
 // HARD 요구로 둔갑시킨다. source가 그 값을 만든 «단 하나의» 목표(또는 폴백이면 null)를
 // 가리키면, 값을 준 적 없는 목표는 그 값에 대해 HARD임을 주장할 수 없다.
+//
+// 자산 성장에 목표액 입력칸이 생긴 뒤에도 규칙은 그대로다. 바뀐 것은 「그 목표는 값을 줄
+// 수 «없다»」에서 「값을 주지 않았을 수도 있다」뿐이고, 이 함수가 묻는 것은 처음부터
+// 유형이 아니라 값이었다.
 function terminalAssetGoalOf(
   measurable: readonly RetirementGoal[],
   params: SimulationParams,

@@ -40,12 +40,14 @@ tags: [계산계약, 목표, 제약]
   뜻이 아니다.
 - HARD로 고른 목표가 이 비율의 조건이 되려면 유형만으로는 부족하다 — 그 목표가 «실제로
   축을 켜야» 한다(`hardRequirementGoals`, `resolveSimulationVerdict`의 `judged` 산출 근거).
-  「자산 성장」은 `MEASURABLE_GOALS`에 속한 «판정 가능한 유형»이지만 목표액을 묻는 UI가
-  없어(위 「알려진 한계」의 ASSET_GROWTH), 다른 자산 목표(상속) 없이 혼자 골라서는 기말자산
-  조건을 전혀 만들지 못한다 — 그런 경우 확정 HARD로 골라도 `judged`가 아니라 `unjudged`로
-  떨어진다. **이 경로는 새 시나리오에서도 막혀 있지 않다** — 자산 성장은 정량 판정 대상
-  유형이라 `RetirementGoalSelector.tsx`의 HARD 잠금을 그대로 통과하므로, 오늘도 한 번의
-  선택만으로 재현된다.
+  「자산 성장」은 `MEASURABLE_GOALS`에 속한 «판정 가능한 유형»이지만 목표액이 «선택
+  입력»이라(`goalCatalog.ts`의 `target.optional`) 비워 둘 수 있고, 비워 두면 다른 자산
+  목표(상속) 없이 혼자 골라서는 기말자산 조건을 전혀 만들지 못한다 — 그런 경우 확정
+  HARD로 골라도 `judged`가 아니라 `unjudged`로 떨어진다. **다만 새 시나리오에서 그
+  조합을 만들 수는 없다** — 금액이 비어 있는 동안 `RetirementGoalSelector.tsx`가
+  「반드시 지키기」를 잠근다(`awaitingOptionalTarget`). 이 경로로 `unjudged`가 채워지는
+  것은 그 잠금 이전에 저장된 시나리오뿐이고, 선택기는 그 값을 조용히 SOFT로 고쳐 쓰지
+  않으므로 살아 있는 경로다.
 - 주거 안정처럼 유형 자체가 `MEASURABLE_GOALS`·`PLAN_EMBEDDED_GOALS` 어디에도 없는 목표를
   HARD로 고르는 것도 같은 결과(`unjudged`)로 드러난다 — 화면·PDF는 「이 비율이 판정하지
   않은 HARD 목표가 있다」는 사실을 반드시 함께 적는다(known-issues 1번 — 계산은 이미
@@ -58,6 +60,12 @@ tags: [계산계약, 목표, 제약]
 - 목표에서 «활성 조건»이 하나도 나오지 않으면 `resolveGoalSuccessConditions`는 계획
   기본값(생활비 유지·자산 생존)으로 되돌아가고, 이때 `hardRequirements`는 세 축 모두
   `false`다 — 사용자가 아무것도 못박지 않았기 때문이다.
+- **목표액이 «선택»인 목표는 「자산 성장」 하나뿐이다**(`goalCatalog.ts`의
+  `target.optional`). 이 목표만 예외인 이유는 금액이 없어도 잴 기준이 자기 안에 있기
+  때문이다 — `assetGrowthEvaluation`이 기말자산을 «은퇴 시점 자산»과 견준다. 상속은
+  다르다: 확정 금액이 없으면 `terminalAssetGoalOf`가 `targetBequest ?? 0`으로 떨어져
+  기준 자체가 무너지므로, 금액이 비면 `RetirementInputFlow`가 분석을 막는다. 그래서
+  「금액을 «묻는» 목표」와 「금액을 «요구하는» 목표」는 같은 집합이 아니다.
 
 ### 알려진 한계 — 기말자산 조건은 단일 문턱이다
 
@@ -108,13 +116,23 @@ tags: [계산계약, 목표, 제약]
 - 코드: `src/core/usecases/montecarlo/resolveSimulationVerdict.ts`의 `judged`/`unjudged`/
   `planEmbedded` 세 갈래 분류부. `judged`는 `isQuantitativelyJudgedGoal`(유형)이 아니라
   `goalConditions.hardRequirementGoals`(그 목표가 실제로 축을 켰는가)에서 나온다 —
-  유형만 보면 목표액 UI가 없는 ASSET_GROWTH가 아무 조건도 못 만들었는데 「판정됨」으로
+  유형만 보면 목표액을 비워 둔 ASSET_GROWTH가 아무 조건도 못 만들었는데 「판정됨」으로
   잘못 분류된다. `planEmbedded`는 `isPlanEmbeddedGoal`로 가른다. `hardGoalSuccess`가 요구
   축이 하나도 없으면 `null`이 되는 분기
 - 코드: `src/core/usecases/montecarlo/describeSuccessRates.ts`의
   `describeHardGoalRelationship()` — HARD 목표 판정 확률이 목표 달성 확률의 «완화»라서
   항상 그 값 이상이라는 관계를 밝히는 한 문장. 화면·PDF가 같은 문장을 인쇄해야 하므로
   한 곳에 둔다(`describeCompositeNote`와 같은 이유)
+- 테스트: `src/tests/web/features/RetirementGoals/goalCatalog.test.ts` — 「금액으로
+  판정하는 유형은 모두 금액 입력칸을 갖는다」(`hasMoneyTarget`과 카탈로그의 `currency`
+  입력칸이 양방향으로 같은 집합인지 검사한다. 금액으로 판정하면서 그 금액을 넣을 칸이
+  없는 유형이 생기면 사용자가 영원히 확정할 수 없는 HARD가 만들어진다), 「금액을 비워 둘
+  수 있는 목표는 엔진이 정량 판정하는 유형이다」(그 카드가 「비워 두어도 채점됩니다」라고
+  말하므로)
+- 테스트: `src/tests/web/features/RetirementGoals/RetirementInputFlow.test.tsx`의
+  「금액을 비워 둔 「자산 성장」은 분석을 막지 않는다」·「금액이 필수인 「상속 자산
+  확보」는 비어 있으면 여전히 막는다」 — 묻는 것과 요구하는 것의 구분이 관문에 실제로
+  반영됐는지
 - 테스트: `src/tests/core/strategy/HardConstraintFilter.test.ts`,
   `src/tests/core/usecases/goals/targetValueProvenance.test.ts`,
   `src/tests/core/entities/retirementGoal.test.ts`
@@ -128,7 +146,7 @@ tags: [계산계약, 목표, 제약]
 - 테스트: `src/tests/core/usecases/montecarlo/resolveSimulationVerdict.test.ts`의 「확정
   HARD 목표가 없으면 hardGoalSuccess는 null이다」, 「판정하지 못한 HARD 목표를 unjudged로
   드러낸다」(`HOUSING_STABILITY`가 `unjudged`에, `ASSET_SURVIVAL`이 `judged`에 각각
-  들어가는 것을 검증), 「재현 사례 1」(목표액 UI가 없는 `ASSET_GROWTH`는 유형상 판정
+  들어가는 것을 검증), 「재현 사례 1」(목표액이 빈 `ASSET_GROWTH`는 유형상 판정
   가능해도 축을 못 켜 `unjudged`), 「재현 사례 2」(SOFT 목표가 기말자산 문턱을 가로채면
   확정 HARD 상속 목표가 `unjudged`), 「EARLY_RETIREMENT는 judged도 unjudged도 아닌
   planEmbedded다」

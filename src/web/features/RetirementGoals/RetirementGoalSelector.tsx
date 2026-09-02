@@ -7,7 +7,7 @@ import {
   moveRetirementGoal,
   normalizeRetirementGoals,
   RETIREMENT_GOAL_CONSTRAINT_LABELS,
-  hasMoneyTarget,
+  confirmedTargetValue,
   isSpendingGoalType,
   isSuggestedTargetValue,
   type RetirementGoal,
@@ -234,16 +234,26 @@ export function RetirementGoalSelector({
             // 「이 목표를 계산이 판정하는가」의 출처는 엔진이다(goalSuccessConditions).
             //
             // **유형만 보면 구멍이 생긴다.** 「자산 성장」은 판정 가능한 «유형»이지만 목표
-            // 금액을 물어보는 칸이 없어(goalCatalog에 target 정의 없음) 사용자가 그 금액을
-            // 영원히 확정할 수 없다. 확정되지 않은 금액은 terminalAsset 축을 켜지 못하므로
-            // (confirmedTargetValue → hardRequirementGoals), 여기서 유형만 보고 HARD를
-            // 열어 주면 사용자는 «계산이 지키지 않는 조건»을 못박은 것으로 믿게 된다 —
-            // 이 화면이 애초에 막으려던 바로 그 일이다.
+            // 금액을 비워 둘 수 있고(goalCatalog의 optional), 비어 있으면 엔진이 기말자산
+            // 하한을 세울 근거가 없다 — terminalAssetGoalOf가 «확정된» 금액만 보기 때문이다.
+            // 그 상태에서 HARD를 열어 주면 사용자는 «계산이 지키지 않는 조건»을 못박은
+            // 것으로 믿게 된다. 이 화면이 애초에 막으려던 바로 그 일이다(known-issues 1번).
             //
             // goalSuccessConditions가 같은 이유로 이미 유형 대신 「축을 실제로 켰는가」로
-            // 갈랐다. 여기서도 같은 판단을 따른다.
-            const targetInputMissing = hasMoneyTarget(goal.type) && definition.target === undefined;
-            const judged = isQuantitativelyJudgedGoal(goal.type) && !targetInputMissing;
+            // 갈랐다. 여기서도 같은 판단을 따른다 — 유형이 아니라 «값»을 본다.
+            //
+            // 금액이 필수인 목표는 여기 걸리지 않는다. 그쪽은 빈 칸 자체를 RetirementInputFlow가
+            // 막으므로(goalsMissingTarget) 강도를 고르는 자리까지 오지 않는다.
+            const optionalTarget = definition.target?.optional === true ? definition.target : undefined;
+            // 「비워 둘 수 있는 금액인데 아직 확정되지 않았다」는 상태. 불리언이 아니라 그
+            // 목표 «정의»를 담는다 — 아래 문구가 입력칸 라벨을 그대로 되불러야 사용자가
+            // 어느 칸을 채우라는 말인지 알고, 이름을 다시 적으면 라벨이 바뀌는 날 갈라진다.
+            const awaitingOptionalTarget =
+              optionalTarget !== undefined && confirmedTargetValue(goal) === undefined
+                ? optionalTarget
+                : undefined;
+            const judged = isQuantitativelyJudgedGoal(goal.type)
+              && awaitingOptionalTarget === undefined;
             // 정량 기준이 없는 목표는 HARD를 «고를 수 없다». 기준이 없는데 「반드시 지키기」를
             // 고르게 두면, 계산이 지키지 않는 조건을 사용자가 못박은 것으로 믿게 된다.
             //
@@ -423,24 +433,33 @@ export function RetirementGoalSelector({
 
                       목록은 엔진의 분류에서 읽는다. 여기서 유형을 나열하면 목표가 분류를
                       옮기는 날 화면만 옛말을 하게 된다. */}
-                  {!judged && (
+                  {/* **두 사유는 서로 다른 상태다.** 「자산 성장」에 금액을 넣지 않은 것은
+                      판정을 못 하는 상태가 «아니다» — 은퇴 시점 자산과 견주어 성장 여부를
+                      실제로 채점한다. 못 하는 것은 그 기준을 «못박는» 일뿐이다. 여기에
+                      「정량 판정 대상 아님」을 쓰면 화면이 사실과 다른 말을 하고, 사용자는
+                      고칠 수 있는 상태를 고칠 수 없는 상태로 읽는다. */}
+                  {!judged && awaitingOptionalTarget !== undefined && (
                     <p id={`${goal.type}-not-judged`} className="text-xs leading-relaxed break-keep text-foreground-muted">
-                      <strong className="text-foreground">정량 판정 대상 아님</strong>
-                      {/* 두 사유를 구분한다. 「자산 성장」은 «기준이 없는» 것이 아니라
-                          기준(기말자산)은 있는데 그 «금액을 넣을 칸»이 없는 경우다. 같은
-                          문장을 쓰면 화면이 사실과 다른 말을 한다. */}
-                      {targetInputMissing ? (
+                      <strong className="text-foreground">
+                        「{RETIREMENT_GOAL_CONSTRAINT_LABELS.HARD}」는 금액을 확정해야 열립니다
+                      </strong>
+                      {' '}— 위 「{awaitingOptionalTarget.label}」에 금액을 넣고 확정하면 기말 자산이 그
+                      금액 아래로 내려가지 않도록 지킵니다. 비워 두어도 목표는 채점됩니다 —
+                      은퇴 시점의 자산보다 기말 자산이 많은지로 평가합니다. 다만 그 기준은
+                      계획에 따라 함께 움직이므로 못박을 수 있는 금액이 아닙니다.
+                      {storedHard && (
                         <>
-                          {' '}— 이 목표는 목표 금액을 기준으로 판정하지만 그 금액을 입력할 칸이
-                          아직 없어 「{RETIREMENT_GOAL_CONSTRAINT_LABELS.HARD}」로 지정할 수
-                          없습니다.{' '}
-                        </>
-                      ) : (
-                        <>
-                          {' '}— 이 목표는 달성·미달을 잴 정량 기준이 아직 없어
-                          「{RETIREMENT_GOAL_CONSTRAINT_LABELS.HARD}」로 지정할 수 없습니다.{' '}
+                          {' '}이전에 저장된 「{RETIREMENT_GOAL_CONSTRAINT_LABELS.HARD}」는 그대로
+                          두었지만, 금액을 확정하기 전까지는 판정에 쓰이지 않습니다.
                         </>
                       )}
+                    </p>
+                  )}
+                  {!judged && awaitingOptionalTarget === undefined && (
+                    <p id={`${goal.type}-not-judged`} className="text-xs leading-relaxed break-keep text-foreground-muted">
+                      <strong className="text-foreground">정량 판정 대상 아님</strong>
+                      {' '}— 이 목표는 달성·미달을 잴 정량 기준이 아직 없어
+                      「{RETIREMENT_GOAL_CONSTRAINT_LABELS.HARD}」로 지정할 수 없습니다.{' '}
                       {/* **여기서 두 갈래가 갈린다.** 판정 대상이 아닌 목표 넷 중 셋(연금·세금·
                           위험)은 점수 «산식»이 있어 실제로 후보를 변별한다 — 그 셋에는 아래
                           앞 문장이 참이다. 「주거 안정」만 산식이 없어 평가가 상수 0을

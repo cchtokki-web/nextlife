@@ -1,7 +1,6 @@
 import { isConfirmedHardGoal, isPlanEmbeddedGoal } from '../goals/goalSuccessConditions';
 import {
   CONFIDENCE_LEVEL,
-  NO_INTERVAL,
   wilsonInterval,
   wilsonIntervalFromRate,
   type ProportionInterval,
@@ -113,7 +112,7 @@ export function resolveSimulationVerdict(input: {
 
   // **judged는 유형 멤버십이 아니라 「실제로 축을 켰는가」로 가른다.** goalConditions가
   // 이미 그 판단을 끝내 두었다 — hardRequirementGoals에 실제로 조건에 기여한 목표만 있다.
-  // isQuantitativelyJudgedGoal(유형)로 가르면 목표액 UI가 없는 ASSET_GROWTH가 아무 축도
+  // isQuantitativelyJudgedGoal(유형)로 가르면 목표액을 비워 둔 ASSET_GROWTH가 아무 축도
   // 켜지 못했는데도 「판정됨」으로 나온다(goalSuccessConditions.ts의 hardRequirementGoals
   // 주석 참조).
   const { hardRequirementGoals } = monteCarlo.goalConditions;

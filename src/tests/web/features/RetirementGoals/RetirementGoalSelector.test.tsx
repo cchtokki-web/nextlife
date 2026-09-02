@@ -4,7 +4,6 @@ import { describe, expect, test } from 'vitest';
 import {
   RETIREMENT_GOAL_LABELS,
   RETIREMENT_GOAL_TYPES,
-  hasMoneyTarget,
   type RetirementGoal,
   type RetirementGoalType,
 } from '@/core/entities/retirementGoal';
@@ -548,15 +547,20 @@ describe('RetirementGoalSelector', () => {
     const hardOption = (label: string) =>
       within(screen.getByLabelText(`${label} 조건 강도`)).getByRole('option', { name: '반드시 지키기' });
 
-    // 「이 목표를 HARD로 고를 수 있는가」는 «유형»만으로 정해지지 않는다. 목표 금액이 필요한
-    // 유형인데 그 금액을 넣을 칸이 없으면(goalCatalog에 target 정의 없음) 사용자는 영원히
-    // 확정할 수 없고, 확정되지 않은 금액은 어떤 HARD 축도 켜지 못한다. 그 조합이 실제로
-    // 존재한다 — 「자산 성장」이다. 아래 「엔진이 켜지 못하는 축」 테스트가 그 사실 자체를
-    // 엔진에서 «독립적으로» 확인한다.
+    // 「이 목표를 HARD로 고를 수 있는가」는 «유형»만으로 정해지지 않는다. 목표 금액을 비워
+    // 둘 수 있는 유형(goalCatalog의 optional)은 그 금액을 «확정했을 때만» HARD가 성립한다 —
+    // 확정되지 않은 금액은 어떤 HARD 축도 켜지 못하기 때문이다. 그 조합이 실제로 존재한다 —
+    // 「자산 성장」이다. 아래 「엔진이 켜지 못하는 축」 테스트가 그 사실 자체를 엔진에서
+    // «독립적으로» 확인한다.
+    //
+    // 아래 순회는 모두 «금액 없는» 목표를 그리므로, 선택 입력을 가진 유형은 전부 잠긴 쪽이다.
     const canSelectHard = (type: RetirementGoalType) =>
       isQuantitativelyJudgedGoal(type)
-      && !(hasMoneyTarget(type) && retirementGoalDefinition(type).target === undefined);
+      && retirementGoalDefinition(type).target?.optional !== true;
 
+    // 「정량 판정 대상 아님」이 붙는 조건은 canSelectHard와 «다르다». 금액을 비워 둔 자산
+    // 성장은 판정을 못 하는 상태가 아니다 — 은퇴 시점 자산과 견주어 채점한다. 못 하는 것은
+    // 그 기준을 못박는 일뿐이므로, 그 카드에는 다른 문구가 붙는다(아래 전용 테스트).
     test('엔진이 판정하지 않는 목표에만 「정량 판정 대상 아님」이 붙는다', () => {
       for (const type of RETIREMENT_GOAL_TYPES) {
         const { unmount } = render(
@@ -564,7 +568,7 @@ describe('RetirementGoalSelector', () => {
         );
 
         const note = screen.queryByText(/정량 판정 대상 아님/);
-        if (canSelectHard(type)) {
+        if (isQuantitativelyJudgedGoal(type)) {
           expect(note, `${RETIREMENT_GOAL_LABELS[type]}은 판정 대상이다`).toBeNull();
         } else {
           expect(note, `${RETIREMENT_GOAL_LABELS[type]}은 판정 대상이 아니다`).toBeInTheDocument();
@@ -596,9 +600,9 @@ describe('RetirementGoalSelector', () => {
     // **오라클이 구현을 되풀이하지 않도록 붙드는 자리.** 위 canSelectHard는 화면 규칙을
     // 옮겨 적은 것이라, 그것만으로는 「자산 성장에 HARD를 열어 주면 안 된다」를 증명하지
     // 못한다 — 화면과 테스트가 함께 틀려도 통과한다. 그 사실의 근거는 엔진에 있다.
-    test('자산 성장은 HARD로 저장해도 엔진이 어떤 HARD 축도 켜지 못한다', () => {
-      // 화면이 «실제로 만들 수 있는» 상태다. 목표 금액을 넣을 칸이 없으므로 targetValue를
-      // 사용자 확정으로 올릴 방법이 없다.
+    test('금액 없는 자산 성장은 HARD로 저장해도 엔진이 어떤 HARD 축도 켜지 못한다', () => {
+      // 화면이 «실제로 만들 수 있는» 상태다. 목표 금액은 선택 입력이라 비워 둘 수 있고,
+      // 비어 있으면 사용자 확정으로 올릴 값 자체가 없다.
       const params = {
         ...structuredClone(initialParams),
         retirementGoals: [{ type: 'ASSET_GROWTH' as const, priority: 1, constraintType: 'HARD' as const }],
@@ -609,7 +613,30 @@ describe('RetirementGoalSelector', () => {
       });
     });
 
-    test('그래서 화면은 자산 성장에 「반드시 지키기」를 열어 주지 않는다', () => {
+    // **위 테스트의 «짝».** 「축이 안 켜진다」만 확인하면 축을 영영 켜지 못하게 만들어도
+    // 통과한다 — 이 커밋이 더한 기능이 통째로 죽어도 초록이라는 뜻이다. 확정하면 실제로
+    // 켜진다는 사실이 나란히 있어야 두 테스트가 함께 뜻을 갖는다.
+    test('금액을 확정한 자산 성장은 기말자산 축을 HARD로 켠다', () => {
+      const params = {
+        ...structuredClone(initialParams),
+        retirementGoals: [{
+          type: 'ASSET_GROWTH' as const,
+          priority: 1,
+          constraintType: 'HARD' as const,
+          targetValue: 500_000_000,
+          targetValueSource: 'user' as const,
+        }],
+      };
+
+      const conditions = resolveGoalSuccessConditions(params);
+      expect(conditions.hardRequirements).toEqual({
+        spendingTarget: false, assetSurvival: false, terminalAsset: true,
+      });
+      expect(conditions.terminalAssetGoal).toBe(500_000_000);
+      expect(conditions.hardRequirementGoals.terminalAsset).toEqual(['ASSET_GROWTH']);
+    });
+
+    test('그래서 화면은 금액이 비어 있는 동안만 「반드시 지키기」를 잠근다', () => {
       render(
         <SelectorHarness initial={[{ type: 'ASSET_GROWTH', priority: 1, constraintType: 'SOFT' }]} />,
       );
@@ -617,11 +644,51 @@ describe('RetirementGoalSelector', () => {
       expect(
         within(screen.getByLabelText('자산 성장 조건 강도')).getAllByRole('option').map((o) => o.textContent),
       ).toEqual(['가능하면 달성']);
-      // 「기준이 없다」가 아니라 「넣을 칸이 없다」가 사유다. 문구가 fragment로 쪼개져
-      // 텍스트 노드가 «자기 요소»를 갖지 않으므로 문단 전체에서 확인한다.
-      const note = screen.getByText(/정량 판정 대상 아님/).closest('p');
-      expect(note?.textContent).toContain('그 금액을 입력할 칸이 아직 없어');
-      expect(note?.textContent).not.toContain('정량 기준이 아직 없어');
+      // 사유가 「판정을 못 한다」가 아니다 — 채점은 하되 «못박을» 금액이 없을 뿐이다.
+      // 문구가 fragment로 쪼개져 텍스트 노드가 «자기 요소»를 갖지 않으므로 문단 전체에서
+      // 확인한다.
+      const note = screen.getByText(/금액을 확정해야 열립니다/).closest('p');
+      expect(note?.textContent).toContain('유지하고 싶은 최소 자산');
+      expect(note?.textContent).toContain('비워 두어도 목표는 채점됩니다');
+      expect(screen.queryByText(/정량 판정 대상 아님/)).toBeNull();
+    });
+
+    test('금액을 입력하고 확정하면 「반드시 지키기」가 열린다', () => {
+      const seen: RetirementGoal[][] = [];
+      render(
+        <SelectorHarness
+          initial={[{ type: 'ASSET_GROWTH', priority: 1, constraintType: 'SOFT' }]}
+          onGoals={(goals) => seen.push(goals)}
+        />,
+      );
+
+      const input = screen.getByLabelText('유지하고 싶은 최소 자산');
+      fireEvent.focus(input);
+      fireEvent.change(input, { target: { value: '500000000' } });
+      fireEvent.blur(input);
+
+      expect(seen.at(-1)![0]).toMatchObject({
+        targetValue: 500_000_000, targetValueSource: 'user',
+      });
+      expect(
+        within(screen.getByLabelText('자산 성장 조건 강도')).getAllByRole('option').map((o) => o.textContent),
+      ).toEqual(['반드시 지키기', '가능하면 달성']);
+      expect(within(screen.getByLabelText('자산 성장 조건 강도'))
+        .getByRole('option', { name: '반드시 지키기' })).not.toBeDisabled();
+      expect(screen.queryByText(/금액을 확정해야 열립니다/)).toBeNull();
+    });
+
+    // 씨앗을 깔지 «않는» 것이 계약이다. 이 목표의 자연스러운 기준선(은퇴 시점 자산)은
+    // 시뮬레이션을 돌려야 나오고, 대신 아무 숫자나 깔면 사용자가 목표로 말한 적 없는 금액이
+    // 카드에 찍힌다. 빈 칸이면 confirmedTargetValue가 undefined라 종전 계산이 그대로다.
+    test('자산 성장을 새로 고르면 금액은 비어 있다', () => {
+      const seen: RetirementGoal[][] = [];
+      render(<SelectorHarness onGoals={(goals) => seen.push(goals)} />);
+
+      fireEvent.click(screen.getByRole('button', { name: /자산 성장/ }));
+
+      expect(seen.at(-1)![0].targetValue).toBeUndefined();
+      expect(screen.getByLabelText('유지하고 싶은 최소 자산')).toHaveValue('');
     });
 
     // 기본값이 HARD로 남아 있으면 «고를 수 없는» 값이 자동으로 박힌다 — 잠그는 것보다

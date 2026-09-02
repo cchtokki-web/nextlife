@@ -55,9 +55,16 @@ export function RetirementInputFlow({
   // 「이 목표가 값을 묻는가」의 출처는 목표 «정의»다(goalCatalog의 target). 여기서 유형을
   // 나열하면 카탈로그가 입력 칸을 더하거나 뺄 때 이 관문만 옛 목록을 들고 남는다 —
   // 정량 판정 목록이 화면과 엔진 두 벌로 갈라져 있던 것과 같은 어긋남이다.
-  const goalsMissingTarget = goals.filter((goal) =>
-    retirementGoalDefinition(goal.type).target !== undefined
-      && !(goal.targetValue !== undefined && goal.targetValue > 0));
+  //
+  // **묻는 것과 «요구하는» 것은 다르다.** 「자산 성장」은 금액을 물어보되 비워 둘 수 있다 —
+  // 금액이 없으면 은퇴 시점 자산 대비 성장 여부로 평가하므로 잴 기준이 사라지지 않는다
+  // (goalCatalog의 optional 주석). 이 구분이 없으면 입력칸이 생겼다는 이유만으로 지금까지
+  // 금액 없이 굴러가던 계획 — 저장된 시나리오를 포함해 — 이 분석 자체를 거부당한다.
+  const goalsMissingTarget = goals.filter((goal) => {
+    const target = retirementGoalDefinition(goal.type).target;
+    return target !== undefined && target.optional !== true
+      && !(goal.targetValue !== undefined && goal.targetValue > 0);
+  });
   // 강도만 「반드시 지키기」로 바꾸고 금액은 씨앗 그대로인 목표. 그대로 통과시키면 엔진이
   // 강제하지 «않을» 조건을 흐름이 「준비 완료」로 확인해 준다(known-issues 14번).
   const goalsAwaitingConfirmation = goals.filter(hardGoalAwaitsTargetConfirmation);

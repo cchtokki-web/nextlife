@@ -280,6 +280,32 @@ describe('RetirementInputFlow', () => {
 
       expect(screen.getByRole('button', { name: '분석 시작' })).toBeEnabled();
     });
+
+    // **호환성 관문.** 「자산 성장」에 목표액 입력칸이 생기면서, 금액을 «묻는» 목표는
+    // 하나 늘었지만 금액을 «요구하는» 목표는 늘지 않아야 한다. 요구하는 쪽으로 새면
+    // 지금까지 금액 없이 잘 굴러가던 계획이 — 저장된 시나리오를 포함해 — 입력칸이
+    // 생겼다는 이유만으로 분석 자체를 거부당한다. 그 목표는 금액이 없어도 은퇴 시점
+    // 자산과 견주어 채점되므로 잴 기준이 사라지지도 않는다.
+    test('금액을 비워 둔 「자산 성장」은 분석을 막지 않는다', () => {
+      render(<ConfirmationHarness initial={[
+        { type: 'ASSET_GROWTH' as const, priority: 1, constraintType: 'SOFT' as const },
+      ]} />);
+
+      expect(screen.getByRole('button', { name: '분석 시작' })).toBeEnabled();
+    });
+
+    // 금액이 «필수»인 목표는 여전히 막는다. 위 예외가 optional 표시를 보지 않고 금액형
+    // 목표 전체로 넓어지면 상속의 관문이 조용히 사라지는데, 상속은 금액이 없으면
+    // terminalAssetGoalOf가 0으로 떨어져 기준 자체가 무너진다.
+    test('금액이 필수인 「상속 자산 확보」는 비어 있으면 여전히 막는다', () => {
+      render(<ConfirmationHarness initial={[
+        { type: 'INHERITANCE' as const, priority: 1, constraintType: 'SOFT' as const },
+      ]} />);
+
+      expect(screen.getByRole('button', { name: '분석 시작' })).toBeDisabled();
+      expect(screen.getByRole('status'))
+        .toHaveTextContent('선택한 목표의 목표값을 입력해 주세요.');
+    });
   });
 
   // 카드 시드가 «정규화된» 프로필에서 와야 한다. 저장된 옛 은퇴 나이를 그대로 시드하면
