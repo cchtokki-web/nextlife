@@ -20,10 +20,13 @@
  * 값인가)은 엔진의 사실이지 표시 계층의 사정이 아니다.
  *
  * **범위 밖**: 확률 기준으로 역산한 한도(「목표 달성 확률 70%를 유지하는 최대 초기 생활비」)는
- * 새 계산이다. 이진탐색 단계마다 1,000회 시행이 필요하고 지금 그 값을 만드는 코드는 없다.
- * (SimulationMetricsCalculator의 sustainableSpendingBasis: 'probabilistic' 분기는 생산자가
- * 없어 언제나 'deterministic'으로만 선다 — known-issues 참조.) 여기서는 지어내지 않고,
- * 이미 있는 값이 무엇인지만 정확히 말한다.
+ * 새 계산이다. 이진탐색 단계마다 몬테카를로를 돌려야 하고, 기준 확률 자체가 저장소에 근거가
+ * 없는 새 가정이다. 여기서는 지어내지 않고, 이미 있는 값이 무엇인지만 정확히 말한다.
+ *
+ * 한때 `SimulationMetrics`가 그 값을 «가질 수 있는 것처럼» 생겼었다
+ * (`sustainableSpendingBasis: 'deterministic' | 'probabilistic'`). 만드는 코드가 없어 언제나
+ * 'deterministic'이었고, 지금은 그 타입을 걷어냈다 — 되살릴 때의 순서는
+ * `docs/wiki/decisions/2026-09-03-확률 기준 지속가능 한도는 만들지 않는다.md`에 있다.
  */
 export function describeSustainableSpendingBasis(expectancy: number): string {
   return `현재 수익률과 연금, 물가, 기대수명 가정이 그대로 유지될 경우 ${expectancy}세까지 `

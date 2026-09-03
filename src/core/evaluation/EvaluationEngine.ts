@@ -12,14 +12,18 @@ import type { ChartCaptions } from '../usecases/dashboard/generateChartCaptions'
 import type { LifetimeSpendingPlan } from '../usecases/dashboard/computeLifetimeSpendingPlan';
 import type { SustainableSpendingAdvice } from '../usecases/dashboard/computeSustainableSpendingAdvice';
 import type { UtilityComponentExplanations } from '../usecases/utility/explainUtilityComponents';
-import type {
-  SimulationMetrics,
-  SustainableSpendingEstimate,
-} from '../usecases/metrics/SimulationMetricsCalculator';
+import type { SimulationMetrics } from '../usecases/metrics/SimulationMetricsCalculator';
 
+/**
+ * 평가에 «결과 바깥»에서 들어오는 재료. 오늘은 몬테카를로 하나뿐이다.
+ *
+ * 한때 `sustainableSpendingEstimate`가 함께 있었다. 어떤 호출부도 그것을 채우지 않아
+ * 이 필드는 언제나 undefined였고, 그 결과 지표의 basis가 언제나 'deterministic'으로만
+ * 섰다(known-issues 17번). 여기에 필드를 더할 때는 «채우는 호출부»를 같은 커밋에서
+ * 함께 만든다 — 생산자 없는 선택 필드는 타입이 없는 기능을 약속하게 한다.
+ */
 export interface EvaluationContext {
   monteCarlo?: MonteCarloResult;
-  sustainableSpendingEstimate?: SustainableSpendingEstimate;
 }
 
 /**

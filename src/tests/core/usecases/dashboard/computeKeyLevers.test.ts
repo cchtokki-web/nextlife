@@ -54,8 +54,8 @@ const input = (overrides: Partial<KeyLeversInput> = {}): KeyLeversInput => ({
   sensitivity: sensitivity([
     scenario('retirementLater', { endingAssetsDelta: 1083600000 }),
     scenario('retirementEarlier', { depletionAge: 61, unmetSpendingYears: 19 }),
-    scenario('yieldAggressive', { endingAssetsDelta: 499010000 }),
-    scenario('yieldConservative', { depletionAge: 67, unmetSpendingYears: 13 }),
+    scenario('yieldUp', { endingAssetsDelta: 499010000 }),
+    scenario('yieldDown', { depletionAge: 67, unmetSpendingYears: 13 }),
   ]),
   pensionGap: {
     fromAge: 60, toAge: 64, years: 5,
@@ -244,8 +244,8 @@ describe('computeKeyLevers', () => {
       const levers = computeKeyLevers(input({
         sensitivity: sensitivity(
           [
-            scenario('yieldAggressive', { endingAssetsDelta: 499010000, hardViolations: ['terminalAsset'] }),
-            scenario('yieldConservative', { depletionAge: 67, unmetSpendingYears: 13 }),
+            scenario('yieldUp', { endingAssetsDelta: 499010000, hardViolations: ['terminalAsset'] }),
+            scenario('yieldDown', { depletionAge: 67, unmetSpendingYears: 13 }),
           ],
           terminalAssetGoals,
         ),

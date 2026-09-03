@@ -61,7 +61,6 @@ export class LegacyEvaluationEngine implements EvaluationEngine {
         params,
         result,
         context.monteCarlo,
-        context.sustainableSpendingEstimate,
       ),
       chartCaptions: generateChartCaptions(result, params),
       riskAlerts: computeRiskAlerts(result, params),

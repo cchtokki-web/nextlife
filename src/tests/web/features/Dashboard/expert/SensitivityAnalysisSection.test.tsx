@@ -18,12 +18,12 @@ function scenario(overrides: Partial<SensitivityScenario> & Pick<SensitivityScen
 }
 
 const scenarios: SensitivityScenario[] = [
-  scenario({ key: 'yieldConservative', label: '안정형 가정 (주식 5%)', depletionAge: 82, deltaYears: -6, endingAssets: 0, endingAssetsDelta: -2500000000, unmetSpendingYears: 8 }),
+  scenario({ key: 'yieldDown', label: '수익률 -2%p', depletionAge: 82, deltaYears: -6, endingAssets: 0, endingAssetsDelta: -2500000000, unmetSpendingYears: 8 }),
   scenario({ key: 'retirementEarlier', label: '은퇴시점 -3년', depletionAge: 84, deltaYears: -4, endingAssets: 0, endingAssetsDelta: -2500000000 }),
   scenario({ key: 'inflationUp', label: '물가상승률 +1%p', depletionAge: 86, deltaYears: -2, endingAssets: 0, endingAssetsDelta: -2500000000 }),
   scenario({ key: 'inflationDown', label: '물가상승률 -1%p', depletionAge: 90, deltaYears: 2, endingAssets: 3000000000, endingAssetsDelta: 500000000 }),
   scenario({ key: 'retirementLater', label: '은퇴시점 +3년', endingAssets: 3200000000, endingAssetsDelta: 700000000 }),
-  scenario({ key: 'yieldAggressive', label: '공격형 가정 (주식 9%)', endingAssets: 5000000000, endingAssetsDelta: 2500000000 }),
+  scenario({ key: 'yieldUp', label: '수익률 +2%p', endingAssets: 5000000000, endingAssetsDelta: 2500000000 }),
 ];
 
 describe('SensitivityAnalysisSection', () => {
@@ -56,10 +56,10 @@ describe('SensitivityAnalysisSection', () => {
     const bars = container.querySelectorAll('[data-testid="sensitivity-bar"]');
     expect(bars).toHaveLength(6);
 
-    const worse = Array.from(bars).find((b) => b.getAttribute('data-key') === 'yieldConservative')!;
+    const worse = Array.from(bars).find((b) => b.getAttribute('data-key') === 'yieldDown')!;
     expect(worse.className).toContain('bg-danger');
 
-    const better = Array.from(bars).find((b) => b.getAttribute('data-key') === 'yieldAggressive')!;
+    const better = Array.from(bars).find((b) => b.getAttribute('data-key') === 'yieldUp')!;
     expect(better.className).toContain('bg-success');
   });
 
@@ -99,7 +99,7 @@ describe('SensitivityAnalysisSection', () => {
 // 세 행이 전부 기준선 «아래»로 내려가는 것이 정상인데, 화면이 사용자 자신의 수익률을
 // 말하지 않아 실제 리포트에서 「공격형으로 바꿨는데 왜 돈이 줄지」라는 읽기가 나왔다.
 describe('SensitivityAnalysisSection - 현재 수익률 가정 공개', () => {
-  test('사용자 자신의 가중평균 총수익률과 세 행이 고정 기준이라는 사실을 밝힌다', () => {
+  test('사용자 자신의 가중평균 총수익률과 두 행이 그 기준에서 옮긴 결과임을 밝힌다', () => {
     render(
       <SensitivityAnalysisSection
         baselineDepletionAge={null} baselineEndingAssets={1458410000}
@@ -109,11 +109,11 @@ describe('SensitivityAnalysisSection - 현재 수익률 가정 공개', () => {
 
     const note = screen.getByTestId('sensitivity-baseline-return');
     expect(note).toHaveTextContent('가중평균 총수익률 12.3%');
-    // 가중평균은 사적연금을 포함한 값이라, 행 이름의 「주식 5%」와 곧바로 견주면 어긋난다.
-    // 두 축을 모두 적어야 세 행이 무엇을 바꾼 결과인지가 정확해진다.
+    // 상대 축에서는 이 가중평균이 곧 «기준»이므로 둘이 어긋날 일이 없다. 예전 절대 앵커에서는
+    // 행 이름의 「주식 5%」와 이 값을 곧바로 견주면 어긋나, 두 축의 숫자를 모두 적어야 했다.
     expect(note).toHaveTextContent('사적연금 포함');
-    expect(note).toHaveTextContent('주식·ISA를 5/7/9%, 사적연금을 3/4/6%로 통째로 바꾼 결과');
-    expect(note).toHaveTextContent('현재 가정과 무관하게 고정된 비교 기준');
+    expect(note).toHaveTextContent('총수익률을 2%p씩 함께 낮추고 올린 결과');
+    expect(note).toHaveTextContent('위 현재 가정이 그 기준입니다');
   });
 
   // 굴릴 잔액이 없으면 가중평균을 낼 수 없다. 없는 값을 0%라고 말하지 않는다.
@@ -198,8 +198,8 @@ describe('SensitivityAnalysisSection - 고정된 생활비 표기', () => {
 
 describe('SensitivityAnalysisSection - 고갈이 전혀 없는 계획', () => {
   const allLifetime: SensitivityScenario[] = [
-    scenario({ key: 'yieldConservative', label: '안정형 가정 (주식 5%)', endingAssets: 820000000, endingAssetsDelta: -1680000000 }),
-    scenario({ key: 'yieldAggressive', label: '공격형 가정 (주식 9%)', endingAssets: 5100000000, endingAssetsDelta: 2600000000 }),
+    scenario({ key: 'yieldDown', label: '수익률 -2%p', endingAssets: 820000000, endingAssetsDelta: -1680000000 }),
+    scenario({ key: 'yieldUp', label: '수익률 +2%p', endingAssets: 5100000000, endingAssetsDelta: 2600000000 }),
     scenario({ key: 'inflationUp', label: '물가상승률 +1%p', endingAssets: 1900000000, endingAssetsDelta: -600000000 }),
     scenario({ key: 'inflationDown', label: '물가상승률 -1%p', endingAssets: 3300000000, endingAssetsDelta: 800000000 }),
     scenario({ key: 'retirementEarlier', label: '은퇴시점 -3년', endingAssets: 2100000000, endingAssetsDelta: -400000000 }),
@@ -212,7 +212,7 @@ describe('SensitivityAnalysisSection - 고갈이 전혀 없는 계획', () => {
     );
 
     expect(container.querySelectorAll('[data-testid="sensitivity-bar"]')).toHaveLength(6);
-    expect(screen.getByText('안정형 가정 (주식 5%)')).toBeInTheDocument();
+    expect(screen.getByText('수익률 -2%p')).toBeInTheDocument();
   });
 
   test('고갈이 없다는 사실 자체는 여전히 알린다', () => {
@@ -237,8 +237,8 @@ describe('SensitivityAnalysisSection - 고갈이 전혀 없는 계획', () => {
 // 아무것도 구분하지 못하는 화면이 됐다. 실제로 갈리는 것은 은퇴시점뿐이다.
 describe('SensitivityAnalysisSection - 투자자산 미보유 계획', () => {
   const noAssetScenarios: SensitivityScenario[] = [
-    scenario({ key: 'yieldConservative', label: '안정형 가정 (주식 5%)', depletionAge: 51, unmetSpendingYears: 31 }),
-    scenario({ key: 'yieldAggressive', label: '공격형 가정 (주식 9%)', depletionAge: 51, unmetSpendingYears: 31 }),
+    scenario({ key: 'yieldDown', label: '수익률 -2%p', depletionAge: 51, unmetSpendingYears: 31 }),
+    scenario({ key: 'yieldUp', label: '수익률 +2%p', depletionAge: 51, unmetSpendingYears: 31 }),
     scenario({ key: 'inflationUp', label: '물가상승률 +1%p', depletionAge: 51, unmetSpendingYears: 31 }),
     scenario({ key: 'inflationDown', label: '물가상승률 -1%p', depletionAge: 51, unmetSpendingYears: 31 }),
     scenario({ key: 'retirementEarlier', label: '은퇴시점 -3년', depletionAge: 51, unmetSpendingYears: 34 }),
@@ -260,7 +260,7 @@ describe('SensitivityAnalysisSection - 투자자산 미보유 계획', () => {
   test('수익률·물가처럼 결과가 baseline과 완전히 같은 행은 숨긴다', () => {
     renderNoAsset();
 
-    expect(screen.queryByText('안정형 가정 (주식 5%)')).not.toBeInTheDocument();
+    expect(screen.queryByText('수익률 -2%p')).not.toBeInTheDocument();
     expect(screen.queryByText('물가상승률 +1%p')).not.toBeInTheDocument();
     expect(screen.getByText('은퇴시점 -3년')).toBeInTheDocument();
     expect(screen.getByText('은퇴시점 +3년')).toBeInTheDocument();
@@ -317,9 +317,9 @@ describe('SensitivityAnalysisSection - HARD 목표 위반 경고', () => {
   // 핵심 픽스처: yieldAggressive는 endingAssetsDelta가 +25억(재무적으로 명백히 유리)인데도
   // 확정 HARD 「자산 고갈 방지」를 어긴다(computeSensitivityAnalysis 테스트의 픽스처와 같은 값).
   const violatingScenarios: SensitivityScenario[] = [
-    scenario({ key: 'yieldConservative', label: '안정형 가정 (주식 5%)', endingAssets: 1000000000, endingAssetsDelta: -500000000 }),
+    scenario({ key: 'yieldDown', label: '수익률 -2%p', endingAssets: 1000000000, endingAssetsDelta: -500000000 }),
     scenario({
-      key: 'yieldAggressive', label: '공격형 가정 (주식 9%)', depletionAge: 85, endingAssets: 4000000000,
+      key: 'yieldUp', label: '수익률 +2%p', depletionAge: 85, endingAssets: 4000000000,
       endingAssetsDelta: 2500000000, hardViolations: ['assetSurvival'],
     }),
   ];
@@ -333,7 +333,7 @@ describe('SensitivityAnalysisSection - HARD 목표 위반 경고', () => {
     );
 
     const bars = container.querySelectorAll('[data-testid="sensitivity-bar"]');
-    const violating = Array.from(bars).find((b) => b.getAttribute('data-key') === 'yieldAggressive')!;
+    const violating = Array.from(bars).find((b) => b.getAttribute('data-key') === 'yieldUp')!;
 
     // endingAssetsDelta는 양수(+25억)라 위반 판정이 없다면 bg-success가 됐을 것이다.
     expect(violating.className).toContain('bg-danger');
@@ -373,7 +373,7 @@ describe('SensitivityAnalysisSection - HARD 목표 위반 경고', () => {
       <SensitivityAnalysisSection
         baselineDepletionAge={70} baselineEndingAssets={1500000000}
         baselineHardViolations={['assetSurvival']}
-        scenarios={[scenario({ key: 'yieldConservative', label: '안정형 가정 (주식 5%)' })]}
+        scenarios={[scenario({ key: 'yieldDown', label: '수익률 -2%p' })]}
         hardRequirementGoals={hardRequirementGoals}
       />
     );
@@ -389,11 +389,11 @@ describe('SensitivityAnalysisSection - HARD 목표 위반 경고', () => {
   test('여러 행이 위반해도 판정 근거 문장은 표 전체에 한 번만 나온다', () => {
     const twoViolations: SensitivityScenario[] = [
       scenario({
-        key: 'yieldConservative', label: '안정형 가정 (주식 5%)', depletionAge: 82,
+        key: 'yieldDown', label: '수익률 -2%p', depletionAge: 82,
         endingAssets: 500000000, endingAssetsDelta: -1000000000, hardViolations: ['assetSurvival'],
       }),
       scenario({
-        key: 'yieldAggressive', label: '공격형 가정 (주식 9%)', depletionAge: 85,
+        key: 'yieldUp', label: '수익률 +2%p', depletionAge: 85,
         endingAssets: 4000000000, endingAssetsDelta: 2500000000, hardViolations: ['assetSurvival'],
       }),
     ];

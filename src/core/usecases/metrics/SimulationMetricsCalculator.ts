@@ -23,11 +23,6 @@ export interface SpendingShortfallMetric {
   averageMonthlyShortfall: number;
 }
 
-export interface SustainableSpendingEstimate {
-  amount: number;
-  targetSuccessProbability: number;
-}
-
 export interface SimulationMetrics {
   /** 은퇴 기간의 물가·소비곡선·의료비를 반영한 평균 월 목표 생활비. */
   targetSpending: number;
@@ -35,11 +30,20 @@ export interface SimulationMetrics {
   actualSpending: number;
   /** actualSpending / targetSpending. 퍼센트가 아닌 0~n 비율이다. */
   spendingAchievementRate: number;
-  /** 현재 전략의 제약을 만족하도록 역산된 평균 월 지속가능 생활비. */
+  /**
+   * 현재 전략의 제약을 만족하도록 역산된 평균 월 지속가능 생활비.
+   *
+   * **이 값은 언제나 결정론 이진탐색의 결과다**(`SimulationEngine.searchSustainable`).
+   * 그 사실을 사용자에게 말하는 문장은 `describeSustainableSpendingBasis`가 소유한다.
+   *
+   * 한때 이 옆에 `sustainableSpendingBasis: 'deterministic' | 'probabilistic'`과
+   * `sustainableSpendingTargetProbability`가 있었다. 그 값을 «만드는 코드는 없었고»
+   * (EvaluationContext.sustainableSpendingEstimate를 채우는 호출부가 저장소에 없었다),
+   * 그래서 basis는 언제나 'deterministic'이고 확률은 언제나 null이었다. 타입만 「확률
+   * 기준으로 역산한 한도가 있을 수 있다」고 말하고 실제로는 그런 값이 없었던 셈이다.
+   * 지어낼 수 없는 값을 타입이 약속하지 않도록 걷어냈다(known-issues 17번).
+   */
   sustainableSpending: number;
-  /** 현재 엔진은 확률 역산기가 없으므로 기준 수익률 경로임을 명시한다. */
-  sustainableSpendingBasis: 'deterministic' | 'probabilistic';
-  sustainableSpendingTargetProbability: number | null;
   /** 사용자 목표 생활비 기준 부족 지표. */
   shortfall: SpendingShortfallMetric;
   /** 기대수명 전에 자산이 고갈되지 않았는지 여부. */
@@ -65,7 +69,6 @@ export class SimulationMetricsCalculator {
     params: SimulationParams,
     result: SimulationResult,
     monteCarlo?: MonteCarloResult,
-    sustainableEstimate?: SustainableSpendingEstimate,
   ): SimulationMetrics {
     const yearlySpending = computeMonthlySpendingComposition(
       result.yearlyResults,
@@ -74,11 +77,7 @@ export class SimulationMetricsCalculator {
     );
     const targetSpending = average(yearlySpending.map((row) => row.goalMonthly));
     const actualSpending = average(yearlySpending.map((row) => row.actualMonthly));
-    const sustainableSpending = this.averageSustainableSpending(
-      params,
-      result,
-      sustainableEstimate?.amount,
-    );
+    const sustainableSpending = this.averageSustainableSpending(params, result);
     const shortfallYears = yearlySpending
       .filter((row) => row.goalShortfall >= SHORTFALL_EPSILON_MONTHLY)
       .map((row) => ({
@@ -101,10 +100,6 @@ export class SimulationMetricsCalculator {
       actualSpending,
       spendingAchievementRate: targetSpending > 0 ? actualSpending / targetSpending : 0,
       sustainableSpending,
-      sustainableSpendingBasis: sustainableEstimate ? 'probabilistic' : 'deterministic',
-      sustainableSpendingTargetProbability: sustainableEstimate
-        ? Math.min(1, Math.max(0, sustainableEstimate.targetSuccessProbability))
-        : null,
       shortfall: {
         shortfallAmount,
         shortfallYears,
@@ -120,13 +115,14 @@ export class SimulationMetricsCalculator {
     };
   }
 
+  // baseOverride 인자가 함께 사라졌다. 그 값을 주던 유일한 출처가
+  // SustainableSpendingEstimate.amount였고, 그것을 만드는 호출부가 없었다 —
+  // 남겨 두면 「밑값을 바꿀 수 있다」는 또 하나의 없는 약속이 된다(known-issues 17번).
   private averageSustainableSpending(
     params: SimulationParams,
     result: SimulationResult,
-    baseOverride?: number,
   ): number {
-    const base = baseOverride
-      ?? result.calculatedTargetSpending
+    const base = result.calculatedTargetSpending
       ?? params.userProfile.targetMonthlySpending;
     const syntheticResult: SimulationResult = {
       ...result,

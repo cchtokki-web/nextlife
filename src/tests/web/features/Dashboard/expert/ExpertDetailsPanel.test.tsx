@@ -101,7 +101,7 @@ describe('ExpertDetailsPanel', () => {
     // 제목이 "자산 고갈 나이"에서 바뀐 이유: 고갈이 없는 계획에서도 기말자산으로
     // 시나리오를 구분해 보여주게 되어, 고갈 나이는 여러 지표 중 하나가 되었다.
     expect(screen.getByText('민감도 분석 (핵심 가정 변화에 따른 영향)')).toBeInTheDocument();
-    expect(screen.getByText('안정형 가정 (주식 5%)')).toBeInTheDocument();
+    expect(screen.getByText('수익률 -2%p')).toBeInTheDocument();
     expect(screen.getByText('은퇴시점 +3년')).toBeInTheDocument();
   });
 
@@ -111,7 +111,7 @@ describe('ExpertDetailsPanel', () => {
     render(<ExpertDetailsPanel result={result} params={params} formatValue={formatValue} sensitivity={sensitivity} isPro={false} />);
 
     expect(screen.getByText(/투자자산이 없어/)).toBeInTheDocument();
-    expect(screen.queryByText('안정형 가정 (주식 5%)')).not.toBeInTheDocument();
+    expect(screen.queryByText('수익률 -2%p')).not.toBeInTheDocument();
   });
 
   test('민감도 분석 기준선은 result prop이 아니라 params로 직접 재계산한 값을 사용한다 (Before/After 토글과 무관)', () => {

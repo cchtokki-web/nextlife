@@ -48,8 +48,6 @@ describe('SimulationMetricsCalculator', () => {
     expect(metrics.actualSpending).toBe(3_150_000);
     expect(metrics.spendingAchievementRate).toBeCloseTo(0.9);
     expect(metrics.sustainableSpending).toBe(3_200_000);
-    expect(metrics.sustainableSpendingBasis).toBe('deterministic');
-    expect(metrics.sustainableSpendingTargetProbability).toBeNull();
   });
 
   test('부족액과 발생 연도를 age/year와 함께 한 번만 집계한다', () => {
@@ -113,16 +111,21 @@ describe('SimulationMetricsCalculator', () => {
     expect(metrics.goalSuccessProbability).toBeNull();
   });
 
-  test('StrategyOptimizer가 목표 확률별 역산액을 주면 확률 기준 지속가능 소비로 구분한다', () => {
-    const metrics = new SimulationMetricsCalculator().calculate(
-      params,
-      result(),
-      undefined,
-      { amount: 2_900_000, targetSuccessProbability: 0.9 },
-    );
+  // **예전에 「StrategyOptimizer가 목표 확률별 역산액을 주면…」이 있던 자리.**
+  //
+  // 그 이름이 전제한 호출부는 저장소에 존재한 적이 없다. 테스트가 인자를 손으로 넣어
+  // 죽은 분기를 살려 낸 것이라, 초록이라는 사실이 「이 기능이 동작한다」를 뜻하지 않았다 —
+  // 오히려 없는 기능을 있는 것처럼 보이게 했다(known-issues 17번).
+  //
+  // 대신 반대 방향을 잠근다. 지속가능 한도는 결정론 이진탐색의 결과«뿐»이므로, 지표가
+  // 확률 기준을 가진 것처럼 보이는 키를 들고 있으면 안 된다. 이 단언이 깨진다면 둘 중
+  // 하나다 — 누군가 생산자 없는 필드를 다시 넣었거나(그건 같은 결함의 재발이다), 진짜로
+  // 확률 역산기를 구현했거나. 뒤엣것이라면 이 테스트를 지우기 전에
+  // docs/wiki/decisions/2026-09-03-확률 기준 지속가능 한도는 만들지 않는다.md를 읽을 것.
+  test('지표는 확률 기준 지속가능 한도를 가진 것처럼 보이지 않는다', () => {
+    const metrics = new SimulationMetricsCalculator().calculate(params, result());
 
-    expect(metrics.sustainableSpending).toBe(2_900_000);
-    expect(metrics.sustainableSpendingBasis).toBe('probabilistic');
-    expect(metrics.sustainableSpendingTargetProbability).toBe(0.9);
+    expect(Object.keys(metrics).filter((key) => /^sustainableSpending/.test(key)))
+      .toEqual(['sustainableSpending']);
   });
 });
