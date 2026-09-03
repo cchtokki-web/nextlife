@@ -845,7 +845,7 @@ describe('renderPlanVerdictSection', () => {
 
     expect(html).toContain('반영되지 않은 목표: 세금 최소화, 주거 안정');
     expect(html).toContain(describeUnscoredGoals(['HOUSING_STABILITY']));
-    expect(html).toContain('0점은 목표 실패가 아니라');
+    expect(html).toContain('감점으로 이어지지는 않습니다');
   });
 
   test('점수 산식이 있는 목표만 미반영이면 점수 안내를 붙이지 않는다', () => {

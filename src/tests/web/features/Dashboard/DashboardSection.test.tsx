@@ -962,7 +962,7 @@ describe('DashboardSection - 현재 계획 진단', () => {
     // 점수 산정 대상이 아닌 것은 주거 안정«뿐»이다 — 세금 최소화까지 싸잡으면
     // 실제로 후보를 변별하고 있는 점수를 없는 것이라고 말하게 된다.
     expect(text).toContain('「주거 안정」은 점수 산정 대상이 아닙니다');
-    expect(text).toContain('0점은 목표 실패가 아니라');
+    expect(text).toContain('감점으로 이어지지는 않습니다');
     expect(text).not.toContain('「세금 최소화」은 점수 산정 대상');
   });
 

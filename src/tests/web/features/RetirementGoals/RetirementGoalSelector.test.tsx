@@ -755,9 +755,10 @@ describe('RetirementGoalSelector', () => {
     });
 
     // 「주거 안정」만 점수 산식이 없어 평가가 상수 0을 돌려준다. 위 문장을 그대로 쓰면
-    // 「반영된다」가 「0으로 반영된다」를 감추고, 사용자는 그 0을 목표 실패로 읽는다
-    // (known-issues 15번). 계산은 그대로 두고 화면이 그 사실을 말하게 한다.
-    test('점수 산식이 없는 목표에는 0점이 실패가 아님을 밝힌다', () => {
+    // 「반영된다」가 「0으로 반영된다」를 감추던 자리다(known-issues 15번). 이제 계산이
+    // 그 0을 평균에서 빼므로 화면도 「고른다고 깎이지 않는다」를 말해야 한다 — 0을 계속
+    // 언급하면 사라진 감점을 사용자가 상상하게 된다.
+    test('점수 산식이 없는 목표에는 고른다고 깎이지 않음을 밝힌다', () => {
       render(<SelectorHarness />);
 
       fireEvent.click(screen.getByRole('button', { name: /주거 안정/ }));
@@ -765,8 +766,8 @@ describe('RetirementGoalSelector', () => {
       expect(screen.getByText(/정량 기준이 아직 없어 「반드시 지키기」로 지정할 수 없습니다/))
         .toBeInTheDocument();
       expect(screen.getByText(/점수 산정 대상도 아닙니다/)).toBeInTheDocument();
-      expect(screen.getByText(/0점은 목표 실패가 아니라 «판정하지 않음»을 뜻합니다/))
-        .toBeInTheDocument();
+      expect(screen.getByText(/종합 점수에서도 빠집니다/)).toBeInTheDocument();
+      expect(screen.getByText(/고른다고 점수가 깎이지는 않으며/)).toBeInTheDocument();
       // 종전 문장을 «대신» 쓰는 것이지 덧붙이는 것이 아니다. 둘이 함께 뜨면 화면이
       // 「그대로 반영된다」와 「점수를 계산하지 않는다」를 동시에 말하게 된다.
       expect(screen.queryByText(/선택과 우선순위는 추천 전략을 고르는 기준에 그대로 반영됩니다/))

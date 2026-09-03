@@ -123,14 +123,20 @@ describe('goalScoreSupport — 점수 산식이 있는 목표와 없는 목표',
       expect(describeUnscoredGoals(['TAX_OPTIMIZATION', 'PENSION_OPTIMIZATION'])).toBe('');
     });
 
-    // 문장이 반드시 말해야 하는 것은 «0점의 뜻»이다. 그 말을 빼면 남는 것은
-    // 「점수가 없다」뿐이고, 사용자는 그것을 여전히 실패로 읽을 수 있다.
-    test('0점이 실패가 아니라는 사실을 문장이 직접 말한다', () => {
+    // 문장이 반드시 배제해야 하는 오해는 «고르면 감점된다»이다. 그 말을 빼면 남는 것은
+    // 「점수가 없다」뿐이고, 사용자는 그것을 여전히 손해로 읽을 수 있다.
+    //
+    // 예전에는 이 자리가 「0점은 목표 실패가 아니다」였다. 그때는 그 0이 실제로 가중 평균에
+    // 들어갔기 때문에 0의 «뜻»을 설명해야 했다. 이제는 들어가지 않으므로 0을 언급하는 것
+    // 자체가 없는 감점을 상상하게 만든다 — 문장이 답해야 하는 질문이 바뀌었다.
+    test('고른다고 감점되지 않는다는 사실을 문장이 직접 말한다', () => {
       const sentence = describeUnscoredGoals(['HOUSING_STABILITY']);
 
       expect(sentence).toContain('주거 안정');
       expect(sentence).toContain('점수 산정 대상이 아닙니다');
-      expect(sentence).toContain('목표 실패가 아니');
+      expect(sentence).toContain('감점으로 이어지지는 않습니다');
+      // 0점이 계산에 들어간다는 인상을 남기지 않는다.
+      expect(sentence).not.toContain('0점');
     });
   });
 });

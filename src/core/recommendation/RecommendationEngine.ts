@@ -109,6 +109,13 @@ function missedGoalWeight(
     const evaluation = candidate.evaluation.goalEvaluations
       .find((item) => item.goalType === goal.type);
     // 평가 항목이 없는 것은 「포기했다」가 아니라 「판정 정보가 없다」이다. 벌하지 않는다.
+    //
+    // 점수 «산식»이 없는 목표(hasGoalScoreFormula가 거짓)는 여기서 걸러내지 않는다. 그
+    // 목표의 achieved는 상수 false라 «모든» 후보에 같은 무게가 더해지고, 이 값은 후보 간
+    // 차이(`left.missed - right.missed`)로만 쓰이므로 상수 항은 순위를 바꾸지 못한다.
+    // 실측으로도 걸러낸 판과 그대로 둔 판의 추천이 완전히 같았다. 관찰 가능한 차이가 없는
+    // 변경은 테스트로 붙들 수 없어 넣지 않는다 — weightedGoalScore 쪽은 clampScore의
+    // 반올림을 지나며 해상도가 실제로 사라졌기에 사정이 달랐다(known-issues 15번).
     if (!evaluation || evaluation.achieved) return sum;
     return sum + goalPriorityWeight(goal, normalized.length);
   }, 0);

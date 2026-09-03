@@ -1,3 +1,4 @@
+import { hasGoalScoreFormula } from '../usecases/goals/goalScoreSupport';
 import type { RetirementGoal, RetirementGoalType } from '../entities/retirementGoal';
 import type { SpendingGoalType } from '../entities/retirementGoal';
 import {
@@ -548,18 +549,59 @@ export function goalPriorityWeight(goal: RetirementGoal, goalCount: number): num
   return goalCount - goal.priority + 1;
 }
 
+/**
+ * 고른 목표들의 순위가중 평균 점수.
+ *
+ * **점수 «산식»이 없는 목표는 평균에 들어가지 않는다** — 분자에서도 분모에서도 빠진다.
+ * 그 목표의 평가는 결과를 재서 나온 값이 아니라 상수 0이고(`evaluateGoal`의
+ * HOUSING_STABILITY 분기), 0은 「실패했다」가 아니라 「판정하지 않았다」를 뜻한다
+ * (`hasGoalScoreFormula` 주석). 판정하지 않은 항목을 평균에 넣지 않는 것은 결측치의 표준
+ * 처리이고, 무게는 «실제로 판정된» 목표들 사이에 우선순위 비율 그대로 재분배된다.
+ *
+ * **한때 그 0을 분자에는 넣고 분모에도 세었다.** 그 결과는 「점수가 낮아진다」로 끝나지
+ * 않는다 — `weightedScore`는 어디에도 인쇄되지 않으므로 낮은 값 자체는 사용자가 볼 일이
+ * 없다. 해악은 «해상도»에 있었다. 값이 눌린 뒤 clampScore의 Math.round를 지나면서 서로
+ * 다른 계획이 같은 정수로 뭉개졌고, 동점은 후보 id 알파벳 순 같은 약한 키로 떨어졌다
+ * (known-issues 8번이 고친 「근거 없는 선택」과 같은 실패 모드다).
+ *
+ * 실측(주거 안정을 1순위로 포함한 목표 5개, 기본 데모 계획): 후보 171건의 서로 다른 점수가
+ * 10개 → 14개가 됐고, 여유형 카드가 목표 달성 확률 71.0%짜리에서 82.5%짜리로 바뀌었다.
+ *
+ * 분자에서도 무게를 0으로 두는 것은 오늘 «분모만 빼는 것과 결과가 같다» — 산식 없는 목표의
+ * 점수가 상수 0이기 때문이다. 그 전제는 goalScoreSupport.test.ts의 「선언한 분류가 엔진이
+ * 실제로 내는 점수와 일치한다」가 엔진을 실제로 돌려 잠근다. 전제가 깨지는 날(그 목표가
+ * 0이 아닌 값을 내는 날) 분자만 조용히 그 값을 섞지 않도록 여기서도 함께 뺀다.
+ *
+ * **고른 목표가 전부 산식 없는 목표이면 fallbackScore다.** 판정할 목표가 하나도 없다는
+ * 점에서 `goals.length === 0`과 같은 상태이므로 같은 답을 낸다. 예전에는 이 경우 0이
+ * 나왔고, 그러면 모든 후보가 동점이라 승자가 후보 id로 정해졌다.
+ *
+ * **순위 가중치는 «고른 목표 전체»(goals.length) 기준을 그대로 쓴다.** 산식 없는 목표를 빼고
+ * 순위를 다시 매기는 쪽이 더 깔끔해 보이지만, 그러면 이 함수만 다른 저울을 쓰게 된다 —
+ * `goalPriorityWeight` 주석의 계약대로 `missedGoalWeight`와 추천 배지가 «같은» 저울을
+ * 써야 하고, 갈라지면 「점수는 이 카드가 높은데 배지는 저 카드」가 설명 불가능해진다.
+ * 무게는 그대로 두고 «합에서 빼기만» 한다.
+ *
+ * 그 대가로, 산식 없는 목표를 어느 순위에 두느냐가 나머지 목표들의 상대 무게를 바꾼다
+ * (맨 앞에 두면 그대로지만, 맨 뒤에 두면 앞쪽 무게가 5:4:3:2로 평평해진다). 이것은
+ * 저울을 공유하는 데서 오는 구조적 결과이고, 저울 자체를 바꾸는 것은 별도 결정이다.
+ */
 function weightedGoalScore(
   goals: readonly RetirementGoal[],
   evaluations: readonly GoalEvaluation[],
   fallbackScore: number,
 ): number {
   if (goals.length === 0) return fallbackScore;
-  const totalWeight = goals.reduce((sum, goal) => sum + goalPriorityWeight(goal, goals.length), 0);
+
+  const scoredWeight = (index: number): number =>
+    hasGoalScoreFormula(goals[index].type) ? goalPriorityWeight(goals[index], goals.length) : 0;
+
+  const totalWeight = goals.reduce((sum, _goal, index) => sum + scoredWeight(index), 0);
   const total = evaluations.reduce(
-    (sum, evaluation, index) => sum + evaluation.score * goalPriorityWeight(goals[index], goals.length),
+    (sum, evaluation, index) => sum + evaluation.score * scoredWeight(index),
     0,
   );
-  return totalWeight > 0 ? clampScore(total / totalWeight) : 0;
+  return totalWeight > 0 ? clampScore(total / totalWeight) : fallbackScore;
 }
 
 /**
