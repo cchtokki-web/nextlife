@@ -356,6 +356,82 @@ describe('GoalMeasurement 단위 계약', () => {
 // C4: clampScore가 비유한 값에서 예외를 던지는지. 이 가드가 `return 0`으로 바뀌어도
 // 1892개 테스트가 전부 통과했다. NaN 점수는 랭킹 비교자에 들어가 정렬을 임의로 만들고,
 // 그래도 소비자는 0번 후보를 "당신에게 최적"으로 표시한다 — 조용한 오염이다.
+// 산식 없는 목표(오늘은 「주거 안정」 하나)의 상수 0점이 가중 평균에 들어가면 안 된다.
+// 0은 「실패했다」가 아니라 「판정하지 않았다」이기 때문이다(hasGoalScoreFormula 주석).
+//
+// **문제는 「점수가 낮아진다」가 아니었다.** weightedScore는 어디에도 인쇄되지 않으므로 낮은
+// 값 자체는 사용자가 볼 일이 없다. 해악은 해상도에 있었다 — 눌린 값이 clampScore의
+// Math.round를 지나며 서로 다른 계획이 같은 정수로 뭉개졌고, 동점은 후보 id 알파벳 순 같은
+// 약한 키로 떨어졌다. 실측으로 여유형 카드가 목표 달성 확률 71.0%짜리에서 82.5%짜리로
+// 바뀌었다(known-issues 15번).
+describe('산식 없는 목표는 가중 평균에 들어가지 않는다', () => {
+  const evaluate = (goals: { type: string; priority: number; constraintType: string }[]) => {
+    const input = LegacySimulationAdapter.fromLegacy(structuredClone(initialParams));
+    input.goals.selectedGoals = goals as typeof input.goals.selectedGoals;
+    const result = new LegacySimulationEngine().simulate(input.profile, input.strategy);
+    return new DefaultGoalEvaluationEngine().evaluate(
+      input.profile, input.goals, input.strategy, result,
+    );
+  };
+
+  // **맨 앞에 끼워 넣는 것이 요점이다.** goalPriorityWeight는 `n - priority + 1`이라, 맨 앞에
+  // 하나가 들어오면 나머지 목표의 priority와 n이 «함께» 1씩 늘어 무게가 그대로다. 그래서
+  // 이 경우 점수는 «정확히» 같아야 한다 — 근사가 아니라 동일값이다.
+  test('산식 없는 목표를 1순위에 더해도 점수가 그대로다', () => {
+    const withoutHousing = evaluate([
+      { type: 'LIVING_EXPENSE_STABILITY', priority: 1, constraintType: 'SOFT' },
+      { type: 'ASSET_SURVIVAL', priority: 2, constraintType: 'HARD' },
+      { type: 'TAX_OPTIMIZATION', priority: 3, constraintType: 'SOFT' },
+    ]);
+    const withHousing = evaluate([
+      { type: 'HOUSING_STABILITY', priority: 1, constraintType: 'SOFT' },
+      { type: 'LIVING_EXPENSE_STABILITY', priority: 2, constraintType: 'SOFT' },
+      { type: 'ASSET_SURVIVAL', priority: 3, constraintType: 'HARD' },
+      { type: 'TAX_OPTIMIZATION', priority: 4, constraintType: 'SOFT' },
+    ]);
+
+    // 주거 안정은 평가 목록에는 남는다 — 빼는 것은 «평균»에서지 목록에서가 아니다.
+    expect(withHousing.goalEvaluations.map((g) => g.goalType)).toContain('HOUSING_STABILITY');
+    expect(withHousing.goalEvaluations.find((g) => g.goalType === 'HOUSING_STABILITY')!.score).toBe(0);
+
+    expect(withHousing.weightedScore).toBe(withoutHousing.weightedScore);
+  });
+
+  // 기대값을 구현에서 베끼지 않고 손으로 센다. 목표 셋의 무게는 3,2,1이고 주거 안정은
+  // 0으로 빠지므로, 평균은 (s1·3 + s2·2 + s3·1) / 6이다.
+  test('가중 평균의 분모가 산식 있는 목표의 무게 합이다', () => {
+    const evaluated = evaluate([
+      { type: 'HOUSING_STABILITY', priority: 1, constraintType: 'SOFT' },
+      { type: 'LIVING_EXPENSE_STABILITY', priority: 2, constraintType: 'SOFT' },
+      { type: 'ASSET_SURVIVAL', priority: 3, constraintType: 'HARD' },
+      { type: 'TAX_OPTIMIZATION', priority: 4, constraintType: 'SOFT' },
+    ]);
+
+    const score = (type: string) =>
+      evaluated.goalEvaluations.find((g) => g.goalType === type)!.score;
+    const expected = Math.round(
+      (score('LIVING_EXPENSE_STABILITY') * 3
+        + score('ASSET_SURVIVAL') * 2
+        + score('TAX_OPTIMIZATION') * 1) / 6,
+    );
+
+    expect(evaluated.weightedScore).toBe(expected);
+  });
+
+  // 고른 목표가 «전부» 산식 없는 목표인 경우. 오늘 화면에서 실제로 만들 수 있다 —
+  // 주거 안정 하나만 고르면 된다. 예전에는 0이 나왔고, 그러면 모든 후보가 동점이라 승자가
+  // 후보 id 알파벳 순으로 정해졌다. 판정할 목표가 하나도 없다는 점에서 목표를 아예 고르지
+  // 않은 것과 같은 상태이므로 같은 답(fallbackScore)을 낸다.
+  test('고른 목표가 전부 산식 없는 목표이면 목표 미선택과 같은 값이다', () => {
+    const onlyHousing = evaluate([
+      { type: 'HOUSING_STABILITY', priority: 1, constraintType: 'SOFT' },
+    ]);
+
+    expect(onlyHousing.weightedScore).toBe(onlyHousing.utility.score);
+    expect(onlyHousing.weightedScore).not.toBe(0);
+  });
+});
+
 describe('점수 가드', () => {
   test('시뮬레이션 결과가 비유한 값이면 점수를 만들지 않고 예외를 던진다', () => {
     const input = LegacySimulationAdapter.fromLegacy(structuredClone(initialParams));

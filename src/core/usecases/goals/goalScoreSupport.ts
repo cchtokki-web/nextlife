@@ -20,9 +20,10 @@ import {
  * 목록을 들고 있으면 목표 하나가 분류를 옮기는 날 그 화면들만 옛말을 하게 된다
  * (`RetirementGoalSelector`의 「정량 판정 대상 아님」 안내가 같은 이유로 엔진의 분류를 읽는다).
  *
- * **이 집합은 계산에 쓰이지 않는다.** `weightedGoalScore`는 종전대로 이 목표의 0점을 분자와
- * 분모에 «그대로» 넣는다 — 계산 정책 변경은 별도 결정 사항이며(D2-①), 그 결정 전까지 기존
- * 계산 의미는 regression contract다. 이 파일이 하는 일은 그 사실을 «말하게» 하는 것뿐이다.
+ * **`weightedGoalScore`가 이 집합을 읽는다.** 이 목표들은 순위가중 평균의 분자에서도
+ * 분모에서도 빠진다 — 상수 0은 「실패했다」가 아니라 「판정하지 않았다」이므로 평균에 넣을
+ * 값이 아니다. 한때는 그 0을 양쪽에 그대로 넣었고, 눌린 값이 `clampScore`의 반올림을
+ * 지나면서 서로 다른 계획이 같은 정수로 뭉개졌다(known-issues 15번).
  */
 const UNSCORED_GOAL_TYPES: ReadonlySet<RetirementGoalType> = new Set<RetirementGoalType>([
   'HOUSING_STABILITY',
@@ -46,9 +47,10 @@ export function unscoredGoalTypes(
  * **화면과 PDF가 같은 문장을 인쇄해야 하므로 core에 한 벌만 둔다**(PRD 9.3의 규약이며,
  * `describeSuccessRates`·`describeSustainableSpendingBasis`가 같은 자리에 있다).
  *
- * 문장이 반드시 말해야 하는 것은 «0점의 뜻»이다. 그 값은 어디에도 인쇄되지 않지만 종합
- * 점수를 통해 추천 순위에 닿으므로, 사용자가 그것을 「이 목표에 실패했다」로 읽을 여지를
- * 남기면 안 된다. 0은 판정 결과가 아니라 판정의 부재다.
+ * 문장이 반드시 말해야 하는 것은 «이 목표가 점수로는 후보를 가르지 않는다»는 사실이다.
+ * 0점 자체는 이제 종합 점수에 들어가지 않으므로(`weightedGoalScore`), 「0점을 받는다」고
+ * 적으면 사용자가 없는 감점을 상상하게 된다. 그렇다고 침묵하면 고른 목표가 점수에 반영된
+ * 것으로 읽힌다 — 말해야 하는 것은 「점수로는 재지 않는다, 다만 선택과 우선순위는 남는다」다.
  */
 export function describeUnscoredGoals(types: readonly RetirementGoalType[]): string {
   const unscored = unscoredGoalTypes(types);
@@ -56,5 +58,6 @@ export function describeUnscoredGoals(types: readonly RetirementGoalType[]): str
 
   const names = unscored.map((type) => `「${RETIREMENT_GOAL_LABELS[type]}」`).join('·');
   return `${names}은 점수 산정 대상이 아닙니다 — 달성·미달을 잴 정량 기준이 없어 평가 점수를 `
-    + '계산하지 않으며, 0점은 목표 실패가 아니라 «판정하지 않음»을 뜻합니다.';
+    + '계산하지 않으며, 종합 점수에서도 빠집니다. 목표를 고른 것이 감점으로 이어지지는 '
+    + '않습니다.';
 }
