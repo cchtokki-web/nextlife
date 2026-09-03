@@ -3,7 +3,7 @@ import { computeSensitivityAnalysis } from '@/core/usecases/dashboard/computeSen
 import { SimulationEngine } from '@/core/usecases/SimulationEngine';
 import { SimulationParams, SimulationResult, SimulationYearlyResult } from '@/core/entities/types';
 import { makeYearlyResult } from '@/tests/fixtures/yearlyResult';
-import { applyYieldPreset, YIELD_PRESET_RATES } from '@/core/usecases/scenario/applyYieldPreset';
+import { YIELD_PRESET_RATES } from '@/core/usecases/scenario/applyYieldPreset';
 import { freezeSpendingPlan, runFrozenPlan, mapFrozenPlan } from '@/core/usecases/spending/freezeSpendingPlan';
 
 const baseParams: SimulationParams = {
@@ -27,6 +27,11 @@ const baseParams: SimulationParams = {
   exchangeScenario: 'base',
   displayCurrency: 'KRW',
 };
+
+// 구현이 유도하는 폭과 «같은 숫자»를 여기 적어 둔다. 구현에서 import하면 폭이 바뀌는 날
+// 테스트가 함께 따라가 아무것도 검사하지 않게 된다 — 아래 「프리셋 표의 간격에서 온다」가
+// 그 두 값이 어긋나지 않는지 따로 확인한다.
+const YIELD_SHIFT = 2;
 
 function makeResult(
   depletionAge: number | null,
@@ -56,12 +61,12 @@ function makeMockEngine(
   baseline: SimulationResult = makeResult(88)
 ): SimulationEngine {
   const runSingle = vi.fn((params: SimulationParams) => {
-    // 수익률 축은 이제 프리셋(yieldPreset)이 표식이다 — applyYieldPreset이 세 프리셋 모두
-    // assets[0].totalReturn을 세팅하지만, base(7%)는 baseParams의 원래 값과 우연히 같아
-    // totalReturn만으로는 baseline 호출과 구분할 수 없다.
-    if (params.yieldPreset === 'conservative') return makeResult(depletionAgeByLabel['yieldConservative']);
-    if (params.yieldPreset === 'aggressive') return makeResult(depletionAgeByLabel['yieldAggressive']);
-    if (params.yieldPreset === 'base') return makeResult(depletionAgeByLabel['yieldBase']);
+    // 수익률 축은 이제 «이동된 총수익률»이 표식이다. 상대 이동이라 baseline(7)과 두 행(5·9)이
+    // 서로 다른 값을 갖는다 — 절대 프리셋 시절에는 중립형이 baseline과 우연히 같아
+    // totalReturn만으로 구분할 수 없었고, 그래서 yieldPreset 키를 표식으로 써야 했다.
+    const base = baseParams.assets[0].totalReturn;
+    if (params.assets[0].totalReturn === base - YIELD_SHIFT) return makeResult(depletionAgeByLabel['yieldDown']);
+    if (params.assets[0].totalReturn === base + YIELD_SHIFT) return makeResult(depletionAgeByLabel['yieldUp']);
     if (params.inflationRate === 3) return makeResult(depletionAgeByLabel['inflationUp']);
     if (params.inflationRate === 1) return makeResult(depletionAgeByLabel['inflationDown']);
     if (params.userProfile.retirementAge === 57) return makeResult(depletionAgeByLabel['retirementEarlier']);
@@ -77,31 +82,57 @@ function callsOf(engine: SimulationEngine): SimulationParams[][] {
 }
 
 describe('computeSensitivityAnalysis', () => {
-  // 프리셋 스킴에서는 델타를 더하는 것이 아니라 값을 고정한다 — applyYieldPreset이 자산/ISA에는
-  // stockGrowth를, 사적연금에는 pensionReturn을 일괄 대입한다(기존 값에 가산하지 않는다).
-  // baseParams의 자산 수익률(7)이 우연히 YIELD_PRESET_RATES.base.stockGrowth와 같아 예전
-  // ±2%p 스킴과 프리셋 스킴이 conservative/aggressive 행에서 같은 자산 수익률(5/9)을 만들어
-  // 낼 수 있으므로, 사적연금·ISA가 «가산»이 아니라 «대입»된다는 점을 세 행 모두에서 확인한다.
-  test('수익률 프리셋 시나리오는 assets/isaAccounts에 stockGrowth를, privatePensions에 pensionReturn을 대입한다', () => {
+  // **대입이 아니라 가산이다.** 절대 프리셋 시절에는 자산·ISA에 stockGrowth를, 사적연금에
+  // pensionReturn을 «일괄 대입»했다. 그래서 계좌마다 다르던 사용자 가정이 통째로 사라지고
+  // 모든 계좌가 같은 값이 됐다.
+  //
+  // 세 계좌의 기준값을 서로 다르게 둔 것이 요점이다(자산 7 · ISA 5 · 연금 4). 대입이면 셋이
+  // 같은 값으로 뭉치고, 가산이면 간격이 그대로 보존된다 — 픽스처가 그 둘을 구별한다.
+  test('수익률 시나리오는 모든 위험자산의 총수익률에 같은 폭을 «더한다»', () => {
     const engine = makeMockEngine({
-      yieldConservative: 85, yieldBase: 88, yieldAggressive: 90, inflationUp: 88, inflationDown: 88,
+      yieldDown: 85, yieldUp: 90, inflationUp: 88, inflationDown: 88,
       retirementEarlier: 88, retirementLater: 88,
     });
     computeSensitivityAnalysis(baseParams, engine);
 
     const calls = callsOf(engine);
-    (['conservative', 'base', 'aggressive'] as const).forEach((preset) => {
-      const { stockGrowth, pensionReturn } = YIELD_PRESET_RATES[preset];
-      const call = calls.find((c) => c[0].yieldPreset === preset)![0];
-      expect(call.assets[0].totalReturn).toBe(stockGrowth);
-      expect(call.isaAccounts![0].totalReturn).toBe(stockGrowth);
-      expect(call.privatePensions[0].totalReturn).toBe(pensionReturn);
+    for (const delta of [-YIELD_SHIFT, YIELD_SHIFT]) {
+      const call = calls.find((c) =>
+        c[0].assets[0].totalReturn === baseParams.assets[0].totalReturn + delta)![0];
+
+      expect(call.assets[0].totalReturn).toBe(baseParams.assets[0].totalReturn + delta);
+      expect(call.isaAccounts![0].totalReturn).toBe(baseParams.isaAccounts![0].totalReturn + delta);
+      expect(call.privatePensions[0].totalReturn).toBe(baseParams.privatePensions[0].totalReturn + delta);
+      // 배당률은 그대로다. totalReturn이 배당을 포함하므로 이동분은 가격상승분이 흡수한다 —
+      // 배당률까지 함께 옮기면 배당을 이중으로 움직이게 된다.
+      expect(call.assets[0].dividendYield).toBe(baseParams.assets[0].dividendYield);
+      expect(call.isaAccounts![0].dividendYield).toBe(baseParams.isaAccounts![0].dividendYield);
+    }
+  });
+
+  // **폭의 근거를 잠근다.** 구현은 이 폭을 프리셋 표의 간격에서 «유도»한다 — 새 금융 가정을
+  // 만들지 않기 위해서다. 유도가 성립하려면 두 간격이 같아야 하고, 표를 5/7/10처럼 고치면
+  // 「한 단계」가 어느 쪽인지 모호해진다. 그때 조용히 한쪽이 뽑히지 않도록 여기서 멈춰 세운다.
+  test('수익률 축의 폭은 프리셋 표의 간격에서 온다', () => {
+    const { conservative, base, aggressive } = YIELD_PRESET_RATES;
+
+    expect(base.stockGrowth - conservative.stockGrowth)
+      .toBe(aggressive.stockGrowth - base.stockGrowth);
+    expect(base.stockGrowth - conservative.stockGrowth).toBe(YIELD_SHIFT);
+
+    // 라벨이 그 폭을 사용자에게 그대로 말한다.
+    const engine = makeMockEngine({
+      yieldDown: 85, yieldUp: 90, inflationUp: 88, inflationDown: 88,
+      retirementEarlier: 88, retirementLater: 88,
     });
+    const { scenarios } = computeSensitivityAnalysis(baseParams, engine);
+    expect(scenarios.find((s) => s.key === 'yieldDown')!.label).toBe(`수익률 -${YIELD_SHIFT}%p`);
+    expect(scenarios.find((s) => s.key === 'yieldUp')!.label).toBe(`수익률 +${YIELD_SHIFT}%p`);
   });
 
   test('물가상승률/은퇴시점 시나리오는 해당 필드만 바꾸고 나머지는 baseParams와 동일하다', () => {
     const engine = makeMockEngine({
-      yieldConservative: 88, yieldBase: 88, yieldAggressive: 88, inflationUp: 85, inflationDown: 90,
+      yieldDown: 88, yieldUp: 88, inflationUp: 85, inflationDown: 90,
       retirementEarlier: 86, retirementLater: 89,
     });
     computeSensitivityAnalysis(baseParams, engine);
@@ -145,15 +176,15 @@ describe('computeSensitivityAnalysis', () => {
 
   test('depletionAge가 빠른(위험한) 시나리오부터 정렬되고, null(평생 유지)은 항상 뒤로 간다', () => {
     const engine = makeMockEngine({
-      yieldConservative: 82, yieldBase: 85, yieldAggressive: null, inflationUp: 86, inflationDown: null,
+      yieldDown: 82, yieldUp: null, inflationUp: 86, inflationDown: null,
       retirementEarlier: 84, retirementLater: 89,
     });
     const { scenarios } = computeSensitivityAnalysis(baseParams, engine);
 
     const nonNullKeys = scenarios.filter((s) => s.depletionAge !== null).map((s) => s.key);
-    expect(nonNullKeys).toEqual(['yieldConservative', 'retirementEarlier', 'yieldBase', 'inflationUp', 'retirementLater']);
+    expect(nonNullKeys).toEqual(['yieldDown', 'retirementEarlier', 'inflationUp', 'retirementLater']);
     const nullKeys = scenarios.filter((s) => s.depletionAge === null).map((s) => s.key);
-    expect(nullKeys.sort()).toEqual(['inflationDown', 'yieldAggressive'].sort());
+    expect(nullKeys.sort()).toEqual(['inflationDown', 'yieldUp'].sort());
     expect(scenarios.slice(-2).every((s) => s.depletionAge === null)).toBe(true);
   });
 
@@ -161,17 +192,17 @@ describe('computeSensitivityAnalysis', () => {
     // baseline=88(둘 다 숫자), yieldConservative=82 -> delta = 82-88 = -6
     // baseline=88, yieldAggressive=null(시나리오만 null, 평생 유지로 개선) -> delta = expectancy(90)-88 = +2
     const engine = makeMockEngine({
-      yieldConservative: 82, yieldBase: 88, yieldAggressive: null, inflationUp: 88, inflationDown: 88,
+      yieldDown: 82, yieldUp: null, inflationUp: 88, inflationDown: 88,
       retirementEarlier: 88, retirementLater: 88,
     });
     const { scenarios } = computeSensitivityAnalysis(baseParams, engine);
-    expect(scenarios.find((s) => s.key === 'yieldConservative')!.deltaYears).toBe(-6);
-    expect(scenarios.find((s) => s.key === 'yieldAggressive')!.deltaYears).toBe(2);
+    expect(scenarios.find((s) => s.key === 'yieldDown')!.deltaYears).toBe(-6);
+    expect(scenarios.find((s) => s.key === 'yieldUp')!.deltaYears).toBe(2);
   });
 
   test('baseline도 null(평생 유지)이고 시나리오도 null이면 deltaYears는 null이다', () => {
     const engine = makeMockEngine({
-      yieldConservative: null, yieldBase: null, yieldAggressive: null, inflationUp: null, inflationDown: null,
+      yieldDown: null, yieldUp: null, inflationUp: null, inflationDown: null,
       retirementEarlier: null, retirementLater: null,
     }, makeResult(null));
     const { scenarios, baselineDepletionAge } = computeSensitivityAnalysis(baseParams, engine);
@@ -184,11 +215,11 @@ describe('computeSensitivityAnalysis', () => {
 
   test('baseline은 숫자인데 시나리오가 null(평생 유지로 개선)이면 deltaYears는 expectancy - baseline이다', () => {
     const engine = makeMockEngine({
-      yieldConservative: 88, yieldBase: 88, yieldAggressive: null, inflationUp: 88, inflationDown: 88,
+      yieldDown: 88, yieldUp: null, inflationUp: 88, inflationDown: 88,
       retirementEarlier: 88, retirementLater: 88,
     }, makeResult(80));
     const { scenarios } = computeSensitivityAnalysis(baseParams, engine);
-    expect(scenarios.find((s) => s.key === 'yieldAggressive')!.deltaYears).toBe(10); // 90 - 80
+    expect(scenarios.find((s) => s.key === 'yieldUp')!.deltaYears).toBe(10); // 90 - 80
   });
 
   // B5: "고갈 없음"의 센티널은 고정값이 아니라 그 계획의 기대수명이어야 한다.
@@ -207,7 +238,7 @@ describe('computeSensitivityAnalysis', () => {
 
     const { scenarios } = computeSensitivityAnalysis(params, engine);
 
-    expect(scenarios.find((s) => s.key === 'yieldConservative')!.deltaYears).toBe(-5);
+    expect(scenarios.find((s) => s.key === 'yieldDown')!.deltaYears).toBe(-5);
   });
 
   // **왜 연속형 지표가 필요한가.**
@@ -230,14 +261,14 @@ describe('computeSensitivityAnalysis', () => {
       expect(baselineEndingAssets).toBe(2500000000);
 
       // totalReturn === 5는 yieldConservative(stockGrowth 5%)에서 나온다.
-      const yieldConservative = scenarios.find((s) => s.key === 'yieldConservative')!;
+      const yieldConservative = scenarios.find((s) => s.key === 'yieldDown')!;
       expect(yieldConservative.endingAssets).toBe(820000000);
       expect(yieldConservative.endingAssetsDelta).toBe(820000000 - 2500000000);
 
       // totalReturn === 9(yieldAggressive)는 위 두 분기 어디에도 걸리지 않아 else로 떨어진다.
       // yieldBase(totalReturn 7)는 baseline과 자산 수익률이 같아 isBaselineCall에 걸리므로
       // 별도로 확인하지 않는다 — 이 목(mock)의 한계이지 프로덕션 코드의 오분류가 아니다.
-      const yieldAggressive = scenarios.find((s) => s.key === 'yieldAggressive')!;
+      const yieldAggressive = scenarios.find((s) => s.key === 'yieldUp')!;
       expect(yieldAggressive.endingAssetsDelta).toBe(3000000000 - 2500000000);
     });
 
@@ -332,7 +363,7 @@ describe('computeSensitivityAnalysis', () => {
       });
     });
 
-    test('[통합] 평생 소비 최적화 계획에서 안정형 가정(주식 5%)은 기준선보다 이르게 고갈된다', () => {
+    test('[통합] 평생 소비 최적화 계획에서 수익률 -2%p 행은 기준선보다 이르게 고갈된다', () => {
       const engine = new SimulationEngine();
 
       const { scenarios, baselineDepletionAge, baselineEndingAssets } =
@@ -341,8 +372,8 @@ describe('computeSensitivityAnalysis', () => {
       // 전제: 최적화 계획은 기대수명 시점에 자산을 거의 다 쓴다.
       expect(baselineEndingAssets).toBeLessThan(maxSustainableParams.userProfile.targetMonthlySpending * 12);
 
-      const conservative = scenarios.find((s) => s.key === 'yieldConservative')!;
-      const aggressive = scenarios.find((s) => s.key === 'yieldAggressive')!;
+      const conservative = scenarios.find((s) => s.key === 'yieldDown')!;
+      const aggressive = scenarios.find((s) => s.key === 'yieldUp')!;
       const baselineEffective = baselineDepletionAge ?? maxSustainableParams.userProfile.expectancy;
 
       // 예전 구현은 여기서 conservative.depletionAge가 null이었다 — 생활비를 다시 낮춰 버렸기 때문이다.
@@ -356,7 +387,7 @@ describe('computeSensitivityAnalysis', () => {
 
     test('고정 전략이 아닌 계획은 사용자가 입력한 목표 생활비를 그대로 보고한다', () => {
       const engine = makeMockEngine({
-        yieldConservative: 85, yieldBase: 88, yieldAggressive: 90, inflationUp: 88, inflationDown: 88,
+        yieldDown: 85, yieldUp: 90, inflationUp: 88, inflationDown: 88,
         retirementEarlier: 88, retirementLater: 88,
       });
 
@@ -366,7 +397,7 @@ describe('computeSensitivityAnalysis', () => {
     });
   });
 
-  test('특정 시나리오가 예외를 던져도 나머지 6개는 정상 반환된다', () => {
+  test('특정 시나리오가 예외를 던져도 나머지 5개는 정상 반환된다', () => {
     const runSingle = vi.fn((params: SimulationParams) => {
       if (params.assets[0]?.totalReturn === 5) throw new Error('시뮬레이션 실패');
       return makeResult(85);
@@ -375,35 +406,68 @@ describe('computeSensitivityAnalysis', () => {
 
     const { scenarios } = computeSensitivityAnalysis(baseParams, engine);
 
-    expect(scenarios).toHaveLength(6);
-    expect(scenarios.find((s) => s.key === 'yieldConservative')).toBeUndefined();
+    expect(scenarios).toHaveLength(5);
+    expect(scenarios.find((s) => s.key === 'yieldDown')).toBeUndefined();
   });
 
-  describe('수익률 축은 절대 앵커로 잰다', () => {
-    // ±2%p는 사용자 가정 대비 상대 이동이라, 가중평균이 7.6%인 계획에서 5.6%/9.6%가 되어
-    // 프리셋(5/7/9%)과 사실상 같은 자리를 잰다. 절대 앵커 쪽이 「내 가정이 시장 통념 대비
-    // 어디쯤인가」를 답하므로 목표 기반 흐름에 맞는다.
-    test('프리셋 3행이 나오고 ±2%p 행은 없다', () => {
+  // **예전에는 이 자리가 「수익률 축은 절대 앵커로 잰다」였다.**
+  //
+  // 그 블록의 근거는 「±2%p는 가중평균이 7.6%인 계획에서 프리셋과 사실상 같은 자리를 잰다」
+  // 였다. 그것은 가정이 7% 근처인 사용자에게만 참이고, 바로 그 사용자에게는 두 축이 같으니
+  // 절대 앵커를 «고를» 이유도 되지 못한다. 갈리는 것은 가정이 멀리 있는 사용자이고, 거기서
+  // 절대 앵커는 두 가지로 틀렸다 — 같은 이름의 행이 사람마다 다른 크기의 충격을 재고,
+  // 가정이 9%보다 높으면 세 행이 전부 기준선 아래로 내려간다(known-issues 16번).
+  describe('수익률 축은 내 가정 대비 상대 이동으로 잰다', () => {
+    test('두 행이 나오고 절대 프리셋 행은 없다', () => {
       const analysis = computeSensitivityAnalysis(baseParams, new SimulationEngine());
 
       const keys = analysis.scenarios.map((s) => s.key);
-      expect(keys).toContain('yieldConservative');
-      expect(keys).toContain('yieldBase');
-      expect(keys).toContain('yieldAggressive');
-      expect(keys).not.toContain('returnDown');
-      expect(keys).not.toContain('returnUp');
+      expect(keys).toContain('yieldDown');
+      expect(keys).toContain('yieldUp');
+      // 절대 앵커 시절의 세 키는 이제 존재하지 않는다.
+      expect(keys).not.toContain('yieldConservative');
+      expect(keys).not.toContain('yieldBase');
+      expect(keys).not.toContain('yieldAggressive');
     });
 
-    test('공격형 행은 프리셋 수익률로 계산된다', () => {
+    // **오라클을 구현에서 가져오지 않는다.** shiftYield를 import해 쓰면 그 함수가 틀려도
+    // 테스트가 함께 틀린다. 이동된 계획을 여기서 손으로 만들어 같은 경로로 돌린 결과와
+    // 맞춰 본다.
+    test('각 행은 모든 위험자산을 그만큼 옮긴 계획의 결과다', () => {
       const params = baseParams;
       const engine = new SimulationEngine();
       const analysis = computeSensitivityAnalysis(params, engine);
-
-      const row = analysis.scenarios.find((s) => s.key === 'yieldAggressive')!;
       const frozen = freezeSpendingPlan(params, engine);
-      const expected = runFrozenPlan(engine, mapFrozenPlan(frozen, (p) => applyYieldPreset(p, 'aggressive')));
 
-      expect(row.endingAssets).toBeCloseTo(expected.endingAssets, 6);
+      for (const [key, delta] of [['yieldDown', -YIELD_SHIFT], ['yieldUp', YIELD_SHIFT]] as const) {
+        const expected = runFrozenPlan(engine, mapFrozenPlan(frozen, (p) => ({
+          ...p,
+          assets: p.assets.map((a) => ({ ...a, totalReturn: a.totalReturn + delta })),
+          privatePensions: p.privatePensions.map((x) => ({ ...x, totalReturn: x.totalReturn + delta })),
+          isaAccounts: p.isaAccounts?.map((i) => ({ ...i, totalReturn: i.totalReturn + delta })),
+        })));
+
+        expect(analysis.scenarios.find((s) => s.key === key)!.endingAssets)
+          .toBeCloseTo(expected.endingAssets, 6);
+      }
+    });
+
+    // 절대 앵커가 실제로 틀렸던 자리. 가정이 프리셋 상단(9%)보다 높은 계획에서 예전에는
+    // 세 행이 «전부» 기준선 아래로 내려갔고, 사용자는 그것을 「공격형으로 바꿨는데 왜 돈이
+    // 줄지」로 읽었다. 상대 축에서는 위 행이 반드시 기준선보다 낫다.
+    test('가정이 프리셋 상단보다 높아도 위 행은 기준선보다 낫다', () => {
+      const rich: SimulationParams = {
+        ...baseParams,
+        assets: baseParams.assets.map((a) => ({ ...a, totalReturn: 12 })),
+        privatePensions: baseParams.privatePensions.map((p) => ({ ...p, totalReturn: 12 })),
+        isaAccounts: baseParams.isaAccounts?.map((i) => ({ ...i, totalReturn: 12 })),
+      };
+      const analysis = computeSensitivityAnalysis(rich, new SimulationEngine());
+
+      expect(analysis.scenarios.find((s) => s.key === 'yieldUp')!.endingAssetsDelta)
+        .toBeGreaterThan(0);
+      expect(analysis.scenarios.find((s) => s.key === 'yieldDown')!.endingAssetsDelta)
+        .toBeLessThan(0);
     });
   });
 
@@ -421,7 +485,7 @@ describe('computeSensitivityAnalysis', () => {
     // 서로 다른 답을 하게 된다.
     test('목표를 하나도 고르지 않은(legacy) 계획은 모든 시나리오·기준선의 hardViolations가 빈 배열이다', () => {
       const engine = makeMockEngine({
-        yieldConservative: 40, yieldBase: 88, yieldAggressive: 88, inflationUp: 88, inflationDown: 88,
+        yieldDown: 40, yieldUp: 88, inflationUp: 88, inflationDown: 88,
         retirementEarlier: 88, retirementLater: 88,
       }, makeResult(40));
       // legacy 계획은 requireAssetSurvival=true지만 hardRequirements.assetSurvival은 항상
@@ -444,9 +508,8 @@ describe('computeSensitivityAnalysis', () => {
       };
       const baselineEndingAssets = 1500000000;
       const runSingle = vi.fn((p: SimulationParams) => {
-        if (p.yieldPreset === 'aggressive') return makeResult(85, { endingAssets: 4000000000 });
-        if (p.yieldPreset === 'conservative') return makeResult(null, { endingAssets: 1000000000 });
-        if (p.yieldPreset === 'base') return makeResult(null, { endingAssets: baselineEndingAssets });
+        if (p.assets[0].totalReturn === baseParams.assets[0].totalReturn + YIELD_SHIFT) return makeResult(85, { endingAssets: 4000000000 });
+        if (p.assets[0].totalReturn === baseParams.assets[0].totalReturn - YIELD_SHIFT) return makeResult(null, { endingAssets: 1000000000 });
         if (p.inflationRate === 3) return makeResult(null, { endingAssets: baselineEndingAssets });
         if (p.inflationRate === 1) return makeResult(null, { endingAssets: baselineEndingAssets });
         if (p.userProfile.retirementAge === 57) return makeResult(null, { endingAssets: baselineEndingAssets });
@@ -456,7 +519,7 @@ describe('computeSensitivityAnalysis', () => {
       const engine = { runSingle } as unknown as SimulationEngine;
 
       const { scenarios } = computeSensitivityAnalysis(params, engine);
-      const aggressive = scenarios.find((s) => s.key === 'yieldAggressive')!;
+      const aggressive = scenarios.find((s) => s.key === 'yieldUp')!;
 
       expect(aggressive.endingAssetsDelta).toBeGreaterThan(0); // 재무적으로 유리하다는 전제
       expect(aggressive.depletionAge).toBe(85); // 90세(expectancy) 이전에 고갈된다는 전제
@@ -464,7 +527,7 @@ describe('computeSensitivityAnalysis', () => {
 
       // 대조군: 위반하지 않는 나머지 시나리오는 빈 배열이다 — 모든 시나리오가 무조건
       // 'assetSurvival'을 받는 버그였다면 이 assertion이 잡는다.
-      const conservative = scenarios.find((s) => s.key === 'yieldConservative')!;
+      const conservative = scenarios.find((s) => s.key === 'yieldDown')!;
       expect(conservative.hardViolations).toEqual([]);
     });
 
@@ -478,13 +541,13 @@ describe('computeSensitivityAnalysis', () => {
         retirementGoals: [{ type: 'ASSET_SURVIVAL', priority: 1, constraintType: 'SOFT' }],
       };
       const runSingle = vi.fn((p: SimulationParams) => {
-        if (p.yieldPreset === 'aggressive') return makeResult(85, { endingAssets: 4000000000 });
+        if (p.assets[0].totalReturn === baseParams.assets[0].totalReturn + YIELD_SHIFT) return makeResult(85, { endingAssets: 4000000000 });
         return makeResult(null, { endingAssets: 1500000000 });
       });
       const engine = { runSingle } as unknown as SimulationEngine;
 
       const { scenarios } = computeSensitivityAnalysis(params, engine);
-      expect(scenarios.find((s) => s.key === 'yieldAggressive')!.hardViolations).toEqual([]);
+      expect(scenarios.find((s) => s.key === 'yieldUp')!.hardViolations).toEqual([]);
     });
 
     // 목표 생활비 축: 기말자산은 baseline보다 늘었지만(재무적으로 유리) 생활비 부족 해가
@@ -499,7 +562,7 @@ describe('computeSensitivityAnalysis', () => {
       };
       const shortfallYears = [makeYearlyResult({ age: 80, unmetSpending: 500000 })];
       const runSingle = vi.fn((p: SimulationParams) => {
-        if (p.yieldPreset === 'aggressive') {
+        if (p.assets[0].totalReturn === baseParams.assets[0].totalReturn + YIELD_SHIFT) {
           return makeResult(null, { endingAssets: 4000000000, yearlyResults: shortfallYears });
         }
         return makeResult(null, { endingAssets: 1500000000 });
@@ -507,7 +570,7 @@ describe('computeSensitivityAnalysis', () => {
       const engine = { runSingle } as unknown as SimulationEngine;
 
       const { scenarios } = computeSensitivityAnalysis(params, engine);
-      const aggressive = scenarios.find((s) => s.key === 'yieldAggressive')!;
+      const aggressive = scenarios.find((s) => s.key === 'yieldUp')!;
 
       expect(aggressive.endingAssetsDelta).toBeGreaterThan(0);
       expect(aggressive.unmetSpendingYears).toBeGreaterThan(0);
@@ -527,13 +590,13 @@ describe('computeSensitivityAnalysis', () => {
       };
       const baselineEndingAssets = 500000000;
       const runSingle = vi.fn((p: SimulationParams) => {
-        if (p.yieldPreset === 'aggressive') return makeResult(null, { endingAssets: 1200000000 });
+        if (p.assets[0].totalReturn === baseParams.assets[0].totalReturn + YIELD_SHIFT) return makeResult(null, { endingAssets: 1200000000 });
         return makeResult(null, { endingAssets: baselineEndingAssets });
       });
       const engine = { runSingle } as unknown as SimulationEngine;
 
       const { scenarios } = computeSensitivityAnalysis(params, engine);
-      const aggressive = scenarios.find((s) => s.key === 'yieldAggressive')!;
+      const aggressive = scenarios.find((s) => s.key === 'yieldUp')!;
 
       expect(aggressive.endingAssetsDelta).toBeGreaterThan(0); // baseline(5억)보다 늘었다
       expect(aggressive.endingAssets).toBeLessThan(targetBequest); // 그래도 하한(20억) 미달

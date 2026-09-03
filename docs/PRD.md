@@ -273,7 +273,7 @@ NextLife는 투자 권유나 미래 수익 보장 서비스가 아니다. 세금
   문장을 인쇄해야 하고, 그 서술의 근거(판정 술어·기준 금액·실행 가정)는 엔진의 것이기
   때문이다. 현재 이 규약을 따르는 문구는 몬테카를로 가정 공시
   (`describeMonteCarloAssumptions`), 두 성공률의 기준(`describeSuccessRates`), 지속 가능한
-  한도의 기준(`describeSustainableSpendingBasis`), 민감도 수익률 축의 앵커
+  한도의 기준(`describeSustainableSpendingBasis`), 민감도 수익률 축의 기준과 이동 폭
   (`describeYieldAxisAnchors`)다.
 - 지표 옆에는 그 값이 «어느 실행에서 나왔는지»를 함께 밝힌다. 결정론 단일 경로의 값과
   시장 변동 시행의 값을 기준 표시 없이 나란히 놓지 않는다.

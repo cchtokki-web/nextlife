@@ -442,15 +442,15 @@ describe('renderSensitivityTableSection', () => {
 
   test('시나리오를 표 행으로 렌더링하며, depletionAge가 null이면 "평생 유지"를 표시한다', () => {
     const scenarios: SensitivityScenario[] = [
-      { key: 'yieldConservative', label: '안정형 가정 (주식 5%)', depletionAge: 82, deltaYears: -6,
+      { key: 'yieldDown', label: '수익률 -2%p', depletionAge: 82, deltaYears: -6,
         endingAssets: 0, endingAssetsDelta: -2500000000, unmetSpendingYears: 8, hardViolations: [] },
-      { key: 'yieldAggressive', label: '공격형 가정 (주식 9%)', depletionAge: null, deltaYears: 4,
+      { key: 'yieldUp', label: '수익률 +2%p', depletionAge: null, deltaYears: 4,
         endingAssets: 5000000000, endingAssetsDelta: 2500000000, unmetSpendingYears: 0, hardViolations: [] },
     ];
     const html = renderSensitivityTableSection(scenarios);
-    expect(html).toContain('안정형 가정 (주식 5%)');
+    expect(html).toContain('수익률 -2%p');
     expect(html).toContain('82세');
-    expect(html).toContain('공격형 가정 (주식 9%)');
+    expect(html).toContain('수익률 +2%p');
     expect(html).toContain('평생 유지');
   });
 
@@ -458,9 +458,9 @@ describe('renderSensitivityTableSection', () => {
   // 주지 못했다. 기말자산 열이 그 구분을 만든다.
   test('고갈이 없어도 기말자산과 증감으로 시나리오가 구분된다', () => {
     const scenarios: SensitivityScenario[] = [
-      { key: 'yieldConservative', label: '안정형 가정 (주식 5%)', depletionAge: null, deltaYears: null,
+      { key: 'yieldDown', label: '수익률 -2%p', depletionAge: null, deltaYears: null,
         endingAssets: 820000000, endingAssetsDelta: -1680000000, unmetSpendingYears: 0, hardViolations: [] },
-      { key: 'yieldAggressive', label: '공격형 가정 (주식 9%)', depletionAge: null, deltaYears: null,
+      { key: 'yieldUp', label: '수익률 +2%p', depletionAge: null, deltaYears: null,
         endingAssets: 5100000000, endingAssetsDelta: 2600000000, unmetSpendingYears: 0, hardViolations: [] },
     ];
     const html = renderSensitivityTableSection(scenarios);
@@ -476,7 +476,7 @@ describe('renderSensitivityTableSection', () => {
   // 자신의 수익률을 함께 보여주지 않으면 표에서 «보이지 않는다». 화면과 같은 문장이다.
   test('사용자 자신의 가중평균 총수익률과 기준선 행을 함께 싣는다', () => {
     const scenarios: SensitivityScenario[] = [
-      { key: 'yieldAggressive', label: '공격형 가정 (주식 9%)', depletionAge: null, deltaYears: null,
+      { key: 'yieldUp', label: '수익률 +2%p', depletionAge: null, deltaYears: null,
         endingAssets: 286400000, endingAssetsDelta: -1172010000, unmetSpendingYears: 0, hardViolations: [] },
     ];
     const html = renderSensitivityTableSection(scenarios, {
@@ -486,18 +486,20 @@ describe('renderSensitivityTableSection', () => {
 
     expect(html).toContain('가중평균 총수익률 12.3%');
     expect(html).toContain('사적연금 포함');
-    expect(html).toContain('주식·ISA를 5/7/9%, 사적연금을 3/4/6%로 통째로 바꾼 결과');
-    expect(html).toContain('현재 가정과 무관하게 고정된 비교 기준');
+    // 상대 축이므로 문장은 「무엇에서 얼마나 옮겼는가」를 말한다. 예전에는 프리셋 세 값을
+    // 나열하고 「현재 가정과 무관하게 고정된 비교 기준」이라고 적었다.
+    expect(html).toContain('총수익률을 2%p씩 함께 낮추고 올린 결과');
+    expect(html).toContain('위 현재 가정이 그 기준입니다');
     expect(html).toContain('현재 가정 (기준)');
     expect(html).toContain('14억 5,841만원');
     // 기준선 행은 표의 «맨 위»다 — 비교 대상이 아니라 비교의 기준이다.
-    expect(html.indexOf('현재 가정 (기준)')).toBeLessThan(html.indexOf('공격형 가정'));
+    expect(html.indexOf('현재 가정 (기준)')).toBeLessThan(html.indexOf('수익률 +2%p'));
   });
 
   // 굴릴 잔액이 없으면 가중평균을 낼 수 없다. 없는 값을 0%라고 말하지 않는다.
   test('유도할 잔액이 없으면 수익률 문장을 만들지 않는다', () => {
     const scenarios: SensitivityScenario[] = [
-      { key: 'yieldAggressive', label: '공격형 가정 (주식 9%)', depletionAge: null, deltaYears: null,
+      { key: 'yieldUp', label: '수익률 +2%p', depletionAge: null, deltaYears: null,
         endingAssets: 0, endingAssetsDelta: 0, unmetSpendingYears: 0, hardViolations: [] },
     ];
     const html = renderSensitivityTableSection(scenarios, {
@@ -511,9 +513,9 @@ describe('renderSensitivityTableSection', () => {
   // 보여주면 안 된다.
   test('투자자산이 없으면 결과가 baseline과 동일한 행을 접고 몇 개를 접었는지 밝힌다', () => {
     const scenarios: SensitivityScenario[] = [
-      { key: 'yieldConservative', label: '안정형 가정 (주식 5%)', depletionAge: 51, deltaYears: 0,
+      { key: 'yieldDown', label: '수익률 -2%p', depletionAge: 51, deltaYears: 0,
         endingAssets: 0, endingAssetsDelta: 0, unmetSpendingYears: 31, hardViolations: [] },
-      { key: 'yieldAggressive', label: '공격형 가정 (주식 9%)', depletionAge: 51, deltaYears: 0,
+      { key: 'yieldUp', label: '수익률 +2%p', depletionAge: 51, deltaYears: 0,
         endingAssets: 0, endingAssetsDelta: 0, unmetSpendingYears: 31, hardViolations: [] },
       { key: 'retirementLater', label: '은퇴시점 +3년', depletionAge: 51, deltaYears: 0,
         endingAssets: 0, endingAssetsDelta: 0, unmetSpendingYears: 28, hardViolations: [] },
@@ -525,8 +527,8 @@ describe('renderSensitivityTableSection', () => {
       planAssetStatus: 'no_investable_asset',
     });
 
-    expect(html).not.toContain('안정형 가정 (주식 5%)');
-    expect(html).not.toContain('공격형 가정 (주식 9%)');
+    expect(html).not.toContain('수익률 -2%p');
+    expect(html).not.toContain('수익률 +2%p');
     expect(html).toContain('은퇴시점 +3년');
     expect(html).toContain('투자자산이 없어');
     expect(html).toContain('2개 가정은 생략');
@@ -534,7 +536,7 @@ describe('renderSensitivityTableSection', () => {
 
   test('투자자산이 있으면 baseline 정보를 넘겨도 행을 접지 않는다', () => {
     const scenarios: SensitivityScenario[] = [
-      { key: 'yieldConservative', label: '안정형 가정 (주식 5%)', depletionAge: null, deltaYears: null,
+      { key: 'yieldDown', label: '수익률 -2%p', depletionAge: null, deltaYears: null,
         endingAssets: 820000000, endingAssetsDelta: -1680000000, unmetSpendingYears: 0, hardViolations: [] },
     ];
 
@@ -544,13 +546,13 @@ describe('renderSensitivityTableSection', () => {
       planAssetStatus: 'sustained',
     });
 
-    expect(html).toContain('안정형 가정 (주식 5%)');
+    expect(html).toContain('수익률 -2%p');
     expect(html).not.toContain('생략');
   });
 
   test('생활비를 채우지 못한 해가 있으면 표에 함께 적는다', () => {
     const scenarios: SensitivityScenario[] = [
-      { key: 'yieldConservative', label: '안정형 가정 (주식 5%)', depletionAge: null, deltaYears: null,
+      { key: 'yieldDown', label: '수익률 -2%p', depletionAge: null, deltaYears: null,
         endingAssets: 100000000, endingAssetsDelta: -500000000, unmetSpendingYears: 5, hardViolations: [] },
     ];
 
@@ -566,9 +568,9 @@ describe('renderSensitivityTableSection', () => {
     // 핵심 픽스처: yieldAggressive는 endingAssetsDelta가 +25억(재무적으로 명백히 유리)인데도
     // 확정 HARD 「자산 고갈 방지」를 어긴다 — computeSensitivityAnalysis 테스트와 같은 값이다.
     const violatingScenarios: SensitivityScenario[] = [
-      { key: 'yieldConservative', label: '안정형 가정 (주식 5%)', depletionAge: null, deltaYears: null,
+      { key: 'yieldDown', label: '수익률 -2%p', depletionAge: null, deltaYears: null,
         endingAssets: 1000000000, endingAssetsDelta: -500000000, unmetSpendingYears: 0, hardViolations: [] },
-      { key: 'yieldAggressive', label: '공격형 가정 (주식 9%)', depletionAge: 85, deltaYears: -5,
+      { key: 'yieldUp', label: '수익률 +2%p', depletionAge: 85, deltaYears: -5,
         endingAssets: 4000000000, endingAssetsDelta: 2500000000, unmetSpendingYears: 0, hardViolations: ['assetSurvival'] },
     ];
 
@@ -577,7 +579,7 @@ describe('renderSensitivityTableSection', () => {
 
       // yieldAggressive 행만 골라낸다 — 표 전체에 #059669가 없다고 주장하면 위반 없는
       // 다른 개선 시나리오가 있을 때도 우연히 통과할 수 있다.
-      const row = html.split('공격형 가정 (주식 9%)')[1].split('</tr>')[0];
+      const row = html.split('수익률 +2%p')[1].split('</tr>')[0];
       // endingAssetsDelta는 +25억(2,500,000,000 → formatManwon)이라, 위반 판정이 없다면
       // '#059669'(초록)이 됐을 것이다.
       expect(row).toContain('(+25억원)');
@@ -733,10 +735,10 @@ describe('renderKeyLeversSection', () => {
           hardViolations: ['terminalAsset'] },
         { key: 'retirementEarlier', label: '은퇴시점 -3년', depletionAge: 61, deltaYears: -5,
           endingAssets: 0, endingAssetsDelta: -400000000, unmetSpendingYears: 19, hardViolations: [] },
-        { key: 'yieldAggressive', label: '공격형 가정 (주식 9%)', depletionAge: null, deltaYears: null,
+        { key: 'yieldUp', label: '수익률 +2%p', depletionAge: null, deltaYears: null,
           endingAssets: 499010000, endingAssetsDelta: 499010000, unmetSpendingYears: 0,
           hardViolations: ['terminalAsset'] },
-        { key: 'yieldConservative', label: '안정형 가정 (주식 5%)', depletionAge: 67, deltaYears: -8,
+        { key: 'yieldDown', label: '수익률 -2%p', depletionAge: 67, deltaYears: -8,
           endingAssets: 0, endingAssetsDelta: -300000000, unmetSpendingYears: 13, hardViolations: [] },
       ],
       hardRequirementGoals: { spendingTarget: [], assetSurvival: [], terminalAsset: ['INHERITANCE'] },

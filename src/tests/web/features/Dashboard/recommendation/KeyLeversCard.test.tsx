@@ -109,8 +109,8 @@ describe('KeyLeversCard', () => {
         [
           scenario('retirementLater', { endingAssetsDelta: 1083600000, hardViolations: ['terminalAsset'] }),
           scenario('retirementEarlier', { depletionAge: 61, unmetSpendingYears: 19 }),
-          scenario('yieldAggressive', { endingAssetsDelta: 499010000, hardViolations: ['terminalAsset'] }),
-          scenario('yieldConservative', { depletionAge: 67, unmetSpendingYears: 13 }),
+          scenario('yieldUp', { endingAssetsDelta: 499010000, hardViolations: ['terminalAsset'] }),
+          scenario('yieldDown', { depletionAge: 67, unmetSpendingYears: 13 }),
         ],
         goals,
       ),

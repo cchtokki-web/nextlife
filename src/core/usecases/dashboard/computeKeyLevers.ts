@@ -185,20 +185,20 @@ function buildTargetSpendingLever({ shortfall, formatValue }: KeyLeversInput): K
 }
 
 function buildInvestmentReturnLever({ sensitivity, formatValue }: KeyLeversInput): KeyLever | null {
-  const up = findScenario(sensitivity, 'yieldAggressive');
-  const down = findScenario(sensitivity, 'yieldConservative');
+  const up = findScenario(sensitivity, 'yieldUp');
+  const down = findScenario(sensitivity, 'yieldDown');
   if (!up && !down) return null;
 
   const parts: string[] = [];
   let hardViolation = false;
   if (up) {
     const d = describeScenario(up, formatValue, sensitivity.hardRequirementGoals);
-    parts.push(`공격형 가정(주식 9%)이면 ${d.text}`);
+    parts.push(`${up.label}이면 ${d.text}`);
     hardViolation = hardViolation || d.violated;
   }
   if (down) {
     const d = describeScenario(down, formatValue, sensitivity.hardRequirementGoals);
-    parts.push(`안정형 가정(주식 5%)이면 ${d.text}`);
+    parts.push(`${down.label}이면 ${d.text}`);
     hardViolation = hardViolation || d.violated;
   }
 
@@ -206,19 +206,23 @@ function buildInvestmentReturnLever({ sensitivity, formatValue }: KeyLeversInput
     key: 'investmentReturn',
     title: '투자 포트폴리오 조정',
     // 수익률은 «정하는» 것이 아니라 «기대하는» 것이다. 그 구분을 밝히지 않으면 이 항목이
-    // "수익률을 정하세요"라는 실행 지시로 읽힌다. 두 방향(안정형 5% / 공격형 9%)은 사용자의
-    // 현재 가정이 무엇이든 고정된 앵커다 — 폭이 사용자 가정 주변 ±2%p로 함께 움직이지 않는다.
-    // 「현재 가정과 무관하게 고정된 기준」이라고 말해 놓고 그 «현재 가정»이 얼마인지는
-    // 어디에도 없었다. 사용자 가정이 9%보다 높으면 두 방향이 모두 나빠 보이는데, 그 이유를
-    // 아는 유일한 단서가 그 숫자다. 새로 계산하지 않는다 — 몬테카를로 변동성 유도가 쓰는
-    // 것과 같은 잔액가중 평균이 sensitivity에 이미 실려 온다.
+    // "수익률을 정하세요"라는 실행 지시로 읽힌다.
+    //
+    // 두 방향은 이제 사용자 «자신의» 가정 대비 ±2%p다. 예전에는 절대 앵커(안정형 5% /
+    // 공격형 9%)였고, 그래서 가정이 9%보다 높은 사용자에게는 두 방향이 모두 나빠 보였다
+    // (known-issues 16번). 라벨은 시나리오가 들고 오는 것을 그대로 쓴다 — 여기서 폭을 다시
+    // 적으면 YIELD_SHIFT_POINTS를 바꾸는 날 이 문장만 옛 숫자로 남는다.
+    //
+    // 현재 가정을 함께 밝히는 것은 그대로 둔다. 상대 축에서도 「무엇에서 ±2%p인가」의
+    // 그 «무엇»은 화면 어디에도 없으면 알 수 없다. 새로 계산하지 않는다 — 몬테카를로 변동성
+    // 유도가 쓰는 것과 같은 잔액가중 평균이 sensitivity에 이미 실려 온다.
     detail:
       `${parts.join(' / ')}. 다만 수익률은 정할 수 있는 값이 아니라 자산 배분의 결과이며, ` +
-      '위 두 방향(안정형 5% / 공격형 9%)은 현재 가정과 무관하게 고정된 비교 기준입니다'
+      '위 두 방향은 현재 가정을 기준으로 위아래로 옮긴 결과입니다'
       + (sensitivity.baselineWeightedTotalReturn === null
         ? '.'
-        // 「사적연금 포함」을 반드시 붙인다. 이 평균은 연금까지 넣은 값이라 「주식 9%」와 곧바로
-        // 견주면 어긋난다 — 프리셋은 연금 수익률도 함께 갈아끼운다.
+        // 「사적연금 포함」을 반드시 붙인다. 이 평균은 연금까지 넣은 값이라, 자산별 수익률
+        // 하나와 곧바로 견주면 어긋난다.
         : ` (현재 가정은 사적연금을 포함한 가중평균 총수익률 ${
           Math.round(sensitivity.baselineWeightedTotalReturn * 10) / 10}%입니다).`),
     hardViolation,
