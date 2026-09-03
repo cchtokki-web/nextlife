@@ -67,23 +67,32 @@ tags: [계산계약, 목표, 제약]
   기준 자체가 무너지므로, 금액이 비면 `RetirementInputFlow`가 분석을 막는다. 그래서
   「금액을 «묻는» 목표」와 「금액을 «요구하는» 목표」는 같은 집합이 아니다.
 
-### 알려진 한계 — 기말자산 조건은 단일 문턱이다
+### 기말자산 문턱은 «둘»이다 — 질문이 둘이기 때문
 
-`terminalAssetGoalOf`는 상속·자산 성장 목표 중 «확정된 목표액이 가장 큰 것 하나»만
-기말자산 조건으로 채택하고(`terminalAssetGoal`), `hardRequirements.terminalAsset`은 그
-금액을 «준» 목표에만 귀속시킨다. 여러 자산 목표를 동시에 고르면 문턱은 언제나 하나다.
+기말자산 조건을 묻는 질문은 두 개이고 대상 목표가 다르다.
 
-그래서 사용자가 **HARD 상속 3억과 SOFT 상속 5억을 함께** 고르면 5억이 이긴다
-(`explicit.reduce`가 최댓값을 취한다). `source`는 SOFT 목표이므로 `terminalAsset`은
-`false`다 — 이것은 옳다. 5억을 HARD 요구로 보고하면 사용자가 못박은 적 없는 금액을
-못박았다고 말하는 것이고, 그것이 바로 위 「흔한 위반」이 기록한 실패 패턴이다.
+| 질문 | 필드 | 대상 |
+|---|---|---|
+| 고른 목표를 다 채웠는가 | `terminalAssetGoal` | 확정된 자산 목표 전부(HARD·SOFT) |
+| 못박은 조건을 지켰는가 | `hardTerminalAssetGoal` | 확정 **HARD** 자산 목표만 |
 
-**그러나 그 대가로 사용자가 실제로 못박은 3억 HARD 요구가 이 비율에서 통째로 사라진다.**
-기말자산 4억으로 끝나는 시행은 3억 HARD 목표를 만족하고 5억 SOFT 목표는 놓치지만,
-단일 문턱 설계는 그 둘을 구별해 셀 수 없다 — `hardGoalSuccessProbability`는 3억 조건을
-전혀 판정하지 않은 채 5억 조건(놓쳤으므로 실패)만 본다. 이 비율의 신뢰 범위를 판단하는
-사람은 이 사실을 알아야 한다. 여러 문턱을 동시에 추적하려면 별도 설계가 필요하고,
-이 커밋의 범위가 아니다 — 여기서는 한계로만 기록한다.
+**문턱을 여럿 추적할 필요는 없다.** 자산 조건은 모두 `기말자산 ≥ Ti` 꼴이고 그 논리곱은
+`기말자산 ≥ max(Ti)`와 정확히 동치다. 그래서 각 질문 안에서는 최댓값 하나로 충분하고,
+기여한 목표«전부»를 `hardRequirementGoals.terminalAsset`에 실어 판정된 목표가 빠지지 않게
+한다. 두 문턱은 언제나 `hardTerminalAssetGoal ≤ terminalAssetGoal`이다 — HARD 집합이
+전체의 부분집합이기 때문이고, 이 부등식이 깨지면 「HARD 판정은 목표 달성의 완화」라는
+관계(`describeHardGoalRelationship`)가 뒤집힌다.
+
+한때 이 자리에 한 숫자만 있었고 「그 값을 준 목표 하나」에 HARD를 귀속시켰다. 그래서
+**HARD 상속 3억과 SOFT 자산성장 5억**을 함께 고르면 5억이 이기고 출처가 SOFT라 HARD 축이
+통째로 꺼졌다 — 기말자산 2억으로 끝나는 시행이 확정 HARD 3억을 명백히 어겼는데도
+「HARD 위반 없음」으로 집계됐다. 둘 다 HARD일 때도 귀속이 하나뿐이라, 나머지 목표는
+판정됐는데도 `unjudged`(판정하지 못함)로 보고됐다. 자세한 경위는
+[[2026-09-02-기말자산 문턱을 목표 달성과 HARD 판정으로 나눈다]]에 있다.
+
+**여전히 하지 않는 것**: 목표별 부분 달성률(「3억은 지켰고 5억은 놓쳤다」를 따로 세는 것)은
+이 비율의 일이 아니다. HARD 판정은 못박은 조건의 논리곱을 묻고, 목표마다의 달성 정도는
+`GoalEvaluationEngine`이 목표별 점수로 따로 낸다.
 
 ## 흔한 위반
 
@@ -112,7 +121,7 @@ tags: [계산계약, 목표, 제약]
   출처), `resolveGoalSuccessConditions()`의 `hardRequirements`·`hardRequirementGoals`
   산출부(확정 HARD만 요구 축을 켜고, «그 축을 켠 목표»를 함께 싣는다 — 유형 멤버십이 아니라
   이 목록이 판정 여부의 근거다), `terminalAssetGoalOf()`(기말자산 문턱이 단일 값이고 그
-  값을 준 목표에만 HARD 귀속을 준다 — 위 「알려진 한계」의 근거)
+  기여한 HARD 목표 전부에 귀속을 준다 — 위 「기말자산 문턱은 둘이다」의 근거)
 - 코드: `src/core/usecases/montecarlo/resolveSimulationVerdict.ts`의 `judged`/`unjudged`/
   `planEmbedded` 세 갈래 분류부. `judged`는 `isQuantitativelyJudgedGoal`(유형)이 아니라
   `goalConditions.hardRequirementGoals`(그 목표가 실제로 축을 켰는가)에서 나온다 —
@@ -123,6 +132,18 @@ tags: [계산계약, 목표, 제약]
   `describeHardGoalRelationship()` — HARD 목표 판정 확률이 목표 달성 확률의 «완화»라서
   항상 그 값 이상이라는 관계를 밝히는 한 문장. 화면·PDF가 같은 문장을 인쇄해야 하므로
   한 곳에 둔다(`describeCompositeNote`와 같은 이유)
+- 코드: `src/core/usecases/goals/goalSuccessConditions.ts`의 `hardTerminalAssetOf()` —
+  세 파생값(`hardTerminalAssetGoal`·`hardRequirements.terminalAsset`·
+  `hardRequirementGoals.terminalAsset`)이 모두 여기서 나온다. 따로 유도하면 「축은 켜졌는데
+  문턱이 0」 같은 모순 상태가 생기고, 그 상태에서 화면은 위반을 설명할 이름을 갖지 못한다.
+  `failsTerminalAsset`(목표 달성)과 `failsHardTerminalAsset`(HARD 판정)이 서로 다른 문턱을
+  읽는 것도 여기서 갈린다
+- 테스트: `src/tests/core/usecases/goals/goalSuccessConditions.test.ts`의
+  「기말자산 HARD 문턱」 describe — SOFT가 더 커도 HARD 위반을 잡는가, HARD 둘이면 귀속이
+  둘인가, 0원 확정이 축을 세우지 않는가, 세 파생값이 어긋날 수 없는가(조합 순회)
+- 테스트: `src/tests/core/usecases/goals/targetValueProvenance.test.ts`의 「기말자산 HARD —
+  결정론 평가와 몬테카를로가 같은 답을 한다」 — 한 경로만 고치면 두 경로가 같은 계획에
+  반대로 답하게 된다
 - 테스트: `src/tests/web/features/RetirementGoals/goalCatalog.test.ts` — 「금액으로
   판정하는 유형은 모두 금액 입력칸을 갖는다」(`hasMoneyTarget`과 카탈로그의 `currency`
   입력칸이 양방향으로 같은 집합인지 검사한다. 금액으로 판정하면서 그 금액을 넣을 칸이
