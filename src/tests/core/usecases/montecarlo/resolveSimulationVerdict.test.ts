@@ -125,12 +125,12 @@ describe('resolveSimulationVerdict', () => {
     expect(verdict.hardGoalSuccess!.planEmbedded).toEqual([]);
   });
 
-  // 재현 사례 2(리뷰 표 2행, 위키 「알려진 한계」와 같은 조합). 기말자산 문턱은 단일
-  // 값이라 SOFT ASSET_GROWTH 5억이 HARD INHERITANCE 3억을 이긴다(terminalAssetGoalOf의
-  // reduce). source가 SOFT 목표이므로 hardRequirements.terminalAsset은 false이고, 그 결과
-  // 사용자가 실제로 못박은 3억 HARD 요구가 이 비율에서 통째로 빠진다 — judged가 아니라
-  // unjudged여야 한다.
-  test('재현 사례 2 — SOFT 목표가 문턱을 가로채면 확정 HARD 상속 요구가 unjudged로 빠진다', () => {
+  // **예전 재현 사례 2가 있던 자리.** 그 테스트는 SOFT 5억이 HARD 3억을 가로채 확정 HARD
+  // 상속 요구가 unjudged로 «빠지는» 것을 정답으로 적어 두었다. 그것은 결함이었고, 문턱을
+  // 두 질문으로 나누면서(hardTerminalAssetGoal) 고쳤다 — 뒤집기만 하지 않고 오라클을
+  // 바꿔 적는다. 예전 기대값은 「이 조합에서 무엇이 일어나는가」를 관찰해 옮긴 것이라,
+  // 구현이 틀린 채로도 언제나 통과했다.
+  test('SOFT 목표액이 더 커도 확정 HARD 상속 요구는 judged로 남는다', () => {
     const goalsParams = goalParams([
       { type: 'INHERITANCE', constraintType: 'HARD', priority: 1, targetValue: 300_000_000, targetValueSource: 'user' },
       { type: 'ASSET_GROWTH', constraintType: 'SOFT', priority: 2, targetValue: 500_000_000, targetValueSource: 'user' },
@@ -138,14 +138,34 @@ describe('resolveSimulationVerdict', () => {
     ]);
     const conditions = resolveGoalSuccessConditions(goalsParams);
 
+    // 두 문턱이 서로 다른 질문에 답한다. 목표 달성 확률은 고른 목표를 «다» 채웠는지 물으므로
+    // SOFT 5억을 포함하고, HARD 판정은 못박은 3억만 본다.
     expect(conditions.terminalAssetGoal).toBe(500_000_000);
-    expect(conditions.hardRequirements.terminalAsset).toBe(false);
+    expect(conditions.hardTerminalAssetGoal).toBe(300_000_000);
+    expect(conditions.hardRequirements.terminalAsset).toBe(true);
 
     const verdict = judged(resolveSimulationVerdict({ monteCarlo: mc({ goalConditions: conditions }), params: goalsParams }));
 
     expect(verdict.hardGoalSuccess).not.toBeNull();
-    expect(verdict.hardGoalSuccess!.judged).toEqual(['ASSET_SURVIVAL']);
-    expect(verdict.hardGoalSuccess!.unjudged).toEqual(['INHERITANCE']);
+    expect(verdict.hardGoalSuccess!.judged).toEqual(['INHERITANCE', 'ASSET_SURVIVAL']);
+    expect(verdict.hardGoalSuccess!.unjudged).toEqual([]);
+  });
+
+  // 귀속은 «기여한 HARD 목표 전부»다. 최댓값 하나가 그들 모두를 판정하므로
+  // (`≥ 5억` ⟹ `≥ 3억`), 하나만 실으면 나머지는 판정됐는데도 unjudged로 보고된다.
+  test('HARD 자산 목표가 둘이면 둘 다 judged다', () => {
+    const goalsParams = goalParams([
+      { type: 'INHERITANCE', constraintType: 'HARD', priority: 1, targetValue: 300_000_000, targetValueSource: 'user' },
+      { type: 'ASSET_GROWTH', constraintType: 'HARD', priority: 2, targetValue: 500_000_000, targetValueSource: 'user' },
+    ]);
+    const conditions = resolveGoalSuccessConditions(goalsParams);
+
+    expect(conditions.hardTerminalAssetGoal).toBe(500_000_000);
+
+    const verdict = judged(resolveSimulationVerdict({ monteCarlo: mc({ goalConditions: conditions }), params: goalsParams }));
+
+    expect(verdict.hardGoalSuccess!.judged).toEqual(['INHERITANCE', 'ASSET_GROWTH']);
+    expect(verdict.hardGoalSuccess!.unjudged).toEqual([]);
   });
 
   // EARLY_RETIREMENT는 unjudged도 judged도 아닌 세 번째 갈래다 — 계획에 이미 반영되어

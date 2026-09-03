@@ -918,6 +918,7 @@ describe('DashboardSection - 현재 계획 진단', () => {
             requireSpendingTarget: true,
             requireAssetSurvival: false,
             terminalAssetGoal: 0,
+            hardTerminalAssetGoal: 0,
             unmeasuredGoals: ['TAX_OPTIMIZATION', 'PENSION_OPTIMIZATION'],
             // 이 테스트는 미반영 목표 안내 문구만 검증한다. HARD 강도는 관여하지 않으므로
             // 전부 false — 값을 지어내 컴파일러만 조용히 시키지 않는다.
@@ -946,6 +947,7 @@ describe('DashboardSection - 현재 계획 진단', () => {
             requireSpendingTarget: true,
             requireAssetSurvival: false,
             terminalAssetGoal: 0,
+            hardTerminalAssetGoal: 0,
             unmeasuredGoals: ['TAX_OPTIMIZATION', 'HOUSING_STABILITY'],
             // 점수 산정 대상 여부 안내를 검증하는 테스트라 HARD 강도는 무관하다. 전부 false.
             hardRequirements: { spendingTarget: false, assetSurvival: false, terminalAsset: false },
@@ -976,6 +978,7 @@ describe('DashboardSection - 현재 계획 진단', () => {
             requireSpendingTarget: true,
             requireAssetSurvival: false,
             terminalAssetGoal: 0,
+            hardTerminalAssetGoal: 0,
             unmeasuredGoals: ['TAX_OPTIMIZATION', 'PENSION_OPTIMIZATION'],
             // 점수 안내 문구가 붙지 않음을 확인하는 테스트라 HARD 강도는 무관하다. 전부 false.
             hardRequirements: { spendingTarget: false, assetSurvival: false, terminalAsset: false },
@@ -1000,6 +1003,7 @@ describe('DashboardSection - 현재 계획 진단', () => {
             requireSpendingTarget: true,
             requireAssetSurvival: true,
             terminalAssetGoal: 0,
+            hardTerminalAssetGoal: 0,
             unmeasuredGoals: ['TAX_OPTIMIZATION'],
             // plan_defaults는 활성 조건이 없어 계획 기본값으로 떨어진 갈래다 — 사용자가 못박은
             // HARD 목표가 아니므로 전부 false다(Task 1의 규칙 그대로).

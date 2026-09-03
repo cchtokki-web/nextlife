@@ -22,6 +22,7 @@ export const LEGACY_GOAL_CONDITIONS: GoalSuccessConditions = {
   requireSpendingTarget: true,
   requireAssetSurvival: true,
   terminalAssetGoal: 0,
+  hardTerminalAssetGoal: 0,
   unmeasuredGoals: [],
   // legacy_plan은 목표 화면을 거친 적 없는 시나리오다 — 이 세 조건은 사용자가 고른 HARD
   // 목표에서 온 것이 아니라 목표 도입 이전의 기본값이므로 전부 false다.

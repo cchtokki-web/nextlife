@@ -25,7 +25,32 @@ export interface GoalSuccessConditions {
   // 기대수명까지 자산이 고갈되지 않았는지 판정할 것인가.
   requireAssetSurvival: boolean;
   // 기말자산 하한. 0이면 이 조건을 판정하지 않는다.
+  //
+  // **이 값이 답하는 질문은 「고른 목표를 다 채웠는가」다** — 확정된 자산 목표 전부(HARD와
+  // SOFT)의 최댓값이다. 「못박은 조건을 지켰는가」는 다른 질문이고 아래 hardTerminalAssetGoal이
+  // 답한다. 한때 이 한 숫자가 둘 다에 쓰였고, 그래서 SOFT 목표액이 HARD 목표액보다 크면
+  // HARD 축이 통째로 꺼졌다(hardTerminalAssetGoal 주석).
   terminalAssetGoal: number;
+  /**
+   * 확정 «HARD» 자산 목표들이 함께 세우는 기말자산 하한. 그런 목표가 없으면 0이다.
+   *
+   * **문턱을 여럿 추적할 필요는 없다.** HARD 자산 조건은 모두 `기말자산 ≥ Ti` 꼴이고 그
+   * 논리곱은 `기말자산 ≥ max(Ti)`와 정확히 동치다. 그래서 최댓값 하나로 전부를 판정하고,
+   * 기여한 목표«전부»를 hardRequirementGoals.terminalAsset에 싣는다.
+   *
+   * **terminalAssetGoal과 나누는 이유.** 예전에는 하나였고, 그 값은 HARD·SOFT를 가리지 않는
+   * 최댓값이며 「그 값을 준 목표 하나」에만 귀속됐다. 그래서 HARD 상속 3억과 SOFT 자산성장
+   * 5억을 함께 고르면 5억이 이기고 출처가 SOFT라 hardRequirements.terminalAsset이 false가
+   * 됐다 — 기말자산 2억으로 끝나는 시행이 3억 HARD를 명백히 어겼는데도 「HARD 위반 없음」으로
+   * 집계됐다. 둘 다 HARD일 때도 귀속이 한 목표뿐이라, 나머지 목표는 판정됐는데도
+   * resolveSimulationVerdict가 「판정하지 못했다」(unjudged)고 보고했다.
+   *
+   * **0원 확정은 축을 세우지 않는다.** 「0원을 남긴다」는 「다 쓰겠다」는 뜻이지 지킬 하한이
+   * 아니다(compileStrategy가 targetBequest > 0을 target_amount로 읽는 것과 같은 해석).
+   * 예전 유도에서는 그 목표가 source가 되어 축은 켜지고 문턱은 0인, 절대 실패하지 않는
+   * 유령 HARD 축이 생겼다.
+   */
+  hardTerminalAssetGoal: number;
   // 고르긴 했지만 이 확률로는 판정할 수 없는 목표. 화면이 "반영되지 않았다"고 밝히는 데 쓴다.
   // 숨기면 "판정하지 않음"이 "판정해서 통과함"으로 읽힌다.
   unmeasuredGoals: RetirementGoalType[];
@@ -168,6 +193,9 @@ export function resolveGoalSuccessConditions(params: SimulationParams): GoalSucc
       requireSpendingTarget: true,
       requireAssetSurvival: true,
       terminalAssetGoal: legacyTerminalGoal,
+      // 레거시 조건은 계획 기본값이지 사용자가 못박은 것이 아니다. hardRequirements가 세 축
+      // 모두 false인 것과 같은 이유로 HARD 하한도 서지 않는다.
+      hardTerminalAssetGoal: 0,
       unmeasuredGoals: [],
       hardRequirements: { ...NO_HARD_REQUIREMENTS },
       hardRequirementGoals: noHardRequirementGoals(),
@@ -183,7 +211,7 @@ export function resolveGoalSuccessConditions(params: SimulationParams): GoalSucc
   const requireSpendingTarget = measurable.some((goal) =>
     goal.type === 'LIVING_EXPENSE_STABILITY' || goal.type === 'COMFORTABLE_SPENDING');
   const requireAssetSurvival = measurable.some((goal) => goal.type === 'ASSET_SURVIVAL');
-  const { value: terminalAssetGoal, source: terminalAssetSource } = terminalAssetGoalOf(measurable, params);
+  const terminalAssetGoal = terminalAssetGoalOf(measurable, params);
 
   // **판별 기준은 「판정 가능한 «유형»을 골랐는가」가 아니라 「활성 «조건»이 남았는가」다.**
   // 유형만 보면 구멍이 생긴다: 「자산 성장」은 판정 가능한 유형이지만 목표액이 «선택»이라
@@ -208,20 +236,19 @@ export function resolveGoalSuccessConditions(params: SimulationParams): GoalSucc
       requireSpendingTarget: true,
       requireAssetSurvival: true,
       terminalAssetGoal: 0,
+      hardTerminalAssetGoal: 0,
       unmeasuredGoals,
       hardRequirements: { ...NO_HARD_REQUIREMENTS },
       hardRequirementGoals: noHardRequirementGoals(),
     };
   }
 
-  // 「어떤 판정 가능한 자산 목표가 HARD인가」가 아니라 「기말자산 금액을 «실제로 준»
-  // 목표가 HARD인가」를 묻는다. ASSET_GROWTH는 목표액을 «비워 둘 수 있고»(goalCatalog의
+  // 「어떤 판정 가능한 자산 목표가 HARD인가」가 아니라 「기말자산 하한을 «실제로 세운»
+  // 목표가 어느 것인가」를 묻는다. ASSET_GROWTH는 목표액을 «비워 둘 수 있고»(goalCatalog의
   // optional), 비면 targetValue가 undefined다. 그러면 isSuggestedTargetValue·
   // hardGoalAwaitsTargetConfirmation이 모두 거짓이라 「확정을 기다리는 씨앗이 없다」가
-  // 「이미 확정했다」로 잘못 읽힌다. 유형만 보면 SOFT 상속이 확정한 금액을 나란히 고른
-  // HARD 자산성장 목표(또는 targetBequest 폴백)가 가로채 HARD 요구로 둔갑한다.
-  // terminalAssetSource가 null이면(폴백값) 그 값을 «준» 목표가 아예 없으므로도 항상
-  // false다.
+  // 「이미 확정했다」로 잘못 읽힌다. 유형만 보면 금액을 준 적 없는 HARD 목표가 나란히 고른
+  // 다른 목표의 확정 금액(또는 targetBequest 폴백)을 가로채 HARD 요구로 둔갑한다.
   //
   // 화면이 금액 없는 자산 성장에 HARD를 열어 주지 «않는» 것도 이 규칙에서 나온다
   // (RetirementGoalSelector의 awaitingOptionalTarget). 두 자리가 같은 사실을 말하되,
@@ -234,19 +261,20 @@ export function resolveGoalSuccessConditions(params: SimulationParams): GoalSucc
   const assetSurvivalGoals = measurable
     .filter((goal) => goal.type === 'ASSET_SURVIVAL' && isConfirmedHardGoal(goal))
     .map((goal) => goal.type);
-  const terminalAssetGoals = terminalAssetSource !== null && isConfirmedHardGoal(terminalAssetSource)
-    ? [terminalAssetSource.type]
-    : [];
+  const hardTerminal = hardTerminalAssetOf(measurable);
 
   const hardRequirementGoals = {
     spendingTarget: spendingTargetGoals,
     assetSurvival: assetSurvivalGoals,
-    terminalAsset: terminalAssetGoals,
+    terminalAsset: hardTerminal.goals,
   };
   const hardRequirements = {
     spendingTarget: spendingTargetGoals.length > 0,
     assetSurvival: assetSurvivalGoals.length > 0,
-    terminalAsset: terminalAssetGoals.length > 0,
+    // 문턱과 «같은 곳»에서 나온다. 예전에는 축의 on/off가 terminalAssetGoalOf의 source에서,
+    // 문턱은 그 값에서 따로 나와 둘이 어긋날 수 있었다 — 0원을 확정한 HARD 목표가 축은
+    // 켜고 문턱은 0으로 두던 유령 상태가 그것이다.
+    terminalAsset: hardTerminal.value > 0,
   };
 
   return {
@@ -254,9 +282,41 @@ export function resolveGoalSuccessConditions(params: SimulationParams): GoalSucc
     requireSpendingTarget,
     requireAssetSurvival,
     terminalAssetGoal,
+    hardTerminalAssetGoal: hardTerminal.value,
     unmeasuredGoals,
     hardRequirements,
     hardRequirementGoals,
+  };
+}
+
+/**
+ * 확정 HARD 자산 목표들이 함께 세우는 기말자산 하한과, 그 하한에 기여한 목표 «전부».
+ *
+ * 세 파생값(hardTerminalAssetGoal · hardRequirements.terminalAsset ·
+ * hardRequirementGoals.terminalAsset)이 모두 여기서 나온다. 셋이 따로 유도되면 「축은 켜져
+ * 있는데 문턱이 0」이나 「문턱은 섰는데 귀속 목표가 없다」처럼 서로 모순인 상태가 만들어지고,
+ * 그 상태에서 화면은 위반을 설명할 이름을 갖지 못한다.
+ *
+ * 기여한 목표를 «전부» 싣는 이유: 최댓값 하나가 그들 모두를 판정하기 때문이다
+ * (`≥ max(Ti)` ⟺ `모든 i에 대해 ≥ Ti`). 하나만 실으면 나머지는 판정됐는데도
+ * resolveSimulationVerdict가 unjudged로 보고한다.
+ *
+ * 0원 확정은 제외한다(`> 0`). 「0원을 남긴다」는 지킬 하한이 아니라 「다 쓰겠다」는 뜻이다.
+ */
+function hardTerminalAssetOf(
+  measurable: readonly RetirementGoal[],
+): { value: number; goals: RetirementGoalType[] } {
+  const contributors = measurable
+    .filter((goal) => goal.type === 'INHERITANCE' || goal.type === 'ASSET_GROWTH')
+    .filter(isConfirmedHardGoal)
+    .map((goal) => ({ goal, value: confirmedTargetValue(goal) }))
+    .filter((entry): entry is { goal: RetirementGoal; value: number } =>
+      entry.value !== undefined && Number.isFinite(entry.value) && entry.value > 0);
+
+  if (contributors.length === 0) return { value: 0, goals: [] };
+  return {
+    value: Math.max(...contributors.map((entry) => entry.value)),
+    goals: contributors.map((entry) => entry.goal.type),
   };
 }
 
@@ -267,34 +327,28 @@ export function resolveGoalSuccessConditions(params: SimulationParams): GoalSucc
 // 확정 여부를 여기서 다시 묻는 이유: 이 값은 시행마다 「성공인가」를 가르는 판정 조건이다.
 // 미확정 씨앗을 그대로 쓰면 사용자가 말한 적 없는 금액이 목표 달성 확률을 깎는다.
 //
-// **source를 함께 돌려주는 이유.** hardRequirements.terminalAsset은 「판정 가능한 자산 목표
-// 중 HARD가 있는가」가 아니라 「이 금액을 «실제로 준» 목표가 HARD인가」를 물어야 한다. 유형만
-// 보면 목표액을 비워 둔 ASSET_GROWTH(targetValue가 undefined라
-// hardGoalAwaitsTargetConfirmation이 거짓)가 나란히 고른 다른 목표의 확정 금액을 가로채
-// HARD 요구로 둔갑시킨다. source가 그 값을 만든 «단 하나의» 목표(또는 폴백이면 null)를
-// 가리키면, 값을 준 적 없는 목표는 그 값에 대해 HARD임을 주장할 수 없다.
+// **강도를 가리지 않는다.** 이 값이 답하는 질문은 「고른 목표를 다 채웠는가」이므로 SOFT
+// 목표액도 조건이다. 최댓값을 쓰는 것이 「모두 채웠는가」와 정확히 같다 —
+// `≥ max(Ti)` ⟺ `모든 i에 대해 ≥ Ti`.
 //
-// 자산 성장에 목표액 입력칸이 생긴 뒤에도 규칙은 그대로다. 바뀐 것은 「그 목표는 값을 줄
-// 수 «없다»」에서 「값을 주지 않았을 수도 있다」뿐이고, 이 함수가 묻는 것은 처음부터
-// 유형이 아니라 값이었다.
+// **HARD 판정은 이 값을 쓰지 않는다.** 그쪽은 hardTerminalAssetOf가 HARD 목표만 모아 따로
+// 유도한다. 한때 이 한 값이 둘 다에 쓰였고, 「그 값을 준 목표 하나」에만 HARD를 귀속시켰다.
+// 그래서 SOFT 목표액이 더 크면 HARD 축이 통째로 꺼져, 확정 HARD 하한을 명백히 어긴 시행이
+// 「HARD 위반 없음」으로 집계됐다(hardTerminalAssetGoal 주석).
 function terminalAssetGoalOf(
   measurable: readonly RetirementGoal[],
   params: SimulationParams,
-): { value: number; source: RetirementGoal | null } {
+): number {
   const assetGoals = measurable.filter((goal) =>
     goal.type === 'INHERITANCE' || goal.type === 'ASSET_GROWTH');
-  if (assetGoals.length === 0) return { value: 0, source: null };
+  if (assetGoals.length === 0) return 0;
 
   const explicit = assetGoals
-    .map((goal) => ({ goal, value: confirmedTargetValue(goal) }))
-    .filter((entry): entry is { goal: RetirementGoal; value: number } =>
-      entry.value !== undefined && Number.isFinite(entry.value));
-  if (explicit.length > 0) {
-    const winner = explicit.reduce((max, entry) => (entry.value > max.value ? entry : max));
-    return { value: Math.max(0, winner.value), source: winner.goal };
-  }
+    .map(confirmedTargetValue)
+    .filter((value): value is number => value !== undefined && Number.isFinite(value));
+  if (explicit.length > 0) return Math.max(0, ...explicit);
 
-  return { value: Math.max(0, params.userProfile.targetBequest ?? 0), source: null };
+  return Math.max(0, params.userProfile.targetBequest ?? 0);
 }
 
 // successAge까지 자산이 고갈되지 않았는가.
@@ -347,8 +401,28 @@ export function failsAssetSurvival(
   return conditions.requireAssetSurvival && !isSuccessfulTrial(outcome.depletionAge, successAge);
 }
 
+/** 「고른 목표를 다 채웠는가」의 기말자산 조건. 목표 달성 확률이 쓴다. */
 export function failsTerminalAsset(outcome: HardGoalOutcome, conditions: GoalSuccessConditions): boolean {
   return conditions.terminalAssetGoal > 0 && outcome.endingAssets < conditions.terminalAssetGoal;
+}
+
+/**
+ * 「못박은 조건을 지켰는가」의 기말자산 조건. HARD 목표 판정 확률과 민감도 분석이 쓴다.
+ *
+ * 위 술어와 «반드시» 달라야 한다. 같은 값을 쓰면 SOFT 목표액이 HARD 요구로 둔갑하거나
+ * (SOFT가 더 클 때) HARD 요구가 통째로 사라진다 — 후자가 실제로 일어난 결함이다
+ * (hardTerminalAssetGoal 주석).
+ *
+ * hardRequirements.terminalAsset을 따로 묻지 않는다. 그 불리언은 이 문턱과 «같은 곳»에서
+ * `value > 0`으로 유도되므로 여기서 다시 물으면 같은 사실을 두 번 읽는 것이고, 둘이
+ * 갈라질 여지만 남는다.
+ */
+export function failsHardTerminalAsset(
+  outcome: HardGoalOutcome,
+  conditions: GoalSuccessConditions,
+): boolean {
+  return conditions.hardTerminalAssetGoal > 0
+    && outcome.endingAssets < conditions.hardTerminalAssetGoal;
 }
 
 /** hardRequirements의 세 축과 같은 키. */
@@ -375,7 +449,11 @@ export function resolveHardViolations(
   if (hardRequirements.assetSurvival && failsAssetSurvival(outcome, conditions, successAge)) {
     violations.push('assetSurvival');
   }
-  if (hardRequirements.terminalAsset && failsTerminalAsset(outcome, conditions)) {
+  // 다른 두 축과 달리 hardRequirements 게이트를 걸지 않는다. 그 불리언이 이 술어의 문턱에서
+  // 유도되기 때문이다(failsHardTerminalAsset 주석) — 게이트를 덧붙이면 같은 사실을 두 번
+  // 읽는다. 생활비·자산 고갈 축은 판정 조건(requireX)과 HARD 요구가 서로 다른 곳에서
+  // 나오므로 게이트가 실제로 일을 한다.
+  if (failsHardTerminalAsset(outcome, conditions)) {
     violations.push('terminalAsset');
   }
   return violations;

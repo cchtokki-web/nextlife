@@ -2,6 +2,7 @@ import { describe, test, expect } from 'vitest';
 import {
   isQuantitativelyJudgedGoal,
   resolveGoalSuccessConditions,
+  resolveHardViolations,
 } from '@/core/usecases/goals/goalSuccessConditions';
 import { RETIREMENT_GOAL_TYPES, type RetirementGoal } from '@/core/entities/retirementGoal';
 import type { SimulationParams } from '@/core/entities/types';
@@ -282,6 +283,104 @@ describe('resolveGoalSuccessConditions — hardRequirements', () => {
     expect(conditions.basis).toBe('selected_goals');
     expect(conditions.terminalAssetGoal).toBe(84_000_000);
     expect(conditions.hardRequirements.terminalAsset).toBe(false);
+  });
+});
+
+// 기말자산 문턱이 답해야 하는 질문은 둘이고, 대상 목표가 다르다.
+//
+//   목표 달성 확률  「고른 목표를 다 채웠는가」 — 확정된 자산 목표 전부(HARD·SOFT)
+//   HARD 판정 확률  「못박은 조건을 지켰는가」 — 확정 HARD 자산 목표만
+//
+// 한때 한 숫자가 둘 다에 쓰였고 「그 값을 준 목표 하나」에만 HARD를 귀속시켰다. 아래 셋은
+// 그 설계가 실제로 틀리게 답하던 경우들이다.
+describe('resolveGoalSuccessConditions — 기말자산 HARD 문턱', () => {
+  const confirmed = (
+    type: RetirementGoal['type'],
+    constraintType: RetirementGoal['constraintType'],
+    targetValue: number,
+    priority: number,
+  ): RetirementGoal => ({ type, priority, constraintType, targetValue, targetValueSource: 'user' });
+
+  const endingAssets = (value: number) =>
+    ({ depletionAge: null, endingAssets: value, hasSpendingShortfall: false });
+
+  // **이 파일이 지키는 가장 중요한 사실.** 예전에는 SOFT 5억이 최댓값이라 출처가 SOFT가
+  // 되고, 그 결과 HARD 축이 꺼져 3억을 «명백히» 어긴 시행이 「HARD 위반 없음」으로 집계됐다.
+  // 사용자가 못박은 조건을 어긴 계획이 HARD 성공으로 세어지는 상태였다.
+  test('SOFT 목표액이 더 커도 확정 HARD 하한을 어기면 위반으로 잡는다', () => {
+    const conditions = resolveGoalSuccessConditions(withGoals([
+      confirmed('INHERITANCE', 'HARD', 300_000_000, 1),
+      confirmed('ASSET_GROWTH', 'SOFT', 500_000_000, 2),
+    ]));
+
+    expect(conditions.terminalAssetGoal).toBe(500_000_000);
+    expect(conditions.hardTerminalAssetGoal).toBe(300_000_000);
+
+    // 2억: HARD 3억 미달 → 위반
+    expect(resolveHardViolations(endingAssets(200_000_000), conditions, 90)).toEqual(['terminalAsset']);
+    // 4억: HARD 3억은 지켰다 → 위반 아님. SOFT 5억을 놓친 것은 목표 달성 확률의 몫이지
+    // HARD 위반이 아니다 — 여기서 잡으면 사용자가 못박지 «않은» 금액을 요구로 보고한다.
+    expect(resolveHardViolations(endingAssets(400_000_000), conditions, 90)).toEqual([]);
+  });
+
+  // 최댓값 하나가 기여한 HARD 목표 전부를 판정한다(`≥ 5억` ⟹ `≥ 3억`). 그래서 귀속도
+  // 전부여야 한다 — 하나만 실으면 나머지는 판정됐는데도 화면이 그 이름을 부르지 못하고
+  // resolveSimulationVerdict가 unjudged로 보고한다.
+  test('HARD 자산 목표가 둘이면 문턱은 최댓값이고 귀속은 둘 다다', () => {
+    const conditions = resolveGoalSuccessConditions(withGoals([
+      confirmed('INHERITANCE', 'HARD', 300_000_000, 1),
+      confirmed('ASSET_GROWTH', 'HARD', 500_000_000, 2),
+    ]));
+
+    expect(conditions.hardTerminalAssetGoal).toBe(500_000_000);
+    expect(conditions.hardRequirementGoals.terminalAsset).toEqual(['INHERITANCE', 'ASSET_GROWTH']);
+    expect(resolveHardViolations(endingAssets(400_000_000), conditions, 90)).toEqual(['terminalAsset']);
+  });
+
+  // 「0원을 남긴다」는 지킬 하한이 아니라 「다 쓰겠다」는 뜻이다(compileStrategy가
+  // targetBequest > 0을 target_amount로 읽는 것과 같은 해석). 예전 유도에서는 이 목표가
+  // source가 되어 축은 켜지고 문턱은 0인, 절대 실패하지 않는 유령 HARD 축이 생겼다.
+  test('0원을 확정한 HARD 목표는 축을 세우지 않는다', () => {
+    const conditions = resolveGoalSuccessConditions(withGoals([
+      confirmed('INHERITANCE', 'HARD', 0, 1),
+      { type: 'ASSET_SURVIVAL', priority: 2, constraintType: 'HARD' },
+    ]));
+
+    expect(conditions.hardTerminalAssetGoal).toBe(0);
+    expect(conditions.hardRequirements.terminalAsset).toBe(false);
+    expect(conditions.hardRequirementGoals.terminalAsset).toEqual([]);
+  });
+
+  // 셋이 한 헬퍼에서 나오므로 어긋날 수 없다. 「축은 켜져 있는데 문턱이 0」이나 「문턱은
+  // 섰는데 귀속 목표가 없다」는 상태에서는 화면이 위반을 설명할 이름을 갖지 못한다.
+  // 조합을 순회해 그 불변식을 고정한다.
+  test('문턱·축·귀속 목록은 서로 어긋날 수 없다', () => {
+    const cases: RetirementGoal[][] = [
+      [],
+      [confirmed('INHERITANCE', 'HARD', 300_000_000, 1)],
+      [confirmed('INHERITANCE', 'SOFT', 300_000_000, 1)],
+      [confirmed('INHERITANCE', 'HARD', 0, 1)],
+      [{ type: 'ASSET_GROWTH', priority: 1, constraintType: 'HARD' }],
+      [confirmed('INHERITANCE', 'HARD', 300_000_000, 1), confirmed('ASSET_GROWTH', 'SOFT', 500_000_000, 2)],
+      [confirmed('INHERITANCE', 'SOFT', 300_000_000, 1), confirmed('ASSET_GROWTH', 'HARD', 500_000_000, 2)],
+      [confirmed('INHERITANCE', 'HARD', 300_000_000, 1), confirmed('ASSET_GROWTH', 'HARD', 500_000_000, 2)],
+      // 씨앗(확정 표시 없음)은 어느 쪽에도 기여하지 않는다.
+      [{ type: 'INHERITANCE', priority: 1, constraintType: 'HARD', targetValue: 300_000_000 }],
+    ];
+
+    for (const goals of cases) {
+      const label = JSON.stringify(goals);
+      const c = resolveGoalSuccessConditions(withGoals(goals));
+
+      expect(c.hardRequirements.terminalAsset, label).toBe(c.hardTerminalAssetGoal > 0);
+      expect(c.hardRequirementGoals.terminalAsset.length > 0, label)
+        .toBe(c.hardTerminalAssetGoal > 0);
+      // HARD 하한은 「고른 목표를 다 채웠는가」의 문턱을 넘어설 수 없다 — HARD 목표는 그
+      // 전체 집합의 부분집합이므로 최댓값도 작거나 같다. 이 부등식이 깨지면 HARD 판정이
+      // 목표 달성보다 «엄격해져», 목표는 못 채웠는데 HARD는 지켰다는 관계가 뒤집힌다
+      // (describeHardGoalRelationship이 인쇄하는 그 관계다).
+      expect(c.hardTerminalAssetGoal, label).toBeLessThanOrEqual(c.terminalAssetGoal);
+    }
   });
 });
 

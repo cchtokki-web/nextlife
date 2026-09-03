@@ -13,7 +13,10 @@ import {
 import type { SimulationParams } from '@/core/entities/types';
 import { SimulationEngine } from '@/core/usecases/SimulationEngine';
 import { applyRetirementGoals, migrateRetirementGoals } from '@/core/usecases/goals/retirementGoalAdapter';
-import { resolveGoalSuccessConditions } from '@/core/usecases/goals/goalSuccessConditions';
+import {
+  resolveGoalSuccessConditions,
+  resolveHardViolations,
+} from '@/core/usecases/goals/goalSuccessConditions';
 import { compileStrategy, resolveStrategy } from '@/core/usecases/strategy/compileStrategy';
 import { normalizeSimulationParams } from '@/infrastructure/storage/normalizeSimulationParams';
 
@@ -257,6 +260,50 @@ describe('자산 성장 목표액 — 저장한 값이 판정까지 닿는다', 
 
     expect(loaded.retirementGoals?.[0].targetValue).toBe(500_000_000);
     expect(failureCodes(loaded)).not.toContain('HARD_MINIMUM_ENDING_ASSETS');
+  });
+});
+
+// **두 경로가 같은 답을 해야 한다**(AGENTS.md의 「같은 결과를 소비하는 경로의 일관성」).
+// 결정론 평가는 목표를 «하나씩» 보며 HARD_MINIMUM_ENDING_ASSETS를 올리고, 몬테카를로는
+// 문턱 하나로 시행을 가른다. 한때 뒤엣것만 틀렸다 — SOFT 목표액이 더 크면 HARD 축이 꺼져,
+// 결정론 엔진이 「3억 미달」이라고 말하는 바로 그 계획을 몬테카를로는 「HARD 위반 없음」으로
+// 셌다. 같은 질문에 두 경로가 반대로 답하던 셈이다.
+describe('기말자산 HARD — 결정론 평가와 몬테카를로가 같은 답을 한다', () => {
+  // plan()은 12억으로 30년간 월 300만원을 쓴다(수익률 0). 기말자산은 3억에 못 미친다.
+  const growthSoft = (value: number): RetirementGoal => ({
+    type: 'ASSET_GROWTH', priority: 2, constraintType: 'SOFT',
+    targetValue: value, targetValueSource: 'user',
+  });
+  const bequestHard = (value: number): RetirementGoal => ({
+    type: 'INHERITANCE', priority: 1, constraintType: 'HARD',
+    targetValue: value, targetValueSource: 'user',
+  });
+
+  const violatesInMonteCarlo = (params: SimulationParams) => {
+    const conditions = resolveGoalSuccessConditions(params);
+    const result = new SimulationEngine().runSingle(params);
+    const outcome = {
+      depletionAge: null,
+      endingAssets: result.endingAssets,
+      hasSpendingShortfall: false,
+    };
+    return resolveHardViolations(outcome, conditions, params.userProfile.expectancy)
+      .includes('terminalAsset');
+  };
+
+  test('SOFT 목표액이 더 커도 두 경로가 함께 HARD 미달을 말한다', () => {
+    const params = plan([bequestHard(300_000_000), growthSoft(500_000_000)]);
+
+    expect(failureCodes(params)).toContain('HARD_MINIMUM_ENDING_ASSETS');
+    expect(violatesInMonteCarlo(params)).toBe(true);
+  });
+
+  // 짝. 「언제나 위반」으로 만들어도 위 테스트는 통과한다.
+  test('감당 가능한 HARD 하한에서는 두 경로가 함께 침묵한다', () => {
+    const params = plan([bequestHard(50_000_000), growthSoft(500_000_000)]);
+
+    expect(failureCodes(params)).not.toContain('HARD_MINIMUM_ENDING_ASSETS');
+    expect(violatesInMonteCarlo(params)).toBe(false);
   });
 });
 
