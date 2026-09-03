@@ -312,6 +312,37 @@ h1, h2, h3, h4, h5, h6 {
   letter-spacing: -0.02em;
 }
 
+/* 드롭다운 목록의 색. **여기가 유일한 자리다** — 컴포넌트마다 붙이면 다음에 <select>를
+   하나 더 만들 때 또 빠진다.
+
+   **왜 필요한가.** option은 select의 `color`를 «상속»하지만 `background`는 상속하지 않는다.
+   이 앱의 select들은 배경이 전부 반투명이라(--input-bg는 rgba(...,0.03), 목표 카드는
+   bg-black/20) 목록의 배경이 시스템 기본값으로 떨어진다.
+
+   맥에서는 드러나지 않는다. 크롬이 드롭다운을 OS에 맡겨 시스템 팝업 색으로 그리기
+   때문이다. 윈도우 크롬은 목록을 직접 그리고 상속된 color를 그대로 쓰므로, 다크 테마의
+   --foreground(#F9FAFB)가 시스템 흰 배경 위에 얹혀 «흰 바탕에 흰 글씨»가 된다. 실제로
+   시나리오 선택 목록이 통째로 읽히지 않는다는 보고가 있었다.
+
+   **--background와 --foreground를 쓰는 이유.** 새 토큰을 만들지 않는다. 표면 토큰
+   (--card-bg, --input-bg)은 전부 반투명이라 목록 배경으로 쓸 수 없고, 불투명한 색을 새로
+   고르면 두 테마 중 한쪽에서 대비가 나쁠 위험을 스스로 지게 된다. --background는 hsl()이라
+   이미 불투명하고, 이 앱이 «본문 대비»를 보장하는 짝이 정확히 이 둘이다.
+
+   맥에서는 이 규칙이 무시되므로 확인은 윈도우 크롬에서 해야 한다. */
+select option,
+select optgroup {
+  background-color: var(--background);
+  color: var(--foreground);
+}
+
+/* 고를 수 없는 항목. 위에서 색을 명시하는 순간 브라우저 기본 회색이 사라지므로, 잠긴
+   선택지가 열린 것과 같아 보이지 않도록 함께 정한다 — 목표 카드의 「반드시 지키기」가
+   금액 확정 전까지 잠기는 자리가 그것이다(RetirementGoalSelector). */
+select option:disabled {
+  color: var(--foreground-muted);
+}
+
 /* Glassmorphism Base Class */
 .glass {
   background: var(--card-bg);
