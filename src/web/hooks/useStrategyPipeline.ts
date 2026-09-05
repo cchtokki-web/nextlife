@@ -27,14 +27,20 @@ export interface StrategyPipeline {
 
 // 시뮬레이터 화면의 계산 파이프라인.
 //
-//   params → compiled ─┬─→ (한 커밋 지연) → recommendStrategy → recommendation
+//   params → compiled ─┬─→ (한 커밋 지연) → legacy recommendStrategy → recommendation
 //                      └─→ applyAiSentinels(compiled, recommendation) → effective → engine.run
 //
 // page.tsx 본문이 아니라 훅으로 뽑은 이유는 아래 불변식을 테스트로 고정하기 위해서다.
 // page.tsx는 1000줄이 넘고 세션·시나리오·PDF·차트에 얽혀 있어 통째로 렌더하는 테스트를
 // 붙이기 어려웠고, 그래서 이 파이프라인의 핵심 불변식이 오래 무검증 상태였다.
 //
-// **불변식: recommendStrategy의 입력은 언제나 센티널 미적용 compiled다.**
+// **불변식: legacy recommendStrategy의 입력은 언제나 센티널 미적용 compiled다.**
+//
+// 주의: 이 훅의 recommendation은 `StrategyOptimizer`의 목표 기반 페르소나 추천과
+// 다른 결과다. 새 optimizer 결과는 AnalysisRuntime의 strategyOptimization으로 별도
+// 전달된다. 두 결과를 같은 추천으로 합치려면 저장·적용·PDF 경로를 함께 전환해야 한다.
+// 자동 보완 계약: applyAiSentinels는 사용자가 미지정으로 둔 축만 채운다. 사용자가 직접
+// 설정한 값은 legacy 추천과 optimizer 추천 어느 쪽도 덮어쓰지 않는다.
 //
 // effective를 넘기면 "적용 → 그 위에서 재추천 → 다시 적용"이 되어 개시 나이가 렌더마다
 // 밀려 올라가는 되먹임 루프가 생긴다. 단위 테스트로는 잡히지 않는다 — applyAiSentinels가
