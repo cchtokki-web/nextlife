@@ -5,6 +5,30 @@ import { DEFAULT_PLAN_HORIZON_AGE } from './planHorizon';
 
 export type InvestmentPropensity = 'conservative' | 'neutral' | 'aggressive';
 
+/** 투자 성향 하나가 뜻하는 수익률 가정. 단위는 %다(7% → 7). */
+export interface PropensityReturnAssumption {
+  /** 배당을 «포함한» 총수익률. [[총수익률과 배당수익률]] */
+  totalReturn: number;
+  /** 총수익률 «안에» 들어 있는 분배 성분. totalReturn과 더하지 않는다. */
+  dividendYield: number;
+}
+
+/**
+ * 랜딩 간단 시뮬레이터의 성향별 수익률 가정 — 이 표가 유일한 출처다.
+ *
+ * 화면의 결과 카드도 이 표를 읽는다. 예전에는 카드에 총수익률 이관(2026-08-19) 이전의
+ * 성장률(1/3/8%)이 손으로 적혀 있었고, 어댑터만 총수익률로 옮겨져 화면과 엔진 입력이
+ * 갈라졌다. 숫자를 두 곳에 적지 않는 것이 그 어긋남을 막는 유일한 방법이다.
+ *
+ * 숫자 자체는 이관 전후로 같은 포트폴리오를 뜻한다 — 예전 성장률 + 배당률이 지금의
+ * totalReturn이다.
+ */
+export const PROPENSITY_RETURN_ASSUMPTIONS: Record<InvestmentPropensity, PropensityReturnAssumption> = {
+  conservative: { totalReturn: 4.0, dividendYield: 3.0 }, // 예적금·채권 위주
+  neutral: { totalReturn: 7.0, dividendYield: 4.0 },      // 배당 ETF·채권 혼합
+  aggressive: { totalReturn: 9.5, dividendYield: 1.5 },   // 성장형 ETF
+};
+
 export interface SimpleSimulationInput {
   currentAge: number;
   retirementAge: number;
@@ -37,26 +61,7 @@ export class SimpleSimulationAdapter {
     const baseExchangeRate = 1400; // 환율 무관 (KRW로만 계산)
 
     // 성향에 따른 수익률 및 배당률 설정 (안전추구, 중립, 공격형)
-    let totalReturn = 0;
-    let dividendYield = 0;
-    
-    switch (propensity) {
-      case 'conservative':
-        // 예적금, 채권 위주
-        totalReturn = 4.0; // 예전 성장률 1.0 + 배당 3.0 (총수익률 표기로 이관)
-        dividendYield = 3.0; // 이자 수익
-        break;
-      case 'neutral':
-        // 배당 ETF, 채권 혼합
-        totalReturn = 7.0; // 예전 성장률 3.0 + 배당 4.0 (총수익률 표기로 이관)
-        dividendYield = 4.0;
-        break;
-      case 'aggressive':
-        // 성장형 ETF
-        totalReturn = 9.5; // 예전 성장률 8.0 + 배당 1.5 (총수익률 표기로 이관)
-        dividendYield = 1.5;
-        break;
-    }
+    const { totalReturn, dividendYield } = PROPENSITY_RETURN_ASSUMPTIONS[propensity];
 
     // 투자 자산으로 매핑
     const asset: InvestmentAsset = {

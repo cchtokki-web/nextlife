@@ -2,7 +2,12 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { SimpleSimulationAdapter, SimpleSimulationInput, InvestmentPropensity } from '../../../core/usecases/SimpleSimulationAdapter';
+import {
+  SimpleSimulationAdapter,
+  SimpleSimulationInput,
+  InvestmentPropensity,
+  PROPENSITY_RETURN_ASSUMPTIONS,
+} from '../../../core/usecases/SimpleSimulationAdapter';
 import { LegacySimulationEngine } from '../../../core/simulation/LegacySimulationEngine';
 import { simulateLegacyConfig } from '../../../core/application/simulateLegacyConfig';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -187,6 +192,8 @@ export function SimpleSimulator() {
     }).catch(err => console.error('Failed to log simulation run', err));
   };
 
+  const returnAssumption = PROPENSITY_RETURN_ASSUMPTIONS[input.propensity];
+
   const { result, resultPlus50 } = useMemo(() => {
     if (!hasRun) return { result: null, resultPlus50: null };
     const params = SimpleSimulationAdapter.adapt(input);
@@ -353,15 +360,15 @@ export function SimpleSimulator() {
                   </div>
                 </div>
 
+                {/* 두 카드의 숫자는 어댑터가 엔진에 넘기는 값 그 자체다. 여기에 따로 적으면
+                    옆 곡선과 다른 수익률을 말하게 된다 — 실제로 그런 적이 있다. */}
                 <div className={styles.resultCard}>
                   <div className={styles.iconWrapper}>
                     <TrendingUp size={24} />
                   </div>
-                  <div className={styles.resultLabel}>기대 자산 성장</div>
+                  <div className={styles.resultLabel}>기대 총수익률 (배당 포함)</div>
                   <div className={styles.resultValue} style={{ fontSize: '1.5rem', marginTop: '0.25rem' }}>
-                    {input.propensity === 'conservative' && '연 1%'}
-                    {input.propensity === 'neutral' && '연 3%'}
-                    {input.propensity === 'aggressive' && '연 8%'}
+                    {`연 ${returnAssumption.totalReturn}%`}
                   </div>
                 </div>
 
@@ -369,11 +376,11 @@ export function SimpleSimulator() {
                   <div className={styles.iconWrapper}>
                     <Coins size={24} />
                   </div>
-                  <div className={styles.resultLabel}>기대 배당/이자 수익</div>
+                  {/* 「그중」이 핵심이다. 위 총수익률에 더하는 값이 아니라 그 안에 들어 있는
+                      몫이고, 이 계획은 배당을 재투자하므로 따로 쓸 수 있는 돈도 아니다. */}
+                  <div className={styles.resultLabel}>그중 배당·이자 몫</div>
                   <div className={styles.resultValue} style={{ fontSize: '1.5rem', marginTop: '0.25rem' }}>
-                    {input.propensity === 'conservative' && '연 3%'}
-                    {input.propensity === 'neutral' && '연 4%'}
-                    {input.propensity === 'aggressive' && '연 1.5%'}
+                    {`연 ${returnAssumption.dividendYield}%`}
                   </div>
                 </div>
               </div>
