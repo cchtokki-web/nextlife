@@ -129,7 +129,7 @@ describe('위키 무결성', () => {
    */
   test('파일럿 노트 28건이 있다', () => {
     expect(concepts).toHaveLength(16);
-    expect(decisions).toHaveLength(12);
+    expect(decisions).toHaveLength(13);
   });
 
   test('type이 폴더와 일치한다', () => {

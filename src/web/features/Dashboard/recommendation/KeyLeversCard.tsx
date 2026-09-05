@@ -32,6 +32,9 @@ export function KeyLeversCard({ levers }: KeyLeversCardProps) {
       <p className="mb-3 text-xs text-foreground-muted">
         이미 계산된 결과에서 영향이 큰 순서로 정리했습니다. 아래로 갈수록 효과가 작습니다.
       </p>
+      <p className="mb-3 text-xs text-foreground-muted">
+        이 진단은 아래의 목표 기반 전략 추천과 별개로, 현재 계획에서 먼저 살펴볼 항목을 보여줍니다.
+      </p>
       {anyHardViolation && (
         <p className="mb-3 text-xs text-foreground-muted" data-testid="key-levers-hard-violation-basis">
           {describeHardViolationBasis()}

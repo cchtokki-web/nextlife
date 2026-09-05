@@ -156,6 +156,7 @@ export function renderKeyLeversSection(levers: KeyLever[]): string {
   return `
     <div style="border: 1px solid #e2e8f0; background-color: #f8fafc; border-radius: 8px; padding: 12px 14px; margin-bottom: 12px;">
       <p style="margin: 0 0 2px; font-size: 12.5px; font-weight: 700; color: #0f172a;">무엇부터 바꿔야 하나</p>
+      <p style="margin: 0 0 7px; font-size: 10px; color: #64748b; line-height: 1.4;">목표 기반 전략 추천과 별개로, 현재 계획에서 먼저 살펴볼 항목입니다.</p>
       <p style="margin: 0 0 8px; font-size: 10.5px; color: #64748b;">이미 계산된 결과에서 영향이 큰 순서로 정리했습니다. 아래로 갈수록 효과가 작습니다.</p>
       ${violationBasisHtml}
       <ol style="margin: 0; padding-left: 16px;">${rows}</ol>

@@ -26,6 +26,10 @@ export interface AnalysisRuntimeValue extends StrategyPipeline {
   compareResults: Array<{ id: string; name: string; result: SimulationResult }>;
 }
 
+// `recommendation`은 useStrategyPipeline의 legacy Utility 추천이고,
+// `strategyOptimization`은 StrategyOptimizer의 목표 기반 페르소나 추천이다.
+// 둘은 현재 별도 production 기능으로 소비되므로 하나의 결과로 간주하지 않는다.
+
 interface AnalysisRuntimeProps {
   request: AnalysisRequest;
   engine: LegacySimulationEngine;
