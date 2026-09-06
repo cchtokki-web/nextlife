@@ -54,6 +54,13 @@
   pointer-events: none;
 }
 
+.moneyHint {
+  display: block;
+  margin-top: 6px;
+  color: rgba(226, 232, 240, 0.72);
+  font-size: 0.78rem;
+}
+
 .selectGroup {
   display: flex;
   gap: 0.5rem;

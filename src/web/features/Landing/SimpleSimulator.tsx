@@ -73,6 +73,57 @@ function ManWonInput({
   );
 }
 
+function EokWonInput({
+  name, value, onChangeWon,
+}: {
+  name: string;
+  value: number;
+  onChangeWon: (won: number) => void;
+}) {
+  const draft = useNumericDraft({
+    value,
+    format: (won) => (won / 100_000_000).toLocaleString(),
+    parse: (raw) => {
+      const numeric = raw.replace(/,/g, '').replace(/[^0-9.]/g, '');
+      return numeric === '' ? 0 : Number(numeric) * 100_000_000;
+    },
+    onCommit: onChangeWon,
+    formatDraft: (raw) => {
+      const numeric = raw.replace(/,/g, '').replace(/[^0-9.]/g, '');
+      return numeric === '' ? '' : numeric;
+    },
+  });
+
+  const enteredEok = Number(draft.value.replace(/,/g, '')) || 0;
+  const enteredWon = enteredEok * 100_000_000;
+
+  return (
+    <>
+      <div className={styles.inputWrapper}>
+        <input
+          name={name}
+          type="text"
+          inputMode="numeric"
+          autoComplete="off"
+          autoCorrect="off"
+          autoCapitalize="off"
+          spellCheck={false}
+          placeholder="예: 2"
+          value={draft.value}
+          onChange={draft.onChange}
+          onBlur={draft.onBlur}
+          className={styles.input}
+          aria-describedby={`${name}-hint`}
+        />
+        <span className={styles.unit}>억원</span>
+      </div>
+      <span id={`${name}-hint`} className={styles.moneyHint}>
+        {enteredWon > 0 ? `입력 금액: ${enteredWon.toLocaleString()}원` : '예: 2억원 = 200,000,000원'}
+      </span>
+    </>
+  );
+}
+
 function readSavedInput(): Partial<SimpleSimulationInput> | null {
   try {
     const saved = localStorage.getItem(SIMPLE_SIMULATOR_INPUT_KEY);
@@ -259,15 +310,12 @@ export function SimpleSimulator() {
               </div>
 
               <div className={styles.inputGroup}>
-                <label>현재 모은 자산</label>
-                <div className={styles.inputWrapper}>
-                  <ManWonInput
-                    name="currentAssets"
-                    value={input.currentAssets}
-                    onChangeWon={(won) => setInput(prev => ({ ...prev, currentAssets: won }))}
-                  />
-                  <span className={styles.unit}>만원</span>
-                </div>
+                <label>현재 보유 금융자산</label>
+                <EokWonInput
+                  name="currentAssets"
+                  value={input.currentAssets}
+                  onChangeWon={(won) => setInput(prev => ({ ...prev, currentAssets: won }))}
+                />
               </div>
 
               <div className={styles.inputGroup}>
