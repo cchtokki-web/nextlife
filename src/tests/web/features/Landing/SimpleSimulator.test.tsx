@@ -21,9 +21,9 @@ describe('SimpleSimulator 금액 입력', () => {
 
     expect(input).toHaveValue('');
 
-    fireEvent.change(input, { target: { value: '3000' } });
+    fireEvent.change(input, { target: { value: '3' } });
 
-    expect(input).toHaveValue('3,000');
+    expect(input).toHaveValue('3');
   });
 
   test('포커스를 잃으면 저장된 금액을 만원 단위 콤마 표기로 되돌린다', () => {
@@ -34,6 +34,21 @@ describe('SimpleSimulator 금액 입력', () => {
     fireEvent.blur(input);
 
     expect(input).toHaveValue('0');
+  });
+
+  test('현재 자산은 억원으로 입력하고 원화 환산 금액을 보여준다', () => {
+    localStorage.clear();
+    sessionStorage.clear();
+    render(<SimpleSimulator />);
+    const input = document.querySelector('input[name="currentAssets"]') as HTMLInputElement;
+
+    expect(input).toHaveValue('2');
+    expect(screen.getByText('입력 금액: 200,000,000원')).toBeInTheDocument();
+
+    fireEvent.change(input, { target: { value: '3' } });
+
+    expect(input).toHaveValue('3');
+    expect(screen.getByText('입력 금액: 300,000,000원')).toBeInTheDocument();
   });
 });
 
