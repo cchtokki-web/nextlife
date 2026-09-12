@@ -57,6 +57,6 @@ ENV HOSTNAME="0.0.0.0"
 
 USER root
 RUN npm install -g prisma@6.19.3
-RUN chmod +x /app/start.sh
+RUN sed -i 's/\r$//' /app/start.sh && chmod +x /app/start.sh
 
 CMD ["/app/start.sh"]
