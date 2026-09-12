@@ -4,6 +4,7 @@ import type { RetirementGoals, RetirementProfile, RetirementStrategy } from '../
 import type { RankedStrategyCandidate } from '../strategy/StrategyOptimizer';
 import { normalizeRetirementGoals } from '../entities/retirementGoal';
 import { goalPriorityWeight } from '../evaluation/GoalEvaluationEngine';
+import { NATIONAL_PENSION_NORMAL_START_AGE } from '../usecases/pension/nationalPensionRules';
 
 /** Backward-compatible contract used by the existing sentinel/checklist recommendation path. */
 export interface LegacyRecommendationEngineContract {
@@ -325,6 +326,62 @@ export const RECOMMENDATION_PERSONAS: ReadonlyArray<PersonaDefinition> = [
 ];
 
 /**
+ * 조기 국민연금은 연금 공백을 메울 필요가 확인될 때만 사용자 추천에 포함한다.
+ *
+ * 결정론 후보를 같은 은퇴 나이·소비 패턴으로 짝지어 정상 개시 후보의 60~64세 생활비
+ * 부족액을 확인한다. 정상 개시 후보가 공백을 전부 충당할 수 있거나, 비교 후보/연도별 원장이
+ * 없어 필요성을 입증하지 못하면 조기수령안을 추천하지 않는다. 후보 생성과 결정론 평가에는
+ * 남기고 최종 페르소나 추천 자격만 제한한다.
+ */
+function prePensionShortfall(candidate: RankedStrategyCandidate): number | null {
+  const retirementAge = candidate.candidate.dimensions.retirementAge;
+  const bridgeYearCount = NATIONAL_PENSION_NORMAL_START_AGE - retirementAge;
+  if (bridgeYearCount <= 0) return null;
+
+  const bridgeYears = candidate.simulation.yearlyResults
+    .filter((year) => year.age >= retirementAge && year.age < NATIONAL_PENSION_NORMAL_START_AGE)
+    .sort((left, right) => left.age - right.age);
+  if (bridgeYears.length !== bridgeYearCount) return null;
+
+  for (let index = 0; index < bridgeYears.length; index += 1) {
+    if (bridgeYears[index].age !== retirementAge + index
+      || !Number.isFinite(bridgeYears[index].unmetSpending)) return null;
+  }
+  return bridgeYears.reduce((sum, year) => sum + year.unmetSpending, 0);
+}
+
+function hasJustifiedEarlyNationalPension(
+  candidate: RankedStrategyCandidate,
+  eligible: readonly ValidatedStrategyCandidate[],
+): boolean {
+  const { dimensions } = candidate.candidate;
+  const claimAge = dimensions.nationalPensionStartAge;
+  if (claimAge >= NATIONAL_PENSION_NORMAL_START_AGE) return true;
+
+  const earlyShortfall = prePensionShortfall(candidate);
+  if (earlyShortfall === null) return false;
+
+  const normalAlternatives = eligible.filter((alternative) => {
+    const other = alternative.candidate.dimensions;
+    return other.nationalPensionStartAge === NATIONAL_PENSION_NORMAL_START_AGE
+      && other.retirementAge === dimensions.retirementAge
+      && other.spendingPattern === dimensions.spendingPattern;
+  });
+  if (normalAlternatives.length === 0) return false;
+
+  // If even one validated normal-start plan covers this bridge, the early claim is not necessary
+  // to protect the selected retirement age and spending pattern.
+  const normalShortfalls = normalAlternatives.map(prePensionShortfall);
+  if (normalShortfalls.some((shortfall) => shortfall === null)) return false;
+  const completeNormalShortfalls = normalShortfalls.filter(
+    (shortfall): shortfall is number => shortfall !== null,
+  );
+  const bestNormalShortfall = Math.min(...completeNormalShortfalls);
+
+  return bestNormalShortfall > earlyShortfall;
+}
+
+/**
  * Converts Monte Carlo-validated candidates into the user-facing recommendation personas.
  *
  * A persona is emitted only when a candidate genuinely carries its defining trait, so fewer than
@@ -344,11 +401,13 @@ export class RecommendationEngine {
     goals?: RetirementGoals,
   ): FinalStrategyRecommendations {
     const eligible = candidates.filter(isValidatedCandidate);
+    const recommendationCandidates = eligible.filter((candidate) =>
+      hasJustifiedEarlyNationalPension(candidate, eligible));
     const used = new Set<string>();
     const recommendations: CandidateRecommendation[] = [];
 
     for (const definition of RECOMMENDATION_PERSONAS) {
-      const candidate = eligible
+      const candidate = recommendationCandidates
         .filter((item) => !used.has(item.candidate.id) && definition.qualifies(item))
         .sort(definition.compare)[0];
       if (!candidate) continue;

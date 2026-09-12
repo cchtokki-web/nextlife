@@ -35,6 +35,9 @@ function candidate(input: {
   id: string;
   spending: 'FIXED' | 'FRONT_LOADED' | 'CARE_HEAVY';
   goalProbability: number;
+  retirementAge?: number;
+  nationalPensionStartAge?: number;
+  bridgeShortfallByAge?: readonly { age: number; unmetSpending: number }[];
   spendingProbability?: number;
   survivalProbability?: number;
   averageFulfillment?: number;
@@ -50,14 +53,18 @@ function candidate(input: {
       id: input.id,
       strategy: domain.strategy,
       dimensions: {
-        retirementAge: domain.strategy.retirementAge,
-        nationalPensionTiming: 'NORMAL',
-        nationalPensionStartAge: 65,
+        retirementAge: input.retirementAge ?? domain.strategy.retirementAge,
+        nationalPensionTiming: (input.nationalPensionStartAge ?? 65) < 65 ? 'EARLY' : 'NORMAL',
+        nationalPensionStartAge: input.nationalPensionStartAge ?? 65,
         withdrawalPolicy: 'GENERAL_FIRST',
         spendingPattern: input.spending,
       },
     },
-    simulation: { yearlyResults: [], depletionAge: null, endingAssets: 100 },
+    simulation: {
+      yearlyResults: (input.bridgeShortfallByAge ?? []) as RankedStrategyCandidate['simulation']['yearlyResults'],
+      depletionAge: null,
+      endingAssets: 100,
+    },
     evaluation: {
       hardConstraintsSatisfied: true,
       goalEvaluations: input.goals ? evaluationsFor(input.goals, input.missed ?? []) : [],
@@ -126,6 +133,103 @@ describe('RecommendationEngine', () => {
 
     expect(result.recommendations).toHaveLength(1);
     expect(result.recommendations[0].candidate.candidate.id).toBe('validated');
+  });
+
+  test('정상 개시 대안이 60~64세 생활비 공백을 충당하면 조기수령안을 추천하지 않는다', () => {
+    const bridgeYears = Array.from({ length: 5 }, (_, index) => ({
+      age: 60 + index,
+      unmetSpending: 0,
+    }));
+    const early = candidate({
+      id: 'early-60',
+      spending: 'FIXED',
+      goalProbability: 0.99,
+      retirementAge: 60,
+      nationalPensionStartAge: 60,
+      bridgeShortfallByAge: bridgeYears,
+    });
+    const normal = candidate({
+      id: 'normal-65',
+      spending: 'FIXED',
+      goalProbability: 0.9,
+      retirementAge: 60,
+      nationalPensionStartAge: 65,
+      bridgeShortfallByAge: bridgeYears,
+    });
+
+    const result = new RecommendationEngine().recommend([early, normal]);
+
+    expect(result.recommendations.map((item) => item.candidate.candidate.id)).not.toContain('early-60');
+  });
+
+  test('정상 개시안에 은퇴 전 연금 공백 부족액이 있고 조기안이 줄일 때만 조기수령을 추천한다', () => {
+    const noShortfall = Array.from({ length: 5 }, (_, index) => ({
+      age: 60 + index,
+      unmetSpending: 0,
+    }));
+    const normalShortfall = noShortfall.map((year) => ({
+      ...year,
+      unmetSpending: 1_000_000,
+    }));
+    const early = candidate({
+      id: 'early-60',
+      spending: 'FIXED',
+      goalProbability: 0.98,
+      retirementAge: 60,
+      nationalPensionStartAge: 60,
+      bridgeShortfallByAge: noShortfall,
+    });
+    const normal = candidate({
+      id: 'normal-65',
+      spending: 'FIXED',
+      goalProbability: 0.8,
+      retirementAge: 60,
+      nationalPensionStartAge: 65,
+      bridgeShortfallByAge: normalShortfall,
+    });
+
+    const result = new RecommendationEngine().recommend([early, normal]);
+
+    expect(result.recommendations.map((item) => item.candidate.candidate.id)).toContain('early-60');
+  });
+
+  test('정상 개시 비교안이나 완전한 공백 원장이 없으면 조기수령 필요성을 추정하지 않는다', () => {
+    const earlyWithoutPeer = candidate({
+      id: 'early-without-peer',
+      spending: 'FIXED',
+      goalProbability: 0.99,
+      retirementAge: 60,
+      nationalPensionStartAge: 60,
+      bridgeShortfallByAge: Array.from({ length: 5 }, (_, index) => ({
+        age: 60 + index,
+        unmetSpending: 1_000_000,
+      })),
+    });
+    const earlyWithoutLedger = candidate({
+      id: 'early-without-ledger',
+      spending: 'FRONT_LOADED',
+      goalProbability: 0.99,
+      retirementAge: 60,
+      nationalPensionStartAge: 60,
+    });
+    const normalWithoutLedger = candidate({
+      id: 'normal-without-ledger',
+      spending: 'FRONT_LOADED',
+      goalProbability: 0.8,
+      retirementAge: 60,
+      nationalPensionStartAge: 65,
+    });
+
+    const result = new RecommendationEngine().recommend([
+      earlyWithoutPeer,
+      earlyWithoutLedger,
+      normalWithoutLedger,
+    ]);
+
+    expect(result.recommendations.map((item) => item.candidate.candidate.id))
+      .not.toContain('early-without-peer');
+    expect(result.recommendations.map((item) => item.candidate.candidate.id))
+      .not.toContain('early-without-ledger');
   });
 
   // C7: 안정형·균형형은 자격 조건 없이 비교자만으로 정의되므로, 어떤 후보든 세 페르소나
