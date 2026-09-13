@@ -166,6 +166,21 @@ describe('ScenarioManager 설정 메뉴', () => {
 
       expect(screen.getByText('재분석 필요')).toBeInTheDocument();
     });
+
+    test('활성 시나리오의 현재 분석이 있으면 저장된 과거 해시보다 현재 상태를 표시한다', () => {
+      const state = makeScenarioState();
+      state.scenarios[0].analyzedAt = '2026-08-29T00:00:00.000Z';
+      state.scenarios[0].analyzedParamsHash = scenarioAnalysisHash({
+        ...initialParams,
+        userProfile: { ...initialParams.userProfile, currentAge: 41 },
+      });
+      render(<ScenarioManager scenarioState={state} analysisIsCurrent />);
+
+      fireEvent.click(screen.getByRole('button', { name: /관리/ }));
+
+      expect(screen.getByText('분석 완료')).toBeInTheDocument();
+      expect(screen.queryByText('재분석 필요')).not.toBeInTheDocument();
+    });
   });
 
   describe('목적별 비교안', () => {

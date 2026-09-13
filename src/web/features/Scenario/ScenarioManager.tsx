@@ -76,18 +76,25 @@ const ScenarioItem: React.FC<ScenarioItemProps> = ({
       return { className: styles.analysisFailedBadge, label: '분석 실패' };
     }
 
-    const activeIsStale = isActive && !analysisIsCurrent;
+    // 활성 시나리오에는 현재 입력으로 복원·실행 중인 분석이 있을 수 있다. 이 경우
+    // persisted hash는 마지막으로 사용자가 분석 버튼을 눌렀을 때의 값이라 오래됐더라도,
+    // 현재 결과와 버튼 상태는 analysisIsCurrent가 더 직접적인 근거다. 두 신호를 OR 하면
+    // 버튼은 잠겨 있는데 배지는 「재분석 필요」라고 말하는 모순이 생긴다.
+    if (isActive) {
+      return analysisIsCurrent
+        ? { className: styles.analyzedBadge, label: '분석 완료' }
+        : { className: styles.analysisNeededBadge, label: '재분석 필요' };
+    }
+
     if (!isComparableScenarioAnalysisHash(scenario.analyzedParamsHash)) {
       // 이 필드가 생기기 전에 분석했거나 해시 규칙이 바뀐 시나리오다. 무엇으로 분석했는지
       // 알 수 없으므로 「분석 완료」라고 단언하지 않는다 — 단언하면 그 뒤로 아무리 설정을
       // 바꿔도 영원히 초록 배지가 유지된다. 한 번 더 분석하면 그때부터 추적이 시작된다.
-      return activeIsStale
-        ? { className: styles.analysisNeededBadge, label: '재분석 필요' }
-        : { className: styles.analysisUnknownBadge, label: '분석 시점 확인 불가' };
+      return { className: styles.analysisUnknownBadge, label: '분석 시점 확인 불가' };
     }
 
     const hashIsStale = scenario.analyzedParamsHash !== scenarioAnalysisHash(scenario.data);
-    return hashIsStale || activeIsStale
+    return hashIsStale
       ? { className: styles.analysisNeededBadge, label: '재분석 필요' }
       : { className: styles.analyzedBadge, label: '분석 완료' };
   })();
