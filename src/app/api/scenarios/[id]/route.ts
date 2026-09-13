@@ -60,7 +60,7 @@ export async function PUT(
       updateData.data = JSON.stringify(data);
     }
     if (isDefault !== undefined) updateData.isDefault = isDefault;
-    // 「분석 시작」을 눌렀다는 사실. 다음 로그인에서 결과 화면을 다시 세울 유일한 근거이며,
+    // 분석 요청이 실행됐다는 사실. 다음 로그인에서 결과 화면을 다시 세울 유일한 근거이며,
     // data를 건드리지 않으므로 위 잠금 판정(encrypted)에도 관여하지 않는다 — 관여하게 두면
     // E2EE를 정상적으로 쓰는 모든 계정에서 이 표시가 409로 막힌다.
     if (analyzed !== undefined) updateData.analyzedAt = analyzed ? new Date() : null;

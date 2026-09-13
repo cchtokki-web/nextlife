@@ -119,11 +119,15 @@ export default function Home() {
   // 다시 로그인해도 분석했던 계획이 그대로 열려야 한다. 결과를 저장해 두는 것이 아니라,
   // 시나리오에 남은 「분석함」 표시를 보고 저장된 params로 같은 계산을 다시 돌린다.
   const activeScenario = scenarios.find((scenario) => scenario.id === activeScenarioId) ?? null;
+  const persistRestoredAnalysis = useCallback((scenarioId: string, params: SimulationParams) => {
+    setScenarioAnalyzed(scenarioId, true, params);
+  }, [setScenarioAnalyzed]);
   const { request: analysisRequest, setRequest: setAnalysisRequest } = useAnalysisRequest({
     isLoaded,
     activeScenarioId,
     analyzedAt: activeScenario?.analyzedAt ?? null,
     buildRequest: () => buildAnalysisRequest(activeParams),
+    onRestore: persistRestoredAnalysis,
   });
 
   // 추천 카드의 「적용」과 그 되돌리기.

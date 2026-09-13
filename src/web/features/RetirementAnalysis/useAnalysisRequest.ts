@@ -1,7 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { AnalysisRequest } from './AnalysisRuntime';
+import type { SimulationParams } from '../../../core/entities/types';
 
 interface UseAnalysisRequestOptions {
   /** 시나리오 적재가 끝났는가. 끝나기 전에는 복원할 대상이 무엇인지 알 수 없다. */
@@ -11,6 +12,8 @@ interface UseAnalysisRequestOptions {
   analyzedAt: string | null;
   /** 지금 활성 시나리오로 분석 요청을 만든다. 렌더 중에 불리므로 순수해야 한다. */
   buildRequest: () => AnalysisRequest;
+  /** 저장된 분석 요청을 현재 params로 복원한 뒤 그 입력 해시를 저장한다. */
+  onRestore?: (scenarioId: string, params: SimulationParams) => void;
 }
 
 export interface UseAnalysisRequestResult {
@@ -39,9 +42,19 @@ export function useAnalysisRequest({
   activeScenarioId,
   analyzedAt,
   buildRequest,
+  onRestore,
 }: UseAnalysisRequestOptions): UseAnalysisRequestResult {
   const [request, setRequest] = useState<AnalysisRequest | null>(null);
   const [restoredScenarioId, setRestoredScenarioId] = useState<string | null>(null);
+  const [restoredAnalysis, setRestoredAnalysis] = useState<{
+    scenarioId: string;
+    params: SimulationParams;
+  } | null>(null);
+  const onRestoreRef = useRef(onRestore);
+
+  useEffect(() => {
+    onRestoreRef.current = onRestore;
+  }, [onRestore]);
 
   // 이펙트가 아니라 활성 시나리오가 바뀐 순간 렌더 중에 조정한다. 이펙트로 하면 안내 문구로
   // 한 번 커밋한 뒤 대시보드로 바뀌어, 복원한 계획이 로드할 때마다 깜빡인다.
@@ -51,8 +64,20 @@ export function useAnalysisRequest({
     // 분석한 적 없는 시나리오로 옮겨 왔다면 이전 시나리오의 결과를 지운다. 남겨 두면 그
     // 결과는 어차피 stale로 판정되어 "다시 분석해 주세요"가 뜨는데, 한 번도 분석한 적 없는
     // 시나리오에서 그 문구는 사실이 아니다.
-    setRequest(analyzedAt ? buildRequest() : null);
+    const restoredRequest = analyzedAt ? buildRequest() : null;
+    setRequest(restoredRequest);
+    setRestoredAnalysis(restoredRequest
+      ? { scenarioId: activeScenarioId, params: restoredRequest.params }
+      : null);
   }
+
+  // Persist after commit, never during render. Restoring reruns the current scenario data, so its
+  // analysis hash must move with that request; otherwise another scenario selection makes this
+  // one look stale again even though it was just recalculated.
+  useEffect(() => {
+    if (!restoredAnalysis || restoredAnalysis.scenarioId !== activeScenarioId) return;
+    onRestoreRef.current?.(restoredAnalysis.scenarioId, restoredAnalysis.params);
+  }, [restoredAnalysis, activeScenarioId]);
 
   return { request, setRequest };
 }

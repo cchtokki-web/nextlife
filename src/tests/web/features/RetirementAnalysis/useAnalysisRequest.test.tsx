@@ -20,13 +20,17 @@ interface HookProps {
 
 let buildRequest: (params: SimulationParams) => AnalysisRequest;
 
-function render(initial: HookProps) {
+function render(
+  initial: HookProps,
+  onRestore: (scenarioId: string, params: SimulationParams) => void = vi.fn(),
+) {
   return renderHook(
     (props: HookProps) => useAnalysisRequest({
       isLoaded: props.isLoaded,
       activeScenarioId: props.activeScenarioId,
       analyzedAt: props.analyzedAt,
       buildRequest: () => buildRequest(props.params),
+      onRestore,
     }),
     { initialProps: initial }
   );
@@ -49,6 +53,15 @@ describe('useAnalysisRequest — 저장된 계획 복원', () => {
 
     expect(result.current.request).not.toBeNull();
     expect(result.current.request!.params).toBe(params);
+  });
+
+  test('복원 요청의 params를 분석 기록 갱신에 전달한다', () => {
+    const params = paramsWithAge(51);
+    const onRestore = vi.fn();
+    render({ isLoaded: true, activeScenarioId: 's1', analyzedAt: ANALYZED_AT, params }, onRestore);
+
+    expect(onRestore).toHaveBeenCalledTimes(1);
+    expect(onRestore).toHaveBeenCalledWith('s1', params);
   });
 
   test('분석한 적 없는 시나리오는 요청을 세우지 않는다', () => {
@@ -96,9 +109,10 @@ describe('useAnalysisRequest — 저장된 계획 복원', () => {
 
   test('같은 시나리오에 머무는 동안 다시 세우지 않는다', () => {
     const params = paramsWithAge(51);
+    const onRestore = vi.fn();
     const { result, rerender } = render({
       isLoaded: true, activeScenarioId: 's1', analyzedAt: ANALYZED_AT, params,
-    });
+    }, onRestore);
     const restored = result.current.request;
 
     rerender({ isLoaded: true, activeScenarioId: 's1', analyzedAt: ANALYZED_AT, params });
@@ -106,6 +120,7 @@ describe('useAnalysisRequest — 저장된 계획 복원', () => {
 
     expect(result.current.request).toBe(restored);
     expect(buildRequest).toHaveBeenCalledTimes(1);
+    expect(onRestore).toHaveBeenCalledTimes(1);
   });
 
   // 사용자가 설정을 고치면 대시보드는 stale로 판정되어 "다시 분석해 주세요"로 물러난다.
@@ -141,9 +156,10 @@ describe('useAnalysisRequest — 저장된 계획 복원', () => {
 describe('useAnalysisRequest — 시나리오 전환', () => {
   test('분석했던 다른 시나리오로 옮기면 그 시나리오로 다시 세운다', () => {
     const first = paramsWithAge(51);
+    const onRestore = vi.fn();
     const { result, rerender } = render({
       isLoaded: true, activeScenarioId: 's1', analyzedAt: ANALYZED_AT, params: first,
-    });
+    }, onRestore);
     expect(result.current.request!.params).toBe(first);
 
     const second = paramsWithAge(61);
@@ -151,6 +167,10 @@ describe('useAnalysisRequest — 시나리오 전환', () => {
 
     expect(result.current.request!.params).toBe(second);
     expect(buildRequest).toHaveBeenCalledTimes(2);
+    expect(onRestore.mock.calls).toEqual([
+      ['s1', first],
+      ['s2', second],
+    ]);
   });
 
   // 남겨 두면 그 결과는 stale로 판정되어 "입력 변경사항을 다시 분석해 주세요"가 뜨는데,

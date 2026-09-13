@@ -246,7 +246,7 @@ const persistCompareScenarioIds = (compareScenarioIds: string[]): void => {
     .catch(err => console.error('Failed to persist compare scenarios:', err));
 };
 
-// 「분석 시작」을 눌렀다는 사실을 서버에 기록한다.
+// 분석 요청이 실행된 사실과 그 입력 해시를 서버에 기록한다.
 //
 // 시나리오 «데이터»는 보내지 않는다. 다만 analyzedParamsHash는 그 데이터에서 유도된 값이라
 // 이 요청이 E2EE와 완전히 무관하지는 않다 — 서버는 복원 불가능한 고정폭 해시만 보관한다는
@@ -1099,7 +1099,7 @@ export function useScenarios() {
   };
 
   /**
-   * 이 시나리오에서 「분석 시작」을 눌렀다(또는 그 사실을 지운다)고 기록한다.
+   * 이 시나리오의 분석 요청 실행과 입력 해시를 기록한다(또는 그 기록을 지운다).
    *
    * 분석 «결과»는 저장하지 않는다. 저장하는 것은 사실 하나뿐이고, 다음 접속에서 화면이
    * 저장된 params로 같은 계산을 다시 돌려 결과를 세운다(Scenario.analyzedAt 주석 참조).
