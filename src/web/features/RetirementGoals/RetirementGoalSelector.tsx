@@ -33,7 +33,6 @@ export interface GoalFocusRequest {
 
 const goalCardId = (type: RetirementGoalType) => `goal-card-${type}`;
 const targetInputId = (type: RetirementGoalType) => `goal-target-${type}`;
-const targetConfirmId = (type: RetirementGoalType) => `goal-target-confirm-${type}`;
 
 interface RetirementGoalSelectorProps {
   goals: readonly RetirementGoal[];
@@ -105,9 +104,8 @@ export function RetirementGoalSelector({
   };
 
   /**
-   * 금액을 «확정하는» 행위. 출처 표시를 붙이는 곳은 여기 하나뿐이고, 이 함수를 부르는 곳은
-   * 둘이다 — 제안된 금액을 그대로 받아들이는 「이 금액으로 확정」 버튼과, 직접 고쳐 넣은
-   * 입력을 다 친 시점의 commitTargetEdit. 둘 다 사용자의 «행위»다.
+   * 사용자가 직접 입력을 마친 금액을 확정한다. 입력 도중에는 출처 표시를 붙이지 않고,
+   * blur·Enter로 입력을 끝냈을 때만 commitTargetEdit에서 호출한다.
    */
   const confirmTargetValue = (type: RetirementGoalType) => {
     updateGoal(type, { targetValueSource: 'user' });
@@ -160,12 +158,12 @@ export function RetirementGoalSelector({
   };
 
   // 가리킨 목표로 «데려간다». 사유 문구만으로는 어느 카드인지 알 수 없고, 목록이 길면
-  // 화면 밖에 있을 수도 있다. 포커스를 확정 버튼에 두면 키보드·스크린리더 사용자도 같은
-  // 자리에 도착한다. jsdom에는 scrollIntoView가 없어 선택 호출로 둔다.
+  // 화면 밖에 있을 수도 있다. 금액 입력창에 포커스를 두어 바로 직접 입력하게 한다.
+  // jsdom에는 scrollIntoView가 없어 선택 호출로 둔다.
   useEffect(() => {
     if (!focusGoal) return;
     document.getElementById(goalCardId(focusGoal.type))?.scrollIntoView?.({ block: 'center' });
-    document.getElementById(targetConfirmId(focusGoal.type))?.focus();
+    focusTargetInput(focusGoal.type);
   }, [focusGoal]);
 
   return (
@@ -350,9 +348,8 @@ export function RetirementGoalSelector({
                       지키기」를 골라 둔 사용자가 자기 금액이 강제되지 않는다는 것을 알 수 없다.
                       제안값 자체는 지금 쓰는 것을 그대로 둔다 — 새 숫자를 만들지 않는다.
 
-                      확정은 «명시적 행위»다. 두 갈래 모두 확정으로 끝난다 — 제안된 금액을
-                      그대로 받아들이는 것(이 버튼)도 사용자의 행위이고, 직접 고쳐 넣는 것
-                      (commitTargetEdit)도 그렇다.
+                      확정은 «명시적 행위»다. 사용자가 목표값을 직접 입력하고 입력을 마친
+                      경우에만 확정한다(commitTargetEdit).
 
                       그래서 이 패널이 남는 조건은 「건드린 적 없는 씨앗」이 아니라 «미확정
                       금액»이다(suggestedValue !== undefined). 둘은 대부분 같지만 «고치는
@@ -361,7 +358,7 @@ export function RetirementGoalSelector({
                       시점에 사라진다. 그 편이 맞다: 그 순간 금액은 실제로 미확정이다.
                       자기 숫자를 다 적어 넣은 사용자에게만 같은 말을 두 번 시키지 않는다.
 
-                      별도 단계를 만들지 않고 목표 카드 안에서 처리한다 — 확인해야 할 금액과
+                      별도 단계를 만들지 않고 목표 카드 안에서 처리한다 — 입력해야 할 금액과
                       그 금액이 속한 목표는 같은 자리에 있어야 한다. */}
                   {suggestedValue !== undefined && (
                     <div className="flex flex-col gap-2 rounded-lg border border-card-border bg-black/20 p-2.5">
@@ -375,12 +372,10 @@ export function RetirementGoalSelector({
                       <p className="text-xs leading-relaxed text-foreground-muted">
                         <strong className="text-foreground">아직 제안 금액입니다</strong>
                         {' '}— 지금 값은 입력하신 계획에서 가져온 것이라 달성·미달 판정에 쓰지
-                        않습니다. 금액을 직접 고치거나 아래에서 확정하면 목표 금액이 됩니다.
+                        않습니다. 목표 금액으로 사용하려면 금액을 직접 입력하고 입력을 마쳐 주세요.
                       </p>
-                      {/* 확인할 금액을 «다시» 적는다. 입력창의 숫자와 같은 값이지만, 확정
-                          버튼 옆에 무엇을 확정하는지가 없으면 사용자는 금액을 보지 않고
-                          누르게 된다. 단위 변환은 하지 않는다 — 저장된 값과 다르게 보이는
-                          숫자를 확정시키는 것이 이 화면이 막으려는 일이다. */}
+                      {/* 입력창에 표시된 제안 금액을 밝혀 둔다. 사용자는 이 값을 직접 입력해
+                          확정할 수 있고, 단위 변환이나 반올림은 하지 않는다. */}
                       <p className="text-sm font-bold text-foreground">
                         {isSpendingGoalType(goal.type) && '월 '}
                         {suggestedValue.toLocaleString()}{unitLabel}
@@ -396,15 +391,6 @@ export function RetirementGoalSelector({
                             금액 수정
                           </button>
                         )}
-                        <button
-                          id={targetConfirmId(goal.type)}
-                          type="button"
-                          aria-label={`${definition.label} 목표를 이 금액으로 확정`}
-                          onClick={() => confirmTargetValue(goal.type)}
-                          className="rounded-lg bg-primary px-3 py-1.5 text-xs font-bold text-white transition hover:opacity-90"
-                        >
-                          이 금액으로 확정
-                        </button>
                       </div>
                     </div>
                   )}

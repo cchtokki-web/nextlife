@@ -168,13 +168,15 @@ describe('RetirementGoalSelector', () => {
       expect(seen.at(-1)![0].targetValueSource).toBeUndefined();
     });
 
-    test('사용자가 확정 버튼을 누른 금액에만 출처 표시가 붙는다', () => {
+    test('직접 입력을 마친 금액에만 출처 표시가 붙는다', () => {
       const seen: RetirementGoal[][] = [];
       render(<SelectorHarness onGoals={(goals) => seen.push(goals)} />);
       fireEvent.click(screen.getByRole('button', { name: /생활비 안정/ }));
 
-      fireEvent.change(screen.getByLabelText('목표 월 생활비'), { target: { value: '4,000,000' } });
-      fireEvent.click(screen.getByRole('button', { name: '생활비 안정 목표를 이 금액으로 확정' }));
+      const input = screen.getByLabelText('목표 월 생활비');
+      fireEvent.focus(input);
+      fireEvent.change(input, { target: { value: '4,000,000' } });
+      fireEvent.blur(input);
 
       expect(seen.at(-1)).toEqual([{
         type: 'LIVING_EXPENSE_STABILITY', priority: 1,
@@ -194,21 +196,22 @@ describe('RetirementGoalSelector', () => {
       expect(screen.getByText(/아직 제안 금액입니다/)).toBeInTheDocument();
     });
 
-    test('제안 상태에는 「아직 제안 금액입니다」와 확정 방법이 함께 뜬다', () => {
+    test('제안 상태에는 미확정 안내와 직접 입력 방법만 표시한다', () => {
       render(<SelectorHarness />);
 
       fireEvent.click(screen.getByRole('button', { name: /생활비 안정/ }));
-      // 문구를 «문장 그대로» 고정한다. 부분 일치로 두면 다른 뜻으로 바뀌어도 통과한다.
       expect(screen.getByText(/아직 제안 금액입니다/).parentElement).toHaveTextContent(
         '아직 제안 금액입니다 — 지금 값은 입력하신 계획에서 가져온 것이라 달성·미달 판정에 '
-        + '쓰지 않습니다. 금액을 직접 고치거나 아래에서 확정하면 목표 금액이 됩니다.',
+        + '쓰지 않습니다. 목표 금액으로 사용하려면 금액을 직접 입력하고 입력을 마쳐 주세요.',
       );
+      expect(screen.queryByRole('button', { name: '생활비 안정 목표를 이 금액으로 확정' })).toBeNull();
 
-      fireEvent.change(screen.getByLabelText('목표 월 생활비'), { target: { value: '4,000,000' } });
-      // «고치는 도중»은 여전히 미확정이다 — 안내는 남고, 확정 버튼이 새 금액을 가리킨다.
+      const input = screen.getByLabelText('목표 월 생활비');
+      fireEvent.focus(input);
+      fireEvent.change(input, { target: { value: '4,000,000' } });
       expect(screen.getByText(/아직 제안 금액입니다/)).toBeInTheDocument();
 
-      fireEvent.click(screen.getByRole('button', { name: '생활비 안정 목표를 이 금액으로 확정' }));
+      fireEvent.blur(input);
       expect(screen.queryByText(/아직 제안 금액입니다/)).not.toBeInTheDocument();
     });
 
@@ -296,9 +299,11 @@ describe('RetirementGoalSelector', () => {
       const seen: RetirementGoal[][] = [];
       render(<SelectorHarness onGoals={(goals) => seen.push(goals)} />);
       fireEvent.click(screen.getByRole('button', { name: /생활비 안정/ }));
-      fireEvent.click(screen.getByRole('button', { name: '생활비 안정 목표를 이 금액으로 확정' }));
-
       const input = screen.getByLabelText('목표 월 생활비');
+      fireEvent.focus(input);
+      fireEvent.change(input, { target: { value: '4,000,000' } });
+      fireEvent.blur(input);
+
       fireEvent.focus(input);
       fireEvent.change(input, { target: { value: '5,000,000' } });
       expect(seen.at(-1)![0].targetValueSource).toBeUndefined();
@@ -450,12 +455,10 @@ describe('RetirementGoalSelector', () => {
       render(<SelectorHarness initial={seeded('LIVING_EXPENSE_STABILITY', 'HARD')} />);
 
       expect(screen.getByText('반드시 지킬 최소 생활비를 확인해 주세요.')).toBeInTheDocument();
-      // 무엇을 확정하는지가 버튼 옆에 있어야 한다. 단위 변환도 반올림도 하지 않는다 —
-      // 저장된 값과 다르게 보이는 숫자를 확정시키는 것이 이 화면이 막으려는 일이다.
+      // 사용자가 직접 입력할 값과 제안값을 같은 단위로 확인할 수 있어야 한다.
       expect(screen.getByText('월 3,500,000원')).toBeInTheDocument();
       expect(screen.getByRole('button', { name: '생활비 안정 목표 금액 수정' })).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: '생활비 안정 목표를 이 금액으로 확정' }))
-        .toHaveTextContent('이 금액으로 확정');
+      expect(screen.queryByRole('button', { name: '생활비 안정 목표를 이 금액으로 확정' })).toBeNull();
     });
 
     test('「반드시 지키기」로 고른 상속 목표는 남길 자산의 확인을 요구한다', () => {
@@ -471,10 +474,7 @@ describe('RetirementGoalSelector', () => {
       render(<SelectorHarness initial={seeded('LIVING_EXPENSE_STABILITY', 'SOFT')} />);
 
       expect(screen.queryByText(/반드시 지킬 최소 생활비를 확인해 주세요./)).toBeNull();
-      // 다만 확정할 «길»은 남는다 — 타이핑이 더 이상 확정이 아니므로, 이것마저 없으면
-      // SOFT 사용자는 자기 금액을 판정에 넣을 방법을 잃는다.
-      expect(screen.getByRole('button', { name: '생활비 안정 목표를 이 금액으로 확정' }))
-        .toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: '생활비 안정 목표를 이 금액으로 확정' })).toBeNull();
     });
 
     test('「금액 수정」은 목표금액 입력창으로 데려간다', () => {
@@ -485,8 +485,8 @@ describe('RetirementGoalSelector', () => {
       expect(document.activeElement).toBe(screen.getByLabelText('목표 월 생활비'));
     });
 
-    // 두 갈래 모두 확정으로 끝난다 — 제안된 금액을 그대로 받는 것도 사용자의 행위다.
-    test('제안 금액을 그대로 확정하면 확인 요구가 사라진다', () => {
+    // 제안 금액을 목표로 쓰려면 사용자가 직접 입력을 마쳐야 한다.
+    test('제안 금액을 직접 다시 입력하면 확인 요구가 사라진다', () => {
       const seen: RetirementGoal[][] = [];
       render(
         <SelectorHarness
@@ -495,15 +495,18 @@ describe('RetirementGoalSelector', () => {
         />,
       );
 
-      fireEvent.click(screen.getByRole('button', { name: '생활비 안정 목표를 이 금액으로 확정' }));
+      const input = screen.getByLabelText('목표 월 생활비');
+      fireEvent.focus(input);
+      fireEvent.change(input, { target: { value: '4,000,000' } });
+      fireEvent.change(input, { target: { value: '3,500,000' } });
+      fireEvent.blur(input);
 
       expect(seen.at(-1)![0]).toMatchObject({ targetValue: 3_500_000, targetValueSource: 'user' });
       expect(screen.queryByText('반드시 지킬 최소 생활비를 확인해 주세요.')).toBeNull();
     });
 
-    // 확정한 뒤 고친 금액을 여전히 확정으로 읽으면, 사용자가 확인한 적 없는 숫자가 다시
-    // 판정 기준이 된다.
-    test('확정한 금액을 다시 고치면 미확정으로 돌아간다', () => {
+    // 확정한 뒤 새 숫자를 입력하는 동안은 미확정이며, 입력을 마치면 새 금액이 확정된다.
+    test('확정한 금액을 다시 고치면 입력 중에는 미확정이다', () => {
       const seen: RetirementGoal[][] = [];
       render(
         <SelectorHarness
@@ -511,13 +514,19 @@ describe('RetirementGoalSelector', () => {
           onGoals={(goals) => seen.push(goals)}
         />,
       );
-      fireEvent.click(screen.getByRole('button', { name: '생활비 안정 목표를 이 금액으로 확정' }));
+      const input = screen.getByLabelText('목표 월 생활비');
+      fireEvent.focus(input);
+      fireEvent.change(input, { target: { value: '4,000,000' } });
+      fireEvent.blur(input);
 
-      fireEvent.change(screen.getByLabelText('목표 월 생활비'), { target: { value: '4,000,000' } });
-
+      fireEvent.focus(input);
+      fireEvent.change(input, { target: { value: '5,000,000' } });
       expect(seen.at(-1)![0].targetValueSource).toBeUndefined();
       expect('targetValueSource' in seen.at(-1)![0]).toBe(false);
       expect(screen.getByText('반드시 지킬 최소 생활비를 확인해 주세요.')).toBeInTheDocument();
+
+      fireEvent.blur(input);
+      expect(seen.at(-1)![0]).toMatchObject({ targetValue: 5_000_000, targetValueSource: 'user' });
     });
 
     // 이 두 목표의 기준은 씨앗이 아니라 사용자가 1단계에서 «직접 입력한» 값이다(은퇴

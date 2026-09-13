@@ -154,38 +154,41 @@ describe('RetirementInputFlow', () => {
       expect(screen.getByRole('button', { name: '분석 시작' })).toBeDisabled();
       expect(screen.getByRole('status')).toHaveTextContent(
         '「반드시 지키기」로 고른 「생활비 안정」의 금액이 아직 제안 상태입니다. '
-        + '금액을 확인하고 확정해 주세요.',
+        + '목표 금액을 직접 입력해 주세요.',
       );
     });
 
     // 막는 것만으로는 부족하다. 사유는 버튼 옆에 뜨고 목표 카드는 «다른 단계»에 있어,
     // 사용자가 둘을 함께 볼 보장이 없다 — 고칠 곳을 가리켜야 한다.
-    test('사유가 그 목표의 확정 버튼으로 데려간다', () => {
+    test('사유가 그 목표의 금액 입력창으로 데려간다', () => {
       render(<ConfirmationHarness initial={storedHardSeed} />);
       expect(screen.getByRole('button', { name: '1. 개인정보' })).toHaveAttribute('aria-current', 'step');
 
-      fireEvent.click(screen.getByRole('button', { name: '생활비 안정 금액 확인하러 가기' }));
+      fireEvent.click(screen.getByRole('button', { name: '생활비 안정 금액 입력하러 가기' }));
 
       expect(screen.getByRole('button', { name: '3. 은퇴 목표' })).toHaveAttribute('aria-current', 'step');
-      expect(document.activeElement)
-        .toBe(screen.getByRole('button', { name: '생활비 안정 목표를 이 금액으로 확정' }));
+      expect(document.activeElement).toBe(screen.getByLabelText('목표 월 생활비'));
     });
 
-    test('제안 금액을 그대로 확정하면 분석을 시작할 수 있다', () => {
+    test('제안 금액을 직접 입력하면 분석을 시작할 수 있다', () => {
       render(<ConfirmationHarness initial={storedHardSeed} />);
-      fireEvent.click(screen.getByRole('button', { name: '생활비 안정 금액 확인하러 가기' }));
+      fireEvent.click(screen.getByRole('button', { name: '생활비 안정 금액 입력하러 가기' }));
 
-      fireEvent.click(screen.getByRole('button', { name: '생활비 안정 목표를 이 금액으로 확정' }));
+      const input = screen.getByLabelText('목표 월 생활비');
+      fireEvent.change(input, { target: { value: '4,000,000' } });
+      fireEvent.change(input, { target: { value: '3,500,000' } });
+      fireEvent.blur(input);
 
       expect(screen.getByRole('button', { name: '분석 시작' })).toBeEnabled();
     });
 
-    test('금액을 고쳐서 확정해도 분석을 시작할 수 있다', () => {
+    test('금액을 고쳐 입력을 마치면 분석을 시작할 수 있다', () => {
       render(<ConfirmationHarness initial={storedHardSeed} />);
-      fireEvent.click(screen.getByRole('button', { name: '생활비 안정 금액 확인하러 가기' }));
+      fireEvent.click(screen.getByRole('button', { name: '생활비 안정 금액 입력하러 가기' }));
 
-      fireEvent.change(screen.getByLabelText('목표 월 생활비'), { target: { value: '4,000,000' } });
-      fireEvent.click(screen.getByRole('button', { name: '생활비 안정 목표를 이 금액으로 확정' }));
+      const input = screen.getByLabelText('목표 월 생활비');
+      fireEvent.change(input, { target: { value: '4,000,000' } });
+      fireEvent.blur(input);
 
       expect(screen.getByRole('button', { name: '분석 시작' })).toBeEnabled();
     });
@@ -193,12 +196,12 @@ describe('RetirementInputFlow', () => {
     // 여기가 요점이다. 타이핑은 「변경」이지 「확인」이 아니다.
     test('금액을 고치기만 하고 확정하지 않으면 여전히 막힌다', () => {
       render(<ConfirmationHarness initial={storedHardSeed} />);
-      fireEvent.click(screen.getByRole('button', { name: '생활비 안정 금액 확인하러 가기' }));
+      fireEvent.click(screen.getByRole('button', { name: '생활비 안정 금액 입력하러 가기' }));
 
       fireEvent.change(screen.getByLabelText('목표 월 생활비'), { target: { value: '4,000,000' } });
 
       expect(screen.getByRole('button', { name: '분석 시작' })).toBeDisabled();
-      expect(screen.getByRole('status')).toHaveTextContent('금액을 확인하고 확정해 주세요.');
+      expect(screen.getByRole('status')).toHaveTextContent('목표 금액을 직접 입력해 주세요.');
     });
 
     // 여러 목표가 동시에 확인을 기다리면, 사유는 둘을 다 부르고 «버튼마다» 자기 목표로
@@ -217,10 +220,9 @@ describe('RetirementInputFlow', () => {
         '「생활비 안정」·「상속 자산 확보」의 금액이 아직 제안 상태입니다.',
       );
 
-      fireEvent.click(screen.getByRole('button', { name: '상속 자산 확보 금액 확인하러 가기' }));
+      fireEvent.click(screen.getByRole('button', { name: '상속 자산 확보 금액 입력하러 가기' }));
 
-      expect(document.activeElement)
-        .toBe(screen.getByRole('button', { name: '상속 자산 확보 목표를 이 금액으로 확정' }));
+      expect(document.activeElement).toBe(screen.getByLabelText('남기고 싶은 최소 자산'));
     });
 
     // 사유와 그 버튼은 «모든» 단계에 떠 있으므로, 이미 목표 단계에 있는 사용자가 같은
@@ -229,18 +231,16 @@ describe('RetirementInputFlow', () => {
     // 단계를 «떠나지 않고» 두 번 누르는 것이 이 회귀를 잡는 유일한 모양이다.
     test('같은 단계에 머문 채 같은 버튼을 다시 눌러도 다시 데려간다', () => {
       render(<ConfirmationHarness initial={storedHardSeed} />);
-      const pointer = () => screen.getByRole('button', { name: '생활비 안정 금액 확인하러 가기' });
+      const pointer = () => screen.getByRole('button', { name: '생활비 안정 금액 입력하러 가기' });
 
       fireEvent.click(pointer());
       expect(screen.getByRole('button', { name: '3. 은퇴 목표' })).toHaveAttribute('aria-current', 'step');
       (document.activeElement as HTMLElement | null)?.blur();
-      expect(document.activeElement).not.toBe(
-        screen.getByRole('button', { name: '생활비 안정 목표를 이 금액으로 확정' }));
+      expect(document.activeElement).not.toBe(screen.getByLabelText('목표 월 생활비'));
 
       fireEvent.click(pointer());
 
-      expect(document.activeElement)
-        .toBe(screen.getByRole('button', { name: '생활비 안정 목표를 이 금액으로 확정' }));
+      expect(document.activeElement).toBe(screen.getByLabelText('목표 월 생활비'));
     });
 
     // 가리키기는 «한 번» 소비된다. 요청이 남아 있으면 사용자가 나중에 스스로 목표 단계로
@@ -252,7 +252,7 @@ describe('RetirementInputFlow', () => {
       Element.prototype.scrollIntoView = scrollIntoView;
       try {
         render(<ConfirmationHarness initial={storedHardSeed} />);
-        fireEvent.click(screen.getByRole('button', { name: '생활비 안정 금액 확인하러 가기' }));
+        fireEvent.click(screen.getByRole('button', { name: '생활비 안정 금액 입력하러 가기' }));
         expect(scrollIntoView).toHaveBeenCalledOnce();
 
         fireEvent.click(screen.getByRole('button', { name: '1. 개인정보' }));

@@ -80,8 +80,8 @@ export function RetirementInputFlow({
     : goalsMissingTarget.length > 0
       ? '선택한 목표의 목표값을 입력해 주세요.'
       : needsConfirmation
-        ? `「${RETIREMENT_GOAL_CONSTRAINT_LABELS.HARD}」로 고른 ${goalsAwaitingConfirmation
-          .map((goal) => `「${RETIREMENT_GOAL_LABELS[goal.type]}」`).join('·')}의 금액이 아직 제안 상태입니다. 금액을 확인하고 확정해 주세요.`
+      ? `「${RETIREMENT_GOAL_CONSTRAINT_LABELS.HARD}」로 고른 ${goalsAwaitingConfirmation
+          .map((goal) => `「${RETIREMENT_GOAL_LABELS[goal.type]}」`).join('·')}의 금액이 아직 제안 상태입니다. 목표 금액을 직접 입력해 주세요.`
         // 같은 설정으로 다시 눌러 봐야 같은 결과가 나온다. 누를 수 있게 두면 사용자는
         // "아직 반영되지 않은 변경이 남아 있다"는 뜻으로 읽는다.
         : analysisIsCurrent
@@ -166,7 +166,7 @@ export function RetirementInputFlow({
                 onClick={() => pointAtGoal(goal.type)}
                 className="rounded-lg border border-primary/50 px-3 py-1.5 text-xs font-semibold text-primary transition hover:bg-primary/10"
               >
-                {RETIREMENT_GOAL_LABELS[goal.type]} 금액 확인하러 가기
+                {RETIREMENT_GOAL_LABELS[goal.type]} 금액 입력하러 가기
               </button>
             ))}
           </div>
