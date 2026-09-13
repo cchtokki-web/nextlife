@@ -128,9 +128,9 @@ describe('위키 무결성', () => {
    * 노트를 «추가»할 때는 이 숫자를 올린다. 노트를 «지울» 때는 그 결정이 의도적인지 확인하는
    * 자리가 여기다 — 숫자를 낮추는 diff가 리뷰에 보이게 하려는 것이다.
    */
-  test('파일럿 노트 32건이 있다', () => {
+  test('파일럿 노트 33건이 있다', () => {
     expect(concepts).toHaveLength(17);
-    expect(decisions).toHaveLength(15);
+    expect(decisions).toHaveLength(16);
   });
 
   test('type이 폴더와 일치한다', () => {

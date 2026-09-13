@@ -344,22 +344,8 @@ export function RetirementGoalSelector({
                       </span>
                     </label>
                   )}
-                  {/* 확정되지 않은 금액은 판정에 참가하지 않는다. 그 사실을 숨기면 「반드시
-                      지키기」를 골라 둔 사용자가 자기 금액이 강제되지 않는다는 것을 알 수 없다.
-                      제안값 자체는 지금 쓰는 것을 그대로 둔다 — 새 숫자를 만들지 않는다.
-
-                      확정은 «명시적 행위»다. 사용자가 목표값을 직접 입력하고 입력을 마친
-                      경우에만 확정한다(commitTargetEdit).
-
-                      그래서 이 패널이 남는 조건은 「건드린 적 없는 씨앗」이 아니라 «미확정
-                      금액»이다(suggestedValue !== undefined). 둘은 대부분 같지만 «고치는
-                      도중»에 갈린다 — changeTargetValue가 키 입력마다 출처 표시를 떼므로,
-                      확정된 금액을 지우고 다시 치는 동안 이 패널이 도로 나타났다가 커밋
-                      시점에 사라진다. 그 편이 맞다: 그 순간 금액은 실제로 미확정이다.
-                      자기 숫자를 다 적어 넣은 사용자에게만 같은 말을 두 번 시키지 않는다.
-
-                      별도 단계를 만들지 않고 목표 카드 안에서 처리한다 — 입력해야 할 금액과
-                      그 금액이 속한 목표는 같은 자리에 있어야 한다. */}
+                  {/* 제안 금액은 참고값으로 표시한다. 사용자가 목표값을 직접 입력하고 마쳐야
+                      확정된다(commitTargetEdit). */}
                   {suggestedValue !== undefined && (
                     <div className="flex flex-col gap-2 rounded-lg border border-card-border bg-black/20 p-2.5">
                       {goal.constraintType === 'HARD' && (
@@ -369,13 +355,7 @@ export function RetirementGoalSelector({
                             : '반드시 남길 최소 자산을 확인해 주세요.'}
                         </p>
                       )}
-                      <p className="text-xs leading-relaxed text-foreground-muted">
-                        <strong className="text-foreground">아직 제안 금액입니다</strong>
-                        {' '}— 지금 값은 입력하신 계획에서 가져온 것이라 달성·미달 판정에 쓰지
-                        않습니다. 목표 금액으로 사용하려면 금액을 직접 입력하고 입력을 마쳐 주세요.
-                      </p>
-                      {/* 입력창에 표시된 제안 금액을 밝혀 둔다. 사용자는 이 값을 직접 입력해
-                          확정할 수 있고, 단위 변환이나 반올림은 하지 않는다. */}
+                      {/* 입력창에 표시된 참고 금액을 함께 보여 준다. */}
                       <p className="text-sm font-bold text-foreground">
                         {isSpendingGoalType(goal.type) && '월 '}
                         {suggestedValue.toLocaleString()}{unitLabel}

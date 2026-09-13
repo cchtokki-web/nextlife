@@ -193,23 +193,21 @@ describe('RetirementGoalSelector', () => {
 
       expect(seen.at(-1)![0].constraintType).toBe('HARD');
       expect(seen.at(-1)![0].targetValueSource).toBeUndefined();
-      expect(screen.getByText(/아직 제안 금액입니다/)).toBeInTheDocument();
+      expect(screen.queryByText(/아직 제안 금액입니다/)).not.toBeInTheDocument();
     });
 
-    test('제안 상태에는 미확정 안내와 직접 입력 방법만 표시한다', () => {
+    test('제안 금액 안내 문구는 표시하지 않고 금액 수정은 제공한다', () => {
       render(<SelectorHarness />);
 
       fireEvent.click(screen.getByRole('button', { name: /생활비 안정/ }));
-      expect(screen.getByText(/아직 제안 금액입니다/).parentElement).toHaveTextContent(
-        '아직 제안 금액입니다 — 지금 값은 입력하신 계획에서 가져온 것이라 달성·미달 판정에 '
-        + '쓰지 않습니다. 목표 금액으로 사용하려면 금액을 직접 입력하고 입력을 마쳐 주세요.',
-      );
+      expect(screen.queryByText(/아직 제안 금액입니다/)).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: '생활비 안정 목표 금액 수정' })).toBeInTheDocument();
       expect(screen.queryByRole('button', { name: '생활비 안정 목표를 이 금액으로 확정' })).toBeNull();
 
       const input = screen.getByLabelText('목표 월 생활비');
       fireEvent.focus(input);
       fireEvent.change(input, { target: { value: '4,000,000' } });
-      expect(screen.getByText(/아직 제안 금액입니다/)).toBeInTheDocument();
+      expect(screen.queryByText(/아직 제안 금액입니다/)).not.toBeInTheDocument();
 
       fireEvent.blur(input);
       expect(screen.queryByText(/아직 제안 금액입니다/)).not.toBeInTheDocument();
@@ -228,7 +226,6 @@ describe('RetirementGoalSelector', () => {
       fireEvent.blur(input);
 
       expect(seen.at(-1)![0]).toMatchObject({ targetValue: 4_000_000, targetValueSource: 'user' });
-      expect(screen.queryByText(/아직 제안 금액입니다/)).not.toBeInTheDocument();
     });
 
     test('Enter로 입력을 끝내도 확정된다', () => {
@@ -275,7 +272,6 @@ describe('RetirementGoalSelector', () => {
       fireEvent.blur(input);
 
       expect(seen.length).toBe(countAfterSelect);
-      expect(screen.getByText(/아직 제안 금액입니다/)).toBeInTheDocument();
     });
 
     // 빈 칸에는 확정할 값이 없다. 출처 표시만 붙으면 「사용자가 확정한 undefined」라는
@@ -355,7 +351,6 @@ describe('RetirementGoalSelector', () => {
       // 사용자가 친 적 없는 9,999,999가 확정되어서는 «안 된다» — 확정은 emit이므로
       // 아무 일도 일어나지 않았다는 것이 곧 「승격하지 않았다」다.
       expect(seen.length).toBe(countBeforeBlur);
-      expect(screen.getByText(/아직 제안 금액입니다/)).toBeInTheDocument();
     });
 
     // 표식은 목표 «유형별»로 따로 선다. 하나로 합치면 한 번의 blur가 씨앗을 가진 모든
@@ -389,7 +384,6 @@ describe('RetirementGoalSelector', () => {
       fireEvent.keyDown(input, { key: 'Enter' });
 
       expect(seen.length).toBe(countAfterSelect);
-      expect(screen.getByText(/아직 제안 금액입니다/)).toBeInTheDocument();
     });
 
     // 제품 결과를 가진 표시는 확정 패널이 아니라 HARD 관문 문구다 — 이것이 남아 있으면
@@ -424,12 +418,12 @@ describe('RetirementGoalSelector', () => {
       expect(seen.at(-1)![0].targetValueSource).toBeUndefined();
     });
 
-    test('상속 목표의 씨앗도 제안으로 표시된다', () => {
+    test('상속 목표의 참고 금액을 표시한다', () => {
       render(<SelectorHarness />);
 
       fireEvent.click(screen.getByRole('button', { name: /상속 자산 확보/ }));
 
-      expect(screen.getByText(/아직 제안 금액입니다/)).toBeInTheDocument();
+      expect(screen.getByText('84,000,000원')).toBeInTheDocument();
     });
 
     // 나이는 금액이 아니고, 그 씨앗은 사용자가 1단계에서 «직접 입력한» 은퇴 나이다.
