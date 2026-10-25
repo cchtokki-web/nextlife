@@ -103,7 +103,8 @@ cases.forEach((c, index) => {
   markdownContent += `| ${index+1} | ${c.userProfile.currentAge} | ${c.userProfile.retirementAge} | ${c.userProfile.targetMonthlySpending.toLocaleString()} | ${Math.round(initAsset).toLocaleString()} | ${result.fireAge ?? '-'} | ${result.depletionAge ?? '-'} | ${Math.round(result.endingAssets).toLocaleString()} | ${result.retirementScore} | ${result.retirementGrade} | ${result.goalAchievementRate}% |\n`;
 });
 
-const artifactsDir = 'LOCAL_PATH_REDACTED';
+const artifactsDir = path.join(__dirname, 'harness', 'out');
+fs.mkdirSync(artifactsDir, { recursive: true });
 fs.writeFileSync(path.join(artifactsDir, 'simulation_100_results.csv'), csvContent);
 fs.writeFileSync(path.join(artifactsDir, 'simulation_100_results.md'), markdownContent);
 
