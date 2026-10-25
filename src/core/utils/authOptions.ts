@@ -92,6 +92,14 @@ export const authOptions: NextAuthOptions = {
           };
         }
 
+        const secret = process.env.NEXTAUTH_SECRET;
+        if (
+          process.env.NODE_ENV === 'production'
+          && (!secret || secret.length < 32 || secret === 'your-secret-key-here')
+        ) {
+          throw new Error('Production requires a unique NEXTAUTH_SECRET of at least 32 characters.');
+        }
+
         const email = credentials?.email?.trim().toLowerCase();
         const securityKey = credentials?.securityKey?.trim().toUpperCase();
 
