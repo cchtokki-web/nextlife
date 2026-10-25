@@ -12,10 +12,14 @@ if [ ! -f "$DATABASE_PATH" ]; then
   echo "Initializing database..."
   cp /app/default.db "$DATABASE_PATH"
 elif [ ! -f "$RESET_MARKER" ]; then
-  echo "Resetting legacy account data while preserving analytics..."
-  prisma db execute \
-    --url "$DATABASE_URL" \
-    --file /app/prisma/reset-account-data.sql
+  if [ "${RESET_LEGACY_ACCOUNT_DATA:-false}" = "true" ]; then
+    echo "Resetting legacy account data while preserving analytics..."
+    prisma db execute \
+      --url "$DATABASE_URL" \
+      --file /app/prisma/reset-account-data.sql
+  else
+    echo "Preserving existing account data. Set RESET_LEGACY_ACCOUNT_DATA=true to opt in to the legacy reset."
+  fi
 fi
 
 echo "Checking and applying database schema..."
@@ -24,7 +28,7 @@ export DATABASE_URL
 prisma db push --accept-data-loss
 
 # SQL 초기화와 스키마 적용이 모두 성공한 경우에만 다음 실행부터 초기화를 건너뛴다.
-if [ ! -f "$RESET_MARKER" ]; then
+if [ ! -f "$RESET_MARKER" ] && [ "${RESET_LEGACY_ACCOUNT_DATA:-false}" = "true" ]; then
   touch "$RESET_MARKER"
 fi
 
