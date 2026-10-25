@@ -1,0 +1,555 @@
+"use client";
+
+import React, { useState, useMemo, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import {
+  SimpleSimulationAdapter,
+  SimpleSimulationInput,
+  InvestmentPropensity,
+  PROPENSITY_RETURN_ASSUMPTIONS,
+} from '../../../core/usecases/SimpleSimulationAdapter';
+import { LegacySimulationEngine } from '../../../core/simulation/LegacySimulationEngine';
+import { simulateLegacyConfig } from '../../../core/application/simulateLegacyConfig';
+import { motion, AnimatePresence } from 'framer-motion';
+import GlassCard from '../../components/GlassCard';
+import { Target, TrendingUp, Coins } from 'lucide-react';
+import { useSession } from 'next-auth/react';
+import { initialParams } from '../../../infrastructure/storage/localStore';
+import { retirementGoalDefinition } from '../RetirementGoals/goalCatalog';
+import { encryptData } from '../../../core/utils/crypto';
+import {
+  SIMULATOR_PARAMS_KEY,
+  SIMPLE_SIMULATOR_INPUT_KEY,
+  SIMPLE_SIMULATOR_HAS_RUN_KEY,
+  e2eeKeyName,
+} from '../../../infrastructure/storage/storageKeys';
+import { isDevMode } from '../../../core/utils/isDevMode';
+
+import { ScenarioComparisonCards } from './ScenarioComparisonCards';
+import styles from './SimpleSimulator.module.css';
+import { useIsHydrated } from '../../hooks/useBrowserEnvironment';
+import { useNumericDraft } from '../../components/fields/numericDraft';
+
+// 만원 단위 금액 입력.
+//
+// 저장값(원)을 곧바로 화면에 되돌려 그리면 값을 지우는 순간 0이 다시 찍혀 «0»을 지울 수
+// 없게 된다. 타이핑 중간 상태는 초안이 쥔다 — 사정은 numericDraft.ts 주석 참고.
+function ManWonInput({
+  name, value, onChangeWon,
+}: {
+  name: string;
+  value: number;
+  onChangeWon: (won: number) => void;
+}) {
+  const draft = useNumericDraft({
+    value,
+    format: (won) => (won / 10000).toLocaleString(),
+    parse: (raw) => {
+      const digits = raw.replace(/[^0-9]/g, '');
+      return digits === '' ? 0 : Number(digits) * 10000;
+    },
+    onCommit: onChangeWon,
+    // 타이핑 중에도 만원 단위 콤마를 유지한다. 지운 상태(빈 칸)는 그대로 둔다.
+    formatDraft: (raw) => {
+      const digits = raw.replace(/[^0-9]/g, '');
+      return digits === '' ? '' : Number(digits).toLocaleString();
+    },
+  });
+
+  return (
+    <input
+      name={name}
+      type="text"
+      inputMode="numeric"
+      autoComplete="off"
+      autoCorrect="off"
+      autoCapitalize="off"
+      spellCheck={false}
+      value={draft.value}
+      onChange={draft.onChange}
+      onBlur={draft.onBlur}
+      className={styles.input}
+    />
+  );
+}
+
+function EokWonInput({
+  name, value, onChangeWon,
+}: {
+  name: string;
+  value: number;
+  onChangeWon: (won: number) => void;
+}) {
+  const draft = useNumericDraft({
+    value,
+    format: (won) => (won / 100_000_000).toLocaleString(),
+    parse: (raw) => {
+      const numeric = raw.replace(/,/g, '').replace(/[^0-9.]/g, '');
+      return numeric === '' ? 0 : Number(numeric) * 100_000_000;
+    },
+    onCommit: onChangeWon,
+    formatDraft: (raw) => {
+      const numeric = raw.replace(/,/g, '').replace(/[^0-9.]/g, '');
+      return numeric === '' ? '' : numeric;
+    },
+  });
+
+  const enteredEok = Number(draft.value.replace(/,/g, '')) || 0;
+  const enteredWon = enteredEok * 100_000_000;
+
+  return (
+    <>
+      <div className={styles.inputWrapper}>
+        <input
+          name={name}
+          type="text"
+          inputMode="numeric"
+          autoComplete="off"
+          autoCorrect="off"
+          autoCapitalize="off"
+          spellCheck={false}
+          placeholder="예: 2"
+          value={draft.value}
+          onChange={draft.onChange}
+          onBlur={draft.onBlur}
+          className={styles.input}
+          aria-describedby={`${name}-hint`}
+        />
+        <span className={styles.unit}>억원</span>
+      </div>
+      <span id={`${name}-hint`} className={styles.moneyHint}>
+        {enteredWon > 0 ? `입력 금액: ${enteredWon.toLocaleString()}원` : '예: 2억원 = 200,000,000원'}
+      </span>
+    </>
+  );
+}
+
+function readSavedInput(): Partial<SimpleSimulationInput> | null {
+  try {
+    const saved = localStorage.getItem(SIMPLE_SIMULATOR_INPUT_KEY);
+    return saved ? (JSON.parse(saved) as Partial<SimpleSimulationInput>) : null;
+  } catch (err) {
+    console.error('Failed to parse saved input', err);
+    return null;
+  }
+}
+
+function readHasRun(): boolean {
+  return sessionStorage.getItem(SIMPLE_SIMULATOR_HAS_RUN_KEY) === 'true';
+}
+
+export function SimpleSimulator() {
+  const [input, setInput] = useState<SimpleSimulationInput>({
+    currentAge: 45,
+    retirementAge: 62,
+    currentAssets: 200000000,
+    monthlyInvestment: 1500000,
+    nationalPension: 1200000,
+    targetMonthlySpending: 3000000,
+    propensity: 'neutral',
+  });
+
+  const [hasRun, setHasRun] = useState(false);
+  const { data: session, status } = useSession();
+  const [isRuntimeDevMode, setIsRuntimeDevMode] = useState(isDevMode());
+  const isSignedInUser = isRuntimeDevMode || Boolean(session?.user?.id);
+  const router = useRouter();
+
+  useEffect(() => {
+    fetch('/api/dev-mode')
+      .then(res => res.json())
+      .then(data => {
+        if (data && typeof data.isDevMode === 'boolean') {
+          setIsRuntimeDevMode(data.isDevMode);
+        }
+      })
+      .catch(err => console.error('Failed to fetch dev mode:', err));
+  }, []);
+
+  // 로그인하면 결과를 바로 보여준다. 이펙트가 아니라 상태 전이에 맞춰 렌더 중에 조정한다 —
+  // 이펙트로 하면 입력 화면으로 한 번 커밋한 뒤 결과로 바뀌어 화면이 튄다.
+  // hasRun은 "다시 계산하기"로 되돌릴 수 있어야 하므로 파생값이 아니라 상태로 남긴다.
+  // 초깃값을 null로 둔다. status를 그대로 넣으면 "첫 렌더부터 이미 authenticated"인 경우
+  // (SPA 내비게이션, 개발 모드의 mockSession)에 전이가 없어 hasRun이 켜지지 않는다 —
+  // 원래 이펙트는 마운트 시에도 한 번 돌았으므로 그 경우를 덮었다.
+  const [prevStatus, setPrevStatus] = useState<typeof status | null>(null);
+  if (status !== prevStatus) {
+    setPrevStatus(status);
+    if (status === 'authenticated') setHasRun(true);
+  }
+
+  useEffect(() => {
+    if (status === 'authenticated') {
+      sessionStorage.setItem(SIMPLE_SIMULATOR_HAS_RUN_KEY, 'true');
+    }
+  }, [status]);
+
+  // 지난 방문의 입력값과 실행 여부를 되살린다.
+  //
+  // 서버에는 저장소가 없으므로 첫 렌더는 기본값으로 그려야 하이드레이션이 어긋나지 않는다.
+  // 그래서 하이드레이션이 끝난 뒤 딱 한 번 조정한다. 이펙트 대신 렌더 중에 하는 이유는 위와 같다.
+  const hydrated = useIsHydrated();
+  const [restored, setRestored] = useState(false);
+  if (hydrated && !restored) {
+    setRestored(true);
+    const saved = readSavedInput();
+    if (saved) setInput(prev => ({ ...prev, ...saved }));
+    if (readHasRun()) setHasRun(true);
+  }
+
+  useEffect(() => {
+    localStorage.setItem(SIMPLE_SIMULATOR_INPUT_KEY, JSON.stringify(input));
+  }, [input]);
+
+  const engine = useMemo(() => new LegacySimulationEngine(), []);
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = e.target;
+    const numValue = Number(value.replace(/[^0-9]/g, ''));
+    setInput(prev => ({ ...prev, [name]: numValue }));
+  };
+
+  const handlePropensity = (val: InvestmentPropensity) => {
+    setInput(prev => ({ ...prev, propensity: val }));
+  };
+
+  const formatResultValue = (val: number): string => {
+    if (val <= 0) return '0원';
+    const valueInMan = Math.round(val / 10000);
+    if (valueInMan === 0) return '0원';
+
+    const gyeong = Math.floor(valueInMan / 1000000000000);
+    const jo = Math.floor((valueInMan % 1000000000000) / 100000000);
+    const eok = Math.floor((valueInMan % 100000000) / 10000);
+    const man = valueInMan % 10000;
+
+    const parts = [];
+    if (gyeong > 0) parts.push(`${gyeong.toLocaleString()}경`);
+    if (jo > 0) parts.push(`${jo.toLocaleString()}조`);
+    if (eok > 0) parts.push(`${eok.toLocaleString()}억`);
+    if (man > 0) parts.push(`${man.toLocaleString()}만`);
+
+    return parts.join(' ') + '원';
+  };
+
+  const handleRun = () => {
+    setHasRun(true);
+    sessionStorage.setItem(SIMPLE_SIMULATOR_HAS_RUN_KEY, 'true');
+    const sessionId = sessionStorage.getItem('analytics_session_id');
+    fetch('/api/analytics', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'SIMULATION_RUN', sessionId }),
+    }).catch(err => console.error('Failed to log simulation run', err));
+  };
+
+  const returnAssumption = PROPENSITY_RETURN_ASSUMPTIONS[input.propensity];
+
+  const { result, resultPlus50 } = useMemo(() => {
+    if (!hasRun) return { result: null, resultPlus50: null };
+    const params = SimpleSimulationAdapter.adapt(input);
+    const paramsPlus50 = SimpleSimulationAdapter.adapt({
+      ...input,
+      monthlyInvestment: input.monthlyInvestment + 500000
+    });
+    return {
+      result: simulateLegacyConfig(engine, params),
+      resultPlus50: simulateLegacyConfig(engine, paramsPlus50)
+    };
+  }, [hasRun, input, engine]);
+
+  return (
+    <GlassCard className={styles.container}>
+      <motion.div layout transition={{ duration: 0.4, ease: "easeInOut" }}>
+        <AnimatePresence mode="popLayout" initial={false}>
+          {!hasRun ? (
+            <motion.div
+              key="input-form"
+              initial={{ opacity: 0, scale: 0.96 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.96 }}
+              transition={{ duration: 0.3 }}
+            >
+            <div className={styles.formGrid}>
+              <div className={styles.inputGroup}>
+                <label>현재 나이</label>
+                <div className={styles.inputWrapper}>
+                  <input 
+                    name="currentAge"
+                    type="text"
+                    inputMode="numeric"
+                    autoComplete="off"
+                    autoCorrect="off"
+                    autoCapitalize="off"
+                    spellCheck={false}
+                    value={input.currentAge || ''}
+                    onChange={handleChange}
+                    className={styles.input}
+                  />
+                  <span className={styles.unit}>세</span>
+                </div>
+              </div>
+
+              <div className={styles.inputGroup}>
+                <label>은퇴 목표 나이</label>
+                <div className={styles.inputWrapper}>
+                  <input 
+                    name="retirementAge"
+                    type="text"
+                    inputMode="numeric"
+                    autoComplete="off"
+                    autoCorrect="off"
+                    autoCapitalize="off"
+                    spellCheck={false}
+                    value={input.retirementAge || ''}
+                    onChange={handleChange}
+                    className={styles.input}
+                  />
+                  <span className={styles.unit}>세</span>
+                </div>
+              </div>
+
+              <div className={styles.inputGroup}>
+                <label>현재 보유 금융자산</label>
+                <EokWonInput
+                  name="currentAssets"
+                  value={input.currentAssets}
+                  onChangeWon={(won) => setInput(prev => ({ ...prev, currentAssets: won }))}
+                />
+              </div>
+
+              <div className={styles.inputGroup}>
+                <label>매월 투자(저축)액</label>
+                <div className={styles.inputWrapper}>
+                  <ManWonInput
+                    name="monthlyInvestment"
+                    value={input.monthlyInvestment}
+                    onChangeWon={(won) => setInput(prev => ({ ...prev, monthlyInvestment: won }))}
+                  />
+                  <span className={styles.unit}>만원</span>
+                </div>
+              </div>
+
+              <div className={styles.inputGroup}>
+                <label>예상 국민연금 (월)</label>
+                <div className={styles.inputWrapper}>
+                  <ManWonInput
+                    name="nationalPension"
+                    value={input.nationalPension}
+                    onChangeWon={(won) => setInput(prev => ({ ...prev, nationalPension: won }))}
+                  />
+                  <span className={styles.unit}>만원</span>
+                </div>
+              </div>
+
+              <div className={styles.inputGroup}>
+                <label>은퇴 후 목표 월 생활비</label>
+                <div className={styles.inputWrapper}>
+                  <ManWonInput
+                    name="targetMonthlySpending"
+                    value={input.targetMonthlySpending}
+                    onChangeWon={(won) => setInput(prev => ({ ...prev, targetMonthlySpending: won }))}
+                  />
+                  <span className={styles.unit}>만원</span>
+                </div>
+              </div>
+
+
+            </div>
+
+            <div className={styles.inputGroup} style={{ marginTop: '0.5rem' }}>
+              <label>나의 투자 성향</label>
+              <div className={styles.selectGroup}>
+                <button 
+                  className={`${styles.selectBtn} ${styles.conservative} ${input.propensity === 'conservative' ? styles.active : ''}`}
+                  onClick={() => handlePropensity('conservative')}
+                >
+                  안전추구<br />(예적금)
+                </button>
+                <button 
+                  className={`${styles.selectBtn} ${styles.neutral} ${input.propensity === 'neutral' ? styles.active : ''}`}
+                  onClick={() => handlePropensity('neutral')}
+                >
+                  중립형<br />(배당ETF)
+                </button>
+                <button 
+                  className={`${styles.selectBtn} ${styles.aggressive} ${input.propensity === 'aggressive' ? styles.active : ''}`}
+                  onClick={() => handlePropensity('aggressive')}
+                >
+                  공격형<br />(성장ETF)
+                </button>
+              </div>
+            </div>
+
+            <button className={styles.submitBtn} onClick={handleRun}>
+              내 노후자금 계산하기
+            </button>
+          </motion.div>
+        ) : (
+          result && (
+            <motion.div 
+              key="results-area"
+              initial={{ opacity: 0, scale: 0.96 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.96 }}
+              transition={{ duration: 0.3 }}
+            >
+            <div className={styles.resultsArea} style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginTop: 0, paddingTop: 0, borderTop: 'none' }}>
+              <div className={styles.resultsGrid} style={{ marginBottom: '1rem' }}>
+                <div className={styles.resultCard}>
+                  <div className={styles.iconWrapper}>
+                    <Target size={24} />
+                  </div>
+                  <div className={styles.resultLabel}>주요 투자 종목</div>
+                  <div className={styles.resultValue} style={{ fontSize: '1.25rem', marginTop: '0.25rem' }}>
+                    {input.propensity === 'conservative' && '예금 및 우량 채권'}
+                    {input.propensity === 'neutral' && '국내 미국배당다우존스'}
+                    {input.propensity === 'aggressive' && '국내 미국나스닥100'}
+                  </div>
+                </div>
+
+                {/* 두 카드의 숫자는 어댑터가 엔진에 넘기는 값 그 자체다. 여기에 따로 적으면
+                    옆 곡선과 다른 수익률을 말하게 된다 — 실제로 그런 적이 있다. */}
+                <div className={styles.resultCard}>
+                  <div className={styles.iconWrapper}>
+                    <TrendingUp size={24} />
+                  </div>
+                  <div className={styles.resultLabel}>기대 총수익률 (배당 포함)</div>
+                  <div className={styles.resultValue} style={{ fontSize: '1.5rem', marginTop: '0.25rem' }}>
+                    {`연 ${returnAssumption.totalReturn}%`}
+                  </div>
+                </div>
+
+                <div className={styles.resultCard}>
+                  <div className={styles.iconWrapper}>
+                    <Coins size={24} />
+                  </div>
+                  {/* 「그중」이 핵심이다. 위 총수익률에 더하는 값이 아니라 그 안에 들어 있는
+                      몫이고, 이 계획은 배당을 재투자하므로 따로 쓸 수 있는 돈도 아니다. */}
+                  <div className={styles.resultLabel}>그중 배당·이자 몫</div>
+                  <div className={styles.resultValue} style={{ fontSize: '1.5rem', marginTop: '0.25rem' }}>
+                    {`연 ${returnAssumption.dividendYield}%`}
+                  </div>
+                </div>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center' }}>
+                <button 
+                  onClick={() => {
+                    setHasRun(false);
+                    sessionStorage.setItem(SIMPLE_SIMULATOR_HAS_RUN_KEY, 'false');
+                  }}
+                  style={{ background: 'var(--card-border)', border: '1px solid var(--card-border-hover)', color: 'var(--foreground)', padding: '0.4rem 0.8rem', borderRadius: '8px', cursor: 'pointer', fontWeight: 600, fontSize: '0.9rem' }}
+                >
+                  다시 계산하기
+                </button>
+              </div>
+
+              {resultPlus50 && (
+                <ScenarioComparisonCards 
+                  baseData={result.yearlyResults}
+                  plus50Data={resultPlus50.yearlyResults}
+                  targetAge={75}
+                  formatValue={formatResultValue}
+                />
+              )}
+              
+              {isSignedInUser && (
+                <motion.div 
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.3 }}
+                  style={{ marginTop: '1rem', padding: '1.5rem', backgroundColor: 'rgba(16, 185, 129, 0.05)', borderRadius: '16px', textAlign: 'center', border: '1px solid rgba(16, 185, 129, 0.2)' }}
+                >
+                  <p style={{ color: 'var(--foreground)', marginBottom: '1rem', lineHeight: '1.6', fontSize: '0.95rem' }}>
+                    <strong style={{ color: '#10B981', fontSize: '1.05rem' }}>{session?.user?.name || '회원'}</strong>님의 자산 성향에 맞춘 상세 투자 비중과 월 배당금 예측 시뮬레이션은 회원님에게만 공개됩니다.<br/>
+                    아래 이동하기 버튼을 클릭하세요.
+                  </p>
+                  <button 
+                    onClick={async (e) => {
+                      e.preventDefault();
+                      const adapted = SimpleSimulationAdapter.adapt(input);
+                      const finalParams = {
+                        ...initialParams,
+                        userProfile: {
+                          ...initialParams.userProfile,
+                          currentAge: input.currentAge || initialParams.userProfile.currentAge,
+                          retirementAge: input.retirementAge || initialParams.userProfile.retirementAge,
+                          targetMonthlySpending: input.targetMonthlySpending || initialParams.userProfile.targetMonthlySpending,
+                          // 방금 화면에 그린 계획이 몇 살까지의 것인지도 함께 넘긴다. 여기서
+                          // 빠뜨리면 시뮬레이터는 initialParams의 기대수명으로 계획을 다시
+                          // 세우는데, 두 값이 같은 지금은 티가 나지 않고 어댑터의 가정이
+                          // 바뀌는 순간에만 조용히 어긋난다.
+                          expectancy: adapted.userProfile.expectancy,
+                        },
+                        // 은퇴 나이는 «목표»로 옮겨 담는다. 시뮬레이터에서 그 축의 유일한 편집
+                        // 경로가 「빠른 은퇴」 카드이고, 목표가 없으면 정규화가 국민연금 개시
+                        // 나이로 되돌린다(normalizeGoalDrivenParams) — 여기서 옮기지 않으면
+                        // 방금 입력한 나이가 도착하자마자 사라지고 되찾을 화면도 없다.
+                        ...(input.retirementAge ? {
+                          retirementGoals: [{
+                            type: 'EARLY_RETIREMENT' as const,
+                            priority: 1,
+                            targetValue: input.retirementAge,
+                            constraintType: retirementGoalDefinition('EARLY_RETIREMENT').defaultConstraintType,
+                          }],
+                        } : {}),
+                        assets: (input.currentAssets > 0 || input.monthlyInvestment > 0) ? adapted.assets : initialParams.assets,
+                        nationalPension: input.nationalPension > 0 ? adapted.nationalPension : initialParams.nationalPension,
+                        privatePensions: [],
+                        taxSettings: adapted.taxSettings,
+                      };
+                      
+                      localStorage.setItem(SIMULATOR_PARAMS_KEY, JSON.stringify(finalParams));
+                      
+                      // 로그인 사용자의 기본 시나리오에 이 입력을 반영한다.
+                      //
+                      // 반드시 암호화해서 보낸다. 예전에는 finalParams를 그대로 PUT했는데, 그
+                      // 한 번의 평문 쓰기가 계정의 E2EE를 통째로 껐다 — 이후 그 계정은 어느
+                      // 브라우저에서든 보안키 없이 열렸다. 지금은 서버도 잠긴 계정의 평문
+                      // 쓰기를 409로 막지만, 여기서 애초에 평문을 만들지 않는 것이 먼저다.
+                      //
+                      // 키가 없으면(다른 기기에서 발급받았거나 아직 발급 전) 서버 동기화를
+                      // 건너뛴다. 입력은 위 localStorage에 남아 있고, /simulator가 키를 받거나
+                      // 복구한 뒤 기본 시나리오를 만들 때 그 값을 쓴다.
+                      const userId = session?.user?.id;
+                      const e2eeKey = userId ? localStorage.getItem(e2eeKeyName(userId)) : null;
+                      if (userId && e2eeKey) {
+                        try {
+                          const res = await fetch('/api/scenarios');
+                          if (res.ok) {
+                            const { data }: { data?: Array<{ id: string; isDefault?: boolean }> } = await res.json();
+                            const defaultScenario = data?.find((s) => s.isDefault) || (data && data.length > 0 ? data[0] : null);
+                            if (defaultScenario) {
+                              await fetch(`/api/scenarios/${defaultScenario.id}`, {
+                                method: 'PUT',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ data: await encryptData(finalParams, e2eeKey, userId) })
+                              });
+                            }
+                          }
+                        } catch (err) {
+                          console.error('Failed to sync scenario', err);
+                        }
+                      }
+                      router.push('/simulator');
+                    }}
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: '0.6rem', backgroundColor: '#10B981', color: '#ffffff', padding: '1rem 2.5rem', borderRadius: '14px', fontWeight: 700, fontSize: '1.2rem', textDecoration: 'none', transition: 'all 0.2s', boxShadow: '0 6px 16px rgba(16, 185, 129, 0.3)', cursor: 'pointer', border: 'none' }}
+                  >
+                    이동하기
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M5 12h14"></path>
+                      <path d="M12 5l7 7-7 7"></path>
+                    </svg>
+                  </button>
+                </motion.div>
+              )}
+
+            </div>
+          </motion.div>
+          )
+        )}
+        </AnimatePresence>
+      </motion.div>
+    </GlassCard>
+  );
+}

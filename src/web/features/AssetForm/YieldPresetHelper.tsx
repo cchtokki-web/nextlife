@@ -1,0 +1,83 @@
+import React from 'react';
+import { SimulationParams } from '../../../core/entities/types';
+import {
+  YIELD_PRESET_RATES,
+  applyYieldPreset,
+  YIELD_PRESET_LABELS,
+  matchedYieldPreset,
+  matchesCustomYieldSnapshot,
+  restoreCustomYieldPreset,
+} from '../../../core/usecases/scenario/applyYieldPreset';
+import styles from './AssetForm.module.css';
+
+interface YieldPresetHelperProps {
+  params: SimulationParams;
+  onChangeParams: (params: SimulationParams) => void;
+}
+
+// 라벨은 「이름 + 그 프리셋이 주식에 채우는 값」으로 조립한다. 이름과 값을 각각 도메인에서
+// 가져오므로, 프리셋 수익률을 바꾸면 버튼 글자도 함께 따라온다 — 예전에는 '중립 7%'가
+// 문자열로 박혀 있어 YIELD_PRESET_RATES만 바꾸면 버튼이 옛 숫자를 계속 말했다.
+const PRESETS = (['conservative', 'base', 'aggressive'] as const).map((key) => ({
+  key,
+  label: `${YIELD_PRESET_LABELS[key]} ${YIELD_PRESET_RATES[key].stockGrowth}%`,
+}));
+
+/**
+ * 수익률 입력칸을 한 번에 채워 주는 도우미.
+ *
+ * **프리셋은 계획을 지배하지 않는다.** 예전에는 「투자 전략」의 리스크 성향이 계산 시점에
+ * 모든 계좌의 총수익률을 덮어썼고, 화면은 저장값을 그대로 보여줘 사용자가 자기 시뮬레이션이
+ * 몇 %로 돌았는지 알 방법이 없었다. 이제 프리셋은 여기서 «저장값 자체»를 바꾼다 —
+ * 값이 입력칸에 찍히고, 보이고, 개별로 고칠 수 있고, 되돌릴 수 있다.
+ *
+ * 되돌리기는 applyYieldPreset이 남긴 customYieldSnapshot을 쓴다.
+ */
+export function YieldPresetHelper({ params, onChangeParams }: YieldPresetHelperProps) {
+  const canRestore = params.customYieldSnapshot !== undefined;
+  // 「지금 입력칸의 수익률이 이 버튼이 채우는 값과 «같은가»」. params.yieldPreset을 읽지
+  // 않는 이유는 matchedYieldPreset에 적혀 있다 — 요약하면 그 필드는 저장 계층이 키 없는
+  // 시나리오에 'base'를 채워 넣어(normalizeSimulationParams) 누른 적 없는 프리셋을 켜고,
+  // 자산 삭제·티커 자동조회처럼 수익률을 고친 적 없는 경로에서도 'custom'으로 떨어진다.
+  //
+  // 값에서 유도하면 표시가 스스로 참이 된다 — 켜져 있으면 입력칸의 총수익률이 정말 그 값이고,
+  // 사용자가 하나라도 고치면 그 순간 꺼진다. 어느 프리셋과도 같지 않거나 비교할 계좌가 없으면
+  // 아무것도 켜지 않는다.
+  const selected = matchedYieldPreset(params);
+
+  return (
+    <div className={styles.yieldPresetHelper}>
+      <span className={styles.yieldPresetLabel}>수익률 일괄 채우기</span>
+      {PRESETS.map((preset) => (
+        <button
+          key={preset.key}
+          type="button"
+          // 선택 상태를 색으로만 말하지 않는다 — aria-pressed가 있어야 화면을 보지 않는
+          // 사용자에게도 지금 어떤 가정이 적용돼 있는지 드러난다.
+          aria-pressed={selected === preset.key}
+          className={styles.yieldPresetButton}
+          onClick={() => onChangeParams(applyYieldPreset(params, preset.key))}
+          title={`주식·ISA ${YIELD_PRESET_RATES[preset.key].stockGrowth}%, 사적연금 ${YIELD_PRESET_RATES[preset.key].pensionReturn}%로 채웁니다`}
+        >
+          {preset.label}
+        </button>
+      ))}
+      {canRestore && (
+        // **표시의 출처는 프리셋 셋과 같다 — 값이다.** 예전에는 「토글이 아니라 행위」라는
+        // 이유로 여기만 선택 표시를 뺐는데, 그러면 눌러도 아무 반응이 없어 사용자는 자기가
+        // 무엇을 고른 상태인지 알 수 없다. 이제 aria-pressed는 「지금 입력칸의 수익률이
+        // 마지막으로 직접 입력한 값과 «같다»」를 뜻한다(matchesCustomYieldSnapshot).
+        // 켜져 있을 때 누르면 값이 바뀌지 않으므로 「이미 적용돼 있음」이라는 말과 어긋나지 않는다.
+        <button
+          type="button"
+          aria-pressed={matchesCustomYieldSnapshot(params)}
+          className={styles.yieldPresetButton}
+          onClick={() => onChangeParams(restoreCustomYieldPreset(params))}
+          title="마지막으로 직접 입력한 수익률로 되돌립니다"
+        >
+          사용자 입력값
+        </button>
+      )}
+    </div>
+  );
+}

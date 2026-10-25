@@ -1,0 +1,82 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`SimulationEngine withdrawalPlan (인출 정책 파라미터화) > 회귀 가드(세금 상세): 대표 3개 연도의 세금·소득 내역이 동일해야 한다 1`] = `
+{
+  "마지막해": {
+    "age": 90,
+    "capitalGainsTaxPaid": 1313227.3638355543,
+    "comprehensiveTaxPaid": 0,
+    "dividendTaxPaid": 975078.4783579712,
+    "hasTaxWarning": false,
+    "healthInsuranceIncomeBasis": 20739754.305450566,
+    "healthInsurancePaid": 52448.580256445144,
+    "nationalPensionTaxPaid": 1787051.6415700344,
+    "pensionAssets": 90184295.89472395,
+    "pensionTaxPaid": 7593880.996355511,
+    "preTaxTotalIncome": 95241737.72827882,
+    "privatePensionTaxMethod": "separate",
+    "spending": 85435386.69838452,
+    "stockAssets": 334409063.6269582,
+    "totalAssets": 424593359.5216822,
+    "totalIncome": 79360281.90130013,
+  },
+  "은퇴시점": {
+    "age": 60,
+    "capitalGainsTaxPaid": 0,
+    "comprehensiveTaxPaid": 0,
+    "dividendTaxPaid": 370347.33521809685,
+    "hasTaxWarning": false,
+    "healthInsuranceIncomeBasis": 2468982.2347873123,
+    "healthInsurancePaid": 0,
+    "nationalPensionTaxPaid": 0,
+    "pensionAssets": 423513778.6385676,
+    "pensionTaxPaid": 759346.4959443246,
+    "preTaxTotalIncome": 23063731.438391514,
+    "privatePensionTaxMethod": "none",
+    "spending": 40730695.66406249,
+    "stockAssets": 129838963.44390567,
+    "totalAssets": 563995420.2198206,
+    "totalIncome": 19835402.70765987,
+  },
+  "첫해": {
+    "age": 55,
+    "capitalGainsTaxPaid": 0,
+    "comprehensiveTaxPaid": 0,
+    "dividendTaxPaid": 213763.4548468636,
+    "hasTaxWarning": false,
+    "healthInsuranceIncomeBasis": 1425089.698979091,
+    "healthInsurancePaid": 0,
+    "nationalPensionTaxPaid": 0,
+    "pensionAssets": 321136288.76479876,
+    "pensionTaxPaid": 0,
+    "preTaxTotalIncome": 7425089.698979091,
+    "privatePensionTaxMethod": "none",
+    "spending": 0,
+    "stockAssets": 75832768.26374455,
+    "totalAssets": 402969057.0285433,
+    "totalIncome": 6000000,
+  },
+}
+`;
+
+exports[`SimulationEngine withdrawalPlan (인출 정책 파라미터화) > 회귀 가드(요약): withdrawalPlan 미지정 시 계획 수준 지표가 동일해야 한다 1`] = `
+{
+  "depletionAge": null,
+  "endingAssets": 424593359.5216822,
+  "fireAge": null,
+  "goalAchievementRate": 45,
+  "retirementAssetsAtRetirement": 563995420.2198206,
+  "retirementGrade": "주의",
+  "retirementScore": 64,
+  "utilityComponents": {
+    "bequestAdequacy": 6,
+    "consumption": 35,
+    "depletionSafety": 20,
+    "pensionUtilization": 11,
+    "taxEfficiency": 6,
+    "taxationRisk": 10,
+  },
+  "utilityScore": 88,
+  "yearCount": 36,
+}
+`;

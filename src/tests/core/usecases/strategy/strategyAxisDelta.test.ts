@@ -1,0 +1,292 @@
+import { describe, test, expect } from 'vitest';
+import { SimulationEngine } from '@/core/usecases/SimulationEngine';
+import { compileStrategy, DEFAULT_RETIREMENT_STRATEGY } from '@/core/usecases/strategy/compileStrategy';
+import { recommendStrategy } from '@/core/usecases/strategy/RecommendationEngine';
+import { applyAiSentinels } from '@/core/usecases/strategy/applyAiSentinels';
+import { RetirementStrategy, SimulationParams, SimulationResult } from '@/core/entities/types';
+import { allAxesLiveParams } from '@/tests/fixtures/allAxesLiveParams';
+
+// **전략 축이 실제로 결과를 바꾸는가.**
+//
+// 이 파일이 "죽은 옵션 살리기" 작업의 정의(definition of done)다.
+//
+// ## 왜 이 테스트가 없으면 안 되는가
+//
+// compileStrategy 테스트 5개 파일은 전부 **컴파일 산출물**(파라미터 객체)만 검증한다.
+// 그 파라미터로 엔진을 돌려 자산 곡선이 실제로 달라지는지는 아무도 확인하지 않는다.
+// 그래서 어떤 축이 조용히 no-op이 되어도 테스트는 전부 초록이다. 실제로 그런 축이
+// 여럿 있었다(docs/superpowers/specs/2026-08-02-option-efficacy-baseline.md).
+//
+// ## 단언은 반드시 현금흐름에 건다
+//
+// utility.score에만 걸면 지금도 통과해버린다 — 죽은 축들의 증상이 정확히 "점수만 다르고
+// 자산 곡선은 같다"이기 때문이다. depletionAge / endingAssets / 연도별 totalAssets
+// 시계열을 봐야 검증력이 생긴다. **이 한 줄이 Track B 전체의 방어선이다.**
+
+// useStrategyPipeline과 동일한 배선. 화면이 실제로 쓰는 경로를 그대로 재현해야
+// "화면에서 옵션을 바꿨을 때"를 검증하는 것이 된다.
+//
+// (B1에서 runStrategyPipeline을 코어 순수 함수로 뽑으면 이 헬퍼는 그것을 호출하게 된다.)
+function runWithStrategy(params: SimulationParams, strategy: RetirementStrategy): SimulationResult {
+  const engine = new SimulationEngine();
+  const compiled = compileStrategy({ ...params, strategy });
+
+  let recommendation;
+  try {
+    recommendation = recommendStrategy(compiled.params, engine, compiled.utilityConfig);
+  } catch {
+    recommendation = undefined;
+  }
+
+  const effective = applyAiSentinels(compiled, recommendation).compiled;
+  return engine.run(effective.params, effective.utilityConfig);
+}
+
+// 현금흐름 지문. 연도별 총자산까지 포함해 "곡선이 같은가"를 정확히 판정한다.
+function cashflowFingerprint(result: SimulationResult): string {
+  return [
+    result.depletionAge ?? 'none',
+    Math.round(result.endingAssets),
+    ...result.yearlyResults.map((y) => Math.round(y.totalAssets)),
+  ].join('|');
+}
+
+// 선택지를 "같은 곡선끼리" 묶는다. 개수만 세지 않는 이유는 실패했을 때 **어느 선택지가
+// 서로 붙었는지**가 유일하게 쓸모 있는 정보이기 때문이다. 예전에는 "N종만 만든다"까지만
+// 알려줘서, 실패를 본 사람이 진짜 회귀인지 우연인지 구분할 수 없었다.
+function cashflowGroups(
+  params: SimulationParams,
+  axis: keyof RetirementStrategy,
+  values: readonly unknown[]
+): Map<string, unknown[]> {
+  const groups = new Map<string, unknown[]>();
+  for (const value of values) {
+    const fingerprint = cashflowFingerprint(
+      runWithStrategy(params, { ...DEFAULT_RETIREMENT_STRATEGY, [axis]: value } as RetirementStrategy)
+    );
+    const existing = groups.get(fingerprint);
+    if (existing) existing.push(value);
+    else groups.set(fingerprint, [value]);
+  }
+  return groups;
+}
+
+/** 서로 붙어 버린 선택지 묶음만 사람이 읽을 수 있게 적는다. */
+function describeCollisions(groups: Map<string, unknown[]>): string {
+  const collided = [...groups.values()].filter((group) => group.length > 1);
+  if (collided.length === 0) return '충돌한 선택지 없음';
+  return collided.map((group) => `{${group.join(', ')}}`).join(', ');
+}
+
+function distinctCashflows(
+  params: SimulationParams,
+  axis: keyof RetirementStrategy,
+  values: readonly unknown[]
+): number {
+  return cashflowGroups(params, axis, values).size;
+}
+
+describe('전략 축이 현금흐름을 바꾼다', () => {
+  // 각 축이 만들어야 할 "서로 다른 곡선"의 최소 개수.
+  //
+  // 원칙적으로 선택지 수와 같을 필요는 없다 — 일부 값이 같은 계획으로 수렴하는 것은 정상일
+  // 수 있다. **리스크 성향이 정확히 그 예다.** 2026-08-22부터 'custom'과 'ai_recommended'
+  // 둘 다 "수익률을 덮어쓰지 않는다"는 같은 동작이라, 이 축은 여기(현금흐름이 갈리는 축)가
+  // 아니라 아래 '전략 축의 방향성' 근처의 회귀 테스트(같은 곡선을 만드는지)로 옮겼다.
+  // 다만 **나머지 네 축은 실측상 선택지 수만큼 전부 갈린다.** 그래서 임계값을 선택지 수와
+  // 같게 두었다. 즉 여유(margin)가 0이고, 어떤 선택지든 하나라도 다른 선택지와 같은 곡선으로
+  // 붙으면 실패한다 — 의도된 민감도다.
+  //
+  // **실패 유형을 먼저 구분할 것.**
+  //
+  // (1) 단언 실패(AssertionError): 계산 자체는 난수·시간 의존이 없고 공유 fixture도 변형되지
+  //     않는다(확인함). 따라서 실제 수렴이며, 메시지가 어느 선택지끼리 붙었는지 알려준다.
+  //     수렴이 정당하다고 판단되면 임계값을 낮추고 **왜 정당한지**를 여기에 적는다.
+  // (2) 타임아웃: 이 파일은 무겁다. spendingChoice 하나가 단독 실행에서도 약 2.2초인데
+  //     ('max_sustainable'이 이진탐색을 돌린다) 기본 타임아웃은 5초라 여유가 2배 남짓뿐이다.
+  //     전체 스위트를 병렬로 돌리면 CPU 경합으로 6.7초까지 늘어 타임아웃으로 죽은 적이 있다.
+  //     그래서 vitest.config.ts에서 testTimeout을 30초로 올렸다 — 이건 계산 결함이 아니라
+  //     실행 시간 문제이므로, 실패를 보면 먼저 소요 시간을 확인할 것.
+  const AXIS_EXPECTATIONS = [
+    {
+      axis: 'spendingChoice' as const,
+      values: ['target', 'dividend_only', 'max_sustainable'],
+      minDistinct: 3,
+    },
+    {
+      axis: 'nationalPensionStrategy' as const,
+      values: ['early', 'normal', 'defer_1y', 'defer_2y', 'defer_max'],
+      minDistinct: 5,
+    },
+    {
+      axis: 'privatePensionStrategy' as const,
+      values: ['tax_first', 'spending_first', 'growth_first', 'minimum'],
+      // 인출 비율 100%/50%/25%가 서로 다른 결과를 내야 한다.
+      minDistinct: 4,
+    },
+    {
+      axis: 'economicScenario' as const,
+      values: ['long_term_average', 'recession', 'high_inflation', 'low_growth'],
+      minDistinct: 4,
+    },
+  ];
+
+  test.each(AXIS_EXPECTATIONS)(
+    '$axis: 선택지 $values.length개가 서로 다른 자산 곡선 $minDistinct종 이상을 만든다',
+    ({ axis, values, minDistinct }) => {
+      const groups = cashflowGroups(allAxesLiveParams, axis, values);
+
+      expect(
+        groups.size,
+        `${axis} 축의 선택지 ${values.length}개가 자산 곡선 ${groups.size}종만 만든다`
+        + ` (기대: ${minDistinct}종 이상). 같은 곡선으로 붙은 선택지: ${describeCollisions(groups)}.`
+        + ` 이 축의 해당 선택지들이 현금흐름에 반영되지 않고 있다.`
+      ).toBeGreaterThanOrEqual(minDistinct);
+    }
+  );
+
+  test('ISA 만기 행선지 선택이 현금흐름을 바꾼다', () => {
+    const toPension = runWithStrategy(allAxesLiveParams, { ...DEFAULT_RETIREMENT_STRATEGY, preferIsaFirst: 'pension_first' });
+    const toAsset = runWithStrategy(allAxesLiveParams, { ...DEFAULT_RETIREMENT_STRATEGY, preferIsaFirst: 'isa_first' });
+
+    expect(cashflowFingerprint(toAsset)).not.toBe(cashflowFingerprint(toPension));
+  });
+});
+
+// **선호 축(목표 우선순위·상속 전략)은 결정 축과 다른 방식으로 검증한다.**
+//
+// 결정 축(국민연금 개시 나이 등)은 "미정"이면 AI가 값을 채우므로 선택지 수만큼 곡선이 갈린다.
+// 선호 축은 값을 채우지 않고 **탐색의 채점 기준을 바꿔 argmax를 옮긴다**. 그래서 효과가
+// 나타나는 자리가 셋으로 나뉜다:
+//
+//   1. 추천안(recommendedPlan) — 여기가 선호가 가장 직접적으로 드러나는 곳이다.
+//   2. 그 추천안 중 자동 채움이 검증한 결정 축 → 자산 곡선.
+//   3. 생활비 배수 — **자동 적용하지 않는다.** 목표 생활비는 사용자의 삶의 결정이지
+//      "미정 상태로 남은 계산 파라미터"가 아니다. 조용히 20% 올리면 화면이 보여주는
+//      목표 생활비와 엔진이 쓴 값이 갈린다(이 저장소가 반복해서 제거해 온 결함 유형).
+//      추천 체크리스트로 제안하고 적용은 사용자가 누른다.
+//
+// 3번 때문에 선호 축의 곡선 종수는 선택지 수만큼 나올 수 없다. 그래서 곡선은 "죽지 않았는가"
+// (2종 이상)로 보고, 살아 있음의 강도는 추천안 종수로 잰다.
+describe('선호 축이 추천과 현금흐름을 바꾼다', () => {
+  function distinctRecommendations(
+    params: SimulationParams,
+    axis: keyof RetirementStrategy,
+    values: readonly unknown[]
+  ): number {
+    const engine = new SimulationEngine();
+    return new Set(
+      values.map((value) => {
+        const compiled = compileStrategy({
+          ...params,
+          strategy: { ...DEFAULT_RETIREMENT_STRATEGY, [axis]: value } as RetirementStrategy,
+        });
+        return JSON.stringify(recommendStrategy(compiled.params, engine, compiled.utilityConfig).recommendedPlan);
+      })
+    ).size;
+  }
+
+  // 상속 목표 금액이 실제로 제약이 되려면 자연스러운 기말자산보다 높아야 한다.
+  // 낮으면 하한선이 한 번도 걸리지 않아 'target_amount'가 무동작으로 보인다.
+  const withBequestTarget: SimulationParams = {
+    ...allAxesLiveParams,
+    userProfile: { ...allAxesLiveParams.userProfile, targetBequest: 900_000_000 },
+  };
+
+  const OBJECTIVES = [
+    'lifetime_spending', 'tax_minimization', 'wealth_maximization', 'bequest_maximization', 'ai_recommended',
+  ] as const;
+  const BEQUEST_STRATEGIES = ['spend_all', 'leave_some', 'maximize', 'target_amount'] as const;
+
+  test('목표 우선순위를 바꾸면 자산 곡선이 갈린다', () => {
+    expect(distinctCashflows(allAxesLiveParams, 'objective', OBJECTIVES)).toBeGreaterThanOrEqual(2);
+  });
+
+  test('상속 전략을 바꾸면 자산 곡선이 갈린다', () => {
+    expect(distinctCashflows(withBequestTarget, 'bequestStrategy', BEQUEST_STRATEGIES)).toBeGreaterThanOrEqual(2);
+  });
+
+  test('추천안 자체가 상속 목표를 지킨다', () => {
+    // 하한선은 인출계획(recommendedPlan)이 아니라 params에 실리므로 추천안 객체로는
+    // 드러나지 않는다. 대신 추천이 실제로 도달한 결과가 목표를 지켜야 한다 —
+    // 지키지 못하는 후보는 evaluateCandidate가 점수와 무관하게 탈락시킨다.
+    const engine = new SimulationEngine();
+    const compiled = compileStrategy({
+      ...withBequestTarget,
+      strategy: { ...DEFAULT_RETIREMENT_STRATEGY, bequestStrategy: 'target_amount' },
+    });
+    const recommendation = recommendStrategy(compiled.params, engine, compiled.utilityConfig);
+
+    expect(compiled.params.assetFloor).toBe(900_000_000);
+    expect(recommendation.recommendedResult.endingAssets).toBeGreaterThanOrEqual(900_000_000 * 0.99);
+  });
+
+  test('목표 우선순위를 바꾸면 추천안이 갈린다', () => {
+    expect(distinctRecommendations(allAxesLiveParams, 'objective', OBJECTIVES)).toBeGreaterThanOrEqual(2);
+  });
+});
+
+describe('전략 축의 방향성', () => {
+  // 절대값이 아니라 부등식으로 고정한다. 세율이나 가중치가 조정돼도 "많이 남기려는 계획이
+  // 더 많이 남긴다"는 성질은 유지되어야 한다.
+  const run = (overrides: Partial<RetirementStrategy>, params: SimulationParams = allAxesLiveParams) =>
+    runWithStrategy(params, { ...DEFAULT_RETIREMENT_STRATEGY, ...overrides } as RetirementStrategy);
+
+  test('상속 목표 금액을 세우면 다 쓰고 가는 계획보다 많이 남긴다', () => {
+    const spendAll = run({ bequestStrategy: 'spend_all' });
+
+    // 목표는 "그냥 두면 남을 금액"보다 커야 제약이 실제로 걸린다. 작으면 하한선이 한 번도
+    // 닿지 않아 두 계획이 같은 곡선을 만들고, 이 단언은 무의미하게 실패한다.
+    const target = Math.round(spendAll.endingAssets * 1.2);
+    const withTarget = runWithStrategy(
+      { ...allAxesLiveParams, userProfile: { ...allAxesLiveParams.userProfile, targetBequest: target } },
+      { ...DEFAULT_RETIREMENT_STRATEGY, bequestStrategy: 'target_amount' }
+    );
+
+    expect(withTarget.endingAssets).toBeGreaterThan(spendAll.endingAssets);
+    // 목표를 실제로 지켜야 한다 — "조금 더 남았다"로는 부족하다.
+    expect(withTarget.endingAssets).toBeGreaterThanOrEqual(target * 0.99);
+  });
+
+  test('상속 최대화가 평생 생활비 최대화보다 많이 남긴다', () => {
+    const bequest = run({ objective: 'bequest_maximization' });
+    const spending = run({ objective: 'lifetime_spending' });
+
+    expect(bequest.endingAssets).toBeGreaterThan(spending.endingAssets);
+  });
+
+  test('국민연금을 늦게 받을수록 기말자산이 많다', () => {
+    const early = run({ nationalPensionStrategy: 'early' });
+    const normal = run({ nationalPensionStrategy: 'normal' });
+    const deferMax = run({ nationalPensionStrategy: 'defer_max' });
+
+    expect(normal.endingAssets).toBeGreaterThan(early.endingAssets);
+    expect(deferMax.endingAssets).toBeGreaterThan(normal.endingAssets);
+  });
+
+  // 2026-08-22 회귀 테스트: 리스크 성향은 더 이상 수익률을 지배하지 않는다. 'custom'과
+  // 'ai_recommended' 둘 다 자산·연금에 입력한 수익률을 그대로 통과시키는 같은 동작이므로,
+  // 두 값으로 계산한 계획은 완전히 같은 현금흐름을 내야 한다.
+  test('리스크 성향은 더 이상 기말자산을 바꾸지 않는다', () => {
+    const custom = run({ riskProfile: 'custom' });
+    const aiRecommended = run({ riskProfile: 'ai_recommended' });
+
+    expect(aiRecommended.endingAssets).toBe(custom.endingAssets);
+  });
+});
+
+describe('기본 전략은 결과를 바꾸지 않는다 (baseline 보존)', () => {
+  // compileStrategy의 핵심 불변식. 전략을 한 번도 저장한 적 없는 시나리오와
+  // 기본 전략으로 컴파일한 시나리오가 같은 결과를 내야 한다 — 그래야 패널에서 아무 필드나
+  // 건드려 전략이 실체화되는 순간 계획이 조용히 뒤집히지 않는다.
+  test('DEFAULT_RETIREMENT_STRATEGY로 컴파일한 결과가 strategy 없는 원본과 같다', () => {
+    const engine = new SimulationEngine();
+
+    const withoutStrategy = engine.run(allAxesLiveParams);
+    const withDefault = engine.run(
+      compileStrategy({ ...allAxesLiveParams, strategy: DEFAULT_RETIREMENT_STRATEGY }).params
+    );
+
+    expect(cashflowFingerprint(withDefault)).toBe(cashflowFingerprint(withoutStrategy));
+  });
+});

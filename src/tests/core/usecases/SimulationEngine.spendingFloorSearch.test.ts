@@ -1,0 +1,184 @@
+import { describe, test, expect } from 'vitest';
+import { SimulationEngine } from '@/core/usecases/SimulationEngine';
+import { computeSustainableSpendingAdvice } from '@/core/usecases/dashboard/computeSustainableSpendingAdvice';
+import { SimulationParams } from '@/core/entities/types';
+
+// 지속 가능한 생활비가 HARD 바닥보다 «낮은» 계획.
+//
+// 수익률·물가를 0으로 두어 지속가능액이 (자산 ÷ 은퇴 기간)으로 결정되게 한다. 취득원가를
+// 평가액과 같게 두어 양도세도 0이다 — 탐색이 무엇을 재는지만 남기려는 구성이다.
+function floorAboveSustainable(over: Partial<SimulationParams> = {}): SimulationParams {
+  return {
+    userProfile: { currentAge: 60, retirementAge: 60, expectancy: 63, targetMonthlySpending: 2_500_000 },
+    assets: [{
+      id: 'a', type: 'etf', ticker: 'X', name: 'X', quantity: 1, averagePrice: 109_000_000,
+      totalReturn: 0, dividendYield: 0, monthlyContribution: 0,
+      reinvestDividend: true, currency: 'KRW', assetMarket: 'OTHER',
+    }],
+    isaAccounts: [], otherIncomes: [], privatePensions: [],
+    nationalPension: { expectedMonthlyAmount: 0 },
+    inflationRate: 0, inflationMode: 'nominal', baseExchangeRate: 1400,
+    exchangeScenario: 'base', displayCurrency: 'KRW',
+    taxSettings: {},
+    spendingStrategy: 'max_sustainable',
+    hardSpendingFloor: 2_500_000,
+    ...over,
+  } as unknown as SimulationParams;
+}
+
+// 저율과세 한도가 인출을 막는 연금 계획. 이 계획의 «지속 가능한 생활비»는 두 개다:
+//   - 선호(한도)를 지키면    월 1,181,250원
+//   - 선호를 깨면            월 3,446,597원
+// 바닥을 시행에 건 채로 탐색하면 이 둘 중 어느 것도 나오지 않는다. 1단계가 바닥까지는
+// 한도를 깨고 그 위로는 지키므로, 시행 ≤ 바닥은 전부 성공하고 시행 > 바닥은 전부 실패해
+// 탐색이 **바닥을 그대로 되돌려 준다**. 사용자가 넣은 값을 계산 결과라고 내놓는 셈이다.
+function pensionCapped(over: Partial<SimulationParams> = {}): SimulationParams {
+  return {
+    userProfile: { currentAge: 60, retirementAge: 60, expectancy: 70, targetMonthlySpending: 3_000_000 },
+    assets: [], isaAccounts: [], otherIncomes: [],
+    privatePensions: [{
+      id: 'p', type: 'irp', investmentType: 'etf', name: 'IRP',
+      balance: 500_000_000, monthlyContribution: 0,
+      totalReturn: 0, dividendYield: 0, currency: 'KRW',
+    }],
+    nationalPension: { expectedMonthlyAmount: 0 },
+    inflationRate: 0, inflationMode: 'nominal', baseExchangeRate: 1400,
+    exchangeScenario: 'base', displayCurrency: 'KRW',
+    taxSettings: { limitPrivatePensionToTaxLimit: true },
+    spendingStrategy: 'max_sustainable',
+    ...over,
+  } as unknown as SimulationParams;
+}
+
+describe('생활비 자체를 탐색하는 계산에서는 바닥을 뗀다', () => {
+  test('탐색이 바닥을 되돌려 주지 않는다', () => {
+    const engine = new SimulationEngine();
+    const withFloor = engine.run(
+      pensionCapped({ hardSpendingFloor: 2_500_000 } as Partial<SimulationParams>)
+    );
+    const withoutFloor = engine.run(pensionCapped());
+
+    // 바닥(250만원)은 두 실제 용량 사이에 있다. 예전에는 탐색이 정확히 바닥으로 수렴해
+    // 「월 250만원까지 쓸 수 있습니다」라고 답했지만, 그 값은 측정된 적이 없는 입력값이다.
+    expect(withFloor.calculatedTargetSpending).not.toBeCloseTo(2_500_000, -3);
+    // **탐색 자체는** 바닥의 영향을 받지 않는다. 바닥이 있는 계획에서도 탐색값은 그대로
+    // 기록되고(sustainableSpendingOverride), 바닥이 없는 계획의 답과 같다. 달라지는 것은
+    // 그 뒤에 «전달되는 계획»이다 — 아래 describe.
+    expect(withFloor.sustainableSpendingOverride!.preferenceRespectingMonthly)
+      .toBe(withoutFloor.calculatedTargetSpending);
+  });
+
+  test('바닥의 크기가 탐색 결과를 흔들지 않는다', () => {
+    const engine = new SimulationEngine();
+    const results = [undefined, 1_000_000, 2_500_000, 10_000_000].map(
+      (floor) => engine.run(pensionCapped(
+        (floor === undefined ? {} : { hardSpendingFloor: floor }) as Partial<SimulationParams>
+      ))
+    );
+    const searched = results.map(
+      (r) => r.sustainableSpendingOverride?.preferenceRespectingMonthly
+        ?? r.calculatedTargetSpending
+    );
+
+    // 예전에는 바닥마다 다른 값이 나왔다(1,181,250 / 1,181,250 / 2,499,999 / 3,446,596).
+    expect(new Set(searched).size).toBe(1);
+    // 바닥을 존중한 실행에서의 용량도 바닥의 «크기»에는 의존하지 않는다. 250만과 1,000만이
+    // 같은 3,446,596을 낸다 — 이 값이 입력의 메아리가 아니라는 근거다.
+    expect(results[2].sustainableSpendingOverride!.floorHonoringMonthly)
+      .toBe(results[3].sustainableSpendingOverride!.floorHonoringMonthly);
+  });
+
+  test('선호가 막지 않는 계획에서는 바닥을 존중해도 용량이 늘지 않는다', () => {
+    const result = new SimulationEngine().run(floorAboveSustainable());
+    const override = result.sustainableSpendingOverride!;
+
+    // 이 계획에는 1단계가 깰 선호가 없다(일반자산 한 개, 개시 나이·한도 없음). 그래서 두
+    // 용량이 하나로 겹친다 — 109,000,000 ÷ 48개월 = 2,270,833. 바닥을 존중한 실행에서도
+    // 늘어날 여지가 없다는 뜻이고, 그래서 이 계획은 바닥(250만)을 지급하면 고갈한다.
+    expect(override.preferenceRespectingMonthly).toBeCloseTo(2_270_833.31, 1);
+    expect(override.floorHonoringMonthly).toBeCloseTo(override.preferenceRespectingMonthly, 1);
+    expect(override.deliveredMonthly).toBe(2_500_000);
+  });
+
+  test('바닥이 없으면 탐색값이 그대로 전달된다', () => {
+    const withoutFloor = new SimulationEngine().run(
+      floorAboveSustainable({ hardSpendingFloor: undefined } as Partial<SimulationParams>)
+    );
+
+    expect(withoutFloor.sustainableSpendingOverride).toBeUndefined();
+    expect(withoutFloor.calculatedTargetSpending).toBeCloseTo(2_270_833.31, 1);
+  });
+
+  test("'target' 전략의 부수 탐색도 같은 값을 낸다", () => {
+    const withFloor = new SimulationEngine().run(
+      floorAboveSustainable({ spendingStrategy: 'target' })
+    );
+    const withoutFloor = new SimulationEngine().run(
+      floorAboveSustainable({ spendingStrategy: 'target', hardSpendingFloor: undefined } as Partial<SimulationParams>)
+    );
+
+    expect(withFloor.calculatedTargetSpending).toBeGreaterThan(0);
+    expect(withFloor.calculatedTargetSpending).toBe(withoutFloor.calculatedTargetSpending);
+  });
+});
+
+describe('바닥이 탐색값을 넘으면 전달 계획이 바닥을 채운다', () => {
+  // 스펙의 「탐색 분리」 예시(지속가능 227 / 바닥 250)가 이제 어떻게 끝나는지.
+  //
+  // 예전에는 여기서 「월 23만원 부족」이라는 사후 비교가 나왔다. 지금은 그 상태가 생기지
+  // 않는다 — findMaxSustainable이 전달하는 생활비는 max(바닥, 바닥 존중 용량)이라 언제나
+  // 바닥 이상이다. 부족을 말하던 자리를 「지급은 하지만 그 대가가 있다」가 대신한다.
+  test('탐색값이 바닥에 못 미쳐도 전달 계획은 바닥을 지급한다', () => {
+    const params = floorAboveSustainable();
+    const result = new SimulationEngine().run(params);
+
+    expect(result.sustainableSpendingOverride!.preferenceRespectingMonthly)
+      .toBeLessThan(2_500_000);
+    expect(result.calculatedTargetSpending).toBe(2_500_000);
+    // 조언 함수는 max_sustainable 계획에 아무 말도 하지 않는다. 「더 쓰세요/덜 쓰세요」의
+    // 대상이 아니기 때문이다 — 그 계획의 금액이 무엇인지는 describeSustainableSpendingLimit이
+    // 말한다(describeSustainableSpendingLimit.test.ts).
+    expect(computeSustainableSpendingAdvice(
+      params.spendingStrategy,
+      params.userProfile.targetMonthlySpending,
+      result.calculatedTargetSpending,
+    )).toBeNull();
+    // 대가는 원장에 남는다. 미달을 대신 말하는 사실은 이 둘이다.
+    expect(result.sustainableSpendingOverride!.floorHonoringMonthly).toBeLessThan(2_500_000);
+    expect(result.depletionAge).not.toBeNull();
+  });
+
+  // 고정 생활비 계획에서 탐색값으로 바닥 미달을 말하면 «같은 실행의 원장»이 그것을 반증한다.
+  // 엔진은 1단계에서 선호를 깨면서 해마다 바닥을 실제로 채우기 때문이다.
+  test('원장이 바닥을 채우는 target 계획에서는 미달을 말하지 않는다', () => {
+    const params = pensionCapped({
+      spendingStrategy: 'target',
+      hardSpendingFloor: 2_500_000,
+    } as Partial<SimulationParams>);
+    const result = new SimulationEngine().run(params);
+
+    // 원장은 해마다 바닥(월 250만원 = 연 3,000만원)을 실제로 채운다.
+    for (const year of result.yearlyResults) {
+      expect(year.spending, `${year.age}세`).toBeGreaterThanOrEqual(30_000_000 - 1);
+    }
+    // 그런데 바닥을 뗀 탐색값은 그보다 한참 낮다. 이 둘을 견주면 거짓말이 된다.
+    expect(result.calculatedTargetSpending!).toBeLessThan(2_500_000);
+
+    // 그래서 이 계획의 판정은 «목표 생활비» 대비 종전 판정 그대로다. 바닥은 끼어들지 않는다.
+    const advice = computeSustainableSpendingAdvice(
+      params.spendingStrategy,
+      params.userProfile.targetMonthlySpending,
+      result.calculatedTargetSpending,
+    );
+    expect(advice?.kind).toBe('overspending');
+    // 바닥은 이 함수의 입력이 «아니다». 그 사실 자체를 고정한다 — 되살아나면 위 원장이
+    // 반증하는 문장이 다시 화면에 뜬다.
+    expect(computeSustainableSpendingAdvice.length).toBe(3);
+  });
+
+  test('max_sustainable 계획에는 어떤 조언도 하지 않는다', () => {
+    expect(computeSustainableSpendingAdvice('max_sustainable', 2_500_000, 2_270_000)).toBeNull();
+    expect(computeSustainableSpendingAdvice('max_sustainable', 2_500_000, 3_000_000)).toBeNull();
+    expect(computeSustainableSpendingAdvice('max_sustainable', 2_500_000, 0)).toBeNull();
+  });
+});

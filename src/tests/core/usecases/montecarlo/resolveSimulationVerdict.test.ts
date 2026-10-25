@@ -1,0 +1,248 @@
+import { describe, expect, test } from 'vitest';
+import {
+  resolveSimulationVerdict,
+  type SimulationVerdict,
+  type SimulationVerdictValues,
+} from '@/core/usecases/montecarlo/resolveSimulationVerdict';
+import { resolveGoalSuccessConditions } from '@/core/usecases/goals/goalSuccessConditions';
+import { initialParams } from '@/infrastructure/storage/localStore';
+import type { MonteCarloResult } from '@/core/entities/montecarlo';
+import type { SimulationParams } from '@/core/entities/types';
+
+const mc = (over: Partial<MonteCarloResult> = {}): MonteCarloResult => ({
+  trials: 1000, seed: 42, successAge: 90,
+  successRate: 0.92, spendingSuccessRate: 0.82, averageSpendingFulfillmentRate: 0.97,
+  goalSuccessProbability: 0.78, hardGoalSuccessProbability: 0.91,
+  goalFailure: {
+    spendingShortfall: 0, assetDepletion: 0,
+    observedAssetDepletionCount: 0, observedEarliestDepletionAge: null,
+    terminalShortfall: 0, medianFirstShortfallAge: null, terminalAssetGoal: 0,
+  },
+  goalConditions: {
+    basis: 'selected_goals', requireSpendingTarget: true,
+    requireAssetSurvival: true, terminalAssetGoal: 0, unmeasuredGoals: [],
+    hardRequirements: { spendingTarget: false, assetSurvival: true, terminalAsset: false },
+    // assetSurvival만 켠 hardRequirements와 짝을 맞춘다 — 그 축을 켠 목표가
+    // ASSET_SURVIVAL이라는 뜻이다(아래 「판정하지 못한 HARD 목표」 테스트가 이 값을 쓴다).
+    hardRequirementGoals: { spendingTarget: [], assetSurvival: ['ASSET_SURVIVAL'], terminalAsset: [] },
+  },
+  plannedMonthlySpending: 3_000_000,
+  endingAssets: { p10: 0, p50: 0, p90: 0 }, assetBands: [],
+  depletion: { count: 0, earliestAge: null, medianAge: null },
+  deterministicEndingAssets: 0,
+  ...over,
+} as MonteCarloResult);
+
+// 판정이 있다고 «단언»하고 값을 꺼낸다. SimulationVerdict가 available로 갈라지는 판별
+// 유니온이라, 값을 읽으려면 반드시 이 문을 지나야 한다 — 테스트도 예외가 아니다.
+function judged(verdict: SimulationVerdict): SimulationVerdictValues {
+  if (!verdict.available) throw new Error('판정이 있어야 하는데 available=false다');
+  return verdict;
+}
+
+const goalParams = (goals: unknown[]): SimulationParams => {
+  const base = structuredClone(initialParams);
+  base.retirementGoals = goals as SimulationParams['retirementGoals'];
+  return base;
+};
+
+describe('resolveSimulationVerdict', () => {
+  // 예전에는 비율이 NaN이었다. NaN은 «형식»으로만 위험을 알린다 — `rate < 0.5` 같은 비교는
+  // 조용히 false를 골라 아무 경고 없이 한쪽 가지를 탄다. 이제 값 자체가 «없다».
+  test('Monte Carlo 결과가 없으면 읽을 값이 하나도 없다', () => {
+    const verdict = resolveSimulationVerdict({ monteCarlo: undefined, params: initialParams });
+
+    expect(verdict).toEqual({ available: false });
+  });
+
+  test('세 지표는 서로 대체하지 않는다', () => {
+    // spendingSuccessRate가 goalSuccess를 메우던 옛 폴백이 되살아나면 이 단언이 깨진다.
+    const verdict = judged(resolveSimulationVerdict({ monteCarlo: mc(), params: initialParams }));
+
+    expect(verdict.goalSuccess.rate).toBe(0.78);
+    expect(verdict.spendingFulfillment.fullRate).toBe(0.82);
+    expect(verdict.assetSurvival.rate).toBe(0.92);
+  });
+
+  test('success/failure 개수가 trials와 맞는다', () => {
+    const verdict = judged(resolveSimulationVerdict({ monteCarlo: mc(), params: initialParams }));
+
+    expect(verdict.goalSuccess.succeeded + verdict.goalSuccess.failed).toBe(1000);
+    expect(verdict.goalSuccess.succeeded).toBe(780);
+  });
+
+  test('확정 HARD 목표가 없으면 hardGoalSuccess는 null이다', () => {
+    const verdict = judged(resolveSimulationVerdict({
+      monteCarlo: mc({
+        goalConditions: {
+          ...mc().goalConditions,
+          hardRequirements: { spendingTarget: false, assetSurvival: false, terminalAsset: false },
+          // 요구 축을 전부 껐으므로 그 축을 켠 목표도 없다 — hardRequirements와
+          // hardRequirementGoals가 갈라지면 이 픽스처가 실제로는 만들 수 없는 조합을 말하게 된다.
+          hardRequirementGoals: { spendingTarget: [], assetSurvival: [], terminalAsset: [] },
+        },
+      }),
+      params: goalParams([{ type: 'ASSET_SURVIVAL', constraintType: 'SOFT', priority: 1 }]),
+    }));
+
+    expect(verdict.hardGoalSuccess).toBeNull();
+  });
+
+  test('판정하지 못한 HARD 목표를 unjudged로 드러낸다', () => {
+    // 주거 안정은 MEASURABLE_GOALS에 없어 HARD로 골라도 이 비율이 판정하지 않는다.
+    // 이것을 숨기면 known-issues 1번을 지표 하나 더 만들어 되풀이한다.
+    const verdict = judged(resolveSimulationVerdict({ monteCarlo: mc(), params: goalParams([
+        { type: 'ASSET_SURVIVAL', constraintType: 'HARD', priority: 1 },
+        { type: 'HOUSING_STABILITY', constraintType: 'HARD', priority: 2 },
+      ]) }));
+
+    expect(verdict.hardGoalSuccess).not.toBeNull();
+    expect(verdict.hardGoalSuccess!.judged).toContain('ASSET_SURVIVAL');
+    expect(verdict.hardGoalSuccess!.unjudged).toContain('HOUSING_STABILITY');
+    expect(verdict.hardGoalSuccess!.judged).not.toContain('HOUSING_STABILITY');
+  });
+
+  // 재현 사례 1(리뷰 표 1행). ASSET_GROWTH는 isQuantitativelyJudgedGoal이 참인 «유형»이라
+  // 유형 멤버십만으로 갈랐다면 judged로 들어갔을 것이다. 목표액을 비워 두면 어떤 축도
+  // 켜지 못하므로(hardRequirementGoals의 세 축이 모두 비어 있으므로) 실제로는 unjudged다.
+  test('재현 사례 1 — 목표액이 빈 ASSET_GROWTH는 유형상 판정 가능해도 unjudged다', () => {
+    const goalsParams = goalParams([
+      { type: 'ASSET_SURVIVAL', constraintType: 'HARD', priority: 1 },
+      { type: 'ASSET_GROWTH', constraintType: 'HARD', priority: 2 },
+    ]);
+    const conditions = resolveGoalSuccessConditions(goalsParams);
+
+    // 재현 표의 전제: assetSurvival만 켜지고 terminalAsset은 꺼진 채다.
+    expect(conditions.hardRequirements).toEqual({
+      spendingTarget: false, assetSurvival: true, terminalAsset: false,
+    });
+
+    const verdict = judged(resolveSimulationVerdict({ monteCarlo: mc({ goalConditions: conditions }), params: goalsParams }));
+
+    expect(verdict.hardGoalSuccess).not.toBeNull();
+    expect(verdict.hardGoalSuccess!.judged).toEqual(['ASSET_SURVIVAL']);
+    expect(verdict.hardGoalSuccess!.unjudged).toEqual(['ASSET_GROWTH']);
+    expect(verdict.hardGoalSuccess!.planEmbedded).toEqual([]);
+  });
+
+  // **예전 재현 사례 2가 있던 자리.** 그 테스트는 SOFT 5억이 HARD 3억을 가로채 확정 HARD
+  // 상속 요구가 unjudged로 «빠지는» 것을 정답으로 적어 두었다. 그것은 결함이었고, 문턱을
+  // 두 질문으로 나누면서(hardTerminalAssetGoal) 고쳤다 — 뒤집기만 하지 않고 오라클을
+  // 바꿔 적는다. 예전 기대값은 「이 조합에서 무엇이 일어나는가」를 관찰해 옮긴 것이라,
+  // 구현이 틀린 채로도 언제나 통과했다.
+  test('SOFT 목표액이 더 커도 확정 HARD 상속 요구는 judged로 남는다', () => {
+    const goalsParams = goalParams([
+      { type: 'INHERITANCE', constraintType: 'HARD', priority: 1, targetValue: 300_000_000, targetValueSource: 'user' },
+      { type: 'ASSET_GROWTH', constraintType: 'SOFT', priority: 2, targetValue: 500_000_000, targetValueSource: 'user' },
+      { type: 'ASSET_SURVIVAL', constraintType: 'HARD', priority: 3 },
+    ]);
+    const conditions = resolveGoalSuccessConditions(goalsParams);
+
+    // 두 문턱이 서로 다른 질문에 답한다. 목표 달성 확률은 고른 목표를 «다» 채웠는지 물으므로
+    // SOFT 5억을 포함하고, HARD 판정은 못박은 3억만 본다.
+    expect(conditions.terminalAssetGoal).toBe(500_000_000);
+    expect(conditions.hardTerminalAssetGoal).toBe(300_000_000);
+    expect(conditions.hardRequirements.terminalAsset).toBe(true);
+
+    const verdict = judged(resolveSimulationVerdict({ monteCarlo: mc({ goalConditions: conditions }), params: goalsParams }));
+
+    expect(verdict.hardGoalSuccess).not.toBeNull();
+    expect(verdict.hardGoalSuccess!.judged).toEqual(['INHERITANCE', 'ASSET_SURVIVAL']);
+    expect(verdict.hardGoalSuccess!.unjudged).toEqual([]);
+  });
+
+  // 귀속은 «기여한 HARD 목표 전부»다. 최댓값 하나가 그들 모두를 판정하므로
+  // (`≥ 5억` ⟹ `≥ 3억`), 하나만 실으면 나머지는 판정됐는데도 unjudged로 보고된다.
+  test('HARD 자산 목표가 둘이면 둘 다 judged다', () => {
+    const goalsParams = goalParams([
+      { type: 'INHERITANCE', constraintType: 'HARD', priority: 1, targetValue: 300_000_000, targetValueSource: 'user' },
+      { type: 'ASSET_GROWTH', constraintType: 'HARD', priority: 2, targetValue: 500_000_000, targetValueSource: 'user' },
+    ]);
+    const conditions = resolveGoalSuccessConditions(goalsParams);
+
+    expect(conditions.hardTerminalAssetGoal).toBe(500_000_000);
+
+    const verdict = judged(resolveSimulationVerdict({ monteCarlo: mc({ goalConditions: conditions }), params: goalsParams }));
+
+    expect(verdict.hardGoalSuccess!.judged).toEqual(['INHERITANCE', 'ASSET_GROWTH']);
+    expect(verdict.hardGoalSuccess!.unjudged).toEqual([]);
+  });
+
+  // EARLY_RETIREMENT는 unjudged도 judged도 아닌 세 번째 갈래다 — 계획에 이미 반영되어
+  // 모든 시행이 지키므로 조건으로 세지 않는다(goalSuccessConditions.ts의
+  // isPlanEmbeddedGoal 주석). unjudged에 넣으면 반영된 목표를 반영되지 않았다고
+  // 말하게 된다.
+  test('EARLY_RETIREMENT는 judged도 unjudged도 아닌 planEmbedded다', () => {
+    const goalsParams = goalParams([
+      { type: 'ASSET_SURVIVAL', constraintType: 'HARD', priority: 1 },
+      { type: 'EARLY_RETIREMENT', constraintType: 'HARD', priority: 2, targetValue: 60 },
+    ]);
+    const conditions = resolveGoalSuccessConditions(goalsParams);
+
+    const verdict = judged(resolveSimulationVerdict({ monteCarlo: mc({ goalConditions: conditions }), params: goalsParams }));
+
+    expect(verdict.hardGoalSuccess).not.toBeNull();
+    expect(verdict.hardGoalSuccess!.judged).toEqual(['ASSET_SURVIVAL']);
+    expect(verdict.hardGoalSuccess!.unjudged).toEqual([]);
+    expect(verdict.hardGoalSuccess!.planEmbedded).toEqual(['EARLY_RETIREMENT']);
+  });
+});
+
+describe('신뢰구간 (요구 ④)', () => {
+  // 기대값은 Wilson 공식에서 독립적으로 계산했다(trials=1000 픽스처 기준).
+  test('네 KPI가 «각자의» 구간을 갖는다', () => {
+    const verdict = judged(resolveSimulationVerdict({ monteCarlo: mc(), params: initialParams }));
+
+    expect(verdict.goalSuccess.interval.lower).toBeCloseTo(0.753281, 5);
+    expect(verdict.goalSuccess.interval.upper).toBeCloseTo(0.804577, 5);
+    expect(verdict.spendingFulfillment.interval.lower).toBeCloseTo(0.794978, 5);
+    expect(verdict.assetSurvival.interval.lower).toBeCloseTo(0.901534, 5);
+    expect(verdict.hardGoalSuccess?.interval.lower).toBeCloseTo(0.890658, 5);
+  });
+
+  // 요구 ②가 세 지표를 갈라 놓은 뒤로, 구간 하나를 넷에 돌려쓰면 서로 다른 비율에 같은
+  // 정밀도를 붙이게 된다. 넷이 실제로 다른 값인지 본다.
+  test('구간을 서로 돌려쓰지 않는다', () => {
+    const v = judged(resolveSimulationVerdict({ monteCarlo: mc(), params: initialParams }));
+    const lowers = [
+      v.goalSuccess.interval.lower,
+      v.spendingFulfillment.interval.lower,
+      v.assetSurvival.interval.lower,
+      v.hardGoalSuccess!.interval.lower,
+    ];
+    expect(new Set(lowers).size).toBe(4);
+  });
+
+  test('구간은 언제나 자기 비율을 감싼다', () => {
+    const v = judged(resolveSimulationVerdict({ monteCarlo: mc(), params: initialParams }));
+    for (const [rate, interval] of [
+      [v.goalSuccess.rate, v.goalSuccess.interval],
+      [v.spendingFulfillment.fullRate, v.spendingFulfillment.interval],
+      [v.assetSurvival.rate, v.assetSurvival.interval],
+    ] as const) {
+      expect(rate).toBeGreaterThanOrEqual(interval.lower);
+      expect(rate).toBeLessThanOrEqual(interval.upper);
+    }
+  });
+
+  test('시행 수가 많을수록 구간이 좁아진다 — 시행 수를 실제로 반영한다는 뜻이다', () => {
+    const few = judged(resolveSimulationVerdict({ monteCarlo: mc({ trials: 1000 }), params: initialParams }));
+    const many = judged(resolveSimulationVerdict({ monteCarlo: mc({ trials: 10000 }), params: initialParams }));
+    const width = (v: typeof few) => v.goalSuccess.interval.upper - v.goalSuccess.interval.lower;
+
+    expect(width(many)).toBeLessThan(width(few));
+  });
+
+  // 예전에는 이 자리에서 「구간이 NaN인가」를 물었다. 이제는 물을 값 자체가 없다 —
+  // 판별 유니온이 available을 보지 않고 읽는 길을 컴파일 시점에 끊는다.
+  test('판정이 없으면 구간을 «읽을 수» 없다', () => {
+    const verdict = resolveSimulationVerdict({ monteCarlo: undefined, params: initialParams });
+
+    expect(verdict.available).toBe(false);
+    expect(verdict).not.toHaveProperty('goalSuccess');
+    expect(verdict).not.toHaveProperty('confidenceLevel');
+    // 좁히지 않고 값을 꺼내려 하면 이 문에서 걸린다.
+    expect(() => judged(verdict)).toThrow();
+  });
+});
+

@@ -1,0 +1,239 @@
+{
+  "note": "계산 엔진 회귀 고정. 입력과 주요 연령의 총자산을 함께 보관해, 엔진을 고쳤을 때 어느 연령대에서 얼마나 움직였는지가 diff로 드러나게 한다. 총자산은 원 단위로 반올림해 적고 toleranceKRW만큼의 차이를 허용한다. 값을 갱신할 때는 '왜 움직여도 되는가'를 커밋 메시지에 남길 것.",
+  "toleranceKRW": 10,
+  "cases": [
+    {
+      "name": "2026-08-19 리포트 입력 (총수익률 표기, 74세 고갈)",
+      "why": "이 저장소가 총수익률 통일을 하게 만든 실제 사용자 입력이다. 배당이 어딘가에서 다시 더해지면 고갈이 사라지고, 어딘가에서 다시 빠지면 고갈이 앞당겨진다.",
+      "simulationStartYear": 2026,
+      "params": {
+        "userProfile": {
+          "currentAge": 51,
+          "retirementAge": 60,
+          "expectancy": 90,
+          "targetMonthlySpending": 3500000
+        },
+        "assets": [
+          {
+            "id": "q",
+            "type": "etf",
+            "ticker": "QQQ",
+            "name": "QQQ",
+            "quantity": 9.133318,
+            "averagePrice": 986945,
+            "totalReturn": 7,
+            "dividendYield": 0.4,
+            "monthlyContribution": 456250,
+            "reinvestDividend": true,
+            "currency": "KRW",
+            "assetMarket": "US_ETF"
+          },
+          {
+            "id": "s",
+            "type": "etf",
+            "ticker": "SCHD",
+            "name": "SCHD",
+            "quantity": 569.795937,
+            "averagePrice": 48860,
+            "totalReturn": 7,
+            "dividendYield": 3,
+            "monthlyContribution": 0,
+            "reinvestDividend": true,
+            "currency": "KRW",
+            "assetMarket": "US_ETF"
+          },
+          {
+            "id": "j",
+            "type": "etf",
+            "ticker": "JEPI",
+            "name": "JEPI",
+            "quantity": 117.346339,
+            "averagePrice": 82122,
+            "totalReturn": 7,
+            "dividendYield": 7.9,
+            "monthlyContribution": 0,
+            "reinvestDividend": true,
+            "currency": "KRW",
+            "assetMarket": "US_ETF"
+          },
+          {
+            "id": "p",
+            "type": "etf",
+            "ticker": "SPYM",
+            "name": "SPYM",
+            "quantity": 15.453288,
+            "averagePrice": 129353,
+            "totalReturn": 7,
+            "dividendYield": 1,
+            "monthlyContribution": 304167,
+            "reinvestDividend": true,
+            "currency": "KRW",
+            "assetMarket": "US_ETF"
+          }
+        ],
+        "isaAccounts": [
+          {
+            "id": "isa",
+            "type": "general",
+            "investmentType": "custom",
+            "balance": 3772550,
+            "monthlyContribution": 200000,
+            "totalReturn": 7,
+            "dividendYield": 21.2,
+            "currency": "KRW",
+            "maturityYears": 3
+          }
+        ],
+        "nationalPension": {
+          "expectedMonthlyAmount": 2000000
+        },
+        "privatePensions": [
+          {
+            "id": "p1",
+            "type": "irp",
+            "name": "SOL 미국배당다우존스",
+            "balance": 33868515,
+            "monthlyContribution": 350000,
+            "totalReturn": 4,
+            "investmentType": "etf",
+            "dividendYield": 3.3,
+            "currency": "KRW"
+          },
+          {
+            "id": "p2",
+            "type": "irp",
+            "name": "SOL 미국배당미국채혼합50",
+            "balance": 7040880,
+            "monthlyContribution": 150000,
+            "totalReturn": 4,
+            "investmentType": "etf",
+            "dividendYield": 3.0,
+            "currency": "KRW"
+          },
+          {
+            "id": "p3",
+            "type": "retirement",
+            "name": "TIGER 커버드콜2호",
+            "balance": 12145140,
+            "monthlyContribution": 500000,
+            "totalReturn": 4,
+            "investmentType": "etf",
+            "dividendYield": 10.0,
+            "currency": "KRW"
+          }
+        ],
+        "otherIncomes": [],
+        "inflationRate": 2.5,
+        "inflationMode": "real",
+        "baseExchangeRate": 1414.4,
+        "exchangeScenario": "base",
+        "displayCurrency": "KRW"
+      },
+      "expected": {
+        "depletionAge": 74,
+        "totalAssetsByAge": {
+          "55": 246317811,
+          "60": 340972970,
+          "62": 268441020,
+          "65": 173136224,
+          "70": 71563437,
+          "73": 6987801
+        }
+      }
+    },
+    {
+      "name": "고갈되지 않는 계획 (기말자산이 실제로 남는 구간을 잠근다)",
+      "why": "위 사례는 80세 이후 총자산이 0이라, 더 나쁜 계획도 같은 0을 낸다. 후반 구간을 실제로 고정하려면 살아남는 계획이 하나 필요하다. 국내·해외 ETF, ISA, 사적연금, 임대소득, 양도세를 모두 켠다.",
+      "simulationStartYear": 2026,
+      "params": {
+        "userProfile": {
+          "currentAge": 52,
+          "retirementAge": 62,
+          "expectancy": 90,
+          "targetMonthlySpending": 5800000
+        },
+        "assets": [
+          {
+            "id": "kr",
+            "type": "etf",
+            "ticker": "KODEX",
+            "name": "국내 ETF",
+            "quantity": 1,
+            "averagePrice": 150000000,
+            "totalReturn": 6,
+            "dividendYield": 2,
+            "monthlyContribution": 500000,
+            "reinvestDividend": true,
+            "currency": "KRW",
+            "assetMarket": "KR_ETF"
+          },
+          {
+            "id": "us",
+            "type": "etf",
+            "ticker": "SCHD",
+            "name": "미국 ETF",
+            "quantity": 800,
+            "averagePrice": 150,
+            "totalReturn": 8,
+            "dividendYield": 3.5,
+            "monthlyContribution": 300,
+            "reinvestDividend": false,
+            "currency": "USD",
+            "assetMarket": "US_ETF",
+            "acquisitionCostBasis": 60000
+          }
+        ],
+        "isaAccounts": [
+          {
+            "id": "isa",
+            "type": "general",
+            "balance": 30000000,
+            "monthlyContribution": 300000,
+            "totalReturn": 7,
+            "dividendYield": 9,
+            "currency": "KRW",
+            "maturityYears": 3
+          }
+        ],
+        "nationalPension": {
+          "expectedMonthlyAmount": 1500000
+        },
+        "privatePensions": [
+          {
+            "id": "irp",
+            "type": "irp",
+            "balance": 150000000,
+            "monthlyContribution": 500000,
+            "totalReturn": 5,
+            "dividendYield": 4,
+            "currency": "KRW"
+          }
+        ],
+        "otherIncomes": [
+          {
+            "id": "rent",
+            "label": "임대소득",
+            "monthlyAmount": 500000,
+            "currency": "KRW"
+          }
+        ],
+        "inflationRate": 2.5,
+        "inflationMode": "real",
+        "baseExchangeRate": 1380,
+        "exchangeScenario": "base",
+        "displayCurrency": "KRW"
+      },
+      "expected": {
+        "depletionAge": null,
+        "totalAssetsByAge": {
+          "55": 680460444,
+          "62": 948264113,
+          "65": 863271733,
+          "70": 772333906,
+          "80": 542357076,
+          "90": 182471769
+        }
+      }
+    }
+  ]
+}

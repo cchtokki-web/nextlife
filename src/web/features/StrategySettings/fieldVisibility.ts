@@ -1,0 +1,118 @@
+import { StrategyMode } from '../../../core/entities/types';
+
+// SimulationParams 안의 값을 가리키는 점 경로. diffDefaults가 같은 표기를 쓴다.
+export type FieldPath = string;
+
+export type SectionId = 'spending' | 'pension' | 'investment' | 'economic' | 'advanced';
+
+// 섹션 → 그 섹션이 다루는 필드 경로. 한 경로는 정확히 한 섹션에만 속한다
+// (중복되면 변경 개수 배지가 이중 계산된다 — 테스트가 이를 막는다).
+//
+// **여기에 없는 축이 있다.** 현재 나이·기대수명은 「개인정보」(RetirementInputFlow 1단계),
+// 은퇴 나이·목표 생활비·목표 상속자산은 「은퇴 목표」 카드(3단계)가 유일한 편집 경로이고,
+// 생활비 전략·목표 우선순위는 아무도 고르지 않는 고정값이다(normalizeGoalDrivenParams).
+// 이 패널에 다시 등록하면 같은 값을 두 화면이 각자 편집하던 상태로 돌아간다 — 그것이 이
+// 목록에서 goal 섹션과 basic 섹션을 걷어낸 이유다. fieldVisibility.test.ts의
+// INPUT_FLOW_FIELDS가 그 경로들이 다시 들어오지 못하게 막는다.
+export const SECTION_FIELDS: Record<SectionId, ReadonlyArray<FieldPath>> = {
+  // 은퇴 후 목표 생활비를 나이대별로 어떻게 나눌지. 「목표 생활비 350만원」이라는 «총액»은
+  // 은퇴 목표 카드가 정하고, 그것을 연령대에 어떻게 배분할지만 여기서 정한다 — 두 축이
+  // 다른 화면에 있는 이유다.
+  spending: [
+    'strategy.spendingShape',
+  ],
+  pension: [
+    'strategy.nationalPensionStrategy',
+    'strategy.privatePensionStrategy',
+    'strategy.preferIsaFirst',
+    // 배당을 재투자할지 현금으로 받을지. 자산별 boolean(assets.reinvestDividend)은 여기 없다 —
+    // 그 값을 렌더하는 유일한 화면이 「내 자산」이고(전문가 모드 전용), 같은 값을 두 화면이
+    // 각자 편집하던 상태로 돌아가지 않기 위해서다. 위 SECTION_FIELDS 머리말의 INPUT_FLOW_FIELDS와
+    // 같은 이유이며, fieldVisibility.test.ts가 그 경로가 다시 들어오지 못하게 막는다.
+    'strategy.dividendStrategy',
+  ],
+  investment: [
+    // 'yieldPreset'은 여기에 없다. 이 섹션에 그 필드를 렌더하는 입력이 없기 때문이다
+    // (수익률 직접 입력은 "내 자산" 폼에 있고, 그쪽이 값을 바꿀 때 yieldPreset을 'custom'으로
+    //  적는다). 등록해 두면 자산 폼에서 수익률을 한 번만 고쳐도 이 섹션에 "1개 변경" 배지가
+    // 붙는데, 섹션을 열어도 전문가 모드로 올려도 되돌릴 입력이 없어 지울 방법이 없다.
+    // sectionFieldCoverage.test.tsx가 "모든 경로는 어딘가에서 렌더된다"를 강제한다.
+    'strategy.riskProfile',
+    'strategy.economicScenario',
+  ],
+  economic: [
+    'inflationRate',
+    'inflationMode',
+    'baseExchangeRate',
+    'useLatestExchangeRate',
+    'displayCurrency',
+    'healthcare.enabled',
+    'healthcare.baseMonthlyCost',
+    'healthcare.costGrowthRate',
+    'healthcare.longTermCareEnabled',
+    'healthcare.longTermCareStartAge',
+    'healthcare.longTermCareMonthlyCost',
+    'healthcare.shockEnabled',
+    'healthcare.shockAge',
+    'healthcare.shockAmount',
+  ],
+  advanced: [
+    'taxLawVersion',
+    'cashYieldRate',
+    'taxSettings.limitPrivatePensionToTaxLimit',
+    'taxSettings.enableComprehensiveTax',
+    'taxSettings.enableHealthInsurance',
+    'taxSettings.usDividendTaxRate',
+    'taxSettings.domesticDividendTaxRate',
+    'taxSettings.comprehensiveTaxMode',
+    'taxSettings.comprehensiveTaxRate',
+    'taxSettings.healthInsuranceRate',
+    'taxSettings.enableCapitalGainsTax',
+    'taxSettings.capitalGainsTaxRate',
+    'taxSettings.enablePrivatePensionTax',
+    'taxSettings.privatePensionLimit',
+    'taxSettings.privatePensionExcessTaxRate',
+    'taxSettings.enablePensionComprehensiveComparison',
+  ],
+};
+
+// 간편 모드에서 보이는 필드. 연금 전략 2개 + 배당 재투자 + 생활비 배분.
+// "필수 입력만" 원칙의 예외는 뒤의 둘이며 근거는 아래 주석에 있다.
+const SIMPLE_FIELDS: ReadonlySet<FieldPath> = new Set([
+  'strategy.nationalPensionStrategy',
+  'strategy.privatePensionStrategy',
+  // 배당 재투자는 "필수 입력"은 아니지만 여기 있어야 한다. AI 추천이 이 값을 자주 권하고
+  // (Phase 3가 자산별로 독립 평가한다) 대시보드 체크리스트가 간편 모드에서도 그 항목을
+  // 제시하는데, 숨기면 지시를 실행할 컨트롤이 화면에 하나도 없게 된다.
+  'strategy.dividendStrategy',
+  // 생활비 배분도 같은 이유로 여기 있다. 추천의 「생활비 배분」 축이 이 값을 실제로
+  // 반영하므로(strategyFieldMap), 숨기면 적용된 곡선을 되돌릴 컨트롤이 화면에 하나도
+  // 없게 된다 — 화면에 없는 값이 생활비 목표를 움직이던 예전 상태로 돌아간다.
+  'strategy.spendingShape',
+]);
+
+// 표준 모드는 간편 + 투자 전략 + 경제 가정 주요 항목 + ISA 만기 자금.
+// 고급 설정(advanced)만 제외된다.
+const STANDARD_EXCLUDED: ReadonlySet<FieldPath> = new Set(SECTION_FIELDS.advanced);
+
+const ALL_FIELDS: ReadonlySet<FieldPath> = new Set(
+  (Object.keys(SECTION_FIELDS) as SectionId[]).flatMap((s) => SECTION_FIELDS[s])
+);
+
+// 모드별 필드 노출 여부. 각 섹션이 개별적으로 mode === 'expert' 조건문을
+// 흩뿌리지 않도록 이 함수가 단일 소스다.
+export function isFieldVisible(mode: StrategyMode, path: FieldPath): boolean {
+  if (!ALL_FIELDS.has(path)) return false;
+  if (mode === 'expert') return true;
+  if (mode === 'standard') return !STANDARD_EXCLUDED.has(path);
+  return SIMPLE_FIELDS.has(path);
+}
+
+// 이 모드에서 섹션을 화면에 낼지. 손댈 수 있는 필드가 하나도 없으면 열어봐야 빈
+// 껍데기라 고장으로 읽히므로 아예 렌더하지 않는다.
+//
+// 노출 목록을 따로 두지 않고 isFieldVisible에서 파생시킨다. 두 규칙을 각각 관리하면
+// SIMPLE_FIELDS에 필드를 하나 추가했을 때 "필드는 보이는데 섹션은 숨은" 상태가 된다.
+export function isSectionVisible(mode: StrategyMode, section: SectionId): boolean {
+  return SECTION_FIELDS[section].some((path) => isFieldVisible(mode, path));
+}

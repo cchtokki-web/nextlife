@@ -1,0 +1,165 @@
+import { SimulationParams, SimulationResult, UtilityAxis, UtilityConfig } from '../../entities/types';
+import { DEFAULT_UTILITY_CONFIG } from './utilityWeights';
+import { explainBequestAdequacy, formatManwon } from './utilityAnalysis';
+import { sumTotalTaxesAndLevies } from '../tax/annualTaxTotals';
+import { spendingMultiplierForAge } from '../spending/spendingCurve';
+import { isMonteCarloConflict } from '../montecarlo/monteCarloConflict';
+import { resolvePlanAssetStatus } from '../dashboard/resolvePlanAssetStatus';
+
+export type UtilityComponentExplanations = Record<UtilityAxis, string>;
+
+// 효용 막대는 `6/25`, `0/15`처럼 점수만 보여줄 뿐 **왜 그 점수인지**를 말하지 않는다.
+// 사용자가 개선할 수 있으려면 그 숫자를 만든 입력이 보여야 한다.
+//
+// 새 계산을 하지 않는다. UtilityEngine의 raw 함수들이 읽는 것과 **같은 필드**를 읽어 문장으로
+// 옮길 뿐이다 — 산식을 여기서 다시 유도하면 점수와 설명이 어긋난다(그러면 설명이 없느니만
+// 못하다). 문장은 근거가 되는 수치를 반드시 포함한다.
+export function explainUtilityComponents(
+  params: SimulationParams,
+  result: SimulationResult,
+  cfg: UtilityConfig = DEFAULT_UTILITY_CONFIG,
+  // 있으면 자산 고갈 방지 축의 설명에 확률 단서를 덧붙인다(아래 explainDepletionSafety 참조).
+  // 점수 자체는 바뀌지 않는다 — UtilityEngine.ts:185-206의 설계 결정을 유지한다.
+  monteCarlo?: { successRate: number }
+): UtilityComponentExplanations {
+  const { yearlyResults } = result;
+  const { retirementAge } = params.userProfile;
+  const retirementYears = yearlyResults.filter((r) => r.age >= retirementAge);
+
+  return {
+    consumption: explainConsumption(params, retirementYears),
+    depletionSafety: explainDepletionSafety(params, result, retirementYears.length, monteCarlo),
+    pensionUtilization: explainPensionUtilization(params, retirementYears),
+    taxEfficiency: explainTaxEfficiency(yearlyResults),
+    taxationRisk: explainTaxationRisk(yearlyResults),
+    bequestAdequacy: explainBequestAdequacy(params, result, cfg),
+  };
+}
+
+type YearlyResults = SimulationResult['yearlyResults'];
+
+// computeConsumptionRaw는 연도별 (실제 지출 / 목표 지출) 비율의 효용 평균을 쓴다.
+// 화면에는 그 비율을 만든 두 금액을 월 단위로 보여주는 것이 가장 읽기 쉽다.
+function explainConsumption(params: SimulationParams, retirementYears: YearlyResults): string {
+  if (retirementYears.length === 0) return '은퇴 후 구간이 없어 소비를 평가할 수 없습니다.';
+
+  const avgActualMonthly =
+    retirementYears.reduce((sum, r) => sum + r.spending, 0) / retirementYears.length / 12;
+  // 곡선 배수는 UtilityEngine.targetAnnualSpendingForYear와 **같은 함수로** 곱해야 한다.
+  // 빠뜨리면 매년 목표를 정확히 채운 계획(소비 만점)의 설명 문장이 100%가 아닌 값을 말한다 —
+  // 설명이 자기가 설명하는 막대와 모순된다.
+  const avgTargetMonthly =
+    retirementYears.reduce(
+      (sum, r) =>
+        sum +
+        params.userProfile.targetMonthlySpending * spendingMultiplierForAge(params.spendingCurve, r.age) +
+        r.healthcareSpending / 12,
+      0
+    ) / retirementYears.length;
+
+  if (avgTargetMonthly <= 0) return '목표 생활비가 설정되지 않아 소비 충족도를 계산할 수 없습니다.';
+
+  const rate = Math.round((avgActualMonthly / avgTargetMonthly) * 100);
+  return `은퇴 후 목표 월 ${formatManwon(avgTargetMonthly)} 대비 실제 소비는 평균 월 ${formatManwon(avgActualMonthly)}(${rate}%)입니다.`;
+}
+
+// **이 축이 만점인데 몬테카를로 성공률이 37%인 상태.**
+//
+// computeDepletionSafetyRaw는 결정론 depletionAge만 본다. 기준 수익률이 그대로 실현되면
+// 고갈이 없으므로 raw = 1, 즉 20/20이다. 그런데 같은 리포트의 확률 시뮬레이션은 "1,000회 중
+// 37%만 90세까지 자산이 남는다"고 말했다. 두 숫자가 한 화면에서 정면으로 부딪힌다.
+//
+// 점수를 MC로 재정의하지 않는 이유는 UtilityEngine.ts:185-206에 기록되어 있다(비용 /
+// 재채점 불변식 / 효용은 선호를 서열화하고 MC는 실현 가능성을 제약한다는 역할 분리).
+// 대신 **만점의 조건을 문장으로 밝힌다** — 그 조건이 적혀 있지 않은 것이 문제였지,
+// 결정론 세계 안에서 이 점수가 틀린 것은 아니다.
+function explainDepletionSafety(
+  params: SimulationParams,
+  result: SimulationResult,
+  retirementYearCount: number,
+  monteCarlo?: { successRate: number }
+): string {
+  const { retirementAge, expectancy } = params.userProfile;
+  const { depletionAge } = result;
+
+  if (depletionAge === null) {
+    const base = `기준 수익률이 그대로 실현되면 ${expectancy}세까지 자산이 고갈되지 않아 만점입니다.`;
+    if (!isMonteCarloConflict(resolvePlanAssetStatus(result, params), monteCarlo)) return base;
+    return `${base} 다만 시장 변동을 반영하면 ${expectancy}세까지 자산이 남을 확률은 ${Math.round(
+      monteCarlo!.successRate * 100
+    )}%입니다.`;
+  }
+  // 은퇴 시점 이전에 이미 0이면 자산으로 메울 수 있는 기간 자체가 없다(raw = 0).
+  if (depletionAge <= retirementAge) {
+    return `은퇴 시점에 이미 인출할 자산이 없어, 은퇴 후 ${retirementYearCount}년 동안 자산으로 메울 수 있는 기간이 없습니다.`;
+  }
+  const span = expectancy - retirementAge;
+  const survived = depletionAge - retirementAge;
+  return `은퇴 후 ${span}년 중 ${survived}년까지만 자산으로 버티고 ${depletionAge}세에 고갈됩니다.`;
+}
+
+// computePensionUtilizationRaw의 세 서브축(국민연금 수급 연수 / 사적연금 실인출 연수 /
+// 저율과세 한도 준수도) 중 사용자가 손댈 수 있는 앞의 둘을 말한다.
+function explainPensionUtilization(params: SimulationParams, retirementYears: YearlyResults): string {
+  if (retirementYears.length === 0) return '은퇴 후 구간이 없어 연금 활용도를 평가할 수 없습니다.';
+
+  const total = retirementYears.length;
+  const parts: string[] = [];
+
+  if ((params.nationalPension?.expectedMonthlyAmount ?? 0) > 0) {
+    const years = retirementYears.filter((r) => r.nationalPensionIncome > 0).length;
+    parts.push(`은퇴 후 ${total}년 중 ${years}년 국민연금을 받습니다`);
+  } else {
+    parts.push('국민연금 수령액이 등록돼 있지 않습니다');
+  }
+
+  if ((params.privatePensions?.length ?? 0) > 0) {
+    const years = retirementYears.filter((r) => r.privatePensionIncome > 0).length;
+    parts.push(`사적연금은 ${years}년 인출합니다`);
+  } else {
+    parts.push('사적연금은 등록돼 있지 않습니다');
+  }
+
+  return `${parts.join('. ')}.`;
+}
+
+// **점수 산식은 건드리지 않는다.** computeTaxEfficiencyRaw는 세금과 건강보험료를 합한
+// 비율로 채점하고, 그것이 옳다(annualTaxTotals.ts:51-54 — 건보료를 빼면 연금 인출을 늘려
+// 건보료를 키우는 계획이 "세금이 안 늘었다"로 채점된다). 여기서는 **문장이 내역을 밝힐 뿐**이다.
+//
+// 밝혀야 하는 이유: 화면이 "세금·건강보험료 4,874만원"이라고 묶어 말하는데 바로 아래 전문가
+// 패널에는 "건강보험료 0원"이 찍혀 있었다. 두 숫자가 모순으로 보이지만 실제로는 전액이 세금이다.
+function explainTaxEfficiency(yearlyResults: YearlyResults): string {
+  const totalTaxPaid = sumTotalTaxesAndLevies(yearlyResults);
+  const totalHealthInsurance = yearlyResults.reduce((sum, r) => sum + r.healthInsurancePaid, 0);
+  const totalPureTax = totalTaxPaid - totalHealthInsurance;
+  // 분모에서 기타소득을 빼는 것은 computeTaxEfficiencyRaw와 같은 규칙이다 — 이 시뮬레이터는
+  // 기타소득을 세후 실수령액으로 받으므로 분모에 넣으면 비율이 희석된다.
+  const totalGrossIncome = yearlyResults.reduce((sum, r) => sum + r.preTaxTotalIncome - r.otherIncome, 0);
+
+  if (totalGrossIncome <= 0) return '과세 대상 소득이 없어 세금 부담이 발생하지 않습니다.';
+
+  const rate = (totalTaxPaid / totalGrossIncome) * 100;
+  const breakdown = totalHealthInsurance > 0
+    ? `세금 ${formatManwon(totalPureTax)} + 건강보험료 ${formatManwon(totalHealthInsurance)}`
+    : `전액 세금이며 건강보험료 추가 부담은 없습니다`;
+  return (
+    `평생 세전 소득 ${formatManwon(totalGrossIncome)} 중 약 ${rate.toFixed(1)}%` +
+    `(${formatManwon(totalTaxPaid)})를 세금·건강보험료로 냅니다 — ${breakdown}.`
+  );
+}
+
+function explainTaxationRisk(yearlyResults: YearlyResults): string {
+  if (yearlyResults.length === 0) return '평가할 연도가 없습니다.';
+
+  const warningYears = yearlyResults.filter((r) => r.hasTaxWarning).length;
+  const healthInsuranceTotal = yearlyResults.reduce((sum, r) => sum + r.healthInsurancePaid, 0);
+
+  if (warningYears === 0 && healthInsuranceTotal === 0) {
+    return '금융소득종합과세 위험 연도가 없고 건강보험료 부담도 발생하지 않습니다.';
+  }
+  if (warningYears === 0) {
+    return `금융소득종합과세 위험 연도는 없고, 평생 건강보험료는 ${formatManwon(healthInsuranceTotal)}입니다.`;
+  }
+  return `배당·이자소득이 연 2,000만원을 넘는 해가 ${warningYears}년 있어 금융소득종합과세 위험이 있습니다.`;
+}

@@ -1,0 +1,15 @@
+Dockerfile
+.dockerignore
+node_modules
+npm-debug.log
+README.md
+.next
+.git
+!*.env.example
+.DS_Store
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+docker-compose.yml
+*.py

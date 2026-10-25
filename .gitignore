@@ -1,0 +1,73 @@
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# dependencies
+/node_modules
+/.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# testing
+/coverage
+
+# next.js
+/.next/
+/out/
+
+# production
+/build
+
+# misc
+.DS_Store
+*.pem
+*.swp
+*.swo
+*.swn
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# env files (can opt-in for committing if needed)
+.env*
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+
+/src/generated/prisma
+
+# database
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+.superpowers/
+.worktrees/
+
+# 하니스 출력 (npm run harness:personas)
+/scripts/harness/out/
+# 하니스 입력. 실제 사용자의 자산·소득이 담긴 시나리오 JSON을 놓는 자리라
+# 저장소에 들어가면 안 된다. 기본 경로가 여기를 가리키므로 규칙도 여기 둔다.
+/scripts/harness/input/
+
+# Obsidian 개인 설정. 보관함 루트는 repo 루트이고 노트만 docs/wiki/에 추적한다.
+.obsidian/
+
+# Obsidian이 보관함 루트(= repo 루트)에 만드는 파일. 보관함이 저장소라서 계속 쌓인다.
+# 루트에만 걸어 docs/ 아래 날짜형 문서(releases·specs·plans)와 의도적인 캔버스는 남긴다.
+/[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9].md
+/*.canvas
+
+# Obsidian의 「새 노트」·데일리 노트 위치. 개인 메모라 저장소에 들어가지 않는다.
+# 보관함 «안»에 두는 이유는 위키 노트로 [[링크]]를 걸 수 있어야 하기 때문이다 —
+# 보관함 밖 파일은 Obsidian이 링크 대상으로 인식하지 않는다.
+/notes/

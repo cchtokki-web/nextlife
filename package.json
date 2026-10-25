@@ -1,0 +1,53 @@
+{
+  "name": "nextlife-simulator",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "prisma db push && next dev",
+    "build": "prisma generate && next build",
+    "start": "prisma db push && next start",
+    "lint": "eslint",
+    "test": "vitest run",
+    "test:retirement-domain-invariants": "vitest run src/tests/core/retirement-domain-invariants",
+    "test:watch": "vitest",
+    "harness:personas": "vitest run --config vitest.harness.config.ts scripts/harness/personas.harness.ts",
+    "harness:ledger": "vitest run --config vitest.harness.config.ts scripts/harness/ledger.harness.ts",
+    "harness:mass": "vitest run --config vitest.harness.config.ts scripts/harness/massScenarios.harness.ts",
+    "harness:mass:report": "vitest run --config vitest.harness.config.ts scripts/harness/massScenariosReport.harness.ts"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.19.3",
+    "basic-ftp": "^6.0.1",
+    "bcrypt": "^6.0.0",
+    "framer-motion": "^12.40.0",
+    "html2canvas": "^1.4.1",
+    "jspdf": "^4.2.1",
+    "lucide-react": "^1.17.0",
+    "next": "16.2.7",
+    "next-auth": "^4.24.14",
+    "nodemailer": "^7.0.13",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "recharts": "^3.8.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.3.3",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.5",
+    "@types/bcrypt": "^6.0.0",
+    "@types/node": "^20",
+    "@types/nodemailer": "^8.0.1",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "@types/uuid": "^10.0.0",
+    "@vitejs/plugin-react": "^6.0.2",
+    "eslint": "^9",
+    "eslint-config-next": "16.2.7",
+    "jsdom": "^29.1.1",
+    "prisma": "^6.19.3",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^5",
+    "vitest": "^4.1.8"
+  }
+}

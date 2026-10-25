@@ -1,0 +1,425 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap');
+@import 'tailwindcss';
+@source "..";
+
+:root {
+  /* HSL Color System */
+  --bg-hue: 222;
+  --bg-saturation: 47%;
+  --bg-lightness: 6%;
+  
+  --background: hsl(var(--bg-hue), var(--bg-saturation), var(--bg-lightness));
+  --foreground: #F9FAFB;
+  --foreground-muted: #9CA3AF;
+  
+  /* Glassmorphism background and borders */
+  --card-bg: rgba(17, 24, 39, 0.55);
+  --card-bg-hover: rgba(23, 37, 84, 0.65);
+  --card-border: rgba(255, 255, 255, 0.08);
+  --card-border-hover: rgba(255, 255, 255, 0.15);
+  --card-border-active: rgba(99, 102, 241, 0.4);
+  --card-shadow: rgba(0, 0, 0, 0.37);
+  --card-shadow-hover: rgba(99, 102, 241, 0.15);
+  
+  /* Primary & Accent Colors (Neon & Vibrant) */
+  --primary: #6366F1;       /* Indigo */
+  --primary-light: #818CF8;
+  --primary-glow: rgba(99, 102, 241, 0.15);
+  
+  --secondary: #A855F7;     /* Purple */
+  --secondary-light: #C084FC;
+  --secondary-glow: rgba(168, 85, 247, 0.15);
+  
+  --accent: #06B6D4;        /* Cyan */
+  --accent-glow: rgba(6, 182, 212, 0.15);
+  
+  --success: #10B981;       /* Emerald */
+  --success-glow: rgba(16, 185, 129, 0.1);
+  
+  --warning: #F59E0B;       /* Amber */
+  --warning-glow: rgba(245, 158, 11, 0.1);
+  
+  --danger: #EF4444;        /* Red */
+  --danger-glow: rgba(239, 68, 68, 0.15);
+
+
+  --font-main: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  --font-display: 'Outfit', sans-serif;
+
+  /* Scrollbar variables */
+  --scrollbar-track: rgba(255, 255, 255, 0.01);
+  --scrollbar-thumb: rgba(255, 255, 255, 0.1);
+  --scrollbar-thumb-hover: rgba(255, 255, 255, 0.2);
+
+  /* Theme Adaptive Variables (Dark Theme defaults) */
+  --hero-bg: linear-gradient(135deg, rgba(15, 23, 42, 0.9) 0%, rgba(30, 27, 75, 0.9) 100%);
+  --hero-border: rgba(255, 255, 255, 0.1);
+  --hero-shadow: rgba(0, 0, 0, 0.3);
+  --hero-text: #ffffff;
+  --hero-text-muted: rgba(255, 255, 255, 0.7);
+  --hero-inner-bg: rgba(0, 0, 0, 0.2);
+  --hero-inner-border: rgba(255, 255, 255, 0.05);
+  
+  --panel-bg: rgba(255, 255, 255, 0.02);
+  --panel-border: rgba(255, 255, 255, 0.08);
+  --panel-text: #ffffff;
+  
+  --table-header-bg: rgba(0, 0, 0, 0.25);
+  --table-row-hover: rgba(255, 255, 255, 0.05);
+  
+  --select-arrow: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22white%22%20width%3D%2224%22%20height%3D%2224%22%3E%3Cpath%20d%3D%22M7%2010l5%205%205-5z%22%2F%3E%3Cpath%20d%3D%22M0%200h24v24H0z%22%20fill%3D%22none%22%2F%3E%3C/svg%3E");
+
+  --glow-opacity-1: 0.14;
+  --glow-opacity-2: 0.12;
+  --glow-opacity-3: 0.08;
+
+  --card-box-shadow: 0 4px 12px 0 rgba(0, 0, 0, 0.25);
+  --card-box-shadow-hover: 0 8px 20px 0 rgba(99, 102, 241, 0.15);
+  --hero-shadow: 0 4px 20px 0 rgba(0, 0, 0, 0.25);
+  --hero-title-gradient: linear-gradient(135deg, #ffffff 0%, #a5b4fc 100%);
+  --input-bg: rgba(255, 255, 255, 0.03);
+  --input-border: rgba(255, 255, 255, 0.08);
+  --input-border-hover: rgba(255, 255, 255, 0.15);
+  --input-bg-focus: rgba(99, 102, 241, 0.05);
+  --summary-bg: rgba(255, 255, 255, 0.015);
+  --summary-bg-hover: rgba(255, 255, 255, 0.035);
+  --summary-border: rgba(255, 255, 255, 0.03);
+  --summary-border-hover: rgba(255, 255, 255, 0.06);
+  --asset-card-bg: rgba(255, 255, 255, 0.02);
+}
+
+/*
+ * Tailwind v4 토큰 매핑. 기존 --primary 등의 값을 다시 정의하지 않고 별칭만 부여한다 —
+ * var() 참조는 사용 시점의 캐스케이드 값을 그대로 따르므로, data-theme="light"/data-preset="*"
+ * 오버라이드(:root/body에서 --primary 등을 재정의)가 그대로 유지된다.
+ * 그라디언트 값(--hero-bg 등)은 color 토큰으로 별칭하지 않는다 — background-color는 그라디언트를
+ * 받을 수 없으므로 사용처에서 Tailwind 임의값 문법(bg-[image:var(--hero-bg)])으로 직접 참조한다.
+ */
+@theme {
+  --color-primary: var(--primary);
+  --color-primary-light: var(--primary-light);
+  --color-secondary: var(--secondary);
+  --color-secondary-light: var(--secondary-light);
+  --color-accent: var(--accent);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-danger: var(--danger);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-foreground-muted: var(--foreground-muted);
+  --color-card-border: var(--card-border);
+  --color-panel-border: var(--panel-border);
+
+  --font-sans: var(--font-main);
+  --font-display: var(--font-display);
+}
+
+:root[data-theme="light"] {
+  --bg-hue: 220;
+  --bg-saturation: 25%;
+  --bg-lightness: 95.5%;
+  
+  --background: hsl(var(--bg-hue), var(--bg-saturation), var(--bg-lightness));
+  --foreground: #0F172A;
+  --foreground-muted: #4B5563;
+  
+  /* Glassmorphism background and borders */
+  --card-bg: rgba(255, 255, 255, 0.92);
+  --card-bg-hover: rgba(255, 255, 255, 0.98);
+  --card-border: rgba(148, 163, 184, 0.45);
+  --card-border-hover: rgba(99, 102, 241, 0.55);
+  --card-border-active: rgba(99, 102, 241, 0.8);
+  --card-shadow: rgba(148, 163, 184, 0.08);
+  --card-shadow-hover: rgba(99, 102, 241, 0.08);
+  
+  /* Accent glows tailored for light background */
+  --primary-glow: rgba(99, 102, 241, 0.06);
+  --secondary-glow: rgba(168, 85, 247, 0.06);
+  --accent-glow: rgba(6, 182, 212, 0.06);
+  --success-glow: rgba(16, 185, 129, 0.05);
+  --warning-glow: rgba(245, 158, 11, 0.05);
+  --danger-glow: rgba(239, 68, 68, 0.05);
+
+
+  /* Scrollbar override */
+  --scrollbar-track: rgba(0, 0, 0, 0.02);
+  --scrollbar-thumb: rgba(0, 0, 0, 0.12);
+  --scrollbar-thumb-hover: rgba(0, 0, 0, 0.24);
+
+  /* Theme Adaptive Variables (Light Theme overrides) */
+  --hero-bg: linear-gradient(135deg, #EEF2FF 0%, #E0E7FF 100%);
+  --hero-border: rgba(99, 102, 241, 0.15);
+  --hero-shadow: 0 4px 16px 0 rgba(99, 102, 241, 0.06), 0 2px 4px 0 rgba(0, 0, 0, 0.01);
+  --hero-text: #1E1B4B;
+  --hero-text-muted: #4F46E5;
+  --hero-inner-bg: rgba(255, 255, 255, 0.65);
+  --hero-inner-border: rgba(99, 102, 241, 0.1);
+  
+  --panel-bg: rgba(255, 255, 255, 0.85);
+  --panel-border: rgba(148, 163, 184, 0.22);
+  --panel-text: #0F172A;
+  
+  --table-header-bg: rgba(241, 245, 249, 0.85);
+  --table-row-hover: rgba(241, 245, 249, 0.5);
+  
+  --select-arrow: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22%234B5563%22%20width%3D%2224%22%20height%3D%2224%22%3E%3Cpath%20d%3D%22M7%2010l5%205%205-5z%22%2F%3E%3Cpath%20d%3D%22M0%200h24v24H0z%22%20fill%3D%22none%22%2F%3E%3C/svg%3E");
+
+  --glow-opacity-1: 0.05;
+  --glow-opacity-2: 0.04;
+  --glow-opacity-3: 0.02;
+
+  --card-box-shadow: 0 2px 8px 0 rgba(0, 0, 0, 0.04), 0 1px 3px 0 rgba(0, 0, 0, 0.01);
+  --card-box-shadow-hover: 0 6px 15px 0 rgba(99, 102, 241, 0.08), 0 2px 4px 0 rgba(0, 0, 0, 0.02);
+  --hero-title-gradient: linear-gradient(135deg, #1e1b4b 0%, #4f46e5 100%);
+  --input-bg: rgba(15, 23, 42, 0.03);
+  --input-border: rgba(15, 23, 42, 0.28);
+  --input-border-hover: rgba(99, 102, 241, 0.45);
+  --input-bg-focus: rgba(99, 102, 241, 0.04);
+  --summary-bg: rgba(15, 23, 42, 0.02);
+  --summary-bg-hover: rgba(15, 23, 42, 0.04);
+  --summary-border: rgba(15, 23, 42, 0.12);
+  --summary-border-hover: rgba(15, 23, 42, 0.22);
+  --asset-card-bg: rgba(15, 23, 42, 0.015);
+}
+
+/*
+ * 여기 있던 `* { box-sizing: border-box; padding: 0; margin: 0 }` 규칙을 제거했다.
+ *
+ * Tailwind v4의 preflight(@layer base)가 이미 동일한 초기화를 하므로 중복이었고,
+ * 무엇보다 이 규칙은 레이어 밖에 있었다. 레이어 밖 선언은 @layer utilities 안의
+ * 선언을 항상 이기므로(우선순위 계산에서 레이어 순서가 명시도보다 먼저 적용됨)
+ * 프로젝트 전체의 p-*, m-* 유틸리티가 통째로 무력화되고 있었다.
+ */
+
+html, body {
+  width: 100%;
+  min-height: 100vh;
+  background-color: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-main);
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+
+  /* 한글은 글자마다 줄을 바꿀 수 있어서, 기본값(normal)이면 어절 한가운데가 잘린다.
+     좁은 화면에서 실제로 "은퇴 준/비도", "매우/위험", "실질가치 기/준", "42억 7,278/만원"
+     처럼 읽을 수 없는 줄바꿈이 났다. keep-all은 띄어쓰기에서만 줄을 바꾸게 한다.
+
+     break-word를 함께 두는 이유: keep-all만 두면 한 어절이 컨테이너보다 길 때
+     (긴 영문 URL·티커 등) 줄을 못 바꿔 가로로 넘친다. 이 조합이 "평소에는 어절 단위로,
+     정 안 되면 그때만 강제로"를 뜻한다. */
+  word-break: keep-all;
+  overflow-wrap: break-word;
+}
+
+body {
+  /* Define default dynamic variables */
+  --glow-1: rgba(99, 102, 241, var(--glow-opacity-1));
+  --glow-2: rgba(168, 85, 247, var(--glow-opacity-2));
+  --glow-3: rgba(6, 182, 212, var(--glow-opacity-3));
+
+  /* Radiant background glows for premium look */
+  background-image: 
+    radial-gradient(circle at 12% 15%, var(--glow-1) 0%, transparent 50%),
+    radial-gradient(circle at 88% 85%, var(--glow-2) 0%, transparent 50%),
+    radial-gradient(circle at 50% 50%, var(--glow-3) 0%, transparent 65%);
+  background-attachment: fixed;
+  display: flex;
+  flex-direction: column;
+  transition: all 0.5s ease-in-out;
+}
+
+/* Dynamic Accent Colors & Background Glows per Preset */
+body[data-preset="conservative"] {
+  --glow-1: rgba(16, 185, 129, var(--glow-opacity-1));
+  --glow-2: rgba(52, 211, 153, var(--glow-opacity-2));
+  --glow-3: rgba(6, 182, 212, var(--glow-opacity-3));
+  
+  --primary: #10B981;
+  --primary-light: #34D399;
+  --primary-glow: rgba(16, 185, 129, 0.15);
+  --secondary-light: #059669;
+  --accent: #0D9488;
+  --card-border-active: rgba(16, 185, 129, 0.45);
+  --card-border: rgba(16, 185, 129, 0.10);
+}
+
+body[data-preset="base"] {
+  --glow-1: rgba(99, 102, 241, var(--glow-opacity-1));
+  --glow-2: rgba(168, 85, 247, var(--glow-opacity-2));
+  --glow-3: rgba(6, 182, 212, var(--glow-opacity-3));
+  
+  --primary: #6366F1;
+  --primary-light: #818CF8;
+  --primary-glow: rgba(99, 102, 241, 0.15);
+  --secondary-light: #C084FC;
+  --accent: #22D3EE;
+  --card-border-active: rgba(99, 102, 241, 0.45);
+  --card-border: rgba(99, 102, 241, 0.10);
+}
+
+body[data-preset="aggressive"] {
+  --glow-1: rgba(168, 85, 247, var(--glow-opacity-1));
+  --glow-2: rgba(236, 72, 153, var(--glow-opacity-2));
+  --glow-3: rgba(99, 102, 241, var(--glow-opacity-3));
+  
+  --primary: #A855F7;
+  --primary-light: #C084FC;
+  --primary-glow: rgba(16, 185, 129, 0.15);
+  --secondary-light: #F472B6;
+  --accent: #EC4899;
+  --card-border-active: rgba(168, 85, 247, 0.45);
+  --card-border: rgba(168, 85, 247, 0.10);
+}
+
+body[data-preset="custom"] {
+  --glow-1: rgba(107, 114, 128, var(--glow-opacity-1));
+  --glow-2: rgba(99, 102, 241, var(--glow-opacity-2));
+  --glow-3: rgba(255, 255, 255, var(--glow-opacity-3));
+  
+  --primary: #6366F1;
+  --primary-light: #818CF8;
+  --primary-glow: rgba(99, 102, 241, 0.15);
+  --secondary-light: #C084FC;
+  --accent: #22D3EE;
+  --card-border-active: rgba(99, 102, 241, 0.4);
+  --card-border: rgba(255, 255, 255, 0.08);
+}
+
+/* Override preset card border opacities specifically for light mode to maintain contrast */
+:root[data-theme="light"] body[data-preset="conservative"] {
+  --card-border: rgba(16, 185, 129, 0.32);
+  --card-border-active: rgba(16, 185, 129, 0.7);
+}
+
+:root[data-theme="light"] body[data-preset="base"] {
+  --card-border: rgba(99, 102, 241, 0.32);
+  --card-border-active: rgba(99, 102, 241, 0.7);
+}
+
+:root[data-theme="light"] body[data-preset="aggressive"] {
+  --card-border: rgba(168, 85, 247, 0.32);
+  --card-border-active: rgba(168, 85, 247, 0.7);
+}
+
+:root[data-theme="light"] body[data-preset="custom"] {
+  --card-border: rgba(148, 163, 184, 0.45);
+  --card-border-active: rgba(99, 102, 241, 0.8);
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+/* 드롭다운 목록의 색. **여기가 유일한 자리다** — 컴포넌트마다 붙이면 다음에 <select>를
+   하나 더 만들 때 또 빠진다.
+
+   **왜 필요한가.** option은 select의 `color`를 «상속»하지만 `background`는 상속하지 않는다.
+   이 앱의 select들은 배경이 전부 반투명이라(--input-bg는 rgba(...,0.03), 목표 카드는
+   bg-black/20) 목록의 배경이 시스템 기본값으로 떨어진다.
+
+   맥에서는 드러나지 않는다. 크롬이 드롭다운을 OS에 맡겨 시스템 팝업 색으로 그리기
+   때문이다. 윈도우 크롬은 목록을 직접 그리고 상속된 color를 그대로 쓰므로, 다크 테마의
+   --foreground(#F9FAFB)가 시스템 흰 배경 위에 얹혀 «흰 바탕에 흰 글씨»가 된다. 실제로
+   시나리오 선택 목록이 통째로 읽히지 않는다는 보고가 있었다.
+
+   **--background와 --foreground를 쓰는 이유.** 새 토큰을 만들지 않는다. 표면 토큰
+   (--card-bg, --input-bg)은 전부 반투명이라 목록 배경으로 쓸 수 없고, 불투명한 색을 새로
+   고르면 두 테마 중 한쪽에서 대비가 나쁠 위험을 스스로 지게 된다. --background는 hsl()이라
+   이미 불투명하고, 이 앱이 «본문 대비»를 보장하는 짝이 정확히 이 둘이다.
+
+   맥에서는 이 규칙이 무시되므로 확인은 윈도우 크롬에서 해야 한다. */
+select option,
+select optgroup {
+  background-color: var(--background);
+  color: var(--foreground);
+}
+
+/* 고를 수 없는 항목. 위에서 색을 명시하는 순간 브라우저 기본 회색이 사라지므로, 잠긴
+   선택지가 열린 것과 같아 보이지 않도록 함께 정한다 — 목표 카드의 「반드시 지키기」가
+   금액 확정 전까지 잠기는 자리가 그것이다(RetirementGoalSelector). */
+select option:disabled {
+  color: var(--foreground-muted);
+}
+
+/* Glassmorphism Base Class */
+.glass {
+  background: var(--card-bg);
+  backdrop-filter: blur(16px) saturate(180%);
+  -webkit-backdrop-filter: blur(16px) saturate(180%);
+  border: 1px solid var(--card-border);
+  border-radius: 20px;
+  box-shadow: var(--card-box-shadow);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.glass-interactive:hover {
+  background: var(--card-bg-hover);
+  border-color: var(--card-border-hover);
+  box-shadow: var(--card-box-shadow-hover);
+  transform: translateY(-2px);
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+}
+
+/* Micro-animations */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* General Layout helpers */
+.container {
+  width: 100%;
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 2rem 1.5rem;
+}
+
+/* Sidebar Toggle Global Styles to bypass Next.js CSS Modules HMR bugs */
+.sidebar-left {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  width: 100%;
+}
+
+.sidebar-hidden {
+  display: none;
+}
+
+@media (min-width: 1024px) {
+  .sidebar-left {
+    width: 280px;
+    flex-shrink: 0;
+    transition: margin-left 0.4s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease;
+  }
+  .sidebar-hidden {
+    display: flex;
+    margin-left: calc(-280px - 1rem);
+    opacity: 0;
+    pointer-events: none;
+  }
+}

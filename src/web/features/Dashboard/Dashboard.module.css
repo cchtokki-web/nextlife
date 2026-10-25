@@ -1,0 +1,858 @@
+/*
+ * 결과 영역 카드들의 세로 간격은 이 gap 하나가 정한다.
+ * 자식(ShortfallSummaryCard, ExecutionRoadmap 등)에 mb-6 같은 아래 여백을
+ * 다시 붙이지 말 것 — gap과 더해져 간격이 두 배(48px)가 된다.
+ */
+.container {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+}
+
+.dashboardGroup {
+  min-width: 0;
+}
+
+.groupHeader {
+  margin-bottom: 0.875rem;
+  padding: 0 0.25rem;
+}
+
+.groupTitle {
+  font-family: var(--font-display);
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--foreground);
+}
+
+.groupDescription {
+  margin-top: 0.2rem;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: var(--foreground-muted);
+}
+
+.groupContent {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1rem;
+  border: 1px solid var(--panel-border);
+  border-radius: 28px;
+  background: color-mix(in srgb, var(--panel-bg) 38%, transparent);
+}
+
+.statusList {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.planDiagnosis {
+  padding: 1.4rem;
+  border: 1px solid var(--panel-border);
+  border-radius: 22px;
+  background: var(--panel-bg);
+}
+
+.planDiagnosis.success { border-color: color-mix(in srgb, var(--success) 38%, var(--panel-border)); }
+.planDiagnosis.warning { border-color: color-mix(in srgb, #f59e0b 42%, var(--panel-border)); }
+.planDiagnosis.danger { border-color: color-mix(in srgb, var(--danger) 38%, var(--panel-border)); }
+
+.diagnosisHeadline {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.diagnosisHeadline h3 {
+  font-family: var(--font-display);
+  font-size: clamp(1.15rem, 2vw, 1.45rem);
+  font-weight: 700;
+  color: var(--foreground);
+}
+
+.diagnosisGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 0.75fr) minmax(0, 1.75fr);
+  gap: 0.75rem;
+  margin-top: 1.25rem;
+}
+
+.diagnosisGrid > div,
+.currentPlanFacts > div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.diagnosisGrid > div {
+  padding: 1rem;
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--card-bg) 80%, transparent);
+}
+
+.diagnosisGrid span,
+.currentPlanFacts dt {
+  font-size: 0.75rem;
+  color: var(--foreground-muted);
+}
+
+.diagnosisGrid strong {
+  font-size: 1rem;
+  line-height: 1.45;
+  color: var(--foreground);
+}
+
+.diagnosisGrid small {
+  display: block;
+  margin-top: 0.25rem;
+  color: var(--foreground-muted);
+  font-size: 0.72rem;
+}
+
+.simulationDisclaimer {
+  margin: 0.75rem 0 0;
+  color: var(--foreground-muted);
+  font-size: 0.75rem;
+  line-height: 1.55;
+}
+
+.diagnosisGrid > div:first-child strong {
+  font-family: var(--font-display);
+  font-size: 2rem;
+  color: var(--primary);
+}
+
+.currentPlanFacts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--card-border);
+}
+
+.currentPlanFacts dd {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--foreground);
+}
+
+.goalCoverageNote {
+  margin-top: 0.75rem;
+  font-size: 0.72rem;
+  line-height: 1.5;
+  color: var(--foreground-muted);
+}
+
+.goalShortfallReason {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--card-border);
+}
+
+.goalShortfallReason > span {
+  font-size: 0.75rem;
+  color: var(--foreground-muted);
+}
+
+.goalShortfallReason > p {
+  font-size: 0.9rem;
+  line-height: 1.5;
+  color: var(--foreground);
+}
+
+.goalShortfallReason > .goalShortfallHint {
+  font-size: 0.8rem;
+  color: var(--foreground-muted);
+}
+
+.deterministicNote {
+  margin-top: 0.75rem;
+  font-size: 0.72rem;
+  color: var(--foreground-muted);
+}
+
+.recommendationErrorDetail {
+  margin-top: 0.5rem;
+  font-size: 0.72rem;
+  color: var(--foreground-muted);
+  word-break: break-word;
+}
+
+/* 검증하지 못한 HARD 목표 고지, 그리고 목표 충돌 고지. 둘 다 추천 카드보다 먼저 읽혀야
+   하므로 경고 색을 쓴다.
+
+   한 규칙에 함께 두는 이유: 같은 무게의 두 고지가 서로 다른 시각 언어로 말하면 사용자는
+   둘을 다른 종류의 사건으로 읽는다. 새 색·새 테두리를 만들지 않고 이미 있는 경고 계열을
+   그대로 쓴다. */
+.unsupportedHardGoalNotice,
+.goalConflictNotice {
+  margin-bottom: 0.75rem;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: var(--foreground);
+  border-left: 3px solid var(--warning, #d97706);
+}
+
+.goalConflictNotice > strong {
+  display: block;
+  margin-bottom: 0.35rem;
+  font-size: 0.9rem;
+}
+
+.goalConflictNotice > p {
+  margin: 0;
+}
+
+/* 미달 항목은 «세로로 쌓는다». 칸 수를 가정하는 그리드를 두지 않는다 — 항목은 하나일 수도
+   셋일 수도 있고, 고정 열 수를 전제한 규칙이 정확히 .recommendationGrid를 깨뜨렸다. */
+.goalConflictNotice > ul {
+  margin: 0.5rem 0 0;
+  padding-left: 1.1rem;
+}
+
+.goalConflictNotice > ul > li {
+  margin-top: 0.2rem;
+}
+
+/* 어떤 전략도 목표에 도달하지 못할 때 추천 카드 자리를 대신한다. 진단 카드의 danger 표현을
+   그대로 따른다 — 같은 사실("현재 계획으로는 목표를 못 지킨다")의 다른 단계이므로, 두 카드가
+   다른 색으로 말하면 서로 다른 사건으로 읽힌다. */
+.unreachableGoal {
+  border-color: color-mix(in srgb, var(--danger) 38%, var(--panel-border));
+}
+
+.unreachableGoalHeadline {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.unreachableGoalHeadline h3 {
+  font-family: var(--font-display);
+  font-size: clamp(1.05rem, 1.8vw, 1.3rem);
+  font-weight: 700;
+  color: var(--foreground);
+}
+
+.unreachableGoalSummary {
+  margin-top: 0.6rem;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: var(--foreground-muted);
+}
+
+.unreachableGoalGap {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--card-border);
+}
+
+.unreachableGoalGap > div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.unreachableGoalGap dt {
+  font-size: 0.75rem;
+  color: var(--foreground-muted);
+}
+
+.unreachableGoalGap dd {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--foreground);
+}
+
+/* 부족액은 이 카드가 존재하는 이유다. 나머지 둘과 같은 무게로 두면 눈이 그냥 지나간다. */
+.unreachableGoalGap > div:last-child dd {
+  color: var(--danger);
+}
+
+.unreachableGoalAction {
+  margin-top: 1rem;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  color: var(--foreground);
+}
+
+/* 카드는 한 장·두 장·세 장이 모두 정상 결과다 — 페르소나는 그 특성을 실제로 가진 후보가
+   있을 때만 나오고(RecommendationEngine), 결과가 같은 후보는 그 전에 접힌다
+   (StrategyOptimizer의 dedupeByDeterministicOutcome). 칸 수를 3으로 못 박아 두었더니
+   두 장짜리 결과가 3분의 2 너비로 왼쪽에 몰리고 오른쪽 한 칸이 빈 채로 남았다.
+   카드 «수»만큼 칸을 만들어 PDF 리포트(flex: 1)와 같은 배분을 쓴다. */
+.recommendationGrid {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: 0.9rem;
+}
+
+.strategyCard {
+  /* 카드마다 「달라지는 점」 항목 수가 달라 본문 높이가 제각각이다. 세로 flex로 두고
+     액션 영역을 아래로 밀어야 세 카드의 적용 버튼이 같은 높이에 선다.
+     **이것은 폴백이다.** 아래 @supports 블록이 ≥769px·subgrid 지원 브라우저 —
+     즉 기본 경로 — 에서 이 카드를 grid로 바꾼다. 그쪽에서 버튼을 바닥에 붙이는 일은
+     .strategyCardBody가 이어받는다. */
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 1.1rem;
+  border: 1px solid var(--card-border);
+  border-radius: 20px;
+  background: var(--panel-bg);
+}
+
+/* 헤더 아래의 본문. 이 div «자신»이 세로 flex라서 .strategyCardActions의
+   `margin-top: auto`가 버튼을 바닥에 붙인다 — 두 경로 모두에서 그렇다.
+   다만 이 div가 카드 높이를 채우는 «방법»은 갈린다: flex 폴백에서는 아래 flex: 1이,
+   subgrid 경로에서는 부모 .recommendationGrid의 1fr 행이 늘린다(그쪽에서는 부모가
+   grid라 flex: 1이 아무 일도 하지 않는다). */
+.strategyCardBody {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+/* **세 카드의 첫 지표를 같은 높이에서 시작시킨다.** 카드 설명(reason)은 한 줄짜리와 두
+   줄짜리가 섞여 있어 헤더 높이가 카드마다 달랐고, 그만큼 「목표 달성 확률」부터 아래 모든
+   행이 서로 어긋나 보였다. 카드마다 min-height를 박아 두 줄을 예약하는 방식은 폭이 좁아져
+   세 줄로 접히는 순간 다시 어긋나므로 쓰지 않는다.
+   부모 그리드가 [헤더][본문] 두 행을 갖고 각 카드가 subgrid로 그 행을 물려받으면, 헤더 행
+   높이는 «가장 높은 헤더»에 맞춰 세 카드 공통으로 결정된다.
+   좁은 화면(카드를 세로로 쌓는 구간)에서는 맞출 상대가 없으므로 적용하지 않는다.
+   subgrid를 모르는 브라우저는 기존 flex 배치 그대로 남는다.
+
+   경계는 카드를 세로로 쌓는 `max-width: 768px`(아래)의 «바로 옆»이어야 한다. 769px로 두면
+   확대·소수 폭(768.5px)에서 두 블록 어디에도 걸리지 않아 정렬만 조용히 사라진다. */
+@media (min-width: 768.02px) {
+  @supports (grid-template-rows: subgrid) {
+    .recommendationGrid {
+      grid-template-rows: auto 1fr;
+      /* 행 간격은 0으로 둔다 — 헤더와 지표 사이 여백은 .strategyMetrics의 margin-top이
+         이미 갖고 있고, 여기에 gap까지 더하면 카드 안 간격만 넓어진다. */
+      row-gap: 0;
+    }
+
+    .strategyCard {
+      display: grid;
+      grid-row: 1 / -1;
+      grid-template-rows: subgrid;
+    }
+  }
+}
+
+/* 적용 상태 알림. 카드 그리드 «밖»에 있어 검증 상태(idle/running)나 결과 종류와 무관하게
+   남는다 — 그리드가 사라지는 동안에도 되돌리기가 화면에서 사라지면 안 된다. */
+.appliedStrategyStatus {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.75rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid color-mix(in srgb, var(--primary) 35%, var(--card-border));
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--primary) 8%, var(--panel-bg));
+}
+
+.appliedStrategyStatusTitle { font-size: 0.8rem; line-height: 1.5; color: var(--foreground); }
+
+/* 반영하지 못한 축. 숨기면 "전략을 적용했다"는 문장이 거짓이 된다. */
+.appliedStrategySkippedNote {
+  margin-top: 0.2rem;
+  font-size: 0.74rem;
+  line-height: 1.45;
+  color: var(--warning, #d97706);
+}
+
+.appliedStrategyStatus .undoAppliedStrategyButton { width: auto; flex-shrink: 0; }
+
+/* 지금 시나리오에 반영된 카드. ☆추천(엔진의 선택)이 아니라 «적용 상태»를 말한다 —
+   적용한 것이 없으면 어떤 카드에도 붙지 않는다. */
+.appliedStrategyCard {
+  border-color: color-mix(in srgb, var(--primary) 70%, var(--card-border));
+  box-shadow: 0 10px 30px color-mix(in srgb, var(--primary) 12%, transparent);
+  background: color-mix(in srgb, var(--primary) 6%, var(--panel-bg));
+}
+
+.strategyCardHeader { display: flex; align-items: flex-start; justify-content: space-between; gap: 0.5rem; }
+.strategyLabel { font-family: var(--font-display); font-size: 1.05rem; font-weight: 700; color: var(--foreground); }
+.strategySummary { margin-top: 0.2rem; font-size: 0.72rem; line-height: 1.4; color: var(--foreground-muted); }
+.recommendedBadge { display: inline-flex; align-items: center; gap: 0.2rem; flex-shrink: 0; padding: 0.25rem 0.5rem; border-radius: 999px; background: color-mix(in srgb, var(--primary) 14%, transparent); color: var(--primary); font-size: 0.7rem; font-weight: 700; }
+
+.strategyMetrics { display: grid; gap: 0.55rem; margin-top: 1rem; }
+.strategyMetrics > div { display: flex; align-items: baseline; justify-content: space-between; gap: 0.5rem; }
+.strategyMetrics dt { font-size: 0.75rem; color: var(--foreground-muted); }
+.strategyMetrics dd { text-align: right; font-size: 0.9rem; font-weight: 700; color: var(--foreground); }
+.strategyMetrics > div:first-child dd { font-size: 1.15rem; color: var(--success); }
+.strategyProbabilityCriteria { margin: 0.65rem 0 0; color: var(--foreground-muted); font-size: 0.75rem; line-height: 1.45; }
+
+.strategyChanges { margin-top: 1rem; padding-top: 0.9rem; border-top: 1px solid var(--card-border); }
+.strategyChanges h4 { font-size: 0.78rem; font-weight: 700; color: var(--foreground); }
+.strategyChanges dl { display: grid; gap: 0.6rem; margin-top: 0.65rem; }
+.strategyChanges dl > div { display: grid; gap: 0.2rem; }
+.strategyChanges dt, .strategyChanges p { font-size: 0.7rem; color: var(--foreground-muted); }
+.strategyChanges dd { display: flex; align-items: center; flex-wrap: wrap; gap: 0.3rem; font-size: 0.74rem; }
+.strategyChanges dd span { color: var(--foreground-muted); text-decoration: line-through; }
+.strategyChanges dd b { color: var(--foreground-muted); }
+.strategyChanges dd strong { color: var(--foreground); }
+
+/* 위 목록에 없지만 적용하면 함께 확정되는 축의 예고. 목록과 같은 무게로 보이면 "또 하나의
+   변경점"으로 읽히므로 한 단계 낮춘다 — 계획은 달라지지 않고 설정만 고정된다는 뜻이다.
+   적용 후 알림의 「반영하지 못했습니다」(.appliedStrategySkippedNote)와 같은 크기를 쓴다. */
+.strategyChanges .strategyPinNote {
+  margin-top: 0.6rem;
+  font-size: 0.68rem;
+  line-height: 1.5;
+  color: var(--foreground-muted);
+  opacity: 0.85;
+}
+
+/* ☆추천의 선정 근거 한 줄. 카드 그리드 아래에 한 번만 선다. */
+.primarySelectionNote {
+  margin-top: 0.8rem;
+  font-size: 0.7rem;
+  line-height: 1.6;
+  color: var(--foreground-muted);
+}
+
+/* 「적용하면 달라지는 수치」. 바로 위 「달라지는 점」과 같은 표 모양을 쓰되 취소선은 쓰지
+   않는다 — 그쪽의 «전»은 사라질 설정이지만 이쪽의 «전»은 지금 실제로 일어나고 있는 일이라,
+   지워진 것처럼 보이면 안 된다. */
+.strategyOutcomeChanges { margin-top: 0.9rem; padding-top: 0.9rem; border-top: 1px dashed var(--card-border); }
+.strategyOutcomeChanges h4 { font-size: 0.78rem; font-weight: 700; color: var(--foreground); }
+.strategyOutcomeChanges dl { display: grid; gap: 0.6rem; margin-top: 0.65rem; }
+.strategyOutcomeChanges dl > div { display: grid; gap: 0.2rem; }
+.strategyOutcomeChanges dt { font-size: 0.7rem; color: var(--foreground-muted); }
+.strategyOutcomeChanges dd { display: flex; align-items: center; flex-wrap: wrap; gap: 0.3rem; font-size: 0.74rem; }
+.strategyOutcomeChanges dd span, .strategyOutcomeChanges dd b { color: var(--foreground-muted); }
+.strategyOutcomeChanges dd strong { color: var(--foreground); }
+.strategyOutcomeChanges dd strong.outcomeBetter { color: var(--success, #10b981); }
+.strategyOutcomeChanges dd strong.outcomeWorse { color: var(--danger, #ef4444); }
+.strategyOutcomeNote {
+  margin-top: 0.6rem;
+  font-size: 0.68rem;
+  line-height: 1.5;
+  color: var(--foreground-muted);
+  opacity: 0.85;
+}
+
+/* margin-top: auto — 남는 세로 공간을 전부 위쪽에 몰아 버튼을 카드 바닥에 고정한다.
+   padding-top은 본문이 카드를 꽉 채웠을 때의 최소 간격이다. */
+.strategyCardActions { display: grid; gap: 0.5rem; margin-top: auto; padding-top: 0.9rem; }
+.applyStrategyButton {
+  width: 100%;
+  padding: 0.55rem 0.75rem;
+  border: none;
+  border-radius: 12px;
+  background: var(--primary);
+  color: #fff;
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: opacity 0.2s ease;
+}
+.applyStrategyButton:hover:not(:disabled) { opacity: 0.9; }
+.applyStrategyButton:disabled {
+  background: color-mix(in srgb, var(--foreground-muted) 18%, transparent);
+  color: var(--foreground-muted);
+  cursor: default;
+}
+
+/* 적용된 카드의 해제 버튼. 채운 primary 버튼(=아직 안 누른 카드)과 시각적으로 구분해야
+   세 카드 중 어느 것이 적용 상태인지 한눈에 읽힌다. */
+.undoAppliedStrategyButton {
+  width: 100%;
+  padding: 0.55rem 0.75rem;
+  border: 1px solid color-mix(in srgb, var(--primary) 45%, var(--card-border));
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--primary) 10%, transparent);
+  color: var(--foreground);
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: border-color 0.2s ease, color 0.2s ease;
+}
+.undoAppliedStrategyButton:hover { border-color: var(--primary); color: var(--primary); }
+
+.detailedAnalysis {
+  border: 1px solid var(--panel-border);
+  border-radius: 22px;
+  background: color-mix(in srgb, var(--panel-bg) 55%, transparent);
+  overflow: clip;
+}
+
+.detailedAnalysis > summary {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  cursor: pointer;
+  padding: 1.1rem 1.25rem;
+  list-style: none;
+  transition: background 0.2s ease;
+}
+.detailedAnalysis > summary:hover { background: color-mix(in srgb, var(--primary) 7%, transparent); }
+.detailedAnalysis > summary:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
+
+.detailedAnalysis > summary::-webkit-details-marker { display: none; }
+.detailedAnalysisHeading {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-width: 0;
+}
+.detailedAnalysisHeading strong { font-family: var(--font-display); color: var(--foreground); }
+.detailedAnalysisHeading small { font-size: 0.75rem; color: var(--foreground-muted); }
+
+/* summary 전체가 클릭 영역이고, 오른쪽 컨트롤은 상태와 동작을 설명하는 시각적 단서다.
+   +/− 아이콘은 추가·삭제 액션처럼 읽히므로 명시적인 라벨과 chevron을 사용한다. */
+.detailedAnalysisToggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  gap: 0.3rem;
+  margin-left: auto;
+  padding: 0.45rem 0.65rem;
+  border-radius: 10px;
+  color: var(--primary);
+  font-size: 0.75rem;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+  transition: color 0.2s ease, background 0.2s ease;
+}
+.detailedAnalysis > summary:hover .detailedAnalysisToggle {
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+}
+.detailedAnalysisToggle svg { transition: transform 0.2s ease; }
+.detailedAnalysisCloseLabel { display: none; }
+.detailedAnalysis[open] .detailedAnalysisOpenLabel { display: none; }
+.detailedAnalysis[open] .detailedAnalysisCloseLabel { display: inline; }
+.detailedAnalysis[open] .detailedAnalysisToggle svg { transform: rotate(180deg); }
+.detailedAnalysisContent { display: flex; flex-direction: column; gap: 2rem; padding: 0 1rem 1rem; }
+
+/* 평생 소비 최적화의 연령 구간별 금액. 문장 안에 이어 쓰면 "60~69세 580만원 70~79세
+   480만원"처럼 붙어 읽히므로 줄로 나눈다. */
+.spendingPlanList {
+  margin: 0.4rem 0 0;
+  padding-left: 1.1rem;
+  list-style: disc;
+  display: grid;
+  gap: 0.15rem;
+}
+
+.statusNotice {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid;
+  border-radius: 14px;
+}
+
+.statusNotice.success { border-color: rgba(16, 185, 129, 0.3); background: rgba(16, 185, 129, 0.07); }
+.statusNotice.danger { border-color: rgba(239, 68, 68, 0.3); background: rgba(239, 68, 68, 0.07); }
+.statusNotice.info { border-color: rgba(59, 130, 246, 0.3); background: rgba(59, 130, 246, 0.07); }
+.success .statusIcon, .success .statusTitle { color: var(--success); }
+.danger .statusIcon, .danger .statusTitle { color: var(--danger); }
+.info .statusIcon, .info .statusTitle { color: #3b82f6; }
+
+.statusIcon { flex-shrink: 0; margin-top: 0.1rem; }
+.statusTitle { font-size: 0.875rem; font-weight: 700; }
+.statusText { margin-top: 0.15rem; font-size: 0.85rem; line-height: 1.5; color: var(--foreground-muted); }
+/* 금액이 «무엇인가»를 밝히는 한 줄. 금액 문장보다 한 단 낮춰 두되 숨기지는 않는다 —
+   기준을 못 보면 한계값이 권장액으로 읽힌다. */
+.statusBasisNote { display: block; margin-top: 0.3rem; font-size: 0.78rem; line-height: 1.5; opacity: 0.85; }
+
+.chartTabs {
+  display: inline-flex;
+  align-self: flex-start;
+  gap: 0.25rem;
+  padding: 0.25rem;
+  border: 1px solid var(--card-border);
+  border-radius: 12px;
+  background: var(--panel-bg);
+}
+
+.chartTabs button {
+  border: 0;
+  border-radius: 9px;
+  padding: 0.5rem 0.9rem;
+  background: transparent;
+  color: var(--foreground-muted);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.chartTabs button[aria-selected='true'] {
+  background: var(--primary);
+  color: white;
+}
+
+@media (max-width: 768px) {
+  .container { gap: 1.5rem; }
+  .groupContent { padding: 0.5rem; border-radius: 20px; }
+  .groupHeader { padding: 0 0.1rem; }
+  .diagnosisGrid { grid-template-columns: 1fr; }
+  /* 좁은 화면에서는 카드를 세로로 쌓는다 — 위의 열 배치를 되돌려야 한다. */
+  .recommendationGrid { grid-auto-flow: row; }
+  .currentPlanFacts, .unreachableGoalGap { grid-template-columns: 1fr; gap: 0.65rem; }
+}
+
+.checkIcon {
+  color: #10B981;
+  font-size: 1.1rem;
+}
+
+.crossIcon {
+  color: #EF4444;
+  font-size: 1.1rem;
+}
+
+/* 2. Core Metrics Cards */
+.coreMetricsGrid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+}
+
+@media (min-width: 1024px) {
+  .coreMetricsGrid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+.coreMetricCard {
+  background: var(--panel-bg);
+  backdrop-filter: blur(10px);
+  border: 1px solid var(--panel-border);
+  border-radius: 20px;
+  padding: 1.5rem 1.25rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 1rem;
+  transition: transform 0.2s ease, background 0.2s ease;
+}
+
+.coreMetricCard:hover {
+  background: var(--card-bg-hover);
+  transform: translateY(-2px);
+}
+
+.coreIconWrapper {
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  background: rgba(99, 102, 241, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--primary);
+  margin-bottom: 0.25rem;
+}
+
+.coreCardContent {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.coreCardTitle {
+  font-size: 0.95rem;
+  color: var(--foreground-muted);
+  margin: 0;
+  font-weight: 500;
+}
+
+.coreCardValue {
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: var(--panel-text);
+  font-family: var(--font-display);
+}
+
+.coreCardDesc {
+  font-size: 0.85rem;
+  color: var(--foreground-muted);
+  margin: 0;
+}
+
+.coreCardList {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+}
+
+.coreCardListItem {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: var(--panel-text);
+}
+
+.warningCard {
+  border: 1px solid var(--danger);
+  background: rgba(239, 68, 68, 0.08);
+  box-shadow: 0 0 15px 0 rgba(239, 68, 68, 0.15);
+  border-radius: 16px;
+  padding: 1.25rem;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  animation: fadeIn 0.5s ease;
+}
+
+.warningIcon {
+  color: var(--danger);
+  flex-shrink: 0;
+  margin-top: 0.15rem;
+}
+
+.warningContent {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.warningTitle {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #F87171;
+}
+
+.warningText {
+  font-size: 0.8rem;
+  color: #FCA5A5;
+  line-height: 1.4;
+}
+
+.chartCard {
+  width: 100%;
+  padding: 1.5rem;
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
+  border-radius: 24px;
+}
+
+@media (max-width: 768px) {
+  .chartCard {
+    padding: 0.5rem;
+    border-radius: 16px;
+  }
+}
+
+.chartHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.25rem;
+  gap: 0.5rem;
+}
+
+@media (max-width: 768px) {
+  .chartHeader {
+    flex-direction: column;
+    align-items: flex-start;
+    margin-bottom: 1rem;
+  }
+}
+
+.chartTitle {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--foreground);
+}
+
+.chartScrollWrapper {
+  width: 100%;
+}
+
+.chartContainer {
+  width: 100%;
+  height: 320px;
+}
+
+/* 「생활비 배분」이 목표 생활비를 나이대별로 얼마로 바꿨는지 펼치는 줄.
+   진단 카드의 「월 생활비 목표(평균)」 바로 아래에 붙어 그 평균의 근거가 된다. */
+/* 진단 카드의 사실 목록(dl) 아래에 붙는 각주. 「생활비 배분」 구간 나열과 「예상자산」의
+   기준 표기가 같은 자리·같은 무게로 서야 해서 클래스를 공유한다. */
+.planFactNote {
+  margin-top: 0.5rem;
+  font-size: 0.78rem;
+  line-height: 1.55;
+  color: var(--foreground-muted);
+}
+
+/* 추천 카드의 확률 아래에 붙는 「현재 계획보다 N%p 높음/낮음」. 카드가 지금보다 나쁜지를
+   숫자로 말하는 자리다 — 페르소나는 개선 여부로 뽑히지 않으므로 이 줄이 없으면 사용자는
+   비교할 방법이 없다. */
+.strategyDelta {
+  display: block;
+  margin-top: 0.15rem;
+  font-size: 0.7rem;
+  font-weight: 500;
+  color: var(--foreground-muted);
+}
+
+/* 세 추천이 모두 현재 계획보다 나쁠 때 «그 사실 자체»를 추천으로 세우는 카드.
+   아래 대안 카드보다 눈에 먼저 들어와야 한다 — 그렇지 않으면 화면이 여전히
+   「셋 중 하나를 고르라」는 뜻으로 읽힌다. */
+.keepCurrentPlanCard {
+  margin-bottom: 0.85rem;
+  border-color: color-mix(in srgb, var(--primary) 45%, transparent);
+}
+
+.keepCurrentPlanTitle {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--foreground);
+}
+
+.keepCurrentPlanProbability {
+  margin-top: 0.15rem;
+  font-family: var(--font-display), inherit;
+  font-size: 2rem;
+  font-weight: 600;
+  line-height: 1.1;
+  color: var(--primary);
+}
+
+.keepCurrentPlanBody {
+  margin-top: 0.35rem;
+  font-size: 0.85rem;
+  line-height: 1.55;
+  color: var(--foreground-muted);
+}
+
+/* 대안 카드 묶음의 소제목. 「추천」이 아니라 「검토해 볼 것」이라고 말한다. */
+.alternativesHeading {
+  margin-bottom: 0.45rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--foreground-muted);
+}
+
+/* 비중만 낮춘다 — 카드를 지우지 않는다. 축을 바꿔 보고 싶은 사용자의 유일한 경로다. */
+.deemphasizedGrid { opacity: 0.78; }

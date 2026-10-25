@@ -1,0 +1,227 @@
+.formGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  width: 100%;
+}
+
+.label {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--foreground);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+/*
+ * 안내 문구를 단 라벨.
+ *
+ * 예전에는 라벨 본문과 안내 문구가 한 줄을 다투며 «둘 다» 접혔다. 한국어는 글자 단위로
+ * 줄바꿈되므로 「총 취득원가」가 「총 / 취득원가」로 쪼개져 필드 이름을 읽을 수 없었다.
+ * 본문을 접지 않게 고정하고, 안내 문구는 한 줄에 들어가면 오른쪽에 붙고 길면 통째로
+ * 다음 줄로 내려가게 둔다.
+ */
+.labelWithSecondary {
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: 0.5rem;
+  row-gap: 0.15rem;
+}
+
+.labelWithSecondary > span:first-child {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.labelSecondary {
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: var(--foreground-muted);
+  /* 줄을 바꿀지 말지는 flex가 정한다. 0 1 auto라 제 내용만큼만 차지하고, 한 줄에
+     남을 때는 space-between이 오른쪽 끝으로 민다. */
+  flex: 0 1 auto;
+  min-width: 0;
+  line-height: 1.35;
+}
+
+.inputWrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+
+.input {
+  width: 100%;
+  padding: 0.65rem 0.85rem;
+  background: var(--input-bg);
+  border: 1px solid var(--input-border);
+  border-radius: 12px;
+  color: var(--foreground);
+  font-family: var(--font-main);
+  font-size: 0.85rem;
+  transition: border-color 0.2s ease, background-color 0.2s ease, box-shadow 0.2s ease;
+  outline: none;
+}
+
+.input:focus {
+  border-color: var(--primary);
+  background: var(--input-bg-focus);
+  box-shadow: 0 0 10px 0 rgba(99, 102, 241, 0.2);
+}
+
+.inputWithPrefix {
+  padding-left: 2.25rem;
+}
+
+.inputWithSuffix {
+  padding-right: 3rem;
+}
+
+/* For number inputs with suffixes, make sure text doesn't overlap with both the suffix and native spinner buttons */
+/* Hide native spin-buttons */
+.input[type="number"]::-webkit-inner-spin-button,
+.input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.input[type="number"] {
+  -moz-appearance: textfield; /* Firefox */
+}
+
+.prefix {
+  position: absolute;
+  left: 0.85rem;
+  color: var(--foreground-muted);
+  font-size: 0.85rem;
+  pointer-events: none;
+}
+
+.suffix {
+  position: absolute;
+  right: 0.85rem;
+  color: var(--foreground-muted);
+  font-size: 0.8rem;
+  pointer-events: none;
+}
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.65rem 1rem;
+  border-radius: 12px;
+  font-family: var(--font-main);
+  font-weight: 600;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  border: none;
+}
+
+.buttonPrimary {
+  background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+  color: white;
+  box-shadow: 0 4px 15px 0 rgba(99, 102, 241, 0.25);
+}
+
+.buttonPrimary:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px 0 rgba(99, 102, 241, 0.4);
+  filter: brightness(1.05);
+}
+
+.buttonSecondary {
+  background: var(--input-bg);
+  color: var(--foreground);
+  border: 1px solid var(--input-border);
+}
+
+.buttonSecondary:hover {
+  background: var(--input-bg-focus);
+  border-color: var(--input-border-hover);
+}
+
+.buttonDanger {
+  background: rgba(239, 68, 68, 0.15);
+  color: #F87171;
+  border: 1px solid rgba(239, 68, 68, 0.2);
+}
+
+.buttonDanger:hover {
+  background: rgba(239, 68, 68, 0.25);
+  border-color: rgba(239, 68, 68, 0.4);
+}
+
+.select {
+  appearance: none;
+  background-image: var(--select-arrow);
+  background-repeat: no-repeat;
+  background-position: right 0.85rem center;
+  padding-right: 2.25rem !important;
+  text-overflow: ellipsis;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+  gap: 1.25rem;
+}
+
+.grid2Col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+.stepperContainer {
+  position: absolute;
+  right: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  height: 100%;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.stepperButton {
+  pointer-events: auto;
+  background: var(--input-bg);
+  border: 1px solid var(--input-border);
+  color: var(--foreground-muted);
+  border-radius: 4px;
+  width: 28px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  padding: 0;
+  outline: none;
+}
+
+.stepperButton:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--foreground);
+  border-color: var(--primary-light);
+}
+
+.stepperButton:active {
+  transform: scale(0.95);
+}
+
+.input:focus ~ .stepperContainer .stepperButton {
+  border-color: var(--card-border-active);
+}
+
+.suffixWithSteppers {
+  right: 2.8rem !important;
+}
+
+.inputWithSteppers {
+  padding-right: 5.1rem !important;
+}

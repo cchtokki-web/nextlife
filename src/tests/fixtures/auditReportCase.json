@@ -1,0 +1,140 @@
+{
+  "note": "2026-08-22 계산 정합성 감사의 재현 시나리오. engineRegression.json 첫 케이스(51세/QQQ·SCHD·JEPI·SPYM, 실제 사용자 입력)에 목표 생활비 300만원과 목표 카드를 얹은 것. 「은퇴 60세」는 EARLY_RETIREMENT 목표로만 표현된다 — 목표 배열이 없으면 로드 시 65로 덮인다(normalizeGoalDrivenParams).",
+  "params": {
+    "userProfile": {
+      "currentAge": 51,
+      "retirementAge": 60,
+      "expectancy": 90,
+      "targetMonthlySpending": 3000000
+    },
+    "assets": [
+      {
+        "id": "q",
+        "type": "etf",
+        "ticker": "QQQ",
+        "name": "QQQ",
+        "quantity": 9.133318,
+        "averagePrice": 986945,
+        "totalReturn": 7,
+        "dividendYield": 0.4,
+        "monthlyContribution": 456250,
+        "reinvestDividend": true,
+        "currency": "KRW",
+        "assetMarket": "US_ETF"
+      },
+      {
+        "id": "s",
+        "type": "etf",
+        "ticker": "SCHD",
+        "name": "SCHD",
+        "quantity": 569.795937,
+        "averagePrice": 48860,
+        "totalReturn": 7,
+        "dividendYield": 3,
+        "monthlyContribution": 0,
+        "reinvestDividend": true,
+        "currency": "KRW",
+        "assetMarket": "US_ETF"
+      },
+      {
+        "id": "j",
+        "type": "etf",
+        "ticker": "JEPI",
+        "name": "JEPI",
+        "quantity": 117.346339,
+        "averagePrice": 82122,
+        "totalReturn": 7,
+        "dividendYield": 7.9,
+        "monthlyContribution": 0,
+        "reinvestDividend": true,
+        "currency": "KRW",
+        "assetMarket": "US_ETF"
+      },
+      {
+        "id": "p",
+        "type": "etf",
+        "ticker": "SPYM",
+        "name": "SPYM",
+        "quantity": 15.453288,
+        "averagePrice": 129353,
+        "totalReturn": 7,
+        "dividendYield": 1,
+        "monthlyContribution": 304167,
+        "reinvestDividend": true,
+        "currency": "KRW",
+        "assetMarket": "US_ETF"
+      }
+    ],
+    "isaAccounts": [
+      {
+        "id": "isa",
+        "type": "general",
+        "investmentType": "custom",
+        "balance": 3772550,
+        "monthlyContribution": 200000,
+        "totalReturn": 7,
+        "dividendYield": 21.2,
+        "currency": "KRW",
+        "maturityYears": 3
+      }
+    ],
+    "nationalPension": {
+      "expectedMonthlyAmount": 2000000
+    },
+    "privatePensions": [
+      {
+        "id": "p1",
+        "type": "irp",
+        "name": "SOL 미국배당다우존스",
+        "balance": 33868515,
+        "monthlyContribution": 350000,
+        "totalReturn": 4,
+        "investmentType": "etf",
+        "dividendYield": 3.3,
+        "currency": "KRW"
+      },
+      {
+        "id": "p2",
+        "type": "irp",
+        "name": "SOL 미국배당미국채혼합50",
+        "balance": 7040880,
+        "monthlyContribution": 150000,
+        "totalReturn": 4,
+        "investmentType": "etf",
+        "dividendYield": 3,
+        "currency": "KRW"
+      },
+      {
+        "id": "p3",
+        "type": "retirement",
+        "name": "TIGER 커버드콜2호",
+        "balance": 12145140,
+        "monthlyContribution": 500000,
+        "totalReturn": 4,
+        "investmentType": "etf",
+        "dividendYield": 10,
+        "currency": "KRW"
+      }
+    ],
+    "otherIncomes": [],
+    "inflationRate": 2.5,
+    "inflationMode": "real",
+    "baseExchangeRate": 1414.4,
+    "exchangeScenario": "base",
+    "displayCurrency": "KRW",
+    "retirementGoals": [
+      {
+        "type": "EARLY_RETIREMENT",
+        "priority": 1,
+        "targetValue": 60,
+        "constraintType": "HARD"
+      },
+      {
+        "type": "LIVING_EXPENSE_STABILITY",
+        "priority": 2,
+        "targetValue": 3000000,
+        "constraintType": "HARD"
+      }
+    ]
+  }
+}
