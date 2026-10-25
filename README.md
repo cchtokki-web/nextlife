@@ -1,5 +1,9 @@
 # NextLife 은퇴 설계 시뮬레이터
 
+**[데모 사이트 열기 →](https://next.tokkilab.com)**
+
+![NextLife 데모 사이트 랜딩 화면](docs/images/demo-site-home.png)
+
 NextLife는 현재 자산과 투자 현황을 바탕으로 은퇴 목표를 최대 5개까지 선택하고, 여러 은퇴
 전략을 자동으로 비교해 **안정형·균형형·여유형** 대안을 추천하는 목표 기반 은퇴 설계
 서비스입니다. 월 단위 엔진이 국민연금·사적연금·ISA·일반 투자자산·세금·건강보험료를 함께
@@ -53,12 +57,15 @@ Monte Carlo 검증
 ## 시작하기
 
 ```bash
-npm install
+npm ci
 npm run dev          # prisma db push 후 next dev
 ```
 
 `http://localhost:3000`에서 열립니다. 3000번 포트가 사용 중이라면
 `npm run dev -- -p 3001`처럼 포트를 지정할 수 있습니다.
+
+운영 환경에서는 `NEXTAUTH_SECRET`에 `openssl rand -base64 32`로 만든 고유한 값을 설정하세요.
+`.env.example`의 빈 값이나 개발용 값을 재사용하지 마세요.
 
 ### 개발 모드 자동 로그인
 
@@ -80,6 +87,7 @@ NEXT_PUBLIC_DEV_MODE=true npm run dev
 |---|---|
 | `DATABASE_URL` | Prisma 연결 문자열(기본 SQLite) |
 | `NEXTAUTH_SECRET` / `NEXTAUTH_URL` | next-auth 세션 |
+| `GOOGLE_SITE_VERIFICATION` | Google 사이트 소유권 확인(선택) |
 | `DEV_NEXTAUTH_URL` | 개발 콜백 origin 강제 지정(선택) |
 | `NEXT_PUBLIC_DEV_MODE` | 개발 모드 자동 로그인 |
 | `NEXT_PUBLIC_APP_URL` | 메일 링크 등에 사용하는 공개 URL |
@@ -90,9 +98,11 @@ NEXT_PUBLIC_DEV_MODE=true npm run dev
 LLM은 선택적인 설명 문구에만 사용합니다. 계산, 목표 점수, 후보 순위, 추천 결과는 결정론적
 코드가 담당합니다.
 
-Docker 배포는 `/app/data/.email-only-reset-v1` 마커가 없는 최초 실행에 한해 기존 SQLite의
-사용자·인증 토큰·사용자 종속 데이터를 초기화합니다. `AnalyticsEvent`는 보존하며 초기화와
-스키마 적용이 모두 성공한 뒤에만 마커를 만듭니다.
+Docker 시작 스크립트는 SQLite에 `prisma db push --accept-data-loss`를 적용합니다. 배포 전
+데이터베이스를 백업하고 스키마 변경으로 데이터가 손실되지 않는지 확인하세요. 기존 계정 데이터를
+초기화하는 작업은 기본적으로 실행하지 않습니다. 의도적으로 초기화할 때만
+`RESET_LEGACY_ACCOUNT_DATA=true`를 설정하세요. 이 옵션은 사용자·인증 토큰·사용자 종속 데이터를
+지우고 `AnalyticsEvent`는 보존합니다.
 
 ---
 
@@ -159,16 +169,8 @@ src/
 npm test
 ```
 
-2026-08-23 기준 전체 스위트는 **239개 파일, 2,758개 테스트**입니다. 핵심 방어선은 다음과
-같습니다.
-
-- 총자산 보존 불변식: `기말자산 = 기초자산 + 유입 - 유출`
-- 세금 골든 테스트와 중앙 세법 프로필
-- 목표 제약, 후보 생성, 추천 페르소나, Monte Carlo 고정 시드 회귀 테스트
-- 현금 배당·재투자 배당·ISA 내부 유보의 원장 및 표시 일치 테스트
-- 신규 옵션이 미지정이면 기존 저장 시나리오의 결과를 유지하는 호환성 테스트
-
-테스트 개수는 기능 추가에 따라 달라질 수 있으므로 최종 기준은 실제 `npm test` 출력입니다.
+GitHub Actions는 pull request와 `main`·`develop` 푸시에서 린트, 전체 테스트, 프로덕션 빌드를
+실행합니다. 로컬에서도 `npm run lint`, `npm test`, `npm run build`로 확인할 수 있습니다.
 
 > `.worktrees/` 아래 별도 설치가 메인 테스트의 모듈 탐색 범위에 들어가면 React가 중복 로드될
 > 수 있습니다. 워크트리별 의존성과 실행 위치를 확인하세요.
@@ -188,7 +190,19 @@ next-auth · Recharts 3.8.1 · jsPDF 4.2.1 + html2canvas · Vitest 4.1.8
 - [제품 요구사항](docs/PRD.md)
 - [에이전트 작업 지침](AGENTS.md)
 - `docs/releases/` — 릴리스별 변경 내역과 배경
+- [기여 안내](CONTRIBUTING.md)
+- [보안 정책과 위협 모델](SECURITY.md)
 
 설계 판단은 주변 주석과 회귀 테스트에 함께 남깁니다. 특히 `SimulationEngine.ts`, 세금 엔진,
 정규화·마이그레이션 코드는 단순해 보이는 분기라도 기존 데이터와 회계 불변식을 보호할 수 있으므로
 수정 전에 호출 경로와 주석을 확인해야 합니다.
+
+## 금융 정보 안내
+
+NextLife는 계획을 비교하기 위한 시뮬레이터이며 투자·세무·법률 자문이 아닙니다. 결과는 입력값과
+가정에 따라 달라지며 실제 수익이나 은퇴 시점을 보장하지 않습니다.
+
+## 라이선스
+
+프로젝트 코드는 [MIT License](LICENSE)로 배포합니다. 저장소에 포함되거나 사용되는 외부
+라이브러리와 자료는 각각의 라이선스를 따릅니다.
