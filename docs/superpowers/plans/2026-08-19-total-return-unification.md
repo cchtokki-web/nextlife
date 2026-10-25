@@ -331,7 +331,7 @@ export function normalizeSimulationParams(rawInput: unknown): SimulationParams {
 **단, 방금 만든 마이그레이션 파일과 그 테스트는 제외한다.** 그 파일이 옛 이름을 아는 유일한 자리다.
 
 ```bash
-cd LOCAL_PATH_REDACTED
+cd /path/to/nextlife
 
 # 마이그레이션 파일 2개를 제외한 전체
 grep -rl --include='*.ts' --include='*.tsx' -E '\b(annualGrowthRate|annualReturn)\b' src \
