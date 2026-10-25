@@ -16,7 +16,7 @@
     "harness:mass:report": "vitest run --config vitest.harness.config.ts scripts/harness/massScenariosReport.harness.ts"
   },
   "dependencies": {
-    "@prisma/client": "^6.19.3",
+    "@prisma/client": "^7.10.1",
     "basic-ftp": "^6.0.1",
     "bcrypt": "^6.0.0",
     "framer-motion": "^12.40.0",
