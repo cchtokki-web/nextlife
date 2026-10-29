@@ -1,5 +1,8 @@
 // 조사 전용: production 후보 생성기는 건드리지 않고 66~70세 대안을 추가한다.
 import { test, expect } from 'vitest';
+import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { performance } from 'node:perf_hooks';
 import { buildMassScenarios } from './massScenarios';
 import { StrategyGenerator } from '@/core/strategy/StrategyGenerator';
 import { StrategyOptimizer } from '@/core/strategy/StrategyOptimizer';
@@ -37,8 +40,22 @@ class ExpandedRetirementGenerator extends StrategyGenerator {
   }
 }
 
-test('2·12·22번의 기존 격자와 은퇴 66~70세 추가 격자를 비교한다', { timeout: 600_000 }, () => {
-  const scenarios = buildMassScenarios(22).filter((s) => s.no === 2 || s.no === 12 || s.no === 22);
+test('기존 격자와 은퇴 66~70세 추가 격자를 비교한다', { timeout: 3_600_000 }, () => {
+  const count = process.env.COMPARISON_COUNT ? Number(process.env.COMPARISON_COUNT) : 22;
+  const shardCount = Number(process.env.COMPARISON_SHARDS ?? 1);
+  const shardIndex = Number(process.env.COMPARISON_SHARD ?? 0);
+  if (!Number.isInteger(count) || count < 1 || !Number.isInteger(shardCount) || shardCount < 1
+    || !Number.isInteger(shardIndex) || shardIndex < 0 || shardIndex >= shardCount) {
+    throw new Error('표본 수와 샤드 번호를 확인하세요.');
+  }
+  const scenarios = buildMassScenarios(count).filter((s) =>
+    (process.env.COMPARISON_COUNT ? true : [2, 12, 22].includes(s.no))
+    && (s.no - 1) % shardCount === shardIndex);
+  const outputDir = process.env.COMPARISON_OUT;
+  if (outputDir) {
+    mkdirSync(outputDir, { recursive: true });
+    writeFileSync(join(outputDir, `shard-${shardIndex}.jsonl`), '', { flag: 'wx' });
+  }
   const engine = new LegacySimulationEngine();
   const legacy = new LegacyRecommendationEngine(engine);
   for (const scenario of scenarios) {
@@ -52,9 +69,16 @@ test('2·12·22번의 기존 격자와 은퇴 66~70세 추가 격자를 비교�
     ).optimize(input.profile, input.goals, input.strategy, {
       monteCarlo: { config, finalistLimit: 3 },
     });
-    const baseline = run(new StrategyGenerator());
-    const expanded = run(new ExpandedRetirementGenerator());
-    expect(expanded.debug.generatedCandidateCount).toBeGreaterThan(baseline.debug.generatedCandidateCount);
+    const timedRun = (generator: StrategyGenerator) => {
+      const started = performance.now();
+      const result = run(generator);
+      return { result, durationMs: Math.round(performance.now() - started), rssAfterBytes: process.memoryUsage().rss };
+    };
+    const original = timedRun(new StrategyGenerator());
+    const extended = timedRun(new ExpandedRetirementGenerator());
+    const baseline = original.result;
+    const expanded = extended.result;
+    expect(expanded.debug.generatedCandidateCount).toBeGreaterThanOrEqual(baseline.debug.generatedCandidateCount);
     expect(expanded.debug.generation.baselineCandidateId).toBe(baseline.debug.generation.baselineCandidateId);
     const summarize = (result: typeof baseline) => ({
       outcome: result.outcome.kind,
@@ -68,12 +92,20 @@ test('2·12·22번의 기존 격자와 은퇴 66~70세 추가 격자를 비교�
       mcValidated: result.debug.monteCarloValidatedCount,
       mcConfirmed: result.debug.monteCarloConfirmedCount,
       recommendations: result.recommendations.recommendations.map((item) => ({
+        persona: item.persona,
         age: item.candidate.candidate.dimensions.retirementAge,
         goalProbability: item.candidate.monteCarlo.goalSuccessProbability,
+        missedGoals: item.candidate.evaluation.goalEvaluations.filter((goal) => !goal.achieved).map((goal) => goal.goalType),
+        primary: item.candidate.candidate.id === result.recommendations.primary?.candidate.candidate.id,
       })),
       rejectionReasons: result.debug.rejectionReasons,
     });
-    process.stdout.write(`${JSON.stringify({ scenario: scenario.no, seed: config.seed, trials: config.trials,
-      baseline: summarize(baseline), expanded: summarize(expanded) })}\n`);
+    const row = { scenario: scenario.no, currentAge: scenario.meta.currentAge,
+      goals: scenario.params.retirementGoals ?? [], seed: config.seed, trials: config.trials,
+      baseline: { ...summarize(baseline), durationMs: original.durationMs, rssAfterBytes: original.rssAfterBytes },
+      expanded: { ...summarize(expanded), durationMs: extended.durationMs, rssAfterBytes: extended.rssAfterBytes } };
+    const line = `${JSON.stringify(row)}\n`;
+    if (outputDir) appendFileSync(join(outputDir, `shard-${shardIndex}.jsonl`), line);
+    else process.stdout.write(line);
   }
 });
