@@ -14,7 +14,8 @@ import type { StrategyOptimizationStatus } from '../../../hooks/useStrategyOptim
 import type { AppliedStrategySnapshot } from '../../../hooks/useAppliedStrategy';
 import { RETIREMENT_GOAL_CONSTRAINT_LABELS } from '../../../../core/entities/retirementGoal';
 import { describeGoalSuccessCriteria } from '../../../../core/usecases/goals/goalSuccessConditions';
-import { hardConstraintLabel, RETIREMENT_GOAL_CATALOG } from '../../RetirementGoals/goalCatalog';
+import { RETIREMENT_GOAL_CATALOG } from '../../RetirementGoals/goalCatalog';
+import { describeBlockedConstraints, RECHECK_CONSTRAINTS } from './describeBlockedConstraints';
 import GlassCard from '../../../components/GlassCard';
 import styles from '../Dashboard.module.css';
 
@@ -54,8 +55,7 @@ interface StrategyRecommendationCardsProps {
    */
   baselineOutcome?: StrategyPlanOutcome;
   /**
-   * 현재 계획에서 「월 얼마까지 쓸 수 있는가」와 목표의 차이. 어떤 전략도 목표에 도달하지
-   * 못할 때 그 격차를 숫자로 말하는 데만 쓴다.
+   * 현재 계획에서 「월 얼마까지 쓸 수 있는가」와 목표의 차이. 추천된 전략의 목표 달성 확률이 모두 0%일 때 그 격차를 숫자로 말하는 데만 쓴다.
    *
    * 새로 계산하지 않는다 — SimulationEngine이 이미 구해 둔 calculatedTargetSpending을
    * computeSustainableSpendingAdvice가 조언으로 옮긴 값이며, 화면의 다른 배너와 같은 출처다.
@@ -206,20 +206,19 @@ function EmptyOutcomeCard({ outcome }: { outcome?: OptimizationOutcome }) {
   }
 
   if (outcome?.kind === 'no_candidate_survived') {
-    const blocked = outcome.blockedBy.map(hardConstraintLabel).join(', ');
+    const guidance = describeBlockedConstraints(outcome.blockedBy);
     return (
       <GlassCard className="text-sm text-foreground-muted">
         {outcome.hardConstraintRejectedCount > 0 && (
-          <p>
-            「{RETIREMENT_GOAL_CONSTRAINT_LABELS.HARD}」로 정한 목표를 동시에 만족하는 전략을
-            찾지 못했습니다{blocked && <> — 후보를 막은 조건: {blocked}</>}. 해당 목표의 조건
-            강도를 「{RETIREMENT_GOAL_CONSTRAINT_LABELS.SOFT}」으로 바꾸거나 목표치를 조정하면
-            후보를 찾을 수 있습니다.
-          </p>
+          <div>
+            <p>「{RETIREMENT_GOAL_CONSTRAINT_LABELS.HARD}」로 정한 목표를 동시에 만족하는 전략을 찾지 못했습니다.</p>
+            {guidance.length > 0 && <ul>{guidance.map((item) => <li key={item}>{item}</li>)}</ul>}
+            <p>{RECHECK_CONSTRAINTS}</p>
+          </div>
         )}
         {outcome.failedCount > 0 && (
           <p className={outcome.hardConstraintRejectedCount > 0 ? styles.recommendationErrorDetail : undefined}>
-            또한 전략 {outcome.failedCount}개는 계산 중 오류로 평가하지 못했습니다.
+            {outcome.hardConstraintRejectedCount > 0 ? '또한 ' : ''}전략 {outcome.failedCount}개는 계산 중 오류로 평가하지 못했습니다.
             {outcome.firstFailureReason && <> (원인: {outcome.firstFailureReason})</>}
           </p>
         )}
@@ -235,9 +234,9 @@ function EmptyOutcomeCard({ outcome }: { outcome?: OptimizationOutcome }) {
 }
 
 /**
- * 어떤 전략으로도 목표에 도달하지 못할 때, 전략 카드 대신 «격차»를 보여준다.
+ * 추천된 전략의 목표 달성 확률이 모두 0%일 때, 전략 카드 대신 «격차»를 보여준다.
  *
- * 카드를 그대로 두고 경고만 얹지 않는 이유: 모든 후보가 0%면 세 비교자가 전부 동률이라
+ * 카드를 그대로 두고 경고만 얹지 않는 이유: 추천된 후보가 모두 0%면 세 비교자가 전부 동률이라
  * 카드의 순서도 ☆추천도 근거가 없고(noRecommendationReachesGoal 주석), 수치까지 서로 같아
  * 두 장이 나란히 서면 "둘 중 하나를 고르라"는 뜻으로만 읽힌다. 실제로 사용자가 할 수 있는
  * 일은 전략을 고르는 것이 아니라 목표나 저축을 바꾸는 것이므로, 화면도 그것을 말해야 한다.
@@ -255,10 +254,10 @@ function UnreachableGoalCard({
     <GlassCard className={styles.unreachableGoal} role="note">
       <div className={styles.unreachableGoalHeadline}>
         <span aria-hidden="true">🔴</span>
-        <h3>어떤 전략으로도 목표에 도달하지 못합니다</h3>
+        <h3>추천된 전략의 목표 달성 확률이 0%입니다</h3>
       </div>
       <p className={styles.unreachableGoalSummary}>
-        전략 {outcome.validatedCount}개를 검증했지만 모두 목표 달성 확률이 0%입니다.
+        전략 {outcome.validatedCount}개를 검증했지만 추천된 전략의 목표 달성 확률은 모두 0%입니다.
       </p>
       {/* 격차는 계산됐을 때만 말한다. computeSustainableSpendingAdvice는 고정 생활비 계획이
           아니거나 지속가능액이 0으로 수렴하면 null을 내는데, 그때 0원을 찍으면 측정하지 못한
@@ -271,7 +270,9 @@ function UnreachableGoalCard({
         </dl>
       )}
       <p className={styles.unreachableGoalAction}>
-        목표 생활비를 낮추거나, 은퇴 전 저축·연금 납입을 늘려야 합니다.
+        {advice?.kind === 'overspending'
+          ? '목표 생활비와 은퇴 전 적립액을 검토한 뒤 다시 분석해 보세요.'
+          : '선택한 목표와 입력한 자산·적립액을 검토한 뒤 다시 분석해 보세요.'}
       </p>
     </GlassCard>
   );

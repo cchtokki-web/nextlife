@@ -39,7 +39,8 @@ import {
   describeSustainableSpendingLimit,
   type SustainableSpendingLimitInput,
 } from '../../../core/usecases/dashboard/describeSustainableSpendingLimit';
-import { hardConstraintLabel, RETIREMENT_GOAL_CATALOG } from '../RetirementGoals/goalCatalog';
+import { RETIREMENT_GOAL_CATALOG } from '../RetirementGoals/goalCatalog';
+import { describeBlockedConstraints, RECHECK_CONSTRAINTS } from '../Dashboard/recommendation/describeBlockedConstraints';
 import { describeStrategyChanges } from '../../../core/usecases/dashboard/describeStrategyChanges';
 import { explainGoalShortfall } from '../../../core/usecases/dashboard/explainGoalShortfall';
 import type { StrategyOptimizationStatus } from '../../hooks/useStrategyOptimization';
@@ -552,10 +553,10 @@ export function renderStrategyRecommendationSection(input: {
            describeSustainableSpendingBasis(params.userProfile.expectancy)}</p>`
       : '';
     return `<div style="border: 1px solid #fecaca; background-color: #fef2f2; border-radius: 8px; padding: 12px 14px;">
-        <p style="margin: 0; font-size: 13px; font-weight: 700; color: #b91c1c;">어떤 전략으로도 목표에 도달하지 못합니다</p>
-        <p style="margin: 6px 0 0; font-size: 12px; color: #475569;">전략 ${outcome.validatedCount}개를 검증했지만 모두 목표 달성 확률이 0%입니다.</p>
+        <p style="margin: 0; font-size: 13px; font-weight: 700; color: #b91c1c;">추천된 전략의 목표 달성 확률이 0%입니다</p>
+        <p style="margin: 6px 0 0; font-size: 12px; color: #475569;">전략 ${outcome.validatedCount}개를 검증했지만 추천된 전략의 목표 달성 확률은 모두 0%입니다.</p>
         ${gap}
-        <p style="margin: 10px 0 0; font-size: 12px; color: #0f172a;">목표 생활비를 낮추거나, 은퇴 전 저축·연금 납입을 늘려야 합니다.</p>
+        <p style="margin: 10px 0 0; font-size: 12px; color: #0f172a;">${sustainableSpendingAdvice?.kind === 'overspending' ? '목표 생활비와 은퇴 전 적립액을 검토한 뒤 다시 분석해 보세요.' : '선택한 목표와 입력한 자산·적립액을 검토한 뒤 다시 분석해 보세요.'}</p>
       </div>`;
   }
 
@@ -698,15 +699,15 @@ function describeEmptyOutcome(outcome?: OptimizationOutcome): string {
   // 이 kind는 추천이 «있는» 경우에만 나오므로 현재 구조에서 여기까지 오지 않는다. 그래도
   // 적어 둔다 — 유니온이 늘었는데 이 함수만 모르면 조용히 마지막 폴백 문장으로 새어 나간다.
   if (outcome?.kind === 'no_candidate_reaches_goal') {
-    return `전략 ${outcome.validatedCount}개를 검증했지만 모두 목표 달성 확률이 0%입니다. 목표 생활비를 낮추거나, 은퇴 전 저축·연금 납입을 늘려야 합니다.`;
+    return `전략 ${outcome.validatedCount}개를 검증했지만 추천된 전략의 목표 달성 확률은 모두 0%입니다. 선택한 목표와 입력한 자산·적립액을 검토한 뒤 다시 분석해 보세요.`;
   }
   if (outcome?.kind === 'no_candidate_survived') {
-    const blocked = outcome.blockedBy.map(hardConstraintLabel).join(', ');
+    const guidance = describeBlockedConstraints(outcome.blockedBy);
     const base = outcome.hardConstraintRejectedCount > 0
-      ? `「${RETIREMENT_GOAL_CONSTRAINT_LABELS.HARD}」로 정한 목표를 동시에 만족하는 전략을 찾지 못했습니다${blocked ? ` — 후보를 막은 조건: ${blocked}` : ''}. 해당 목표의 조건 강도를 「${RETIREMENT_GOAL_CONSTRAINT_LABELS.SOFT}」으로 바꾸거나 목표치를 조정하면 후보를 찾을 수 있습니다.`
+      ? `「${RETIREMENT_GOAL_CONSTRAINT_LABELS.HARD}」로 정한 목표를 동시에 만족하는 전략을 찾지 못했습니다. ${guidance.join(' ')} ${RECHECK_CONSTRAINTS}`
       : '';
     const failed = outcome.failedCount > 0
-      ? `${base ? ' ' : ''}또한 전략 ${outcome.failedCount}개는 계산 중 오류로 평가하지 못했습니다.${outcome.firstFailureReason ? ` (원인: ${outcome.firstFailureReason})` : ''}`
+      ? `${base ? ' 또한 ' : ''}전략 ${outcome.failedCount}개는 계산 중 오류로 평가하지 못했습니다.${outcome.firstFailureReason ? ` (원인: ${outcome.firstFailureReason})` : ''}`
       : '';
     return `${base}${failed}` || '현재 목표 조건을 만족하는 추천 후보가 없습니다.';
   }

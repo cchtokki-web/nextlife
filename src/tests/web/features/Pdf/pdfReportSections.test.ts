@@ -341,6 +341,9 @@ describe('renderStrategyRecommendationSection', () => {
     });
 
     expect(html).toContain('자산 고갈 방지');
+    expect(html).toContain('생활비와 은퇴 전 적립액을 점검');
+    expect(html).toContain('조정 후 다시 분석해야 결과를 알 수 있습니다');
+    expect(html).not.toContain('조정하면 후보를 찾을 수 있습니다');
     expect(html).not.toContain('입력만으로는 비교할 전략을 만들지 못했습니다');
   });
 
@@ -361,7 +364,7 @@ describe('renderStrategyRecommendationSection', () => {
       },
     });
 
-    expect(html).toContain('어떤 전략으로도 목표에 도달하지 못합니다');
+    expect(html).toContain('추천된 전략의 목표 달성 확률이 0%입니다');
     expect(html).toContain('전략 12개를 검증했지만');
     expect(html).toContain('지속 가능한 월 생활비');
     // **그 금액이 어느 세계의 값인지 밝힌다.** 결정론 이진탐색의 한계값이라 리포트 앞장의
@@ -380,7 +383,7 @@ describe('renderStrategyRecommendationSection', () => {
       sustainableSpendingAdvice: null,
     });
 
-    expect(html).toContain('어떤 전략으로도 목표에 도달하지 못합니다');
+    expect(html).toContain('추천된 전략의 목표 달성 확률이 0%입니다');
     expect(html).not.toContain('지속 가능한 월 생활비');
     // 금액이 없으면 그 금액을 설명하는 문장도 서지 않는다.
     expect(html).not.toContain('권장 생활비를 의미하지 않습니다');

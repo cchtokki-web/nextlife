@@ -263,7 +263,29 @@ describe('StrategyRecommendationCards', () => {
     expect(screen.getByText(/목표를 동시에 만족하는 전략을 찾지 못했습니다/))
       .toBeInTheDocument();
     expect(screen.getByText(/자산 고갈 방지/)).toBeInTheDocument();
+    expect(screen.getByText(/생활비와 은퇴 전 적립액을 점검/)).toBeInTheDocument();
+    expect(screen.getByText(/조정 후 다시 분석해야 결과를 알 수 있습니다/)).toBeInTheDocument();
     expect(screen.queryByText(/계산 중 오류/)).not.toBeInTheDocument();
+  });
+
+  test('탈락 조건별 조정 방향과 계산 오류를 함께 표시한다', () => {
+    render(<StrategyRecommendationCards status="done" params={params} formatValue={formatValue}
+      outcome={{ kind: 'no_candidate_survived', hardConstraintRejectedCount: 3, failedCount: 2,
+        blockedBy: ['HARD_RETIREMENT_AGE', 'HARD_SPENDING_SHORTFALL', 'HARD_MINIMUM_ENDING_ASSETS'],
+        firstFailureReason: '계산 실패' }} />);
+    expect(screen.getByText(/희망 은퇴 나이를 늦추는 방안/)).toBeInTheDocument();
+    expect(screen.getByText(/목표 생활비를 조정하거나/)).toBeInTheDocument();
+    expect(screen.getByText(/남기려는 자산 목표액/)).toBeInTheDocument();
+    expect(screen.getByText(/전략 2개는 계산 중 오류/)).toBeInTheDocument();
+    expect(screen.queryByText(/조정하면 후보를 찾을 수 있습니다/)).not.toBeInTheDocument();
+  });
+
+  test('탈락 사유가 불명확하면 특정 목표를 추측하지 않는다', () => {
+    render(<StrategyRecommendationCards status="done" params={params} formatValue={formatValue}
+      outcome={{ kind: 'no_candidate_survived', hardConstraintRejectedCount: 1, failedCount: 0,
+        blockedBy: ['HARD_UNSPECIFIED'] }} />);
+    expect(screen.getByText(/구체적인 조정 방향을 확인할 수 없습니다/)).toBeInTheDocument();
+    expect(screen.queryByText(/희망 은퇴 나이를 늦추는 방안/)).not.toBeInTheDocument();
   });
 
   test('검증된 후보가 있으나 페르소나가 없으면 목표 탓으로 돌리지 않는다', () => {
@@ -437,8 +459,8 @@ describe('StrategyRecommendationCards 목표 도달 불가', () => {
       />
     );
 
-    expect(screen.getByText('어떤 전략으로도 목표에 도달하지 못합니다')).toBeInTheDocument();
-    expect(screen.getByText(/전략 12개를 검증했지만 모두 목표 달성 확률이 0%/)).toBeInTheDocument();
+    expect(screen.getByText('추천된 전략의 목표 달성 확률이 0%입니다')).toBeInTheDocument();
+    expect(screen.getByText(/전략 12개를 검증했지만 추천된 전략의 목표 달성 확률은 모두 0%/)).toBeInTheDocument();
     expect(screen.queryByText('균형형')).toBeNull();
     expect(screen.queryByText('여유형')).toBeNull();
     expect(screen.queryByRole('button', { name: '적용' })).toBeNull();
@@ -465,6 +487,7 @@ describe('StrategyRecommendationCards 목표 도달 불가', () => {
     expect(within(gap).getByText('300만원')).toBeInTheDocument();
     expect(within(gap).getByText('200만원')).toBeInTheDocument();
     expect(within(gap).getByText('100만원')).toBeInTheDocument();
+    expect(screen.getByText(/목표 생활비와 은퇴 전 적립액을 검토/)).toBeInTheDocument();
   });
 
   // 조언은 고정 생활비 계획이 아니거나 지속가능액이 0으로 수렴하면 null이다. 그때 0원을 찍으면
@@ -481,8 +504,8 @@ describe('StrategyRecommendationCards 목표 도달 불가', () => {
       />
     );
 
-    expect(screen.getByText('어떤 전략으로도 목표에 도달하지 못합니다')).toBeInTheDocument();
-    expect(screen.getByText(/목표 생활비를 낮추거나/)).toBeInTheDocument();
+    expect(screen.getByText('추천된 전략의 목표 달성 확률이 0%입니다')).toBeInTheDocument();
+    expect(screen.getByText(/선택한 목표와 입력한 자산·적립액을 검토/)).toBeInTheDocument();
     expect(screen.queryByLabelText('목표와 지속 가능한 생활비의 격차')).toBeNull();
   });
 });
@@ -554,7 +577,7 @@ describe('StrategyRecommendationCards 적용 버튼', () => {
       onApplyStrategy: vi.fn(),
     });
 
-    expect(screen.getByText('어떤 전략으로도 목표에 도달하지 못합니다')).toBeInTheDocument();
+    expect(screen.getByText('추천된 전략의 목표 달성 확률이 0%입니다')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '적용 해제' }));
     expect(onUndoStrategy).toHaveBeenCalledTimes(1);
   });
