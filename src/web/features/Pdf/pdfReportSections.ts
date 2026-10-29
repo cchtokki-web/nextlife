@@ -3,6 +3,7 @@ import { describeMonteCarloAssumptions } from '../../../core/usecases/montecarlo
 import { describeSuccessRates, describeHardGoalRelationship } from '../../../core/usecases/montecarlo/describeSuccessRates';
 import { describeSustainableSpendingBasis } from '../../../core/usecases/dashboard/describeSustainableSpendingBasis';
 import { ExecutionRoadmap } from '../../../core/usecases/dashboard/computeExecutionRoadmap';
+import { SENSITIVITY_EXPLANATION } from '../Dashboard/expert/sensitivityExplanation';
 import { describeYieldAxisAnchors, SensitivityScenario } from '../../../core/usecases/dashboard/computeSensitivityAnalysis';
 import { PlanAssetStatus } from '../../../core/usecases/dashboard/resolvePlanAssetStatus';
 import { ShortfallReport } from '../../../core/usecases/dashboard/computeShortfallSummary';
@@ -871,6 +872,7 @@ export function renderSensitivityTableSection(
     })
     .join('');
   return `
+    <p style="margin: 0 0 6px; font-size: 10.5px; color: #64748b;">${SENSITIVITY_EXPLANATION}</p>
     ${frozenNoteHtml}
     ${returnNoteHtml}
     ${violationBasisNoteHtml}

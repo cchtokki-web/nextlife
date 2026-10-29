@@ -75,6 +75,15 @@ const params: SimulationParams = {
 };
 
 describe('현재 계획 계산의 한계', () => {
+  test('가정 변화 안내에서 접힌 민감도 분석으로 이동한다', () => {
+    render(<DashboardSection params={params} result={result} />);
+    const heading = screen.getByRole('heading', { name: '민감도 분석 (핵심 가정 변화에 따른 영향)', hidden: true });
+    const details = heading.closest('details');
+    expect(details).not.toHaveAttribute('open');
+    fireEvent.click(screen.getByRole('button', { name: '가정 변화에 따른 영향 보기' }));
+    expect(details).toHaveAttribute('open');
+    expect(heading).toHaveFocus();
+  });
   test('국민연금 과세와 피부양자 판정의 한계를 알리고 상세 근거를 연다', () => {
     render(<DashboardSection params={params} result={result} />);
     const notice = screen.getByLabelText('현재 계획 계산의 한계');

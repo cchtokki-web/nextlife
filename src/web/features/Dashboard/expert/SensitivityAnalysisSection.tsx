@@ -1,4 +1,5 @@
 import React from 'react';
+import { SENSITIVITY_EXPLANATION } from './sensitivityExplanation';
 import { describeYieldAxisAnchors, SensitivityScenario } from '../../../../core/usecases/dashboard/computeSensitivityAnalysis';
 import { PlanAssetStatus } from '../../../../core/usecases/dashboard/resolvePlanAssetStatus';
 import { formatManwon } from '../../../../core/usecases/utility/utilityAnalysis';
@@ -195,7 +196,8 @@ export function SensitivityAnalysisSection({
 
   return (
     <section className="@container">
-      <h4 className="mb-1 text-sm font-semibold break-keep">민감도 분석 (핵심 가정 변화에 따른 영향)</h4>
+      <h4 id="sensitivity-analysis" tabIndex={-1} className="mb-1 text-sm font-semibold break-keep">민감도 분석 (핵심 가정 변화에 따른 영향)</h4>
+      <p className="mb-1 text-xs break-keep text-foreground-muted">{SENSITIVITY_EXPLANATION}</p>
       {frozenMonthlySpending !== undefined && (
         <p className="mb-1 text-xs break-keep text-foreground-muted">
           {scenarios.length}개 시나리오 모두 <strong>월 생활비 {formatManwon(frozenMonthlySpending)}을 고정</strong>한 채

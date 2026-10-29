@@ -443,6 +443,15 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
           {currentGoalProbability === undefined && (
             <p className={styles.deterministicNote}>확률 검증 전에는 기준 시나리오의 생존·생활비 부족 여부만 진단합니다.</p>
           )}
+          <p className={styles.planFactNote}>
+            수익률·물가·은퇴 시점이 달라질 때 현재 계획의 결과가 어떻게 바뀌는지 확인할 수 있습니다.{' '}
+            <button type="button" className={styles.sensitivityLink} onClick={() => {
+              if (detailsRef.current) {
+                detailsRef.current.open = true;
+                detailsRef.current.querySelector<HTMLElement>('#sensitivity-analysis')?.focus();
+              }
+            }}>가정 변화에 따른 영향 보기</button>
+          </p>
           <div className={styles.modelLimitations} aria-label="현재 계획 계산의 한계">
             <strong>계산할 때 알아둘 점</strong>
             {(params.nationalPension?.expectedMonthlyAmount ?? 0) > 0 && (

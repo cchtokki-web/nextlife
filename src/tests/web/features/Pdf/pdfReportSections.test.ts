@@ -451,6 +451,8 @@ describe('renderSensitivityTableSection', () => {
         endingAssets: 5000000000, endingAssetsDelta: 2500000000, unmetSpendingYears: 0, hardViolations: [] },
     ];
     const html = renderSensitivityTableSection(scenarios);
+    expect(html).toContain('수익률·물가·은퇴 시점 중 한 가지만 바꾸어');
+    expect(html).toContain('시장 변동을 반복한 확률이 아닌');
     expect(html).toContain('수익률 -2%p');
     expect(html).toContain('82세');
     expect(html).toContain('수익률 +2%p');

@@ -27,6 +27,11 @@ const scenarios: SensitivityScenario[] = [
 ];
 
 describe('SensitivityAnalysisSection', () => {
+  test('현재 계획 기준과 단일 경로 비교임을 설명한다', () => {
+    render(<SensitivityAnalysisSection baselineDepletionAge={88} baselineEndingAssets={2500000000} scenarios={scenarios} />);
+    expect(screen.getByText(/수익률·물가·은퇴 시점 중 한 가지만 바꾸어/)).toBeInTheDocument();
+    expect(screen.getByText(/시장 변동을 반복한 확률이 아닌/)).toBeInTheDocument();
+  });
   test('6개 시나리오 행이 모두 렌더된다', () => {
     render(<SensitivityAnalysisSection baselineDepletionAge={88} baselineEndingAssets={2500000000} scenarios={scenarios} />);
     scenarios.forEach((s) => {
