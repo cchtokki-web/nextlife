@@ -328,7 +328,7 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
 
   return (
     <div className={styles.container}>
-      <DashboardGroup title="현재 계획 진단" description="나는 지금 괜찮은지, 무엇이 가장 취약한지부터 확인하세요.">
+      <DashboardGroup title="현재 계획 진단" description="나는 지금 괜찮은지, 무엇이 가장 취약한지부터 확인하세요." hideHeader>
         <section className={`${styles.planDiagnosis} ${styles[diagnosis.tone]}`} aria-label="현재 계획 분석">
           <div className={styles.diagnosisHeadline}>
             <span aria-hidden="true">{diagnosis.emoji}</span>
@@ -473,7 +473,7 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
         </GlassCard>
       )}
 
-      <DashboardGroup title="NextLife 추천" description="목표에 가장 가까운 최종 전략과 현재 계획에서 바뀌는 점만 비교합니다.">
+      <DashboardGroup title="NextLife 추천" description="목표에 가장 가까운 최종 전략과 현재 계획에서 바뀌는 점만 비교합니다." hideHeader>
         <StrategyRecommendationCards
           recommendations={strategyOptimization?.recommendations?.recommendations}
           primary={strategyOptimization?.recommendations?.primary}
@@ -497,7 +497,7 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
         />
       </DashboardGroup>
 
-        <DashboardGroup title="실행 시점" description="무엇부터 손대야 하는지와, 나이별로 무슨 일이 일어나는지 확인하세요.">
+        <DashboardGroup title="실행 시점" description="무엇부터 손대야 하는지와, 나이별로 무슨 일이 일어나는지 확인하세요." hideHeader>
           {/* 인출 전략보다 위에 둔다. 이유는 computeKeyLevers 주석 참고 — 매도 순서·인출
               개시 나이는 이 계획에서 다섯 번째로 중요한 레버인데, 예전에는 그것이 실행
               계획의 첫 카드였다. */}
@@ -777,13 +777,24 @@ function HardGoalSuccessNote({ hardGoalSuccess }: { hardGoalSuccess: HardGoalSuc
   );
 }
 
-function DashboardGroup({ title, description, children }: { title: string; description: string; children: ReactNode }) {
+function DashboardGroup({ title, description, children, hideHeader = false }: {
+  title: string;
+  description: string;
+  children: ReactNode;
+  hideHeader?: boolean;
+}) {
   return (
-    <section className={styles.dashboardGroup} aria-labelledby={`dashboard-${title}`}>
-      <header className={styles.groupHeader}>
-        <h2 id={`dashboard-${title}`} className={styles.groupTitle}>{title}</h2>
-        <p className={styles.groupDescription}>{description}</p>
-      </header>
+    <section
+      className={styles.dashboardGroup}
+      aria-label={hideHeader ? title : undefined}
+      aria-labelledby={hideHeader ? undefined : `dashboard-${title}`}
+    >
+      {!hideHeader && (
+        <header className={styles.groupHeader}>
+          <h2 id={`dashboard-${title}`} className={styles.groupTitle}>{title}</h2>
+          <p className={styles.groupDescription}>{description}</p>
+        </header>
+      )}
       <div className={styles.groupContent}>{children}</div>
     </section>
   );

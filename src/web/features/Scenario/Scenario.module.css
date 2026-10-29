@@ -283,8 +283,12 @@
   padding: 1.25rem;
   border: 1px solid var(--card-border);
   border-radius: 1rem;
-  background: var(--card-bg);
+  background: #111827;
   box-shadow: 0 1.5rem 4rem rgba(0, 0, 0, 0.35);
+}
+
+:global(:root[data-theme="light"]) .confirmModal {
+  background: #fff;
 }
 
 .modalTitle {

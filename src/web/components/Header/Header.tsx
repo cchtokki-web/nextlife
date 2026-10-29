@@ -3,22 +3,17 @@
 import React from 'react';
 import Image from 'next/image';
 import styles from './Header.module.css';
-import { Check, Loader2, AlertCircle, Sun, Moon } from 'lucide-react';
-import { useTheme } from '@/web/components/providers/ThemeProvider';
+import { Loader2, AlertCircle } from 'lucide-react';
 
 interface HeaderProps {
   children?: React.ReactNode;
+  utilityActions?: React.ReactNode;
   saveStatus?: 'idle' | 'saving' | 'success' | 'error';
   isSaving?: boolean;
   lastSaved?: Date | null;
 }
 
-export function Header({ children, saveStatus = 'idle', isSaving = false, lastSaved }: HeaderProps) {
-  const { theme, toggleTheme } = useTheme();
-
-  const formatTime = (date: Date) => {
-    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-  };
+export function Header({ children, utilityActions, saveStatus = 'idle', isSaving = false, lastSaved }: HeaderProps) {
 
   return (
     <header className={styles.header}>
@@ -27,17 +22,15 @@ export function Header({ children, saveStatus = 'idle', isSaving = false, lastSa
         <h1 className={styles.logoText}>NextLife</h1>
 
         {/* Save Status Indicator */}
-        {saveStatus !== 'idle' && (
-          <div className={`${styles.saveStatusBadge} ${styles[saveStatus]}`} title={lastSaved ? `마지막 저장 시간: ${lastSaved.toLocaleString()}` : ''}>
-            {isSaving ? (
+        {(isSaving || saveStatus === 'saving' || saveStatus === 'error') && (
+          <div
+            className={`${styles.saveStatusBadge} ${styles[isSaving || saveStatus === 'saving' ? 'saving' : 'error']}`}
+            title={lastSaved ? `마지막 저장 시간: ${lastSaved.toLocaleString()}` : ''}
+          >
+            {isSaving || saveStatus === 'saving' ? (
               <>
                 <Loader2 size={12} className={styles.spin} />
                 <span>저장 중...</span>
-              </>
-            ) : saveStatus === 'success' ? (
-              <>
-                <Check size={12} />
-                <span>저장 완료{lastSaved ? ` (${formatTime(lastSaved)})` : ''}</span>
               </>
             ) : saveStatus === 'error' ? (
               <>
@@ -47,17 +40,11 @@ export function Header({ children, saveStatus = 'idle', isSaving = false, lastSa
             ) : null}
           </div>
         )}
+        <div className={styles.statusActions}>
+          {utilityActions}
+        </div>
       </div>
       <div className={styles.actions}>
-        <button 
-          type="button"
-          onClick={toggleTheme} 
-          className={styles.themeToggle}
-          title={theme === 'light' ? '다크 모드로 전환' : '라이트 모드로 전환'}
-          aria-label="Toggle theme"
-        >
-          {theme === 'light' ? <Moon size={18} /> : <Sun size={18} />}
-        </button>
         {children}
       </div>
     </header>

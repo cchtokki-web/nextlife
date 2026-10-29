@@ -32,12 +32,13 @@ import { useAppliedStrategy } from '../../web/hooks/useAppliedStrategy';
 import GlassCard from '../../web/components/GlassCard';
 import { Header } from '../../web/components/Header/Header';
 import styles from './page.module.css';
-import { AlertCircle, BarChart3, RotateCcw, PanelLeftClose, PanelLeftOpen, LogOut, FileText } from 'lucide-react';
+import { AlertCircle, BarChart3, RotateCcw, PanelLeftClose, PanelLeftOpen, LogOut, FileText, Sun, Moon } from 'lucide-react';
 import { useScenarios } from '../../web/features/Scenario/useScenarios';
 import { E2eeKeyManager } from '../../web/components/E2eeKeyManager';
 import { WithdrawAccountButton } from '../../web/features/Account/WithdrawAccountButton';
 import { useWithdrawAccount } from '../../web/features/Account/useWithdrawAccount';
 import { isDevMode } from '../../core/utils/isDevMode';
+import { useTheme } from '../../web/components/providers/ThemeProvider';
 import {
   AnalysisBoundary,
   type AnalysisRequest,
@@ -62,6 +63,7 @@ function stepGlyph(state: AnalysisStepState): { className: string; text: string 
 }
 
 export default function Home() {
+  const { theme, toggleTheme } = useTheme();
   const { data: session } = useSession();
   const scenarioState = useScenarios();
   const { 
@@ -465,10 +467,60 @@ export default function Home() {
     const canReanalyze = !analysisIsCurrent || analysisFailed;
     return (
     <main className={styles.main}>
-      <Header saveStatus={saveStatus} isSaving={isSaving} lastSaved={lastSaved}>
+      <Header
+        saveStatus={saveStatus}
+        isSaving={isSaving}
+        lastSaved={lastSaved}
+        utilityActions={(
+          <button
+            onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+            aria-label={isSidebarOpen ? '설정 패널 접기' : '설정 패널 열기'}
+            title={isSidebarOpen ? '설정 패널 접기' : '설정 패널 열기'}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+              padding: '0.6rem 1.2rem',
+              background: 'var(--card-bg)',
+              border: '1px solid var(--card-border)',
+              borderRadius: '12px',
+              color: 'var(--foreground-muted)',
+              cursor: 'pointer',
+              fontSize: '0.85rem',
+              fontWeight: 600,
+              transition: 'all 0.2s ease',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {isSidebarOpen ? <PanelLeftClose size={16} /> : <PanelLeftOpen size={16} />}
+            <span className={styles.buttonLabel}>
+              {isSidebarOpen ? '설정 패널 접기' : '설정 패널 열기'}
+            </span>
+          </button>
+        )}
+      >
         <div className={styles.actionContainer}>
-
-
+            <button
+              type="button"
+              onClick={toggleTheme}
+              aria-label={theme === 'light' ? '다크 모드로 전환' : '라이트 모드로 전환'}
+              title={theme === 'light' ? '다크 모드로 전환' : '라이트 모드로 전환'}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: '40px',
+                height: '40px',
+                padding: 0,
+                background: 'var(--card-bg)',
+                border: '1px solid var(--card-border)',
+                borderRadius: '12px',
+                color: 'var(--foreground-muted)',
+                cursor: 'pointer',
+              }}
+            >
+              {theme === 'light' ? <Moon size={18} /> : <Sun size={18} />}
+            </button>
             <button 
               onClick={handleReset}
               aria-label="초기화"
@@ -618,30 +670,6 @@ export default function Home() {
           
           {/* Left Side: User Inputs & Scenarios */}
           <section className={`${styles.leftColumn} ${!isSidebarOpen ? styles.leftColumnHidden : ''}`}>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '-0.5rem' }}>
-              <button 
-                onClick={() => setIsSidebarOpen(false)}
-                style={{
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  gap: '0.5rem', 
-                  padding: '0.4rem 0.8rem', 
-                  background: 'var(--card-bg)', 
-                  border: '1px solid var(--card-border)', 
-                  borderRadius: '8px', 
-                  color: 'var(--foreground-muted)', 
-                  cursor: 'pointer', 
-                  fontSize: '0.8rem', 
-                  transition: 'all 0.2s ease',
-                }}
-                onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--primary)'; e.currentTarget.style.borderColor = 'var(--primary)'; }}
-                onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--foreground-muted)'; e.currentTarget.style.borderColor = 'var(--card-border)'; }}
-              >
-                <PanelLeftClose size={14} />
-                설정 패널 접기
-              </button>
-            </div>
-            
             {/* 시나리오가 상위 컨텍스트이고, 아래 설정은 선택한 시나리오에 종속된다. */}
             <GlassCard>
               <ScenarioManager
@@ -695,32 +723,6 @@ export default function Home() {
 
           {/* Right Side: Visual Dashboard */}
           <section className={styles.rightColumn}>
-            {!isSidebarOpen && (
-              <div style={{ display: 'flex' }}>
-                <button 
-                  onClick={() => setIsSidebarOpen(true)}
-                  style={{
-                    display: 'flex', 
-                    alignItems: 'center', 
-                    gap: '0.5rem', 
-                    padding: '0.5rem 1rem', 
-                    background: 'var(--card-bg)', 
-                    border: '1px solid var(--card-border)', 
-                    borderRadius: '8px', 
-                    color: 'var(--foreground)', 
-                    cursor: 'pointer', 
-                    fontSize: '0.85rem',
-                    fontWeight: 500,
-                    transition: 'all 0.2s ease',
-                  }}
-                  onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--primary)'; e.currentTarget.style.borderColor = 'var(--primary)'; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--foreground)'; e.currentTarget.style.borderColor = 'var(--card-border)'; }}
-                >
-                  <PanelLeftOpen size={16} />
-                  설정 패널 열기
-                </button>
-              </div>
-            )}
             {analysisIsCurrent ? (
               <DashboardSection
                 params={analysis.effective.params}

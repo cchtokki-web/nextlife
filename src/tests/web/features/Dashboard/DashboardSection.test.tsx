@@ -134,19 +134,20 @@ const planFact = (label: string): string =>
     .querySelector('dd')!.textContent!;
 
 describe('DashboardSection - IA 순서', () => {
-  test('진단 → 추천 → 계획의 근거 3단으로 렌더링된다', () => {
+  test('진단·추천 제목과 설명은 숨기고 결과 내용은 렌더링된다', () => {
     const { container } = render(
       <DashboardSection params={params} result={result} recommendation={recommendation} />
     );
 
-    const text = container.textContent ?? '';
-    const diagnosisIdx = text.indexOf('현재 계획 진단');
-    const recommendIdx = text.indexOf('NextLife 추천');
-    const evidenceIdx = text.indexOf('계획의 근거');
-
-    expect(diagnosisIdx).toBeGreaterThanOrEqual(0);
-    expect(recommendIdx).toBeGreaterThan(diagnosisIdx);
-    expect(evidenceIdx).toBeGreaterThan(recommendIdx);
+    expect(screen.queryByRole('heading', { name: '현재 계획 진단' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'NextLife 추천' })).not.toBeInTheDocument();
+    expect(screen.queryByText('나는 지금 괜찮은지, 무엇이 가장 취약한지부터 확인하세요.'))
+      .not.toBeInTheDocument();
+    expect(screen.queryByText('목표에 가장 가까운 최종 전략과 현재 계획에서 바뀌는 점만 비교합니다.'))
+      .not.toBeInTheDocument();
+    expect(screen.getByLabelText('현재 계획 분석')).toBeInTheDocument();
+    expect(container.querySelector('section[aria-label="NextLife 추천"]')?.textContent).toBeTruthy();
+    expect(container.textContent).toContain('계획의 근거');
   });
 
   test('「계획의 근거」 안은 자산 흐름 → 시장 변동 검증 → 계획 상세 수치 순이다', () => {
@@ -174,13 +175,14 @@ describe('DashboardSection - IA 순서', () => {
       <DashboardSection params={params} result={result} recommendation={recommendation} />
     );
 
-    const text = container.textContent ?? '';
-    const recommendIdx = text.indexOf('NextLife 추천');
-    const actionIdx = text.indexOf('실행 시점');
-    const evidenceIdx = text.indexOf('계획의 근거');
+    const recommendationSection = container.querySelector('section[aria-label="NextLife 추천"]')!;
+    const action = screen.getByText('무엇부터 바꿔야 하나');
+    const evidence = screen.getByText('계획의 근거');
 
-    expect(actionIdx).toBeGreaterThan(recommendIdx);
-    expect(evidenceIdx).toBeGreaterThan(actionIdx);
+    expect(recommendationSection.compareDocumentPosition(action) & Node.DOCUMENT_POSITION_FOLLOWING)
+      .toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(action.compareDocumentPosition(evidence) & Node.DOCUMENT_POSITION_FOLLOWING)
+      .toBe(Node.DOCUMENT_POSITION_FOLLOWING);
 
     // 자리만이 아니라 «접힘 밖»인지도 본다. 순서만 보면 <details> 안 첫 줄로 옮겨도 통과한다.
     expect(container.querySelector('details')!.textContent).not.toContain('실행 로드맵');
@@ -1318,8 +1320,8 @@ describe('동시에 달성하기 어려운 목표', () => {
     // 진단 카드는 「내 계획이 어떤가」를 말하고, 충돌은 「내가 고른 목표들이 서로 맞지 않는다」는
     // 다른 층위다(스펙). 그리고 추천보다 «앞»에 있어야 추천이 왜 그런 모양인지 이해된다.
     expect(container.querySelector('[aria-label="현재 계획 분석"]')?.contains(notice)).toBe(false);
-    const recommendationHeading = screen.getByRole('heading', { name: 'NextLife 추천' });
-    expect(notice.compareDocumentPosition(recommendationHeading) & Node.DOCUMENT_POSITION_FOLLOWING)
+    const recommendation = container.querySelector('section[aria-label="NextLife 추천"]')!;
+    expect(notice.compareDocumentPosition(recommendation) & Node.DOCUMENT_POSITION_FOLLOWING)
       .toBe(Node.DOCUMENT_POSITION_FOLLOWING);
   });
 
