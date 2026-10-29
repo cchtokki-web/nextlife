@@ -67,14 +67,23 @@ npm run dev          # prisma db push 후 next dev
 운영 환경에서는 `NEXTAUTH_SECRET`에 `openssl rand -base64 32`로 만든 고유한 값을 설정하세요.
 `.env.example`의 빈 값이나 개발용 값을 재사용하지 마세요.
 
-### 개발 모드 자동 로그인
+### 로그인 없이 개발 모드 실행
 
 ```bash
-NEXT_PUBLIC_DEV_MODE=true npm run dev
+npm run dev
 ```
 
-개발용 자격증명으로 Pro 계정에 자동 로그인합니다. 이 경로는 `NODE_ENV !== 'production'`
-조건과 함께 보호되며 프로덕션에서는 동작하지 않습니다
+개발 서버에서는 로그인·회원가입을 건너뛰고 `/simulator`를 바로 사용할 수 있습니다. `NODE_ENV=development`에서
+자동 활성화되며, 서버 API도 동일한 개발 세션을 사용합니다. 개발용 Docker Compose는 아래처럼
+실행합니다.
+
+```bash
+cp .env.example .env
+docker compose up --build
+```
+
+개발용 Docker 데이터는 `./data-dev`에 저장됩니다. `NODE_ENV=production`에서는 개발 모드가 항상
+비활성화됩니다. 다른 비프로덕션 환경에서만 명시적으로 켜려면 `NEXT_PUBLIC_DEV_MODE=true`를 설정하세요
 (`src/core/utils/isDevMode.ts`).
 
 ---
@@ -89,7 +98,7 @@ NEXT_PUBLIC_DEV_MODE=true npm run dev
 | `NEXTAUTH_SECRET` / `NEXTAUTH_URL` | next-auth 세션 |
 | `GOOGLE_SITE_VERIFICATION` | Google 사이트 소유권 확인(선택) |
 | `DEV_NEXTAUTH_URL` | 개발 콜백 origin 강제 지정(선택) |
-| `NEXT_PUBLIC_DEV_MODE` | 개발 모드 자동 로그인 |
+| `NEXT_PUBLIC_DEV_MODE` | development 외 비프로덕션 환경에서 개발 모드 사용(선택) |
 | `NEXT_PUBLIC_APP_URL` | 메일 링크 등에 사용하는 공개 URL |
 | `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASSWORD` / `EMAIL_FROM` | 이메일 가입·보안키 발송 |
 | `OLLAMA_ENDPOINT` / `OLLAMA_MODEL` | 분석 조언 문구 생성(미설정·실패 시 규칙 기반 폴백) |

@@ -1,19 +1,20 @@
-version: '3.8'
-
 services:
   nextlife:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: nextlife-app
+      target: dev
+    container_name: nextlife-dev-app
     ports:
       - "3000:3000"
     restart: always
     env_file:
       - .env
     volumes:
-      # Use a directory mount so Docker automatically creates it if missing
-      - ./data:/app/data
+      - .:/app
+      - /app/node_modules
+      - /app/.next
+      - ./data-dev:/app/data
     environment:
-      - DATABASE_URL=file:/app/data/dev.db
-      - NODE_ENV=production
+      DATABASE_URL: file:/app/data/dev.db
+      NODE_ENV: development

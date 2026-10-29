@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth/next';
-import { authOptions } from '@/core/utils/authOptions';
+import { getAppSession } from '@/core/utils/getAppSession';
 import { prisma } from '@/infrastructure/db/prisma';
 import { markE2eeEnabled } from '@/infrastructure/db/e2ee';
 import { isEncryptedPayload } from '@/core/utils/crypto';
@@ -10,7 +9,7 @@ import { parseCompareScenarioIds } from '@/core/utils/compareScenarios';
 
 export async function GET(_req: Request) {
   try {
-    const session = await getServerSession(authOptions);
+    const session = await getAppSession();
 
     if (!session || !session.user || !session.user.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -116,7 +115,7 @@ export async function GET(_req: Request) {
 
 export async function POST(req: Request) {
   try {
-    const session = await getServerSession(authOptions);
+    const session = await getAppSession();
 
     if (!session || !session.user || !session.user.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

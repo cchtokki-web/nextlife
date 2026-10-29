@@ -1,8 +1,11 @@
 import { getToken } from "next-auth/jwt";
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+import { isDevMode } from "@/core/utils/isDevMode";
 
 export async function proxy(req: NextRequest) {
+  if (isDevMode()) return NextResponse.next();
+
   const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
 
   if (!token) {

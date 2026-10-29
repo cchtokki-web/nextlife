@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth/next';
-import { authOptions } from '@/core/utils/authOptions';
+import { getAppSession } from '@/core/utils/getAppSession';
 import { prisma } from '@/infrastructure/db/prisma';
 import { sendSecurityKeyEmail } from '@/core/utils/emailSender';
 import { isRateLimited } from '@/core/utils/rateLimiter';
@@ -11,7 +10,7 @@ const SEND_FAILED_MESSAGE = '이메일로 보안키를 보내지 못했습니다
 
 export async function POST(req: Request) {
   try {
-    const session = await getServerSession(authOptions);
+    const session = await getAppSession();
     const userId = session?.user?.id;
 
     if (!userId) {

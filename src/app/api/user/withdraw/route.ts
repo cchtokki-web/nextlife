@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth/next';
-import { authOptions } from '@/core/utils/authOptions';
+import { getAppSession } from '@/core/utils/getAppSession';
 import { prisma } from '@/infrastructure/db/prisma';
 import { isRateLimited } from '@/core/utils/rateLimiter';
 
@@ -9,7 +8,7 @@ export const WITHDRAW_CONFIRM_PHRASE = '탈퇴';
 
 export async function POST(req: Request) {
   try {
-    const session = await getServerSession(authOptions);
+    const session = await getAppSession();
     if (!session || !session.user || !session.user.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }

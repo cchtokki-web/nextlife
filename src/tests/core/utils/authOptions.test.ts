@@ -33,7 +33,7 @@ function credentialsAuthorize(options: NextAuthOptions): AuthorizeFn {
 }
 
 beforeEach(() => {
-  vi.stubEnv('NEXTAUTH_SECRET', 'test-secret');
+  vi.stubEnv('NEXTAUTH_SECRET', 'test-only-secret-with-more-than-32-characters');
 });
 
 afterEach(() => {

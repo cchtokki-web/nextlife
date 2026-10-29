@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth/next';
-import { authOptions } from '@/core/utils/authOptions';
+import { getAppSession } from '@/core/utils/getAppSession';
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/infrastructure/db/prisma';
 import { markE2eeEnabled } from '@/infrastructure/db/e2ee';
@@ -13,7 +12,7 @@ export async function PUT(
 ) {
   try {
     const { id } = await params;
-    const session = await getServerSession(authOptions);
+    const session = await getAppSession();
 
     if (!session || !session.user || !session.user.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -121,7 +120,7 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params;
-    const session = await getServerSession(authOptions);
+    const session = await getAppSession();
 
     if (!session || !session.user || !session.user.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

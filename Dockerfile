@@ -17,7 +17,7 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
 # Generate Prisma Client
-RUN npx prisma generate
+RUN DATABASE_URL="file:./dev.db" npx prisma generate
 
 # Ensure SQLite database exists and schema is up to date
 RUN DATABASE_URL="file:./dev.db" npx prisma db push
@@ -26,6 +26,24 @@ RUN DATABASE_URL="file:./dev.db" npx prisma db push
 ENV NEXT_TELEMETRY_DISABLED=1
 
 RUN npm run build
+
+# Development image used by docker-compose.yml. NEXT_PUBLIC_* values and NODE_ENV
+# are evaluated by Next.js while next dev is running, not in the production bundle.
+FROM deps AS dev
+WORKDIR /app
+
+ENV NODE_ENV=development
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV DATABASE_URL="file:./dev.db"
+
+COPY . .
+RUN npx prisma generate
+
+EXPOSE 3000
+ENV PORT=3000
+ENV HOSTNAME="0.0.0.0"
+
+CMD ["npm", "run", "dev", "--", "--hostname", "0.0.0.0"]
 
 # Production image, copy all the files and run next
 FROM base AS runner

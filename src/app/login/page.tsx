@@ -1,6 +1,7 @@
 import LoginForm from "@/web/features/auth/LoginForm";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/core/utils/authOptions";
+import { isDevMode } from "@/core/utils/isDevMode";
 import { redirect } from "next/navigation";
 
 // searchParams는 Promise다. 동기로 읽으면 Next가 런타임 에러를 던지고 그 값은 undefined로
@@ -11,6 +12,8 @@ export default async function LoginPage({
 }: {
   searchParams?: Promise<{ [key: string]: string | string[] | undefined }>;
 }) {
+  if (isDevMode()) redirect('/simulator');
+
   const session = await getServerSession(authOptions);
 
   if (session) {

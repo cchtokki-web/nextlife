@@ -1,11 +1,7 @@
-// 개발 모드 여부. authOptions가 이 값으로 자격증명 검사를 통째로 건너뛰고(아무 이메일·보안키나
-// premium 계정으로 로그인), 쿠키 secure 플래그를 내리고,
-// NEXTAUTH_URL을 localhost로 덮어쓴다.
-//
-// NEXT_PUBLIC_DEV_MODE 하나만 보면 안 된다. NEXT_PUBLIC_ 접두사라 클라이언트 번들에 인라인되고
-// .env 파일이 배포 환경으로 새기 쉬운데, 그 한 번의 사고가 곧바로 완전한 인증 우회가 된다.
-// NODE_ENV를 함께 보면 프로덕션 빌드에서는 위 분기 전체가 죽는다(개발 편의는 그대로 유지된다).
+// NODE_ENV=development에서는 로그인 없이 사용할 수 있도록 개발 모드를 자동 활성화한다.
+// 다른 비프로덕션 환경에서는 명시적인 NEXT_PUBLIC_DEV_MODE=true가 필요하다.
+// 이 함수는 자격증명 검사 우회와 개발 세션을 켜므로 NODE_ENV=production에서는 항상 꺼 둔다.
 export function isDevMode(): boolean {
   return process.env.NODE_ENV !== 'production'
-    && process.env.NEXT_PUBLIC_DEV_MODE === 'true';
+    && (process.env.NODE_ENV === 'development' || process.env.NEXT_PUBLIC_DEV_MODE === 'true');
 }

@@ -6,9 +6,10 @@ import { isDevMode } from "@/core/utils/isDevMode";
 export default function AuthProvider({ children }: { children: React.ReactNode }) {
   const mockSession = isDevMode() ? {
     user: {
-      id: "dev-mock-id",
-      name: "Tokki",
-      email: "tokki@dev.local",
+      id: "dev-user-id",
+      name: "Dev User",
+      email: "dev@example.com",
+      tier: "premium",
     },
     expires: "9999-12-31T23:59:59.999Z",
   } : undefined;

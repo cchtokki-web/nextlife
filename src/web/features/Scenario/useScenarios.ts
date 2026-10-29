@@ -15,6 +15,7 @@ import { encryptData, decryptData, isEncryptedPayload, generateBackupKey } from 
 import { MAX_SCENARIO_COUNT } from '../../../core/utils/scenarioLimits';
 import { MAX_COMPARE_SCENARIO_COUNT } from '../../../core/utils/compareScenarios';
 import { migrateRetirementGoals } from '../../../core/usecases/goals/retirementGoalAdapter';
+import { isDevMode } from '../../../core/utils/isDevMode';
 
 // GET /api/scenarios 응답. data의 각 항목은 평문(SimulationParams)일 수도, E2EE로 암호화된
 // 형태일 수도 있어 소비처가 복호화를 시도하며 좁힌다.
@@ -28,6 +29,9 @@ interface ScenarioListResponse {
   // 이 계정이 함께 비교하던 시나리오들. 같은 이유로 계정에 붙어 있다.
   compareScenarioIds?: string[];
 }
+
+// 개발 계정 전용 키다. 운영 빌드에서는 isDevMode가 false이므로 사용할 수 없다.
+const DEV_E2EE_KEY = '000000';
 
 class ScenarioRequestError extends Error {
   constructor(readonly status: number) {
@@ -649,6 +653,23 @@ export function useScenarios() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status, isLoaded]);
 
+  // 개발용 가상 계정은 매번 보안키를 입력하거나 이메일을 확인하지 않도록 고정된 개발 키를 쓴다.
+  // 이미 브라우저에 키가 있으면 기존 개발 데이터 복호화를 위해 그대로 유지한다.
+  useEffect(() => {
+    const userId = session?.user?.id;
+    if (!isDevMode() || status !== 'authenticated' || !userId) return;
+
+    const keyName = e2eeKeyName(userId);
+    const key = localStorage.getItem(keyName) || DEV_E2EE_KEY;
+    localStorage.setItem(keyName, key);
+    localStorage.setItem(e2eeBackedUpKeyName(userId), 'true');
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Keep the development key in sync with the browser key store.
+    setIsBackupKeyBackedUp(true);
+    if (localKey !== key) {
+      setLocalKey(key);
+    }
+  }, [status, session?.user?.id, localKey]);
+
   // Fetch scenarios when logged in
   useEffect(() => {
     const userId = session?.user?.id;
@@ -659,6 +680,8 @@ export function useScenarios() {
     // 같으면(시나리오 하나만 손상돼 키 자체는 맞는 경우 — corruptedScenarioIdsRef가 다루는
     // 바로 그 상황) React가 bail-out해 의존성이 그대로다. 그러면 화면이 로딩에 갇힌다.
     if (isLoaded) return;
+    // The development-key effect above must finish before an authenticated scenario request begins.
+    if (isDevMode() && status === 'authenticated' && userId && !localKey) return;
     if (status === 'authenticated') {
       if (userId) {
         const storedKey = localStorage.getItem(e2eeKeyName(userId));

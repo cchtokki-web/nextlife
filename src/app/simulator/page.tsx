@@ -563,16 +563,18 @@ export default function Home() {
         </div>
       </Header>
 
-      <E2eeKeyManager
-        keyNotice={keyNotice}
-        onAcknowledgeKey={handleAcknowledgeKey}
-        onRetrySendKey={handleRetrySendKey}
-        needsKeyRestore={needsKeyRestore}
-        handleRestoreKey={handleRestoreKey}
-        restoreError={restoreError}
-        onResetScenarios={handleResetAndReissueKey}
-        restoreUnverifiable={restoreUnverifiable}
-      />
+      {!isDevMode() && (
+        <E2eeKeyManager
+          keyNotice={keyNotice}
+          onAcknowledgeKey={handleAcknowledgeKey}
+          onRetrySendKey={handleRetrySendKey}
+          needsKeyRestore={needsKeyRestore}
+          handleRestoreKey={handleRestoreKey}
+          restoreError={restoreError}
+          onResetScenarios={handleResetAndReissueKey}
+          restoreUnverifiable={restoreUnverifiable}
+        />
+      )}
 
       {/* 실패했는데 더 도는 것이 없으면 이 패널은 사라진다 — 사용자는 아무 설명도 없이
           결과만 이상한 화면을 보게 된다. 그래서 진행 중이 «아니어도» 실패가 있으면 남긴다. */}

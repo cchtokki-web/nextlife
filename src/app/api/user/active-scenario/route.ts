@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth/next';
 import { Prisma } from '@prisma/client';
-import { authOptions } from '@/core/utils/authOptions';
+import { getAppSession } from '@/core/utils/getAppSession';
 import { prisma } from '@/infrastructure/db/prisma';
 import { MAX_COMPARE_SCENARIO_COUNT } from '@/core/utils/compareScenarios';
 
@@ -18,7 +17,7 @@ import { MAX_COMPARE_SCENARIO_COUNT } from '@/core/utils/compareScenarios';
  */
 export async function PUT(req: Request) {
   try {
-    const session = await getServerSession(authOptions);
+    const session = await getAppSession();
 
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
