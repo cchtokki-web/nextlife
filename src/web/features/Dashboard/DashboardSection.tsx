@@ -133,6 +133,7 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
   // 자산 추이 차트 기본 단순화 모드: 켜지기 전까지는 주식자산/연금자산 breakdown을 숨기고
   // 자산총액/월생활비만 보여준다. 범례 클릭으로 저장된 hiddenKeys는 그대로 두고 덮어씌우기만 한다.
   const [showAssetBreakdown, setShowAssetBreakdown] = React.useState(false);
+  const detailsRef = React.useRef<HTMLDetailsElement>(null);
 
   const handleLegendClick = (data: LegendPayload) => {
     const dataKey = data.dataKey;
@@ -442,6 +443,19 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
           {currentGoalProbability === undefined && (
             <p className={styles.deterministicNote}>확률 검증 전에는 기준 시나리오의 생존·생활비 부족 여부만 진단합니다.</p>
           )}
+          <div className={styles.modelLimitations} aria-label="현재 계획 계산의 한계">
+            <strong>계산할 때 알아둘 점</strong>
+            {(params.nationalPension?.expectedMonthlyAmount ?? 0) > 0 && (
+              <p>국민연금은 납입 이력이 없어 전액 과세로 계산하므로 세액이 실제보다 높을 수 있습니다.</p>
+            )}
+            <p>피부양자 자격은 소득 기준 위험을 평가하며, 재산 정보가 없어 최종 자격을 확정할 수 없습니다.</p>
+            <button type="button" onClick={() => {
+              if (detailsRef.current) {
+                detailsRef.current.open = true;
+                detailsRef.current.querySelector('summary')?.focus();
+              }
+            }}>세금·건강보험 상세 보기</button>
+          </div>
         </section>
       </DashboardGroup>
 
@@ -507,7 +521,7 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
       {/* ④ 근거. 위 판정들을 뒷받침하는 자료만 담는다 — 판정을 다시 내리지 않는다.
           한 번 열면 끝까지 보이도록 안쪽에 접힘을 두지 않는다(예전에는 여기서 두 번 더
           열어야 세금 표에 닿았다). */}
-      <details className={styles.detailedAnalysis}>
+      <details ref={detailsRef} className={styles.detailedAnalysis}>
         <summary>
           <span className={styles.detailedAnalysisHeading}>
             {/* 부제에 아래 그룹 제목을 그대로 나열하지 않는다 — 같은 문자열이 summary와

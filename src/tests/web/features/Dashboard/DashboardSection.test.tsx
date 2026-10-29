@@ -74,6 +74,27 @@ const params: SimulationParams = {
   displayCurrency: 'KRW',
 };
 
+describe('현재 계획 계산의 한계', () => {
+  test('국민연금 과세와 피부양자 판정의 한계를 알리고 상세 근거를 연다', () => {
+    render(<DashboardSection params={params} result={result} />);
+    const notice = screen.getByLabelText('현재 계획 계산의 한계');
+    expect(within(notice).getByText(/국민연금은 납입 이력이 없어 전액 과세/)).toBeInTheDocument();
+    expect(within(notice).getByText(/재산 정보가 없어 최종 자격을 확정할 수 없습니다/)).toBeInTheDocument();
+    const details = screen.getByText('계획의 근거').closest('details');
+    expect(details).not.toHaveAttribute('open');
+    fireEvent.click(within(notice).getByRole('button', { name: '세금·건강보험 상세 보기' }));
+    expect(details).toHaveAttribute('open');
+    expect(details?.querySelector('summary')).toHaveFocus();
+  });
+
+  test('국민연금 입력이 없으면 과세 안내를 표시하지 않는다', () => {
+    render(<DashboardSection params={{ ...params, nationalPension: { expectedMonthlyAmount: 0 } }} result={result} />);
+    const notice = screen.getByLabelText('현재 계획 계산의 한계');
+    expect(within(notice).queryByText(/국민연금은 납입 이력이 없어 전액 과세/)).not.toBeInTheDocument();
+    expect(within(notice).getByText(/재산 정보가 없어 최종 자격/)).toBeInTheDocument();
+  });
+});
+
 const zeroDeltas: StrategyRecommendation['deltas'] = {
   lifetimeConsumption: 0,
   totalTax: 0,

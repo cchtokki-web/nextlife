@@ -805,6 +805,24 @@
   color: var(--foreground-muted);
 }
 
+.modelLimitations {
+  margin-top: 1rem;
+  padding: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  color: var(--foreground-muted);
+  font-size: 0.78rem;
+  line-height: 1.55;
+}
+.modelLimitations strong { color: var(--foreground); }
+.modelLimitations p { margin-top: 0.3rem; }
+.modelLimitations button {
+  margin-top: 0.4rem;
+  color: var(--primary);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
 /* 추천 카드의 확률 아래에 붙는 「현재 계획보다 N%p 높음/낮음」. 카드가 지금보다 나쁜지를
    숫자로 말하는 자리다 — 페르소나는 개선 여부로 뽑히지 않으므로 이 줄이 없으면 사용자는
    비교할 방법이 없다. */
