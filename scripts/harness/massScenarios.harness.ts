@@ -171,6 +171,8 @@ test('대량 시나리오 하니스', { timeout: 7_200_000 }, () => {
         postRejected: optimization.debug.postSimulationRejectedCount,
         optFailed: optimization.debug.failedCandidateCount,
         accepted: optimization.debug.acceptedCandidateCount,
+        duplicateOutcomes: optimization.debug.duplicateOutcomeCount,
+        cappedCandidates: optimization.debug.generation.cappedCandidateCount,
         shortlisted: optimization.debug.deterministicShortlistCount,
         mcValidated: optimization.debug.monteCarloValidatedCount,
         mcConfirmed: optimization.debug.monteCarloConfirmedCount,
