@@ -835,6 +835,99 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                         value={asset.quantity}
                         onChangeValue={(quantity) => handleUpdateAsset(asset.id, 'quantity', quantity)}
                       />
+                      <SelectField
+                        label="적립 주기"
+                        value={asset.contributionPeriod || 'monthly'}
+                        onChange={(e) => {
+                          const newPeriod = e.target.value as ContributionPeriod;
+                          const currentPeriod = asset.contributionPeriod || 'monthly';
+                          const currentAmount = asset.contributionAmount ?? asset.monthlyContribution;
+
+                          const newAmount = roundContributionForCurrency(
+                            convertContributionAmount(currentAmount, currentPeriod, newPeriod),
+                            asset.currency
+                          );
+                          const roundedMonthly = roundContributionForCurrency(
+                            toMonthlyContribution(newAmount, newPeriod),
+                            asset.currency
+                          );
+
+                          handleUpdateAsset(asset.id, {
+                            contributionPeriod: newPeriod,
+                            contributionAmount: newAmount,
+                            monthlyContribution: roundedMonthly,
+                          });
+                        }}
+                        options={[
+                          { value: 'daily', label: '매일(영업일 기준)' },
+                          { value: 'weekly', label: '매주' },
+                          { value: 'monthly', label: '매월' },
+                        ]}
+                      />
+                      <AmountField
+                        label={
+                          (asset.contributionPeriod || 'monthly') === 'daily'
+                            ? '매일 적립 투자금'
+                            : (asset.contributionPeriod || 'monthly') === 'weekly'
+                            ? '매주 적립 투자금'
+                            : '월 적립 투자금'
+                        }
+                        value={asset.contributionAmount ?? asset.monthlyContribution}
+                        onChangeValue={(numValue) => {
+                          const period = asset.contributionPeriod || 'monthly';
+                          const roundedMonthly = roundContributionForCurrency(
+                            toMonthlyContribution(numValue, period),
+                            asset.currency
+                          );
+
+                          handleUpdateAsset(asset.id, {
+                            contributionAmount: numValue,
+                            monthlyContribution: roundedMonthly,
+                          });
+                        }}
+                        onStepUp={() => {
+                          const currentAmount = asset.contributionAmount ?? asset.monthlyContribution;
+                          const nextAmount = currentAmount + 5000;
+                          const period = asset.contributionPeriod || 'monthly';
+                          const roundedMonthly = roundContributionForCurrency(
+                            toMonthlyContribution(nextAmount, period),
+                            asset.currency
+                          );
+
+                          handleUpdateAsset(asset.id, {
+                            contributionAmount: nextAmount,
+                            monthlyContribution: roundedMonthly,
+                          });
+                        }}
+                        onStepDown={() => {
+                          const currentAmount = asset.contributionAmount ?? asset.monthlyContribution;
+                          const nextAmount = Math.max(0, currentAmount - 5000);
+                          const period = asset.contributionPeriod || 'monthly';
+                          const roundedMonthly = roundContributionForCurrency(
+                            toMonthlyContribution(nextAmount, period),
+                            asset.currency
+                          );
+
+                          handleUpdateAsset(asset.id, {
+                            contributionAmount: nextAmount,
+                            monthlyContribution: roundedMonthly,
+                          });
+                        }}
+                        suffixText={asset.currency === 'KRW' ? '원' : asset.currency}
+                      />
+                      {showPerAssetDividend && (
+                        <SelectField
+                          label="배당 재투자 여부"
+                          labelSecondary={dividendGoverned ? '「연금 전략」이 결정하는 중' : '기준선 — AI가 더 나은 쪽을 고릅니다'}
+                          value={asset.reinvestDividend ? 'true' : 'false'}
+                          disabled={dividendGoverned}
+                          onChange={(e) => handleUpdateAsset(asset.id, 'reinvestDividend', e.target.value === 'true')}
+                          options={[
+                            { value: 'true', label: '세후 재투자 활성화' },
+                            { value: 'false', label: '현금 수령 (재투자 미수행)' },
+                          ]}
+                        />
+                      )}
                       <div className={styles.priceInputWrapper}>
                         <div className={styles.priceInputGrow}>
                           <AmountField
@@ -944,99 +1037,6 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                         {assetInfoErrors[asset.id]?.ticker === asset.ticker && <p role="alert">{assetInfoErrors[asset.id]?.message}</p>}
                         <ReturnBreakdownHint totalReturn={asset.totalReturn} dividendYield={asset.dividendYield} />
                       </div>
-                      <SelectField
-                        label="적립 주기"
-                        value={asset.contributionPeriod || 'monthly'}
-                        onChange={(e) => {
-                          const newPeriod = e.target.value as ContributionPeriod;
-                          const currentPeriod = asset.contributionPeriod || 'monthly';
-                          const currentAmount = asset.contributionAmount ?? asset.monthlyContribution;
-
-                          const newAmount = roundContributionForCurrency(
-                            convertContributionAmount(currentAmount, currentPeriod, newPeriod),
-                            asset.currency
-                          );
-                          const roundedMonthly = roundContributionForCurrency(
-                            toMonthlyContribution(newAmount, newPeriod),
-                            asset.currency
-                          );
-
-                          handleUpdateAsset(asset.id, {
-                            contributionPeriod: newPeriod,
-                            contributionAmount: newAmount,
-                            monthlyContribution: roundedMonthly,
-                          });
-                        }}
-                        options={[
-                          { value: 'daily', label: '매일(영업일 기준)' },
-                          { value: 'weekly', label: '매주' },
-                          { value: 'monthly', label: '매월' },
-                        ]}
-                      />
-                      <AmountField
-                        label={
-                          (asset.contributionPeriod || 'monthly') === 'daily'
-                            ? '매일 적립 투자금'
-                            : (asset.contributionPeriod || 'monthly') === 'weekly'
-                            ? '매주 적립 투자금'
-                            : '월 적립 투자금'
-                        }
-                        value={asset.contributionAmount ?? asset.monthlyContribution}
-                        onChangeValue={(numValue) => {
-                          const period = asset.contributionPeriod || 'monthly';
-                          const roundedMonthly = roundContributionForCurrency(
-                            toMonthlyContribution(numValue, period),
-                            asset.currency
-                          );
-
-                          handleUpdateAsset(asset.id, {
-                            contributionAmount: numValue,
-                            monthlyContribution: roundedMonthly,
-                          });
-                        }}
-                        onStepUp={() => {
-                          const currentAmount = asset.contributionAmount ?? asset.monthlyContribution;
-                          const nextAmount = currentAmount + 5000;
-                          const period = asset.contributionPeriod || 'monthly';
-                          const roundedMonthly = roundContributionForCurrency(
-                            toMonthlyContribution(nextAmount, period),
-                            asset.currency
-                          );
-
-                          handleUpdateAsset(asset.id, {
-                            contributionAmount: nextAmount,
-                            monthlyContribution: roundedMonthly,
-                          });
-                        }}
-                        onStepDown={() => {
-                          const currentAmount = asset.contributionAmount ?? asset.monthlyContribution;
-                          const nextAmount = Math.max(0, currentAmount - 5000);
-                          const period = asset.contributionPeriod || 'monthly';
-                          const roundedMonthly = roundContributionForCurrency(
-                            toMonthlyContribution(nextAmount, period),
-                            asset.currency
-                          );
-
-                          handleUpdateAsset(asset.id, {
-                            contributionAmount: nextAmount,
-                            monthlyContribution: roundedMonthly,
-                          });
-                        }}
-                        suffixText={asset.currency === 'KRW' ? '원' : asset.currency}
-                      />
-                      {showPerAssetDividend && (
-                        <SelectField
-                          label="배당 재투자 여부"
-                          labelSecondary={dividendGoverned ? '「연금 전략」이 결정하는 중' : '기준선 — AI가 더 나은 쪽을 고릅니다'}
-                          value={asset.reinvestDividend ? 'true' : 'false'}
-                          disabled={dividendGoverned}
-                          onChange={(e) => handleUpdateAsset(asset.id, 'reinvestDividend', e.target.value === 'true')}
-                          options={[
-                            { value: 'true', label: '세후 재투자 활성화' },
-                            { value: 'false', label: '현금 수령 (재투자 미수행)' },
-                          ]}
-                        />
-                      )}
                     </div>
                   )}
                 </div>

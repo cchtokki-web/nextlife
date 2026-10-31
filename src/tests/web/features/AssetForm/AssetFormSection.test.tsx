@@ -435,6 +435,15 @@ describe('AssetFormSection - 자산별 배당 재투자', () => {
     expect(screen.getByDisplayValue('세후 재투자 활성화')).toBeEnabled();
   });
 
+  test('수량 다음에 적립 주기·투자금·배당 재투자 설정이 차례로 표시된다', () => {
+    renderExpandedAsset(withAsset({ ...DEFAULT_RETIREMENT_STRATEGY, mode: 'expert' }));
+    const labels = ['수량', '적립 주기', '월 적립 투자금', '배당 재투자 여부', '현재 단가'];
+    const elements = labels.map((label) => screen.getByText(label, { exact: true }));
+    for (let index = 0; index < elements.length - 1; index++) {
+      expect(elements[index].compareDocumentPosition(elements[index + 1]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    }
+  });
+
   // 「전부 재투자」·「전부 현금 수령」은 compileStrategy가 전 자산을 덮어쓴다. 잠그지 않으면
   // 여기서 고친 값이 화면에만 남고 엔진은 전략이 정한 값으로 돈다 — 수익률 입력이 리스크
   // 성향에 지배될 때와 같은 처리다.
