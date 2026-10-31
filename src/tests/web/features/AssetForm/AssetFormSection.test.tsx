@@ -89,6 +89,7 @@ describe('AssetFormSection - 수익률 입력은 전략에 잠기지 않는다',
 
   test('ETF 총수익률과 배당률은 읽기 전용이지만 프리셋으로 변경할 수 있다', () => {
     renderExpanded(withAsset);
+    expect(screen.getByLabelText('현재 단가')).toHaveAttribute('readonly');
     expect(screen.getByLabelText('연 총수익률')).toHaveAttribute('readonly');
     expect(screen.getByLabelText('연 배당률')).toHaveAttribute('readonly');
     expect(screen.queryByRole('group', { name: '자산1 수익률 입력 도우미' })).toBeNull();
@@ -102,14 +103,22 @@ describe('AssetFormSection - 수익률 입력은 전략에 잠기지 않는다',
     expect(next.assets.at(-1)?.autoHistoricalReturn).toBe(true);
   });
 
-  test('자동완성으로 새 종목을 선택해도 해당 종목의 조회값을 채운다', async () => {
+  test('공통 프리셋이 적용된 상태에서 추가한 ETF도 같은 총수익률을 사용한다', () => {
+    const changed = vi.fn();
+    const params = { ...withAsset, assets: [{ ...withAsset.assets[0], totalReturn: 7 }] };
+    render(<AssetFormSection params={params} onChangeParams={changed} />);
+    fireEvent.click(screen.getByRole('button', { name: /투자자산 추가/ }));
+    expect((changed.mock.calls[0][0] as SimulationParams).assets.at(-1)?.totalReturn).toBe(7);
+  });
+
+  test('공통 프리셋을 적용한 ETF의 종목을 바꿔도 총수익률을 유지한다', async () => {
     vi.stubGlobal('fetch', vi.fn().mockImplementation(async (url: string) => {
       if (url.startsWith('/api/stock-info')) return Response.json({ totalReturn: 8.2, dividendYield: 1.3 });
       if (url.startsWith('/api/stock-price')) return Response.json({ price: 100, currency: 'USD' });
       return Response.json({ results: [] });
     }));
     function Harness() {
-      const [params, setParams] = useState(withAsset);
+      const [params, setParams] = useState({ ...withAsset, assets: [{ ...withAsset.assets[0], totalReturn: 7 }] });
       return <AssetFormSection params={params} onChangeParams={setParams} />;
     }
     try {
@@ -117,8 +126,8 @@ describe('AssetFormSection - 수익률 입력은 전략에 잠기지 않는다',
       fireEvent.click(screen.getByText('자산1'));
       fireEvent.change(screen.getByLabelText('종목명'), { target: { value: 'VOO' } });
       fireEvent.click(screen.getByText('Vanguard S&P 500 ETF'));
-      expect(await screen.findByDisplayValue('8.2')).toBeInTheDocument();
-      expect(screen.getByLabelText('연 배당률')).toHaveValue(1.3);
+      expect(screen.getByLabelText('연 총수익률')).toHaveValue(7);
+      expect(screen.getByLabelText('현재 단가')).toHaveAttribute('readonly');
     } finally {
       vi.unstubAllGlobals();
     }

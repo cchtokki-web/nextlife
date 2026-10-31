@@ -78,6 +78,8 @@ export async function GET(request: NextRequest) {
     // Calculate Dividend Yield
     let dividendYield = 1.0; // Default fallback
     const dividends = result.events?.dividends;
+    // 기존 응답의 기본값을 실제 관측치로 오인하지 않도록 별도로 표시한다.
+    let observedDividendYield: number | null = null;
     if (dividends && currentPrice && currentPrice > 0) {
       const now = Date.now() / 1000;
       const oneYearAgo = now - (365 * 24 * 60 * 60);
@@ -91,6 +93,23 @@ export async function GET(request: NextRequest) {
       }
       
       dividendYield = (annualDividends / currentPrice) * 100;
+      const marketTime = meta?.regularMarketTime;
+      const events = Object.values(dividends) as Array<{ date?: unknown; amount?: unknown }>;
+      const timestamps: unknown[] = Array.isArray(result.timestamp) ? result.timestamp : [];
+      const dates = timestamps.filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
+      const hasYearOfHistory = dates.length > 1 && Math.min(...dates) <= oneYearAgo
+        && Math.max(...dates) >= now - 60 * 86400;
+      const validEvents = events.length > 0 && events.every((event) => event
+        && typeof event.date === 'number' && Number.isFinite(event.date)
+        && typeof event.amount === 'number' && Number.isFinite(event.amount) && event.amount >= 0);
+      const recentEvents = events.filter((event) => typeof event.date === 'number' && event.date >= oneYearAgo && event.date <= now);
+      if (typeof currentPrice === 'number' && Number.isFinite(currentPrice) && currentPrice > 0
+        && hasYearOfHistory && validEvents && recentEvents.length > 0 && typeof marketTime === 'number' && Number.isFinite(marketTime)
+        && marketTime <= now && now - marketTime <= 30 * 86400) {
+        const amount = recentEvents.reduce((sum, event) => sum + (event.amount as number), 0);
+        const rate = amount / currentPrice * 100;
+        if (Number.isFinite(rate) && rate >= 0) observedDividendYield = Math.round(rate * 10) / 10;
+      }
     }
 
     // Sanity checks and conservative adjustments
@@ -112,6 +131,7 @@ export async function GET(request: NextRequest) {
       ticker,
       totalReturn: Math.round(totalReturn * 10) / 10,
       dividendYield: Math.round(dividendYield * 10) / 10,
+      observedDividendYield,
     });
 
   } catch (error) {

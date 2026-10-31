@@ -10,6 +10,7 @@ import { Plus, Trash2, Wallet, Landmark, PiggyBank, DollarSign, ExternalLink, Ch
 import { predefinedAssets } from './predefinedAssets';
 import { ReturnBreakdownHint } from './ReturnBreakdownHint';
 import { YieldPresetHelper } from './YieldPresetHelper';
+import { matchedYieldPreset, YIELD_PRESET_RATES } from '../../../core/usecases/scenario/applyYieldPreset';
 import { initialParams } from '../../../infrastructure/storage/localStore';
 import { resolveStrategy } from '../../../core/usecases/strategy/compileStrategy';
 import {
@@ -317,6 +318,7 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
   // 3. Investment Assets actions
   const handleAddCustomAsset = () => {
     const newId = createEntityId('asset');
+    const selectedPreset = matchedYieldPreset(params);
     
     const newAsset: InvestmentAsset = {
       id: newId,
@@ -326,8 +328,8 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
       name: '신규 자산',
       quantity: 0,
       averagePrice: 0,
-      totalReturn: 8, // 예전 성장률 6 + 배당 2 (총수익률 표기로 이관)
-      dividendYield: 2,
+      totalReturn: selectedPreset ? YIELD_PRESET_RATES[selectedPreset].stockGrowth : 8,
+      dividendYield: selectedPreset ? 2 * YIELD_PRESET_RATES[selectedPreset].stockGrowth / 8 : 2,
       contributionPeriod: 'daily',
       contributionAmount: 0,
       monthlyContribution: 0,
@@ -378,7 +380,10 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
             return { ...asset, [key]: value,
               ...(key === 'totalReturn' && asset.autoHistoricalReturn && !prevParams.autoUpdateEtfReturns ? { autoHistoricalReturn: false } : {}) };
           } else {
+            const selectedPreset = matchedYieldPreset(prevParams);
             return { ...asset, ...updates,
+              ...(selectedPreset && updates.type === 'etf' && 'ticker' in updates
+                ? { totalReturn: YIELD_PRESET_RATES[selectedPreset].stockGrowth } : {}),
               ...(prevParams.autoUpdateEtfReturns && (updates.type ?? asset.type) === 'etf' ? { autoHistoricalReturn: true }
                 : (('totalReturn' in updates || 'ticker' in updates) && asset.autoHistoricalReturn ? { autoHistoricalReturn: false } : {})) };
           }
@@ -576,8 +581,8 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
             totalReturn: pa.totalReturn,
             dividendYield: pa.dividendYield,
           });
-          if (!params.autoUpdateEtfReturns || pa.type !== 'etf') fetchAssetInfo(id, pa.ticker, { totalReturn: pa.totalReturn, dividendYield: pa.dividendYield });
-          fetchAssetPrice(id, pa.ticker);
+          if (pa.type !== 'etf') fetchAssetInfo(id, pa.ticker, { totalReturn: pa.totalReturn, dividendYield: pa.dividendYield });
+          if (pa.type !== 'etf') fetchAssetPrice(id, pa.ticker);
         } else if (type === 'pension') {
           handleUpdatePrivatePension(id, {
             name: pa.name,
@@ -785,8 +790,8 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                                       });
                                       setFocusedAssetId(null);
                                       setAutocompleteIndex(-1);
-                                      if (!params.autoUpdateEtfReturns || pa.type !== 'etf') fetchAssetInfo(asset.id, pa.ticker, { totalReturn: pa.totalReturn, dividendYield: pa.dividendYield });
-                                      fetchAssetPrice(asset.id, pa.ticker);
+                                      if (pa.type !== 'etf') fetchAssetInfo(asset.id, pa.ticker, { totalReturn: pa.totalReturn, dividendYield: pa.dividendYield });
+                                      if (pa.type !== 'etf') fetchAssetPrice(asset.id, pa.ticker);
                                       setTimeout(() => { isSelectingRef.current[asset.id] = false; }, 200);
                                     }}
                                   >
@@ -836,11 +841,12 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                             label="현재 단가"
                             maximumFractionDigits={2}
                             value={asset.averagePrice}
+                            readOnly={asset.type === 'etf'}
                             onChangeValue={(price) => handleUpdateAsset(asset.id, 'averagePrice', price)}
                             suffixText={asset.currency === 'KRW' ? '원' : asset.currency}
                           />
                         </div>
-                        <button
+                        {asset.type !== 'etf' && <button
                           type="button"
                           className={`${compStyles.button} ${compStyles.buttonSecondary} ${styles.priceFetchButton}`}
                           onClick={() => fetchAssetPrice(asset.id, asset.ticker)}
@@ -851,7 +857,7 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                             size={22}
                             className={fetchingPriceMap[asset.id] ? styles.spinner : ''}
                           />
-                        </button>
+                        </button>}
                       </div>
                       <InputField
                         label="총 취득원가"

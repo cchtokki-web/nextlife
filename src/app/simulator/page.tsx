@@ -27,6 +27,7 @@ import { ScenarioManager } from '../../web/features/Scenario/ScenarioManager';
 import { InvestmentBaselinePreview } from '../../web/features/Scenario/InvestmentBaselinePreview';
 import { applyCurrentQuotes } from '../../core/usecases/investmentTracking/applyCurrentQuotes';
 import { applyHistoricalEtfReturns } from '../../core/usecases/investmentTracking/applyHistoricalEtfReturns';
+import { applyObservedEtfDividends } from '../../core/usecases/investmentTracking/applyObservedEtfDividends';
 import { sameAnalysisInputs } from '../../core/usecases/investmentTracking/sameAnalysisInputs';
 import { StrategySettingsPanel } from '../../web/features/StrategySettings/StrategySettingsPanel';
 import { RetirementInputFlow } from '../../web/features/RetirementGoals/RetirementInputFlow';
@@ -706,12 +707,13 @@ export default function Home() {
                     </button>
                   </>
                 )}
-                {(activeParams.investmentBaseline || activeParams.autoUpdateEtfReturns || activeParams.autoUpdateEtfPrices || activeParams.assets.some((asset) => asset.type === 'etf' && asset.autoHistoricalReturn)) && (
+                {(activeParams.investmentBaseline || activeParams.assets.some((asset) => asset.type === 'etf')) && (
                   <InvestmentBaselinePreview key={`${activeScenarioId}:${activeParams.investmentBaseline?.capturedAt ?? 'none'}`}
-                    baseline={activeParams.investmentBaseline} currentParams={activeParams} onApply={(quotes, returns = []) => {
+                    baseline={activeParams.investmentBaseline} currentParams={activeParams} onApply={(quotes, returns = [], dividends = []) => {
                       const prices = applyCurrentQuotes(activeParams, quotes);
-                      const updated = applyHistoricalEtfReturns(prices.params, returns, new Date().toISOString().slice(0, 10));
-                      if (prices.appliedCount === 0 && updated.appliedCount === 0) return;
+                      const history = applyHistoricalEtfReturns(prices.params, returns, new Date().toISOString().slice(0, 10));
+                      const updated = applyObservedEtfDividends(history.params, dividends);
+                      if (prices.appliedCount === 0 && history.appliedCount === 0 && updated.appliedCount === 0) return;
                       handleUpdateActiveParams(updated.params);
                       if ((analysisIsCurrent || sameAnalysisInputs(analysisRequest?.params, activeParams)) && activeScenarioId) {
                         setAnalysisRequest(buildAnalysisRequest(updated.params));

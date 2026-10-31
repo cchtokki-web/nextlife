@@ -6,6 +6,7 @@ import { baselineReferenceValue } from '../../../core/usecases/investmentTrackin
 import { compareReferenceQuantities } from '../../../core/usecases/investmentTracking/compareReferenceQuantities';
 import { applyCurrentQuotes, type ObservedQuote } from '../../../core/usecases/investmentTracking/applyCurrentQuotes';
 import { applyHistoricalEtfReturns, type ObservedHistoricalReturn } from '../../../core/usecases/investmentTracking/applyHistoricalEtfReturns';
+import { applyObservedEtfDividends, type ObservedEtfDividend } from '../../../core/usecases/investmentTracking/applyObservedEtfDividends';
 import { fetchEtfHistoricalReturn } from '../AssetForm/fetchEtfHistoricalReturn';
 import type { HistoricalAdjustedReturn } from '../../../core/usecases/returns/historicalAdjustedReturn';
 
@@ -17,6 +18,7 @@ interface QuoteBatch {
   requestedAssets: readonly InvestmentAsset[];
   historicalKey: string;
   historical: Array<{ asset: InvestmentAsset; result: HistoricalAdjustedReturn | null }>;
+  dividends: Array<{ asset: InvestmentAsset; dividendYield: number | null }>;
   asOfDate: string;
 }
 
@@ -25,8 +27,7 @@ function historicalStatus(asset: InvestmentAsset, result: HistoricalAdjustedRetu
   const ageDays = (Date.parse(`${asOfDate}T00:00:00Z`) - Date.parse(`${result.endDate}T00:00:00Z`)) / 86400000;
   if (!Number.isFinite(ageDays) || ageDays < 0 || ageDays > 30) return '자료 기준일이 오래되었거나 올바르지 않아 자동 반영하지 않았습니다.';
   const matching = current?.assets.filter((item) => item.id === asset.id) ?? [];
-  if (matching.length !== 1 || matching[0].ticker !== asset.ticker || matching[0].autoHistoricalReturn !== true
-    || matching[0].dividendYield !== asset.dividendYield) return '조회 중 입력이 변경되어 자동 반영하지 않았습니다.';
+  if (matching.length !== 1 || matching[0].ticker !== asset.ticker) return '조회 중 입력이 변경되어 자동 반영하지 않았습니다.';
   if (matching[0].totalReturn === Number(result.annualizedReturn.toFixed(1))) return '현재 입력과 일치합니다.';
   if (matching[0].totalReturn !== asset.totalReturn) return '조회 중 입력이 변경되어 자동 반영하지 않았습니다.';
   return '자동 반영을 처리 중입니다.';
@@ -36,15 +37,15 @@ function historicalStatus(asset: InvestmentAsset, result: HistoricalAdjustedRetu
 export function InvestmentBaselinePreview({ baseline, currentParams, onApply }: {
   baseline?: Baseline;
   currentParams?: SimulationParams;
-  onApply?: (quotes: ObservedQuote[], returns?: ObservedHistoricalReturn[]) => void;
+  onApply?: (quotes: ObservedQuote[], returns?: ObservedHistoricalReturn[], dividends?: ObservedEtfDividend[]) => void;
 }) {
   const [batch, setBatch] = useState<QuoteBatch | null>(null);
   const [refreshCount, setRefreshCount] = useState(0);
   const currentParamsRef = useRef(currentParams);
   const lastAutomaticBatch = useRef<QuoteBatch | null>(null);
-  const automatic = (currentParams?.autoUpdateEtfReturns ?? currentParams?.autoUpdateEtfPrices) === true;
-  const historicalKey = JSON.stringify((currentParams?.assets ?? []).filter((asset) => asset.type === 'etf' && asset.autoHistoricalReturn === true)
-    .map((asset) => [asset.id, asset.ticker]).sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b))));
+  const automatic = true;
+  const historicalKey = JSON.stringify((currentParams?.assets ?? []).filter((asset) => asset.type === 'etf')
+    .map((asset) => [asset.id, asset.ticker, asset.autoHistoricalReturn === true]).sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b))));
 
   useEffect(() => { currentParamsRef.current = currentParams; }, [currentParams]);
 
@@ -81,16 +82,25 @@ export function InvestmentBaselinePreview({ baseline, currentParams, onApply }: 
         return { asset, baseline: isBaseline, error: '시세 또는 기준 시각을 확인할 수 없습니다.' };
       }
     }
-    const historyAssets = requestedAssets.filter((asset) => asset.type === 'etf' && asset.autoHistoricalReturn === true && asset.ticker && asset.ticker !== 'NEW');
+    const etfAssets = requestedAssets.filter((asset) => asset.type === 'etf' && asset.ticker && asset.ticker !== 'NEW');
+    const historyAssets = etfAssets.filter((asset) => asset.autoHistoricalReturn === true);
     const history = historyAssets.map(async (asset) => {
       try { return { asset, result: await fetchEtfHistoricalReturn(asset.ticker, controller.signal) }; }
       catch { return { asset, result: null }; }
     });
-    void Promise.all([Promise.all(entries.map(loadQuote)), Promise.all(history)]).then(([results, historical]) => {
-      if (!controller.signal.aborted) setBatch({ results, automatic, requestedAssets, historicalKey, historical, asOfDate: new Date().toISOString().slice(0, 10) });
+    const dividendRequests = etfAssets.map(async (asset) => {
+      try {
+        const response = await fetch(`/api/stock-info?ticker=${encodeURIComponent(asset.ticker)}`, { signal: controller.signal, cache: 'no-store' });
+        const data: unknown = response.ok ? await response.json() : null;
+        const value = data && typeof data === 'object' && 'observedDividendYield' in data ? data.observedDividendYield : null;
+        return { asset, dividendYield: typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : null };
+      } catch { return { asset, dividendYield: null }; }
+    });
+    void Promise.all([Promise.all(entries.map(loadQuote)), Promise.all(history), Promise.all(dividendRequests)]).then(([results, historical, dividends]) => {
+      if (!controller.signal.aborted) setBatch({ results, automatic, requestedAssets, historicalKey, historical, dividends, asOfDate: new Date().toISOString().slice(0, 10) });
     });
     return () => controller.abort();
-  }, [baseline, automatic, historicalKey, refreshCount]);
+  }, [baseline, automatic, historicalKey, refreshCount, currentParams?.yieldPreset]);
 
   useEffect(() => {
     if (!batch || !currentParams || !onApply || lastAutomaticBatch.current === batch) return;
@@ -112,9 +122,14 @@ export function InvestmentBaselinePreview({ baseline, currentParams, onApply }: 
       annualizedReturn: result.annualizedReturn, missingPoints: result.missingPoints, endDate: result.endDate,
     }] : []);
     const withPrices = applyCurrentQuotes(currentParams, safeQuotes);
+    const safeDividends: ObservedEtfDividend[] = batch.historicalKey !== historicalKey ? [] : batch.dividends.flatMap(({ asset, dividendYield }) => dividendYield === null ? [] : [{
+      assetId: asset.id, ticker: asset.ticker, expectedDividend: asset.dividendYield, dividendYield,
+    }]);
     const withReturns = applyHistoricalEtfReturns(withPrices.params, safeReturns, batch.asOfDate);
-    if (withPrices.appliedCount > 0 || withReturns.appliedCount > 0) {
-      if (safeReturns.length) onApply(safeQuotes, safeReturns);
+    const withDividends = applyObservedEtfDividends(withReturns.params, safeDividends);
+    if (withPrices.appliedCount > 0 || withReturns.appliedCount > 0 || withDividends.appliedCount > 0) {
+      if (safeDividends.length) onApply(safeQuotes, safeReturns, safeDividends);
+      else if (safeReturns.length) onApply(safeQuotes, safeReturns);
       else onApply(safeQuotes);
     }
   }, [automatic, batch, currentParams, onApply, historicalKey]);
@@ -173,6 +188,9 @@ export function InvestmentBaselinePreview({ baseline, currentParams, onApply }: 
       {batch?.historicalKey === historicalKey && batch.historical.some(({ asset, result }) => !result
         || historicalStatus(asset, result, currentParams, batch.asOfDate).includes('자동 반영하지 않았습니다')) && (
         <p role="alert" className="mt-2 text-xs text-foreground-muted">일부 ETF 수익률을 갱신하지 못해 기존 값을 유지합니다.</p>
+      )}
+      {batch?.historicalKey === historicalKey && batch.dividends.some(({ dividendYield }) => dividendYield === null) && (
+        <p role="alert" className="mt-2 text-xs text-foreground-muted">일부 ETF 배당률을 조회하지 못해 기존 값을 유지합니다.</p>
       )}
       {currentParams && onApply && count > 0 && (
         <div className="mt-3">

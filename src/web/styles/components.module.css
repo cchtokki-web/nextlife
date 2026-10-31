@@ -71,6 +71,17 @@
   box-shadow: 0 0 10px 0 rgba(99, 102, 241, 0.2);
 }
 
+.input[readonly] {
+  color: var(--foreground-muted);
+  cursor: default;
+}
+
+.input[readonly]:focus {
+  border-color: var(--input-border);
+  background: var(--input-bg);
+  box-shadow: none;
+}
+
 .inputWithPrefix {
   padding-left: 2.25rem;
 }
