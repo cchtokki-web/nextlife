@@ -130,7 +130,7 @@ describe('위키 무결성', () => {
    */
   test('개념과 결정 노트가 예상한 수만큼 있다', () => {
     expect(concepts).toHaveLength(17);
-    expect(decisions).toHaveLength(26);
+    expect(decisions).toHaveLength(27);
   });
 
   test('type이 폴더와 일치한다', () => {

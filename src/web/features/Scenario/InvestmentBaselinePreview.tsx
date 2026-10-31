@@ -39,6 +39,7 @@ export function InvestmentBaselinePreview({ baseline, currentParams, onApply }: 
   onApply?: (quotes: ObservedQuote[], returns?: ObservedHistoricalReturn[]) => void;
 }) {
   const [batch, setBatch] = useState<QuoteBatch | null>(null);
+  const [refreshCount, setRefreshCount] = useState(0);
   const currentParamsRef = useRef(currentParams);
   const lastAutomaticBatch = useRef<QuoteBatch | null>(null);
   const automatic = currentParams?.autoUpdateEtfPrices === true;
@@ -89,7 +90,7 @@ export function InvestmentBaselinePreview({ baseline, currentParams, onApply }: 
       if (!controller.signal.aborted) setBatch({ results, automatic, requestedAssets, historicalKey, historical, asOfDate: new Date().toISOString().slice(0, 10) });
     });
     return () => controller.abort();
-  }, [baseline, automatic, historicalKey]);
+  }, [baseline, automatic, historicalKey, refreshCount]);
 
   useEffect(() => {
     if (!batch || !currentParams || !onApply || lastAutomaticBatch.current === batch) return;
@@ -133,6 +134,11 @@ export function InvestmentBaselinePreview({ baseline, currentParams, onApply }: 
       <p className="mt-1 text-xs text-foreground-muted">
         저장된 기준 수량 또는 현재 입력 수량에 조회 시세를 곱한 참고값입니다. 이후 적립·매매·배당·분할은 반영하지 않아 실제 잔고나 현재 평가금과 다를 수 있습니다.
       </p>
+      <button type="button" className="mt-2 rounded-lg border border-card-border px-3 py-2 text-xs font-semibold" onClick={() => {
+        setBatch(null);
+        setRefreshCount((count) => count + 1);
+      }}>시세와 자동 수익률 다시 조회</button>
+      <p className="mt-1 text-xs text-foreground-muted">다시 조회하면 켜진 자동 반영 설정에 따라 현재 계획을 갱신합니다.</p>
       {quotes === null ? <p role="status">시세를 조회하고 있습니다.</p> : quotes.length === 0 ? (
         <p>{batch?.historical.length ? '현재 단가 자동 조회는 꺼져 있습니다.' : '조회할 ETF가 없습니다.'}</p>
       ) : (

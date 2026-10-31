@@ -9,6 +9,61 @@ const baseline = { capturedAt: '2026-01-01T00:00:00.000Z', params: { ...initialP
 afterEach(() => vi.unstubAllGlobals());
 
 describe('기준 수량 시세 참고', () => {
+  it('실패 후 다시 조회하면 최신 시세를 확인하고 자동 반영이 꺼져 있으면 직접 반영을 기다린다', async () => {
+    const fetchMock = vi.fn().mockRejectedValueOnce(new Error('일시 오류'))
+      .mockResolvedValueOnce(Response.json({ price: 125, currency: 'USD', marketTime: 1700000000 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const onApply = vi.fn();
+    render(<InvestmentBaselinePreview baseline={baseline} currentParams={baseline.params} onApply={onApply} />);
+    expect(await screen.findByText(/시세 또는 기준 시각을 확인할 수 없습니다/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '시세와 자동 수익률 다시 조회' }));
+    expect(await screen.findByText(/1,250 USD/)).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(onApply).not.toHaveBeenCalled();
+  });
+
+  it('다시 조회할 때 열린 화면에서 추가한 ETF도 자동 반영한다', async () => {
+    const fetchMock = vi.fn().mockImplementation(async (url: string) => Response.json({
+      price: url.includes('QQQ') ? 200 : 120, currency: 'USD', marketTime: 1700000000,
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+    const onApply = vi.fn();
+    const current = { ...baseline.params, autoUpdateEtfPrices: true };
+    const view = render(<InvestmentBaselinePreview currentParams={current} onApply={onApply} />);
+    await waitFor(() => expect(onApply).toHaveBeenCalledTimes(1));
+    const added = { ...asset, id: 'b', ticker: 'QQQ', name: 'QQQ' };
+    view.rerender(<InvestmentBaselinePreview currentParams={{ ...current, assets: [asset, added] }} onApply={onApply} />);
+    fireEvent.click(screen.getByRole('button', { name: '시세와 자동 수익률 다시 조회' }));
+    await waitFor(() => expect(onApply).toHaveBeenCalledTimes(2));
+    expect(onApply.mock.calls[1][0]).toEqual(expect.arrayContaining([expect.objectContaining({ assetId: 'b', ticker: 'QQQ', price: 200 })]));
+  });
+
+  it('다시 조회하면 이전 요청의 늦은 응답을 버린다', async () => {
+    let resolveOld!: (response: Response) => void;
+    vi.stubGlobal('fetch', vi.fn().mockImplementationOnce(() => new Promise<Response>((resolve) => { resolveOld = resolve; }))
+      .mockResolvedValueOnce(Response.json({ price: 130, currency: 'USD', marketTime: 1700000000 })));
+    render(<InvestmentBaselinePreview baseline={baseline} />);
+    fireEvent.click(screen.getByRole('button', { name: '시세와 자동 수익률 다시 조회' }));
+    expect(await screen.findByText(/1,300 USD/)).toBeInTheDocument();
+    resolveOld(Response.json({ price: 120, currency: 'USD', marketTime: 1700000000 }));
+    await waitFor(() => expect(screen.queryByText(/1,200 USD/)).toBeNull());
+  });
+
+  it('다시 조회할 때 선택한 과거 수익률도 재조회한다', async () => {
+    const today = new Date().toISOString().slice(0, 10);
+    const start = `${Number(today.slice(0, 4)) - 2}-01-01`;
+    const fetchMock = vi.fn().mockImplementation(async () => Response.json({ prices: [
+      { date: start, adjustedClose: 100 }, { date: today, adjustedClose: 120 },
+    ] }));
+    vi.stubGlobal('fetch', fetchMock);
+    const selected = { ...asset, autoHistoricalReturn: true };
+    render(<InvestmentBaselinePreview currentParams={{ ...baseline.params, assets: [selected] }} onApply={vi.fn()} />);
+    await screen.findByText(/연환산/);
+    fireEvent.click(screen.getByRole('button', { name: '시세와 자동 수익률 다시 조회' }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    expect(await screen.findByText(/연환산/)).toBeInTheDocument();
+  });
+
   it('같은 ETF의 입력 수량 변화만 동일 시세로 비교하며 입력 수정에 따라 갱신한다', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({ price: 120, currency: 'USD', marketTime: 1700000000 })));
     const current = { ...baseline.params, assets: [{ ...asset, quantity: 12 }] };
