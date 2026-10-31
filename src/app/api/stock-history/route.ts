@@ -64,6 +64,8 @@ export async function GET(request: NextRequest) {
       // 원천의 사건 부재는 해당 기간에 사건이 없다는 증거가 아니다.
       dividends: dividends.filter(eventInRange), splits: splits.filter(eventInRange),
       source: 'Yahoo Finance', completeness: 'unverified',
+      // 종가의 분할 조정 기준과 사건의 누락 여부를 확인하기 전에는 수량 계산에 쓰지 않는다.
+      closeAdjustment: 'unverified', investmentTrackingReady: false,
     });
   } catch {
     return Response.json({ error: 'Historical data unavailable' }, { status: 502 });
