@@ -5,6 +5,8 @@ import {
   applyYieldPreset,
   YIELD_PRESET_LABELS,
   matchedYieldPreset,
+  INVESTMENT_CATEGORIES,
+  categoryYieldRate,
 } from '../../../core/usecases/scenario/applyYieldPreset';
 import styles from './AssetForm.module.css';
 
@@ -13,9 +15,8 @@ interface YieldPresetHelperProps {
   onChangeParams: (params: SimulationParams) => void;
 }
 
-// 라벨은 「이름 + 그 프리셋이 주식에 채우는 값」으로 조립한다. 이름과 값을 각각 도메인에서
-// 가져오므로, 프리셋 수익률을 바꾸면 버튼 글자도 함께 따라온다 — 예전에는 '중립 7%'가
-// 문자열로 박혀 있어 YIELD_PRESET_RATES만 바꾸면 버튼이 옛 숫자를 계속 말했다.
+// 미분류 자산에 쓰는 기존 공통값이다. 분류된 자산이 있거나 사용자 설정이 있으면
+// 버튼에 단일 수치를 표시하지 않는다.
 const PRESETS = (['conservative', 'base', 'aggressive'] as const).map((key) => ({
   key,
   label: `${YIELD_PRESET_LABELS[key]} ${YIELD_PRESET_RATES[key].stockGrowth}%`,
@@ -52,9 +53,9 @@ export function YieldPresetHelper({ params, onChangeParams }: YieldPresetHelperP
           aria-pressed={!params.autoUpdateEtfReturns && selected === preset.key}
           className={styles.yieldPresetButton}
           onClick={() => onChangeParams(applyYieldPreset(params, preset.key))}
-          title={`주식·ISA ${YIELD_PRESET_RATES[preset.key].stockGrowth}%, 사적연금 ${YIELD_PRESET_RATES[preset.key].pensionReturn}%로 채웁니다`}
+          title={`분류된 자산은 카테고리 설정, 미분류·ISA는 ${YIELD_PRESET_RATES[preset.key].stockGrowth}%, 사적연금은 ${YIELD_PRESET_RATES[preset.key].pensionReturn}%를 적용합니다`}
         >
-          {preset.label}
+          {params.assets.some((asset) => asset.category) || (params.categoryYieldRates && Object.keys(params.categoryYieldRates).length) ? YIELD_PRESET_LABELS[preset.key] : preset.label}
         </button>
       ))}
       <button type="button" aria-pressed={params.autoUpdateEtfReturns === true} className={styles.yieldPresetButton}
@@ -64,6 +65,32 @@ export function YieldPresetHelper({ params, onChangeParams }: YieldPresetHelperP
           yieldPreset: 'custom' })}>
         자동 수익률
       </button>
+      <details className="basis-full">
+        <summary>카테고리별 수익률 설정</summary>
+        <p>자산의 카테고리를 선택하고 총수익률 가정을 조정하세요.</p>
+        {INVESTMENT_CATEGORIES.map(({ value, label }) => (
+          <div key={value} className="flex flex-wrap items-center gap-2 mt-2">
+            <span>{label}</span>
+            {PRESETS.map(({ key }) => (
+              <label key={key} className="flex items-center gap-1">
+                {YIELD_PRESET_LABELS[key]}
+                <input type="number" step="0.1" aria-label={`${label} ${YIELD_PRESET_LABELS[key]} 수익률`}
+                  className="w-20 rounded border border-slate-600 bg-transparent px-2 py-1"
+                  key={`${value}-${key}-${categoryYieldRate(params, value, key)}`}
+                  defaultValue={categoryYieldRate(params, value, key)}
+                  onBlur={(event) => {
+                    if (!event.target.value.trim()) return;
+                    const rate = Number(event.target.value);
+                    if (!Number.isFinite(rate)) return;
+                    const next = { ...params, categoryYieldRates: { ...params.categoryYieldRates,
+                      [value]: { ...params.categoryYieldRates?.[value], [key]: rate } } };
+                    onChangeParams(!params.autoUpdateEtfReturns && selected === key ? applyYieldPreset(next, key) : next);
+                  }} />%
+              </label>
+            ))}
+          </div>
+        ))}
+      </details>
       {params.autoUpdateEtfReturns && <p className="basis-full text-xs text-foreground-muted">ETF 과거 수익률은 미래 성과를 보장하지 않습니다.</p>}
     </div>
   );

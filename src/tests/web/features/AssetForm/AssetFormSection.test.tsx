@@ -95,6 +95,19 @@ describe('AssetFormSection - 수익률 입력은 전략에 잠기지 않는다',
     expect(screen.queryByRole('group', { name: '자산1 수익률 입력 도우미' })).toBeNull();
   });
 
+  test('자산 카테고리를 선택하면 활성 프리셋의 카테고리 수익률을 적용한다', () => {
+    const initial = { ...withAsset, assets: [{ ...withAsset.assets[0], totalReturn: 7 }],
+      categoryYieldRates: { bond: { base: 4 } } };
+    const changed = vi.fn();
+    render(<AssetFormSection params={initial} onChangeParams={changed} />);
+    fireEvent.click(screen.getByText('자산1'));
+    fireEvent.change(screen.getByDisplayValue('미분류'), { target: { value: 'bond' } });
+    const update = changed.mock.lastCall?.[0] as (params: SimulationParams) => SimulationParams;
+    const result = update(initial);
+    expect(result.assets[0].category).toBe('bond');
+    expect(result.assets[0].totalReturn).toBe(4);
+  });
+
   test('공통 자동 모드에서 새로 추가한 ETF도 자동 수익률 대상이다', () => {
     const changed = vi.fn();
     render(<AssetFormSection params={{ ...withAsset, autoUpdateEtfReturns: true }} onChangeParams={changed} />);

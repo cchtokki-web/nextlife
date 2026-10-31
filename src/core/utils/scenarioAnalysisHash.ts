@@ -31,7 +31,7 @@ export function isComparableScenarioAnalysisHash(hash: string | null | undefined
  * yieldPreset이 계산에 쓰이지 않는다는 것은 types.ts의 선언부에 명시돼 있고,
  * customYieldSnapshot은 「사용자 프리셋」 복원용 저장값이다.
  */
-const DISPLAY_ONLY_PARAM_KEYS = ['yieldPreset', 'customYieldSnapshot', 'investmentBaseline', 'autoUpdateEtfPrices', 'autoUpdateEtfReturns'] as const;
+const DISPLAY_ONLY_PARAM_KEYS = ['yieldPreset', 'customYieldSnapshot', 'investmentBaseline', 'autoUpdateEtfPrices', 'autoUpdateEtfReturns', 'categoryYieldRates'] as const;
 
 /**
  * strategy 안의 표시용 필드. mode는 입력 패널의 공개 수준(간편/표준/전문가)일 뿐이며
@@ -51,7 +51,7 @@ function hashableParams(params: SimulationParams): Record<string, unknown> {
   const next = omit(params as unknown as Record<string, unknown>, DISPLAY_ONLY_PARAM_KEYS);
   if (Array.isArray(next.assets)) {
     next.assets = next.assets.map((asset: unknown) => asset && typeof asset === 'object'
-      ? omit(asset as Record<string, unknown>, ['autoHistoricalReturn']) : asset);
+      ? omit(asset as Record<string, unknown>, ['autoHistoricalReturn', 'category']) : asset);
   }
   const strategy = next.strategy;
   if (strategy !== null && typeof strategy === 'object') {

@@ -6,9 +6,11 @@ import {
   matchesCustomYieldSnapshot,
   restoreCustomYieldPreset,
   YIELD_PRESET_RATES,
+  CATEGORY_YIELD_PRESET_RATES,
 } from '@/core/usecases/scenario/applyYieldPreset';
 import { priceGrowthRate } from '@/core/usecases/returns/decomposeReturn';
 import { SimulationParams } from '@/core/entities/types';
+import { SimulationEngine } from '@/core/usecases/SimulationEngine';
 import { compileStrategy } from '@/core/usecases/strategy/compileStrategy';
 import { normalizeSimulationParams } from '@/infrastructure/storage/normalizeSimulationParams';
 
@@ -42,6 +44,62 @@ const baseParams: SimulationParams = {
 };
 
 describe('applyYieldPreset', () => {
+  test('세 모드는 분류별 초기 가정을 적용하고 사용자 수정값을 우선한다', () => {
+    const categories = ['index', 'growth', 'dividend', 'income', 'bond', 'other'] as const;
+    const assets = categories.map((category, i) => ({ ...baseParams.assets[0], id: `category-${i}`, category }));
+    const params: SimulationParams = { ...baseParams, assets, categoryYieldRates: { bond: { base: 4 } } };
+    for (const preset of ['conservative', 'base', 'aggressive'] as const) {
+      const applied = applyYieldPreset(params, preset);
+      expect(applied.assets.map((asset) => asset.totalReturn)).toEqual(categories.map((category) =>
+        category === 'bond' && preset === 'base' ? 4 : CATEGORY_YIELD_PRESET_RATES[category][preset]));
+      expect(matchedYieldPreset(applied)).toBe(preset);
+    }
+    expect(params.assets.map((asset) => asset.totalReturn)).toEqual([1, 1, 1, 1, 1, 1]);
+  });
+
+  test('카테고리 없는 기존 시나리오는 기존 프리셋 값을 보존한다', () => {
+    expect(applyYieldPreset(baseParams, 'base').assets[0].totalReturn).toBe(7);
+    expect(normalizeSimulationParams(baseParams).assets[0].totalReturn).toBe(1);
+  });
+
+  test('카테고리별 수익률을 적용하고 저장 정규화 후에도 보존한다', () => {
+    const assets = [
+      { ...baseParams.assets[0], id: 'index', category: 'index' as const },
+      { ...baseParams.assets[0], id: 'bond', category: 'bond' as const },
+      { ...baseParams.assets[0], id: 'unknown' },
+    ];
+    const params: SimulationParams = { ...baseParams, assets,
+      categoryYieldRates: { index: { base: 8 }, bond: { base: 4 } } };
+    const result = applyYieldPreset(params, 'base');
+    expect(result.assets.map((a) => a.totalReturn)).toEqual([8, 4, 7]);
+    expect(matchedYieldPreset(result)).toBe('base');
+    const restored = normalizeSimulationParams(JSON.parse(JSON.stringify(result)));
+    expect(restored.categoryYieldRates).toEqual(params.categoryYieldRates);
+    expect(restored.assets.map((a) => a.category)).toEqual(['index', 'bond', undefined]);
+    expect(compileStrategy(restored).params.assets.map((a) => a.totalReturn)).toEqual([8, 4, 7]);
+  });
+
+  test('카테고리별 가정이 실제 시뮬레이션 자산 결과에 반영된다', () => {
+    const common: SimulationParams = { ...baseParams,
+      userProfile: { currentAge: 40, retirementAge: 60, expectancy: 65, targetMonthlySpending: 0 },
+      assets: [{ ...baseParams.assets[0], category: 'index', quantity: 1000, averagePrice: 10000, dividendYield: 0 }],
+      privatePensions: [], nationalPension: { expectedMonthlyAmount: 0 },
+      categoryYieldRates: { index: { base: 2, aggressive: 10 } } };
+    const engine = new SimulationEngine();
+    const low = engine.runSingle(compileStrategy(applyYieldPreset(common, 'base')).params);
+    const high = engine.runSingle(compileStrategy(applyYieldPreset(common, 'aggressive')).params);
+    expect(high.yearlyResults.at(-1)!.totalAssets).toBeGreaterThan(low.yearlyResults.at(-1)!.totalAssets);
+  });
+
+  test('음수 총수익률 가정도 배당률을 음수로 바꾸지 않는다', () => {
+    const params: SimulationParams = { ...baseParams,
+      assets: [{ ...baseParams.assets[0], category: 'income', totalReturn: 10, dividendYield: 4 }],
+      categoryYieldRates: { income: { base: -2 } } };
+    const result = applyYieldPreset(params, 'base');
+    expect(result.assets[0].totalReturn).toBe(-2);
+    expect(result.assets[0].dividendYield).toBe(4);
+  });
+
   test('개별 ETF에만 기존 프리셋을 적용하고 배당 비중을 유지한다', () => {
     const etf = { ...baseParams.assets[0], type: 'etf' as const, totalReturn: 10, dividendYield: 4 };
     const other = { ...etf, id: 'a2', totalReturn: 12 };

@@ -10,7 +10,7 @@ import { Plus, Trash2, Wallet, Landmark, PiggyBank, DollarSign, ExternalLink, Ch
 import { predefinedAssets } from './predefinedAssets';
 import { ReturnBreakdownHint } from './ReturnBreakdownHint';
 import { YieldPresetHelper } from './YieldPresetHelper';
-import { matchedYieldPreset, YIELD_PRESET_RATES } from '../../../core/usecases/scenario/applyYieldPreset';
+import { matchedYieldPreset, YIELD_PRESET_RATES, INVESTMENT_CATEGORIES, categoryYieldRate, applyToMarketAccount } from '../../../core/usecases/scenario/applyYieldPreset';
 import { initialParams } from '../../../infrastructure/storage/localStore';
 import { resolveStrategy } from '../../../core/usecases/strategy/compileStrategy';
 import {
@@ -377,11 +377,17 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                 };
               }
             }
+            if (key === 'category') {
+              const preset = !prevParams.autoUpdateEtfReturns ? matchedYieldPreset(prevParams) : undefined;
+              const category = value as InvestmentAsset['category'];
+              return { ...(preset ? applyToMarketAccount(asset, categoryYieldRate(prevParams, category, preset)) : asset), category };
+            }
             return { ...asset, [key]: value,
               ...(key === 'totalReturn' && asset.autoHistoricalReturn && !prevParams.autoUpdateEtfReturns ? { autoHistoricalReturn: false } : {}) };
           } else {
             const selectedPreset = matchedYieldPreset(prevParams);
             return { ...asset, ...updates,
+              ...('ticker' in updates && updates.ticker !== asset.ticker ? { category: undefined } : {}),
               ...(selectedPreset && updates.type === 'etf' && 'ticker' in updates
                 ? { totalReturn: YIELD_PRESET_RATES[selectedPreset].stockGrowth } : {}),
               ...(prevParams.autoUpdateEtfReturns && (updates.type ?? asset.type) === 'etf' ? { autoHistoricalReturn: true }
@@ -811,6 +817,12 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                           })()
                         )}
                       </div>
+                      <SelectField
+                        label="수익률 카테고리"
+                        value={asset.category ?? ''}
+                        onChange={(e) => handleUpdateAsset(asset.id, 'category', e.target.value || undefined)}
+                        options={[{ value: '', label: '미분류' }, ...INVESTMENT_CATEGORIES]}
+                      />
                       <SelectField
                         label="통화(Currency)"
                         value={asset.currency}

@@ -26,6 +26,35 @@ function params(over: Partial<SimulationParams> = {}): SimulationParams {
 }
 
 describe('YieldPresetHelper', () => {
+  test('카테고리 초기 총수익률을 표시하고 프리셋 선택에 적용한다', async () => {
+    const original = { ...params(), assets: [{ ...params().assets[0], category: 'income' as const }] };
+    const onChange = vi.fn();
+    const user = userEvent.setup();
+    render(<YieldPresetHelper params={original} onChangeParams={onChange} />);
+    await user.click(screen.getByText('카테고리별 수익률 설정'));
+    expect(screen.getByRole('spinbutton', { name: '인컴 보수적 수익률' })).toHaveValue(3);
+    expect(screen.getByRole('spinbutton', { name: '인컴 중립 수익률' })).toHaveValue(5);
+    expect(screen.getByRole('spinbutton', { name: '인컴 공격 수익률' })).toHaveValue(7);
+    await user.click(screen.getByRole('button', { name: '중립' }));
+    expect((onChange.mock.lastCall?.[0] as SimulationParams).assets[0].totalReturn).toBe(5);
+  });
+
+  test('카테고리별 수익률을 수정하고 선택한 중립 가정에 반영한다', async () => {
+    const user = userEvent.setup();
+    const original = { ...params(), assets: [{ ...params().assets[0], category: 'bond' as const, totalReturn: 3 }],
+      privatePensions: [{ ...params().privatePensions[0], totalReturn: 4 }] };
+    const onChange = vi.fn();
+    render(<YieldPresetHelper params={original} onChangeParams={onChange} />);
+    await user.click(screen.getByText('카테고리별 수익률 설정'));
+    const input = screen.getByRole('spinbutton', { name: '채권 중립 수익률' });
+    await user.clear(input);
+    await user.type(input, '4');
+    await user.tab();
+    const result = onChange.mock.lastCall?.[0] as SimulationParams;
+    expect(result.categoryYieldRates?.bond?.base).toBe(4);
+    expect(result.assets[0].totalReturn).toBe(4);
+  });
+
   test('자동 수익률을 선택하면 모든 ETF에 적용하고 프리셋으로 전환하면 해제한다', async () => {
     const original = params({ assets: [params().assets[0], { ...params().assets[0], id: 'b', ticker: 'Y' }] });
     const onChange = vi.fn();

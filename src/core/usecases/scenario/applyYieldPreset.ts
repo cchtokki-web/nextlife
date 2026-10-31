@@ -1,4 +1,4 @@
-import { CustomYieldSnapshot, SimulationParams } from '../../entities/types';
+import { CustomYieldSnapshot, InvestmentCategory, SimulationParams, YieldPreset } from '../../entities/types';
 
 // 리스크 성향별 연 기대수익률. **단위는 %** (0.05가 아니라 5), 자산의 totalReturn와
 // 사적연금 expectedReturn에 그대로 대입된다.
@@ -40,6 +40,32 @@ export const YIELD_PRESET_RATES = {
   base: { stockGrowth: 7, pensionReturn: 4 },
   aggressive: { stockGrowth: 9, pensionReturn: 6 },
 } as const;
+
+export const INVESTMENT_CATEGORIES: { value: InvestmentCategory; label: string }[] = [
+  { value: 'index', label: '대표지수' },
+  { value: 'growth', label: '성장·테마' },
+  { value: 'dividend', label: '배당주' },
+  { value: 'income', label: '인컴' },
+  { value: 'bond', label: '채권' },
+  { value: 'other', label: '개별 주식·기타' },
+];
+
+// 2026-11-01 사용자에게 제안한 중립 가정(명목·배당 포함)에 기존 프리셋의 ±2%p를
+// 적용한 비교용 값이다. 특정 기관의 전망이나 상품별 수익률 예측이 아니다.
+export const CATEGORY_YIELD_PRESET_RATES: Record<InvestmentCategory, Record<YieldPreset, number>> = {
+  index: { conservative: 4, base: 6, aggressive: 8 },
+  growth: { conservative: 4, base: 6, aggressive: 8 },
+  dividend: { conservative: 4, base: 6, aggressive: 8 },
+  income: { conservative: 3, base: 5, aggressive: 7 },
+  bond: { conservative: 1, base: 3, aggressive: 5 },
+  other: { conservative: 4, base: 6, aggressive: 8 },
+};
+
+export function categoryYieldRate(params: SimulationParams, category: InvestmentCategory | undefined, preset: YieldPreset): number {
+  const rate = category && params.categoryYieldRates?.[category]?.[preset];
+  return typeof rate === 'number' && Number.isFinite(rate) ? rate
+    : category ? CATEGORY_YIELD_PRESET_RATES[category][preset] : YIELD_PRESET_RATES[preset].stockGrowth;
+}
 
 // 구 설정 UI(시뮬레이션 설정/핵심 설정 카드)에 있던 "시장 수익률 프리셋 적용" 로직을 순수
 // 함수로 추출한 것. 그 UI들은 제거되었다. compileStrategy가 계산 시점에 이 함수를 부르던
@@ -85,7 +111,7 @@ export function applyYieldPreset(
   return {
     ...params,
     ...(params.autoUpdateEtfReturns || params.autoUpdateEtfPrices ? { autoUpdateEtfReturns: false } : {}),
-    assets: (params.assets ?? []).map((a) => ({ ...applyToMarketAccount(a, stockGrowth),
+    assets: (params.assets ?? []).map((a) => ({ ...applyToMarketAccount(a, categoryYieldRate(params, a.category, preset)),
       ...(a.autoHistoricalReturn ? { autoHistoricalReturn: false } : {}) })),
     // **사적연금은 분해하지 않는다.** 연금 계좌 안에서는 배당세도 재투자 선택지도 없어
     // 총수익률만이 결과를 결정한다(decomposeReturn.ts의 명시적 규약). 그래서 배당률을
@@ -127,8 +153,8 @@ export function applyEtfYieldPreset(
  * 선택된 것처럼 보인다. resolveMonteCarloConfig가 같은 이유로 이미 실제 수익률에서 유도하는
  * 쪽을 택했다(volatilityPresets.ts) — 여기서도 같은 판단을 따른다.
  *
- * 비교 대상은 applyYieldPreset이 «쓰는» 것과 정확히 같다 — 일반자산·ISA의 totalReturn은
- * stockGrowth, 사적연금의 totalReturn은 pensionReturn. 배당률은 보지 않는다. 프리셋이
+ * 비교 대상은 applyYieldPreset이 «쓰는» 것과 정확히 같다 — 일반자산은 카테고리별 수익률,
+ * 미분류 자산·ISA는 stockGrowth, 사적연금은 pensionReturn. 배당률은 보지 않는다. 프리셋이
  * 약속하는 것(버튼 title)은 총수익률뿐이고, 배당률은 계좌마다 «비율»로 옮겨져 원래 값에
  * 의존하므로 되짚을 수 있는 값이 아니다.
  *
@@ -138,17 +164,16 @@ export function applyEtfYieldPreset(
 export function matchedYieldPreset(
   params: SimulationParams
 ): 'conservative' | 'base' | 'aggressive' | undefined {
-  const marketReturns = [
-    ...(params.assets ?? []),
-    ...(params.isaAccounts ?? []),
-  ].map((account) => account.totalReturn);
+  const marketReturns = (params.assets ?? []);
+  const isaReturns = (params.isaAccounts ?? []).map((account) => account.totalReturn);
   const pensionReturns = (params.privatePensions ?? []).map((pension) => pension.totalReturn);
 
-  if (marketReturns.length === 0 && pensionReturns.length === 0) return undefined;
+  if (marketReturns.length === 0 && isaReturns.length === 0 && pensionReturns.length === 0) return undefined;
 
   return (Object.keys(YIELD_PRESET_RATES) as (keyof typeof YIELD_PRESET_RATES)[]).find((preset) => {
     const { stockGrowth, pensionReturn } = YIELD_PRESET_RATES[preset];
-    return marketReturns.every((rate) => rate === stockGrowth)
+    return marketReturns.every((asset) => asset.totalReturn === categoryYieldRate(params, asset.category, preset))
+      && isaReturns.every((rate) => rate === stockGrowth)
       && pensionReturns.every((rate) => rate === pensionReturn);
   });
 }
@@ -177,14 +202,14 @@ export function matchedYieldPreset(
  * totalReturn이 0 이하이면 비율을 낼 수 없다(0으로 나누거나 부호가 뒤집힌다). 그때는 배당률을
  * 새 총수익률로 잘라 «최소한» 가격상승률이 음수가 되지 않게만 한다.
  */
-function applyToMarketAccount<T extends { totalReturn: number; dividendYield: number }>(
+export function applyToMarketAccount<T extends { totalReturn: number; dividendYield: number }>(
   account: T,
   totalReturn: number
 ): T {
   return {
     ...account,
     totalReturn,
-    dividendYield: account.totalReturn > 0
+    dividendYield: totalReturn < 0 ? account.dividendYield : account.totalReturn > 0
       ? account.dividendYield * (totalReturn / account.totalReturn)
       : Math.min(account.dividendYield, totalReturn),
   };

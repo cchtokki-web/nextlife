@@ -34,6 +34,7 @@ import type {
   UserProfile,
   WithdrawalPlan,
 } from '../../core/entities/types';
+import { INVESTMENT_CATEGORIES } from '../../core/usecases/scenario/applyYieldPreset';
 import type { RetirementGoal, RetirementGoalType } from '../../core/entities/retirementGoal';
 import { RETIREMENT_GOAL_TYPES } from '../../core/entities/retirementGoal';
 import { DEFAULT_HEALTHCARE } from '../../core/usecases/healthcare/defaultHealthcare';
@@ -132,6 +133,7 @@ export function normalizeSimulationParams(rawInput: unknown): SimulationParams {
     // 원칙 3. 검증한 필드는 아래에서 전부 덮어쓴다.
     ...(raw as unknown as SimulationParams),
     ...onlyIfPresent(raw, 'autoUpdateEtfPrices', (v) => typeof v === 'boolean' ? v : undefined),
+    ...onlyIfPresent(raw, 'categoryYieldRates', normalizeCategoryYieldRates),
     ...onlyIfPresent(raw, 'autoUpdateEtfReturns', (v) => typeof v === 'boolean' ? v : undefined),
     ...onlyIfPresent(raw, 'birthYear', (v) =>
       typeof v === 'number' && Number.isInteger(v) && v >= 1800 && v <= 9999 ? v : undefined),
@@ -376,6 +378,22 @@ function normalizeUserProfile(value: unknown): UserProfile {
   };
 }
 
+function normalizeCategoryYieldRates(value: unknown): SimulationParams['categoryYieldRates'] {
+  if (!isRecord(value)) return undefined;
+  const result: NonNullable<SimulationParams['categoryYieldRates']> = {};
+  for (const { value: category } of INVESTMENT_CATEGORIES) {
+    const rates = value[category];
+    if (!isRecord(rates)) continue;
+    const valid: NonNullable<NonNullable<SimulationParams['categoryYieldRates']>[typeof category]> = {};
+    for (const preset of ['conservative', 'base', 'aggressive'] as const) {
+      const rate = optionalFinite(rates[preset]);
+      if (rate !== undefined) valid[preset] = rate;
+    }
+    if (Object.keys(valid).length) result[category] = valid;
+  }
+  return result;
+}
+
 function normalizeAsset(raw: Record<string, unknown>, index: number): InvestmentAsset {
   return {
     id: text(raw.id, `asset-${index}`),
@@ -383,6 +401,7 @@ function normalizeAsset(raw: Record<string, unknown>, index: number): Investment
     type: oneOf(raw.type, ['stock', 'etf'], 'etf'),
     ticker: text(raw.ticker, ''),
     name: text(raw.name, ''),
+    ...onlyIfPresent(raw, 'category', (v) => optionalOneOf(v, INVESTMENT_CATEGORIES.map((item) => item.value), undefined)),
     quantity: finite(raw.quantity, 0),
     averagePrice: finite(raw.averagePrice, 0),
     totalReturn: finite(raw.totalReturn, 0),

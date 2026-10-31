@@ -190,6 +190,7 @@ export type LegacyFieldCategory = 'FACT' | 'GOAL' | 'STRATEGY';
 export const LEGACY_SIMULATION_FIELD_CLASSIFICATION = {
   autoUpdateEtfPrices: 'FACT',
   autoUpdateEtfReturns: 'FACT',
+  categoryYieldRates: 'FACT',
   birthYear: 'FACT',
   investmentBaseline: 'FACT',
   userProfile: 'GOAL',
