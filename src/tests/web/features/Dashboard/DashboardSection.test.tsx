@@ -86,6 +86,10 @@ describe('현재 계획 계산의 한계', () => {
   });
   test('국민연금 과세와 피부양자 판정의 한계를 알리고 상세 근거를 연다', () => {
     render(<DashboardSection params={params} result={result} />);
+    const calculationDetails = screen.getByText('계산 기준 자세히 보기').closest('details');
+    expect(calculationDetails).not.toHaveAttribute('open');
+    fireEvent.click(screen.getByText('계산 기준 자세히 보기'));
+    expect(calculationDetails).toHaveAttribute('open');
     const notice = screen.getByLabelText('현재 계획 계산의 한계');
     expect(within(notice).getByText(/국민연금은 납입 이력이 없어 전액 과세/)).toBeInTheDocument();
     expect(within(notice).getByText(/재산 정보가 없어 최종 자격을 확정할 수 없습니다/)).toBeInTheDocument();
@@ -266,11 +270,13 @@ describe('DashboardSection - IA 순서', () => {
   // 「계획의 근거」를 한 번 여는 것으로 끝나야 한다. 예전에는 세금 표 하나를 보는 데
   // <details> → 그룹 → Collapse까지 세 번을 열어야 했다.
   test('안쪽에 또 다른 접힘을 두지 않는다', () => {
-    const { container } = render(
+    render(
       <DashboardSection params={params} result={result} recommendation={recommendation} />
     );
 
-    expect(container.querySelectorAll('details')).toHaveLength(1);
+    const evidence = screen.getByText('계획의 근거').closest('details');
+    expect(evidence).not.toBeNull();
+    expect(evidence?.querySelectorAll('details')).toHaveLength(0);
     expect(screen.getByText('세금 및 건강보험료 (은퇴 이후 연평균)')).toBeInTheDocument();
   });
 
@@ -816,7 +822,7 @@ describe('DashboardSection - 현재 계획 진단', () => {
 
     expect(diagnosis()).toHaveTextContent('목표 달성 확률');
     expect(diagnosis()).toHaveTextContent('1,000회 중 1,000회가 판정 조건 충족');
-    expect(diagnosis()).toHaveTextContent('실제 미래 결과를 보장하지 않습니다');
+    expect(diagnosis()).toHaveTextContent('미래를 보장하지 않습니다');
   });
 
   // 요구 ④: 시행 수와 신뢰수준을 «함께» 명시한다. 시행 수만으로는 그 정밀도를 알 수 없고,

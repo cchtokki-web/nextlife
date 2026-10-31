@@ -356,7 +356,7 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
           </div>
           {currentGoalProbability !== undefined && (
             <p className={styles.simulationDisclaimer}>
-              입력한 수익률, 물가, 연금, 수명 및 시장 변동 가정 범위 내의 시뮬레이션 결과이며 실제 미래 결과를 보장하지 않습니다.
+              입력한 가정에 따른 결과이며 미래를 보장하지 않습니다.
             </p>
           )}
           <dl className={styles.currentPlanFacts} aria-label="현재 계획">
@@ -391,23 +391,6 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
               <dd>{formatValue(terminalAssetDisplay.amount)}</dd>
             </div>
           </dl>
-          {/* 자산 추이 차트는 흔들리지 않는 경로라 결정론 값에서 끝난다. 밝히지 않으면 KPI와
-              차트가 이유 없이 어긋난 채로 남는다. */}
-          {terminalAssetDisplay.trials !== null && (
-            <p className={styles.planFactNote} data-testid="terminal-asset-basis-note">
-              시장 변동을 {terminalAssetDisplay.trials.toLocaleString()}회 반영한 중앙값입니다.
-              변동이 없다고 가정한 기준 수익률 경로에서는{' '}
-              {formatValue(terminalAssetDisplay.deterministicAmount)}입니다.
-            </p>
-          )}
-          {/* 평균이라고만 하면 "그래서 나는 얼마를 쓰는가"에 답하지 못한다. 구간을 그대로 편다. */}
-          {spendingBands.length > 0 && (
-            <p className={styles.planFactNote} data-testid="spending-band-note">
-              연령대별 배분을 적용해 {spendingBands.map((band) => (
-                `${band.fromAge}~${band.toAge ?? params.userProfile.expectancy}세 ${formatValue(band.monthlyAmount)}`
-              )).join(' · ')}으로 계산했습니다.
-            </p>
-          )}
           {monteCarlo && monteCarlo.goalConditions.basis !== 'legacy_plan' && (
             <GoalCoverageNote conditions={monteCarlo.goalConditions} />
           )}
@@ -423,14 +406,6 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
             <div className={styles.goalShortfallReason}>
               <span>{goalShortfallExplanation.label}</span>
               <p>{goalShortfallExplanation.headline}</p>
-              {/* headline은 지배적인 원인 하나만 말한다. 나머지 원인이 화면 어디에도 남지
-                  않으면 사용자는 무엇을 고쳐야 하는지 구성으로 볼 수 없다. */}
-              {goalShortfallExplanation.breakdown && (
-                <p className={styles.goalShortfallHint}>{goalShortfallExplanation.breakdown}</p>
-              )}
-              {goalShortfallExplanation.hint && (
-                <p className={styles.goalShortfallHint}>{goalShortfallExplanation.hint}</p>
-              )}
             </div>
           )}
           {/* 사용자가 입력한 적 없는 값이 결과에 들어갔다면 반드시 밝힌다. 예전에는 추천
@@ -444,7 +419,6 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
             <p className={styles.deterministicNote}>확률 검증 전에는 기준 시나리오의 생존·생활비 부족 여부만 진단합니다.</p>
           )}
           <p className={styles.planFactNote}>
-            수익률·물가·은퇴 시점이 달라질 때 현재 계획의 결과가 어떻게 바뀌는지 확인할 수 있습니다.{' '}
             <button type="button" className={styles.sensitivityLink} onClick={() => {
               if (detailsRef.current) {
                 detailsRef.current.open = true;
@@ -452,19 +426,46 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
               }
             }}>가정 변화에 따른 영향 보기</button>
           </p>
-          <div className={styles.modelLimitations} aria-label="현재 계획 계산의 한계">
-            <strong>계산할 때 알아둘 점</strong>
-            {(params.nationalPension?.expectedMonthlyAmount ?? 0) > 0 && (
-              <p>국민연금은 납입 이력이 없어 전액 과세로 계산하므로 세액이 실제보다 높을 수 있습니다.</p>
+          <details className={styles.planFactNote}>
+            <summary>계산 기준 자세히 보기</summary>
+            {terminalAssetDisplay.trials !== null && (
+              <p className={styles.planFactNote} data-testid="terminal-asset-basis-note">
+                시장 변동을 {terminalAssetDisplay.trials.toLocaleString()}회 반영한 중앙값입니다.
+                변동이 없다고 가정한 기준 수익률 경로에서는{' '}
+                {formatValue(terminalAssetDisplay.deterministicAmount)}입니다.
+              </p>
             )}
-            <p>피부양자 자격은 소득 기준 위험을 평가하며, 재산 정보가 없어 최종 자격을 확정할 수 없습니다.</p>
-            <button type="button" onClick={() => {
-              if (detailsRef.current) {
-                detailsRef.current.open = true;
-                detailsRef.current.querySelector('summary')?.focus();
-              }
-            }}>세금·건강보험 상세 보기</button>
-          </div>
+            {spendingBands.length > 0 && (
+              <p className={styles.planFactNote} data-testid="spending-band-note">
+                연령대별 배분을 적용해 {spendingBands.map((band) => (
+                  `${band.fromAge}~${band.toAge ?? params.userProfile.expectancy}세 ${formatValue(band.monthlyAmount)}`
+                )).join(' · ')}으로 계산했습니다.
+              </p>
+            )}
+            {(goalShortfallExplanation?.breakdown || goalShortfallExplanation?.hint) && (
+              <div className={styles.goalShortfallReason}>
+                {goalShortfallExplanation.breakdown && (
+                  <p className={styles.goalShortfallHint}>{goalShortfallExplanation.breakdown}</p>
+                )}
+                {goalShortfallExplanation.hint && (
+                  <p className={styles.goalShortfallHint}>{goalShortfallExplanation.hint}</p>
+                )}
+              </div>
+            )}
+            <div className={styles.modelLimitations} aria-label="현재 계획 계산의 한계">
+              <strong>계산할 때 알아둘 점</strong>
+              {(params.nationalPension?.expectedMonthlyAmount ?? 0) > 0 && (
+                <p>국민연금은 납입 이력이 없어 전액 과세로 계산하므로 세액이 실제보다 높을 수 있습니다.</p>
+              )}
+              <p>피부양자 자격은 소득 기준 위험을 평가하며, 재산 정보가 없어 최종 자격을 확정할 수 없습니다.</p>
+              <button type="button" onClick={() => {
+                if (detailsRef.current) {
+                  detailsRef.current.open = true;
+                  detailsRef.current.querySelector('summary')?.focus();
+                }
+              }}>세금·건강보험 상세 보기</button>
+            </div>
+          </details>
         </section>
       </DashboardGroup>
 

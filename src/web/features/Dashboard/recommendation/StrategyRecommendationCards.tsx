@@ -422,6 +422,12 @@ function RecommendationBody({
     return <EmptyOutcomeCard outcome={outcome} />;
   }
 
+  // 이미 적용된 카드는 되돌리기 경로이므로, 현재 값과 같아져도 유지한다.
+  const visibleRecommendations = finalRecommendations.filter((item) =>
+    item.candidate.candidate.id === appliedStrategy?.candidateId
+    || describeStrategyChanges(params, item.candidate, formatValue).length > 0
+    || previewStrategyApply?.(item, params).canApply === true);
+
   // 워커를 건너온 primary는 구조적 복제라 배열 원소와 다른 객체다. 참조로 비교하면 ☆이
   // 어느 카드에도 붙지 않는다. 후보 id로 짚는다.
   //
@@ -433,7 +439,7 @@ function RecommendationBody({
   const recommendedId = primary?.candidate.candidate.id;
   const recommended = recommendedId === undefined
     ? undefined
-    : finalRecommendations
+    : visibleRecommendations
       .filter((item) => improvesOnCurrentPlan(item.candidate, currentGoalProbability))
       .find((item) => item.candidate.candidate.id === recommendedId);
 
@@ -473,17 +479,17 @@ function RecommendationBody({
           )}
           <p className={styles.keepCurrentPlanBody}>
             현재 설정이 분석된 대안 {finalRecommendations.length}개 중 가장 높은 목표 달성 확률을 보입니다.
-            아래 추천은 모두 지금보다 목표 달성 확률이 낮습니다.
+            {visibleRecommendations.length > 0 && ' 아래 추천은 모두 지금보다 목표 달성 확률이 낮습니다.'}
           </p>
         </GlassCard>
       )}
 
-      {noneImproves && (
+      {noneImproves && visibleRecommendations.length > 0 && (
         <p className={styles.alternativesHeading}>다른 선택을 검토하고 싶다면</p>
       )}
 
       <div className={`${styles.recommendationGrid} ${noneImproves ? styles.deemphasizedGrid : ''}`}>
-        {finalRecommendations.map((recommendation) => {
+        {visibleRecommendations.map((recommendation) => {
           const candidate = recommendation.candidate;
           const probability = candidate.monteCarlo.goalSuccessProbability;
           const averageFulfillment = candidate.monteCarlo.averageSpendingFulfillmentRate;
@@ -547,7 +553,7 @@ function RecommendationBody({
                       {Math.round(probability * 100)}%
                       {/* 증감을 백분율«점»으로 말한다. 확률의 차이는 비율이 아니다 —
                           67%에서 47%로 내려간 것을 "30% 감소"로 적으면 다른 뜻이 된다. */}
-                      {currentGoalProbability !== undefined && (
+                      {currentGoalProbability !== undefined && Math.round(probability * 100) !== Math.round(currentGoalProbability * 100) && (
                         <span className={styles.strategyDelta}>
                           현재 계획 {Math.round(currentGoalProbability * 100)}%보다{' '}
                           {Math.abs(Math.round(probability * 100) - Math.round(currentGoalProbability * 100))}%p{' '}

@@ -809,7 +809,7 @@ describe('StrategyRecommendationCards 적용 버튼', () => {
     expect(screen.queryByText(/지금 값 그대로/)).toBeNull();
   });
 
-  test('달라지는 점이 없으면 적용할 것도 없다', () => {
+  test('달라지는 점이 없는 미적용 추천은 표시하지 않는다', () => {
     const sameAsCurrent = {
       ...balanced,
       candidate: {
@@ -833,9 +833,15 @@ describe('StrategyRecommendationCards 적용 버튼', () => {
         },
       },
     };
-    renderCards({ recommendations: [sameAsCurrent], onApplyStrategy: vi.fn() });
+    const { rerenderWith } = renderCards({ recommendations: [sameAsCurrent], onApplyStrategy: vi.fn() });
 
-    expect(screen.getByRole('button', { name: /달라지는 점이 없습니다/ })).toBeDisabled();
+    expect(screen.queryByRole('button', { name: /달라지는 점이 없습니다/ })).toBeNull();
+    expect(screen.queryByText('현재 계획에서 달라지는 점')).toBeNull();
+    const onUndoStrategy = vi.fn();
+    rerenderWith({ recommendations: [sameAsCurrent], onApplyStrategy: vi.fn(),
+      appliedStrategy: snapshotOf(sameAsCurrent.candidate.candidate.id), onUndoStrategy });
+    fireEvent.click(screen.getByRole('button', { name: '적용 해제' }));
+    expect(onUndoStrategy).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -876,6 +882,12 @@ describe('StrategyRecommendationCards - 현재 계획과의 비교', () => {
     renderWith([better], 0.67);
 
     expect(screen.getByText(/현재 계획 67%보다 15%p 높음/)).toBeInTheDocument();
+  });
+
+  test('반올림 결과가 같은 확률은 0%p 높음·낮음으로 표시하지 않는다', () => {
+    renderWith([worse], 0.4704);
+    expect(screen.getByText(worse.label)).toBeInTheDocument();
+    expect(screen.queryByText(/0%p/)).toBeNull();
   });
 
   // ☆는 「고를 만한 안」이라는 뜻이다. 지금보다 나쁜 안에 붙으면 그 뜻이 거짓이 된다.
