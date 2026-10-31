@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { InvestmentBaselinePreview } from '@/web/features/Scenario/InvestmentBaselinePreview';
 import { initialParams } from '@/infrastructure/storage/defaultParams';
 
@@ -16,6 +16,16 @@ describe('기준 수량 시세 참고', () => {
     expect(await screen.findByText(/1,200 USD/)).toBeInTheDocument();
     expect(screen.getByText(/실제 잔고나 현재 평가금과 다를 수 있습니다/)).toBeInTheDocument();
     expect(fetchMock.mock.calls[0][0]).toBe('/api/stock-price?ticker=VOO');
+  });
+
+  it('사용자가 누른 경우에만 현재 계획의 같은 종목에 시세를 전달한다', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({ price: 120, currency: 'USD', marketTime: 1700000000 })));
+    const onApply = vi.fn();
+    render(<InvestmentBaselinePreview baseline={baseline} currentParams={baseline.params} onApply={onApply} />);
+    const button = await screen.findByRole('button', { name: '조회 시세 1개를 현재 계획에 반영' });
+    expect(onApply).not.toHaveBeenCalled();
+    fireEvent.click(button);
+    expect(onApply).toHaveBeenCalledWith([{ assetId: 'a', ticker: 'VOO', currency: 'USD', price: 120, marketTime: 1700000000 }]);
   });
 
   it('시세 통화가 다르거나 기준 시각이 없으면 평가값을 표시하지 않는다', async () => {

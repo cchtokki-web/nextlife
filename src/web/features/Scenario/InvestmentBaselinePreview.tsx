@@ -3,12 +3,17 @@
 import { useEffect, useState } from 'react';
 import type { InvestmentAsset, SimulationParams } from '../../../core/entities/types';
 import { baselineReferenceValue } from '../../../core/usecases/investmentTracking/baselineReferenceValue';
+import { applyCurrentQuotes, type ObservedQuote } from '../../../core/usecases/investmentTracking/applyCurrentQuotes';
 
 type Baseline = NonNullable<SimulationParams['investmentBaseline']>;
 type QuoteResult = { asset: InvestmentAsset; price: number; value: number; marketTime: number } | { asset: InvestmentAsset; error: string };
 
 /** 기준 수량에 조회 시세를 곱한 참고값이다. 실제 계좌나 시뮬레이션 입력을 수정하지 않는다. */
-export function InvestmentBaselinePreview({ baseline }: { baseline: Baseline }) {
+export function InvestmentBaselinePreview({ baseline, currentParams, onApply }: {
+  baseline: Baseline;
+  currentParams?: SimulationParams;
+  onApply?: (quotes: ObservedQuote[]) => void;
+}) {
   const [quotes, setQuotes] = useState<QuoteResult[] | null>(null);
 
   useEffect(() => {
@@ -41,6 +46,11 @@ export function InvestmentBaselinePreview({ baseline }: { baseline: Baseline }) 
     return () => controller.abort();
   }, [baseline]);
 
+  const applicableQuotes: ObservedQuote[] = (quotes ?? []).flatMap((quote) => 'error' in quote ? [] : [{
+    assetId: quote.asset.id, ticker: quote.asset.ticker, currency: quote.asset.currency,
+    price: quote.price, marketTime: quote.marketTime,
+  }]);
+  const count = currentParams ? applyCurrentQuotes(currentParams, applicableQuotes).appliedCount : 0;
   return (
     <section aria-label="기준 수량 시세 참고" className="mt-3 rounded-lg border border-card-border p-3 text-sm">
       <h3 className="font-semibold">기준 수량의 현재 시세 참고</h3>
@@ -64,6 +74,14 @@ export function InvestmentBaselinePreview({ baseline }: { baseline: Baseline }) 
             </li>
           ))}
         </ul>
+      )}
+      {currentParams && onApply && quotes !== null && quotes.length > 0 && (
+        <div className="mt-3">
+          <p className="text-xs text-foreground-muted">시세를 현재 계획에 반영하면 같은 종목의 현재 단가만 바뀝니다. 수량은 갱신되지 않으며 취득원가 미입력 시 세금 추정에도 영향을 줄 수 있습니다. 현재 입력에 대한 분석이 있으면 다시 실행합니다.</p>
+          <button type="button" disabled={count === 0} className="mt-2 rounded-lg border border-primary px-3 py-2 text-xs font-semibold text-primary disabled:opacity-50" onClick={() => onApply(applicableQuotes)}>
+            조회 시세 {count}개를 현재 계획에 반영
+          </button>
+        </div>
       )}
     </section>
   );

@@ -25,6 +25,7 @@ import { useMediaQuery } from '../../web/hooks/useBrowserEnvironment';
 import { initialParams } from '../../infrastructure/storage/localStore';
 import { ScenarioManager } from '../../web/features/Scenario/ScenarioManager';
 import { InvestmentBaselinePreview } from '../../web/features/Scenario/InvestmentBaselinePreview';
+import { applyCurrentQuotes } from '../../core/usecases/investmentTracking/applyCurrentQuotes';
 import { StrategySettingsPanel } from '../../web/features/StrategySettings/StrategySettingsPanel';
 import { RetirementInputFlow } from '../../web/features/RetirementGoals/RetirementInputFlow';
 import { Collapse } from '../../web/components/ui';
@@ -695,7 +696,16 @@ export default function Home() {
                 {activeParams.investmentBaseline ? (
                   <>
                     <p>투자 비교 기준 저장됨: {activeParams.investmentBaseline.capturedAt.slice(0, 10)} (UTC). 계획 대비 비교는 아직 제공되지 않습니다.</p>
-                    <InvestmentBaselinePreview key={`${activeScenarioId}:${activeParams.investmentBaseline.capturedAt}`} baseline={activeParams.investmentBaseline} />
+                    <InvestmentBaselinePreview key={`${activeScenarioId}:${activeParams.investmentBaseline.capturedAt}`}
+                      baseline={activeParams.investmentBaseline} currentParams={activeParams} onApply={(quotes) => {
+                        const updated = applyCurrentQuotes(activeParams, quotes);
+                        if (updated.appliedCount === 0) return;
+                        handleUpdateActiveParams(updated.params);
+                        if (analysisIsCurrent && activeScenarioId) {
+                          setAnalysisRequest(buildAnalysisRequest(updated.params));
+                          setScenarioAnalyzed(activeScenarioId, true, updated.params);
+                        }
+                      }} />
                   </>
                 ) : (
                   <>
