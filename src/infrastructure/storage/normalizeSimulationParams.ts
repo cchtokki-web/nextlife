@@ -131,6 +131,7 @@ export function normalizeSimulationParams(rawInput: unknown): SimulationParams {
   return {
     // 원칙 3. 검증한 필드는 아래에서 전부 덮어쓴다.
     ...(raw as unknown as SimulationParams),
+    ...onlyIfPresent(raw, 'investmentBaseline', normalizeInvestmentBaseline),
     userProfile: normalizeUserProfile(raw.userProfile),
     retirementGoals: normalizeGoals(raw.retirementGoals),
     assets: normalizeList(raw.assets, normalizeAsset),
@@ -175,6 +176,16 @@ export function normalizeSimulationParams(rawInput: unknown): SimulationParams {
     // 만들지 않고, 있으면 내용이 전부 깨져도 빈 객체로 남긴다.
     ...('strategy' in raw ? { strategy: normalizeStrategy(raw.strategy) } : {}),
   };
+}
+
+function normalizeInvestmentBaseline(value: unknown): SimulationParams['investmentBaseline'] {
+  if (!isRecord(value) || typeof value.capturedAt !== 'string'
+    || !Number.isFinite(Date.parse(value.capturedAt)) || !isRecord(value.params)
+    || !isRecord(value.params.userProfile) || !Array.isArray(value.params.assets)) return undefined;
+  // 중첩 기준점은 허용하지 않는다. 악의적이거나 손상된 입력의 재귀도 차단한다.
+  const { investmentBaseline: _nested, ...snapshot } = value.params;
+  void _nested;
+  return { capturedAt: value.capturedAt, params: normalizeSimulationParams(snapshot) };
 }
 
 /**

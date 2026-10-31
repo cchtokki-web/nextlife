@@ -317,6 +317,11 @@ export interface CustomYieldSnapshot {
 }
 
 export interface SimulationParams {
+  /** 사용자가 확정한 최초 비교 기준. 현재 시뮬레이션 입력에는 사용하지 않는다. */
+  investmentBaseline?: {
+    capturedAt: string;
+    params: Omit<SimulationParams, 'investmentBaseline'>;
+  };
   userProfile: UserProfile;
   // 목표 기반 기본 입력. optional인 이유는 기존 로컬/E2EE 시나리오가 이 필드 없이 저장돼
   // 있기 때문이다.

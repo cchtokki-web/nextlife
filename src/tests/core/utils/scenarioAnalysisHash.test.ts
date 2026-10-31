@@ -13,6 +13,11 @@ import type { SimulationParams } from '@/core/entities/types';
 const params: SimulationParams = initialParams;
 
 describe('scenarioAnalysisHash', () => {
+  it('비교 기준 저장은 현재 계획의 분석 해시를 바꾸지 않는다', () => {
+    expect(scenarioAnalysisHash({ ...params, investmentBaseline: {
+      capturedAt: '2026-10-31T00:00:00.000Z', params: structuredClone(params),
+    } })).toBe(scenarioAnalysisHash(params));
+  });
   it('returns the same hash for equivalent objects with different key order', () => {
     expect(scenarioAnalysisHash({ ...params, userProfile: { ...params.userProfile } })).toBe(
       scenarioAnalysisHash(params),

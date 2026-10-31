@@ -188,6 +188,7 @@ export type LegacyFieldCategory = 'FACT' | 'GOAL' | 'STRATEGY';
 
 /** Exhaustive top-level classification; mixed `userProfile` fields are split by the adapter. */
 export const LEGACY_SIMULATION_FIELD_CLASSIFICATION = {
+  investmentBaseline: 'FACT',
   userProfile: 'GOAL',
   retirementGoals: 'GOAL',
   assets: 'FACT',

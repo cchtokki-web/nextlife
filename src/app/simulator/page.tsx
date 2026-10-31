@@ -453,7 +453,12 @@ export default function Home() {
   }
 
   const renderPage = (analysis: AnalysisRuntimeValue | null) => {
-    const analysisIsCurrent = analysis?.sourceParams === activeParams;
+    const sourceParams = analysis?.sourceParams;
+    const analysisIsCurrent = !!sourceParams && (sourceParams === activeParams || (
+      Object.keys({ ...sourceParams, ...activeParams }).every((key) =>
+        key === 'investmentBaseline' || sourceParams[key as keyof typeof sourceParams] === activeParams[key as keyof typeof activeParams],
+      )
+    ));
     const analysisInProgress = analysisIsRunning(analysis);
     const analysisFailed = analysisHasFailed(analysis);
     // 「분석 시작」은 분석이 실패했을 때 다시 열어 둔다. 워커 오류는 일시적일 수 있는데,
@@ -684,6 +689,24 @@ export default function Home() {
                   if (isNarrowScreen) setIsSidebarOpen(false);
                 }}
               />
+
+              <div className="pt-4">
+                {activeParams.investmentBaseline ? (
+                  <p>투자 비교 기준 저장됨: {activeParams.investmentBaseline.capturedAt.slice(0, 10)} (UTC). 자동 갱신과 비교는 아직 제공되지 않습니다.</p>
+                ) : (
+                  <>
+                    <p>현재 입력을 투자 진행 상황의 비교 기준으로 저장합니다.</p>
+                    <button type="button" className="mt-2 rounded-lg border border-primary px-3 py-2 text-sm font-semibold text-primary" onClick={() => handleUpdateActiveParams((previous) => {
+                      if (previous.investmentBaseline) return previous;
+                      const { investmentBaseline: _baseline, ...params } = previous;
+                      void _baseline;
+                      return { ...previous, investmentBaseline: { capturedAt: new Date().toISOString(), params: structuredClone(params) } };
+                    })}>
+                      현재 계획을 비교 기준으로 저장
+                    </button>
+                  </>
+                )}
+              </div>
 
               <div className="pt-5">
                 <RetirementInputFlow

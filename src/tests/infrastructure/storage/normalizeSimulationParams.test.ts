@@ -16,6 +16,22 @@ import { normalizeRetirementGoals } from '@/core/entities/retirementGoal';
 // 배열은 원소 단위로만 정제한다.
 
 describe('normalizeSimulationParams', () => {
+  test('비교 기준은 JSON 저장 후 복원하고 중첩 기준은 제거한다', () => {
+    const snapshot = structuredClone(initialParams);
+    const raw = { ...structuredClone(initialParams), investmentBaseline: {
+      capturedAt: '2026-10-31T00:00:00.000Z', params: { ...snapshot, investmentBaseline: { params: {} } },
+    } };
+    const result = normalizeSimulationParams(JSON.parse(JSON.stringify(raw)));
+    expect(result.investmentBaseline?.capturedAt).toBe('2026-10-31T00:00:00.000Z');
+    expect(result.investmentBaseline?.params.assets).toEqual(snapshot.assets);
+    expect(result.investmentBaseline?.params).not.toHaveProperty('investmentBaseline');
+  });
+
+  test('잘못된 비교 기준은 현재 계획을 변경하지 않는다', () => {
+    const result = normalizeSimulationParams({ ...initialParams, investmentBaseline: { capturedAt: 'invalid', params: {} } });
+    expect(result.investmentBaseline).toBeUndefined();
+    expect(result.assets).toEqual(initialParams.assets);
+  });
   test('정상 데이터는 값을 바꾸지 않는다', () => {
     expect(normalizeSimulationParams(structuredClone(initialParams))).toEqual(initialParams);
   });
