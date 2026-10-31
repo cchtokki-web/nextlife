@@ -396,11 +396,22 @@
 }
 
 .yieldPresetLabel {
+  flex-basis: 100%;
   font-size: 0.8rem;
   color: var(--foreground-muted);
 }
 
+.yieldPresetButtons {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 0.5rem;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
 .yieldPresetButton {
+  flex: 0 0 auto;
+  white-space: nowrap;
   font-family: var(--font-main);
   padding: 0.25rem 0.6rem;
   font-size: 0.8rem;

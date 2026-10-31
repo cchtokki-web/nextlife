@@ -36,24 +36,26 @@ export function YieldPresetHelper({ params, onChangeParams }: YieldPresetHelperP
   return (
     <div className={styles.yieldPresetHelper}>
       <span className={styles.yieldPresetLabel}>수익률 일괄 채우기</span>
-      {PRESETS.map((preset) => (
-        <button key={preset} type="button" aria-pressed={selected === preset}
-          className={styles.yieldPresetButton}
-          title={`미분류·ISA ${YIELD_PRESET_RATES[preset].stockGrowth}%, 사적연금 ${YIELD_PRESET_RATES[preset].pensionReturn}%`}
-          onClick={() => onChangeParams({ ...applyYieldPreset(params, preset), categoryYieldMode: preset })}>
-          {YIELD_PRESET_LABELS[preset]}
+      <div className={styles.yieldPresetButtons} role="group" aria-label="수익률 유형">
+        {PRESETS.map((preset) => (
+          <button key={preset} type="button" aria-pressed={selected === preset}
+            className={styles.yieldPresetButton}
+            title={`미분류·ISA ${YIELD_PRESET_RATES[preset].stockGrowth}%, 사적연금 ${YIELD_PRESET_RATES[preset].pensionReturn}%`}
+            onClick={() => onChangeParams({ ...applyYieldPreset(params, preset), categoryYieldMode: preset })}>
+            {YIELD_PRESET_LABELS[preset]}
+          </button>
+        ))}
+        <button type="button" aria-pressed={selected === 'auto'} className={styles.yieldPresetButton}
+          onClick={() => onChangeParams({ ...params, autoUpdateEtfReturns: true, categoryYieldMode: 'auto',
+            assets: params.assets.map((asset) => asset.type === 'etf' ? { ...asset, autoHistoricalReturn: true } : asset),
+            yieldPreset: 'custom' })}>
+          자동 수익률
         </button>
-      ))}
-      <button type="button" aria-pressed={selected === 'auto'} className={styles.yieldPresetButton}
-        onClick={() => onChangeParams({ ...params, autoUpdateEtfReturns: true, categoryYieldMode: 'auto',
-          assets: params.assets.map((asset) => asset.type === 'etf' ? { ...asset, autoHistoricalReturn: true } : asset),
-          yieldPreset: 'custom' })}>
-        자동 수익률
-      </button>
-      {params.categoryCustomYieldRates && (
-        <button type="button" aria-pressed={selected === 'custom'} className={styles.yieldPresetButton}
-          onClick={() => onChangeParams(applyCustomCategoryYields(params))}>사용자</button>
-      )}
+        {params.categoryCustomYieldRates && (
+          <button type="button" aria-pressed={selected === 'custom'} className={styles.yieldPresetButton}
+            onClick={() => onChangeParams(applyCustomCategoryYields(params))}>사용자</button>
+        )}
+      </div>
       {displayed && (
         <div className={styles.categoryYieldSettings}>
           <p className={styles.categoryYieldTitle}>카테고리별 수익률</p>
