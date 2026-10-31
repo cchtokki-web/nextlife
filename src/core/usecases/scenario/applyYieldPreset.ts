@@ -52,8 +52,7 @@ export const YIELD_PRESET_RATES = {
 //   - robustness.ts의 가정 변형(assumption variants): 몬테카를로 강건성 점검에 쓰는 사본.
 //
 // restoreCustomYieldPreset은 프리셋 버튼과 함께 사라졌던 "사용자 프리셋 복원" 동작을 위한
-// 것이다. YieldPresetHelper의 「사용자 입력값」 버튼이 그 되돌릴 UI다 — 스냅샷이
-// 있을 때만 나타나 이 함수를 부른다.
+// 것이다. 현재 입력 UI에서는 복원 버튼을 표시하지 않지만 기존 데이터와 호출 경로를 보존한다.
 //
 // assets/privatePensions를 ?? []로 방어하는 이유: 이 함수를 호출하는 쪽(page.tsx가 넘기는
 // activeParams)이 과거 시나리오 데이터라서 최신 필드를 다 갖추지 못했을 가능성이 있다 —
@@ -85,7 +84,7 @@ export function applyYieldPreset(
 
   return {
     ...params,
-    ...(params.autoUpdateEtfReturns ? { autoUpdateEtfReturns: false } : {}),
+    ...(params.autoUpdateEtfReturns || params.autoUpdateEtfPrices ? { autoUpdateEtfReturns: false } : {}),
     assets: (params.assets ?? []).map((a) => ({ ...applyToMarketAccount(a, stockGrowth),
       ...(a.autoHistoricalReturn ? { autoHistoricalReturn: false } : {}) })),
     // **사적연금은 분해하지 않는다.** 연금 계좌 안에서는 배당세도 재투자 선택지도 없어
@@ -205,7 +204,7 @@ function captureCustomYieldSnapshot(params: SimulationParams): CustomYieldSnapsh
 export function restoreCustomYieldPreset(params: SimulationParams): SimulationParams {
   const snapshot = params.customYieldSnapshot;
   if (!snapshot) {
-    return { ...params, ...(params.autoUpdateEtfReturns ? { autoUpdateEtfReturns: false } : {}),
+    return { ...params, ...(params.autoUpdateEtfReturns || params.autoUpdateEtfPrices ? { autoUpdateEtfReturns: false } : {}),
       assets: params.assets.map((asset) => asset.autoHistoricalReturn ? { ...asset, autoHistoricalReturn: false } : asset), yieldPreset: 'custom' };
   }
 
@@ -218,7 +217,7 @@ export function restoreCustomYieldPreset(params: SimulationParams): SimulationPa
 
   return {
     ...params,
-    ...(params.autoUpdateEtfReturns ? { autoUpdateEtfReturns: false } : {}),
+    ...(params.autoUpdateEtfReturns || params.autoUpdateEtfPrices ? { autoUpdateEtfReturns: false } : {}),
     assets: (params.assets ?? []).map((a) => ({ ...a, ...(a.id in snapshot.assets ? { totalReturn: snapshot.assets[a.id] } : {}),
       ...(a.autoHistoricalReturn ? { autoHistoricalReturn: false } : {}) })),
     privatePensions: (params.privatePensions ?? []).map((p) =>

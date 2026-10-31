@@ -4,6 +4,7 @@ import { InvestmentBaselinePreview } from '@/web/features/Scenario/InvestmentBas
 import { initialParams } from '@/infrastructure/storage/defaultParams';
 import { YieldPresetHelper } from '@/web/features/AssetForm/YieldPresetHelper';
 import { applyHistoricalEtfReturns } from '@/core/usecases/investmentTracking/applyHistoricalEtfReturns';
+import { applyCurrentQuotes } from '@/core/usecases/investmentTracking/applyCurrentQuotes';
 import { useState } from 'react';
 import type { SimulationParams } from '@/core/entities/types';
 
@@ -16,22 +17,23 @@ describe('기준 수량 시세 참고', () => {
   it('공통 자동 수익률을 선택하면 각 ETF의 자료를 조회해 반영한다', async () => {
     const today = new Date().toISOString().slice(0, 10);
     const start = `${Number(today.slice(0, 4)) - 2}-01-01`;
-    const fetchMock = vi.fn().mockImplementation(async () => Response.json({ prices: [
-      { date: start, adjustedClose: 100 }, { date: today, adjustedClose: 120 },
-    ] }));
+    const fetchMock = vi.fn().mockImplementation(async (url: string) => url.startsWith('/api/stock-history')
+      ? Response.json({ prices: [{ date: start, adjustedClose: 100 }, { date: today, adjustedClose: 120 }] })
+      : Response.json({ price: 120, currency: 'USD', marketTime: 1700000000 }));
     vi.stubGlobal('fetch', fetchMock);
     function Harness() {
       const [current, setCurrent] = useState<SimulationParams>({ ...baseline.params, assets: [asset, { ...asset, id: 'b', ticker: 'QQQ' }] });
       return <><YieldPresetHelper params={current} onChangeParams={setCurrent} />
-        <InvestmentBaselinePreview currentParams={current} onApply={(_quotes, returns = []) => {
-          setCurrent((previous) => applyHistoricalEtfReturns(previous, returns, today).params);
+        <InvestmentBaselinePreview currentParams={current} onApply={(quotes, returns = []) => {
+          setCurrent((previous) => applyHistoricalEtfReturns(applyCurrentQuotes(previous, quotes).params, returns, today).params);
         }} />
-        <output>{current.assets.map((item) => item.totalReturn).join(',')}</output></>;
+        <output data-testid="applied">{current.assets.map((item) => `${item.averagePrice}:${item.totalReturn}`).join(',')}</output></>;
     }
     render(<Harness />);
     fireEvent.click(screen.getByRole('button', { name: '자동 수익률' }));
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
-    await waitFor(() => expect(screen.getAllByText(/현재 입력과 일치합니다/)).toHaveLength(2));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4));
+    await waitFor(() => expect(screen.getByTestId('applied').textContent).toMatch(/^120:(?!0)[\d.]+,120:(?!0)[\d.]+$/));
+    expect(screen.queryByText(/현재 입력과 일치합니다/)).toBeNull();
   });
   it('실패 후 다시 조회하면 최신 시세를 확인하고 자동 반영이 꺼져 있으면 직접 반영을 기다린다', async () => {
     const fetchMock = vi.fn().mockRejectedValueOnce(new Error('일시 오류'))
@@ -91,11 +93,12 @@ describe('기준 수량 시세 참고', () => {
     ] }));
     vi.stubGlobal('fetch', fetchMock);
     const selected = { ...asset, autoHistoricalReturn: true };
-    render(<InvestmentBaselinePreview currentParams={{ ...baseline.params, assets: [selected] }} onApply={vi.fn()} />);
-    await screen.findByText(/연환산/);
+    const onApply = vi.fn();
+    render(<InvestmentBaselinePreview currentParams={{ ...baseline.params, assets: [selected] }} onApply={onApply} />);
+    await waitFor(() => expect(onApply).toHaveBeenCalledTimes(1));
     fireEvent.click(screen.getByRole('button', { name: '시세·자동 수익률 새로고침' }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
-    expect(await screen.findByText(/연환산/)).toBeInTheDocument();
+    await waitFor(() => expect(onApply).toHaveBeenCalledTimes(2));
   });
 
   it('같은 ETF의 입력 수량 변화만 동일 시세로 비교하며 입력 수정에 따라 갱신한다', async () => {
@@ -142,6 +145,16 @@ describe('기준 수량 시세 참고', () => {
     expect(onApply).toHaveBeenCalledTimes(1);
   });
 
+  it('공통 자동 수익률을 끄면 예전 시세 자동 설정이 있어도 시세를 자동 반영하지 않는다', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({ price: 120, currency: 'USD', marketTime: 1700000000 })));
+    const onApply = vi.fn();
+    const current = { ...baseline.params, autoUpdateEtfPrices: true, autoUpdateEtfReturns: false };
+    render(<InvestmentBaselinePreview baseline={baseline} currentParams={current} onApply={onApply} />);
+    await screen.findByText(/1,200 USD/);
+    expect(onApply).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: '시세 1개 반영' })).toBeEnabled();
+  });
+
   it('시세와 과거 수익률 자동 반영을 같은 시나리오 변경으로 함께 전달한다', async () => {
     const today = new Date().toISOString().slice(0, 10);
     const start = `${Number(today.slice(0, 4)) - 2}-01-01`;
@@ -167,7 +180,7 @@ describe('기준 수량 시세 참고', () => {
     const onApply = vi.fn();
     const selected = { ...asset, autoHistoricalReturn: true };
     render(<InvestmentBaselinePreview currentParams={{ ...baseline.params, assets: [selected] }} onApply={onApply} />);
-    expect(await screen.findByText(/누락 1건/)).toBeInTheDocument();
+    expect(await screen.findByRole('alert')).toHaveTextContent('기존 값을 유지합니다');
     expect(onApply).not.toHaveBeenCalled();
   });
 
@@ -182,7 +195,7 @@ describe('기준 수량 시세 참고', () => {
     const view = render(<InvestmentBaselinePreview currentParams={current} onApply={onApply} />);
     view.rerender(<InvestmentBaselinePreview currentParams={{ ...current, assets: [{ ...selected, totalReturn: 20 }] }} onApply={onApply} />);
     resolveHistory(Response.json({ prices: [{ date: start, adjustedClose: 100 }, { date: today, adjustedClose: 120 }] }));
-    expect(await screen.findByText(/연환산/)).toBeInTheDocument();
+    expect(await screen.findByRole('alert')).toHaveTextContent('기존 값을 유지합니다');
     expect(onApply).not.toHaveBeenCalled();
   });
 

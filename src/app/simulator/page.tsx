@@ -690,14 +690,6 @@ export default function Home() {
               />
 
               <div className="pt-4">
-                <label className="mt-2 flex items-start gap-2 text-sm">
-                  <input type="checkbox" checked={activeParams.autoUpdateEtfPrices === true}
-                    onChange={(event) => {
-                      const enabled = event.target.checked;
-                      handleUpdateActiveParams((previous) => ({ ...previous, autoUpdateEtfPrices: enabled }));
-                    }} />
-                  <span>시나리오를 열 때 ETF 시세 자동 반영</span>
-                </label>
                 {activeParams.investmentBaseline ? (
                   <>
                     <p className="mt-1 text-xs text-foreground-muted">비교 기준: {activeParams.investmentBaseline.capturedAt.slice(0, 10)} (UTC)</p>
@@ -714,7 +706,7 @@ export default function Home() {
                     </button>
                   </>
                 )}
-                {(activeParams.investmentBaseline || activeParams.autoUpdateEtfPrices || activeParams.assets.some((asset) => asset.type === 'etf' && asset.autoHistoricalReturn)) && (
+                {(activeParams.investmentBaseline || activeParams.autoUpdateEtfReturns || activeParams.autoUpdateEtfPrices || activeParams.assets.some((asset) => asset.type === 'etf' && asset.autoHistoricalReturn)) && (
                   <InvestmentBaselinePreview key={`${activeScenarioId}:${activeParams.investmentBaseline?.capturedAt ?? 'none'}`}
                     baseline={activeParams.investmentBaseline} currentParams={activeParams} onApply={(quotes, returns = []) => {
                       const prices = applyCurrentQuotes(activeParams, quotes);

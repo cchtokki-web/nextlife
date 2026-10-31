@@ -5,8 +5,6 @@ import {
   applyYieldPreset,
   YIELD_PRESET_LABELS,
   matchedYieldPreset,
-  matchesCustomYieldSnapshot,
-  restoreCustomYieldPreset,
 } from '../../../core/usecases/scenario/applyYieldPreset';
 import styles from './AssetForm.module.css';
 
@@ -29,12 +27,9 @@ const PRESETS = (['conservative', 'base', 'aggressive'] as const).map((key) => (
  * **프리셋은 계획을 지배하지 않는다.** 예전에는 「투자 전략」의 리스크 성향이 계산 시점에
  * 모든 계좌의 총수익률을 덮어썼고, 화면은 저장값을 그대로 보여줘 사용자가 자기 시뮬레이션이
  * 몇 %로 돌았는지 알 방법이 없었다. 이제 프리셋은 여기서 «저장값 자체»를 바꾼다 —
- * 값이 입력칸에 찍히고, 보이고, 개별로 고칠 수 있고, 되돌릴 수 있다.
- *
- * 되돌리기는 applyYieldPreset이 남긴 customYieldSnapshot을 쓴다.
+ * 값이 입력칸에 찍히고 보인다. 기존 스냅샷 데이터는 저장 경로에 보존한다.
  */
 export function YieldPresetHelper({ params, onChangeParams }: YieldPresetHelperProps) {
-  const canRestore = params.customYieldSnapshot !== undefined;
   // 「지금 입력칸의 수익률이 이 버튼이 채우는 값과 «같은가»」. params.yieldPreset을 읽지
   // 않는 이유는 matchedYieldPreset에 적혀 있다 — 요약하면 그 필드는 저장 계층이 키 없는
   // 시나리오에 'base'를 채워 넣어(normalizeSimulationParams) 누른 적 없는 프리셋을 켜고,
@@ -70,22 +65,6 @@ export function YieldPresetHelper({ params, onChangeParams }: YieldPresetHelperP
         자동 수익률
       </button>
       {params.autoUpdateEtfReturns && <p className="basis-full text-xs text-foreground-muted">ETF 과거 수익률은 미래 성과를 보장하지 않습니다.</p>}
-      {canRestore && (
-        // **표시의 출처는 프리셋 셋과 같다 — 값이다.** 예전에는 「토글이 아니라 행위」라는
-        // 이유로 여기만 선택 표시를 뺐는데, 그러면 눌러도 아무 반응이 없어 사용자는 자기가
-        // 무엇을 고른 상태인지 알 수 없다. 이제 aria-pressed는 「지금 입력칸의 수익률이
-        // 마지막으로 직접 입력한 값과 «같다»」를 뜻한다(matchesCustomYieldSnapshot).
-        // 켜져 있을 때 누르면 값이 바뀌지 않으므로 「이미 적용돼 있음」이라는 말과 어긋나지 않는다.
-        <button
-          type="button"
-          aria-pressed={!params.autoUpdateEtfReturns && matchesCustomYieldSnapshot(params)}
-          className={styles.yieldPresetButton}
-          onClick={() => onChangeParams(restoreCustomYieldPreset(params))}
-          title="프리셋 적용 전 수익률로 되돌립니다"
-        >
-          이전 수익률
-        </button>
-      )}
     </div>
   );
 }

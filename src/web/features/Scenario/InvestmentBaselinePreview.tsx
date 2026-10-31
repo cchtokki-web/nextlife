@@ -42,7 +42,7 @@ export function InvestmentBaselinePreview({ baseline, currentParams, onApply }: 
   const [refreshCount, setRefreshCount] = useState(0);
   const currentParamsRef = useRef(currentParams);
   const lastAutomaticBatch = useRef<QuoteBatch | null>(null);
-  const automatic = currentParams?.autoUpdateEtfPrices === true;
+  const automatic = (currentParams?.autoUpdateEtfReturns ?? currentParams?.autoUpdateEtfPrices) === true;
   const historicalKey = JSON.stringify((currentParams?.assets ?? []).filter((asset) => asset.type === 'etf' && asset.autoHistoricalReturn === true)
     .map((asset) => [asset.id, asset.ticker]).sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b))));
 
@@ -138,7 +138,6 @@ export function InvestmentBaselinePreview({ baseline, currentParams, onApply }: 
         setBatch(null);
         setRefreshCount((count) => count + 1);
       }}>시세·자동 수익률 새로고침</button>
-      <p className="mt-1 text-xs text-foreground-muted">자동 반영이 켜진 항목은 새 값이 적용됩니다.</p>
       {quotes === null ? <p role="status">시세를 조회하고 있습니다.</p> : quotes.length === 0 ? (
         <p>{batch?.historical.length ? '현재 단가 자동 조회는 꺼져 있습니다.' : '조회할 ETF가 없습니다.'}</p>
       ) : (
@@ -171,14 +170,9 @@ export function InvestmentBaselinePreview({ baseline, currentParams, onApply }: 
           })}
         </ul>
       )}
-      {batch?.historicalKey === historicalKey && batch.historical.length > 0 && (
-        <ul className="mt-2 space-y-1 text-xs text-foreground-muted" aria-label="자동 수익률 조회">
-          {batch.historical.map(({ asset, result }) => (
-            <li key={asset.id}>{asset.name || asset.ticker}: {result
-              ? `${result.startDate} ~ ${result.endDate} 연환산 ${result.annualizedReturn.toFixed(1)}%, 누락 ${result.missingPoints}건. ${historicalStatus(asset, result, currentParams, batch.asOfDate)}`
-              : '과거 수익률 조회 실패. 기존 값을 유지합니다.'}</li>
-          ))}
-        </ul>
+      {batch?.historicalKey === historicalKey && batch.historical.some(({ asset, result }) => !result
+        || historicalStatus(asset, result, currentParams, batch.asOfDate).includes('자동 반영하지 않았습니다')) && (
+        <p role="alert" className="mt-2 text-xs text-foreground-muted">일부 ETF 수익률을 갱신하지 못해 기존 값을 유지합니다.</p>
       )}
       {currentParams && onApply && count > 0 && (
         <div className="mt-3">
