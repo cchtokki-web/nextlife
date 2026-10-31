@@ -130,40 +130,47 @@ export function InvestmentBaselinePreview({ baseline, currentParams, onApply }: 
   const count = currentParams ? applyCurrentQuotes(currentParams, applicableQuotes).appliedCount : 0;
   return (
     <section aria-label="ETF 시세 참고" className="mt-3 rounded-lg border border-card-border p-3 text-sm">
-      <h3 className="font-semibold">ETF 수량의 현재 시세 참고</h3>
+      <h3 className="font-semibold">ETF 시세</h3>
       <p className="mt-1 text-xs text-foreground-muted">
-        저장된 기준 수량 또는 현재 입력 수량에 조회 시세를 곱한 참고값입니다. 이후 적립·매매·배당·분할은 반영하지 않아 실제 잔고나 현재 평가금과 다를 수 있습니다.
+        수량은 자동 갱신되지 않아 실제 잔고와 다를 수 있습니다. 시세는 세금 추정에도 반영됩니다.
       </p>
       <button type="button" className="mt-2 rounded-lg border border-card-border px-3 py-2 text-xs font-semibold" onClick={() => {
         setBatch(null);
         setRefreshCount((count) => count + 1);
-      }}>시세와 자동 수익률 다시 조회</button>
-      <p className="mt-1 text-xs text-foreground-muted">다시 조회하면 켜진 자동 반영 설정에 따라 현재 계획을 갱신합니다.</p>
+      }}>시세·자동 수익률 새로고침</button>
+      <p className="mt-1 text-xs text-foreground-muted">자동 반영이 켜진 항목은 새 값이 적용됩니다.</p>
       {quotes === null ? <p role="status">시세를 조회하고 있습니다.</p> : quotes.length === 0 ? (
         <p>{batch?.historical.length ? '현재 단가 자동 조회는 꺼져 있습니다.' : '조회할 ETF가 없습니다.'}</p>
       ) : (
-        <ul className="mt-2 space-y-2">
+        <ul className="mt-3 divide-y divide-card-border">
           {quotes.map((quote) => {
             const comparison = quote.baseline && !('error' in quote) && baseline && currentParams
               ? compareReferenceQuantities(quote.asset, baseline.params.assets, currentParams.assets, quote.price) : null;
+            const showDifference = comparison !== null && comparison.currentQuantity !== quote.asset.quantity;
+            const matches = !quote.baseline ? currentParams?.assets.filter((asset) => asset.id === quote.asset.id) ?? [] : [];
+            const current = matches.length === 1 && matches[0].type === 'etf' && matches[0].ticker === quote.asset.ticker
+              && matches[0].currency === quote.asset.currency ? matches[0] : undefined;
+            const currentValue = current && !('error' in quote) ? baselineReferenceValue(current.quantity, current.currency, quote.price, quote.asset.currency) : null;
+            const quantity = comparison?.currentQuantity ?? (currentValue !== null ? current?.quantity : undefined) ?? quote.asset.quantity;
+            const value = comparison?.currentValue ?? currentValue ?? ('error' in quote ? null : quote.value);
             return (
-            <li key={`${quote.asset.id}:${quote.asset.ticker}:${quote.asset.currency}`}>
-              <span className="font-medium">{quote.asset.name || quote.asset.ticker} ({quote.asset.ticker})</span>
-              {'error' in quote ? <p>{quote.error}</p> : (
-                <p>
-                  {quote.baseline ? '기준' : '현재 입력'} {quote.asset.quantity.toLocaleString('ko-KR')}주 × {quote.price.toLocaleString('ko-KR')} {quote.asset.currency}
-                  {' = '}{quote.value.toLocaleString('ko-KR', { maximumFractionDigits: 2 })} {quote.asset.currency}
-                  <br />시세 기준: {new Date(quote.marketTime * 1000).toLocaleString('ko-KR')}
-                  {comparison && <><br />현재 입력 {comparison.currentQuantity.toLocaleString('ko-KR')}주 = {comparison.currentValue.toLocaleString('ko-KR', { maximumFractionDigits: 2 })} {quote.asset.currency}
-                    <br />동일 시세 기준 수량 차이: {comparison.difference > 0 ? '+' : ''}{comparison.difference.toLocaleString('ko-KR', { maximumFractionDigits: 2 })} {quote.asset.currency}</>}
-                </p>
-              )}
-            </li>
+              <li key={`${quote.asset.id}:${quote.asset.ticker}:${quote.asset.currency}`} className="py-3">
+                <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                  <span className="font-semibold">{quote.asset.name || quote.asset.ticker}{quote.asset.name && quote.asset.name !== quote.asset.ticker ? ` (${quote.asset.ticker})` : ''}</span>
+                  {value !== null && <span className="font-semibold">{value.toLocaleString('ko-KR', { maximumFractionDigits: 2 })} {quote.asset.currency}</span>}
+                </div>
+                {'error' in quote ? <p className="mt-1 text-xs text-foreground-muted">{quote.error}</p> : (
+                  <>
+                    <p className="mt-1 text-xs text-foreground-muted">{comparison || currentValue !== null ? '현재 입력' : quote.baseline ? '기준 수량' : '조회 당시 수량'} {quantity.toLocaleString('ko-KR', { maximumFractionDigits: 8 })}주 · 시세 {quote.price.toLocaleString('ko-KR')} {quote.asset.currency}</p>
+                    <p className="mt-1 text-xs text-foreground-muted">시세 기준: {new Date(quote.marketTime * 1000).toLocaleString('ko-KR')}</p>
+                    {showDifference && <p className="mt-1 text-xs text-foreground-muted">기준 {quote.asset.quantity.toLocaleString('ko-KR', { maximumFractionDigits: 8 })}주 · 동일 시세 수량 차이 {comparison.difference > 0 ? '+' : ''}{comparison.difference.toLocaleString('ko-KR', { maximumFractionDigits: 2 })} {quote.asset.currency} (수익률 아님)</p>}
+                  </>
+                )}
+              </li>
             );
           })}
         </ul>
       )}
-      {baseline && currentParams && <p className="mt-2 text-xs text-foreground-muted">수량 차이에 따른 참고값이며 수익률, 실제 잔고 또는 계획 달성률이 아닙니다. 종목이나 통화가 바뀐 자산은 비교하지 않습니다.</p>}
       {batch?.historicalKey === historicalKey && batch.historical.length > 0 && (
         <ul className="mt-2 space-y-1 text-xs text-foreground-muted" aria-label="자동 수익률 조회">
           {batch.historical.map(({ asset, result }) => (
@@ -173,11 +180,10 @@ export function InvestmentBaselinePreview({ baseline, currentParams, onApply }: 
           ))}
         </ul>
       )}
-      {currentParams && onApply && quotes !== null && quotes.length > 0 && (
+      {currentParams && onApply && count > 0 && (
         <div className="mt-3">
-          <p className="text-xs text-foreground-muted">시세를 현재 계획에 반영하면 같은 종목의 현재 단가만 바뀝니다. 수량은 갱신되지 않으며 취득원가 미입력 시 세금 추정에도 영향을 줄 수 있습니다. 현재 입력에 대한 분석이 있으면 다시 실행합니다.</p>
-          <button type="button" disabled={count === 0} className="mt-2 rounded-lg border border-primary px-3 py-2 text-xs font-semibold text-primary disabled:opacity-50" onClick={() => onApply(applicableQuotes)}>
-            조회 시세 {count}개를 현재 계획에 반영
+          <button type="button" className="mt-2 rounded-lg border border-primary px-3 py-2 text-xs font-semibold text-primary" onClick={() => onApply(applicableQuotes)}>
+            시세 {count}개 반영
           </button>
         </div>
       )}
