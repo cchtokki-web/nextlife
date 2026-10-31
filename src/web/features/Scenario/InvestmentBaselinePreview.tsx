@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { InvestmentAsset, SimulationParams } from '../../../core/entities/types';
 import { baselineReferenceValue } from '../../../core/usecases/investmentTracking/baselineReferenceValue';
+import { compareReferenceQuantities } from '../../../core/usecases/investmentTracking/compareReferenceQuantities';
 import { applyCurrentQuotes, type ObservedQuote } from '../../../core/usecases/investmentTracking/applyCurrentQuotes';
 import { applyHistoricalEtfReturns, type ObservedHistoricalReturn } from '../../../core/usecases/investmentTracking/applyHistoricalEtfReturns';
 import { fetchEtfHistoricalReturn } from '../AssetForm/fetchEtfHistoricalReturn';
@@ -136,7 +137,10 @@ export function InvestmentBaselinePreview({ baseline, currentParams, onApply }: 
         <p>{batch?.historical.length ? '현재 단가 자동 조회는 꺼져 있습니다.' : '조회할 ETF가 없습니다.'}</p>
       ) : (
         <ul className="mt-2 space-y-2">
-          {quotes.map((quote) => (
+          {quotes.map((quote) => {
+            const comparison = quote.baseline && !('error' in quote) && baseline && currentParams
+              ? compareReferenceQuantities(quote.asset, baseline.params.assets, currentParams.assets, quote.price) : null;
+            return (
             <li key={`${quote.asset.id}:${quote.asset.ticker}:${quote.asset.currency}`}>
               <span className="font-medium">{quote.asset.name || quote.asset.ticker} ({quote.asset.ticker})</span>
               {'error' in quote ? <p>{quote.error}</p> : (
@@ -144,12 +148,16 @@ export function InvestmentBaselinePreview({ baseline, currentParams, onApply }: 
                   {quote.baseline ? '기준' : '현재 입력'} {quote.asset.quantity.toLocaleString('ko-KR')}주 × {quote.price.toLocaleString('ko-KR')} {quote.asset.currency}
                   {' = '}{quote.value.toLocaleString('ko-KR', { maximumFractionDigits: 2 })} {quote.asset.currency}
                   <br />시세 기준: {new Date(quote.marketTime * 1000).toLocaleString('ko-KR')}
+                  {comparison && <><br />현재 입력 {comparison.currentQuantity.toLocaleString('ko-KR')}주 = {comparison.currentValue.toLocaleString('ko-KR', { maximumFractionDigits: 2 })} {quote.asset.currency}
+                    <br />동일 시세 기준 수량 차이: {comparison.difference > 0 ? '+' : ''}{comparison.difference.toLocaleString('ko-KR', { maximumFractionDigits: 2 })} {quote.asset.currency}</>}
                 </p>
               )}
             </li>
-          ))}
+            );
+          })}
         </ul>
       )}
+      {baseline && currentParams && <p className="mt-2 text-xs text-foreground-muted">수량 차이에 따른 참고값이며 수익률, 실제 잔고 또는 계획 달성률이 아닙니다. 종목이나 통화가 바뀐 자산은 비교하지 않습니다.</p>}
       {batch?.historicalKey === historicalKey && batch.historical.length > 0 && (
         <ul className="mt-2 space-y-1 text-xs text-foreground-muted" aria-label="자동 수익률 조회">
           {batch.historical.map(({ asset, result }) => (

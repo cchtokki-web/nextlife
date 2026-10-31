@@ -9,6 +9,18 @@ const baseline = { capturedAt: '2026-01-01T00:00:00.000Z', params: { ...initialP
 afterEach(() => vi.unstubAllGlobals());
 
 describe('기준 수량 시세 참고', () => {
+  it('같은 ETF의 입력 수량 변화만 동일 시세로 비교하며 입력 수정에 따라 갱신한다', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({ price: 120, currency: 'USD', marketTime: 1700000000 })));
+    const current = { ...baseline.params, assets: [{ ...asset, quantity: 12 }] };
+    const view = render(<InvestmentBaselinePreview baseline={baseline} currentParams={current} />);
+    expect(await screen.findByText(/동일 시세 기준 수량 차이: \+240 USD/)).toBeInTheDocument();
+    expect(screen.getByText(/계획 달성률이 아닙니다/)).toBeInTheDocument();
+    view.rerender(<InvestmentBaselinePreview baseline={baseline} currentParams={{ ...current, assets: [{ ...asset, quantity: 8 }] }} />);
+    expect(screen.getByText(/동일 시세 기준 수량 차이: -240 USD/)).toBeInTheDocument();
+    view.rerender(<InvestmentBaselinePreview baseline={baseline} currentParams={{ ...current, assets: [{ ...asset, ticker: 'QQQ' }] }} />);
+    expect(screen.queryByText(/동일 시세 기준 수량 차이:/)).toBeNull();
+  });
+
   it('기준 수량과 현재 시세를 표시하고 조회 요청에 수량을 보내지 않는다', async () => {
     const fetchMock = vi.fn().mockResolvedValue(Response.json({ price: 120, currency: 'USD', marketTime: 1700000000 }));
     vi.stubGlobal('fetch', fetchMock);
@@ -155,7 +167,7 @@ describe('기준 수량 시세 참고', () => {
     expect(onApply.mock.calls[0][0]).toEqual(expect.arrayContaining([
       expect.objectContaining({ assetId: 'b', ticker: 'QQQ', price: 200 }),
     ]));
-    expect(screen.getByText(/현재 입력 10주/)).toBeInTheDocument();
+    expect(screen.getByText(/현재 입력 10주 × 200 USD/)).toBeInTheDocument();
   });
 
   it('기준 계획이 없어도 자동 반영을 켠 현재 ETF를 조회한다', async () => {
