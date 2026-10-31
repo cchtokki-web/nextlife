@@ -78,7 +78,7 @@ export const InputField = React.forwardRef<HTMLInputElement, InputFieldProps>(({
   // 전략)이 값을 지배하는 동안 화면과 엔진이 다시 어긋나는 경로다.
   // 비활성 버튼을 남기는 대신 숨기는 이유: 조작할 수 없는 컨트롤을 그려두면 잠금 상태가
   // 여전히 편집 가능한 것처럼 읽히고, 입력 우측 여백(inputWithSteppers)도 함께 정리된다.
-  const hasSteppers = !disabled && (type === 'number' || !!(onStepUp || onStepDown));
+  const hasSteppers = !disabled && !props.readOnly && (type === 'number' || !!(onStepUp || onStepDown));
 
   const handleStepUp = (e: React.MouseEvent) => {
     e.preventDefault();

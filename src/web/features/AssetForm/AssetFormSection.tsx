@@ -10,10 +10,8 @@ import { Plus, Trash2, Wallet, Landmark, PiggyBank, DollarSign, ExternalLink, Ch
 import { predefinedAssets } from './predefinedAssets';
 import { ReturnBreakdownHint } from './ReturnBreakdownHint';
 import { YieldPresetHelper } from './YieldPresetHelper';
-import { EtfHistoricalReturn } from './EtfHistoricalReturn';
 import { initialParams } from '../../../infrastructure/storage/localStore';
 import { resolveStrategy } from '../../../core/usecases/strategy/compileStrategy';
-import { applyEtfYieldPreset, YIELD_PRESET_LABELS, YIELD_PRESET_RATES } from '../../../core/usecases/scenario/applyYieldPreset';
 import {
   convertContributionAmount,
   roundContributionForCurrency,
@@ -323,6 +321,7 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
     const newAsset: InvestmentAsset = {
       id: newId,
       type: 'etf',
+      ...(params.autoUpdateEtfReturns ? { autoHistoricalReturn: true } : {}),
       ticker: 'NEW',
       name: '신규 자산',
       quantity: 0,
@@ -377,10 +376,11 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
               }
             }
             return { ...asset, [key]: value,
-              ...(key === 'totalReturn' && asset.autoHistoricalReturn ? { autoHistoricalReturn: false } : {}) };
+              ...(key === 'totalReturn' && asset.autoHistoricalReturn && !prevParams.autoUpdateEtfReturns ? { autoHistoricalReturn: false } : {}) };
           } else {
             return { ...asset, ...updates,
-              ...(('totalReturn' in updates || 'ticker' in updates) && asset.autoHistoricalReturn ? { autoHistoricalReturn: false } : {}) };
+              ...(prevParams.autoUpdateEtfReturns && (updates.type ?? asset.type) === 'etf' ? { autoHistoricalReturn: true }
+                : (('totalReturn' in updates || 'ticker' in updates) && asset.autoHistoricalReturn ? { autoHistoricalReturn: false } : {})) };
           }
         }
         return asset;
@@ -576,7 +576,7 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
             totalReturn: pa.totalReturn,
             dividendYield: pa.dividendYield,
           });
-          fetchAssetInfo(id, pa.ticker, { totalReturn: pa.totalReturn, dividendYield: pa.dividendYield });
+          if (!params.autoUpdateEtfReturns || pa.type !== 'etf') fetchAssetInfo(id, pa.ticker, { totalReturn: pa.totalReturn, dividendYield: pa.dividendYield });
           fetchAssetPrice(id, pa.ticker);
         } else if (type === 'pension') {
           handleUpdatePrivatePension(id, {
@@ -785,7 +785,7 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                                       });
                                       setFocusedAssetId(null);
                                       setAutocompleteIndex(-1);
-                                      fetchAssetInfo(asset.id, pa.ticker, { totalReturn: pa.totalReturn, dividendYield: pa.dividendYield });
+                                      if (!params.autoUpdateEtfReturns || pa.type !== 'etf') fetchAssetInfo(asset.id, pa.ticker, { totalReturn: pa.totalReturn, dividendYield: pa.dividendYield });
                                       fetchAssetPrice(asset.id, pa.ticker);
                                       setTimeout(() => { isSelectingRef.current[asset.id] = false; }, 200);
                                     }}
@@ -882,49 +882,18 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                         suffixText={asset.currency === 'KRW' ? '원' : asset.currency}
                       />
                       <div className={styles.returnFieldGroup}>
-                        {asset.type === 'etf' && (
-                          <div role="group" aria-label={`${asset.name || asset.ticker} 수익률 입력 도우미`} className={styles.yieldPresetHelper}>
-                            <span className={styles.yieldPresetLabel}>이 ETF의 총수익률 채우기</span>
-                            {(['conservative', 'base', 'aggressive'] as const).map((preset) => (
-                              <button key={preset} type="button" className={styles.yieldPresetButton}
-                                onClick={() => onChangeParams((previous) => applyEtfYieldPreset(previous, asset.id, preset))}>
-                                {YIELD_PRESET_LABELS[preset]} {YIELD_PRESET_RATES[preset].stockGrowth}%
-                              </button>
-                            ))}
-                            <button type="button" className={styles.yieldPresetButton}
-                              disabled={fetchingInfoMap[asset.id] || !asset.ticker || asset.ticker === 'NEW'}
-                              onClick={() => fetchAssetInfo(asset.id, asset.ticker)}>
-                              과거 자료로 채우기
-                            </button>
-                            <p className="basis-full text-xs text-foreground-muted">세 단계는 기존 공통 가정이며 ETF별 예측이 아닙니다. 선택하면 배당률도 기존 프리셋 규칙에 따라 조정됩니다. 과거 자료 조회는 가격 성장률이 음수면 0%로 처리하고 총수익률을 9.5%로 제한합니다. 자료가 부족하면 기본값을 사용하며 자동 갱신하지 않습니다.</p>
-                            {assetInfoErrors[asset.id]?.ticker === asset.ticker && <p role="alert">{assetInfoErrors[asset.id]?.message}</p>}
-                            <EtfHistoricalReturn ticker={asset.ticker} onApply={(ticker, value) => onChangeParams((previous) => {
-                              const matching = previous.assets.filter((item) => item.id === asset.id);
-                              if (matching.length !== 1 || matching[0].ticker !== ticker || matching[0].type !== 'etf') return previous;
-                              return { ...previous, assets: previous.assets.map((item) => item.id === asset.id ? { ...item, totalReturn: value,
-                                ...(item.autoHistoricalReturn ? { autoHistoricalReturn: false } : {}) } : item), yieldPreset: 'custom' };
-                            })} />
-                            <label className="basis-full flex items-start gap-2 text-xs">
-                              <input type="checkbox" disabled={!asset.ticker || asset.ticker === 'NEW'} checked={asset.autoHistoricalReturn === true} onChange={(event) => {
-                                const enabled = event.target.checked;
-                                onChangeParams((previous) => previous.assets.filter((item) => item.id === asset.id).length !== 1 ? previous
-                                  : { ...previous, assets: previous.assets.map((item) => item.id === asset.id ? { ...item, autoHistoricalReturn: enabled } : item) });
-                              }} />
-                              <span>이 ETF의 과거 연환산 수익률을 시나리오를 열 때 자동 반영</span>
-                            </label>
-                            <p className="basis-full text-xs text-foreground-muted">과거 수익률을 미래 가정에 사용합니다. 미래 성과를 보장하지 않으며 배당률은 유지됩니다. 자료가 누락되거나 30일 이상 오래되면 기존 값을 유지합니다.</p>
-                          </div>
-                        )}
                         <div className={styles.priceInputWrapper}>
                           <div className={styles.priceInputGrow}>
                             <NumberField
                               label="연 총수익률"
                               step="0.1"
                               value={asset.totalReturn}
+                              readOnly={asset.type === 'etf'}
                               onChangeValue={(rate) => handleUpdateAsset(asset.id, 'totalReturn', rate)}
                               suffixText="%"
                             />
                           </div>
+                          {asset.type !== 'etf' && (
                           <button
                             type="button"
                             className={`${compStyles.button} ${compStyles.buttonSecondary} ${styles.priceFetchButton}`}
@@ -937,6 +906,7 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                               className={fetchingInfoMap[asset.id] ? styles.spinner : ''}
                             />
                           </button>
+                          )}
                         </div>
                         <div className={styles.priceInputWrapper}>
                           <div className={styles.priceInputGrow}>
@@ -945,10 +915,12 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                               step="0.1"
                               maximumFractionDigits={1}
                               value={asset.dividendYield}
+                              readOnly={asset.type === 'etf'}
                               onChangeValue={(rate) => handleUpdateAsset(asset.id, 'dividendYield', rate)}
                               suffixText="%"
                             />
                           </div>
+                          {asset.type !== 'etf' && (
                           <button
                             type="button"
                             className={`${compStyles.button} ${compStyles.buttonSecondary} ${styles.priceFetchButton}`}
@@ -961,7 +933,9 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                               className={fetchingInfoMap[asset.id] ? styles.spinner : ''}
                             />
                           </button>
+                          )}
                         </div>
+                        {assetInfoErrors[asset.id]?.ticker === asset.ticker && <p role="alert">{assetInfoErrors[asset.id]?.message}</p>}
                         <ReturnBreakdownHint totalReturn={asset.totalReturn} dividendYield={asset.dividendYield} />
                       </div>
                       <SelectField

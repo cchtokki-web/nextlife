@@ -2,6 +2,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { InvestmentBaselinePreview } from '@/web/features/Scenario/InvestmentBaselinePreview';
 import { initialParams } from '@/infrastructure/storage/defaultParams';
+import { YieldPresetHelper } from '@/web/features/AssetForm/YieldPresetHelper';
+import { applyHistoricalEtfReturns } from '@/core/usecases/investmentTracking/applyHistoricalEtfReturns';
+import { useState } from 'react';
+import type { SimulationParams } from '@/core/entities/types';
 
 const asset = { ...initialParams.assets[0], id: 'a', type: 'etf' as const, ticker: 'VOO', name: 'VOO', quantity: 10, currency: 'USD' as const };
 const baseline = { capturedAt: '2026-01-01T00:00:00.000Z', params: { ...initialParams, assets: [asset] } };
@@ -9,6 +13,26 @@ const baseline = { capturedAt: '2026-01-01T00:00:00.000Z', params: { ...initialP
 afterEach(() => vi.unstubAllGlobals());
 
 describe('기준 수량 시세 참고', () => {
+  it('공통 자동 수익률을 선택하면 각 ETF의 자료를 조회해 반영한다', async () => {
+    const today = new Date().toISOString().slice(0, 10);
+    const start = `${Number(today.slice(0, 4)) - 2}-01-01`;
+    const fetchMock = vi.fn().mockImplementation(async () => Response.json({ prices: [
+      { date: start, adjustedClose: 100 }, { date: today, adjustedClose: 120 },
+    ] }));
+    vi.stubGlobal('fetch', fetchMock);
+    function Harness() {
+      const [current, setCurrent] = useState<SimulationParams>({ ...baseline.params, assets: [asset, { ...asset, id: 'b', ticker: 'QQQ' }] });
+      return <><YieldPresetHelper params={current} onChangeParams={setCurrent} />
+        <InvestmentBaselinePreview currentParams={current} onApply={(_quotes, returns = []) => {
+          setCurrent((previous) => applyHistoricalEtfReturns(previous, returns, today).params);
+        }} />
+        <output>{current.assets.map((item) => item.totalReturn).join(',')}</output></>;
+    }
+    render(<Harness />);
+    fireEvent.click(screen.getByRole('button', { name: '자동 수익률' }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.getAllByText(/현재 입력과 일치합니다/)).toHaveLength(2));
+  });
   it('실패 후 다시 조회하면 최신 시세를 확인하고 자동 반영이 꺼져 있으면 직접 반영을 기다린다', async () => {
     const fetchMock = vi.fn().mockRejectedValueOnce(new Error('일시 오류'))
       .mockResolvedValueOnce(Response.json({ price: 125, currency: 'USD', marketTime: 1700000000 }));

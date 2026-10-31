@@ -54,7 +54,7 @@ export function YieldPresetHelper({ params, onChangeParams }: YieldPresetHelperP
           type="button"
           // 선택 상태를 색으로만 말하지 않는다 — aria-pressed가 있어야 화면을 보지 않는
           // 사용자에게도 지금 어떤 가정이 적용돼 있는지 드러난다.
-          aria-pressed={selected === preset.key}
+          aria-pressed={!params.autoUpdateEtfReturns && selected === preset.key}
           className={styles.yieldPresetButton}
           onClick={() => onChangeParams(applyYieldPreset(params, preset.key))}
           title={`주식·ISA ${YIELD_PRESET_RATES[preset.key].stockGrowth}%, 사적연금 ${YIELD_PRESET_RATES[preset.key].pensionReturn}%로 채웁니다`}
@@ -62,6 +62,14 @@ export function YieldPresetHelper({ params, onChangeParams }: YieldPresetHelperP
           {preset.label}
         </button>
       ))}
+      <button type="button" aria-pressed={params.autoUpdateEtfReturns === true} className={styles.yieldPresetButton}
+        title="ETF 과거 수정 종가로 계산한 연환산 수익률을 자동 반영합니다"
+        onClick={() => onChangeParams({ ...params, autoUpdateEtfReturns: true,
+          assets: params.assets.map((asset) => asset.type === 'etf' ? { ...asset, autoHistoricalReturn: true } : asset),
+          yieldPreset: 'custom' })}>
+        자동 수익률
+      </button>
+      {params.autoUpdateEtfReturns && <p className="basis-full text-xs text-foreground-muted">ETF 과거 수익률은 미래 성과를 보장하지 않습니다.</p>}
       {canRestore && (
         // **표시의 출처는 프리셋 셋과 같다 — 값이다.** 예전에는 「토글이 아니라 행위」라는
         // 이유로 여기만 선택 표시를 뺐는데, 그러면 눌러도 아무 반응이 없어 사용자는 자기가
@@ -70,12 +78,12 @@ export function YieldPresetHelper({ params, onChangeParams }: YieldPresetHelperP
         // 켜져 있을 때 누르면 값이 바뀌지 않으므로 「이미 적용돼 있음」이라는 말과 어긋나지 않는다.
         <button
           type="button"
-          aria-pressed={matchesCustomYieldSnapshot(params)}
+          aria-pressed={!params.autoUpdateEtfReturns && matchesCustomYieldSnapshot(params)}
           className={styles.yieldPresetButton}
           onClick={() => onChangeParams(restoreCustomYieldPreset(params))}
-          title="마지막으로 직접 입력한 수익률로 되돌립니다"
+          title="프리셋 적용 전 수익률로 되돌립니다"
         >
-          사용자 입력값
+          이전 수익률
         </button>
       )}
     </div>

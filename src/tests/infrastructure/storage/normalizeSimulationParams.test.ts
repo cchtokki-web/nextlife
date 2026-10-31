@@ -24,6 +24,8 @@ describe('normalizeSimulationParams', () => {
   });
   test('자동 시세 반영은 명시된 불리언만 보존하며 기존 데이터에는 생성하지 않는다', () => {
     expect(normalizeSimulationParams(initialParams)).not.toHaveProperty('autoUpdateEtfPrices');
+    expect(normalizeSimulationParams(initialParams)).not.toHaveProperty('autoUpdateEtfReturns');
+    expect(normalizeSimulationParams({ ...initialParams, autoUpdateEtfReturns: true }).autoUpdateEtfReturns).toBe(true);
     expect(normalizeSimulationParams({ ...initialParams, autoUpdateEtfPrices: true }).autoUpdateEtfPrices).toBe(true);
     expect(normalizeSimulationParams({ ...initialParams, autoUpdateEtfPrices: 'true' }).autoUpdateEtfPrices).toBeUndefined();
   });

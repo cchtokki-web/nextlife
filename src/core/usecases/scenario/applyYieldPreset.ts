@@ -85,6 +85,7 @@ export function applyYieldPreset(
 
   return {
     ...params,
+    ...(params.autoUpdateEtfReturns ? { autoUpdateEtfReturns: false } : {}),
     assets: (params.assets ?? []).map((a) => ({ ...applyToMarketAccount(a, stockGrowth),
       ...(a.autoHistoricalReturn ? { autoHistoricalReturn: false } : {}) })),
     // **사적연금은 분해하지 않는다.** 연금 계좌 안에서는 배당세도 재투자 선택지도 없어
@@ -204,7 +205,8 @@ function captureCustomYieldSnapshot(params: SimulationParams): CustomYieldSnapsh
 export function restoreCustomYieldPreset(params: SimulationParams): SimulationParams {
   const snapshot = params.customYieldSnapshot;
   if (!snapshot) {
-    return { ...params, yieldPreset: 'custom' };
+    return { ...params, ...(params.autoUpdateEtfReturns ? { autoUpdateEtfReturns: false } : {}),
+      assets: params.assets.map((asset) => asset.autoHistoricalReturn ? { ...asset, autoHistoricalReturn: false } : asset), yieldPreset: 'custom' };
   }
 
   // isaAccounts는 이 필드가 추가되기 전에 저장된 스냅샷에는 없다. 그런 스냅샷으로도
@@ -216,8 +218,9 @@ export function restoreCustomYieldPreset(params: SimulationParams): SimulationPa
 
   return {
     ...params,
-    assets: (params.assets ?? []).map((a) => (a.id in snapshot.assets ? { ...a, totalReturn: snapshot.assets[a.id],
-      ...(a.autoHistoricalReturn ? { autoHistoricalReturn: false } : {}) } : a)),
+    ...(params.autoUpdateEtfReturns ? { autoUpdateEtfReturns: false } : {}),
+    assets: (params.assets ?? []).map((a) => ({ ...a, ...(a.id in snapshot.assets ? { totalReturn: snapshot.assets[a.id] } : {}),
+      ...(a.autoHistoricalReturn ? { autoHistoricalReturn: false } : {}) })),
     privatePensions: (params.privatePensions ?? []).map((p) =>
       p.id in snapshot.privatePensions ? { ...p, totalReturn: snapshot.privatePensions[p.id] } : p
     ),

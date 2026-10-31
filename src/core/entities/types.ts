@@ -321,6 +321,8 @@ export interface CustomYieldSnapshot {
 export interface SimulationParams {
   /** 현재 계획의 ETF 시세를 시나리오를 열 때 자동 반영한다. 미지정 시 꺼짐. */
   autoUpdateEtfPrices?: boolean;
+  /** ETF의 과거 연환산 수익률을 공통으로 갱신한다. 미지정 시 기존 개별 설정을 유지한다. */
+  autoUpdateEtfReturns?: boolean;
   /** 선택한 경우 현재 연도에서 빼어 연도 기준 나이를 계산한다. */
   birthYear?: number;
   /** 사용자가 확정한 최초 비교 기준. 현재 시뮬레이션 입력에는 사용하지 않는다. */

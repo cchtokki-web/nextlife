@@ -89,6 +89,12 @@ describe('InputField - 숫자 칸의 모바일 키보드', () => {
 // 스테퍼 버튼은 input.stepUp() 후 'input' 이벤트를 직접 dispatch하므로, 버튼이 살아 있으면
 // 잠긴 필드가 그대로 편집된다(전략이 수익률을 지배하는 동안 화면과 엔진이 어긋난다).
 describe('InputField - disabled일 때의 스테퍼 버튼', () => {
+  test('읽기 전용 숫자 입력에도 스테퍼를 표시하지 않는다', () => {
+    render(<InputField label="수익률" type="number" value={7} readOnly />);
+    expect(screen.getByLabelText('수익률')).toHaveAttribute('readonly');
+    expect(screen.queryByRole('button', { name: 'Increase value' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Decrease value' })).toBeNull();
+  });
   test('disabled면 스테퍼 버튼을 렌더하지 않는다', () => {
     render(<InputField label="연 성장률" type="number" value={5} onChange={vi.fn()} disabled />);
 

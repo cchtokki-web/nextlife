@@ -4,7 +4,7 @@ import type { SimulationParams } from '../../entities/types';
 export function sameAnalysisInputs(left: SimulationParams | null | undefined, right: SimulationParams): boolean {
   if (!left) return false;
   return left === right || Object.keys({ ...left, ...right }).every((key) =>
-    key === 'investmentBaseline' || key === 'autoUpdateEtfPrices'
+    key === 'investmentBaseline' || key === 'autoUpdateEtfPrices' || key === 'autoUpdateEtfReturns'
       || (key === 'assets' && sameAssets(left.assets, right.assets))
       || left[key as keyof SimulationParams] === right[key as keyof SimulationParams],
   );

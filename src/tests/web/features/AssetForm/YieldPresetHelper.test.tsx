@@ -26,6 +26,22 @@ function params(over: Partial<SimulationParams> = {}): SimulationParams {
 }
 
 describe('YieldPresetHelper', () => {
+  test('자동 수익률을 선택하면 모든 ETF에 적용하고 프리셋으로 전환하면 해제한다', async () => {
+    const original = params({ assets: [params().assets[0], { ...params().assets[0], id: 'b', ticker: 'Y' }] });
+    const onChange = vi.fn();
+    const view = render(<YieldPresetHelper params={original} onChangeParams={onChange} />);
+    await userEvent.click(screen.getByRole('button', { name: '자동 수익률' }));
+    const enabled = onChange.mock.calls[0][0] as SimulationParams;
+    expect(enabled.autoUpdateEtfReturns).toBe(true);
+    expect(enabled.assets.every((asset) => asset.autoHistoricalReturn)).toBe(true);
+    expect(normalizeSimulationParams(JSON.parse(JSON.stringify(enabled))).autoUpdateEtfReturns).toBe(true);
+    view.rerender(<YieldPresetHelper params={enabled} onChangeParams={onChange} />);
+    expect(screen.getByRole('button', { name: '자동 수익률' })).toHaveAttribute('aria-pressed', 'true');
+    await userEvent.click(screen.getByRole('button', { name: /중립 7%/ }));
+    const preset = onChange.mock.calls[1][0] as SimulationParams;
+    expect(preset.autoUpdateEtfReturns).toBe(false);
+    expect(preset.assets.every((asset) => !asset.autoHistoricalReturn)).toBe(true);
+  });
   test('안정형을 누르면 저장값이 5%/3%로 채워진다', async () => {
     const onChange = vi.fn();
     render(<YieldPresetHelper params={params()} onChangeParams={onChange} />);
@@ -39,7 +55,7 @@ describe('YieldPresetHelper', () => {
 
   test('사용자 입력값 버튼은 스냅샷이 있을 때만 보인다', () => {
     const { rerender } = render(<YieldPresetHelper params={params()} onChangeParams={vi.fn()} />);
-    expect(screen.queryByRole('button', { name: /사용자 입력값/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /이전 수익률/ })).toBeNull();
 
     rerender(
       <YieldPresetHelper
@@ -50,7 +66,7 @@ describe('YieldPresetHelper', () => {
         onChangeParams={vi.fn()}
       />
     );
-    expect(screen.getByRole('button', { name: /사용자 입력값/ })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /이전 수익률/ })).toBeTruthy();
   });
 
   test('실제 왕복: base 프리셋 상태에서 시작해도 프리셋을 누르면 스냅샷이 잡히고 되돌리기가 원래 직접입력값을 복원한다', async () => {
@@ -87,8 +103,8 @@ describe('YieldPresetHelper', () => {
     const onChangeStep2 = vi.fn();
     rerender(<YieldPresetHelper params={afterPreset} onChangeParams={onChangeStep2} />);
 
-    expect(screen.getByRole('button', { name: /사용자 입력값/ })).toBeTruthy();
-    await userEvent.click(screen.getByRole('button', { name: /사용자 입력값/ }));
+    expect(screen.getByRole('button', { name: /이전 수익률/ })).toBeTruthy();
+    await userEvent.click(screen.getByRole('button', { name: /이전 수익률/ }));
 
     const restored = onChangeStep2.mock.calls[0][0] as SimulationParams;
     // 원래 손으로 입력했던 9.5 / 7 / 6.4가 그대로 돌아와야 한다.
@@ -177,7 +193,7 @@ describe('YieldPresetHelper', () => {
         onChangeParams={vi.fn()}
       />
     );
-    expect(screen.getByRole('button', { name: /사용자 입력값/ }).getAttribute('aria-pressed')).toBe('true');
+    expect(screen.getByRole('button', { name: /이전 수익률/ }).getAttribute('aria-pressed')).toBe('true');
 
     // 프리셋을 얹어 값이 덮이면 꺼지고, 그 프리셋이 대신 켜진다.
     rerender(
@@ -191,7 +207,7 @@ describe('YieldPresetHelper', () => {
         onChangeParams={vi.fn()}
       />
     );
-    expect(screen.getByRole('button', { name: /사용자 입력값/ }).getAttribute('aria-pressed')).toBe('false');
+    expect(screen.getByRole('button', { name: /이전 수익률/ }).getAttribute('aria-pressed')).toBe('false');
     expect(screen.getByRole('button', { name: /보수적 5%/ }).getAttribute('aria-pressed')).toBe('true');
 
     // 사용자가 자산 하나만 도로 고쳐도(스냅샷과 부분만 일치) 켜지지 않는다.
@@ -206,7 +222,7 @@ describe('YieldPresetHelper', () => {
         onChangeParams={vi.fn()}
       />
     );
-    expect(screen.getByRole('button', { name: /사용자 입력값/ }).getAttribute('aria-pressed')).toBe('false');
+    expect(screen.getByRole('button', { name: /이전 수익률/ }).getAttribute('aria-pressed')).toBe('false');
   });
 
   test('되돌리기를 누른 결과를 다시 먹이면 사용자 입력값 버튼이 켜진다', async () => {
@@ -220,12 +236,12 @@ describe('YieldPresetHelper', () => {
     } as Partial<SimulationParams>);
 
     const { rerender } = render(<YieldPresetHelper params={applied} onChangeParams={onChange} />);
-    await userEvent.click(screen.getByRole('button', { name: /사용자 입력값/ }));
+    await userEvent.click(screen.getByRole('button', { name: /이전 수익률/ }));
 
     const restored = onChange.mock.calls[0][0] as SimulationParams;
     rerender(<YieldPresetHelper params={restored} onChangeParams={vi.fn()} />);
 
-    expect(screen.getByRole('button', { name: /사용자 입력값/ }).getAttribute('aria-pressed')).toBe('true');
+    expect(screen.getByRole('button', { name: /이전 수익률/ }).getAttribute('aria-pressed')).toBe('true');
   });
 
   test('사용자 입력값 버튼은 직전 입력값을 복원한다', async () => {
@@ -242,7 +258,7 @@ describe('YieldPresetHelper', () => {
       />
     );
 
-    await userEvent.click(screen.getByRole('button', { name: /사용자 입력값/ }));
+    await userEvent.click(screen.getByRole('button', { name: /이전 수익률/ }));
 
     const next = onChange.mock.calls[0][0] as SimulationParams;
     expect(next.assets[0].totalReturn).toBe(9.5);
