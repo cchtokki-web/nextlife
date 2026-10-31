@@ -93,8 +93,46 @@ describe('기준 수량 시세 참고', () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
     render(<InvestmentBaselinePreview baseline={{ ...baseline, params: { ...baseline.params, assets: [] } }} />);
-    await waitFor(() => expect(screen.getByText('기준 계획에 ETF가 없습니다.')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('조회할 ETF가 없습니다.')).toBeInTheDocument());
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('자동 반영은 기준 저장 후 새로 추가한 ETF도 조회한다', async () => {
+    const fetchMock = vi.fn().mockImplementation(async (url: string) => Response.json({
+      price: url.includes('QQQ') ? 200 : 120, currency: 'USD', marketTime: 1700000000,
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+    const onApply = vi.fn();
+    const added = { ...asset, id: 'b', ticker: 'QQQ', name: 'QQQ', averagePrice: 100 };
+    const current = { ...baseline.params, assets: [asset, added], autoUpdateEtfPrices: true };
+    render(<InvestmentBaselinePreview baseline={baseline} currentParams={current} onApply={onApply} />);
+    await waitFor(() => expect(onApply).toHaveBeenCalledTimes(1));
+    expect(fetchMock.mock.calls.map((call) => call[0])).toContain('/api/stock-price?ticker=QQQ');
+    expect(onApply.mock.calls[0][0]).toEqual(expect.arrayContaining([
+      expect.objectContaining({ assetId: 'b', ticker: 'QQQ', price: 200 }),
+    ]));
+    expect(screen.getByText(/현재 입력 10주/)).toBeInTheDocument();
+  });
+
+  it('기준 계획이 없어도 자동 반영을 켠 현재 ETF를 조회한다', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({ price: 120, currency: 'USD', marketTime: 1700000000 })));
+    const onApply = vi.fn();
+    render(<InvestmentBaselinePreview currentParams={{ ...baseline.params, autoUpdateEtfPrices: true }} onApply={onApply} />);
+    await waitFor(() => expect(onApply).toHaveBeenCalledWith([
+      { assetId: 'a', ticker: 'VOO', currency: 'USD', price: 120, marketTime: 1700000000 },
+    ]));
+  });
+
+  it('기준 계획을 저장한 뒤 같은 자산의 종목이 변경되면 현재 종목만 반영한다', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(async (url: string) => Response.json({
+      price: url.includes('QQQ') ? 200 : 120, currency: 'USD', marketTime: 1700000000,
+    })));
+    const onApply = vi.fn();
+    const current = { ...baseline.params, assets: [{ ...asset, ticker: 'QQQ', name: 'QQQ' }], autoUpdateEtfPrices: true };
+    render(<InvestmentBaselinePreview baseline={baseline} currentParams={current} onApply={onApply} />);
+    await waitFor(() => expect(onApply).toHaveBeenCalledWith([
+      { assetId: 'a', ticker: 'QQQ', currency: 'USD', price: 200, marketTime: 1700000000 },
+    ]));
   });
 
   it('기준 계획이 바뀐 뒤 늦게 도착한 이전 시세를 표시하지 않는다', async () => {

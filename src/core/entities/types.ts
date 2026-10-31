@@ -317,7 +317,7 @@ export interface CustomYieldSnapshot {
 }
 
 export interface SimulationParams {
-  /** 기준 계획에 포함된 ETF의 시세를 시나리오를 열 때 자동 반영한다. 미지정 시 꺼짐. */
+  /** 현재 계획의 ETF 시세를 시나리오를 열 때 자동 반영한다. 미지정 시 꺼짐. */
   autoUpdateEtfPrices?: boolean;
   /** 선택한 경우 현재 연도에서 빼어 연도 기준 나이를 계산한다. */
   birthYear?: number;
