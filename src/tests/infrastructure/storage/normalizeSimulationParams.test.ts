@@ -16,6 +16,13 @@ import { normalizeRetirementGoals } from '@/core/entities/retirementGoal';
 // 배열은 원소 단위로만 정제한다.
 
 describe('normalizeSimulationParams', () => {
+  test('출생연도는 선택 입력으로 JSON 복원 시 보존하며 잘못된 값은 버린다', () => {
+    expect(normalizeSimulationParams(JSON.parse(JSON.stringify({ ...initialParams, birthYear: 1980 }))).birthYear).toBe(1980);
+    expect(normalizeSimulationParams(initialParams)).not.toHaveProperty('birthYear');
+    for (const birthYear of ['1980', 1980.5, -1]) {
+      expect(normalizeSimulationParams({ ...initialParams, birthYear }).birthYear).toBeUndefined();
+    }
+  });
   test('비교 기준은 JSON 저장 후 복원하고 중첩 기준은 제거한다', () => {
     const snapshot = structuredClone(initialParams);
     const raw = { ...structuredClone(initialParams), investmentBaseline: {

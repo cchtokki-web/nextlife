@@ -18,6 +18,9 @@ import { AGE_MAX, EXPECTANCY_MAX } from '../StrategySettings/ageInput';
 import { retirementGoalDefinition } from './goalCatalog';
 import { RetirementGoalSelector, type GoalFocusRequest } from './RetirementGoalSelector';
 import { GoalSimulationImpact } from './GoalSimulationImpact';
+import { useNumericDraft } from '../../components/fields/numericDraft';
+import InputField from '../../components/InputField';
+import { refreshAgeFromBirthYear } from '../../../core/usecases/investmentTracking/refreshAgeFromBirthYear';
 
 interface RetirementInputFlowProps {
   params: SimulationParams;
@@ -43,6 +46,38 @@ const STEPS = [
 ] as const;
 
 const GOAL_STEP = 2;
+
+function BirthYearField({ params, onChangeParams }: Pick<RetirementInputFlowProps, 'params' | 'onChangeParams'>) {
+  const currentYear = new Date().getFullYear();
+  const draft = useNumericDraft<number | undefined>({
+    value: params.birthYear,
+    format: (year) => year === undefined ? '' : String(year),
+    parse: (raw) => {
+      if (!/^\d{4}$/.test(raw)) return null;
+      const year = Number(raw);
+      return year <= currentYear - 1 && year >= currentYear - AGE_MAX ? year : null;
+    },
+    onCommit: (birthYear) => onChangeParams((previous) =>
+      refreshAgeFromBirthYear({ ...previous, birthYear }, currentYear)),
+  });
+  return (
+    <div>
+      <InputField label="출생연도 (선택)" type="number" inputMode="numeric" placeholder="예: 1980"
+        value={draft.value} onChange={draft.onChange} onBlur={draft.onBlur} />
+      <p className="mt-1 text-xs text-foreground-muted">시나리오를 다시 열 때 현재 연도에서 출생연도를 뺀 나이로 갱신합니다. 생일은 반영하지 않습니다.</p>
+      {params.birthYear !== undefined && (
+        <button type="button" className="mt-1 text-xs text-primary underline" onClick={() => {
+          draft.reset();
+          onChangeParams((previous) => {
+            const { birthYear: _year, ...rest } = previous;
+            void _year;
+            return rest;
+          });
+        }}>출생연도 사용 해제</button>
+      )}
+    </div>
+  );
+}
 
 export function RetirementInputFlow({
   params, onChangeParams, onStartAnalysis, analysisIsCurrent = false,
@@ -181,9 +216,11 @@ export function RetirementInputFlow({
               분석 기간을 정하는 기본 정보만 입력해 주세요. 은퇴 나이는 목표 단계에서 정합니다.
             </p>
           </div>
+          <BirthYearField params={params} onChangeParams={onChangeParams} />
           <div className="grid grid-cols-2 gap-3">
             <AgeField
               label="현재 나이" suffixText="세" max={AGE_MAX}
+              disabled={params.birthYear !== undefined}
               value={params.userProfile.currentAge}
               onChangeAge={(age) => setProfileAge('currentAge', age)}
             />

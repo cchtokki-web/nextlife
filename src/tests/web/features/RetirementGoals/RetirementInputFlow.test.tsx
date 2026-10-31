@@ -5,6 +5,20 @@ import { initialParams } from '@/infrastructure/storage/localStore';
 import { RetirementInputFlow } from '@/web/features/RetirementGoals/RetirementInputFlow';
 
 describe('RetirementInputFlow', () => {
+  test('출생연도로 나이를 계산하고 해제하면 수동 입력을 되돌린다', () => {
+    function Harness() {
+      const [params, setParams] = useState(initialParams);
+      return <RetirementInputFlow params={params} onChangeParams={setParams} onStartAnalysis={vi.fn()} />;
+    }
+    render(<Harness />);
+    const currentYear = new Date().getFullYear();
+    fireEvent.change(screen.getByLabelText('출생연도 (선택)'), { target: { value: String(currentYear - 46) } });
+    expect(screen.getByLabelText('현재 나이')).toHaveValue(46);
+    expect(screen.getByLabelText('현재 나이')).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: '출생연도 사용 해제' }));
+    expect(screen.getByLabelText('현재 나이')).toBeEnabled();
+    expect(screen.getByLabelText('현재 나이')).toHaveValue(46);
+  });
   test('개인정보 → 자산정보 → 은퇴 목표의 기본 입력 순서를 제공한다', () => {
     render(
       <RetirementInputFlow
@@ -366,7 +380,8 @@ describe('RetirementInputFlow', () => {
       renderFlow();
 
       expect(screen.queryByLabelText('목표 은퇴 나이')).toBeNull();
-      expect(screen.getAllByRole('spinbutton')).toHaveLength(2);
+      expect(screen.getByLabelText('현재 나이')).toBeInTheDocument();
+      expect(screen.getByLabelText('기대수명')).toBeInTheDocument();
     });
 
     test('현재 나이를 바꾸면 userProfile.currentAge만 바뀐 params로 호출된다', () => {

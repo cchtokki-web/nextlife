@@ -119,6 +119,15 @@ afterEach(() => {
 });
 
 describe('useScenarios — 비로그인', () => {
+  test('저장된 출생연도가 있으면 시나리오 적재 시 현재 연도의 나이로 갱신한다', async () => {
+    signedOut();
+    loadParams.mockReturnValue({ ...initialParams, birthYear: new Date().getFullYear() - 40,
+      userProfile: { ...initialParams.userProfile, currentAge: 39 } });
+    const { result } = renderHook(() => useScenarios());
+    await waitFor(() => expect(result.current.isLoaded).toBe(true));
+    expect(result.current.activeParams.birthYear).toBe(new Date().getFullYear() - 40);
+    expect(result.current.activeParams.userProfile.currentAge).toBe(40);
+  });
   test('로컬 기본 시나리오를 만들고 로딩을 끝낸다', async () => {
     signedOut();
     const { result } = renderHook(() => useScenarios());

@@ -16,6 +16,7 @@ import { MAX_SCENARIO_COUNT } from '../../../core/utils/scenarioLimits';
 import { MAX_COMPARE_SCENARIO_COUNT } from '../../../core/utils/compareScenarios';
 import { migrateRetirementGoals } from '../../../core/usecases/goals/retirementGoalAdapter';
 import { isDevMode } from '../../../core/utils/isDevMode';
+import { refreshAgeFromBirthYear } from '../../../core/usecases/investmentTracking/refreshAgeFromBirthYear';
 
 // GET /api/scenarios 응답. data의 각 항목은 평문(SimulationParams)일 수도, E2EE로 암호화된
 // 형태일 수도 있어 소비처가 복호화를 시도하며 좁힌다.
@@ -120,7 +121,7 @@ const migrateParams = (raw: unknown, tickers: string[]): SimulationParams => {
     return asset;
   });
   const withAssets = changed ? { ...params, assets: migratedAssets } : params;
-  return migrateRetirementGoals(withAssets);
+  return refreshAgeFromBirthYear(migrateRetirementGoals(withAssets), new Date().getFullYear());
 };
 
 const fetchLatestParamsInfo = async (params: SimulationParams): Promise<SimulationParams> => {

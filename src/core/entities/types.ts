@@ -317,6 +317,8 @@ export interface CustomYieldSnapshot {
 }
 
 export interface SimulationParams {
+  /** 선택한 경우 현재 연도에서 빼어 연도 기준 나이를 계산한다. */
+  birthYear?: number;
   /** 사용자가 확정한 최초 비교 기준. 현재 시뮬레이션 입력에는 사용하지 않는다. */
   investmentBaseline?: {
     capturedAt: string;
