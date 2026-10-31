@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { describe, test, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -26,33 +27,49 @@ function params(over: Partial<SimulationParams> = {}): SimulationParams {
 }
 
 describe('YieldPresetHelper', () => {
-  test('카테고리 초기 총수익률을 표시하고 프리셋 선택에 적용한다', async () => {
-    const original = { ...params(), assets: [{ ...params().assets[0], category: 'income' as const }] };
-    const onChange = vi.fn();
+  test('선택한 프리셋의 카테고리별 값만 표시하고 적용한다', async () => {
+    function Harness() {
+      const [current, setCurrent] = useState(params({ assets: [{ ...params().assets[0], category: 'income' }] }));
+      return <><YieldPresetHelper params={current} onChangeParams={setCurrent} />
+        <output data-testid="return">{current.assets[0].totalReturn}</output></>;
+    }
     const user = userEvent.setup();
-    render(<YieldPresetHelper params={original} onChangeParams={onChange} />);
-    await user.click(screen.getByText('카테고리별 수익률 설정'));
-    expect(screen.getByRole('spinbutton', { name: '인컴 보수적 수익률' })).toHaveValue(3);
-    expect(screen.getByRole('spinbutton', { name: '인컴 중립 수익률' })).toHaveValue(5);
-    expect(screen.getByRole('spinbutton', { name: '인컴 공격 수익률' })).toHaveValue(7);
+    render(<Harness />);
+    await user.click(screen.getByRole('button', { name: '보수적' }));
+    expect(screen.getByLabelText('인컴')).toHaveValue(3);
+    expect(screen.getByTestId('return')).toHaveTextContent('3');
     await user.click(screen.getByRole('button', { name: '중립' }));
-    expect((onChange.mock.lastCall?.[0] as SimulationParams).assets[0].totalReturn).toBe(5);
+    expect(screen.getByLabelText('인컴')).toHaveValue(5);
+    expect(screen.getByTestId('return')).toHaveTextContent('5');
+    await user.click(screen.getByRole('button', { name: '공격' }));
+    expect(screen.getByLabelText('인컴')).toHaveValue(7);
+    expect(screen.getAllByRole('spinbutton')).toHaveLength(6);
   });
 
-  test('카테고리별 수익률을 수정하고 선택한 중립 가정에 반영한다', async () => {
+  test('직접 수정하면 사용자 설정으로 전환하고 다른 모드 후 복원한다', async () => {
+    let saved: SimulationParams | undefined;
+    function Harness() {
+      const [current, setCurrent] = useState(params({ assets: [{ ...params().assets[0], category: 'bond' }] }));
+      saved = current;
+      return <><YieldPresetHelper params={current} onChangeParams={setCurrent} />
+        <output data-testid="return">{current.assets[0].totalReturn}</output></>;
+    }
     const user = userEvent.setup();
-    const original = { ...params(), assets: [{ ...params().assets[0], category: 'bond' as const, totalReturn: 3 }],
-      privatePensions: [{ ...params().privatePensions[0], totalReturn: 4 }] };
-    const onChange = vi.fn();
-    render(<YieldPresetHelper params={original} onChangeParams={onChange} />);
-    await user.click(screen.getByText('카테고리별 수익률 설정'));
-    const input = screen.getByRole('spinbutton', { name: '채권 중립 수익률' });
+    render(<Harness />);
+    await user.click(screen.getByRole('button', { name: '중립' }));
+    const input = screen.getByLabelText('채권');
     await user.clear(input);
     await user.type(input, '4');
-    await user.tab();
-    const result = onChange.mock.lastCall?.[0] as SimulationParams;
-    expect(result.categoryYieldRates?.bond?.base).toBe(4);
-    expect(result.assets[0].totalReturn).toBe(4);
+    expect(screen.getByRole('button', { name: '사용자' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByTestId('return')).toHaveTextContent('4');
+    const restored = normalizeSimulationParams(JSON.parse(JSON.stringify(saved)));
+    expect(restored.categoryCustomYieldRates?.bond).toBe(4);
+    expect(restored.categoryYieldMode).toBe('custom');
+    await user.click(screen.getByRole('button', { name: '공격' }));
+    expect(screen.getByLabelText('채권')).toHaveValue(5);
+    await user.click(screen.getByRole('button', { name: '사용자' }));
+    expect(screen.getByLabelText('채권')).toHaveValue(4);
+    expect(screen.getByTestId('return')).toHaveTextContent('4');
   });
 
   test('자동 수익률을 선택하면 모든 ETF에 적용하고 프리셋으로 전환하면 해제한다', async () => {
@@ -66,7 +83,7 @@ describe('YieldPresetHelper', () => {
     expect(normalizeSimulationParams(JSON.parse(JSON.stringify(enabled))).autoUpdateEtfReturns).toBe(true);
     view.rerender(<YieldPresetHelper params={enabled} onChangeParams={onChange} />);
     expect(screen.getByRole('button', { name: '자동 수익률' })).toHaveAttribute('aria-pressed', 'true');
-    await userEvent.click(screen.getByRole('button', { name: /중립 7%/ }));
+    await userEvent.click(screen.getByRole('button', { name: /중립/ }));
     const preset = onChange.mock.calls[1][0] as SimulationParams;
     expect(preset.autoUpdateEtfReturns).toBe(false);
     expect(preset.assets.every((asset) => !asset.autoHistoricalReturn)).toBe(true);
@@ -75,7 +92,7 @@ describe('YieldPresetHelper', () => {
     const onChange = vi.fn();
     render(<YieldPresetHelper params={params()} onChangeParams={onChange} />);
 
-    await userEvent.click(screen.getByRole('button', { name: /보수적 5%/ }));
+    await userEvent.click(screen.getByRole('button', { name: /보수적/ }));
 
     const next = onChange.mock.calls[0][0] as SimulationParams;
     expect(next.assets[0].totalReturn).toBe(5);
@@ -85,7 +102,7 @@ describe('YieldPresetHelper', () => {
   test('기존 시세 자동 반영이 켜져 있어도 프리셋 선택 시 공통 자동 반영이 꺼진다', async () => {
     const onChange = vi.fn();
     render(<YieldPresetHelper params={params({ autoUpdateEtfPrices: true })} onChangeParams={onChange} />);
-    await userEvent.click(screen.getByRole('button', { name: /중립 7%/ }));
+    await userEvent.click(screen.getByRole('button', { name: /중립/ }));
     expect((onChange.mock.calls[0][0] as SimulationParams).autoUpdateEtfReturns).toBe(false);
   });
 
@@ -102,9 +119,9 @@ describe('YieldPresetHelper', () => {
       />
     );
 
-    expect(screen.getByRole('button', { name: /보수적 5%/ }).getAttribute('aria-pressed')).toBe('true');
-    expect(screen.getByRole('button', { name: /중립 7%/ }).getAttribute('aria-pressed')).toBe('false');
-    expect(screen.getByRole('button', { name: /공격 9%/ }).getAttribute('aria-pressed')).toBe('false');
+    expect(screen.getByRole('button', { name: /보수적/ }).getAttribute('aria-pressed')).toBe('true');
+    expect(screen.getByRole('button', { name: /중립/ }).getAttribute('aria-pressed')).toBe('false');
+    expect(screen.getByRole('button', { name: /공격/ }).getAttribute('aria-pressed')).toBe('false');
 
     // 사용자가 자산 하나의 수익률을 직접 고치면 그 순간 꺼진다 — 입력칸의 값이 더 이상
     // 그 프리셋의 값이 아니기 때문이다. yieldPreset 필드를 거치지 않는다.
@@ -118,7 +135,7 @@ describe('YieldPresetHelper', () => {
       />
     );
 
-    for (const label of [/보수적 5%/, /중립 7%/, /공격 9%/]) {
+    for (const label of [/보수적/, /중립/, /공격/]) {
       expect(screen.getByRole('button', { name: label }).getAttribute('aria-pressed')).toBe('false');
     }
   });
@@ -126,7 +143,7 @@ describe('YieldPresetHelper', () => {
   test('저장 계층을 통과한 옛 시나리오에서도 누른 적 없는 프리셋이 켜지지 않는다', () => {
     // **회귀 방지.** normalizeSimulationParams가 키 없는 시나리오에 yieldPreset: 'base'를
     // 채워 넣는다(optionalOneOf → initialParams.yieldPreset). 그 필드를 그대로 믿던 시절에는
-    // 저장을 거친 «모든» 시나리오에서 「중립 7%」가 aria-pressed='true'로 켜졌다 — 자산
+    // 저장을 거친 «모든» 시나리오에서 「중립」가 aria-pressed='true'로 켜졌다 — 자산
     // 수익률이 9.5%인데도. 손으로 만든 params가 아니라 저장 계층의 실제 출력으로 확인한다.
     const raw = JSON.parse(JSON.stringify(params())) as Record<string, unknown>;
     delete raw.yieldPreset;
@@ -135,7 +152,7 @@ describe('YieldPresetHelper', () => {
 
     render(<YieldPresetHelper params={stored} onChangeParams={vi.fn()} />);
 
-    for (const label of [/보수적 5%/, /중립 7%/, /공격 9%/]) {
+    for (const label of [/보수적/, /중립/, /공격/]) {
       expect(screen.getByRole('button', { name: label }).getAttribute('aria-pressed')).toBe('false');
     }
   });
@@ -154,7 +171,7 @@ describe('YieldPresetHelper', () => {
       />
     );
 
-    expect(screen.getByRole('button', { name: /보수적 5%/ }).getAttribute('aria-pressed')).toBe('true');
+    expect(screen.getByRole('button', { name: /보수적/ }).getAttribute('aria-pressed')).toBe('true');
   });
 
   test('저장된 이전 수익률이 있어도 복원 버튼은 표시하지 않는다', () => {

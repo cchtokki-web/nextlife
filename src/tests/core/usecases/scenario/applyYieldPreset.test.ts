@@ -1,6 +1,7 @@
 import { describe, test, expect } from 'vitest';
 import {
   applyYieldPreset,
+  applyCustomCategoryYields,
   applyEtfYieldPreset,
   matchedYieldPreset,
   matchesCustomYieldSnapshot,
@@ -44,6 +45,34 @@ const baseParams: SimulationParams = {
 };
 
 describe('applyYieldPreset', () => {
+  test('사용자 수익률은 분류된 자산에만 반영하고 다른 계좌는 유지한다', () => {
+    const custom = { index: 8, growth: 7, dividend: 6, income: 5, bond: 3, other: 4 };
+    const asset = { ...baseParams.assets[0], category: 'index' as const, autoHistoricalReturn: true };
+    const result = applyCustomCategoryYields({ ...baseParams, assets: [asset, { ...asset, id: 'unclassified', category: undefined }],
+      autoUpdateEtfReturns: true, categoryCustomYieldRates: custom });
+    expect(result.assets.map((item) => item.totalReturn)).toEqual([8, asset.totalReturn]);
+    expect(result.privatePensions).toBe(baseParams.privatePensions);
+    expect(result.autoUpdateEtfReturns).toBe(false);
+    expect(result.assets.every((item) => !item.autoHistoricalReturn)).toBe(true);
+    expect(result.categoryYieldMode).toBe('custom');
+    const restored = normalizeSimulationParams(JSON.parse(JSON.stringify(result)));
+    expect(restored.categoryCustomYieldRates).toEqual(custom);
+    expect(restored.assets[0].totalReturn).toBe(8);
+  });
+
+  test('저장된 사용자 수익률이 시뮬레이션 결과에 반영된다', () => {
+    const base = { ...baseParams, userProfile: { currentAge: 40, retirementAge: 60, expectancy: 65, targetMonthlySpending: 0 },
+      assets: [{ ...baseParams.assets[0], category: 'index' as const, quantity: 1000, averagePrice: 10000, dividendYield: 0 }],
+      privatePensions: [], nationalPension: { expectedMonthlyAmount: 0 } };
+    const rates = { index: 2, growth: 6, dividend: 6, income: 5, bond: 3, other: 6 };
+    const run = (rate: number) => {
+      const input = applyCustomCategoryYields({ ...base, categoryCustomYieldRates: { ...rates, index: rate } });
+      const saved = normalizeSimulationParams(JSON.parse(JSON.stringify(input)));
+      return new SimulationEngine().runSingle(compileStrategy(saved).params).yearlyResults.at(-1)!.totalAssets;
+    };
+    expect(run(8)).toBeGreaterThan(run(2));
+  });
+
   test('세 모드는 분류별 초기 가정을 적용하고 사용자 수정값을 우선한다', () => {
     const categories = ['index', 'growth', 'dividend', 'income', 'bond', 'other'] as const;
     const assets = categories.map((category, i) => ({ ...baseParams.assets[0], id: `category-${i}`, category }));

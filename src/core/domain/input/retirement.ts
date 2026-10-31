@@ -191,6 +191,8 @@ export const LEGACY_SIMULATION_FIELD_CLASSIFICATION = {
   autoUpdateEtfPrices: 'FACT',
   autoUpdateEtfReturns: 'FACT',
   categoryYieldRates: 'FACT',
+  categoryCustomYieldRates: 'FACT',
+  categoryYieldMode: 'FACT',
   birthYear: 'FACT',
   investmentBaseline: 'FACT',
   userProfile: 'GOAL',

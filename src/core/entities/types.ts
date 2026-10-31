@@ -325,6 +325,8 @@ export interface CustomYieldSnapshot {
 
 export interface SimulationParams {
   categoryYieldRates?: CategoryYieldRates;
+  categoryCustomYieldRates?: Partial<Record<InvestmentCategory, number>>;
+  categoryYieldMode?: YieldPreset | 'custom' | 'auto';
   /** 현재 계획의 ETF 시세를 시나리오를 열 때 자동 반영한다. 미지정 시 꺼짐. */
   autoUpdateEtfPrices?: boolean;
   /** ETF의 과거 연환산 수익률을 공통으로 갱신한다. 미지정 시 기존 개별 설정을 유지한다. */

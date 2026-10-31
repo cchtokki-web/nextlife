@@ -378,9 +378,13 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
               }
             }
             if (key === 'category') {
-              const preset = !prevParams.autoUpdateEtfReturns ? matchedYieldPreset(prevParams) : undefined;
+              const mode = prevParams.categoryYieldMode;
+              const preset = !prevParams.autoUpdateEtfReturns && mode !== 'custom'
+                ? mode === 'conservative' || mode === 'base' || mode === 'aggressive' ? mode : matchedYieldPreset(prevParams)
+                : undefined;
               const category = value as InvestmentAsset['category'];
-              return { ...(preset ? applyToMarketAccount(asset, categoryYieldRate(prevParams, category, preset)) : asset), category };
+              const customRate = prevParams.categoryYieldMode === 'custom' && category ? prevParams.categoryCustomYieldRates?.[category] : undefined;
+              return { ...(typeof customRate === 'number' ? applyToMarketAccount(asset, customRate) : preset ? applyToMarketAccount(asset, categoryYieldRate(prevParams, category, preset)) : asset), category };
             }
             return { ...asset, [key]: value,
               ...(key === 'totalReturn' && asset.autoHistoricalReturn && !prevParams.autoUpdateEtfReturns ? { autoHistoricalReturn: false } : {}) };
@@ -399,7 +403,7 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
       const isGrowthRateChanged = typeof updates === 'string'
         ? updates === 'totalReturn'
         : 'totalReturn' in updates;
-      const presetUpdate = isGrowthRateChanged ? { yieldPreset: 'custom' as const } : {};
+      const presetUpdate = isGrowthRateChanged ? { yieldPreset: 'custom' as const, categoryYieldMode: undefined } : {};
       return { ...prevParams, assets: updated, ...presetUpdate };
     });
   };

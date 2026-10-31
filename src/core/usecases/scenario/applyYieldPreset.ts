@@ -67,6 +67,20 @@ export function categoryYieldRate(params: SimulationParams, category: Investment
     : category ? CATEGORY_YIELD_PRESET_RATES[category][preset] : YIELD_PRESET_RATES[preset].stockGrowth;
 }
 
+/** 사용자 카테고리 가정만 적용하며 미분류 자산과 다른 계좌는 유지한다. */
+export function applyCustomCategoryYields(params: SimulationParams): SimulationParams {
+  const rates = params.categoryCustomYieldRates;
+  if (!rates || !Object.keys(rates).length) return params;
+  return {
+    ...params, categoryYieldMode: 'custom', autoUpdateEtfReturns: false, yieldPreset: 'custom',
+    assets: params.assets.map((asset) => {
+      const rate = asset.category ? rates[asset.category] : undefined;
+      const updated = typeof rate === 'number' && Number.isFinite(rate) ? applyToMarketAccount(asset, rate) : asset;
+      return updated.autoHistoricalReturn ? { ...updated, autoHistoricalReturn: false } : updated;
+    }),
+  };
+}
+
 // 구 설정 UI(시뮬레이션 설정/핵심 설정 카드)에 있던 "시장 수익률 프리셋 적용" 로직을 순수
 // 함수로 추출한 것. 그 UI들은 제거되었다. compileStrategy가 계산 시점에 이 함수를 부르던
 // 경로도 이후 제거되었다 — 프리셋이 계산을 지배하지 않도록 하기 위해서다. 지금 이 함수를

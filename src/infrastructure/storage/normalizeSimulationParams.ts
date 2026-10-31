@@ -134,6 +134,8 @@ export function normalizeSimulationParams(rawInput: unknown): SimulationParams {
     ...(raw as unknown as SimulationParams),
     ...onlyIfPresent(raw, 'autoUpdateEtfPrices', (v) => typeof v === 'boolean' ? v : undefined),
     ...onlyIfPresent(raw, 'categoryYieldRates', normalizeCategoryYieldRates),
+    ...onlyIfPresent(raw, 'categoryCustomYieldRates', normalizeCategoryCustomYieldRates),
+    ...onlyIfPresent(raw, 'categoryYieldMode', (v) => optionalOneOf(v, ['conservative', 'base', 'aggressive', 'custom', 'auto'] as const, undefined)),
     ...onlyIfPresent(raw, 'autoUpdateEtfReturns', (v) => typeof v === 'boolean' ? v : undefined),
     ...onlyIfPresent(raw, 'birthYear', (v) =>
       typeof v === 'number' && Number.isInteger(v) && v >= 1800 && v <= 9999 ? v : undefined),
@@ -376,6 +378,16 @@ function normalizeUserProfile(value: unknown): UserProfile {
     // computeBequestAdequacyRaw는 키의 유무로 채점 곡선을 고른다.
     ...onlyIfPresent(raw, 'targetBequest', optionalFinite),
   };
+}
+
+function normalizeCategoryCustomYieldRates(value: unknown): SimulationParams['categoryCustomYieldRates'] {
+  if (!isRecord(value)) return undefined;
+  const result: NonNullable<SimulationParams['categoryCustomYieldRates']> = {};
+  for (const { value: category } of INVESTMENT_CATEGORIES) {
+    const rate = optionalFinite(value[category]);
+    if (rate !== undefined) result[category] = rate;
+  }
+  return Object.keys(result).length === INVESTMENT_CATEGORIES.length ? result : undefined;
 }
 
 function normalizeCategoryYieldRates(value: unknown): SimulationParams['categoryYieldRates'] {
