@@ -99,6 +99,26 @@ describe('AssetFormSection - 수익률 입력은 전략에 잠기지 않는다',
     expect(result.assets[0].dividendYield).toBeCloseTo(7 / 6);
   });
 
+  test('수정 종가 수익률을 확인 후 적용하면 배당률은 유지된다', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({ prices: [
+      { date: '2020-01-01', adjustedClose: 100 }, { date: '2025-01-01', adjustedClose: 200 },
+    ] })));
+    function Harness() {
+      const [params, setParams] = useState(withAsset);
+      return <AssetFormSection params={params} onChangeParams={setParams} />;
+    }
+    try {
+      render(<Harness />);
+      fireEvent.click(screen.getByText('자산1'));
+      fireEvent.click(screen.getByRole('button', { name: '수정 종가로 과거 수익률 보기' }));
+      fireEvent.click(await screen.findByRole('button', { name: '이 값을 연 총수익률에 적용' }));
+      expect(screen.getByLabelText('연 총수익률')).toHaveValue(14.9);
+      expect(screen.getByLabelText('연 배당률')).toHaveValue(2);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   test('조회 도중 수익률을 변경하면 늦게 온 조회값이 덮어쓰지 않는다', async () => {
     let resolveFetch!: (value: Response) => void;
     vi.stubGlobal('fetch', vi.fn().mockImplementation(() => new Promise<Response>((resolve) => { resolveFetch = resolve; })));

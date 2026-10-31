@@ -10,6 +10,7 @@ import { Plus, Trash2, Wallet, Landmark, PiggyBank, DollarSign, ExternalLink, Ch
 import { predefinedAssets } from './predefinedAssets';
 import { ReturnBreakdownHint } from './ReturnBreakdownHint';
 import { YieldPresetHelper } from './YieldPresetHelper';
+import { EtfHistoricalReturn } from './EtfHistoricalReturn';
 import { initialParams } from '../../../infrastructure/storage/localStore';
 import { resolveStrategy } from '../../../core/usecases/strategy/compileStrategy';
 import { applyEtfYieldPreset, YIELD_PRESET_LABELS, YIELD_PRESET_RATES } from '../../../core/usecases/scenario/applyYieldPreset';
@@ -892,6 +893,11 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                             </button>
                             <p className="basis-full text-xs text-foreground-muted">세 단계는 기존 공통 가정이며 ETF별 예측이 아닙니다. 선택하면 배당률도 기존 프리셋 규칙에 따라 조정됩니다. 과거 자료 조회는 가격 성장률이 음수면 0%로 처리하고 총수익률을 9.5%로 제한합니다. 자료가 부족하면 기본값을 사용하며 자동 갱신하지 않습니다.</p>
                             {assetInfoErrors[asset.id]?.ticker === asset.ticker && <p role="alert">{assetInfoErrors[asset.id]?.message}</p>}
+                            <EtfHistoricalReturn ticker={asset.ticker} onApply={(ticker, value) => onChangeParams((previous) => {
+                              const matching = previous.assets.filter((item) => item.id === asset.id);
+                              if (matching.length !== 1 || matching[0].ticker !== ticker || matching[0].type !== 'etf') return previous;
+                              return { ...previous, assets: previous.assets.map((item) => item.id === asset.id ? { ...item, totalReturn: value } : item), yieldPreset: 'custom' };
+                            })} />
                           </div>
                         )}
                         <div className={styles.priceInputWrapper}>

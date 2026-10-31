@@ -7,7 +7,7 @@ const fixture = {
   chart: { result: [{
     meta: { exchangeTimezoneName: 'America/New_York', currency: 'USD' },
     timestamp: [Date.parse('2026-01-02T21:00:00Z') / 1000, Date.parse('2026-01-05T21:00:00Z') / 1000],
-    indicators: { quote: [{ close: [100, null] }] },
+    indicators: { quote: [{ close: [100, null] }], adjclose: [{ adjclose: [95, 101] }] },
     events: { dividends: { d: { date: Date.parse('2026-01-05T14:30:00Z') / 1000, amount: 1 } } },
   }] },
 };
@@ -23,10 +23,18 @@ describe('과거 시세 조회', () => {
     expect(await response.json()).toMatchObject({
       ticker: 'VOO', currency: 'USD', timezone: 'America/New_York', completeness: 'unverified',
       closeAdjustment: 'unverified', investmentTrackingReady: false,
-      prices: [{ date: '2026-01-02', close: 100 }, { date: '2026-01-05', close: null }],
+      prices: [{ date: '2026-01-02', close: 100, adjustedClose: 95 }, { date: '2026-01-05', close: null, adjustedClose: 101 }],
       dividends: [{ amount: 1 }], splits: [],
     });
     expect(fetchMock.mock.calls[0][1]).toMatchObject({ cache: 'no-store' });
+  });
+
+  it('수정 종가 배열이 없으면 기존 종가와 함께 수정 종가 누락을 반환한다', async () => {
+    const missing = structuredClone(fixture);
+    missing.chart.result[0].indicators.adjclose = [];
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json(missing)));
+    const response = await GET(request('ticker=VOO&start=2026-01-02&end=2026-01-05'));
+    expect(await response.json()).toMatchObject({ prices: [{ close: 100, adjustedClose: null }, { close: null, adjustedClose: null }] });
   });
 
   it('분할 전후 원천 종가와 분할 사건을 함께 반환해도 추적 가능한 자료로 판정하지 않는다', async () => {

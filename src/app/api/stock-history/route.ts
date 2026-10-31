@@ -34,7 +34,7 @@ export async function GET(request: NextRequest) {
     const data: unknown = await response.json();
     const result = extractResult(data);
     if (!result) return Response.json({ error: 'Historical data unavailable' }, { status: 502 });
-    const { timestamps, closes, timezone, currency, dividends, splits } = result;
+    const { timestamps, closes, adjustedCloses, timezone, currency, dividends, splits } = result;
     const formatter = new Intl.DateTimeFormat('en-CA', {
       timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit',
     });
@@ -50,7 +50,9 @@ export async function GET(request: NextRequest) {
       const date = localDate(timestamp);
       if (date < from || date > to) return [];
       const close = closes[index];
-      return [{ date, close: typeof close === 'number' && Number.isFinite(close) && close > 0 ? close : null }];
+      const adjusted = adjustedCloses?.[index];
+      return [{ date, close: typeof close === 'number' && Number.isFinite(close) && close > 0 ? close : null,
+        adjustedClose: typeof adjusted === 'number' && Number.isFinite(adjusted) && adjusted > 0 ? adjusted : null }];
     });
     const eventInRange = (event: unknown): boolean => {
       if (!isRecord(event) || typeof event.date !== 'number' || !Number.isFinite(event.date)) {
@@ -85,8 +87,13 @@ function extractResult(data: unknown) {
     || result.timestamp.length !== result.indicators.quote[0].close.length
     || typeof result.meta.exchangeTimezoneName !== 'string' || typeof result.meta.currency !== 'string') return null;
   const events = isRecord(result.events) ? result.events : {};
+  const adjusted = Array.isArray(result.indicators.adjclose) && isRecord(result.indicators.adjclose[0])
+    && Array.isArray(result.indicators.adjclose[0].adjclose)
+    && result.indicators.adjclose[0].adjclose.length === result.timestamp.length
+    ? result.indicators.adjclose[0].adjclose as unknown[] : null;
   return {
     timestamps: result.timestamp as unknown[], closes: result.indicators.quote[0].close as unknown[],
+    adjustedCloses: adjusted,
     timezone: result.meta.exchangeTimezoneName, currency: result.meta.currency,
     dividends: isRecord(events.dividends) ? Object.values(events.dividends) : [],
     splits: isRecord(events.splits) ? Object.values(events.splits) : [],
