@@ -26,6 +26,7 @@ import { initialParams } from '../../infrastructure/storage/localStore';
 import { ScenarioManager } from '../../web/features/Scenario/ScenarioManager';
 import { InvestmentBaselinePreview } from '../../web/features/Scenario/InvestmentBaselinePreview';
 import { applyCurrentQuotes } from '../../core/usecases/investmentTracking/applyCurrentQuotes';
+import { sameAnalysisInputs } from '../../core/usecases/investmentTracking/sameAnalysisInputs';
 import { StrategySettingsPanel } from '../../web/features/StrategySettings/StrategySettingsPanel';
 import { RetirementInputFlow } from '../../web/features/RetirementGoals/RetirementInputFlow';
 import { Collapse } from '../../web/components/ui';
@@ -455,12 +456,7 @@ export default function Home() {
   }
 
   const renderPage = (analysis: AnalysisRuntimeValue | null) => {
-    const sourceParams = analysis?.sourceParams;
-    const analysisIsCurrent = !!sourceParams && (sourceParams === activeParams || (
-      Object.keys({ ...sourceParams, ...activeParams }).every((key) =>
-        key === 'investmentBaseline' || sourceParams[key as keyof typeof sourceParams] === activeParams[key as keyof typeof activeParams],
-      )
-    ));
+    const analysisIsCurrent = !!analysis && sameAnalysisInputs(analysis.sourceParams, activeParams);
     const analysisInProgress = analysisIsRunning(analysis);
     const analysisFailed = analysisHasFailed(analysis);
     // 「분석 시작」은 분석이 실패했을 때 다시 열어 둔다. 워커 오류는 일시적일 수 있는데,
@@ -696,12 +692,21 @@ export default function Home() {
                 {activeParams.investmentBaseline ? (
                   <>
                     <p>투자 비교 기준 저장됨: {activeParams.investmentBaseline.capturedAt.slice(0, 10)} (UTC). 계획 대비 비교는 아직 제공되지 않습니다.</p>
+                    <label className="mt-2 flex items-start gap-2 text-sm">
+                      <input type="checkbox" checked={activeParams.autoUpdateEtfPrices === true}
+                        onChange={(event) => {
+                          const enabled = event.target.checked;
+                          handleUpdateActiveParams((previous) => ({ ...previous, autoUpdateEtfPrices: enabled }));
+                        }} />
+                      <span>시나리오를 열 때 기준 계획 ETF의 시세 자동 반영</span>
+                    </label>
+                    <p className="mt-1 text-xs text-foreground-muted">수량은 자동 갱신되지 않습니다. 현재 단가가 바뀌면 평가금과 세금 추정이 달라질 수 있습니다.</p>
                     <InvestmentBaselinePreview key={`${activeScenarioId}:${activeParams.investmentBaseline.capturedAt}`}
                       baseline={activeParams.investmentBaseline} currentParams={activeParams} onApply={(quotes) => {
                         const updated = applyCurrentQuotes(activeParams, quotes);
                         if (updated.appliedCount === 0) return;
                         handleUpdateActiveParams(updated.params);
-                        if (analysisIsCurrent && activeScenarioId) {
+                        if ((analysisIsCurrent || sameAnalysisInputs(analysisRequest?.params, activeParams)) && activeScenarioId) {
                           setAnalysisRequest(buildAnalysisRequest(updated.params));
                           setScenarioAnalyzed(activeScenarioId, true, updated.params);
                         }

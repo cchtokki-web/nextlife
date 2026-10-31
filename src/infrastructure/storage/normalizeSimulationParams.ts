@@ -131,6 +131,7 @@ export function normalizeSimulationParams(rawInput: unknown): SimulationParams {
   return {
     // 원칙 3. 검증한 필드는 아래에서 전부 덮어쓴다.
     ...(raw as unknown as SimulationParams),
+    ...onlyIfPresent(raw, 'autoUpdateEtfPrices', (v) => typeof v === 'boolean' ? v : undefined),
     ...onlyIfPresent(raw, 'birthYear', (v) =>
       typeof v === 'number' && Number.isInteger(v) && v >= 1800 && v <= 9999 ? v : undefined),
     ...onlyIfPresent(raw, 'investmentBaseline', normalizeInvestmentBaseline),

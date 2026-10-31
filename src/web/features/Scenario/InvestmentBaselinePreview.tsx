@@ -1,12 +1,17 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { InvestmentAsset, SimulationParams } from '../../../core/entities/types';
 import { baselineReferenceValue } from '../../../core/usecases/investmentTracking/baselineReferenceValue';
 import { applyCurrentQuotes, type ObservedQuote } from '../../../core/usecases/investmentTracking/applyCurrentQuotes';
 
 type Baseline = NonNullable<SimulationParams['investmentBaseline']>;
 type QuoteResult = { asset: InvestmentAsset; price: number; value: number; marketTime: number } | { asset: InvestmentAsset; error: string };
+interface QuoteBatch {
+  results: QuoteResult[];
+  automatic: boolean;
+  requestedAssets: readonly InvestmentAsset[];
+}
 
 /** 기준 수량에 조회 시세를 곱한 참고값이다. 실제 계좌나 시뮬레이션 입력을 수정하지 않는다. */
 export function InvestmentBaselinePreview({ baseline, currentParams, onApply }: {
@@ -14,11 +19,17 @@ export function InvestmentBaselinePreview({ baseline, currentParams, onApply }: 
   currentParams?: SimulationParams;
   onApply?: (quotes: ObservedQuote[]) => void;
 }) {
-  const [quotes, setQuotes] = useState<QuoteResult[] | null>(null);
+  const [batch, setBatch] = useState<QuoteBatch | null>(null);
+  const currentParamsRef = useRef(currentParams);
+  const lastAutomaticBatch = useRef<QuoteBatch | null>(null);
+  const automatic = currentParams?.autoUpdateEtfPrices === true;
+
+  useEffect(() => { currentParamsRef.current = currentParams; }, [currentParams]);
 
   useEffect(() => {
     const controller = new AbortController();
     const assets = baseline.params.assets.filter((asset) => asset.type === 'etf');
+    const requestedAssets = currentParamsRef.current?.assets.map((asset) => ({ ...asset })) ?? [];
     async function loadQuote(asset: InvestmentAsset): Promise<QuoteResult> {
       if (!asset.ticker || asset.ticker === 'NEW' || !Number.isFinite(asset.quantity) || asset.quantity < 0) {
         return { asset, error: '종목 또는 기준 수량을 확인해 주세요.' };
@@ -41,11 +52,29 @@ export function InvestmentBaselinePreview({ baseline, currentParams, onApply }: 
       }
     }
     void Promise.all(assets.map(loadQuote)).then((results) => {
-      if (!controller.signal.aborted) setQuotes(results);
+      if (!controller.signal.aborted) setBatch({ results, automatic, requestedAssets });
     });
     return () => controller.abort();
-  }, [baseline]);
+  }, [baseline, automatic]);
 
+  useEffect(() => {
+    if (!automatic || !batch?.automatic || !currentParams || !onApply || lastAutomaticBatch.current === batch) return;
+    lastAutomaticBatch.current = batch;
+    // 조회 도중 사용자가 단가·종목·통화를 바꾼 항목은 오래된 응답으로 덮지 않는다.
+    const safeQuotes: ObservedQuote[] = batch.results.flatMap((quote) => {
+      if ('error' in quote) return [];
+      const requested = batch.requestedAssets.filter((asset) => asset.id === quote.asset.id);
+      const current = currentParams.assets.filter((asset) => asset.id === quote.asset.id);
+      if (requested.length !== 1 || current.length !== 1
+        || requested[0].ticker !== current[0].ticker || requested[0].currency !== current[0].currency
+        || requested[0].averagePrice !== current[0].averagePrice) return [];
+      return [{ assetId: quote.asset.id, ticker: quote.asset.ticker, currency: quote.asset.currency,
+        price: quote.price, marketTime: quote.marketTime }];
+    });
+    if (applyCurrentQuotes(currentParams, safeQuotes).appliedCount > 0) onApply(safeQuotes);
+  }, [automatic, batch, currentParams, onApply]);
+
+  const quotes = batch?.results ?? null;
   const applicableQuotes: ObservedQuote[] = (quotes ?? []).flatMap((quote) => 'error' in quote ? [] : [{
     assetId: quote.asset.id, ticker: quote.asset.ticker, currency: quote.asset.currency,
     price: quote.price, marketTime: quote.marketTime,

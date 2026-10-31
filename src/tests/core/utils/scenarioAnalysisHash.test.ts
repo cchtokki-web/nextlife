@@ -13,6 +13,9 @@ import type { SimulationParams } from '@/core/entities/types';
 const params: SimulationParams = initialParams;
 
 describe('scenarioAnalysisHash', () => {
+  it('자동 시세 설정만 바꾸면 분석 입력 해시를 바꾸지 않는다', () => {
+    expect(scenarioAnalysisHash({ ...params, autoUpdateEtfPrices: true })).toBe(scenarioAnalysisHash(params));
+  });
   it('비교 기준 저장은 현재 계획의 분석 해시를 바꾸지 않는다', () => {
     expect(scenarioAnalysisHash({ ...params, investmentBaseline: {
       capturedAt: '2026-10-31T00:00:00.000Z', params: structuredClone(params),

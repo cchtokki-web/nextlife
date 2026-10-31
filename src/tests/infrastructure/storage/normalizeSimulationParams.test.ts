@@ -16,6 +16,11 @@ import { normalizeRetirementGoals } from '@/core/entities/retirementGoal';
 // 배열은 원소 단위로만 정제한다.
 
 describe('normalizeSimulationParams', () => {
+  test('자동 시세 반영은 명시된 불리언만 보존하며 기존 데이터에는 생성하지 않는다', () => {
+    expect(normalizeSimulationParams(initialParams)).not.toHaveProperty('autoUpdateEtfPrices');
+    expect(normalizeSimulationParams({ ...initialParams, autoUpdateEtfPrices: true }).autoUpdateEtfPrices).toBe(true);
+    expect(normalizeSimulationParams({ ...initialParams, autoUpdateEtfPrices: 'true' }).autoUpdateEtfPrices).toBeUndefined();
+  });
   test('출생연도는 선택 입력으로 JSON 복원 시 보존하며 잘못된 값은 버린다', () => {
     expect(normalizeSimulationParams(JSON.parse(JSON.stringify({ ...initialParams, birthYear: 1980 }))).birthYear).toBe(1980);
     expect(normalizeSimulationParams(initialParams)).not.toHaveProperty('birthYear');

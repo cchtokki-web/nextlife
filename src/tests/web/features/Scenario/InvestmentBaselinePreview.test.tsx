@@ -28,6 +28,56 @@ describe('기준 수량 시세 참고', () => {
     expect(onApply).toHaveBeenCalledWith([{ assetId: 'a', ticker: 'VOO', currency: 'USD', price: 120, marketTime: 1700000000 }]);
   });
 
+  it('자동 반영을 켠 경우 새로 조회한 시세를 한 번 반영한다', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({ price: 120, currency: 'USD', marketTime: 1700000000 })));
+    const onApply = vi.fn();
+    const current = { ...baseline.params, autoUpdateEtfPrices: true };
+    const view = render(<InvestmentBaselinePreview baseline={baseline} currentParams={current} onApply={onApply} />);
+    await waitFor(() => expect(onApply).toHaveBeenCalledTimes(1));
+    expect(onApply).toHaveBeenCalledWith([{ assetId: 'a', ticker: 'VOO', currency: 'USD', price: 120, marketTime: 1700000000 }]);
+    view.rerender(<InvestmentBaselinePreview baseline={baseline} currentParams={current} onApply={onApply} />);
+    expect(onApply).toHaveBeenCalledTimes(1);
+  });
+
+  it('자동 조회 중 단가를 직접 변경하면 늦은 응답으로 덮지 않는다', async () => {
+    let resolveQuote!: (response: Response) => void;
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(() => new Promise<Response>((resolve) => { resolveQuote = resolve; })));
+    const onApply = vi.fn();
+    const current = { ...baseline.params, autoUpdateEtfPrices: true };
+    const view = render(<InvestmentBaselinePreview baseline={baseline} currentParams={current} onApply={onApply} />);
+    const edited = { ...current, assets: [{ ...asset, averagePrice: 777 }] };
+    view.rerender(<InvestmentBaselinePreview baseline={baseline} currentParams={edited} onApply={onApply} />);
+    resolveQuote(Response.json({ price: 120, currency: 'USD', marketTime: 1700000000 }));
+    expect(await screen.findByText(/1,200 USD/)).toBeInTheDocument();
+    expect(onApply).not.toHaveBeenCalled();
+  });
+
+  it('조회 중 자동 반영을 끄면 취소된 응답을 적용하지 않는다', async () => {
+    let resolveAutomatic!: (response: Response) => void;
+    const fetchMock = vi.fn().mockImplementationOnce(() => new Promise<Response>((resolve) => { resolveAutomatic = resolve; }))
+      .mockResolvedValueOnce(Response.json({ price: 110, currency: 'USD', marketTime: 1700000000 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const onApply = vi.fn();
+    const active = { ...baseline.params, autoUpdateEtfPrices: true };
+    const view = render(<InvestmentBaselinePreview baseline={baseline} currentParams={active} onApply={onApply} />);
+    view.rerender(<InvestmentBaselinePreview baseline={baseline} currentParams={{ ...active, autoUpdateEtfPrices: false }} onApply={onApply} />);
+    resolveAutomatic(Response.json({ price: 120, currency: 'USD', marketTime: 1700000000 }));
+    await screen.findByText(/1,100 USD/);
+    expect(onApply).not.toHaveBeenCalled();
+  });
+
+  it('자동 반영을 켜면 기존 조회값 대신 새 시세를 요청한다', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(Response.json({ price: 120, currency: 'USD', marketTime: 1700000000 }))
+      .mockResolvedValueOnce(Response.json({ price: 130, currency: 'USD', marketTime: 1700000100 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const onApply = vi.fn();
+    const view = render(<InvestmentBaselinePreview baseline={baseline} currentParams={baseline.params} onApply={onApply} />);
+    await screen.findByText(/1,200 USD/);
+    expect(onApply).not.toHaveBeenCalled();
+    view.rerender(<InvestmentBaselinePreview baseline={baseline} currentParams={{ ...baseline.params, autoUpdateEtfPrices: true }} onApply={onApply} />);
+    await waitFor(() => expect(onApply).toHaveBeenCalledWith([{ assetId: 'a', ticker: 'VOO', currency: 'USD', price: 130, marketTime: 1700000100 }]));
+  });
+
   it('시세 통화가 다르거나 기준 시각이 없으면 평가값을 표시하지 않는다', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({ price: 120, currency: 'KRW', marketTime: 1700000000 })));
     const view = render(<InvestmentBaselinePreview baseline={baseline} />);
