@@ -5,19 +5,24 @@ import { initialParams } from '@/infrastructure/storage/localStore';
 import { RetirementInputFlow } from '@/web/features/RetirementGoals/RetirementInputFlow';
 
 describe('RetirementInputFlow', () => {
-  test('출생연도로 나이를 계산하고 해제하면 수동 입력을 되돌린다', () => {
+  test('출생연도로 내부 나이를 계산하고 현재 나이 입력은 표시하지 않는다', () => {
     function Harness() {
       const [params, setParams] = useState(initialParams);
-      return <RetirementInputFlow params={params} onChangeParams={setParams} onStartAnalysis={vi.fn()} />;
+      return <><RetirementInputFlow params={params} onChangeParams={setParams} onStartAnalysis={vi.fn()} /><output>{params.userProfile.currentAge}</output></>;
     }
     render(<Harness />);
     const currentYear = new Date().getFullYear();
-    fireEvent.change(screen.getByLabelText('출생연도 (선택)'), { target: { value: String(currentYear - 46) } });
-    expect(screen.getByLabelText('현재 나이')).toHaveValue(46);
-    expect(screen.getByLabelText('현재 나이')).toBeDisabled();
-    fireEvent.click(screen.getByRole('button', { name: '출생연도 사용 해제' }));
-    expect(screen.getByLabelText('현재 나이')).toBeEnabled();
-    expect(screen.getByLabelText('현재 나이')).toHaveValue(46);
+    fireEvent.change(screen.getByLabelText('출생연도'), { target: { value: String(currentYear - 46) } });
+    expect(screen.getByText('46')).toBeInTheDocument();
+    expect(screen.queryByLabelText('현재 나이')).toBeNull();
+    expect(screen.queryByRole('button', { name: '출생연도 사용 해제' })).toBeNull();
+  });
+  test('출생연도가 없는 기존 계획은 임의로 출생연도를 만들거나 나이를 바꾸지 않는다', () => {
+    const onChangeParams = vi.fn();
+    render(<RetirementInputFlow params={initialParams} onChangeParams={onChangeParams} onStartAnalysis={vi.fn()} />);
+    expect(screen.getByLabelText('출생연도')).toHaveValue(null);
+    expect(screen.queryByLabelText('현재 나이')).toBeNull();
+    expect(onChangeParams).not.toHaveBeenCalled();
   });
   test('개인정보 → 자산정보 → 은퇴 목표의 기본 입력 순서를 제공한다', () => {
     render(
@@ -368,10 +373,11 @@ describe('RetirementInputFlow', () => {
       return onChangeParams;
     };
 
-    test('현재 나이와 기대수명을 표시한다', () => {
+    test('출생연도와 기대수명을 표시한다', () => {
       renderFlow();
 
-      expect(screen.getByLabelText('현재 나이')).toHaveValue(50);
+      expect(screen.getByLabelText('출생연도')).toHaveValue(null);
+      expect(screen.queryByLabelText('현재 나이')).toBeNull();
       expect(screen.getByLabelText('기대수명')).toHaveValue(85);
     });
 
@@ -380,23 +386,11 @@ describe('RetirementInputFlow', () => {
       renderFlow();
 
       expect(screen.queryByLabelText('목표 은퇴 나이')).toBeNull();
-      expect(screen.getByLabelText('현재 나이')).toBeInTheDocument();
+      expect(screen.getByLabelText('출생연도')).toBeInTheDocument();
       expect(screen.getByLabelText('기대수명')).toBeInTheDocument();
     });
 
-    test('현재 나이를 바꾸면 userProfile.currentAge만 바뀐 params로 호출된다', () => {
-      const onChangeParams = renderFlow();
-
-      fireEvent.change(screen.getByLabelText('현재 나이'), { target: { value: '48' } });
-
-      expect(onChangeParams).toHaveBeenCalledWith({
-        ...initialParams,
-        userProfile: { ...initialParams.userProfile, currentAge: 48 },
-      });
-    });
-
     test.each([
-      ['현재 나이'],
       ['기대수명'],
     ])('%s를 비우면 아무것도 저장하지 않는다', (label) => {
       const onChangeParams = renderFlow();
@@ -410,7 +404,6 @@ describe('RetirementInputFlow', () => {
     // 입력이라 저장을 건너뛰면 다음 렌더가 옛 값을 그대로 되돌려 놓고, 그러면 사용자는
     // 첫 자리를 지울 수 없다 — 값이 1이면 뒤에 덧붙이는 것 말고는 아무 편집도 못 한다.
     test.each([
-      ['현재 나이'],
       ['기대수명'],
     ])('%s를 비우면 저장은 건너뛰되 화면은 빈 칸으로 남는다', (label) => {
       const onChangeParams = renderFlow();
@@ -422,39 +415,11 @@ describe('RetirementInputFlow', () => {
       expect(onChangeParams).not.toHaveBeenCalled();
     });
 
-    test('비운 뒤 새로 입력한 나이가 그대로 저장된다', () => {
-      const onChangeParams = renderFlow();
-      const input = screen.getByLabelText('현재 나이');
-
-      fireEvent.change(input, { target: { value: '' } });
-      fireEvent.change(input, { target: { value: '4' } });
-      fireEvent.change(input, { target: { value: '45' } });
-
-      expect(input).toHaveValue(45);
-      expect(onChangeParams).toHaveBeenLastCalledWith({
-        ...initialParams,
-        userProfile: { ...initialParams.userProfile, currentAge: 45 },
-      });
-    });
-
-    // 빈 칸으로 두고 떠나면 저장된 값이 다시 보여야 한다. 빈 칸이 남으면 화면과 실제
-    // 계산에 쓰이는 값이 어긋난 채로 다음 단계로 넘어간다.
-    test('비운 채로 포커스를 잃으면 저장된 나이로 되돌아간다', () => {
-      renderFlow();
-      const input = screen.getByLabelText('현재 나이');
-
-      fireEvent.change(input, { target: { value: '' } });
-      fireEvent.blur(input);
-
-      expect(input).toHaveValue(50);
-    });
-
-
     test('나이 입력에 min/max 범위가 걸려 있다', () => {
       renderFlow();
 
-      expect(screen.getByLabelText('현재 나이')).toHaveAttribute('min', '1');
-      expect(screen.getByLabelText('현재 나이')).toHaveAttribute('max', '120');
+      expect(screen.getByLabelText('출생연도')).toHaveAttribute('min', String(new Date().getFullYear() - 120));
+      expect(screen.getByLabelText('출생연도')).toHaveAttribute('max', String(new Date().getFullYear() - 1));
       expect(screen.getByLabelText('기대수명')).toHaveAttribute('max', '130');
     });
 
@@ -472,7 +437,6 @@ describe('RetirementInputFlow', () => {
     // 하한이 0이면 0세가 저장 가능하고, currentAge 0은 SimulationEngine의 totalYears
     // 가드(<= 0)를 통과해 91년짜리 시뮬레이션이 조용히 돈다. 사람 나이의 하한은 1이다.
     test.each([
-      ['현재 나이', 'currentAge'],
       ['기대수명', 'expectancy'],
     ] as const)('%s의 음수·0은 1로 클램프한다', (label, key) => {
       const onChangeParams = renderFlow();
