@@ -18,6 +18,7 @@ export async function GET(request: NextRequest) {
   try {
     const url = `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}`;
     const response = await fetch(url, {
+      cache: 'no-store',
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
       },
@@ -37,7 +38,11 @@ export async function GET(request: NextRequest) {
       return Response.json({ error: `Price data not found for ${ticker}` }, { status: 404 });
     }
 
-    return Response.json({ ticker, price, currency });
+    // 없으면 미상으로 둔다. 요청 시각을 시세 시각으로 꾸며내지 않는다.
+    const marketTime = typeof meta?.regularMarketTime === 'number'
+      && Number.isFinite(meta.regularMarketTime) && meta.regularMarketTime > 0
+      ? meta.regularMarketTime : null;
+    return Response.json({ ticker, price, currency, marketTime });
   } catch (error) {
     console.error('Error fetching stock price:', error);
     return Response.json({ error: 'Internal Server Error' }, { status: 500 });
