@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { InvestmentBaselinePreview } from '@/web/features/Scenario/InvestmentBaselinePreview';
 import { YieldPresetHelper } from '@/web/features/AssetForm/YieldPresetHelper';
 import { applyCurrentQuotes } from '@/core/usecases/investmentTracking/applyCurrentQuotes';
@@ -71,8 +71,7 @@ describe('ETF 시세와 수익률 갱신', () => {
     const onApply = vi.fn();
     const view = render(<InvestmentBaselinePreview currentParams={baseline.params} onApply={onApply} />);
     view.rerender(<InvestmentBaselinePreview currentParams={{ ...baseline.params, assets: [{ ...asset, averagePrice: 777 }] }} onApply={onApply} />);
-    resolvePrice(priceResponse());
-    await screen.findByText(/1,200 USD/);
+    await act(async () => { resolvePrice(priceResponse()); });
     expect(onApply).not.toHaveBeenCalled();
   });
 
@@ -84,8 +83,7 @@ describe('ETF 시세와 수익률 갱신', () => {
     const current = { ...baseline.params, assets: [{ ...asset, averagePrice: 120 }] };
     const view = render(<InvestmentBaselinePreview currentParams={current} onApply={onApply} />);
     view.rerender(<InvestmentBaselinePreview currentParams={{ ...current, assets: [{ ...current.assets[0], dividendYield: 4 }] }} onApply={onApply} />);
-    resolveDividend(dividendResponse());
-    await screen.findByText(/1,200 USD/);
+    await act(async () => { resolveDividend(dividendResponse()); });
     expect(onApply).not.toHaveBeenCalled();
   });
 
@@ -109,45 +107,19 @@ describe('ETF 시세와 수익률 갱신', () => {
     const automatic = { ...baseline.params, assets: [{ ...asset, averagePrice: 120, autoHistoricalReturn: true }], yieldPreset: 'custom' as const };
     const view = render(<InvestmentBaselinePreview currentParams={automatic} onApply={onApply} />);
     view.rerender(<InvestmentBaselinePreview currentParams={{ ...automatic, yieldPreset: 'base', assets: [{ ...automatic.assets[0], autoHistoricalReturn: false }] }} onApply={onApply} />);
-    resolveHistory(historyResponse());
-    await screen.findByText(/1,200 USD/);
+    await act(async () => { resolveHistory(historyResponse()); });
     expect(onApply).not.toHaveBeenCalled();
   });
 
-  it('기준 계획이 바뀐 뒤 늦게 도착한 이전 시세를 표시하지 않는다', async () => {
-    let resolveOld!: (response: Response) => void;
-    const fetchMock = vi.fn().mockImplementationOnce(() => new Promise<Response>((resolve) => { resolveOld = resolve; }))
-      .mockImplementation(() => Promise.resolve(Response.json({ price: 20, currency: 'USD', marketTime: 1700000000 })));
-    vi.stubGlobal('fetch', fetchMock);
-    const view = render(<InvestmentBaselinePreview baseline={baseline} />);
-    const next = { ...baseline, params: { ...baseline.params, assets: [{ ...asset, id: 'b', ticker: 'QQQ', name: 'QQQ', quantity: 2 }] } };
-    view.rerender(<InvestmentBaselinePreview baseline={next} />);
-    expect(await screen.findByText(/40 USD/)).toBeInTheDocument();
-    resolveOld(priceResponse());
-    await waitFor(() => expect(screen.queryByText(/1,200 USD/)).toBeNull());
-  });
-
-  it('새로고침은 다시 조회하고 이전 요청의 늦은 응답을 버린다', async () => {
-    let resolveOld!: (response: Response) => void;
-    const prices = vi.fn().mockImplementationOnce(() => new Promise<Response>((resolve) => { resolveOld = resolve; }))
-      .mockImplementation(() => Promise.resolve(Response.json({ price: 130, currency: 'USD', marketTime: 1700000000 })));
-    vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string) => url.startsWith('/api/stock-price') ? prices() : Promise.resolve(dividendResponse())));
-    render(<InvestmentBaselinePreview baseline={baseline} />);
-    fireEvent.click(screen.getByRole('button', { name: '시세·자동 수익률 새로고침' }));
-    expect(await screen.findByText(/1,300 USD/)).toBeInTheDocument();
-    resolveOld(priceResponse());
-    await waitFor(() => expect(screen.queryByText(/1,200 USD/)).toBeNull());
-  });
-
-  it('기준과 현재 수량이 다른 경우에만 같은 시세의 차이를 표시한다', async () => {
+  it('시세 목록을 표시하지 않고 현재 계획의 시세를 자동 반영한다', async () => {
     setMarketFetch();
-    const current = { ...baseline.params, assets: [{ ...asset, quantity: 12 }] };
-    const view = render(<InvestmentBaselinePreview baseline={baseline} currentParams={current} />);
-    expect(await screen.findByText(/동일 시세 수량 차이 \+240 USD/)).toBeInTheDocument();
-    view.rerender(<InvestmentBaselinePreview baseline={baseline} currentParams={baseline.params} />);
-    expect(screen.queryByText(/동일 시세 수량 차이/)).toBeNull();
-    view.rerender(<InvestmentBaselinePreview baseline={baseline} currentParams={{ ...current, assets: [{ ...asset, ticker: 'QQQ' }] }} />);
-    expect(screen.queryByText(/동일 시세 수량 차이/)).toBeNull();
+    const onApply = vi.fn();
+    render(<InvestmentBaselinePreview baseline={baseline} currentParams={baseline.params} onApply={onApply} />);
+    await waitFor(() => expect(onApply).toHaveBeenCalled());
+    expect(onApply.mock.calls[0][0]).toEqual([expect.objectContaining({ assetId: 'a', price: 120 })]);
+    expect(screen.queryByRole('region', { name: 'ETF 시세 참고' })).toBeNull();
+    expect(screen.queryByText('ETF 시세')).toBeNull();
+    expect(screen.queryByText(/1,200 USD/)).toBeNull();
   });
 
   it('통화가 다른 시세는 반영하지 않는다', async () => {
@@ -155,7 +127,7 @@ describe('ETF 시세와 수익률 갱신', () => {
       ? Response.json({ price: 120, currency: 'KRW', marketTime: 1700000000 }) : Response.json({ observedDividendYield: 2 })));
     const onApply = vi.fn();
     render(<InvestmentBaselinePreview currentParams={baseline.params} onApply={onApply} />);
-    expect(await screen.findByText(/시세 통화가 기준 통화와 달라/)).toBeInTheDocument();
+    expect(await screen.findByText(/시세를 조회하지 못해 기존 값을 유지/)).toBeInTheDocument();
     expect(onApply).not.toHaveBeenCalled();
   });
 });

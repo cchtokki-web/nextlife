@@ -3,7 +3,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { InvestmentAsset, SimulationParams } from '../../../core/entities/types';
 import { baselineReferenceValue } from '../../../core/usecases/investmentTracking/baselineReferenceValue';
-import { compareReferenceQuantities } from '../../../core/usecases/investmentTracking/compareReferenceQuantities';
 import { applyCurrentQuotes, type ObservedQuote } from '../../../core/usecases/investmentTracking/applyCurrentQuotes';
 import { applyHistoricalEtfReturns, type ObservedHistoricalReturn } from '../../../core/usecases/investmentTracking/applyHistoricalEtfReturns';
 import { applyObservedEtfDividends, type ObservedEtfDividend } from '../../../core/usecases/investmentTracking/applyObservedEtfDividends';
@@ -33,14 +32,13 @@ function historicalStatus(asset: InvestmentAsset, result: HistoricalAdjustedRetu
   return '자동 반영을 처리 중입니다.';
 }
 
-/** 기준 수량에 조회 시세를 곱한 참고값이다. 실제 계좌나 시뮬레이션 입력을 수정하지 않는다. */
+/** 화면 표시 없이 ETF 자료를 조회하고 유효한 변경을 현재 계획에 반영한다. */
 export function InvestmentBaselinePreview({ baseline, currentParams, onApply }: {
   baseline?: Baseline;
   currentParams?: SimulationParams;
   onApply?: (quotes: ObservedQuote[], returns?: ObservedHistoricalReturn[], dividends?: ObservedEtfDividend[]) => void;
 }) {
   const [batch, setBatch] = useState<QuoteBatch | null>(null);
-  const [refreshCount, setRefreshCount] = useState(0);
   const currentParamsRef = useRef(currentParams);
   const lastAutomaticBatch = useRef<QuoteBatch | null>(null);
   const automatic = true;
@@ -100,7 +98,7 @@ export function InvestmentBaselinePreview({ baseline, currentParams, onApply }: 
       if (!controller.signal.aborted) setBatch({ results, automatic, requestedAssets, historicalKey, historical, dividends, asOfDate: new Date().toISOString().slice(0, 10) });
     });
     return () => controller.abort();
-  }, [baseline, automatic, historicalKey, refreshCount, currentParams?.yieldPreset]);
+  }, [baseline, automatic, historicalKey, currentParams?.yieldPreset]);
 
   useEffect(() => {
     if (!batch || !currentParams || !onApply || lastAutomaticBatch.current === batch) return;
@@ -134,56 +132,11 @@ export function InvestmentBaselinePreview({ baseline, currentParams, onApply }: 
     }
   }, [automatic, batch, currentParams, onApply, historicalKey]);
 
-  const quotes = batch?.results ?? null;
-  const applicableQuotes: ObservedQuote[] = (quotes ?? []).flatMap((quote) => {
-    if ('error' in quote) return [];
-    if (currentParams && !currentParams.assets.some((asset) => asset.id === quote.asset.id
-      && asset.ticker === quote.asset.ticker && asset.currency === quote.asset.currency)) return [];
-    return [{ assetId: quote.asset.id, ticker: quote.asset.ticker, currency: quote.asset.currency,
-      price: quote.price, marketTime: quote.marketTime }];
-  });
-  const count = currentParams ? applyCurrentQuotes(currentParams, applicableQuotes).appliedCount : 0;
   return (
-    <section aria-label="ETF 시세 참고" className="mt-3 rounded-lg border border-card-border p-3 text-sm">
-      <h3 className="font-semibold">ETF 시세</h3>
-      <p className="mt-1 text-xs text-foreground-muted">
-        수량은 자동 갱신되지 않아 실제 잔고와 다를 수 있습니다. 시세는 세금 추정에도 반영됩니다.
-      </p>
-      <button type="button" className="mt-2 rounded-lg border border-card-border px-3 py-2 text-xs font-semibold" onClick={() => {
-        setBatch(null);
-        setRefreshCount((count) => count + 1);
-      }}>시세·자동 수익률 새로고침</button>
-      {quotes === null ? <p role="status">시세를 조회하고 있습니다.</p> : quotes.length === 0 ? (
-        <p>{batch?.historical.length ? '현재 단가 자동 조회는 꺼져 있습니다.' : '조회할 ETF가 없습니다.'}</p>
-      ) : (
-        <ul className="mt-3 divide-y divide-card-border">
-          {quotes.map((quote) => {
-            const comparison = quote.baseline && !('error' in quote) && baseline && currentParams
-              ? compareReferenceQuantities(quote.asset, baseline.params.assets, currentParams.assets, quote.price) : null;
-            const showDifference = comparison !== null && comparison.currentQuantity !== quote.asset.quantity;
-            const matches = !quote.baseline ? currentParams?.assets.filter((asset) => asset.id === quote.asset.id) ?? [] : [];
-            const current = matches.length === 1 && matches[0].type === 'etf' && matches[0].ticker === quote.asset.ticker
-              && matches[0].currency === quote.asset.currency ? matches[0] : undefined;
-            const currentValue = current && !('error' in quote) ? baselineReferenceValue(current.quantity, current.currency, quote.price, quote.asset.currency) : null;
-            const quantity = comparison?.currentQuantity ?? (currentValue !== null ? current?.quantity : undefined) ?? quote.asset.quantity;
-            const value = comparison?.currentValue ?? currentValue ?? ('error' in quote ? null : quote.value);
-            return (
-              <li key={`${quote.asset.id}:${quote.asset.ticker}:${quote.asset.currency}`} className="py-3">
-                <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-                  <span className="font-semibold">{quote.asset.name || quote.asset.ticker}{quote.asset.name && quote.asset.name !== quote.asset.ticker ? ` (${quote.asset.ticker})` : ''}</span>
-                  {value !== null && <span className="font-semibold">{value.toLocaleString('ko-KR', { maximumFractionDigits: 2 })} {quote.asset.currency}</span>}
-                </div>
-                {'error' in quote ? <p className="mt-1 text-xs text-foreground-muted">{quote.error}</p> : (
-                  <>
-                    <p className="mt-1 text-xs text-foreground-muted">{comparison || currentValue !== null ? '현재 입력' : quote.baseline ? '기준 수량' : '조회 당시 수량'} {quantity.toLocaleString('ko-KR', { maximumFractionDigits: 8 })}주 · 시세 {quote.price.toLocaleString('ko-KR')} {quote.asset.currency}</p>
-                    <p className="mt-1 text-xs text-foreground-muted">시세 기준: {new Date(quote.marketTime * 1000).toLocaleString('ko-KR')}</p>
-                    {showDifference && <p className="mt-1 text-xs text-foreground-muted">기준 {quote.asset.quantity.toLocaleString('ko-KR', { maximumFractionDigits: 8 })}주 · 동일 시세 수량 차이 {comparison.difference > 0 ? '+' : ''}{comparison.difference.toLocaleString('ko-KR', { maximumFractionDigits: 2 })} {quote.asset.currency} (수익률 아님)</p>}
-                  </>
-                )}
-              </li>
-            );
-          })}
-        </ul>
+    <>
+      {batch?.results.some((quote) => 'error' in quote && currentParams?.assets.some((asset) =>
+        asset.id === quote.asset.id && asset.ticker === quote.asset.ticker && asset.currency === quote.asset.currency)) && (
+        <p role="alert" className="mt-2 text-xs text-foreground-muted">일부 ETF 시세를 조회하지 못해 기존 값을 유지합니다.</p>
       )}
       {batch?.historicalKey === historicalKey && batch.historical.some(({ asset, result }) => !result
         || historicalStatus(asset, result, currentParams, batch.asOfDate).includes('자동 반영하지 않았습니다')) && (
@@ -192,13 +145,6 @@ export function InvestmentBaselinePreview({ baseline, currentParams, onApply }: 
       {batch?.historicalKey === historicalKey && batch.dividends.some(({ dividendYield }) => dividendYield === null) && (
         <p role="alert" className="mt-2 text-xs text-foreground-muted">일부 ETF 배당률을 조회하지 못해 기존 값을 유지합니다.</p>
       )}
-      {currentParams && onApply && count > 0 && (
-        <div className="mt-3">
-          <button type="button" className="mt-2 rounded-lg border border-primary px-3 py-2 text-xs font-semibold text-primary" onClick={() => onApply(applicableQuotes)}>
-            시세 {count}개 반영
-          </button>
-        </div>
-      )}
-    </section>
+    </>
   );
 }
