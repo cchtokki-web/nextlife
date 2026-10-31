@@ -12,6 +12,7 @@ import { ReturnBreakdownHint } from './ReturnBreakdownHint';
 import { YieldPresetHelper } from './YieldPresetHelper';
 import { initialParams } from '../../../infrastructure/storage/localStore';
 import { resolveStrategy } from '../../../core/usecases/strategy/compileStrategy';
+import { applyEtfYieldPreset, YIELD_PRESET_LABELS, YIELD_PRESET_RATES } from '../../../core/usecases/scenario/applyYieldPreset';
 import {
   convertContributionAmount,
   roundContributionForCurrency,
@@ -92,6 +93,7 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
   const [expandedIsa, setExpandedIsa] = useState<Record<string, boolean>>({});
   const [fetchingPriceMap, setFetchingPriceMap] = useState<Record<string, boolean>>({});
   const [fetchingInfoMap, setFetchingInfoMap] = useState<Record<string, boolean>>({});
+  const [assetInfoErrors, setAssetInfoErrors] = useState<Record<string, { ticker: string; message: string } | undefined>>({});
   const [focusedAssetId, setFocusedAssetId] = useState<string | null>(null);
   const [realtimeSuggestions, setRealtimeSuggestions] = useState<Record<string, StockSuggestion[]>>({});
   const [isSearching, setIsSearching] = useState<Record<string, boolean>>({});
@@ -175,31 +177,44 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
     }
   };
 
-  const fetchAssetInfo = async (id: string, ticker: string) => {
+  const fetchAssetInfo = async (id: string, ticker: string, selectedValues?: { totalReturn: number; dividendYield: number }) => {
     if (!ticker || ticker === 'NEW') return;
+    const requested = params.assets.filter((asset) => asset.id === id);
+    if (requested.length !== 1) return;
+    if (!selectedValues && requested[0].ticker !== ticker) return;
+    const originalReturn = selectedValues?.totalReturn ?? requested[0].totalReturn;
+    const originalDividend = selectedValues?.dividendYield ?? requested[0].dividendYield;
     setFetchingInfoMap((prev) => ({ ...prev, [id]: true }));
+    setAssetInfoErrors((prev) => ({ ...prev, [id]: undefined }));
     try {
       const res = await fetch(`/api/stock-info?ticker=${encodeURIComponent(ticker)}`);
-      if (res.ok) {
-        const data = await res.json();
-        if (data.totalReturn !== undefined || data.dividendYield !== undefined) {
+      if (!res.ok) throw new Error('조회 실패');
+      const data: unknown = await res.json();
+      if (data && typeof data === 'object' && 'totalReturn' in data && 'dividendYield' in data
+        && typeof data.totalReturn === 'number' && Number.isFinite(data.totalReturn)
+        && typeof data.dividendYield === 'number' && Number.isFinite(data.dividendYield)) {
+          const { totalReturn, dividendYield } = data;
           onChangeParams((prevParams: SimulationParams) => {
+            if (prevParams.assets.filter((asset) => asset.id === id).length !== 1) return prevParams;
+            let changed = false;
             const updated = prevParams.assets.map((asset) => {
-              if (asset.id === id) {
+              if (asset.id === id && asset.ticker === ticker
+                && asset.totalReturn === originalReturn && asset.dividendYield === originalDividend) {
+                changed = true;
                 return {
                   ...asset,
-                  ...(data.totalReturn !== undefined && { totalReturn: data.totalReturn }),
-                  ...(data.dividendYield !== undefined && { dividendYield: data.dividendYield }),
+                  totalReturn,
+                  dividendYield,
                 };
               }
               return asset;
             });
-            return { ...prevParams, assets: updated, yieldPreset: 'custom' };
+            return changed ? { ...prevParams, assets: updated, yieldPreset: 'custom' } : prevParams;
           });
-        }
-      }
+      } else throw new Error('수익률 자료 누락');
     } catch (err) {
       console.error('Failed to fetch asset info:', err);
+      setAssetInfoErrors((prev) => ({ ...prev, [id]: { ticker, message: '수익률을 조회하지 못했습니다. 기존 입력값을 유지합니다.' } }));
     } finally {
       setFetchingInfoMap((prev) => ({ ...prev, [id]: false }));
     }
@@ -555,7 +570,7 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
             totalReturn: pa.totalReturn,
             dividendYield: pa.dividendYield,
           });
-          fetchAssetInfo(id, pa.ticker);
+          fetchAssetInfo(id, pa.ticker, { totalReturn: pa.totalReturn, dividendYield: pa.dividendYield });
           fetchAssetPrice(id, pa.ticker);
         } else if (type === 'pension') {
           handleUpdatePrivatePension(id, {
@@ -764,7 +779,7 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                                       });
                                       setFocusedAssetId(null);
                                       setAutocompleteIndex(-1);
-                                      fetchAssetInfo(asset.id, pa.ticker);
+                                      fetchAssetInfo(asset.id, pa.ticker, { totalReturn: pa.totalReturn, dividendYield: pa.dividendYield });
                                       fetchAssetPrice(asset.id, pa.ticker);
                                       setTimeout(() => { isSelectingRef.current[asset.id] = false; }, 200);
                                     }}
@@ -861,6 +876,24 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                         suffixText={asset.currency === 'KRW' ? '원' : asset.currency}
                       />
                       <div className={styles.returnFieldGroup}>
+                        {asset.type === 'etf' && (
+                          <div role="group" aria-label={`${asset.name || asset.ticker} 수익률 입력 도우미`} className={styles.yieldPresetHelper}>
+                            <span className={styles.yieldPresetLabel}>이 ETF의 총수익률 채우기</span>
+                            {(['conservative', 'base', 'aggressive'] as const).map((preset) => (
+                              <button key={preset} type="button" className={styles.yieldPresetButton}
+                                onClick={() => onChangeParams((previous) => applyEtfYieldPreset(previous, asset.id, preset))}>
+                                {YIELD_PRESET_LABELS[preset]} {YIELD_PRESET_RATES[preset].stockGrowth}%
+                              </button>
+                            ))}
+                            <button type="button" className={styles.yieldPresetButton}
+                              disabled={fetchingInfoMap[asset.id] || !asset.ticker || asset.ticker === 'NEW'}
+                              onClick={() => fetchAssetInfo(asset.id, asset.ticker)}>
+                              과거 자료로 채우기
+                            </button>
+                            <p className="basis-full text-xs text-foreground-muted">세 단계는 기존 공통 가정이며 ETF별 예측이 아닙니다. 선택하면 배당률도 기존 프리셋 규칙에 따라 조정됩니다. 과거 자료 조회는 가격 성장률이 음수면 0%로 처리하고 총수익률을 9.5%로 제한합니다. 자료가 부족하면 기본값을 사용하며 자동 갱신하지 않습니다.</p>
+                            {assetInfoErrors[asset.id]?.ticker === asset.ticker && <p role="alert">{assetInfoErrors[asset.id]?.message}</p>}
+                          </div>
+                        )}
                         <div className={styles.priceInputWrapper}>
                           <div className={styles.priceInputGrow}>
                             <NumberField

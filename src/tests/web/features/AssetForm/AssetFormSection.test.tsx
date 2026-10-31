@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { describe, test, expect, vi, beforeAll } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { act, render, screen, fireEvent, within } from '@testing-library/react';
 import { AssetFormSection } from '@/web/features/AssetForm/AssetFormSection';
 import { SimulationParams } from '@/core/entities/types';
 import { DEFAULT_RETIREMENT_STRATEGY } from '@/core/usecases/strategy/compileStrategy';
@@ -86,6 +86,93 @@ describe('AssetFormSection - 수익률 입력은 전략에 잠기지 않는다',
     // 수익률 입력은 자산 카드를 펼쳐야 보인다.
     fireEvent.click(screen.getByText('자산1'));
   };
+
+  test('ETF별 프리셋은 선택한 자산만 변경한다', () => {
+    const changed = vi.fn();
+    render(<AssetFormSection params={withAsset} onChangeParams={changed} />);
+    fireEvent.click(screen.getByText('자산1'));
+    const group = screen.getByRole('group', { name: '자산1 수익률 입력 도우미' });
+    fireEvent.click(within(group).getByRole('button', { name: '중립 7%' }));
+    const updater = changed.mock.calls[0][0] as (prev: SimulationParams) => SimulationParams;
+    const result = updater(withAsset);
+    expect(result.assets[0].totalReturn).toBe(7);
+    expect(result.assets[0].dividendYield).toBeCloseTo(7 / 6);
+  });
+
+  test('조회 도중 수익률을 변경하면 늦게 온 조회값이 덮어쓰지 않는다', async () => {
+    let resolveFetch!: (value: Response) => void;
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(() => new Promise<Response>((resolve) => { resolveFetch = resolve; })));
+    function Harness() {
+      const [params, setParams] = useState(withAsset);
+      return <AssetFormSection params={params} onChangeParams={setParams} />;
+    }
+    try {
+      render(<Harness />);
+      fireEvent.click(screen.getByText('자산1'));
+      const group = screen.getByRole('group', { name: '자산1 수익률 입력 도우미' });
+      fireEvent.click(within(group).getByRole('button', { name: '과거 자료로 채우기' }));
+      fireEvent.click(within(group).getByRole('button', { name: '중립 7%' }));
+      await act(async () => { resolveFetch(Response.json({ totalReturn: 9.5, dividendYield: 1 })); });
+      expect(screen.getByLabelText('연 총수익률')).toHaveValue(7);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  test('과거 자료 조회에 성공하면 해당 ETF의 수익률을 채운다', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({ totalReturn: 8.2, dividendYield: 1.3 })));
+    function Harness() {
+      const [params, setParams] = useState(withAsset);
+      return <AssetFormSection params={params} onChangeParams={setParams} />;
+    }
+    try {
+      render(<Harness />);
+      fireEvent.click(screen.getByText('자산1'));
+      const group = screen.getByRole('group', { name: '자산1 수익률 입력 도우미' });
+      fireEvent.click(within(group).getByRole('button', { name: '과거 자료로 채우기' }));
+      expect(await screen.findByDisplayValue('8.2')).toBeInTheDocument();
+      expect(screen.getByLabelText('연 배당률')).toHaveValue(1.3);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  test('자동완성으로 새 종목을 선택해도 해당 종목의 조회값을 채운다', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(async (url: string) => {
+      if (url.startsWith('/api/stock-info')) return Response.json({ totalReturn: 8.2, dividendYield: 1.3 });
+      if (url.startsWith('/api/stock-price')) return Response.json({ price: 100, currency: 'USD' });
+      return Response.json({ results: [] });
+    }));
+    function Harness() {
+      const [params, setParams] = useState(withAsset);
+      return <AssetFormSection params={params} onChangeParams={setParams} />;
+    }
+    try {
+      render(<Harness />);
+      fireEvent.click(screen.getByText('자산1'));
+      fireEvent.change(screen.getByLabelText('종목명'), { target: { value: 'VOO' } });
+      fireEvent.click(screen.getByText('Vanguard S&P 500 ETF'));
+      expect(await screen.findByDisplayValue('8.2')).toBeInTheDocument();
+      expect(screen.getByLabelText('연 배당률')).toHaveValue(1.3);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  test('조회 실패를 알리고 기존 입력값을 유지한다', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(null, { status: 502 })));
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      renderExpanded(withAsset);
+      const group = screen.getByRole('group', { name: '자산1 수익률 입력 도우미' });
+      fireEvent.click(within(group).getByRole('button', { name: '과거 자료로 채우기' }));
+      expect(await within(group).findByRole('alert')).toHaveTextContent('기존 입력값을 유지합니다');
+      expect(screen.getByLabelText('연 총수익률')).toHaveValue(12);
+    } finally {
+      error.mockRestore();
+      vi.unstubAllGlobals();
+    }
+  });
 
   test('리스크 성향이 custom이어도 연 총수익률 입력은 열려 있고 안내 문구가 없다', () => {
     renderExpanded({

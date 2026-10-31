@@ -1,6 +1,7 @@
 import { describe, test, expect } from 'vitest';
 import {
   applyYieldPreset,
+  applyEtfYieldPreset,
   matchedYieldPreset,
   matchesCustomYieldSnapshot,
   restoreCustomYieldPreset,
@@ -41,6 +42,25 @@ const baseParams: SimulationParams = {
 };
 
 describe('applyYieldPreset', () => {
+  test('개별 ETF에만 기존 프리셋을 적용하고 배당 비중을 유지한다', () => {
+    const etf = { ...baseParams.assets[0], type: 'etf' as const, totalReturn: 10, dividendYield: 4 };
+    const other = { ...etf, id: 'a2', totalReturn: 12 };
+    const params = { ...baseParams, assets: [etf, other] };
+    const result = applyEtfYieldPreset(params, etf.id, 'conservative');
+    expect(result.assets[0].totalReturn).toBe(5);
+    expect(result.assets[0].dividendYield).toBe(2);
+    expect(result.assets[1]).toBe(other);
+    expect(result.privatePensions).toBe(params.privatePensions);
+    expect(result.yieldPreset).toBe('custom');
+    expect(params.assets[0].totalReturn).toBe(10);
+  });
+
+  test('중복 ID 또는 ETF가 아닌 자산에는 적용하지 않는다', () => {
+    expect(applyEtfYieldPreset(baseParams, 'a1', 'base')).toBe(baseParams);
+    const etf = { ...baseParams.assets[0], type: 'etf' as const };
+    const duplicate = { ...baseParams, assets: [etf, etf] };
+    expect(applyEtfYieldPreset(duplicate, etf.id, 'base')).toBe(duplicate);
+  });
   test('conservative 프리셋은 자산 totalReturn를 5, 연금 totalReturn을 3으로 설정한다', () => {
     const result = applyYieldPreset(baseParams, 'conservative');
     expect(result.assets[0].totalReturn).toBe(5);

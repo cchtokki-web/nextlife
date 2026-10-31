@@ -96,6 +96,23 @@ export function applyYieldPreset(
   };
 }
 
+/** 단일 ETF의 입력 도우미. 다른 자산이나 일괄 복원 스냅샷은 변경하지 않는다. */
+export function applyEtfYieldPreset(
+  params: SimulationParams,
+  assetId: string,
+  preset: keyof typeof YIELD_PRESET_RATES,
+): SimulationParams {
+  const matching = params.assets.filter((asset) => asset.id === assetId);
+  if (matching.length !== 1 || matching[0].type !== 'etf') return params;
+  const totalReturn = YIELD_PRESET_RATES[preset].stockGrowth;
+  if (matching[0].totalReturn === totalReturn) return params;
+  return {
+    ...params,
+    assets: params.assets.map((asset) => asset.id === assetId ? applyToMarketAccount(asset, totalReturn) : asset),
+    yieldPreset: 'custom',
+  };
+}
+
 /**
  * 지금 저장된 수익률이 «어느 프리셋의 값과 같은가». 어느 것과도 같지 않으면 undefined다.
  *
