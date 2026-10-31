@@ -385,6 +385,7 @@ function normalizeAsset(raw: Record<string, unknown>, index: number): Investment
     quantity: finite(raw.quantity, 0),
     averagePrice: finite(raw.averagePrice, 0),
     totalReturn: finite(raw.totalReturn, 0),
+    ...onlyIfPresent(raw, 'autoHistoricalReturn', (v) => typeof v === 'boolean' ? v : undefined),
     dividendYield: finite(raw.dividendYield, 0),
     monthlyContribution: finite(raw.monthlyContribution, 0),
     reinvestDividend: bool(raw.reinvestDividend, false),

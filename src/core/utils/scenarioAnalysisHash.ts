@@ -49,6 +49,10 @@ function omit(source: Record<string, unknown>, keys: readonly string[]): Record<
 
 function hashableParams(params: SimulationParams): Record<string, unknown> {
   const next = omit(params as unknown as Record<string, unknown>, DISPLAY_ONLY_PARAM_KEYS);
+  if (Array.isArray(next.assets)) {
+    next.assets = next.assets.map((asset: unknown) => asset && typeof asset === 'object'
+      ? omit(asset as Record<string, unknown>, ['autoHistoricalReturn']) : asset);
+  }
   const strategy = next.strategy;
   if (strategy !== null && typeof strategy === 'object') {
     next.strategy = omit(strategy as Record<string, unknown>, DISPLAY_ONLY_STRATEGY_KEYS);

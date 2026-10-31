@@ -85,7 +85,8 @@ export function applyYieldPreset(
 
   return {
     ...params,
-    assets: (params.assets ?? []).map((a) => applyToMarketAccount(a, stockGrowth)),
+    assets: (params.assets ?? []).map((a) => ({ ...applyToMarketAccount(a, stockGrowth),
+      ...(a.autoHistoricalReturn ? { autoHistoricalReturn: false } : {}) })),
     // **사적연금은 분해하지 않는다.** 연금 계좌 안에서는 배당세도 재투자 선택지도 없어
     // 총수익률만이 결과를 결정한다(decomposeReturn.ts의 명시적 규약). 그래서 배당률을
     // 함께 옮길 대상이 아니다.
@@ -105,10 +106,11 @@ export function applyEtfYieldPreset(
   const matching = params.assets.filter((asset) => asset.id === assetId);
   if (matching.length !== 1 || matching[0].type !== 'etf') return params;
   const totalReturn = YIELD_PRESET_RATES[preset].stockGrowth;
-  if (matching[0].totalReturn === totalReturn) return params;
+  if (matching[0].totalReturn === totalReturn && !matching[0].autoHistoricalReturn) return params;
   return {
     ...params,
-    assets: params.assets.map((asset) => asset.id === assetId ? applyToMarketAccount(asset, totalReturn) : asset),
+    assets: params.assets.map((asset) => asset.id === assetId ? { ...applyToMarketAccount(asset, totalReturn),
+      ...(asset.autoHistoricalReturn ? { autoHistoricalReturn: false } : {}) } : asset),
     yieldPreset: 'custom',
   };
 }
@@ -214,7 +216,8 @@ export function restoreCustomYieldPreset(params: SimulationParams): SimulationPa
 
   return {
     ...params,
-    assets: (params.assets ?? []).map((a) => (a.id in snapshot.assets ? { ...a, totalReturn: snapshot.assets[a.id] } : a)),
+    assets: (params.assets ?? []).map((a) => (a.id in snapshot.assets ? { ...a, totalReturn: snapshot.assets[a.id],
+      ...(a.autoHistoricalReturn ? { autoHistoricalReturn: false } : {}) } : a)),
     privatePensions: (params.privatePensions ?? []).map((p) =>
       p.id in snapshot.privatePensions ? { ...p, totalReturn: snapshot.privatePensions[p.id] } : p
     ),

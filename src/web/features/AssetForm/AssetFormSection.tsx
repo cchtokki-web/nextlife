@@ -185,6 +185,7 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
     if (!selectedValues && requested[0].ticker !== ticker) return;
     const originalReturn = selectedValues?.totalReturn ?? requested[0].totalReturn;
     const originalDividend = selectedValues?.dividendYield ?? requested[0].dividendYield;
+    const originalAuto = selectedValues ? false : requested[0].autoHistoricalReturn === true;
     setFetchingInfoMap((prev) => ({ ...prev, [id]: true }));
     setAssetInfoErrors((prev) => ({ ...prev, [id]: undefined }));
     try {
@@ -200,12 +201,14 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
             let changed = false;
             const updated = prevParams.assets.map((asset) => {
               if (asset.id === id && asset.ticker === ticker
-                && asset.totalReturn === originalReturn && asset.dividendYield === originalDividend) {
+                && asset.totalReturn === originalReturn && asset.dividendYield === originalDividend
+                && (asset.autoHistoricalReturn === true) === originalAuto) {
                 changed = true;
                 return {
                   ...asset,
                   totalReturn,
                   dividendYield,
+                  ...(asset.autoHistoricalReturn ? { autoHistoricalReturn: false } : {}),
                 };
               }
               return asset;
@@ -373,9 +376,11 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                 };
               }
             }
-            return { ...asset, [key]: value };
+            return { ...asset, [key]: value,
+              ...(key === 'totalReturn' && asset.autoHistoricalReturn ? { autoHistoricalReturn: false } : {}) };
           } else {
-            return { ...asset, ...updates };
+            return { ...asset, ...updates,
+              ...(('totalReturn' in updates || 'ticker' in updates) && asset.autoHistoricalReturn ? { autoHistoricalReturn: false } : {}) };
           }
         }
         return asset;
@@ -896,8 +901,18 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                             <EtfHistoricalReturn ticker={asset.ticker} onApply={(ticker, value) => onChangeParams((previous) => {
                               const matching = previous.assets.filter((item) => item.id === asset.id);
                               if (matching.length !== 1 || matching[0].ticker !== ticker || matching[0].type !== 'etf') return previous;
-                              return { ...previous, assets: previous.assets.map((item) => item.id === asset.id ? { ...item, totalReturn: value } : item), yieldPreset: 'custom' };
+                              return { ...previous, assets: previous.assets.map((item) => item.id === asset.id ? { ...item, totalReturn: value,
+                                ...(item.autoHistoricalReturn ? { autoHistoricalReturn: false } : {}) } : item), yieldPreset: 'custom' };
                             })} />
+                            <label className="basis-full flex items-start gap-2 text-xs">
+                              <input type="checkbox" disabled={!asset.ticker || asset.ticker === 'NEW'} checked={asset.autoHistoricalReturn === true} onChange={(event) => {
+                                const enabled = event.target.checked;
+                                onChangeParams((previous) => previous.assets.filter((item) => item.id === asset.id).length !== 1 ? previous
+                                  : { ...previous, assets: previous.assets.map((item) => item.id === asset.id ? { ...item, autoHistoricalReturn: enabled } : item) });
+                              }} />
+                              <span>이 ETF의 과거 연환산 수익률을 시나리오를 열 때 자동 반영</span>
+                            </label>
+                            <p className="basis-full text-xs text-foreground-muted">과거 수익률을 미래 가정에 사용합니다. 미래 성과를 보장하지 않으며 배당률은 유지됩니다. 자료가 누락되거나 30일 이상 오래되면 기존 값을 유지합니다.</p>
                           </div>
                         )}
                         <div className={styles.priceInputWrapper}>

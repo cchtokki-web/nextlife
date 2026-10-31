@@ -39,6 +39,50 @@ describe('기준 수량 시세 참고', () => {
     expect(onApply).toHaveBeenCalledTimes(1);
   });
 
+  it('시세와 과거 수익률 자동 반영을 같은 시나리오 변경으로 함께 전달한다', async () => {
+    const today = new Date().toISOString().slice(0, 10);
+    const start = `${Number(today.slice(0, 4)) - 2}-01-01`;
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(async (url: string) => url.startsWith('/api/stock-history')
+      ? Response.json({ prices: [{ date: start, adjustedClose: 100 }, { date: today, adjustedClose: 120 }] })
+      : Response.json({ price: 120, currency: 'USD', marketTime: 1700000000 })));
+    const onApply = vi.fn();
+    const selected = { ...asset, autoHistoricalReturn: true };
+    const current = { ...baseline.params, assets: [selected], autoUpdateEtfPrices: true };
+    render(<InvestmentBaselinePreview currentParams={current} onApply={onApply} />);
+    await waitFor(() => expect(onApply).toHaveBeenCalledTimes(1));
+    expect(onApply.mock.calls[0][0]).toEqual([expect.objectContaining({ assetId: 'a', price: 120 })]);
+    expect(onApply.mock.calls[0][1]).toEqual([expect.objectContaining({ assetId: 'a', ticker: 'VOO', endDate: today, missingPoints: 0 })]);
+  });
+
+  it('자동 수익률만 켜도 누락된 자료를 기존 값에 반영하지 않는다', async () => {
+    const today = new Date().toISOString().slice(0, 10);
+    const start = `${Number(today.slice(0, 4)) - 2}-01-01`;
+    const middle = `${Number(today.slice(0, 4)) - 1}-01-01`;
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({ prices: [
+      { date: start, adjustedClose: 100 }, { date: middle, adjustedClose: null }, { date: today, adjustedClose: 120 },
+    ] })));
+    const onApply = vi.fn();
+    const selected = { ...asset, autoHistoricalReturn: true };
+    render(<InvestmentBaselinePreview currentParams={{ ...baseline.params, assets: [selected] }} onApply={onApply} />);
+    expect(await screen.findByText(/누락 1건/)).toBeInTheDocument();
+    expect(onApply).not.toHaveBeenCalled();
+  });
+
+  it('과거 수익률 조회 중 직접 수정한 값은 늦은 응답으로 덮지 않는다', async () => {
+    const today = new Date().toISOString().slice(0, 10);
+    const start = `${Number(today.slice(0, 4)) - 2}-01-01`;
+    let resolveHistory!: (response: Response) => void;
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(() => new Promise<Response>((resolve) => { resolveHistory = resolve; })));
+    const onApply = vi.fn();
+    const selected = { ...asset, autoHistoricalReturn: true };
+    const current = { ...baseline.params, assets: [selected] };
+    const view = render(<InvestmentBaselinePreview currentParams={current} onApply={onApply} />);
+    view.rerender(<InvestmentBaselinePreview currentParams={{ ...current, assets: [{ ...selected, totalReturn: 20 }] }} onApply={onApply} />);
+    resolveHistory(Response.json({ prices: [{ date: start, adjustedClose: 100 }, { date: today, adjustedClose: 120 }] }));
+    expect(await screen.findByText(/연환산/)).toBeInTheDocument();
+    expect(onApply).not.toHaveBeenCalled();
+  });
+
   it('자동 조회 중 단가를 직접 변경하면 늦은 응답으로 덮지 않는다', async () => {
     let resolveQuote!: (response: Response) => void;
     vi.stubGlobal('fetch', vi.fn().mockImplementation(() => new Promise<Response>((resolve) => { resolveQuote = resolve; })));

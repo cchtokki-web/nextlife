@@ -55,6 +55,13 @@ describe('applyYieldPreset', () => {
     expect(params.assets[0].totalReturn).toBe(10);
   });
 
+  test('개별 또는 일괄 프리셋을 선택하면 기존 자동 수익률 모드를 해제한다', () => {
+    const etf = { ...baseParams.assets[0], type: 'etf' as const, totalReturn: 7, autoHistoricalReturn: true };
+    const params = { ...baseParams, assets: [etf] };
+    expect(applyEtfYieldPreset(params, etf.id, 'base').assets[0].autoHistoricalReturn).toBe(false);
+    expect(applyYieldPreset(params, 'base').assets[0].autoHistoricalReturn).toBe(false);
+  });
+
   test('중복 ID 또는 ETF가 아닌 자산에는 적용하지 않는다', () => {
     expect(applyEtfYieldPreset(baseParams, 'a1', 'base')).toBe(baseParams);
     const etf = { ...baseParams.assets[0], type: 'etf' as const };

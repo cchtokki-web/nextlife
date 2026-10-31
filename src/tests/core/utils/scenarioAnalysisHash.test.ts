@@ -13,6 +13,10 @@ import type { SimulationParams } from '@/core/entities/types';
 const params: SimulationParams = initialParams;
 
 describe('scenarioAnalysisHash', () => {
+  it('ETF 자동 수익률 설정만 바꿔도 분석 해시는 유지한다', () => {
+    const assets = params.assets.map((asset, index) => index === 0 ? { ...asset, autoHistoricalReturn: true } : asset);
+    expect(scenarioAnalysisHash({ ...params, assets })).toBe(scenarioAnalysisHash(params));
+  });
   it('자동 시세 설정만 바꾸면 분석 입력 해시를 바꾸지 않는다', () => {
     expect(scenarioAnalysisHash({ ...params, autoUpdateEtfPrices: true })).toBe(scenarioAnalysisHash(params));
   });

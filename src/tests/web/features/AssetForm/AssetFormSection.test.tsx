@@ -99,6 +99,22 @@ describe('AssetFormSection - 수익률 입력은 전략에 잠기지 않는다',
     expect(result.assets[0].dividendYield).toBeCloseTo(7 / 6);
   });
 
+  test('자동 수익률 선택 후 프리셋을 선택하면 자동 모드를 해제한다', () => {
+    function Harness() {
+      const [params, setParams] = useState(withAsset);
+      return <AssetFormSection params={params} onChangeParams={setParams} />;
+    }
+    render(<Harness />);
+    fireEvent.click(screen.getByText('자산1'));
+    const group = screen.getByRole('group', { name: '자산1 수익률 입력 도우미' });
+    const checkbox = within(group).getByRole('checkbox', { name: '이 ETF의 과거 연환산 수익률을 시나리오를 열 때 자동 반영' });
+    fireEvent.click(checkbox);
+    expect(checkbox).toBeChecked();
+    fireEvent.click(within(group).getByRole('button', { name: '중립 7%' }));
+    expect(checkbox).not.toBeChecked();
+    expect(screen.getByLabelText('연 총수익률')).toHaveValue(7);
+  });
+
   test('수정 종가 수익률을 확인 후 적용하면 배당률은 유지된다', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({ prices: [
       { date: '2020-01-01', adjustedClose: 100 }, { date: '2025-01-01', adjustedClose: 200 },

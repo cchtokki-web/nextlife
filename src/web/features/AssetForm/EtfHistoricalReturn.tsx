@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { historicalAdjustedReturn, type AdjustedPricePoint, type HistoricalAdjustedReturn } from '../../../core/usecases/returns/historicalAdjustedReturn';
+import type { HistoricalAdjustedReturn } from '../../../core/usecases/returns/historicalAdjustedReturn';
+import { fetchEtfHistoricalReturn } from './fetchEtfHistoricalReturn';
 import styles from './AssetForm.module.css';
 
 interface Result { ticker: string; result: HistoricalAdjustedReturn; }
@@ -21,22 +22,8 @@ export function EtfHistoricalReturn({ ticker, onApply }: { ticker: string; onApp
     setLoadingTicker(ticker);
     setError(null);
     setResult(null);
-    const end = new Date();
-    const start = new Date(end);
-    start.setUTCFullYear(start.getUTCFullYear() - 5);
-    const query = new URLSearchParams({ ticker, start: start.toISOString().slice(0, 10), end: end.toISOString().slice(0, 10) });
     try {
-      const response = await fetch(`/api/stock-history?${query}`, { signal: request.signal, cache: 'no-store' });
-      if (!response.ok) throw new Error('조회 실패');
-      const data: unknown = await response.json();
-      if (!data || typeof data !== 'object' || !('prices' in data) || !Array.isArray(data.prices)) throw new Error('자료 누락');
-      const points: AdjustedPricePoint[] = data.prices.map((item: unknown) => {
-        if (!item || typeof item !== 'object' || !('date' in item) || typeof item.date !== 'string'
-          || !('adjustedClose' in item) || (item.adjustedClose !== null && typeof item.adjustedClose !== 'number')) throw new Error('자료 오류');
-        return { date: item.date, adjustedClose: item.adjustedClose };
-      });
-      const computed = historicalAdjustedReturn(points);
-      if (!computed) throw new Error('1년 이상의 유효한 수정 종가가 없습니다.');
+      const computed = await fetchEtfHistoricalReturn(ticker, request.signal);
       if (!request.signal.aborted) setResult({ ticker, result: computed });
     } catch {
       if (!request.signal.aborted) setError({ ticker, message: '1년 이상의 유효한 수정 종가를 조회하지 못했습니다. 기존 입력값을 유지합니다.' });

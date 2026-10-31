@@ -31,6 +31,8 @@ export interface InvestmentAsset {
   averagePrice: number;
   /** 배당을 포함한 연 총수익률. % 단위, 예: 10.5% -> 10.5 */
   totalReturn: number;
+  /** 사용자가 켠 경우 수정 종가의 과거 연환산 수익률을 시나리오를 열 때 조회한다. */
+  autoHistoricalReturn?: boolean;
   /**
    * totalReturn 중 «현금으로 분배되는» 비율. % 단위, 예: 3% -> 3
    *

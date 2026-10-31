@@ -7,7 +7,8 @@ describe('분석 입력 동일성', () => {
     expect(sameAnalysisInputs(initialParams, { ...initialParams, autoUpdateEtfPrices: true })).toBe(true);
   });
   it('다른 실제 입력이면 분석 요청을 다시 쓰지 않는다', () => {
-    expect(sameAnalysisInputs(initialParams, { ...initialParams, assets: [...initialParams.assets] })).toBe(false);
+    expect(sameAnalysisInputs(initialParams, { ...initialParams, assets: [{ ...initialParams.assets[0], autoHistoricalReturn: true }, ...initialParams.assets.slice(1)] })).toBe(true);
+    expect(sameAnalysisInputs(initialParams, { ...initialParams, assets: [{ ...initialParams.assets[0], totalReturn: 99 }, ...initialParams.assets.slice(1)] })).toBe(false);
     expect(sameAnalysisInputs(null, initialParams)).toBe(false);
   });
 });

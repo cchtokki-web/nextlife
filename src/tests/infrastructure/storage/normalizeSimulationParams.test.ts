@@ -16,6 +16,12 @@ import { normalizeRetirementGoals } from '@/core/entities/retirementGoal';
 // 배열은 원소 단위로만 정제한다.
 
 describe('normalizeSimulationParams', () => {
+  test('ETF 자동 수익률 설정은 명시한 불리언만 복원한다', () => {
+    const params = { ...initialParams, assets: [{ ...initialParams.assets[0], autoHistoricalReturn: true }] };
+    expect(normalizeSimulationParams(JSON.parse(JSON.stringify(params))).assets[0].autoHistoricalReturn).toBe(true);
+    expect(normalizeSimulationParams(initialParams).assets[0]).not.toHaveProperty('autoHistoricalReturn');
+    expect(normalizeSimulationParams({ ...params, assets: [{ ...params.assets[0], autoHistoricalReturn: 'true' }] }).assets[0].autoHistoricalReturn).toBeUndefined();
+  });
   test('자동 시세 반영은 명시된 불리언만 보존하며 기존 데이터에는 생성하지 않는다', () => {
     expect(normalizeSimulationParams(initialParams)).not.toHaveProperty('autoUpdateEtfPrices');
     expect(normalizeSimulationParams({ ...initialParams, autoUpdateEtfPrices: true }).autoUpdateEtfPrices).toBe(true);

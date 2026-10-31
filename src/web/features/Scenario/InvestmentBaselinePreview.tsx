@@ -4,6 +4,9 @@ import { useEffect, useRef, useState } from 'react';
 import type { InvestmentAsset, SimulationParams } from '../../../core/entities/types';
 import { baselineReferenceValue } from '../../../core/usecases/investmentTracking/baselineReferenceValue';
 import { applyCurrentQuotes, type ObservedQuote } from '../../../core/usecases/investmentTracking/applyCurrentQuotes';
+import { applyHistoricalEtfReturns, type ObservedHistoricalReturn } from '../../../core/usecases/investmentTracking/applyHistoricalEtfReturns';
+import { fetchEtfHistoricalReturn } from '../AssetForm/fetchEtfHistoricalReturn';
+import type { HistoricalAdjustedReturn } from '../../../core/usecases/returns/historicalAdjustedReturn';
 
 type Baseline = NonNullable<SimulationParams['investmentBaseline']>;
 type QuoteResult = { asset: InvestmentAsset; price: number; value: number; marketTime: number; baseline: boolean } | { asset: InvestmentAsset; error: string; baseline: boolean };
@@ -11,18 +14,35 @@ interface QuoteBatch {
   results: QuoteResult[];
   automatic: boolean;
   requestedAssets: readonly InvestmentAsset[];
+  historicalKey: string;
+  historical: Array<{ asset: InvestmentAsset; result: HistoricalAdjustedReturn | null }>;
+  asOfDate: string;
+}
+
+function historicalStatus(asset: InvestmentAsset, result: HistoricalAdjustedReturn, current: SimulationParams | undefined, asOfDate: string): string {
+  if (result.missingPoints > 0) return '자료가 누락되어 자동 반영하지 않았습니다.';
+  const ageDays = (Date.parse(`${asOfDate}T00:00:00Z`) - Date.parse(`${result.endDate}T00:00:00Z`)) / 86400000;
+  if (!Number.isFinite(ageDays) || ageDays < 0 || ageDays > 30) return '자료 기준일이 오래되었거나 올바르지 않아 자동 반영하지 않았습니다.';
+  const matching = current?.assets.filter((item) => item.id === asset.id) ?? [];
+  if (matching.length !== 1 || matching[0].ticker !== asset.ticker || matching[0].autoHistoricalReturn !== true
+    || matching[0].dividendYield !== asset.dividendYield) return '조회 중 입력이 변경되어 자동 반영하지 않았습니다.';
+  if (matching[0].totalReturn === Number(result.annualizedReturn.toFixed(1))) return '현재 입력과 일치합니다.';
+  if (matching[0].totalReturn !== asset.totalReturn) return '조회 중 입력이 변경되어 자동 반영하지 않았습니다.';
+  return '자동 반영을 처리 중입니다.';
 }
 
 /** 기준 수량에 조회 시세를 곱한 참고값이다. 실제 계좌나 시뮬레이션 입력을 수정하지 않는다. */
 export function InvestmentBaselinePreview({ baseline, currentParams, onApply }: {
   baseline?: Baseline;
   currentParams?: SimulationParams;
-  onApply?: (quotes: ObservedQuote[]) => void;
+  onApply?: (quotes: ObservedQuote[], returns?: ObservedHistoricalReturn[]) => void;
 }) {
   const [batch, setBatch] = useState<QuoteBatch | null>(null);
   const currentParamsRef = useRef(currentParams);
   const lastAutomaticBatch = useRef<QuoteBatch | null>(null);
   const automatic = currentParams?.autoUpdateEtfPrices === true;
+  const historicalKey = JSON.stringify((currentParams?.assets ?? []).filter((asset) => asset.type === 'etf' && asset.autoHistoricalReturn === true)
+    .map((asset) => [asset.id, asset.ticker]).sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b))));
 
   useEffect(() => { currentParamsRef.current = currentParams; }, [currentParams]);
 
@@ -59,17 +79,22 @@ export function InvestmentBaselinePreview({ baseline, currentParams, onApply }: 
         return { asset, baseline: isBaseline, error: '시세 또는 기준 시각을 확인할 수 없습니다.' };
       }
     }
-    void Promise.all(entries.map(loadQuote)).then((results) => {
-      if (!controller.signal.aborted) setBatch({ results, automatic, requestedAssets });
+    const historyAssets = requestedAssets.filter((asset) => asset.type === 'etf' && asset.autoHistoricalReturn === true && asset.ticker && asset.ticker !== 'NEW');
+    const history = historyAssets.map(async (asset) => {
+      try { return { asset, result: await fetchEtfHistoricalReturn(asset.ticker, controller.signal) }; }
+      catch { return { asset, result: null }; }
+    });
+    void Promise.all([Promise.all(entries.map(loadQuote)), Promise.all(history)]).then(([results, historical]) => {
+      if (!controller.signal.aborted) setBatch({ results, automatic, requestedAssets, historicalKey, historical, asOfDate: new Date().toISOString().slice(0, 10) });
     });
     return () => controller.abort();
-  }, [baseline, automatic]);
+  }, [baseline, automatic, historicalKey]);
 
   useEffect(() => {
-    if (!automatic || !batch?.automatic || !currentParams || !onApply || lastAutomaticBatch.current === batch) return;
+    if (!batch || !currentParams || !onApply || lastAutomaticBatch.current === batch) return;
     lastAutomaticBatch.current = batch;
     // 조회 도중 사용자가 단가·종목·통화를 바꾼 항목은 오래된 응답으로 덮지 않는다.
-    const safeQuotes: ObservedQuote[] = batch.results.flatMap((quote) => {
+    const safeQuotes: ObservedQuote[] = (!automatic || !batch.automatic ? [] : batch.results).flatMap((quote) => {
       if ('error' in quote) return [];
       const requested = batch.requestedAssets.filter((asset) => asset.id === quote.asset.id);
       const current = currentParams.assets.filter((asset) => asset.id === quote.asset.id);
@@ -80,8 +105,17 @@ export function InvestmentBaselinePreview({ baseline, currentParams, onApply }: 
       return [{ assetId: quote.asset.id, ticker: quote.asset.ticker, currency: quote.asset.currency,
         price: quote.price, marketTime: quote.marketTime }];
     });
-    if (applyCurrentQuotes(currentParams, safeQuotes).appliedCount > 0) onApply(safeQuotes);
-  }, [automatic, batch, currentParams, onApply]);
+    const safeReturns: ObservedHistoricalReturn[] = batch.historicalKey !== historicalKey ? [] : batch.historical.flatMap(({ asset, result }) => result ? [{
+      assetId: asset.id, ticker: asset.ticker, expectedReturn: asset.totalReturn, expectedDividend: asset.dividendYield,
+      annualizedReturn: result.annualizedReturn, missingPoints: result.missingPoints, endDate: result.endDate,
+    }] : []);
+    const withPrices = applyCurrentQuotes(currentParams, safeQuotes);
+    const withReturns = applyHistoricalEtfReturns(withPrices.params, safeReturns, batch.asOfDate);
+    if (withPrices.appliedCount > 0 || withReturns.appliedCount > 0) {
+      if (safeReturns.length) onApply(safeQuotes, safeReturns);
+      else onApply(safeQuotes);
+    }
+  }, [automatic, batch, currentParams, onApply, historicalKey]);
 
   const quotes = batch?.results ?? null;
   const applicableQuotes: ObservedQuote[] = (quotes ?? []).flatMap((quote) => {
@@ -99,7 +133,7 @@ export function InvestmentBaselinePreview({ baseline, currentParams, onApply }: 
         저장된 기준 수량 또는 현재 입력 수량에 조회 시세를 곱한 참고값입니다. 이후 적립·매매·배당·분할은 반영하지 않아 실제 잔고나 현재 평가금과 다를 수 있습니다.
       </p>
       {quotes === null ? <p role="status">시세를 조회하고 있습니다.</p> : quotes.length === 0 ? (
-        <p>조회할 ETF가 없습니다.</p>
+        <p>{batch?.historical.length ? '현재 단가 자동 조회는 꺼져 있습니다.' : '조회할 ETF가 없습니다.'}</p>
       ) : (
         <ul className="mt-2 space-y-2">
           {quotes.map((quote) => (
@@ -113,6 +147,15 @@ export function InvestmentBaselinePreview({ baseline, currentParams, onApply }: 
                 </p>
               )}
             </li>
+          ))}
+        </ul>
+      )}
+      {batch?.historicalKey === historicalKey && batch.historical.length > 0 && (
+        <ul className="mt-2 space-y-1 text-xs text-foreground-muted" aria-label="자동 수익률 조회">
+          {batch.historical.map(({ asset, result }) => (
+            <li key={asset.id}>{asset.name || asset.ticker}: {result
+              ? `${result.startDate} ~ ${result.endDate} 연환산 ${result.annualizedReturn.toFixed(1)}%, 누락 ${result.missingPoints}건. ${historicalStatus(asset, result, currentParams, batch.asOfDate)}`
+              : '과거 수익률 조회 실패. 기존 값을 유지합니다.'}</li>
           ))}
         </ul>
       )}
