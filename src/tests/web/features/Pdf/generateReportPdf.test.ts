@@ -57,6 +57,43 @@ const page = (inner = '<div class="pdf-content">내용</div>') => `<div class="p
 const overflowingPage = () => page('<div class="pdf-content" data-overflow>내용</div>');
 
 describe('generateReportPdf', () => {
+  test('HTML 보고서는 같은 페이지를 재배치한 뒤 텍스트 파일로 저장한다', async () => {
+    const createUrl = vi.fn((_blob: Blob) => 'blob:report');
+    const revokeUrl = vi.fn();
+    vi.stubGlobal('URL', { createObjectURL: createUrl, revokeObjectURL: revokeUrl });
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+    try {
+      await generateReportPdf(page('<div class="pdf-content"><p>한글 보고서</p></div>'), 'report.html', 'html');
+      expect(createUrl).toHaveBeenCalledOnce();
+      expect(createUrl.mock.calls[0][0]).toBeInstanceOf(Blob);
+      const html = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result));
+        reader.onerror = () => reject(reader.error);
+        reader.readAsText(createUrl.mock.calls[0][0]);
+      });
+      expect(html).toContain('<html lang="ko">');
+      expect(html).toContain('<p>한글 보고서</p>');
+      expect(html).not.toContain('<canvas');
+      expect(click).toHaveBeenCalledOnce();
+      expect(revokeUrl).toHaveBeenCalledWith('blob:report');
+      expect(html2canvas).not.toHaveBeenCalled();
+      expect(save).not.toHaveBeenCalled();
+    } finally {
+      click.mockRestore();
+      vi.unstubAllGlobals();
+    }
+  });
+  test('HTML 보고서도 페이지가 넘치면 저장하지 않는다', async () => {
+    const createUrl = vi.fn((_blob: Blob) => 'blob:report');
+    vi.stubGlobal('URL', { createObjectURL: createUrl, revokeObjectURL: vi.fn() });
+    try {
+      await expect(generateReportPdf(overflowingPage(), 'report.html', 'html')).rejects.toBeInstanceOf(ReportPageOverflowError);
+      expect(createUrl).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
   test('정상 문서는 페이지 수만큼 그리고 저장한다', async () => {
     await generateReportPdf(page() + page(), 'report.pdf');
 

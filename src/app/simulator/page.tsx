@@ -188,7 +188,7 @@ export default function Home() {
     }
   };
 
-  const handleDownload = async (analysis: AnalysisRuntimeValue | null) => {
+  const handleDownload = async (analysis: AnalysisRuntimeValue | null, format: 'pdf' | 'html' = 'pdf') => {
     if (isGeneratingPdf || !analysis) return;
     const {
       effective, recommendation, result, monteCarlo, sequenceRisk,
@@ -376,9 +376,9 @@ export default function Home() {
         },
       });
 
-      await generateReportPdf(pagesHtml, 'NextLife_Simulation_Report.pdf');
+      await generateReportPdf(pagesHtml, `NextLife_Simulation_Report.${format}`, format);
     } catch (error) {
-      console.error('Failed to generate PDF:', error);
+      console.error('Failed to generate report:', error);
       // 오류를 구분해서 알린다. 예전에는 무엇이 터졌든 "다시 시도해 주세요"였는데, 이 자리에
       // 오는 오류는 대부분 «결정적»이라 다시 눌러도 똑같이 실패한다. 사용자를 무한 재시도로
       // 보내는 안내이자, ReportPageOverflowError가 일부러 실어 온 「몇 쪽이 넘쳤는가」를
@@ -531,6 +531,13 @@ export default function Home() {
             >
               {theme === 'light' ? <Moon size={18} /> : <Sun size={18} />}
             </button>
+
+            <button type="button" onClick={() => handleDownload(analysisIsCurrent ? analysis : null, 'html')}
+              disabled={isGeneratingPdf || !analysisIsCurrent}
+              title="텍스트 선택과 검색이 가능한 HTML 보고서 다운로드"
+              style={{ padding: '0.6rem 1.2rem', background: 'var(--card-bg)', border: '1px solid var(--card-border)', borderRadius: '12px', color: 'var(--foreground-muted)', cursor: isGeneratingPdf || !analysisIsCurrent ? 'not-allowed' : 'pointer', opacity: isGeneratingPdf || !analysisIsCurrent ? 0.6 : 1 }}>
+              HTML 보고서
+            </button>
             <button 
               onClick={handleReset}
               aria-label="초기화"
@@ -583,7 +590,7 @@ export default function Home() {
               <FileText size={16} />
               {/* 생성 중 문구는 느린 PDF 렌더의 유일한 진행 표시라 모바일에서도 남긴다. */}
               <span className={isGeneratingPdf ? undefined : styles.buttonLabel}>
-                {isGeneratingPdf ? 'PDF 생성 중...' : '결과 다운로드'}
+                {isGeneratingPdf ? '보고서 생성 중...' : '결과 다운로드'}
               </span>
             </button>
 
