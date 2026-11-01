@@ -330,6 +330,7 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
       averagePrice: 0,
       totalReturn: selectedPreset ? YIELD_PRESET_RATES[selectedPreset].stockGrowth : 8,
       dividendYield: selectedPreset ? 2 * YIELD_PRESET_RATES[selectedPreset].stockGrowth / 8 : 2,
+      category: 'other',
       contributionPeriod: 'daily',
       contributionAmount: 0,
       monthlyContribution: 0,
@@ -391,7 +392,7 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
           } else {
             const selectedPreset = matchedYieldPreset(prevParams);
             return { ...asset, ...updates,
-              ...('ticker' in updates && updates.ticker !== asset.ticker ? { category: undefined } : {}),
+              ...('ticker' in updates && updates.ticker !== asset.ticker ? { category: updates.category ?? 'other' } : {}),
               ...(selectedPreset && updates.type === 'etf' && 'ticker' in updates
                 ? { totalReturn: YIELD_PRESET_RATES[selectedPreset].stockGrowth } : {}),
               ...(prevParams.autoUpdateEtfReturns && (updates.type ?? asset.type) === 'etf' ? { autoHistoricalReturn: true }
@@ -590,6 +591,7 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
             currency: pa.currency,
             totalReturn: pa.totalReturn,
             dividendYield: pa.dividendYield,
+            category: 'category' in pa ? pa.category : 'other',
           });
           if (pa.type !== 'etf') fetchAssetInfo(id, pa.ticker, { totalReturn: pa.totalReturn, dividendYield: pa.dividendYield });
           if (pa.type !== 'etf') fetchAssetPrice(id, pa.ticker);
@@ -797,6 +799,7 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                                         currency: pa.currency,
                                         totalReturn: pa.totalReturn,
                                         dividendYield: pa.dividendYield,
+                                        category: 'category' in pa ? pa.category : 'other',
                                       });
                                       setFocusedAssetId(null);
                                       setAutocompleteIndex(-1);
@@ -824,8 +827,8 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                       <SelectField
                         label="수익률 카테고리"
                         value={asset.category ?? ''}
-                        onChange={(e) => handleUpdateAsset(asset.id, 'category', e.target.value || undefined)}
-                        options={[{ value: '', label: '미분류' }, ...INVESTMENT_CATEGORIES]}
+                        onChange={(e) => handleUpdateAsset(asset.id, 'category', e.target.value)}
+                        options={asset.category ? INVESTMENT_CATEGORIES : [{ value: '', label: '미분류 (기존 설정)' }, ...INVESTMENT_CATEGORIES]}
                       />
                       <SelectField
                         label="통화(Currency)"

@@ -101,11 +101,19 @@ describe('AssetFormSection - 수익률 입력은 전략에 잠기지 않는다',
     const changed = vi.fn();
     render(<AssetFormSection params={initial} onChangeParams={changed} />);
     fireEvent.click(screen.getByText('자산1'));
-    fireEvent.change(screen.getByDisplayValue('미분류'), { target: { value: 'bond' } });
+    fireEvent.change(screen.getByDisplayValue('미분류 (기존 설정)'), { target: { value: 'bond' } });
     const update = changed.mock.lastCall?.[0] as (params: SimulationParams) => SimulationParams;
     const result = update(initial);
     expect(result.assets[0].category).toBe('bond');
     expect(result.assets[0].totalReturn).toBe(4);
+  });
+
+  test('새 자산은 개별 주식·기타 카테고리를 기본값으로 가진다', () => {
+    const changed = vi.fn();
+    render(<AssetFormSection params={baseParams} onChangeParams={changed} />);
+    fireEvent.click(screen.getByRole('button', { name: /투자자산 추가/ }));
+    const next = changed.mock.calls[0][0] as SimulationParams;
+    expect(next.assets.at(-1)?.category).toBe('other');
   });
 
   test('공통 자동 모드에서 새로 추가한 ETF도 자동 수익률 대상이다', () => {
