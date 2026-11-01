@@ -40,7 +40,7 @@ export function YieldPresetHelper({ params, onChangeParams }: YieldPresetHelperP
         {PRESETS.map((preset) => (
           <button key={preset} type="button" aria-pressed={selected === preset}
             className={styles.yieldPresetButton}
-            title={`미분류·ISA ${YIELD_PRESET_RATES[preset].stockGrowth}%, 사적연금 ${YIELD_PRESET_RATES[preset].pensionReturn}%`}
+            title={`ETF는 카테고리별 수익률 적용, 그 외 ISA ${YIELD_PRESET_RATES[preset].stockGrowth}%, 사적연금 ${YIELD_PRESET_RATES[preset].pensionReturn}%`}
             onClick={() => onChangeParams({ ...applyYieldPreset(params, preset), categoryYieldMode: preset })}>
             {YIELD_PRESET_LABELS[preset]}
           </button>

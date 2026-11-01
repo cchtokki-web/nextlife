@@ -70,6 +70,7 @@ export type AccountInvestmentType = 'custom' | 'deposit' | 'etf';
 
 export interface PrivatePension {
   id: string;
+  category?: InvestmentCategory;
   type: PrivatePensionType;
   investmentType?: AccountInvestmentType;
   ticker?: string;
@@ -298,6 +299,7 @@ export type IsaAccountType = 'general' | 'low_income';
 
 export interface IsaAccount {
   id: string;
+  category?: InvestmentCategory;
   type: IsaAccountType;
   investmentType?: AccountInvestmentType;
   ticker?: string;

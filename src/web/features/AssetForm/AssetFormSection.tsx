@@ -599,6 +599,7 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
           handleUpdatePrivatePension(id, {
             name: pa.name,
             ticker: pa.ticker,
+            category: 'category' in pa ? pa.category : 'other',
             currency: pa.currency,
             totalReturn: pa.totalReturn,
           });
@@ -607,6 +608,7 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
           handleUpdateIsaAccount(id, {
             name: pa.name,
             ticker: pa.ticker,
+            category: 'category' in pa ? pa.category : 'other',
             currency: pa.currency,
             totalReturn: pa.totalReturn,
           });
@@ -1224,6 +1226,7 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                                     handleUpdatePrivatePension(pension.id, {
                                       name: pa.name,
                                       ticker: pa.ticker,
+                                      category: 'category' in pa ? pa.category : 'other',
                                       currency: pa.currency,
                                       totalReturn: pa.totalReturn,
                                     });
@@ -1250,6 +1253,7 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                       )}
                     </div>
                   )}
+                  {pension.investmentType === 'etf' && <SelectField label="수익률 카테고리" value={pension.category ?? 'other'} onChange={(e) => handleUpdatePrivatePension(pension.id, 'category', e.target.value)} options={INVESTMENT_CATEGORIES} />}
                   <SelectField
                     label="통화(Currency)"
                     value={pension.currency}
@@ -1452,6 +1456,7 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                                         handleUpdateIsaAccount(isa.id, {
                                           name: pa.name,
                                           ticker: pa.ticker,
+                                          category: 'category' in pa ? pa.category : 'other',
                                           currency: pa.currency,
                                           totalReturn: pa.totalReturn,
                                         });
@@ -1478,6 +1483,7 @@ export const AssetFormSection: React.FC<AssetFormSectionProps> = ({ params: rawP
                           )}
                         </div>
                       )}
+                      {isa.investmentType === 'etf' && <SelectField label="수익률 카테고리" value={isa.category ?? 'other'} onChange={(e) => handleUpdateIsaAccount(isa.id, 'category', e.target.value)} options={INVESTMENT_CATEGORIES} />}
                       <NumberField
                         label="만기 기간 (년)"
                         value={isa.maturityYears}

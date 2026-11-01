@@ -78,6 +78,14 @@ export function applyCustomCategoryYields(params: SimulationParams): SimulationP
       const updated = typeof rate === 'number' && Number.isFinite(rate) ? applyToMarketAccount(asset, rate) : asset;
       return updated.autoHistoricalReturn ? { ...updated, autoHistoricalReturn: false } : updated;
     }),
+    privatePensions: params.privatePensions.map((p) => {
+      const rate = p.investmentType === 'etf' && p.category ? rates[p.category] : undefined;
+      return typeof rate === 'number' && Number.isFinite(rate) ? { ...p, totalReturn: rate } : p;
+    }),
+    ...(params.isaAccounts ? { isaAccounts: params.isaAccounts.map((i) => {
+      const rate = i.investmentType === 'etf' && i.category ? rates[i.category] : undefined;
+      return typeof rate === 'number' && Number.isFinite(rate) ? applyToMarketAccount(i, rate) : i;
+    }) } : {}),
   };
 }
 
@@ -120,7 +128,7 @@ export function applyYieldPreset(
   // 여기서만 빼두면 "보수적"을 골라도 ISA 홀로 높은 수익률을 유지해 계좌 간 서열이
   // 프리셋이 아니라 사용자 입력값으로 결정된다(economicScenarios.ts의 같은 판단 참조).
   // 키가 없는 옛 시나리오 데이터에 빈 배열을 새로 심지 않도록 있을 때만 교체한다.
-  const isaAccounts = params.isaAccounts?.map((i) => applyToMarketAccount(i, stockGrowth));
+  const isaAccounts = params.isaAccounts?.map((i) => applyToMarketAccount(i, i.investmentType === 'etf' && i.category ? categoryYieldRate(params, i.category, preset) : stockGrowth));
 
   return {
     ...params,
@@ -130,7 +138,7 @@ export function applyYieldPreset(
     // **사적연금은 분해하지 않는다.** 연금 계좌 안에서는 배당세도 재투자 선택지도 없어
     // 총수익률만이 결과를 결정한다(decomposeReturn.ts의 명시적 규약). 그래서 배당률을
     // 함께 옮길 대상이 아니다.
-    privatePensions: (params.privatePensions ?? []).map((p) => ({ ...p, totalReturn: pensionReturn })),
+    privatePensions: (params.privatePensions ?? []).map((p) => ({ ...p, totalReturn: p.investmentType === 'etf' && p.category ? categoryYieldRate(params, p.category, preset) : pensionReturn })),
     ...(isaAccounts ? { isaAccounts } : {}),
     yieldPreset: preset,
     customYieldSnapshot,
@@ -179,16 +187,16 @@ export function matchedYieldPreset(
   params: SimulationParams
 ): 'conservative' | 'base' | 'aggressive' | undefined {
   const marketReturns = (params.assets ?? []);
-  const isaReturns = (params.isaAccounts ?? []).map((account) => account.totalReturn);
-  const pensionReturns = (params.privatePensions ?? []).map((pension) => pension.totalReturn);
+  const isaReturns = params.isaAccounts ?? [];
+  const pensionReturns = params.privatePensions ?? [];
 
   if (marketReturns.length === 0 && isaReturns.length === 0 && pensionReturns.length === 0) return undefined;
 
   return (Object.keys(YIELD_PRESET_RATES) as (keyof typeof YIELD_PRESET_RATES)[]).find((preset) => {
     const { stockGrowth, pensionReturn } = YIELD_PRESET_RATES[preset];
     return marketReturns.every((asset) => asset.totalReturn === categoryYieldRate(params, asset.category, preset))
-      && isaReturns.every((rate) => rate === stockGrowth)
-      && pensionReturns.every((rate) => rate === pensionReturn);
+      && isaReturns.every((account) => account.totalReturn === (account.investmentType === 'etf' && account.category ? categoryYieldRate(params, account.category, preset) : stockGrowth))
+      && pensionReturns.every((account) => account.totalReturn === (account.investmentType === 'etf' && account.category ? categoryYieldRate(params, account.category, preset) : pensionReturn));
   });
 }
 

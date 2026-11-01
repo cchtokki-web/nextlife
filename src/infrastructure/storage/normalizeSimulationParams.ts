@@ -35,6 +35,7 @@ import type {
   WithdrawalPlan,
 } from '../../core/entities/types';
 import { INVESTMENT_CATEGORIES } from '../../core/usecases/scenario/applyYieldPreset';
+import { defaultInvestmentCategory } from '../../core/data/predefinedAssets';
 import type { RetirementGoal, RetirementGoalType } from '../../core/entities/retirementGoal';
 import { RETIREMENT_GOAL_TYPES } from '../../core/entities/retirementGoal';
 import { DEFAULT_HEALTHCARE } from '../../core/usecases/healthcare/defaultHealthcare';
@@ -413,7 +414,7 @@ function normalizeAsset(raw: Record<string, unknown>, index: number): Investment
     type: oneOf(raw.type, ['stock', 'etf'], 'etf'),
     ticker: text(raw.ticker, ''),
     name: text(raw.name, ''),
-    ...onlyIfPresent(raw, 'category', (v) => optionalOneOf(v, INVESTMENT_CATEGORIES.map((item) => item.value), undefined)),
+    category: optionalOneOf(raw.category, INVESTMENT_CATEGORIES.map((item) => item.value), undefined) ?? defaultInvestmentCategory(text(raw.ticker, ''), text(raw.name, '')),
     quantity: finite(raw.quantity, 0),
     averagePrice: finite(raw.averagePrice, 0),
     totalReturn: finite(raw.totalReturn, 0),
@@ -435,6 +436,7 @@ function normalizeAsset(raw: Record<string, unknown>, index: number): Investment
 function normalizePrivatePension(raw: Record<string, unknown>, index: number): PrivatePension {
   return {
     id: text(raw.id, `pension-${index}`),
+    ...(raw.investmentType === 'etf' ? { category: optionalOneOf(raw.category, INVESTMENT_CATEGORIES.map((item) => item.value), undefined) ?? defaultInvestmentCategory(text(raw.ticker, ''), text(raw.name, '')) } : {}),
     // 세 종류 중 'savings'(연금저축)를 기본으로 둔다. IRP·퇴직연금은 인출 제약이 더 강해,
     // 알 수 없는 값을 그쪽으로 읽으면 있지도 않은 제약을 사용자에게 씌우게 된다.
     type: oneOf(raw.type, PRIVATE_PENSION_TYPES, 'savings'),
@@ -455,6 +457,7 @@ function normalizeIsaAccount(raw: Record<string, unknown>, index: number): IsaAc
   const investmentType = optionalOneOf(raw.investmentType, INVESTMENT_TYPES, undefined);
   return {
     id: text(raw.id, `isa-${index}`),
+    ...(investmentType === 'etf' ? { category: optionalOneOf(raw.category, INVESTMENT_CATEGORIES.map((item) => item.value), undefined) ?? defaultInvestmentCategory(text(raw.ticker, ''), text(raw.name, '')) } : {}),
     type: oneOf(raw.type, ISA_TYPES, 'general'),
     balance: finite(raw.balance, 0),
     monthlyContribution: finite(raw.monthlyContribution, 0),

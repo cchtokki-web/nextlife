@@ -20,6 +20,7 @@ export const initialParams: SimulationParams = {
       id: 'asset-kodex200',
       type: 'etf',
       ticker: '069500',
+      category: 'index',
       name: 'KODEX 200',
       quantity: 2000,
       averagePrice: 35000, // 약 7,000만 원
@@ -33,6 +34,7 @@ export const initialParams: SimulationParams = {
       id: 'asset-tiger-sp500',
       type: 'etf',
       ticker: '360750',
+      category: 'index',
       name: 'TIGER 미국S&P500',
       quantity: 4000,
       averagePrice: 15000, // 약 6,000만 원

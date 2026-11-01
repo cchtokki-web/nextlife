@@ -45,13 +45,28 @@ const baseParams: SimulationParams = {
 };
 
 describe('applyYieldPreset', () => {
+  test('기존 ETF 계좌를 분류하고 공통 수익률은 분류별로 적용한다', () => {
+    const input = { ...baseParams,
+      assets: [{ ...baseParams.assets[0], ticker: 'QQQ', totalReturn: 11 }],
+      privatePensions: [{ ...baseParams.privatePensions[0], investmentType: 'etf' as const, ticker: '446720', totalReturn: 9 }],
+      isaAccounts: [{ id: 'i1', type: 'general' as const, investmentType: 'etf' as const, ticker: 'TLT', balance: 0, monthlyContribution: 0, totalReturn: 8, dividendYield: 2, currency: 'KRW' as const, maturityYears: 3 }],
+    };
+    const loaded = normalizeSimulationParams(JSON.parse(JSON.stringify(input)));
+    expect([loaded.assets[0].category, loaded.privatePensions[0].category, loaded.isaAccounts?.[0].category]).toEqual(['growth', 'dividend', 'bond']);
+    expect([loaded.assets[0].totalReturn, loaded.privatePensions[0].totalReturn, loaded.isaAccounts?.[0].totalReturn]).toEqual([11, 9, 8]);
+    const applied = applyYieldPreset(loaded, 'base');
+    expect([applied.assets[0].totalReturn, applied.privatePensions[0].totalReturn, applied.isaAccounts?.[0].totalReturn]).toEqual([6, 6, 3]);
+    const restored = normalizeSimulationParams(JSON.parse(JSON.stringify(applied)));
+    expect(restored.privatePensions[0].category).toBe('dividend');
+    expect(restored.isaAccounts?.[0].category).toBe('bond');
+  });
   test('사용자 수익률은 분류된 자산에만 반영하고 다른 계좌는 유지한다', () => {
     const custom = { index: 8, growth: 7, dividend: 6, income: 5, bond: 3, other: 4 };
     const asset = { ...baseParams.assets[0], category: 'index' as const, autoHistoricalReturn: true };
     const result = applyCustomCategoryYields({ ...baseParams, assets: [asset, { ...asset, id: 'unclassified', category: undefined }],
       autoUpdateEtfReturns: true, categoryCustomYieldRates: custom });
     expect(result.assets.map((item) => item.totalReturn)).toEqual([8, asset.totalReturn]);
-    expect(result.privatePensions).toBe(baseParams.privatePensions);
+    expect(result.privatePensions).toEqual(baseParams.privatePensions);
     expect(result.autoUpdateEtfReturns).toBe(false);
     expect(result.assets.every((item) => !item.autoHistoricalReturn)).toBe(true);
     expect(result.categoryYieldMode).toBe('custom');
@@ -104,7 +119,7 @@ describe('applyYieldPreset', () => {
     expect(matchedYieldPreset(result)).toBe('base');
     const restored = normalizeSimulationParams(JSON.parse(JSON.stringify(result)));
     expect(restored.categoryYieldRates).toEqual(params.categoryYieldRates);
-    expect(restored.assets.map((a) => a.category)).toEqual(['index', 'bond', undefined]);
+    expect(restored.assets.map((a) => a.category)).toEqual(['index', 'bond', 'other']);
     expect(compileStrategy(restored).params.assets.map((a) => a.totalReturn)).toEqual([8, 4, 7]);
   });
 
