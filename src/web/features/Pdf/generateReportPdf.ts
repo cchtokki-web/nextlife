@@ -42,7 +42,7 @@ export class ReportPageOverflowError extends Error {
  * jsPDF와 html2canvas는 동적 import다 — 리포트를 내려받지 않는 사용자가 그 번들을
  * 받게 할 이유가 없다.
  */
-export async function generateReportPdf(pagesHtml: string, fileName: string, format: 'pdf' | 'html' = 'pdf'): Promise<void> {
+export async function generateReportPdf(pagesHtml: string, fileName: string): Promise<void> {
 
   // 화면 밖에 둔다. 보이는 자리에 붙이면 리포트가 잠깐 깜빡이며 나타난다.
   const container = document.createElement('div');
@@ -84,22 +84,6 @@ export async function generateReportPdf(pagesHtml: string, fileName: string, for
       content.scrollHeight > content.clientHeight + 1 ? [index + 1] : []);
     if (overflowingPages.length > 0) {
       throw new ReportPageOverflowError(overflowingPages);
-    }
-
-    if (format === 'html') {
-      const html = `<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>NextLife 은퇴 시뮬레이션 보고서</title><style>${REPORT_STYLES}\n.pdf-page { height: auto; min-height: 1123px; margin: 0 auto; } @media print { .pdf-page { break-after: page; } }</style></head><body>${pagesContainer.innerHTML}</body></html>`;
-      const url = URL.createObjectURL(new Blob([html], { type: 'text/html;charset=utf-8' }));
-      try {
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = fileName;
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
-      } finally {
-        URL.revokeObjectURL(url);
-      }
-      return;
     }
 
     const jsPDF = (await import('jspdf')).default;
