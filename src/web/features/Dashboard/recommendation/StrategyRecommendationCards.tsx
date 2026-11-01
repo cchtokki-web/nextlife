@@ -447,6 +447,7 @@ function RecommendationBody({
   // 그 말을 하지 않으면 화면은 셋 중 하나를 고르라는 뜻으로만 읽힌다.
   const noneImproves = currentGoalProbability !== undefined
     && finalRecommendations.every((item) => !improvesOnCurrentPlan(item.candidate, currentGoalProbability));
+  if (noneImproves) return null;
   return (
     <>
       {unsupportedHardGoals && unsupportedHardGoals.length > 0 && (

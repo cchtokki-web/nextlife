@@ -872,10 +872,10 @@ describe('StrategyRecommendationCards - 현재 계획과의 비교', () => {
     />
   );
 
-  test('현재 계획보다 낮은 카드는 얼마나 낮은지 밝힌다', () => {
+  test('현재 계획보다 낮은 카드만 있으면 표시하지 않는다', () => {
     renderWith([worse], 0.67);
 
-    expect(screen.getByText(/현재 계획 67%보다 20%p 낮음/)).toBeInTheDocument();
+    expect(screen.queryByText(worse.label)).not.toBeInTheDocument();
   });
 
   test('현재 계획보다 높은 카드는 얼마나 높은지 밝힌다', () => {
@@ -886,8 +886,7 @@ describe('StrategyRecommendationCards - 현재 계획과의 비교', () => {
 
   test('반올림 결과가 같은 확률은 0%p 높음·낮음으로 표시하지 않는다', () => {
     renderWith([worse], 0.4704);
-    expect(screen.getByText(worse.label)).toBeInTheDocument();
-    expect(screen.queryByText(/0%p/)).toBeNull();
+    expect(screen.queryByText(worse.label)).not.toBeInTheDocument();
   });
 
   // ☆는 「고를 만한 안」이라는 뜻이다. 지금보다 나쁜 안에 붙으면 그 뜻이 거짓이 된다.
@@ -909,22 +908,20 @@ describe('StrategyRecommendationCards - 현재 계획과의 비교', () => {
   // 여전히 「셋 중 하나를 고르라」는 뜻으로 읽히고 사용자는 「그럼 추천은 왜 보여주지?」에서
   // 멈춘다. 판정은 이미 core가 내리고 있었고(improvesOnCurrentPlan) 화면이 그 결론을
   // 카드로 세우지 않았을 뿐이다.
-  test('세 추천이 모두 지금보다 나쁘면 현재 계획 유지를 추천 카드로 세운다', () => {
+  test('세 추천이 모두 지금보다 나쁘면 추천 영역을 표시하지 않는다', () => {
     renderWith([worse], 0.67);
 
-    expect(screen.getByText('추천: 현재 계획 유지')).toBeInTheDocument();
-    // 진단 카드와 «같은» 확률을 그대로 인용한다 — 여기서 다시 계산하면 위아래가 갈린다.
-    expect(screen.getByText('67%')).toBeInTheDocument();
-    expect(screen.getByText(/아래 추천은 모두 지금보다 목표 달성 확률이 낮습니다/)).toBeInTheDocument();
+    expect(screen.queryByText('추천: 현재 계획 유지')).not.toBeInTheDocument();
+    expect(screen.queryByText(worse.label)).not.toBeInTheDocument();
+    expect(screen.queryByText('다른 선택을 검토하고 싶다면')).not.toBeInTheDocument();
   });
 
   // 카드를 «지우지는» 않는다. 축을 바꿔 보고 싶은 사용자의 유일한 경로이고, 무엇을 검토했는지가
   // 곧 이 판정의 근거이기도 하다. 비중만 낮추고 「추천」이 아니라 「검토해 볼 것」이라고 부른다.
-  test('그때도 대안 카드는 남기되 추천이 아니라 검토 대상으로 부른다', () => {
+  test('현재 계획보다 나쁜 대안만 있으면 적용 버튼도 노출하지 않는다', () => {
     renderWith([worse], 0.67);
 
-    expect(screen.getByText('다른 선택을 검토하고 싶다면')).toBeInTheDocument();
-    expect(screen.getByText(worse.label)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '적용' })).not.toBeInTheDocument();
   });
 
   test('하나라도 나으면 유지를 권하지 않는다', () => {
