@@ -202,7 +202,9 @@ export function buildReasons(
   }
   const nationalPensionDefaultAge = context?.identityPlan?.nationalPensionStartAge ?? 65;
   if (plan.nationalPensionStartAge !== undefined && plan.nationalPensionStartAge !== nationalPensionDefaultAge) {
-    const totalChangeText = `평생 총 수령액 약 ${formatManwon(Math.abs(deltas.nationalPensionTotal))} ${deltas.nationalPensionTotal < 0 ? '감소' : '증가'}`;
+    const totalChangeText = deltas.nationalPensionTotal === 0
+      ? '기준 계획 대비 시뮬레이션 기간 국민연금 세후 수령액 변화 없음'
+      : `기준 계획 대비 시뮬레이션 기간 국민연금 세후 수령액 약 ${formatManwon(Math.abs(deltas.nationalPensionTotal))} ${deltas.nationalPensionTotal < 0 ? '감소' : '증가'}`;
     if (plan.nationalPensionStartAge < nationalPensionDefaultAge) {
       reasons.push(`국민연금을 ${plan.nationalPensionStartAge}세부터 조기 수령합니다 (${totalChangeText}).`);
     } else {
@@ -297,9 +299,10 @@ function labelForSingleFieldChange(
         ? 'ISA 만기 자금을 사적연금 대신 일반 자산으로 이동합니다.'
         : 'ISA 만기 자금을 연금 계좌로 이동합니다.';
     case 'nationalPensionStartAge': {
-      const totalChangeText =
-        `평생 총 수령액 약 ${formatManwon(Math.abs(itemDeltas.nationalPensionTotal))} ` +
-        `${itemDeltas.nationalPensionTotal < 0 ? '감소' : '증가'}`;
+      const totalChangeText = itemDeltas.nationalPensionTotal === 0
+        ? '기준 계획 대비 시뮬레이션 기간 국민연금 세후 수령액 변화 없음'
+        : `기준 계획 대비 시뮬레이션 기간 국민연금 세후 수령액 약 ${formatManwon(Math.abs(itemDeltas.nationalPensionTotal))} ` +
+          `${itemDeltas.nationalPensionTotal < 0 ? '감소' : '증가'}`;
       return recommendedPlan.nationalPensionStartAge < identityPlan.nationalPensionStartAge
         ? `국민연금을 ${recommendedPlan.nationalPensionStartAge}세부터 조기 수령합니다 (${totalChangeText}).`
         : `국민연금을 ${recommendedPlan.nationalPensionStartAge}세까지 연기 수령합니다 (${totalChangeText}).`;

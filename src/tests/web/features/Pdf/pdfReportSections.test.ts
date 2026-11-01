@@ -669,6 +669,12 @@ describe('renderSensitivityTableSection', () => {
 // 거치는 동안 잘리지 않고 살아남는가다 — 화면 쪽 KeyLeversCard.test.tsx와 나란히 "같은 core
 // 출력이 두 렌더 표면 모두에 도달하는가"를 검증한다.
 describe('renderKeyLeversSection', () => {
+  test('검토 순서를 영향 크기 순위로 오인하지 않도록 설명한다', () => {
+    const html = renderKeyLeversSection([{ key: 'retirementAge', title: '은퇴 시점', detail: '기준 계획과 비교' }]);
+    expect(html).toContain('조정 가능성과 검토 순서');
+    expect(html).toContain('영향 크기 순위는 아닙니다');
+    expect(html).not.toContain('아래로 갈수록 효과가 작습니다');
+  });
   const won = (v: number) => `${Math.round(v / 10000).toLocaleString()}만원`;
   const noSensitivityScenarios: KeyLeversInput['sensitivity'] = {
     scenarios: [], frozenMonthlySpending: 2230000, baselineDepletionAge: null,
@@ -822,6 +828,8 @@ describe('renderPlanVerdictSection', () => {
 
     expect(html).toContain('1,000회 중');
     expect(html).toContain('95% 신뢰구간');
+    expect(html).toContain('시행 횟수에 따른 추정의 불확실성');
+    expect(html).toContain('판정 조건:');
   });
 
   // 구간이 시행 수를 «실제로» 반영하는지 본다. 고정 문자열을 붙였다면 두 렌더가 같아진다.
@@ -1138,6 +1146,13 @@ describe('renderMonteCarloSection', () => {
   // 개별 실패를 무시하고 나머지 리포트는 계속 만든다(computeSensitivityAnalysis와 같은 관례).
   test('몬테카를로 결과가 없으면 빈 문자열을 반환한다', () => {
     expect(renderMonteCarloSection(undefined, sequenceRisk, mcParams)).toBe('');
+  });
+
+  test('자산 차트의 중앙값과 기준 수익률 경로를 구분한다', () => {
+    const html = renderMonteCarloSection(monteCarlo, sequenceRisk, mcParams);
+    expect(html).toContain('나이별 중앙값은 서로 다른 시행에서 올 수');
+    expect(html).toContain('그렇지 않으면 기준 수익률 경로');
+    expect(html).not.toContain('총 자산액 곡선은 흔들리지 않는다고');
   });
 
   // 요구 ④: 리포트도 화면과 같은 구간을 인쇄해야 한다. 1000회 기준 독립 계산.

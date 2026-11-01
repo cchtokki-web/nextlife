@@ -73,14 +73,14 @@ function buildPensionGapAlert(
         `${money(gap.averageMonthlyShortfall)} 채우지 못합니다. 이 부족분을 메우는 데 필요한 ` +
         `자금은 약 ${money(gap.shortfallAmount)}입니다.`
     : `생활비를 위해 자산에서 월 평균 ${money(gap.monthlyAssetWithdrawal)}을 인출합니다. ` +
-      `이 기간의 시장 하락은 회복할 원금을 줄일 수 있으므로, 약 ${money(gap.bridgeAmount)}을 ` +
-      `변동성이 낮은 자금으로 확보하는 것이 좋습니다.`;
+      `이 기간의 시장 하락은 회복할 원금을 줄일 수 있습니다. 약 ${money(gap.bridgeAmount)}의 ` +
+      `공백기 자금과 인출 시점을 확인해 보세요.`;
   return {
     sortAge: gap.fromAge,
     alert: {
       key: 'pensionGap',
       title: `핵심 위험구간: ${formatAgeRange(gap.fromAge, gap.toAge)} (국민연금 개시 전)`,
-      message: `국민연금 개시 전 ${gap.years}년의 공백입니다. ${fundingMessage}`,
+      message: `국민연금 개시 전 ${gap.years}년의 공백입니다. ${fundingMessage} 이 금액은 현재 계획의 기준 수익률 경로에서 계산했으며 시장 변동에 따라 달라질 수 있습니다.`,
     },
   };
 }
@@ -190,7 +190,7 @@ function buildHealthInsuranceCliffAlert(
     alert: {
       key: 'healthInsuranceCliff',
       title: '피부양자 자격 위험',
-      message: `${formatAgeRange(range.startAge, range.endAge)} 구간, 피부양자 판정용 소득이 연 ${formatManwon(thresholdKRW)} 근처입니다. 이 값은 세후 실수령액과 다릅니다. 현재 입력에는 재산 정보가 없어 최종 자격은 미판정이며 소득 기준 위험만 표시합니다. 이 기준을 넘어 피부양자 자격을 잃으면 실제 보험료는 초과분이 아니라 소득 전체와 재산에 부과되어 계단식으로 뜁니다.${premiumSentence}${amountSentence}`,
+      message: `${formatAgeRange(range.startAge, range.endAge)} 구간, 피부양자 판정용 소득이 연 ${formatManwon(thresholdKRW)} 근처입니다. 이 값은 세후 실수령액과 다릅니다. 현재 입력에는 재산 정보가 없어 최종 자격은 미판정이며 소득 기준 위험만 표시합니다. 이 기준을 넘어 피부양자 자격을 잃으면 실제 보험료는 초과분이 아니라 소득 전체와 재산에 부과되어 계단식으로 뜁니다.${premiumSentence}${amountSentence} 소득과 재산을 포함한 실제 자격 및 보험료는 국민건강보험공단에 확인해 보세요.`,
     },
   };
 }

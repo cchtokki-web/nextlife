@@ -262,6 +262,8 @@ describe('computeRiskAlerts', () => {
       expect(cliff!.title).toBe('피부양자 자격 위험');
       expect(cliff!.message).toContain('66~67세');
       expect(cliff!.message).toContain('세후 실수령액과 다릅니다');
+      expect(cliff!.message).toContain('최종 자격은 미판정');
+      expect(cliff!.message).toContain('국민건강보험공단에 확인');
       expect(cliff!.message).toContain('예상 건강보험료가 0원이더라도');
     });
 

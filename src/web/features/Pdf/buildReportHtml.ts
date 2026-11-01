@@ -16,6 +16,13 @@ import { resolveAssetProjection, type AssetProjection } from '../../../core/usec
 import { describePrivatePensionTaxSettlement } from '../../../core/usecases/dashboard/describePrivatePensionTaxSettlement';
 import { describeSpendingCurve } from '../../../core/usecases/spending/spendingCurve';
 
+/** 표시 정밀도 아래의 값도 0으로 오인하지 않도록 한다. */
+function formatRate(value: number): string {
+  if (!Number.isFinite(value)) return '확인 불가';
+  if (value !== 0 && Math.abs(value) < 0.01) return value < 0 ? '-0.01~0' : '0~0.01';
+  return new Intl.NumberFormat('ko-KR', { maximumFractionDigits: 2 }).format(value);
+}
+
 /** 이미 렌더된 섹션 조각들. 각 값은 pdfReportSections의 render*Section 결과다. */
 export interface ReportSectionHtml {
   planVerdict: string;
@@ -113,7 +120,7 @@ function renderYearlyTablePages(args: {
               </h2>
               ${realValueNoteHtml}${assetProjection.basis === 'monte_carlo_median'
                 ? '\n              <p style="font-size: 9.5px; color: #64748b; margin: 0 0 8px;">* 「총 자산」은 화면 차트와 같은 시장 변동 시행의 연도별 중앙값입니다. 각 연도의 중앙값은 서로 다른 시행에서 올 수 있으며, 소득·생활비 항목은 현재 계획의 기준 경로입니다.</p>'
-                : ''}
+                : '\n              <p style="font-size: 9.5px; color: #64748b; margin: 0 0 8px;">* 「총 자산」과 소득·생활비는 기준 수익률을 적용한 동일한 결정론 경로입니다.</p>'}
               ${healthcareNoteHtml}
               <p style="font-size: 9.5px; color: #64748b; margin: 0 0 8px;">* 「현금 배당」만 총소득과 생활비 재원에 포함됩니다. 「재투자 배당」은 일반 투자자산·ISA 계좌 안에 남은 세후 금액으로, 총소득에는 포함되지 않지만 총자산에는 반영됩니다.</p>${pensionSettlementNoteHtml}
               <table class="pdf-data-table" style="width: 100%; border-collapse: collapse; font-size: 8.5px;">
@@ -194,6 +201,7 @@ function renderSpendingTablePages(args: {
     formatValuePrint, realValueNoteHtml, copyrightYear,
   } = args;
   let out = '';
+  let previous: MonthlySpendingComposition | undefined;
       const spendingTableSectionNo = hasSpendingSection ? nextSection() : 0;
       spendingChunks.forEach((chunk, chunkIdx) => {
         const pageNum = nextPage();
@@ -222,9 +230,16 @@ function renderSpendingTablePages(args: {
 
         chunk.forEach((d, idx) => {
           const bg = idx % 2 === 1 ? 'background-color: #f8fafc;' : '';
+          const changes = previous ? [
+            previous.nationalUsed === 0 && d.nationalUsed > 0 ? '국민연금 재원 시작' : '',
+            previous.privatePenUsed === 0 && d.privatePenUsed > 0 ? '사적연금 재원 시작' : '',
+            previous.assetWithdrawal === 0 && d.assetWithdrawal > 0 ? '자산인출 시작' : '',
+            previous.shortfall === 0 && d.shortfall > 0 ? '생활비 부족 시작' : '',
+          ].filter(Boolean) : [];
+          previous = d;
           out += `
             <tr style="${bg}">
-              <td style="border: 1px solid #cbd5e1; padding: 7px 8px; text-align: center;">${d.age}세</td>
+              <td style="border: 1px solid #cbd5e1; padding: 7px 8px; text-align: center;">${d.age}세${changes.length ? `<br/><span style="font-size: 8px; color: #475569;">${changes.join(' · ')}</span>` : ''}</td>
               <td style="border: 1px solid #cbd5e1; padding: 7px 8px; text-align: right;">${formatValuePrint(d.nationalUsed)}</td>
               <td style="border: 1px solid #cbd5e1; padding: 7px 8px; text-align: right;">${formatValuePrint(d.privatePenUsed)}</td>
               <td style="border: 1px solid #cbd5e1; padding: 7px 8px; text-align: right;">${formatValuePrint(d.dividendUsed)}</td>
@@ -454,13 +469,13 @@ export function buildReportHtml(input: ReportHtmlInput): string {
 
   const accountListsHtml = [
         renderAccountList('사적연금', privatePensions, (p) =>
-          `<li style="margin-bottom: 4px;"><strong>${escapeHtml(describePrivatePensionLabel(p))}</strong>: 현재 잔액 ${p.balance.toLocaleString()} ${formatCurrencyUnit(p.currency)}, 매월 ${p.monthlyContribution.toLocaleString()} ${formatCurrencyUnit(p.currency)} 납입, 연 총수익률 ${p.totalReturn}%${p.dividendYield ? ` (배당 ${p.dividendYield}% 포함)` : ''}${originNote(p.id)}</li>`,
+          `<li style="margin-bottom: 4px;"><strong>${escapeHtml(describePrivatePensionLabel(p))}</strong>: 현재 잔액 ${p.balance.toLocaleString()} ${formatCurrencyUnit(p.currency)}, 매월 ${p.monthlyContribution.toLocaleString()} ${formatCurrencyUnit(p.currency)} 납입, 연 총수익률 ${formatRate(p.totalReturn)}%${p.dividendYield ? ` (배당 ${formatRate(p.dividendYield)}% 포함)` : ''}${originNote(p.id)}</li>`,
           '등록된 사적연금 없음'),
         renderAccountList('투자 자산', assets, (a) =>
-          `<li style="margin-bottom: 4px;"><strong>${escapeHtml(describeInvestmentAssetLabel(a))}</strong>: ${a.quantity}주(개) x 평균단가 ${a.averagePrice.toLocaleString()} ${formatCurrencyUnit(a.currency)}, 매월 ${a.monthlyContribution.toLocaleString()} ${formatCurrencyUnit(a.currency)} 납입, 연 총수익률 ${a.totalReturn}% (배당 ${a.dividendYield}% 포함), 배당 재투자 ${a.reinvestDividend ? 'O' : 'X'}${originNote(a.id)}</li>`,
+          `<li style="margin-bottom: 4px;"><strong>${escapeHtml(describeInvestmentAssetLabel(a))}</strong>: ${a.quantity}주(개) x 평균단가 ${a.averagePrice.toLocaleString()} ${formatCurrencyUnit(a.currency)}, 매월 ${a.monthlyContribution.toLocaleString()} ${formatCurrencyUnit(a.currency)} 납입, 연 총수익률 ${formatRate(a.totalReturn)}% (배당 ${formatRate(a.dividendYield)}% 포함), 배당 재투자 ${a.reinvestDividend ? 'O' : 'X'}${originNote(a.id)}</li>`,
           '등록된 투자 자산 없음'),
         renderAccountList('ISA 계좌', isaAccounts, (isa) =>
-          `<li style="margin-bottom: 4px;"><strong>${escapeHtml(describeIsaAccountLabel(isa))}</strong>: 현재 잔액 ${isa.balance.toLocaleString()} ${formatCurrencyUnit(isa.currency)}, 매월 ${isa.monthlyContribution.toLocaleString()} ${formatCurrencyUnit(isa.currency)} 납입, 연 총수익률 ${isa.totalReturn}% (배당 ${isa.dividendYield}% 포함), 만기 ${isa.maturityYears}년${originNote(isa.id)}</li>`,
+          `<li style="margin-bottom: 4px;"><strong>${escapeHtml(describeIsaAccountLabel(isa))}</strong>: 현재 잔액 ${isa.balance.toLocaleString()} ${formatCurrencyUnit(isa.currency)}, 매월 ${isa.monthlyContribution.toLocaleString()} ${formatCurrencyUnit(isa.currency)} 납입, 연 총수익률 ${formatRate(isa.totalReturn)}% (배당 ${formatRate(isa.dividendYield)}% 포함), 만기 ${isa.maturityYears}년${originNote(isa.id)}</li>`,
           '등록된 ISA 계좌 없음'),
         renderAccountList('기타 소득', otherIncomes, (i) =>
           `<li style="margin-bottom: 4px;"><strong>${escapeHtml(i.label)}</strong>: 매월 ${i.monthlyAmount.toLocaleString()} ${formatCurrencyUnit(i.currency)}</li>`,

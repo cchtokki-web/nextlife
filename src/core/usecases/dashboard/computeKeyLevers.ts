@@ -31,6 +31,8 @@ export type KeyLeverKey =
   | 'investmentReturn'
   | 'withdrawalOrder';
 
+export const KEY_LEVERS_ORDER_NOTE = '현재 계획에서 조정 가능성과 검토 순서를 고려해 나열했습니다. 숫자는 기준 가정에 따른 결정론적 비교이며 영향 크기 순위는 아닙니다.';
+
 export interface KeyLever {
   key: KeyLeverKey;
   title: string;
@@ -146,7 +148,7 @@ function buildRetirementAgeLever({ sensitivity, formatValue }: KeyLeversInput): 
     // 왜 이렇게 크게 갈리는지를 밝히지 않으면 사용자는 과장된 결과로 읽는다.
     detail:
       `${parts.join(' / ')}. 추가 적립·추가 운용기간·인출 지연·연금 공백 단축이 동시에 작용해 ` +
-      '다른 어떤 변수보다 효과가 큽니다.',
+      '각 변화가 결과에 함께 반영됩니다.',
     hardViolation,
   };
 }

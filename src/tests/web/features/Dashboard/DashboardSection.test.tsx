@@ -838,6 +838,8 @@ describe('DashboardSection - 현재 계획 진단', () => {
 
     // 1000회·85%의 Wilson 95% 구간은 82.65~87.08%다(독립 계산).
     expect(diagnosis()).toHaveTextContent('95% 신뢰구간 83~87%');
+    expect(diagnosis()).toHaveTextContent('시행 횟수에 따른 추정의 불확실성');
+    expect(diagnosis()).toHaveTextContent('판정 조건:');
   });
 
   // 전 시행 성공에서 「100~100%」로 찍히면 폭이 0이라는 거짓말이 된다.

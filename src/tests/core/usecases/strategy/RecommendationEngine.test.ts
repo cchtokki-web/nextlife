@@ -1099,6 +1099,13 @@ describe('buildReasons - 국민연금 조기/연기수령 문구', () => {
       true
     );
     expect(reasons.some((r) => r.includes('60세') && r.includes('감소'))).toBe(true);
+    expect(reasons.some((r) => r.includes('기준 계획 대비 시뮬레이션 기간 국민연금 세후 수령액'))).toBe(true);
+  });
+
+  test('수령액 차이가 0이면 증가라고 표시하지 않는다', () => {
+    const reason = buildReasons({ nationalPensionStartAge: 60 }, zeroDeltas, true).find((r) => r.includes('국민연금'));
+    expect(reason).toContain('변화 없음');
+    expect(reason).not.toContain('증가');
   });
 });
 

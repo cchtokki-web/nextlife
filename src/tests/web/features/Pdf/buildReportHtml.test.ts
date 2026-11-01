@@ -71,7 +71,20 @@ function input(): ReportHtmlInput {
   return inputOf(fixture);
 }
 
+const withoutDeterministicProjectionNote = (html: string) => html.replaceAll('\n              <p style="font-size: 9.5px; color: #64748b; margin: 0 0 8px;">* 「총 자산」과 소득·생활비는 기준 수익률을 적용한 동일한 결정론 경로입니다.</p>', '');
+
 describe('buildReportHtml', () => {
+  test('중앙값이 없으면 연령별 표가 기준 수익률 경로임을 밝힌다', () => {
+    expect(buildReportHtml(input())).toContain('총 자산」과 소득·생활비는 기준 수익률을 적용한 동일한 결정론 경로');
+  });
+  test('계좌 수익률은 표시할 때만 반올림하고 작은 값의 부호를 보존한다', () => {
+    const base = input();
+    const assets = base.params.assets.map((asset, index) => ({ ...asset, totalReturn: index ? -0.004 : 6.123456, dividendYield: index ? 0.004 : 1.234567 }));
+    const html = buildReportHtml({ ...base, params: { ...base.params, assets } });
+    expect(html).toContain('연 총수익률 6.12% (배당 1.23% 포함)');
+    expect(html).toContain('연 총수익률 -0.01~0% (배당 0~0.01% 포함)');
+    expect(assets[0].totalReturn).toBe(6.123456);
+  });
   test('추천과 목표 충돌 안내가 없으면 추천 페이지를 제거한다', () => {
     const original = input();
     const html = buildReportHtml({ ...original, sections: { ...original.sections, strategyRecommendation: '', goalConflict: '' } });
@@ -80,7 +93,7 @@ describe('buildReportHtml', () => {
     expect(html).toContain('실행 시점 및 민감도 분석');
   });
   test('리팩터링 전 출력과 한 글자도 다르지 않다', () => {
-    expect(buildReportHtml(input())).toBe(fixture.html);
+    expect(withoutDeterministicProjectionNote(buildReportHtml(input()))).toBe(fixture.html);
   });
 
   // 순수 함수라는 주장을 직접 고정한다. 시계·로케일·DOM에 닿으면 두 번 부른 결과가 갈린다.
@@ -198,10 +211,10 @@ describe('buildReportHtml', () => {
 
     test('충돌이 없으면 빈 줄 하나도 만들지 않는다', () => {
       // 「없는 것은 자리도 만들지 않는다」. 골든 출력이 한 글자도 변하지 않아야 한다.
-      expect(buildReportHtml({
+      expect(withoutDeterministicProjectionNote(buildReportHtml({
         ...input(),
         sections: { ...fixture.sections, goalConflict: '' },
-      })).toBe(fixture.html);
+      }))).toBe(fixture.html);
     });
   });
 
@@ -229,10 +242,10 @@ describe('buildReportHtml', () => {
 
     test('바닥이 구속하지 않으면 빈 줄 하나도 만들지 않는다', () => {
       // 「없는 것은 자리도 만들지 않는다」. 골든 출력이 한 글자도 변하지 않아야 한다.
-      expect(buildReportHtml({
+      expect(withoutDeterministicProjectionNote(buildReportHtml({
         ...input(),
         sections: { ...fixture.sections, sustainableSpendingLimit: '' },
-      })).toBe(fixture.html);
+      }))).toBe(fixture.html);
     });
   });
 
@@ -339,8 +352,13 @@ describe('buildReportHtml', () => {
   });
 
   describe('계좌가 하나도 없고 기타소득만 있는 계획', () => {
+    test('재원 구성이 달라지는 시점을 표의 나이 옆에 표시한다', () => {
+      expect(buildReportHtml(inputOf(noAccounts))).toMatch(/국민연금 재원 시작|사적연금 재원 시작|자산인출 시작|생활비 부족 시작/);
+    });
     test('고정한 출력과 한 글자도 다르지 않다', () => {
-      expect(buildReportHtml(inputOf(noAccounts))).toBe(noAccounts.html);
+      const html = withoutDeterministicProjectionNote(buildReportHtml(inputOf(noAccounts)))
+        .replace(/<br\/><span style="font-size: 8px; color: #475569;">(?:국민연금 재원 시작|사적연금 재원 시작|자산인출 시작|생활비 부족 시작)(?: · (?:국민연금 재원 시작|사적연금 재원 시작|자산인출 시작|생활비 부족 시작))*<\/span>/g, '');
+      expect(html).toBe(noAccounts.html);
     });
 
     // 위 골든이 «무엇을» 지키는지 밝혀 둔다. 골든만 있으면 깨졌을 때 어느 계약이

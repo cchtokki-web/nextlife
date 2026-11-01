@@ -2,7 +2,7 @@
 
 import { ListOrdered } from 'lucide-react';
 import GlassCard from '../../../components/GlassCard';
-import { KeyLever } from '../../../../core/usecases/dashboard/computeKeyLevers';
+import { KEY_LEVERS_ORDER_NOTE, KeyLever } from '../../../../core/usecases/dashboard/computeKeyLevers';
 import { describeHardViolationBasis } from '../../../../core/usecases/goals/goalSuccessConditions';
 
 interface KeyLeversCardProps {
@@ -30,7 +30,7 @@ export function KeyLeversCard({ levers }: KeyLeversCardProps) {
         무엇부터 바꿔야 하나
       </h3>
       <p className="mb-3 text-xs text-foreground-muted">
-        이미 계산된 결과에서 영향이 큰 순서로 정리했습니다. 아래로 갈수록 효과가 작습니다.
+        {KEY_LEVERS_ORDER_NOTE}
       </p>
       <p className="mb-3 text-xs text-foreground-muted">
         이 진단은 아래의 목표 기반 전략 추천과 별개로, 현재 계획에서 먼저 살펴볼 항목을 보여줍니다.

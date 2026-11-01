@@ -7,7 +7,7 @@ import { SENSITIVITY_EXPLANATION } from '../Dashboard/expert/sensitivityExplanat
 import { describeYieldAxisAnchors, SensitivityScenario } from '../../../core/usecases/dashboard/computeSensitivityAnalysis';
 import { PlanAssetStatus } from '../../../core/usecases/dashboard/resolvePlanAssetStatus';
 import { ShortfallReport } from '../../../core/usecases/dashboard/computeShortfallSummary';
-import { KeyLever } from '../../../core/usecases/dashboard/computeKeyLevers';
+import { KEY_LEVERS_ORDER_NOTE, KeyLever } from '../../../core/usecases/dashboard/computeKeyLevers';
 import { SustainableSpendingAdvice } from '../../../core/usecases/dashboard/computeSustainableSpendingAdvice';
 import {
   PLAN_CONFIDENCE_BAND_LABEL,
@@ -159,7 +159,7 @@ export function renderKeyLeversSection(levers: KeyLever[]): string {
     <div style="border: 1px solid #e2e8f0; background-color: #f8fafc; border-radius: 8px; padding: 12px 14px; margin-bottom: 12px;">
       <p style="margin: 0 0 2px; font-size: 12.5px; font-weight: 700; color: #0f172a;">무엇부터 바꿔야 하나</p>
       <p style="margin: 0 0 7px; font-size: 10px; color: #64748b; line-height: 1.4;">목표 기반 전략 추천과 별개로, 현재 계획에서 먼저 살펴볼 항목입니다.</p>
-      <p style="margin: 0 0 8px; font-size: 10.5px; color: #64748b;">이미 계산된 결과에서 영향이 큰 순서로 정리했습니다. 아래로 갈수록 효과가 작습니다.</p>
+      <p style="margin: 0 0 8px; font-size: 10.5px; color: #64748b;">${KEY_LEVERS_ORDER_NOTE}</p>
       ${violationBasisHtml}
       <ol style="margin: 0; padding-left: 16px;">${rows}</ol>
     </div>
@@ -239,6 +239,8 @@ export function renderPlanVerdictSection(input: {
            ${expectancy}세 예상자산(중앙값) ${formatValue(terminalAssetDisplay.amount)}
          </p>
          <p style="margin: 4px 0 0; font-size: 10px; color: #64748b;">입력한 수익률, 물가, 연금, 수명 및 시장 변동 가정 범위 내의 시뮬레이션 결과이며 실제 미래 결과를 보장하지 않습니다.</p>
+         ${describeGoalSuccessCriteria(monteCarlo.goalConditions, expectancy, formatValue) ? `<p style="margin: 4px 0 0; font-size: 10px; color: #64748b;">판정 조건: ${describeGoalSuccessCriteria(monteCarlo.goalConditions, expectancy, formatValue)}</p>` : ''}
+         ${judged && goalConfidenceSuffix(judged) ? '<p style="margin: 4px 0 0; font-size: 10px; color: #64748b;">신뢰구간은 유한한 시행 횟수에 따른 추정의 불확실성을 나타냅니다.</p>' : ''}
          ${goalCoverageNote(monteCarlo.goalConditions)}
          ${hardGoalSuccessNote(judged?.hardGoalSuccess ?? null)}`,
         verdictAccent(confidence)
@@ -1050,8 +1052,9 @@ export function renderMonteCarloSection(
       </tbody>
     </table>
     <p style="margin: 6px 0 0; font-size: 11px; color: #64748b;">
-      같은 평균 수익률이라도 해마다 오르내리면 결과는 이만큼 낮아집니다. 자산 추이 차트의
-      총 자산액 곡선은 흔들리지 않는다고 가정한 값이라 아랫줄에 해당합니다.
+      위 표는 시장 변동을 반영한 기말자산 분포와 변동 없이 기준 수익률을 적용한 결과를 비교합니다.
+      자산 추이 차트는 자료가 충분하면 나이별 중앙값을, 그렇지 않으면 기준 수익률 경로를 보여줍니다.
+      나이별 중앙값은 서로 다른 시행에서 올 수 있으므로 하나의 실제 시행 경로가 아닙니다.
     </p>
     ${depletionText}
     ${shortfallHtml}

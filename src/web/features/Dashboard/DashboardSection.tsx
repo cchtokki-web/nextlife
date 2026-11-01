@@ -29,7 +29,7 @@ import {
 } from '../../../core/usecases/dashboard/computePlanConfidence';
 import { explainGoalShortfall } from '../../../core/usecases/dashboard/explainGoalShortfall';
 import { resolveTerminalAssetDisplay } from '../../../core/usecases/dashboard/resolveTerminalAssetDisplay';
-import type { GoalSuccessConditions } from '../../../core/usecases/goals/goalSuccessConditions';
+import { describeGoalSuccessCriteria, type GoalSuccessConditions } from '../../../core/usecases/goals/goalSuccessConditions';
 import { describeGoalConflict } from '../../../core/usecases/goals/describeGoalConflict';
 import { describeSustainableSpendingLimit } from '../../../core/usecases/dashboard/describeSustainableSpendingLimit';
 import { describeSuccessRates, describeHardGoalRelationship } from '../../../core/usecases/montecarlo/describeSuccessRates';
@@ -346,6 +346,8 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
                   {judged.trials.toLocaleString()}회 중{' '}
                   {judged.goalSuccess.succeeded.toLocaleString()}회가 판정 조건 충족
                   {goalConfidenceLabel !== null && ` · ${goalConfidenceLabel}`}
+                  {goalConfidenceLabel !== null && <><br />신뢰구간은 시행 횟수에 따른 추정의 불확실성을 나타냅니다.</>}
+                  {describeGoalSuccessCriteria(monteCarlo.goalConditions, params.userProfile.expectancy, formatValue) && <><br />판정 조건: {describeGoalSuccessCriteria(monteCarlo.goalConditions, params.userProfile.expectancy, formatValue)}</>}
                 </small>
               )}
             </div>
