@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { resolveSimulationVerdict } from '../../core/usecases/montecarlo/resolveSimulationVerdict';
 import { useSession, signOut } from 'next-auth/react';
 import type { SimulationParams } from '../../core/entities/types';
 import { LegacySimulationEngine } from '../../core/simulation/LegacySimulationEngine';
@@ -235,6 +236,10 @@ export default function Home() {
       // 내고 있어 같은 계획의 두 문서가 서로 다른 축으로 서로 다른 전략을 권했다.
       const strategyRecommendationHtml = renderStrategyRecommendationSection({
         recommendations: strategyOptimization?.recommendations?.recommendations,
+        currentGoalProbability: (() => {
+          const verdict = resolveSimulationVerdict({ monteCarlo: analysis.monteCarloStatus === 'done' ? monteCarlo : undefined, params: reportParams });
+          return verdict.available ? verdict.goalSuccess.rate : undefined;
+        })(),
         // 화면의 ☆추천과 같은 출처. 넘기지 않으면 리포트가 제 규칙으로 다시 고른다.
         primary: strategyOptimization?.recommendations?.primary,
         status: strategyOptimizationStatus,

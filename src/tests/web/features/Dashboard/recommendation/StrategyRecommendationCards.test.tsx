@@ -6,7 +6,7 @@ import type { CandidateRecommendation, ValidatedStrategyCandidate } from '@/core
 import { DEFAULT_UTILITY_CONFIG } from '@/core/usecases/utility/utilityWeights';
 import { describeStrategyChanges } from '@/core/usecases/dashboard/describeStrategyChanges';
 import { previewStrategyApply } from '@/core/usecases/dashboard/applyStrategyToParams';
-import { StrategyRecommendationCards } from '@/web/features/Dashboard/recommendation/StrategyRecommendationCards';
+import { StrategyRecommendationCards, shouldHideRecommendationBody } from '@/web/features/Dashboard/recommendation/StrategyRecommendationCards';
 import { LEGACY_GOAL_CONDITIONS } from '@/tests/fixtures/goalFailure';
 
 const params: SimulationParams = {
@@ -914,6 +914,9 @@ describe('StrategyRecommendationCards - 현재 계획과의 비교', () => {
     expect(screen.queryByText('추천: 현재 계획 유지')).not.toBeInTheDocument();
     expect(screen.queryByText(worse.label)).not.toBeInTheDocument();
     expect(screen.queryByText('다른 선택을 검토하고 싶다면')).not.toBeInTheDocument();
+    expect(shouldHideRecommendationBody({ status: 'done', recommendations: [worse], currentGoalProbability: 0.67 })).toBe(true);
+    expect(shouldHideRecommendationBody({ status: 'running', recommendations: [worse], currentGoalProbability: 0.67 })).toBe(false);
+    expect(shouldHideRecommendationBody({ status: 'done', recommendations: [better], currentGoalProbability: 0.67 })).toBe(false);
   });
 
   // 카드를 «지우지는» 않는다. 축을 바꿔 보고 싶은 사용자의 유일한 경로이고, 무엇을 검토했는지가

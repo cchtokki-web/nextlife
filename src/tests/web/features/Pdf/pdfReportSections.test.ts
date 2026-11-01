@@ -199,6 +199,12 @@ describe('renderStrategyRecommendationSection', () => {
     reason: '목표 달성 확률을 가장 우선했습니다.',
   };
 
+  test('현재 계획보다 나은 추천이 없으면 보고서 추천 내용을 생략한다', () => {
+    expect(renderStrategyRecommendationSection({ recommendations: [stable], status: 'done', currentGoalProbability: 0.8, params, formatValue })).toBe('');
+    expect(renderStrategyRecommendationSection({ recommendations: [stable], status: 'done', currentGoalProbability: 0.6, params, formatValue })).toContain('안정형');
+    expect(renderStrategyRecommendationSection({ recommendations: [stable], status: 'running', currentGoalProbability: 0.8, params, formatValue })).not.toBe('');
+  });
+
   test('페르소나 카드와 달라지는 점을 싣는다', () => {
     const html = renderStrategyRecommendationSection({
       recommendations: [balanced], status: 'done', params, formatValue,

@@ -49,7 +49,7 @@ import { LegacyEvaluationEngine } from '../../../core/evaluation/LegacyEvaluatio
 import type { CandidateRecommendation } from '../../../core/recommendation/RecommendationEngine';
 import type { StrategyOptimizationResult } from '../../../core/strategy/StrategyOptimizer';
 import type { StrategyOptimizationStatus } from '../../hooks/useStrategyOptimization';
-import { StrategyRecommendationCards } from './recommendation/StrategyRecommendationCards';
+import { StrategyRecommendationCards, shouldHideRecommendationBody } from './recommendation/StrategyRecommendationCards';
 
 interface DashboardSectionProps {
   params: SimulationParams;
@@ -483,7 +483,7 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
         </GlassCard>
       )}
 
-      <DashboardGroup title="NextLife 추천" description="목표에 가장 가까운 최종 전략과 현재 계획에서 바뀌는 점만 비교합니다." hideHeader>
+      {(!shouldHideRecommendationBody({ status: strategyOptimizationStatus, outcome: strategyOptimization?.outcome, recommendations: strategyOptimization?.recommendations?.recommendations, currentGoalProbability }) || (appliedStrategy && onUndoStrategy)) && <DashboardGroup title="NextLife 추천" description="목표에 가장 가까운 최종 전략과 현재 계획에서 바뀌는 점만 비교합니다." hideHeader>
         <StrategyRecommendationCards
           recommendations={strategyOptimization?.recommendations?.recommendations}
           primary={strategyOptimization?.recommendations?.primary}
@@ -505,7 +505,7 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
           appliedStrategy={appliedStrategy}
           onUndoStrategy={onUndoStrategy}
         />
-      </DashboardGroup>
+      </DashboardGroup>}
 
         <DashboardGroup title="실행 시점" description="무엇부터 손대야 하는지와, 나이별로 무슨 일이 일어나는지 확인하세요." hideHeader>
           {/* 인출 전략보다 위에 둔다. 이유는 computeKeyLevers 주석 참고 — 매도 순서·인출

@@ -508,17 +508,17 @@ export function buildReportHtml(input: ReportHtmlInput): string {
           </div>
         </div>
 
-        <div class="pdf-page">
+        ${strategyRecommendationHtml || goalConflictSectionHtml ? `<div class="pdf-page">
           <div class="pdf-content">
-            ${goalConflictSectionHtml}<h2 style="font-size: 16px; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; color: #0f172a; margin-top: 0; margin-bottom: 10px;">${nextSection()}. NextLife 추천</h2>
+            ${goalConflictSectionHtml}${strategyRecommendationHtml ? `<h2 style="font-size: 16px; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; color: #0f172a; margin-top: 0; margin-bottom: 10px;">${nextSection()}. NextLife 추천</h2>
             <p style="font-size: 11px; color: #64748b; margin-top: 0; margin-bottom: 14px;">목표에 가장 가까운 최종 전략과, 현재 계획에서 바뀌는 점만 비교합니다.</p>
-            ${strategyRecommendationHtml}
+            ${strategyRecommendationHtml}` : ''}
           </div>
           <div class="pdf-footer">
             <span>NextLife 은퇴 자산 시뮬레이션 리포트</span>
             <span class="pdf-page-number">페이지 ${nextPage()} / {total_pages}</span>
           </div>
-        </div>
+        </div>` : ''}
 
         ${monteCarloPageHtml()}
 

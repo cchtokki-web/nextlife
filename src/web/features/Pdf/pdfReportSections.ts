@@ -31,7 +31,7 @@ import {
 import { describeUnscoredGoals } from '../../../core/usecases/goals/goalScoreSupport';
 import { SequenceRiskResult } from '../../../core/usecases/montecarlo/sequenceRisk';
 import { OptimizationOutcome } from '../../../core/strategy/StrategyOptimizer';
-import { CandidateRecommendation, PRIMARY_SELECTION_NOTE } from '../../../core/recommendation/RecommendationEngine';
+import { CandidateRecommendation, PRIMARY_SELECTION_NOTE, improvesOnCurrentPlan } from '../../../core/recommendation/RecommendationEngine';
 import { RetirementGoalType } from '../../../core/entities/retirementGoal';
 import { RETIREMENT_GOAL_CONSTRAINT_LABELS } from '../../../core/entities/retirementGoal';
 import type { GoalConflictVerdict } from '../../../core/evaluation/EvaluationEngine';
@@ -495,6 +495,7 @@ export function renderSustainableSpendingLimitSection(input: SustainableSpending
 // 추천 자리가 통째로 비는데, 그러면 "추천할 것이 없는 계획"으로 읽힌다.
 export function renderStrategyRecommendationSection(input: {
   recommendations?: readonly CandidateRecommendation[];
+  currentGoalProbability?: number;
   /**
    * ☆추천 배지가 붙는 카드. 화면(StrategyRecommendationCards)이 받는 것과 같은 값이다.
    *
@@ -519,7 +520,7 @@ export function renderStrategyRecommendationSection(input: {
   formatValue: (value: number) => string;
 }): string {
   const {
-    recommendations, primary, status, unsupportedHardGoals, outcome,
+    recommendations, primary, status, unsupportedHardGoals, outcome, currentGoalProbability,
     baselineOutcome, sustainableSpendingAdvice, params, formatValue,
   } = input;
 
@@ -562,6 +563,8 @@ export function renderStrategyRecommendationSection(input: {
   }
 
   const finalRecommendations = recommendations ?? [];
+  if (currentGoalProbability !== undefined && finalRecommendations.length > 0
+    && finalRecommendations.every((item) => !improvesOnCurrentPlan(item.candidate, currentGoalProbability))) return '';
   if (finalRecommendations.length === 0) {
     return notice(describeEmptyOutcome(outcome));
   }

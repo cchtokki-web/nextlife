@@ -328,6 +328,7 @@ export function StrategyRecommendationCards(props: StrategyRecommendationCardsPr
   // 그 id가 없는 경우까지 여기서 함께 판정한다.
   const appliedCardIsVisible = status === 'done'
     && outcome?.kind !== 'no_candidate_reaches_goal'
+    && !shouldHideRecommendationBody(props)
     && (recommendations ?? []).some(
       (item) => item.candidate.candidate.id === appliedStrategy?.candidateId
     );
@@ -344,6 +345,14 @@ export function StrategyRecommendationCards(props: StrategyRecommendationCardsPr
       <RecommendationBody {...props} />
     </>
   );
+}
+
+export function shouldHideRecommendationBody({ status, outcome, recommendations, currentGoalProbability }: Pick<StrategyRecommendationCardsProps, 'status' | 'outcome' | 'recommendations' | 'currentGoalProbability'>): boolean {
+  return status === 'done'
+    && outcome?.kind !== 'no_candidate_reaches_goal'
+    && currentGoalProbability !== undefined
+    && (recommendations?.length ?? 0) > 0
+    && recommendations!.every((item) => !improvesOnCurrentPlan(item.candidate, currentGoalProbability));
 }
 
 function RecommendationBody({
@@ -445,8 +454,7 @@ function RecommendationBody({
 
   // 세 카드가 모두 지금보다 나쁘면 사용자가 할 «옳은 일»은 아무것도 하지 않는 것이다.
   // 그 말을 하지 않으면 화면은 셋 중 하나를 고르라는 뜻으로만 읽힌다.
-  const noneImproves = currentGoalProbability !== undefined
-    && finalRecommendations.every((item) => !improvesOnCurrentPlan(item.candidate, currentGoalProbability));
+  const noneImproves = shouldHideRecommendationBody({ status, outcome, recommendations, currentGoalProbability });
   if (noneImproves) return null;
   return (
     <>

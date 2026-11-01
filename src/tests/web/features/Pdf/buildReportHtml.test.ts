@@ -72,6 +72,13 @@ function input(): ReportHtmlInput {
 }
 
 describe('buildReportHtml', () => {
+  test('추천과 목표 충돌 안내가 없으면 추천 페이지를 제거한다', () => {
+    const original = input();
+    const html = buildReportHtml({ ...original, sections: { ...original.sections, strategyRecommendation: '', goalConflict: '' } });
+    expect(html).not.toContain('. NextLife 추천</h2>');
+    expect((html.match(/class="pdf-page"/g) ?? []).length).toBe((buildReportHtml(original).match(/class="pdf-page"/g) ?? []).length - 1);
+    expect(html).toContain('실행 시점 및 민감도 분석');
+  });
   test('리팩터링 전 출력과 한 글자도 다르지 않다', () => {
     expect(buildReportHtml(input())).toBe(fixture.html);
   });
