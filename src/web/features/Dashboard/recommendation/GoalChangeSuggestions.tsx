@@ -56,6 +56,12 @@ export function GoalChangeSuggestions({ params, onApply, onUndo, onConfirm, canU
     }
   }
 
+  function cancel() {
+    worker.current?.terminate();
+    worker.current = null;
+    setState({ kind: 'idle' });
+  }
+
   if (canUndo) return <GlassCard className={`${styles.goalChangeContainer} text-sm text-foreground-muted`}>
     <h3 className="font-semibold text-foreground">은퇴 목표 변경안 비교</h3>
     <p className="mt-2">변경 전 목표로 복구하거나 현재 변경안을 확정해 주세요.</p>
@@ -70,8 +76,8 @@ export function GoalChangeSuggestions({ params, onApply, onUndo, onConfirm, canU
     <h3 className="font-semibold text-foreground">은퇴 목표 변경안 비교</h3>
     <p className="mt-2">은퇴 시점과 확정된 생활비 목표의 변경안을 별도로 계산합니다. 필수 목표도 선택한 경우에만 바뀝니다.</p>
     <p>생활비나 은퇴 목표를 바꾸면 성공의 기준이 달라지므로, 높아진 확률은 기존 목표를 더 잘 달성한다는 뜻이 아닙니다.</p>
-    <button type="button" aria-live="polite" className="mt-3 rounded-lg border border-primary px-3 py-2 text-primary" disabled={state.kind === 'running'} onClick={run}>
-      {state.kind === 'running' ? '변경안 계산 중…' : '목표 변경안 계산'}
+    <button type="button" aria-live="polite" className="mt-3 rounded-lg border border-primary px-3 py-2 text-primary" onClick={state.kind === 'idle' || state.kind === 'error' ? run : cancel}>
+      {state.kind === 'running' ? '변경안 계산 중…' : state.kind === 'done' ? '목표 변경안 취소' : state.kind === 'error' ? '목표 변경안 다시 계산' : '목표 변경안 계산'}
     </button>
     {state.kind === 'error' && <p role="alert">{state.message}</p>}
     {state.kind === 'done' && <div className="mt-3">

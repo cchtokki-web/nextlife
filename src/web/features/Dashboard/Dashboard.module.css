@@ -89,6 +89,9 @@
   overflow-wrap: anywhere;
 }
 
+/* 한 줄/두 줄 제목이 섞여도 네 카드의 확률 행은 같은 높이에서 시작한다. */
+.goalChangeProposalGrid .goalChangeCardHeader { min-height: 4.25rem; }
+
 .goalChangeCategory {
   color: var(--primary);
   font-size: 0.75rem;
@@ -96,6 +99,13 @@
 }
 
 .goalChangeMetrics { margin-top: 0.25rem; }
+.goalChangeMetrics > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.5rem;
+}
+.goalChangeMetrics dt { white-space: nowrap; }
 
 .goalChangeConfidence,
 .goalChangeConditions {
