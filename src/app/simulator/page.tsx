@@ -697,11 +697,7 @@ export default function Home() {
               />
 
               <div className="pt-4">
-                {activeParams.investmentBaseline ? (
-                  <>
-                    <p className="mt-1 text-xs text-foreground-muted">비교 기준: {activeParams.investmentBaseline.capturedAt.slice(0, 10)} (UTC)</p>
-                  </>
-                ) : (
+                {!activeParams.investmentBaseline && (
                   <>
                     <button type="button" className="mt-2 rounded-lg border border-primary px-3 py-2 text-sm font-semibold text-primary" onClick={() => handleUpdateActiveParams((previous) => {
                       if (previous.investmentBaseline) return previous;

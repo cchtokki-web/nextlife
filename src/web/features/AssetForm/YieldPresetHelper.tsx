@@ -69,7 +69,6 @@ export function YieldPresetHelper({ params, onChangeParams }: YieldPresetHelperP
           </div>
         </div>
       )}
-      {selected === 'auto' && <p className="basis-full text-xs text-foreground-muted">ETF 과거 수익률은 미래 성과를 보장하지 않습니다.</p>}
     </div>
   );
 }
