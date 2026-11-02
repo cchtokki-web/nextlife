@@ -455,7 +455,11 @@ function RecommendationBody({
   // 세 카드가 모두 지금보다 나쁘면 사용자가 할 «옳은 일»은 아무것도 하지 않는 것이다.
   // 그 말을 하지 않으면 화면은 셋 중 하나를 고르라는 뜻으로만 읽힌다.
   const noneImproves = shouldHideRecommendationBody({ status, outcome, recommendations, currentGoalProbability });
-  if (noneImproves) return null;
+  if (noneImproves) return (
+    <GlassCard className="text-sm text-foreground-muted" role="note">
+      현재 계획보다 목표 달성 확률이 높은 추천 전략이 없습니다.
+    </GlassCard>
+  );
   return (
     <>
       {unsupportedHardGoals && unsupportedHardGoals.length > 0 && (

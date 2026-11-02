@@ -908,10 +908,10 @@ describe('StrategyRecommendationCards - 현재 계획과의 비교', () => {
   // 여전히 「셋 중 하나를 고르라」는 뜻으로 읽히고 사용자는 「그럼 추천은 왜 보여주지?」에서
   // 멈춘다. 판정은 이미 core가 내리고 있었고(improvesOnCurrentPlan) 화면이 그 결론을
   // 카드로 세우지 않았을 뿐이다.
-  test('세 추천이 모두 지금보다 나쁘면 추천 영역을 표시하지 않는다', () => {
+  test('추천이 모두 현재 계획보다 낫지 않으면 안내를 표시한다', () => {
     renderWith([worse], 0.67);
 
-    expect(screen.queryByText('추천: 현재 계획 유지')).not.toBeInTheDocument();
+    expect(screen.getByText('현재 계획보다 목표 달성 확률이 높은 추천 전략이 없습니다.')).toBeInTheDocument();
     expect(screen.queryByText(worse.label)).not.toBeInTheDocument();
     expect(screen.queryByText('다른 선택을 검토하고 싶다면')).not.toBeInTheDocument();
     expect(shouldHideRecommendationBody({ status: 'done', recommendations: [worse], currentGoalProbability: 0.67 })).toBe(true);
