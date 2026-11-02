@@ -10,6 +10,8 @@ import { useBackgroundValue } from './useBackgroundValue';
 import { simulateLegacyConfig } from '../../core/application/simulateLegacyConfig';
 
 export interface StrategyPipeline {
+  /** 실제 계산에 사용된 사용자 입력. */
+  sourceParams: SimulationParams;
   // 사용자 입력을 컴파일한 것. AI 센티널은 아직 baseline으로 내려가 있다.
   compiled: CompiledStrategy;
   // 센티널 자동 채움까지 끝나 engine.run에 실제로 들어간 것.
@@ -116,6 +118,7 @@ export function useStrategyPipeline(
   );
 
   return {
+    sourceParams: deferredParams,
     compiled,
     effective,
     sentinels,

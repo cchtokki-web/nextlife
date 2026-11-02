@@ -47,6 +47,7 @@ export function useMonteCarlo(
 
   const [result, setResult] = useState<MonteCarloResult | undefined>(undefined);
   const [status, setStatus] = useState<MonteCarloStatus>('idle');
+  const [statusKey, setStatusKey] = useState('');
 
   const workerRef = useRef<Worker | null>(null);
   const requestIdRef = useRef(0);
@@ -78,6 +79,7 @@ export function useMonteCarlo(
       workerRef.current = null;
 
       let worker: Worker;
+      setStatusKey(paramsKey);
       try {
         worker = createWorkerRef.current();
       } catch (err) {
@@ -130,7 +132,12 @@ export function useMonteCarlo(
       worker.postMessage(request);
     }, debounceMs);
 
-    return () => clearTimeout(timer);
+    return () => {
+      clearTimeout(timer);
+      requestIdRef.current += 1;
+      workerRef.current?.terminate();
+      workerRef.current = null;
+    };
     // paramsKey가 내용 동등성을 대신한다(params 자체는 매 렌더 새 참조일 수 있다).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [paramsKey, debounceMs]);
@@ -146,5 +153,6 @@ export function useMonteCarlo(
   // params가 없는 동안의 'idle'은 상태로 저장하지 않고 렌더 시점에 파생한다.
   // 이펙트에서 setStatus('idle')을 부르면 렌더 → 이펙트 → 렌더의 연쇄가 생기고,
   // React 19의 set-state-in-effect 규칙이 정확히 그것을 금지한다.
-  return { result, status: params ? status : 'idle' };
+  if (!params || statusKey !== paramsKey) return { result: undefined, status: 'idle' };
+  return { result: status === 'done' ? result : undefined, status };
 }

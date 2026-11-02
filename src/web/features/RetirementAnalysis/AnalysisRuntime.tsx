@@ -81,7 +81,6 @@ export function AnalysisRuntime({ request, engine, children }: AnalysisRuntimePr
 
   return children({
     ...pipeline,
-    sourceParams: request.params,
     monteCarlo,
     monteCarloStatus,
     sequenceRisk,

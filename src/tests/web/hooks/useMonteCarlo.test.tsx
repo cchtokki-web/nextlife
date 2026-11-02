@@ -98,6 +98,19 @@ describe('useMonteCarlo', () => {
     expect(result.current.result?.successRate).toBe(0.87);
   });
 
+  test('입력이 바뀌면 이전 확률을 즉시 숨기고 이전 응답을 무시한다', async () => {
+    const { result, rerender } = renderHook(({ p }) => useMonteCarlo(p, { createWorker, debounceMs: 400 }), { initialProps: { p: params } });
+    await act(async () => { vi.advanceTimersByTime(400); });
+    const old = FakeWorker.instances[0];
+    act(() => old.respond({ kind: 'done', requestId: old.posted[0].requestId, result: makeResult(0.87) }));
+    expect(result.current.result?.goalSuccessProbability).toBe(0.87);
+    rerender({ p: { ...params, userProfile: { ...params.userProfile, retirementAge: 62 } } });
+    expect(result.current.result).toBeUndefined();
+    expect(old.terminated).toBe(true);
+    act(() => old.respond({ kind: 'done', requestId: old.posted[0].requestId, result: makeResult(0.99) }));
+    expect(result.current.result).toBeUndefined();
+  });
+
   test('워커가 실패를 알리면 error 상태가 된다', async () => {
     const { result } = renderHook(() => useMonteCarlo(params, { createWorker, debounceMs: 400 }));
     await act(async () => { vi.advanceTimersByTime(400); });
