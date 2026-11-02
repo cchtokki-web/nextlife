@@ -27,7 +27,6 @@ import {
   getPlanConfidenceBand,
   PLAN_CONFIDENCE_BAND_TIER,
 } from '../../../core/usecases/dashboard/computePlanConfidence';
-import { explainGoalShortfall } from '../../../core/usecases/dashboard/explainGoalShortfall';
 import { resolveTerminalAssetDisplay } from '../../../core/usecases/dashboard/resolveTerminalAssetDisplay';
 import { describeGoalSuccessCriteria, type GoalSuccessConditions } from '../../../core/usecases/goals/goalSuccessConditions';
 import { describeGoalConflict } from '../../../core/usecases/goals/describeGoalConflict';
@@ -271,17 +270,6 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
       : planOutcome.investableDepletionAge !== null
         ? { emoji: '🟡', text: '기준 시나리오는 유지되지만 투자자산 소진에 대비해야 합니다.', tone: 'warning' as const }
         : { emoji: '🟢', text: '기준 시나리오에서는 계획한 생활비와 자산이 유지됩니다.', tone: 'success' as const };
-  // 확률이 왜 그 값인지. 확률만 보여주면 사용자는 언제나 "자산 부족"으로 읽지만, 인출을
-  // 막는 설정(사적연금 최소 인출·자산 하한선) 때문에 자산이 남아도 목표를 못 채우는 계획이
-  // 같은 숫자를 받는다. 그 구분은 explainGoalShortfall이 소유한다.
-  const goalShortfallExplanation = monteCarlo
-    ? explainGoalShortfall({
-      goalFailure: monteCarlo.goalFailure,
-      trials: monteCarlo.trials,
-      params,
-      formatValue,
-    })
-    : undefined;
   const probabilityLabel = currentGoalProbability !== undefined
     ? `${Math.round(currentGoalProbability * 100)}%`
     : monteCarloStatus === 'error' || monteCarloStatus === 'unsupported'
@@ -374,7 +362,7 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
                 평균값 자체는 계산에서 사라지지 않는다 — metrics.targetSpending은 채점·평가가
                 계속 쓴다. 여기 KPI 자리에서만 내린다.
 
-                구간 전체는 바로 아래 spending-band-note가 그대로 편다. */}
+                구간 전체는 상세 분석에서 확인한다. */}
             <div>
               <dt>{spendingBands.length > 0 ? '은퇴 초기 생활비' : '월 생활비 목표'}</dt>
               <dd>
@@ -399,17 +387,6 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
           {judged !== null && judged.hardGoalSuccess !== null && (
             <HardGoalSuccessNote hardGoalSuccess={judged.hardGoalSuccess} />
           )}
-          {/* **cause로 가르지 않는다.** 목표를 다 달성했는데도 자산은 실제로 고갈된 계획은
-              cause가 'none'이면서(확률이 정말 100%다) 할 말이 있다. 예전에 여기서 cause를
-              보고 잘랐더니 그 문장이 한 번도 화면에 닿지 못했다. 제목도 여기서 적지 않는다 —
-              그 경우에는 「목표를 달성하지 못한 시행의 원인」이 바로 아래 문장을 부정한다.
-              「보여줄지」와 「어떤 제목으로」는 문장을 만든 곳이 함께 정한다. */}
-          {goalShortfallExplanation && goalShortfallExplanation.label !== undefined && (
-            <div className={styles.goalShortfallReason}>
-              <span>{goalShortfallExplanation.label}</span>
-              <p>{goalShortfallExplanation.headline}</p>
-            </div>
-          )}
           {/* 사용자가 입력한 적 없는 값이 결과에 들어갔다면 반드시 밝힌다. 예전에는 추천
               체크리스트의 "이미 반영됨" 블록이 이 역할을 했다. */}
           {appliedSentinelLabels.length > 0 && (
@@ -420,54 +397,6 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
           {currentGoalProbability === undefined && (
             <p className={styles.deterministicNote}>확률 검증 전에는 기준 시나리오의 생존·생활비 부족 여부만 진단합니다.</p>
           )}
-          <p className={styles.planFactNote}>
-            <button type="button" className={styles.sensitivityLink} onClick={() => {
-              if (detailsRef.current) {
-                detailsRef.current.open = true;
-                detailsRef.current.querySelector<HTMLElement>('#sensitivity-analysis')?.focus();
-              }
-            }}>가정 변화에 따른 영향 보기</button>
-          </p>
-          <details className={styles.planFactNote}>
-            <summary>계산 기준 자세히 보기</summary>
-            {terminalAssetDisplay.trials !== null && (
-              <p className={styles.planFactNote} data-testid="terminal-asset-basis-note">
-                시장 변동을 {terminalAssetDisplay.trials.toLocaleString()}회 반영한 중앙값입니다.
-                변동이 없다고 가정한 기준 수익률 경로에서는{' '}
-                {formatValue(terminalAssetDisplay.deterministicAmount)}입니다.
-              </p>
-            )}
-            {spendingBands.length > 0 && (
-              <p className={styles.planFactNote} data-testid="spending-band-note">
-                연령대별 배분을 적용해 {spendingBands.map((band) => (
-                  `${band.fromAge}~${band.toAge ?? params.userProfile.expectancy}세 ${formatValue(band.monthlyAmount)}`
-                )).join(' · ')}으로 계산했습니다.
-              </p>
-            )}
-            {(goalShortfallExplanation?.breakdown || goalShortfallExplanation?.hint) && (
-              <div className={styles.goalShortfallReason}>
-                {goalShortfallExplanation.breakdown && (
-                  <p className={styles.goalShortfallHint}>{goalShortfallExplanation.breakdown}</p>
-                )}
-                {goalShortfallExplanation.hint && (
-                  <p className={styles.goalShortfallHint}>{goalShortfallExplanation.hint}</p>
-                )}
-              </div>
-            )}
-            <div className={styles.modelLimitations} aria-label="현재 계획 계산의 한계">
-              <strong>계산할 때 알아둘 점</strong>
-              {(params.nationalPension?.expectedMonthlyAmount ?? 0) > 0 && (
-                <p>국민연금은 납입 이력이 없어 전액 과세로 계산하므로 세액이 실제보다 높을 수 있습니다.</p>
-              )}
-              <p>피부양자 자격은 소득 기준 위험을 평가하며, 재산 정보가 없어 최종 자격을 확정할 수 없습니다.</p>
-              <button type="button" onClick={() => {
-                if (detailsRef.current) {
-                  detailsRef.current.open = true;
-                  detailsRef.current.querySelector('summary')?.focus();
-                }
-              }}>세금·건강보험 상세 보기</button>
-            </div>
-          </details>
         </section>
       </DashboardGroup>
 

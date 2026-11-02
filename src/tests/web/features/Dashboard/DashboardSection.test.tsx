@@ -74,40 +74,6 @@ const params: SimulationParams = {
   displayCurrency: 'KRW',
 };
 
-describe('현재 계획 계산의 한계', () => {
-  test('가정 변화 안내에서 접힌 민감도 분석으로 이동한다', () => {
-    render(<DashboardSection params={params} result={result} />);
-    const heading = screen.getByRole('heading', { name: '민감도 분석 (핵심 가정 변화에 따른 영향)', hidden: true });
-    const details = heading.closest('details');
-    expect(details).not.toHaveAttribute('open');
-    fireEvent.click(screen.getByRole('button', { name: '가정 변화에 따른 영향 보기' }));
-    expect(details).toHaveAttribute('open');
-    expect(heading).toHaveFocus();
-  });
-  test('국민연금 과세와 피부양자 판정의 한계를 알리고 상세 근거를 연다', () => {
-    render(<DashboardSection params={params} result={result} />);
-    const calculationDetails = screen.getByText('계산 기준 자세히 보기').closest('details');
-    expect(calculationDetails).not.toHaveAttribute('open');
-    fireEvent.click(screen.getByText('계산 기준 자세히 보기'));
-    expect(calculationDetails).toHaveAttribute('open');
-    const notice = screen.getByLabelText('현재 계획 계산의 한계');
-    expect(within(notice).getByText(/국민연금은 납입 이력이 없어 전액 과세/)).toBeInTheDocument();
-    expect(within(notice).getByText(/재산 정보가 없어 최종 자격을 확정할 수 없습니다/)).toBeInTheDocument();
-    const details = screen.getByText('계획의 근거').closest('details');
-    expect(details).not.toHaveAttribute('open');
-    fireEvent.click(within(notice).getByRole('button', { name: '세금·건강보험 상세 보기' }));
-    expect(details).toHaveAttribute('open');
-    expect(details?.querySelector('summary')).toHaveFocus();
-  });
-
-  test('국민연금 입력이 없으면 과세 안내를 표시하지 않는다', () => {
-    render(<DashboardSection params={{ ...params, nationalPension: { expectedMonthlyAmount: 0 } }} result={result} />);
-    const notice = screen.getByLabelText('현재 계획 계산의 한계');
-    expect(within(notice).queryByText(/국민연금은 납입 이력이 없어 전액 과세/)).not.toBeInTheDocument();
-    expect(within(notice).getByText(/재산 정보가 없어 최종 자격/)).toBeInTheDocument();
-  });
-});
-
 const zeroDeltas: StrategyRecommendation['deltas'] = {
   lifetimeConsumption: 0,
   totalTax: 0,
@@ -403,17 +369,6 @@ describe('DashboardSection - 연령대별 생활비 배분 공개', () => {
     render(<DashboardSection params={curved} result={result} />);
 
     expect(within(screen.getByLabelText('현재 계획')).queryByText(/평균/)).not.toBeInTheDocument();
-  });
-
-  test('연령대별 금액을 구간으로 나열한다', () => {
-    render(<DashboardSection params={curved} result={result} />);
-
-    // 은퇴 60세·기대수명 90세, 완만한 감소형(1 / 0.93 / 0.88), 기준 300만원.
-    const note = screen.getByTestId('spending-band-note');
-    expect(note).toHaveTextContent('60~69세');
-    expect(note).toHaveTextContent('300만원');
-    expect(note).toHaveTextContent('80~90세');
-    expect(note).toHaveTextContent('264만원');
   });
 
   test('곡선이 없으면 구간을 나열하지 않고 목표 금액 하나만 보여준다', () => {
@@ -877,74 +832,6 @@ describe('DashboardSection - 현재 계획 진단', () => {
     expect(diagnosis().textContent).not.toContain('🟡');
   });
 
-  // 확률만 보여주면 사용자는 언제나 "자산 부족"으로 읽는다. 자산이 남아 있는데도 인출
-  // 설정 때문에 목표를 못 채우는 계획은 그 사실을 화면에서 읽을 수 있어야 한다.
-  test('목표를 달성하지 못한 원인과 그것을 만든 설정을 함께 표시한다', () => {
-    render(
-      <DashboardSection
-        params={{ ...params, withdrawalPlan: { privatePensionMonthlyTarget: 312_500 } }}
-        result={result}
-        monteCarloStatus="done"
-        monteCarlo={{
-          ...monteCarloWith(0.02, 0.02),
-          goalFailure: {
-            spendingShortfall: 980, assetDepletion: 0, observedAssetDepletionCount: 0,
-            observedEarliestDepletionAge: null,
-            terminalShortfall: 5, medianFirstShortfallAge: 72, terminalAssetGoal: 0,
-          },
-        }}
-      />
-    );
-
-    expect(diagnosis().textContent).toContain('목표를 달성하지 못한 시행의 원인');
-    expect(diagnosis().textContent).toContain('980회');
-    expect(diagnosis().textContent).toContain('72세부터');
-    expect(diagnosis().textContent).toContain('사적연금');
-  });
-
-  // 확률이 100%인데도 할 말이 남는 유일한 경우다. 연금이 후반 생활비를 덮으면 잔액이 0을
-  // 찍고도 고른 목표는 전부 통과하므로, 원인 블록을 cause !== 'none'으로 잘라 두면 이
-  // 사실이 화면에 한 번도 닿지 못한다(그렇게 한동안 죽어 있던 문장이다).
-  test('목표를 다 달성했어도 자산이 실제로 고갈됐으면 그 사실을 적는다', () => {
-    render(
-      <DashboardSection
-        params={params} result={result}
-        monteCarloStatus="done"
-        monteCarlo={{
-          ...monteCarloWith(1, 1),
-          // 「자산 고갈 방지」를 고르지 않아 판정값은 전부 0이지만 실제로는 420회 고갈됐다.
-          goalFailure: {
-            spendingShortfall: 0, assetDepletion: 0, observedAssetDepletionCount: 420,
-            observedEarliestDepletionAge: 62,
-            terminalShortfall: 0, medianFirstShortfallAge: null, terminalAssetGoal: 0,
-          },
-        }}
-      />
-    );
-
-    expect(diagnosis().textContent).toContain('확률에 반영되지 않은 사실');
-    expect(diagnosis().textContent).toContain('고른 목표는 1,000회 모두 달성했습니다.');
-    expect(diagnosis().textContent).toContain('420회(가장 이른 62세)');
-    // 목표를 놓친 시행이 한 번도 없으므로 실패 원인 제목을 붙이면 바로 아래 문장을 부정한다.
-    expect(diagnosis().textContent).not.toContain('목표를 달성하지 못한 시행의 원인');
-  });
-
-  // 위 게이트를 넓히면서 «아무 일도 없는» 계획에까지 문장이 새로 생기면, 고친 것이 아니라
-  // 소음을 하나 더한 것이다. 오늘 조용한 자리는 조용한 채로 남아야 한다.
-  test('실패 시행도 관측 고갈도 없으면 원인 블록을 아예 그리지 않는다', () => {
-    render(
-      <DashboardSection
-        params={params} result={result}
-        monteCarloStatus="done"
-        monteCarlo={monteCarloWith(1, 1)}
-      />
-    );
-
-    expect(diagnosis().textContent).not.toContain('확률에 반영되지 않은 사실');
-    expect(diagnosis().textContent).not.toContain('목표를 달성하지 못한 시행의 원인');
-    expect(diagnosis().textContent).not.toContain('모든 시행에서 목표 조건을 만족했습니다');
-  });
-
   // 판정하지 않은 목표를 밝히지 않으면 "판정하지 않음"이 "판정해서 통과함"으로 읽힌다.
   test('확률에 반영되지 않은 목표를 밝힌다', () => {
     render(
@@ -1118,25 +1005,6 @@ describe('DashboardSection - 현재 계획 진단', () => {
     expect(within(facts()).getByText('90세 예상자산(중앙값)')).toBeInTheDocument();
     expect(facts().textContent).toContain('1억원');
     expect(facts().textContent).not.toContain('5억원');
-  });
-
-  test('중앙값을 쓸 때 기준 수익률 경로의 값을 함께 밝힌다', () => {
-    render(
-      <DashboardSection
-        params={params} result={result}
-        monteCarloStatus="done"
-        monteCarlo={{
-          ...monteCarloWith(0.67, 0.67),
-          endingAssets: { p10: 0, p50: 100_000_000, p90: 900_000_000 },
-        }}
-      />
-    );
-
-    // 자산 추이 차트는 흔들리지 않는 경로라 5억에서 끝난다. 밝히지 않으면 KPI와 차트가
-    // 이유 없이 어긋난 채로 남는다.
-    const note = screen.getByTestId('terminal-asset-basis-note');
-    expect(note.textContent).toContain('1,000회');
-    expect(note.textContent).toContain('5억원');
   });
 
   test('몬테카를로 전에는 기준 수익률 경로임을 밝히고 그 값을 쓴다', () => {
