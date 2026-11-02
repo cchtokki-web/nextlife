@@ -8,7 +8,6 @@ import { resolveMonteCarloConfig } from '../../../core/usecases/montecarlo/volat
 import { runCompiledScenario } from '../../../core/usecases/strategy/runCompiledScenario';
 import { useMonteCarlo } from '../../hooks/useMonteCarlo';
 import { type StrategyPipeline, useStrategyPipeline } from '../../hooks/useStrategyPipeline';
-import { useStrategyOptimization } from '../../hooks/useStrategyOptimization';
 
 export interface AnalysisRequest {
   params: SimulationParams;
@@ -20,15 +19,11 @@ export interface AnalysisRuntimeValue extends StrategyPipeline {
   monteCarlo: ReturnType<typeof useMonteCarlo>['result'];
   monteCarloStatus: ReturnType<typeof useMonteCarlo>['status'];
   sequenceRisk: ReturnType<typeof computeSequenceRisk>;
-  strategyOptimization: ReturnType<typeof useStrategyOptimization>['result'];
-  strategyOptimizationStatus: ReturnType<typeof useStrategyOptimization>['status'];
-  strategyOptimizationError: ReturnType<typeof useStrategyOptimization>['errorMessage'];
   compareResults: Array<{ id: string; name: string; result: SimulationResult }>;
 }
 
-// `recommendation`은 useStrategyPipeline의 legacy Utility 추천이고,
-// `strategyOptimization`은 StrategyOptimizer의 목표 기반 페르소나 추천이다.
-// 둘은 현재 별도 production 기능으로 소비되므로 하나의 결과로 간주하지 않는다.
+// 기존 센티널 설정은 legacy Utility 추천 파이프라인을 계속 사용한다.
+// 목표 기반 페르소나 최적화는 현재 분석 화면에서 실행하지 않는다.
 
 interface AnalysisRuntimeProps {
   request: AnalysisRequest;
@@ -48,11 +43,6 @@ interface AnalysisBoundaryProps {
 export function AnalysisRuntime({ request, engine, children }: AnalysisRuntimeProps) {
   const pipeline = useStrategyPipeline(request.params, engine);
   const { result: monteCarlo, status: monteCarloStatus } = useMonteCarlo(pipeline.effective.params);
-  const {
-    result: strategyOptimization,
-    status: strategyOptimizationStatus,
-    errorMessage: strategyOptimizationError,
-  } = useStrategyOptimization(pipeline.effective.params);
   const sequenceRisk = useMemo(
     () => computeSequenceRisk(
       pipeline.effective.params,
@@ -84,9 +74,6 @@ export function AnalysisRuntime({ request, engine, children }: AnalysisRuntimePr
     monteCarlo,
     monteCarloStatus,
     sequenceRisk,
-    strategyOptimization,
-    strategyOptimizationStatus,
-    strategyOptimizationError,
     compareResults,
   });
 }

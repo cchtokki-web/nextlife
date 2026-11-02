@@ -344,35 +344,12 @@ export function RetirementGoalSelector({
                       </span>
                     </label>
                   )}
-                  {/* 제안 금액은 참고값으로 표시한다. 사용자가 목표값을 직접 입력하고 마쳐야
-                      확정된다(commitTargetEdit). */}
-                  {suggestedValue !== undefined && (
-                    <div className="flex flex-col gap-2 rounded-lg border border-card-border bg-black/20 p-2.5">
-                      {goal.constraintType === 'HARD' && (
-                        <p className="text-xs font-bold leading-relaxed text-foreground">
-                          {isSpendingGoalType(goal.type)
-                            ? '반드시 지킬 최소 생활비를 확인해 주세요.'
-                            : '반드시 남길 최소 자산을 확인해 주세요.'}
-                        </p>
-                      )}
-                      {/* 입력창에 표시된 참고 금액을 함께 보여 준다. */}
-                      <p className="text-sm font-bold text-foreground">
-                        {isSpendingGoalType(goal.type) && '월 '}
-                        {suggestedValue.toLocaleString()}{unitLabel}
-                      </p>
-                      <div className="flex flex-wrap gap-2">
-                        {definition.target && (
-                          <button
-                            type="button"
-                            aria-label={`${definition.label} 목표 금액 수정`}
-                            onClick={() => focusTargetInput(goal.type)}
-                            className="rounded-lg border border-card-border px-3 py-1.5 text-xs font-semibold text-foreground-muted transition hover:border-primary/50"
-                          >
-                            금액 수정
-                          </button>
-                        )}
-                      </div>
-                    </div>
+                  {suggestedValue !== undefined && goal.constraintType === 'HARD' && (
+                    <p className="text-xs font-bold leading-relaxed text-foreground">
+                      {isSpendingGoalType(goal.type)
+                        ? '반드시 지킬 최소 생활비를 확인해 주세요.'
+                        : '반드시 남길 최소 자산을 확인해 주세요.'}
+                    </p>
                   )}
                   <label className="flex flex-col gap-1 text-xs font-semibold text-foreground-muted">
                     조건 강도

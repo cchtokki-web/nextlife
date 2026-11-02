@@ -196,12 +196,12 @@ describe('RetirementGoalSelector', () => {
       expect(screen.queryByText(/아직 제안 금액입니다/)).not.toBeInTheDocument();
     });
 
-    test('제안 금액 안내 문구는 표시하지 않고 금액 수정은 제공한다', () => {
+    test('제안 금액은 입력창에서 직접 수정한다', () => {
       render(<SelectorHarness />);
 
       fireEvent.click(screen.getByRole('button', { name: /생활비 안정/ }));
       expect(screen.queryByText(/아직 제안 금액입니다/)).not.toBeInTheDocument();
-      expect(screen.getByRole('button', { name: '생활비 안정 목표 금액 수정' })).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: '생활비 안정 목표 금액 수정' })).not.toBeInTheDocument();
       expect(screen.queryByRole('button', { name: '생활비 안정 목표를 이 금액으로 확정' })).toBeNull();
 
       const input = screen.getByLabelText('목표 월 생활비');
@@ -423,7 +423,7 @@ describe('RetirementGoalSelector', () => {
 
       fireEvent.click(screen.getByRole('button', { name: /상속 자산 확보/ }));
 
-      expect(screen.getByText('84,000,000원')).toBeInTheDocument();
+      expect(screen.getByLabelText('남기고 싶은 최소 자산')).toHaveValue('84,000,000');
     });
 
     // 나이는 금액이 아니고, 그 씨앗은 사용자가 1단계에서 «직접 입력한» 은퇴 나이다.
@@ -450,8 +450,8 @@ describe('RetirementGoalSelector', () => {
 
       expect(screen.getByText('반드시 지킬 최소 생활비를 확인해 주세요.')).toBeInTheDocument();
       // 사용자가 직접 입력할 값과 제안값을 같은 단위로 확인할 수 있어야 한다.
-      expect(screen.getByText('월 3,500,000원')).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: '생활비 안정 목표 금액 수정' })).toBeInTheDocument();
+      expect(screen.getByLabelText('목표 월 생활비')).toHaveValue('3,500,000');
+      expect(screen.queryByRole('button', { name: '생활비 안정 목표 금액 수정' })).not.toBeInTheDocument();
       expect(screen.queryByRole('button', { name: '생활비 안정 목표를 이 금액으로 확정' })).toBeNull();
     });
 
@@ -459,7 +459,7 @@ describe('RetirementGoalSelector', () => {
       render(<SelectorHarness initial={seeded('INHERITANCE', 'HARD')} />);
 
       expect(screen.getByText('반드시 남길 최소 자산을 확인해 주세요.')).toBeInTheDocument();
-      expect(screen.getByText('3,500,000원')).toBeInTheDocument();
+      expect(screen.getByLabelText('남기고 싶은 최소 자산')).toHaveValue('3,500,000');
     });
 
     // SOFT에는 마찰을 더하지 않는다. 확정 문구는 「반드시 지키기」의 뜻이고, SOFT 목표에
@@ -469,14 +469,6 @@ describe('RetirementGoalSelector', () => {
 
       expect(screen.queryByText(/반드시 지킬 최소 생활비를 확인해 주세요./)).toBeNull();
       expect(screen.queryByRole('button', { name: '생활비 안정 목표를 이 금액으로 확정' })).toBeNull();
-    });
-
-    test('「금액 수정」은 목표금액 입력창으로 데려간다', () => {
-      render(<SelectorHarness initial={seeded('LIVING_EXPENSE_STABILITY', 'HARD')} />);
-
-      fireEvent.click(screen.getByRole('button', { name: '생활비 안정 목표 금액 수정' }));
-
-      expect(document.activeElement).toBe(screen.getByLabelText('목표 월 생활비'));
     });
 
     // 제안 금액을 목표로 쓰려면 사용자가 직접 입력을 마쳐야 한다.

@@ -18,9 +18,9 @@ test('사용자가 계산을 요청하고 변경안을 선택할 때만 적용�
   const apply = vi.fn();
   const undo = vi.fn();
   const changed = { ...initialParams, userProfile: { ...initialParams.userProfile, retirementAge: 62 } };
-  render(<GoalChangeSuggestions params={initialParams} onApply={apply} onUndo={undo} canUndo />);
+  const confirm = vi.fn();
+  const { rerender } = render(<GoalChangeSuggestions params={initialParams} onApply={apply} onUndo={undo} onConfirm={confirm} canUndo={false} />);
   expect(apply).not.toHaveBeenCalled();
-  expect(screen.getByRole('article', { name: '이전 목표로 복구' })).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: '목표 변경안 계산' }));
   expect(WorkerStub.last.postMessage).toHaveBeenCalledWith({ params: initialParams });
   act(() => WorkerStub.last.onmessage?.({ data: { kind: 'done', baselineProbability: 0.7, trials: 2000,
@@ -31,6 +31,10 @@ test('사용자가 계산을 요청하고 변경안을 선택할 때만 적용�
   expect(apply).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole('button', { name: '은퇴 60세 → 62세 적용' }));
   expect(apply).toHaveBeenCalledWith(changed);
+  rerender(<GoalChangeSuggestions params={changed} onApply={apply} onUndo={undo} onConfirm={confirm} canUndo />);
+  expect(screen.queryByRole('button', { name: '목표 변경안 계산' })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: '목표 변경안 확정' }));
+  expect(confirm).toHaveBeenCalledOnce();
   fireEvent.click(screen.getByRole('button', { name: '목표 변경 전으로 복구' }));
   expect(undo).toHaveBeenCalledOnce();
 });
@@ -44,7 +48,7 @@ test('검증된 변경안을 각각의 카드로 구분하고 선택한 안만 �
     { id: 'spending-2700000', kind: 'spending', before: 3_000_000, after: 2_700_000, probability: 0.85 },
     { id: 'spending-2400000', kind: 'spending', before: 3_000_000, after: 2_400_000, probability: 0.95 },
   ].map((proposal) => ({ ...proposal, params: { ...initialParams, userProfile: { ...initialParams.userProfile, retirementAge: proposal.after } } }));
-  render(<GoalChangeSuggestions params={initialParams} onApply={apply} onUndo={vi.fn()} canUndo={false} />);
+  render(<GoalChangeSuggestions params={initialParams} onApply={apply} onUndo={vi.fn()} onConfirm={vi.fn()} canUndo={false} />);
   fireEvent.click(screen.getByRole('button', { name: '목표 변경안 계산' }));
   act(() => WorkerStub.last.onmessage?.({ data: { kind: 'done', baselineProbability: 0.7, trials: 2000, proposals } } as MessageEvent));
   expect(screen.getByRole('list', { name: '검증된 목표 변경안' }).querySelectorAll('li')).toHaveLength(4);

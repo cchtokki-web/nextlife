@@ -113,7 +113,7 @@ const planFact = (label: string): string =>
     .querySelector('dd')!.textContent!;
 
 describe('DashboardSection - IA 순서', () => {
-  test('진단·추천 제목과 설명은 숨기고 결과 내용은 렌더링된다', () => {
+  test('현재 계획 분석을 표시하고 자동 추천 영역은 표시하지 않는다', () => {
     const { container } = render(
       <DashboardSection params={params} result={result} recommendation={recommendation} />
     );
@@ -125,7 +125,7 @@ describe('DashboardSection - IA 순서', () => {
     expect(screen.queryByText('목표에 가장 가까운 최종 전략과 현재 계획에서 바뀌는 점만 비교합니다.'))
       .not.toBeInTheDocument();
     expect(screen.getByLabelText('현재 계획 분석')).toBeInTheDocument();
-    expect(container.querySelector('section[aria-label="NextLife 추천"]')?.textContent).toBeTruthy();
+    expect(container.querySelector('section[aria-label="NextLife 추천"]')).toBeNull();
     expect(container.textContent).toContain('계획의 근거');
   });
 
@@ -149,16 +149,16 @@ describe('DashboardSection - IA 순서', () => {
   // 「무엇부터 바꿔야 하나」와 「실행 로드맵」은 그 질문에 답하는 유일한 자리인데, 예전에는
   // 「계획의 근거」 <details> 안 마지막 그룹이라 접기를 펴야 닿았다. 근거는 판정을 뒷받침하는
   // «자료»이지 «할 일»이 아니다.
-  test('실행 시점은 접기 밖, 추천과 근거 사이에 있다', () => {
+  test('실행 시점은 접기 밖, 현재 계획과 근거 사이에 있다', () => {
     const { container } = render(
       <DashboardSection params={params} result={result} recommendation={recommendation} />
     );
 
-    const recommendationSection = container.querySelector('section[aria-label="NextLife 추천"]')!;
+    const diagnosisSection = screen.getByLabelText('현재 계획 분석');
     const action = screen.getByText('무엇부터 바꿔야 하나');
     const evidence = screen.getByText('계획의 근거');
 
-    expect(recommendationSection.compareDocumentPosition(action) & Node.DOCUMENT_POSITION_FOLLOWING)
+    expect(diagnosisSection.compareDocumentPosition(action) & Node.DOCUMENT_POSITION_FOLLOWING)
       .toBe(Node.DOCUMENT_POSITION_FOLLOWING);
     expect(action.compareDocumentPosition(evidence) & Node.DOCUMENT_POSITION_FOLLOWING)
       .toBe(Node.DOCUMENT_POSITION_FOLLOWING);
@@ -1197,7 +1197,7 @@ describe('동시에 달성하기 어려운 목표', () => {
     expect(within(notice).getByText('상속 자산 확보 8,000만원 부족')).toBeInTheDocument();
   });
 
-  test('추천을 읽기 «전»에 놓인다 — 진단 카드 안이 아니다', () => {
+  test('충돌 안내는 진단 다음 실행 시점 앞에 놓인다', () => {
     const conflictResult = new LegacySimulationEngine().run(conflictParams);
     const { container } = render(<DashboardSection params={conflictParams} result={conflictResult} />);
 
@@ -1205,8 +1205,8 @@ describe('동시에 달성하기 어려운 목표', () => {
     // 진단 카드는 「내 계획이 어떤가」를 말하고, 충돌은 「내가 고른 목표들이 서로 맞지 않는다」는
     // 다른 층위다(스펙). 그리고 추천보다 «앞»에 있어야 추천이 왜 그런 모양인지 이해된다.
     expect(container.querySelector('[aria-label="현재 계획 분석"]')?.contains(notice)).toBe(false);
-    const recommendation = container.querySelector('section[aria-label="NextLife 추천"]')!;
-    expect(notice.compareDocumentPosition(recommendation) & Node.DOCUMENT_POSITION_FOLLOWING)
+    const action = screen.getByText('무엇부터 바꿔야 하나');
+    expect(notice.compareDocumentPosition(action) & Node.DOCUMENT_POSITION_FOLLOWING)
       .toBe(Node.DOCUMENT_POSITION_FOLLOWING);
   });
 

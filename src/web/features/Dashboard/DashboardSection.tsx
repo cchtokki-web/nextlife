@@ -4,7 +4,6 @@ import React, { type ReactNode } from 'react';
 import { type LegendPayload } from 'recharts';
 import { Award, Zap, TrendingUp, AlertTriangle, ChevronDown } from 'lucide-react';
 import { SimulationParams, SimulationResult, StrategyRecommendation } from '../../../core/entities/types';
-import type { StrategyApplyPreview } from '../../../core/usecases/dashboard/applyStrategyToParams';
 import { initialParams } from '../../../infrastructure/storage/localStore';
 import { describeSpendingCurve } from '../../../core/usecases/spending/spendingCurve';
 import styles from './Dashboard.module.css';
@@ -18,7 +17,6 @@ import { RiskAlertCards } from './risk/RiskAlertCards';
 import { MonteCarloSection } from './montecarlo/MonteCarloSection';
 import { MonteCarloResult } from '../../../core/entities/montecarlo';
 import { MonteCarloStatus } from '../../hooks/useMonteCarlo';
-import type { AppliedStrategySnapshot } from '../../hooks/useAppliedStrategy';
 import { SequenceRiskResult } from '../../../core/usecases/montecarlo/sequenceRisk';
 import { ExecutionRoadmap } from './roadmap/ExecutionRoadmap';
 import { computeExecutionRoadmap, selectDepletionAge } from '../../../core/usecases/dashboard/computeExecutionRoadmap';
@@ -45,16 +43,13 @@ import { SentinelApplication } from '../../../core/usecases/strategy/applyAiSent
 import { describeSentinelAxes } from './sentinelAxisLabels';
 import { LegacySimulationAdapter } from '../../../core/domain/input/LegacySimulationAdapter';
 import { LegacyEvaluationEngine } from '../../../core/evaluation/LegacyEvaluationEngine';
-import type { CandidateRecommendation } from '../../../core/recommendation/RecommendationEngine';
-import type { StrategyOptimizationResult } from '../../../core/strategy/StrategyOptimizer';
-import type { StrategyOptimizationStatus } from '../../hooks/useStrategyOptimization';
-import { StrategyRecommendationCards, shouldHideRecommendationBody } from './recommendation/StrategyRecommendationCards';
 import { GoalChangeSuggestions } from './recommendation/GoalChangeSuggestions';
 
 interface DashboardSectionProps {
   goalChangeParams?: SimulationParams;
   onApplyGoalChange?: (params: SimulationParams) => void;
   onUndoGoalChange?: () => void;
+  onConfirmGoalChange?: () => void;
   canUndoGoalChange?: boolean;
   params: SimulationParams;
   result: SimulationResult;
@@ -73,34 +68,13 @@ interface DashboardSectionProps {
   monteCarlo?: MonteCarloResult;
   monteCarloStatus?: MonteCarloStatus;
   sequenceRisk?: SequenceRiskResult;
-  strategyOptimization?: StrategyOptimizationResult;
-  strategyOptimizationStatus?: StrategyOptimizationStatus;
-  strategyOptimizationError?: string;
-  // 추천 카드의 적용 액션. 여기서는 그대로 통과시키기만 한다 — «무엇에» 적용할지는
-  // page.tsx가 정한다. 이 컴포넌트가 받는 params는 센티널이 적용된 표시용 값이고,
-  // 실제 적용 대상은 사용자가 입력한 activeParams라서 여기서 결정하면 안 된다.
-  // 두 콜백의 두 번째 인자는 추천 카드가 「달라지는 점」을 서술한 기준 params다. 카드가
-  // 스스로 넘기므로 이 컴포넌트는 그대로 통과시킨다 — 여기서 채우면 카드가 실제로 본 값과
-  // 어긋날 수 있다.
-  onApplyStrategy?: (
-    recommendation: CandidateRecommendation,
-    simulatedParams: SimulationParams,
-  ) => void;
-  previewStrategyApply?: (
-    recommendation: CandidateRecommendation,
-    simulatedParams: SimulationParams,
-  ) => StrategyApplyPreview;
-  appliedStrategy?: AppliedStrategySnapshot;
-  onUndoStrategy?: () => void;
+
 }
 
 // 결과 화면 오케스트레이터.
 //
-// **IA는 4단이다: 진단 → 추천 → 실행 → 근거.**
-//   ① 현재 계획 진단  — 지금 괜찮은가, 왜 그런가
-//   ② NextLife 추천   — 목표에 가장 가까운 전략과 바뀌는 점
-//   ③ 실행 시점       — 그래서 지금 무엇을 하면 되는가
-//   ④ 계획의 근거     — 위 판정들을 뒷받침하는 자료(접힘)
+// **IA는 진단 → 목표 변경안 비교 → 실행 → 근거다.**
+// 목표 변경안은 사용자가 요청할 때 별도로 계산한다.
 //
 // **③이 접힘 «밖»으로 나온 이유.** 「무엇부터 바꿔야 하나」와 「실행 로드맵」은 사용자가
 // 결과 화면을 떠나기 전 마지막으로 묻는 것 —「그래서 나는 지금 무엇을 하면 되지?」— 에
@@ -122,14 +96,7 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
   monteCarlo,
   monteCarloStatus = 'idle',
   sequenceRisk,
-  strategyOptimization,
-  strategyOptimizationStatus = 'idle',
-  strategyOptimizationError,
-  onApplyStrategy,
-  previewStrategyApply,
-  appliedStrategy,
-  onUndoStrategy,
-  goalChangeParams, onApplyGoalChange, onUndoGoalChange, canUndoGoalChange,
+  goalChangeParams, onApplyGoalChange, onUndoGoalChange, onConfirmGoalChange, canUndoGoalChange,
 }) => {
   // 세 차트가 이 상태 하나를 공유한다. 처음부터 숨길 시리즈는 없다 — 예전에는 몬테카를로
   // 상위 10% 선을 꺼 두었지만(축이 그 선에 끌려가 주 곡선이 눌렸다) 그 계열 자체가 사라졌다.
@@ -420,33 +387,9 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
         </GlassCard>
       )}
 
-      {goalChangeParams && onApplyGoalChange && onUndoGoalChange && (
-        <GoalChangeSuggestions key={JSON.stringify(goalChangeParams)} params={goalChangeParams} onApply={onApplyGoalChange} onUndo={onUndoGoalChange} canUndo={!!canUndoGoalChange} />
+      {goalChangeParams && onApplyGoalChange && onUndoGoalChange && onConfirmGoalChange && (
+        <GoalChangeSuggestions key={JSON.stringify(goalChangeParams)} params={goalChangeParams} onApply={onApplyGoalChange} onUndo={onUndoGoalChange} onConfirm={onConfirmGoalChange} canUndo={!!canUndoGoalChange} />
       )}
-
-      {(!shouldHideRecommendationBody({ status: strategyOptimizationStatus, outcome: strategyOptimization?.outcome, recommendations: strategyOptimization?.recommendations?.recommendations, currentGoalProbability }) || (appliedStrategy && onUndoStrategy)) && <DashboardGroup title="NextLife 추천" description="목표에 가장 가까운 최종 전략과 현재 계획에서 바뀌는 점만 비교합니다." hideHeader>
-        <StrategyRecommendationCards
-          recommendations={strategyOptimization?.recommendations?.recommendations}
-          primary={strategyOptimization?.recommendations?.primary}
-          // 진단 카드가 방금 보여준 그 숫자를 그대로 넘긴다. 카드가 스스로 다시 계산하면
-          // 같은 화면의 위아래가 다른 확률로 비교하게 된다.
-          currentGoalProbability={currentGoalProbability}
-          status={strategyOptimizationStatus}
-          errorMessage={strategyOptimizationError}
-          unsupportedHardGoals={strategyOptimization?.debug?.unsupportedHardGoals}
-          outcome={strategyOptimization?.outcome}
-          // 「적용하면 달라지는 수치」의 «전». 화면이 들고 있는 result가 아니라 옵티마이저가
-          // 같은 경로에서 낸 현상 유지 후보의 요약이다(baselineOutcome 주석).
-          baselineOutcome={strategyOptimization?.baselineOutcome}
-          sustainableSpendingAdvice={sustainableSpendingAdvice}
-          params={params}
-          formatValue={formatValue}
-          onApplyStrategy={onApplyStrategy}
-          previewStrategyApply={previewStrategyApply}
-          appliedStrategy={appliedStrategy}
-          onUndoStrategy={onUndoStrategy}
-        />
-      </DashboardGroup>}
 
         <DashboardGroup title="실행 시점" description="무엇부터 손대야 하는지와, 나이별로 무슨 일이 일어나는지 확인하세요." hideHeader>
           {/* 인출 전략보다 위에 둔다. 이유는 computeKeyLevers 주석 참고 — 매도 순서·인출

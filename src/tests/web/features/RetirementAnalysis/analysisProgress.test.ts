@@ -13,7 +13,6 @@ const runtime = (overrides: Partial<AnalysisRuntimeValue> = {}): AnalysisRuntime
   recommendationFailed: false,
   isComputingRecommendation: false,
   monteCarloStatus: 'done',
-  strategyOptimizationStatus: 'done',
   ...overrides,
 } as unknown as AnalysisRuntimeValue);
 
@@ -45,14 +44,14 @@ describe('analysisSteps', () => {
   // 보면 실패가 완료로 읽힌다 — 결과 플래그를 먼저 본다.
   it('추천 탐색은 진행 플래그가 아니라 결과 플래그를 먼저 본다', () => {
     const failed = runtime({ recommendationFailed: true, isComputingRecommendation: false });
-    expect(stateOf(failed, '추천 전략 탐색')).toBe('error');
-    expect(stateOf(runtime({ isComputingRecommendation: true }), '추천 전략 탐색')).toBe('running');
-    expect(stateOf(runtime(), '추천 전략 탐색')).toBe('done');
+    expect(stateOf(failed, '자동 설정 계산')).toBe('error');
+    expect(stateOf(runtime({ isComputingRecommendation: true }), '자동 설정 계산')).toBe('running');
+    expect(stateOf(runtime(), '자동 설정 계산')).toBe('done');
   });
 
-  it('네 단계를 순서대로 돌려준다', () => {
+  it('세 단계를 순서대로 돌려준다', () => {
     expect(analysisSteps(runtime()).map((step) => step.label)).toEqual([
-      '기본 시뮬레이션', '추천 전략 탐색', '시장 변동 검증', '전략 후보 최적화',
+      '기본 시뮬레이션', '자동 설정 계산', '시장 변동 검증',
     ]);
   });
 });
@@ -65,7 +64,6 @@ describe('analysisIsRunning', () => {
   it('어느 한 단계라도 돌고 있으면 진행 중이다', () => {
     expect(analysisIsRunning(runtime())).toBe(false);
     expect(analysisIsRunning(runtime({ monteCarloStatus: 'running' }))).toBe(true);
-    expect(analysisIsRunning(runtime({ strategyOptimizationStatus: 'running' }))).toBe(true);
     expect(analysisIsRunning(runtime({ isComputingRecommendation: true }))).toBe(true);
   });
 });
@@ -79,9 +77,8 @@ describe('analysisHasFailed', () => {
   // 배지·「분석 시작」 재개방·진행 패널 유지가 모두 이 답 하나를 쓴다. 셋이 각자 판정하면
   // 화면이 서로 다른 말을 한다 — 실제로 몬테카를로 실패 때 패널은 「다시 눌러 주세요」라고
   // 말하는데 그 버튼은 잠겨 있었다.
-  it('세 실패를 모두 센다', () => {
+  it('추천과 시장 변동 검증 실패를 센다', () => {
     expect(analysisHasFailed(runtime({ monteCarloStatus: 'error' }))).toBe(true);
-    expect(analysisHasFailed(runtime({ strategyOptimizationStatus: 'error' }))).toBe(true);
     expect(analysisHasFailed(runtime({ recommendationFailed: true }))).toBe(true);
   });
 

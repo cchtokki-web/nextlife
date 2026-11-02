@@ -3,7 +3,6 @@
 import { useAppliedGoalChange } from '../../web/hooks/useAppliedGoalChange';
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { resolveSimulationVerdict } from '../../core/usecases/montecarlo/resolveSimulationVerdict';
 import { useSession, signOut } from 'next-auth/react';
 import type { SimulationParams } from '../../core/entities/types';
 import { LegacySimulationEngine } from '../../core/simulation/LegacySimulationEngine';
@@ -13,13 +12,12 @@ import { computeSensitivityAnalysis } from '../../core/usecases/dashboard/comput
 import { resolvePlanAssetStatus } from '../../core/usecases/dashboard/resolvePlanAssetStatus';
 import { computeShortfallSummary } from '../../core/usecases/dashboard/computeShortfallSummary';
 import { describeDepletionAge } from '../../core/usecases/dashboard/describeDepletionAge';
-import { formatCurrencyUnit, renderRiskAlertsSection, renderStrategyRecommendationSection, renderExecutionRoadmapSection, renderSensitivityTableSection, renderMonteCarloSection, renderShortfallSummarySection, renderPlanVerdictSection, renderGoalConflictSection, renderNationalPensionSection, renderKeyLeversSection, renderSustainableSpendingLimitSection } from '../../web/features/Pdf/pdfReportSections';
+import { formatCurrencyUnit, renderRiskAlertsSection, renderExecutionRoadmapSection, renderSensitivityTableSection, renderMonteCarloSection, renderShortfallSummarySection, renderPlanVerdictSection, renderGoalConflictSection, renderNationalPensionSection, renderKeyLeversSection, renderSustainableSpendingLimitSection } from '../../web/features/Pdf/pdfReportSections';
 import { buildReportHtml } from '../../web/features/Pdf/buildReportHtml';
 import { generateReportPdf, ReportPageOverflowError } from '../../web/features/Pdf/generateReportPdf';
 import { computePlanConfidence } from '../../core/usecases/dashboard/computePlanConfidence';
 import { computeKeyLevers } from '../../core/usecases/dashboard/computeKeyLevers';
 import { computePensionGapRisk } from '../../core/usecases/dashboard/computePensionGapRisk';
-import { computeSustainableSpendingAdvice } from '../../core/usecases/dashboard/computeSustainableSpendingAdvice';
 import { explainNationalPension } from '../../core/usecases/pension/explainNationalPension';
 import { resolveTaxSettings } from '../../core/usecases/tax/taxRates';
 import { LegacySimulationAdapter } from '../../core/domain/input/LegacySimulationAdapter';
@@ -36,7 +34,6 @@ import { StrategySettingsPanel } from '../../web/features/StrategySettings/Strat
 import { RetirementInputFlow } from '../../web/features/RetirementGoals/RetirementInputFlow';
 import { Collapse } from '../../web/components/ui';
 import { DashboardSection } from '../../web/features/Dashboard/DashboardSection';
-import { useAppliedStrategy } from '../../web/hooks/useAppliedStrategy';
 import GlassCard from '../../web/components/GlassCard';
 import { Header } from '../../web/components/Header/Header';
 import styles from './page.module.css';
@@ -147,19 +144,6 @@ export default function Home() {
     onReanalyze: (params) => setAnalysisRequest(buildAnalysisRequest(params)),
   });
 
-  // 추천 카드의 「적용」과 그 되돌리기.
-  //
-  // 설정 갱신과 재분석 요청이 **같은 커밋에서 같은 params 참조**를 받는 것이 중요하다.
-  // 아래 analysisIsCurrent가 참조 비교라, 둘이 어긋나면 적용 직후 대시보드가 "다시 분석해
-  // 주세요"로 한 프레임 사라진다. 되돌리기 버튼은 그 대시보드 «안»의 추천 카드에만 있으므로,
-  // 사라지는 순간 사용자는 방금 누른 적용을 취소할 경로를 잃는다.
-  const appliedStrategy = useAppliedStrategy({
-    activeParams,
-    activeScenarioId,
-    onChangeParams: handleUpdateActiveParams,
-    onReanalyze: (params) => setAnalysisRequest(buildAnalysisRequest(params)),
-  });
-
   // Dynamically update document body preset attribute for dynamic styling/glows
   useEffect(() => {
     if (typeof document !== 'undefined') {
@@ -201,7 +185,6 @@ export default function Home() {
     if (isGeneratingPdf || !analysis) return;
     const {
       effective, recommendation, result, monteCarlo, sequenceRisk,
-      strategyOptimization, strategyOptimizationStatus,
     } = analysis;
     setIsGeneratingPdf(true);
 
@@ -237,36 +220,6 @@ export default function Home() {
       const generatedAt = new Date();
       const generatedAtText = generatedAt.toLocaleString();
       const copyrightYear = generatedAt.getFullYear();
-
-      // 「NextLife 추천」. 화면의 추천 카드와 같은 데이터·같은 문구를 쓴다.
-      //
-      // 예전 이 자리에는 레거시 「🤖 AI 추천 전략」 체크리스트와 평생 효용 점수 페이지가
-      // 있었다. 둘 다 효용 점수로 말했는데, 화면은 이미 목표 달성 확률로 말하는 다른 추천을
-      // 내고 있어 같은 계획의 두 문서가 서로 다른 축으로 서로 다른 전략을 권했다.
-      const strategyRecommendationHtml = renderStrategyRecommendationSection({
-        recommendations: strategyOptimization?.recommendations?.recommendations,
-        currentGoalProbability: (() => {
-          const verdict = resolveSimulationVerdict({ monteCarlo: analysis.monteCarloStatus === 'done' ? monteCarlo : undefined, params: reportParams });
-          return verdict.available ? verdict.goalSuccess.rate : undefined;
-        })(),
-        // 화면의 ☆추천과 같은 출처. 넘기지 않으면 리포트가 제 규칙으로 다시 고른다.
-        primary: strategyOptimization?.recommendations?.primary,
-        status: strategyOptimizationStatus,
-        unsupportedHardGoals: strategyOptimization?.debug?.unsupportedHardGoals,
-        outcome: strategyOptimization?.outcome,
-        // 화면의 카드와 같은 출처. 리포트가 현재 계획 실행 결과로 따로 계산하면 두 문서가
-        // 다른 「전」을 기준으로 개선폭을 말한다.
-        baselineOutcome: strategyOptimization?.baselineOutcome,
-        // 화면이 쓰는 것과 같은 헬퍼·같은 입력이다. 리포트가 따로 역산하면 두 문서가 다른
-        // 「지속 가능한 생활비」를 말할 수 있다.
-        sustainableSpendingAdvice: computeSustainableSpendingAdvice(
-          reportParams.spendingStrategy,
-          reportParams.userProfile.targetMonthlySpending,
-          result.calculatedTargetSpending,
-        ),
-        params: reportParams,
-        formatValue: formatValuePrint,
-      });
 
       const riskAlerts = computeRiskAlerts(result, reportParams, effective.utilityConfig);
       const riskAlertsSectionHtml = renderRiskAlertsSection(riskAlerts);
@@ -325,10 +278,7 @@ export default function Home() {
         params: reportParams,
         formatValue: formatValuePrint,
       });
-      // **로드맵은 현재 계획 기준이다(화면과 같다).** 추천안을 넘기면 리포트의 다른 모든
-      // 숫자는 현재 계획인데 로드맵만 추천 나이를 그린다. 추천안의 연령별 변경은 위
-      // 「NextLife 추천」의 "달라지는 점"이 담당한다. 고갈 나이도 같은 기준이어야 한다
-      // (selectDepletionAge 주석 참고).
+      // 로드맵과 고갈 나이는 화면과 같은 현재 계획 기준이다.
       const roadmap = computeExecutionRoadmap(reportParams, undefined, selectDepletionAge(undefined, result), planAssetStatus);
       const executionRoadmapSectionHtml = renderExecutionRoadmapSection(roadmap);
       // 기준선을 넘기지 않는다 — computeSensitivityAnalysis가 6개 시나리오와 같은 고정 계획으로
@@ -374,7 +324,7 @@ export default function Home() {
           planVerdict: planVerdictSectionHtml,
           sustainableSpendingLimit: sustainableSpendingLimitSectionHtml,
           goalConflict: goalConflictSectionHtml,
-          strategyRecommendation: strategyRecommendationHtml,
+          strategyRecommendation: '',
           riskAlerts: riskAlertsSectionHtml,
           shortfallSummary: shortfallSummarySectionHtml,
           nationalPension: nationalPensionSectionHtml,
@@ -420,8 +370,6 @@ export default function Home() {
       // 「분석함」 표시도 함께 지운다. 남겨 두면 다음 로그인에서 기본값 위에 결과 화면이
       // 복원되어, 초기화가 그 시나리오에서만 잠깐 통한 것처럼 보인다.
       if (activeScenarioId) setScenarioAnalyzed(activeScenarioId, false);
-      // 초기화한 설정 위에 "추천 전략을 적용했다"는 표시(카드의 「적용 해제」)가 남으면 안 된다.
-      appliedStrategy.forget();
     }
   };
 
@@ -783,18 +731,11 @@ export default function Home() {
                 monteCarlo={analysis.monteCarlo}
                 monteCarloStatus={analysis.monteCarloStatus}
                 sequenceRisk={analysis.sequenceRisk}
-                strategyOptimization={analysis.strategyOptimization}
-                strategyOptimizationStatus={analysis.strategyOptimizationStatus}
-                // 적용 대상은 센티널이 적용된 analysis.effective.params가 아니라 사용자가
-                // 입력한 activeParams다. 그 결정을 훅 한 곳에 두어 둘을 혼동할 여지를 없앤다.
                 goalChangeParams={activeScenarioId ? activeParams : undefined}
                 canUndoGoalChange={goalChange.canUndo}
                 onApplyGoalChange={goalChange.apply}
                 onUndoGoalChange={goalChange.undo}
-                onApplyStrategy={appliedStrategy.applyRecommendation}
-                previewStrategyApply={appliedStrategy.previewApply}
-                appliedStrategy={appliedStrategy.snapshot ?? undefined}
-                onUndoStrategy={appliedStrategy.undo}
+                onConfirmGoalChange={goalChange.confirm}
               />
             ) : (
               <GlassCard>

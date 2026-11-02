@@ -44,7 +44,7 @@ export function analysisSteps(analysis: AnalysisRuntimeValue): AnalysisStep[] {
     // 검사한 적 없는 단계를 검사했다고 말하는 것이다.
     { label: '기본 시뮬레이션', state: analysis.result ? 'done' : 'pending' },
     {
-      label: '추천 전략 탐색',
+      label: '자동 설정 계산',
       // isComputingRecommendation은 «진행» 플래그이고 recommendationFailed가 «결과» 플래그다.
       // 진행 플래그는 성공이든 예외든 똑같이 내려가므로, 그것만 보면 실패가 완료로 읽힌다.
       state: analysis.recommendationFailed
@@ -52,7 +52,6 @@ export function analysisSteps(analysis: AnalysisRuntimeValue): AnalysisStep[] {
         : analysis.isComputingRecommendation ? 'running' : 'done',
     },
     { label: '시장 변동 검증', state: workerStepState(analysis.monteCarloStatus) },
-    { label: '전략 후보 최적화', state: workerStepState(analysis.strategyOptimizationStatus) },
   ];
 }
 
@@ -60,7 +59,6 @@ export function analysisIsRunning(analysis: AnalysisRuntimeValue | null): boolea
   return !!analysis && (
     analysis.isComputingRecommendation
     || analysis.monteCarloStatus === 'running'
-    || analysis.strategyOptimizationStatus === 'running'
   );
 }
 
@@ -78,6 +76,5 @@ export function analysisHasFailed(analysis: AnalysisRuntimeValue | null): boolea
   return !!analysis && (
     analysis.recommendationFailed
     || analysis.monteCarloStatus === 'error'
-    || analysis.strategyOptimizationStatus === 'error'
   );
 }

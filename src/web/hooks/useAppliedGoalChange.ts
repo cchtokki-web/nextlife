@@ -25,5 +25,8 @@ export function useAppliedGoalChange({ activeParams, activeScenarioId, onChangeP
     onReanalyze(record.previous);
     setRecord(null);
   }, [canUndo, record, onChangeParams, onReanalyze]);
-  return { canUndo, apply, undo };
+  const confirm = useCallback(() => {
+    if (canUndo) setRecord(null);
+  }, [canUndo]);
+  return { canUndo, apply, undo, confirm };
 }
