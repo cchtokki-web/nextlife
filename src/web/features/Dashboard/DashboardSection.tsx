@@ -49,8 +49,13 @@ import type { CandidateRecommendation } from '../../../core/recommendation/Recom
 import type { StrategyOptimizationResult } from '../../../core/strategy/StrategyOptimizer';
 import type { StrategyOptimizationStatus } from '../../hooks/useStrategyOptimization';
 import { StrategyRecommendationCards } from './recommendation/StrategyRecommendationCards';
+import { GoalChangeSuggestions } from './recommendation/GoalChangeSuggestions';
 
 interface DashboardSectionProps {
+  goalChangeParams?: SimulationParams;
+  onApplyGoalChange?: (params: SimulationParams) => void;
+  onUndoGoalChange?: () => void;
+  canUndoGoalChange?: boolean;
   params: SimulationParams;
   result: SimulationResult;
   compareResults?: { id: string, name: string, result: SimulationResult }[];
@@ -124,6 +129,7 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
   previewStrategyApply,
   appliedStrategy,
   onUndoStrategy,
+  goalChangeParams, onApplyGoalChange, onUndoGoalChange, canUndoGoalChange,
 }) => {
   // 세 차트가 이 상태 하나를 공유한다. 처음부터 숨길 시리즈는 없다 — 예전에는 몬테카를로
   // 상위 10% 선을 꺼 두었지만(축이 그 선에 끌려가 주 곡선이 눌렸다) 그 계열 자체가 사라졌다.
@@ -412,6 +418,10 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
             {goalConflict.shortfalls.map((shortfall) => <li key={shortfall}>{shortfall}</li>)}
           </ul>
         </GlassCard>
+      )}
+
+      {goalChangeParams && onApplyGoalChange && onUndoGoalChange && (
+        <GoalChangeSuggestions key={JSON.stringify(goalChangeParams)} params={goalChangeParams} onApply={onApplyGoalChange} onUndo={onUndoGoalChange} canUndo={!!canUndoGoalChange} />
       )}
 
       <DashboardGroup title="NextLife 추천" description="목표에 가장 가까운 최종 전략과 현재 계획에서 바뀌는 점만 비교합니다." hideHeader>

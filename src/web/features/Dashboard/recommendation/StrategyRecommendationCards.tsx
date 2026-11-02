@@ -320,6 +320,25 @@ function AppliedStrategyStatus({
   );
 }
 
+function AdjustmentIdeas({ params }: { params: SimulationParams }) {
+  const hasPrivatePension = (params.privatePensions?.length ?? 0) > 0;
+  const retirementIsRequired = params.retirementGoals?.some(
+    (goal) => goal.type === 'EARLY_RETIREMENT' && goal.constraintType === 'HARD'
+  );
+  return (
+    <GlassCard className="text-sm text-foreground-muted" role="note" aria-label="목표 달성 가능성을 높이기 위한 검토 사항">
+      <p><strong>목표 달성 가능성을 높이기 위해 검토할 사항</strong></p>
+      <p>아래는 별도로 검증된 추천이 아닙니다. 설정을 하나씩 변경하고 다시 분석해 효과를 확인하세요.</p>
+      <ul className="mt-2 list-disc space-y-1 pl-5">
+        {hasPrivatePension && <li>사적연금 인출 전략과 인출 순서를 확인하세요. 인출액을 늘리면 세금이 달라질 수 있습니다.</li>}
+        <li>은퇴 시점을 늦추는 경우를 비교해 보세요.{retirementIsRequired && ' 필수 은퇴 목표를 변경해야 하는 대안입니다.'}</li>
+        <li>생활비 목표를 조정하는 경우를 비교해 보세요. 목표 금액이 달라지므로 기존 목표 달성 확률과 직접 비교할 수 없습니다.</li>
+        <li>은퇴 전 적립액을 늘릴 수 있는지 확인하세요.</li>
+      </ul>
+    </GlassCard>
+  );
+}
+
 export function StrategyRecommendationCards(props: StrategyRecommendationCardsProps) {
   const { recommendations, status, outcome, appliedStrategy, onUndoStrategy } = props;
 
@@ -343,6 +362,12 @@ export function StrategyRecommendationCards(props: StrategyRecommendationCardsPr
         />
       )}
       <RecommendationBody {...props} />
+      {status === 'done' && (
+        outcome?.kind === 'no_candidate_reaches_goal'
+        || (outcome?.kind === 'no_candidate_survived' && outcome.hardConstraintRejectedCount > 0 && outcome.failedCount === 0)
+        || (outcome?.kind !== 'no_candidate_survived' && (recommendations?.length ?? 0) === 0)
+        || shouldHideRecommendationBody(props)
+      ) && <AdjustmentIdeas params={props.params} />}
     </>
   );
 }
@@ -457,7 +482,7 @@ function RecommendationBody({
   const noneImproves = shouldHideRecommendationBody({ status, outcome, recommendations, currentGoalProbability });
   if (noneImproves) return (
     <GlassCard className="text-sm text-foreground-muted" role="note">
-      현재 계획보다 목표 달성 확률이 높은 추천 전략이 없습니다.
+      검증된 추천 후보 중 현재 계획보다 목표 달성 확률이 높은 전략을 찾지 못했습니다.
     </GlassCard>
   );
   return (

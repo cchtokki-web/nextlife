@@ -567,7 +567,7 @@ export function renderStrategyRecommendationSection(input: {
   const finalRecommendations = recommendations ?? [];
   if (currentGoalProbability !== undefined && finalRecommendations.length > 0
     && finalRecommendations.every((item) => !improvesOnCurrentPlan(item.candidate, currentGoalProbability))) {
-    return notice('현재 계획보다 목표 달성 확률이 높은 추천 전략이 없습니다.');
+    return notice('검증된 추천 후보 중 현재 계획보다 목표 달성 확률이 높은 전략을 찾지 못했습니다.');
   }
   if (finalRecommendations.length === 0) {
     return notice(describeEmptyOutcome(outcome));

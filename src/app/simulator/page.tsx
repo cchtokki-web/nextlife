@@ -1,5 +1,7 @@
 "use client";
 
+import { useAppliedGoalChange } from '../../web/hooks/useAppliedGoalChange';
+
 import React, { useState, useEffect, useCallback } from 'react';
 import { resolveSimulationVerdict } from '../../core/usecases/montecarlo/resolveSimulationVerdict';
 import { useSession, signOut } from 'next-auth/react';
@@ -115,6 +117,7 @@ export default function Home() {
   const [hoveredBtn, setHoveredBtn] = useState<string | null>(null);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState<boolean>(false);
 
+
   // 분석 요청을 만드는 곳은 여기 하나다. 「분석 시작」 버튼과 추천 전략 적용·되돌리기, 그리고
   // 저장된 계획의 복원이 같은 요청을 만들어야 비교 시나리오가 어느 경로에서든 함께 따라간다.
   const buildAnalysisRequest = useCallback((params: SimulationParams): AnalysisRequest => ({
@@ -136,6 +139,12 @@ export default function Home() {
     analyzedAt: activeScenario?.analyzedAt ?? null,
     buildRequest: () => buildAnalysisRequest(activeParams),
     onRestore: persistRestoredAnalysis,
+  });
+
+  const goalChange = useAppliedGoalChange({
+    activeParams, activeScenarioId,
+    onChangeParams: handleUpdateActiveParams,
+    onReanalyze: (params) => setAnalysisRequest(buildAnalysisRequest(params)),
   });
 
   // 추천 카드의 「적용」과 그 되돌리기.
@@ -778,6 +787,10 @@ export default function Home() {
                 strategyOptimizationStatus={analysis.strategyOptimizationStatus}
                 // 적용 대상은 센티널이 적용된 analysis.effective.params가 아니라 사용자가
                 // 입력한 activeParams다. 그 결정을 훅 한 곳에 두어 둘을 혼동할 여지를 없앤다.
+                goalChangeParams={activeScenarioId ? activeParams : undefined}
+                canUndoGoalChange={goalChange.canUndo}
+                onApplyGoalChange={goalChange.apply}
+                onUndoGoalChange={goalChange.undo}
                 onApplyStrategy={appliedStrategy.applyRecommendation}
                 previewStrategyApply={appliedStrategy.previewApply}
                 appliedStrategy={appliedStrategy.snapshot ?? undefined}

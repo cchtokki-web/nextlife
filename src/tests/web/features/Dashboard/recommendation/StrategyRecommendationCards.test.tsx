@@ -878,6 +878,18 @@ describe('StrategyRecommendationCards - 현재 계획과의 비교', () => {
     expect(screen.queryByText(worse.label)).not.toBeInTheDocument();
   });
 
+  test('개선안이 없으면 사적연금과 필수 은퇴 목표 변경을 구분해 안내한다', () => {
+    render(<StrategyRecommendationCards
+      recommendations={[worse]} status="done" currentGoalProbability={0.67}
+      params={{ ...params, privatePensions: [{ id: 'p', type: 'irp', balance: 1_000_000, monthlyContribution: 0, totalReturn: 4, currency: 'KRW' }],
+        retirementGoals: [{ type: 'EARLY_RETIREMENT', priority: 1, targetValue: 60, constraintType: 'HARD' }] }}
+      formatValue={formatValue} />);
+    const ideas = screen.getByRole('note', { name: '목표 달성 가능성을 높이기 위한 검토 사항' });
+    expect(ideas).toHaveTextContent('사적연금 인출 전략');
+    expect(ideas).toHaveTextContent('필수 은퇴 목표를 변경해야 하는 대안');
+    expect(ideas).toHaveTextContent('기존 목표 달성 확률과 직접 비교할 수 없습니다');
+  });
+
   test('현재 계획보다 높은 카드는 얼마나 높은지 밝힌다', () => {
     renderWith([better], 0.67);
 
@@ -911,7 +923,8 @@ describe('StrategyRecommendationCards - 현재 계획과의 비교', () => {
   test('추천이 모두 현재 계획보다 낫지 않으면 안내를 표시한다', () => {
     renderWith([worse], 0.67);
 
-    expect(screen.getByText('현재 계획보다 목표 달성 확률이 높은 추천 전략이 없습니다.')).toBeInTheDocument();
+    expect(screen.getByText('검증된 추천 후보 중 현재 계획보다 목표 달성 확률이 높은 전략을 찾지 못했습니다.')).toBeInTheDocument();
+    expect(screen.getByRole('note', { name: '목표 달성 가능성을 높이기 위한 검토 사항' })).toHaveTextContent('별도로 검증된 추천이 아닙니다');
     expect(screen.queryByText(worse.label)).not.toBeInTheDocument();
     expect(screen.queryByText('다른 선택을 검토하고 싶다면')).not.toBeInTheDocument();
     expect(shouldHideRecommendationBody({ status: 'done', recommendations: [worse], currentGoalProbability: 0.67 })).toBe(true);
