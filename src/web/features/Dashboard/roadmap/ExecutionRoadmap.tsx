@@ -1,4 +1,4 @@
-import { ExecutionRoadmap as ExecutionRoadmapData } from '../../../../core/usecases/dashboard/computeExecutionRoadmap';
+import { ExecutionRoadmap as ExecutionRoadmapData, selectRoadmapAdjustments } from '../../../../core/usecases/dashboard/computeExecutionRoadmap';
 import GlassCard from '../../../components/GlassCard';
 import type { SimulationYearlyResult } from '../../../../core/entities/types';
 import { formatValue } from '../charts/chartFormatters';
@@ -28,6 +28,8 @@ export function ExecutionRoadmap({ roadmap, isRecommendedPlan = false, yearlyRes
         {roadmap.events.map((event) => {
           const hasWarning = event.items.some((item) => item.severity === 'warning');
           const year = yearlyResults?.find((row) => row.age === event.age);
+          const adjustments = selectRoadmapAdjustments(roadmap, event.age, yearlyResults ?? [])
+            .filter(({ current, previous }) => formatValue(current, currency) !== formatValue(previous, currency));
           return (
             <div key={event.age} className="flex gap-3">
               <div className="flex flex-col items-center">
@@ -65,21 +67,19 @@ export function ExecutionRoadmap({ roadmap, isRecommendedPlan = false, yearlyRes
                           nationalPension: year.nationalPensionIncome,
                         };
                         const taxLabel = item.amountType === 'generalAsset' ? '세전' : '세후';
-                        return ` · 개시 연도 월평균 ${formatValue(amounts[item.amountType] / 12, currency)} (${taxLabel})`;
+                        return ` · 월평균 ${formatValue(amounts[item.amountType] / 12, currency)} (${taxLabel})`;
                       })()}
                     </p>
                   </div>
                 ))}
-                {(() => {
-                  if (!year) return null;
-                  const monthlyAssets = (year.generalAssetWithdrawal + year.isaWithdrawal + year.privatePensionWithdrawal) / 12;
-                  const monthlyPension = (year.nationalPensionIncome + year.privatePensionIncome) / 12;
-                  return (monthlyAssets > 0 || monthlyPension > 0) ? (
-                    <p className="mt-2 text-xs text-foreground-muted">
-                      월 기준 · 자산 인출 {formatValue(monthlyAssets, currency)} (세전) · 연금 수령 {formatValue(monthlyPension, currency)} (세후)
+                {adjustments.map(({ type, title, current, tax }) => (
+                  <div key={type} className="mt-1">
+                    <p className="text-sm font-medium">{title}</p>
+                    <p className="text-xs text-foreground-muted">
+                      월평균 {formatValue(current, currency)} ({tax})
                     </p>
-                  ) : null;
-                })()}
+                  </div>
+                ))}
               </div>
             </div>
           );

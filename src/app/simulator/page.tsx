@@ -279,7 +279,7 @@ export default function Home() {
       });
       // 로드맵과 고갈 나이는 화면과 같은 현재 계획 기준이다.
       const roadmap = computeExecutionRoadmap(reportParams, undefined, selectDepletionAge(undefined, result), planAssetStatus);
-      const executionRoadmapSectionHtml = renderExecutionRoadmapSection(roadmap);
+      const executionRoadmapSectionHtml = renderExecutionRoadmapSection(roadmap, result.yearlyResults, displayCurrency);
       // 기준선을 넘기지 않는다 — computeSensitivityAnalysis가 6개 시나리오와 같은 고정 계획으로
       // 직접 계산한다. 예전에는 화면과 PDF가 서로 다른 기준선을 넘겨(화면은 runForUtility(params),
       // 여기는 run()의 result) 같은 계획의 두 문서가 다른 증감을 보여줄 수 있었다.

@@ -2,7 +2,8 @@ import { RiskAlert } from '../../../core/usecases/dashboard/computeRiskAlerts';
 import { describeMonteCarloAssumptions } from '../../../core/usecases/montecarlo/describeAssumptions';
 import { describeSuccessRates, describeHardGoalRelationship } from '../../../core/usecases/montecarlo/describeSuccessRates';
 import { describeSustainableSpendingBasis } from '../../../core/usecases/dashboard/describeSustainableSpendingBasis';
-import { ExecutionRoadmap } from '../../../core/usecases/dashboard/computeExecutionRoadmap';
+import { ExecutionRoadmap, selectRoadmapAdjustments } from '../../../core/usecases/dashboard/computeExecutionRoadmap';
+import { formatValue as formatRoadmapValue } from '../Dashboard/charts/chartFormatters';
 import { SENSITIVITY_EXPLANATION } from '../Dashboard/expert/sensitivityExplanation';
 import { describeYieldAxisAnchors, SensitivityScenario } from '../../../core/usecases/dashboard/computeSensitivityAnalysis';
 import { PlanAssetStatus } from '../../../core/usecases/dashboard/resolvePlanAssetStatus';
@@ -18,7 +19,7 @@ import {
 import { NationalPensionExplanation } from '../../../core/usecases/pension/explainNationalPension';
 import { describeStrategyOutcomeChanges } from '../../../core/usecases/dashboard/describeStrategyOutcomeChanges';
 import type { StrategyPlanOutcome } from '../../../core/usecases/dashboard/summarizePlanOutcome';
-import { SimulationParams } from '../../../core/entities/types';
+import { SimulationParams, SimulationYearlyResult } from '../../../core/entities/types';
 import { formatManwon } from '../../../core/usecases/utility/utilityAnalysis';
 import { MonteCarloResult } from '../../../core/entities/montecarlo';
 import {
@@ -722,7 +723,7 @@ function describeEmptyOutcome(outcome?: OptimizationOutcome): string {
   return '현재 목표 조건을 만족하는 추천 후보가 없습니다.';
 }
 
-export function renderExecutionRoadmapSection(roadmap: ExecutionRoadmap): string {
+export function renderExecutionRoadmapSection(roadmap: ExecutionRoadmap, yearlyResults: SimulationYearlyResult[] = [], currency: 'KRW' | 'USD' = 'KRW'): string {
   const eventsHtml = roadmap.events
     .map((event) => {
       const hasWarning = event.items.some((item) => item.severity === 'warning');
@@ -737,10 +738,14 @@ export function renderExecutionRoadmapSection(roadmap: ExecutionRoadmap): string
           `
         )
         .join('');
+      const adjustmentsHtml = selectRoadmapAdjustments(roadmap, event.age, yearlyResults)
+        .filter(({ current, previous }) => formatRoadmapValue(current, currency) !== formatRoadmapValue(previous, currency))
+        .map(({ title, current, tax }) => `<div style="margin-bottom: 8px;"><strong style="font-size: 12px; color: #0f172a;">${title}</strong> <span style="font-size: 11px; color: #64748b;">월평균 ${formatRoadmapValue(current, currency)} (${tax})</span></div>`)
+        .join('');
       return `
         <div style="display: flex; gap: 12px; margin-bottom: 12px; align-items: flex-start;">
           <div style="width: 52px; flex-shrink: 0; padding-top: 1px; font-size: 13px; line-height: 1.5; font-weight: 700; color: ${hasWarning ? '#EF4444' : '#3b82f6'};">${event.age}세</div>
-          <div style="flex-grow: 1;">${itemsHtml}</div>
+          <div style="flex-grow: 1;">${itemsHtml}${adjustmentsHtml}</div>
         </div>
       `;
     })

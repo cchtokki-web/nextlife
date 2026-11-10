@@ -1,7 +1,7 @@
 import { getIdentityPlan } from '../strategy/StrategyCandidateGenerator';
 import { NATIONAL_PENSION_NORMAL_START_AGE } from '../pension/nationalPensionRules';
 import { clampPrivatePensionStartAge, PRIVATE_PENSION_MIN_START_AGE } from '../pension/privatePensionRules';
-import { SimulationParams, SimulationResult, StrategyRecommendation } from '../../entities/types';
+import { SimulationParams, SimulationResult, SimulationYearlyResult, StrategyRecommendation } from '../../entities/types';
 import { PlanAssetStatus } from './resolvePlanAssetStatus';
 
 // 로드맵(computeExecutionRoadmap)에 넘길 depletionAge를 고르는 단일 지점. 화면(DashboardSection)과
@@ -50,6 +50,18 @@ export interface ExecutionRoadmap {
   // 타임라인의 종점(본인 나이 기준) = 본인 기대수명.
   endAge: number;
   endLabel: string;
+}
+
+export function selectRoadmapAdjustments(roadmap: ExecutionRoadmap, age: number, yearlyResults: SimulationYearlyResult[]) {
+  const year = yearlyResults.find((row) => row.age === age);
+  const previous = yearlyResults.find((row) => row.age === age - 1);
+  if (!year || !previous) return [];
+  return [
+    { type: 'generalAsset' as const, title: '일반자산 인출액 변화', current: year.generalAssetWithdrawal / 12, previous: previous.generalAssetWithdrawal / 12, tax: '세전' },
+    { type: 'privatePension' as const, title: '사적연금 수령액 변화', current: year.privatePensionIncome / 12, previous: previous.privatePensionIncome / 12, tax: '세후' },
+  ].filter(({ type }) => roadmap.events.some((start) =>
+    start.age < age && start.items.some((item) => item.amountType === type),
+  ));
 }
 
 // 국민연금 수령 개시 나이를 정상 개시 나이(65)와 비교해 조기/연기 여부를 제목에 표기한다.

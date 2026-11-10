@@ -1,13 +1,28 @@
 import { describe, test, expect } from 'vitest';
 import { initialParams } from '@/infrastructure/storage/localStore';
-import { computeExecutionRoadmap, selectDepletionAge } from '@/core/usecases/dashboard/computeExecutionRoadmap';
+import { computeExecutionRoadmap, selectDepletionAge, selectRoadmapAdjustments } from '@/core/usecases/dashboard/computeExecutionRoadmap';
 import {
   CompleteWithdrawalPlan,
   SimulationParams,
   SimulationResult,
+  SimulationYearlyResult,
   StrategyRecommendation,
   UtilityBreakdown,
 } from '@/core/entities/types';
+
+test('개시 이후 시점만 직전 연도와 월평균을 비교하고 자료가 없으면 표시하지 않는다', () => {
+  const roadmap = computeExecutionRoadmap(baseParams, undefined, null, 'sustained');
+  const years = [
+    { age: 64, generalAssetWithdrawal: 12000000, privatePensionIncome: 6000000 },
+    { age: 65, generalAssetWithdrawal: 3360000, privatePensionIncome: 3240000 },
+  ] as SimulationYearlyResult[];
+  expect(selectRoadmapAdjustments(roadmap, 65, years)).toMatchObject([
+    { type: 'generalAsset', previous: 1000000, current: 280000 },
+    { type: 'privatePension', previous: 500000, current: 270000 },
+  ]);
+  expect(selectRoadmapAdjustments(roadmap, 60, years)).toEqual([]);
+  expect(selectRoadmapAdjustments(roadmap, 65, years.slice(1))).toEqual([]);
+});
 
 // 로드맵은 이제 "인출할 대상이 실제로 있는" 이벤트만 그린다. 이 파일의 대부분의 테스트는
 // 마일스톤의 **나이 배치**를 검증하므로, 자산·사적연금을 실제로 가진 계획을 기준선으로 둔다.
