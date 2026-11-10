@@ -2,6 +2,7 @@ import { describe, test, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { ExecutionRoadmap } from '@/web/features/Dashboard/roadmap/ExecutionRoadmap';
 import { ExecutionRoadmap as ExecutionRoadmapData } from '@/core/usecases/dashboard/computeExecutionRoadmap';
+import type { SimulationYearlyResult } from '@/core/entities/types';
 
 const roadmap: ExecutionRoadmapData = {
   events: [
@@ -26,6 +27,22 @@ const roadmap: ExecutionRoadmapData = {
 };
 
 describe('ExecutionRoadmap', () => {
+  test('각 개시 항목에 해당 연도의 월평균 금액과 세금 기준을 표시한다', () => {
+    const items: ExecutionRoadmapData = {
+      events: [{ age: 60, items: [
+        { title: '일반자산', description: '일반자산 설명', amountType: 'generalAsset' },
+        { title: '사적연금', description: '사적연금 설명', amountType: 'privatePension' },
+        { title: '국민연금', description: '국민연금 설명', amountType: 'nationalPension' },
+      ] }], endAge: 90, endLabel: '기대수명',
+    };
+    const year = { age: 60, generalAssetWithdrawal: 12000000, isaWithdrawal: 24000000,
+      privatePensionWithdrawal: 36000000, privatePensionIncome: 6000000,
+      nationalPensionIncome: 9600000 } as SimulationYearlyResult;
+    render(<ExecutionRoadmap roadmap={items} yearlyResults={[year]} />);
+    expect(screen.getByText('일반자산 설명 · 개시 연도 월평균 100만원 (세전)')).toBeInTheDocument();
+    expect(screen.getByText('사적연금 설명 · 개시 연도 월평균 50만원 (세후)')).toBeInTheDocument();
+    expect(screen.getByText('국민연금 설명 · 개시 연도 월평균 80만원 (세후)')).toBeInTheDocument();
+  });
   test('각 이벤트의 나이/제목/설명이 표시된다', () => {
     render(<ExecutionRoadmap roadmap={roadmap} />);
     expect(screen.getByText('60세')).toBeInTheDocument();

@@ -27,6 +27,7 @@ export function ExecutionRoadmap({ roadmap, isRecommendedPlan = false, yearlyRes
       <div className="flex flex-col">
         {roadmap.events.map((event) => {
           const hasWarning = event.items.some((item) => item.severity === 'warning');
+          const year = yearlyResults?.find((row) => row.age === event.age);
           return (
             <div key={event.age} className="flex gap-3">
               <div className="flex flex-col items-center">
@@ -55,11 +56,21 @@ export function ExecutionRoadmap({ roadmap, isRecommendedPlan = false, yearlyRes
                         </span>
                       )}
                     </p>
-                    <p className="text-xs text-foreground-muted">{item.description}</p>
+                    <p className="text-xs text-foreground-muted">
+                      {item.description}
+                      {year && item.amountType && (() => {
+                        const amounts = {
+                          generalAsset: year.generalAssetWithdrawal,
+                          privatePension: year.privatePensionIncome,
+                          nationalPension: year.nationalPensionIncome,
+                        };
+                        const taxLabel = item.amountType === 'generalAsset' ? '세전' : '세후';
+                        return ` · 개시 연도 월평균 ${formatValue(amounts[item.amountType] / 12, currency)} (${taxLabel})`;
+                      })()}
+                    </p>
                   </div>
                 ))}
                 {(() => {
-                  const year = yearlyResults?.find((row) => row.age === event.age);
                   if (!year) return null;
                   const monthlyAssets = (year.generalAssetWithdrawal + year.isaWithdrawal + year.privatePensionWithdrawal) / 12;
                   const monthlyPension = (year.nationalPensionIncome + year.privatePensionIncome) / 12;

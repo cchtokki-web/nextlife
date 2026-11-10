@@ -25,6 +25,7 @@ export function selectDepletionAge(
 export interface RoadmapEventItem {
   title: string;
   description: string;
+  amountType?: 'generalAsset' | 'privatePension' | 'nationalPension';
   // 위험 신호(예: 자산 고갈)를 다른 이벤트와 시각적으로 구분해 강조하기 위한 선택적 플래그.
   severity?: 'warning';
   // 이 마일스톤이 AI 추천으로 현재 설정에서 옮겨진 것이면, 옮겨지기 전 나이.
@@ -92,6 +93,7 @@ export function computeExecutionRoadmap(
       age: plan.generalAssetWithdrawalStartAge,
       item: {
         title: '일반자산 인출 개시',
+        amountType: 'generalAsset',
         description: '주식/ETF 등 일반 자산의 인출을 시작합니다.',
         changedFromAge: changedFrom(plan.generalAssetWithdrawalStartAge, identityPlan.generalAssetWithdrawalStartAge),
       },
@@ -117,6 +119,7 @@ export function computeExecutionRoadmap(
       item: recommendation?.recommendedPrivatePensionChanneling
         ? {
             title: '사적연금 수령 개시 (조기·ISA 재투자)',
+            amountType: 'privatePension',
             // 채널링 레그가 실제로 시뮬레이션한 내용만 기술한다. 신규 연금 계좌 납입은 이제
             // 독립 후보(recommendedNewPensionContribution)라 채택되지 않을 수 있으므로, 여기에
             // 섞어 쓰면 시뮬레이션하지 않은 행동을 사용자에게 단언하게 된다. "계좌 이전" 절도
@@ -128,7 +131,7 @@ export function computeExecutionRoadmap(
                 ? ' 기존 연금 계좌 납입은 중단하고 같은 금액을 새 계좌로 옮깁니다.'
                 : ''),
           }
-        : { title: '사적연금 수령 개시', description: '사적연금(퇴직연금·연금저축 등) 인출을 시작합니다.' },
+        : { title: '사적연금 수령 개시', description: '사적연금(퇴직연금·연금저축 등) 인출을 시작합니다.', amountType: 'privatePension' },
     });
   }
 
@@ -137,6 +140,7 @@ export function computeExecutionRoadmap(
       age: plan.nationalPensionStartAge,
       item: {
         title: describeNationalPensionTitle(plan.nationalPensionStartAge),
+        amountType: 'nationalPension',
         description: '국민연금 수령을 시작합니다.',
         changedFromAge: changedFrom(plan.nationalPensionStartAge, identityPlan.nationalPensionStartAge),
       },
