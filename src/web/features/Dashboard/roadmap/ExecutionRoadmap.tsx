@@ -1,5 +1,7 @@
 import { ExecutionRoadmap as ExecutionRoadmapData } from '../../../../core/usecases/dashboard/computeExecutionRoadmap';
 import GlassCard from '../../../components/GlassCard';
+import type { SimulationYearlyResult } from '../../../../core/entities/types';
+import { formatValue } from '../charts/chartFormatters';
 
 interface ExecutionRoadmapProps {
   roadmap: ExecutionRoadmapData;
@@ -7,11 +9,13 @@ interface ExecutionRoadmapProps {
   // 무관하게 항상 추천안을 그려서, 추천을 적용하지 않은 화면에서 KPI·차트는 현재 설정을
   // 보여주는데 로드맵만 다른 기준을 말했다.
   isRecommendedPlan?: boolean;
+  yearlyResults?: SimulationYearlyResult[];
+  currency?: 'KRW' | 'USD';
 }
 
 // "언제 무슨 일이 일어나는지"를 수직 타임라인으로 보여준다. 핵심 레버 카드("무엇을")와
 // 짝을 이루며, 계산은 컴포넌트 밖(computeExecutionRoadmap)에서 하고 여기서는 렌더링만 담당한다.
-export function ExecutionRoadmap({ roadmap, isRecommendedPlan = false }: ExecutionRoadmapProps) {
+export function ExecutionRoadmap({ roadmap, isRecommendedPlan = false, yearlyResults, currency = 'KRW' }: ExecutionRoadmapProps) {
   return (
     <GlassCard>
       <h3 className="mb-1 text-base font-semibold">실행 로드맵</h3>
@@ -54,6 +58,17 @@ export function ExecutionRoadmap({ roadmap, isRecommendedPlan = false }: Executi
                     <p className="text-xs text-foreground-muted">{item.description}</p>
                   </div>
                 ))}
+                {(() => {
+                  const year = yearlyResults?.find((row) => row.age === event.age);
+                  if (!year) return null;
+                  const monthlyAssets = (year.generalAssetWithdrawal + year.isaWithdrawal + year.privatePensionWithdrawal) / 12;
+                  const monthlyPension = (year.nationalPensionIncome + year.privatePensionIncome) / 12;
+                  return (monthlyAssets > 0 || monthlyPension > 0) ? (
+                    <p className="mt-2 text-xs text-foreground-muted">
+                      월 기준 · 자산 인출 {formatValue(monthlyAssets, currency)} (세전) · 연금 수령 {formatValue(monthlyPension, currency)} (세후)
+                    </p>
+                  ) : null;
+                })()}
               </div>
             </div>
           );

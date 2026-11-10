@@ -144,27 +144,12 @@ describe('DashboardSection - IA 순서', () => {
     expect(detailIdx).toBeGreaterThan(riskIdx);
   });
 
-  // **「그래서 지금 무엇을 하면 되지?」는 접기 뒤에 두지 않는다.**
-  //
-  // 「무엇부터 바꿔야 하나」와 「실행 로드맵」은 그 질문에 답하는 유일한 자리인데, 예전에는
-  // 「계획의 근거」 <details> 안 마지막 그룹이라 접기를 펴야 닿았다. 근거는 판정을 뒷받침하는
-  // «자료»이지 «할 일»이 아니다.
-  test('실행 시점은 접기 밖, 현재 계획과 근거 사이에 있다', () => {
+  test('무엇부터 바꿔야 하나 섹션을 표시하지 않는다', () => {
     const { container } = render(
       <DashboardSection params={params} result={result} recommendation={recommendation} />
     );
-
-    const diagnosisSection = screen.getByLabelText('현재 계획 분석');
-    const action = screen.getByText('무엇부터 바꿔야 하나');
-    const evidence = screen.getByText('계획의 근거');
-
-    expect(diagnosisSection.compareDocumentPosition(action) & Node.DOCUMENT_POSITION_FOLLOWING)
-      .toBe(Node.DOCUMENT_POSITION_FOLLOWING);
-    expect(action.compareDocumentPosition(evidence) & Node.DOCUMENT_POSITION_FOLLOWING)
-      .toBe(Node.DOCUMENT_POSITION_FOLLOWING);
-
-    // 자리만이 아니라 «접힘 밖»인지도 본다. 순서만 보면 <details> 안 첫 줄로 옮겨도 통과한다.
-    expect(container.querySelector('details')!.textContent).not.toContain('실행 로드맵');
+    expect(container.textContent).not.toContain('무엇부터 바꿔야 하나');
+    expect(container.textContent).toContain('실행 로드맵');
   });
 
   // 「결과 요약」은 진단 카드가 이미 말한 판정·확률·목표 생활비·기말자산을 다른 이름으로 다시
@@ -219,18 +204,13 @@ describe('DashboardSection - IA 순서', () => {
     expect(within(diagnosis).getByText(/기준 시나리오에서는/)).toBeInTheDocument();
   });
 
-  // 레버가 로드맵보다 앞이다. 매도 순서·인출 개시 나이는 이 계획에서 다섯 번째로 중요한
-  // 레버인데 예전에는 그것이 실행 계획의 첫 카드였다(computeKeyLevers 주석).
-  test('실행 로드맵은 「무엇부터 바꿔야 하나」 다음에 온다', () => {
+  test('진단 섹션을 제거해도 실행 로드맵을 표시한다', () => {
     const { container } = render(
       <DashboardSection params={params} result={result} recommendation={recommendation} />
     );
     const text = container.textContent ?? '';
-    const leversIdx = text.indexOf('무엇부터 바꿔야 하나');
-    const roadmapIdx = text.indexOf('실행 로드맵');
-
-    expect(leversIdx).toBeGreaterThanOrEqual(0);
-    expect(roadmapIdx).toBeGreaterThan(leversIdx);
+    expect(text).not.toContain('무엇부터 바꿔야 하나');
+    expect(text).toContain('실행 로드맵');
   });
 
   // 「계획의 근거」를 한 번 여는 것으로 끝나야 한다. 예전에는 세금 표 하나를 보는 데
@@ -1197,7 +1177,7 @@ describe('동시에 달성하기 어려운 목표', () => {
     expect(within(notice).getByText('상속 자산 확보 8,000만원 부족')).toBeInTheDocument();
   });
 
-  test('충돌 안내는 진단 다음 실행 시점 앞에 놓인다', () => {
+  test('충돌 안내는 실행 시점 앞에 놓인다', () => {
     const conflictResult = new LegacySimulationEngine().run(conflictParams);
     const { container } = render(<DashboardSection params={conflictParams} result={conflictResult} />);
 
@@ -1205,8 +1185,8 @@ describe('동시에 달성하기 어려운 목표', () => {
     // 진단 카드는 「내 계획이 어떤가」를 말하고, 충돌은 「내가 고른 목표들이 서로 맞지 않는다」는
     // 다른 층위다(스펙). 그리고 추천보다 «앞»에 있어야 추천이 왜 그런 모양인지 이해된다.
     expect(container.querySelector('[aria-label="현재 계획 분석"]')?.contains(notice)).toBe(false);
-    const action = screen.getByText('무엇부터 바꿔야 하나');
-    expect(notice.compareDocumentPosition(action) & Node.DOCUMENT_POSITION_FOLLOWING)
+    const roadmap = screen.getByText('실행 로드맵');
+    expect(notice.compareDocumentPosition(roadmap) & Node.DOCUMENT_POSITION_FOLLOWING)
       .toBe(Node.DOCUMENT_POSITION_FOLLOWING);
   });
 

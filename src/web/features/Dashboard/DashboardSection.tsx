@@ -20,7 +20,6 @@ import { MonteCarloStatus } from '../../hooks/useMonteCarlo';
 import { SequenceRiskResult } from '../../../core/usecases/montecarlo/sequenceRisk';
 import { ExecutionRoadmap } from './roadmap/ExecutionRoadmap';
 import { computeExecutionRoadmap, selectDepletionAge } from '../../../core/usecases/dashboard/computeExecutionRoadmap';
-import { computeKeyLevers } from '../../../core/usecases/dashboard/computeKeyLevers';
 import {
   getPlanConfidenceBand,
   PLAN_CONFIDENCE_BAND_TIER,
@@ -36,7 +35,6 @@ import { describeSustainableSpendingBasis } from '../../../core/usecases/dashboa
 import GlassCard from '../../components/GlassCard';
 import { retirementGoalDefinition } from '../RetirementGoals/goalCatalog';
 import { describeUnscoredGoals } from '../../../core/usecases/goals/goalScoreSupport';
-import { KeyLeversCard } from './recommendation/KeyLeversCard';
 import { NATIONAL_PENSION_NORMAL_START_AGE } from '../../../core/usecases/pension/nationalPensionRules';
 import { compileStrategy } from '../../../core/usecases/strategy/compileStrategy';
 import { SentinelApplication } from '../../../core/usecases/strategy/applyAiSentinels';
@@ -197,12 +195,6 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
   const sensitivity = React.useMemo(
     () => evaluationEngine.analyzeSensitivity(params),
     [evaluationEngine, params]
-  );
-  const keyLevers = React.useMemo(
-    () => computeKeyLevers({ sensitivity, pensionGap, shortfall: shortfallReport, recommendation, formatValue }),
-    // formatValue는 매 렌더 새 참조지만 currency에만 의존하므로 통화를 의존성으로 쓴다.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [sensitivity, pensionGap, shortfallReport, recommendation, currency]
   );
   // 판정의 단일 출처. 폴백을 다시 쌓지 않는다 — 예전에는 simulationSuccessRate ??
   // goalSuccessProbability 두 단계였고, 이 화면 스스로 spendingSuccessRate로 대체하지 말라고
@@ -395,8 +387,6 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
           {/* 인출 전략보다 위에 둔다. 이유는 computeKeyLevers 주석 참고 — 매도 순서·인출
               개시 나이는 이 계획에서 다섯 번째로 중요한 레버인데, 예전에는 그것이 실행
               계획의 첫 카드였다. */}
-          <KeyLeversCard levers={keyLevers} />
-
           {/* 실행 로드맵은 **현재 계획 기준**이다. computeExecutionRoadmap에 추천안을
               넘기지 않으므로 getIdentityPlan(현재 설정)으로 폴백한다 — 이 화면의 다른
               모든 숫자와 같은 계획을 그려야 마일스톤과 고갈 시점이 어긋나지 않는다
@@ -409,6 +399,8 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
               planAssetStatus
             )}
             isRecommendedPlan={false}
+            yearlyResults={result.yearlyResults}
+            currency={currency}
           />
         </DashboardGroup>
 

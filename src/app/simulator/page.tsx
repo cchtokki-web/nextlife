@@ -12,11 +12,10 @@ import { computeSensitivityAnalysis } from '../../core/usecases/dashboard/comput
 import { resolvePlanAssetStatus } from '../../core/usecases/dashboard/resolvePlanAssetStatus';
 import { computeShortfallSummary } from '../../core/usecases/dashboard/computeShortfallSummary';
 import { describeDepletionAge } from '../../core/usecases/dashboard/describeDepletionAge';
-import { formatCurrencyUnit, renderRiskAlertsSection, renderExecutionRoadmapSection, renderSensitivityTableSection, renderMonteCarloSection, renderShortfallSummarySection, renderPlanVerdictSection, renderGoalConflictSection, renderNationalPensionSection, renderKeyLeversSection, renderSustainableSpendingLimitSection } from '../../web/features/Pdf/pdfReportSections';
+import { formatCurrencyUnit, renderRiskAlertsSection, renderExecutionRoadmapSection, renderSensitivityTableSection, renderMonteCarloSection, renderShortfallSummarySection, renderPlanVerdictSection, renderGoalConflictSection, renderNationalPensionSection, renderSustainableSpendingLimitSection } from '../../web/features/Pdf/pdfReportSections';
 import { buildReportHtml } from '../../web/features/Pdf/buildReportHtml';
 import { generateReportPdf, ReportPageOverflowError } from '../../web/features/Pdf/generateReportPdf';
 import { computePlanConfidence } from '../../core/usecases/dashboard/computePlanConfidence';
-import { computeKeyLevers } from '../../core/usecases/dashboard/computeKeyLevers';
 import { computePensionGapRisk } from '../../core/usecases/dashboard/computePensionGapRisk';
 import { explainNationalPension } from '../../core/usecases/pension/explainNationalPension';
 import { resolveTaxSettings } from '../../core/usecases/tax/taxRates';
@@ -294,19 +293,6 @@ export default function Home() {
         endingAssets: sensitivity.baselineEndingAssets,
         hardViolations: sensitivity.baselineHardViolations,
       }, sensitivity.hardRequirementGoals);
-      // 화면(KeyLeversCard)과 같은 함수·같은 순서를 쓴다. 같은 계획의 두 문서가 서로 다른
-      // 우선순위를 제시하면 안 된다.
-      const keyLeversSectionHtml = renderKeyLeversSection(
-        computeKeyLevers({
-          sensitivity,
-          pensionGap: computePensionGapRisk(reportParams, result),
-          shortfall: computeShortfallSummary(reportParams, result),
-          recommendation,
-          formatValue: formatValuePrint,
-        })
-      );
-
-
       // 페이지 HTML 조립은 buildReportHtml이 전담한다 — DOM도 jsPDF도 모르는 순수 함수라
       // 골든 스냅샷으로 잠글 수 있다(buildReportHtml.test.ts). 예전에는 이 자리에 376줄이
       // 들어 있었고, 조립 결과만 따로 확인할 방법이 없어 표기 결함이 실물 PDF를 눈으로
@@ -330,7 +316,7 @@ export default function Home() {
           nationalPension: nationalPensionSectionHtml,
           executionRoadmap: executionRoadmapSectionHtml,
           sensitivityTable: sensitivityTableSectionHtml,
-          keyLevers: keyLeversSectionHtml,
+          keyLevers: '',
           monteCarlo: renderMonteCarloSection(monteCarlo, sequenceRisk, reportParams),
         },
       });
