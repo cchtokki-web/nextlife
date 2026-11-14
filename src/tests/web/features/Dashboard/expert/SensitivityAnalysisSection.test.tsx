@@ -44,6 +44,14 @@ describe('SensitivityAnalysisSection', () => {
     expect(screen.getByText('50억원')).toBeInTheDocument(); // yieldAggressive의 기말자산
   });
 
+  test('기준과 시나리오 금액은 금액 중간에서 줄바꿈하지 않는다', () => {
+    render(<SensitivityAnalysisSection baselineDepletionAge={88} baselineEndingAssets={1723620000} scenarios={[
+      scenario({ key: 'later', label: '은퇴시점 +3년', endingAssets: 2999000000, endingAssetsDelta: 1275380000 }),
+    ]} />);
+    expect(screen.getByText('17억 2,362만원')).toHaveClass('whitespace-nowrap');
+    expect(screen.getByText('29억 9,900만원')).toHaveClass('whitespace-nowrap');
+  });
+
   test('고갈이 발생하는 시나리오는 고갈 나이도 함께 표시한다', () => {
     render(<SensitivityAnalysisSection baselineDepletionAge={88} baselineEndingAssets={2500000000} scenarios={scenarios} />);
     expect(screen.getByText(/82세 고갈/)).toBeInTheDocument();

@@ -25,6 +25,9 @@ export function GoalChangeSuggestions({ params, onApply, onUndo, onConfirm, canU
   const worker = useRef<Worker | null>(null);
   const key = JSON.stringify(params);
   const formatAmount = (value: number) => `${Math.round(value).toLocaleString()}${params.displayCurrency === 'USD' ? '달러' : '원'}`;
+  const formatSpending = (value: number) => params.displayCurrency === 'USD'
+    ? formatAmount(value)
+    : `${(Math.round(value) / 10000).toLocaleString('ko-KR', { maximumFractionDigits: 4 })}만원`;
   useEffect(() => () => { worker.current?.terminate(); worker.current = null; }, [key]);
 
   function run() {
@@ -88,7 +91,7 @@ export function GoalChangeSuggestions({ params, onApply, onUndo, onConfirm, canU
         {state.proposals.map((proposal) => {
           const change = proposal.kind === 'retirement'
             ? `은퇴 ${proposal.before}세 → ${proposal.after}세`
-            : `월 생활비 ${formatAmount(proposal.before)} → ${formatAmount(proposal.after)}`;
+            : `월 생활비 ${formatSpending(proposal.before)} → ${formatSpending(proposal.after)}`;
           return <li key={proposal.id} className={styles.goalChangeCard}>
             <div className={styles.goalChangeCardHeader}>
               <span className={styles.goalChangeCategory}>{proposal.kind === 'retirement' ? '은퇴 시점' : '생활비 목표'}</span>

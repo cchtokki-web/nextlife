@@ -177,7 +177,7 @@ export function SensitivityAnalysisSection({
       labelClassName="font-semibold"
       value={(
         <>
-          <span className="font-semibold">{formatManwon(baselineEndingAssets)}</span>
+          <span className="whitespace-nowrap font-semibold">{formatManwon(baselineEndingAssets)}</span>
           {baselineDepletionAge !== null && (
             <span className="block text-[11px] font-normal text-danger">{baselineDepletionAge}세 고갈</span>
           )}
@@ -281,7 +281,7 @@ export function SensitivityAnalysisSection({
                 <>
                   {/* 금액과 증감은 «한 덩어리»로 읽힌다. 좁은 폭에서 줄이 갈리더라도 괄호 안이
                       쪼개지지 않도록 증감만 통째로 붙여 둔다. */}
-                  <span className="font-semibold">{formatManwon(scenario.endingAssets)}</span>
+                  <span className="whitespace-nowrap font-semibold">{formatManwon(scenario.endingAssets)}</span>
                   {scenario.endingAssetsDelta !== 0 && (
                     <span className={`ml-1 whitespace-nowrap font-normal ${isWorse ? 'text-danger' : 'text-success'}`}>
                       ({deltaSign}

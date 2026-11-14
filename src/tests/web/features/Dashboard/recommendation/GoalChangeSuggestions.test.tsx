@@ -52,7 +52,24 @@ test('검증된 변경안을 각각의 카드로 구분하고 선택한 안만 �
   fireEvent.click(screen.getByRole('button', { name: '목표 변경안 계산' }));
   act(() => WorkerStub.last.onmessage?.({ data: { kind: 'done', baselineProbability: 0.7, trials: 2000, proposals } } as MessageEvent));
   expect(screen.getByRole('list', { name: '검증된 목표 변경안' }).querySelectorAll('li')).toHaveLength(4);
-  fireEvent.click(screen.getByRole('button', { name: '월 생활비 3,000,000원 → 2,700,000원 적용' }));
+  expect(screen.getByText('월 생활비 300만원 → 270만원')).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: '월 생활비 300만원 → 270만원 적용' }));
   expect(apply).toHaveBeenCalledOnce();
   expect(apply).toHaveBeenCalledWith(proposals[2].params);
+});
+
+test('만원 미만 금액을 보존하고 달러는 기존 단위로 표시한다', () => {
+  vi.stubGlobal('Worker', WorkerStub);
+  const props = { onApply: vi.fn(), onUndo: vi.fn(), onConfirm: vi.fn(), canUndo: false };
+  const proposal = { id: 'spending', kind: 'spending', before: 2_700_123, after: 2_430_000, probability: 0.9, params: initialParams };
+  const { unmount } = render(<GoalChangeSuggestions {...props} params={initialParams} />);
+  fireEvent.click(screen.getByRole('button', { name: '목표 변경안 계산' }));
+  act(() => WorkerStub.last.onmessage?.({ data: { kind: 'done', baselineProbability: 0.7, trials: 2000, proposals: [proposal] } } as MessageEvent));
+  expect(screen.getByText('월 생활비 270.0123만원 → 243만원')).toBeInTheDocument();
+  unmount();
+
+  render(<GoalChangeSuggestions {...props} params={{ ...initialParams, displayCurrency: 'USD' }} />);
+  fireEvent.click(screen.getByRole('button', { name: '목표 변경안 계산' }));
+  act(() => WorkerStub.last.onmessage?.({ data: { kind: 'done', baselineProbability: 0.7, trials: 2000, proposals: [proposal] } } as MessageEvent));
+  expect(screen.getByText('월 생활비 2,700,123달러 → 2,430,000달러')).toBeInTheDocument();
 });
