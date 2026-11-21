@@ -243,6 +243,7 @@ describe('DashboardSection - IA 순서', () => {
 
   test('자산 추이 차트는 기본으로 단순화 모드이며, "자산 구성 상세보기" 버튼을 제공한다', () => {
     render(<DashboardSection params={params} result={result} recommendation={recommendation} />);
+    expect(screen.getByText(/자산 추이 시뮬레이션 \(현재 55세 ~ 90세\)/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '자산 구성 상세보기' })).toBeInTheDocument();
   });
 

@@ -185,6 +185,7 @@ export function AssetGrowthChart({
     compareResults,
     bandByAge,
   );
+  const currentAgeIndex = assetChartData.findIndex((row) => row.age === params.userProfile.currentAge);
 
   // 정상적으로 인출 가능한 해에는 r.spending에 의료비가 이미 합산되어 있다(자산이 고갈된
   // 해에는 인출 가능한 만큼으로 깎여 spending < healthcareSpending이 될 수 있다 —
@@ -222,7 +223,7 @@ export function AssetGrowthChart({
     <GlassCard className={styles.chartCard}>
       <div className={styles.chartHeader}>
         <span className={styles.chartTitle}>
-          자산 추이 시뮬레이션 (현재 ~ {params.userProfile.expectancy}세)
+          자산 추이 시뮬레이션 (현재 {params.userProfile.currentAge}세 ~ {params.userProfile.expectancy}세)
           <span style={{ fontSize: '0.85em', color: 'var(--foreground-muted)', marginLeft: '8px', fontWeight: 'normal' }}>
             ({params.inflationMode === 'nominal' ? '명목가치' : '실질가치'} 기준)
           </span>
@@ -297,6 +298,7 @@ export function AssetGrowthChart({
               {/* name을 빈 문자열로 돌려주면 recharts가 ": 5억원"처럼 값만 나열한다 —
                   어느 줄이 무슨 자산인지 읽을 수 없었다. 시리즈 이름을 그대로 되돌려준다. */}
               <Tooltip
+                defaultIndex={currentAgeIndex >= 0 ? currentAgeIndex : undefined}
                 contentStyle={RECHARTS_TOOLTIP_STYLE}
                 formatter={(value: unknown, name: unknown) => [formatValue(Number(value), currency), String(name)]}
                 labelFormatter={(label) => `${label}세`}
