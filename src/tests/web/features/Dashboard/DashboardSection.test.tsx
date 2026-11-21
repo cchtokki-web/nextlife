@@ -241,10 +241,11 @@ describe('DashboardSection - IA 순서', () => {
     expect(details).toHaveAttribute('open');
   });
 
-  test('자산 추이 차트는 기본으로 단순화 모드이며, "자산 구성 상세보기" 버튼을 제공한다', () => {
+  test('자산 추이 차트는 기본으로 자산 구성을 표시한다', () => {
     render(<DashboardSection params={params} result={result} recommendation={recommendation} />);
-    expect(screen.getByText(/자산 추이 시뮬레이션 \(현재 55세 ~ 90세\)/)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '자산 구성 상세보기' })).toBeInTheDocument();
+    expect(screen.getByText(/자산 추이 시뮬레이션 \(현재 ~ 90세\)/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /주식\/ETF 자산/ })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.queryByRole('button', { name: '자산 구성 상세보기' })).not.toBeInTheDocument();
   });
 
   test('소득·지출 구성은 한 자리에서 탭으로 전환된다', () => {
@@ -592,8 +593,6 @@ describe('DashboardSection - 투자자산 미보유 계획', () => {
     const header = screen.getByText(/자산 추이 시뮬레이션/).closest('div');
     expect(header).not.toBeNull();
     expect(header!.textContent).not.toMatch(/투자자산 소진|생활비 부족|안정적인 노후 자산 유지됨/);
-    // 이 카드에서만 할 수 있는 조작은 그대로 남는다.
-    expect(screen.getByRole('button', { name: '자산 구성 상세보기' })).toBeInTheDocument();
   });
 
   test('실행 로드맵에서 없는 계좌의 인출 개시와 고갈 노드를 그리지 않는다', () => {

@@ -1,6 +1,7 @@
 import { describe, test, expect, beforeAll } from 'vitest';
-import { render } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { IncomeCompositionChart } from '@/web/features/Dashboard/charts/IncomeCompositionChart';
+import { SpendingCompositionChart } from '@/web/features/Dashboard/charts/SpendingCompositionChart';
 import { REFERENCE_LABEL_FONT_SIZE } from '@/web/features/Dashboard/charts/chartFormatters';
 import { SimulationParams, SimulationResult, YearlyLedger } from '@/core/entities/types';
 import { makeYearlyResult } from '@/tests/fixtures/yearlyResult';
@@ -80,6 +81,37 @@ function findReferenceLabel(container: HTMLElement): SVGTextElement {
   expect(label, '국민연금 개시 기준선 라벨이 그려져야 한다').toBeTruthy();
   return label as unknown as SVGTextElement;
 }
+
+test('현재 나이 툴팁은 마우스 이동으로 바뀌지 않는다', () => {
+  const chartResult = {
+    ...result,
+    yearlyResults: [makeYearlyResult({ age: 60 }), makeYearlyResult({ age: 61 })],
+  };
+  const { container } = renderChart(chartResult);
+  expect(screen.getByText('60세', { selector: 'div' })).toBeInTheDocument();
+  const chart = container.querySelector('.recharts-wrapper');
+  expect(chart).not.toBeNull();
+  fireEvent.mouseMove(chart!, { clientX: 700, clientY: 200 });
+  expect(screen.getByText('60세', { selector: 'div' })).toBeInTheDocument();
+  fireEvent.click(chart!, { clientX: 700, clientY: 200 });
+  expect(screen.getByText('61세', { selector: 'div' })).toBeInTheDocument();
+});
+
+test('은퇴 후 지출 차트는 현재 나이 툴팁을 유지하다 클릭한 나이로 바꾼다', () => {
+  const chartResult = {
+    ...result,
+    yearlyResults: [makeYearlyResult({ age: 60 }), makeYearlyResult({ age: 61 })],
+  };
+  const { container } = render(
+    <SpendingCompositionChart params={params} result={chartResult} hiddenKeys={{}} onLegendClick={() => {}} caption="" />
+  );
+  expect(screen.getByText('60세 (월 생활비 구성)')).toBeInTheDocument();
+  const chart = container.querySelector('.recharts-wrapper')!;
+  fireEvent.mouseMove(chart, { clientX: 700, clientY: 200 });
+  expect(screen.getByText('60세 (월 생활비 구성)')).toBeInTheDocument();
+  fireEvent.click(chart, { clientX: 700, clientY: 200 });
+  expect(screen.getByText('61세 (월 생활비 구성)')).toBeInTheDocument();
+});
 
 describe('IncomeCompositionChart - 국민연금 개시 기준선 라벨', () => {
   // 회귀: 플롯 위쪽 여백이 ⚠️ 표시분(12px)밖에 없어서, 그 위에 얹히는 라벨의 글자

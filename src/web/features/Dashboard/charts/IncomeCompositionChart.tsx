@@ -154,6 +154,7 @@ export function IncomeCompositionChart({
       .map((d) => [d.age, d] as const)
   );
   const pensionChartData = result.yearlyResults.map((r) => toIncomeChartRow(r, targetByAge.get(r.age)));
+  const currentAgeIndex = pensionChartData.findIndex((row) => row.age === params.userProfile.currentAge);
   // 사적연금 막대가 그해 생활비를 채운 금액보다 작아지는 해가 있으면 그 이유를 밝힌다.
   // 문장은 core가 소유한다 — PDF가 같은 함수를 쓴다.
   const taxSettlement = describePrivatePensionTaxSettlement(
@@ -206,6 +207,8 @@ export function IncomeCompositionChart({
                 tick={(props: YAxisTickContentProps) => <MultilineYAxisTick {...props} currency={currency} />}
               />
               <Tooltip
+                trigger="click"
+                defaultIndex={currentAgeIndex >= 0 ? currentAgeIndex : undefined}
                 content={(props) => (
                   <IncomeCompositionTooltip
                     active={props.active}

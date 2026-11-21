@@ -120,6 +120,7 @@ export function SpendingCompositionChart({ params, result, hiddenKeys, onLegendC
     자산부족: d.shortfall,
     목표달성률: d.spendingAchievementRate,
   }));
+  const currentAgeIndex = spendingChartData.findIndex((row) => row.age === params.userProfile.currentAge);
 
   const rawPensionLimit = params.taxSettings?.privatePensionLimit ?? 15000000;
   const monthlyPensionLimit =
@@ -157,6 +158,8 @@ export function SpendingCompositionChart({ params, result, hiddenKeys, onLegendC
                 tick={(props: YAxisTickContentProps) => <MultilineYAxisTick {...props} currency={currency} />}
               />
               <Tooltip
+                trigger="click"
+                defaultIndex={currentAgeIndex >= 0 ? currentAgeIndex : undefined}
                 content={(props) => (
                   <SpendingCompositionTooltip
                     active={props.active}

@@ -100,9 +100,6 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
   // 상위 10% 선을 꺼 두었지만(축이 그 선에 끌려가 주 곡선이 눌렸다) 그 계열 자체가 사라졌다.
   const [hiddenKeys, setHiddenKeys] = React.useState<Record<string, boolean>>({});
   const [compositionChart, setCompositionChart] = React.useState<'income' | 'spending'>('income');
-  // 자산 추이 차트 기본 단순화 모드: 켜지기 전까지는 주식자산/연금자산 breakdown을 숨기고
-  // 자산총액/월생활비만 보여준다. 범례 클릭으로 저장된 hiddenKeys는 그대로 두고 덮어씌우기만 한다.
-  const [showAssetBreakdown, setShowAssetBreakdown] = React.useState(false);
   const detailsRef = React.useRef<HTMLDetailsElement>(null);
 
   const handleLegendClick = (data: LegendPayload) => {
@@ -112,13 +109,6 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
       setHiddenKeys((prev) => ({ ...prev, [key]: !prev[key] }));
     }
   };
-
-  // 간단히 보기에서 내리는 구성 계열. AssetGrowthChart의 BREAKDOWN_KEYS와 «같은 목록»이어야
-  // 한다 — 범례는 그 목록으로 버튼을 빼고 그림은 이 오버레이로 선을 숨기므로, 어긋나면
-  // 눌러도 아무 일도 일어나지 않는 버튼이 생긴다.
-  const assetChartHiddenKeys = showAssetBreakdown
-    ? hiddenKeys
-    : { ...hiddenKeys, 주식자산: true, 연금자산: true, ISA자산: true, 현금: true };
 
   const params: SimulationParams = React.useMemo(() => ({
     ...rawParams,
@@ -427,11 +417,9 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
               params={params}
               result={result}
               compareResults={compareResults}
-              hiddenKeys={assetChartHiddenKeys}
+              hiddenKeys={hiddenKeys}
               onLegendClick={handleLegendClick}
               caption={captions.assetGrowth}
-              showBreakdown={showAssetBreakdown}
-              onToggleBreakdown={() => setShowAssetBreakdown((v) => !v)}
               planOutcome={planOutcome}
               monteCarlo={monteCarloForDisplay}
             />

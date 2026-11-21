@@ -1,5 +1,5 @@
-import { describe, test, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { describe, test, expect } from 'vitest';
+import { render, screen } from '@testing-library/react';
 import { AssetGrowthChart, buildAssetChartData } from '@/web/features/Dashboard/charts/AssetGrowthChart';
 import { MonteCarloResult } from '@/core/entities/montecarlo';
 import { SimulationParams, SimulationResult, SimulationYearlyResult } from '@/core/entities/types';
@@ -42,83 +42,8 @@ const params: SimulationParams = {
   displayCurrency: 'KRW',
 };
 
-describe('AssetGrowthChart - 단순화 모드 토글', () => {
-  test('간단히 보기에서는 강제로 숨긴 자산 구성 범례를 노출하지 않는다', () => {
-    const { rerender } = render(
-      <AssetGrowthChart
-        params={params}
-        result={result}
-        compareResults={[]}
-        hiddenKeys={{ 주식자산: true, 연금자산: true }}
-        onLegendClick={() => {}}
-        caption=""
-        showBreakdown={false}
-        onToggleBreakdown={() => {}}
-        planOutcome={{ assetStatus: 'sustained', investableDepletionAge: null, spendingShortfall: null }}
-      />
-    );
-
-    expect(screen.queryByRole('button', { name: /주식\/ETF 자산/ })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /연금 자산/ })).not.toBeInTheDocument();
-    // ISA·현금도 구성 계열이다. 총액이 중앙값일 때 이 점선들만 기준 수익률로 남으면
-    // 한 화면에서 부분과 전체가 다른 기준을 말한다.
-    expect(screen.queryByRole('button', { name: /ISA 자산/ })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /^현금/ })).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /총 자산액/ })).toBeInTheDocument();
-
-    rerender(
-      <AssetGrowthChart
-        params={params}
-        result={result}
-        compareResults={[]}
-        hiddenKeys={{}}
-        onLegendClick={() => {}}
-        caption=""
-        showBreakdown={true}
-        onToggleBreakdown={() => {}}
-        planOutcome={{ assetStatus: 'sustained', investableDepletionAge: null, spendingShortfall: null }}
-      />
-    );
-
-    expect(screen.getByRole('button', { name: /주식\/ETF 자산/ })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /연금 자산/ })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /ISA 자산/ })).toBeInTheDocument();
-  });
-
-  test('showBreakdown이 false면 "자산 구성 상세보기" 버튼을, true면 "간단히 보기" 버튼을 보여준다', () => {
-    const { rerender } = render(
-      <AssetGrowthChart
-        params={params}
-        result={result}
-        compareResults={[]}
-        hiddenKeys={{}}
-        onLegendClick={() => {}}
-        caption=""
-        showBreakdown={false}
-        onToggleBreakdown={() => {}}
-        planOutcome={{ assetStatus: 'sustained', investableDepletionAge: null, spendingShortfall: null }}
-      />
-    );
-    expect(screen.getByRole('button', { name: '자산 구성 상세보기' })).toBeInTheDocument();
-
-    rerender(
-      <AssetGrowthChart
-        params={params}
-        result={result}
-        compareResults={[]}
-        hiddenKeys={{}}
-        onLegendClick={() => {}}
-        caption=""
-        showBreakdown={true}
-        onToggleBreakdown={() => {}}
-        planOutcome={{ assetStatus: 'sustained', investableDepletionAge: null, spendingShortfall: null }}
-      />
-    );
-    expect(screen.getByRole('button', { name: '간단히 보기' })).toBeInTheDocument();
-  });
-
-  test('토글 버튼 클릭 시 onToggleBreakdown이 호출된다', () => {
-    const onToggleBreakdown = vi.fn();
+describe('AssetGrowthChart - 자산 구성 표시', () => {
+  test('모든 자산 구성 범례를 표시하고 보기 전환 버튼은 표시하지 않는다', () => {
     render(
       <AssetGrowthChart
         params={params}
@@ -127,14 +52,15 @@ describe('AssetGrowthChart - 단순화 모드 토글', () => {
         hiddenKeys={{}}
         onLegendClick={() => {}}
         caption=""
-        showBreakdown={false}
-        onToggleBreakdown={onToggleBreakdown}
         planOutcome={{ assetStatus: 'sustained', investableDepletionAge: null, spendingShortfall: null }}
       />
     );
 
-    fireEvent.click(screen.getByRole('button', { name: '자산 구성 상세보기' }));
-    expect(onToggleBreakdown).toHaveBeenCalledTimes(1);
+    for (const name of [/주식\/ETF 자산/, /연금 자산/, /ISA 자산/, /^현금/]) {
+      expect(screen.getByRole('button', { name })).toBeInTheDocument();
+    }
+    expect(screen.queryByRole('button', { name: '자산 구성 상세보기' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '간단히 보기' })).not.toBeInTheDocument();
   });
 });
 
@@ -166,8 +92,7 @@ describe('AssetGrowthChart - 총 자산액 곡선의 기준', () => {
         hiddenKeys={{}}
         onLegendClick={() => {}}
         caption=""
-        showBreakdown={false}
-        onToggleBreakdown={() => {}}
+
         planOutcome={{ assetStatus: 'sustained', investableDepletionAge: null, spendingShortfall: null }}
         monteCarlo={monteCarlo}
         {...props}
@@ -262,8 +187,7 @@ describe('AssetGrowthChart - 총 자산액 곡선의 기준', () => {
         hiddenKeys={{}}
         onLegendClick={() => {}}
         caption=""
-        showBreakdown={false}
-        onToggleBreakdown={() => {}}
+
         planOutcome={{ assetStatus: 'sustained', investableDepletionAge: null, spendingShortfall: null }}
       />
     );
@@ -284,7 +208,7 @@ describe('AssetGrowthChart - 총 자산액 곡선의 기준', () => {
   });
 
   test('자산 구성 상세에서도 총액은 중앙값으로 그린다', () => {
-    renderChart({ showBreakdown: true });
+    renderChart();
 
     expect(screen.getByRole('button', { name: /총 자산액 \(중앙값\)/ })).toBeInTheDocument();
   });
@@ -292,15 +216,10 @@ describe('AssetGrowthChart - 총 자산액 곡선의 기준', () => {
   // 구성 계열의 값이 «어떻게 나온 것인지»를 밝힌다. 합이 맞는다고 해서 그 값이 각 계열의
   // 중앙값인 것은 아니다 — 구성비는 기준 수익률 경로에서 왔다.
   test('상세에서는 구성 계열을 어떻게 나눴는지 밝힌다', () => {
-    renderChart({ showBreakdown: true });
+    renderChart();
 
     expect(screen.getByText(/기준 수익률 경로의 구성비/)).toBeInTheDocument();
   });
 
-  test('간단히 보기에는 구성 계열 안내를 붙이지 않는다', () => {
-    renderChart();
 
-    // 구성 계열을 그리지 않는 화면에서 그 주의사항은 읽을 이유가 없는 문장이다.
-    expect(screen.queryByText(/기준 수익률 경로의 구성비/)).not.toBeInTheDocument();
-  });
 });

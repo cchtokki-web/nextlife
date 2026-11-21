@@ -35,8 +35,6 @@ interface AssetGrowthChartProps {
   hiddenKeys: Record<string, boolean>;
   onLegendClick: (data: LegendPayload) => void;
   caption: string;
-  showBreakdown: boolean;
-  onToggleBreakdown: () => void;
   // 이제 이 차트가 여기서 읽는 것은 assetStatus 하나뿐이다 — 투자자산이 전 구간 0원이면
   // 축도 범례도 토글도 의미가 없어 통째로 내린다. 계획 판정 자체는 이 카드가 말하지 않는다.
   planOutcome: PlanOutcome;
@@ -57,8 +55,7 @@ const COMPARE_COLORS = ['#10B981', '#F59E0B', '#EF4444', '#8B5CF6'];
 // 이번에 바뀐 것은 선의 «개수»가 아니라 **주 곡선의 기준**이다. 진단 카드의
 // 「N세 예상자산」이 중앙값이 된 뒤로 이 차트만 결정론 곡선을 그리면 한 화면이 다시 두
 // 기준을 말한다. 그래서 주 곡선을 연도별 중앙값으로 바꾸고, 함께 있던 「나쁜 경우」 점선은
-// 걷어냈다(사용자 요청). 간단히 보기와 상세보기가 **같은 총액**을 말해야 하므로 기준은
-// 두 화면에 똑같이 적용한다 — 토글을 눌렀다고 총액이 달라지면 그 자체가 새로운 혼란이다.
+// 걷어냈다(사용자 요청). 자산 구성 계열도 이 총액을 기준으로 표시한다.
 //
 // **이 곡선은 어느 실제 시행의 경로도 아니다.** 각 해의 50% 지점은 서로 다른 시행에서 온다.
 // 밝히지 않으면 사용자가 이 선을 "내 자산이 이렇게 흘러간다"로 읽는다.
@@ -67,15 +64,7 @@ const MEDIAN_NOTE = '총 자산액 곡선은 시장 변동 시행에서 각 해�
 // 구성 계열의 값이 «어떻게 나온 것인지». 합이 총액과 맞는다고 해서 그 값이 각 계열의
 // 중앙값인 것은 아니다 — 수준은 중앙값에서, 비율은 기준 수익률 경로에서 왔다. 밝히지 않으면
 // 사용자가 「연금 자산 7억」을 "연금의 중앙값"으로 읽는다.
-//
-// 상세보기에서만 붙인다: 구성 계열을 그리지 않는 화면에서는 읽을 이유가 없는 문장이고,
-// 읽을 이유가 없는 문장은 나머지 문구의 신뢰까지 깎는다.
 const BREAKDOWN_BASIS_NOTE = ' 구성 계열(주식·연금·ISA·현금)은 그 해 중앙값 총액을 기준 수익률 경로의 구성비로 나눈 값입니다.';
-
-// 간단히 보기에서 내리는 구성 계열. 기본 화면은 총액과 생활비만 본다 — 넷은 토글로 낸다.
-// (예전에는 주식·연금만 내리고 ISA·현금은 남아 있었다. 점선 둘이 기본 화면에 남아 있을
-// 이유가 처음부터 없었고, 총액 기준이 바뀌면서 그 어긋남이 눈에 띄었다.)
-const BREAKDOWN_KEYS = ['주식자산', '연금자산', 'ISA자산', '현금'] as const;
 
 // 범례 표기. 아래 <Area>/<Line> 선언의 name/dataKey/stroke/strokeDasharray와 짝을 이룬다 —
 // 어긋나면 범례가 차트에 없는 색이나 모양을 말한다.
@@ -161,8 +150,6 @@ export function AssetGrowthChart({
   hiddenKeys,
   onLegendClick,
   caption,
-  showBreakdown,
-  onToggleBreakdown,
   planOutcome,
   monteCarlo,
 }: AssetGrowthChartProps) {
@@ -196,12 +183,8 @@ export function AssetGrowthChart({
 
   // 월 생활비 라벨은 의료비 포함 여부에 따라 달라지고, 비교 시나리오는 개수가 가변이다.
   // 둘 다 아래 시리즈 선언과 같은 규칙을 써야 범례와 그래프가 같은 이야기를 한다.
-  // 간단히 보기에서 강제로 숨기는 구성 시리즈는 범례에서도 뺀다. 클릭해도 상위의
-  // assetChartHiddenKeys 오버레이가 다시 숨기는 버튼을 노출하면 고장 난 토글처럼 보인다.
   const totalAssetLabel = `총 자산액 (${usesMedian ? '중앙값' : '기준 수익률'})`;
-  const visibleAssetLegend = (showBreakdown
-    ? ASSET_LEGEND
-    : ASSET_LEGEND.filter((item) => !BREAKDOWN_KEYS.includes(item.dataKey as typeof BREAKDOWN_KEYS[number])))
+  const visibleAssetLegend = ASSET_LEGEND
     .map((item) => (item.dataKey === '자산총액' ? { ...item, label: totalAssetLabel } : item));
   const legendItems: ChartLegendItem[] = [
     ...visibleAssetLegend,
@@ -223,28 +206,11 @@ export function AssetGrowthChart({
     <GlassCard className={styles.chartCard}>
       <div className={styles.chartHeader}>
         <span className={styles.chartTitle}>
-          자산 추이 시뮬레이션 (현재 {params.userProfile.currentAge}세 ~ {params.userProfile.expectancy}세)
+          자산 추이 시뮬레이션 (현재 ~ {params.userProfile.expectancy}세)
           <span style={{ fontSize: '0.85em', color: 'var(--foreground-muted)', marginLeft: '8px', fontWeight: 'normal' }}>
             ({params.inflationMode === 'nominal' ? '명목가치' : '실질가치'} 기준)
           </span>
         </span>
-        {/* 이 자리에 계획 판정 배지(투자자산 소진 / 생활비 부족 / 유지됨)를 함께 두었다가
-            걷어냈다. 같은 사실을 화면이 이미 세 번 말하고 있었기 때문이다 — 1페이지의
-            계획 진단 줄, 「생활비 재원 구성」 차트의 캡션, 그리고 「계획 상세 수치」의
-            부족액 표. 차트 머리에 붙은 배지는 그중 가장 좁은 자리에서 가장 짧게 말해,
-            숫자를 더 주지 않으면서 시선만 먼저 가져갔다.
-
-            남긴 것은 이 카드에서만 할 수 있는 조작인 구성 토글뿐이다. */}
-        {/* 펼칠 구성(주식/연금/ISA/현금)이 전부 0이므로 토글도 의미가 없다. */}
-        {!hasNoInvestableAsset && (
-          <button
-            type="button"
-            onClick={onToggleBreakdown}
-            className="rounded-full border border-card-border px-3 py-1 text-xs font-semibold text-foreground-muted hover:bg-foreground/5"
-          >
-            {showBreakdown ? '간단히 보기' : '자산 구성 상세보기'}
-          </button>
-        )}
       </div>
       <ChartCaption>{caption}</ChartCaption>
       {!hasNoInvestableAsset && (
@@ -252,7 +218,7 @@ export function AssetGrowthChart({
       )}
       {usesMedian && !hasNoInvestableAsset && (
         <p className="mt-1 text-xs text-foreground-muted">
-          {MEDIAN_NOTE}{showBreakdown ? BREAKDOWN_BASIS_NOTE : ''}
+          {MEDIAN_NOTE}{BREAKDOWN_BASIS_NOTE}
         </p>
       )}
       {hasNoInvestableAsset ? (
@@ -298,6 +264,7 @@ export function AssetGrowthChart({
               {/* name을 빈 문자열로 돌려주면 recharts가 ": 5억원"처럼 값만 나열한다 —
                   어느 줄이 무슨 자산인지 읽을 수 없었다. 시리즈 이름을 그대로 되돌려준다. */}
               <Tooltip
+                trigger="click"
                 defaultIndex={currentAgeIndex >= 0 ? currentAgeIndex : undefined}
                 contentStyle={RECHARTS_TOOLTIP_STYLE}
                 formatter={(value: unknown, name: unknown) => [formatValue(Number(value), currency), String(name)]}
